@@ -3,11 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev:api": "pnpm --filter @jiangkong/api dev",
-    "dev:web": "pnpm --filter @jiangkong/web-admin dev",
-    "lint": "pnpm -r lint",
-    "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "dev:api": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api dev",
+    "dev:web": "node scripts/pnpm-workspace.mjs --filter @jiangkong/web-admin dev",
+    "lint": "node scripts/pnpm-workspace.mjs -r lint",
+    "test": "node scripts/pnpm-workspace.mjs -r test",
+    "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck"
   },
   "engines": {
     "node": ">=20.0.0",
