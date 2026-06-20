@@ -192,3 +192,55 @@ model FinanceRecord {
   createdByUserId  String
   createdAt        DateTime @default(now())
 }
+
+model ApprovalFlow {
+  id        String   @id @default(uuid())
+  type      String
+  name      String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ApprovalFlowNode {
+  id             String   @id @default(uuid())
+  flowId         String
+  sortOrder      Int
+  name           String
+  mode           String
+  roleKeys       String[]
+  minAmountCents Int?
+  maxAmountCents Int?
+}
+
+model ApprovalInstance {
+  id               String   @id @default(uuid())
+  flowType         String
+  businessType     String
+  businessId       String
+  status           String
+  currentNodeIndex Int
+  frozenNodes      Json
+  applicantUserId  String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ApprovalActionLog {
+  id                 String   @id @default(uuid())
+  approvalInstanceId String
+  action             String
+  actorUserId        String
+  comment            String?
+  createdAt          DateTime @default(now())
+}
+
+model ApprovalDelegation {
+  id         String   @id @default(uuid())
+  fromUserId String
+  toUserId   String
+  startsAt   DateTime
+  endsAt     DateTime
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}

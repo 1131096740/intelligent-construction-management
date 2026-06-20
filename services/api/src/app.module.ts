@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { ApprovalModule } from "./approval/approval.module";
 import { ContractModule } from "./contract/contract.module";
 import { DatabaseModule } from "./database/database.module";
 import { HealthController } from "./health.controller";
@@ -14,7 +15,8 @@ import { SettlementModule } from "./settlement/settlement.module";
     ProjectModule,
     ContractModule,
     SettlementModule,
-    PaymentModule
+    PaymentModule,
+    ApprovalModule
   ],
   controllers: [HealthController]
 })
