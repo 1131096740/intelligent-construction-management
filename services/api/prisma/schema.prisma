@@ -125,3 +125,70 @@ model ContractArchiveFile {
   status            String
   createdAt         DateTime  @default(now())
 }
+
+model Settlement {
+  id                    String   @id @default(uuid())
+  projectId             String
+  contractId            String
+  contractVersionId     String
+  paymentTermsVersionId String
+  code                  String   @unique
+  periodLabel           String
+  status                String
+  amountCents           Int
+  payableAmountCents    Int
+  paidAmountCents       Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model SettlementArchiveFile {
+  id                String    @id @default(uuid())
+  settlementId      String
+  fileId            String
+  uploadedByUserId  String
+  confirmedByUserId String?
+  confirmedAt       DateTime?
+  status            String
+  createdAt         DateTime  @default(now())
+}
+
+model PaymentRequest {
+  id                    String    @id @default(uuid())
+  projectId             String
+  settlementId          String
+  contractId            String
+  contractVersionId     String
+  paymentTermsVersionId String
+  code                  String    @unique
+  status                String
+  requestedAmountCents  Int
+  approvedAmountCents   Int?
+  paidAmountCents       Int       @default(0)
+  dueDate               DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model PaymentExecution {
+  id               String   @id @default(uuid())
+  paymentRequestId String
+  settlementId     String
+  amountCents      Int
+  paidAt           DateTime
+  executedByUserId String
+  voucherFileId    String
+  createdAt        DateTime @default(now())
+}
+
+model FinanceRecord {
+  id               String   @id @default(uuid())
+  projectId        String
+  paymentRequestId String?
+  settlementId     String?
+  direction        String
+  amountCents      Int
+  occurredAt       DateTime
+  createdByUserId  String
+  createdAt        DateTime @default(now())
+}
