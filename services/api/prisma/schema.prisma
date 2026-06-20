@@ -244,3 +244,44 @@ model ApprovalDelegation {
   enabled    Boolean  @default(true)
   createdAt  DateTime @default(now())
 }
+
+model FileObject {
+  id               String   @id @default(uuid())
+  bucket           String
+  objectKey        String
+  originalName     String
+  mimeType         String
+  sizeBytes        Int
+  uploadedByUserId String
+  createdAt        DateTime @default(now())
+}
+
+model ArchiveRecord {
+  id              String   @id @default(uuid())
+  businessType    String
+  businessId      String
+  fileId          String
+  departmentScope String
+  createdAt       DateTime @default(now())
+}
+
+model PdfDocument {
+  id           String   @id @default(uuid())
+  businessType String
+  businessId   String
+  fileId       String
+  templateKey  String
+  createdAt    DateTime @default(now())
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorUserId  String?
+  action       String
+  businessType String?
+  businessId   String?
+  ipAddress    String?
+  userAgent    String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+}
