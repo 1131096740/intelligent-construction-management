@@ -98,6 +98,9 @@ function go(path: string) {
 }
 
 .header {
+  box-sizing: border-box;
+  width: calc(100vw - 208px);
+  max-width: calc(100vw - 208px);
   height: 48px;
   display: flex;
   align-items: center;
@@ -113,8 +116,13 @@ function go(path: string) {
 }
 
 .content {
+  box-sizing: border-box;
+  width: calc(100vw - 208px);
+  max-width: calc(100vw - 208px);
+  min-width: 0;
   min-height: calc(100vh - 48px);
   padding: 24px;
+  overflow-x: hidden;
   background: #f4f6f9;
 }
 </style>
