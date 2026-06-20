@@ -60,3 +60,68 @@ model ProjectMember {
 
   @@unique([projectId, userId, positionKey])
 }
+
+model Contract {
+  id           String   @id @default(uuid())
+  projectId    String
+  code         String   @unique
+  name         String
+  counterparty String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ContractVersion {
+  id          String    @id @default(uuid())
+  contractId  String
+  versionNo   Int
+  changeType  String
+  status      String
+  amountCents Int
+  effectiveAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([contractId, versionNo])
+}
+
+model PaymentTermsVersion {
+  id                String   @id @default(uuid())
+  contractId        String
+  contractVersionId String
+  versionNo         Int
+  status            String
+  originalText      String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([contractId, versionNo])
+}
+
+model PaymentTermsStage {
+  id                    String   @id @default(uuid())
+  paymentTermsVersionId String
+  name                  String
+  basis                 String
+  ratioBps              Int?
+  fixedAmountCents      Int?
+  triggerEvent          String
+  dueDays               Int
+  requiresInvoice       Boolean  @default(false)
+  allowsEarlyPayment    Boolean  @default(false)
+  allowsInstallments    Boolean  @default(true)
+  retentionBps          Int?
+  originalText          String
+  createdAt             DateTime @default(now())
+}
+
+model ContractArchiveFile {
+  id                String    @id @default(uuid())
+  contractVersionId String
+  fileId            String
+  uploadedByUserId  String
+  confirmedByUserId String?
+  confirmedAt       DateTime?
+  status            String
+  createdAt         DateTime  @default(now())
+}
