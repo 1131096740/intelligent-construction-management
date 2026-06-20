@@ -68,8 +68,11 @@
             {{ row.currentNode }}
           </t-tag>
         </template>
-        <template #operation>
-          <t-link theme="primary">
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="openDetail(row.id)"
+          >
             详情
           </t-link>
         </template>
@@ -79,6 +82,7 @@
 </template>
 
 <script setup lang="ts">
+import { useRouter } from "vue-router";
 import type { ContractStatusTone } from "./contract-list.config";
 import {
   contractFilterFields,
@@ -86,6 +90,12 @@ import {
   contractLedgerRows,
   contractSummaryItems
 } from "./contract-list.config";
+
+const router = useRouter();
+
+function openDetail(contractId: string) {
+  void router.push(`/contracts/${contractId}`);
+}
 
 function statusTagTheme(tone: ContractStatusTone) {
   const themeByTone = {

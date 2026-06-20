@@ -11,6 +11,10 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/contracts/ContractListPage.vue")
       },
       {
+        path: "contracts/:contractId",
+        component: () => import("../pages/contracts/ContractDetailPage.vue")
+      },
+      {
         path: "settlements",
         component: () => import("../pages/settlements/SettlementListPage.vue")
       },

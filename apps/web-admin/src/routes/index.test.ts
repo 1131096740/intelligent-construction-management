@@ -16,6 +16,7 @@ describe("web admin routes", () => {
     expect(shellRoute?.component).toBeDefined();
     expect(childPaths).toEqual([
       "contracts",
+      "contracts/:contractId",
       "settlements",
       "payments",
       "archives",
