@@ -1721,7 +1721,7 @@ git commit -m "feat: guard payment requests by settlement capacity"
 - Create: `apps/web-admin/src/app/App.vue`
 - Create: `apps/web-admin/src/routes/index.ts`
 
-- [ ] **Step 1: Add package metadata**
+- [x] **Step 1: Add package metadata**
 
 Create `apps/web-admin/package.json`:
 
@@ -1755,7 +1755,7 @@ Create `apps/web-admin/package.json`:
 }
 ```
 
-- [ ] **Step 2: Add app files**
+- [x] **Step 2: Add app files**
 
 Create `apps/web-admin/index.html`:
 
@@ -1800,7 +1800,7 @@ export const router = createRouter({
 });
 ```
 
-- [ ] **Step 3: Add workbench placeholder page**
+- [x] **Step 3: Add workbench placeholder page**
 
 Create `apps/web-admin/src/pages/workbench/WorkbenchPage.vue`:
 
@@ -1819,7 +1819,7 @@ Create `apps/web-admin/src/pages/workbench/WorkbenchPage.vue`:
 </style>
 ```
 
-- [ ] **Step 4: Run dev build**
+- [x] **Step 4: Run dev build**
 
 Run:
 
@@ -1829,7 +1829,7 @@ pnpm --filter @jiangkong/web-admin build
 
 Expected: Vite build succeeds.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web-admin
