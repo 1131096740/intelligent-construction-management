@@ -2,10 +2,24 @@ import { describe, expect, it } from "vitest";
 import { webAdminRoutes } from "./route-records";
 
 describe("web admin routes", () => {
-  it("routes the root path to the workbench page", () => {
+  it("redirects the root path to the contract ledger", () => {
     const rootRoute = webAdminRoutes.find((route) => route.path === "/");
 
     expect(rootRoute).toBeDefined();
-    expect(rootRoute?.component).toBeDefined();
+    expect(rootRoute?.redirect).toBe("/contracts");
+  });
+
+  it("renders all primary business modules under the admin layout", () => {
+    const shellRoute = webAdminRoutes.find((route) => route.path === "/");
+    const childPaths = shellRoute?.children?.map((route) => route.path);
+
+    expect(shellRoute?.component).toBeDefined();
+    expect(childPaths).toEqual([
+      "contracts",
+      "settlements",
+      "payments",
+      "archives",
+      "audit"
+    ]);
   });
 });
