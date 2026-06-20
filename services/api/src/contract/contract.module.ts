@@ -1,8 +1,11 @@
 import { Module } from "@nestjs/common";
+import { ContractController } from "./contract.controller";
+import { ContractService } from "./contract.service";
 import { ContractStatusService } from "./contract-status.service";
 
 @Module({
-  providers: [ContractStatusService],
-  exports: [ContractStatusService]
+  controllers: [ContractController],
+  providers: [ContractService, ContractStatusService],
+  exports: [ContractService, ContractStatusService]
 })
 export class ContractModule {}
