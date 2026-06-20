@@ -268,10 +268,10 @@
 
       .filters {
         display: grid;
-        grid-template-columns: repeat(4, 160px) 220px auto auto;
-        gap: 12px;
+        grid-template-columns: repeat(4, minmax(118px, 136px)) minmax(180px, 1fr) 64px 64px;
+        gap: 8px 10px;
         align-items: end;
-        padding: 14px 20px;
+        padding: 10px 12px;
         margin-bottom: 16px;
       }
 
@@ -280,11 +280,11 @@
         color: var(--muted);
         font-weight: 600;
         font-size: 12px;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
       }
 
       .input {
-        height: 28px;
+        height: 30px;
         border: 1px solid var(--line-dark);
         border-radius: 3px;
         padding: 0 10px;
@@ -292,6 +292,11 @@
         align-items: center;
         color: var(--text-2);
         background: var(--panel);
+      }
+
+      .filters .button {
+        width: 64px;
+        padding: 0;
       }
 
       .detail-meta {
@@ -414,7 +419,22 @@
         }
 
         .filters {
+          grid-template-columns: repeat(4, minmax(120px, 1fr));
+          align-items: end;
+        }
+
+        .field.keyword {
+          grid-column: span 2;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .filters {
           grid-template-columns: 1fr;
+        }
+
+        .filters .field {
+          grid-column: auto;
         }
       }
     </style>
@@ -446,7 +466,7 @@
                 <h1>我的待办</h1>
                 <div class="hint">按责任部门、停留时长、下一步动作处理阻塞事项</div>
               </div>
-              <button class="button primary">批量确认</button>
+              <button class="button">批量催办</button>
             </div>
 
             <div class="stats">
@@ -478,7 +498,7 @@
                     <tr>
                       <td>合同</td>
                       <td class="business-name">HT-2026-001 钢材采购合同</td>
-                      <td><span class="tag blue">待确认</span></td>
+                      <td><span class="tag blue">待主管确认归档</span></td>
                       <td>合同部</td>
                       <td>2天</td>
                       <td>主管确认归档</td>
@@ -487,7 +507,7 @@
                     <tr>
                       <td>结算</td>
                       <td class="business-name">JS-2026-018 5月材料结算</td>
-                      <td><span class="tag blue">待确认</span></td>
+                      <td><span class="tag blue">待主管确认归档</span></td>
                       <td>合同部</td>
                       <td>1天</td>
                       <td>确认结算归档</td>
@@ -505,7 +525,7 @@
                     <tr>
                       <td>付款</td>
                       <td class="business-name">FK-2026-027 劳务款申请</td>
-                      <td><span class="tag red">待实付</span></td>
+                      <td><span class="tag red">待实际付款</span></td>
                       <td>财务部</td>
                       <td>1天</td>
                       <td>登记付款凭证</td>
@@ -557,7 +577,7 @@
               <div class="field"><label>合同状态</label><div class="input">全部</div></div>
               <div class="field"><label>归档状态</label><div class="input">全部</div></div>
               <div class="field"><label>付款条款版本</label><div class="input">全部</div></div>
-              <div class="field"><label>关键词</label><div class="input">编号/名称/相对方</div></div>
+              <div class="field keyword"><label>关键词</label><div class="input">编号/名称/相对方</div></div>
               <button class="button primary">查询</button>
               <button class="button">重置</button>
             </div>
@@ -595,18 +615,18 @@
                 <div class="hint">HT-2026-001 · 钢材采购合同</div>
               </div>
               <div>
-                <button class="button primary">上传归档件</button>
-                <button class="button">提交审批</button>
+                <button class="button primary">发起用章</button>
+                <button class="button">查看审批记录</button>
               </div>
             </div>
 
             <div class="panel detail-meta">
               <div><div class="meta-label">当前状态</div><div class="meta-value">待用章</div></div>
               <div><div class="meta-label">当前版本</div><div class="meta-value">原合同 v1</div></div>
-              <div><div class="meta-label">付款条款</div><div class="meta-value">v1 草稿</div></div>
+              <div><div class="meta-label">付款条款</div><div class="meta-value">v1 随合同生效</div></div>
               <div><div class="meta-label">责任部门</div><div class="meta-value">合同部</div></div>
               <div><div class="meta-label">当前处理人</div><div class="meta-value">王工</div></div>
-              <div><div class="meta-label">下一步动作</div><div class="meta-value" style="color: var(--amber); font-weight: 700;">上传盖章合同</div></div>
+              <div><div class="meta-label">下一步动作</div><div class="meta-value" style="color: var(--amber); font-weight: 700;">办理用章</div></div>
             </div>
 
             <div class="two-col section">
@@ -638,8 +658,8 @@
               <table>
                 <thead><tr><th>版本</th><th>状态</th><th>适用合同版本</th><th>计算依据</th><th>比例</th><th>账期</th><th>触发事件</th><th>操作</th></tr></thead>
                 <tbody>
-                  <tr><td>v1</td><td>草稿</td><td>合同 v1</td><td>当期结算</td><td>80%</td><td>30天</td><td>结算归档生效</td><td>查看</td></tr>
-                  <tr><td>v1</td><td>草稿</td><td>合同 v1</td><td>累计结算</td><td>20%</td><td>365天</td><td>质保期满</td><td>查看</td></tr>
+                  <tr><td>v1</td><td>随合同生效</td><td>合同 v1</td><td>当期结算</td><td>80%</td><td>30天</td><td>结算归档生效</td><td>查看</td></tr>
+                  <tr><td>v1</td><td>随合同生效</td><td>合同 v1</td><td>质保金</td><td>20%</td><td>365天</td><td>质保期满</td><td>查看</td></tr>
                 </tbody>
               </table>
             </div>
@@ -658,8 +678,8 @@
                 <h1 style="font-size:22px;">我的待办</h1>
                 <div class="hint">7 个待处理事项 · 2 个阻塞生效</div>
               </div>
-              <div class="mobile-card"><h3>合同归档确认 <span class="tag blue" style="float:right;">确认归档</span></h3><div>HT-2026-001 · 钢材采购合同</div><div class="hint" style="margin-top:10px;">合同部 · 停留 2 天</div></div>
-              <div class="mobile-card"><h3>结算归档确认 <span class="tag blue" style="float:right;">确认归档</span></h3><div>JS-2026-018 · 5月材料结算单</div><div class="hint" style="margin-top:10px;">合同部 · 停留 1 天</div></div>
+              <div class="mobile-card"><h3>合同归档确认 <span class="tag blue" style="float:right;">主管确认</span></h3><div>HT-2026-001 · 钢材采购合同</div><div class="hint" style="margin-top:10px;">合同部 · 停留 2 天</div></div>
+              <div class="mobile-card"><h3>结算归档确认 <span class="tag blue" style="float:right;">主管确认</span></h3><div>JS-2026-018 · 5月材料结算单</div><div class="hint" style="margin-top:10px;">合同部 · 停留 1 天</div></div>
               <div class="mobile-card"><h3>付款审批 <span class="tag red" style="float:right;">二选一审批</span></h3><div>FK-2026-031 · 结算款付款申请</div><div class="hint" style="margin-top:10px;">总经办 · 停留 4 小时</div></div>
               <div class="mobile-card"><h3>待实际付款 <span class="tag red" style="float:right;">登记凭证</span></h3><div>FK-2026-027 · 劳务款付款申请</div><div class="hint" style="margin-top:10px;">财务部 · 停留 1 天</div></div>
               <div class="mobile-bottom"><strong style="color:var(--blue);">待办</strong><span>合同</span><span>结算</span><span>付款</span></div>
