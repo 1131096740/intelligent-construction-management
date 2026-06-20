@@ -1843,7 +1843,7 @@ git commit -m "feat: scaffold web admin"
 - Modify: `apps/web-admin/src/routes/index.ts`
 - Create pages under `apps/web-admin/src/pages/*`
 
-- [ ] **Step 1: Create layout**
+- [x] **Step 1: Create layout**
 
 Create `apps/web-admin/src/app/AdminLayout.vue`:
 
@@ -1894,7 +1894,7 @@ Create `apps/web-admin/src/app/AdminLayout.vue`:
 </style>
 ```
 
-- [ ] **Step 2: Add module pages**
+- [x] **Step 2: Add module pages**
 
 Create simple pages:
 
@@ -1908,11 +1908,11 @@ apps/web-admin/src/pages/audit/AuditLogPage.vue
 
 Each page starts with a `t-card` title and a `t-table` placeholder with no mock production data.
 
-- [ ] **Step 3: Wire routes**
+- [x] **Step 3: Wire routes**
 
 Modify routes so `/` redirects to `/contracts`, all module pages render inside `AdminLayout`.
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 Run:
 
@@ -1922,7 +1922,7 @@ pnpm --filter @jiangkong/web-admin build
 
 Expected: build succeeds.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web-admin
