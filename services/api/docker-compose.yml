@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: jiangkong-postgres
+    environment:
+      POSTGRES_USER: jiangkong
+      POSTGRES_PASSWORD: jiangkong
+      POSTGRES_DB: jiangkong
+    ports:
+      - "5432:5432"
+    volumes:
+      - jiangkong_pgdata:/var/lib/postgresql/data
+
+volumes:
+  jiangkong_pgdata:
