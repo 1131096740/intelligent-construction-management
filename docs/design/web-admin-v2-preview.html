@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>建工智管 Web Admin V2</title>
+    <style>
+      :root {
+        --bg: #f4f6f9;
+        --panel: #fff;
+        --nav: #f9fafc;
+        --line: #dce1e8;
+        --line-dark: #c8ced8;
+        --text: #151922;
+        --text-2: #424955;
+        --muted: #767f8d;
+        --blue: #0052cc;
+        --blue-soft: #e8f1ff;
+        --green: #1b6b3a;
+        --green-soft: #e8f6ed;
+        --amber: #9f4f06;
+        --amber-soft: #fff0d8;
+        --red: #b51d2a;
+        --red-soft: #ffe8ea;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        font-size: 13px;
+      }
+
+      .app {
+        min-height: 100vh;
+      }
+
+      .topbar {
+        height: 48px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+      }
+
+      .brand {
+        font-weight: 700;
+        font-size: 17px;
+        margin-right: 18px;
+      }
+
+      .top-meta {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .user {
+        margin-left: auto;
+        color: var(--text-2);
+        font-size: 12px;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 208px 1fr;
+        min-height: calc(100vh - 48px);
+      }
+
+      .nav {
+        background: var(--nav);
+        border-right: 1px solid var(--line);
+        padding: 20px 12px;
+      }
+
+      .nav-item {
+        height: 30px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        color: var(--text-2);
+        border-radius: 3px;
+        margin-bottom: 8px;
+      }
+
+      .nav-item.active {
+        background: var(--blue-soft);
+        color: var(--blue);
+        font-weight: 600;
+        border-left: 3px solid var(--blue);
+        padding-left: 13px;
+      }
+
+      .content {
+        padding: 26px 24px 40px;
+      }
+
+      .page-head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        font-size: 24px;
+        line-height: 1.2;
+        margin: 0 0 8px;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .button {
+        height: 32px;
+        border: 1px solid var(--line-dark);
+        background: var(--panel);
+        color: var(--text-2);
+        border-radius: 3px;
+        padding: 0 14px;
+        font-weight: 600;
+      }
+
+      .button.primary {
+        background: var(--blue);
+        color: #fff;
+        border-color: var(--blue);
+      }
+
+      .stats {
+        height: 42px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        margin-bottom: 16px;
+      }
+
+      .stat {
+        display: flex;
+        gap: 10px;
+        padding-right: 24px;
+        margin-right: 22px;
+        border-right: 1px solid var(--line);
+      }
+
+      .stat-label {
+        color: var(--muted);
+      }
+
+      .stat-value {
+        font-weight: 700;
+      }
+
+      .main-grid {
+        display: grid;
+        grid-template-columns: 1fr 270px;
+        gap: 20px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+      }
+
+      .panel-head {
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--line);
+        font-weight: 700;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th {
+        height: 38px;
+        background: #f6f8fb;
+        color: var(--text-2);
+        font-weight: 600;
+        text-align: left;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--line-dark);
+        font-size: 12px;
+      }
+
+      td {
+        height: 46px;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--line);
+        color: var(--text-2);
+        white-space: nowrap;
+      }
+
+      tbody tr:nth-child(even) {
+        background: #fcfdff;
+      }
+
+      .business-name {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .tag {
+        display: inline-flex;
+        height: 22px;
+        align-items: center;
+        padding: 0 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .tag.blue {
+        color: var(--blue);
+        background: var(--blue-soft);
+      }
+
+      .tag.amber {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+
+      .tag.red {
+        color: var(--red);
+        background: var(--red-soft);
+      }
+
+      .tag.green {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .side-list {
+        padding: 18px 20px;
+      }
+
+      .side-list h2 {
+        font-size: 16px;
+        margin: 0 0 18px;
+      }
+
+      .principle {
+        padding: 14px 0;
+        border-top: 1px solid var(--line);
+        color: var(--text-2);
+        line-height: 1.5;
+      }
+
+      .section {
+        margin-top: 28px;
+      }
+
+      .filters {
+        display: grid;
+        grid-template-columns: repeat(4, 160px) 220px auto auto;
+        gap: 12px;
+        align-items: end;
+        padding: 14px 20px;
+        margin-bottom: 16px;
+      }
+
+      .field label {
+        display: block;
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+
+      .input {
+        height: 28px;
+        border: 1px solid var(--line-dark);
+        border-radius: 3px;
+        padding: 0 10px;
+        display: flex;
+        align-items: center;
+        color: var(--text-2);
+        background: var(--panel);
+      }
+
+      .detail-meta {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 0;
+        padding: 20px;
+      }
+
+      .meta-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+
+      .meta-value {
+        font-size: 13px;
+        color: var(--text);
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: 1.6fr 1fr;
+        gap: 20px;
+      }
+
+      .info-list {
+        padding: 20px;
+        display: grid;
+        grid-template-columns: 90px 1fr;
+        row-gap: 16px;
+      }
+
+      .flow {
+        padding: 20px;
+      }
+
+      .flow-row {
+        display: grid;
+        grid-template-columns: 16px 1fr auto;
+        align-items: center;
+        gap: 10px;
+        height: 40px;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .dot.green {
+        background: var(--green);
+      }
+
+      .dot.amber {
+        background: var(--amber);
+      }
+
+      .dot.red {
+        background: var(--red);
+      }
+
+      .mobile {
+        width: 390px;
+        min-height: 844px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        margin-top: 32px;
+      }
+
+      .mobile-head {
+        height: 48px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+      }
+
+      .mobile-card {
+        margin: 12px 16px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        padding: 14px;
+      }
+
+      .mobile-card h3 {
+        margin: 0 0 10px;
+        font-size: 15px;
+      }
+
+      .mobile-bottom {
+        height: 64px;
+        background: var(--panel);
+        border-top: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        align-items: center;
+        text-align: center;
+        margin-top: 36px;
+        color: var(--muted);
+      }
+
+      @media (max-width: 900px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .nav {
+          display: none;
+        }
+
+        .main-grid,
+        .two-col {
+          grid-template-columns: 1fr;
+        }
+
+        .filters {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">建工智管</div>
+        <div class="top-meta">审批与合同付款闭环 MVP</div>
+        <div class="user">建设企业 · 合同部主管</div>
+      </header>
+
+      <div class="shell">
+        <aside class="nav">
+          <div class="nav-item active">我的待办</div>
+          <div class="nav-item">合同管理</div>
+          <div class="nav-item">结算管理</div>
+          <div class="nav-item">付款管理</div>
+          <div class="nav-item">归档资料</div>
+          <div class="nav-item">审批配置</div>
+          <div class="nav-item">审计日志</div>
+          <div class="nav-item">基础数据</div>
+        </aside>
+
+        <main class="content">
+          <section>
+            <div class="page-head">
+              <div>
+                <h1>我的待办</h1>
+                <div class="hint">按责任部门、停留时长、下一步动作处理阻塞事项</div>
+              </div>
+              <button class="button primary">批量确认</button>
+            </div>
+
+            <div class="stats">
+              <div class="stat"><span class="stat-label">合同待归档</span><span class="stat-value" style="color: var(--amber)">3</span></div>
+              <div class="stat"><span class="stat-label">结算待确认</span><span class="stat-value" style="color: var(--blue)">2</span></div>
+              <div class="stat"><span class="stat-label">付款待审批</span><span class="stat-value" style="color: var(--red)">8</span></div>
+              <div class="stat"><span class="stat-label">待实际付款</span><span class="stat-value" style="color: var(--red)">5</span></div>
+              <div class="stat"><span class="stat-label">超账期</span><span class="stat-value" style="color: var(--red)">1</span></div>
+            </div>
+
+            <div class="main-grid">
+              <div class="panel">
+                <div class="panel-head">
+                  <span>阻塞事项队列</span>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>类型</th>
+                      <th>业务单据</th>
+                      <th>当前节点</th>
+                      <th>责任部门</th>
+                      <th>停留</th>
+                      <th>下一步动作</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>合同</td>
+                      <td class="business-name">HT-2026-001 钢材采购合同</td>
+                      <td><span class="tag blue">待确认</span></td>
+                      <td>合同部</td>
+                      <td>2天</td>
+                      <td>主管确认归档</td>
+                      <td>处理</td>
+                    </tr>
+                    <tr>
+                      <td>结算</td>
+                      <td class="business-name">JS-2026-018 5月材料结算</td>
+                      <td><span class="tag blue">待确认</span></td>
+                      <td>合同部</td>
+                      <td>1天</td>
+                      <td>确认结算归档</td>
+                      <td>处理</td>
+                    </tr>
+                    <tr>
+                      <td>付款</td>
+                      <td class="business-name">FK-2026-031 结算款申请</td>
+                      <td><span class="tag red">或签</span></td>
+                      <td>总经办</td>
+                      <td>4小时</td>
+                      <td>二选一审批</td>
+                      <td>处理</td>
+                    </tr>
+                    <tr>
+                      <td>付款</td>
+                      <td class="business-name">FK-2026-027 劳务款申请</td>
+                      <td><span class="tag red">待实付</span></td>
+                      <td>财务部</td>
+                      <td>1天</td>
+                      <td>登记付款凭证</td>
+                      <td>处理</td>
+                    </tr>
+                    <tr>
+                      <td>合同</td>
+                      <td class="business-name">HT-2026-004 防水分包</td>
+                      <td><span class="tag amber">退回</span></td>
+                      <td>项目部</td>
+                      <td>3天</td>
+                      <td>补充合同资料</td>
+                      <td>处理</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <aside class="panel side-list">
+                <h2>今日处理原则</h2>
+                <div class="principle">先处理阻塞生效的归档确认</div>
+                <div class="principle">付款审批通过不代表已付款</div>
+                <div class="principle">付款实付必须登记凭证</div>
+                <div class="principle">历史结算绑定当时条款版本</div>
+                <div class="principle">合同变更归档后才生效</div>
+              </aside>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="page-head">
+              <div>
+                <h1>合同管理</h1>
+                <div class="hint">合同、合同版本、付款条款版本、归档状态统一台账</div>
+              </div>
+              <button class="button primary">新建合同</button>
+            </div>
+
+            <div class="stats">
+              <div class="stat"><span class="stat-label">全部合同</span><span class="stat-value">124</span></div>
+              <div class="stat"><span class="stat-label">审批中</span><span class="stat-value" style="color: var(--amber)">12</span></div>
+              <div class="stat"><span class="stat-label">待用章</span><span class="stat-value" style="color: var(--amber)">7</span></div>
+              <div class="stat"><span class="stat-label">待归档</span><span class="stat-value" style="color: var(--blue)">3</span></div>
+              <div class="stat"><span class="stat-label">已生效</span><span class="stat-value" style="color: var(--green)">88</span></div>
+            </div>
+
+            <div class="panel filters">
+              <div class="field"><label>项目</label><div class="input">全部</div></div>
+              <div class="field"><label>合同状态</label><div class="input">全部</div></div>
+              <div class="field"><label>归档状态</label><div class="input">全部</div></div>
+              <div class="field"><label>付款条款版本</label><div class="input">全部</div></div>
+              <div class="field"><label>关键词</label><div class="input">编号/名称/相对方</div></div>
+              <button class="button primary">查询</button>
+              <button class="button">重置</button>
+            </div>
+
+            <div class="panel">
+              <table>
+                <thead>
+                  <tr>
+                    <th>合同编号</th>
+                    <th>合同名称</th>
+                    <th>项目</th>
+                    <th>相对方</th>
+                    <th>金额</th>
+                    <th>版本</th>
+                    <th>当前节点</th>
+                    <th>责任部门</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>HT-001</td><td class="business-name">钢材采购合同</td><td>一标段主体</td><td>材料供应商</td><td>120.0万</td><td>v1</td><td><span class="tag amber">待用章</span></td><td>合同部</td><td>06-19 16:20</td><td>详情</td></tr>
+                  <tr><td>HT-002</td><td class="business-name">劳务分包合同</td><td>二标段机电</td><td>劳务单位</td><td>86.5万</td><td>v1</td><td><span class="tag blue">待归档</span></td><td>合同部</td><td>06-18 11:04</td><td>详情</td></tr>
+                  <tr><td>HT-003</td><td class="business-name">混凝土供应合同</td><td>一标段主体</td><td>商砼单位</td><td>210.0万</td><td>v1</td><td><span class="tag green">已生效</span></td><td>-</td><td>06-17 09:30</td><td>详情</td></tr>
+                  <tr><td>HT-004</td><td class="business-name">防水专业分包</td><td>地下室工程</td><td>专业分包</td><td>64.8万</td><td>v1</td><td><span class="tag amber">审批中</span></td><td>预算部</td><td>06-16 18:12</td><td>详情</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="page-head">
+              <div>
+                <h1>合同详情</h1>
+                <div class="hint">HT-2026-001 · 钢材采购合同</div>
+              </div>
+              <div>
+                <button class="button primary">上传归档件</button>
+                <button class="button">提交审批</button>
+              </div>
+            </div>
+
+            <div class="panel detail-meta">
+              <div><div class="meta-label">当前状态</div><div class="meta-value">待用章</div></div>
+              <div><div class="meta-label">当前版本</div><div class="meta-value">原合同 v1</div></div>
+              <div><div class="meta-label">付款条款</div><div class="meta-value">v1 草稿</div></div>
+              <div><div class="meta-label">责任部门</div><div class="meta-value">合同部</div></div>
+              <div><div class="meta-label">当前处理人</div><div class="meta-value">王工</div></div>
+              <div><div class="meta-label">下一步动作</div><div class="meta-value" style="color: var(--amber); font-weight: 700;">上传盖章合同</div></div>
+            </div>
+
+            <div class="two-col section">
+              <div class="panel">
+                <div class="panel-head">基础信息</div>
+                <div class="info-list">
+                  <span class="meta-label">项目</span><span>一标段主体工程</span>
+                  <span class="meta-label">相对方</span><span>材料供应商</span>
+                  <span class="meta-label">合同金额</span><span>¥1,200,000.00</span>
+                  <span class="meta-label">签订日期</span><span>2026-06-18</span>
+                  <span class="meta-label">合同类型</span><span>材料采购</span>
+                  <span class="meta-label">创建人</span><span>项目经理 张工</span>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-head">生效流程与阻断点</div>
+                <div class="flow">
+                  <div class="flow-row"><span class="dot green"></span><span>合同审批</span><span class="tag green">已通过</span></div>
+                  <div class="flow-row"><span class="dot amber"></span><span>用章</span><span class="tag amber">待处理</span></div>
+                  <div class="flow-row"><span class="dot"></span><span>归档上传</span><span class="tag">未开始</span></div>
+                  <div class="flow-row"><span class="dot"></span><span>主管确认</span><span class="tag">未开始</span></div>
+                  <div class="flow-row"><span class="dot red"></span><span>合同生效</span><span class="tag red">阻塞</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel section">
+              <div class="panel-head">付款条款版本记录</div>
+              <table>
+                <thead><tr><th>版本</th><th>状态</th><th>适用合同版本</th><th>计算依据</th><th>比例</th><th>账期</th><th>触发事件</th><th>操作</th></tr></thead>
+                <tbody>
+                  <tr><td>v1</td><td>草稿</td><td>合同 v1</td><td>当期结算</td><td>80%</td><td>30天</td><td>结算归档生效</td><td>查看</td></tr>
+                  <tr><td>v1</td><td>草稿</td><td>合同 v1</td><td>累计结算</td><td>20%</td><td>365天</td><td>质保期满</td><td>查看</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="panel section">
+              <div class="panel-head">关联结算 / 付款</div>
+              <div style="padding: 18px 20px; color: var(--red); font-weight: 600;">合同尚未生效，暂不可发起结算；结算未生效前不可创建付款申请。</div>
+            </div>
+          </section>
+
+          <section class="section">
+            <h1>移动端待办</h1>
+            <div class="mobile">
+              <div class="mobile-head"><strong>建工智管</strong><span style="margin-left:auto;color:var(--text-2);font-size:12px;">合同部主管</span></div>
+              <div style="padding: 24px 16px 12px;">
+                <h1 style="font-size:22px;">我的待办</h1>
+                <div class="hint">7 个待处理事项 · 2 个阻塞生效</div>
+              </div>
+              <div class="mobile-card"><h3>合同归档确认 <span class="tag blue" style="float:right;">确认归档</span></h3><div>HT-2026-001 · 钢材采购合同</div><div class="hint" style="margin-top:10px;">合同部 · 停留 2 天</div></div>
+              <div class="mobile-card"><h3>结算归档确认 <span class="tag blue" style="float:right;">确认归档</span></h3><div>JS-2026-018 · 5月材料结算单</div><div class="hint" style="margin-top:10px;">合同部 · 停留 1 天</div></div>
+              <div class="mobile-card"><h3>付款审批 <span class="tag red" style="float:right;">二选一审批</span></h3><div>FK-2026-031 · 结算款付款申请</div><div class="hint" style="margin-top:10px;">总经办 · 停留 4 小时</div></div>
+              <div class="mobile-card"><h3>待实际付款 <span class="tag red" style="float:right;">登记凭证</span></h3><div>FK-2026-027 · 劳务款付款申请</div><div class="hint" style="margin-top:10px;">财务部 · 停留 1 天</div></div>
+              <div class="mobile-bottom"><strong style="color:var(--blue);">待办</strong><span>合同</span><span>结算</span><span>付款</span></div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
