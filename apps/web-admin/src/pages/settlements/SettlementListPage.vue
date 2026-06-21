@@ -77,8 +77,11 @@
             {{ row.currentNode }}
           </t-tag>
         </template>
-        <template #operation>
-          <t-link theme="primary">
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="openDetail(row.id)"
+          >
             详情
           </t-link>
         </template>
@@ -88,6 +91,7 @@
 </template>
 
 <script setup lang="ts">
+import { useRouter } from "vue-router";
 import type { SettlementTone } from "./settlement-list.config";
 import {
   settlementFilterFields,
@@ -96,6 +100,12 @@ import {
   settlementRules,
   settlementSummaryItems
 } from "./settlement-list.config";
+
+const router = useRouter();
+
+function openDetail(settlementId: string) {
+  void router.push(`/settlements/${settlementId}`);
+}
 
 function statusTagTheme(tone: SettlementTone) {
   const themeByTone = {

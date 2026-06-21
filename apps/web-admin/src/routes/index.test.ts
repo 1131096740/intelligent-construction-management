@@ -18,6 +18,7 @@ describe("web admin routes", () => {
       "contracts",
       "contracts/:contractId",
       "settlements",
+      "settlements/:settlementId",
       "payments",
       "archives",
       "audit"
