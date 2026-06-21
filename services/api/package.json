@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "dev": "nest start --watch",
+    "prebuild": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "build": "nest build",
     "prisma": "prisma",
+    "pretest": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "test": "jest",
+    "pretypecheck": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "typecheck": "tsc --noEmit",
+    "prelint": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {

@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>合同详情</h1>
-        <p>{{ contractDetailTitle }}</p>
+        <p>{{ contractDetailTitleView }}</p>
       </div>
       <div class="actions">
         <t-button theme="primary">
@@ -17,7 +17,7 @@
 
     <div class="meta-panel">
       <div
-        v-for="item in contractDetailMeta"
+        v-for="item in contractDetailMetaView"
         :key="item.label"
         class="meta-item"
       >
@@ -31,7 +31,7 @@
     <div class="chain-strip">
       <span>业务链路</span>
       <t-link
-        v-for="link in contractDetailChainLinks"
+        v-for="link in contractDetailChainLinksView"
         :key="link.to"
         theme="primary"
         @click="openChainLink(link.to)"
@@ -47,7 +47,7 @@
       >
         <dl class="info-list">
           <template
-            v-for="item in contractBaseInfo"
+            v-for="item in contractBaseInfoView"
             :key="item.label"
           >
             <dt>{{ item.label }}</dt>
@@ -62,7 +62,7 @@
       >
         <div class="flow-list">
           <div
-            v-for="step in contractEffectivenessSteps"
+            v-for="step in contractEffectivenessStepsView"
             :key="step.label"
             class="flow-row"
           >
@@ -89,7 +89,7 @@
         row-key="id"
         size="small"
         :columns="contractPaymentTermColumns"
-        :data="contractPaymentTermStages"
+        :data="contractPaymentTermStagesView"
       >
         <template #operation>
           <t-link theme="primary">
@@ -105,14 +105,17 @@
       :bordered="true"
     >
       <div class="block-message">
-        {{ contractSettlementBlockMessage }}
+        {{ contractSettlementBlockMessageView }}
       </div>
     </t-card>
   </section>
 </template>
 
 <script setup lang="ts">
-import { useRouter } from "vue-router";
+import type { CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { fetchContractDetail } from "../../api/core-flow-read.api";
 import { contractDetailChainLinks } from "../business-chain-links.config";
 import type { DetailTone } from "./contract-detail.config";
 import {
@@ -125,13 +128,41 @@ import {
   contractSettlementBlockMessage
 } from "./contract-detail.config";
 
+const route = useRoute();
 const router = useRouter();
+const contractDetail = ref<ContractDetailReadModel | null>(null);
+
+const contractDetailTitleView = computed(() => contractDetail.value?.title ?? contractDetailTitle);
+const contractDetailMetaView = computed(() => contractDetail.value?.meta ?? contractDetailMeta);
+const contractBaseInfoView = computed(() => contractDetail.value?.baseInfo ?? contractBaseInfo);
+const contractEffectivenessStepsView = computed(
+  () => contractDetail.value?.effectivenessSteps ?? contractEffectivenessSteps
+);
+const contractPaymentTermStagesView = computed(
+  () => contractDetail.value?.paymentTermStages ?? contractPaymentTermStages
+);
+const contractSettlementBlockMessageView = computed(
+  () => contractDetail.value?.settlementBlockMessage ?? contractSettlementBlockMessage
+);
+const contractDetailChainLinksView = computed(
+  () => contractDetail.value?.chainLinks ?? contractDetailChainLinks
+);
 
 function openChainLink(to: string) {
   void router.push(to);
 }
 
-function tagTheme(tone: DetailTone) {
+onMounted(async () => {
+  const contractId = String(route.params.contractId ?? "HT-2026-001");
+
+  try {
+    contractDetail.value = await fetchContractDetail(contractId);
+  } catch {
+    contractDetail.value = null;
+  }
+});
+
+function tagTheme(tone: DetailTone | CoreFlowTone) {
   const themeByTone = {
     default: "default",
     primary: "primary",

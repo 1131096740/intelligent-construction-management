@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>付款详情</h1>
-        <p>{{ paymentDetailTitle }}</p>
+        <p>{{ paymentDetailTitleView }}</p>
       </div>
       <div class="actions">
         <t-button theme="primary">
@@ -17,7 +17,7 @@
 
     <div class="meta-panel">
       <div
-        v-for="item in paymentDetailMeta"
+        v-for="item in paymentDetailMetaView"
         :key="item.label"
         class="meta-item"
       >
@@ -31,7 +31,7 @@
     <div class="chain-strip">
       <span>业务链路</span>
       <t-link
-        v-for="link in paymentDetailChainLinks"
+        v-for="link in paymentDetailChainLinksView"
         :key="link.to"
         theme="primary"
         @click="openChainLink(link.to)"
@@ -47,7 +47,7 @@
       >
         <dl class="info-list">
           <template
-            v-for="item in paymentBaseInfo"
+            v-for="item in paymentBaseInfoView"
             :key="item.label"
           >
             <dt>{{ item.label }}</dt>
@@ -62,7 +62,7 @@
       >
         <div class="rule-list">
           <span
-            v-for="rule in paymentTraceRules"
+            v-for="rule in paymentTraceRulesView"
             :key="rule"
           >
             {{ rule }}
@@ -78,7 +78,7 @@
       >
         <div class="flow-list">
           <div
-            v-for="step in paymentApprovalSteps"
+            v-for="step in paymentApprovalStepsView"
             :key="step.label"
             class="flow-row"
           >
@@ -102,7 +102,7 @@
       >
         <div class="flow-list">
           <div
-            v-for="step in paymentExecutionSteps"
+            v-for="step in paymentExecutionStepsView"
             :key="step.label"
             class="flow-row"
           >
@@ -127,14 +127,17 @@
       :bordered="true"
     >
       <div class="block-message">
-        {{ paymentExecutionBlockMessage }}
+        {{ paymentExecutionBlockMessageView }}
       </div>
     </t-card>
   </section>
 </template>
 
 <script setup lang="ts">
-import { useRouter } from "vue-router";
+import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-domain";
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { fetchPaymentDetail } from "../../api/core-flow-read.api";
 import { paymentDetailChainLinks } from "../business-chain-links.config";
 import type { PaymentDetailTone } from "./payment-detail.config";
 import {
@@ -147,13 +150,42 @@ import {
   paymentTraceRules
 } from "./payment-detail.config";
 
+const route = useRoute();
 const router = useRouter();
+const paymentDetail = ref<PaymentDetailReadModel | null>(null);
+
+const paymentDetailTitleView = computed(() => paymentDetail.value?.title ?? paymentDetailTitle);
+const paymentDetailMetaView = computed(() => paymentDetail.value?.meta ?? paymentDetailMeta);
+const paymentBaseInfoView = computed(() => paymentDetail.value?.baseInfo ?? paymentBaseInfo);
+const paymentTraceRulesView = computed(() => paymentDetail.value?.traceRules ?? paymentTraceRules);
+const paymentApprovalStepsView = computed(
+  () => paymentDetail.value?.approvalSteps ?? paymentApprovalSteps
+);
+const paymentExecutionStepsView = computed(
+  () => paymentDetail.value?.executionSteps ?? paymentExecutionSteps
+);
+const paymentExecutionBlockMessageView = computed(
+  () => paymentDetail.value?.executionBlockMessage ?? paymentExecutionBlockMessage
+);
+const paymentDetailChainLinksView = computed(
+  () => paymentDetail.value?.chainLinks ?? paymentDetailChainLinks
+);
 
 function openChainLink(to: string) {
   void router.push(to);
 }
 
-function tagTheme(tone: PaymentDetailTone) {
+onMounted(async () => {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+
+  try {
+    paymentDetail.value = await fetchPaymentDetail(paymentId);
+  } catch {
+    paymentDetail.value = null;
+  }
+});
+
+function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
   const themeByTone = {
     default: "default",
     primary: "primary",

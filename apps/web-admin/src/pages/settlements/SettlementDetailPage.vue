@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>结算详情</h1>
-        <p>{{ settlementDetailTitle }}</p>
+        <p>{{ settlementDetailTitleView }}</p>
       </div>
       <div class="actions">
         <t-button theme="primary">
@@ -17,7 +17,7 @@
 
     <div class="meta-panel">
       <div
-        v-for="item in settlementDetailMeta"
+        v-for="item in settlementDetailMetaView"
         :key="item.label"
         class="meta-item"
       >
@@ -31,7 +31,7 @@
     <div class="chain-strip">
       <span>业务链路</span>
       <t-link
-        v-for="link in settlementDetailChainLinks"
+        v-for="link in settlementDetailChainLinksView"
         :key="link.to"
         theme="primary"
         @click="openChainLink(link.to)"
@@ -47,7 +47,7 @@
       >
         <dl class="info-list">
           <template
-            v-for="item in settlementBaseInfo"
+            v-for="item in settlementBaseInfoView"
             :key="item.label"
           >
             <dt>{{ item.label }}</dt>
@@ -62,7 +62,7 @@
       >
         <div class="flow-list">
           <div
-            v-for="step in settlementEffectivenessSteps"
+            v-for="step in settlementEffectivenessStepsView"
             :key="step.label"
             class="flow-row"
           >
@@ -82,7 +82,7 @@
 
     <div class="responsibility-strip">
       <span
-        v-for="item in settlementArchiveResponsibilities"
+        v-for="item in settlementArchiveResponsibilitiesView"
         :key="item"
       >
         {{ item }}
@@ -98,7 +98,7 @@
         row-key="id"
         size="small"
         :columns="settlementPaymentRuleColumns"
-        :data="settlementPaymentRules"
+        :data="settlementPaymentRulesView"
       />
     </t-card>
 
@@ -108,14 +108,17 @@
       :bordered="true"
     >
       <div class="block-message">
-        {{ settlementPaymentBlockMessage }}
+        {{ settlementPaymentBlockMessageView }}
       </div>
     </t-card>
   </section>
 </template>
 
 <script setup lang="ts">
-import { useRouter } from "vue-router";
+import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-domain";
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { fetchSettlementDetail } from "../../api/core-flow-read.api";
 import { settlementDetailChainLinks } from "../business-chain-links.config";
 import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
@@ -129,13 +132,44 @@ import {
   settlementPaymentRules
 } from "./settlement-detail.config";
 
+const route = useRoute();
 const router = useRouter();
+const settlementDetail = ref<SettlementDetailReadModel | null>(null);
+
+const settlementDetailTitleView = computed(() => settlementDetail.value?.title ?? settlementDetailTitle);
+const settlementDetailMetaView = computed(() => settlementDetail.value?.meta ?? settlementDetailMeta);
+const settlementBaseInfoView = computed(() => settlementDetail.value?.baseInfo ?? settlementBaseInfo);
+const settlementEffectivenessStepsView = computed(
+  () => settlementDetail.value?.effectivenessSteps ?? settlementEffectivenessSteps
+);
+const settlementArchiveResponsibilitiesView = computed(
+  () => settlementDetail.value?.archiveResponsibilities ?? settlementArchiveResponsibilities
+);
+const settlementPaymentRulesView = computed(
+  () => settlementDetail.value?.paymentRules ?? settlementPaymentRules
+);
+const settlementPaymentBlockMessageView = computed(
+  () => settlementDetail.value?.paymentBlockMessage ?? settlementPaymentBlockMessage
+);
+const settlementDetailChainLinksView = computed(
+  () => settlementDetail.value?.chainLinks ?? settlementDetailChainLinks
+);
 
 function openChainLink(to: string) {
   void router.push(to);
 }
 
-function tagTheme(tone: SettlementDetailTone) {
+onMounted(async () => {
+  const settlementId = String(route.params.settlementId ?? "JS-2026-018");
+
+  try {
+    settlementDetail.value = await fetchSettlementDetail(settlementId);
+  } catch {
+    settlementDetail.value = null;
+  }
+});
+
+function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   const themeByTone = {
     default: "default",
     primary: "primary",

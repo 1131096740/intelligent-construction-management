@@ -4,10 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "dev": "vite",
+    "prebuild": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "build": "vite build",
+    "pretypecheck": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "typecheck": "vue-tsc --noEmit",
+    "pretest": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "test": "vitest run",
+    "prelint": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "lint": "eslint src --ext .ts,.vue"
   },
   "dependencies": {
