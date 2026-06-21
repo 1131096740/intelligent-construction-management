@@ -81,4 +81,59 @@ describe("PaymentReadService", () => {
       "/audit"
     ]);
   });
+
+  it("does not show actual payment block message before approval passes", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          settlementId: "settlement-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-2026-012",
+          status: "approval_pending",
+          requestedAmountCents: 5000000,
+          approvedAmountCents: null,
+          paidAmountCents: 0
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-032",
+          periodLabel: "2026-06",
+          status: "effective"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "terms-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "stage-progress",
+          name: "进度款",
+          ratioBps: 8000,
+          dueDays: 30
+        })
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const detail = await service.getDetail("FK-2026-012");
+
+    expect(detail.executionBlockMessage).toContain("付款申请仍在审批中");
+    expect(detail.executionBlockMessage).not.toContain("付款审批已通过");
+  });
 });

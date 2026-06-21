@@ -85,7 +85,7 @@ export class PaymentReadService {
         "审批通过不等于实际付款完成",
         "实付登记必须上传付款凭证并写入审计日志"
       ],
-      executionBlockMessage: this.executionBlockMessage(execution.complete),
+      executionBlockMessage: this.executionBlockMessage(payment.status, execution.complete),
       chainLinks: [
         { label: "关联结算", to: `/settlements/${settlement.code}` },
         { label: "付款凭证", to: "/archives" },
@@ -233,9 +233,13 @@ export class PaymentReadService {
     ];
   }
 
-  private executionBlockMessage(complete: boolean): string {
+  private executionBlockMessage(status: string, complete: boolean): string {
     if (complete) {
       return "实际付款已登记并上传付款凭证，后续由财务完成入账与归档。";
+    }
+
+    if (status !== "approved_pending_payment") {
+      return "付款申请仍在审批中；审批通过后才会进入 approved_pending_payment，并开放出纳付款登记。";
     }
 
     return "付款审批已通过，但尚未登记实际付款；必须由出纳/财务登记实付金额并上传付款凭证后，才能进入财务入账与付款完成。";
