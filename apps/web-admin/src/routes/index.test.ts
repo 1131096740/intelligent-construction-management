@@ -20,6 +20,7 @@ describe("web admin routes", () => {
       "settlements",
       "settlements/:settlementId",
       "payments",
+      "payments/:paymentId",
       "archives",
       "audit"
     ]);
