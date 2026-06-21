@@ -169,4 +169,128 @@ describe("PaymentRequestService", () => {
     ).rejects.toThrow("Payment request exceeds remaining settlement capacity: 50000");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
+
+  it("approves a pending payment request into approved pending payment", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approved_pending_payment",
+          approvedAmountCents: 45_000
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const approved = await paymentService.reviewApproval("FK-2026-012", {
+      decision: "approve",
+      approvedAmountCents: 45_000
+    });
+
+    expect(approved.status).toBe("approved_pending_payment");
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: {
+        status: "approved_pending_payment",
+        approvedAmountCents: 45_000
+      }
+    });
+  });
+
+  it("rejects a pending payment request without making it payable", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "rejected",
+          approvedAmountCents: null
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const rejected = await paymentService.reviewApproval("FK-2026-012", {
+      decision: "reject"
+    });
+
+    expect(rejected.status).toBe("rejected");
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: {
+        status: "rejected",
+        approvedAmountCents: null
+      }
+    });
+  });
+
+  it("rejects approval review unless the payment request is pending approval", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approved_pending_payment",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("Cannot review payment approval from status approved_pending_payment");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects approved amount above requested amount", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", {
+        decision: "approve",
+        approvedAmountCents: 50_001
+      })
+    ).rejects.toThrow("Approved amount cannot exceed requested amount");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+  });
 });

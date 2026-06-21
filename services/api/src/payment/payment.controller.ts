@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
+import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
 
@@ -13,6 +14,14 @@ export class PaymentController {
   @Post()
   create(@Body() body: CreatePaymentRequestDto) {
     return this.payments.create(body);
+  }
+
+  @Post(":paymentId/approval")
+  reviewApproval(
+    @Param("paymentId") paymentId: string,
+    @Body() body: ReviewPaymentApprovalDto
+  ) {
+    return this.payments.reviewApproval(paymentId, body);
   }
 
   @Get(":paymentId")
