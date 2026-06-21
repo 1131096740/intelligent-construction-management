@@ -8,6 +8,7 @@
     "prebuild": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "build": "nest build",
     "prisma": "prisma",
+    "seed": "pnpm build && prisma db seed",
     "pretest": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "test": "jest",
     "pretypecheck": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
@@ -23,6 +24,9 @@
     "@prisma/client": "^5.16.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.cjs"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
