@@ -28,6 +28,18 @@
       </div>
     </div>
 
+    <div class="chain-strip">
+      <span>业务链路</span>
+      <t-link
+        v-for="link in settlementDetailChainLinks"
+        :key="link.to"
+        theme="primary"
+        @click="openChainLink(link.to)"
+      >
+        {{ link.label }}
+      </t-link>
+    </div>
+
     <div class="detail-grid">
       <t-card
         title="基础信息"
@@ -103,6 +115,8 @@
 </template>
 
 <script setup lang="ts">
+import { useRouter } from "vue-router";
+import { settlementDetailChainLinks } from "../business-chain-links.config";
 import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
   settlementArchiveResponsibilities,
@@ -114,6 +128,12 @@ import {
   settlementPaymentRuleColumns,
   settlementPaymentRules
 } from "./settlement-detail.config";
+
+const router = useRouter();
+
+function openChainLink(to: string) {
+  void router.push(to);
+}
 
 function tagTheme(tone: SettlementDetailTone) {
   const themeByTone = {
@@ -185,6 +205,24 @@ function tagTheme(tone: SettlementDetailTone) {
 
 .meta-item strong {
   font-size: 13px;
+}
+
+.chain-strip {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 16px;
+  margin-bottom: 20px;
+  background: #fff;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+}
+
+.chain-strip span {
+  color: #767f8d;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .tone-primary {
@@ -293,6 +331,11 @@ function tagTheme(tone: SettlementDetailTone) {
   .detail-grid,
   .responsibility-strip {
     grid-template-columns: 1fr;
+  }
+
+  .chain-strip {
+    flex-wrap: wrap;
+    padding: 10px 16px;
   }
 }
 </style>
