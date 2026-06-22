@@ -6,10 +6,13 @@
         <p>{{ paymentDetailTitleView }}</p>
       </div>
       <div class="actions">
-        <t-button theme="primary">
-          登记实付
+        <t-button
+          theme="primary"
+          @click="reloadPaymentDetail"
+        >
+          刷新
         </t-button>
-        <t-button>
+        <t-button @click="openChainLink('/audit')">
           查看审批记录
         </t-button>
       </div>
@@ -39,6 +42,144 @@
         {{ link.label }}
       </t-link>
     </div>
+
+    <t-card
+      class="section-card action-card"
+      title="流程动作"
+      :bordered="true"
+    >
+      <div class="action-grid">
+        <div class="action-group">
+          <div class="action-title">
+            <strong>付款审批</strong>
+            <span>董事长/总经理或签</span>
+          </div>
+          <div class="action-fields two-columns">
+            <t-input
+              v-model="paymentActionForm.reviewedByUserId"
+              placeholder="审批人ID"
+            />
+            <t-input
+              v-model="paymentActionForm.approvedAmountCents"
+              placeholder="审批金额(分)"
+            />
+          </div>
+          <div class="action-buttons">
+            <t-button
+              theme="primary"
+              :loading="actionBusy === 'approval'"
+              :disabled="!canReviewApproval"
+              @click="submitApproval('approve')"
+            >
+              通过
+            </t-button>
+            <t-button
+              theme="danger"
+              variant="outline"
+              :loading="actionBusy === 'approval'"
+              :disabled="!canReviewApproval"
+              @click="submitApproval('reject')"
+            >
+              驳回
+            </t-button>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>出纳实付</strong>
+            <span>付款凭证必填</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="paymentActionForm.executionAmountCents"
+              placeholder="实付金额(分)"
+            />
+            <t-input
+              v-model="paymentActionForm.paidAt"
+              placeholder="付款时间 ISO"
+            />
+            <t-input
+              v-model="paymentActionForm.executedByUserId"
+              placeholder="出纳/财务ID"
+            />
+            <t-input
+              v-model="paymentActionForm.voucherFileId"
+              placeholder="付款凭证文件ID"
+            />
+          </div>
+          <t-button
+            theme="primary"
+            :loading="actionBusy === 'execution'"
+            :disabled="!canRecordExecution"
+            @click="submitExecution"
+          >
+            登记实付
+          </t-button>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>财务入账</strong>
+            <span>基于已实付金额</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="paymentActionForm.financeAmountCents"
+              placeholder="入账金额(分)"
+            />
+            <t-input
+              v-model="paymentActionForm.occurredAt"
+              placeholder="入账时间 ISO"
+            />
+            <t-input
+              v-model="paymentActionForm.financeUserId"
+              placeholder="财务人员ID"
+            />
+          </div>
+          <t-button
+            theme="primary"
+            :loading="actionBusy === 'finance'"
+            :disabled="!canRecordFinance"
+            @click="submitFinance"
+          >
+            确认入账
+          </t-button>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>PDF归档</strong>
+            <span>财务归档件</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="paymentActionForm.pdfFileId"
+              placeholder="PDF文件ID"
+            />
+            <t-input
+              v-model="paymentActionForm.archivedByUserId"
+              placeholder="归档人ID"
+            />
+          </div>
+          <t-button
+            theme="primary"
+            :loading="actionBusy === 'pdfArchive'"
+            :disabled="!canRecordPdfArchive"
+            @click="submitPdfArchive"
+          >
+            登记归档
+          </t-button>
+        </div>
+      </div>
+
+      <div
+        v-if="actionMessage"
+        :class="['action-message', actionMessageTone]"
+      >
+        {{ actionMessage }}
+      </div>
+    </t-card>
 
     <div class="detail-grid">
       <t-card
@@ -135,9 +276,15 @@
 
 <script setup lang="ts">
 import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-domain";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { fetchPaymentDetail } from "../../api/core-flow-read.api";
+import {
+  fetchPaymentDetail,
+  recordPaymentExecution,
+  recordPaymentFinance,
+  recordPaymentPdfArchive,
+  reviewPaymentApproval
+} from "../../api/core-flow-read.api";
 import { paymentDetailChainLinks } from "../business-chain-links.config";
 import type { PaymentDetailTone } from "./payment-detail.config";
 import {
@@ -153,6 +300,22 @@ import {
 const route = useRoute();
 const router = useRouter();
 const paymentDetail = ref<PaymentDetailReadModel | null>(null);
+const actionBusy = ref("");
+const actionMessage = ref("");
+const actionMessageTone = ref<"success" | "danger">("success");
+const paymentActionForm = reactive({
+  reviewedByUserId: "",
+  approvedAmountCents: "",
+  executionAmountCents: "",
+  paidAt: new Date().toISOString(),
+  executedByUserId: "",
+  voucherFileId: "",
+  financeAmountCents: "",
+  occurredAt: new Date().toISOString(),
+  financeUserId: "",
+  pdfFileId: "",
+  archivedByUserId: ""
+});
 
 const paymentDetailTitleView = computed(() => paymentDetail.value?.title ?? paymentDetailTitle);
 const paymentDetailMetaView = computed(() => paymentDetail.value?.meta ?? paymentDetailMeta);
@@ -170,12 +333,30 @@ const paymentExecutionBlockMessageView = computed(
 const paymentDetailChainLinksView = computed(
   () => paymentDetail.value?.chainLinks ?? paymentDetailChainLinks
 );
+const approvalStatusValue = computed(
+  () => paymentDetailMetaView.value.find((item) => item.label === "审批状态")?.value ?? ""
+);
+const executionStatusValue = computed(
+  () => paymentDetailMetaView.value.find((item) => item.label === "实付状态")?.value ?? ""
+);
+const nextActionValue = computed(
+  () => paymentDetailMetaView.value.find((item) => item.label === "下一步动作")?.value ?? ""
+);
+const financeStepStatus = computed(
+  () => paymentExecutionStepsView.value.find((step) => step.label === "财务入账")?.status ?? ""
+);
+const canReviewApproval = computed(() => approvalStatusValue.value === "审批中");
+const canRecordExecution = computed(() => nextActionValue.value.includes("出纳付款登记"));
+const canRecordFinance = computed(
+  () => executionStatusValue.value === "已付款" && financeStepStatus.value === "待处理"
+);
+const canRecordPdfArchive = computed(() => financeStepStatus.value === "已入账");
 
 function openChainLink(to: string) {
   void router.push(to);
 }
 
-onMounted(async () => {
+async function reloadPaymentDetail() {
   const paymentId = String(route.params.paymentId ?? "FK-2026-006");
 
   try {
@@ -183,7 +364,105 @@ onMounted(async () => {
   } catch {
     paymentDetail.value = null;
   }
+}
+
+onMounted(async () => {
+  await reloadPaymentDetail();
 });
+
+function parseCentAmount(raw: string, label: string) {
+  const amount = Number(raw);
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new Error(`${label}必须为正整数分`);
+  }
+
+  return amount;
+}
+
+function optionalCentAmount(raw: string, label: string) {
+  if (!raw.trim()) {
+    return undefined;
+  }
+
+  return parseCentAmount(raw, label);
+}
+
+function requiredText(raw: string, label: string) {
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(`${label}不能为空`);
+  }
+
+  return value;
+}
+
+async function runPaymentAction(key: string, action: () => Promise<unknown>) {
+  actionBusy.value = key;
+  actionMessage.value = "";
+
+  try {
+    await action();
+    await reloadPaymentDetail();
+    actionMessageTone.value = "success";
+    actionMessage.value = "操作已提交，详情已刷新。";
+  } catch (error) {
+    actionMessageTone.value = "danger";
+    actionMessage.value = error instanceof Error ? error.message : "操作失败";
+  } finally {
+    actionBusy.value = "";
+  }
+}
+
+async function submitApproval(decision: "approve" | "reject") {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+
+  await runPaymentAction("approval", () =>
+    reviewPaymentApproval(paymentId, {
+      decision,
+      approvedAmountCents:
+        decision === "approve"
+          ? optionalCentAmount(paymentActionForm.approvedAmountCents, "审批金额")
+          : undefined,
+      reviewedByUserId: requiredText(paymentActionForm.reviewedByUserId, "审批人ID")
+    })
+  );
+}
+
+async function submitExecution() {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+
+  await runPaymentAction("execution", () =>
+    recordPaymentExecution(paymentId, {
+      amountCents: parseCentAmount(paymentActionForm.executionAmountCents, "实付金额"),
+      paidAt: requiredText(paymentActionForm.paidAt, "付款时间"),
+      executedByUserId: requiredText(paymentActionForm.executedByUserId, "出纳/财务ID"),
+      voucherFileId: requiredText(paymentActionForm.voucherFileId, "付款凭证文件ID")
+    })
+  );
+}
+
+async function submitFinance() {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+
+  await runPaymentAction("finance", () =>
+    recordPaymentFinance(paymentId, {
+      amountCents: parseCentAmount(paymentActionForm.financeAmountCents, "入账金额"),
+      occurredAt: requiredText(paymentActionForm.occurredAt, "入账时间"),
+      createdByUserId: requiredText(paymentActionForm.financeUserId, "财务人员ID")
+    })
+  );
+}
+
+async function submitPdfArchive() {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+
+  await runPaymentAction("pdfArchive", () =>
+    recordPaymentPdfArchive(paymentId, {
+      fileId: requiredText(paymentActionForm.pdfFileId, "PDF文件ID"),
+      archivedByUserId: requiredText(paymentActionForm.archivedByUserId, "归档人ID")
+    })
+  );
+}
 
 function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
   const themeByTone = {
