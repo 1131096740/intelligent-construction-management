@@ -5,6 +5,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
+import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
@@ -205,6 +206,56 @@ export class PaymentRequestService {
       });
 
       return execution;
+    });
+  }
+
+  async recordFinance(paymentId: string, input: RecordFinanceRecordDto) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to record finance entry");
+    }
+
+    if (typeof input.amountCents !== "number" || input.amountCents <= 0) {
+      throw new Error("Finance record amount must be greater than zero");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.paymentRequest.findFirst({
+        where: { OR: [{ id: paymentId }, { code: paymentId }] }
+      });
+
+      if (!payment) {
+        throw new Error("Payment request not found");
+      }
+
+      if (payment.paidAmountCents <= 0) {
+        throw new Error("Cannot record finance entry before actual payment execution");
+      }
+
+      const existingRecords = await tx.financeRecord.findMany({
+        where: { paymentRequestId: payment.id }
+      });
+      const recordedAmountCents = existingRecords.reduce(
+        (total, record) => total + record.amountCents,
+        0
+      );
+      const unrecordedPaidAmountCents = payment.paidAmountCents - recordedAmountCents;
+      if (input.amountCents > unrecordedPaidAmountCents) {
+        throw new Error(
+          `Finance record exceeds unrecorded paid amount: ${unrecordedPaidAmountCents}`
+        );
+      }
+
+      return tx.financeRecord.create({
+        data: {
+          projectId: payment.projectId,
+          paymentRequestId: payment.id,
+          settlementId: payment.settlementId,
+          direction: "outflow",
+          amountCents: input.amountCents,
+          occurredAt: new Date(input.occurredAt),
+          createdByUserId: input.createdByUserId
+        }
+      });
     });
   }
 }

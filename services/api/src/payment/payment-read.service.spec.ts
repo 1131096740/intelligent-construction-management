@@ -49,6 +49,9 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([
           { id: "execution-1", amountCents: 12000000 }
         ])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new PaymentReadService(prisma as never);
@@ -127,6 +130,9 @@ describe("PaymentReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new PaymentReadService(prisma as never);
@@ -179,6 +185,9 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([
           { id: "execution-1", amountCents: 2000000 }
         ])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new PaymentReadService(prisma as never);
@@ -193,5 +202,66 @@ describe("PaymentReadService", () => {
       tone: "warning"
     });
     expect(detail.executionBlockMessage).toContain("已登记部分实际付款");
+  });
+
+  it("shows finance entry as recorded after finance records cover paid amount", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          settlementId: "settlement-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-2026-014",
+          status: "paid",
+          requestedAmountCents: 5000000,
+          approvedAmountCents: 5000000,
+          paidAmountCents: 5000000
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-034",
+          periodLabel: "2026-06",
+          status: "partially_paid"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "terms-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "execution-1", amountCents: 5000000 }
+        ])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "finance-1", amountCents: 5000000 }
+        ])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const detail = await service.getDetail("FK-2026-014");
+
+    expect(detail.executionSteps).toContainEqual({
+      label: "财务入账",
+      status: "已入账",
+      owner: "财务部",
+      tone: "success"
+    });
   });
 });

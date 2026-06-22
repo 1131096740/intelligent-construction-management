@@ -19,7 +19,7 @@ export class PaymentReadService {
       throw new NotFoundException("Payment request not found");
     }
 
-    const [settlement, contractVersion, terms, executions] = await Promise.all([
+    const [settlement, contractVersion, terms, executions, financeRecords] = await Promise.all([
       this.prisma.settlement.findUnique({ where: { id: payment.settlementId } }),
       this.prisma.contractVersion.findUnique({ where: { id: payment.contractVersionId } }),
       this.prisma.paymentTermsVersion.findUnique({
@@ -28,6 +28,9 @@ export class PaymentReadService {
       this.prisma.paymentExecution.findMany({
         where: { paymentRequestId: payment.id },
         orderBy: { paidAt: "desc" }
+      }),
+      this.prisma.financeRecord.findMany({
+        where: { paymentRequestId: payment.id }
       })
     ]);
 
@@ -49,6 +52,10 @@ export class PaymentReadService {
     });
     const executionAmountCents = executions.reduce(
       (total, execution) => total + execution.amountCents,
+      0
+    );
+    const financeRecordedAmountCents = financeRecords.reduce(
+      (total, record) => total + record.amountCents,
       0
     );
     const paidAmountCents = executions.length > 0 ? executionAmountCents : payment.paidAmountCents;
@@ -78,7 +85,12 @@ export class PaymentReadService {
         { label: "已付金额", value: this.formatMoney(paidAmountCents) }
       ],
       approvalSteps: this.approvalSteps(payment.status),
-      executionSteps: this.executionSteps(payment.status, paidAmountCents, payableAmountCents),
+      executionSteps: this.executionSteps(
+        payment.status,
+        paidAmountCents,
+        payableAmountCents,
+        financeRecordedAmountCents
+      ),
       traceRules: [
         "付款申请只能来自已生效结算",
         "审批通过进入 approved_pending_payment",
@@ -229,17 +241,24 @@ export class PaymentReadService {
   private executionSteps(
     status: string,
     paidAmountCents: number,
-    payableAmountCents: number
+    payableAmountCents: number,
+    financeRecordedAmountCents = 0
   ): PaymentDetailReadModel["executionSteps"] {
     const hasPayment = paidAmountCents > 0;
     const complete = paidAmountCents >= payableAmountCents && payableAmountCents > 0;
     const approved = status === "approved_pending_payment" || hasPayment || complete;
+    const financeRecorded = hasPayment && financeRecordedAmountCents >= paidAmountCents;
 
     return [
       { label: "已批待付", status: approved ? "当前状态" : "未到达", owner: "财务部", tone: approved ? "warning" : "default" },
       { label: "出纳付款登记", status: hasPayment ? "已登记" : "待处理", owner: "出纳/财务", tone: hasPayment ? "success" : "primary" },
       { label: "付款凭证上传", status: hasPayment ? "已上传" : "待处理", owner: "出纳/财务", tone: hasPayment ? "success" : "default" },
-      { label: "财务入账", status: complete ? "待处理" : "未开始", owner: "财务部", tone: complete ? "primary" : "default" },
+      {
+        label: "财务入账",
+        status: financeRecorded ? "已入账" : complete ? "待处理" : "未开始",
+        owner: "财务部",
+        tone: financeRecorded ? "success" : complete ? "primary" : "default"
+      },
       { label: "付款完成", status: complete ? "已完成" : "未完成", owner: "系统", tone: complete ? "success" : "danger" }
     ];
   }
