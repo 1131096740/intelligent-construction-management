@@ -293,4 +293,296 @@ describe("PaymentRequestService", () => {
     ).rejects.toThrow("Approved amount cannot exceed requested amount");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
+
+  it("records actual payment execution and marks payment and settlement paid", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          settlementId: "settlement-1",
+          status: "approved_pending_payment",
+          approvedAmountCents: 50_000,
+          paidAmountCents: 20_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          status: "paid",
+          paidAmountCents: 50_000
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "partially_paid",
+          payableAmountCents: 100_000,
+          paidAmountCents: 70_000
+        }),
+        update: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn().mockResolvedValue({
+          id: "execution-1",
+          paymentRequestId: "payment-1",
+          amountCents: 30_000,
+          voucherFileId: "file-1"
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const execution = await paymentService.recordExecution("FK-2026-012", {
+      amountCents: 30_000,
+      paidAt: "2026-06-22T00:00:00.000Z",
+      executedByUserId: "cashier-1",
+      voucherFileId: "file-1"
+    });
+
+    expect(execution.id).toBe("execution-1");
+    expect(tx.paymentExecution.create).toHaveBeenCalledWith({
+      data: {
+        paymentRequestId: "payment-1",
+        settlementId: "settlement-1",
+        amountCents: 30_000,
+        paidAt: new Date("2026-06-22T00:00:00.000Z"),
+        executedByUserId: "cashier-1",
+        voucherFileId: "file-1"
+      }
+    });
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: {
+        paidAmountCents: 50_000,
+        status: "paid"
+      }
+    });
+    expect(tx.settlement.update).toHaveBeenCalledWith({
+      where: { id: "settlement-1" },
+      data: {
+        paidAmountCents: 100_000,
+        status: "paid"
+      }
+    });
+  });
+
+  it("records partial actual payment execution without completing payment", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          settlementId: "settlement-1",
+          status: "approved_pending_payment",
+          approvedAmountCents: 50_000,
+          paidAmountCents: 10_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          status: "partially_paid",
+          paidAmountCents: 30_000
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "effective",
+          payableAmountCents: 100_000,
+          paidAmountCents: 10_000
+        }),
+        update: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn().mockResolvedValue({ id: "execution-1" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await paymentService.recordExecution("FK-2026-012", {
+      amountCents: 20_000,
+      paidAt: "2026-06-22T00:00:00.000Z",
+      executedByUserId: "cashier-1",
+      voucherFileId: "file-1"
+    });
+
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: {
+        paidAmountCents: 30_000,
+        status: "partially_paid"
+      }
+    });
+    expect(tx.settlement.update).toHaveBeenCalledWith({
+      where: { id: "settlement-1" },
+      data: {
+        paidAmountCents: 30_000,
+        status: "partially_paid"
+      }
+    });
+  });
+
+  it("rejects actual payment execution before payment approval passes", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          settlementId: "settlement-1",
+          status: "approval_pending",
+          approvedAmountCents: null,
+          paidAmountCents: 0
+        }),
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", {
+        amountCents: 20_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        executedByUserId: "cashier-1",
+        voucherFileId: "file-1"
+      })
+    ).rejects.toThrow("Cannot record payment execution from status approval_pending");
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution above approved remaining amount", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          settlementId: "settlement-1",
+          status: "approved_pending_payment",
+          approvedAmountCents: 50_000,
+          paidAmountCents: 20_000
+        }),
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", {
+        amountCents: 30_001,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        executedByUserId: "cashier-1",
+        voucherFileId: "file-1"
+      })
+    ).rejects.toThrow("Payment execution exceeds approved remaining amount: 30000");
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution without positive amount and voucher file", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", {
+        amountCents: 0,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        executedByUserId: "cashier-1",
+        voucherFileId: ""
+      })
+    ).rejects.toThrow("Payment execution amount must be greater than zero");
+    expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution without voucher file", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", {
+        amountCents: 10_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        executedByUserId: "cashier-1",
+        voucherFileId: ""
+      })
+    ).rejects.toThrow("Payment voucher file is required");
+    expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution with missing runtime fields", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", {
+        amountCents: undefined as never,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        executedByUserId: "cashier-1",
+        voucherFileId: "file-1"
+      })
+    ).rejects.toThrow("Payment execution amount must be greater than zero");
+    await expect(
+      paymentService.recordExecution("FK-2026-012", {
+        amountCents: 10_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        executedByUserId: "cashier-1",
+        voucherFileId: undefined as never
+      })
+    ).rejects.toThrow("Payment voucher file is required");
+    expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
+  });
 });

@@ -5,6 +5,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
+import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
 
@@ -124,6 +125,86 @@ export class PaymentRequestService {
           approvedAmountCents
         }
       });
+    });
+  }
+
+  async recordExecution(paymentId: string, input: RecordPaymentExecutionDto) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to record payment execution");
+    }
+
+    if (typeof input.amountCents !== "number" || input.amountCents <= 0) {
+      throw new Error("Payment execution amount must be greater than zero");
+    }
+
+    if (!input.voucherFileId?.trim()) {
+      throw new Error("Payment voucher file is required");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.paymentRequest.findFirst({
+        where: { OR: [{ id: paymentId }, { code: paymentId }] }
+      });
+
+      if (!payment) {
+        throw new Error("Payment request not found");
+      }
+
+      if (!["approved_pending_payment", "partially_paid"].includes(payment.status)) {
+        throw new Error(`Cannot record payment execution from status ${payment.status}`);
+      }
+
+      const approvedAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
+      const remainingAmountCents = approvedAmountCents - payment.paidAmountCents;
+      if (input.amountCents > remainingAmountCents) {
+        throw new Error(
+          `Payment execution exceeds approved remaining amount: ${remainingAmountCents}`
+        );
+      }
+
+      const settlement = await tx.settlement.findUnique({
+        where: { id: payment.settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Payment settlement not found");
+      }
+
+      const newPaymentPaidAmountCents = payment.paidAmountCents + input.amountCents;
+      const newPaymentStatus =
+        newPaymentPaidAmountCents >= approvedAmountCents ? "paid" : "partially_paid";
+      const newSettlementPaidAmountCents = settlement.paidAmountCents + input.amountCents;
+      const newSettlementStatus =
+        newSettlementPaidAmountCents >= settlement.payableAmountCents ? "paid" : "partially_paid";
+
+      const execution = await tx.paymentExecution.create({
+        data: {
+          paymentRequestId: payment.id,
+          settlementId: payment.settlementId,
+          amountCents: input.amountCents,
+          paidAt: new Date(input.paidAt),
+          executedByUserId: input.executedByUserId,
+          voucherFileId: input.voucherFileId
+        }
+      });
+
+      await tx.paymentRequest.update({
+        where: { id: payment.id },
+        data: {
+          paidAmountCents: newPaymentPaidAmountCents,
+          status: newPaymentStatus
+        }
+      });
+
+      await tx.settlement.update({
+        where: { id: settlement.id },
+        data: {
+          paidAmountCents: newSettlementPaidAmountCents,
+          status: newSettlementStatus
+        }
+      });
+
+      return execution;
     });
   }
 }

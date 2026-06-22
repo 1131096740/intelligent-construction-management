@@ -151,6 +151,7 @@ export class PaymentReadService {
       draft: { label: "草拟中", tone: "default" },
       approval_pending: { label: "审批中", tone: "primary" },
       approved_pending_payment: { label: "已通过", tone: "success" },
+      partially_paid: { label: "已通过", tone: "success" },
       paid: { label: "已通过", tone: "success" },
       completed: { label: "已通过", tone: "success" },
       rejected: { label: "已退回", tone: "danger" }
@@ -166,6 +167,10 @@ export class PaymentReadService {
   ): { label: string; tone: CoreFlowTone; complete: boolean } {
     if (paidAmountCents >= payableAmountCents && payableAmountCents > 0) {
       return { label: "已付款", tone: "success", complete: true };
+    }
+
+    if (paidAmountCents > 0) {
+      return { label: "部分付款", tone: "warning", complete: false };
     }
 
     if (status === "approved_pending_payment") {
@@ -184,6 +189,10 @@ export class PaymentReadService {
       return "出纳付款登记";
     }
 
+    if (status === "partially_paid") {
+      return "继续出纳付款登记";
+    }
+
     return "等待付款审批";
   }
 
@@ -192,6 +201,8 @@ export class PaymentReadService {
       approval_pending: "审批中",
       archive_pending: "待归档确认",
       effective: "已生效",
+      partially_paid: "部分付款",
+      paid: "已付款",
       voided: "已作废"
     };
 
@@ -199,7 +210,7 @@ export class PaymentReadService {
   }
 
   private approvalSteps(status: string): PaymentDetailReadModel["approvalSteps"] {
-    const approvalComplete = ["approved_pending_payment", "paid", "completed"].includes(status);
+    const approvalComplete = ["approved_pending_payment", "partially_paid", "paid", "completed"].includes(status);
 
     return [
       { label: "付款申请", status: "已提交", owner: "项目经理", tone: "success" },
@@ -236,6 +247,10 @@ export class PaymentReadService {
   private executionBlockMessage(status: string, complete: boolean): string {
     if (complete) {
       return "实际付款已登记并上传付款凭证，后续由财务完成入账与归档。";
+    }
+
+    if (status === "partially_paid") {
+      return "已登记部分实际付款；可在剩余审批金额内继续登记实付并上传付款凭证。";
     }
 
     if (status !== "approved_pending_payment") {

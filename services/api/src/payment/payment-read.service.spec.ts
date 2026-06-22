@@ -136,4 +136,62 @@ describe("PaymentReadService", () => {
     expect(detail.executionBlockMessage).toContain("付款申请仍在审批中");
     expect(detail.executionBlockMessage).not.toContain("付款审批已通过");
   });
+
+  it("shows partial payment execution as payable instead of waiting for approval", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          settlementId: "settlement-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-2026-013",
+          status: "partially_paid",
+          requestedAmountCents: 5000000,
+          approvedAmountCents: 5000000,
+          paidAmountCents: 2000000
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-033",
+          periodLabel: "2026-06",
+          status: "partially_paid"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "terms-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "execution-1", amountCents: 2000000 }
+        ])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const detail = await service.getDetail("FK-2026-013");
+
+    expect(detail.meta).toContainEqual({ label: "实付状态", value: "部分付款", tone: "warning" });
+    expect(detail.meta).toContainEqual({ label: "下一步动作", value: "继续出纳付款登记", tone: "warning" });
+    expect(detail.approvalSteps.at(-1)).toMatchObject({
+      label: "审批通过",
+      status: "approved_pending_payment",
+      tone: "warning"
+    });
+    expect(detail.executionBlockMessage).toContain("已登记部分实际付款");
+  });
 });
