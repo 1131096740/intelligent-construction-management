@@ -152,6 +152,139 @@ describe("ContractService", () => {
     });
   });
 
+  it("submits a draft contract version for approval", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "draft"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "in_approval"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    const result = await service.submitApproval("contract-version-1", {
+      submittedByUserId: "user-contract-staff"
+    });
+
+    expect(result.status).toBe("in_approval");
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "contract-version-1" },
+      data: { status: "in_approval" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "user-contract-staff",
+      action: "contract.approval.submit",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        fromStatus: "draft",
+        toStatus: "in_approval"
+      }
+    });
+  });
+
+  it("approves a contract version and moves it to pending seal", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "in_approval"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "approved_pending_seal"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    const result = await service.reviewApproval("contract-version-1", {
+      decision: "approve",
+      reviewedByUserId: "chairman-1"
+    });
+
+    expect(result.status).toBe("approved_pending_seal");
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "contract-version-1" },
+      data: { status: "approved_pending_seal" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "chairman-1",
+      action: "contract.approval.approve",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        fromStatus: "in_approval",
+        toStatus: "approved_pending_seal"
+      }
+    });
+  });
+
+  it("approves contract seal and opens signed archive upload", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "approved_pending_seal"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "seal_approved_pending_archive"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    const result = await service.approveSeal("contract-version-1", {
+      sealedByUserId: "user-contract-staff"
+    });
+
+    expect(result.status).toBe("seal_approved_pending_archive");
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "contract-version-1" },
+      data: { status: "seal_approved_pending_archive" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "user-contract-staff",
+      action: "contract.seal.approve",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        fromStatus: "approved_pending_seal",
+        toStatus: "seal_approved_pending_archive"
+      }
+    });
+  });
+
   it("confirms a signed contract archive file and makes the version effective", async () => {
     const tx = {
       contractVersion: {

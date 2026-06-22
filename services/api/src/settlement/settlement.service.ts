@@ -8,6 +8,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
+import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 
 @Injectable()
@@ -147,6 +148,49 @@ export class SettlementService {
       });
 
       return archiveFile;
+    });
+  }
+
+  async reviewApproval(settlementId: string, input: ReviewSettlementApprovalDto) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to review settlement approval");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      if (settlement.status !== "approval_pending") {
+        throw new Error(`Cannot review settlement approval from status ${settlement.status}`);
+      }
+
+      const nextStatus =
+        input.decision === "approve" ? "approved_pending_archive" : "approval_rejected";
+      const updated = await tx.settlement.update({
+        where: { id: settlement.id },
+        data: { status: nextStatus satisfies SettlementStatus }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId: input.reviewedByUserId,
+        action:
+          input.decision === "approve"
+            ? "settlement.approval.approve"
+            : "settlement.approval.reject",
+        businessType: "settlement",
+        businessId: settlement.id,
+        metadata: {
+          fromStatus: settlement.status,
+          toStatus: nextStatus
+        }
+      });
+
+      return updated;
     });
   }
 

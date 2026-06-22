@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
+import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 import { SettlementReadService } from "./settlement-read.service";
 import { SettlementService } from "./settlement.service";
@@ -20,6 +21,14 @@ export class SettlementController {
   @Get(":settlementId")
   detail(@Param("settlementId") settlementId: string) {
     return this.settlementRead.getDetail(settlementId);
+  }
+
+  @Post(":settlementId/approval")
+  reviewApproval(
+    @Param("settlementId") settlementId: string,
+    @Body() body: ReviewSettlementApprovalDto
+  ) {
+    return this.settlements.reviewApproval(settlementId, body);
   }
 
   @Post(":settlementId/archive-files")

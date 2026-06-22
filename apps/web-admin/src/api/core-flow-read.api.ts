@@ -61,6 +61,24 @@ export interface ReviewPaymentApprovalPayload {
   reviewedByUserId?: string;
 }
 
+export interface SubmitContractApprovalPayload {
+  submittedByUserId: string;
+}
+
+export interface ReviewContractApprovalPayload {
+  decision: "approve" | "reject";
+  reviewedByUserId: string;
+}
+
+export interface ApproveContractSealPayload {
+  sealedByUserId: string;
+}
+
+export interface ReviewSettlementApprovalPayload {
+  decision: "approve" | "reject";
+  reviewedByUserId: string;
+}
+
 export interface RecordPaymentExecutionPayload {
   amountCents: number;
   paidAt: string;
@@ -164,6 +182,33 @@ export function confirmContractArchive(
   );
 }
 
+export function submitContractApproval(
+  contractVersionId: string,
+  body: SubmitContractApprovalPayload
+) {
+  return postJson<unknown, SubmitContractApprovalPayload>(
+    `/contracts/${contractVersionId}/approval-submission`,
+    body
+  );
+}
+
+export function reviewContractApproval(
+  contractVersionId: string,
+  body: ReviewContractApprovalPayload
+) {
+  return postJson<unknown, ReviewContractApprovalPayload>(
+    `/contracts/${contractVersionId}/approval`,
+    body
+  );
+}
+
+export function approveContractSeal(contractVersionId: string, body: ApproveContractSealPayload) {
+  return postJson<unknown, ApproveContractSealPayload>(
+    `/contracts/${contractVersionId}/seal-approval`,
+    body
+  );
+}
+
 export function uploadSettlementArchiveFile(
   settlementId: string,
   body: UploadSettlementArchiveFilePayload
@@ -180,6 +225,16 @@ export function confirmSettlementArchive(
 ) {
   return postJson<unknown, ConfirmSettlementArchivePayload>(
     `/settlements/${settlementId}/archive-confirmation`,
+    body
+  );
+}
+
+export function reviewSettlementApproval(
+  settlementId: string,
+  body: ReviewSettlementApprovalPayload
+) {
+  return postJson<unknown, ReviewSettlementApprovalPayload>(
+    `/settlements/${settlementId}/approval`,
     body
   );
 }

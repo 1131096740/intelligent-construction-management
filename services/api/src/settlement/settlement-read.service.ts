@@ -162,6 +162,7 @@ export class SettlementReadService {
   private statusView(status: string): { label: string; tone: CoreFlowTone } {
     const views: Record<string, { label: string; tone: CoreFlowTone }> = {
       approval_pending: { label: "审批中", tone: "primary" },
+      approval_rejected: { label: "审批退回", tone: "danger" },
       approved_pending_archive: { label: "待归档上传", tone: "primary" },
       archive_pending: { label: "待归档确认", tone: "primary" },
       pending_archive_confirm: { label: "待归档确认", tone: "primary" },
@@ -176,6 +177,7 @@ export class SettlementReadService {
   private nextActionLabel(status: string): string {
     const labels: Record<string, string> = {
       approval_pending: "等待结算审批",
+      approval_rejected: "退回修改",
       approved_pending_archive: "上传签章归档件",
       archive_pending: "主管确认归档",
       pending_archive_confirm: "主管确认归档",

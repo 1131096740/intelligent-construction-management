@@ -1,8 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { ApproveContractSealDto } from "./dto/approve-contract-seal.dto";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
 import { CreateContractDto } from "./dto/create-contract.dto";
+import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
+import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 
 @Injectable()
@@ -115,6 +118,37 @@ export class ContractService {
     });
   }
 
+  async submitApproval(contractVersionId: string, input: SubmitContractApprovalDto) {
+    return this.updateVersionStatus({
+      contractVersionId,
+      expectedStatus: "draft",
+      nextStatus: "in_approval",
+      actorUserId: input.submittedByUserId,
+      action: "contract.approval.submit"
+    });
+  }
+
+  async reviewApproval(contractVersionId: string, input: ReviewContractApprovalDto) {
+    return this.updateVersionStatus({
+      contractVersionId,
+      expectedStatus: "in_approval",
+      nextStatus: input.decision === "approve" ? "approved_pending_seal" : "approval_rejected",
+      actorUserId: input.reviewedByUserId,
+      action:
+        input.decision === "approve" ? "contract.approval.approve" : "contract.approval.reject"
+    });
+  }
+
+  async approveSeal(contractVersionId: string, input: ApproveContractSealDto) {
+    return this.updateVersionStatus({
+      contractVersionId,
+      expectedStatus: "approved_pending_seal",
+      nextStatus: "seal_approved_pending_archive",
+      actorUserId: input.sealedByUserId,
+      action: "contract.seal.approve"
+    });
+  }
+
   async confirmArchiveFile(contractVersionId: string, input: ConfirmContractArchiveDto) {
     return this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
@@ -178,6 +212,48 @@ export class ContractService {
       });
 
       return effectiveVersion;
+    });
+  }
+
+  private async updateVersionStatus(input: {
+    contractVersionId: string;
+    expectedStatus: string;
+    nextStatus: string;
+    actorUserId: string;
+    action: string;
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: input.contractVersionId }
+      });
+
+      if (!version) {
+        throw new Error("Contract version not found");
+      }
+
+      if (version.status !== input.expectedStatus) {
+        throw new Error(
+          `Cannot ${input.action} contract version from status ${version.status}`
+        );
+      }
+
+      const updated = await tx.contractVersion.update({
+        where: { id: version.id },
+        data: { status: input.nextStatus }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId: input.actorUserId,
+        action: input.action,
+        businessType: "contract_version",
+        businessId: version.id,
+        metadata: {
+          fromStatus: version.status,
+          toStatus: input.nextStatus
+        }
+      });
+
+      return updated;
     });
   }
 }

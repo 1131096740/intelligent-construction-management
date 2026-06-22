@@ -172,6 +172,49 @@ describe("SettlementService", () => {
     });
   });
 
+  it("approves a settlement and opens signed archive upload", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "approved_pending_archive"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    const result = await settlementService.reviewApproval("settlement-1", {
+      decision: "approve",
+      reviewedByUserId: "budget-director-1"
+    });
+
+    expect(result.status).toBe("approved_pending_archive");
+    expect(tx.settlement.update).toHaveBeenCalledWith({
+      where: { id: "settlement-1" },
+      data: { status: "approved_pending_archive" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "budget-director-1",
+      action: "settlement.approval.approve",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: {
+        fromStatus: "approval_pending",
+        toStatus: "approved_pending_archive"
+      }
+    });
+  });
+
   it("confirms a signed settlement archive file and makes the settlement effective", async () => {
     const tx = {
       settlement: {

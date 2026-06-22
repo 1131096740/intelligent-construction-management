@@ -6,6 +6,10 @@ import {
   confirmContractArchive,
   confirmSettlementArchive,
   createFileDownloadTicket,
+  approveContractSeal,
+  reviewContractApproval,
+  reviewSettlementApproval,
+  submitContractApproval,
   uploadContractArchiveFile,
   uploadPrivateFile,
   uploadSettlementArchiveFile,
@@ -114,6 +118,42 @@ describe("core flow read API client", () => {
       JSON.stringify({
         fileId: "file-contract-archive",
         uploadedByUserId: "contract-staff-1"
+      })
+    );
+  });
+
+  it("posts contract and settlement approval actions to the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "ok" })
+    } as Response);
+
+    await submitContractApproval("contract-version-1", {
+      submittedByUserId: "contract-staff-1"
+    });
+    await reviewContractApproval("contract-version-1", {
+      decision: "approve",
+      reviewedByUserId: "chairman-1"
+    });
+    await approveContractSeal("contract-version-1", {
+      sealedByUserId: "contract-staff-1"
+    });
+    await reviewSettlementApproval("settlement-1", {
+      decision: "approve",
+      reviewedByUserId: "budget-director-1"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/contract-version-1/approval-submission",
+      "/api/contracts/contract-version-1/approval",
+      "/api/contracts/contract-version-1/seal-approval",
+      "/api/settlements/settlement-1/approval"
+    ]);
+    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        reviewedByUserId: "chairman-1"
       })
     );
   });
