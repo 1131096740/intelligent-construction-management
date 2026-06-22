@@ -185,6 +185,9 @@ describe("PaymentRequestService", () => {
           status: "approved_pending_payment",
           approvedAmountCents: 45_000
         })
+      },
+      auditLog: {
+        create: jest.fn()
       }
     };
     const prisma = {
@@ -194,7 +197,8 @@ describe("PaymentRequestService", () => {
 
     const approved = await paymentService.reviewApproval("FK-2026-012", {
       decision: "approve",
-      approvedAmountCents: 45_000
+      approvedAmountCents: 45_000,
+      reviewedByUserId: "chairman-1"
     });
 
     expect(approved.status).toBe("approved_pending_payment");
@@ -204,6 +208,14 @@ describe("PaymentRequestService", () => {
         status: "approved_pending_payment",
         approvedAmountCents: 45_000
       }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "chairman-1",
+        action: "payment.approval.approve",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
     });
   });
 
@@ -222,6 +234,9 @@ describe("PaymentRequestService", () => {
           status: "rejected",
           approvedAmountCents: null
         })
+      },
+      auditLog: {
+        create: jest.fn()
       }
     };
     const prisma = {
@@ -230,7 +245,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const rejected = await paymentService.reviewApproval("FK-2026-012", {
-      decision: "reject"
+      decision: "reject",
+      reviewedByUserId: "general-manager-1"
     });
 
     expect(rejected.status).toBe("rejected");
@@ -240,6 +256,14 @@ describe("PaymentRequestService", () => {
         status: "rejected",
         approvedAmountCents: null
       }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "general-manager-1",
+        action: "payment.approval.reject",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
     });
   });
 
@@ -327,6 +351,9 @@ describe("PaymentRequestService", () => {
           amountCents: 30_000,
           voucherFileId: "file-1"
         })
+      },
+      auditLog: {
+        create: jest.fn()
       }
     };
     const prisma = {
@@ -366,6 +393,14 @@ describe("PaymentRequestService", () => {
         status: "paid"
       }
     });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "cashier-1",
+        action: "payment.execution.record",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
+    });
   });
 
   it("records partial actual payment execution without completing payment", async () => {
@@ -396,6 +431,9 @@ describe("PaymentRequestService", () => {
       },
       paymentExecution: {
         create: jest.fn().mockResolvedValue({ id: "execution-1" })
+      },
+      auditLog: {
+        create: jest.fn()
       }
     };
     const prisma = {
@@ -606,6 +644,9 @@ describe("PaymentRequestService", () => {
           direction: "outflow",
           amountCents: 30_000
         })
+      },
+      auditLog: {
+        create: jest.fn()
       }
     };
     const prisma = {
@@ -630,6 +671,14 @@ describe("PaymentRequestService", () => {
         occurredAt: new Date("2026-06-22T00:00:00.000Z"),
         createdByUserId: "finance-1"
       }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "finance-1",
+        action: "payment.finance.record",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
     });
   });
 

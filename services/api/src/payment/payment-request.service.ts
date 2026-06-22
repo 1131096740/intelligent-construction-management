@@ -3,6 +3,7 @@ import {
   canCreatePaymentFromSettlementStatus,
   SettlementStatus
 } from "@jiangkong/shared-domain";
+import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
@@ -14,7 +15,8 @@ import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service"
 export class PaymentRequestService {
   constructor(
     private readonly amount: PaymentAmountService,
-    private readonly prisma?: PrismaService
+    private readonly prisma?: PrismaService,
+    private readonly audit: AuditService = new AuditService()
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -105,13 +107,25 @@ export class PaymentRequestService {
       }
 
       if (input.decision === "reject") {
-        return tx.paymentRequest.update({
+        const rejected = await tx.paymentRequest.update({
           where: { id: payment.id },
           data: {
             status: "rejected",
             approvedAmountCents: null
           }
         });
+        await this.audit.record(tx, {
+          actorUserId: input.reviewedByUserId ?? null,
+          action: "payment.approval.reject",
+          businessType: "payment_request",
+          businessId: payment.id,
+          metadata: {
+            code: payment.code,
+            fromStatus: payment.status,
+            toStatus: "rejected"
+          }
+        });
+        return rejected;
       }
 
       const approvedAmountCents = input.approvedAmountCents ?? payment.requestedAmountCents;
@@ -119,13 +133,27 @@ export class PaymentRequestService {
         throw new Error("Approved amount cannot exceed requested amount");
       }
 
-      return tx.paymentRequest.update({
+      const approved = await tx.paymentRequest.update({
         where: { id: payment.id },
         data: {
           status: "approved_pending_payment",
           approvedAmountCents
         }
       });
+      await this.audit.record(tx, {
+        actorUserId: input.reviewedByUserId ?? null,
+        action: "payment.approval.approve",
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: {
+          code: payment.code,
+          fromStatus: payment.status,
+          toStatus: "approved_pending_payment",
+          requestedAmountCents: payment.requestedAmountCents,
+          approvedAmountCents
+        }
+      });
+      return approved;
     });
   }
 
@@ -205,6 +233,21 @@ export class PaymentRequestService {
         }
       });
 
+      await this.audit.record(tx, {
+        actorUserId: input.executedByUserId,
+        action: "payment.execution.record",
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: {
+          code: payment.code,
+          executionId: execution.id,
+          amountCents: input.amountCents,
+          voucherFileId: input.voucherFileId,
+          fromStatus: payment.status,
+          toStatus: newPaymentStatus
+        }
+      });
+
       return execution;
     });
   }
@@ -245,7 +288,7 @@ export class PaymentRequestService {
         );
       }
 
-      return tx.financeRecord.create({
+      const financeRecord = await tx.financeRecord.create({
         data: {
           projectId: payment.projectId,
           paymentRequestId: payment.id,
@@ -256,6 +299,18 @@ export class PaymentRequestService {
           createdByUserId: input.createdByUserId
         }
       });
+      await this.audit.record(tx, {
+        actorUserId: input.createdByUserId,
+        action: "payment.finance.record",
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: {
+          financeRecordId: financeRecord.id,
+          amountCents: input.amountCents,
+          direction: "outflow"
+        }
+      });
+      return financeRecord;
     });
   }
 }
