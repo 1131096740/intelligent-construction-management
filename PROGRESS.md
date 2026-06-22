@@ -10,8 +10,9 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：Leo 在本机用 Docker + `pnpm verify:core-flow` 实跑业务闭环，确认 Milestone 1 收口；再进入"认证授权"或继续闭环细节。
+- **下一步**：进入认证授权模块，补登录、JWT/会话、角色/岗位/项目权限中间件。
 
 ---
 
@@ -23,7 +24,7 @@
 - [x] seed 核心链路数据 (`prisma/seed.cjs`)
 - [x] 核心读 API：合同 / 结算 / 付款 详情
 - [x] 闭环验证脚本 `verify-core-flow.cjs`（覆盖合同→结算→付款全链路 + 审计核对）
-- [ ] **在本机数据库实跑 `verify:core-flow` 通过**（待 Leo 本地验证）
+- [x] **在本机数据库实跑 `verify:core-flow` 通过**
 
 ## Milestone 2：合同状态机（API 层已成型，无权限校验）
 
