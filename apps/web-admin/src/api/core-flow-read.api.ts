@@ -30,6 +30,19 @@ async function postJson<TResponse, TBody>(path: string, body: TBody): Promise<TR
   return response.json() as Promise<TResponse>;
 }
 
+async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
+  const response = await fetch(`/api${path}`, {
+    method: "POST",
+    body
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<TResponse>;
+}
+
 export function fetchContractDetail(contractId: string) {
   return readJson<ContractDetailReadModel>(`/contracts/${contractId}`);
 }
@@ -86,6 +99,49 @@ export interface UploadSettlementArchiveFilePayload {
 export interface ConfirmSettlementArchivePayload {
   archiveFileId: string;
   confirmedByUserId: string;
+}
+
+export interface PrivateFileUploadPayload {
+  fileName: string;
+  uploadedByUserId: string;
+}
+
+export interface PrivateFileReadModel {
+  id: string;
+  bucket: string;
+  objectKey: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedByUserId: string;
+  createdAt: string;
+}
+
+export interface FileDownloadTicketPayload {
+  actorUserId: string;
+}
+
+export interface FileDownloadTicketReadModel {
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  expiresAt: string;
+  downloadUrl: string;
+}
+
+export function uploadPrivateFile(file: Blob, body: PrivateFileUploadPayload) {
+  const form = new FormData();
+  form.append("file", file, body.fileName);
+  form.append("uploadedByUserId", body.uploadedByUserId);
+
+  return postForm<PrivateFileReadModel>("/files", form);
+}
+
+export function createFileDownloadTicket(fileId: string, body: FileDownloadTicketPayload) {
+  const params = new URLSearchParams({ actorUserId: body.actorUserId });
+
+  return readJson<FileDownloadTicketReadModel>(`/files/${fileId}/download-ticket?${params}`);
 }
 
 export function uploadContractArchiveFile(

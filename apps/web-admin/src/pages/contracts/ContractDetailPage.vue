@@ -55,10 +55,11 @@
             <span>合同部成员</span>
           </div>
           <div class="action-fields">
-            <t-input
-              v-model="contractArchiveForm.fileId"
-              placeholder="盖章合同文件ID"
-            />
+            <input
+              class="file-input"
+              type="file"
+              @change="selectContractArchiveFile"
+            >
             <t-input
               v-model="contractArchiveForm.uploadedByUserId"
               placeholder="上传人ID"
@@ -186,6 +187,7 @@ import { useRoute, useRouter } from "vue-router";
 import {
   confirmContractArchive,
   fetchContractDetail,
+  uploadPrivateFile,
   uploadContractArchiveFile
 } from "../../api/core-flow-read.api";
 import { contractDetailChainLinks } from "../business-chain-links.config";
@@ -206,8 +208,8 @@ const contractDetail = ref<ContractDetailReadModel | null>(null);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
+const selectedContractArchiveFile = ref<File | null>(null);
 const contractArchiveForm = reactive({
-  fileId: "",
   uploadedByUserId: "",
   archiveFileId: "",
   confirmedByUserId: ""
@@ -273,6 +275,11 @@ function returnedId(result: unknown) {
   return "";
 }
 
+function selectContractArchiveFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  selectedContractArchiveFile.value = input.files?.[0] ?? null;
+}
+
 async function runArchiveAction(key: string, action: () => Promise<unknown>) {
   archiveActionBusy.value = key;
   archiveActionMessage.value = "";
@@ -297,9 +304,19 @@ async function submitContractArchiveUpload() {
   );
 
   await runArchiveAction("upload", async () => {
+    const uploadedByUserId = requiredText(contractArchiveForm.uploadedByUserId, "上传人ID");
+    const file = selectedContractArchiveFile.value;
+    if (!file) {
+      throw new Error("盖章合同文件不能为空");
+    }
+
+    const uploadedFile = await uploadPrivateFile(file, {
+      fileName: file.name,
+      uploadedByUserId
+    });
     const result = await uploadContractArchiveFile(contractVersionId, {
-      fileId: requiredText(contractArchiveForm.fileId, "盖章合同文件ID"),
-      uploadedByUserId: requiredText(contractArchiveForm.uploadedByUserId, "上传人ID")
+      fileId: uploadedFile.id,
+      uploadedByUserId
     });
     contractArchiveForm.archiveFileId = returnedId(result);
   });
@@ -524,6 +541,18 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.file-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+  color: #424955;
+  font-size: 12px;
 }
 
 .action-message {

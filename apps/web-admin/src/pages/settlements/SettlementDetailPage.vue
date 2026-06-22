@@ -55,10 +55,11 @@
             <span>合同部成员</span>
           </div>
           <div class="action-fields">
-            <t-input
-              v-model="settlementArchiveForm.fileId"
-              placeholder="签章结算单文件ID"
-            />
+            <input
+              class="file-input"
+              type="file"
+              @change="selectSettlementArchiveFile"
+            >
             <t-input
               v-model="settlementArchiveForm.uploadedByUserId"
               placeholder="上传人ID"
@@ -189,6 +190,7 @@ import { useRoute, useRouter } from "vue-router";
 import {
   confirmSettlementArchive,
   fetchSettlementDetail,
+  uploadPrivateFile,
   uploadSettlementArchiveFile
 } from "../../api/core-flow-read.api";
 import { settlementDetailChainLinks } from "../business-chain-links.config";
@@ -210,8 +212,8 @@ const settlementDetail = ref<SettlementDetailReadModel | null>(null);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
+const selectedSettlementArchiveFile = ref<File | null>(null);
 const settlementArchiveForm = reactive({
-  fileId: "",
   uploadedByUserId: "",
   archiveFileId: "",
   confirmedByUserId: ""
@@ -280,6 +282,11 @@ function returnedId(result: unknown) {
   return "";
 }
 
+function selectSettlementArchiveFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  selectedSettlementArchiveFile.value = input.files?.[0] ?? null;
+}
+
 async function runArchiveAction(key: string, action: () => Promise<unknown>) {
   archiveActionBusy.value = key;
   archiveActionMessage.value = "";
@@ -301,9 +308,19 @@ async function submitSettlementArchiveUpload() {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
 
   await runArchiveAction("upload", async () => {
+    const uploadedByUserId = requiredText(settlementArchiveForm.uploadedByUserId, "上传人ID");
+    const file = selectedSettlementArchiveFile.value;
+    if (!file) {
+      throw new Error("签章结算单文件不能为空");
+    }
+
+    const uploadedFile = await uploadPrivateFile(file, {
+      fileName: file.name,
+      uploadedByUserId
+    });
     const result = await uploadSettlementArchiveFile(settlementId, {
-      fileId: requiredText(settlementArchiveForm.fileId, "签章结算单文件ID"),
-      uploadedByUserId: requiredText(settlementArchiveForm.uploadedByUserId, "上传人ID")
+      fileId: uploadedFile.id,
+      uploadedByUserId
     });
     settlementArchiveForm.archiveFileId = returnedId(result);
   });
@@ -548,6 +565,18 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.file-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+  color: #424955;
+  font-size: 12px;
 }
 
 .action-message {

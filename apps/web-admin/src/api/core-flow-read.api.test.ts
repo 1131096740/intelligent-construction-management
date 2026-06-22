@@ -5,7 +5,9 @@ import {
   fetchSettlementDetail,
   confirmContractArchive,
   confirmSettlementArchive,
+  createFileDownloadTicket,
   uploadContractArchiveFile,
+  uploadPrivateFile,
   uploadSettlementArchiveFile,
   recordPaymentExecution,
   recordPaymentFinance,
@@ -114,5 +116,28 @@ describe("core flow read API client", () => {
         uploadedByUserId: "contract-staff-1"
       })
     );
+  });
+
+  it("uploads private files and requests short-lived download tickets through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "file-1" })
+    } as Response);
+
+    await uploadPrivateFile(new Blob(["file"]), {
+      fileName: "盖章合同.pdf",
+      uploadedByUserId: "contract-staff-1"
+    });
+    await createFileDownloadTicket("file-1", {
+      actorUserId: "finance-1"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/files",
+      "/api/files/file-1/download-ticket?actorUserId=finance-1"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+    expect(fetchMock.mock.calls[1][1]).toBeUndefined();
   });
 });
