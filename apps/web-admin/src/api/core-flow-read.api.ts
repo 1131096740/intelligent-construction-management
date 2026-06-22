@@ -68,6 +68,66 @@ export interface RecordPaymentPdfArchivePayload {
   departmentScope?: string;
 }
 
+export interface UploadContractArchiveFilePayload {
+  fileId: string;
+  uploadedByUserId: string;
+}
+
+export interface ConfirmContractArchivePayload {
+  archiveFileId: string;
+  confirmedByUserId: string;
+}
+
+export interface UploadSettlementArchiveFilePayload {
+  fileId: string;
+  uploadedByUserId: string;
+}
+
+export interface ConfirmSettlementArchivePayload {
+  archiveFileId: string;
+  confirmedByUserId: string;
+}
+
+export function uploadContractArchiveFile(
+  contractVersionId: string,
+  body: UploadContractArchiveFilePayload
+) {
+  return postJson<unknown, UploadContractArchiveFilePayload>(
+    `/contracts/${contractVersionId}/archive-files`,
+    body
+  );
+}
+
+export function confirmContractArchive(
+  contractVersionId: string,
+  body: ConfirmContractArchivePayload
+) {
+  return postJson<unknown, ConfirmContractArchivePayload>(
+    `/contracts/${contractVersionId}/archive-confirmation`,
+    body
+  );
+}
+
+export function uploadSettlementArchiveFile(
+  settlementId: string,
+  body: UploadSettlementArchiveFilePayload
+) {
+  return postJson<unknown, UploadSettlementArchiveFilePayload>(
+    `/settlements/${settlementId}/archive-files`,
+    body
+  );
+}
+
+export function confirmSettlementArchive(
+  settlementId: string,
+  body: ConfirmSettlementArchivePayload
+) {
+  return postJson<unknown, ConfirmSettlementArchivePayload>(
+    `/settlements/${settlementId}/archive-confirmation`,
+    body
+  );
+}
+
 export function reviewPaymentApproval(paymentId: string, body: ReviewPaymentApprovalPayload) {
   return postJson<unknown, ReviewPaymentApprovalPayload>(`/payments/${paymentId}/approval`, body);
 }

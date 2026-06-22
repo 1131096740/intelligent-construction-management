@@ -59,6 +59,7 @@ describe("ContractReadService", () => {
       where: { OR: [{ id: "HT-2026-009" }, { code: "HT-2026-009" }] }
     });
     expect(detail.id).toBe("HT-2026-009");
+    expect(detail.contractVersionId).toBe("contract-version-2");
     expect(detail.title).toBe("HT-2026-009 · 幕墙分包合同");
     expect(detail.baseInfo).toContainEqual({ label: "项目", value: "总部综合楼" });
     expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥986,500.00" });

@@ -3,6 +3,10 @@ import {
   fetchContractDetail,
   fetchPaymentDetail,
   fetchSettlementDetail,
+  confirmContractArchive,
+  confirmSettlementArchive,
+  uploadContractArchiveFile,
+  uploadSettlementArchiveFile,
   recordPaymentExecution,
   recordPaymentFinance,
   recordPaymentPdfArchive,
@@ -70,6 +74,44 @@ describe("core flow read API client", () => {
         decision: "approve",
         approvedAmountCents: 5000000,
         reviewedByUserId: "chairman-1"
+      })
+    );
+  });
+
+  it("posts contract and settlement archive actions to the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "ok" })
+    } as Response);
+
+    await uploadContractArchiveFile("contract-version-1", {
+      fileId: "file-contract-archive",
+      uploadedByUserId: "contract-staff-1"
+    });
+    await confirmContractArchive("contract-version-1", {
+      archiveFileId: "contract-archive-file-1",
+      confirmedByUserId: "contract-director-1"
+    });
+    await uploadSettlementArchiveFile("settlement-1", {
+      fileId: "file-settlement-archive",
+      uploadedByUserId: "contract-staff-1"
+    });
+    await confirmSettlementArchive("settlement-1", {
+      archiveFileId: "settlement-archive-file-1",
+      confirmedByUserId: "contract-director-1"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/contract-version-1/archive-files",
+      "/api/contracts/contract-version-1/archive-confirmation",
+      "/api/settlements/settlement-1/archive-files",
+      "/api/settlements/settlement-1/archive-confirmation"
+    ]);
+    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        fileId: "file-contract-archive",
+        uploadedByUserId: "contract-staff-1"
       })
     );
   });

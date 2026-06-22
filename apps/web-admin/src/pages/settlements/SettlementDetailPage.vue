@@ -6,10 +6,13 @@
         <p>{{ settlementDetailTitleView }}</p>
       </div>
       <div class="actions">
-        <t-button theme="primary">
-          确认归档
+        <t-button
+          theme="primary"
+          @click="reloadSettlementDetail"
+        >
+          刷新
         </t-button>
-        <t-button>
+        <t-button @click="openChainLink('/audit')">
           查看审批记录
         </t-button>
       </div>
@@ -39,6 +42,71 @@
         {{ link.label }}
       </t-link>
     </div>
+
+    <t-card
+      class="section-card action-card"
+      title="归档操作"
+      :bordered="true"
+    >
+      <div class="action-grid">
+        <div class="action-group">
+          <div class="action-title">
+            <strong>上传签章结算单</strong>
+            <span>合同部成员</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="settlementArchiveForm.fileId"
+              placeholder="签章结算单文件ID"
+            />
+            <t-input
+              v-model="settlementArchiveForm.uploadedByUserId"
+              placeholder="上传人ID"
+            />
+          </div>
+          <t-button
+            theme="primary"
+            :loading="archiveActionBusy === 'upload'"
+            :disabled="!canUploadSettlementArchive"
+            @click="submitSettlementArchiveUpload"
+          >
+            提交归档件
+          </t-button>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>主管确认归档</strong>
+            <span>确认后结算生效</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="settlementArchiveForm.archiveFileId"
+              placeholder="归档记录ID"
+            />
+            <t-input
+              v-model="settlementArchiveForm.confirmedByUserId"
+              placeholder="确认人ID"
+            />
+          </div>
+          <t-button
+            theme="primary"
+            :loading="archiveActionBusy === 'confirm'"
+            :disabled="!canConfirmSettlementArchive"
+            @click="submitSettlementArchiveConfirmation"
+          >
+            确认生效
+          </t-button>
+        </div>
+      </div>
+
+      <div
+        v-if="archiveActionMessage"
+        :class="['action-message', archiveActionMessageTone]"
+      >
+        {{ archiveActionMessage }}
+      </div>
+    </t-card>
 
     <div class="detail-grid">
       <t-card
@@ -116,9 +184,13 @@
 
 <script setup lang="ts">
 import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-domain";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { fetchSettlementDetail } from "../../api/core-flow-read.api";
+import {
+  confirmSettlementArchive,
+  fetchSettlementDetail,
+  uploadSettlementArchiveFile
+} from "../../api/core-flow-read.api";
 import { settlementDetailChainLinks } from "../business-chain-links.config";
 import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
@@ -135,6 +207,15 @@ import {
 const route = useRoute();
 const router = useRouter();
 const settlementDetail = ref<SettlementDetailReadModel | null>(null);
+const archiveActionBusy = ref("");
+const archiveActionMessage = ref("");
+const archiveActionMessageTone = ref<"success" | "danger">("success");
+const settlementArchiveForm = reactive({
+  fileId: "",
+  uploadedByUserId: "",
+  archiveFileId: "",
+  confirmedByUserId: ""
+});
 
 const settlementDetailTitleView = computed(() => settlementDetail.value?.title ?? settlementDetailTitle);
 const settlementDetailMetaView = computed(() => settlementDetail.value?.meta ?? settlementDetailMeta);
@@ -154,12 +235,21 @@ const settlementPaymentBlockMessageView = computed(
 const settlementDetailChainLinksView = computed(
   () => settlementDetail.value?.chainLinks ?? settlementDetailChainLinks
 );
+const settlementNextActionValue = computed(
+  () => settlementDetailMetaView.value.find((item) => item.label === "下一步动作")?.value ?? ""
+);
+const canUploadSettlementArchive = computed(
+  () => !!settlementDetail.value?.settlementId && settlementNextActionValue.value.includes("上传签章归档件")
+);
+const canConfirmSettlementArchive = computed(
+  () => !!settlementDetail.value?.settlementId && settlementNextActionValue.value.includes("主管确认归档")
+);
 
 function openChainLink(to: string) {
   void router.push(to);
 }
 
-onMounted(async () => {
+async function reloadSettlementDetail() {
   const settlementId = String(route.params.settlementId ?? "JS-2026-018");
 
   try {
@@ -167,7 +257,68 @@ onMounted(async () => {
   } catch {
     settlementDetail.value = null;
   }
+}
+
+onMounted(async () => {
+  await reloadSettlementDetail();
 });
+
+function requiredText(raw: string, label: string) {
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(`${label}不能为空`);
+  }
+
+  return value;
+}
+
+function returnedId(result: unknown) {
+  if (result && typeof result === "object" && "id" in result) {
+    return String((result as { id: unknown }).id);
+  }
+
+  return "";
+}
+
+async function runArchiveAction(key: string, action: () => Promise<unknown>) {
+  archiveActionBusy.value = key;
+  archiveActionMessage.value = "";
+
+  try {
+    await action();
+    await reloadSettlementDetail();
+    archiveActionMessageTone.value = "success";
+    archiveActionMessage.value = "操作已提交，详情已刷新。";
+  } catch (error) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = error instanceof Error ? error.message : "操作失败";
+  } finally {
+    archiveActionBusy.value = "";
+  }
+}
+
+async function submitSettlementArchiveUpload() {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+
+  await runArchiveAction("upload", async () => {
+    const result = await uploadSettlementArchiveFile(settlementId, {
+      fileId: requiredText(settlementArchiveForm.fileId, "签章结算单文件ID"),
+      uploadedByUserId: requiredText(settlementArchiveForm.uploadedByUserId, "上传人ID")
+    });
+    settlementArchiveForm.archiveFileId = returnedId(result);
+  });
+}
+
+async function submitSettlementArchiveConfirmation() {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+
+  await runArchiveAction("confirm", () =>
+    confirmSettlementArchive(settlementId, {
+      archiveFileId: requiredText(settlementArchiveForm.archiveFileId, "归档记录ID"),
+      confirmedByUserId: requiredText(settlementArchiveForm.confirmedByUserId, "确认人ID")
+    })
+  );
+}
 
 function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   const themeByTone = {
@@ -349,9 +500,73 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   border-radius: 3px;
 }
 
+.action-card {
+  margin-bottom: 20px;
+}
+
 :deep(.section-card .t-card__body) {
   padding: 0;
   overflow-x: auto;
+}
+
+.action-card :deep(.t-card__body) {
+  padding: 16px;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.action-group {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.action-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.action-title strong {
+  font-size: 13px;
+}
+
+.action-title span {
+  color: #767f8d;
+  font-size: 12px;
+}
+
+.action-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.action-message {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.action-message.success {
+  color: #1b6b3a;
+  background: #f3faf5;
+}
+
+.action-message.danger {
+  color: #b51d2a;
+  background: #fff5f5;
 }
 
 .block-message {
@@ -363,7 +578,9 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
 @media (max-width: 980px) {
   .meta-panel,
   .detail-grid,
-  .responsibility-strip {
+  .responsibility-strip,
+  .action-grid,
+  .action-fields {
     grid-template-columns: 1fr;
   }
 

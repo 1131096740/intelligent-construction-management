@@ -45,7 +45,7 @@
       </t-menu>
     </t-aside>
 
-    <t-layout>
+    <t-layout class="main-shell">
       <t-header class="header">
         <span>审批与合同付款闭环 MVP</span>
         <span class="header-user">建设企业 · 合同部主管</span>
@@ -99,8 +99,8 @@ function go(path: string) {
 
 .header {
   box-sizing: border-box;
-  width: calc(100vw - 208px);
-  max-width: calc(100vw - 208px);
+  width: 100%;
+  max-width: 100%;
   height: 48px;
   display: flex;
   align-items: center;
@@ -117,12 +117,16 @@ function go(path: string) {
 
 .content {
   box-sizing: border-box;
-  width: calc(100vw - 208px);
-  max-width: calc(100vw - 208px);
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: calc(100vh - 48px);
   padding: 24px;
   overflow-x: hidden;
   background: #f4f6f9;
+}
+
+.main-shell {
+  min-width: 0;
 }
 </style>

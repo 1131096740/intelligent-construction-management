@@ -60,6 +60,7 @@ describe("SettlementReadService", () => {
       where: { OR: [{ id: "JS-2026-031" }, { code: "JS-2026-031" }] }
     });
     expect(detail.id).toBe("JS-2026-031");
+    expect(detail.settlementId).toBe("settlement-1");
     expect(detail.title).toBe("JS-2026-031 · 2026-06结算单");
     expect(detail.baseInfo).toContainEqual({ label: "关联合同", value: "HT-2026-009 · 幕墙分包合同" });
     expect(detail.baseInfo).toContainEqual({ label: "结算金额", value: "¥580,000.00" });

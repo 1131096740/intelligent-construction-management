@@ -54,6 +54,7 @@ export class SettlementReadService {
 
     return {
       id: settlement.code,
+      settlementId: settlement.id,
       title: `${settlement.code} · ${settlement.periodLabel}结算单`,
       meta: [
         { label: "当前状态", value: status.label, tone: status.tone },
@@ -99,6 +100,7 @@ export class SettlementReadService {
   private sampleDetail(settlementId: string): SettlementDetailReadModel {
     return {
       id: settlementId,
+      settlementId: "settlement-sample",
       title: "JS-2026-018 · 5月材料结算单",
       meta: [
         { label: "当前状态", value: "待归档确认", tone: "primary" },

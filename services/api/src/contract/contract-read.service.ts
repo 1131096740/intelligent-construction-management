@@ -58,6 +58,7 @@ export class ContractReadService {
 
     return {
       id: contract.code,
+      contractVersionId: version.id,
       title: `${contract.code} · ${contract.name}`,
       meta: [
         { label: "当前状态", value: status.label, tone: status.tone },
@@ -100,6 +101,7 @@ export class ContractReadService {
   private sampleDetail(contractId: string): ContractDetailReadModel {
     return {
       id: contractId,
+      contractVersionId: "contract-version-sample",
       title: "HT-2026-001 · 钢材采购合同",
       meta: [
         { label: "当前状态", value: "待用章", tone: "warning" },

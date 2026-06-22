@@ -38,6 +38,7 @@ export interface ContractPaymentTermStageReadModel {
 
 export interface ContractDetailReadModel {
   id: string;
+  contractVersionId: string;
   title: string;
   meta: DetailMetaItem[];
   baseInfo: DetailMetaItem[];
@@ -58,6 +59,7 @@ export interface SettlementPaymentRuleReadModel {
 
 export interface SettlementDetailReadModel {
   id: string;
+  settlementId: string;
   title: string;
   meta: DetailMetaItem[];
   baseInfo: DetailMetaItem[];
