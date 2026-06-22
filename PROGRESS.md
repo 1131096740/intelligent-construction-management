@@ -10,9 +10,10 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：进入认证授权模块，补登录、JWT/会话、角色/岗位/项目权限中间件。
+- **下一步（CodeX）**：按设计方案在 `services/api` 搭认证管道——schema 改动 + migration + seed（密码哈希、17 岗位）、Auth 模块（手机号密码登录 / refresh / 改密 / 微信登录）、JwtAuthGuard。授权 Guard 接 `permissions.ts`。详见设计方案第 7 节分工。
 
 ---
 
@@ -68,9 +69,13 @@
 
 ## 认证与授权（上线头号短板）
 
-- [ ] 登录 / 员工绑定 / 会话
-- [ ] JWT 或等价方案
-- [ ] 角色 + 岗位 + 项目授权的后端权限中间件
+- [x] 设计方案 `docs/design/建工智管_认证授权设计.md`（登录方式：Web 手机号+密码 / 小程序微信一键登录）
+- [x] 权限核心纯逻辑 + 单测 `shared-domain/permissions.ts`（动作→岗位策略表、或签、有效岗位合并）
+- [ ] 登录 / 员工绑定 / 会话（CodeX）
+- [ ] JWT access+refresh + 改密（CodeX）
+- [ ] 角色 + 岗位 + 项目授权的后端权限中间件（Guard 接 permissions.ts）
+- [ ] 改造现有写端点：操作人取登录态，不再信任请求体 `*ByUserId`
+- [ ] 更新 `verify-core-flow`：分步骤用不同身份登录
 - [ ] 目前接口"前端传谁就信谁"，任何人可冒充任意角色 ← **真实数据上线前必须解决**
 
 ## Web 管理端
