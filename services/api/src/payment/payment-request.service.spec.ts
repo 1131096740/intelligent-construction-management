@@ -743,4 +743,200 @@ describe("PaymentRequestService", () => {
     ).rejects.toThrow("Finance record exceeds unrecorded paid amount: 10000");
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
   });
+
+  it("records payment pdf document and archive after finance entry is complete", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          paidAmountCents: 50_000
+        })
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: 50_000 }
+        ])
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1"
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          fileId: "file-1"
+        })
+      },
+      archiveRecord: {
+        create: jest.fn().mockResolvedValue({
+          id: "archive-1",
+          fileId: "file-1"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const result = await paymentService.recordPdfArchive("FK-2026-012", {
+      fileId: "file-1",
+      archivedByUserId: "finance-1"
+    });
+
+    expect(result.pdfDocument.id).toBe("pdf-1");
+    expect(result.archiveRecord.id).toBe("archive-1");
+    expect(tx.pdfDocument.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "payment_request",
+        businessId: "payment-1",
+        fileId: "file-1",
+        templateKey: "payment_finance_archive"
+      }
+    });
+    expect(tx.archiveRecord.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "payment_request",
+        businessId: "payment-1",
+        fileId: "file-1",
+        departmentScope: "finance"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "finance-1",
+        action: "payment.pdf_archive.record",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
+    });
+  });
+
+  it("rejects payment pdf archive before finance entry covers paid amount", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          paidAmountCents: 50_000
+        })
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: 20_000 }
+        ])
+      },
+      fileObject: {
+        findUnique: jest.fn()
+      },
+      pdfDocument: {
+        create: jest.fn()
+      },
+      archiveRecord: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordPdfArchive("FK-2026-012", {
+        fileId: "file-1",
+        archivedByUserId: "finance-1"
+      })
+    ).rejects.toThrow("Cannot archive payment PDF before finance entry is complete");
+    expect(tx.pdfDocument.create).not.toHaveBeenCalled();
+    expect(tx.archiveRecord.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment pdf archive when archive file is missing", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          paidAmountCents: 50_000
+        })
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: 50_000 }
+        ])
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      pdfDocument: {
+        create: jest.fn()
+      },
+      archiveRecord: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordPdfArchive("FK-2026-012", {
+        fileId: "missing-file",
+        archivedByUserId: "finance-1"
+      })
+    ).rejects.toThrow("Payment archive file not found");
+    expect(tx.pdfDocument.create).not.toHaveBeenCalled();
+    expect(tx.archiveRecord.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate payment pdf archive for the same template", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          paidAmountCents: 50_000
+        })
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: 50_000 }
+        ])
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1"
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-existing"
+        }),
+        create: jest.fn()
+      },
+      archiveRecord: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordPdfArchive("FK-2026-012", {
+        fileId: "file-1",
+        archivedByUserId: "finance-1"
+      })
+    ).rejects.toThrow("Payment PDF archive already exists");
+    expect(tx.pdfDocument.create).not.toHaveBeenCalled();
+    expect(tx.archiveRecord.create).not.toHaveBeenCalled();
+  });
 });

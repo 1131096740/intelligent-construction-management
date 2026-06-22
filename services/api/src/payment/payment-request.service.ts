@@ -7,6 +7,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
+import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
@@ -311,6 +312,91 @@ export class PaymentRequestService {
         }
       });
       return financeRecord;
+    });
+  }
+
+  async recordPdfArchive(paymentId: string, input: RecordPaymentPdfArchiveDto) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to record payment PDF archive");
+    }
+
+    const templateKey = input.templateKey ?? "payment_finance_archive";
+    const departmentScope = input.departmentScope ?? "finance";
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.paymentRequest.findFirst({
+        where: { OR: [{ id: paymentId }, { code: paymentId }] }
+      });
+
+      if (!payment) {
+        throw new Error("Payment request not found");
+      }
+
+      const financeRecords = await tx.financeRecord.findMany({
+        where: { paymentRequestId: payment.id }
+      });
+      const financeRecordedAmountCents = financeRecords.reduce(
+        (total, record) => total + record.amountCents,
+        0
+      );
+
+      if (payment.paidAmountCents <= 0 || financeRecordedAmountCents < payment.paidAmountCents) {
+        throw new Error("Cannot archive payment PDF before finance entry is complete");
+      }
+
+      const file = await tx.fileObject.findUnique({
+        where: { id: input.fileId }
+      });
+
+      if (!file) {
+        throw new Error("Payment archive file not found");
+      }
+
+      const existingPdf = await tx.pdfDocument.findFirst({
+        where: {
+          businessType: "payment_request",
+          businessId: payment.id,
+          templateKey
+        }
+      });
+
+      if (existingPdf) {
+        throw new Error("Payment PDF archive already exists");
+      }
+
+      const pdfDocument = await tx.pdfDocument.create({
+        data: {
+          businessType: "payment_request",
+          businessId: payment.id,
+          fileId: input.fileId,
+          templateKey
+        }
+      });
+      const archiveRecord = await tx.archiveRecord.create({
+        data: {
+          businessType: "payment_request",
+          businessId: payment.id,
+          fileId: input.fileId,
+          departmentScope
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId: input.archivedByUserId,
+        action: "payment.pdf_archive.record",
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: {
+          code: payment.code,
+          pdfDocumentId: pdfDocument.id,
+          archiveRecordId: archiveRecord.id,
+          fileId: input.fileId,
+          templateKey,
+          departmentScope
+        }
+      });
+
+      return { pdfDocument, archiveRecord };
     });
   }
 }

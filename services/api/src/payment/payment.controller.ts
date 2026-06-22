@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
+import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentReadService } from "./payment-read.service";
@@ -40,6 +41,14 @@ export class PaymentController {
     @Body() body: RecordFinanceRecordDto
   ) {
     return this.payments.recordFinance(paymentId, body);
+  }
+
+  @Post(":paymentId/pdf-archive")
+  recordPdfArchive(
+    @Param("paymentId") paymentId: string,
+    @Body() body: RecordPaymentPdfArchiveDto
+  ) {
+    return this.payments.recordPdfArchive(paymentId, body);
   }
 
   @Get(":paymentId")
