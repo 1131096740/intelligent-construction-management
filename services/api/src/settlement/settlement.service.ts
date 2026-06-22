@@ -1,14 +1,21 @@
 import { Injectable } from "@nestjs/common";
 import {
   canCreateSettlementFromContractStatus,
-  ContractVersionStatus
+  ContractVersionStatus,
+  SettlementStatus
 } from "@jiangkong/shared-domain";
+import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
+import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 
 @Injectable()
 export class SettlementService {
-  constructor(private readonly prisma?: PrismaService) {}
+  constructor(
+    private readonly prisma?: PrismaService,
+    private readonly audit: AuditService = new AuditService()
+  ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
     if (!canCreateSettlementFromContractStatus(status)) {
@@ -86,5 +93,122 @@ export class SettlementService {
     }
 
     return Math.floor((amountCents * ratioBps) / 10000);
+  }
+
+  async uploadArchiveFile(settlementId: string, input: UploadSettlementArchiveFileDto) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to upload settlement archive file");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      if (settlement.status !== "approved_pending_archive") {
+        throw new Error(`Cannot upload settlement archive from status ${settlement.status}`);
+      }
+
+      const file = await tx.fileObject.findUnique({
+        where: { id: input.fileId }
+      });
+
+      if (!file) {
+        throw new Error("Settlement archive file not found");
+      }
+
+      const archiveFile = await tx.settlementArchiveFile.create({
+        data: {
+          settlementId: settlement.id,
+          fileId: input.fileId,
+          uploadedByUserId: input.uploadedByUserId,
+          status: "pending_confirm"
+        }
+      });
+
+      await tx.settlement.update({
+        where: { id: settlement.id },
+        data: { status: "pending_archive_confirm" satisfies SettlementStatus }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId: input.uploadedByUserId,
+        action: "settlement.archive.upload",
+        businessType: "settlement",
+        businessId: settlement.id,
+        metadata: {
+          fileId: input.fileId,
+          archiveFileId: archiveFile.id
+        }
+      });
+
+      return archiveFile;
+    });
+  }
+
+  async confirmArchiveFile(settlementId: string, input: ConfirmSettlementArchiveDto) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to confirm settlement archive file");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      if (settlement.status !== "pending_archive_confirm") {
+        throw new Error(`Cannot confirm settlement archive from status ${settlement.status}`);
+      }
+
+      const archiveFile = await tx.settlementArchiveFile.findFirst({
+        where: {
+          id: input.archiveFileId,
+          settlementId: settlement.id
+        }
+      });
+
+      if (!archiveFile) {
+        throw new Error("Settlement archive file not found");
+      }
+
+      if (archiveFile.status !== "pending_confirm") {
+        throw new Error(`Cannot confirm settlement archive file from status ${archiveFile.status}`);
+      }
+
+      const confirmedAt = new Date();
+      await tx.settlementArchiveFile.update({
+        where: { id: archiveFile.id },
+        data: {
+          confirmedByUserId: input.confirmedByUserId,
+          confirmedAt,
+          status: "confirmed"
+        }
+      });
+
+      const effectiveSettlement = await tx.settlement.update({
+        where: { id: settlement.id },
+        data: { status: "effective" satisfies SettlementStatus }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId: input.confirmedByUserId,
+        action: "settlement.archive.confirm",
+        businessType: "settlement",
+        businessId: settlement.id,
+        metadata: {
+          archiveFileId: archiveFile.id
+        }
+      });
+
+      return effectiveSettlement;
+    });
   }
 }

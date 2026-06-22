@@ -162,8 +162,13 @@ export class ContractReadService {
   private statusView(status: string): { label: string; tone: CoreFlowTone } {
     const views: Record<string, { label: string; tone: CoreFlowTone }> = {
       draft: { label: "草拟中", tone: "default" },
+      in_approval: { label: "审批中", tone: "primary" },
       approval_pending: { label: "审批中", tone: "primary" },
+      approved_pending_seal: { label: "待用章", tone: "warning" },
       approved: { label: "待用章", tone: "warning" },
+      in_seal: { label: "用章中", tone: "warning" },
+      seal_approved_pending_archive: { label: "待归档上传", tone: "primary" },
+      pending_archive_confirm: { label: "待归档确认", tone: "primary" },
       sealed_pending_archive: { label: "待归档确认", tone: "primary" },
       effective: { label: "已生效", tone: "success" },
       voided: { label: "已作废", tone: "danger" }
@@ -185,8 +190,13 @@ export class ContractReadService {
   private currentOwnerLabel(status: string): string {
     const labels: Record<string, string> = {
       draft: "合同部成员",
+      in_approval: "审批节点处理人",
       approval_pending: "审批节点处理人",
+      approved_pending_seal: "合同部成员",
       approved: "合同部成员",
+      in_seal: "合同部成员",
+      seal_approved_pending_archive: "合同部成员",
+      pending_archive_confirm: "合同部主管",
       sealed_pending_archive: "合同部主管",
       effective: "系统归档",
       voided: "系统归档"
@@ -198,8 +208,13 @@ export class ContractReadService {
   private nextActionLabel(status: string): string {
     const labels: Record<string, string> = {
       draft: "提交合同审批",
+      in_approval: "等待审批",
       approval_pending: "等待审批",
+      approved_pending_seal: "发起用章",
       approved: "发起用章",
+      in_seal: "等待用章通过",
+      seal_approved_pending_archive: "上传盖章合同",
+      pending_archive_confirm: "主管确认归档",
       sealed_pending_archive: "主管确认归档",
       effective: "可发起结算",
       voided: "无"
@@ -219,7 +234,7 @@ export class ContractReadService {
       ];
     }
 
-    if (status === "approved") {
+    if (status === "approved" || status === "approved_pending_seal" || status === "in_seal") {
       return [
         { label: "合同审批", status: "已通过", tone: "success" },
         { label: "用章", status: "待处理", tone: "warning" },
@@ -229,8 +244,30 @@ export class ContractReadService {
       ];
     }
 
+    if (status === "seal_approved_pending_archive" || status === "pending_archive_confirm") {
+      return [
+        { label: "合同审批", status: "已通过", tone: "success" },
+        { label: "用章", status: "已完成", tone: "success" },
+        {
+          label: "归档上传",
+          status: status === "pending_archive_confirm" ? "已上传" : "待上传",
+          tone: status === "pending_archive_confirm" ? "success" : "primary"
+        },
+        {
+          label: "主管确认",
+          status: status === "pending_archive_confirm" ? "待确认" : "未开始",
+          tone: status === "pending_archive_confirm" ? "primary" : "default"
+        },
+        { label: "合同生效", status: "阻塞", tone: "danger" }
+      ];
+    }
+
     return [
-      { label: "合同审批", status: status === "approval_pending" ? "处理中" : "未提交", tone: "primary" },
+      {
+        label: "合同审批",
+        status: status === "approval_pending" || status === "in_approval" ? "处理中" : "未提交",
+        tone: "primary"
+      },
       { label: "用章", status: "未开始", tone: "default" },
       { label: "归档上传", status: "未开始", tone: "default" },
       { label: "主管确认", status: "未开始", tone: "default" },
