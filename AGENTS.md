@@ -101,3 +101,9 @@ Use real business positions, not old generic roles:
 - Prefer domain models and backend invariants over front-end-only validation.
 - Add tests around money, status transitions, permission checks, and version traceability.
 - When uncertain about business rules, stop and ask; do not silently choose a shortcut.
+
+## 进度跟踪
+
+- 项目实时进度以 `PROGRESS.md` 为唯一真相。
+- 每完成一个子任务，必须在 `PROGRESS.md` 勾选/更新，并随代码一起 commit。
+- 接手开发（CodeX 或 Claude）第一件事：先读 `PROGRESS.md`。
