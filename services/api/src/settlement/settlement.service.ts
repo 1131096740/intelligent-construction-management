@@ -248,6 +248,89 @@ export class SettlementService {
         throw new Error(`Actor cannot approve settlement node ${currentNode.name}`);
       }
 
+      if (input.decision === "reject_previous") {
+        if (instance.currentNodeIndex === 0) {
+          throw new Error("Cannot reject settlement approval to previous node from first node");
+        }
+
+        const previousNodeIndex = instance.currentNodeIndex - 1;
+        const nextNodes = nodes.map((node, index) =>
+          index === previousNodeIndex || index === instance.currentNodeIndex
+            ? { ...node, approvedRoleKeys: [] }
+            : node
+        );
+        const updated = await tx.settlement.update({
+          where: { id: settlement.id },
+          data: { status: "approval_pending" satisfies SettlementStatus }
+        });
+
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: {
+            currentNodeIndex: previousNodeIndex,
+            frozenNodes: nextNodes as unknown as Prisma.InputJsonValue,
+            status: "in_progress"
+          }
+        });
+
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "reject_previous",
+            actorUserId
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "settlement.approval.reject_previous",
+          businessType: "settlement",
+          businessId: settlement.id,
+          metadata: {
+            fromStatus: settlement.status,
+            toStatus: "approval_pending",
+            fromNodeName: currentNode.name,
+            toNodeName: nextNodes[previousNodeIndex].name
+          }
+        });
+
+        return updated;
+      }
+
+      if (input.decision === "return_to_applicant") {
+        const updated = await tx.settlement.update({
+          where: { id: settlement.id },
+          data: { status: "approval_rejected" satisfies SettlementStatus }
+        });
+
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: { status: "returned_to_applicant" }
+        });
+
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "return_to_applicant",
+            actorUserId
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "settlement.approval.return_to_applicant",
+          businessType: "settlement",
+          businessId: settlement.id,
+          metadata: {
+            fromStatus: settlement.status,
+            toStatus: "approval_rejected",
+            nodeName: currentNode.name
+          }
+        });
+
+        return updated;
+      }
+
       if (input.decision === "reject") {
         const updated = await tx.settlement.update({
           where: { id: settlement.id },

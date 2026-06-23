@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-23 (CodeX)：结算审批实例支持 `reject_previous` / `return_to_applicant` 最小闭环。当前节点审批人可退回上一冻结节点，系统清空上一节点和当前节点的已批角色并保持 `approval_pending`；首节点禁止退回上一节点；可打回申请人并关闭实例为 `returned_to_applicant`，结算置为 `approval_rejected`。补充 ApprovalActionLog 与审计元数据；API 98 个单测 + typecheck + lint 通过。
 - 2026-06-23 (CodeX)：合同/付款终审 OR-sign 接入 ApprovalInstance。合同提交审批时冻结 `contract.approve` 董事长/总经理或签节点；付款申请创建时冻结 `payment.approve` 董事长/总经理或签节点；审批通过/驳回均推进或关闭实例并写 `ApprovalActionLog`，审计元数据带节点和角色。API 95 个单测 + typecheck + lint 通过。
 - 2026-06-23 (CodeX)：落地结算审批最小引擎闭环。创建结算时按合同名称/相对方冻结 `settlement.approve` 节点：物资/机械类走物资员 → 物资主管 → 合同部主管+预算部主管会签 → 项目经理 → 财务总监；劳务/专业分包类走工长 → 项目总工 → 工程技术部 → 合同部主管+预算部主管会签 → 项目经理 → 财务总监。审批接口按当前冻结节点校验岗位、记录 ApprovalActionLog、支持会签节点逐人推进；`verify-core-flow.cjs` 已改为完整材料类结算审批序列。API 93 个单测 + typecheck + lint 通过。
 - 2026-06-23 (CodeX)：完成 Web 管理端登录页与前端鉴权态。新增 Pinia auth store、统一 `apiFetch` Bearer 注入、401 自动 refresh 后重试/失效跳登录、`/login` 公开路由与业务页守卫；写操作 payload 移除旧 `*UserId` 表单字段，操作人统一来自 access token。`web-admin` 57 个单测 + typecheck 通过。
@@ -18,7 +19,7 @@
 - 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：处理审批引擎的驳回上一节点 / 打回申请人，优先从结算审批实例开始做最小闭环。
+- **下一步**：补审批撤回（申请人在审批完成前撤回）与转审 / 委托代理的最小实例模型。
 
 ---
 
@@ -60,7 +61,7 @@
 - [~] 审批节点冻结服务 (`approval-freeze.service`)
 - [x] 会签 / 或签 流转（结算审批支持冻结节点会签；合同/付款终审 OR-sign 已接 ApprovalInstance）
 - [~] 条件节点（结算审批已按合同名称/相对方推断物资机械 vs 劳务专业分包路线；缺显式合同类型字段）
-- [ ] 驳回上一节点 / 打回申请人 / 撤回
+- [~] 驳回上一节点 / 打回申请人 / 撤回（结算审批已支持退回上一节点与打回申请人；撤回未做）
 - [ ] 转审 / 委托代理
 - [ ] 超时催办
 

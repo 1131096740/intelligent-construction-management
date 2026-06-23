@@ -70,7 +70,7 @@ export interface ReviewContractApprovalPayload {
 }
 
 export interface ReviewSettlementApprovalPayload {
-  decision: "approve" | "reject";
+  decision: "approve" | "reject" | "reject_previous" | "return_to_applicant";
 }
 
 export interface RecordPaymentExecutionPayload {

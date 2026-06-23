@@ -502,6 +502,196 @@ describe("SettlementService", () => {
     });
   });
 
+  it("rejects a settlement approval to the previous frozen node", async () => {
+    const frozenNodes = [
+      {
+        name: "物资主管",
+        mode: "any",
+        roleKeys: ["material_director"],
+        approvedRoleKeys: ["material_director"]
+      },
+      {
+        name: "合同部主管 + 预算部主管",
+        mode: "all",
+        roleKeys: ["contract_director", "budget_director"],
+        approvedRoleKeys: ["contract_director", "budget_director"]
+      },
+      {
+        name: "项目经理",
+        mode: "any",
+        roleKeys: ["project_manager"]
+      }
+    ];
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 2,
+          frozenNodes
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("project_manager")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    const result = await settlementService.reviewApproval("settlement-1", "project-manager-1", {
+      decision: "reject_previous"
+    });
+
+    expect(result.status).toBe("approval_pending");
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        currentNodeIndex: 1,
+        frozenNodes: [
+          frozenNodes[0],
+          {
+            ...frozenNodes[1],
+            approvedRoleKeys: []
+          },
+          {
+            ...frozenNodes[2],
+            approvedRoleKeys: []
+          }
+        ],
+        status: "in_progress"
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "reject_previous",
+        actorUserId: "project-manager-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "project-manager-1",
+      action: "settlement.approval.reject_previous",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: {
+        fromStatus: "approval_pending",
+        toStatus: "approval_pending",
+        fromNodeName: "项目经理",
+        toNodeName: "合同部主管 + 预算部主管"
+      }
+    });
+  });
+
+  it("rejects returning to a previous node from the first settlement approval node", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [{ name: "物资员", mode: "any", roleKeys: ["material_staff"] }]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("material_staff")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "material-staff-1", {
+        decision: "reject_previous"
+      })
+    ).rejects.toThrow("Cannot reject settlement approval to previous node from first node");
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("returns a settlement approval to the applicant and closes the instance", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "approval_rejected"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [{ name: "物资主管", mode: "any", roleKeys: ["material_director"] }]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("material_director")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    const result = await settlementService.reviewApproval("settlement-1", "material-director-1", {
+      decision: "return_to_applicant"
+    });
+
+    expect(result.status).toBe("approval_rejected");
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: { status: "returned_to_applicant" }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "return_to_applicant",
+        actorUserId: "material-director-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "material-director-1",
+      action: "settlement.approval.return_to_applicant",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: {
+        fromStatus: "approval_pending",
+        toStatus: "approval_rejected",
+        nodeName: "物资主管"
+      }
+    });
+  });
+
   it("confirms a signed settlement archive file and makes the settlement effective", async () => {
     const tx = {
       settlement: {
