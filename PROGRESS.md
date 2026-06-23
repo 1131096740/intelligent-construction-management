@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-23 (CodeX)：补资金出账登记二次确认最小闭环。`POST /payments/:paymentId/executions` 的 DTO 新增 `confirmationPassword`，后端在实际付款登记前复验当前登录用户密码，密码缺失/错误时不查询付款单、不写 `PaymentExecution`；Web 付款详情页的“出纳实付”补当前登录密码输入；`verify-core-flow.cjs` 带 seed 密码继续实跑。API 149 个单测 + web-admin 58 + 全量 typecheck/lint 通过。暂未覆盖归档确认、文件下载等其他敏感动作，也未做确认票据/短时效二次确认 token。
 - 2026-06-23 (CodeX)：补付款财务归档 PDF 最小生成闭环。新增 `POST /payments/:paymentId/pdf-generation`（权限同 `payment.pdf_archive`）：校验付款已实际支付且财务记录覆盖已付金额、同模板未归档后，后端生成合法 PDF buffer，走现有私有文件上传链路创建 `FileObject`，再复用 `PdfDocument` + `ArchiveRecord` 归档与审计。Web API client 补 `generatePaymentPdfArchive`。暂未做合同/结算 PDF 模板、水印、COS 私有桶。API 145 个单测 + web-admin 58 + 全量 typecheck/lint 通过。
 - 2026-06-23 (CodeX)：把转审 / 委托扩展到合同与付款审批实例，并接入委托台账。合同与付款新增 `POST /contracts/:contractVersionId/approval-transfer`、`/approval-delegation`、`POST /payments/:paymentId/approval-transfer`、`/approval-delegation`；当前节点合法审批人可写入冻结节点 assignment，目标用户可按来源岗位完成审批。结算/合同/付款三类 `delegate` 动作都会追加 `ApprovalDelegation` 台账行（当前节点委托先用 30 天临时窗口；尚未做全局委托管理界面和自动生效消费）。Web API client 补合同/付款转审委托调用。API 142 个单测 + web-admin 58 + 全量 typecheck/lint 通过。
 - 2026-06-23 (CodeX)：补文件下载权限校验 + 短时效 URL 最小闭环。`GET /files/:fileId/download-ticket` 改为只信登录态 `@CurrentUser`，不再接收 query/body 里的 `actorUserId`；签票前校验文件访问权（上传者本人、合同/结算归档文件的合同部/财务岗、付款凭证的财务岗），短链 token 绑定 `fileId + actorUserId + expiresAt`；公开下载端点继续只认短时效票据，但下载成功新增 `file.download` 审计；本地私有存储路径校验收紧，避免同前缀目录误放行。Web API client 补 `createPrivateFileDownloadTicket`。API 132 个单测 + web-admin 58 + 全量 typecheck/lint 通过。
@@ -27,7 +28,7 @@
 - 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：继续 Milestone 6：COS 私有桶 / 文件水印与敏感操作二次确认；或补合同/结算 PDF 模板、全局委托管理界面与自动套用委托关系。
+- **下一步**：继续 Milestone 6：COS 私有桶 / 文件水印 / 其余敏感动作二次确认；或补合同/结算 PDF 模板、全局委托管理界面与自动套用委托关系。
 
 ---
 
@@ -79,7 +80,7 @@
 - [~] 私有文件上传流程（本地实现，**COS 私有桶未接**）
 - [x] 文件下载权限校验 + 短时效 URL（本地私有存储短链 + 下载审计；COS 私有桶未接）
 - [~] 真正生成 PDF（付款财务归档 PDF 已由后端生成并归档；合同/结算 PDF 模板未做）
-- [ ] 文件水印 / 敏感操作二次确认
+- [~] 文件水印 / 敏感操作二次确认（实际付款登记已要求当前密码二次确认；文件水印、归档确认/文件下载等其他敏感动作未覆盖）
 
 ## 认证与授权（上线头号短板）
 

@@ -73,7 +73,8 @@ describe("core flow read API client", () => {
     await recordPaymentExecution("FK-2026-006", {
       amountCents: 5000000,
       paidAt: "2026-06-22T00:00:00.000Z",
-      voucherFileId: "file-1"
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
     });
     await recordPaymentFinance("FK-2026-006", {
       amountCents: 5000000,

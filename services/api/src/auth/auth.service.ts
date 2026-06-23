@@ -156,6 +156,24 @@ export class AuthService {
     return { ok: true };
   }
 
+  async confirmPassword(userId: string, password: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user?.isActive || !user.passwordHash) {
+      throw new UnauthorizedException("Invalid confirmation password");
+    }
+
+    const passwordMatched = await bcrypt.compare(password, user.passwordHash);
+
+    if (!passwordMatched) {
+      throw new UnauthorizedException("Invalid confirmation password");
+    }
+
+    return { ok: true };
+  }
+
   async wxLogin(input: WxLoginDto) {
     const session = await this.fetchWxSession(input.code);
     const user = await this.prisma.user.findUnique({

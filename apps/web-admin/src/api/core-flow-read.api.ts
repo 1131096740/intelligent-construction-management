@@ -81,6 +81,7 @@ export interface RecordPaymentExecutionPayload {
   amountCents: number;
   paidAt: string;
   voucherFileId: string;
+  confirmationPassword: string;
 }
 
 export interface RecordPaymentFinancePayload {

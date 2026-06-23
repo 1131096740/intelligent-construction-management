@@ -139,4 +139,28 @@ describe("AuthService", () => {
       })
     });
   });
+
+  it("confirms the current password for sensitive actions", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      passwordHash: await bcrypt.hash("current-password", 10),
+      isActive: true
+    });
+
+    await expect(service.confirmPassword("user-1", "current-password")).resolves.toEqual({
+      ok: true
+    });
+  });
+
+  it("rejects an invalid sensitive action confirmation password", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      passwordHash: await bcrypt.hash("current-password", 10),
+      isActive: true
+    });
+
+    await expect(service.confirmPassword("user-1", "wrong-password")).rejects.toThrow(
+      "Invalid confirmation password"
+    );
+  });
 });

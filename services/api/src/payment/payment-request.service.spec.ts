@@ -3,6 +3,14 @@ import { PaymentRequestService } from "./payment-request.service";
 
 describe("PaymentRequestService", () => {
   const service = new PaymentRequestService(new PaymentAmountService());
+  const auth = {
+    confirmPassword: jest.fn()
+  };
+
+  beforeEach(() => {
+    auth.confirmPassword.mockReset();
+    auth.confirmPassword.mockResolvedValue({ ok: true });
+  });
 
   function approvalRoleTables(roleKey: string) {
     return {
@@ -703,15 +711,23 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
 
     const execution = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
       amountCents: 30_000,
       paidAt: "2026-06-22T00:00:00.000Z",
-      voucherFileId: "file-1"
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
     });
 
     expect(execution.id).toBe("execution-1");
+    expect(auth.confirmPassword).toHaveBeenCalledWith("cashier-1", "current-password");
     expect(tx.paymentExecution.create).toHaveBeenCalledWith({
       data: {
         paymentRequestId: "payment-1",
@@ -782,12 +798,19 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
 
     await paymentService.recordExecution("FK-2026-012", "cashier-1", {
       amountCents: 20_000,
       paidAt: "2026-06-22T00:00:00.000Z",
-      voucherFileId: "file-1"
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
     });
 
     expect(tx.paymentRequest.update).toHaveBeenCalledWith({
@@ -829,13 +852,20 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 20_000,
         paidAt: "2026-06-22T00:00:00.000Z",
-        voucherFileId: "file-1"
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
       })
     ).rejects.toThrow("Cannot record payment execution from status approval_pending");
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
@@ -864,13 +894,20 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 30_001,
         paidAt: "2026-06-22T00:00:00.000Z",
-        voucherFileId: "file-1"
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
       })
     ).rejects.toThrow("Payment execution exceeds approved remaining amount: 30000");
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
@@ -898,7 +935,8 @@ describe("PaymentRequestService", () => {
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 0,
         paidAt: "2026-06-22T00:00:00.000Z",
-        voucherFileId: ""
+        voucherFileId: "",
+        confirmationPassword: ""
       })
     ).rejects.toThrow("Payment execution amount must be greater than zero");
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
@@ -926,7 +964,8 @@ describe("PaymentRequestService", () => {
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 10_000,
         paidAt: "2026-06-22T00:00:00.000Z",
-        voucherFileId: ""
+        voucherFileId: "",
+        confirmationPassword: "current-password"
       })
     ).rejects.toThrow("Payment voucher file is required");
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
@@ -947,17 +986,74 @@ describe("PaymentRequestService", () => {
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: undefined as never,
         paidAt: "2026-06-22T00:00:00.000Z",
-        voucherFileId: "file-1"
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
       })
     ).rejects.toThrow("Payment execution amount must be greater than zero");
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 10_000,
         paidAt: "2026-06-22T00:00:00.000Z",
-        voucherFileId: undefined as never
+        voucherFileId: undefined as never,
+        confirmationPassword: "current-password"
       })
     ).rejects.toThrow("Payment voucher file is required");
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution without second confirmation password", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 10_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: ""
+      })
+    ).rejects.toThrow("Payment execution confirmation password is required");
+    expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution when second confirmation fails", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    auth.confirmPassword.mockRejectedValue(new Error("Invalid confirmation password"));
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 10_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "wrong-password"
+      })
+    ).rejects.toThrow("Invalid confirmation password");
+    expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
 
   it("records finance outflow after actual payment execution", async () => {

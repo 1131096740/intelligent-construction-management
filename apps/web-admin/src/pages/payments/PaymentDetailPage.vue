@@ -99,6 +99,11 @@
               v-model="paymentActionForm.voucherFileId"
               placeholder="付款凭证文件ID"
             />
+            <t-input
+              v-model="paymentActionForm.executionConfirmationPassword"
+              type="password"
+              placeholder="当前登录密码确认"
+            />
           </div>
           <t-button
             theme="primary"
@@ -292,6 +297,7 @@ const paymentActionForm = reactive({
   executionAmountCents: "",
   paidAt: new Date().toISOString(),
   voucherFileId: "",
+  executionConfirmationPassword: "",
   financeAmountCents: "",
   occurredAt: new Date().toISOString(),
   pdfFileId: ""
@@ -414,7 +420,11 @@ async function submitExecution() {
     recordPaymentExecution(paymentId, {
       amountCents: parseCentAmount(paymentActionForm.executionAmountCents, "实付金额"),
       paidAt: requiredText(paymentActionForm.paidAt, "付款时间"),
-      voucherFileId: requiredText(paymentActionForm.voucherFileId, "付款凭证文件ID")
+      voucherFileId: requiredText(paymentActionForm.voucherFileId, "付款凭证文件ID"),
+      confirmationPassword: requiredText(
+        paymentActionForm.executionConfirmationPassword,
+        "当前登录密码"
+      )
     })
   );
 }

@@ -355,7 +355,8 @@ async function verifyPhase1WriteLoop(tokens) {
     {
       amountCents: payableAmountCents,
       paidAt: "2026-06-22T00:00:00.000Z",
-      voucherFileId: voucherFile.id
+      voucherFileId: voucherFile.id,
+      confirmationPassword: PASSWORD
     },
     tokens.cashier
   );

@@ -8,6 +8,7 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
@@ -57,7 +58,9 @@ export class PaymentRequestService {
     @Optional()
     private readonly audit: AuditService = new AuditService(),
     @Optional()
-    private readonly files?: FileService
+    private readonly files?: FileService,
+    @Optional()
+    private readonly auth?: AuthService
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -452,6 +455,16 @@ export class PaymentRequestService {
     if (!input.voucherFileId?.trim()) {
       throw new Error("Payment voucher file is required");
     }
+
+    if (!input.confirmationPassword?.trim()) {
+      throw new Error("Payment execution confirmation password is required");
+    }
+
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm payment execution");
+    }
+
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
     return this.prisma.$transaction(async (tx) => {
       const payment = await tx.paymentRequest.findFirst({
