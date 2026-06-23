@@ -151,8 +151,15 @@ export function uploadPrivateFile(file: Blob, fileName: string) {
   return postForm<PrivateFileReadModel>("/files", form);
 }
 
-export function createPrivateFileDownloadTicket(fileId: string) {
-  return readJson<PrivateFileDownloadTicketReadModel>(`/files/${fileId}/download-ticket`);
+export interface CreatePrivateFileDownloadTicketPayload {
+  confirmationPassword: string;
+}
+
+export function createPrivateFileDownloadTicket(
+  fileId: string,
+  body: CreatePrivateFileDownloadTicketPayload
+) {
+  return postJson<PrivateFileDownloadTicketReadModel>(`/files/${fileId}/download-ticket`, body);
 }
 
 export function uploadContractArchiveFile(

@@ -1,5 +1,6 @@
 import {
   Controller,
+  Body,
   Get,
   Param,
   Post,
@@ -13,6 +14,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { AuthService } from "../auth/auth.service";
 import { FileService } from "./file.service";
 
 interface MemoryUploadedFile {
@@ -22,9 +24,13 @@ interface MemoryUploadedFile {
   buffer: Buffer;
 }
 
+interface CreateDownloadTicketDto {
+  confirmationPassword?: string;
+}
+
 @Controller("files")
 export class FileController {
-  constructor(private readonly files: FileService) {}
+  constructor(private readonly files: FileService, private readonly auth: AuthService) {}
 
   @Post()
   @UseInterceptors(FileInterceptor("file"))
@@ -45,11 +51,17 @@ export class FileController {
     });
   }
 
-  @Get(":fileId/download-ticket")
-  createDownloadTicket(
+  @Post(":fileId/download-ticket")
+  async createDownloadTicket(
     @Param("fileId") fileId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() input?: CreateDownloadTicketDto
   ) {
+    if (!input?.confirmationPassword?.trim()) {
+      throw new Error("Confirmation password is required");
+    }
+
+    await this.auth.confirmPassword(user.id, input.confirmationPassword);
     return this.files.createDownloadTicket(fileId, { actorUserId: user.id });
   }
 

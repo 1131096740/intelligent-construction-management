@@ -213,11 +213,17 @@ describe("core flow read API client", () => {
       json: async () => ({ downloadUrl: "/files/file-1/download?token=t" })
     } as Response);
 
-    await createPrivateFileDownloadTicket("file-1");
+    await createPrivateFileDownloadTicket("file-1", {
+      confirmationPassword: "current-password"
+    });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/files/file-1/download-ticket"
     ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({ confirmationPassword: "current-password" })
+    );
   });
 
   it("manages approval delegations through the backend", async () => {
