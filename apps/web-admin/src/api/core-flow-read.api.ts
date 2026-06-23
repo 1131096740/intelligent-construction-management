@@ -106,6 +106,7 @@ export interface UploadContractArchiveFilePayload {
 
 export interface ConfirmContractArchivePayload {
   archiveFileId: string;
+  confirmationPassword: string;
 }
 
 export interface UploadSettlementArchiveFilePayload {
@@ -114,6 +115,7 @@ export interface UploadSettlementArchiveFilePayload {
 
 export interface ConfirmSettlementArchivePayload {
   archiveFileId: string;
+  confirmationPassword: string;
 }
 
 export interface PrivateFileReadModel {

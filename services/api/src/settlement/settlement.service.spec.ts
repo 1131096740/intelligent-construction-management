@@ -5,9 +5,14 @@ describe("SettlementService", () => {
   const audit = {
     record: jest.fn()
   };
+  const auth = {
+    confirmPassword: jest.fn()
+  };
 
   beforeEach(() => {
     audit.record.mockReset();
+    auth.confirmPassword.mockReset();
+    auth.confirmPassword.mockResolvedValue({ ok: true });
   });
 
   function approvalRoleTables(roleKey: string) {
@@ -1051,17 +1056,22 @@ describe("SettlementService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const settlementService = new SettlementService(prisma as never, audit as never);
+    const settlementService = new SettlementService(prisma as never, audit as never, auth as never);
 
     const result = await settlementService.confirmArchiveFile(
       "settlement-1",
       "user-contract-director",
       {
-        archiveFileId: "settlement-archive-file-1"
+        archiveFileId: "settlement-archive-file-1",
+        confirmationPassword: "current-password"
       }
     );
 
     expect(result.status).toBe("effective");
+    expect(auth.confirmPassword).toHaveBeenCalledWith(
+      "user-contract-director",
+      "current-password"
+    );
     expect(tx.settlementArchiveFile.update).toHaveBeenCalledWith({
       where: { id: "settlement-archive-file-1" },
       data: {
@@ -1083,6 +1093,38 @@ describe("SettlementService", () => {
         archiveFileId: "settlement-archive-file-1"
       }
     });
+  });
+
+  it("rejects settlement archive confirmation without a confirmation password", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      settlementService.confirmArchiveFile("settlement-1", "user-contract-director", {
+        archiveFileId: "settlement-archive-file-1",
+        confirmationPassword: ""
+      })
+    ).rejects.toThrow("Settlement archive confirmation password is required");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
+  it("does not confirm a settlement archive when the confirmation password is wrong", async () => {
+    auth.confirmPassword.mockRejectedValueOnce(new Error("Invalid confirmation password"));
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      settlementService.confirmArchiveFile("settlement-1", "user-contract-director", {
+        archiveFileId: "settlement-archive-file-1",
+        confirmationPassword: "wrong-password"
+      })
+    ).rejects.toThrow("Invalid confirmation password");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("lets the applicant remind an overdue in-progress settlement approval", async () => {

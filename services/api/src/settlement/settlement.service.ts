@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import {
   approvalElapsedHours,
@@ -9,6 +9,7 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
@@ -54,7 +55,9 @@ const LABOR_PROFESSIONAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
 export class SettlementService {
   constructor(
     private readonly prisma?: PrismaService,
-    private readonly audit: AuditService = new AuditService()
+    private readonly audit: AuditService = new AuditService(),
+    @Optional()
+    private readonly auth?: AuthService
   ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
@@ -604,6 +607,16 @@ export class SettlementService {
     if (!this.prisma) {
       throw new Error("Prisma service is required to confirm settlement archive file");
     }
+
+    if (!input.confirmationPassword?.trim()) {
+      throw new Error("Settlement archive confirmation password is required");
+    }
+
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm settlement archive");
+    }
+
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
     return this.prisma.$transaction(async (tx) => {
       const settlement = await tx.settlement.findUnique({

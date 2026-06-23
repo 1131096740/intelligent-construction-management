@@ -81,6 +81,11 @@
               v-model="contractArchiveForm.archiveFileId"
               placeholder="归档记录ID"
             />
+            <t-input
+              v-model="contractArchiveForm.confirmationPassword"
+              type="password"
+              placeholder="当前登录密码确认"
+            />
           </div>
           <t-button
             theme="primary"
@@ -202,7 +207,8 @@ const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const selectedContractArchiveFile = ref<File | null>(null);
 const contractArchiveForm = reactive({
-  archiveFileId: ""
+  archiveFileId: "",
+  confirmationPassword: ""
 });
 
 const contractDetailTitleView = computed(() => contractDetail.value?.title ?? contractDetailTitle);
@@ -315,7 +321,11 @@ async function submitContractArchiveConfirmation() {
 
   await runArchiveAction("confirm", () =>
     confirmContractArchive(contractVersionId, {
-      archiveFileId: requiredText(contractArchiveForm.archiveFileId, "归档记录ID")
+      archiveFileId: requiredText(contractArchiveForm.archiveFileId, "归档记录ID"),
+      confirmationPassword: requiredText(
+        contractArchiveForm.confirmationPassword,
+        "当前登录密码"
+      )
     })
   );
 }

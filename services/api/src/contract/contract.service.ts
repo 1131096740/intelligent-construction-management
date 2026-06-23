@@ -1,7 +1,8 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
 import { CreateContractDto } from "./dto/create-contract.dto";
@@ -38,7 +39,9 @@ const CONTRACT_APPROVAL_NODES = [
 export class ContractService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService = new AuditService()
+    private readonly audit: AuditService = new AuditService(),
+    @Optional()
+    private readonly auth?: AuthService
   ) {}
 
   async createDraft(input: CreateContractDto) {
@@ -461,6 +464,16 @@ export class ContractService {
     actorUserId: string,
     input: ConfirmContractArchiveDto
   ) {
+    if (!input.confirmationPassword?.trim()) {
+      throw new Error("Contract archive confirmation password is required");
+    }
+
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm contract archive");
+    }
+
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
+
     return this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }

@@ -81,6 +81,11 @@
               v-model="settlementArchiveForm.archiveFileId"
               placeholder="归档记录ID"
             />
+            <t-input
+              v-model="settlementArchiveForm.confirmationPassword"
+              type="password"
+              placeholder="当前登录密码确认"
+            />
           </div>
           <t-button
             theme="primary"
@@ -206,7 +211,8 @@ const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const selectedSettlementArchiveFile = ref<File | null>(null);
 const settlementArchiveForm = reactive({
-  archiveFileId: ""
+  archiveFileId: "",
+  confirmationPassword: ""
 });
 
 const settlementDetailTitleView = computed(() => settlementDetail.value?.title ?? settlementDetailTitle);
@@ -316,7 +322,11 @@ async function submitSettlementArchiveConfirmation() {
 
   await runArchiveAction("confirm", () =>
     confirmSettlementArchive(settlementId, {
-      archiveFileId: requiredText(settlementArchiveForm.archiveFileId, "归档记录ID")
+      archiveFileId: requiredText(settlementArchiveForm.archiveFileId, "归档记录ID"),
+      confirmationPassword: requiredText(
+        settlementArchiveForm.confirmationPassword,
+        "当前登录密码"
+      )
     })
   );
 }

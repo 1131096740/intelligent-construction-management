@@ -278,7 +278,7 @@ async function verifyPhase1WriteLoop(tokens) {
   );
   contractVersion = await postJson(
     `/contracts/${contractVersionId}/archive-confirmation`,
-    { archiveFileId: contractArchive.id },
+    { archiveFileId: contractArchive.id, confirmationPassword: PASSWORD },
     tokens.contractDirector
   );
   assertEqual(contractVersion.status, "effective", "contract archive confirmation");
@@ -325,7 +325,7 @@ async function verifyPhase1WriteLoop(tokens) {
   );
   settlement = await postJson(
     `/settlements/${settlement.id}/archive-confirmation`,
-    { archiveFileId: settlementArchive.id },
+    { archiveFileId: settlementArchive.id, confirmationPassword: PASSWORD },
     tokens.contractDirector
   );
   assertEqual(settlement.status, "effective", "settlement archive confirmation");

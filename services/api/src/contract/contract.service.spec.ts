@@ -6,9 +6,14 @@ describe("ContractService", () => {
   const audit = {
     record: jest.fn()
   };
+  const auth = {
+    confirmPassword: jest.fn()
+  };
 
   beforeEach(() => {
     audit.record.mockReset();
+    auth.confirmPassword.mockReset();
+    auth.confirmPassword.mockResolvedValue({ ok: true });
   });
 
   function approvalRoleTables(roleKey: string) {
@@ -644,17 +649,22 @@ describe("ContractService", () => {
         callback(tx)
       )
     } as unknown as PrismaService;
-    const service = new ContractService(prisma, audit as never);
+    const service = new ContractService(prisma, audit as never, auth as never);
 
     const result = await service.confirmArchiveFile(
       "contract-version-1",
       "user-contract-director",
       {
-        archiveFileId: "archive-file-1"
+        archiveFileId: "archive-file-1",
+        confirmationPassword: "current-password"
       }
     );
 
     expect(result.status).toBe("effective");
+    expect(auth.confirmPassword).toHaveBeenCalledWith(
+      "user-contract-director",
+      "current-password"
+    );
     expect(tx.contractArchiveFile.update).toHaveBeenCalledWith({
       where: { id: "archive-file-1" },
       data: {
@@ -683,6 +693,38 @@ describe("ContractService", () => {
         archiveFileId: "archive-file-1"
       }
     });
+  });
+
+  it("rejects contract archive confirmation without a confirmation password", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never, auth as never);
+
+    await expect(
+      service.confirmArchiveFile("contract-version-1", "user-contract-director", {
+        archiveFileId: "archive-file-1",
+        confirmationPassword: ""
+      })
+    ).rejects.toThrow("Contract archive confirmation password is required");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
+  it("does not confirm a contract archive when the confirmation password is wrong", async () => {
+    auth.confirmPassword.mockRejectedValueOnce(new Error("Invalid confirmation password"));
+    const prisma = {
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never, auth as never);
+
+    await expect(
+      service.confirmArchiveFile("contract-version-1", "user-contract-director", {
+        archiveFileId: "archive-file-1",
+        confirmationPassword: "wrong-password"
+      })
+    ).rejects.toThrow("Invalid confirmation password");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("lets the applicant remind an overdue in-progress contract approval", async () => {

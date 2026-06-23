@@ -113,13 +113,15 @@ describe("core flow read API client", () => {
       fileId: "file-contract-archive"
     });
     await confirmContractArchive("contract-version-1", {
-      archiveFileId: "contract-archive-file-1"
+      archiveFileId: "contract-archive-file-1",
+      confirmationPassword: "current-password"
     });
     await uploadSettlementArchiveFile("settlement-1", {
       fileId: "file-settlement-archive"
     });
     await confirmSettlementArchive("settlement-1", {
-      archiveFileId: "settlement-archive-file-1"
+      archiveFileId: "settlement-archive-file-1",
+      confirmationPassword: "current-password"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
