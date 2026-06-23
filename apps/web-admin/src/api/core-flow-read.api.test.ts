@@ -9,7 +9,9 @@ import {
   confirmSettlementArchive,
   delegateContractApproval,
   delegatePaymentApproval,
+  generateContractPdfArchive,
   generatePaymentPdfArchive,
+  generateSettlementPdfArchive,
   approveContractSeal,
   reviewContractApproval,
   reviewSettlementApproval,
@@ -119,6 +121,7 @@ describe("core flow read API client", () => {
       archiveFileId: "contract-archive-file-1",
       confirmationPassword: "current-password"
     });
+    await generateContractPdfArchive("contract-version-1");
     await uploadSettlementArchiveFile("settlement-1", {
       fileId: "file-settlement-archive"
     });
@@ -126,12 +129,15 @@ describe("core flow read API client", () => {
       archiveFileId: "settlement-archive-file-1",
       confirmationPassword: "current-password"
     });
+    await generateSettlementPdfArchive("settlement-1");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contracts/contract-version-1/archive-files",
       "/api/contracts/contract-version-1/archive-confirmation",
+      "/api/contracts/contract-version-1/pdf-generation",
       "/api/settlements/settlement-1/archive-files",
-      "/api/settlements/settlement-1/archive-confirmation"
+      "/api/settlements/settlement-1/archive-confirmation",
+      "/api/settlements/settlement-1/pdf-generation"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(

@@ -88,4 +88,14 @@ export class SettlementController {
   ) {
     return this.settlements.confirmArchiveFile(settlementId, user.id, body);
   }
+
+  @Post(":settlementId/pdf-generation")
+  @RequireProjectRole("settlement.archive.upload")
+  generatePdfArchive(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { templateKey?: string; departmentScope?: string }
+  ) {
+    return this.settlements.generatePdfArchive(settlementId, user.id, body);
+  }
 }

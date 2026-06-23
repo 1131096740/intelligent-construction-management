@@ -12,6 +12,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { renderSimplePdf } from "../pdf/simple-pdf";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
@@ -761,15 +762,16 @@ export class PaymentRequestService {
 
       return { payment, financeRecordedAmountCents };
     });
-    const buffer = this.renderPaymentPdf({
-      code: source.payment.code,
-      requestedAmountCents: source.payment.requestedAmountCents,
-      approvedAmountCents: source.payment.approvedAmountCents ?? source.payment.requestedAmountCents,
-      paidAmountCents: source.payment.paidAmountCents,
-      financeRecordedAmountCents: source.financeRecordedAmountCents,
-      templateKey,
-      generatedAt: new Date()
-    });
+    const buffer = renderSimplePdf([
+      "Payment Finance Archive",
+      `Payment Code: ${source.payment.code}`,
+      `Template: ${templateKey}`,
+      `Requested Amount: ${this.formatCents(source.payment.requestedAmountCents)}`,
+      `Approved Amount: ${this.formatCents(source.payment.approvedAmountCents ?? source.payment.requestedAmountCents)}`,
+      `Paid Amount: ${this.formatCents(source.payment.paidAmountCents)}`,
+      `Finance Recorded Amount: ${this.formatCents(source.financeRecordedAmountCents)}`,
+      `Generated At: ${new Date().toISOString()}`
+    ]);
     const file = await this.files.uploadPrivateFile({
       originalName: `${source.payment.code}-${templateKey}.pdf`,
       mimeType: "application/pdf",
@@ -838,62 +840,8 @@ export class PaymentRequestService {
     return undefined;
   }
 
-  private renderPaymentPdf(input: {
-    code: string;
-    requestedAmountCents: number;
-    approvedAmountCents: number;
-    paidAmountCents: number;
-    financeRecordedAmountCents: number;
-    templateKey: string;
-    generatedAt: Date;
-  }) {
-    const lines = [
-      "Payment Finance Archive",
-      `Payment Code: ${input.code}`,
-      `Template: ${input.templateKey}`,
-      `Requested Amount: ${this.formatCents(input.requestedAmountCents)}`,
-      `Approved Amount: ${this.formatCents(input.approvedAmountCents)}`,
-      `Paid Amount: ${this.formatCents(input.paidAmountCents)}`,
-      `Finance Recorded Amount: ${this.formatCents(input.financeRecordedAmountCents)}`,
-      `Generated At: ${input.generatedAt.toISOString()}`
-    ];
-    const content = [
-      "BT",
-      "/F1 11 Tf",
-      ...lines.map((line, index) => `1 0 0 1 72 ${740 - index * 18} Tm (${this.pdfText(line)}) Tj`),
-      "ET"
-    ].join("\n");
-    const objects = [
-      "<< /Type /Catalog /Pages 2 0 R >>",
-      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-      `<< /Length ${Buffer.byteLength(content, "ascii")} >>\nstream\n${content}\nendstream`
-    ];
-    const chunks = ["%PDF-1.4\n"];
-    const offsets: number[] = [];
-
-    for (const [index, object] of objects.entries()) {
-      offsets.push(Buffer.byteLength(chunks.join(""), "ascii"));
-      chunks.push(`${index + 1} 0 obj\n${object}\nendobj\n`);
-    }
-
-    const xrefOffset = Buffer.byteLength(chunks.join(""), "ascii");
-    chunks.push(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`);
-    for (const offset of offsets) {
-      chunks.push(`${String(offset).padStart(10, "0")} 00000 n \n`);
-    }
-    chunks.push(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
-
-    return Buffer.from(chunks.join(""), "ascii");
-  }
-
   private formatCents(value: number) {
     return `${(value / 100).toFixed(2)} CNY`;
-  }
-
-  private pdfText(value: string) {
-    return value.replace(/[^\x20-\x7E]/g, "?").replace(/[\\()]/g, "\\$&");
   }
 
   private async assignApproval(

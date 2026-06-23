@@ -288,6 +288,20 @@ export function generatePaymentPdfArchive(
   return postJson<unknown>(`/payments/${paymentId}/pdf-generation`, body);
 }
 
+export function generateContractPdfArchive(
+  contractVersionId: string,
+  body: GeneratePaymentPdfArchivePayload = {}
+) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/pdf-generation`, body);
+}
+
+export function generateSettlementPdfArchive(
+  settlementId: string,
+  body: GeneratePaymentPdfArchivePayload = {}
+) {
+  return postJson<unknown>(`/settlements/${settlementId}/pdf-generation`, body);
+}
+
 export interface ApprovalDelegationReadModel {
   id: string;
   fromUserId: string;

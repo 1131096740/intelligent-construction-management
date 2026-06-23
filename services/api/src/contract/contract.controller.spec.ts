@@ -15,7 +15,8 @@ describe("ContractController authorization wiring", () => {
     ["delegateApproval", "contract.approve"],
     ["approveSeal", "contract.seal"],
     ["uploadArchiveFile", "contract.archive.upload"],
-    ["confirmArchiveFile", "contract.archive.confirm"]
+    ["confirmArchiveFile", "contract.archive.confirm"],
+    ["generatePdfArchive", "contract.archive.upload"]
   ])("guards %s with the %s action", (method, action) => {
     const handler = (ContractController.prototype as unknown as Record<string, object>)[method];
 

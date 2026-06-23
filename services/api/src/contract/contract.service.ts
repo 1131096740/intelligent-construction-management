@@ -5,6 +5,8 @@ import { ApprovalDelegationService } from "../approval/approval-delegation.servi
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
+import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
 import { CreateContractDto } from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
@@ -12,6 +14,11 @@ import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file
 
 interface AssignApprovalDto {
   toUserId: string;
+}
+
+interface GenerateContractPdfArchiveDto {
+  templateKey?: string;
+  departmentScope?: string;
 }
 
 interface ContractApprovalAssignment {
@@ -44,7 +51,9 @@ export class ContractService {
     @Optional()
     private readonly auth?: AuthService,
     @Optional()
-    private readonly delegations?: ApprovalDelegationService
+    private readonly delegations?: ApprovalDelegationService,
+    @Optional()
+    private readonly files?: FileService
   ) {}
 
   async createDraft(input: CreateContractDto) {
@@ -551,6 +560,105 @@ export class ContractService {
     });
   }
 
+  async generatePdfArchive(
+    contractVersionId: string,
+    actorUserId: string,
+    input: GenerateContractPdfArchiveDto = {}
+  ) {
+    if (!this.files) {
+      throw new Error("File service is required to generate contract PDF archive");
+    }
+
+    const templateKey = input.templateKey ?? "contract_archive";
+    const departmentScope = input.departmentScope ?? "contract";
+    const source = await this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId }
+      });
+
+      if (!version) {
+        throw new Error("Contract version not found");
+      }
+
+      if (version.status !== "effective") {
+        throw new Error(`Cannot generate contract PDF from status ${version.status}`);
+      }
+
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+
+      if (!contract) {
+        throw new Error("Contract not found");
+      }
+
+      const existingPdf = await tx.pdfDocument.findFirst({
+        where: {
+          businessType: "contract_version",
+          businessId: version.id,
+          templateKey
+        }
+      });
+
+      if (existingPdf) {
+        throw new Error("Contract PDF archive already exists");
+      }
+
+      return { contract, version };
+    });
+    const buffer = renderSimplePdf([
+      "Contract Archive",
+      `Contract Code: ${source.contract.code}`,
+      `Contract Name: ${source.contract.name}`,
+      `Counterparty: ${source.contract.counterparty}`,
+      `Version: ${source.version.versionNo}`,
+      `Amount: ${this.formatCents(source.version.amountCents)}`,
+      `Template: ${templateKey}`,
+      `Generated At: ${new Date().toISOString()}`
+    ]);
+    const file = await this.files.uploadPrivateFile({
+      originalName: `${source.contract.code}-v${source.version.versionNo}-${templateKey}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: buffer.length,
+      uploadedByUserId: actorUserId,
+      buffer
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      const pdfDocument = await tx.pdfDocument.create({
+        data: {
+          businessType: "contract_version",
+          businessId: source.version.id,
+          fileId: file.id,
+          templateKey
+        }
+      });
+      const archiveRecord = await tx.archiveRecord.create({
+        data: {
+          businessType: "contract_version",
+          businessId: source.version.id,
+          fileId: file.id,
+          departmentScope
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.pdf_archive.generate",
+        businessType: "contract_version",
+        businessId: source.version.id,
+        metadata: {
+          code: source.contract.code,
+          pdfDocumentId: pdfDocument.id,
+          archiveRecordId: archiveRecord.id,
+          fileId: file.id,
+          templateKey,
+          departmentScope
+        }
+      });
+
+      return { pdfDocument, archiveRecord };
+    });
+  }
+
   private async updateVersionStatus(input: {
     contractVersionId: string;
     expectedStatus: string;
@@ -626,6 +734,10 @@ export class ContractService {
     const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
 
     return Array.from(new Set([...positionKeys, ...memberKeys]));
+  }
+
+  private formatCents(value: number) {
+    return `${(value / 100).toFixed(2)} CNY`;
   }
 
   // 常驻委托台账消费：本人岗位/节点指派都不命中时，看是否有在窗口内的委托人持有该节点角色。

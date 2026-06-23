@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-23 (CodeX)：补合同/结算 PDF 生成归档最小闭环。抽出轻量 `renderSimplePdf` 复用付款 PDF buffer 生成逻辑；新增 `POST /contracts/:contractVersionId/pdf-generation`（权限沿用 `contract.archive.upload`，仅 effective 合同版本可生成）与 `POST /settlements/:settlementId/pdf-generation`（权限沿用 `settlement.archive.upload`，effective/partially_paid/paid 结算可生成），均走现有私有文件上传链路创建 `FileObject`，再写 `PdfDocument` + `ArchiveRecord` + 审计。Web API client 补 `generateContractPdfArchive` / `generateSettlementPdfArchive`。API 全量 174 个单测 + web-admin 59 个 + 两包 typecheck/lint 通过。暂未做 COS 私有桶、文件水印、文件下载二次确认。
 - 2026-06-23 (Claude)：常驻委托台账闭环（消除“写了没人读”的死数据）。`ApprovalDelegation` 此前 3 处 `delegate` 写入但全库零读取，现在真正被消费：新增 `ApprovalDelegationService`（create/listForUser/revoke + `activeDelegatorIds(tx,toUserId,now)`）与登录态 `POST/GET/DELETE /approval-delegations`（任何登录用户管理自己的委托，无 `@RequireProjectRole`；创建/撤销写审计 `approval.delegation.{create,revoke}`）。合同/结算/付款 review 在本人岗位 + 节点指派都不命中时，回退到“窗口内的委托人是否持有该节点角色”——**全流程通用**（含合同/付款的董事长/总经理 OR-sign 终审）。Web 端补委托台账管理页（/delegations，列表+创建+撤销）、API client 3 个调用 + `deleteJson`。API 168 个单测（含 ApprovalDelegationService 7 + 三处消费/拒绝 4）+ web-admin 59 + 全量 typecheck/lint 通过；本机实跑 verify-core-flow 全绿、委托端点 curl 冒烟通过。
 - 2026-06-23 (Claude)：把敏感操作二次确认扩展到归档确认（合同 + 结算）。合同/结算 `archive-confirmation` 现在需要 `confirmationPassword`，后端复用 `AuthService.confirmPassword`（与付款实付一致），密码缺失/错误时不开事务、不让版本/结算生效。两类 service 注入可选 `AuthService`，模块各 import `AuthModule`；Web 归档确认表单补当前密码输入；`verify-core-flow.cjs` 两处归档确认带 seed 密码继续实跑通过。API 153 个单测（含 +4 归档确认二次确认）+ web-admin 58 + 全量 typecheck/lint 通过。
 - 2026-06-23 (CodeX)：补资金出账登记二次确认最小闭环。`POST /payments/:paymentId/executions` 的 DTO 新增 `confirmationPassword`，后端在实际付款登记前复验当前登录用户密码，密码缺失/错误时不查询付款单、不写 `PaymentExecution`；Web 付款详情页的“出纳实付”补当前登录密码输入；`verify-core-flow.cjs` 带 seed 密码继续实跑。API 149 个单测 + web-admin 58 + 全量 typecheck/lint 通过。暂未覆盖归档确认、文件下载等其他敏感动作，也未做确认票据/短时效二次确认 token。
@@ -30,7 +31,7 @@
 - 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：继续 Milestone 6：COS 私有桶 / 文件水印 / 文件下载二次确认；或补合同/结算 PDF 模板（付款 PDF 已做）。委托台账已闭环（管理 API + Web 页 + review 自动套用）。
+- **下一步**：继续 Milestone 6：COS 私有桶 / 文件水印 / 文件下载二次确认。委托台账与三类 PDF 生成归档已闭环。
 
 ---
 
@@ -81,7 +82,7 @@
 - [x] 审计日志已接入核心动作（合同/结算/付款共 12 类动作）
 - [~] 私有文件上传流程（本地实现，**COS 私有桶未接**）
 - [x] 文件下载权限校验 + 短时效 URL（本地私有存储短链 + 下载审计；COS 私有桶未接）
-- [~] 真正生成 PDF（付款财务归档 PDF 已由后端生成并归档；合同/结算 PDF 模板未做）
+- [x] 真正生成 PDF（付款财务归档、合同归档、结算归档 PDF 均已由后端生成并归档）
 - [~] 文件水印 / 敏感操作二次确认（实际付款登记 + 合同/结算归档确认已要求当前密码二次确认；文件水印、文件下载等其他敏感动作未覆盖）
 
 ## 认证与授权（上线头号短板）

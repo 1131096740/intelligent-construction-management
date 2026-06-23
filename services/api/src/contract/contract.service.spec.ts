@@ -784,6 +784,114 @@ describe("ContractService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
+  it("generates a contract PDF file and records its archive", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          versionNo: 1,
+          status: "effective",
+          amountCents: 1_000_000
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          code: "HT-2026-001",
+          name: "钢材采购合同",
+          counterparty: "供应商A"
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "pdf-1" })
+      },
+      archiveRecord: {
+        create: jest.fn().mockResolvedValue({ id: "archive-1" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-generated" })
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    const result = await service.generatePdfArchive("contract-version-1", "contract-staff-1");
+
+    expect(result.pdfDocument.id).toBe("pdf-1");
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      originalName: "HT-2026-001-v1-contract_archive.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: expect.any(Number),
+      uploadedByUserId: "contract-staff-1",
+      buffer: expect.any(Buffer)
+    });
+    const uploadedBuffer = files.uploadPrivateFile.mock.calls[0][0].buffer as Buffer;
+    expect(uploadedBuffer.toString("ascii", 0, 8)).toBe("%PDF-1.4");
+    expect(tx.pdfDocument.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "contract_version",
+        businessId: "contract-version-1",
+        fileId: "file-generated",
+        templateKey: "contract_archive"
+      }
+    });
+  });
+
+  it("rejects contract PDF generation when the archive already exists", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          code: "HT-2026-001",
+          name: "钢材采购合同",
+          counterparty: "供应商A"
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: "pdf-existing" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      service.generatePdfArchive("contract-version-1", "contract-staff-1")
+    ).rejects.toThrow("Contract PDF archive already exists");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
   it("does not confirm a contract archive when the confirmation password is wrong", async () => {
     auth.confirmPassword.mockRejectedValueOnce(new Error("Invalid confirmation password"));
     const prisma = {

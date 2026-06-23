@@ -1227,6 +1227,100 @@ describe("SettlementService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
+  it("generates a settlement PDF file and records its archive", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-019",
+          periodLabel: "2026-06",
+          status: "effective",
+          amountCents: 1_000_000,
+          payableAmountCents: 800_000,
+          paidAmountCents: 0
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "pdf-1" })
+      },
+      archiveRecord: {
+        create: jest.fn().mockResolvedValue({ id: "archive-1" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-generated" })
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    const result = await settlementService.generatePdfArchive("settlement-1", "contract-staff-1");
+
+    expect(result.pdfDocument.id).toBe("pdf-1");
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      originalName: "JS-2026-019-settlement_archive.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: expect.any(Number),
+      uploadedByUserId: "contract-staff-1",
+      buffer: expect.any(Buffer)
+    });
+    const uploadedBuffer = files.uploadPrivateFile.mock.calls[0][0].buffer as Buffer;
+    expect(uploadedBuffer.toString("ascii", 0, 8)).toBe("%PDF-1.4");
+    expect(tx.pdfDocument.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "settlement",
+        businessId: "settlement-1",
+        fileId: "file-generated",
+        templateKey: "settlement_archive"
+      }
+    });
+  });
+
+  it("rejects settlement PDF generation when the archive already exists", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-019",
+          periodLabel: "2026-06",
+          status: "effective",
+          amountCents: 1_000_000,
+          payableAmountCents: 800_000,
+          paidAmountCents: 0
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: "pdf-existing" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.generatePdfArchive("settlement-1", "contract-staff-1")
+    ).rejects.toThrow("Settlement PDF archive already exists");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
   it("does not confirm a settlement archive when the confirmation password is wrong", async () => {
     auth.confirmPassword.mockRejectedValueOnce(new Error("Invalid confirmation password"));
     const prisma = {

@@ -13,7 +13,8 @@ describe("SettlementController authorization wiring", () => {
     ["transferApproval", "settlement.approve"],
     ["delegateApproval", "settlement.approve"],
     ["uploadArchiveFile", "settlement.archive.upload"],
-    ["confirmArchiveFile", "settlement.archive.confirm"]
+    ["confirmArchiveFile", "settlement.archive.confirm"],
+    ["generatePdfArchive", "settlement.archive.upload"]
   ])("guards %s with the %s action", (method, action) => {
     const handler = (SettlementController.prototype as unknown as Record<string, object>)[method];
 

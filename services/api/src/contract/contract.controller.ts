@@ -111,4 +111,14 @@ export class ContractController {
   ) {
     return this.contracts.confirmArchiveFile(contractVersionId, user.id, body);
   }
+
+  @Post(":contractVersionId/pdf-generation")
+  @RequireProjectRole("contract.archive.upload")
+  generatePdfArchive(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { templateKey?: string; departmentScope?: string }
+  ) {
+    return this.contracts.generatePdfArchive(contractVersionId, user.id, body);
+  }
 }

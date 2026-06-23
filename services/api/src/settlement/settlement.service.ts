@@ -12,6 +12,8 @@ import { ApprovalDelegationService } from "../approval/approval-delegation.servi
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
+import { renderSimplePdf } from "../pdf/simple-pdf";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
@@ -19,6 +21,11 @@ import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dt
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
+
+interface GenerateSettlementPdfArchiveDto {
+  templateKey?: string;
+  departmentScope?: string;
+}
 
 interface SettlementApprovalNode {
   name: string;
@@ -60,7 +67,9 @@ export class SettlementService {
     @Optional()
     private readonly auth?: AuthService,
     @Optional()
-    private readonly delegations?: ApprovalDelegationService
+    private readonly delegations?: ApprovalDelegationService,
+    @Optional()
+    private readonly files?: FileService
   ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
@@ -155,6 +164,10 @@ export class SettlementService {
     }
 
     return Math.floor((amountCents * ratioBps) / 10000);
+  }
+
+  private formatCents(value: number) {
+    return `${(value / 100).toFixed(2)} CNY`;
   }
 
   async uploadArchiveFile(
@@ -684,6 +697,103 @@ export class SettlementService {
       });
 
       return effectiveSettlement;
+    });
+  }
+
+  async generatePdfArchive(
+    settlementId: string,
+    actorUserId: string,
+    input: GenerateSettlementPdfArchiveDto = {}
+  ) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to generate settlement PDF archive");
+    }
+
+    if (!this.files) {
+      throw new Error("File service is required to generate settlement PDF archive");
+    }
+
+    const templateKey = input.templateKey ?? "settlement_archive";
+    const departmentScope = input.departmentScope ?? "contract";
+    const source = await this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      if (!["effective", "partially_paid", "paid"].includes(settlement.status)) {
+        throw new Error(`Cannot generate settlement PDF from status ${settlement.status}`);
+      }
+
+      const existingPdf = await tx.pdfDocument.findFirst({
+        where: {
+          businessType: "settlement",
+          businessId: settlement.id,
+          templateKey
+        }
+      });
+
+      if (existingPdf) {
+        throw new Error("Settlement PDF archive already exists");
+      }
+
+      return settlement;
+    });
+    const buffer = renderSimplePdf([
+      "Settlement Archive",
+      `Settlement Code: ${source.code}`,
+      `Period: ${source.periodLabel}`,
+      `Amount: ${this.formatCents(source.amountCents)}`,
+      `Payable Amount: ${this.formatCents(source.payableAmountCents)}`,
+      `Paid Amount: ${this.formatCents(source.paidAmountCents)}`,
+      `Template: ${templateKey}`,
+      `Generated At: ${new Date().toISOString()}`
+    ]);
+    const file = await this.files.uploadPrivateFile({
+      originalName: `${source.code}-${templateKey}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: buffer.length,
+      uploadedByUserId: actorUserId,
+      buffer
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      const pdfDocument = await tx.pdfDocument.create({
+        data: {
+          businessType: "settlement",
+          businessId: source.id,
+          fileId: file.id,
+          templateKey
+        }
+      });
+      const archiveRecord = await tx.archiveRecord.create({
+        data: {
+          businessType: "settlement",
+          businessId: source.id,
+          fileId: file.id,
+          departmentScope
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.pdf_archive.generate",
+        businessType: "settlement",
+        businessId: source.id,
+        metadata: {
+          code: source.code,
+          pdfDocumentId: pdfDocument.id,
+          archiveRecordId: archiveRecord.id,
+          fileId: file.id,
+          templateKey,
+          departmentScope
+        }
+      });
+
+      return { pdfDocument, archiveRecord };
     });
   }
 
