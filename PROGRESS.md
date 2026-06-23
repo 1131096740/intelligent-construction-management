@@ -10,6 +10,8 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-23 (Claude)：把催办/撤回扩展到合同与付款审批实例。合同：申请人可在 `in_approval` 撤回 → 版本退回 `draft`（同一版本可改可重提，不新建版本）、可对超时实例催办；端点 `POST /contracts/:contractVersionId/approval-withdrawal`、`/approval-reminder`。付款：付款申请无草稿态，撤回为终态 `withdrawn`（重试须新建申请）、可催办；端点 `POST /payments/:paymentId/approval-withdrawal`、`/approval-reminder`。撤回/催办均只要求登录，申请人校验在 service；催办复用 shared-domain `canRemindApproval`（不改写实例）。三处控制器加申请人专属端点的授权契约断言（无 `@RequireProjectRole`）。Web API client 补 4 个调用。API 127 个单测（含 +12 service、+5 控制器契约）+ web-admin 57 + 全量 typecheck/lint 通过。
+- 2026-06-23 (Claude)：登录页移除硬编码种子凭据（手机号/密码默认空串），避免把全员通用种子密码打进前端 bundle。
 - 2026-06-23 (Claude)：补超时催办（timeout reminder）最小实例模型。shared-domain 新增 `remind` 动作 + 纯逻辑（SLA 超时判定 `isApprovalOverdue`、重复催办节流 `canRemindApproval`，默认 48h SLA / 24h 间隔）；结算审批新增 `remindApproval`：申请人对进行中且超时的实例催办，仅记 `ApprovalActionLog(remind)` + 审计（不改写实例，故 `updatedAt` 仍代表上次真实动作，超时判据稳定），非申请人/未超时/节流内拒绝；控制器 `POST /settlements/:id/approval-reminder`、Web API client `remindSettlementApproval`。shared-domain 34 + API 110（含 3 条催办单测）+ web-admin 57 单测、全量 typecheck/lint 通过。
 - 2026-06-23 (CodeX)：补转审 / 委托代理的结算审批最小实例模型。当前节点合法审批人可对当前冻结节点写入 `transfer` / `delegate` assignment，目标用户可按来源岗位完成该节点审批；动作写 `ApprovalActionLog` 与审计日志。Web API client 补转审/委托调用；API 107 个单测 + 全量 test/typecheck/lint 通过。
 - 2026-06-23 (CodeX)：补齐结算审批申请人撤回最小闭环。新增结算 `withdrawn` 状态；申请人可在审批完成前通过独立接口撤回进行中的结算审批实例，系统关闭 ApprovalInstance、写入 `ApprovalActionLog` 与审计日志；非申请人或已离开审批中状态不可撤回。Web API client 补撤回调用；shared-domain / API / web-admin 相关单测 + 全量 test/typecheck/lint 通过。
@@ -22,7 +24,7 @@
 - 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：把催办/撤回扩展到合同/付款审批实例；或建全局委托台账（`ApprovalDelegation` 表已存在但未接）；再或转入 Milestone 6（真正生成 PDF / COS 私有桶 / 下载权限校验）。
+- **下一步**：把转审/委托扩展到合同/付款审批实例并建全局委托台账（`ApprovalDelegation` 表已存在但未接）；或转入 Milestone 6（文件下载权限校验 + 短时效 URL / 真正生成 PDF / COS 私有桶）——文件下载安全是 CLAUDE.md 安全基线明确要求且尚未开工。
 
 ---
 
@@ -64,9 +66,9 @@
 - [~] 审批节点冻结服务 (`approval-freeze.service`)
 - [x] 会签 / 或签 流转（结算审批支持冻结节点会签；合同/付款终审 OR-sign 已接 ApprovalInstance）
 - [~] 条件节点（结算审批已按合同名称/相对方推断物资机械 vs 劳务专业分包路线；缺显式合同类型字段）
-- [~] 驳回上一节点 / 打回申请人 / 撤回（结算审批已支持退回上一节点、打回申请人、申请人撤回；合同/付款审批撤回未做）
+- [~] 驳回上一节点 / 打回申请人 / 撤回（撤回已覆盖结算/合同/付款三类审批：合同撤回退回 draft、付款撤回为终态 withdrawn；退回上一节点/打回申请人仍仅结算审批支持）
 - [~] 转审 / 委托代理（结算审批当前节点已支持转审/委托 assignment；合同/付款审批未接，未建全局委托台账）
-- [x] 超时催办（结算审批最小催办：SLA 超时判定 + 重复节流 + ApprovalActionLog/审计；申请人发起，`POST /settlements/:id/approval-reminder`）
+- [x] 超时催办（结算/合同/付款三类审批均支持：SLA 超时判定 + 重复节流 + ApprovalActionLog/审计；申请人发起，`POST /{settlements|contracts|payments}/:id/approval-reminder`）
 
 ## Milestone 6：文件、PDF、审计、安全
 

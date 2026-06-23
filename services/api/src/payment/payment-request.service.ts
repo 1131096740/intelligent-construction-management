@@ -1,7 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import {
+  approvalElapsedHours,
   canCreatePaymentFromSettlementStatus,
+  canRemindApproval,
   SettlementStatus,
   type RoleKey
 } from "@jiangkong/shared-domain";
@@ -112,6 +114,157 @@ export class PaymentRequestService {
       }
 
       return payment;
+    });
+  }
+
+  // 申请人撤回进行中的付款审批：付款请求无草稿态，撤回为终态 withdrawn（重试须新建付款申请）。
+  async withdrawApproval(paymentId: string, actorUserId: string) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to withdraw payment approval");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.paymentRequest.findFirst({
+        where: { OR: [{ id: paymentId }, { code: paymentId }] }
+      });
+
+      if (!payment) {
+        throw new Error("Payment request not found");
+      }
+
+      if (payment.status !== "approval_pending") {
+        throw new Error(`Cannot withdraw payment approval from status ${payment.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "payment_request",
+          businessId: payment.id,
+          flowType: "payment.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Payment approval instance not found");
+      }
+
+      if (instance.applicantUserId !== actorUserId) {
+        throw new Error("Only payment approval applicant can withdraw");
+      }
+
+      const updated = await tx.paymentRequest.update({
+        where: { id: payment.id },
+        data: { status: "withdrawn" }
+      });
+
+      await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: { status: "withdrawn" }
+      });
+
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "withdraw",
+          actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "payment.approval.withdraw",
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: {
+          fromStatus: payment.status,
+          toStatus: "withdrawn",
+          applicantUserId: instance.applicantUserId
+        }
+      });
+
+      return updated;
+    });
+  }
+
+  // 超时催办：申请人督促当前冻结节点（董事长/总经理）处理；超时/重复节流由 shared-domain 判定。
+  async remindApproval(paymentId: string, actorUserId: string, now: Date = new Date()) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to remind payment approval");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.paymentRequest.findFirst({
+        where: { OR: [{ id: paymentId }, { code: paymentId }] }
+      });
+
+      if (!payment) {
+        throw new Error("Payment request not found");
+      }
+
+      if (payment.status !== "approval_pending") {
+        throw new Error(`Cannot remind payment approval from status ${payment.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "payment_request",
+          businessId: payment.id,
+          flowType: "payment.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Payment approval instance not found");
+      }
+
+      if (instance.applicantUserId !== actorUserId) {
+        throw new Error("Only payment approval applicant can remind");
+      }
+
+      const lastRemind = await tx.approvalActionLog.findFirst({
+        where: { approvalInstanceId: instance.id, action: "remind" },
+        orderBy: { createdAt: "desc" }
+      });
+
+      // 催办不改写实例（不影响 updatedAt），仅记动作日志；超时与重复节流见 shared-domain。
+      if (
+        !canRemindApproval({
+          status: instance.status,
+          lastActivityAt: instance.updatedAt,
+          lastRemindedAt: lastRemind?.createdAt ?? null,
+          now
+        })
+      ) {
+        throw new Error("Payment approval is not due for a reminder yet");
+      }
+
+      const nodes = instance.frozenNodes as unknown as Array<{ name: string }>;
+      const currentNode = nodes[instance.currentNodeIndex];
+
+      const log = await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "remind",
+          actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "payment.approval.remind",
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: {
+          approvalInstanceId: instance.id,
+          currentNodeIndex: instance.currentNodeIndex,
+          nodeName: currentNode?.name,
+          overdueHours: Math.floor(approvalElapsedHours(instance.updatedAt, now))
+        }
+      });
+
+      return log;
     });
   }
 

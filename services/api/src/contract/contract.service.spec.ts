@@ -483,4 +483,249 @@ describe("ContractService", () => {
       }
     });
   });
+
+  it("lets the applicant remind an overdue in-progress contract approval", async () => {
+    const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
+    const now = new Date("2026-06-25T00:00:00.000Z"); // +48h, hits the default SLA
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          currentNodeIndex: 0,
+          updatedAt: lastActivityAt,
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "action-log-1", action: "remind" })
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const contractService = new ContractService(prisma as never, audit as never);
+
+    const result = await contractService.remindApproval("contract-version-1", "applicant-1", now);
+
+    expect(result.action).toBe("remind");
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "remind",
+        actorUserId: "applicant-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "applicant-1",
+      action: "contract.approval.remind",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        approvalInstanceId: "approval-instance-1",
+        currentNodeIndex: 0,
+        nodeName: "董事长/总经理",
+        overdueHours: 48
+      }
+    });
+  });
+
+  it("rejects a contract approval reminder before the SLA has elapsed", async () => {
+    const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
+    const now = new Date("2026-06-24T00:00:00.000Z"); // +24h, under the default 48h SLA
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          currentNodeIndex: 0,
+          updatedAt: lastActivityAt,
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const contractService = new ContractService(prisma as never, audit as never);
+
+    await expect(
+      contractService.remindApproval("contract-version-1", "applicant-1", now)
+    ).rejects.toThrow("not due for a reminder");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a contract approval reminder from a non-applicant", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-06-23T00:00:00.000Z"),
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn(),
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const contractService = new ContractService(prisma as never, audit as never);
+
+    await expect(
+      contractService.remindApproval(
+        "contract-version-1",
+        "intruder-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow("applicant");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("lets the contract approval applicant withdraw back to draft before approval completes", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "draft"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const contractService = new ContractService(prisma as never, audit as never);
+
+    const result = await contractService.withdrawApproval("contract-version-1", "applicant-1");
+
+    expect(result.status).toBe("draft");
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "contract-version-1" },
+      data: { status: "draft" }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: { status: "withdrawn" }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "withdraw",
+        actorUserId: "applicant-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "applicant-1",
+      action: "contract.approval.withdraw",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        fromStatus: "in_approval",
+        toStatus: "draft",
+        applicantUserId: "applicant-1"
+      }
+    });
+  });
+
+  it("rejects contract approval withdrawal from a non-applicant", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const contractService = new ContractService(prisma as never, audit as never);
+
+    await expect(
+      contractService.withdrawApproval("contract-version-1", "other-user")
+    ).rejects.toThrow("Only contract approval applicant can withdraw");
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract approval withdrawal once it has left in_approval", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "approved_pending_seal"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const contractService = new ContractService(prisma as never, audit as never);
+
+    await expect(
+      contractService.withdrawApproval("contract-version-1", "applicant-1")
+    ).rejects.toThrow("Cannot withdraw contract approval from status approved_pending_seal");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+  });
 });

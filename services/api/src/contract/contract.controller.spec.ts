@@ -19,4 +19,13 @@ describe("ContractController authorization wiring", () => {
 
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler as object)).toBe(action);
   });
+
+  it.each([["withdrawApproval"], ["remindApproval"]])(
+    "allows the approval applicant to %s without project approval action metadata",
+    (method) => {
+      const handler = (ContractController.prototype as unknown as Record<string, object>)[method];
+
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler as object)).toBeUndefined();
+    }
+  );
 });

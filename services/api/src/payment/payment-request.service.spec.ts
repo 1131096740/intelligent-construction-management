@@ -1061,4 +1061,253 @@ describe("PaymentRequestService", () => {
     expect(tx.pdfDocument.create).not.toHaveBeenCalled();
     expect(tx.archiveRecord.create).not.toHaveBeenCalled();
   });
+
+  it("lets the applicant remind an overdue in-progress payment approval", async () => {
+    const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
+    const now = new Date("2026-06-25T00:00:00.000Z"); // +48h, hits the default SLA
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          currentNodeIndex: 0,
+          updatedAt: lastActivityAt,
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "action-log-1", action: "remind" })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const result = await paymentService.remindApproval("FK-2026-012", "applicant-1", now);
+
+    expect(result.action).toBe("remind");
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "remind",
+        actorUserId: "applicant-1"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "applicant-1",
+        action: "payment.approval.remind",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
+    });
+  });
+
+  it("rejects a payment approval reminder before the SLA has elapsed", async () => {
+    const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
+    const now = new Date("2026-06-24T00:00:00.000Z"); // +24h, under the default 48h SLA
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          currentNodeIndex: 0,
+          updatedAt: lastActivityAt,
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.remindApproval("FK-2026-012", "applicant-1", now)
+    ).rejects.toThrow("not due for a reminder");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a payment approval reminder from a non-applicant", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-06-23T00:00:00.000Z"),
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn(),
+        create: jest.fn()
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.remindApproval(
+        "FK-2026-012",
+        "intruder-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow("applicant");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("lets the payment approval applicant withdraw before approval completes", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "withdrawn"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const result = await paymentService.withdrawApproval("FK-2026-012", "applicant-1");
+
+    expect(result.status).toBe("withdrawn");
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: { status: "withdrawn" }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: { status: "withdrawn" }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "withdraw",
+        actorUserId: "applicant-1"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "applicant-1",
+        action: "payment.approval.withdraw",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
+    });
+  });
+
+  it("rejects payment approval withdrawal from a non-applicant", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.withdrawApproval("FK-2026-012", "other-user")
+    ).rejects.toThrow("Only payment approval applicant can withdraw");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment approval withdrawal once it has left approval_pending", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approved_pending_payment"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.withdrawApproval("FK-2026-012", "applicant-1")
+    ).rejects.toThrow("Cannot withdraw payment approval from status approved_pending_payment");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+  });
 });

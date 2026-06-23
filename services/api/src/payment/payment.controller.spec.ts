@@ -18,4 +18,13 @@ describe("PaymentController authorization wiring", () => {
 
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(action);
   });
+
+  it.each([["withdrawApproval"], ["remindApproval"]])(
+    "allows the approval applicant to %s without project approval action metadata",
+    (method) => {
+      const handler = (PaymentController.prototype as unknown as Record<string, object>)[method];
+
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBeUndefined();
+    }
+  );
 });

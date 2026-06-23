@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
@@ -259,6 +259,153 @@ export class ContractService {
       });
 
       return updated;
+    });
+  }
+
+  // 申请人撤回进行中的合同审批：版本退回 draft 以便修改后重新提交（同一版本，不新建版本）。
+  async withdrawApproval(contractVersionId: string, actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId }
+      });
+
+      if (!version) {
+        throw new Error("Contract version not found");
+      }
+
+      if (version.status !== "in_approval") {
+        throw new Error(`Cannot withdraw contract approval from status ${version.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "contract_version",
+          businessId: version.id,
+          flowType: "contract.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Contract approval instance not found");
+      }
+
+      if (instance.applicantUserId !== actorUserId) {
+        throw new Error("Only contract approval applicant can withdraw");
+      }
+
+      const updated = await tx.contractVersion.update({
+        where: { id: version.id },
+        data: { status: "draft" }
+      });
+
+      await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: { status: "withdrawn" }
+      });
+
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "withdraw",
+          actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.approval.withdraw",
+        businessType: "contract_version",
+        businessId: version.id,
+        metadata: {
+          fromStatus: version.status,
+          toStatus: "draft",
+          applicantUserId: instance.applicantUserId
+        }
+      });
+
+      return updated;
+    });
+  }
+
+  // 超时催办：申请人督促当前冻结节点（董事长/总经理）处理；是否超时/重复节流由 shared-domain 判定。
+  async remindApproval(
+    contractVersionId: string,
+    actorUserId: string,
+    now: Date = new Date()
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId }
+      });
+
+      if (!version) {
+        throw new Error("Contract version not found");
+      }
+
+      if (version.status !== "in_approval") {
+        throw new Error(`Cannot remind contract approval from status ${version.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "contract_version",
+          businessId: version.id,
+          flowType: "contract.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Contract approval instance not found");
+      }
+
+      if (instance.applicantUserId !== actorUserId) {
+        throw new Error("Only contract approval applicant can remind");
+      }
+
+      const lastRemind = await tx.approvalActionLog.findFirst({
+        where: { approvalInstanceId: instance.id, action: "remind" },
+        orderBy: { createdAt: "desc" }
+      });
+
+      // 催办不改写实例（不影响 updatedAt），仅记动作日志；超时与重复节流见 shared-domain。
+      if (
+        !canRemindApproval({
+          status: instance.status,
+          lastActivityAt: instance.updatedAt,
+          lastRemindedAt: lastRemind?.createdAt ?? null,
+          now
+        })
+      ) {
+        throw new Error("Contract approval is not due for a reminder yet");
+      }
+
+      const nodes = instance.frozenNodes as unknown as typeof CONTRACT_APPROVAL_NODES;
+      const currentNode = nodes[instance.currentNodeIndex];
+
+      const log = await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "remind",
+          actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.approval.remind",
+        businessType: "contract_version",
+        businessId: version.id,
+        metadata: {
+          approvalInstanceId: instance.id,
+          currentNodeIndex: instance.currentNodeIndex,
+          nodeName: currentNode?.name,
+          overdueHours: Math.floor(approvalElapsedHours(instance.updatedAt, now))
+        }
+      });
+
+      return log;
     });
   }
 

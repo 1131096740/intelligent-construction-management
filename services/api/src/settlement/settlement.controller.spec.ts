@@ -20,11 +20,12 @@ describe("SettlementController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(action);
   });
 
-  it("allows approval applicant withdrawal without project approval action metadata", () => {
-    const handler = (SettlementController.prototype as unknown as Record<string, object>)[
-      "withdrawApproval"
-    ];
+  it.each([["withdrawApproval"], ["remindApproval"]])(
+    "allows the approval applicant to %s without project approval action metadata",
+    (method) => {
+      const handler = (SettlementController.prototype as unknown as Record<string, object>)[method];
 
-    expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBeUndefined();
-  });
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBeUndefined();
+    }
+  );
 });

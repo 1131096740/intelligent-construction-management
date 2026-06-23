@@ -153,6 +153,14 @@ export function reviewContractApproval(
   return postJson<unknown>(`/contracts/${contractVersionId}/approval`, body);
 }
 
+export function withdrawContractApproval(contractVersionId: string) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/approval-withdrawal`);
+}
+
+export function remindContractApproval(contractVersionId: string) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/approval-reminder`);
+}
+
 export function approveContractSeal(contractVersionId: string) {
   return postJson<unknown>(`/contracts/${contractVersionId}/seal-approval`);
 }
@@ -202,6 +210,14 @@ export function delegateSettlementApproval(
 
 export function reviewPaymentApproval(paymentId: string, body: ReviewPaymentApprovalPayload) {
   return postJson<unknown>(`/payments/${paymentId}/approval`, body);
+}
+
+export function withdrawPaymentApproval(paymentId: string) {
+  return postJson<unknown>(`/payments/${paymentId}/approval-withdrawal`);
+}
+
+export function remindPaymentApproval(paymentId: string) {
+  return postJson<unknown>(`/payments/${paymentId}/approval-reminder`);
 }
 
 export function recordPaymentExecution(paymentId: string, body: RecordPaymentExecutionPayload) {

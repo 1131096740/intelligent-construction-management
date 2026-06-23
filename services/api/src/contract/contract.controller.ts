@@ -46,6 +46,23 @@ export class ContractController {
     return this.contracts.reviewApproval(contractVersionId, user.id, body);
   }
 
+  @Post(":contractVersionId/approval-withdrawal")
+  withdrawApproval(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.contracts.withdrawApproval(contractVersionId, user.id);
+  }
+
+  // 超时催办：由申请人发起，督促当前节点审批人；是否超时/重复节流在 service 内判定。
+  @Post(":contractVersionId/approval-reminder")
+  remindApproval(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.contracts.remindApproval(contractVersionId, user.id);
+  }
+
   @Post(":contractVersionId/seal-approval")
   @RequireProjectRole("contract.seal")
   approveSeal(
