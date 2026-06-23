@@ -6,10 +6,13 @@
         <p>统一追踪登录、审批、归档、付款、凭证、权限和敏感文件下载</p>
       </div>
       <div class="actions">
-        <t-button theme="primary">
+        <t-button
+          theme="primary"
+          @click="showNotice('审计导出接口尚未接入；当前页面先展示审计范围和静态台账。')"
+        >
           导出审计
         </t-button>
-        <t-button>
+        <t-button @click="showNotice(auditRequiredActions.join('；'))">
           查看规则
         </t-button>
       </div>
@@ -54,12 +57,23 @@
       <t-button
         class="filter-action"
         theme="primary"
+        @click="showNotice('当前审计台账为静态数据，查询条件接后端审计列表接口后生效。')"
       >
         查询
       </t-button>
-      <t-button class="filter-action">
+      <t-button
+        class="filter-action"
+        @click="showNotice('筛选条件已保持为空；后端审计列表接口接入后可重置真实查询。')"
+      >
         重置
       </t-button>
+    </div>
+
+    <div
+      v-if="message"
+      class="list-message"
+    >
+      {{ message }}
     </div>
 
     <t-card
@@ -91,8 +105,11 @@
             {{ row.resultRisk }}
           </t-tag>
         </template>
-        <template #operation>
-          <t-link theme="primary">
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="showNotice(`审计记录 ${row.id} 的详情页尚未拆分，当前追溯信息已在台账展示。`)"
+          >
             详情
           </t-link>
         </template>
@@ -102,6 +119,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import type { AuditTone } from "./audit-log.config";
 import {
   auditFilterFields,
@@ -110,6 +128,12 @@ import {
   auditRequiredActions,
   auditSummaryItems
 } from "./audit-log.config";
+
+const message = ref("");
+
+function showNotice(text: string) {
+  message.value = text;
+}
 
 function statusTagTheme(tone: AuditTone) {
   const themeByTone = {
@@ -260,6 +284,17 @@ function statusTagTheme(tone: AuditTone) {
   min-width: 0;
   overflow: hidden;
   border-radius: 3px;
+}
+
+.list-message {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+  color: #424955;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 :deep(.t-card__body) {

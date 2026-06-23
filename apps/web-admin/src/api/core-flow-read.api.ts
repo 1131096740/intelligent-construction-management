@@ -101,6 +101,29 @@ export interface CreateContractReadModel {
   terms: { id: string };
 }
 
+export interface CreateSettlementPayload {
+  contractVersionId: string;
+  code: string;
+  periodLabel: string;
+  amountCents: number;
+}
+
+export interface CreateSettlementReadModel {
+  id: string;
+  code: string;
+}
+
+export interface CreatePaymentRequestPayload {
+  settlementId: string;
+  code: string;
+  requestedAmountCents: number;
+}
+
+export interface CreatePaymentRequestReadModel {
+  id: string;
+  code: string;
+}
+
 export interface ReviewPaymentApprovalPayload {
   decision: "approve" | "reject";
   approvedAmountCents?: number;
@@ -199,6 +222,14 @@ export function createPrivateFileDownloadTicket(
 
 export function createContractDraft(body: CreateContractPayload) {
   return postJson<CreateContractReadModel>("/contracts", body);
+}
+
+export function createSettlementDraft(body: CreateSettlementPayload) {
+  return postJson<CreateSettlementReadModel>("/settlements", body);
+}
+
+export function createPaymentRequest(body: CreatePaymentRequestPayload) {
+  return postJson<CreatePaymentRequestReadModel>("/payments", body);
 }
 
 export function uploadContractArchiveFile(

@@ -123,12 +123,23 @@
       <t-button
         class="filter-action"
         theme="primary"
+        @click="showNotice('当前台账为静态种子数据，查询条件接后端列表接口后生效。')"
       >
         查询
       </t-button>
-      <t-button class="filter-action">
+      <t-button
+        class="filter-action"
+        @click="showNotice('筛选条件已保持为空；后端列表接口接入后可重置真实查询。')"
+      >
         重置
       </t-button>
+    </div>
+
+    <div
+      v-if="noticeMessage"
+      class="list-message"
+    >
+      {{ noticeMessage }}
     </div>
 
     <t-card
@@ -181,6 +192,7 @@ const showCreateForm = ref(false);
 const createBusy = ref(false);
 const createMessage = ref("");
 const createMessageTone = ref<"success" | "danger">("success");
+const noticeMessage = ref("");
 const createForm = reactive({
   projectId: "seed-project-jgxm-001",
   code: `HT-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
@@ -196,6 +208,10 @@ const createForm = reactive({
 
 function openDetail(contractId: string) {
   void router.push(`/contracts/${contractId}`);
+}
+
+function showNotice(message: string) {
+  noticeMessage.value = message;
 }
 
 function requiredText(raw: string, label: string) {
@@ -343,6 +359,17 @@ function statusTagTheme(tone: ContractStatusTone) {
 .create-message.danger {
   color: #b51d2a;
   background: #fff5f5;
+}
+
+.list-message {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+  color: #424955;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .summary-item {

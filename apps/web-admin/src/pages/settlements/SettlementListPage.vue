@@ -5,10 +5,55 @@
         <h1>结算管理</h1>
         <p>按合同版本、付款条款版本、结算期间和归档状态管理结算单</p>
       </div>
-      <t-button theme="primary">
+      <t-button
+        theme="primary"
+        @click="showCreateForm = !showCreateForm"
+      >
         新建结算
       </t-button>
     </div>
+
+    <t-card
+      v-if="showCreateForm"
+      class="create-panel"
+      title="新建结算单"
+      :bordered="true"
+    >
+      <div class="create-grid">
+        <t-input
+          v-model="createForm.contractVersionId"
+          label="合同版本ID"
+          placeholder="effective 合同版本ID"
+        />
+        <t-input
+          v-model="createForm.code"
+          label="结算编号"
+          placeholder="JS-2026-019"
+        />
+        <t-input
+          v-model="createForm.periodLabel"
+          label="结算期间"
+          placeholder="2026-06"
+        />
+        <t-input
+          v-model="createForm.amountCents"
+          label="结算金额(分)"
+          placeholder="32000000"
+        />
+      </div>
+      <div class="create-actions">
+        <t-button
+          theme="primary"
+          :loading="createBusy"
+          @click="submitCreateSettlement"
+        >
+          创建结算
+        </t-button>
+        <t-button @click="showCreateForm = false">
+          取消
+        </t-button>
+      </div>
+    </t-card>
 
     <div class="summary-strip">
       <div
@@ -49,12 +94,23 @@
       <t-button
         class="filter-action"
         theme="primary"
+        @click="showNotice('当前台账为静态种子数据，查询条件接后端列表接口后生效。')"
       >
         查询
       </t-button>
-      <t-button class="filter-action">
+      <t-button
+        class="filter-action"
+        @click="showNotice('筛选条件已保持为空；后端列表接口接入后可重置真实查询。')"
+      >
         重置
       </t-button>
+    </div>
+
+    <div
+      v-if="message"
+      :class="['list-message', messageTone]"
+    >
+      {{ message }}
     </div>
 
     <t-card
@@ -91,7 +147,9 @@
 </template>
 
 <script setup lang="ts">
+import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { createSettlementDraft } from "../../api/core-flow-read.api";
 import type { SettlementTone } from "./settlement-list.config";
 import {
   settlementFilterFields,
@@ -102,9 +160,64 @@ import {
 } from "./settlement-list.config";
 
 const router = useRouter();
+const showCreateForm = ref(false);
+const createBusy = ref(false);
+const message = ref("");
+const messageTone = ref<"success" | "danger" | "default">("default");
+const createForm = reactive({
+  contractVersionId: "seed-contract-version-ht-2026-001-v1",
+  code: `JS-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+  periodLabel: "2026-06",
+  amountCents: ""
+});
 
 function openDetail(settlementId: string) {
   void router.push(`/settlements/${settlementId}`);
+}
+
+function showNotice(text: string) {
+  message.value = text;
+  messageTone.value = "default";
+}
+
+function requiredText(raw: string, label: string) {
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(`${label}不能为空`);
+  }
+
+  return value;
+}
+
+function positiveInteger(raw: string, label: string) {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${label}必须为正整数`);
+  }
+
+  return value;
+}
+
+async function submitCreateSettlement() {
+  createBusy.value = true;
+  message.value = "";
+
+  try {
+    const settlement = await createSettlementDraft({
+      contractVersionId: requiredText(createForm.contractVersionId, "合同版本ID"),
+      code: requiredText(createForm.code, "结算编号"),
+      periodLabel: requiredText(createForm.periodLabel, "结算期间"),
+      amountCents: positiveInteger(createForm.amountCents, "结算金额")
+    });
+    message.value = "结算单已创建。";
+    messageTone.value = "success";
+    await router.push(`/settlements/${settlement.code}`);
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "创建结算失败";
+    messageTone.value = "danger";
+  } finally {
+    createBusy.value = false;
+  }
 }
 
 function statusTagTheme(tone: SettlementTone) {
@@ -153,6 +266,23 @@ function statusTagTheme(tone: SettlementTone) {
   background: #fff;
   border: 1px solid #dce1e8;
   border-radius: 3px;
+}
+
+.create-panel {
+  margin-bottom: 16px;
+  border-radius: 3px;
+}
+
+.create-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.create-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .summary-strip {
@@ -248,6 +378,27 @@ function statusTagTheme(tone: SettlementTone) {
   border-radius: 3px;
 }
 
+.list-message {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+  color: #424955;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.list-message.success {
+  color: #1b6b3a;
+  background: #f3faf5;
+}
+
+.list-message.danger {
+  color: #b51d2a;
+  background: #fff5f5;
+}
+
 :deep(.t-card__body) {
   padding: 0;
   overflow-x: auto;
@@ -259,6 +410,7 @@ function statusTagTheme(tone: SettlementTone) {
 }
 
 @media (max-width: 980px) {
+  .create-grid,
   .rule-strip,
   .filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));

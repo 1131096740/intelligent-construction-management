@@ -5,7 +5,9 @@ import {
   fetchPaymentDetail,
   fetchSettlementDetail,
   createContractDraft,
+  createPaymentRequest,
   createPrivateFileDownloadTicket,
+  createSettlementDraft,
   confirmContractArchive,
   confirmSettlementArchive,
   delegateContractApproval,
@@ -95,6 +97,31 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/contracts"]);
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+  });
+
+  it("creates settlement and payment requests through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ code: "ok" })
+    } as Response);
+
+    await createSettlementDraft({
+      contractVersionId: "seed-contract-version-ht-2026-001-v1",
+      code: "JS-2026-019",
+      periodLabel: "2026-06",
+      amountCents: 32000000
+    });
+    await createPaymentRequest({
+      settlementId: "seed-settlement-js-2026-018",
+      code: "FK-2026-007",
+      requestedAmountCents: 25600000
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/settlements",
+      "/api/payments"
+    ]);
+    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
   });
 
   it("posts payment workflow actions to the backend", async () => {

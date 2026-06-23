@@ -291,13 +291,23 @@
         :columns="contractPaymentTermColumns"
         :data="contractPaymentTermStagesView"
       >
-        <template #operation>
-          <t-link theme="primary">
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="showContractNotice(`付款条款 ${row.paymentTermsVersion} 已在当前表格展示。`)"
+          >
             查看
           </t-link>
         </template>
       </t-table>
     </t-card>
+
+    <div
+      v-if="contractNotice"
+      class="action-message success"
+    >
+      {{ contractNotice }}
+    </div>
 
     <t-card
       class="section-card"
@@ -348,6 +358,7 @@ const contractDetail = ref<ContractDetailReadModel | null>(null);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
+const contractNotice = ref("");
 const selectedContractArchiveFile = ref<File | null>(null);
 const contractArchiveForm = reactive({
   archiveFileId: "",
@@ -385,6 +396,10 @@ const canRunContractVersionAction = computed(() => !!contractDetail.value?.contr
 
 function openChainLink(to: string) {
   void router.push(to);
+}
+
+function showContractNotice(message: string) {
+  contractNotice.value = message;
 }
 
 async function reloadContractDetail() {

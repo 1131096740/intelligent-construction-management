@@ -5,10 +5,50 @@
         <h1>付款管理</h1>
         <p>按结算单、审批状态、实付状态和付款凭证管理付款申请</p>
       </div>
-      <t-button theme="primary">
+      <t-button
+        theme="primary"
+        @click="showCreateForm = !showCreateForm"
+      >
         新建付款申请
       </t-button>
     </div>
+
+    <t-card
+      v-if="showCreateForm"
+      class="create-panel"
+      title="新建付款申请"
+      :bordered="true"
+    >
+      <div class="create-grid">
+        <t-input
+          v-model="createForm.settlementId"
+          label="结算ID"
+          placeholder="有剩余可付额度的结算ID"
+        />
+        <t-input
+          v-model="createForm.code"
+          label="付款编号"
+          placeholder="FK-2026-007"
+        />
+        <t-input
+          v-model="createForm.requestedAmountCents"
+          label="申请金额(分)"
+          placeholder="25600000"
+        />
+      </div>
+      <div class="create-actions">
+        <t-button
+          theme="primary"
+          :loading="createBusy"
+          @click="submitCreatePayment"
+        >
+          创建付款申请
+        </t-button>
+        <t-button @click="showCreateForm = false">
+          取消
+        </t-button>
+      </div>
+    </t-card>
 
     <div class="summary-strip">
       <div
@@ -49,12 +89,23 @@
       <t-button
         class="filter-action"
         theme="primary"
+        @click="showNotice('当前台账为静态种子数据，查询条件接后端列表接口后生效。')"
       >
         查询
       </t-button>
-      <t-button class="filter-action">
+      <t-button
+        class="filter-action"
+        @click="showNotice('筛选条件已保持为空；后端列表接口接入后可重置真实查询。')"
+      >
         重置
       </t-button>
+    </div>
+
+    <div
+      v-if="message"
+      :class="['list-message', messageTone]"
+    >
+      {{ message }}
     </div>
 
     <t-card
@@ -86,8 +137,11 @@
             {{ row.paymentStatus }}
           </t-tag>
         </template>
-        <template #operation>
-          <t-link theme="primary">
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="openDetail(row.id)"
+          >
             详情
           </t-link>
         </template>
@@ -97,6 +151,9 @@
 </template>
 
 <script setup lang="ts">
+import { reactive, ref } from "vue";
+import { useRouter } from "vue-router";
+import { createPaymentRequest } from "../../api/core-flow-read.api";
 import type { PaymentTone } from "./payment-list.config";
 import {
   paymentFilterFields,
@@ -105,6 +162,65 @@ import {
   paymentRules,
   paymentSummaryItems
 } from "./payment-list.config";
+
+const router = useRouter();
+const showCreateForm = ref(false);
+const createBusy = ref(false);
+const message = ref("");
+const messageTone = ref<"success" | "danger" | "default">("default");
+const createForm = reactive({
+  settlementId: "",
+  code: `FK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+  requestedAmountCents: ""
+});
+
+function openDetail(paymentId: string) {
+  void router.push(`/payments/${paymentId}`);
+}
+
+function showNotice(text: string) {
+  message.value = text;
+  messageTone.value = "default";
+}
+
+function requiredText(raw: string, label: string) {
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(`${label}不能为空`);
+  }
+
+  return value;
+}
+
+function positiveInteger(raw: string, label: string) {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${label}必须为正整数`);
+  }
+
+  return value;
+}
+
+async function submitCreatePayment() {
+  createBusy.value = true;
+  message.value = "";
+
+  try {
+    const payment = await createPaymentRequest({
+      settlementId: requiredText(createForm.settlementId, "结算ID"),
+      code: requiredText(createForm.code, "付款编号"),
+      requestedAmountCents: positiveInteger(createForm.requestedAmountCents, "申请金额")
+    });
+    message.value = "付款申请已创建。";
+    messageTone.value = "success";
+    await router.push(`/payments/${payment.code}`);
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "创建付款申请失败";
+    messageTone.value = "danger";
+  } finally {
+    createBusy.value = false;
+  }
+}
 
 function statusTagTheme(tone: PaymentTone) {
   const themeByTone = {
@@ -152,6 +268,23 @@ function statusTagTheme(tone: PaymentTone) {
   background: #fff;
   border: 1px solid #dce1e8;
   border-radius: 3px;
+}
+
+.create-panel {
+  margin-bottom: 16px;
+  border-radius: 3px;
+}
+
+.create-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.create-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .summary-strip {
@@ -247,6 +380,27 @@ function statusTagTheme(tone: PaymentTone) {
   border-radius: 3px;
 }
 
+.list-message {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+  color: #424955;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.list-message.success {
+  color: #1b6b3a;
+  background: #f3faf5;
+}
+
+.list-message.danger {
+  color: #b51d2a;
+  background: #fff5f5;
+}
+
 :deep(.t-card__body) {
   padding: 0;
   overflow-x: auto;
@@ -258,6 +412,7 @@ function statusTagTheme(tone: PaymentTone) {
 }
 
 @media (max-width: 980px) {
+  .create-grid,
   .rule-strip,
   .filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));

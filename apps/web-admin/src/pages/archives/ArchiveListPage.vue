@@ -6,10 +6,19 @@
         <p>统一查看合同归档件、结算归档件、付款凭证和敏感文件审计记录</p>
       </div>
       <div class="actions">
-        <t-button theme="primary">
+        <t-button
+          theme="primary"
+          @click="uploadInput?.click()"
+        >
           上传资料
         </t-button>
-        <t-button>
+        <input
+          ref="uploadInput"
+          class="hidden-file"
+          type="file"
+          @change="submitUpload"
+        >
+        <t-button @click="showNotice('审计导出接口尚未接入；当前可在审计日志页查看规则和记录。')">
           下载审计
         </t-button>
       </div>
@@ -54,12 +63,23 @@
       <t-button
         class="filter-action"
         theme="primary"
+        @click="showNotice('当前资料库为静态台账，查询条件接后端列表接口后生效。')"
       >
         查询
       </t-button>
-      <t-button class="filter-action">
+      <t-button
+        class="filter-action"
+        @click="showNotice('筛选条件已保持为空；后端列表接口接入后可重置真实查询。')"
+      >
         重置
       </t-button>
+    </div>
+
+    <div
+      v-if="message"
+      :class="['list-message', messageTone]"
+    >
+      {{ message }}
     </div>
 
     <t-card
@@ -82,12 +102,18 @@
             {{ row.archiveStatus }}
           </t-tag>
         </template>
-        <template #operation>
+        <template #operation="{ row }">
           <div class="table-actions">
-            <t-link theme="primary">
+            <t-link
+              theme="primary"
+              @click="showNotice(`资料 ${row.documentNo} 的详情页尚未拆分，当前行信息已在台账展示。`)"
+            >
               查看
             </t-link>
-            <t-link theme="primary">
+            <t-link
+              theme="primary"
+              @click="showNotice('请在对应合同/结算/付款详情页输入文件ID和当前密码签发下载票据。')"
+            >
               授权下载
             </t-link>
           </div>
@@ -98,6 +124,8 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
+import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import type { ArchiveTone } from "./archive-list.config";
 import {
   archiveFilterFields,
@@ -106,6 +134,34 @@ import {
   archiveRules,
   archiveSummaryItems
 } from "./archive-list.config";
+
+const uploadInput = ref<HTMLInputElement | null>(null);
+const message = ref("");
+const messageTone = ref<"success" | "danger" | "default">("default");
+
+function showNotice(text: string) {
+  message.value = text;
+  messageTone.value = "default";
+}
+
+async function submitUpload(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    message.value = `文件已上传，文件ID：${uploaded.id}`;
+    messageTone.value = "success";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "上传资料失败";
+    messageTone.value = "danger";
+  } finally {
+    input.value = "";
+  }
+}
 
 function statusTagTheme(tone: ArchiveTone) {
   const themeByTone = {
@@ -150,6 +206,10 @@ function statusTagTheme(tone: ArchiveTone) {
 .actions {
   display: flex;
   gap: 8px;
+}
+
+.hidden-file {
+  display: none;
 }
 
 .summary-strip,
@@ -251,6 +311,27 @@ function statusTagTheme(tone: ArchiveTone) {
   min-width: 0;
   overflow: hidden;
   border-radius: 3px;
+}
+
+.list-message {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+  color: #424955;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.list-message.success {
+  color: #1b6b3a;
+  background: #f3faf5;
+}
+
+.list-message.danger {
+  color: #b51d2a;
+  background: #fff5f5;
 }
 
 :deep(.t-card__body) {
