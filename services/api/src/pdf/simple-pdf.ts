@@ -3,8 +3,17 @@ function pdfText(value: string) {
 }
 
 export function renderSimplePdf(lines: string[]) {
+  const watermark = "JIANGKONG CONFIDENTIAL";
   const content = [
+    "q",
+    "0.88 g",
     "BT",
+    "/F1 42 Tf",
+    `0.707 0.707 -0.707 0.707 120 300 Tm (${pdfText(watermark)}) Tj`,
+    "ET",
+    "Q",
+    "BT",
+    "0 g",
     "/F1 11 Tf",
     ...lines.map((line, index) => `1 0 0 1 72 ${740 - index * 18} Tm (${pdfText(line)}) Tj`),
     "ET"
