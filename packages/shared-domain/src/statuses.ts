@@ -19,6 +19,7 @@ export const SETTLEMENT_STATUSES = [
   "in_approval",
   "approval_pending",
   "approval_rejected",
+  "withdrawn",
   "approved_pending_archive",
   "pending_archive_confirm",
   "effective",

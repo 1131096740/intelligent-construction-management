@@ -174,6 +174,10 @@ export function reviewSettlementApproval(
   return postJson<unknown>(`/settlements/${settlementId}/approval`, body);
 }
 
+export function withdrawSettlementApproval(settlementId: string) {
+  return postJson<unknown>(`/settlements/${settlementId}/approval-withdrawal`);
+}
+
 export function reviewPaymentApproval(paymentId: string, body: ReviewPaymentApprovalPayload) {
   return postJson<unknown>(`/payments/${paymentId}/approval`, body);
 }

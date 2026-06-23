@@ -27,6 +27,7 @@ describe("domain statuses", () => {
   it("allows payment requests only after the settlement is effective", () => {
     expect(canCreatePaymentFromSettlementStatus("effective")).toBe(true);
     expect(canCreatePaymentFromSettlementStatus("partially_paid")).toBe(true);
+    expect(canCreatePaymentFromSettlementStatus("withdrawn")).toBe(false);
     expect(canCreatePaymentFromSettlementStatus("approved_pending_archive")).toBe(false);
     expect(canCreatePaymentFromSettlementStatus("pending_archive_confirm")).toBe(false);
   });

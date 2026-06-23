@@ -692,6 +692,130 @@ describe("SettlementService", () => {
     });
   });
 
+  it("allows the settlement approval applicant to withdraw before approval completes", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "withdrawn"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    const result = await settlementService.withdrawApproval("settlement-1", "applicant-1");
+
+    expect(result.status).toBe("withdrawn");
+    expect(tx.settlement.update).toHaveBeenCalledWith({
+      where: { id: "settlement-1" },
+      data: { status: "withdrawn" }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: { status: "withdrawn" }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "withdraw",
+        actorUserId: "applicant-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "applicant-1",
+      action: "settlement.approval.withdraw",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: {
+        fromStatus: "approval_pending",
+        toStatus: "withdrawn",
+        applicantUserId: "applicant-1"
+      }
+    });
+  });
+
+  it("rejects settlement approval withdrawal from a non-applicant", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.withdrawApproval("settlement-1", "other-user")
+    ).rejects.toThrow("Only settlement approval applicant can withdraw");
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects settlement approval withdrawal after approval has left pending status", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approved_pending_archive"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.withdrawApproval("settlement-1", "applicant-1")
+    ).rejects.toThrow("Cannot withdraw settlement approval from status approved_pending_archive");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
   it("confirms a signed settlement archive file and makes the settlement effective", async () => {
     const tx = {
       settlement: {

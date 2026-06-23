@@ -16,7 +16,8 @@ import {
   recordPaymentExecution,
   recordPaymentFinance,
   recordPaymentPdfArchive,
-  reviewPaymentApproval
+  reviewPaymentApproval,
+  withdrawSettlementApproval
 } from "./core-flow-read.api";
 
 describe("core flow read API client", () => {
@@ -130,12 +131,14 @@ describe("core flow read API client", () => {
     await reviewSettlementApproval("settlement-1", {
       decision: "approve"
     });
+    await withdrawSettlementApproval("settlement-1");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contracts/contract-version-1/approval-submission",
       "/api/contracts/contract-version-1/approval",
       "/api/contracts/contract-version-1/seal-approval",
-      "/api/settlements/settlement-1/approval"
+      "/api/settlements/settlement-1/approval",
+      "/api/settlements/settlement-1/approval-withdrawal"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[1][1]?.body).toBe(

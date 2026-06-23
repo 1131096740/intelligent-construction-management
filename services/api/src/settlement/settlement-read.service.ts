@@ -163,6 +163,7 @@ export class SettlementReadService {
     const views: Record<string, { label: string; tone: CoreFlowTone }> = {
       approval_pending: { label: "审批中", tone: "primary" },
       approval_rejected: { label: "审批退回", tone: "danger" },
+      withdrawn: { label: "已撤回", tone: "danger" },
       approved_pending_archive: { label: "待归档上传", tone: "primary" },
       archive_pending: { label: "待归档确认", tone: "primary" },
       pending_archive_confirm: { label: "待归档确认", tone: "primary" },
@@ -178,6 +179,7 @@ export class SettlementReadService {
     const labels: Record<string, string> = {
       approval_pending: "等待结算审批",
       approval_rejected: "退回修改",
+      withdrawn: "申请人已撤回",
       approved_pending_archive: "上传签章归档件",
       archive_pending: "主管确认归档",
       pending_archive_confirm: "主管确认归档",
@@ -204,6 +206,19 @@ export class SettlementReadService {
         { label: "结算审批", status: "已通过", tone: "success" },
         { label: "签字盖章归档上传", status: "已上传", tone: "success" },
         { label: "合同部主管确认", status: "待处理", tone: "primary" },
+        { label: "结算生效", status: "阻塞", tone: "danger" }
+      ];
+    }
+
+    if (status === "approval_rejected" || status === "withdrawn") {
+      return [
+        {
+          label: "结算审批",
+          status: status === "withdrawn" ? "已撤回" : "已退回",
+          tone: "danger"
+        },
+        { label: "签字盖章归档上传", status: "未开始", tone: "default" },
+        { label: "合同部主管确认", status: "未开始", tone: "default" },
         { label: "结算生效", status: "阻塞", tone: "danger" }
       ];
     }

@@ -37,6 +37,11 @@ export class SettlementController {
     return this.settlements.reviewApproval(settlementId, user.id, body);
   }
 
+  @Post(":settlementId/approval-withdrawal")
+  withdrawApproval(@Param("settlementId") settlementId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.settlements.withdrawApproval(settlementId, user.id);
+  }
+
   @Post(":settlementId/archive-files")
   @RequireProjectRole("settlement.archive.upload")
   uploadArchiveFile(

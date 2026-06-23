@@ -416,6 +416,75 @@ export class SettlementService {
     });
   }
 
+  async withdrawApproval(settlementId: string, actorUserId: string) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to withdraw settlement approval");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      if (settlement.status !== "approval_pending") {
+        throw new Error(`Cannot withdraw settlement approval from status ${settlement.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "settlement",
+          businessId: settlement.id,
+          flowType: "settlement.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Settlement approval instance not found");
+      }
+
+      if (instance.applicantUserId !== actorUserId) {
+        throw new Error("Only settlement approval applicant can withdraw");
+      }
+
+      const updated = await tx.settlement.update({
+        where: { id: settlement.id },
+        data: { status: "withdrawn" satisfies SettlementStatus }
+      });
+
+      await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: { status: "withdrawn" }
+      });
+
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "withdraw",
+          actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.approval.withdraw",
+        businessType: "settlement",
+        businessId: settlement.id,
+        metadata: {
+          fromStatus: settlement.status,
+          toStatus: "withdrawn",
+          applicantUserId: instance.applicantUserId
+        }
+      });
+
+      return updated;
+    });
+  }
+
   async confirmArchiveFile(
     settlementId: string,
     actorUserId: string,
