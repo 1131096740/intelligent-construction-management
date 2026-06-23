@@ -8,13 +8,16 @@ describe("FileService", () => {
   };
   const storage = {
     write: jest.fn(),
-    read: jest.fn()
+    read: jest.fn(),
+    bucketName: jest.fn()
   };
 
   beforeEach(() => {
     audit.record.mockReset();
     storage.write.mockReset();
     storage.read.mockReset();
+    storage.bucketName.mockReset();
+    storage.bucketName.mockReturnValue("private-local");
   });
 
   it("rejects private storage object keys outside the configured root", async () => {
@@ -33,6 +36,69 @@ describe("FileService", () => {
       } else {
         process.env.FILE_STORAGE_ROOT = previousRoot;
       }
+    }
+  });
+
+  it("stores and reads private files from COS when enabled", async () => {
+    const previous = {
+      driver: process.env.FILE_STORAGE_DRIVER,
+      secretId: process.env.COS_SECRET_ID,
+      secretKey: process.env.COS_SECRET_KEY,
+      bucket: process.env.COS_BUCKET,
+      region: process.env.COS_REGION
+    };
+    process.env.FILE_STORAGE_DRIVER = "cos";
+    process.env.COS_SECRET_ID = "secret-id";
+    process.env.COS_SECRET_KEY = "secret-key";
+    process.env.COS_BUCKET = "private-bucket";
+    process.env.COS_REGION = "ap-guangzhou";
+    const responseBody = Uint8Array.from(Buffer.from("cos-file"));
+    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => responseBody.buffer
+    } as Response);
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await privateStorage.write("uploads/合同.pdf", Buffer.from("private-file"));
+      const buffer = await privateStorage.read("uploads/合同.pdf");
+
+      expect(privateStorage.bucketName()).toBe("private-bucket");
+      expect(buffer).toEqual(Buffer.from("cos-file"));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/%E5%90%88%E5%90%8C.pdf",
+        expect.objectContaining({
+          method: "PUT",
+          headers: expect.objectContaining({
+            Host: "private-bucket.cos.ap-guangzhou.myqcloud.com",
+            Authorization: expect.stringContaining("q-ak=secret-id")
+          }),
+          body: new Uint8Array(Buffer.from("private-file"))
+        })
+      );
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/%E5%90%88%E5%90%8C.pdf",
+        expect.objectContaining({
+          method: "GET",
+          headers: expect.objectContaining({
+            Authorization: expect.stringContaining("q-sign-algorithm=sha1")
+          })
+        })
+      );
+    } finally {
+      fetchMock.mockRestore();
+      if (previous.driver === undefined) delete process.env.FILE_STORAGE_DRIVER;
+      else process.env.FILE_STORAGE_DRIVER = previous.driver;
+      if (previous.secretId === undefined) delete process.env.COS_SECRET_ID;
+      else process.env.COS_SECRET_ID = previous.secretId;
+      if (previous.secretKey === undefined) delete process.env.COS_SECRET_KEY;
+      else process.env.COS_SECRET_KEY = previous.secretKey;
+      if (previous.bucket === undefined) delete process.env.COS_BUCKET;
+      else process.env.COS_BUCKET = previous.bucket;
+      if (previous.region === undefined) delete process.env.COS_REGION;
+      else process.env.COS_REGION = previous.region;
     }
   });
 
@@ -97,6 +163,50 @@ describe("FileService", () => {
         originalName: "盖章合同.pdf",
         sizeBytes: 12
       }
+    });
+  });
+
+  it("records the configured storage bucket for private uploads", async () => {
+    storage.bucketName.mockReturnValue("private-cos-bucket");
+    const tx = {
+      fileObject: {
+        create: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-cos-bucket",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "archive.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await service.uploadPrivateFile({
+      originalName: "archive.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "contract-staff-1",
+      buffer: Buffer.from("private-file")
+    });
+
+    expect(tx.fileObject.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bucket: "private-cos-bucket"
+      })
     });
   });
 

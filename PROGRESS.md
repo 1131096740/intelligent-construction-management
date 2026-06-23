@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-24 (CodeX)：补 COS 私有桶最小接入。`PrivateFileStorage` 支持 `FILE_STORAGE_DRIVER=cos` 时用 Node 内置 `fetch`/`crypto` 直连腾讯云 COS XML API 做私有对象 PUT/GET，文件仍只经后端鉴权 + 短时效业务下载票据访问，前端不直连 COS；`FileObject.bucket` 记录实际 COS bucket。`.env.example` 新增 `FILE_STORAGE_DRIVER=local` 默认值。新增 COS 存储单测，API file service 单测 + typecheck/lint 通过。暂未做 SDK/multipart/断点续传，也未改成返回 COS 直签下载 URL（当前仍由后端流式下载）。
 - 2026-06-23 (CodeX)：补后端生成 PDF 水印最小闭环。三类归档 PDF 共用的 `renderSimplePdf` 现在默认写入 `JIANGKONG CONFIDENTIAL` 斜向浅灰水印，覆盖付款/合同/结算后端生成 PDF；新增 helper 单测防止水印回退，三类 PDF 生成相关 service 单测通过。暂未处理用户上传的原始归档件水印，也未接 COS 私有桶。
 - 2026-06-23 (CodeX)：补文件下载二次确认最小闭环。`/files/:fileId/download-ticket` 从 GET 改为 POST，并在签发短时效下载票据前要求 `confirmationPassword`，后端复用 `AuthService.confirmPassword`；密码缺失/错误时不生成票据、不写签票审计。Web API client 同步改为 `createPrivateFileDownloadTicket(fileId, { confirmationPassword })`。API 文件相关单测 + web-admin API client 单测 + 两包 typecheck/lint 通过。暂未做页面下载入口弹窗（当前无调用点）、COS 私有桶、文件水印。
 - 2026-06-23 (CodeX)：补合同/结算 PDF 生成归档最小闭环。抽出轻量 `renderSimplePdf` 复用付款 PDF buffer 生成逻辑；新增 `POST /contracts/:contractVersionId/pdf-generation`（权限沿用 `contract.archive.upload`，仅 effective 合同版本可生成）与 `POST /settlements/:settlementId/pdf-generation`（权限沿用 `settlement.archive.upload`，effective/partially_paid/paid 结算可生成），均走现有私有文件上传链路创建 `FileObject`，再写 `PdfDocument` + `ArchiveRecord` + 审计。Web API client 补 `generateContractPdfArchive` / `generateSettlementPdfArchive`。API 全量 174 个单测 + web-admin 59 个 + 两包 typecheck/lint 通过。暂未做 COS 私有桶、文件水印、文件下载二次确认。
@@ -33,7 +34,7 @@
 - 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：继续 Milestone 6：COS 私有桶；如需更强水印，再扩展到用户上传的原始归档件。委托台账、三类 PDF 生成归档、文件下载二次确认已闭环。
+- **下一步**：继续收尾：如需更强文件能力，再补 COS multipart/直签下载、用户上传原始归档件水印；或转 Milestone 7 小程序移动端。
 
 ---
 
@@ -82,8 +83,8 @@
 ## Milestone 6：文件、PDF、审计、安全
 
 - [x] 审计日志已接入核心动作（合同/结算/付款共 12 类动作）
-- [~] 私有文件上传流程（本地实现，**COS 私有桶未接**）
-- [x] 文件下载权限校验 + 短时效 URL（本地私有存储短链 + 下载审计；COS 私有桶未接）
+- [x] 私有文件上传流程（本地存储 + `FILE_STORAGE_DRIVER=cos` 私有 COS PUT）
+- [x] 文件下载权限校验 + 短时效 URL（后端鉴权短链 + 下载审计；本地/COS 均经后端流式下载）
 - [x] 真正生成 PDF（付款财务归档、合同归档、结算归档 PDF 均已由后端生成并归档）
 - [~] 文件水印 / 敏感操作二次确认（实际付款登记、合同/结算归档确认、文件下载票据签发已要求当前密码二次确认；后端生成 PDF 已带水印，用户上传原始归档件水印未覆盖）
 

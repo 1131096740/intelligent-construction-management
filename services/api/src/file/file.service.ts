@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { type FileObject, Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, resolve, sep } from "node:path";
 import { AuditService } from "../audit/audit.service";
@@ -41,13 +41,26 @@ export class PrivateFileStorage {
   );
 
   async write(objectKey: string, buffer: Buffer) {
+    if (this.useCos()) {
+      await this.cosRequest("PUT", objectKey, buffer);
+      return;
+    }
+
     const target = this.resolveObjectKey(objectKey);
     await mkdir(resolve(target, ".."), { recursive: true });
     await writeFile(target, buffer);
   }
 
   async read(objectKey: string) {
+    if (this.useCos()) {
+      return this.cosRequest("GET", objectKey);
+    }
+
     return readFile(this.resolveObjectKey(objectKey));
+  }
+
+  bucketName() {
+    return this.useCos() ? this.requiredEnv("COS_BUCKET") : "private-local";
   }
 
   private resolveObjectKey(objectKey: string) {
@@ -58,6 +71,74 @@ export class PrivateFileStorage {
     }
 
     return target;
+  }
+
+  private useCos() {
+    return process.env.FILE_STORAGE_DRIVER === "cos";
+  }
+
+  private async cosRequest(method: "GET" | "PUT", objectKey: string, body?: Buffer) {
+    // ponytail: direct COS XML PUT/GET; switch to SDK when multipart/resumable upload matters.
+    const bucket = this.requiredEnv("COS_BUCKET");
+    const region = this.requiredEnv("COS_REGION");
+    const host = `${bucket}.cos.${region}.myqcloud.com`;
+    const pathname = encodeURI(`/${objectKey}`);
+    const response = await fetch(`https://${host}${pathname}`, {
+      method,
+      headers: {
+        Authorization: this.cosAuthorization(method, pathname, host),
+        Host: host
+      },
+      body: body ? new Uint8Array(body) : undefined
+    });
+
+    if (!response.ok) {
+      throw new Error(`COS private file ${method} failed: ${response.status}`);
+    }
+
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  private cosAuthorization(method: "GET" | "PUT", pathname: string, host: string) {
+    const secretId = this.requiredEnv("COS_SECRET_ID");
+    const secretKey = this.requiredEnv("COS_SECRET_KEY");
+    const now = Math.floor(Date.now() / 1000);
+    const keyTime = `${now};${now + 600}`;
+    const headerList = "host";
+    const httpString = [
+      method.toLowerCase(),
+      pathname,
+      "",
+      `host=${encodeURIComponent(host)}`,
+      ""
+    ].join("\n");
+    const stringToSign = [
+      "sha1",
+      keyTime,
+      createHash("sha1").update(httpString).digest("hex"),
+      ""
+    ].join("\n");
+    const signKey = createHmac("sha1", secretKey).update(keyTime).digest("hex");
+    const signature = createHmac("sha1", signKey).update(stringToSign).digest("hex");
+
+    return [
+      "q-sign-algorithm=sha1",
+      `q-ak=${secretId}`,
+      `q-sign-time=${keyTime}`,
+      `q-key-time=${keyTime}`,
+      `q-header-list=${headerList}`,
+      "q-url-param-list=",
+      `q-signature=${signature}`
+    ].join("&");
+  }
+
+  private requiredEnv(key: string) {
+    const value = process.env[key];
+    if (!value) {
+      throw new Error(`${key} is required for COS private storage`);
+    }
+
+    return value;
   }
 }
 
@@ -84,7 +165,7 @@ export class FileService {
     return this.prisma.$transaction(async (tx) => {
       const file = await tx.fileObject.create({
         data: {
-          bucket: "private-local",
+          bucket: this.storage.bucketName(),
           objectKey,
           originalName: input.originalName,
           mimeType: input.mimeType,
