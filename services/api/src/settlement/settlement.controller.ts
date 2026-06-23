@@ -43,6 +43,12 @@ export class SettlementController {
     return this.settlements.withdrawApproval(settlementId, user.id);
   }
 
+  // 超时催办：由申请人发起，督促当前节点审批人；是否超时/重复节流在 service 内判定。
+  @Post(":settlementId/approval-reminder")
+  remindApproval(@Param("settlementId") settlementId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.settlements.remindApproval(settlementId, user.id);
+  }
+
   @Post(":settlementId/approval-transfer")
   @RequireProjectRole("settlement.approve")
   transferApproval(

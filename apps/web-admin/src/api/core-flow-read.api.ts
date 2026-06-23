@@ -182,6 +182,10 @@ export function withdrawSettlementApproval(settlementId: string) {
   return postJson<unknown>(`/settlements/${settlementId}/approval-withdrawal`);
 }
 
+export function remindSettlementApproval(settlementId: string) {
+  return postJson<unknown>(`/settlements/${settlementId}/approval-reminder`);
+}
+
 export function transferSettlementApproval(
   settlementId: string,
   body: AssignSettlementApprovalPayload

@@ -1,7 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import {
+  approvalElapsedHours,
   canCreateSettlementFromContractStatus,
+  canRemindApproval,
   ContractVersionStatus,
   SettlementStatus,
   type RoleKey
@@ -494,6 +496,87 @@ export class SettlementService {
       });
 
       return updated;
+    });
+  }
+
+  async remindApproval(settlementId: string, actorUserId: string, now: Date = new Date()) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to remind settlement approval");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      if (settlement.status !== "approval_pending") {
+        throw new Error(`Cannot remind settlement approval from status ${settlement.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "settlement",
+          businessId: settlement.id,
+          flowType: "settlement.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Settlement approval instance not found");
+      }
+
+      // 催办由申请人发起，督促当前冻结节点的审批人处理。
+      if (instance.applicantUserId !== actorUserId) {
+        throw new Error("Only settlement approval applicant can remind");
+      }
+
+      const lastRemind = await tx.approvalActionLog.findFirst({
+        where: { approvalInstanceId: instance.id, action: "remind" },
+        orderBy: { createdAt: "desc" }
+      });
+
+      // 催办不改写实例本身（不影响 updatedAt），仅记动作日志；超时与重复节流见 shared-domain。
+      if (
+        !canRemindApproval({
+          status: instance.status,
+          lastActivityAt: instance.updatedAt,
+          lastRemindedAt: lastRemind?.createdAt ?? null,
+          now
+        })
+      ) {
+        throw new Error("Settlement approval is not due for a reminder yet");
+      }
+
+      const nodes = instance.frozenNodes as unknown as SettlementApprovalNode[];
+      const currentNode = nodes[instance.currentNodeIndex];
+
+      const log = await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "remind",
+          actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.approval.remind",
+        businessType: "settlement",
+        businessId: settlement.id,
+        metadata: {
+          approvalInstanceId: instance.id,
+          currentNodeIndex: instance.currentNodeIndex,
+          nodeName: currentNode?.name,
+          overdueHours: Math.floor(approvalElapsedHours(instance.updatedAt, now))
+        }
+      });
+
+      return log;
     });
   }
 

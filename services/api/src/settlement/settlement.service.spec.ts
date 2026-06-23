@@ -1073,4 +1073,138 @@ describe("SettlementService", () => {
       }
     });
   });
+
+  it("lets the applicant remind an overdue in-progress settlement approval", async () => {
+    const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
+    const now = new Date("2026-06-25T00:00:00.000Z"); // +48h, hits the default SLA
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          currentNodeIndex: 1,
+          updatedAt: lastActivityAt,
+          frozenNodes: [
+            { name: "物资员", mode: "any", roleKeys: ["material_staff"] },
+            { name: "物资主管", mode: "any", roleKeys: ["material_director"] }
+          ]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "action-log-1", action: "remind" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    const result = await settlementService.remindApproval("settlement-1", "applicant-1", now);
+
+    expect(result.action).toBe("remind");
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "remind",
+        actorUserId: "applicant-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "applicant-1",
+      action: "settlement.approval.remind",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: {
+        approvalInstanceId: "approval-instance-1",
+        currentNodeIndex: 1,
+        nodeName: "物资主管",
+        overdueHours: 48
+      }
+    });
+  });
+
+  it("rejects a settlement approval reminder before the SLA has elapsed", async () => {
+    const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
+    const now = new Date("2026-06-24T00:00:00.000Z"); // +24h, under the default 48h SLA
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          currentNodeIndex: 0,
+          updatedAt: lastActivityAt,
+          frozenNodes: [{ name: "物资员", mode: "any", roleKeys: ["material_staff"] }]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.remindApproval("settlement-1", "applicant-1", now)
+    ).rejects.toThrow("not due for a reminder");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a settlement approval reminder from a non-applicant", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-06-23T00:00:00.000Z"),
+          frozenNodes: [{ name: "物资员", mode: "any", roleKeys: ["material_staff"] }]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn(),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.remindApproval(
+        "settlement-1",
+        "intruder-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow("applicant");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
 });
