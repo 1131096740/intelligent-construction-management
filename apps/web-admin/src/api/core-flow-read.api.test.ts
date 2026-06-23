@@ -4,6 +4,7 @@ import {
   fetchContractDetail,
   fetchPaymentDetail,
   fetchSettlementDetail,
+  createPrivateFileDownloadTicket,
   confirmContractArchive,
   confirmSettlementArchive,
   approveContractSeal,
@@ -169,5 +170,18 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/files"]);
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
     expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+  });
+
+  it("requests private file download tickets through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ downloadUrl: "/files/file-1/download?token=t" })
+    } as Response);
+
+    await createPrivateFileDownloadTicket("file-1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/files/file-1/download-ticket"
+    ]);
   });
 });

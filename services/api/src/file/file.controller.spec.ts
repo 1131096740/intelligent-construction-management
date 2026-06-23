@@ -11,6 +11,10 @@ describe("FileController authorization wiring", () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, FileController.prototype.upload)).toBeFalsy();
   });
 
+  it("requires authentication to create a private file download ticket", () => {
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, FileController.prototype.createDownloadTicket)).toBeFalsy();
+  });
+
   it("keeps the ticket-authenticated download endpoint public", () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, FileController.prototype.download)).toBe(true);
   });

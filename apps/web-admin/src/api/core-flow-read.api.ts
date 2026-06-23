@@ -121,11 +121,24 @@ export interface PrivateFileReadModel {
   createdAt: string;
 }
 
+export interface PrivateFileDownloadTicketReadModel {
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  expiresAt: string;
+  downloadUrl: string;
+}
+
 export function uploadPrivateFile(file: Blob, fileName: string) {
   const form = new FormData();
   form.append("file", file, fileName);
 
   return postForm<PrivateFileReadModel>("/files", form);
+}
+
+export function createPrivateFileDownloadTicket(fileId: string) {
+  return readJson<PrivateFileDownloadTicketReadModel>(`/files/${fileId}/download-ticket`);
 }
 
 export function uploadContractArchiveFile(

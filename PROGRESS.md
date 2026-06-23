@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-23 (CodeX)：补文件下载权限校验 + 短时效 URL 最小闭环。`GET /files/:fileId/download-ticket` 改为只信登录态 `@CurrentUser`，不再接收 query/body 里的 `actorUserId`；签票前校验文件访问权（上传者本人、合同/结算归档文件的合同部/财务岗、付款凭证的财务岗），短链 token 绑定 `fileId + actorUserId + expiresAt`；公开下载端点继续只认短时效票据，但下载成功新增 `file.download` 审计；本地私有存储路径校验收紧，避免同前缀目录误放行。Web API client 补 `createPrivateFileDownloadTicket`。API 132 个单测 + web-admin 58 + 全量 typecheck/lint 通过。
 - 2026-06-23 (Claude)：把催办/撤回扩展到合同与付款审批实例。合同：申请人可在 `in_approval` 撤回 → 版本退回 `draft`（同一版本可改可重提，不新建版本）、可对超时实例催办；端点 `POST /contracts/:contractVersionId/approval-withdrawal`、`/approval-reminder`。付款：付款申请无草稿态，撤回为终态 `withdrawn`（重试须新建申请）、可催办；端点 `POST /payments/:paymentId/approval-withdrawal`、`/approval-reminder`。撤回/催办均只要求登录，申请人校验在 service；催办复用 shared-domain `canRemindApproval`（不改写实例）。三处控制器加申请人专属端点的授权契约断言（无 `@RequireProjectRole`）。Web API client 补 4 个调用。API 127 个单测（含 +12 service、+5 控制器契约）+ web-admin 57 + 全量 typecheck/lint 通过。
 - 2026-06-23 (Claude)：登录页移除硬编码种子凭据（手机号/密码默认空串），避免把全员通用种子密码打进前端 bundle。
 - 2026-06-23 (Claude)：补超时催办（timeout reminder）最小实例模型。shared-domain 新增 `remind` 动作 + 纯逻辑（SLA 超时判定 `isApprovalOverdue`、重复催办节流 `canRemindApproval`，默认 48h SLA / 24h 间隔）；结算审批新增 `remindApproval`：申请人对进行中且超时的实例催办，仅记 `ApprovalActionLog(remind)` + 审计（不改写实例，故 `updatedAt` 仍代表上次真实动作，超时判据稳定），非申请人/未超时/节流内拒绝；控制器 `POST /settlements/:id/approval-reminder`、Web API client `remindSettlementApproval`。shared-domain 34 + API 110（含 3 条催办单测）+ web-admin 57 单测、全量 typecheck/lint 通过。
@@ -24,7 +25,7 @@
 - 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：把转审/委托扩展到合同/付款审批实例并建全局委托台账（`ApprovalDelegation` 表已存在但未接）；或转入 Milestone 6（文件下载权限校验 + 短时效 URL / 真正生成 PDF / COS 私有桶）——文件下载安全是 CLAUDE.md 安全基线明确要求且尚未开工。
+- **下一步**：把转审/委托扩展到合同/付款审批实例并建全局委托台账（`ApprovalDelegation` 表已存在但未接）；或继续 Milestone 6：真正生成 PDF / COS 私有桶 / 文件水印与敏感操作二次确认。
 
 ---
 
@@ -74,7 +75,7 @@
 
 - [x] 审计日志已接入核心动作（合同/结算/付款共 12 类动作）
 - [~] 私有文件上传流程（本地实现，**COS 私有桶未接**）
-- [ ] 文件下载权限校验 + 短时效 URL
+- [x] 文件下载权限校验 + 短时效 URL（本地私有存储短链 + 下载审计；COS 私有桶未接）
 - [ ] 真正生成 PDF（目前仅记录归档文件，未生成）
 - [ ] 文件水印 / 敏感操作二次确认
 

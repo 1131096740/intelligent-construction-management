@@ -1,10 +1,11 @@
 import { Injectable } from "@nestjs/common";
+import { type FileObject, Prisma } from "@prisma/client";
+import type { RoleKey } from "@jiangkong/shared-domain";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
-import { CreateFileDownloadTicketDto } from "./dto/create-file-download-ticket.dto";
 
 export interface UploadPrivateFileInput {
   originalName: string;
@@ -15,9 +16,23 @@ export interface UploadPrivateFileInput {
 }
 
 export interface ReadPrivateFileInput {
+  actorUserId: string;
   expiresAt: string;
   token: string;
 }
+
+export interface CreateFileDownloadTicketInput {
+  actorUserId: string;
+}
+
+const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
+  "contract_staff",
+  "contract_director",
+  "finance_staff",
+  "finance_director"
+];
+
+const PAYMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["finance_staff", "finance_director"];
 
 @Injectable()
 export class PrivateFileStorage {
@@ -37,7 +52,8 @@ export class PrivateFileStorage {
 
   private resolveObjectKey(objectKey: string) {
     const target = resolve(this.root, objectKey);
-    if (!target.startsWith(this.root)) {
+    const rootPrefix = this.root.endsWith(sep) ? this.root : `${this.root}${sep}`;
+    if (target !== this.root && !target.startsWith(rootPrefix)) {
       throw new Error("Invalid private file object key");
     }
 
@@ -94,7 +110,7 @@ export class FileService {
     });
   }
 
-  async createDownloadTicket(fileId: string, input: CreateFileDownloadTicketDto) {
+  async createDownloadTicket(fileId: string, input: CreateFileDownloadTicketInput) {
     if (!input.actorUserId.trim()) {
       throw new Error("Actor user id is required");
     }
@@ -108,9 +124,11 @@ export class FileService {
         throw new Error("Private file not found");
       }
 
+      await this.assertCanDownloadFile(tx, file, input.actorUserId);
+
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
       const expiresAt = new Date(expiresAtMs).toISOString();
-      const token = this.signDownloadToken(file.id, expiresAt);
+      const token = this.signDownloadToken(file.id, input.actorUserId, expiresAt);
       await this.audit.record(tx, {
         actorUserId: input.actorUserId,
         action: "file.download.ticket",
@@ -127,7 +145,9 @@ export class FileService {
         mimeType: file.mimeType,
         sizeBytes: file.sizeBytes,
         expiresAt,
-        downloadUrl: `/files/${file.id}/download?expiresAt=${encodeURIComponent(
+        downloadUrl: `/files/${file.id}/download?actorUserId=${encodeURIComponent(
+          input.actorUserId
+        )}&expiresAt=${encodeURIComponent(
           expiresAt
         )}&token=${encodeURIComponent(token)}`
       };
@@ -135,23 +155,44 @@ export class FileService {
   }
 
   async readPrivateFile(fileId: string, input: ReadPrivateFileInput) {
+    if (!input.actorUserId.trim()) {
+      throw new Error("Actor user id is required");
+    }
+
     if (Number.isNaN(Date.parse(input.expiresAt)) || Date.parse(input.expiresAt) < Date.now()) {
       throw new Error("Private file download ticket expired");
     }
 
-    if (!this.verifyDownloadToken(fileId, input.expiresAt, input.token)) {
+    if (!this.verifyDownloadToken(fileId, input.actorUserId, input.expiresAt, input.token)) {
       throw new Error("Invalid private file download token");
     }
 
-    const file = await this.prisma.fileObject.findUnique({
-      where: { id: fileId }
+    const file = await this.prisma.$transaction(async (tx) => {
+      const found = await tx.fileObject.findUnique({
+        where: { id: fileId }
+      });
+
+      if (!found) {
+        throw new Error("Private file not found");
+      }
+
+      await this.assertCanDownloadFile(tx, found, input.actorUserId);
+      return found;
     });
 
-    if (!file) {
-      throw new Error("Private file not found");
-    }
-
     const buffer = await this.storage.read(file.objectKey);
+    await this.prisma.$transaction((tx) =>
+      this.audit.record(tx, {
+        actorUserId: input.actorUserId,
+        action: "file.download",
+        businessType: "file_object",
+        businessId: file.id,
+        metadata: {
+          originalName: file.originalName,
+          sizeBytes: file.sizeBytes
+        }
+      })
+    );
 
     return {
       file,
@@ -164,14 +205,114 @@ export class FileService {
     return name || "private-file";
   }
 
-  private signDownloadToken(fileId: string, expiresAt: string) {
+  private async assertCanDownloadFile(
+    tx: Prisma.TransactionClient,
+    file: FileObject,
+    actorUserId: string
+  ) {
+    if (file.uploadedByUserId === actorUserId) {
+      return;
+    }
+
+    const contractArchiveFile = await tx.contractArchiveFile.findFirst({
+      where: { fileId: file.id }
+    });
+    if (contractArchiveFile) {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractArchiveFile.contractVersionId }
+      });
+      const contract = version
+        ? await tx.contract.findUnique({ where: { id: version.contractId } })
+        : null;
+
+      if (
+        contract &&
+        (await this.hasProjectRole(tx, actorUserId, contract.projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))
+      ) {
+        return;
+      }
+    }
+
+    const settlementArchiveFile = await tx.settlementArchiveFile.findFirst({
+      where: { fileId: file.id }
+    });
+    if (settlementArchiveFile) {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementArchiveFile.settlementId }
+      });
+
+      if (
+        settlement &&
+        (await this.hasProjectRole(
+          tx,
+          actorUserId,
+          settlement.projectId,
+          ARCHIVE_FILE_DOWNLOAD_ROLES
+        ))
+      ) {
+        return;
+      }
+    }
+
+    const paymentExecution = await tx.paymentExecution.findFirst({
+      where: { voucherFileId: file.id }
+    });
+    if (paymentExecution) {
+      const payment = await tx.paymentRequest.findUnique({
+        where: { id: paymentExecution.paymentRequestId }
+      });
+
+      if (
+        payment &&
+        (await this.hasProjectRole(tx, actorUserId, payment.projectId, PAYMENT_FILE_DOWNLOAD_ROLES))
+      ) {
+        return;
+      }
+    }
+
+    throw new Error("Actor cannot download private file");
+  }
+
+  private async hasProjectRole(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string,
+    allowedRoles: readonly RoleKey[]
+  ) {
+    const roleKeys = await this.loadActorRoleKeys(tx, actorUserId, projectId);
+    return roleKeys.some((role) => allowedRoles.includes(role));
+  }
+
+  private async loadActorRoleKeys(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ): Promise<RoleKey[]> {
+    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId: null } }),
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId } }),
+      tx.projectMember.findMany({ where: { userId: actorUserId, projectId } })
+    ]);
+    const positionIds = Array.from(
+      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
+    );
+    const positions = positionIds.length
+      ? await tx.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    const positionKeys = positions.map((position) => position.key as RoleKey);
+    const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
+
+    return Array.from(new Set([...positionKeys, ...memberKeys]));
+  }
+
+  private signDownloadToken(fileId: string, actorUserId: string, expiresAt: string) {
     return createHmac("sha256", this.downloadSecret())
-      .update(`${fileId}.${expiresAt}`)
+      .update(`${fileId}.${actorUserId}.${expiresAt}`)
       .digest("base64url");
   }
 
-  private verifyDownloadToken(fileId: string, expiresAt: string, token: string) {
-    const expected = Buffer.from(this.signDownloadToken(fileId, expiresAt));
+  private verifyDownloadToken(fileId: string, actorUserId: string, expiresAt: string, token: string) {
+    const expected = Buffer.from(this.signDownloadToken(fileId, actorUserId, expiresAt));
     const actual = Buffer.from(token);
 
     return expected.length === actual.length && timingSafeEqual(expected, actual);
