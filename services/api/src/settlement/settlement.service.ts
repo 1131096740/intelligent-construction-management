@@ -794,6 +794,19 @@ export class SettlementService {
         }
       });
 
+      if (kind === "delegate") {
+        const startsAt = new Date();
+        await tx.approvalDelegation.create({
+          data: {
+            fromUserId: actorUserId,
+            toUserId: input.toUserId,
+            startsAt,
+            // ponytail: 临时台账窗口；全局委托管理上线后由其维护 endsAt。
+            endsAt: new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+          }
+        });
+      }
+
       await this.audit.record(tx, {
         actorUserId,
         action: `settlement.approval.${kind}`,

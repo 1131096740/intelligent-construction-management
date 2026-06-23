@@ -7,6 +7,8 @@ import {
   createPrivateFileDownloadTicket,
   confirmContractArchive,
   confirmSettlementArchive,
+  delegateContractApproval,
+  delegatePaymentApproval,
   approveContractSeal,
   reviewContractApproval,
   reviewSettlementApproval,
@@ -20,7 +22,9 @@ import {
   reviewPaymentApproval,
   withdrawSettlementApproval,
   transferSettlementApproval,
-  delegateSettlementApproval
+  delegateSettlementApproval,
+  transferContractApproval,
+  transferPaymentApproval
 } from "./core-flow-read.api";
 
 describe("core flow read API client", () => {
@@ -59,6 +63,12 @@ describe("core flow read API client", () => {
       decision: "approve",
       approvedAmountCents: 5000000
     });
+    await transferPaymentApproval("FK-2026-006", {
+      toUserId: "payment-transfer-user"
+    });
+    await delegatePaymentApproval("FK-2026-006", {
+      toUserId: "payment-delegate-user"
+    });
     await recordPaymentExecution("FK-2026-006", {
       amountCents: 5000000,
       paidAt: "2026-06-22T00:00:00.000Z",
@@ -74,6 +84,8 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/payments/FK-2026-006/approval",
+      "/api/payments/FK-2026-006/approval-transfer",
+      "/api/payments/FK-2026-006/approval-delegation",
       "/api/payments/FK-2026-006/executions",
       "/api/payments/FK-2026-006/finance-records",
       "/api/payments/FK-2026-006/pdf-archive"
@@ -130,6 +142,12 @@ describe("core flow read API client", () => {
     await reviewContractApproval("contract-version-1", {
       decision: "approve"
     });
+    await transferContractApproval("contract-version-1", {
+      toUserId: "contract-transfer-user"
+    });
+    await delegateContractApproval("contract-version-1", {
+      toUserId: "contract-delegate-user"
+    });
     await approveContractSeal("contract-version-1");
     await reviewSettlementApproval("settlement-1", {
       decision: "approve"
@@ -145,6 +163,8 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contracts/contract-version-1/approval-submission",
       "/api/contracts/contract-version-1/approval",
+      "/api/contracts/contract-version-1/approval-transfer",
+      "/api/contracts/contract-version-1/approval-delegation",
       "/api/contracts/contract-version-1/seal-approval",
       "/api/settlements/settlement-1/approval",
       "/api/settlements/settlement-1/approval-withdrawal",

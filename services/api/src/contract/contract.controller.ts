@@ -46,6 +46,26 @@ export class ContractController {
     return this.contracts.reviewApproval(contractVersionId, user.id, body);
   }
 
+  @Post(":contractVersionId/approval-transfer")
+  @RequireProjectRole("contract.approve")
+  transferApproval(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { toUserId: string }
+  ) {
+    return this.contracts.transferApproval(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/approval-delegation")
+  @RequireProjectRole("contract.approve")
+  delegateApproval(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { toUserId: string }
+  ) {
+    return this.contracts.delegateApproval(contractVersionId, user.id, body);
+  }
+
   @Post(":contractVersionId/approval-withdrawal")
   withdrawApproval(
     @Param("contractVersionId") contractVersionId: string,

@@ -367,6 +367,207 @@ describe("ContractService", () => {
     });
   });
 
+  it("transfers the current contract approval node", async () => {
+    const frozenNodes = [
+      {
+        name: "董事长/总经理",
+        mode: "any",
+        roleKeys: ["chairman", "general_manager"]
+      }
+    ];
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes
+        }),
+        update: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ContractService(prisma as never, audit as never);
+
+    await service.transferApproval("contract-version-1", "chairman-1", {
+      toUserId: "transfer-user-1"
+    });
+
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        frozenNodes: [
+          {
+            ...frozenNodes[0],
+            assignments: [
+              {
+                kind: "transfer",
+                fromUserId: "chairman-1",
+                fromRoleKey: "chairman",
+                toUserId: "transfer-user-1"
+              }
+            ]
+          }
+        ]
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "transfer",
+        actorUserId: "chairman-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "chairman-1",
+      action: "contract.approval.transfer",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        nodeName: "董事长/总经理",
+        fromRoleKey: "chairman",
+        toUserId: "transfer-user-1"
+      }
+    });
+  });
+
+  it("lets the transferred user approve a contract as the source role", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "approved_pending_seal"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"],
+              assignments: [
+                {
+                  kind: "transfer",
+                  fromUserId: "chairman-1",
+                  fromRoleKey: "chairman",
+                  toUserId: "transfer-user-1"
+                }
+              ]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("employee")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ContractService(prisma as never, audit as never);
+
+    const result = await service.reviewApproval("contract-version-1", "transfer-user-1", {
+      decision: "approve"
+    });
+
+    expect(result.status).toBe("approved_pending_seal");
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "transfer-user-1",
+      action: "contract.approval.approve",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        fromStatus: "in_approval",
+        toStatus: "approved_pending_seal",
+        nodeName: "董事长/总经理",
+        approvedRoleKey: "chairman"
+      }
+    });
+  });
+
+  it("delegates the current contract approval node and records delegation ledger", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      approvalDelegation: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("general_manager")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ContractService(prisma as never, audit as never);
+
+    await service.delegateApproval("contract-version-1", "general-manager-1", {
+      toUserId: "agent-user-1"
+    });
+
+    expect(tx.approvalDelegation.create).toHaveBeenCalledWith({
+      data: {
+        fromUserId: "general-manager-1",
+        toUserId: "agent-user-1",
+        startsAt: expect.any(Date),
+        endsAt: expect.any(Date)
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "general-manager-1",
+      action: "contract.approval.delegate",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        nodeName: "董事长/总经理",
+        fromRoleKey: "general_manager",
+        toUserId: "agent-user-1"
+      }
+    });
+  });
+
   it("approves contract seal and opens signed archive upload", async () => {
     const tx = {
       contractVersion: {

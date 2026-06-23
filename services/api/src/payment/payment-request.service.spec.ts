@@ -389,6 +389,213 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("transfers the current payment approval node", async () => {
+    const frozenNodes = [
+      {
+        name: "董事长/总经理",
+        mode: "any",
+        roleKeys: ["chairman", "general_manager"]
+      }
+    ];
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes
+        }),
+        update: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await paymentService.transferApproval("FK-2026-012", "chairman-1", {
+      toUserId: "transfer-user-1"
+    });
+
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        frozenNodes: [
+          {
+            ...frozenNodes[0],
+            assignments: [
+              {
+                kind: "transfer",
+                fromUserId: "chairman-1",
+                fromRoleKey: "chairman",
+                toUserId: "transfer-user-1"
+              }
+            ]
+          }
+        ]
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "transfer",
+        actorUserId: "chairman-1"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "chairman-1",
+        action: "payment.approval.transfer",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
+    });
+  });
+
+  it("lets the transferred user approve a payment as the source role", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          status: "approved_pending_payment"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"],
+              assignments: [
+                {
+                  kind: "transfer",
+                  fromUserId: "chairman-1",
+                  fromRoleKey: "chairman",
+                  toUserId: "transfer-user-1"
+                }
+              ]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("employee")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const result = await paymentService.reviewApproval("FK-2026-012", "transfer-user-1", {
+      decision: "approve"
+    });
+
+    expect(result.status).toBe("approved_pending_payment");
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "transfer-user-1",
+        action: "payment.approval.approve",
+        businessType: "payment_request",
+        businessId: "payment-1",
+        metadata: expect.objectContaining({
+          approvedRoleKey: "chairman"
+        })
+      })
+    });
+  });
+
+  it("delegates the current payment approval node and records delegation ledger", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      approvalDelegation: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("general_manager")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await paymentService.delegateApproval("FK-2026-012", "general-manager-1", {
+      toUserId: "agent-user-1"
+    });
+
+    expect(tx.approvalDelegation.create).toHaveBeenCalledWith({
+      data: {
+        fromUserId: "general-manager-1",
+        toUserId: "agent-user-1",
+        startsAt: expect.any(Date),
+        endsAt: expect.any(Date)
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "general-manager-1",
+        action: "payment.approval.delegate",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
+    });
+  });
+
   it("rejects approval review unless the payment request is pending approval", async () => {
     const tx = {
       paymentRequest: {

@@ -8,13 +8,31 @@ import { CreateContractDto } from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 
+interface AssignApprovalDto {
+  toUserId: string;
+}
+
+interface ContractApprovalAssignment {
+  kind: "transfer" | "delegate";
+  fromUserId: string;
+  fromRoleKey: RoleKey;
+  toUserId: string;
+}
+
+interface ContractApprovalNode {
+  name: string;
+  mode: "any";
+  roleKeys: RoleKey[];
+  assignments?: ContractApprovalAssignment[];
+}
+
 const CONTRACT_APPROVAL_NODES = [
   {
     name: "董事长/总经理",
     mode: "any",
     roleKeys: ["chairman", "general_manager"]
   }
-] satisfies Array<{ name: string; mode: "any"; roleKeys: RoleKey[] }>;
+] satisfies ContractApprovalNode[];
 
 @Injectable()
 export class ContractService {
@@ -207,7 +225,7 @@ export class ContractService {
         throw new Error("Contract approval instance not found");
       }
 
-      const nodes = instance.frozenNodes as unknown as typeof CONTRACT_APPROVAL_NODES;
+      const nodes = instance.frozenNodes as unknown as ContractApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
 
       if (!currentNode) {
@@ -215,7 +233,10 @@ export class ContractService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
-      const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+      const approvedRoleKey =
+        currentNode.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
+        currentNode.assignments?.find((assignment) => assignment.toUserId === actorUserId)
+          ?.fromRoleKey;
 
       if (!approvedRoleKey) {
         throw new Error(`Actor cannot approve contract node ${currentNode.name}`);
@@ -409,6 +430,22 @@ export class ContractService {
     });
   }
 
+  transferApproval(
+    contractVersionId: string,
+    actorUserId: string,
+    input: AssignApprovalDto
+  ) {
+    return this.assignApproval("transfer", contractVersionId, actorUserId, input);
+  }
+
+  delegateApproval(
+    contractVersionId: string,
+    actorUserId: string,
+    input: AssignApprovalDto
+  ) {
+    return this.assignApproval("delegate", contractVersionId, actorUserId, input);
+  }
+
   async approveSeal(contractVersionId: string, actorUserId: string) {
     return this.updateVersionStatus({
       contractVersionId,
@@ -564,5 +601,111 @@ export class ContractService {
     const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
 
     return Array.from(new Set([...positionKeys, ...memberKeys]));
+  }
+
+  private async assignApproval(
+    kind: ContractApprovalAssignment["kind"],
+    contractVersionId: string,
+    actorUserId: string,
+    input: AssignApprovalDto
+  ) {
+    if (!input.toUserId || input.toUserId === actorUserId) {
+      throw new Error("Contract approval assignment target is invalid");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId }
+      });
+
+      if (!version) {
+        throw new Error("Contract version not found");
+      }
+
+      if (version.status !== "in_approval") {
+        throw new Error(`Cannot assign contract approval from status ${version.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "contract_version",
+          businessId: version.id,
+          flowType: "contract.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Contract approval instance not found");
+      }
+
+      const nodes = instance.frozenNodes as unknown as ContractApprovalNode[];
+      const currentNode = nodes[instance.currentNodeIndex];
+
+      if (!currentNode) {
+        throw new Error("Contract approval current node not found");
+      }
+
+      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
+      const fromRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+
+      if (!fromRoleKey) {
+        throw new Error(`Actor cannot assign contract node ${currentNode.name}`);
+      }
+
+      const nextNodes = [...nodes];
+      const nextAssignments = [
+        ...(currentNode.assignments ?? []).filter(
+          (assignment) =>
+            !(
+              assignment.kind === kind &&
+              assignment.fromUserId === actorUserId &&
+              assignment.fromRoleKey === fromRoleKey
+            )
+        ),
+        { kind, fromUserId: actorUserId, fromRoleKey, toUserId: input.toUserId }
+      ];
+      nextNodes[instance.currentNodeIndex] = { ...currentNode, assignments: nextAssignments };
+
+      const updated = await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: { frozenNodes: nextNodes as unknown as Prisma.InputJsonValue }
+      });
+
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: kind,
+          actorUserId
+        }
+      });
+
+      if (kind === "delegate") {
+        const startsAt = new Date();
+        await tx.approvalDelegation.create({
+          data: {
+            fromUserId: actorUserId,
+            toUserId: input.toUserId,
+            startsAt,
+            // ponytail: 临时台账窗口；全局委托管理上线后由其维护 endsAt。
+            endsAt: new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+          }
+        });
+      }
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: `contract.approval.${kind}`,
+        businessType: "contract_version",
+        businessId: version.id,
+        metadata: {
+          nodeName: currentNode.name,
+          fromRoleKey,
+          toUserId: input.toUserId
+        }
+      });
+
+      return updated;
+    });
   }
 }

@@ -16,13 +16,31 @@ import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
 
+interface AssignApprovalDto {
+  toUserId: string;
+}
+
+interface PaymentApprovalAssignment {
+  kind: "transfer" | "delegate";
+  fromUserId: string;
+  fromRoleKey: RoleKey;
+  toUserId: string;
+}
+
+interface PaymentApprovalNode {
+  name: string;
+  mode: "any";
+  roleKeys: RoleKey[];
+  assignments?: PaymentApprovalAssignment[];
+}
+
 const PAYMENT_APPROVAL_NODES = [
   {
     name: "董事长/总经理",
     mode: "any",
     roleKeys: ["chairman", "general_manager"]
   }
-] satisfies Array<{ name: string; mode: "any"; roleKeys: RoleKey[] }>;
+] satisfies PaymentApprovalNode[];
 
 @Injectable()
 export class PaymentRequestService {
@@ -303,7 +321,7 @@ export class PaymentRequestService {
         throw new Error("Payment approval instance not found");
       }
 
-      const nodes = instance.frozenNodes as unknown as typeof PAYMENT_APPROVAL_NODES;
+      const nodes = instance.frozenNodes as unknown as PaymentApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
 
       if (!currentNode) {
@@ -311,7 +329,10 @@ export class PaymentRequestService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
-      const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+      const approvedRoleKey =
+        currentNode.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
+        currentNode.assignments?.find((assignment) => assignment.toUserId === actorUserId)
+          ?.fromRoleKey;
 
       if (!approvedRoleKey) {
         throw new Error(`Actor cannot approve payment node ${currentNode.name}`);
@@ -395,6 +416,14 @@ export class PaymentRequestService {
       });
       return approved;
     });
+  }
+
+  transferApproval(paymentId: string, actorUserId: string, input: AssignApprovalDto) {
+    return this.assignApproval("transfer", paymentId, actorUserId, input);
+  }
+
+  delegateApproval(paymentId: string, actorUserId: string, input: AssignApprovalDto) {
+    return this.assignApproval("delegate", paymentId, actorUserId, input);
   }
 
   async recordExecution(
@@ -673,5 +702,115 @@ export class PaymentRequestService {
     const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
 
     return Array.from(new Set([...positionKeys, ...memberKeys]));
+  }
+
+  private async assignApproval(
+    kind: PaymentApprovalAssignment["kind"],
+    paymentId: string,
+    actorUserId: string,
+    input: AssignApprovalDto
+  ) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to assign payment approval");
+    }
+
+    if (!input.toUserId || input.toUserId === actorUserId) {
+      throw new Error("Payment approval assignment target is invalid");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.paymentRequest.findFirst({
+        where: { OR: [{ id: paymentId }, { code: paymentId }] }
+      });
+
+      if (!payment) {
+        throw new Error("Payment request not found");
+      }
+
+      if (payment.status !== "approval_pending") {
+        throw new Error(`Cannot assign payment approval from status ${payment.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "payment_request",
+          businessId: payment.id,
+          flowType: "payment.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Payment approval instance not found");
+      }
+
+      const nodes = instance.frozenNodes as unknown as PaymentApprovalNode[];
+      const currentNode = nodes[instance.currentNodeIndex];
+
+      if (!currentNode) {
+        throw new Error("Payment approval current node not found");
+      }
+
+      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
+      const fromRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+
+      if (!fromRoleKey) {
+        throw new Error(`Actor cannot assign payment node ${currentNode.name}`);
+      }
+
+      const nextNodes = [...nodes];
+      const nextAssignments = [
+        ...(currentNode.assignments ?? []).filter(
+          (assignment) =>
+            !(
+              assignment.kind === kind &&
+              assignment.fromUserId === actorUserId &&
+              assignment.fromRoleKey === fromRoleKey
+            )
+        ),
+        { kind, fromUserId: actorUserId, fromRoleKey, toUserId: input.toUserId }
+      ];
+      nextNodes[instance.currentNodeIndex] = { ...currentNode, assignments: nextAssignments };
+
+      const updated = await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: { frozenNodes: nextNodes as unknown as Prisma.InputJsonValue }
+      });
+
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: kind,
+          actorUserId
+        }
+      });
+
+      if (kind === "delegate") {
+        const startsAt = new Date();
+        await tx.approvalDelegation.create({
+          data: {
+            fromUserId: actorUserId,
+            toUserId: input.toUserId,
+            startsAt,
+            // ponytail: 临时台账窗口；全局委托管理上线后由其维护 endsAt。
+            endsAt: new Date(startsAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+          }
+        });
+      }
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: `payment.approval.${kind}`,
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: {
+          nodeName: currentNode.name,
+          fromRoleKey,
+          toUserId: input.toUserId
+        }
+      });
+
+      return updated;
+    });
   }
 }

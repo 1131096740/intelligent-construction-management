@@ -33,6 +33,26 @@ export class PaymentController {
     return this.payments.reviewApproval(paymentId, user.id, body);
   }
 
+  @Post(":paymentId/approval-transfer")
+  @RequireProjectRole("payment.approve")
+  transferApproval(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { toUserId: string }
+  ) {
+    return this.payments.transferApproval(paymentId, user.id, body);
+  }
+
+  @Post(":paymentId/approval-delegation")
+  @RequireProjectRole("payment.approve")
+  delegateApproval(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { toUserId: string }
+  ) {
+    return this.payments.delegateApproval(paymentId, user.id, body);
+  }
+
   @Post(":paymentId/approval-withdrawal")
   withdrawApproval(
     @Param("paymentId") paymentId: string,

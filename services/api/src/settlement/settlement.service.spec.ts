@@ -973,6 +973,9 @@ describe("SettlementService", () => {
       approvalActionLog: {
         create: jest.fn()
       },
+      approvalDelegation: {
+        create: jest.fn()
+      },
       ...approvalRoleTables("project_manager")
     };
     const prisma = {
@@ -1007,6 +1010,14 @@ describe("SettlementService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "delegate",
         actorUserId: "project-manager-1"
+      }
+    });
+    expect(tx.approvalDelegation.create).toHaveBeenCalledWith({
+      data: {
+        fromUserId: "project-manager-1",
+        toUserId: "agent-user-1",
+        startsAt: expect.any(Date),
+        endsAt: expect.any(Date)
       }
     });
   });
