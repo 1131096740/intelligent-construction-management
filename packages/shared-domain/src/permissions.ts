@@ -44,8 +44,7 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
  *
  * 注意：
  * - `super_admin` 是技术管理员，**不是业务审批岗**，因此不出现在任何业务动作里。
- * - `settlement.approve` 的「按合同类型路由到不同评审岗」属于审批引擎（Milestone 5）的职责；
- *   此处仅给出评审级岗位的粗放许可，并明确排除最终审批岗，待审批引擎落地后细化。
+ * - `settlement.approve` 这里只做粗放行；具体节点顺序、会签与合同类型路由由后端审批实例校验。
  */
 export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> = {
   "contract.submit": ["contract_staff"],
@@ -59,8 +58,11 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
     "contract_director",
     "budget_director",
     "finance_director",
+    "material_staff",
+    "material_director",
+    "engineering_foreman",
+    "engineering_director",
     "engineering_tech",
-    "material_director"
   ],
   "settlement.archive.upload": ["contract_staff"],
   "settlement.archive.confirm": ["contract_director"],

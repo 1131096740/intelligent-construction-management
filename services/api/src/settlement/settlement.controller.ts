@@ -18,8 +18,8 @@ export class SettlementController {
 
   // 创建结算单：策略表未定义 create 动作，结算在审批前无业务效力，仅要求登录。
   @Post()
-  create(@Body() body: CreateSettlementDto) {
-    return this.settlements.create(body);
+  create(@Body() body: CreateSettlementDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.settlements.create(body, user.id);
   }
 
   @Get(":settlementId")

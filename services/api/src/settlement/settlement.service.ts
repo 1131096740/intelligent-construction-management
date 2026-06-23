@@ -1,8 +1,10 @@
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import {
   canCreateSettlementFromContractStatus,
   ContractVersionStatus,
-  SettlementStatus
+  SettlementStatus,
+  type RoleKey
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -10,6 +12,32 @@ import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dt
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
+
+type SettlementContractKind = "material_mechanical" | "labor_professional";
+
+interface SettlementApprovalNode {
+  name: string;
+  mode: "all" | "any";
+  roleKeys: RoleKey[];
+  approvedRoleKeys?: RoleKey[];
+}
+
+const MATERIAL_MECHANICAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
+  { name: "物资员", mode: "any", roleKeys: ["material_staff"] },
+  { name: "物资主管", mode: "any", roleKeys: ["material_director"] },
+  { name: "合同部主管 + 预算部主管", mode: "all", roleKeys: ["contract_director", "budget_director"] },
+  { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+  { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
+];
+
+const LABOR_PROFESSIONAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
+  { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
+  { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
+  { name: "工程技术部", mode: "any", roleKeys: ["engineering_tech"] },
+  { name: "合同部主管 + 预算部主管", mode: "all", roleKeys: ["contract_director", "budget_director"] },
+  { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+  { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
+];
 
 @Injectable()
 export class SettlementService {
@@ -24,7 +52,7 @@ export class SettlementService {
     }
   }
 
-  async create(input: CreateSettlementDto) {
+  async create(input: CreateSettlementDto, applicantUserId?: string) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to create settlement");
     }
@@ -71,7 +99,7 @@ export class SettlementService {
         currentSettlementStage?.ratioBps ?? null
       );
 
-      return tx.settlement.create({
+      const settlement = await tx.settlement.create({
         data: {
           projectId: contract.projectId,
           contractId: version.contractId,
@@ -85,6 +113,22 @@ export class SettlementService {
           paidAmountCents: 0
         }
       });
+
+      if (applicantUserId) {
+        await tx.approvalInstance.create({
+          data: {
+            flowType: "settlement.approve",
+            businessType: "settlement",
+            businessId: settlement.id,
+            status: "in_progress",
+            currentNodeIndex: 0,
+            frozenNodes: this.settlementApprovalNodesFor(contract),
+            applicantUserId
+          }
+        });
+      }
+
+      return settlement;
     });
   }
 
@@ -177,24 +221,111 @@ export class SettlementService {
         throw new Error(`Cannot review settlement approval from status ${settlement.status}`);
       }
 
-      const nextStatus =
-        input.decision === "approve" ? "approved_pending_archive" : "approval_rejected";
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "settlement",
+          businessId: settlement.id,
+          flowType: "settlement.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Settlement approval instance not found");
+      }
+
+      const nodes = instance.frozenNodes as unknown as SettlementApprovalNode[];
+      const currentNode = nodes[instance.currentNodeIndex];
+
+      if (!currentNode) {
+        throw new Error("Settlement approval current node not found");
+      }
+
+      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId);
+      const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+
+      if (!approvedRoleKey) {
+        throw new Error(`Actor cannot approve settlement node ${currentNode.name}`);
+      }
+
+      if (input.decision === "reject") {
+        const updated = await tx.settlement.update({
+          where: { id: settlement.id },
+          data: { status: "approval_rejected" satisfies SettlementStatus }
+        });
+
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: { status: "rejected" }
+        });
+
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "reject",
+            actorUserId
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "settlement.approval.reject",
+          businessType: "settlement",
+          businessId: settlement.id,
+          metadata: {
+            fromStatus: settlement.status,
+            toStatus: "approval_rejected",
+            nodeName: currentNode.name
+          }
+        });
+
+        return updated;
+      }
+
+      const nextNodes = [...nodes];
+      const nextNode = { ...currentNode };
+      const approvedRoleKeys = new Set(nextNode.approvedRoleKeys ?? []);
+      approvedRoleKeys.add(approvedRoleKey);
+      nextNode.approvedRoleKeys = [...approvedRoleKeys];
+      nextNodes[instance.currentNodeIndex] = nextNode;
+
+      const nodeCompleted =
+        nextNode.mode === "any" || nextNode.roleKeys.every((role) => approvedRoleKeys.has(role));
+      const nextNodeIndex = nodeCompleted ? instance.currentNodeIndex + 1 : instance.currentNodeIndex;
+      const flowCompleted = nextNodeIndex >= nextNodes.length;
+      const nextStatus = flowCompleted ? "approved_pending_archive" : "approval_pending";
       const updated = await tx.settlement.update({
         where: { id: settlement.id },
         data: { status: nextStatus satisfies SettlementStatus }
       });
 
+      await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: {
+          currentNodeIndex: nextNodeIndex,
+          frozenNodes: nextNodes as unknown as Prisma.InputJsonValue,
+          status: flowCompleted ? "approved" : "in_progress"
+        }
+      });
+
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "approve",
+          actorUserId
+        }
+      });
+
       await this.audit.record(tx, {
         actorUserId,
-        action:
-          input.decision === "approve"
-            ? "settlement.approval.approve"
-            : "settlement.approval.reject",
+        action: "settlement.approval.approve",
         businessType: "settlement",
         businessId: settlement.id,
         metadata: {
           fromStatus: settlement.status,
-          toStatus: nextStatus
+          toStatus: nextStatus,
+          nodeName: currentNode.name,
+          nodeCompleted
         }
       });
 
@@ -266,5 +397,56 @@ export class SettlementService {
 
       return effectiveSettlement;
     });
+  }
+
+  private settlementApprovalNodesFor(contract: { name: string; counterparty: string }) {
+    const kind = this.inferSettlementContractKind(contract);
+    const nodes =
+      kind === "labor_professional"
+        ? LABOR_PROFESSIONAL_SETTLEMENT_NODES
+        : MATERIAL_MECHANICAL_SETTLEMENT_NODES;
+
+    return nodes.map((node) => ({ ...node, roleKeys: [...node.roleKeys] }));
+  }
+
+  private inferSettlementContractKind(contract: {
+    name: string;
+    counterparty: string;
+  }): SettlementContractKind {
+    const text = `${contract.name} ${contract.counterparty}`;
+
+    if (text.includes("劳务") || text.includes("专业") || text.includes("分包")) {
+      return "labor_professional";
+    }
+
+    return "material_mechanical";
+  }
+
+  private async loadActorRoleKeys(
+    tx: {
+      userPosition: {
+        findMany(input: unknown): Promise<Array<{ positionId: string; projectId: string | null }>>;
+      };
+      projectMember: { findMany(input: unknown): Promise<Array<{ positionKey: string }>> };
+      position: { findMany(input: unknown): Promise<Array<{ id: string; key: string }>> };
+    },
+    actorUserId: string,
+    projectId: string
+  ): Promise<RoleKey[]> {
+    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId: null } }),
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId } }),
+      tx.projectMember.findMany({ where: { userId: actorUserId, projectId } })
+    ]);
+    const positionIds = Array.from(
+      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
+    );
+    const positions = positionIds.length
+      ? await tx.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    const positionKeys = positions.map((position) => position.key as RoleKey);
+    const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
+
+    return Array.from(new Set([...positionKeys, ...memberKeys]));
   }
 }

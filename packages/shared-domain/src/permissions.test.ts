@@ -30,6 +30,22 @@ describe("permission policy table", () => {
     );
     expect(canPerform("settlement.approve", ["chairman"])).toBe(false);
   });
+
+  it("allows settlement approval route roles before service-level node checks", () => {
+    for (const role of [
+      "material_staff",
+      "material_director",
+      "engineering_foreman",
+      "engineering_director",
+      "engineering_tech",
+      "contract_director",
+      "budget_director",
+      "project_manager",
+      "finance_director"
+    ] as const) {
+      expect(canPerform("settlement.approve", [role])).toBe(true);
+    }
+  });
 });
 
 describe("final approval OR-sign", () => {

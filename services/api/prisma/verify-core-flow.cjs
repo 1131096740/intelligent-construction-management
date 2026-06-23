@@ -11,8 +11,12 @@ const PHONES = {
   contractStaff: coreFlowSeedData.users.contractStaff.phone,
   cashier: coreFlowSeedData.users.cashier.phone,
   chairman: "13800001001",
+  projectManager: "13800001003",
   contractDirector: "13800001004",
   budgetDirector: "13800001005",
+  financeDirector: "13800001007",
+  materialStaff: "13800001009",
+  materialDirector: "13800001008",
   comprehensiveDirector: "13800001013"
 };
 
@@ -279,7 +283,8 @@ async function verifyPhase1WriteLoop(tokens) {
   );
   assertEqual(contractVersion.status, "effective", "contract archive confirmation");
 
-  // 结算：创建 → 审批(预算部主管) → 归档上传(合同部) → 归档确认(合同部主管) → 生效
+  // 结算：创建 → 材料类审批流(物资员 → 物资主管 → 合同/预算会签 → 项目经理 → 财务总监)
+  // → 归档上传(合同部) → 归档确认(合同部主管) → 生效
   let settlement = await postJson(
     "/settlements",
     {
@@ -293,11 +298,20 @@ async function verifyPhase1WriteLoop(tokens) {
   assertEqual(settlement.status, "approval_pending", "settlement creation");
   assertEqual(settlement.payableAmountCents, payableAmountCents, "settlement payable amount");
 
-  settlement = await postJson(
-    `/settlements/${settlement.id}/approval`,
-    { decision: "approve" },
-    tokens.budgetDirector
-  );
+  for (const token of [
+    tokens.materialStaff,
+    tokens.materialDirector,
+    tokens.contractDirector,
+    tokens.budgetDirector,
+    tokens.projectManager,
+    tokens.financeDirector
+  ]) {
+    settlement = await postJson(
+      `/settlements/${settlement.id}/approval`,
+      { decision: "approve" },
+      token
+    );
+  }
   assertEqual(settlement.status, "approved_pending_archive", "settlement approval");
 
   const settlementArchiveFile = await uploadPrivateFile(

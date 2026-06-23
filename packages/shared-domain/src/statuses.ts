@@ -17,6 +17,7 @@ export const SETTLEMENT_ELIGIBLE_CONTRACT_STATUSES = ["effective"] as const sati
 export const SETTLEMENT_STATUSES = [
   "draft",
   "in_approval",
+  "approval_pending",
   "approval_rejected",
   "approved_pending_archive",
   "pending_archive_confirm",
