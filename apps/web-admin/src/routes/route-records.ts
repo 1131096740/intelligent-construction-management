@@ -2,9 +2,15 @@ import type { RouteRecordRaw } from "vue-router";
 
 export const webAdminRoutes: RouteRecordRaw[] = [
   {
+    path: "/login",
+    component: () => import("../pages/login/LoginPage.vue"),
+    meta: { public: true }
+  },
+  {
     path: "/",
     component: () => import("../app/AdminLayout.vue"),
     redirect: "/contracts",
+    meta: { requiresAuth: true },
     children: [
       {
         path: "contracts",

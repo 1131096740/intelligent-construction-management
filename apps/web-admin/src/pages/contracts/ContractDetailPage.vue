@@ -60,10 +60,6 @@
               type="file"
               @change="selectContractArchiveFile"
             >
-            <t-input
-              v-model="contractArchiveForm.uploadedByUserId"
-              placeholder="上传人ID"
-            />
           </div>
           <t-button
             theme="primary"
@@ -84,10 +80,6 @@
             <t-input
               v-model="contractArchiveForm.archiveFileId"
               placeholder="归档记录ID"
-            />
-            <t-input
-              v-model="contractArchiveForm.confirmedByUserId"
-              placeholder="确认人ID"
             />
           </div>
           <t-button
@@ -210,9 +202,7 @@ const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const selectedContractArchiveFile = ref<File | null>(null);
 const contractArchiveForm = reactive({
-  uploadedByUserId: "",
-  archiveFileId: "",
-  confirmedByUserId: ""
+  archiveFileId: ""
 });
 
 const contractDetailTitleView = computed(() => contractDetail.value?.title ?? contractDetailTitle);
@@ -304,19 +294,14 @@ async function submitContractArchiveUpload() {
   );
 
   await runArchiveAction("upload", async () => {
-    const uploadedByUserId = requiredText(contractArchiveForm.uploadedByUserId, "上传人ID");
     const file = selectedContractArchiveFile.value;
     if (!file) {
       throw new Error("盖章合同文件不能为空");
     }
 
-    const uploadedFile = await uploadPrivateFile(file, {
-      fileName: file.name,
-      uploadedByUserId
-    });
+    const uploadedFile = await uploadPrivateFile(file, file.name);
     const result = await uploadContractArchiveFile(contractVersionId, {
-      fileId: uploadedFile.id,
-      uploadedByUserId
+      fileId: uploadedFile.id
     });
     contractArchiveForm.archiveFileId = returnedId(result);
   });
@@ -330,8 +315,7 @@ async function submitContractArchiveConfirmation() {
 
   await runArchiveAction("confirm", () =>
     confirmContractArchive(contractVersionId, {
-      archiveFileId: requiredText(contractArchiveForm.archiveFileId, "归档记录ID"),
-      confirmedByUserId: requiredText(contractArchiveForm.confirmedByUserId, "确认人ID")
+      archiveFileId: requiredText(contractArchiveForm.archiveFileId, "归档记录ID")
     })
   );
 }

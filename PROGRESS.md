@@ -10,12 +10,13 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-23 (CodeX)：完成 Web 管理端登录页与前端鉴权态。新增 Pinia auth store、统一 `apiFetch` Bearer 注入、401 自动 refresh 后重试/失效跳登录、`/login` 公开路由与业务页守卫；写操作 payload 移除旧 `*UserId` 表单字段，操作人统一来自 access token。`web-admin` 57 个单测 + typecheck 通过。
 - 2026-06-23 (Claude)：业务写端点全部挂上鉴权。新增 `@CurrentUser()` 取登录态操作人；合同/结算/付款/文件控制器去掉 `@Public()`，12 个受守写动作各挂 `@RequireProjectRole(<action>)`；DTO 删除 `*ByUserId`，service 改为显式 `actorUserId` 参数；文件下载（票据鉴权）保留 `@Public`。`verify-core-flow.cjs` 改为多身份登录 + Bearer，并新增两条安全回归（未登录写 401、错误岗位用章 403）。本机 Docker PG + API 实跑 `verify:core-flow` 全绿；89 个单测 + typecheck + eslint 通过。
 - 2026-06-23 (CodeX)：完成 services/api 认证管道：User 密码字段 + RefreshToken migration、17 岗位 seed、手机号密码登录/refresh/logout/改密/微信登录、全局 JwtAuthGuard 与 PermissionGuard（暂未挂业务端点）。
 - 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：Web 管理端登录页 + 前端鉴权态（携带 access token、401 刷新/跳登录）——写操作现已要求登录，前端不接 token 会 401。其后：审批引擎（Milestone 5）落地 `settlement.approve` 按合同类型路由到评审岗。
+- **下一步**：审批引擎（Milestone 5）落地 `settlement.approve` 按合同类型路由到评审岗，并补会签 / 或签流转最小闭环测试。
 
 ---
 
@@ -85,8 +86,8 @@
 - [x] 企业后台布局
 - [x] 合同 / 结算 / 付款 / 资料库 / 审计 台账页 + 详情页骨架
 - [x] 核心读 API 客户端 + 页面配置测试
-- [~] 写操作接入（归档、付款部分动作已 wire）⚠️ 后端写端点现已要求 Bearer token，前端不接 token 会 401
-- [ ] 登录页 / 前端鉴权态（携带 access token、401 自动刷新或跳登录）← 解锁写操作的前置
+- [~] 写操作接入（归档、付款部分动作已 wire；已携带登录态 token）
+- [x] 登录页 / 前端鉴权态（携带 access token、401 自动刷新或跳登录）
 
 ## Milestone 7：小程序移动端
 

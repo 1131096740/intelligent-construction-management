@@ -60,10 +60,6 @@
               type="file"
               @change="selectSettlementArchiveFile"
             >
-            <t-input
-              v-model="settlementArchiveForm.uploadedByUserId"
-              placeholder="上传人ID"
-            />
           </div>
           <t-button
             theme="primary"
@@ -84,10 +80,6 @@
             <t-input
               v-model="settlementArchiveForm.archiveFileId"
               placeholder="归档记录ID"
-            />
-            <t-input
-              v-model="settlementArchiveForm.confirmedByUserId"
-              placeholder="确认人ID"
             />
           </div>
           <t-button
@@ -214,9 +206,7 @@ const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const selectedSettlementArchiveFile = ref<File | null>(null);
 const settlementArchiveForm = reactive({
-  uploadedByUserId: "",
-  archiveFileId: "",
-  confirmedByUserId: ""
+  archiveFileId: ""
 });
 
 const settlementDetailTitleView = computed(() => settlementDetail.value?.title ?? settlementDetailTitle);
@@ -308,19 +298,14 @@ async function submitSettlementArchiveUpload() {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
 
   await runArchiveAction("upload", async () => {
-    const uploadedByUserId = requiredText(settlementArchiveForm.uploadedByUserId, "上传人ID");
     const file = selectedSettlementArchiveFile.value;
     if (!file) {
       throw new Error("签章结算单文件不能为空");
     }
 
-    const uploadedFile = await uploadPrivateFile(file, {
-      fileName: file.name,
-      uploadedByUserId
-    });
+    const uploadedFile = await uploadPrivateFile(file, file.name);
     const result = await uploadSettlementArchiveFile(settlementId, {
-      fileId: uploadedFile.id,
-      uploadedByUserId
+      fileId: uploadedFile.id
     });
     settlementArchiveForm.archiveFileId = returnedId(result);
   });
@@ -331,8 +316,7 @@ async function submitSettlementArchiveConfirmation() {
 
   await runArchiveAction("confirm", () =>
     confirmSettlementArchive(settlementId, {
-      archiveFileId: requiredText(settlementArchiveForm.archiveFileId, "归档记录ID"),
-      confirmedByUserId: requiredText(settlementArchiveForm.confirmedByUserId, "确认人ID")
+      archiveFileId: requiredText(settlementArchiveForm.archiveFileId, "归档记录ID")
     })
   );
 }

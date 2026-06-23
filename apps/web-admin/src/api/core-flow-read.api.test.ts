@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchContractDetail,
   fetchPaymentDetail,
   fetchSettlementDetail,
   confirmContractArchive,
   confirmSettlementArchive,
-  createFileDownloadTicket,
   approveContractSeal,
   reviewContractApproval,
   reviewSettlementApproval,
@@ -20,6 +20,10 @@ import {
 } from "./core-flow-read.api";
 
 describe("core flow read API client", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -49,23 +53,19 @@ describe("core flow read API client", () => {
 
     await reviewPaymentApproval("FK-2026-006", {
       decision: "approve",
-      approvedAmountCents: 5000000,
-      reviewedByUserId: "chairman-1"
+      approvedAmountCents: 5000000
     });
     await recordPaymentExecution("FK-2026-006", {
       amountCents: 5000000,
       paidAt: "2026-06-22T00:00:00.000Z",
-      executedByUserId: "cashier-1",
       voucherFileId: "file-1"
     });
     await recordPaymentFinance("FK-2026-006", {
       amountCents: 5000000,
-      occurredAt: "2026-06-22T01:00:00.000Z",
-      createdByUserId: "finance-1"
+      occurredAt: "2026-06-22T01:00:00.000Z"
     });
     await recordPaymentPdfArchive("FK-2026-006", {
-      fileId: "file-2",
-      archivedByUserId: "finance-1"
+      fileId: "file-2"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -78,8 +78,7 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
-        approvedAmountCents: 5000000,
-        reviewedByUserId: "chairman-1"
+        approvedAmountCents: 5000000
       })
     );
   });
@@ -91,20 +90,16 @@ describe("core flow read API client", () => {
     } as Response);
 
     await uploadContractArchiveFile("contract-version-1", {
-      fileId: "file-contract-archive",
-      uploadedByUserId: "contract-staff-1"
+      fileId: "file-contract-archive"
     });
     await confirmContractArchive("contract-version-1", {
-      archiveFileId: "contract-archive-file-1",
-      confirmedByUserId: "contract-director-1"
+      archiveFileId: "contract-archive-file-1"
     });
     await uploadSettlementArchiveFile("settlement-1", {
-      fileId: "file-settlement-archive",
-      uploadedByUserId: "contract-staff-1"
+      fileId: "file-settlement-archive"
     });
     await confirmSettlementArchive("settlement-1", {
-      archiveFileId: "settlement-archive-file-1",
-      confirmedByUserId: "contract-director-1"
+      archiveFileId: "settlement-archive-file-1"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -116,8 +111,7 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
-        fileId: "file-contract-archive",
-        uploadedByUserId: "contract-staff-1"
+        fileId: "file-contract-archive"
       })
     );
   });
@@ -128,19 +122,13 @@ describe("core flow read API client", () => {
       json: async () => ({ id: "ok" })
     } as Response);
 
-    await submitContractApproval("contract-version-1", {
-      submittedByUserId: "contract-staff-1"
-    });
+    await submitContractApproval("contract-version-1");
     await reviewContractApproval("contract-version-1", {
-      decision: "approve",
-      reviewedByUserId: "chairman-1"
+      decision: "approve"
     });
-    await approveContractSeal("contract-version-1", {
-      sealedByUserId: "contract-staff-1"
-    });
+    await approveContractSeal("contract-version-1");
     await reviewSettlementApproval("settlement-1", {
-      decision: "approve",
-      reviewedByUserId: "budget-director-1"
+      decision: "approve"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -152,32 +140,21 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[1][1]?.body).toBe(
       JSON.stringify({
-        decision: "approve",
-        reviewedByUserId: "chairman-1"
+        decision: "approve"
       })
     );
   });
 
-  it("uploads private files and requests short-lived download tickets through the backend", async () => {
+  it("uploads private files through the backend", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({ id: "file-1" })
     } as Response);
 
-    await uploadPrivateFile(new Blob(["file"]), {
-      fileName: "盖章合同.pdf",
-      uploadedByUserId: "contract-staff-1"
-    });
-    await createFileDownloadTicket("file-1", {
-      actorUserId: "finance-1"
-    });
+    await uploadPrivateFile(new Blob(["file"]), "盖章合同.pdf");
 
-    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/files",
-      "/api/files/file-1/download-ticket?actorUserId=finance-1"
-    ]);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/files"]);
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
     expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
-    expect(fetchMock.mock.calls[1][1]).toBeUndefined();
   });
 });

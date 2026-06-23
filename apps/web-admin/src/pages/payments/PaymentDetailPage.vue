@@ -54,11 +54,7 @@
             <strong>付款审批</strong>
             <span>董事长/总经理或签</span>
           </div>
-          <div class="action-fields two-columns">
-            <t-input
-              v-model="paymentActionForm.reviewedByUserId"
-              placeholder="审批人ID"
-            />
+          <div class="action-fields">
             <t-input
               v-model="paymentActionForm.approvedAmountCents"
               placeholder="审批金额(分)"
@@ -100,10 +96,6 @@
               placeholder="付款时间 ISO"
             />
             <t-input
-              v-model="paymentActionForm.executedByUserId"
-              placeholder="出纳/财务ID"
-            />
-            <t-input
               v-model="paymentActionForm.voucherFileId"
               placeholder="付款凭证文件ID"
             />
@@ -132,10 +124,6 @@
               v-model="paymentActionForm.occurredAt"
               placeholder="入账时间 ISO"
             />
-            <t-input
-              v-model="paymentActionForm.financeUserId"
-              placeholder="财务人员ID"
-            />
           </div>
           <t-button
             theme="primary"
@@ -156,10 +144,6 @@
             <t-input
               v-model="paymentActionForm.pdfFileId"
               placeholder="PDF文件ID"
-            />
-            <t-input
-              v-model="paymentActionForm.archivedByUserId"
-              placeholder="归档人ID"
             />
           </div>
           <t-button
@@ -304,17 +288,13 @@ const actionBusy = ref("");
 const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
 const paymentActionForm = reactive({
-  reviewedByUserId: "",
   approvedAmountCents: "",
   executionAmountCents: "",
   paidAt: new Date().toISOString(),
-  executedByUserId: "",
   voucherFileId: "",
   financeAmountCents: "",
   occurredAt: new Date().toISOString(),
-  financeUserId: "",
-  pdfFileId: "",
-  archivedByUserId: ""
+  pdfFileId: ""
 });
 
 const paymentDetailTitleView = computed(() => paymentDetail.value?.title ?? paymentDetailTitle);
@@ -422,8 +402,7 @@ async function submitApproval(decision: "approve" | "reject") {
       approvedAmountCents:
         decision === "approve"
           ? optionalCentAmount(paymentActionForm.approvedAmountCents, "审批金额")
-          : undefined,
-      reviewedByUserId: requiredText(paymentActionForm.reviewedByUserId, "审批人ID")
+          : undefined
     })
   );
 }
@@ -435,7 +414,6 @@ async function submitExecution() {
     recordPaymentExecution(paymentId, {
       amountCents: parseCentAmount(paymentActionForm.executionAmountCents, "实付金额"),
       paidAt: requiredText(paymentActionForm.paidAt, "付款时间"),
-      executedByUserId: requiredText(paymentActionForm.executedByUserId, "出纳/财务ID"),
       voucherFileId: requiredText(paymentActionForm.voucherFileId, "付款凭证文件ID")
     })
   );
@@ -447,8 +425,7 @@ async function submitFinance() {
   await runPaymentAction("finance", () =>
     recordPaymentFinance(paymentId, {
       amountCents: parseCentAmount(paymentActionForm.financeAmountCents, "入账金额"),
-      occurredAt: requiredText(paymentActionForm.occurredAt, "入账时间"),
-      createdByUserId: requiredText(paymentActionForm.financeUserId, "财务人员ID")
+      occurredAt: requiredText(paymentActionForm.occurredAt, "入账时间")
     })
   );
 }
@@ -458,8 +435,7 @@ async function submitPdfArchive() {
 
   await runPaymentAction("pdfArchive", () =>
     recordPaymentPdfArchive(paymentId, {
-      fileId: requiredText(paymentActionForm.pdfFileId, "PDF文件ID"),
-      archivedByUserId: requiredText(paymentActionForm.archivedByUserId, "归档人ID")
+      fileId: requiredText(paymentActionForm.pdfFileId, "PDF文件ID")
     })
   );
 }

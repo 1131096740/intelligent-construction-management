@@ -3,43 +3,47 @@ import type {
   PaymentDetailReadModel,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
+import { apiFetch } from "./api-fetch";
 
-async function readJson<T>(path: string): Promise<T> {
-  const response = await fetch(`/api${path}`);
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+async function ensureOk(response: Response, fallback: string): Promise<void> {
+  if (response.ok) {
+    return;
   }
 
+  let message = `${fallback}：${response.status}`;
+  try {
+    const data = (await response.clone().json()) as { message?: unknown };
+    if (typeof data.message === "string") {
+      message = data.message;
+    } else if (Array.isArray(data.message)) {
+      message = data.message.join("；");
+    }
+  } catch {
+    // 响应体非 JSON，沿用兜底文案。
+  }
+
+  throw new Error(message);
+}
+
+async function readJson<T>(path: string): Promise<T> {
+  const response = await apiFetch(path);
+  await ensureOk(response, "读取失败");
   return response.json() as Promise<T>;
 }
 
-async function postJson<TResponse, TBody>(path: string, body: TBody): Promise<TResponse> {
-  const response = await fetch(`/api${path}`, {
+async function postJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+  const response = await apiFetch(path, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {})
   });
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
-  }
-
+  await ensureOk(response, "提交失败");
   return response.json() as Promise<TResponse>;
 }
 
 async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
-  const response = await fetch(`/api${path}`, {
-    method: "POST",
-    body
-  });
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
-  }
-
+  const response = await apiFetch(path, { method: "POST", body });
+  await ensureOk(response, "上传失败");
   return response.json() as Promise<TResponse>;
 }
 
@@ -55,73 +59,51 @@ export function fetchPaymentDetail(paymentId: string) {
   return readJson<PaymentDetailReadModel>(`/payments/${paymentId}`);
 }
 
+// 操作人统一来自登录态（access token），写入负载不再携带 *ByUserId。
 export interface ReviewPaymentApprovalPayload {
   decision: "approve" | "reject";
   approvedAmountCents?: number;
-  reviewedByUserId?: string;
-}
-
-export interface SubmitContractApprovalPayload {
-  submittedByUserId: string;
 }
 
 export interface ReviewContractApprovalPayload {
   decision: "approve" | "reject";
-  reviewedByUserId: string;
-}
-
-export interface ApproveContractSealPayload {
-  sealedByUserId: string;
 }
 
 export interface ReviewSettlementApprovalPayload {
   decision: "approve" | "reject";
-  reviewedByUserId: string;
 }
 
 export interface RecordPaymentExecutionPayload {
   amountCents: number;
   paidAt: string;
-  executedByUserId: string;
   voucherFileId: string;
 }
 
 export interface RecordPaymentFinancePayload {
   amountCents: number;
   occurredAt: string;
-  createdByUserId: string;
 }
 
 export interface RecordPaymentPdfArchivePayload {
   fileId: string;
-  archivedByUserId: string;
   templateKey?: string;
   departmentScope?: string;
 }
 
 export interface UploadContractArchiveFilePayload {
   fileId: string;
-  uploadedByUserId: string;
 }
 
 export interface ConfirmContractArchivePayload {
   archiveFileId: string;
-  confirmedByUserId: string;
 }
 
 export interface UploadSettlementArchiveFilePayload {
   fileId: string;
-  uploadedByUserId: string;
 }
 
 export interface ConfirmSettlementArchivePayload {
   archiveFileId: string;
-  confirmedByUserId: string;
-}
-
-export interface PrivateFileUploadPayload {
-  fileName: string;
-  uploadedByUserId: string;
 }
 
 export interface PrivateFileReadModel {
@@ -135,128 +117,75 @@ export interface PrivateFileReadModel {
   createdAt: string;
 }
 
-export interface FileDownloadTicketPayload {
-  actorUserId: string;
-}
-
-export interface FileDownloadTicketReadModel {
-  fileId: string;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  expiresAt: string;
-  downloadUrl: string;
-}
-
-export function uploadPrivateFile(file: Blob, body: PrivateFileUploadPayload) {
+export function uploadPrivateFile(file: Blob, fileName: string) {
   const form = new FormData();
-  form.append("file", file, body.fileName);
-  form.append("uploadedByUserId", body.uploadedByUserId);
+  form.append("file", file, fileName);
 
   return postForm<PrivateFileReadModel>("/files", form);
-}
-
-export function createFileDownloadTicket(fileId: string, body: FileDownloadTicketPayload) {
-  const params = new URLSearchParams({ actorUserId: body.actorUserId });
-
-  return readJson<FileDownloadTicketReadModel>(`/files/${fileId}/download-ticket?${params}`);
 }
 
 export function uploadContractArchiveFile(
   contractVersionId: string,
   body: UploadContractArchiveFilePayload
 ) {
-  return postJson<unknown, UploadContractArchiveFilePayload>(
-    `/contracts/${contractVersionId}/archive-files`,
-    body
-  );
+  return postJson<unknown>(`/contracts/${contractVersionId}/archive-files`, body);
 }
 
 export function confirmContractArchive(
   contractVersionId: string,
   body: ConfirmContractArchivePayload
 ) {
-  return postJson<unknown, ConfirmContractArchivePayload>(
-    `/contracts/${contractVersionId}/archive-confirmation`,
-    body
-  );
+  return postJson<unknown>(`/contracts/${contractVersionId}/archive-confirmation`, body);
 }
 
-export function submitContractApproval(
-  contractVersionId: string,
-  body: SubmitContractApprovalPayload
-) {
-  return postJson<unknown, SubmitContractApprovalPayload>(
-    `/contracts/${contractVersionId}/approval-submission`,
-    body
-  );
+export function submitContractApproval(contractVersionId: string) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/approval-submission`);
 }
 
 export function reviewContractApproval(
   contractVersionId: string,
   body: ReviewContractApprovalPayload
 ) {
-  return postJson<unknown, ReviewContractApprovalPayload>(
-    `/contracts/${contractVersionId}/approval`,
-    body
-  );
+  return postJson<unknown>(`/contracts/${contractVersionId}/approval`, body);
 }
 
-export function approveContractSeal(contractVersionId: string, body: ApproveContractSealPayload) {
-  return postJson<unknown, ApproveContractSealPayload>(
-    `/contracts/${contractVersionId}/seal-approval`,
-    body
-  );
+export function approveContractSeal(contractVersionId: string) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/seal-approval`);
 }
 
 export function uploadSettlementArchiveFile(
   settlementId: string,
   body: UploadSettlementArchiveFilePayload
 ) {
-  return postJson<unknown, UploadSettlementArchiveFilePayload>(
-    `/settlements/${settlementId}/archive-files`,
-    body
-  );
+  return postJson<unknown>(`/settlements/${settlementId}/archive-files`, body);
 }
 
 export function confirmSettlementArchive(
   settlementId: string,
   body: ConfirmSettlementArchivePayload
 ) {
-  return postJson<unknown, ConfirmSettlementArchivePayload>(
-    `/settlements/${settlementId}/archive-confirmation`,
-    body
-  );
+  return postJson<unknown>(`/settlements/${settlementId}/archive-confirmation`, body);
 }
 
 export function reviewSettlementApproval(
   settlementId: string,
   body: ReviewSettlementApprovalPayload
 ) {
-  return postJson<unknown, ReviewSettlementApprovalPayload>(
-    `/settlements/${settlementId}/approval`,
-    body
-  );
+  return postJson<unknown>(`/settlements/${settlementId}/approval`, body);
 }
 
 export function reviewPaymentApproval(paymentId: string, body: ReviewPaymentApprovalPayload) {
-  return postJson<unknown, ReviewPaymentApprovalPayload>(`/payments/${paymentId}/approval`, body);
+  return postJson<unknown>(`/payments/${paymentId}/approval`, body);
 }
 
 export function recordPaymentExecution(paymentId: string, body: RecordPaymentExecutionPayload) {
-  return postJson<unknown, RecordPaymentExecutionPayload>(`/payments/${paymentId}/executions`, body);
+  return postJson<unknown>(`/payments/${paymentId}/executions`, body);
 }
 
 export function recordPaymentFinance(paymentId: string, body: RecordPaymentFinancePayload) {
-  return postJson<unknown, RecordPaymentFinancePayload>(
-    `/payments/${paymentId}/finance-records`,
-    body
-  );
+  return postJson<unknown>(`/payments/${paymentId}/finance-records`, body);
 }
 
 export function recordPaymentPdfArchive(paymentId: string, body: RecordPaymentPdfArchivePayload) {
-  return postJson<unknown, RecordPaymentPdfArchivePayload>(
-    `/payments/${paymentId}/pdf-archive`,
-    body
-  );
+  return postJson<unknown>(`/payments/${paymentId}/pdf-archive`, body);
 }
