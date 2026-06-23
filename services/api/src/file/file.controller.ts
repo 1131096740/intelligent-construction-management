@@ -11,6 +11,7 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { Public } from "../auth/decorators/public.decorator";
 import { CreateFileDownloadTicketDto } from "./dto/create-file-download-ticket.dto";
 import { UploadPrivateFileDto } from "./dto/upload-private-file.dto";
 import { FileService } from "./file.service";
@@ -23,6 +24,7 @@ interface MemoryUploadedFile {
 }
 
 @Controller("files")
+@Public()
 export class FileController {
   constructor(private readonly files: FileService) {}
 

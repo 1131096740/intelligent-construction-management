@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Public } from "../auth/decorators/public.decorator";
 import { ContractReadService } from "./contract-read.service";
 import { ContractService } from "./contract.service";
 import { ApproveContractSealDto } from "./dto/approve-contract-seal.dto";
@@ -9,6 +10,7 @@ import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 
 @Controller("contracts")
+@Public()
 export class ContractController {
   constructor(
     private readonly contracts: ContractService,

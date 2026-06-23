@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Public } from "../auth/decorators/public.decorator";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
@@ -8,6 +9,7 @@ import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
 
 @Controller("payments")
+@Public()
 export class PaymentController {
   constructor(
     private readonly paymentRead: PaymentReadService,

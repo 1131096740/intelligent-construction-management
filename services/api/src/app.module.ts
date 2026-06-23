@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ArchiveModule } from "./archive/archive.module";
 import { ApprovalModule } from "./approval/approval.module";
 import { AuditModule } from "./audit/audit.module";
+import { AuthModule } from "./auth/auth.module";
 import { ContractModule } from "./contract/contract.module";
 import { DatabaseModule } from "./database/database.module";
 import { FileModule } from "./file/file.module";
@@ -24,6 +25,7 @@ import { SettlementModule } from "./settlement/settlement.module";
     FileModule,
     ArchiveModule,
     AuditModule,
+    AuthModule,
     PdfModule
   ],
   controllers: [HealthController]

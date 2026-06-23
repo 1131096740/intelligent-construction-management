@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Public } from "../auth/decorators/public.decorator";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
@@ -7,6 +8,7 @@ import { SettlementReadService } from "./settlement-read.service";
 import { SettlementService } from "./settlement.service";
 
 @Controller("settlements")
+@Public()
 export class SettlementController {
   constructor(
     private readonly settlementRead: SettlementReadService,
