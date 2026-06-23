@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
@@ -40,6 +41,26 @@ export class SettlementController {
   @Post(":settlementId/approval-withdrawal")
   withdrawApproval(@Param("settlementId") settlementId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.settlements.withdrawApproval(settlementId, user.id);
+  }
+
+  @Post(":settlementId/approval-transfer")
+  @RequireProjectRole("settlement.approve")
+  transferApproval(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AssignSettlementApprovalDto
+  ) {
+    return this.settlements.transferApproval(settlementId, user.id, body);
+  }
+
+  @Post(":settlementId/approval-delegation")
+  @RequireProjectRole("settlement.approve")
+  delegateApproval(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: AssignSettlementApprovalDto
+  ) {
+    return this.settlements.delegateApproval(settlementId, user.id, body);
   }
 
   @Post(":settlementId/archive-files")

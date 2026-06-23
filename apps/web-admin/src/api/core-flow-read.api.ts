@@ -73,6 +73,10 @@ export interface ReviewSettlementApprovalPayload {
   decision: "approve" | "reject" | "reject_previous" | "return_to_applicant";
 }
 
+export interface AssignSettlementApprovalPayload {
+  toUserId: string;
+}
+
 export interface RecordPaymentExecutionPayload {
   amountCents: number;
   paidAt: string;
@@ -176,6 +180,20 @@ export function reviewSettlementApproval(
 
 export function withdrawSettlementApproval(settlementId: string) {
   return postJson<unknown>(`/settlements/${settlementId}/approval-withdrawal`);
+}
+
+export function transferSettlementApproval(
+  settlementId: string,
+  body: AssignSettlementApprovalPayload
+) {
+  return postJson<unknown>(`/settlements/${settlementId}/approval-transfer`, body);
+}
+
+export function delegateSettlementApproval(
+  settlementId: string,
+  body: AssignSettlementApprovalPayload
+) {
+  return postJson<unknown>(`/settlements/${settlementId}/approval-delegation`, body);
 }
 
 export function reviewPaymentApproval(paymentId: string, body: ReviewPaymentApprovalPayload) {

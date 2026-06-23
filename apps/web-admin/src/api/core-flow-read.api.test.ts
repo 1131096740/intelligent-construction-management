@@ -17,7 +17,9 @@ import {
   recordPaymentFinance,
   recordPaymentPdfArchive,
   reviewPaymentApproval,
-  withdrawSettlementApproval
+  withdrawSettlementApproval,
+  transferSettlementApproval,
+  delegateSettlementApproval
 } from "./core-flow-read.api";
 
 describe("core flow read API client", () => {
@@ -132,13 +134,21 @@ describe("core flow read API client", () => {
       decision: "approve"
     });
     await withdrawSettlementApproval("settlement-1");
+    await transferSettlementApproval("settlement-1", {
+      toUserId: "delegate-user-1"
+    });
+    await delegateSettlementApproval("settlement-1", {
+      toUserId: "agent-user-1"
+    });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contracts/contract-version-1/approval-submission",
       "/api/contracts/contract-version-1/approval",
       "/api/contracts/contract-version-1/seal-approval",
       "/api/settlements/settlement-1/approval",
-      "/api/settlements/settlement-1/approval-withdrawal"
+      "/api/settlements/settlement-1/approval-withdrawal",
+      "/api/settlements/settlement-1/approval-transfer",
+      "/api/settlements/settlement-1/approval-delegation"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[1][1]?.body).toBe(

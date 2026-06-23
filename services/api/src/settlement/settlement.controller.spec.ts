@@ -10,6 +10,8 @@ describe("SettlementController authorization wiring", () => {
 
   it.each([
     ["reviewApproval", "settlement.approve"],
+    ["transferApproval", "settlement.approve"],
+    ["delegateApproval", "settlement.approve"],
     ["uploadArchiveFile", "settlement.archive.upload"],
     ["confirmArchiveFile", "settlement.archive.confirm"]
   ])("guards %s with the %s action", (method, action) => {

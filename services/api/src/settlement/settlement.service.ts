@@ -8,6 +8,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
@@ -20,6 +21,14 @@ interface SettlementApprovalNode {
   mode: "all" | "any";
   roleKeys: RoleKey[];
   approvedRoleKeys?: RoleKey[];
+  assignments?: SettlementApprovalAssignment[];
+}
+
+interface SettlementApprovalAssignment {
+  kind: "transfer" | "delegate";
+  fromUserId: string;
+  fromRoleKey: RoleKey;
+  toUserId: string;
 }
 
 const MATERIAL_MECHANICAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
@@ -122,7 +131,7 @@ export class SettlementService {
             businessId: settlement.id,
             status: "in_progress",
             currentNodeIndex: 0,
-            frozenNodes: this.settlementApprovalNodesFor(contract),
+            frozenNodes: this.settlementApprovalNodesFor(contract) as unknown as Prisma.InputJsonValue,
             applicantUserId
           }
         });
@@ -242,7 +251,10 @@ export class SettlementService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId);
-      const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+      const approvedRoleKey =
+        currentNode.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
+        currentNode.assignments?.find((assignment) => assignment.toUserId === actorUserId)
+          ?.fromRoleKey;
 
       if (!approvedRoleKey) {
         throw new Error(`Actor cannot approve settlement node ${currentNode.name}`);
@@ -485,6 +497,22 @@ export class SettlementService {
     });
   }
 
+  transferApproval(
+    settlementId: string,
+    actorUserId: string,
+    input: AssignSettlementApprovalDto
+  ) {
+    return this.assignApproval("transfer", settlementId, actorUserId, input);
+  }
+
+  delegateApproval(
+    settlementId: string,
+    actorUserId: string,
+    input: AssignSettlementApprovalDto
+  ) {
+    return this.assignApproval("delegate", settlementId, actorUserId, input);
+  }
+
   async confirmArchiveFile(
     settlementId: string,
     actorUserId: string,
@@ -600,5 +628,102 @@ export class SettlementService {
     const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
 
     return Array.from(new Set([...positionKeys, ...memberKeys]));
+  }
+
+  private async assignApproval(
+    kind: SettlementApprovalAssignment["kind"],
+    settlementId: string,
+    actorUserId: string,
+    input: AssignSettlementApprovalDto
+  ) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to assign settlement approval");
+    }
+
+    if (!input.toUserId || input.toUserId === actorUserId) {
+      throw new Error("Settlement approval assignment target is invalid");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      if (settlement.status !== "approval_pending") {
+        throw new Error(`Cannot assign settlement approval from status ${settlement.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "settlement",
+          businessId: settlement.id,
+          flowType: "settlement.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Settlement approval instance not found");
+      }
+
+      const nodes = instance.frozenNodes as unknown as SettlementApprovalNode[];
+      const currentNode = nodes[instance.currentNodeIndex];
+
+      if (!currentNode) {
+        throw new Error("Settlement approval current node not found");
+      }
+
+      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId);
+      const fromRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+
+      if (!fromRoleKey) {
+        throw new Error(`Actor cannot assign settlement node ${currentNode.name}`);
+      }
+
+      const nextNodes = [...nodes];
+      const nextAssignments = [
+        ...(currentNode.assignments ?? []).filter(
+          (assignment) =>
+            !(
+              assignment.kind === kind &&
+              assignment.fromUserId === actorUserId &&
+              assignment.fromRoleKey === fromRoleKey
+            )
+        ),
+        { kind, fromUserId: actorUserId, fromRoleKey, toUserId: input.toUserId }
+      ];
+      nextNodes[instance.currentNodeIndex] = { ...currentNode, assignments: nextAssignments };
+
+      const updated = await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: { frozenNodes: nextNodes as unknown as Prisma.InputJsonValue }
+      });
+
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: kind,
+          actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: `settlement.approval.${kind}`,
+        businessType: "settlement",
+        businessId: settlement.id,
+        metadata: {
+          nodeName: currentNode.name,
+          fromRoleKey,
+          toUserId: input.toUserId
+        }
+      });
+
+      return updated;
+    });
   }
 }

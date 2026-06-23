@@ -816,6 +816,201 @@ describe("SettlementService", () => {
     expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 
+  it("transfers the current settlement approval node to a target user", async () => {
+    const frozenNodes = [{ name: "物资主管", mode: "any", roleKeys: ["material_director"] }];
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes
+        }),
+        update: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("material_director")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await settlementService.transferApproval("settlement-1", "material-director-1", {
+      toUserId: "delegate-user-1"
+    });
+
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        frozenNodes: [
+          {
+            ...frozenNodes[0],
+            assignments: [
+              {
+                kind: "transfer",
+                fromUserId: "material-director-1",
+                fromRoleKey: "material_director",
+                toUserId: "delegate-user-1"
+              }
+            ]
+          }
+        ]
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "transfer",
+        actorUserId: "material-director-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "material-director-1",
+      action: "settlement.approval.transfer",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: {
+        nodeName: "物资主管",
+        fromRoleKey: "material_director",
+        toUserId: "delegate-user-1"
+      }
+    });
+  });
+
+  it("lets the transferred user approve as the source role", async () => {
+    const frozenNodes = [
+      {
+        name: "物资主管",
+        mode: "any",
+        roleKeys: ["material_director"],
+        assignments: [
+          {
+            kind: "transfer",
+            fromUserId: "material-director-1",
+            fromRoleKey: "material_director",
+            toUserId: "delegate-user-1"
+          }
+        ]
+      }
+    ];
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "approved_pending_archive"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("employee")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    const result = await settlementService.reviewApproval("settlement-1", "delegate-user-1", {
+      decision: "approve"
+    });
+
+    expect(result.status).toBe("approved_pending_archive");
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        currentNodeIndex: 1,
+        frozenNodes: [
+          {
+            ...frozenNodes[0],
+            approvedRoleKeys: ["material_director"]
+          }
+        ],
+        status: "approved"
+      }
+    });
+  });
+
+  it("delegates the current settlement approval node to a target user", async () => {
+    const frozenNodes = [{ name: "项目经理", mode: "any", roleKeys: ["project_manager"] }];
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes
+        }),
+        update: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("project_manager")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await settlementService.delegateApproval("settlement-1", "project-manager-1", {
+      toUserId: "agent-user-1"
+    });
+
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        frozenNodes: [
+          {
+            ...frozenNodes[0],
+            assignments: [
+              {
+                kind: "delegate",
+                fromUserId: "project-manager-1",
+                fromRoleKey: "project_manager",
+                toUserId: "agent-user-1"
+              }
+            ]
+          }
+        ]
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "delegate",
+        actorUserId: "project-manager-1"
+      }
+    });
+  });
+
   it("confirms a signed settlement archive file and makes the settlement effective", async () => {
     const tx = {
       settlement: {
