@@ -52,8 +52,8 @@ const auth = useAuthStore();
 const submitting = ref(false);
 const errorMessage = ref("");
 const form = reactive({
-  phone: "13800001005",
-  password: "Jgzg@2026"
+  phone: "",
+  password: ""
 });
 
 function redirectPath() {
