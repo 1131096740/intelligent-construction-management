@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import {
   approvalElapsedHours,
@@ -9,6 +9,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
@@ -18,6 +19,11 @@ import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service"
 
 interface AssignApprovalDto {
   toUserId: string;
+}
+
+interface GeneratePaymentPdfArchiveDto {
+  templateKey?: string;
+  departmentScope?: string;
 }
 
 interface PaymentApprovalAssignment {
@@ -46,8 +52,12 @@ const PAYMENT_APPROVAL_NODES = [
 export class PaymentRequestService {
   constructor(
     private readonly amount: PaymentAmountService,
+    @Optional()
     private readonly prisma?: PrismaService,
-    private readonly audit: AuditService = new AuditService()
+    @Optional()
+    private readonly audit: AuditService = new AuditService(),
+    @Optional()
+    private readonly files?: FileService
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -676,6 +686,80 @@ export class PaymentRequestService {
     });
   }
 
+  async generatePdfArchive(
+    paymentId: string,
+    actorUserId: string,
+    input: GeneratePaymentPdfArchiveDto = {}
+  ) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to generate payment PDF archive");
+    }
+
+    if (!this.files) {
+      throw new Error("File service is required to generate payment PDF archive");
+    }
+
+    const templateKey = input.templateKey ?? "payment_finance_archive";
+    const departmentScope = input.departmentScope ?? "finance";
+    const source = await this.prisma.$transaction(async (tx) => {
+      const payment = await tx.paymentRequest.findFirst({
+        where: { OR: [{ id: paymentId }, { code: paymentId }] }
+      });
+
+      if (!payment) {
+        throw new Error("Payment request not found");
+      }
+
+      const financeRecords = await tx.financeRecord.findMany({
+        where: { paymentRequestId: payment.id }
+      });
+      const financeRecordedAmountCents = financeRecords.reduce(
+        (total, record) => total + record.amountCents,
+        0
+      );
+
+      if (payment.paidAmountCents <= 0 || financeRecordedAmountCents < payment.paidAmountCents) {
+        throw new Error("Cannot generate payment PDF before finance entry is complete");
+      }
+
+      const existingPdf = await tx.pdfDocument.findFirst({
+        where: {
+          businessType: "payment_request",
+          businessId: payment.id,
+          templateKey
+        }
+      });
+
+      if (existingPdf) {
+        throw new Error("Payment PDF archive already exists");
+      }
+
+      return { payment, financeRecordedAmountCents };
+    });
+    const buffer = this.renderPaymentPdf({
+      code: source.payment.code,
+      requestedAmountCents: source.payment.requestedAmountCents,
+      approvedAmountCents: source.payment.approvedAmountCents ?? source.payment.requestedAmountCents,
+      paidAmountCents: source.payment.paidAmountCents,
+      financeRecordedAmountCents: source.financeRecordedAmountCents,
+      templateKey,
+      generatedAt: new Date()
+    });
+    const file = await this.files.uploadPrivateFile({
+      originalName: `${source.payment.code}-${templateKey}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: buffer.length,
+      uploadedByUserId: actorUserId,
+      buffer
+    });
+
+    return this.recordPdfArchive(source.payment.id, actorUserId, {
+      fileId: file.id,
+      templateKey,
+      departmentScope
+    });
+  }
+
   private async loadActorRoleKeys(
     tx: {
       userPosition: {
@@ -702,6 +786,64 @@ export class PaymentRequestService {
     const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
 
     return Array.from(new Set([...positionKeys, ...memberKeys]));
+  }
+
+  private renderPaymentPdf(input: {
+    code: string;
+    requestedAmountCents: number;
+    approvedAmountCents: number;
+    paidAmountCents: number;
+    financeRecordedAmountCents: number;
+    templateKey: string;
+    generatedAt: Date;
+  }) {
+    const lines = [
+      "Payment Finance Archive",
+      `Payment Code: ${input.code}`,
+      `Template: ${input.templateKey}`,
+      `Requested Amount: ${this.formatCents(input.requestedAmountCents)}`,
+      `Approved Amount: ${this.formatCents(input.approvedAmountCents)}`,
+      `Paid Amount: ${this.formatCents(input.paidAmountCents)}`,
+      `Finance Recorded Amount: ${this.formatCents(input.financeRecordedAmountCents)}`,
+      `Generated At: ${input.generatedAt.toISOString()}`
+    ];
+    const content = [
+      "BT",
+      "/F1 11 Tf",
+      ...lines.map((line, index) => `1 0 0 1 72 ${740 - index * 18} Tm (${this.pdfText(line)}) Tj`),
+      "ET"
+    ].join("\n");
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      `<< /Length ${Buffer.byteLength(content, "ascii")} >>\nstream\n${content}\nendstream`
+    ];
+    const chunks = ["%PDF-1.4\n"];
+    const offsets: number[] = [];
+
+    for (const [index, object] of objects.entries()) {
+      offsets.push(Buffer.byteLength(chunks.join(""), "ascii"));
+      chunks.push(`${index + 1} 0 obj\n${object}\nendobj\n`);
+    }
+
+    const xrefOffset = Buffer.byteLength(chunks.join(""), "ascii");
+    chunks.push(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`);
+    for (const offset of offsets) {
+      chunks.push(`${String(offset).padStart(10, "0")} 00000 n \n`);
+    }
+    chunks.push(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+
+    return Buffer.from(chunks.join(""), "ascii");
+  }
+
+  private formatCents(value: number) {
+    return `${(value / 100).toFixed(2)} CNY`;
+  }
+
+  private pdfText(value: string) {
+    return value.replace(/[^\x20-\x7E]/g, "?").replace(/[\\()]/g, "\\$&");
   }
 
   private async assignApproval(

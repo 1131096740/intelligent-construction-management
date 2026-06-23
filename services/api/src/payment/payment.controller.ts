@@ -100,6 +100,16 @@ export class PaymentController {
     return this.payments.recordPdfArchive(paymentId, user.id, body);
   }
 
+  @Post(":paymentId/pdf-generation")
+  @RequireProjectRole("payment.pdf_archive")
+  generatePdfArchive(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { templateKey?: string; departmentScope?: string }
+  ) {
+    return this.payments.generatePdfArchive(paymentId, user.id, body);
+  }
+
   @Get(":paymentId")
   detail(@Param("paymentId") paymentId: string) {
     return this.paymentRead.getDetail(paymentId);

@@ -1150,6 +1150,112 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("generates a payment PDF file and records its archive", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          requestedAmountCents: 60_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 50_000
+        })
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 50_000 }])
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-generated" })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          fileId: "file-generated"
+        })
+      },
+      archiveRecord: {
+        create: jest.fn().mockResolvedValue({
+          id: "archive-1",
+          fileId: "file-generated"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-generated" })
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      files as never
+    );
+
+    const result = await paymentService.generatePdfArchive("FK-2026-012", "finance-1");
+
+    expect(result.pdfDocument.id).toBe("pdf-1");
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      originalName: "FK-2026-012-payment_finance_archive.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: expect.any(Number),
+      uploadedByUserId: "finance-1",
+      buffer: expect.any(Buffer)
+    });
+    const uploadedBuffer = files.uploadPrivateFile.mock.calls[0][0].buffer as Buffer;
+    expect(uploadedBuffer.toString("ascii", 0, 8)).toBe("%PDF-1.4");
+    expect(tx.pdfDocument.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "payment_request",
+        businessId: "payment-1",
+        fileId: "file-generated",
+        templateKey: "payment_finance_archive"
+      }
+    });
+  });
+
+  it("rejects payment PDF generation when the PDF archive already exists", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          requestedAmountCents: 60_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 50_000
+        })
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 50_000 }])
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: "pdf-existing" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      paymentService.generatePdfArchive("FK-2026-012", "finance-1")
+    ).rejects.toThrow("Payment PDF archive already exists");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
   it("rejects payment pdf archive before finance entry covers paid amount", async () => {
     const tx = {
       paymentRequest: {

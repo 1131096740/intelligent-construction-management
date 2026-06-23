@@ -94,6 +94,11 @@ export interface RecordPaymentPdfArchivePayload {
   departmentScope?: string;
 }
 
+export interface GeneratePaymentPdfArchivePayload {
+  templateKey?: string;
+  departmentScope?: string;
+}
+
 export interface UploadContractArchiveFilePayload {
   fileId: string;
 }
@@ -265,4 +270,11 @@ export function recordPaymentFinance(paymentId: string, body: RecordPaymentFinan
 
 export function recordPaymentPdfArchive(paymentId: string, body: RecordPaymentPdfArchivePayload) {
   return postJson<unknown>(`/payments/${paymentId}/pdf-archive`, body);
+}
+
+export function generatePaymentPdfArchive(
+  paymentId: string,
+  body: GeneratePaymentPdfArchivePayload = {}
+) {
+  return postJson<unknown>(`/payments/${paymentId}/pdf-generation`, body);
 }

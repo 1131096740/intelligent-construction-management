@@ -14,7 +14,8 @@ describe("PaymentController authorization wiring", () => {
     ["delegateApproval", "payment.approve"],
     ["recordExecution", "payment.execution"],
     ["recordFinance", "payment.finance_record"],
-    ["recordPdfArchive", "payment.pdf_archive"]
+    ["recordPdfArchive", "payment.pdf_archive"],
+    ["generatePdfArchive", "payment.pdf_archive"]
   ])("guards %s with the %s action", (method, action) => {
     const handler = (PaymentController.prototype as unknown as Record<string, object>)[method];
 

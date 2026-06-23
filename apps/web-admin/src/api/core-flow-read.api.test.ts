@@ -9,6 +9,7 @@ import {
   confirmSettlementArchive,
   delegateContractApproval,
   delegatePaymentApproval,
+  generatePaymentPdfArchive,
   approveContractSeal,
   reviewContractApproval,
   reviewSettlementApproval,
@@ -81,6 +82,7 @@ describe("core flow read API client", () => {
     await recordPaymentPdfArchive("FK-2026-006", {
       fileId: "file-2"
     });
+    await generatePaymentPdfArchive("FK-2026-006");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/payments/FK-2026-006/approval",
@@ -88,7 +90,8 @@ describe("core flow read API client", () => {
       "/api/payments/FK-2026-006/approval-delegation",
       "/api/payments/FK-2026-006/executions",
       "/api/payments/FK-2026-006/finance-records",
-      "/api/payments/FK-2026-006/pdf-archive"
+      "/api/payments/FK-2026-006/pdf-archive",
+      "/api/payments/FK-2026-006/pdf-generation"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
