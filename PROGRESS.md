@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-24 (CodeX)：同步 Obsidian 状态页。按当前 `PROGRESS.md` 更新 `obsidian-current` 中总览、上线就绪度、待改功能、权限系统 4 个笔记，修正“早期骨架”旧表述，标明后端核心闭环、认证授权、审批委托、私有文件/COS、PDF 水印、敏感二次确认等已完成项，以及小程序、生产部署、原始上传件水印、合同/付款退回能力等剩余缺口；已复制到 iCloud Obsidian vault。
 - 2026-06-24 (CodeX)：补 COS 私有桶最小接入。`PrivateFileStorage` 支持 `FILE_STORAGE_DRIVER=cos` 时用 Node 内置 `fetch`/`crypto` 直连腾讯云 COS XML API 做私有对象 PUT/GET，文件仍只经后端鉴权 + 短时效业务下载票据访问，前端不直连 COS；`FileObject.bucket` 记录实际 COS bucket。`.env.example` 新增 `FILE_STORAGE_DRIVER=local` 默认值。新增 COS 存储单测，API file service 单测 + typecheck/lint 通过。暂未做 SDK/multipart/断点续传，也未改成返回 COS 直签下载 URL（当前仍由后端流式下载）。
 - 2026-06-23 (CodeX)：补后端生成 PDF 水印最小闭环。三类归档 PDF 共用的 `renderSimplePdf` 现在默认写入 `JIANGKONG CONFIDENTIAL` 斜向浅灰水印，覆盖付款/合同/结算后端生成 PDF；新增 helper 单测防止水印回退，三类 PDF 生成相关 service 单测通过。暂未处理用户上传的原始归档件水印，也未接 COS 私有桶。
 - 2026-06-23 (CodeX)：补文件下载二次确认最小闭环。`/files/:fileId/download-ticket` 从 GET 改为 POST，并在签发短时效下载票据前要求 `confirmationPassword`，后端复用 `AuthService.confirmPassword`；密码缺失/错误时不生成票据、不写签票审计。Web API client 同步改为 `createPrivateFileDownloadTicket(fileId, { confirmationPassword })`。API 文件相关单测 + web-admin API client 单测 + 两包 typecheck/lint 通过。暂未做页面下载入口弹窗（当前无调用点）、COS 私有桶、文件水印。
