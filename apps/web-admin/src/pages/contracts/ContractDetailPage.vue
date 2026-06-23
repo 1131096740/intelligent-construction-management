@@ -45,10 +45,118 @@
 
     <t-card
       class="section-card action-card"
-      title="归档操作"
+      title="流程动作"
       :bordered="true"
     >
       <div class="action-grid">
+        <div class="action-group">
+          <div class="action-title">
+            <strong>合同审批</strong>
+            <span>提交、通过、驳回</span>
+          </div>
+          <div class="action-buttons">
+            <t-button
+              theme="primary"
+              :loading="archiveActionBusy === 'submitApproval'"
+              :disabled="!canRunContractVersionAction"
+              @click="submitContractApprovalAction"
+            >
+              提交审批
+            </t-button>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="archiveActionBusy === 'reviewApproval'"
+              :disabled="!canRunContractVersionAction"
+              @click="submitContractReview('approve')"
+            >
+              通过
+            </t-button>
+            <t-button
+              theme="danger"
+              variant="outline"
+              :loading="archiveActionBusy === 'reviewApproval'"
+              :disabled="!canRunContractVersionAction"
+              @click="submitContractReview('reject')"
+            >
+              驳回
+            </t-button>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>审批辅助</strong>
+            <span>撤回、催办、转审、委托</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="contractArchiveForm.assignmentUserId"
+              placeholder="目标用户ID"
+            />
+          </div>
+          <div class="action-buttons">
+            <t-button
+              :loading="archiveActionBusy === 'withdrawApproval'"
+              :disabled="!canRunContractVersionAction"
+              @click="submitContractWithdrawal"
+            >
+              撤回
+            </t-button>
+            <t-button
+              :loading="archiveActionBusy === 'remindApproval'"
+              :disabled="!canRunContractVersionAction"
+              @click="submitContractReminder"
+            >
+              催办
+            </t-button>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="archiveActionBusy === 'transferApproval'"
+              :disabled="!canRunContractVersionAction"
+              @click="submitContractAssignment('transfer')"
+            >
+              转审
+            </t-button>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="archiveActionBusy === 'delegateApproval'"
+              :disabled="!canRunContractVersionAction"
+              @click="submitContractAssignment('delegate')"
+            >
+              委托
+            </t-button>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>用章与PDF</strong>
+            <span>后端生成归档PDF</span>
+          </div>
+          <div class="action-buttons">
+            <t-button
+              theme="primary"
+              :loading="archiveActionBusy === 'seal'"
+              :disabled="!canRunContractVersionAction"
+              @click="submitContractSeal"
+            >
+              用章通过
+            </t-button>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="archiveActionBusy === 'pdf'"
+              :disabled="!canRunContractVersionAction"
+              @click="submitContractPdfGeneration"
+            >
+              生成PDF归档
+            </t-button>
+          </div>
+        </div>
+
         <div class="action-group">
           <div class="action-title">
             <strong>上传盖章合同</strong>
@@ -94,6 +202,32 @@
             @click="submitContractArchiveConfirmation"
           >
             确认生效
+          </t-button>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>敏感文件下载</strong>
+            <span>签发短时效票据</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="contractArchiveForm.downloadFileId"
+              placeholder="文件ID"
+            />
+            <t-input
+              v-model="contractArchiveForm.downloadPassword"
+              type="password"
+              placeholder="当前登录密码确认"
+            />
+          </div>
+          <t-button
+            theme="primary"
+            variant="outline"
+            :loading="archiveActionBusy === 'download'"
+            @click="submitContractFileDownload"
+          >
+            下载文件
           </t-button>
         </div>
       </div>
@@ -182,10 +316,19 @@ import type { CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-do
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  approveContractSeal,
   confirmContractArchive,
+  createPrivateFileDownloadTicket,
+  delegateContractApproval,
   fetchContractDetail,
+  generateContractPdfArchive,
+  remindContractApproval,
+  reviewContractApproval,
+  submitContractApproval,
+  transferContractApproval,
   uploadPrivateFile,
-  uploadContractArchiveFile
+  uploadContractArchiveFile,
+  withdrawContractApproval
 } from "../../api/core-flow-read.api";
 import { contractDetailChainLinks } from "../business-chain-links.config";
 import type { DetailTone } from "./contract-detail.config";
@@ -208,7 +351,10 @@ const archiveActionMessageTone = ref<"success" | "danger">("success");
 const selectedContractArchiveFile = ref<File | null>(null);
 const contractArchiveForm = reactive({
   archiveFileId: "",
-  confirmationPassword: ""
+  confirmationPassword: "",
+  assignmentUserId: "",
+  downloadFileId: "",
+  downloadPassword: ""
 });
 
 const contractDetailTitleView = computed(() => contractDetail.value?.title ?? contractDetailTitle);
@@ -235,6 +381,7 @@ const canUploadContractArchive = computed(
 const canConfirmContractArchive = computed(
   () => !!contractDetail.value?.contractVersionId && contractNextActionValue.value.includes("主管确认归档")
 );
+const canRunContractVersionAction = computed(() => !!contractDetail.value?.contractVersionId);
 
 function openChainLink(to: string) {
   void router.push(to);
@@ -269,6 +416,10 @@ function returnedId(result: unknown) {
   }
 
   return "";
+}
+
+function apiDownloadUrl(url: string) {
+  return url.startsWith("/files/") ? `/api${url}` : url;
 }
 
 function selectContractArchiveFile(event: Event) {
@@ -328,6 +479,88 @@ async function submitContractArchiveConfirmation() {
       )
     })
   );
+}
+
+async function submitContractApprovalAction() {
+  const contractVersionId = requiredText(
+    contractDetail.value?.contractVersionId ?? "",
+    "合同版本ID"
+  );
+
+  await runArchiveAction("submitApproval", () => submitContractApproval(contractVersionId));
+}
+
+async function submitContractReview(decision: "approve" | "reject") {
+  const contractVersionId = requiredText(
+    contractDetail.value?.contractVersionId ?? "",
+    "合同版本ID"
+  );
+
+  await runArchiveAction("reviewApproval", () =>
+    reviewContractApproval(contractVersionId, { decision })
+  );
+}
+
+async function submitContractWithdrawal() {
+  const contractVersionId = requiredText(
+    contractDetail.value?.contractVersionId ?? "",
+    "合同版本ID"
+  );
+
+  await runArchiveAction("withdrawApproval", () => withdrawContractApproval(contractVersionId));
+}
+
+async function submitContractReminder() {
+  const contractVersionId = requiredText(
+    contractDetail.value?.contractVersionId ?? "",
+    "合同版本ID"
+  );
+
+  await runArchiveAction("remindApproval", () => remindContractApproval(contractVersionId));
+}
+
+async function submitContractAssignment(kind: "transfer" | "delegate") {
+  const contractVersionId = requiredText(
+    contractDetail.value?.contractVersionId ?? "",
+    "合同版本ID"
+  );
+  const toUserId = requiredText(contractArchiveForm.assignmentUserId, "目标用户ID");
+
+  await runArchiveAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
+    kind === "transfer"
+      ? transferContractApproval(contractVersionId, { toUserId })
+      : delegateContractApproval(contractVersionId, { toUserId })
+  );
+}
+
+async function submitContractSeal() {
+  const contractVersionId = requiredText(
+    contractDetail.value?.contractVersionId ?? "",
+    "合同版本ID"
+  );
+
+  await runArchiveAction("seal", () => approveContractSeal(contractVersionId));
+}
+
+async function submitContractPdfGeneration() {
+  const contractVersionId = requiredText(
+    contractDetail.value?.contractVersionId ?? "",
+    "合同版本ID"
+  );
+
+  await runArchiveAction("pdf", () => generateContractPdfArchive(contractVersionId));
+}
+
+async function submitContractFileDownload() {
+  await runArchiveAction("download", async () => {
+    const ticket = await createPrivateFileDownloadTicket(
+      requiredText(contractArchiveForm.downloadFileId, "文件ID"),
+      {
+        confirmationPassword: requiredText(contractArchiveForm.downloadPassword, "当前登录密码")
+      }
+    );
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+  });
 }
 
 function tagTheme(tone: DetailTone | CoreFlowTone) {
@@ -502,7 +735,7 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
 
 .action-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
 }
 
@@ -533,8 +766,14 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
 
 .action-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .file-input {

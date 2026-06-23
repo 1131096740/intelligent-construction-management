@@ -45,10 +45,114 @@
 
     <t-card
       class="section-card action-card"
-      title="归档操作"
+      title="流程动作"
       :bordered="true"
     >
       <div class="action-grid">
+        <div class="action-group">
+          <div class="action-title">
+            <strong>结算审批</strong>
+            <span>审批、退回、打回</span>
+          </div>
+          <div class="action-buttons">
+            <t-button
+              theme="primary"
+              :loading="archiveActionBusy === 'reviewApproval'"
+              :disabled="!canRunSettlementAction"
+              @click="submitSettlementReview('approve')"
+            >
+              通过
+            </t-button>
+            <t-button
+              theme="danger"
+              variant="outline"
+              :loading="archiveActionBusy === 'reviewApproval'"
+              :disabled="!canRunSettlementAction"
+              @click="submitSettlementReview('reject')"
+            >
+              驳回
+            </t-button>
+            <t-button
+              variant="outline"
+              :loading="archiveActionBusy === 'reviewApproval'"
+              :disabled="!canRunSettlementAction"
+              @click="submitSettlementReview('reject_previous')"
+            >
+              退回上级
+            </t-button>
+            <t-button
+              variant="outline"
+              :loading="archiveActionBusy === 'reviewApproval'"
+              :disabled="!canRunSettlementAction"
+              @click="submitSettlementReview('return_to_applicant')"
+            >
+              打回发起人
+            </t-button>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>审批辅助</strong>
+            <span>撤回、催办、转审、委托</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="settlementArchiveForm.assignmentUserId"
+              placeholder="目标用户ID"
+            />
+          </div>
+          <div class="action-buttons">
+            <t-button
+              :loading="archiveActionBusy === 'withdrawApproval'"
+              :disabled="!canRunSettlementAction"
+              @click="submitSettlementWithdrawal"
+            >
+              撤回
+            </t-button>
+            <t-button
+              :loading="archiveActionBusy === 'remindApproval'"
+              :disabled="!canRunSettlementAction"
+              @click="submitSettlementReminder"
+            >
+              催办
+            </t-button>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="archiveActionBusy === 'transferApproval'"
+              :disabled="!canRunSettlementAction"
+              @click="submitSettlementAssignment('transfer')"
+            >
+              转审
+            </t-button>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="archiveActionBusy === 'delegateApproval'"
+              :disabled="!canRunSettlementAction"
+              @click="submitSettlementAssignment('delegate')"
+            >
+              委托
+            </t-button>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>PDF归档</strong>
+            <span>后端生成归档PDF</span>
+          </div>
+          <t-button
+            theme="primary"
+            :loading="archiveActionBusy === 'pdf'"
+            :disabled="!canRunSettlementAction"
+            @click="submitSettlementPdfGeneration"
+          >
+            生成PDF归档
+          </t-button>
+        </div>
+
         <div class="action-group">
           <div class="action-title">
             <strong>上传签章结算单</strong>
@@ -94,6 +198,32 @@
             @click="submitSettlementArchiveConfirmation"
           >
             确认生效
+          </t-button>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>敏感文件下载</strong>
+            <span>签发短时效票据</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="settlementArchiveForm.downloadFileId"
+              placeholder="文件ID"
+            />
+            <t-input
+              v-model="settlementArchiveForm.downloadPassword"
+              type="password"
+              placeholder="当前登录密码确认"
+            />
+          </div>
+          <t-button
+            theme="primary"
+            variant="outline"
+            :loading="archiveActionBusy === 'download'"
+            @click="submitSettlementFileDownload"
+          >
+            下载文件
           </t-button>
         </div>
       </div>
@@ -186,9 +316,16 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   confirmSettlementArchive,
+  createPrivateFileDownloadTicket,
+  delegateSettlementApproval,
   fetchSettlementDetail,
+  generateSettlementPdfArchive,
+  remindSettlementApproval,
+  reviewSettlementApproval,
+  transferSettlementApproval,
   uploadPrivateFile,
-  uploadSettlementArchiveFile
+  uploadSettlementArchiveFile,
+  withdrawSettlementApproval
 } from "../../api/core-flow-read.api";
 import { settlementDetailChainLinks } from "../business-chain-links.config";
 import type { SettlementDetailTone } from "./settlement-detail.config";
@@ -212,7 +349,10 @@ const archiveActionMessageTone = ref<"success" | "danger">("success");
 const selectedSettlementArchiveFile = ref<File | null>(null);
 const settlementArchiveForm = reactive({
   archiveFileId: "",
-  confirmationPassword: ""
+  confirmationPassword: "",
+  assignmentUserId: "",
+  downloadFileId: "",
+  downloadPassword: ""
 });
 
 const settlementDetailTitleView = computed(() => settlementDetail.value?.title ?? settlementDetailTitle);
@@ -242,6 +382,7 @@ const canUploadSettlementArchive = computed(
 const canConfirmSettlementArchive = computed(
   () => !!settlementDetail.value?.settlementId && settlementNextActionValue.value.includes("主管确认归档")
 );
+const canRunSettlementAction = computed(() => !!settlementDetail.value?.settlementId);
 
 function openChainLink(to: string) {
   void router.push(to);
@@ -276,6 +417,10 @@ function returnedId(result: unknown) {
   }
 
   return "";
+}
+
+function apiDownloadUrl(url: string) {
+  return url.startsWith("/files/") ? `/api${url}` : url;
 }
 
 function selectSettlementArchiveFile(event: Event) {
@@ -329,6 +474,55 @@ async function submitSettlementArchiveConfirmation() {
       )
     })
   );
+}
+
+async function submitSettlementReview(
+  decision: "approve" | "reject" | "reject_previous" | "return_to_applicant"
+) {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+
+  await runArchiveAction("reviewApproval", () => reviewSettlementApproval(settlementId, { decision }));
+}
+
+async function submitSettlementWithdrawal() {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+
+  await runArchiveAction("withdrawApproval", () => withdrawSettlementApproval(settlementId));
+}
+
+async function submitSettlementReminder() {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+
+  await runArchiveAction("remindApproval", () => remindSettlementApproval(settlementId));
+}
+
+async function submitSettlementAssignment(kind: "transfer" | "delegate") {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const toUserId = requiredText(settlementArchiveForm.assignmentUserId, "目标用户ID");
+
+  await runArchiveAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
+    kind === "transfer"
+      ? transferSettlementApproval(settlementId, { toUserId })
+      : delegateSettlementApproval(settlementId, { toUserId })
+  );
+}
+
+async function submitSettlementPdfGeneration() {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+
+  await runArchiveAction("pdf", () => generateSettlementPdfArchive(settlementId));
+}
+
+async function submitSettlementFileDownload() {
+  await runArchiveAction("download", async () => {
+    const ticket = await createPrivateFileDownloadTicket(
+      requiredText(settlementArchiveForm.downloadFileId, "文件ID"),
+      {
+        confirmationPassword: requiredText(settlementArchiveForm.downloadPassword, "当前登录密码")
+      }
+    );
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+  });
 }
 
 function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
@@ -526,7 +720,7 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
 
 .action-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
 }
 
@@ -557,8 +751,14 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
 
 .action-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .file-input {

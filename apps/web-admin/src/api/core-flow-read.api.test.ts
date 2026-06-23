@@ -13,6 +13,9 @@ import {
   generatePaymentPdfArchive,
   generateSettlementPdfArchive,
   approveContractSeal,
+  remindContractApproval,
+  remindPaymentApproval,
+  remindSettlementApproval,
   reviewContractApproval,
   reviewSettlementApproval,
   submitContractApproval,
@@ -23,6 +26,8 @@ import {
   recordPaymentFinance,
   recordPaymentPdfArchive,
   reviewPaymentApproval,
+  withdrawContractApproval,
+  withdrawPaymentApproval,
   withdrawSettlementApproval,
   transferSettlementApproval,
   delegateSettlementApproval,
@@ -69,6 +74,8 @@ describe("core flow read API client", () => {
       decision: "approve",
       approvedAmountCents: 5000000
     });
+    await withdrawPaymentApproval("FK-2026-006");
+    await remindPaymentApproval("FK-2026-006");
     await transferPaymentApproval("FK-2026-006", {
       toUserId: "payment-transfer-user"
     });
@@ -92,6 +99,8 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/payments/FK-2026-006/approval",
+      "/api/payments/FK-2026-006/approval-withdrawal",
+      "/api/payments/FK-2026-006/approval-reminder",
       "/api/payments/FK-2026-006/approval-transfer",
       "/api/payments/FK-2026-006/approval-delegation",
       "/api/payments/FK-2026-006/executions",
@@ -157,6 +166,8 @@ describe("core flow read API client", () => {
     await reviewContractApproval("contract-version-1", {
       decision: "approve"
     });
+    await withdrawContractApproval("contract-version-1");
+    await remindContractApproval("contract-version-1");
     await transferContractApproval("contract-version-1", {
       toUserId: "contract-transfer-user"
     });
@@ -168,6 +179,7 @@ describe("core flow read API client", () => {
       decision: "approve"
     });
     await withdrawSettlementApproval("settlement-1");
+    await remindSettlementApproval("settlement-1");
     await transferSettlementApproval("settlement-1", {
       toUserId: "delegate-user-1"
     });
@@ -178,11 +190,14 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contracts/contract-version-1/approval-submission",
       "/api/contracts/contract-version-1/approval",
+      "/api/contracts/contract-version-1/approval-withdrawal",
+      "/api/contracts/contract-version-1/approval-reminder",
       "/api/contracts/contract-version-1/approval-transfer",
       "/api/contracts/contract-version-1/approval-delegation",
       "/api/contracts/contract-version-1/seal-approval",
       "/api/settlements/settlement-1/approval",
       "/api/settlements/settlement-1/approval-withdrawal",
+      "/api/settlements/settlement-1/approval-reminder",
       "/api/settlements/settlement-1/approval-transfer",
       "/api/settlements/settlement-1/approval-delegation"
     ]);

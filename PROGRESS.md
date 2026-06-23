@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-24 (CodeX)：补 Web 写操作入口最小闭环。合同详情页接入提交审批、审批通过/驳回、撤回、催办、转审、委托、用章通过、归档上传/确认、后端生成 PDF、敏感文件下载签票；结算详情页接入审批通过/驳回/退回上级/打回发起人、撤回、催办、转审、委托、归档上传/确认、后端生成 PDF、敏感文件下载签票；付款详情页补凭证直接上传、后端生成 PDF、撤回、催办、转审、委托、敏感文件下载签票。前端仍只做入口和必填校验，权限/状态以后台为准。`web-admin` test/typecheck/lint/build 通过；本地 Vite 已启动 `http://127.0.0.1:5173/`。
 - 2026-06-24 (CodeX)：同步 Obsidian 状态页。按当前 `PROGRESS.md` 更新 `obsidian-current` 中总览、上线就绪度、待改功能、权限系统 4 个笔记，修正“早期骨架”旧表述，标明后端核心闭环、认证授权、审批委托、私有文件/COS、PDF 水印、敏感二次确认等已完成项，以及小程序、生产部署、原始上传件水印、合同/付款退回能力等剩余缺口；已复制到 iCloud Obsidian vault。
 - 2026-06-24 (CodeX)：补 COS 私有桶最小接入。`PrivateFileStorage` 支持 `FILE_STORAGE_DRIVER=cos` 时用 Node 内置 `fetch`/`crypto` 直连腾讯云 COS XML API 做私有对象 PUT/GET，文件仍只经后端鉴权 + 短时效业务下载票据访问，前端不直连 COS；`FileObject.bucket` 记录实际 COS bucket。`.env.example` 新增 `FILE_STORAGE_DRIVER=local` 默认值。新增 COS 存储单测，API file service 单测 + typecheck/lint 通过。暂未做 SDK/multipart/断点续传，也未改成返回 COS 直签下载 URL（当前仍由后端流式下载）。
 - 2026-06-23 (CodeX)：补后端生成 PDF 水印最小闭环。三类归档 PDF 共用的 `renderSimplePdf` 现在默认写入 `JIANGKONG CONFIDENTIAL` 斜向浅灰水印，覆盖付款/合同/结算后端生成 PDF；新增 helper 单测防止水印回退，三类 PDF 生成相关 service 单测通过。暂未处理用户上传的原始归档件水印，也未接 COS 私有桶。

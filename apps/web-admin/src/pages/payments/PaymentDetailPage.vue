@@ -84,7 +84,7 @@
         <div class="action-group">
           <div class="action-title">
             <strong>出纳实付</strong>
-            <span>付款凭证必填</span>
+            <span>可直接上传付款凭证</span>
           </div>
           <div class="action-fields">
             <t-input
@@ -104,6 +104,11 @@
               type="password"
               placeholder="当前登录密码确认"
             />
+            <input
+              class="file-input"
+              type="file"
+              @change="selectPaymentVoucherFile"
+            >
           </div>
           <t-button
             theme="primary"
@@ -143,7 +148,7 @@
         <div class="action-group">
           <div class="action-title">
             <strong>PDF归档</strong>
-            <span>财务归档件</span>
+            <span>生成或登记财务归档件</span>
           </div>
           <div class="action-fields">
             <t-input
@@ -158,6 +163,83 @@
             @click="submitPdfArchive"
           >
             登记归档
+          </t-button>
+          <t-button
+            theme="primary"
+            variant="outline"
+            :loading="actionBusy === 'pdfGenerate'"
+            @click="submitGeneratedPdfArchive"
+          >
+            生成PDF归档
+          </t-button>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>审批辅助</strong>
+            <span>撤回、催办、转审、委托</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="paymentActionForm.assignmentUserId"
+              placeholder="目标用户ID"
+            />
+          </div>
+          <div class="action-buttons">
+            <t-button
+              :loading="actionBusy === 'withdrawApproval'"
+              @click="submitPaymentWithdrawal"
+            >
+              撤回
+            </t-button>
+            <t-button
+              :loading="actionBusy === 'remindApproval'"
+              @click="submitPaymentReminder"
+            >
+              催办
+            </t-button>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="actionBusy === 'transferApproval'"
+              @click="submitPaymentAssignment('transfer')"
+            >
+              转审
+            </t-button>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="actionBusy === 'delegateApproval'"
+              @click="submitPaymentAssignment('delegate')"
+            >
+              委托
+            </t-button>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-title">
+            <strong>敏感文件下载</strong>
+            <span>签发短时效票据</span>
+          </div>
+          <div class="action-fields">
+            <t-input
+              v-model="paymentActionForm.downloadFileId"
+              placeholder="文件ID"
+            />
+            <t-input
+              v-model="paymentActionForm.downloadPassword"
+              type="password"
+              placeholder="当前登录密码确认"
+            />
+          </div>
+          <t-button
+            theme="primary"
+            variant="outline"
+            :loading="actionBusy === 'download'"
+            @click="submitPaymentFileDownload"
+          >
+            下载文件
           </t-button>
         </div>
       </div>
@@ -268,11 +350,18 @@ import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-dom
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  createPrivateFileDownloadTicket,
+  delegatePaymentApproval,
   fetchPaymentDetail,
+  generatePaymentPdfArchive,
+  remindPaymentApproval,
   recordPaymentExecution,
   recordPaymentFinance,
   recordPaymentPdfArchive,
-  reviewPaymentApproval
+  reviewPaymentApproval,
+  transferPaymentApproval,
+  uploadPrivateFile,
+  withdrawPaymentApproval
 } from "../../api/core-flow-read.api";
 import { paymentDetailChainLinks } from "../business-chain-links.config";
 import type { PaymentDetailTone } from "./payment-detail.config";
@@ -292,6 +381,7 @@ const paymentDetail = ref<PaymentDetailReadModel | null>(null);
 const actionBusy = ref("");
 const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
+const selectedPaymentVoucherFile = ref<File | null>(null);
 const paymentActionForm = reactive({
   approvedAmountCents: "",
   executionAmountCents: "",
@@ -300,7 +390,10 @@ const paymentActionForm = reactive({
   executionConfirmationPassword: "",
   financeAmountCents: "",
   occurredAt: new Date().toISOString(),
-  pdfFileId: ""
+  pdfFileId: "",
+  assignmentUserId: "",
+  downloadFileId: "",
+  downloadPassword: ""
 });
 
 const paymentDetailTitleView = computed(() => paymentDetail.value?.title ?? paymentDetailTitle);
@@ -382,6 +475,15 @@ function requiredText(raw: string, label: string) {
   return value;
 }
 
+function apiDownloadUrl(url: string) {
+  return url.startsWith("/files/") ? `/api${url}` : url;
+}
+
+function selectPaymentVoucherFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  selectedPaymentVoucherFile.value = input.files?.[0] ?? null;
+}
+
 async function runPaymentAction(key: string, action: () => Promise<unknown>) {
   actionBusy.value = key;
   actionMessage.value = "";
@@ -416,17 +518,23 @@ async function submitApproval(decision: "approve" | "reject") {
 async function submitExecution() {
   const paymentId = String(route.params.paymentId ?? "FK-2026-006");
 
-  await runPaymentAction("execution", () =>
-    recordPaymentExecution(paymentId, {
+  await runPaymentAction("execution", async () => {
+    const file = selectedPaymentVoucherFile.value;
+    const uploadedFileId = file ? (await uploadPrivateFile(file, file.name)).id : "";
+
+    return recordPaymentExecution(paymentId, {
       amountCents: parseCentAmount(paymentActionForm.executionAmountCents, "实付金额"),
       paidAt: requiredText(paymentActionForm.paidAt, "付款时间"),
-      voucherFileId: requiredText(paymentActionForm.voucherFileId, "付款凭证文件ID"),
+      voucherFileId: requiredText(
+        uploadedFileId || paymentActionForm.voucherFileId,
+        "付款凭证文件ID"
+      ),
       confirmationPassword: requiredText(
         paymentActionForm.executionConfirmationPassword,
         "当前登录密码"
       )
-    })
-  );
+    });
+  });
 }
 
 async function submitFinance() {
@@ -448,6 +556,47 @@ async function submitPdfArchive() {
       fileId: requiredText(paymentActionForm.pdfFileId, "PDF文件ID")
     })
   );
+}
+
+async function submitGeneratedPdfArchive() {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+
+  await runPaymentAction("pdfGenerate", () => generatePaymentPdfArchive(paymentId));
+}
+
+async function submitPaymentWithdrawal() {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+
+  await runPaymentAction("withdrawApproval", () => withdrawPaymentApproval(paymentId));
+}
+
+async function submitPaymentReminder() {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+
+  await runPaymentAction("remindApproval", () => remindPaymentApproval(paymentId));
+}
+
+async function submitPaymentAssignment(kind: "transfer" | "delegate") {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标用户ID");
+
+  await runPaymentAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
+    kind === "transfer"
+      ? transferPaymentApproval(paymentId, { toUserId })
+      : delegatePaymentApproval(paymentId, { toUserId })
+  );
+}
+
+async function submitPaymentFileDownload() {
+  await runPaymentAction("download", async () => {
+    const ticket = await createPrivateFileDownloadTicket(
+      requiredText(paymentActionForm.downloadFileId, "文件ID"),
+      {
+        confirmationPassword: requiredText(paymentActionForm.downloadPassword, "当前登录密码")
+      }
+    );
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+  });
 }
 
 function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
@@ -641,8 +790,90 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
   border-radius: 3px;
 }
 
+.action-card {
+  margin-bottom: 20px;
+}
+
 :deep(.section-card .t-card__body) {
   padding: 0;
+}
+
+.action-card :deep(.t-card__body) {
+  padding: 16px;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.action-group {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.action-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.action-title strong {
+  font-size: 13px;
+}
+
+.action-title span {
+  color: #767f8d;
+  font-size: 12px;
+}
+
+.action-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.file-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+  color: #424955;
+  font-size: 12px;
+}
+
+.action-message {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.action-message.success {
+  color: #1b6b3a;
+  background: #f3faf5;
+}
+
+.action-message.danger {
+  color: #b51d2a;
+  background: #fff5f5;
 }
 
 .block-message {
@@ -654,7 +885,9 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
 @media (max-width: 980px) {
   .meta-panel,
   .detail-grid,
-  .timeline-grid {
+  .timeline-grid,
+  .action-grid,
+  .action-fields {
     grid-template-columns: 1fr;
   }
 
