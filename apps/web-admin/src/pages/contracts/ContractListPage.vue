@@ -5,10 +5,93 @@
         <h1>合同台账</h1>
         <p>合同、合同版本、付款条款版本、归档状态统一台账</p>
       </div>
-      <t-button theme="primary">
+      <t-button
+        theme="primary"
+        @click="showCreateForm = !showCreateForm"
+      >
         新建合同
       </t-button>
     </div>
+
+    <t-card
+      v-if="showCreateForm"
+      class="create-panel"
+      title="新建合同草稿"
+      :bordered="true"
+    >
+      <div class="create-grid">
+        <t-input
+          v-model="createForm.projectId"
+          label="项目ID"
+          placeholder="项目ID"
+        />
+        <t-input
+          v-model="createForm.code"
+          label="合同编号"
+          placeholder="HT-2026-002"
+        />
+        <t-input
+          v-model="createForm.name"
+          label="合同名称"
+          placeholder="钢材采购补充合同"
+        />
+        <t-input
+          v-model="createForm.counterparty"
+          label="相对方"
+          placeholder="供应商名称"
+        />
+        <t-input
+          v-model="createForm.amountCents"
+          label="合同金额(分)"
+          placeholder="128000000"
+        />
+        <t-input
+          v-model="createForm.paymentTermsOriginalText"
+          class="wide-field"
+          label="付款条款原文"
+          placeholder="结算归档确认生效后30天内支付80%，20%作为质保金。"
+        />
+        <t-input
+          v-model="createForm.stageName"
+          label="首条付款阶段"
+          placeholder="当期结算款"
+        />
+        <t-input
+          v-model="createForm.stageRatioBps"
+          label="付款比例(BPS)"
+          placeholder="8000"
+        />
+        <t-input
+          v-model="createForm.stageDueDays"
+          label="账期(天)"
+          placeholder="30"
+        />
+        <t-input
+          v-model="createForm.stageTriggerEvent"
+          class="wide-field"
+          label="触发条件"
+          placeholder="结算归档确认生效"
+        />
+      </div>
+      <div class="create-actions">
+        <t-button
+          theme="primary"
+          :loading="createBusy"
+          @click="submitCreateContract"
+        >
+          创建草稿
+        </t-button>
+        <t-button @click="showCreateForm = false">
+          取消
+        </t-button>
+      </div>
+      <div
+        v-if="createMessage"
+        :class="['create-message', createMessageTone]"
+      >
+        {{ createMessage }}
+      </div>
+    </t-card>
 
     <div class="summary-strip">
       <div
@@ -82,7 +165,9 @@
 </template>
 
 <script setup lang="ts">
+import { reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { createContractDraft } from "../../api/core-flow-read.api";
 import type { ContractStatusTone } from "./contract-list.config";
 import {
   contractFilterFields,
@@ -92,9 +177,81 @@ import {
 } from "./contract-list.config";
 
 const router = useRouter();
+const showCreateForm = ref(false);
+const createBusy = ref(false);
+const createMessage = ref("");
+const createMessageTone = ref<"success" | "danger">("success");
+const createForm = reactive({
+  projectId: "seed-project-jgxm-001",
+  code: `HT-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+  name: "",
+  counterparty: "",
+  amountCents: "",
+  paymentTermsOriginalText: "结算归档确认生效后30天内支付80%，20%作为质保金。",
+  stageName: "当期结算款",
+  stageRatioBps: "8000",
+  stageDueDays: "30",
+  stageTriggerEvent: "结算归档确认生效"
+});
 
 function openDetail(contractId: string) {
   void router.push(`/contracts/${contractId}`);
+}
+
+function requiredText(raw: string, label: string) {
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(`${label}不能为空`);
+  }
+
+  return value;
+}
+
+function positiveInteger(raw: string, label: string) {
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${label}必须为正整数`);
+  }
+
+  return value;
+}
+
+async function submitCreateContract() {
+  createBusy.value = true;
+  createMessage.value = "";
+
+  try {
+    const result = await createContractDraft({
+      projectId: requiredText(createForm.projectId, "项目ID"),
+      code: requiredText(createForm.code, "合同编号"),
+      name: requiredText(createForm.name, "合同名称"),
+      counterparty: requiredText(createForm.counterparty, "相对方"),
+      amountCents: positiveInteger(createForm.amountCents, "合同金额"),
+      paymentTermsOriginalText: requiredText(createForm.paymentTermsOriginalText, "付款条款原文"),
+      paymentStages: [
+        {
+          name: requiredText(createForm.stageName, "首条付款阶段"),
+          basis: "current_settlement",
+          ratioBps: positiveInteger(createForm.stageRatioBps, "付款比例"),
+          triggerEvent: requiredText(createForm.stageTriggerEvent, "触发条件"),
+          dueDays: positiveInteger(createForm.stageDueDays, "账期"),
+          requiresInvoice: true,
+          allowsEarlyPayment: false,
+          allowsInstallments: true,
+          originalText: createForm.paymentTermsOriginalText
+        }
+      ]
+    });
+
+    createMessageTone.value = "success";
+    createMessage.value = "合同草稿已创建。";
+    await router.push(`/contracts/${result.contract.code}`);
+  } catch (error) {
+    createMessageTone.value = "danger";
+    createMessage.value = error instanceof Error ? error.message : "创建合同失败";
+  } finally {
+    createBusy.value = false;
+  }
 }
 
 function statusTagTheme(tone: ContractStatusTone) {
@@ -146,6 +303,46 @@ function statusTagTheme(tone: ContractStatusTone) {
   background: #fff;
   border: 1px solid #dce1e8;
   border-radius: 3px;
+}
+
+.create-panel {
+  margin-bottom: 16px;
+  border-radius: 3px;
+}
+
+.create-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.wide-field {
+  grid-column: span 2;
+}
+
+.create-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.create-message {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.create-message.success {
+  color: #1b6b3a;
+  background: #f3faf5;
+}
+
+.create-message.danger {
+  color: #b51d2a;
+  background: #fff5f5;
 }
 
 .summary-item {
@@ -226,6 +423,7 @@ function statusTagTheme(tone: ContractStatusTone) {
 }
 
 @media (max-width: 900px) {
+  .create-grid,
   .filter-bar {
     grid-template-columns: repeat(4, minmax(120px, 1fr));
   }

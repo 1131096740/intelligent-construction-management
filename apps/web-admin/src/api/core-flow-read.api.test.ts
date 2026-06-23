@@ -4,6 +4,7 @@ import {
   fetchContractDetail,
   fetchPaymentDetail,
   fetchSettlementDetail,
+  createContractDraft,
   createPrivateFileDownloadTicket,
   confirmContractArchive,
   confirmSettlementArchive,
@@ -62,6 +63,38 @@ describe("core flow read API client", () => {
       "/api/settlements/JS-2026-018",
       "/api/payments/FK-2026-006"
     ]);
+  });
+
+  it("creates contract drafts through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ contract: { code: "HT-2026-002" } })
+    } as Response);
+
+    await createContractDraft({
+      projectId: "seed-project-jgxm-001",
+      code: "HT-2026-002",
+      name: "测试合同",
+      counterparty: "测试供应商",
+      amountCents: 1000000,
+      paymentTermsOriginalText: "结算归档确认后30天内付款。",
+      paymentStages: [
+        {
+          name: "当期结算款",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          triggerEvent: "结算归档确认生效",
+          dueDays: 30,
+          requiresInvoice: true,
+          allowsEarlyPayment: false,
+          allowsInstallments: true,
+          originalText: "结算归档确认后30天内付款80%。"
+        }
+      ]
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/contracts"]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
   });
 
   it("posts payment workflow actions to the backend", async () => {

@@ -66,6 +66,41 @@ export function fetchPaymentDetail(paymentId: string) {
 }
 
 // 操作人统一来自登录态（access token），写入负载不再携带 *ByUserId。
+export interface CreatePaymentTermsStagePayload {
+  name: string;
+  basis:
+    | "contract_amount"
+    | "current_settlement"
+    | "cumulative_settlement"
+    | "fixed_amount"
+    | "manual_amount";
+  ratioBps?: number;
+  fixedAmountCents?: number;
+  triggerEvent: string;
+  dueDays: number;
+  requiresInvoice: boolean;
+  allowsEarlyPayment: boolean;
+  allowsInstallments: boolean;
+  retentionBps?: number;
+  originalText: string;
+}
+
+export interface CreateContractPayload {
+  projectId: string;
+  code: string;
+  name: string;
+  counterparty: string;
+  amountCents: number;
+  paymentTermsOriginalText: string;
+  paymentStages: CreatePaymentTermsStagePayload[];
+}
+
+export interface CreateContractReadModel {
+  contract: { id: string; code: string };
+  version: { id: string };
+  terms: { id: string };
+}
+
 export interface ReviewPaymentApprovalPayload {
   decision: "approve" | "reject";
   approvedAmountCents?: number;
@@ -160,6 +195,10 @@ export function createPrivateFileDownloadTicket(
   body: CreatePrivateFileDownloadTicketPayload
 ) {
   return postJson<PrivateFileDownloadTicketReadModel>(`/files/${fileId}/download-ticket`, body);
+}
+
+export function createContractDraft(body: CreateContractPayload) {
+  return postJson<CreateContractReadModel>("/contracts", body);
 }
 
 export function uploadContractArchiveFile(
