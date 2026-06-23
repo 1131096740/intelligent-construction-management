@@ -8,3 +8,4 @@ coverage/
 *.log
 apps/miniprogram/miniprogram_npm/
 .pnpm-store/
+services/api/storage/

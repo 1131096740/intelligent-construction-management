@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
-import { Public } from "../auth/decorators/public.decorator";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
+import type { AuthenticatedUser } from "../auth/auth.types";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
@@ -9,48 +11,56 @@ import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
 
 @Controller("payments")
-@Public()
 export class PaymentController {
   constructor(
     private readonly paymentRead: PaymentReadService,
     private readonly payments: PaymentRequestService
   ) {}
 
+  // 创建付款申请：策略表未定义 create 动作，申请在审批前无业务效力，仅要求登录。
   @Post()
   create(@Body() body: CreatePaymentRequestDto) {
     return this.payments.create(body);
   }
 
   @Post(":paymentId/approval")
+  @RequireProjectRole("payment.approve")
   reviewApproval(
     @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() body: ReviewPaymentApprovalDto
   ) {
-    return this.payments.reviewApproval(paymentId, body);
+    return this.payments.reviewApproval(paymentId, user.id, body);
   }
 
   @Post(":paymentId/executions")
+  @RequireProjectRole("payment.execution")
   recordExecution(
     @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() body: RecordPaymentExecutionDto
   ) {
-    return this.payments.recordExecution(paymentId, body);
+    return this.payments.recordExecution(paymentId, user.id, body);
   }
 
   @Post(":paymentId/finance-records")
+  @RequireProjectRole("payment.finance_record")
   recordFinance(
     @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() body: RecordFinanceRecordDto
   ) {
-    return this.payments.recordFinance(paymentId, body);
+    return this.payments.recordFinance(paymentId, user.id, body);
   }
 
   @Post(":paymentId/pdf-archive")
+  @RequireProjectRole("payment.pdf_archive")
   recordPdfArchive(
     @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() body: RecordPaymentPdfArchiveDto
   ) {
-    return this.payments.recordPdfArchive(paymentId, body);
+    return this.payments.recordPdfArchive(paymentId, user.id, body);
   }
 
   @Get(":paymentId")

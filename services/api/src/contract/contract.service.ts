@@ -1,11 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
-import { ApproveContractSealDto } from "./dto/approve-contract-seal.dto";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
 import { CreateContractDto } from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
-import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 
 @Injectable()
@@ -67,7 +65,11 @@ export class ContractService {
     });
   }
 
-  async uploadArchiveFile(contractVersionId: string, input: UploadContractArchiveFileDto) {
+  async uploadArchiveFile(
+    contractVersionId: string,
+    actorUserId: string,
+    input: UploadContractArchiveFileDto
+  ) {
     return this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
@@ -93,7 +95,7 @@ export class ContractService {
         data: {
           contractVersionId: version.id,
           fileId: input.fileId,
-          uploadedByUserId: input.uploadedByUserId,
+          uploadedByUserId: actorUserId,
           status: "pending_confirm"
         }
       });
@@ -104,7 +106,7 @@ export class ContractService {
       });
 
       await this.audit.record(tx, {
-        actorUserId: input.uploadedByUserId,
+        actorUserId,
         action: "contract.archive.upload",
         businessType: "contract_version",
         businessId: version.id,
@@ -118,38 +120,46 @@ export class ContractService {
     });
   }
 
-  async submitApproval(contractVersionId: string, input: SubmitContractApprovalDto) {
+  async submitApproval(contractVersionId: string, actorUserId: string) {
     return this.updateVersionStatus({
       contractVersionId,
       expectedStatus: "draft",
       nextStatus: "in_approval",
-      actorUserId: input.submittedByUserId,
+      actorUserId,
       action: "contract.approval.submit"
     });
   }
 
-  async reviewApproval(contractVersionId: string, input: ReviewContractApprovalDto) {
+  async reviewApproval(
+    contractVersionId: string,
+    actorUserId: string,
+    input: ReviewContractApprovalDto
+  ) {
     return this.updateVersionStatus({
       contractVersionId,
       expectedStatus: "in_approval",
       nextStatus: input.decision === "approve" ? "approved_pending_seal" : "approval_rejected",
-      actorUserId: input.reviewedByUserId,
+      actorUserId,
       action:
         input.decision === "approve" ? "contract.approval.approve" : "contract.approval.reject"
     });
   }
 
-  async approveSeal(contractVersionId: string, input: ApproveContractSealDto) {
+  async approveSeal(contractVersionId: string, actorUserId: string) {
     return this.updateVersionStatus({
       contractVersionId,
       expectedStatus: "approved_pending_seal",
       nextStatus: "seal_approved_pending_archive",
-      actorUserId: input.sealedByUserId,
+      actorUserId,
       action: "contract.seal.approve"
     });
   }
 
-  async confirmArchiveFile(contractVersionId: string, input: ConfirmContractArchiveDto) {
+  async confirmArchiveFile(
+    contractVersionId: string,
+    actorUserId: string,
+    input: ConfirmContractArchiveDto
+  ) {
     return this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
@@ -182,7 +192,7 @@ export class ContractService {
       await tx.contractArchiveFile.update({
         where: { id: archiveFile.id },
         data: {
-          confirmedByUserId: input.confirmedByUserId,
+          confirmedByUserId: actorUserId,
           confirmedAt,
           status: "confirmed"
         }
@@ -202,7 +212,7 @@ export class ContractService {
       });
 
       await this.audit.record(tx, {
-        actorUserId: input.confirmedByUserId,
+        actorUserId,
         action: "contract.archive.confirm",
         businessType: "contract_version",
         businessId: version.id,

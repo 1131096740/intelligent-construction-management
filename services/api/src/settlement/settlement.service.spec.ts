@@ -142,9 +142,8 @@ describe("SettlementService", () => {
     };
     const settlementService = new SettlementService(prisma as never, audit as never);
 
-    const result = await settlementService.uploadArchiveFile("settlement-1", {
-      fileId: "file-1",
-      uploadedByUserId: "user-contract-staff"
+    const result = await settlementService.uploadArchiveFile("settlement-1", "user-contract-staff", {
+      fileId: "file-1"
     });
 
     expect(result.status).toBe("pending_confirm");
@@ -193,9 +192,8 @@ describe("SettlementService", () => {
     };
     const settlementService = new SettlementService(prisma as never, audit as never);
 
-    const result = await settlementService.reviewApproval("settlement-1", {
-      decision: "approve",
-      reviewedByUserId: "budget-director-1"
+    const result = await settlementService.reviewApproval("settlement-1", "budget-director-1", {
+      decision: "approve"
     });
 
     expect(result.status).toBe("approved_pending_archive");
@@ -246,10 +244,13 @@ describe("SettlementService", () => {
     };
     const settlementService = new SettlementService(prisma as never, audit as never);
 
-    const result = await settlementService.confirmArchiveFile("settlement-1", {
-      archiveFileId: "settlement-archive-file-1",
-      confirmedByUserId: "user-contract-director"
-    });
+    const result = await settlementService.confirmArchiveFile(
+      "settlement-1",
+      "user-contract-director",
+      {
+        archiveFileId: "settlement-archive-file-1"
+      }
+    );
 
     expect(result.status).toBe("effective");
     expect(tx.settlementArchiveFile.update).toHaveBeenCalledWith({

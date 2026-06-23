@@ -122,9 +122,8 @@ describe("ContractService", () => {
     } as unknown as PrismaService;
     const service = new ContractService(prisma, audit as never);
 
-    const result = await service.uploadArchiveFile("contract-version-1", {
-      fileId: "file-1",
-      uploadedByUserId: "user-contract-staff"
+    const result = await service.uploadArchiveFile("contract-version-1", "user-contract-staff", {
+      fileId: "file-1"
     });
 
     expect(result.status).toBe("pending_confirm");
@@ -175,9 +174,7 @@ describe("ContractService", () => {
     } as unknown as PrismaService;
     const service = new ContractService(prisma, audit as never);
 
-    const result = await service.submitApproval("contract-version-1", {
-      submittedByUserId: "user-contract-staff"
-    });
+    const result = await service.submitApproval("contract-version-1", "user-contract-staff");
 
     expect(result.status).toBe("in_approval");
     expect(tx.contractVersion.update).toHaveBeenCalledWith({
@@ -219,9 +216,8 @@ describe("ContractService", () => {
     } as unknown as PrismaService;
     const service = new ContractService(prisma, audit as never);
 
-    const result = await service.reviewApproval("contract-version-1", {
-      decision: "approve",
-      reviewedByUserId: "chairman-1"
+    const result = await service.reviewApproval("contract-version-1", "chairman-1", {
+      decision: "approve"
     });
 
     expect(result.status).toBe("approved_pending_seal");
@@ -264,9 +260,7 @@ describe("ContractService", () => {
     } as unknown as PrismaService;
     const service = new ContractService(prisma, audit as never);
 
-    const result = await service.approveSeal("contract-version-1", {
-      sealedByUserId: "user-contract-staff"
-    });
+    const result = await service.approveSeal("contract-version-1", "user-contract-staff");
 
     expect(result.status).toBe("seal_approved_pending_archive");
     expect(tx.contractVersion.update).toHaveBeenCalledWith({
@@ -321,10 +315,13 @@ describe("ContractService", () => {
     } as unknown as PrismaService;
     const service = new ContractService(prisma, audit as never);
 
-    const result = await service.confirmArchiveFile("contract-version-1", {
-      archiveFileId: "archive-file-1",
-      confirmedByUserId: "user-contract-director"
-    });
+    const result = await service.confirmArchiveFile(
+      "contract-version-1",
+      "user-contract-director",
+      {
+        archiveFileId: "archive-file-1"
+      }
+    );
 
     expect(result.status).toBe("effective");
     expect(tx.contractArchiveFile.update).toHaveBeenCalledWith({

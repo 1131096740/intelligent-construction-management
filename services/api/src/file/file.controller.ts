@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Get,
   Param,
@@ -11,9 +10,10 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
+import type { AuthenticatedUser } from "../auth/auth.types";
 import { CreateFileDownloadTicketDto } from "./dto/create-file-download-ticket.dto";
-import { UploadPrivateFileDto } from "./dto/upload-private-file.dto";
 import { FileService } from "./file.service";
 
 interface MemoryUploadedFile {
@@ -24,13 +24,15 @@ interface MemoryUploadedFile {
 }
 
 @Controller("files")
-@Public()
 export class FileController {
   constructor(private readonly files: FileService) {}
 
   @Post()
   @UseInterceptors(FileInterceptor("file"))
-  upload(@UploadedFile() file: MemoryUploadedFile | undefined, @Body() body: UploadPrivateFileDto) {
+  upload(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
     if (!file) {
       throw new Error("Private file is required");
     }
@@ -39,7 +41,7 @@ export class FileController {
       originalName: file.originalname,
       mimeType: file.mimetype,
       sizeBytes: file.size,
-      uploadedByUserId: body.uploadedByUserId,
+      uploadedByUserId: user.id,
       buffer: file.buffer
     });
   }
@@ -52,6 +54,8 @@ export class FileController {
     return this.files.createDownloadTicket(fileId, query);
   }
 
+  // 下载走短时效票据（expiresAt + token），用于可直接打开的链接，因此不强制 Bearer。
+  @Public()
   @Get(":fileId/download")
   async download(
     @Param("fileId") fileId: string,

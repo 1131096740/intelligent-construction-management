@@ -195,10 +195,9 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    const approved = await paymentService.reviewApproval("FK-2026-012", {
+    const approved = await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
       decision: "approve",
-      approvedAmountCents: 45_000,
-      reviewedByUserId: "chairman-1"
+      approvedAmountCents: 45_000
     });
 
     expect(approved.status).toBe("approved_pending_payment");
@@ -244,9 +243,8 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    const rejected = await paymentService.reviewApproval("FK-2026-012", {
-      decision: "reject",
-      reviewedByUserId: "general-manager-1"
+    const rejected = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      decision: "reject"
     });
 
     expect(rejected.status).toBe("rejected");
@@ -285,7 +283,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.reviewApproval("FK-2026-012", {
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
         decision: "approve"
       })
     ).rejects.toThrow("Cannot review payment approval from status approved_pending_payment");
@@ -310,7 +308,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.reviewApproval("FK-2026-012", {
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
         decision: "approve",
         approvedAmountCents: 50_001
       })
@@ -361,10 +359,9 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    const execution = await paymentService.recordExecution("FK-2026-012", {
+    const execution = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
       amountCents: 30_000,
       paidAt: "2026-06-22T00:00:00.000Z",
-      executedByUserId: "cashier-1",
       voucherFileId: "file-1"
     });
 
@@ -441,10 +438,9 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    await paymentService.recordExecution("FK-2026-012", {
+    await paymentService.recordExecution("FK-2026-012", "cashier-1", {
       amountCents: 20_000,
       paidAt: "2026-06-22T00:00:00.000Z",
-      executedByUserId: "cashier-1",
       voucherFileId: "file-1"
     });
 
@@ -490,10 +486,9 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordExecution("FK-2026-012", {
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 20_000,
         paidAt: "2026-06-22T00:00:00.000Z",
-        executedByUserId: "cashier-1",
         voucherFileId: "file-1"
       })
     ).rejects.toThrow("Cannot record payment execution from status approval_pending");
@@ -526,10 +521,9 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordExecution("FK-2026-012", {
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 30_001,
         paidAt: "2026-06-22T00:00:00.000Z",
-        executedByUserId: "cashier-1",
         voucherFileId: "file-1"
       })
     ).rejects.toThrow("Payment execution exceeds approved remaining amount: 30000");
@@ -555,10 +549,9 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordExecution("FK-2026-012", {
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 0,
         paidAt: "2026-06-22T00:00:00.000Z",
-        executedByUserId: "cashier-1",
         voucherFileId: ""
       })
     ).rejects.toThrow("Payment execution amount must be greater than zero");
@@ -584,10 +577,9 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordExecution("FK-2026-012", {
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 10_000,
         paidAt: "2026-06-22T00:00:00.000Z",
-        executedByUserId: "cashier-1",
         voucherFileId: ""
       })
     ).rejects.toThrow("Payment voucher file is required");
@@ -606,18 +598,16 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordExecution("FK-2026-012", {
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: undefined as never,
         paidAt: "2026-06-22T00:00:00.000Z",
-        executedByUserId: "cashier-1",
         voucherFileId: "file-1"
       })
     ).rejects.toThrow("Payment execution amount must be greater than zero");
     await expect(
-      paymentService.recordExecution("FK-2026-012", {
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 10_000,
         paidAt: "2026-06-22T00:00:00.000Z",
-        executedByUserId: "cashier-1",
         voucherFileId: undefined as never
       })
     ).rejects.toThrow("Payment voucher file is required");
@@ -654,10 +644,9 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    const record = await paymentService.recordFinance("FK-2026-012", {
+    const record = await paymentService.recordFinance("FK-2026-012", "finance-1", {
       amountCents: 30_000,
-      occurredAt: "2026-06-22T00:00:00.000Z",
-      createdByUserId: "finance-1"
+      occurredAt: "2026-06-22T00:00:00.000Z"
     });
 
     expect(record.id).toBe("finance-record-1");
@@ -702,10 +691,9 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordFinance("FK-2026-012", {
+      paymentService.recordFinance("FK-2026-012", "finance-1", {
         amountCents: 10_000,
-        occurredAt: "2026-06-22T00:00:00.000Z",
-        createdByUserId: "finance-1"
+        occurredAt: "2026-06-22T00:00:00.000Z"
       })
     ).rejects.toThrow("Cannot record finance entry before actual payment execution");
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
@@ -735,10 +723,9 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordFinance("FK-2026-012", {
+      paymentService.recordFinance("FK-2026-012", "finance-1", {
         amountCents: 10_001,
-        occurredAt: "2026-06-22T00:00:00.000Z",
-        createdByUserId: "finance-1"
+        occurredAt: "2026-06-22T00:00:00.000Z"
       })
     ).rejects.toThrow("Finance record exceeds unrecorded paid amount: 10000");
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
@@ -785,9 +772,8 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    const result = await paymentService.recordPdfArchive("FK-2026-012", {
-      fileId: "file-1",
-      archivedByUserId: "finance-1"
+    const result = await paymentService.recordPdfArchive("FK-2026-012", "finance-1", {
+      fileId: "file-1"
     });
 
     expect(result.pdfDocument.id).toBe("pdf-1");
@@ -848,9 +834,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordPdfArchive("FK-2026-012", {
-        fileId: "file-1",
-        archivedByUserId: "finance-1"
+      paymentService.recordPdfArchive("FK-2026-012", "finance-1", {
+        fileId: "file-1"
       })
     ).rejects.toThrow("Cannot archive payment PDF before finance entry is complete");
     expect(tx.pdfDocument.create).not.toHaveBeenCalled();
@@ -887,9 +872,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordPdfArchive("FK-2026-012", {
-        fileId: "missing-file",
-        archivedByUserId: "finance-1"
+      paymentService.recordPdfArchive("FK-2026-012", "finance-1", {
+        fileId: "missing-file"
       })
     ).rejects.toThrow("Payment archive file not found");
     expect(tx.pdfDocument.create).not.toHaveBeenCalled();
@@ -931,9 +915,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await expect(
-      paymentService.recordPdfArchive("FK-2026-012", {
-        fileId: "file-1",
-        archivedByUserId: "finance-1"
+      paymentService.recordPdfArchive("FK-2026-012", "finance-1", {
+        fileId: "file-1"
       })
     ).rejects.toThrow("Payment PDF archive already exists");
     expect(tx.pdfDocument.create).not.toHaveBeenCalled();

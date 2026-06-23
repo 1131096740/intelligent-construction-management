@@ -89,7 +89,11 @@ export class PaymentRequestService {
     });
   }
 
-  async reviewApproval(paymentId: string, input: ReviewPaymentApprovalDto) {
+  async reviewApproval(
+    paymentId: string,
+    actorUserId: string,
+    input: ReviewPaymentApprovalDto
+  ) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to review payment approval");
     }
@@ -116,7 +120,7 @@ export class PaymentRequestService {
           }
         });
         await this.audit.record(tx, {
-          actorUserId: input.reviewedByUserId ?? null,
+          actorUserId,
           action: "payment.approval.reject",
           businessType: "payment_request",
           businessId: payment.id,
@@ -142,7 +146,7 @@ export class PaymentRequestService {
         }
       });
       await this.audit.record(tx, {
-        actorUserId: input.reviewedByUserId ?? null,
+        actorUserId,
         action: "payment.approval.approve",
         businessType: "payment_request",
         businessId: payment.id,
@@ -158,7 +162,11 @@ export class PaymentRequestService {
     });
   }
 
-  async recordExecution(paymentId: string, input: RecordPaymentExecutionDto) {
+  async recordExecution(
+    paymentId: string,
+    actorUserId: string,
+    input: RecordPaymentExecutionDto
+  ) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to record payment execution");
     }
@@ -213,7 +221,7 @@ export class PaymentRequestService {
           settlementId: payment.settlementId,
           amountCents: input.amountCents,
           paidAt: new Date(input.paidAt),
-          executedByUserId: input.executedByUserId,
+          executedByUserId: actorUserId,
           voucherFileId: input.voucherFileId
         }
       });
@@ -235,7 +243,7 @@ export class PaymentRequestService {
       });
 
       await this.audit.record(tx, {
-        actorUserId: input.executedByUserId,
+        actorUserId,
         action: "payment.execution.record",
         businessType: "payment_request",
         businessId: payment.id,
@@ -253,7 +261,7 @@ export class PaymentRequestService {
     });
   }
 
-  async recordFinance(paymentId: string, input: RecordFinanceRecordDto) {
+  async recordFinance(paymentId: string, actorUserId: string, input: RecordFinanceRecordDto) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to record finance entry");
     }
@@ -297,11 +305,11 @@ export class PaymentRequestService {
           direction: "outflow",
           amountCents: input.amountCents,
           occurredAt: new Date(input.occurredAt),
-          createdByUserId: input.createdByUserId
+          createdByUserId: actorUserId
         }
       });
       await this.audit.record(tx, {
-        actorUserId: input.createdByUserId,
+        actorUserId,
         action: "payment.finance.record",
         businessType: "payment_request",
         businessId: payment.id,
@@ -315,7 +323,11 @@ export class PaymentRequestService {
     });
   }
 
-  async recordPdfArchive(paymentId: string, input: RecordPaymentPdfArchiveDto) {
+  async recordPdfArchive(
+    paymentId: string,
+    actorUserId: string,
+    input: RecordPaymentPdfArchiveDto
+  ) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to record payment PDF archive");
     }
@@ -382,7 +394,7 @@ export class PaymentRequestService {
       });
 
       await this.audit.record(tx, {
-        actorUserId: input.archivedByUserId,
+        actorUserId,
         action: "payment.pdf_archive.record",
         businessType: "payment_request",
         businessId: payment.id,

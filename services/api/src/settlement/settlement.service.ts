@@ -96,7 +96,11 @@ export class SettlementService {
     return Math.floor((amountCents * ratioBps) / 10000);
   }
 
-  async uploadArchiveFile(settlementId: string, input: UploadSettlementArchiveFileDto) {
+  async uploadArchiveFile(
+    settlementId: string,
+    actorUserId: string,
+    input: UploadSettlementArchiveFileDto
+  ) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to upload settlement archive file");
     }
@@ -126,7 +130,7 @@ export class SettlementService {
         data: {
           settlementId: settlement.id,
           fileId: input.fileId,
-          uploadedByUserId: input.uploadedByUserId,
+          uploadedByUserId: actorUserId,
           status: "pending_confirm"
         }
       });
@@ -137,7 +141,7 @@ export class SettlementService {
       });
 
       await this.audit.record(tx, {
-        actorUserId: input.uploadedByUserId,
+        actorUserId,
         action: "settlement.archive.upload",
         businessType: "settlement",
         businessId: settlement.id,
@@ -151,7 +155,11 @@ export class SettlementService {
     });
   }
 
-  async reviewApproval(settlementId: string, input: ReviewSettlementApprovalDto) {
+  async reviewApproval(
+    settlementId: string,
+    actorUserId: string,
+    input: ReviewSettlementApprovalDto
+  ) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to review settlement approval");
     }
@@ -177,7 +185,7 @@ export class SettlementService {
       });
 
       await this.audit.record(tx, {
-        actorUserId: input.reviewedByUserId,
+        actorUserId,
         action:
           input.decision === "approve"
             ? "settlement.approval.approve"
@@ -194,7 +202,11 @@ export class SettlementService {
     });
   }
 
-  async confirmArchiveFile(settlementId: string, input: ConfirmSettlementArchiveDto) {
+  async confirmArchiveFile(
+    settlementId: string,
+    actorUserId: string,
+    input: ConfirmSettlementArchiveDto
+  ) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to confirm settlement archive file");
     }
@@ -231,7 +243,7 @@ export class SettlementService {
       await tx.settlementArchiveFile.update({
         where: { id: archiveFile.id },
         data: {
-          confirmedByUserId: input.confirmedByUserId,
+          confirmedByUserId: actorUserId,
           confirmedAt,
           status: "confirmed"
         }
@@ -243,7 +255,7 @@ export class SettlementService {
       });
 
       await this.audit.record(tx, {
-        actorUserId: input.confirmedByUserId,
+        actorUserId,
         action: "settlement.archive.confirm",
         businessType: "settlement",
         businessId: settlement.id,

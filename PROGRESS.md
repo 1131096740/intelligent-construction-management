@@ -10,11 +10,12 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-23 (Claude)：业务写端点全部挂上鉴权。新增 `@CurrentUser()` 取登录态操作人；合同/结算/付款/文件控制器去掉 `@Public()`，12 个受守写动作各挂 `@RequireProjectRole(<action>)`；DTO 删除 `*ByUserId`，service 改为显式 `actorUserId` 参数；文件下载（票据鉴权）保留 `@Public`。`verify-core-flow.cjs` 改为多身份登录 + Bearer，并新增两条安全回归（未登录写 401、错误岗位用章 403）。本机 Docker PG + API 实跑 `verify:core-flow` 全绿；89 个单测 + typecheck + eslint 通过。
 - 2026-06-23 (CodeX)：完成 services/api 认证管道：User 密码字段 + RefreshToken migration、17 岗位 seed、手机号密码登录/refresh/logout/改密/微信登录、全局 JwtAuthGuard 与 PermissionGuard（暂未挂业务端点）。
 - 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：与 Claude 协调现有写端点挂 Guard，并把操作人改为登录态；随后更新 `verify-core-flow` 为多身份登录验证。
+- **下一步**：Web 管理端登录页 + 前端鉴权态（携带 access token、401 刷新/跳登录）——写操作现已要求登录，前端不接 token 会 401。其后：审批引擎（Milestone 5）落地 `settlement.approve` 按合同类型路由到评审岗。
 
 ---
 
@@ -32,7 +33,7 @@
 
 - [x] 合同草稿创建（同时建版本 v1 + 付款条款 v1）
 - [x] 提交审批 → 审批通过 → 用章 → 上传归档件 → 归档确认 → 生效
-- [ ] 节点操作的"谁能做"权限校验（依赖认证授权，未做）
+- [x] 节点操作的"谁能做"权限校验（写端点挂 `@RequireProjectRole` + PermissionGuard，操作人取登录态）
 
 ## Milestone 3：结算状态机（API 层已成型）
 
@@ -74,18 +75,18 @@
 - [x] 权限核心纯逻辑 + 单测 `shared-domain/permissions.ts`（动作→岗位策略表、或签、有效岗位合并）
 - [x] 登录 / 员工绑定 / 会话（CodeX，手机号密码登录 + 微信登录入口；员工绑定流程待小程序阶段细化）
 - [x] JWT access+refresh + 改密（CodeX）
-- [x] 角色 + 岗位 + 项目授权的后端权限中间件（Guard 接 permissions.ts，暂未挂业务端点）
-- [ ] 改造现有写端点：操作人取登录态，不再信任请求体 `*ByUserId`
-- [ ] 更新 `verify-core-flow`：分步骤用不同身份登录
-- [ ] 目前接口"前端传谁就信谁"，任何人可冒充任意角色 ← **真实数据上线前必须解决**
+- [x] 角色 + 岗位 + 项目授权的后端权限中间件（Guard 接 permissions.ts，已挂全部业务写端点）
+- [x] 改造现有写端点：操作人取登录态（`@CurrentUser()`），不再信任请求体 `*ByUserId`（DTO 已删除该字段）
+- [x] 更新 `verify-core-flow`：分步骤用不同身份登录（Bearer token）+ 安全回归（未登录 401 / 错误岗位 403）
+- [x] ~~接口"前端传谁就信谁"~~ 已解决：未登录写接口 401，错误岗位 403（含 create/上传仅要求登录）
 
 ## Web 管理端
 
 - [x] 企业后台布局
 - [x] 合同 / 结算 / 付款 / 资料库 / 审计 台账页 + 详情页骨架
 - [x] 核心读 API 客户端 + 页面配置测试
-- [~] 写操作接入（归档、付款部分动作已 wire）
-- [ ] 登录页 / 前端鉴权态
+- [~] 写操作接入（归档、付款部分动作已 wire）⚠️ 后端写端点现已要求 Bearer token，前端不接 token 会 401
+- [ ] 登录页 / 前端鉴权态（携带 access token、401 自动刷新或跳登录）← 解锁写操作的前置
 
 ## Milestone 7：小程序移动端
 
