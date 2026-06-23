@@ -25,7 +25,10 @@ import {
   transferSettlementApproval,
   delegateSettlementApproval,
   transferContractApproval,
-  transferPaymentApproval
+  transferPaymentApproval,
+  listApprovalDelegations,
+  createApprovalDelegation,
+  revokeApprovalDelegation
 } from "./core-flow-read.api";
 
 describe("core flow read API client", () => {
@@ -209,5 +212,38 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/files/file-1/download-ticket"
     ]);
+  });
+
+  it("manages approval delegations through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "delegation-1" })
+    } as Response);
+
+    await listApprovalDelegations();
+    await createApprovalDelegation({
+      toUserId: "user-b",
+      startsAt: "2026-06-23T00:00:00.000Z",
+      endsAt: "2026-07-23T00:00:00.000Z"
+    });
+    await revokeApprovalDelegation("delegation-1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/approval-delegations",
+      "/api/approval-delegations",
+      "/api/approval-delegations/delegation-1"
+    ]);
+    expect(fetchMock.mock.calls.map((call) => call[1]?.method)).toEqual([
+      undefined,
+      "POST",
+      "DELETE"
+    ]);
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        toUserId: "user-b",
+        startsAt: "2026-06-23T00:00:00.000Z",
+        endsAt: "2026-07-23T00:00:00.000Z"
+      })
+    );
   });
 });

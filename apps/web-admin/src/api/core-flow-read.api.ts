@@ -47,6 +47,12 @@ async function postForm<TResponse>(path: string, body: FormData): Promise<TRespo
   return response.json() as Promise<TResponse>;
 }
 
+async function deleteJson<TResponse>(path: string): Promise<TResponse> {
+  const response = await apiFetch(path, { method: "DELETE" });
+  await ensureOk(response, "删除失败");
+  return response.json() as Promise<TResponse>;
+}
+
 export function fetchContractDetail(contractId: string) {
   return readJson<ContractDetailReadModel>(`/contracts/${contractId}`);
 }
@@ -280,4 +286,32 @@ export function generatePaymentPdfArchive(
   body: GeneratePaymentPdfArchivePayload = {}
 ) {
   return postJson<unknown>(`/payments/${paymentId}/pdf-generation`, body);
+}
+
+export interface ApprovalDelegationReadModel {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  startsAt: string;
+  endsAt: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface CreateApprovalDelegationPayload {
+  toUserId: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+export function listApprovalDelegations() {
+  return readJson<ApprovalDelegationReadModel[]>("/approval-delegations");
+}
+
+export function createApprovalDelegation(body: CreateApprovalDelegationPayload) {
+  return postJson<ApprovalDelegationReadModel>("/approval-delegations", body);
+}
+
+export function revokeApprovalDelegation(delegationId: string) {
+  return deleteJson<ApprovalDelegationReadModel>(`/approval-delegations/${delegationId}`);
 }

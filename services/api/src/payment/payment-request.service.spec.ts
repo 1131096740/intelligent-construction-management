@@ -324,6 +324,85 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("lets a standing delegate approve a payment node as the delegator's role", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approved_pending_payment",
+          approvedAmountCents: 45_000
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { userId: string } }) =>
+          Promise.resolve(where.userId === "delegator-1" ? [{ positionKey: "chairman" }] : [])
+        )
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const delegations = {
+      activeDelegatorIds: jest.fn().mockResolvedValue(["delegator-1"])
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      delegations as never
+    );
+
+    const approved = await paymentService.reviewApproval("FK-2026-012", "delegate-user-1", {
+      decision: "approve",
+      approvedAmountCents: 45_000
+    });
+
+    expect(approved.status).toBe("approved_pending_payment");
+    expect(delegations.activeDelegatorIds).toHaveBeenCalledWith(tx, "delegate-user-1");
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "delegate-user-1",
+        action: "payment.approval.approve"
+      })
+    });
+  });
+
   it("rejects a pending payment request without making it payable", async () => {
     const tx = {
       paymentRequest: {

@@ -7,6 +7,7 @@ import {
   SettlementStatus,
   type RoleKey
 } from "@jiangkong/shared-domain";
+import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -60,7 +61,9 @@ export class PaymentRequestService {
     @Optional()
     private readonly files?: FileService,
     @Optional()
-    private readonly auth?: AuthService
+    private readonly auth?: AuthService,
+    @Optional()
+    private readonly delegations?: ApprovalDelegationService
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -342,10 +345,19 @@ export class PaymentRequestService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
-      const approvedRoleKey =
+      let approvedRoleKey =
         currentNode.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
         currentNode.assignments?.find((assignment) => assignment.toUserId === actorUserId)
           ?.fromRoleKey;
+
+      if (!approvedRoleKey) {
+        approvedRoleKey = await this.resolveDelegatedRoleKey(
+          tx,
+          actorUserId,
+          payment.projectId,
+          currentNode.roleKeys
+        );
+      }
 
       if (!approvedRoleKey) {
         throw new Error(`Actor cannot approve payment node ${currentNode.name}`);
@@ -799,6 +811,31 @@ export class PaymentRequestService {
     const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
 
     return Array.from(new Set([...positionKeys, ...memberKeys]));
+  }
+
+  // 常驻委托台账消费：本人岗位/节点指派都不命中时，看是否有在窗口内的委托人持有该节点角色。
+  private async resolveDelegatedRoleKey(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string,
+    nodeRoleKeys: RoleKey[]
+  ): Promise<RoleKey | undefined> {
+    if (!this.delegations) {
+      return undefined;
+    }
+
+    const delegatorIds = await this.delegations.activeDelegatorIds(tx, actorUserId);
+
+    for (const delegatorId of delegatorIds) {
+      const delegatorRoleKeys = await this.loadActorRoleKeys(tx, delegatorId, projectId);
+      const match = nodeRoleKeys.find((role) => delegatorRoleKeys.includes(role));
+
+      if (match) {
+        return match;
+      }
+    }
+
+    return undefined;
   }
 
   private renderPaymentPdf(input: {

@@ -312,6 +312,79 @@ describe("ContractService", () => {
     });
   });
 
+  it("lets a standing delegate approve a contract node as the delegator's role", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "approved_pending_seal"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" })
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { userId: string } }) =>
+          Promise.resolve(where.userId === "delegator-1" ? [{ positionKey: "chairman" }] : [])
+        )
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const delegations = {
+      activeDelegatorIds: jest.fn().mockResolvedValue(["delegator-1"])
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      delegations as never
+    );
+
+    const result = await service.reviewApproval("contract-version-1", "delegate-user-1", {
+      decision: "approve"
+    });
+
+    expect(result.status).toBe("approved_pending_seal");
+    expect(delegations.activeDelegatorIds).toHaveBeenCalledWith(tx, "delegate-user-1");
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "contract.approval.approve",
+        metadata: expect.objectContaining({ approvedRoleKey: "chairman" })
+      })
+    );
+  });
+
   it("rejects a contract approval and closes the approval instance", async () => {
     const tx = {
       contractVersion: {

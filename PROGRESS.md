@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-23 (Claude)：常驻委托台账闭环（消除“写了没人读”的死数据）。`ApprovalDelegation` 此前 3 处 `delegate` 写入但全库零读取，现在真正被消费：新增 `ApprovalDelegationService`（create/listForUser/revoke + `activeDelegatorIds(tx,toUserId,now)`）与登录态 `POST/GET/DELETE /approval-delegations`（任何登录用户管理自己的委托，无 `@RequireProjectRole`；创建/撤销写审计 `approval.delegation.{create,revoke}`）。合同/结算/付款 review 在本人岗位 + 节点指派都不命中时，回退到“窗口内的委托人是否持有该节点角色”——**全流程通用**（含合同/付款的董事长/总经理 OR-sign 终审）。Web 端补委托台账管理页（/delegations，列表+创建+撤销）、API client 3 个调用 + `deleteJson`。API 168 个单测（含 ApprovalDelegationService 7 + 三处消费/拒绝 4）+ web-admin 59 + 全量 typecheck/lint 通过；本机实跑 verify-core-flow 全绿、委托端点 curl 冒烟通过。
 - 2026-06-23 (Claude)：把敏感操作二次确认扩展到归档确认（合同 + 结算）。合同/结算 `archive-confirmation` 现在需要 `confirmationPassword`，后端复用 `AuthService.confirmPassword`（与付款实付一致），密码缺失/错误时不开事务、不让版本/结算生效。两类 service 注入可选 `AuthService`，模块各 import `AuthModule`；Web 归档确认表单补当前密码输入；`verify-core-flow.cjs` 两处归档确认带 seed 密码继续实跑通过。API 153 个单测（含 +4 归档确认二次确认）+ web-admin 58 + 全量 typecheck/lint 通过。
 - 2026-06-23 (CodeX)：补资金出账登记二次确认最小闭环。`POST /payments/:paymentId/executions` 的 DTO 新增 `confirmationPassword`，后端在实际付款登记前复验当前登录用户密码，密码缺失/错误时不查询付款单、不写 `PaymentExecution`；Web 付款详情页的“出纳实付”补当前登录密码输入；`verify-core-flow.cjs` 带 seed 密码继续实跑。API 149 个单测 + web-admin 58 + 全量 typecheck/lint 通过。暂未覆盖归档确认、文件下载等其他敏感动作，也未做确认票据/短时效二次确认 token。
 - 2026-06-23 (CodeX)：补付款财务归档 PDF 最小生成闭环。新增 `POST /payments/:paymentId/pdf-generation`（权限同 `payment.pdf_archive`）：校验付款已实际支付且财务记录覆盖已付金额、同模板未归档后，后端生成合法 PDF buffer，走现有私有文件上传链路创建 `FileObject`，再复用 `PdfDocument` + `ArchiveRecord` 归档与审计。Web API client 补 `generatePaymentPdfArchive`。暂未做合同/结算 PDF 模板、水印、COS 私有桶。API 145 个单测 + web-admin 58 + 全量 typecheck/lint 通过。
@@ -29,7 +30,7 @@
 - 2026-06-22 (Claude)：认证授权设计方案 `docs/design/建工智管_认证授权设计.md`；权限核心 `packages/shared-domain/src/permissions.ts`（动作→岗位策略表、或签语义、有效岗位合并）+ 单元测试，已接入导出。
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
-- **下一步**：继续 Milestone 6：COS 私有桶 / 文件水印 / 其余敏感动作二次确认；或补合同/结算 PDF 模板、全局委托管理界面与自动套用委托关系。
+- **下一步**：继续 Milestone 6：COS 私有桶 / 文件水印 / 文件下载二次确认；或补合同/结算 PDF 模板（付款 PDF 已做）。委托台账已闭环（管理 API + Web 页 + review 自动套用）。
 
 ---
 
@@ -72,7 +73,7 @@
 - [x] 会签 / 或签 流转（结算审批支持冻结节点会签；合同/付款终审 OR-sign 已接 ApprovalInstance）
 - [~] 条件节点（结算审批已按合同名称/相对方推断物资机械 vs 劳务专业分包路线；缺显式合同类型字段）
 - [~] 驳回上一节点 / 打回申请人 / 撤回（撤回已覆盖结算/合同/付款三类审批：合同撤回退回 draft、付款撤回为终态 withdrawn；退回上一节点/打回申请人仍仅结算审批支持）
-- [~] 转审 / 委托代理（结算/合同/付款审批当前节点均支持转审/委托 assignment；委托动作已写 `ApprovalDelegation` 台账；未做全局委托管理界面和自动套用委托关系）
+- [x] 转审 / 委托代理（结算/合同/付款审批当前节点均支持转审/委托 assignment；常驻委托台账 `ApprovalDelegation` 已闭环：管理 API `/approval-delegations` + Web 管理页 + review 自动套用全流程通用；节点级委托写台账时仍带 30 天临时窗口，可由管理页自定义窗口替代）
 - [x] 超时催办（结算/合同/付款三类审批均支持：SLA 超时判定 + 重复节流 + ApprovalActionLog/审计；申请人发起，`POST /{settlements|contracts|payments}/:id/approval-reminder`）
 
 ## Milestone 6：文件、PDF、审计、安全
@@ -101,6 +102,7 @@
 - [x] 核心读 API 客户端 + 页面配置测试
 - [~] 写操作接入（归档、付款部分动作已 wire；已携带登录态 token）
 - [x] 登录页 / 前端鉴权态（携带 access token、401 自动刷新或跳登录）
+- [x] 委托台账管理页（/delegations：列表 + 创建 + 撤销，调用 `/approval-delegations`）
 
 ## Milestone 7：小程序移动端
 

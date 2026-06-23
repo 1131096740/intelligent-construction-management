@@ -30,6 +30,7 @@ describe("web admin routes", () => {
       "payments",
       "payments/:paymentId",
       "archives",
+      "delegations",
       "audit"
     ]);
   });

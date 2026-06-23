@@ -1,6 +1,7 @@
 import { Injectable, Optional } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkong/shared-domain";
+import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -41,7 +42,9 @@ export class ContractService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService = new AuditService(),
     @Optional()
-    private readonly auth?: AuthService
+    private readonly auth?: AuthService,
+    @Optional()
+    private readonly delegations?: ApprovalDelegationService
   ) {}
 
   async createDraft(input: CreateContractDto) {
@@ -236,10 +239,19 @@ export class ContractService {
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
-      const approvedRoleKey =
+      let approvedRoleKey =
         currentNode.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
         currentNode.assignments?.find((assignment) => assignment.toUserId === actorUserId)
           ?.fromRoleKey;
+
+      if (!approvedRoleKey) {
+        approvedRoleKey = await this.resolveDelegatedRoleKey(
+          tx,
+          actorUserId,
+          version.contractId,
+          currentNode.roleKeys
+        );
+      }
 
       if (!approvedRoleKey) {
         throw new Error(`Actor cannot approve contract node ${currentNode.name}`);
@@ -614,6 +626,31 @@ export class ContractService {
     const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
 
     return Array.from(new Set([...positionKeys, ...memberKeys]));
+  }
+
+  // 常驻委托台账消费：本人岗位/节点指派都不命中时，看是否有在窗口内的委托人持有该节点角色。
+  private async resolveDelegatedRoleKey(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    contractId: string,
+    nodeRoleKeys: RoleKey[]
+  ): Promise<RoleKey | undefined> {
+    if (!this.delegations) {
+      return undefined;
+    }
+
+    const delegatorIds = await this.delegations.activeDelegatorIds(tx, actorUserId);
+
+    for (const delegatorId of delegatorIds) {
+      const delegatorRoleKeys = await this.loadActorRoleKeys(tx, delegatorId, contractId);
+      const match = nodeRoleKeys.find((role) => delegatorRoleKeys.includes(role));
+
+      if (match) {
+        return match;
+      }
+    }
+
+    return undefined;
   }
 
   private async assignApproval(

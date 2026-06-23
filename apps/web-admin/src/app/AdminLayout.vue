@@ -37,6 +37,12 @@
           资料库
         </t-menu-item>
         <t-menu-item
+          value="/delegations"
+          @click="go('/delegations')"
+        >
+          委托台账
+        </t-menu-item>
+        <t-menu-item
           value="/audit"
           @click="go('/audit')"
         >
