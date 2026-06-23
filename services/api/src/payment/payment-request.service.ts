@@ -1,7 +1,9 @@
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import {
   canCreatePaymentFromSettlementStatus,
-  SettlementStatus
+  SettlementStatus,
+  type RoleKey
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -11,6 +13,14 @@ import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
+
+const PAYMENT_APPROVAL_NODES = [
+  {
+    name: "董事长/总经理",
+    mode: "any",
+    roleKeys: ["chairman", "general_manager"]
+  }
+] satisfies Array<{ name: string; mode: "any"; roleKeys: RoleKey[] }>;
 
 @Injectable()
 export class PaymentRequestService {
@@ -35,7 +45,7 @@ export class PaymentRequestService {
     this.amount.assertCanRequest(capacity, requestedAmountCents);
   }
 
-  async create(input: CreatePaymentRequestDto) {
+  async create(input: CreatePaymentRequestDto, applicantUserId?: string) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to create payment request");
     }
@@ -72,7 +82,7 @@ export class PaymentRequestService {
 
       this.amount.assertCanRequest(capacity, input.requestedAmountCents);
 
-      return tx.paymentRequest.create({
+      const payment = await tx.paymentRequest.create({
         data: {
           projectId: settlement.projectId,
           settlementId: settlement.id,
@@ -86,6 +96,22 @@ export class PaymentRequestService {
           paidAmountCents: 0
         }
       });
+
+      if (applicantUserId) {
+        await tx.approvalInstance.create({
+          data: {
+            flowType: "payment.approve",
+            businessType: "payment_request",
+            businessId: payment.id,
+            status: "in_progress",
+            currentNodeIndex: 0,
+            frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+            applicantUserId
+          }
+        });
+      }
+
+      return payment;
     });
   }
 
@@ -111,12 +137,50 @@ export class PaymentRequestService {
         throw new Error(`Cannot review payment approval from status ${payment.status}`);
       }
 
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "payment_request",
+          businessId: payment.id,
+          flowType: "payment.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Payment approval instance not found");
+      }
+
+      const nodes = instance.frozenNodes as unknown as typeof PAYMENT_APPROVAL_NODES;
+      const currentNode = nodes[instance.currentNodeIndex];
+
+      if (!currentNode) {
+        throw new Error("Payment approval current node not found");
+      }
+
+      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
+      const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+
+      if (!approvedRoleKey) {
+        throw new Error(`Actor cannot approve payment node ${currentNode.name}`);
+      }
+
       if (input.decision === "reject") {
         const rejected = await tx.paymentRequest.update({
           where: { id: payment.id },
           data: {
             status: "rejected",
             approvedAmountCents: null
+          }
+        });
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: { status: "rejected" }
+        });
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "reject",
+            actorUserId
           }
         });
         await this.audit.record(tx, {
@@ -127,7 +191,9 @@ export class PaymentRequestService {
           metadata: {
             code: payment.code,
             fromStatus: payment.status,
-            toStatus: "rejected"
+            toStatus: "rejected",
+            nodeName: currentNode.name,
+            approvedRoleKey
           }
         });
         return rejected;
@@ -145,6 +211,20 @@ export class PaymentRequestService {
           approvedAmountCents
         }
       });
+      await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: {
+          currentNodeIndex: instance.currentNodeIndex + 1,
+          status: "approved"
+        }
+      });
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "approve",
+          actorUserId
+        }
+      });
       await this.audit.record(tx, {
         actorUserId,
         action: "payment.approval.approve",
@@ -155,7 +235,9 @@ export class PaymentRequestService {
           fromStatus: payment.status,
           toStatus: "approved_pending_payment",
           requestedAmountCents: payment.requestedAmountCents,
-          approvedAmountCents
+          approvedAmountCents,
+          nodeName: currentNode.name,
+          approvedRoleKey
         }
       });
       return approved;
@@ -410,5 +492,33 @@ export class PaymentRequestService {
 
       return { pdfDocument, archiveRecord };
     });
+  }
+
+  private async loadActorRoleKeys(
+    tx: {
+      userPosition: {
+        findMany(input: unknown): Promise<Array<{ positionId: string; projectId: string | null }>>;
+      };
+      projectMember: { findMany(input: unknown): Promise<Array<{ positionKey: string }>> };
+      position: { findMany(input: unknown): Promise<Array<{ id: string; key: string }>> };
+    },
+    actorUserId: string,
+    projectId: string
+  ): Promise<RoleKey[]> {
+    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId: null } }),
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId } }),
+      tx.projectMember.findMany({ where: { userId: actorUserId, projectId } })
+    ]);
+    const positionIds = Array.from(
+      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
+    );
+    const positions = positionIds.length
+      ? await tx.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    const positionKeys = positions.map((position) => position.key as RoleKey);
+    const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
+
+    return Array.from(new Set([...positionKeys, ...memberKeys]));
   }
 }

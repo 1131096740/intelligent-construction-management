@@ -1,10 +1,20 @@
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
+import type { RoleKey } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
 import { CreateContractDto } from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
+
+const CONTRACT_APPROVAL_NODES = [
+  {
+    name: "董事长/总经理",
+    mode: "any",
+    roleKeys: ["chairman", "general_manager"]
+  }
+] satisfies Array<{ name: string; mode: "any"; roleKeys: RoleKey[] }>;
 
 @Injectable()
 export class ContractService {
@@ -121,12 +131,48 @@ export class ContractService {
   }
 
   async submitApproval(contractVersionId: string, actorUserId: string) {
-    return this.updateVersionStatus({
-      contractVersionId,
-      expectedStatus: "draft",
-      nextStatus: "in_approval",
-      actorUserId,
-      action: "contract.approval.submit"
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId }
+      });
+
+      if (!version) {
+        throw new Error("Contract version not found");
+      }
+
+      if (version.status !== "draft") {
+        throw new Error(`Cannot submit contract version from status ${version.status}`);
+      }
+
+      const updated = await tx.contractVersion.update({
+        where: { id: version.id },
+        data: { status: "in_approval" }
+      });
+
+      await tx.approvalInstance.create({
+        data: {
+          flowType: "contract.approve",
+          businessType: "contract_version",
+          businessId: version.id,
+          status: "in_progress",
+          currentNodeIndex: 0,
+          frozenNodes: CONTRACT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+          applicantUserId: actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.approval.submit",
+        businessType: "contract_version",
+        businessId: version.id,
+        metadata: {
+          fromStatus: version.status,
+          toStatus: "in_approval"
+        }
+      });
+
+      return updated;
     });
   }
 
@@ -135,13 +181,84 @@ export class ContractService {
     actorUserId: string,
     input: ReviewContractApprovalDto
   ) {
-    return this.updateVersionStatus({
-      contractVersionId,
-      expectedStatus: "in_approval",
-      nextStatus: input.decision === "approve" ? "approved_pending_seal" : "approval_rejected",
-      actorUserId,
-      action:
-        input.decision === "approve" ? "contract.approval.approve" : "contract.approval.reject"
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId }
+      });
+
+      if (!version) {
+        throw new Error("Contract version not found");
+      }
+
+      if (version.status !== "in_approval") {
+        throw new Error(`Cannot review contract approval from status ${version.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "contract_version",
+          businessId: version.id,
+          flowType: "contract.approve",
+          status: "in_progress"
+        }
+      });
+
+      if (!instance) {
+        throw new Error("Contract approval instance not found");
+      }
+
+      const nodes = instance.frozenNodes as unknown as typeof CONTRACT_APPROVAL_NODES;
+      const currentNode = nodes[instance.currentNodeIndex];
+
+      if (!currentNode) {
+        throw new Error("Contract approval current node not found");
+      }
+
+      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
+      const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+
+      if (!approvedRoleKey) {
+        throw new Error(`Actor cannot approve contract node ${currentNode.name}`);
+      }
+
+      const nextStatus =
+        input.decision === "approve" ? "approved_pending_seal" : "approval_rejected";
+      const updated = await tx.contractVersion.update({
+        where: { id: version.id },
+        data: { status: nextStatus }
+      });
+
+      await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: {
+          currentNodeIndex: input.decision === "approve" ? instance.currentNodeIndex + 1 : instance.currentNodeIndex,
+          status: input.decision === "approve" ? "approved" : "rejected"
+        }
+      });
+
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: input.decision === "approve" ? "approve" : "reject",
+          actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action:
+          input.decision === "approve" ? "contract.approval.approve" : "contract.approval.reject",
+        businessType: "contract_version",
+        businessId: version.id,
+        metadata: {
+          fromStatus: version.status,
+          toStatus: nextStatus,
+          nodeName: currentNode.name,
+          approvedRoleKey
+        }
+      });
+
+      return updated;
     });
   }
 
@@ -265,5 +382,40 @@ export class ContractService {
 
       return updated;
     });
+  }
+
+  private async loadActorRoleKeys(
+    tx: {
+      contract: { findUnique(input: unknown): Promise<{ projectId: string } | null> };
+      userPosition: {
+        findMany(input: unknown): Promise<Array<{ positionId: string; projectId: string | null }>>;
+      };
+      projectMember: { findMany(input: unknown): Promise<Array<{ positionKey: string }>> };
+      position: { findMany(input: unknown): Promise<Array<{ id: string; key: string }>> };
+    },
+    actorUserId: string,
+    contractId: string
+  ): Promise<RoleKey[]> {
+    const contract = await tx.contract.findUnique({ where: { id: contractId } });
+
+    if (!contract) {
+      throw new Error("Contract not found");
+    }
+
+    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId: null } }),
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId: contract.projectId } }),
+      tx.projectMember.findMany({ where: { userId: actorUserId, projectId: contract.projectId } })
+    ]);
+    const positionIds = Array.from(
+      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
+    );
+    const positions = positionIds.length
+      ? await tx.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    const positionKeys = positions.map((position) => position.key as RoleKey);
+    const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
+
+    return Array.from(new Set([...positionKeys, ...memberKeys]));
   }
 }

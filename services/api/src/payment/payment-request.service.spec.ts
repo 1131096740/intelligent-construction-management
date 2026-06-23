@@ -4,6 +4,20 @@ import { PaymentRequestService } from "./payment-request.service";
 describe("PaymentRequestService", () => {
   const service = new PaymentRequestService(new PaymentAmountService());
 
+  function approvalRoleTables(roleKey: string) {
+    return {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: roleKey }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+  }
+
   it("rejects payment request before settlement is effective", () => {
     expect(() =>
       service.assertRequestAllowed(
@@ -101,6 +115,64 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("freezes payment approval OR-sign route when payment request is created by an applicant", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 100_000,
+          paidAmountCents: 0
+        })
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012"
+        })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await paymentService.create(
+      {
+        settlementId: "settlement-1",
+        code: "FK-2026-012",
+        requestedAmountCents: 50_000
+      },
+      "contract-staff-1"
+    );
+
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        flowType: "payment.approve",
+        businessType: "payment_request",
+        businessId: "payment-1",
+        status: "in_progress",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "董事长/总经理",
+            mode: "any",
+            roleKeys: ["chairman", "general_manager"]
+          }
+        ],
+        applicantUserId: "contract-staff-1"
+      })
+    });
+  });
+
   it("rejects create payment request from a non-effective settlement", async () => {
     const tx = {
       settlement: {
@@ -176,6 +248,7 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
+          projectId: "project-1",
           status: "approval_pending",
           requestedAmountCents: 50_000
         }),
@@ -186,9 +259,27 @@ describe("PaymentRequestService", () => {
           approvedAmountCents: 45_000
         })
       },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
       auditLog: {
         create: jest.fn()
-      }
+      },
+      ...approvalRoleTables("chairman")
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -216,6 +307,13 @@ describe("PaymentRequestService", () => {
         businessId: "payment-1"
       })
     });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "approve",
+        actorUserId: "chairman-1"
+      }
+    });
   });
 
   it("rejects a pending payment request without making it payable", async () => {
@@ -224,6 +322,7 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
+          projectId: "project-1",
           status: "approval_pending",
           requestedAmountCents: 50_000
         }),
@@ -234,9 +333,27 @@ describe("PaymentRequestService", () => {
           approvedAmountCents: null
         })
       },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
       auditLog: {
         create: jest.fn()
-      }
+      },
+      ...approvalRoleTables("general_manager")
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -262,6 +379,13 @@ describe("PaymentRequestService", () => {
         businessType: "payment_request",
         businessId: "payment-1"
       })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "reject",
+        actorUserId: "general-manager-1"
+      }
     });
   });
 
@@ -296,11 +420,26 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
+          projectId: "project-1",
           status: "approval_pending",
           requestedAmountCents: 50_000
         }),
         update: jest.fn()
-      }
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        })
+      },
+      ...approvalRoleTables("chairman")
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))

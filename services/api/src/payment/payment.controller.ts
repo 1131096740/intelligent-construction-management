@@ -19,8 +19,8 @@ export class PaymentController {
 
   // 创建付款申请：策略表未定义 create 动作，申请在审批前无业务效力，仅要求登录。
   @Post()
-  create(@Body() body: CreatePaymentRequestDto) {
-    return this.payments.create(body);
+  create(@Body() body: CreatePaymentRequestDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.payments.create(body, user.id);
   }
 
   @Post(":paymentId/approval")

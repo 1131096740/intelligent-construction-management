@@ -11,6 +11,23 @@ describe("ContractService", () => {
     audit.record.mockReset();
   });
 
+  function approvalRoleTables(roleKey: string) {
+    return {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" })
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: roleKey }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+  }
+
   it("creates a draft contract with initial version and payment terms", async () => {
     const tx = {
       contract: {
@@ -156,12 +173,16 @@ describe("ContractService", () => {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
+          contractId: "contract-1",
           status: "draft"
         }),
         update: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           status: "in_approval"
         })
+      },
+      approvalInstance: {
+        create: jest.fn()
       },
       auditLog: {
         create: jest.fn()
@@ -181,6 +202,23 @@ describe("ContractService", () => {
       where: { id: "contract-version-1" },
       data: { status: "in_approval" }
     });
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        flowType: "contract.approve",
+        businessType: "contract_version",
+        businessId: "contract-version-1",
+        status: "in_progress",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "董事长/总经理",
+            mode: "any",
+            roleKeys: ["chairman", "general_manager"]
+          }
+        ],
+        applicantUserId: "user-contract-staff"
+      })
+    });
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "user-contract-staff",
       action: "contract.approval.submit",
@@ -198,6 +236,7 @@ describe("ContractService", () => {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
+          contractId: "contract-1",
           status: "in_approval"
         }),
         update: jest.fn().mockResolvedValue({
@@ -205,9 +244,24 @@ describe("ContractService", () => {
           status: "approved_pending_seal"
         })
       },
-      auditLog: {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
         create: jest.fn()
-      }
+      },
+      ...approvalRoleTables("chairman")
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -225,6 +279,20 @@ describe("ContractService", () => {
       where: { id: "contract-version-1" },
       data: { status: "approved_pending_seal" }
     });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        currentNodeIndex: 1,
+        status: "approved"
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "approve",
+        actorUserId: "chairman-1"
+      }
+    });
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "chairman-1",
       action: "contract.approval.approve",
@@ -232,7 +300,69 @@ describe("ContractService", () => {
       businessId: "contract-version-1",
       metadata: {
         fromStatus: "in_approval",
-        toStatus: "approved_pending_seal"
+        toStatus: "approved_pending_seal",
+        nodeName: "董事长/总经理",
+        approvedRoleKey: "chairman"
+      }
+    });
+  });
+
+  it("rejects a contract approval and closes the approval instance", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "approval_rejected"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("general_manager")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    const result = await service.reviewApproval("contract-version-1", "general-manager-1", {
+      decision: "reject"
+    });
+
+    expect(result.status).toBe("approval_rejected");
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        currentNodeIndex: 0,
+        status: "rejected"
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "reject",
+        actorUserId: "general-manager-1"
       }
     });
   });
