@@ -78,9 +78,20 @@ export class ContractTemplateService {
   // Business template read
   // ---------------------------------------------------------------------------
 
-  listPublished(contractTypeKey?: string) {
+  async listPublished(contractTypeKey?: string) {
+    const publishedVersions = await this.prisma.contractBusinessTemplateVersion.findMany({
+      where: { status: "published" },
+      select: { templateId: true }
+    });
+    const publishedTemplateIds = [...new Set(publishedVersions.map((v) => v.templateId))];
+    if (!publishedTemplateIds.length) {
+      return [];
+    }
     return this.prisma.contractBusinessTemplate.findMany({
-      where: contractTypeKey ? { contractTypeKey } : undefined,
+      where: {
+        id: { in: publishedTemplateIds },
+        ...(contractTypeKey ? { contractTypeKey } : {})
+      },
       orderBy: { createdAt: "asc" }
     });
   }
@@ -175,6 +186,9 @@ export class ContractTemplateService {
         where: { id: versionId }
       });
       if (!source) throw new NotFoundException("Template version not found");
+      if (source.status !== "published") {
+        throw new BadRequestException("Only published versions can be cloned");
+      }
 
       const existing = await tx.contractBusinessTemplateVersion.findMany({
         where: { templateId: source.templateId },
@@ -342,9 +356,20 @@ export class ContractTemplateService {
   // Standard clause read
   // ---------------------------------------------------------------------------
 
-  listPublishedClauses(category?: string) {
+  async listPublishedClauses(category?: string) {
+    const publishedVersions = await this.prisma.standardClauseVersion.findMany({
+      where: { status: "published" },
+      select: { clauseId: true }
+    });
+    const publishedClauseIds = [...new Set(publishedVersions.map((v) => v.clauseId))];
+    if (!publishedClauseIds.length) {
+      return [];
+    }
     return this.prisma.standardClause.findMany({
-      where: category ? { category } : undefined,
+      where: {
+        id: { in: publishedClauseIds },
+        ...(category ? { category } : {})
+      },
       orderBy: { createdAt: "asc" }
     });
   }

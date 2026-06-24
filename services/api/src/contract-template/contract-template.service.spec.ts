@@ -417,4 +417,114 @@ describe("ContractTemplateService", () => {
       })
     });
   });
+
+  it("rejects cloning a non-published version", async () => {
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+      },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          templateId: "template-1",
+          versionNo: 1,
+          status: "draft"
+        }),
+        findMany: jest.fn(),
+        create: jest.fn()
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    await expect(service.cloneVersion("version-1", "contract-staff-1")).rejects.toThrow(
+      "Only published versions can be cloned"
+    );
+    expect(tx.contractBusinessTemplateVersion.create).not.toHaveBeenCalled();
+  });
+
+  it("listPublished returns only templates with a published version", async () => {
+    const prisma = {
+      contractBusinessTemplateVersion: {
+        findMany: jest.fn().mockResolvedValue([{ templateId: "template-published" }])
+      },
+      contractBusinessTemplate: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "template-published", code: "TPL-PUB", contractTypeKey: "procurement" }
+        ])
+      }
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    const result = await service.listPublished();
+
+    // version lookup restricted to published status
+    expect(
+      (prisma.contractBusinessTemplateVersion.findMany as jest.Mock)
+    ).toHaveBeenCalledWith({
+      where: { status: "published" },
+      select: { templateId: true }
+    });
+    // template query restricted to the published template ids only
+    expect((prisma.contractBusinessTemplate.findMany as jest.Mock)).toHaveBeenCalledWith({
+      where: { id: { in: ["template-published"] } },
+      orderBy: { createdAt: "asc" }
+    });
+    expect(result.map((t: { id: string }) => t.id)).toEqual(["template-published"]);
+    expect(result.map((t: { id: string }) => t.id)).not.toContain("template-draft");
+    expect(result.map((t: { id: string }) => t.id)).not.toContain("template-stopped");
+  });
+
+  it("listPublished returns empty when no template has a published version", async () => {
+    const prisma = {
+      contractBusinessTemplateVersion: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractBusinessTemplate: {
+        findMany: jest.fn()
+      }
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    const result = await service.listPublished();
+
+    expect(result).toEqual([]);
+    expect(prisma.contractBusinessTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it("listPublishedClauses returns only clauses with a published version", async () => {
+    const prisma = {
+      standardClauseVersion: {
+        findMany: jest.fn().mockResolvedValue([{ clauseId: "clause-published" }])
+      },
+      standardClause: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "clause-published", code: "CLS-PUB", category: "general" }
+        ])
+      }
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    const result = await service.listPublishedClauses();
+
+    expect((prisma.standardClauseVersion.findMany as jest.Mock)).toHaveBeenCalledWith({
+      where: { status: "published" },
+      select: { clauseId: true }
+    });
+    expect((prisma.standardClause.findMany as jest.Mock)).toHaveBeenCalledWith({
+      where: { id: { in: ["clause-published"] } },
+      orderBy: { createdAt: "asc" }
+    });
+    expect(result.map((c: { id: string }) => c.id)).toEqual(["clause-published"]);
+    expect(result.map((c: { id: string }) => c.id)).not.toContain("clause-draft");
+    expect(result.map((c: { id: string }) => c.id)).not.toContain("clause-stopped");
+  });
 });
