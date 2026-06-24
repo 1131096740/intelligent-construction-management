@@ -4,3 +4,4 @@ export * from "./approval";
 export * from "./money";
 export * from "./core-flow-read-model";
 export * from "./permissions";
+export * from "./contract-workbench";
