@@ -5,6 +5,7 @@ import PDFDocument = require("pdfkit");
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { centsToSafeNumber } from "../money/decimal-money";
 
 const APPROVAL_FORM_TEMPLATE_KEY = "approval_form";
 const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf");
@@ -73,7 +74,8 @@ function formatDate(value: Date): string {
 
 // 分 -> 「1,234.56 元」，不依赖运行环境 locale。
 function formatYuan(cents: number | bigint): string {
-  const [intPart, decPart] = (Number(cents) / 100).toFixed(2).split(".");
+  const safe = centsToSafeNumber(typeof cents === "bigint" ? cents : BigInt(cents));
+  const [intPart, decPart] = (safe / 100).toFixed(2).split(".");
   const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `${grouped}.${decPart} 元`;
 }

@@ -228,7 +228,7 @@ async function main() {
     where: { id: seed.contractVersion.id },
     update: {
       status: seed.contractVersion.status,
-      amountCents: seed.contractVersion.amountCents,
+      amountCents: BigInt(seed.contractVersion.amountCents),
       effectiveAt: seed.contractVersion.effectiveAt
     },
     create: {
@@ -237,7 +237,7 @@ async function main() {
       versionNo: seed.contractVersion.versionNo,
       changeType: seed.contractVersion.changeType,
       status: seed.contractVersion.status,
-      amountCents: seed.contractVersion.amountCents,
+      amountCents: BigInt(seed.contractVersion.amountCents),
       effectiveAt: seed.contractVersion.effectiveAt
     }
   });

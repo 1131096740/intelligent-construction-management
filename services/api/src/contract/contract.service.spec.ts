@@ -96,7 +96,7 @@ describe("ContractService", () => {
         versionNo: 1,
         changeType: "original",
         status: "draft",
-        amountCents: input.amountCents
+        amountCents: BigInt(input.amountCents)
       })
     });
     expect(tx.paymentTermsStage.createMany).toHaveBeenCalledWith({

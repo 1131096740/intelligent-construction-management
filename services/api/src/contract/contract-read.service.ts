@@ -4,6 +4,7 @@ import type {
   CoreFlowTone
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
+import { centsToSafeNumber } from "../money/decimal-money";
 
 @Injectable()
 export class ContractReadService {
@@ -310,7 +311,7 @@ export class ContractReadService {
   }
 
   private formatMoney(amountCents: number | bigint): string {
-    return `¥${(Number(amountCents) / 100).toLocaleString("en-US", {
+    return `¥${(centsToSafeNumber(typeof amountCents === "bigint" ? amountCents : BigInt(amountCents)) / 100).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;

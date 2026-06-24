@@ -7,6 +7,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { centsToSafeNumber } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
 import { CreateContractDto } from "./dto/create-contract.dto";
@@ -90,7 +91,7 @@ export class ContractService {
           versionNo: 1,
           changeType: "original",
           status: "draft",
-          amountCents: input.amountCents,
+          amountCents: BigInt(input.amountCents),
           draftData: {},
           templateSnapshot: {},
           clauseSnapshot: {}
@@ -771,7 +772,8 @@ export class ContractService {
   }
 
   private formatCents(value: number | bigint) {
-    return `${(Number(value) / 100).toFixed(2)} CNY`;
+    const safe = centsToSafeNumber(typeof value === "bigint" ? value : BigInt(value));
+    return `${(safe / 100).toFixed(2)} CNY`;
   }
 
   // 常驻委托台账消费：本人岗位/节点指派都不命中时，看是否有在窗口内的委托人持有该节点角色。
