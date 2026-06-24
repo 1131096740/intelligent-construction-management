@@ -36,6 +36,8 @@ const REQUIRED_PLACEHOLDERS = [
   "document.watermark"
 ];
 const RECOGNIZED_NAMESPACE = /^(contract|party|field|clause|bill|document)\./;
+const DOCX_INSPECTION_XML_MAX_BYTES = 2_000_000;
+const INSPECTION_XML_PATH = /^word\/(document|header\d+|footer\d+|styles)\.xml$/;
 
 @Injectable()
 export class LayoutTemplateService {
@@ -48,16 +50,37 @@ export class LayoutTemplateService {
   async listPublishedLayouts(contractTypeKey?: string) {
     const versions = await this.prisma.contractLayoutTemplateVersion.findMany({
       where: { status: "published" },
-      select: { layoutTemplateId: true }
+      select: {
+        id: true,
+        layoutTemplateId: true,
+        versionNo: true,
+        previewPdfFileId: true,
+        publishedAt: true
+      }
     });
     const ids = [...new Set(versions.map((version) => version.layoutTemplateId))];
     if (!ids.length) return [];
-    return this.prisma.contractLayoutTemplate.findMany({
+    const templates = await this.prisma.contractLayoutTemplate.findMany({
       where: {
         id: { in: ids },
         ...(contractTypeKey ? { contractTypeKey } : {})
       },
       orderBy: { createdAt: "asc" }
+    });
+    const templateById = new Map(templates.map((template) => [template.id, template]));
+    return versions.flatMap((version) => {
+      const template = templateById.get(version.layoutTemplateId);
+      return template
+        ? [
+            {
+              ...template,
+              layoutTemplateVersionId: version.id,
+              versionNo: version.versionNo,
+              previewPdfFileId: version.previewPdfFileId,
+              publishedAt: version.publishedAt
+            }
+          ]
+        : [];
     });
   }
 
@@ -66,6 +89,9 @@ export class LayoutTemplateService {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
       const file = await tx.fileObject.findUnique({ where: { id: input.docxFileId } });
       if (!file) throw new NotFoundException("Layout source file not found");
+      if (file.uploadedByUserId !== actorUserId) {
+        throw new ForbiddenException("Layout source file must be uploaded by the actor");
+      }
       if (!file.originalName.toLowerCase().endsWith(".docx")) {
         throw new BadRequestException("Layout source must be a DOCX file");
       }
@@ -86,7 +112,7 @@ export class LayoutTemplateService {
           placeholderSchema: input.placeholderSchema as Prisma.InputJsonValue
         }
       });
-      await this.record(tx, actorUserId, "create", template.id);
+      await this.record(tx, actorUserId, "create", version.id);
       return { template, version };
     });
   }
@@ -94,13 +120,19 @@ export class LayoutTemplateService {
   async inspectVersion(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
-      const version = await this.findMutableVersion(tx, versionId);
+      const version = await this.findVersion(tx, versionId);
+      if (version.status !== "draft") {
+        throw new BadRequestException("Only draft layout versions can be inspected");
+      }
       const source = await this.files.getFileBuffer(version.docxFileId);
       const report = this.inspectDocx(source.buffer, version.placeholderSchema);
-      await tx.contractLayoutTemplateVersion.update({
-        where: { id: versionId },
+      const result = await tx.contractLayoutTemplateVersion.updateMany({
+        where: { id: versionId, status: "draft" },
         data: { inspectionReport: report as unknown as Prisma.InputJsonValue }
       });
+      if (result.count !== 1) {
+        throw new BadRequestException("Layout version status changed");
+      }
       await this.record(tx, actorUserId, "inspect", versionId);
       return report;
     });
@@ -109,7 +141,17 @@ export class LayoutTemplateService {
   async queuePreview(versionId: string, actorUserId: string, sampleData: unknown) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
-      await this.findMutableVersion(tx, versionId);
+      const version = await this.findVersion(tx, versionId);
+      if (version.status !== "draft") {
+        throw new BadRequestException("Only draft layout versions can be previewed");
+      }
+      const result = await tx.contractLayoutTemplateVersion.updateMany({
+        where: { id: versionId, status: "draft" },
+        data: { status: "draft" }
+      });
+      if (result.count !== 1) {
+        throw new BadRequestException("Layout version status changed");
+      }
       const job = await tx.contractLayoutPreviewJob.create({
         data: {
           layoutTemplateVersionId: versionId,
@@ -144,12 +186,15 @@ export class LayoutTemplateService {
       if (!report || report.blockingErrors.length) {
         throw new BadRequestException("Layout inspection has blocking errors");
       }
-      const updated = await tx.contractLayoutTemplateVersion.update({
-        where: { id: versionId },
+      const result = await tx.contractLayoutTemplateVersion.updateMany({
+        where: { id: versionId, status: "draft" },
         data: { status: "submitted", submittedByUserId: actorUserId }
       });
+      if (result.count !== 1) {
+        throw new BadRequestException("Layout version status changed");
+      }
       await this.record(tx, actorUserId, "submit", versionId);
-      return updated;
+      return { ...version, status: "submitted", submittedByUserId: actorUserId };
     });
   }
 
@@ -171,18 +216,29 @@ export class LayoutTemplateService {
       if (preview?.status !== "succeeded" || !preview.previewPdfFileId) {
         throw new BadRequestException("Latest layout preview has not succeeded");
       }
-      const updated = await tx.contractLayoutTemplateVersion.update({
-        where: { id: versionId },
+      const publishedAt = new Date();
+      const result = await tx.contractLayoutTemplateVersion.updateMany({
+        where: { id: versionId, status: "submitted" },
         data: {
           status: "published",
           previewPdfFileId: preview.previewPdfFileId,
           publishedByUserId: actorUserId,
-          publishedAt: new Date(),
+          publishedAt,
           changeSummary
         }
       });
+      if (result.count !== 1) {
+        throw new BadRequestException("Layout version status changed");
+      }
       await this.record(tx, actorUserId, "publish", versionId, { changeSummary });
-      return updated;
+      return {
+        ...version,
+        status: "published",
+        previewPdfFileId: preview.previewPdfFileId,
+        publishedByUserId: actorUserId,
+        publishedAt,
+        changeSummary
+      };
     });
   }
 
@@ -227,10 +283,31 @@ export class LayoutTemplateService {
         throw new BadRequestException("Invalid DOCX layout source");
       }
     })();
-    const text = Object.keys(zip.files)
-      .filter((name) => /^word\/(document|header\d+|footer\d+)\.xml$/.test(name))
-      .map((name) => zip.file(name)?.asText() ?? "")
-      .join("\n");
+    const xmlEntries = Object.keys(zip.files)
+      .filter((name) => INSPECTION_XML_PATH.test(name))
+      .map((name) => zip.file(name))
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+    const uncompressedSize = xmlEntries.reduce(
+      (total, entry) =>
+        total +
+        ((entry as unknown as { _data?: { uncompressedSize?: number } })._data
+          ?.uncompressedSize ?? 0),
+      0
+    );
+    if (uncompressedSize > DOCX_INSPECTION_XML_MAX_BYTES) {
+      throw new BadRequestException("DOCX inspection XML exceeds size limit");
+    }
+    let text: string;
+    let styles: string;
+    try {
+      text = xmlEntries
+        .filter((entry) => /^word\/(document|header\d+|footer\d+)\.xml$/.test(entry.name))
+        .map((entry) => this.visibleWordText(entry.asText()))
+        .join("\n");
+      styles = xmlEntries.find((entry) => entry.name === "word/styles.xml")?.asText() ?? "";
+    } catch {
+      throw new BadRequestException("Invalid DOCX layout source");
+    }
     const rawTags = [...text.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map((match) =>
       match[1].trim()
     );
@@ -267,7 +344,6 @@ export class LayoutTemplateService {
         .map((font) => font.trim())
         .filter(Boolean)
     );
-    const styles = zip.file("word/styles.xml")?.asText() ?? "";
     const declaredFonts = [
       ...new Set(
         [...styles.matchAll(/w:(?:ascii|hAnsi|eastAsia|cs)="([^"]+)"/g)].map(
@@ -314,27 +390,53 @@ export class LayoutTemplateService {
       if (version.status !== "published") {
         throw new BadRequestException(`Only published layout versions can be ${status}`);
       }
-      const updated = await tx.contractLayoutTemplateVersion.update({
-        where: { id: versionId },
+      const changedAt = new Date();
+      const result = await tx.contractLayoutTemplateVersion.updateMany({
+        where: { id: versionId, status: "published" },
         data: {
           status,
-          ...(status === "stopped" ? { stoppedAt: new Date() } : { revokedAt: new Date() })
+          ...(status === "stopped" ? { stoppedAt: changedAt } : { revokedAt: changedAt })
         }
       });
+      if (result.count !== 1) {
+        throw new BadRequestException("Layout version status changed");
+      }
       await this.record(tx, actorUserId, status, versionId);
-      return updated;
+      return {
+        ...version,
+        status,
+        ...(status === "stopped" ? { stoppedAt: changedAt } : { revokedAt: changedAt })
+      };
     });
   }
 
-  private async findMutableVersion(tx: Prisma.TransactionClient, versionId: string) {
-    const version = await this.findVersion(tx, versionId);
-    if (version.status === "published") {
-      throw new BadRequestException("Published layout versions are immutable");
-    }
-    if (version.status === "stopped" || version.status === "revoked") {
-      throw new BadRequestException("Inactive layout versions are immutable");
-    }
-    return version;
+  private visibleWordText(xml: string) {
+    return [...xml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)]
+      .map((match) => this.decodeXmlEntities(match[1]))
+      .join("");
+  }
+
+  private decodeXmlEntities(value: string) {
+    return value.replace(
+      /&(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);/gi,
+      (entity) => {
+        const named: Record<string, string> = {
+          "&amp;": "&",
+          "&lt;": "<",
+          "&gt;": ">",
+          "&quot;": '"',
+          "&apos;": "'"
+        };
+        const normalized = entity.toLowerCase();
+        if (named[normalized]) return named[normalized];
+        const hexadecimal = normalized.startsWith("&#x");
+        const codePoint = Number.parseInt(
+          normalized.slice(hexadecimal ? 3 : 2, -1),
+          hexadecimal ? 16 : 10
+        );
+        return Number.isNaN(codePoint) ? entity : String.fromCodePoint(codePoint);
+      }
+    );
   }
 
   private async findVersion(tx: Prisma.TransactionClient, versionId: string) {
