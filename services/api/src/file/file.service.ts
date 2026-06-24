@@ -351,7 +351,70 @@ export class FileService {
       }
     }
 
+    // 审批单 PDF：申请人、任一签批人，或该项目的归档可读岗位均可下载。
+    const approvalForm = await tx.pdfDocument.findFirst({
+      where: { fileId: file.id, templateKey: "approval_form" }
+    });
+    if (approvalForm) {
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: approvalForm.businessType,
+          businessId: approvalForm.businessId,
+          status: "approved"
+        },
+        orderBy: { updatedAt: "desc" }
+      });
+
+      if (instance) {
+        if (instance.applicantUserId === actorUserId) {
+          return;
+        }
+
+        const signed = await tx.approvalActionLog.findFirst({
+          where: { approvalInstanceId: instance.id, actorUserId }
+        });
+        if (signed) {
+          return;
+        }
+      }
+
+      const projectId = await this.resolveApprovalProjectId(
+        tx,
+        approvalForm.businessType,
+        approvalForm.businessId
+      );
+      if (
+        projectId &&
+        (await this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))
+      ) {
+        return;
+      }
+    }
+
     throw new Error("Actor cannot download private file");
+  }
+
+  private async resolveApprovalProjectId(
+    tx: Prisma.TransactionClient,
+    businessType: string,
+    businessId: string
+  ): Promise<string | null> {
+    if (businessType === "settlement") {
+      const settlement = await tx.settlement.findUnique({ where: { id: businessId } });
+      return settlement?.projectId ?? null;
+    }
+    if (businessType === "payment_request") {
+      const payment = await tx.paymentRequest.findUnique({ where: { id: businessId } });
+      return payment?.projectId ?? null;
+    }
+    if (businessType === "contract_version") {
+      const version = await tx.contractVersion.findUnique({ where: { id: businessId } });
+      const contract = version
+        ? await tx.contract.findUnique({ where: { id: version.contractId } })
+        : null;
+      return contract?.projectId ?? null;
+    }
+    return null;
   }
 
   private async hasProjectRole(

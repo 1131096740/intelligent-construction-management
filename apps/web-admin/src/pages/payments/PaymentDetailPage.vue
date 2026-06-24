@@ -59,6 +59,10 @@
               v-model="paymentActionForm.approvedAmountCents"
               placeholder="审批金额(分)"
             />
+            <t-input
+              v-model="paymentActionForm.approvalComment"
+              placeholder="审批意见/备注(可选)"
+            />
           </div>
           <div class="action-buttons">
             <t-button
@@ -77,6 +81,14 @@
               @click="submitApproval('reject')"
             >
               驳回
+            </t-button>
+            <t-button
+              theme="default"
+              variant="outline"
+              :loading="actionBusy === 'approvalForm'"
+              @click="downloadApprovalForm"
+            >
+              下载审批单
             </t-button>
           </div>
         </div>
@@ -354,6 +366,7 @@ import {
   delegatePaymentApproval,
   fetchPaymentDetail,
   generatePaymentPdfArchive,
+  getApprovalFormTicket,
   remindPaymentApproval,
   recordPaymentExecution,
   recordPaymentFinance,
@@ -384,6 +397,7 @@ const actionMessageTone = ref<"success" | "danger">("success");
 const selectedPaymentVoucherFile = ref<File | null>(null);
 const paymentActionForm = reactive({
   approvedAmountCents: "",
+  approvalComment: "",
   executionAmountCents: "",
   paidAt: new Date().toISOString(),
   voucherFileId: "",
@@ -510,9 +524,19 @@ async function submitApproval(decision: "approve" | "reject") {
       approvedAmountCents:
         decision === "approve"
           ? optionalCentAmount(paymentActionForm.approvedAmountCents, "审批金额")
-          : undefined
+          : undefined,
+      comment: paymentActionForm.approvalComment.trim() || undefined
     })
   );
+}
+
+async function downloadApprovalForm() {
+  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+
+  await runPaymentAction("approvalForm", async () => {
+    const ticket = await getApprovalFormTicket("payment_request", paymentId);
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+  });
 }
 
 async function submitExecution() {

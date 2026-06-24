@@ -324,6 +324,57 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("persists the approver's remark on the approval action log", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approved_pending_payment",
+          approvedAmountCents: 50_000
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+      decision: "approve",
+      comment: "  同意付款  "
+    });
+
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "approve",
+        actorUserId: "chairman-1",
+        comment: "同意付款"
+      }
+    });
+  });
+
   it("lets a standing delegate approve a payment node as the delegator's role", async () => {
     const tx = {
       paymentRequest: {

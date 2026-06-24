@@ -54,6 +54,12 @@
             <strong>结算审批</strong>
             <span>审批、退回、打回</span>
           </div>
+          <div class="action-fields">
+            <t-input
+              v-model="settlementArchiveForm.approvalComment"
+              placeholder="审批意见/备注(可选)"
+            />
+          </div>
           <div class="action-buttons">
             <t-button
               theme="primary"
@@ -87,6 +93,14 @@
               @click="submitSettlementReview('return_to_applicant')"
             >
               打回发起人
+            </t-button>
+            <t-button
+              theme="default"
+              variant="outline"
+              :loading="archiveActionBusy === 'approvalForm'"
+              @click="downloadSettlementApprovalForm"
+            >
+              下载审批单
             </t-button>
           </div>
         </div>
@@ -320,6 +334,7 @@ import {
   delegateSettlementApproval,
   fetchSettlementDetail,
   generateSettlementPdfArchive,
+  getApprovalFormTicket,
   remindSettlementApproval,
   reviewSettlementApproval,
   transferSettlementApproval,
@@ -352,7 +367,8 @@ const settlementArchiveForm = reactive({
   confirmationPassword: "",
   assignmentUserId: "",
   downloadFileId: "",
-  downloadPassword: ""
+  downloadPassword: "",
+  approvalComment: ""
 });
 
 const settlementDetailTitleView = computed(() => settlementDetail.value?.title ?? settlementDetailTitle);
@@ -481,7 +497,21 @@ async function submitSettlementReview(
 ) {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
 
-  await runArchiveAction("reviewApproval", () => reviewSettlementApproval(settlementId, { decision }));
+  await runArchiveAction("reviewApproval", () =>
+    reviewSettlementApproval(settlementId, {
+      decision,
+      comment: settlementArchiveForm.approvalComment.trim() || undefined
+    })
+  );
+}
+
+async function downloadSettlementApprovalForm() {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+
+  await runArchiveAction("approvalForm", async () => {
+    const ticket = await getApprovalFormTicket("settlement", settlementId);
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+  });
 }
 
 async function submitSettlementWithdrawal() {

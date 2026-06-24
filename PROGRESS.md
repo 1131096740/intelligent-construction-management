@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-24 (Claude)：新增「审批单 PDF 自动生成」。合同/结算/付款审批通过（`ApprovalInstance` 置 `approved`）后，各 `reviewApproval` 事务提交外 best-effort 调用新 `ApprovalFormService.generateForInstance`，用 `pdfkit` + 仓库内嵌 `assets/fonts/NotoSansSC-Regular.otf`（中文子集内嵌）渲染企业级审批单：抬头（单号/申请人/生成时间）+ 审批路线（取 `frozenNodes`，节点名/会签或签/审批角色中文）+ 签批记录（取 `ApprovalActionLog`，逐行审批人姓名、职位、动作、签批时间、备注）；走现有 `FileService` 上传私有文件 + 写 `PdfDocument(templateKey="approval_form")` + 审计，幂等。备注「附言」经三条审批 DTO 新增的 `comment` 采集落 `ApprovalActionLog.comment`（此前该字段全库零写入）。新 `GET /approval-forms/:businessType/:businessId/ticket`（仅登录，惰性补生成）返回短链；`FileService.assertCanDownloadFile` 放行申请人/任一签批人/项目归档可读岗位。Web 三详情页加“审批意见/备注”输入与“下载审批单”按钮。验证：API **185** 单测 + web-admin **61** + 两包 typecheck/lint 全绿；本机 Docker PG 实跑 `verify-core-flow` 全流程，三类 `approval_form` PDF 均落库，登录→ticket→下载 HTTP 200 且中文渲染正确（含职位“（董事长）”解析）。未做：手写签名图、COS、用户上传原件水印。
 - 2026-06-24 (CodeX)：补齐 Web 台账页可见按钮行为，消除“点了没反应”。结算台账新增最小新建结算表单并调用 `POST /settlements`；付款台账新增最小新建付款申请表单并调用 `POST /payments`；资料库“上传资料”接入私有文件上传；合同/结算/付款/资料/审计列表页的查询、重置、查看、导出等暂未接完整后端列表/导出能力的入口改为明确页面提示。静态扫描确认页面 `<t-button>` / `<t-link>` 无空挂入口；`web-admin` test/typecheck/lint/build 通过；本地通过 `/api/settlements` 冒烟创建 `JS-UI-005255`，通过 `/api/payments` 冒烟创建付款申请 `FK-UI-005920`。
 - 2026-06-24 (CodeX)：修复 Web 合同台账“新建合同”按钮无效果。列表页新增最小合同草稿表单，提交 `POST /contracts` 创建合同、v1 合同版本和付款条款版本，成功后跳转新合同详情；API client 新增 `createContractDraft` 并补单测。`web-admin` test/typecheck/lint/build 通过；本地通过 `/api/contracts` 冒烟创建草稿合同 `HT-UI-004407`。
 - 2026-06-24 (CodeX)：补 Web 写操作入口最小闭环。合同详情页接入提交审批、审批通过/驳回、撤回、催办、转审、委托、用章通过、归档上传/确认、后端生成 PDF、敏感文件下载签票；结算详情页接入审批通过/驳回/退回上级/打回发起人、撤回、催办、转审、委托、归档上传/确认、后端生成 PDF、敏感文件下载签票；付款详情页补凭证直接上传、后端生成 PDF、撤回、催办、转审、委托、敏感文件下载签票。前端仍只做入口和必填校验，权限/状态以后台为准。`web-admin` test/typecheck/lint/build 通过；本地 Vite 已启动 `http://127.0.0.1:5173/`。
@@ -90,6 +91,7 @@
 - [x] 私有文件上传流程（本地存储 + `FILE_STORAGE_DRIVER=cos` 私有 COS PUT）
 - [x] 文件下载权限校验 + 短时效 URL（后端鉴权短链 + 下载审计；本地/COS 均经后端流式下载）
 - [x] 真正生成 PDF（付款财务归档、合同归档、结算归档 PDF 均已由后端生成并归档）
+- [x] 审批单 PDF 自动生成（合同/结算/付款审批通过即生成，pdfkit + 内嵌 Noto Sans SC 中文字体；逐行签批记录含审批人姓名/职位/动作/签批时间/备注，备注经各审批 DTO 的 `comment` 采集落 `ApprovalActionLog.comment`；`GET /approval-forms/:businessType/:businessId/ticket` 短链下载，权限放行申请人/签批人/归档可读岗位；Web 三详情页加审批意见输入 + 下载审批单按钮）
 - [~] 文件水印 / 敏感操作二次确认（实际付款登记、合同/结算归档确认、文件下载票据签发已要求当前密码二次确认；后端生成 PDF 已带水印，用户上传原始归档件水印未覆盖）
 
 ## 认证与授权（上线头号短板）

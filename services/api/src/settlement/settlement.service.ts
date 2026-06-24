@@ -9,6 +9,7 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
+import { ApprovalFormService } from "../approval/approval-form.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -69,7 +70,9 @@ export class SettlementService {
     @Optional()
     private readonly delegations?: ApprovalDelegationService,
     @Optional()
-    private readonly files?: FileService
+    private readonly files?: FileService,
+    @Optional()
+    private readonly approvalForms?: ApprovalFormService
   ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
@@ -238,7 +241,8 @@ export class SettlementService {
       throw new Error("Prisma service is required to review settlement approval");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    let completedInstanceId: string | undefined;
+    const result = await this.prisma.$transaction(async (tx) => {
       const settlement = await tx.settlement.findUnique({
         where: { id: settlementId }
       });
@@ -319,7 +323,8 @@ export class SettlementService {
           data: {
             approvalInstanceId: instance.id,
             action: "reject_previous",
-            actorUserId
+            actorUserId,
+            comment: input.comment?.trim() || undefined
           }
         });
 
@@ -354,7 +359,8 @@ export class SettlementService {
           data: {
             approvalInstanceId: instance.id,
             action: "return_to_applicant",
-            actorUserId
+            actorUserId,
+            comment: input.comment?.trim() || undefined
           }
         });
 
@@ -388,7 +394,8 @@ export class SettlementService {
           data: {
             approvalInstanceId: instance.id,
             action: "reject",
-            actorUserId
+            actorUserId,
+            comment: input.comment?.trim() || undefined
           }
         });
 
@@ -437,9 +444,14 @@ export class SettlementService {
         data: {
           approvalInstanceId: instance.id,
           action: "approve",
-          actorUserId
+          actorUserId,
+          comment: input.comment?.trim() || undefined
         }
       });
+
+      if (flowCompleted) {
+        completedInstanceId = instance.id;
+      }
 
       await this.audit.record(tx, {
         actorUserId,
@@ -456,6 +468,14 @@ export class SettlementService {
 
       return updated;
     });
+
+    if (completedInstanceId) {
+      await this.approvalForms
+        ?.generateForInstance(completedInstanceId, actorUserId)
+        .catch(() => undefined);
+    }
+
+    return result;
   }
 
   async withdrawApproval(settlementId: string, actorUserId: string) {

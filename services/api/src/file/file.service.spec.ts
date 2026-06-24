@@ -275,7 +275,8 @@ describe("FileService", () => {
       },
       contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
       settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
-      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) }
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -361,6 +362,113 @@ describe("FileService", () => {
         expiresAt: ticket.expiresAt
       }
     });
+  });
+
+  it("allows the applicant to download an approval-form PDF", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "审批单-PAY-2026-001.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "system-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          businessType: "payment_request",
+          businessId: "pay-1",
+          fileId: "file-1",
+          templateKey: "approval_form"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "inst-1",
+          applicantUserId: "applicant-1",
+          status: "approved"
+        })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "applicant-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=applicant-1");
+  });
+
+  it("denies an unrelated user from downloading an approval-form PDF", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "审批单-PAY-2026-001.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "system-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          businessType: "payment_request",
+          businessId: "pay-1",
+          fileId: "file-1",
+          templateKey: "approval_form"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "inst-1",
+          applicantUserId: "applicant-1",
+          status: "approved"
+        })
+      },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentRequest: {
+        findUnique: jest.fn().mockResolvedValue({ id: "pay-1", projectId: "project-1" })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", { actorUserId: "stranger-1" })
+    ).rejects.toThrow("Actor cannot download private file");
   });
 
   it("reads a private file through a short-lived ticket and records download audit", async () => {

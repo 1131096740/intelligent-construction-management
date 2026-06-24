@@ -2,6 +2,7 @@ import { Injectable, Optional } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
+import { ApprovalFormService } from "../approval/approval-form.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -53,7 +54,9 @@ export class ContractService {
     @Optional()
     private readonly delegations?: ApprovalDelegationService,
     @Optional()
-    private readonly files?: FileService
+    private readonly files?: FileService,
+    @Optional()
+    private readonly approvalForms?: ApprovalFormService
   ) {}
 
   async createDraft(input: CreateContractDto) {
@@ -214,7 +217,8 @@ export class ContractService {
     actorUserId: string,
     input: ReviewContractApprovalDto
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    let completedInstanceId: string | undefined;
+    const result = await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
       });
@@ -285,9 +289,14 @@ export class ContractService {
         data: {
           approvalInstanceId: instance.id,
           action: input.decision === "approve" ? "approve" : "reject",
-          actorUserId
+          actorUserId,
+          comment: input.comment?.trim() || undefined
         }
       });
+
+      if (input.decision === "approve") {
+        completedInstanceId = instance.id;
+      }
 
       await this.audit.record(tx, {
         actorUserId,
@@ -305,6 +314,14 @@ export class ContractService {
 
       return updated;
     });
+
+    if (completedInstanceId) {
+      await this.approvalForms
+        ?.generateForInstance(completedInstanceId, actorUserId)
+        .catch(() => undefined);
+    }
+
+    return result;
   }
 
   // 申请人撤回进行中的合同审批：版本退回 draft 以便修改后重新提交（同一版本，不新建版本）。

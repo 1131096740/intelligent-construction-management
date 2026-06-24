@@ -26,6 +26,7 @@
     "@nestjs/platform-express": "^10.0.0",
     "@prisma/client": "^5.16.0",
     "bcryptjs": "^3.0.3",
+    "pdfkit": "^0.19.1",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0"
   },
@@ -37,6 +38,7 @@
     "@nestjs/testing": "^10.0.0",
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
+    "@types/pdfkit": "^0.17.3",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.0",

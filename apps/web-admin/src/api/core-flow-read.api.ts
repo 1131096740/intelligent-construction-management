@@ -127,14 +127,17 @@ export interface CreatePaymentRequestReadModel {
 export interface ReviewPaymentApprovalPayload {
   decision: "approve" | "reject";
   approvedAmountCents?: number;
+  comment?: string;
 }
 
 export interface ReviewContractApprovalPayload {
   decision: "approve" | "reject";
+  comment?: string;
 }
 
 export interface ReviewSettlementApprovalPayload {
   decision: "approve" | "reject" | "reject_previous" | "return_to_applicant";
+  comment?: string;
 }
 
 export interface AssignSettlementApprovalPayload {
@@ -344,6 +347,14 @@ export function transferPaymentApproval(paymentId: string, body: AssignSettlemen
 
 export function delegatePaymentApproval(paymentId: string, body: AssignSettlementApprovalPayload) {
   return postJson<unknown>(`/payments/${paymentId}/approval-delegation`, body);
+}
+
+// 审批单 PDF 短链：审批通过后惰性生成/获取。businessType 取后端业务类型，
+// 合同传 contract_version + contractVersionId、结算传 settlement + settlementId、付款传 payment_request + paymentId。
+export function getApprovalFormTicket(businessType: string, businessId: string) {
+  return readJson<PrivateFileDownloadTicketReadModel>(
+    `/approval-forms/${businessType}/${businessId}/ticket`
+  );
 }
 
 export function recordPaymentExecution(paymentId: string, body: RecordPaymentExecutionPayload) {

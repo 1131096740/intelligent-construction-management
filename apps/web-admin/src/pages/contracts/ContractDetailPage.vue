@@ -54,6 +54,12 @@
             <strong>合同审批</strong>
             <span>提交、通过、驳回</span>
           </div>
+          <div class="action-fields">
+            <t-input
+              v-model="contractArchiveForm.approvalComment"
+              placeholder="审批意见/备注(可选)"
+            />
+          </div>
           <div class="action-buttons">
             <t-button
               theme="primary"
@@ -80,6 +86,14 @@
               @click="submitContractReview('reject')"
             >
               驳回
+            </t-button>
+            <t-button
+              theme="default"
+              variant="outline"
+              :loading="archiveActionBusy === 'approvalForm'"
+              @click="downloadContractApprovalForm"
+            >
+              下载审批单
             </t-button>
           </div>
         </div>
@@ -332,6 +346,7 @@ import {
   delegateContractApproval,
   fetchContractDetail,
   generateContractPdfArchive,
+  getApprovalFormTicket,
   remindContractApproval,
   reviewContractApproval,
   submitContractApproval,
@@ -365,7 +380,8 @@ const contractArchiveForm = reactive({
   confirmationPassword: "",
   assignmentUserId: "",
   downloadFileId: "",
-  downloadPassword: ""
+  downloadPassword: "",
+  approvalComment: ""
 });
 
 const contractDetailTitleView = computed(() => contractDetail.value?.title ?? contractDetailTitle);
@@ -512,8 +528,23 @@ async function submitContractReview(decision: "approve" | "reject") {
   );
 
   await runArchiveAction("reviewApproval", () =>
-    reviewContractApproval(contractVersionId, { decision })
+    reviewContractApproval(contractVersionId, {
+      decision,
+      comment: contractArchiveForm.approvalComment.trim() || undefined
+    })
   );
+}
+
+async function downloadContractApprovalForm() {
+  const contractVersionId = requiredText(
+    contractDetail.value?.contractVersionId ?? "",
+    "合同版本ID"
+  );
+
+  await runArchiveAction("approvalForm", async () => {
+    const ticket = await getApprovalFormTicket("contract_version", contractVersionId);
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+  });
 }
 
 async function submitContractWithdrawal() {

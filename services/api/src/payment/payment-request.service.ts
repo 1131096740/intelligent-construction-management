@@ -8,6 +8,7 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
+import { ApprovalFormService } from "../approval/approval-form.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -64,7 +65,9 @@ export class PaymentRequestService {
     @Optional()
     private readonly auth?: AuthService,
     @Optional()
-    private readonly delegations?: ApprovalDelegationService
+    private readonly delegations?: ApprovalDelegationService,
+    @Optional()
+    private readonly approvalForms?: ApprovalFormService
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -312,7 +315,8 @@ export class PaymentRequestService {
       throw new Error("Prisma service is required to review payment approval");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    let completedInstanceId: string | undefined;
+    const result = await this.prisma.$transaction(async (tx) => {
       const payment = await tx.paymentRequest.findFirst({
         where: { OR: [{ id: paymentId }, { code: paymentId }] }
       });
@@ -380,7 +384,8 @@ export class PaymentRequestService {
           data: {
             approvalInstanceId: instance.id,
             action: "reject",
-            actorUserId
+            actorUserId,
+            comment: input.comment?.trim() || undefined
           }
         });
         await this.audit.record(tx, {
@@ -422,7 +427,8 @@ export class PaymentRequestService {
         data: {
           approvalInstanceId: instance.id,
           action: "approve",
-          actorUserId
+          actorUserId,
+          comment: input.comment?.trim() || undefined
         }
       });
       await this.audit.record(tx, {
@@ -440,8 +446,17 @@ export class PaymentRequestService {
           approvedRoleKey
         }
       });
+      completedInstanceId = instance.id;
       return approved;
     });
+
+    if (completedInstanceId) {
+      await this.approvalForms
+        ?.generateForInstance(completedInstanceId, actorUserId)
+        .catch(() => undefined);
+    }
+
+    return result;
   }
 
   transferApproval(paymentId: string, actorUserId: string, input: AssignApprovalDto) {
