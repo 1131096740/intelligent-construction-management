@@ -166,6 +166,116 @@ describe("FileService", () => {
     });
   });
 
+  it("loads a private file buffer for an authorized internal service", async () => {
+    const file = {
+      id: "file-docx",
+      objectKey: "uploads/template.docx"
+    };
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue(file)
+      }
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    storage.read.mockResolvedValue(Buffer.from("docx"));
+
+    const result = await service.getFileBuffer("file-docx");
+
+    expect(result.file.id).toBe("file-docx");
+    expect(result.buffer.equals(Buffer.from("docx"))).toBe(true);
+  });
+
+  it("rejects files over FILE_UPLOAD_MAX_BYTES", async () => {
+    const previous = process.env.FILE_UPLOAD_MAX_BYTES;
+    process.env.FILE_UPLOAD_MAX_BYTES = "4";
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    try {
+      await expect(
+        service.uploadPrivateFile({
+          originalName: "template.docx",
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          sizeBytes: 5,
+          uploadedByUserId: "contract-staff-1",
+          buffer: Buffer.from("12345")
+        })
+      ).rejects.toThrow("Private file exceeds upload size limit");
+      expect(storage.write).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.FILE_UPLOAD_MAX_BYTES;
+      else process.env.FILE_UPLOAD_MAX_BYTES = previous;
+    }
+  });
+
+  it("rejects extensions outside DOCX XLSX PDF PNG JPEG", async () => {
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "template.txt",
+        mimeType: "text/plain",
+        sizeBytes: 4,
+        uploadedByUserId: "contract-staff-1",
+        buffer: Buffer.from("text")
+      })
+    ).rejects.toThrow("Private file extension is not allowed");
+    expect(storage.write).not.toHaveBeenCalled();
+  });
+
+  it("rejects DOCM and XLSM macro files", async () => {
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    for (const originalName of ["template.docm", "bill.xlsm"]) {
+      await expect(
+        service.uploadPrivateFile({
+          originalName,
+          mimeType: "application/octet-stream",
+          sizeBytes: 4,
+          uploadedByUserId: "contract-staff-1",
+          buffer: Buffer.from("data")
+        })
+      ).rejects.toThrow("Private file extension is not allowed");
+    }
+    expect(storage.write).not.toHaveBeenCalled();
+  });
+
+  it("does not inspect magic bytes or run virus scanning", async () => {
+    const tx = {
+      fileObject: {
+        create: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.docx",
+          originalName: "template.docx",
+          mimeType: "application/octet-stream",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1"
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as never, storage as never);
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "template.docx",
+        mimeType: "application/octet-stream",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer: Buffer.from("not-a-real-docx")
+      })
+    ).resolves.toMatchObject({ id: "file-1" });
+    expect(storage.write).toHaveBeenCalledTimes(1);
+  });
+
   it("records the configured storage bucket for private uploads", async () => {
     storage.bucketName.mockReturnValue("private-cos-bucket");
     const tx = {

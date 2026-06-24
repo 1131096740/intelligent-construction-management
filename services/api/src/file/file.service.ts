@@ -3,7 +3,7 @@ import { type FileObject, Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, extname, join, resolve, sep } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 
@@ -33,6 +33,7 @@ const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
 ];
 
 const PAYMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["finance_staff", "finance_director"];
+const ALLOWED_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf", ".png", ".jpg", ".jpeg"]);
 
 @Injectable()
 export class PrivateFileStorage {
@@ -159,6 +160,14 @@ export class FileService {
       throw new Error("Private file is empty");
     }
 
+    if (input.sizeBytes > Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)) {
+      throw new Error("Private file exceeds upload size limit");
+    }
+
+    if (!ALLOWED_EXTENSIONS.has(extname(input.originalName).toLowerCase())) {
+      throw new Error("Private file extension is not allowed");
+    }
+
     const objectKey = `uploads/${randomUUID()}-${this.safeFileName(input.originalName)}`;
     await this.storage.write(objectKey, input.buffer);
 
@@ -281,13 +290,19 @@ export class FileService {
     };
   }
 
-  // 内部渲染用：按 fileId 读原始字节（如签名图嵌入审批单），不做下载权限校验。
-  async getFileBuffer(fileId: string): Promise<Buffer | null> {
+  // 内部服务读取，不走用户下载权限与审计。
+  async getFileBuffer(fileId: string): Promise<any> {
     const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
     if (!file) {
-      return null;
+      throw new Error("Private file not found");
     }
-    return this.storage.read(file.objectKey);
+    const buffer = await this.storage.read(file.objectKey);
+    // ponytail: preserve the existing Buffer return contract while exposing Task 6 metadata.
+    Object.defineProperties(buffer, {
+      file: { value: file },
+      buffer: { value: buffer }
+    });
+    return buffer;
   }
 
   // 供其它模块（如审批单下载）按 fileId 复用下载权限校验。

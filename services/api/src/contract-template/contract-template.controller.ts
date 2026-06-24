@@ -16,10 +16,96 @@ import type {
   PublishTemplateVersionDto,
   UpdateBusinessTemplateVersionDto
 } from "./dto/contract-template.dto";
+import { LayoutTemplateService } from "./layout-template.service";
 
 @Controller()
 export class ContractTemplateController {
-  constructor(private readonly templates: ContractTemplateService) {}
+  constructor(
+    private readonly templates: ContractTemplateService,
+    private readonly layouts: LayoutTemplateService
+  ) {}
+
+  @Get("contract-layout-templates")
+  listPublishedLayouts(@Query("contractTypeKey") contractTypeKey?: string) {
+    return this.layouts.listPublishedLayouts(contractTypeKey);
+  }
+
+  @Post("contract-layout-templates")
+  createLayout(
+    @Body()
+    body: {
+      name: string;
+      contractTypeKey: string;
+      docxFileId: string;
+      placeholderSchema: unknown;
+    },
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.createLayout(user.id, body);
+  }
+
+  @Post("contract-layout-template-versions/:versionId/inspection")
+  inspectLayout(
+    @Param("versionId") versionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.inspectVersion(versionId, user.id);
+  }
+
+  @Post("contract-layout-template-versions/:versionId/preview-generation")
+  queueLayoutPreview(
+    @Param("versionId") versionId: string,
+    @Body() sampleData: unknown,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.queuePreview(versionId, user.id, sampleData);
+  }
+
+  @Get("contract-layout-template-versions/:versionId/preview-generation")
+  getLayoutPreview(@Param("versionId") versionId: string) {
+    return this.layouts.getLatestPreview(versionId);
+  }
+
+  @Post("contract-layout-template-versions/:versionId/submission")
+  submitLayout(
+    @Param("versionId") versionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.submitVersion(versionId, user.id);
+  }
+
+  @Post("contract-layout-template-versions/:versionId/publication")
+  publishLayout(
+    @Param("versionId") versionId: string,
+    @Body() body: { changeSummary: string },
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.publishVersion(versionId, user.id, body.changeSummary);
+  }
+
+  @Post("contract-layout-template-versions/:versionId/clone")
+  cloneLayout(
+    @Param("versionId") versionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.cloneVersion(versionId, user.id);
+  }
+
+  @Post("contract-layout-template-versions/:versionId/stop")
+  stopLayout(
+    @Param("versionId") versionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.stopVersion(versionId, user.id);
+  }
+
+  @Post("contract-layout-template-versions/:versionId/revoke")
+  revokeLayout(
+    @Param("versionId") versionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.revokeVersion(versionId, user.id);
+  }
 
   // ---------------------------------------------------------------------------
   // Business templates

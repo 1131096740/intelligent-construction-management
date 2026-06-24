@@ -33,7 +33,13 @@ export class FileController {
   constructor(private readonly files: FileService, private readonly auth: AuthService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor("file"))
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: {
+        fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)
+      }
+    })
+  )
   upload(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser
