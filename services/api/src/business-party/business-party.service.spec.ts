@@ -302,4 +302,71 @@ describe("BusinessPartyService", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
   });
+
+  it("rejects removing a draft party snapshot after approval was withdrawn", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "draft"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "owner-1" })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({ id: "approval-1", status: "withdrawn" })
+      },
+      contractPartySnapshot: {
+        findFirst: jest.fn(),
+        delete: jest.fn()
+      }
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
+
+    await expect(
+      service.removeContractParty("contract-version-1", "snapshot-1", "owner-1")
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.approvalInstance.findFirst).toHaveBeenCalledWith({
+      where: {
+        businessType: "contract_version",
+        businessId: "contract-version-1"
+      }
+    });
+    expect(tx.contractPartySnapshot.delete).not.toHaveBeenCalled();
+  });
+
+  it("allows removing a party snapshot from a draft never submitted for approval", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "draft"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "owner-1" })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      contractPartySnapshot: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "snapshot-1",
+          roleKey: "party_b"
+        }),
+        delete: jest.fn().mockResolvedValue({ id: "snapshot-1" })
+      }
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
+
+    await expect(
+      service.removeContractParty("contract-version-1", "snapshot-1", "owner-1")
+    ).resolves.toEqual({ id: "snapshot-1" });
+    expect(tx.contractPartySnapshot.delete).toHaveBeenCalledWith({
+      where: { id: "snapshot-1" }
+    });
+  });
 });
