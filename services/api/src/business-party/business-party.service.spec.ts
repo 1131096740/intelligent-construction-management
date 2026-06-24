@@ -188,11 +188,11 @@ describe("BusinessPartyService", () => {
         findFirst: jest
           .fn()
           .mockResolvedValueOnce(null)
-          .mockResolvedValueOnce({ displayOrder: 1 }),
+          .mockResolvedValueOnce(null),
         create: jest
           .fn()
           .mockResolvedValueOnce({ id: "snapshot-1", roleKey: "party_a", displayOrder: 1 })
-          .mockResolvedValueOnce({ id: "snapshot-2", roleKey: "party_a", displayOrder: 2 })
+          .mockResolvedValueOnce({ id: "snapshot-2", roleKey: "party_b", displayOrder: 1 })
       }
     };
     const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
@@ -202,17 +202,25 @@ describe("BusinessPartyService", () => {
       businessPartyVersionId: "party-version-a"
     });
     await service.addContractParty("contract-version-1", "owner-1", {
-      roleKey: "party_a",
+      roleKey: "party_b",
       businessPartyVersionId: "party-version-b"
     });
 
+    expect(tx.contractPartySnapshot.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { contractVersionId: "contract-version-1", roleKey: "party_a" },
+      orderBy: { displayOrder: "desc" }
+    });
+    expect(tx.contractPartySnapshot.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { contractVersionId: "contract-version-1", roleKey: "party_b" },
+      orderBy: { displayOrder: "desc" }
+    });
     expect(tx.contractPartySnapshot.create).toHaveBeenNthCalledWith(
       1,
       { data: expect.objectContaining({ roleKey: "party_a", displayOrder: 1 }) }
     );
     expect(tx.contractPartySnapshot.create).toHaveBeenNthCalledWith(
       2,
-      { data: expect.objectContaining({ roleKey: "party_a", displayOrder: 2 }) }
+      { data: expect.objectContaining({ roleKey: "party_b", displayOrder: 1 }) }
     );
   });
 
