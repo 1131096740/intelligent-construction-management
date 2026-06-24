@@ -56,10 +56,11 @@ export class ContractReadService {
 
     const status = this.statusView(version.status);
 
+    const contractCode = contract.code ?? contract.id;
     return {
-      id: contract.code,
+      id: contractCode,
       contractVersionId: version.id,
-      title: `${contract.code} · ${contract.name}`,
+      title: `${contractCode} · ${contract.name}`,
       meta: [
         { label: "当前状态", value: status.label, tone: status.tone },
         { label: "当前版本", value: `合同 v${version.versionNo}` },
@@ -69,7 +70,7 @@ export class ContractReadService {
         { label: "下一步动作", value: this.nextActionLabel(version.status), tone: status.tone }
       ],
       baseInfo: [
-        { label: "合同编号", value: contract.code },
+        { label: "合同编号", value: contractCode },
         { label: "合同名称", value: contract.name },
         { label: "项目", value: project?.name ?? contract.projectId },
         { label: "相对方", value: contract.counterparty },
@@ -308,8 +309,8 @@ export class ContractReadService {
     return `${ratioBps / 100}%`;
   }
 
-  private formatMoney(amountCents: number): string {
-    return `¥${(amountCents / 100).toLocaleString("en-US", {
+  private formatMoney(amountCents: number | bigint): string {
+    return `¥${(Number(amountCents) / 100).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;

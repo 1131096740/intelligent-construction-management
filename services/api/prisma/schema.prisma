@@ -85,27 +85,42 @@ model ProjectMember {
 }
 
 model Contract {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   projectId         String
-  code              String   @unique
+  code              String?   @unique
   name              String
   counterparty      String
   companyEntityId   String?
   companyEntityName String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  contractTypeKey   String?
+  ownerUserId       String?
+  temporaryCode     String?   @unique
+  voidedAt          DateTime?
+  voidedReason      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model ContractVersion {
-  id          String    @id @default(uuid())
-  contractId  String
-  versionNo   Int
-  changeType  String
-  status      String
-  amountCents Int
-  effectiveAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                        String    @id @default(uuid())
+  contractId                String
+  versionNo                 Int
+  changeType                String
+  status                    String
+  amountCents               BigInt
+  effectiveAt               DateTime?
+  businessTemplateVersionId String?
+  layoutTemplateVersionId   String?
+  draftRevision             Int       @default(1)
+  pricingNature             String    @default("fixed_total")
+  amountSource              String    @default("manual")
+  amountAdjustmentReason    String?
+  draftData                 Json
+  templateSnapshot          Json
+  clauseSnapshot            Json
+  readinessSnapshot         Json?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   @@unique([contractId, versionNo])
 }
@@ -309,4 +324,247 @@ model AuditLog {
   userAgent    String?
   metadata     Json?
   createdAt    DateTime @default(now())
+}
+
+model ContractBusinessTemplate {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  name            String
+  contractTypeKey String
+  status          String   @default("draft")
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ContractBusinessTemplateVersion {
+  id                String    @id @default(uuid())
+  templateId        String
+  versionNo         Int
+  status            String    @default("draft")
+  fieldSchema       Json
+  billSchema        Json
+  clauseSchema      Json
+  attachmentSchema  Json
+  validationSchema  Json
+  submittedByUserId String?
+  publishedByUserId String?
+  publishedAt       DateTime?
+  stoppedAt         DateTime?
+  revokedAt         DateTime?
+  changeSummary     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([templateId, versionNo])
+}
+
+model StandardClause {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  category        String
+  name            String
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model StandardClauseVersion {
+  id                String    @id @default(uuid())
+  clauseId          String
+  versionNo         Int
+  status            String    @default("draft")
+  title             String
+  content           Json
+  submittedByUserId String?
+  publishedByUserId String?
+  publishedAt       DateTime?
+  changeSummary     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([clauseId, versionNo])
+}
+
+model BusinessParty {
+  id                      String   @id @default(uuid())
+  name                    String
+  unifiedSocialCreditCode String?  @unique
+  status                  String   @default("active")
+  createdByUserId         String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model BusinessPartyVersion {
+  id              String   @id @default(uuid())
+  businessPartyId String
+  versionNo       Int
+  snapshot        Json
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  @@unique([businessPartyId, versionNo])
+}
+
+model ContractPartySnapshot {
+  id                     String   @id @default(uuid())
+  contractVersionId      String
+  roleKey                String
+  displayOrder           Int
+  businessPartyVersionId String?
+  snapshot               Json
+  createdAt              DateTime @default(now())
+
+  @@unique([contractVersionId, roleKey, displayOrder])
+}
+
+model ContractLayoutTemplate {
+  id              String   @id @default(uuid())
+  name            String
+  contractTypeKey String
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ContractLayoutTemplateVersion {
+  id                String    @id @default(uuid())
+  layoutTemplateId  String
+  versionNo         Int
+  status            String    @default("draft")
+  docxFileId        String
+  placeholderSchema Json
+  previewPdfFileId  String?
+  inspectionReport  Json?
+  submittedByUserId String?
+  publishedByUserId String?
+  publishedAt       DateTime?
+  stoppedAt         DateTime?
+  revokedAt         DateTime?
+  changeSummary     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([layoutTemplateId, versionNo])
+}
+
+model ContractLayoutPreviewJob {
+  id                      String    @id @default(uuid())
+  layoutTemplateVersionId String
+  status                  String    @default("queued")
+  sampleData              Json
+  previewPdfFileId        String?
+  errorMessage            String?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  createdByUserId         String
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+}
+
+model ContractDraftCheckpoint {
+  id                String   @id @default(uuid())
+  contractVersionId String
+  sequenceNo        Int
+  name              String?
+  snapshot          Json
+  createdByUserId   String
+  createdAt         DateTime @default(now())
+
+  @@unique([contractVersionId, sequenceNo])
+}
+
+model ContractNumberRule {
+  id              String   @id @default(uuid())
+  name            String
+  pattern         String
+  companyEntityId String?
+  projectId       String?
+  contractTypeKey String?
+  nextSequence    Int      @default(1)
+  sequenceWidth   Int      @default(3)
+  isActive        Boolean  @default(true)
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ContractBill {
+  id                      String   @id @default(uuid())
+  contractVersionId       String
+  billKey                 String
+  name                    String
+  amountRole              String
+  pricingMode             String
+  quantityScale           Int
+  unitPriceScale          Int
+  schemaSnapshot          Json
+  sourceExcelFileId       String?
+  revision                Int      @default(1)
+  taxInclusiveAmountCents BigInt   @default(0)
+  taxExclusiveAmountCents BigInt   @default(0)
+  taxAmountCents          BigInt   @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([contractVersionId, billKey])
+}
+
+model ContractBillRow {
+  id                      String   @id @default(uuid())
+  contractBillId          String
+  rowKey                  String
+  sortOrder               Int
+  itemCode                String?
+  itemName                String
+  specification           String?
+  unit                    String
+  quantity                Decimal  @db.Decimal(24, 6)
+  unitPrice               Decimal  @db.Decimal(24, 6)
+  taxRate                 Decimal  @db.Decimal(9, 6)
+  taxInclusiveAmountCents BigInt
+  taxExclusiveAmountCents BigInt
+  taxAmountCents          BigInt
+  isProvisional           Boolean  @default(false)
+  settlementBasis         String?
+  customData              Json
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([contractBillId, rowKey])
+  @@index([contractBillId, sortOrder])
+}
+
+model ContractBillImport {
+  id              String    @id @default(uuid())
+  contractBillId  String
+  fileId          String
+  mode            String
+  status          String
+  preview         Json
+  appliedByUserId String?
+  appliedAt       DateTime?
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+}
+
+model ContractGeneratedDocument {
+  id                      String    @id @default(uuid())
+  contractVersionId       String
+  layoutTemplateVersionId String
+  purpose                 String
+  status                  String    @default("queued")
+  sourceRevision          Int
+  inputSnapshot           Json
+  idempotencyKey          String    @unique
+  docxFileId              String?
+  pdfFileId               String?
+  errorMessage            String?
+  engineVersion           String
+  createdByUserId         String
+  startedAt               DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 }

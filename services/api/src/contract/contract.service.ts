@@ -90,7 +90,10 @@ export class ContractService {
           versionNo: 1,
           changeType: "original",
           status: "draft",
-          amountCents: input.amountCents
+          amountCents: input.amountCents,
+          draftData: {},
+          templateSnapshot: {},
+          clauseSnapshot: {}
         }
       });
 
@@ -767,8 +770,8 @@ export class ContractService {
     return Array.from(new Set([...positionKeys, ...memberKeys]));
   }
 
-  private formatCents(value: number) {
-    return `${(value / 100).toFixed(2)} CNY`;
+  private formatCents(value: number | bigint) {
+    return `${(Number(value) / 100).toFixed(2)} CNY`;
   }
 
   // 常驻委托台账消费：本人岗位/节点指派都不命中时，看是否有在窗口内的委托人持有该节点角色。

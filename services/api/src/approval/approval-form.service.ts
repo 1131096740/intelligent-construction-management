@@ -72,8 +72,8 @@ function formatDate(value: Date): string {
 }
 
 // 分 -> 「1,234.56 元」，不依赖运行环境 locale。
-function formatYuan(cents: number): string {
-  const [intPart, decPart] = (cents / 100).toFixed(2).split(".");
+function formatYuan(cents: number | bigint): string {
+  const [intPart, decPart] = (Number(cents) / 100).toFixed(2).split(".");
   const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `${grouped}.${decPart} 元`;
 }
