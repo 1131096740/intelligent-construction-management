@@ -5,6 +5,7 @@ import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { CompanyEntityModule } from "./company-entity/company-entity.module";
 import { ContractModule } from "./contract/contract.module";
+import { ContractTemplateModule } from "./contract-template/contract-template.module";
 import { DatabaseModule } from "./database/database.module";
 import { FileModule } from "./file/file.module";
 import { HealthController } from "./health.controller";
@@ -21,6 +22,7 @@ import { SettlementModule } from "./settlement/settlement.module";
     OrganizationModule,
     ProjectModule,
     ContractModule,
+    ContractTemplateModule,
     CompanyEntityModule,
     SettlementModule,
     PaymentModule,
