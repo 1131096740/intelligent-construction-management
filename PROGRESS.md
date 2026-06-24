@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-24 (CodeX + Claude)：企业级合同工作台第一阶段实施推进至 Task 6。已完成文档/表格依赖与环境配置、Phase 1 Prisma 模型与迁移、共享工作台 schema/read model、BigInt + Prisma.Decimal 金额边界、版本化业务模板/标准条款 API，以及 DOCX 版式模板治理（私有 DOCX 归属校验、声明扩展名/100MiB 上传限制、跨 Word 文本节点的占位符/字体/清单循环检查、解压大小防护、预览任务、提交/发布/停用/撤销状态 CAS、岗位权限与审计）。Task 6 相关 **36** 个测试 + API typecheck/lint 全绿；下一项为 Task 7「合作单位版本与合同多方快照」。
 - 2026-06-24 (CodeX)：完成企业级合同工作台第一阶段实施计划 `docs/superpowers/plans/2026-06-24-enterprise-contract-workbench-phase1.md`，按数据与领域基础、模板中心、合作单位与多主体快照、草稿工作台与多清单、DOCX/PDF生成、Web工作台与模板中心、端到端验收拆为22个可独立测试和提交的任务。计划明确复用现有审批/文件/审计能力，新增 `exceljs + docxtemplater + pizzip + pdf-lib`，采用数据库持久化任务和单进程文档处理器，不提前实现第二阶段磋商差异/OCR归档及第三、四阶段业务。
 - 2026-06-24 (CodeX)：完成企业级合同工作台第一版需求设计并经用户逐章确认，规格落在 `docs/superpowers/specs/2026-06-24-enterprise-contract-workbench-design.md`。确定采用“固定业务核心 + 版本化动态模板”混合架构，范围覆盖专业合同台账、单负责人合同工作台、5个草稿版本、多主体、多清单Excel导入及网页编辑、标准条款库、DOCX/PDF自动排版、可选线下磋商及DOCX差异、审批退回差异、线下签章/OCR归档、补充协议10%加强审批、终止清算、结算/质保金/付款/发票、人工网银批量付款、历史补录、电子档案包、待办、权限与审计；明确四阶段交付顺序及实物档案、电子签章、招投标、银企直联等待做边界。本次仅完成设计，无实现代码。
 - 2026-06-24 (Claude)：补齐审批单三项增强——手写签名、公司主体抬头、下载水印。①**我方公司主体**：新增 `CompanyEntity` 字典表（`name`/`unifiedSocialCreditCode`/`isActive`）+ `GET/POST /company-entities`；`Contract` 加 `companyEntityId`/`companyEntityName`，建单时选主体并**快照名称**（字典改名不影响历史）；审批单抬头按业务回溯合同取该快照名。②**手写签名**：`User.signatureFileId`，`POST /me/signature`（仅收 image/* 且 PNG/JPEG 魔数）+ `GET /me/signature/ticket` 预览；`ApprovalFormService` 渲染时按签批人 `User.signatureFileId` 经 `FileService.getFileBuffer` 取图嵌入新增「签名」列（魔数预筛，损坏图退化空白不阻断；发现并修复了损坏 PNG 触发 pdfkit 解码自旋 6.7s+ 的隐患）。③**下载水印**：审批单下载改为 `GET /approval-forms/:bt/:bid/download`（鉴权直取、blob 下载），按「公司名·下载人·时间」对角平铺**动态生成水印**，归档母本仍无水印、复用其做权限锚点与幂等；记 `approval.form.download` 审计。渲染管线重构出 `buildRenderInput` 供生成/下载共用，`drawTable` 支持图片列/最小行高/分页，水印用 `bufferPages` 逐页叠加。Web：合同建单加「我方主体」下拉、新增「设置」页（签名上传预览 + 公司主体字典维护）、三详情页下载改 blob。COS 私有桶此前已接入故未重做。验证：API **190** 单测（28 套）+ web-admin **61** + 两包 typecheck/lint/build 全绿；本机 Docker PG 实跑 `verify-core-flow` 通过，活体测试公司主体增列、签名上传（含非图片拒绝）、已审批付款单按下载人下载得带水印中文 PDF（HTTP 200、`approval.form.download` 审计落库、签名上传后 PDF 体积增长）。未做：用户上传原件水印、公司 Logo（按你的选择）。
@@ -44,6 +45,19 @@
 - 2026-06-22 (CodeX)：本机 Docker PostgreSQL + API 实跑 `verify:core-flow` 通过，Milestone 1 收口。
 - 2026-06-22 (Claude)：新增 CLAUDE.md、PROGRESS.md，建立双 AI 协同流程。
 - **下一步**：继续收尾：如需更强文件能力，再补 COS multipart/直签下载、用户上传原始归档件水印；或转 Milestone 7 小程序移动端。
+
+---
+
+## 企业级合同工作台第一阶段（22 Tasks）
+
+- [x] Task 1：文档与表格依赖、转换器和上传限制环境配置
+- [x] Task 2：Phase 1 Prisma 模型与迁移
+- [x] Task 3：共享工作台 schema 与 read models
+- [x] Task 4：Prisma.Decimal 金额计算与 BigInt 兼容
+- [x] Task 5：版本化业务模板与标准条款 API
+- [x] Task 6：DOCX 版式模板检查、预览与发布治理
+- [ ] Task 7：合作单位版本与合同多方快照
+- [ ] Task 8–22：草稿工作台、清单、文档生成、Web 与端到端验收
 
 ---
 
