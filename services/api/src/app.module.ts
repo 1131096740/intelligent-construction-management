@@ -3,6 +3,7 @@ import { ArchiveModule } from "./archive/archive.module";
 import { ApprovalModule } from "./approval/approval.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
+import { BusinessPartyModule } from "./business-party/business-party.module";
 import { CompanyEntityModule } from "./company-entity/company-entity.module";
 import { ContractModule } from "./contract/contract.module";
 import { ContractTemplateModule } from "./contract-template/contract-template.module";
@@ -23,6 +24,7 @@ import { SettlementModule } from "./settlement/settlement.module";
     ProjectModule,
     ContractModule,
     ContractTemplateModule,
+    BusinessPartyModule,
     CompanyEntityModule,
     SettlementModule,
     PaymentModule,
