@@ -40,6 +40,19 @@
           label="相对方"
           placeholder="供应商名称"
         />
+        <t-select
+          v-model="createForm.companyEntityId"
+          label="我方主体"
+          placeholder="选择签约我方公司主体"
+          clearable
+        >
+          <t-option
+            v-for="entity in companyEntities"
+            :key="entity.id"
+            :value="entity.id"
+            :label="entity.name"
+          />
+        </t-select>
         <t-input
           v-model="createForm.amountCents"
           label="合同金额(分)"
@@ -176,9 +189,13 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { createContractDraft } from "../../api/core-flow-read.api";
+import {
+  createContractDraft,
+  fetchCompanyEntities,
+  type CompanyEntityReadModel
+} from "../../api/core-flow-read.api";
 import type { ContractStatusTone } from "./contract-list.config";
 import {
   contractFilterFields,
@@ -193,17 +210,27 @@ const createBusy = ref(false);
 const createMessage = ref("");
 const createMessageTone = ref<"success" | "danger">("success");
 const noticeMessage = ref("");
+const companyEntities = ref<CompanyEntityReadModel[]>([]);
 const createForm = reactive({
   projectId: "seed-project-jgxm-001",
   code: `HT-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
   name: "",
   counterparty: "",
+  companyEntityId: "",
   amountCents: "",
   paymentTermsOriginalText: "结算归档确认生效后30天内支付80%，20%作为质保金。",
   stageName: "当期结算款",
   stageRatioBps: "8000",
   stageDueDays: "30",
   stageTriggerEvent: "结算归档确认生效"
+});
+
+onMounted(async () => {
+  try {
+    companyEntities.value = await fetchCompanyEntities();
+  } catch {
+    // 公司主体字典加载失败不阻断建单，选择项留空即可。
+  }
 });
 
 function openDetail(contractId: string) {
@@ -242,6 +269,7 @@ async function submitCreateContract() {
       code: requiredText(createForm.code, "合同编号"),
       name: requiredText(createForm.name, "合同名称"),
       counterparty: requiredText(createForm.counterparty, "相对方"),
+      companyEntityId: createForm.companyEntityId || undefined,
       amountCents: positiveInteger(createForm.amountCents, "合同金额"),
       paymentTermsOriginalText: requiredText(createForm.paymentTermsOriginalText, "付款条款原文"),
       paymentStages: [

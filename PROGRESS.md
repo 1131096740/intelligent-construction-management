@@ -10,6 +10,8 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-24 (Claude)：补齐审批单三项增强——手写签名、公司主体抬头、下载水印。①**我方公司主体**：新增 `CompanyEntity` 字典表（`name`/`unifiedSocialCreditCode`/`isActive`）+ `GET/POST /company-entities`；`Contract` 加 `companyEntityId`/`companyEntityName`，建单时选主体并**快照名称**（字典改名不影响历史）；审批单抬头按业务回溯合同取该快照名。②**手写签名**：`User.signatureFileId`，`POST /me/signature`（仅收 image/* 且 PNG/JPEG 魔数）+ `GET /me/signature/ticket` 预览；`ApprovalFormService` 渲染时按签批人 `User.signatureFileId` 经 `FileService.getFileBuffer` 取图嵌入新增「签名」列（魔数预筛，损坏图退化空白不阻断；发现并修复了损坏 PNG 触发 pdfkit 解码自旋 6.7s+ 的隐患）。③**下载水印**：审批单下载改为 `GET /approval-forms/:bt/:bid/download`（鉴权直取、blob 下载），按「公司名·下载人·时间」对角平铺**动态生成水印**，归档母本仍无水印、复用其做权限锚点与幂等；记 `approval.form.download` 审计。渲染管线重构出 `buildRenderInput` 供生成/下载共用，`drawTable` 支持图片列/最小行高/分页，水印用 `bufferPages` 逐页叠加。Web：合同建单加「我方主体」下拉、新增「设置」页（签名上传预览 + 公司主体字典维护）、三详情页下载改 blob。COS 私有桶此前已接入故未重做。验证：API **190** 单测（28 套）+ web-admin **61** + 两包 typecheck/lint/build 全绿；本机 Docker PG 实跑 `verify-core-flow` 通过，活体测试公司主体增列、签名上传（含非图片拒绝）、已审批付款单按下载人下载得带水印中文 PDF（HTTP 200、`approval.form.download` 审计落库、签名上传后 PDF 体积增长）。未做：用户上传原件水印、公司 Logo（按你的选择）。
+- 2026-06-24 (Claude)：升级审批单 PDF 为企业级表格式版式（A4）。`ApprovalFormService.renderPdf` 由原先的居中标题+三段纯文本列表改为带框线表格：① 业务信息栏（label|value 两列），除单号/申请人/生成时间外按业务类型新增「业务摘要」——付款（申请金额/批准金额/收款方/对应结算/付款期限）、结算（结算期次/结算金额/应付金额/对应合同/对方单位）、合同（合同名称/对方单位/合同金额/版本号），金额由分→「1,234.56 元」千分位格式化，不依赖运行环境 locale；② 审批路线表（序号/审批节点/签批方式/审批角色）；③ 签批记录表（序号/审批人/职位/动作/签批时间/审批意见，长意见自动换行、跨页自动续表）。新增 `drawTable` 通用表格渲染（自动行高/换行/分页）与 `resolveBusinessSummary`（按业务类型多查一层业务表）。抬头按需求暂不加公司名/Logo。验证：API **185** 单测全绿、typecheck 通过，渲染样张人工核对版式（业务信息栏+两张表+换行/职位列均正确）。
 - 2026-06-24 (Claude)：新增「审批单 PDF 自动生成」。合同/结算/付款审批通过（`ApprovalInstance` 置 `approved`）后，各 `reviewApproval` 事务提交外 best-effort 调用新 `ApprovalFormService.generateForInstance`，用 `pdfkit` + 仓库内嵌 `assets/fonts/NotoSansSC-Regular.otf`（中文子集内嵌）渲染企业级审批单：抬头（单号/申请人/生成时间）+ 审批路线（取 `frozenNodes`，节点名/会签或签/审批角色中文）+ 签批记录（取 `ApprovalActionLog`，逐行审批人姓名、职位、动作、签批时间、备注）；走现有 `FileService` 上传私有文件 + 写 `PdfDocument(templateKey="approval_form")` + 审计，幂等。备注「附言」经三条审批 DTO 新增的 `comment` 采集落 `ApprovalActionLog.comment`（此前该字段全库零写入）。新 `GET /approval-forms/:businessType/:businessId/ticket`（仅登录，惰性补生成）返回短链；`FileService.assertCanDownloadFile` 放行申请人/任一签批人/项目归档可读岗位。Web 三详情页加“审批意见/备注”输入与“下载审批单”按钮。验证：API **185** 单测 + web-admin **61** + 两包 typecheck/lint 全绿；本机 Docker PG 实跑 `verify-core-flow` 全流程，三类 `approval_form` PDF 均落库，登录→ticket→下载 HTTP 200 且中文渲染正确（含职位“（董事长）”解析）。未做：手写签名图、COS、用户上传原件水印。
 - 2026-06-24 (CodeX)：补齐 Web 台账页可见按钮行为，消除“点了没反应”。结算台账新增最小新建结算表单并调用 `POST /settlements`；付款台账新增最小新建付款申请表单并调用 `POST /payments`；资料库“上传资料”接入私有文件上传；合同/结算/付款/资料/审计列表页的查询、重置、查看、导出等暂未接完整后端列表/导出能力的入口改为明确页面提示。静态扫描确认页面 `<t-button>` / `<t-link>` 无空挂入口；`web-admin` test/typecheck/lint/build 通过；本地通过 `/api/settlements` 冒烟创建 `JS-UI-005255`，通过 `/api/payments` 冒烟创建付款申请 `FK-UI-005920`。
 - 2026-06-24 (CodeX)：修复 Web 合同台账“新建合同”按钮无效果。列表页新增最小合同草稿表单，提交 `POST /contracts` 创建合同、v1 合同版本和付款条款版本，成功后跳转新合同详情；API client 新增 `createContractDraft` 并补单测。`web-admin` test/typecheck/lint/build 通过；本地通过 `/api/contracts` 冒烟创建草稿合同 `HT-UI-004407`。
@@ -91,8 +93,11 @@
 - [x] 私有文件上传流程（本地存储 + `FILE_STORAGE_DRIVER=cos` 私有 COS PUT）
 - [x] 文件下载权限校验 + 短时效 URL（后端鉴权短链 + 下载审计；本地/COS 均经后端流式下载）
 - [x] 真正生成 PDF（付款财务归档、合同归档、结算归档 PDF 均已由后端生成并归档）
-- [x] 审批单 PDF 自动生成（合同/结算/付款审批通过即生成，pdfkit + 内嵌 Noto Sans SC 中文字体；逐行签批记录含审批人姓名/职位/动作/签批时间/备注，备注经各审批 DTO 的 `comment` 采集落 `ApprovalActionLog.comment`；`GET /approval-forms/:businessType/:businessId/ticket` 短链下载，权限放行申请人/签批人/归档可读岗位；Web 三详情页加审批意见输入 + 下载审批单按钮）
-- [~] 文件水印 / 敏感操作二次确认（实际付款登记、合同/结算归档确认、文件下载票据签发已要求当前密码二次确认；后端生成 PDF 已带水印，用户上传原始归档件水印未覆盖）
+- [x] 审批单 PDF 自动生成（合同/结算/付款审批通过即生成，pdfkit + 内嵌 Noto Sans SC 中文字体；**A4 企业级表格式版式**：公司主体抬头 + 业务信息栏含按业务类型的金额/对方/事由摘要 + 审批路线表 + 签批记录表，逐行含审批人姓名/职位/动作/签批时间/审批意见/**手写签名图**，长意见自动换行/跨页续表，备注经各审批 DTO 的 `comment` 采集落 `ApprovalActionLog.comment`；下载经 `GET /approval-forms/:businessType/:businessId/download`（鉴权直取，**按下载人动态生成水印**），权限放行申请人/签批人/归档可读岗位；Web 三详情页加审批意见输入 + 下载审批单按钮）
+- [x] 我方公司主体字典（`CompanyEntity` 表 + `GET/POST /company-entities`；合同创建时选择并快照 `companyEntityName` 到合同，结算/付款审批单抬头经合同回溯取该快照；Web 合同建单加「我方主体」下拉、设置页加字典维护）
+- [x] 个人手写签名预上传（`User.signatureFileId`；`POST /me/signature` 仅收 PNG/JPEG 魔数校验，`GET /me/signature/ticket` 预览；审批单按签批人复用嵌入；Web 设置页上传/预览）
+- [x] 审批单 PDF 下载水印（下载时按「公司名 · 下载人 · 时间」对角平铺动态生成，可追溯防泄露；`approval.form.download` 审计；归档存档件保持无水印母本）
+- [~] 文件水印 / 敏感操作二次确认（实际付款登记、合同/结算归档确认、文件下载票据签发已要求当前密码二次确认；系统生成 PDF + 审批单下载均带水印，用户上传原始归档件水印按需求暂不覆盖）
 
 ## 认证与授权（上线头号短板）
 

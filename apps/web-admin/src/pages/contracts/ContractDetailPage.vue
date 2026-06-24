@@ -346,7 +346,7 @@ import {
   delegateContractApproval,
   fetchContractDetail,
   generateContractPdfArchive,
-  getApprovalFormTicket,
+  downloadApprovalForm as requestApprovalFormDownload,
   remindContractApproval,
   reviewContractApproval,
   submitContractApproval,
@@ -542,8 +542,7 @@ async function downloadContractApprovalForm() {
   );
 
   await runArchiveAction("approvalForm", async () => {
-    const ticket = await getApprovalFormTicket("contract_version", contractVersionId);
-    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+    await requestApprovalFormDownload("contract_version", contractVersionId);
   });
 }
 

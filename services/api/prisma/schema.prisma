@@ -16,8 +16,19 @@ model User {
   mustChangePassword Boolean   @default(true)
   lastLoginAt        DateTime?
   isActive           Boolean   @default(true)
+  signatureFileId    String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+}
+
+// 我方公司主体字典：合同签订时选择其一，名称快照进合同。
+model CompanyEntity {
+  id                      String   @id @default(uuid())
+  name                    String
+  unifiedSocialCreditCode String?
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 model RefreshToken {
@@ -74,13 +85,15 @@ model ProjectMember {
 }
 
 model Contract {
-  id           String   @id @default(uuid())
-  projectId    String
-  code         String   @unique
-  name         String
-  counterparty String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String   @id @default(uuid())
+  projectId         String
+  code              String   @unique
+  name              String
+  counterparty      String
+  companyEntityId   String?
+  companyEntityName String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model ContractVersion {

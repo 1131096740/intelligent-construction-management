@@ -90,6 +90,7 @@ export interface CreateContractPayload {
   code: string;
   name: string;
   counterparty: string;
+  companyEntityId?: string;
   amountCents: number;
   paymentTermsOriginalText: string;
   paymentStages: CreatePaymentTermsStagePayload[];
@@ -349,12 +350,52 @@ export function delegatePaymentApproval(paymentId: string, body: AssignSettlemen
   return postJson<unknown>(`/payments/${paymentId}/approval-delegation`, body);
 }
 
-// 审批单 PDF 短链：审批通过后惰性生成/获取。businessType 取后端业务类型，
-// 合同传 contract_version + contractVersionId、结算传 settlement + settlementId、付款传 payment_request + paymentId。
-export function getApprovalFormTicket(businessType: string, businessId: string) {
-  return readJson<PrivateFileDownloadTicketReadModel>(
-    `/approval-forms/${businessType}/${businessId}/ticket`
-  );
+function saveBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+// 审批单 PDF 下载：审批通过后后端按下载人动态生成带水印 PDF，直接以 blob 触发浏览器下载。
+// businessType：合同 contract_version + contractVersionId、结算 settlement + settlementId、付款 payment_request + paymentId。
+export async function downloadApprovalForm(businessType: string, businessId: string): Promise<void> {
+  const response = await apiFetch(`/approval-forms/${businessType}/${businessId}/download`);
+  await ensureOk(response, "下载审批单失败");
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : `审批单-${businessId}.pdf`;
+  saveBlob(blob, fileName);
+}
+
+export interface CompanyEntityReadModel {
+  id: string;
+  name: string;
+  unifiedSocialCreditCode: string | null;
+}
+
+export function fetchCompanyEntities() {
+  return readJson<CompanyEntityReadModel[]>("/company-entities");
+}
+
+export function createCompanyEntity(body: { name: string; unifiedSocialCreditCode?: string }) {
+  return postJson<CompanyEntityReadModel>("/company-entities", body);
+}
+
+// 个人签名图：预上传后审批单渲染时复用。
+export function uploadSignature(file: Blob, fileName: string) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  return postForm<{ signatureFileId: string }>("/me/signature", form);
+}
+
+export function getSignatureTicket() {
+  return readJson<PrivateFileDownloadTicketReadModel | null>("/me/signature/ticket");
 }
 
 export function recordPaymentExecution(paymentId: string, body: RecordPaymentExecutionPayload) {

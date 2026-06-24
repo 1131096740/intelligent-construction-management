@@ -110,6 +110,41 @@ describe("ContractService", () => {
     });
   });
 
+  it("snapshots the selected company entity name onto the contract", async () => {
+    const tx = {
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({ id: "ce-1", name: "某某建设集团有限公司" })
+      },
+      contract: { create: jest.fn().mockResolvedValue({ id: "contract-1", code: "HT-002" }) },
+      contractVersion: { create: jest.fn().mockResolvedValue({ id: "v-1", versionNo: 1, status: "draft" }) },
+      paymentTermsVersion: { create: jest.fn().mockResolvedValue({ id: "t-1", versionNo: 1 }) },
+      paymentTermsStage: { createMany: jest.fn().mockResolvedValue({ count: 0 }) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await service.createDraft({
+      projectId: "project-1",
+      code: "HT-002",
+      name: "施工总承包合同",
+      counterparty: "建设单位B",
+      companyEntityId: "ce-1",
+      amountCents: 2_000_000,
+      paymentTermsOriginalText: "结算后付款",
+      paymentStages: []
+    });
+
+    expect(tx.companyEntity.findUnique).toHaveBeenCalledWith({ where: { id: "ce-1" } });
+    expect(tx.contract.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        companyEntityId: "ce-1",
+        companyEntityName: "某某建设集团有限公司"
+      })
+    });
+  });
+
   it("uploads a signed contract archive file and waits for director confirmation", async () => {
     const tx = {
       contractVersion: {

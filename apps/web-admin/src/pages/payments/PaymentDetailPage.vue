@@ -366,7 +366,7 @@ import {
   delegatePaymentApproval,
   fetchPaymentDetail,
   generatePaymentPdfArchive,
-  getApprovalFormTicket,
+  downloadApprovalForm as requestApprovalFormDownload,
   remindPaymentApproval,
   recordPaymentExecution,
   recordPaymentFinance,
@@ -534,8 +534,7 @@ async function downloadApprovalForm() {
   const paymentId = String(route.params.paymentId ?? "FK-2026-006");
 
   await runPaymentAction("approvalForm", async () => {
-    const ticket = await getApprovalFormTicket("payment_request", paymentId);
-    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+    await requestApprovalFormDownload("payment_request", paymentId);
   });
 }
 

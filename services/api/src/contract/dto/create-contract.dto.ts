@@ -22,6 +22,7 @@ export interface CreateContractDto {
   code: string;
   name: string;
   counterparty: string;
+  companyEntityId?: string;
   amountCents: number;
   paymentTermsOriginalText: string;
   paymentStages: CreatePaymentTermsStageDto[];

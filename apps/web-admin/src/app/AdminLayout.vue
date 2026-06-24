@@ -48,6 +48,12 @@
         >
           审计日志
         </t-menu-item>
+        <t-menu-item
+          value="/settings"
+          @click="go('/settings')"
+        >
+          设置
+        </t-menu-item>
       </t-menu>
     </t-aside>
 

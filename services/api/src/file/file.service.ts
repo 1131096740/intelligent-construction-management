@@ -281,6 +281,26 @@ export class FileService {
     };
   }
 
+  // 内部渲染用：按 fileId 读原始字节（如签名图嵌入审批单），不做下载权限校验。
+  async getFileBuffer(fileId: string): Promise<Buffer | null> {
+    const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+    if (!file) {
+      return null;
+    }
+    return this.storage.read(file.objectKey);
+  }
+
+  // 供其它模块（如审批单下载）按 fileId 复用下载权限校验。
+  async assertCanDownloadFileById(fileId: string, actorUserId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const file = await tx.fileObject.findUnique({ where: { id: fileId } });
+      if (!file) {
+        throw new Error("Private file not found");
+      }
+      await this.assertCanDownloadFile(tx, file, actorUserId);
+    });
+  }
+
   private safeFileName(fileName: string) {
     const name = basename(fileName).replace(/[^\w.\-\u4e00-\u9fa5]+/g, "_");
     return name || "private-file";

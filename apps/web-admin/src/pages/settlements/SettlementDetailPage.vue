@@ -334,7 +334,7 @@ import {
   delegateSettlementApproval,
   fetchSettlementDetail,
   generateSettlementPdfArchive,
-  getApprovalFormTicket,
+  downloadApprovalForm as requestApprovalFormDownload,
   remindSettlementApproval,
   reviewSettlementApproval,
   transferSettlementApproval,
@@ -509,8 +509,7 @@ async function downloadSettlementApprovalForm() {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
 
   await runArchiveAction("approvalForm", async () => {
-    const ticket = await getApprovalFormTicket("settlement", settlementId);
-    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+    await requestApprovalFormDownload("settlement", settlementId);
   });
 }
 

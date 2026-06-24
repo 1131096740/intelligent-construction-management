@@ -31,7 +31,8 @@ describe("web admin routes", () => {
       "payments/:paymentId",
       "archives",
       "delegations",
-      "audit"
+      "audit",
+      "settings"
     ]);
   });
 });

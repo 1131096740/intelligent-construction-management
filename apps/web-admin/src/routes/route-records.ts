@@ -47,6 +47,10 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "audit",
         component: () => import("../pages/audit/AuditLogPage.vue")
+      },
+      {
+        path: "settings",
+        component: () => import("../pages/settings/SettingsPage.vue")
       }
     ]
   }

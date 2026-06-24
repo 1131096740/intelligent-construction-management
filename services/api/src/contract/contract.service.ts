@@ -61,12 +61,26 @@ export class ContractService {
 
   async createDraft(input: CreateContractDto) {
     return this.prisma.$transaction(async (tx) => {
+      // 快照我方主体名称：合同效力期内名称固定，字典后续改名不影响历史合同/审批单。
+      let companyEntityName: string | null = null;
+      if (input.companyEntityId) {
+        const entity = await tx.companyEntity.findUnique({
+          where: { id: input.companyEntityId }
+        });
+        if (!entity) {
+          throw new Error("Company entity not found");
+        }
+        companyEntityName = entity.name;
+      }
+
       const contract = await tx.contract.create({
         data: {
           projectId: input.projectId,
           code: input.code,
           name: input.name,
-          counterparty: input.counterparty
+          counterparty: input.counterparty,
+          companyEntityId: input.companyEntityId ?? null,
+          companyEntityName
         }
       });
 
