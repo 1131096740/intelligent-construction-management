@@ -123,10 +123,13 @@ export class LayoutTemplateService {
     });
   }
 
-  getLatestPreview(versionId: string) {
-    return this.prisma.contractLayoutPreviewJob.findFirst({
-      where: { layoutTemplateVersionId: versionId },
-      orderBy: { createdAt: "desc" }
+  getLatestPreview(versionId: string, actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertGlobalRole(tx, actorUserId, "contract_staff");
+      return tx.contractLayoutPreviewJob.findFirst({
+        where: { layoutTemplateVersionId: versionId },
+        orderBy: { createdAt: "desc" }
+      });
     });
   }
 

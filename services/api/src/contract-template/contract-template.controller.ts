@@ -62,8 +62,11 @@ export class ContractTemplateController {
   }
 
   @Get("contract-layout-template-versions/:versionId/preview-generation")
-  getLayoutPreview(@Param("versionId") versionId: string) {
-    return this.layouts.getLatestPreview(versionId);
+  getLayoutPreview(
+    @Param("versionId") versionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.getLatestPreview(versionId, user.id);
   }
 
   @Post("contract-layout-template-versions/:versionId/submission")

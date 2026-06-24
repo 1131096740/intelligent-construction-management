@@ -175,6 +175,47 @@ describe("LayoutTemplateService", () => {
     });
   });
 
+  it("allows global contract_staff to read the latest preview", async () => {
+    const tx = {
+      ...roleTx("contract_staff"),
+      contractLayoutPreviewJob: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "job-1",
+          status: "queued",
+          sampleData: { contract: { name: "示例合同" } }
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new LayoutTemplateService(prisma, audit as never, files as never);
+
+    await expect(service.getLatestPreview("version-1", "staff-1")).resolves.toMatchObject({
+      id: "job-1"
+    });
+    expect(tx.contractLayoutPreviewJob.findFirst).toHaveBeenCalledWith({
+      where: { layoutTemplateVersionId: "version-1" },
+      orderBy: { createdAt: "desc" }
+    });
+  });
+
+  it("rejects preview reads without global contract_staff", async () => {
+    const tx = {
+      ...roleTx("contract_director"),
+      contractLayoutPreviewJob: { findFirst: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new LayoutTemplateService(prisma, audit as never, files as never);
+
+    await expect(service.getLatestPreview("version-1", "director-1")).rejects.toThrow(
+      "Requires global role: contract_staff"
+    );
+    expect(tx.contractLayoutPreviewJob.findFirst).not.toHaveBeenCalled();
+  });
+
   it("publishes only when inspection has no blocking errors and the latest preview succeeded", async () => {
     const version = {
       id: "version-1",

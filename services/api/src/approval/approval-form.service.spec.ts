@@ -139,7 +139,10 @@ describe("ApprovalFormService", () => {
         uploaded = input;
         return Promise.resolve({ id: "file-1" });
       }),
-      getFileBuffer: jest.fn().mockResolvedValue(PNG_1X1)
+      getFileBuffer: jest.fn().mockResolvedValue({
+        file: { id: "sig-1" },
+        buffer: PNG_1X1
+      })
     };
     const service = new ApprovalFormService(prisma as never, files as never, { record: jest.fn() } as never);
 
@@ -158,7 +161,7 @@ describe("ApprovalFormService", () => {
     });
     const files = {
       uploadPrivateFile: jest.fn(),
-      getFileBuffer: jest.fn().mockResolvedValue(null),
+      getFileBuffer: jest.fn().mockRejectedValue(new Error("Private file not found")),
       assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined)
     };
     const audit = { record: jest.fn() };

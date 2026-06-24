@@ -353,7 +353,12 @@ export class ApprovalFormService {
     for (const log of logs) {
       if (signatureBufferById.has(log.actorUserId)) continue;
       const fileId = signatureFileIdById.get(log.actorUserId);
-      const buffer = fileId ? await this.files!.getFileBuffer(fileId) : null;
+      const buffer = fileId
+        ? await this.files!
+            .getFileBuffer(fileId)
+            .then((result) => result.buffer)
+            .catch(() => null)
+        : null;
       signatureBufferById.set(log.actorUserId, isEmbeddableImage(buffer) ? buffer : null);
     }
 

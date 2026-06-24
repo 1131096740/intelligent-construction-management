@@ -25,6 +25,11 @@ export interface CreateFileDownloadTicketInput {
   actorUserId: string;
 }
 
+export interface InternalFileBuffer {
+  file: FileObject;
+  buffer: Buffer;
+}
+
 const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "contract_staff",
   "contract_director",
@@ -291,18 +296,12 @@ export class FileService {
   }
 
   // 内部服务读取，不走用户下载权限与审计。
-  async getFileBuffer(fileId: string): Promise<any> {
+  async getFileBuffer(fileId: string): Promise<InternalFileBuffer> {
     const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
     if (!file) {
       throw new Error("Private file not found");
     }
-    const buffer = await this.storage.read(file.objectKey);
-    // ponytail: preserve the existing Buffer return contract while exposing Task 6 metadata.
-    Object.defineProperties(buffer, {
-      file: { value: file },
-      buffer: { value: buffer }
-    });
-    return buffer;
+    return { file, buffer: await this.storage.read(file.objectKey) };
   }
 
   // 供其它模块（如审批单下载）按 fileId 复用下载权限校验。
