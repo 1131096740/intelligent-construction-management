@@ -44,6 +44,7 @@ export class ContractController {
   }
 
   @Post(":contractVersionId/readiness")
+  @RequireProjectRole("contract.submit")
   checkReadiness(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser

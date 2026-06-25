@@ -203,6 +203,39 @@ describe("ContractNumberingService", () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
+  it("accepts a token value of '0' (falsy string) without throwing", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "rule-1",
+          name: "材料合同",
+          pattern: "HT-{type}-{sequence}",
+          companyEntityId: null,
+          projectId: null,
+          contractTypeKey: null,
+          nextSequence: 1,
+          sequenceWidth: 3,
+          isActive: true
+        }
+      ]),
+      contractNumberRule: {
+        update: jest.fn().mockResolvedValue({ nextSequence: 2 })
+      },
+      contract: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const service = new ContractNumberingService({} as never, audit as never);
+    const contract = {
+      projectId: "project-1",
+      contractTypeKey: "0",
+      companyEntityId: null,
+      companyEntityName: null
+    };
+
+    const code = await service.allocate(tx as never, "rule-1", contract, "staff-1", {});
+
+    expect(code).toBe("HT-0-001");
+  });
+
   it("never reuses a consumed sequence after a later contract is voided", async () => {
     let nextSequence = 5;
     const tx = {

@@ -11,8 +11,13 @@ describe("ContractController authorization wiring", () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, ContractController)).toBeFalsy();
   });
 
+  it("ContractNumberRuleController is not publicly accessible (auth guard must run)", () => {
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, ContractNumberRuleController)).toBeFalsy();
+  });
+
   it.each([
     ["submitApproval", "contract.submit"],
+    ["checkReadiness", "contract.submit"],
     ["reviewApproval", "contract.approve"],
     ["transferApproval", "contract.approve"],
     ["delegateApproval", "contract.approve"],

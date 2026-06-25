@@ -177,7 +177,7 @@ export class ContractNumberingService {
       sequence: String(rule.nextSequence).padStart(rule.sequenceWidth, "0")
     };
     for (const token of this.tokens(rule.pattern)) {
-      if (!values[token]) {
+      if (values[token] === undefined || values[token] === "") {
         throw new BadRequestException(`Contract number token has no value: {${token}}`);
       }
     }

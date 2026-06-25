@@ -316,6 +316,77 @@ describe("ContractService", () => {
     });
   });
 
+  it("blocks approval submission when readiness check returns blocking issues", async () => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 4,
+      readinessSnapshot: null,
+      templateSnapshot: { fieldSchema: [] },
+      clauseSnapshot: []
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([version]),
+      contractVersion: {
+        updateMany: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "user-contract-staff",
+          voidedAt: null,
+          code: null,
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          companyEntityId: null,
+          companyEntityName: null
+        }),
+        updateMany: jest.fn()
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const readiness = {
+      check: jest.fn().mockResolvedValue({
+        blocking: [{ key: "field.x", section: "fields", message: "缺少必填字段" }],
+        warnings: [],
+        checkedRevision: 4
+      }),
+      freeze: jest.fn()
+    };
+    const numbering = {
+      allocate: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      readiness as never,
+      numbering as never
+    );
+
+    await expect(
+      service.submitApproval("contract-version-1", "user-contract-staff", { numberRuleId: "rule-1" })
+    ).rejects.toMatchObject({
+      message: "Contract is not ready for approval submission"
+    });
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(numbering.allocate).not.toHaveBeenCalled();
+  });
+
   it("requires a numbering rule for an owned workbench contract", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
