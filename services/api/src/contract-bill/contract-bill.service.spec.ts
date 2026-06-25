@@ -293,6 +293,15 @@ describe("ContractBillService", () => {
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
+  it("rejects unit-price precision beyond the bill schema", async () => {
+    const { service, tx } = fixture({ unitPriceScale: 2 });
+
+    await expect(
+      service.addRow("bill-1", "owner-1", { ...rowInput, unitPrice: "100.123" })
+    ).rejects.toThrow("unitPrice exceeds scale 2");
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+  });
+
   it("rejects non-canonical or unsafe decimal inputs", async () => {
     const { service } = fixture();
 
