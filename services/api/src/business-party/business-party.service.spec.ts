@@ -21,6 +21,20 @@ describe("BusinessPartyService", () => {
   }
 
   function prismaWithTransaction<T extends object>(tx: T) {
+    const client = tx as T & {
+      contractVersion?: { updateMany?: jest.Mock };
+      contract?: { updateMany?: jest.Mock };
+      contractGeneratedDocument?: { updateMany: jest.Mock };
+    };
+    if (client.contractVersion && !client.contractVersion.updateMany) {
+      client.contractVersion.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    }
+    if (client.contract && !client.contract.updateMany) {
+      client.contract.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    }
+    client.contractGeneratedDocument ??= {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 })
+    };
     return {
       $transaction: jest.fn(async (callback: (client: T) => unknown) => callback(tx))
     } as unknown as PrismaService;
@@ -129,6 +143,11 @@ describe("BusinessPartyService", () => {
       })
     });
     expect(tx.businessPartyVersion.update).not.toHaveBeenCalled();
+    expect(
+      (tx as typeof tx & {
+        contractGeneratedDocument: { updateMany: jest.Mock };
+      }).contractGeneratedDocument.updateMany
+    ).not.toHaveBeenCalled();
   });
 
   it("keeps qualification attachment file ids in version snapshot", async () => {
@@ -166,8 +185,10 @@ describe("BusinessPartyService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "draft"
-        })
+          status: "draft",
+          draftRevision: 4
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contract: {
         findUnique: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "owner-1" })
@@ -193,6 +214,9 @@ describe("BusinessPartyService", () => {
           .fn()
           .mockResolvedValueOnce({ id: "snapshot-1", roleKey: "party_a", displayOrder: 1 })
           .mockResolvedValueOnce({ id: "snapshot-2", roleKey: "party_b", displayOrder: 1 })
+      },
+      contractGeneratedDocument: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     };
     const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
@@ -222,6 +246,22 @@ describe("BusinessPartyService", () => {
       2,
       { data: expect.objectContaining({ roleKey: "party_b", displayOrder: 1 }) }
     );
+    expect(tx.contractVersion.updateMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: "contract-version-1",
+        draftRevision: 4,
+        status: { in: ["draft", "approval_rejected"] }
+      },
+      data: { draftRevision: { increment: 1 } }
+    });
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "contract-version-1",
+        status: "success",
+        sourceRevision: { lt: 5 }
+      },
+      data: { status: "stale" }
+    });
   });
 
   it("does not change existing contract snapshot when party record changes", async () => {
@@ -301,6 +341,44 @@ describe("BusinessPartyService", () => {
       })
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a party mutation when the contract draft revision CAS is stale", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "draft",
+          draftRevision: 4
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractPartySnapshot: {
+        create: jest.fn()
+      },
+      contractGeneratedDocument: {
+        updateMany: jest.fn()
+      }
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
+
+    await expect(
+      service.addContractParty("contract-version-1", "owner-1", {
+        roleKey: "other",
+        snapshot: { name: "临时单位", attachments: [] }
+      })
+    ).rejects.toThrow("Contract draft revision/status conflict");
+    expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
 
   it("allows removing a party snapshot from a withdrawn draft (approval history does not block)", async () => {

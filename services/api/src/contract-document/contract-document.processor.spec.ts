@@ -54,6 +54,9 @@ describe("ContractDocumentProcessor", () => {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({ id: "version-1", draftRevision: 3 })
       },
+      $queryRaw: jest.fn().mockResolvedValue([
+        { draftRevision: 3, status: "draft" }
+      ]),
       auditLog: { create: jest.fn() }
     };
     return {
@@ -120,10 +123,9 @@ describe("ContractDocumentProcessor", () => {
 
   it("renders DOCX, converts PDF, normalizes attachments, uploads both files, and marks success", async () => {
     const prisma = makePrisma();
-    prisma.tx.contractVersion.findUnique.mockResolvedValue({
-      id: "version-1",
-      draftRevision: 8
-    });
+    prisma.tx.$queryRaw.mockResolvedValue([
+      { draftRevision: 8, status: "draft" }
+    ]);
     prisma.contractGeneratedDocument.findFirst.mockResolvedValue({
       id: "document-1",
       contractVersionId: "version-1",
@@ -385,10 +387,9 @@ describe("ContractDocumentProcessor", () => {
 
   it("marks a document stale when the draft revision changes before terminal success", async () => {
     const prisma = makePrisma();
-    prisma.tx.contractVersion.findUnique.mockResolvedValue({
-      id: "version-1",
-      draftRevision: 4
-    });
+    prisma.tx.$queryRaw.mockResolvedValue([
+      { draftRevision: 4, status: "draft" }
+    ]);
     prisma.contractGeneratedDocument.findFirst.mockResolvedValue({
       id: "document-1",
       contractVersionId: "version-1",
@@ -423,6 +424,7 @@ describe("ContractDocumentProcessor", () => {
 
     await processor.processNext();
 
+    expect(prisma.tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {
         id: "document-1",
@@ -443,10 +445,9 @@ describe("ContractDocumentProcessor", () => {
 
   it("does not audit terminal success or failure when its CAS loses", async () => {
     const prisma = makePrisma();
-    prisma.tx.contractVersion.findUnique.mockResolvedValue({
-      id: "version-1",
-      draftRevision: 3
-    });
+    prisma.tx.$queryRaw.mockResolvedValue([
+      { draftRevision: 3, status: "draft" }
+    ]);
     prisma.tx.contractGeneratedDocument.updateMany.mockResolvedValue({ count: 0 });
     prisma.contractGeneratedDocument.findFirst.mockResolvedValue({
       id: "document-1",

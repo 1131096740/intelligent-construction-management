@@ -69,6 +69,7 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
     id: "version-1",
     contractId: "contract-1",
     status: "draft",
+    draftRevision: 5,
     amountSource: "bill_sum",
     amountCents: 0n
   };
@@ -96,7 +97,18 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
     },
     contractVersion: {
       findUnique: jest.fn().mockResolvedValue(version),
-      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      updateMany: jest.fn().mockImplementation(
+        ({ where }: { where: { draftRevision?: number } }) => {
+          if (
+            where.draftRevision !== undefined &&
+            where.draftRevision !== version.draftRevision
+          ) {
+            return Promise.resolve({ count: 0 });
+          }
+          if (where.draftRevision !== undefined) version.draftRevision += 1;
+          return Promise.resolve({ count: 1 });
+        }
+      ),
       update: jest.fn().mockImplementation(({ data }: { data: { amountCents: bigint } }) => {
         version.amountCents = data.amountCents;
         return Promise.resolve(version);
@@ -160,6 +172,9 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
         Object.assign(record, data);
         return Promise.resolve({ count: 1 });
       })
+    },
+    contractGeneratedDocument: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     auditLog: { create: jest.fn() }
   };
@@ -361,7 +376,7 @@ describe("ContractBillExcelService", () => {
   });
 
   it("does not write rows until the preview is explicitly applied", async () => {
-    const { service, tx, rows, imports, fileService } = billFixture();
+    const { service, tx, version, rows, imports, fileService } = billFixture();
     const buffer = await buildWorkbookBuffer({
       rows: [
         {
@@ -396,6 +411,15 @@ describe("ContractBillExcelService", () => {
     expect(rows).toHaveLength(1);
     expect(imports[0].status).toBe("applied");
     expect(imports[0].appliedByUserId).toBe("owner-1");
+    expect(version.draftRevision).toBe(6);
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: "success",
+        sourceRevision: { lt: 6 }
+      },
+      data: { status: "stale" }
+    });
   });
 
   it("keeps the original uploaded XLSX file id on the import record", async () => {

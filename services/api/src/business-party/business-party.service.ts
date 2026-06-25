@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import type { AuditService } from "../audit/audit.service";
+import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import type {
   AddContractPartyDto,
@@ -156,7 +157,11 @@ export class BusinessPartyService {
     input: AddContractPartyDto
   ) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertDraftOwner(tx, contractVersionId, actorUserId);
+      const { version, contract } = await this.assertDraftOwner(
+        tx,
+        contractVersionId,
+        actorUserId
+      );
       this.assertContractPartyRole(input.roleKey);
       const hasVersion = Boolean(input.businessPartyVersionId);
       const hasInlineSnapshot = Boolean(input.snapshot);
@@ -176,6 +181,12 @@ export class BusinessPartyService {
       } else {
         snapshot = this.normalizeSnapshot(input.snapshot as BusinessPartySnapshotDto);
       }
+      const newRevision = await this.lockDraftMutation(
+        tx,
+        version,
+        contract,
+        actorUserId
+      );
 
       const latest = await tx.contractPartySnapshot.findFirst({
         where: { contractVersionId, roleKey: input.roleKey },
@@ -198,7 +209,8 @@ export class BusinessPartyService {
         metadata: {
           partySnapshotId: partySnapshot.id,
           roleKey: input.roleKey,
-          businessPartyVersionId: input.businessPartyVersionId ?? null
+          businessPartyVersionId: input.businessPartyVersionId ?? null,
+          newRevision
         }
       });
       return partySnapshot;
@@ -212,12 +224,22 @@ export class BusinessPartyService {
     roleKey: AddContractPartyDto["roleKey"]
   ) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertDraftOwner(tx, contractVersionId, actorUserId);
+      const { version, contract } = await this.assertDraftOwner(
+        tx,
+        contractVersionId,
+        actorUserId
+      );
       this.assertContractPartyRole(roleKey);
       const existing = await tx.contractPartySnapshot.findFirst({
         where: { id: partySnapshotId, contractVersionId }
       });
       if (!existing) throw new NotFoundException("Contract party snapshot not found");
+      const newRevision = await this.lockDraftMutation(
+        tx,
+        version,
+        contract,
+        actorUserId
+      );
 
       let displayOrder = existing.displayOrder;
       if (existing.roleKey !== roleKey) {
@@ -236,7 +258,7 @@ export class BusinessPartyService {
         action: "contract_party.update_role",
         businessType: "contract_version",
         businessId: contractVersionId,
-        metadata: { partySnapshotId, roleKey, displayOrder }
+        metadata: { partySnapshotId, roleKey, displayOrder, newRevision }
       });
       return updated;
     });
@@ -248,11 +270,21 @@ export class BusinessPartyService {
     actorUserId: string
   ) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertDraftOwner(tx, contractVersionId, actorUserId);
+      const { version, contract } = await this.assertDraftOwner(
+        tx,
+        contractVersionId,
+        actorUserId
+      );
       const existing = await tx.contractPartySnapshot.findFirst({
         where: { id: partySnapshotId, contractVersionId }
       });
       if (!existing) throw new NotFoundException("Contract party snapshot not found");
+      const newRevision = await this.lockDraftMutation(
+        tx,
+        version,
+        contract,
+        actorUserId
+      );
 
       await tx.contractPartySnapshot.delete({ where: { id: partySnapshotId } });
       await this.audit.record(tx, {
@@ -260,7 +292,7 @@ export class BusinessPartyService {
         action: "contract_party.remove_role",
         businessType: "contract_version",
         businessId: contractVersionId,
-        metadata: { partySnapshotId, roleKey: existing.roleKey }
+        metadata: { partySnapshotId, roleKey: existing.roleKey, newRevision }
       });
       return { id: partySnapshotId };
     });
@@ -360,5 +392,34 @@ export class BusinessPartyService {
     if (contract.ownerUserId !== actorUserId) {
       throw new ForbiddenException("Only the draft owner can change contract parties");
     }
+    if (contract.voidedAt) {
+      throw new BadRequestException("Contract draft is voided");
+    }
+    return { version, contract };
+  }
+
+  private async lockDraftMutation(
+    tx: Prisma.TransactionClient,
+    version: { id: string; draftRevision: number },
+    contract: { id: string },
+    actorUserId: string
+  ) {
+    const newRevision = await bumpContractRenderInputRevision(
+      tx,
+      version.id,
+      version.draftRevision
+    );
+    const ownerGate = await tx.contract.updateMany({
+      where: {
+        id: contract.id,
+        ownerUserId: actorUserId,
+        voidedAt: null
+      },
+      data: { ownerUserId: actorUserId }
+    });
+    if (ownerGate.count !== 1) {
+      throw new BadRequestException("Contract draft revision/status conflict");
+    }
+    return newRevision;
   }
 }

@@ -34,6 +34,7 @@ describe("ContractBillService", () => {
       id: "version-1",
       contractId: "contract-1",
       status: "draft",
+      draftRevision: 5,
       amountSource: options.amountSource ?? "bill_sum",
       amountCents: 0n
     };
@@ -60,7 +61,18 @@ describe("ContractBillService", () => {
       },
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue(version),
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        updateMany: jest.fn().mockImplementation(
+          ({ where }: { where: { draftRevision?: number } }) => {
+            if (
+              where.draftRevision !== undefined &&
+              where.draftRevision !== version.draftRevision
+            ) {
+              return Promise.resolve({ count: 0 });
+            }
+            if (where.draftRevision !== undefined) version.draftRevision += 1;
+            return Promise.resolve({ count: 1 });
+          }
+        ),
         update: jest.fn().mockImplementation(({ data }: { data: { amountCents: bigint } }) => {
           version.amountCents = data.amountCents;
           return Promise.resolve(version);
@@ -107,6 +119,9 @@ describe("ContractBillService", () => {
           return Promise.resolve({ count: 1 });
         })
       },
+      contractGeneratedDocument: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       auditLog: { create: jest.fn() }
     };
     const prisma = {
@@ -141,6 +156,14 @@ describe("ContractBillService", () => {
     });
     expect(result.bill!.taxInclusiveAmountCents).toBe(33371);
     expect(result.rows[0].quantity).toBe("3.333");
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: "success",
+        sourceRevision: { lt: 6 }
+      },
+      data: { status: "stale" }
+    });
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
@@ -173,7 +196,7 @@ describe("ContractBillService", () => {
     tx.contractVersion.updateMany.mockResolvedValueOnce({ count: 0 });
 
     await expect(service.addRow("bill-1", "owner-1", rowInput)).rejects.toThrow(
-      "Contract bill revision/status conflict"
+      "Contract draft revision/status conflict"
     );
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
     expect(tx.contractBillRow.create).not.toHaveBeenCalled();

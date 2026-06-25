@@ -8,11 +8,12 @@ import { Prisma } from "@prisma/client";
 import * as ExcelJS from "exceljs";
 import type { Cell, Row, Worksheet } from "exceljs";
 import { AuditService } from "../audit/audit.service";
+import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { calculateBillRow, centsToSafeNumber } from "../money/decimal-money";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
-import { EDITABLE_STATUSES, loadOwnedEditableBill } from "./contract-bill-guards";
+import { loadOwnedEditableBill } from "./contract-bill-guards";
 
 const CANONICAL_DECIMAL = /^(0|[1-9]\d*)(\.\d+)?$/;
 const DATA_SHEET = "清单数据";
@@ -224,7 +225,12 @@ export class ContractBillExcelService {
         throw new BadRequestException("Contract bill import preview contains errors");
       }
 
-      await this.lockBillRevision(tx, bill, version, actorUserId);
+      const newRevision = await this.lockBillRevision(
+        tx,
+        bill,
+        version,
+        actorUserId
+      );
 
       for (const rowKey of plan.removeKeys) {
         await tx.contractBillRow.deleteMany({
@@ -273,7 +279,8 @@ export class ContractBillExcelService {
           mode: record.mode,
           added: plan.adds.length,
           updated: plan.updates.length,
-          removed: plan.removeKeys.length
+          removed: plan.removeKeys.length,
+          newRevision
         }
       });
 
@@ -739,7 +746,8 @@ export class ContractBillExcelService {
       version: {
         id: version.id,
         contractId: version.contractId,
-        amountSource: version.amountSource
+        amountSource: version.amountSource,
+        draftRevision: version.draftRevision
       }
     };
   }
@@ -747,18 +755,19 @@ export class ContractBillExcelService {
   private async lockBillRevision(
     tx: Prisma.TransactionClient,
     bill: { id: string; contractVersionId: string; revision: number },
-    version: { id: string; contractId: string },
+    version: { id: string; contractId: string; draftRevision: number },
     actorUserId: string
   ) {
-    const versionGate = await tx.contractVersion.updateMany({
-      where: { id: version.id, status: { in: EDITABLE_STATUSES } },
-      data: { draftRevision: { increment: 0 } }
-    });
+    const newRevision = await bumpContractRenderInputRevision(
+      tx,
+      version.id,
+      version.draftRevision
+    );
     const ownerGate = await tx.contract.updateMany({
       where: { id: version.contractId, ownerUserId: actorUserId, voidedAt: null },
       data: { ownerUserId: actorUserId }
     });
-    if (versionGate.count !== 1 || ownerGate.count !== 1) {
+    if (ownerGate.count !== 1) {
       throw new BadRequestException("Contract bill revision/status conflict");
     }
     const billGate = await tx.contractBill.updateMany({
@@ -772,6 +781,7 @@ export class ContractBillExcelService {
     if (billGate.count !== 1) {
       throw new BadRequestException("Contract bill revision/status conflict");
     }
+    return newRevision;
   }
 
   // ── Column / schema helpers ──────────────────────────────────────────

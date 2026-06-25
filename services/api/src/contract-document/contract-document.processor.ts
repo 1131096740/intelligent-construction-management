@@ -239,10 +239,19 @@ export class ContractDocumentProcessor
       uploadedFileIds.push(pdfFile.id);
       const completedAt = new Date();
       await this.prisma.$transaction(async (tx) => {
-        const version = await tx.contractVersion.findUnique({
-          where: { id: job.contractVersionId }
-        });
-        if (!version || version.draftRevision !== job.sourceRevision) {
+        const [version] = await tx.$queryRaw<
+          Array<{ draftRevision: number; status: string }>
+        >(Prisma.sql`
+          SELECT "draftRevision", "status"
+          FROM "ContractVersion"
+          WHERE "id" = ${job.contractVersionId}
+          FOR UPDATE
+        `);
+        if (
+          !version ||
+          version.draftRevision !== job.sourceRevision ||
+          !["draft", "approval_rejected"].includes(version.status)
+        ) {
           await tx.contractGeneratedDocument.updateMany({
             where: {
               id: job.id,

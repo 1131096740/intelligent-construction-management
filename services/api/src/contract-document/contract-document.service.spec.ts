@@ -1,3 +1,4 @@
+import { ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ContractDocumentService } from "./contract-document.service";
 
@@ -31,7 +32,8 @@ describe("ContractDocumentService", () => {
             { key: "payment", content: { text: "结算后付款" } }
           ],
           readinessSnapshot: { checkedRevision: 7, blocking: [], warnings: [] }
-        })
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
@@ -42,7 +44,8 @@ describe("ContractDocumentService", () => {
           contractTypeKey: "materials",
           temporaryCode: "DRAFT-001",
           code: null
-        })
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -363,8 +366,11 @@ describe("ContractDocumentService", () => {
       .mockResolvedValueOnce({
         id: "document-1",
         contractVersionId: "version-1",
+        layoutTemplateVersionId: "layout-1",
+        purpose: "draft",
         sourceRevision: 7,
-        status: "failed"
+        status: "failed",
+        inputSnapshot: { attachmentFiles: [] }
       })
       .mockResolvedValueOnce({ id: "document-1", status: "queued" });
     const { service } = makeService(tx);
@@ -373,7 +379,7 @@ describe("ContractDocumentService", () => {
       status: "queued"
     });
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenLastCalledWith({
-      where: { id: "document-1", status: "failed" },
+      where: { id: "document-1", status: "failed", sourceRevision: 7 },
       data: {
         status: "queued",
         errorMessage: null,
@@ -385,5 +391,114 @@ describe("ContractDocumentService", () => {
       tx,
       expect.objectContaining({ action: "contract.document.retry" })
     );
+  });
+
+  it("revalidates retry gates and attachment authorization in the transaction", async () => {
+    const tx = makeTx();
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-1",
+      contractVersionId: "version-1",
+      layoutTemplateVersionId: "layout-1",
+      purpose: "internal_review",
+      sourceRevision: 7,
+      status: "failed",
+      inputSnapshot: {
+        attachmentFiles: [
+          {
+            id: "attachment-a",
+            originalName: "附件A.pdf",
+            mimeType: "application/pdf"
+          }
+        ]
+      }
+    });
+    const { service } = makeService(tx);
+
+    await service.retry("document-1", "owner-1");
+
+    expect(files.assertCanDownloadFile).toHaveBeenCalledWith(
+      tx,
+      "attachment-a",
+      "owner-1"
+    );
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "version-1",
+        draftRevision: 7,
+        status: { in: ["draft", "approval_rejected"] }
+      },
+      data: { draftRevision: { increment: 0 } }
+    });
+    expect(tx.contract.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "contract-1",
+        ownerUserId: "owner-1",
+        voidedAt: null
+      },
+      data: { ownerUserId: "owner-1" }
+    });
+  });
+
+  it("rejects retry when the layout or version gate is no longer valid", async () => {
+    const tx = makeTx();
+    const failed = {
+      id: "document-1",
+      contractVersionId: "version-1",
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft",
+      sourceRevision: 7,
+      status: "failed",
+      inputSnapshot: { attachmentFiles: [] }
+    };
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue(failed);
+    tx.contractLayoutTemplateVersion.findUnique.mockResolvedValue({
+      id: "layout-1",
+      layoutTemplateId: "layout-template-1",
+      status: "disabled"
+    });
+    const { service } = makeService(tx);
+
+    await expect(service.retry("document-1", "owner-1")).rejects.toThrow(
+      "Layout template version must be published"
+    );
+
+    tx.contractLayoutTemplateVersion.findUnique.mockResolvedValue({
+      id: "layout-1",
+      layoutTemplateId: "layout-template-1",
+      status: "published"
+    });
+    tx.contractVersion.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.retry("document-1", "owner-1")).rejects.toThrow(
+      "Contract document revision/status conflict"
+    );
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "queued" })
+      })
+    );
+  });
+
+  it("does not retry when attachment authorization has been revoked", async () => {
+    const tx = makeTx();
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-1",
+      contractVersionId: "version-1",
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft",
+      sourceRevision: 7,
+      status: "failed",
+      inputSnapshot: {
+        attachmentFiles: [{ id: "attachment-a" }]
+      }
+    });
+    files.assertCanDownloadFile.mockRejectedValueOnce(
+      new ForbiddenException("File access denied")
+    );
+    const { service } = makeService(tx);
+
+    await expect(service.retry("document-1", "owner-1")).rejects.toThrow(
+      "File access denied"
+    );
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
   });
 });

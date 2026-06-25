@@ -6,10 +6,11 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import { calculateBillRow, centsToSafeNumber } from "../money/decimal-money";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
-import { EDITABLE_STATUSES, loadOwnedEditableBill } from "./contract-bill-guards";
+import { loadOwnedEditableBill } from "./contract-bill-guards";
 import type {
   ReorderBillRowsDto,
   SaveBillRowDto
@@ -28,7 +29,13 @@ export class ContractBillService {
     return this.prisma.$transaction(async (tx) => {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       const input = this.parseRowInput(rawInput, bill);
-      await this.lockMutation(tx, bill, version, actorUserId, input.expectedBillRevision);
+      const newRevision = await this.lockMutation(
+        tx,
+        bill,
+        version,
+        actorUserId,
+        input.expectedBillRevision
+      );
       const amounts = calculateBillRow({
         quantity: input.quantity,
         unitPrice: input.unitPrice,
@@ -54,7 +61,15 @@ export class ContractBillService {
           customData: this.toJson(input.customData)
         }
       });
-      return this.finishMutation(tx, bill, version, actorUserId, "create", row.rowKey);
+      return this.finishMutation(
+        tx,
+        bill,
+        version,
+        actorUserId,
+        "create",
+        row.rowKey,
+        newRevision
+      );
     });
   }
 
@@ -68,7 +83,13 @@ export class ContractBillService {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       const input = this.parseRowInput(rawInput, bill);
       const row = await this.findRow(tx, billId, rowKey);
-      await this.lockMutation(tx, bill, version, actorUserId, input.expectedBillRevision);
+      const newRevision = await this.lockMutation(
+        tx,
+        bill,
+        version,
+        actorUserId,
+        input.expectedBillRevision
+      );
       const amounts = calculateBillRow({
         quantity: input.quantity,
         unitPrice: input.unitPrice,
@@ -92,7 +113,15 @@ export class ContractBillService {
         }
       });
       if (updated.count !== 1) throw new NotFoundException("Contract bill row not found");
-      return this.finishMutation(tx, bill, version, actorUserId, "update", rowKey);
+      return this.finishMutation(
+        tx,
+        bill,
+        version,
+        actorUserId,
+        "update",
+        rowKey,
+        newRevision
+      );
     });
   }
 
@@ -106,12 +135,26 @@ export class ContractBillService {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       this.assertExpectedRevision(expectedBillRevision);
       await this.findRow(tx, billId, rowKey);
-      await this.lockMutation(tx, bill, version, actorUserId, expectedBillRevision);
+      const newRevision = await this.lockMutation(
+        tx,
+        bill,
+        version,
+        actorUserId,
+        expectedBillRevision
+      );
       const deleted = await tx.contractBillRow.deleteMany({
         where: { contractBillId: billId, rowKey }
       });
       if (deleted.count !== 1) throw new NotFoundException("Contract bill row not found");
-      return this.finishMutation(tx, bill, version, actorUserId, "delete", rowKey);
+      return this.finishMutation(
+        tx,
+        bill,
+        version,
+        actorUserId,
+        "delete",
+        rowKey,
+        newRevision
+      );
     });
   }
 
@@ -133,7 +176,7 @@ export class ContractBillService {
           "rowKeys must exactly match the current bill row set"
         );
       }
-      await this.lockMutation(
+      const newRevision = await this.lockMutation(
         tx,
         bill,
         version,
@@ -147,22 +190,31 @@ export class ContractBillService {
           data: { sortOrder }
         });
       }
-      return this.finishMutation(tx, bill, version, actorUserId, "reorder", null);
+      return this.finishMutation(
+        tx,
+        bill,
+        version,
+        actorUserId,
+        "reorder",
+        null,
+        newRevision
+      );
     });
   }
 
   private async lockMutation(
     tx: Prisma.TransactionClient,
     bill: { id: string; contractVersionId: string },
-    version: { id: string; contractId: string },
+    version: { id: string; contractId: string; draftRevision: number },
     actorUserId: string,
     expectedBillRevision: number
   ) {
     this.assertExpectedRevision(expectedBillRevision);
-    const versionGate = await tx.contractVersion.updateMany({
-      where: { id: version.id, status: { in: EDITABLE_STATUSES } },
-      data: { draftRevision: { increment: 0 } }
-    });
+    const newRevision = await bumpContractRenderInputRevision(
+      tx,
+      version.id,
+      version.draftRevision
+    );
     const ownerGate = await tx.contract.updateMany({
       where: {
         id: version.contractId,
@@ -171,7 +223,7 @@ export class ContractBillService {
       },
       data: { ownerUserId: actorUserId }
     });
-    if (versionGate.count !== 1 || ownerGate.count !== 1) {
+    if (ownerGate.count !== 1) {
       throw new BadRequestException("Contract bill revision/status conflict");
     }
     const billGate = await tx.contractBill.updateMany({
@@ -185,6 +237,7 @@ export class ContractBillService {
     if (billGate.count !== 1) {
       throw new BadRequestException("Contract bill revision/status conflict");
     }
+    return newRevision;
   }
 
   private async finishMutation(
@@ -193,7 +246,8 @@ export class ContractBillService {
     version: { id: string; amountSource: string },
     actorUserId: string,
     action: "create" | "update" | "delete" | "reorder",
-    rowKey: string | null
+    rowKey: string | null,
+    newRevision?: number
   ) {
     const rows = await recalculateBillAndContractAmount(tx, bill, version);
     await this.audit.record(tx, {
@@ -201,7 +255,7 @@ export class ContractBillService {
       action: `contract.bill.row.${action}`,
       businessType: "contract_bill",
       businessId: bill.id,
-      metadata: { rowKey }
+      metadata: { rowKey, ...(newRevision === undefined ? {} : { newRevision }) }
     });
     const updatedBill = await tx.contractBill.findUnique({ where: { id: bill.id } });
     return this.toReadModel({ bill: updatedBill, rows });

@@ -212,7 +212,7 @@ export class ContractDocumentService {
         where: { id: documentId }
       });
       if (!document) throw new NotFoundException("Contract document not found");
-      const { version } = await this.loadOwnedVersion(
+      const { version, contract } = await this.loadOwnedVersion(
         tx,
         document.contractVersionId,
         actorUserId
@@ -224,8 +224,61 @@ export class ContractDocumentService {
       if (document.sourceRevision !== version.draftRevision) {
         throw new BadRequestException("Stale document cannot be retried");
       }
+      if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
+        throw new BadRequestException("Contract version is not editable");
+      }
+      const layout = await tx.contractLayoutTemplateVersion.findUnique({
+        where: { id: document.layoutTemplateVersionId }
+      });
+      if (!layout || layout.status !== "published") {
+        throw new BadRequestException("Layout template version must be published");
+      }
+      const layoutTemplate = await tx.contractLayoutTemplate.findUnique({
+        where: { id: layout.layoutTemplateId }
+      });
+      if (
+        !layoutTemplate ||
+        layoutTemplate.contractTypeKey !== contract.contractTypeKey
+      ) {
+        throw new BadRequestException("Layout template contract type does not match");
+      }
+      this.assertInternalReviewReady(
+        document.purpose as ContractDocumentPurpose,
+        version.readinessSnapshot,
+        version.draftRevision
+      );
+      const snapshot = this.retrySnapshot(document.inputSnapshot);
+      for (const attachment of snapshot.attachmentFiles) {
+        await this.files.assertCanDownloadFile(tx, attachment.id, actorUserId);
+      }
+      const versionGate = await tx.contractVersion.updateMany({
+        where: {
+          id: version.id,
+          draftRevision: version.draftRevision,
+          status: { in: EDITABLE_VERSION_STATUSES }
+        },
+        data: { draftRevision: { increment: 0 } }
+      });
+      if (versionGate.count !== 1) {
+        throw new BadRequestException("Contract document revision/status conflict");
+      }
+      const ownerGate = await tx.contract.updateMany({
+        where: {
+          id: contract.id,
+          ownerUserId: actorUserId,
+          voidedAt: null
+        },
+        data: { ownerUserId: actorUserId }
+      });
+      if (ownerGate.count !== 1) {
+        throw new BadRequestException("Contract document revision/status conflict");
+      }
       const updated = await tx.contractGeneratedDocument.updateMany({
-        where: { id: documentId, status: "failed" },
+        where: {
+          id: documentId,
+          status: "failed",
+          sourceRevision: version.draftRevision
+        },
         data: {
           status: "queued",
           errorMessage: null,
@@ -277,6 +330,22 @@ export class ContractDocumentService {
       purpose: input.purpose,
       attachmentFileIds
     };
+  }
+
+  private retrySnapshot(value: Prisma.JsonValue): ContractDocumentInputSnapshot {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new BadRequestException("Contract document input snapshot is invalid");
+    }
+    const snapshot = value as unknown as ContractDocumentInputSnapshot;
+    if (
+      !Array.isArray(snapshot.attachmentFiles) ||
+      snapshot.attachmentFiles.some(
+        (file) => !file || typeof file.id !== "string" || !file.id
+      )
+    ) {
+      throw new BadRequestException("Contract document input snapshot is invalid");
+    }
+    return snapshot;
   }
 
   private async loadOwnedVersion(
