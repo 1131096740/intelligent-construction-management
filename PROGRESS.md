@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-25 (CodeX)：完成企业级合同工作台 Phase 1 Task 13「PDF 转换与附件 A4 归一化」。LibreOffice 转换使用参数化 `execFile`、每任务独立 profile、120 秒超时、Linux 字体可用性检查和全路径临时文件清理；PDF-Lib 归一化支持 A4 横竖版保留、非 A4/CropBox/90°与270°旋转页面等比居中、PNG/JPEG 附件合并，并限制总输入 100MiB、500 页、图片 100MP。相关 **20** 个测试 + API typecheck/lint 全绿；下一项为 Task 14「持久化文档任务与轮询处理器」。
 - 2026-06-25 (CodeX)：完成企业级合同工作台 Phase 1 Task 12「DOCX 渲染」。新增纯函数式 PizZip + Docxtemplater renderer，支持合同/动态字段/条款/多方主体平铺占位符、结构化清单循环、草稿/磋商稿水印、确定性金额格式与中文大写金额；保留上传模板的页边距、页眉页脚、表格样式和签章页。必填占位符缺失或空白会明确拒绝，可选空值保持空串；修复跨亿/兆连续空组中文金额漏“零”。相关 **24** 个测试 + API typecheck/lint 全绿；下一项为 Task 13「DOCX→PDF 转换与附件 A4 归一化」。
 - 2026-06-25 (CodeX)：完成企业级合同工作台 Phase 1 Task 9「草稿生命周期」。新增工作台列表/详情、owner 自动保存、`draftRevision` 乐观并发、完整 checkpoint 快照与最多 5 份保留、checkpoint 恢复、软作废/恢复、合同主管转交、合同类型变更预览/应用及移除数据审计。所有草稿写入 CAS 同时绑定可编辑状态，作废/恢复/转交使用 Serializable 事务和版本状态门禁；合同提交审批补 draft CAS、owner/作废校验，关闭送审与草稿修改竞态。API 返回统一转为 JSON-safe 金额 read model，类型变更会重算 `bill_sum`。相关 **51** 个测试 + API typecheck/lint 全绿；下一项为 Task 10「结构化合同清单行 CRUD 与汇总」。
 - 2026-06-24 (CodeX + Claude)：企业级合同工作台第一阶段实施推进至 Task 6。已完成文档/表格依赖与环境配置、Phase 1 Prisma 模型与迁移、共享工作台 schema/read model、BigInt + Prisma.Decimal 金额边界、版本化业务模板/标准条款 API，以及 DOCX 版式模板治理（私有 DOCX 归属校验、声明扩展名/100MiB 上传限制、跨 Word 文本节点的占位符/字体/清单循环检查、解压大小防护、预览任务、提交/发布/停用/撤销状态 CAS、岗位权限与审计）。Task 6 相关 **36** 个测试 + API typecheck/lint 全绿；下一项为 Task 7「合作单位版本与合同多方快照」。
@@ -64,8 +65,9 @@
 - [x] Task 10：结构化合同清单行 CRUD 与汇总
 - [x] Task 11：Excel 模板下载与导入预览/应用
 - [x] Task 12：DOCX 渲染
-- [ ] Task 13：PDF 转换与附件 A4 归一化
-- [ ] Task 14–22：文档任务、就绪校验、Web 与端到端验收
+- [x] Task 13：PDF 转换与附件 A4 归一化
+- [ ] Task 14：持久化文档任务与轮询处理器
+- [ ] Task 15–22：就绪校验、Web 与端到端验收
 
 ---
 
