@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type {
   ContractBillDefinition,
   ContractClauseDefinition,
@@ -12,6 +12,7 @@ import type {
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { centsToSafeNumber } from "../money/decimal-money";
 import type {
   ApplyContractTypeChangeDto,
   CreateDraftCheckpointDto,
@@ -29,6 +30,7 @@ const PRICING_NATURES = new Set([
   "framework"
 ]);
 const AMOUNT_SOURCES = new Set(["bill_sum", "manual"]);
+const CHECKPOINT_RETRY_LIMIT = 3;
 
 interface TemplateSnapshot {
   fieldSchema: ContractFieldDefinition[];
@@ -97,14 +99,14 @@ export class ContractWorkbenchService {
       where: { status: { in: [...EDITABLE_STATUSES] } },
       select: { contractId: true }
     });
-    return this.prisma.contract.findMany({
+    return this.toReadModel(await this.prisma.contract.findMany({
       where: {
         id: { in: [...new Set(versions.map((version) => version.contractId))] },
         voidedAt: scope === "voided" ? { not: null } : null,
         ...(isDirector ? {} : { ownerUserId: actorUserId })
       },
       orderBy: { updatedAt: "desc" }
-    });
+    }));
   }
 
   async getDraft(contractId: string, actorUserId: string) {
@@ -122,7 +124,14 @@ export class ContractWorkbenchService {
       this.prisma.contractBill.findMany({ where: { contractVersionId: version.id } }),
       this.prisma.contractDraftCheckpoint.findMany({
         where: { contractVersionId: version.id },
-        orderBy: { sequenceNo: "desc" }
+        orderBy: { sequenceNo: "desc" },
+        select: {
+          id: true,
+          sequenceNo: true,
+          name: true,
+          snapshot: true,
+          createdAt: true
+        }
       }),
       this.prisma.contractPartySnapshot.findMany({
         where: { contractVersionId: version.id },
@@ -130,18 +139,44 @@ export class ContractWorkbenchService {
       }),
       this.prisma.contractGeneratedDocument.findMany({
         where: { contractVersionId: version.id },
-        orderBy: { createdAt: "desc" }
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          purpose: true,
+          status: true,
+          sourceRevision: true,
+          docxFileId: true,
+          pdfFileId: true,
+          createdAt: true,
+          completedAt: true
+        }
       })
     ]);
-    return { contract, version, bills, checkpoints, parties, documents };
+    const rows = bills.length
+      ? await this.prisma.contractBillRow.findMany({
+          where: { contractBillId: { in: bills.map((bill) => bill.id) } },
+          orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
+        })
+      : [];
+    return this.toReadModel({
+      contract,
+      version,
+      bills: bills.map((bill) => ({
+        ...bill,
+        rows: rows.filter((row) => row.contractBillId === bill.id)
+      })),
+      checkpoints,
+      parties,
+      documents
+    });
   }
 
   async saveDraft(
     contractVersionId: string,
     actorUserId: string,
-    input: SaveContractDraftDto
+    rawInput: unknown
   ) {
-    this.validateSaveInput(input);
+    const input = this.parseSaveInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
       const { version } = await this.loadOwnedEditableVersion(
         tx,
@@ -201,19 +236,19 @@ export class ContractWorkbenchService {
           revisionAfter: input.expectedRevision + 1
         }
       });
-      return tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      return this.toReadModel(
+        await tx.contractVersion.findUnique({ where: { id: contractVersionId } })
+      );
     });
   }
 
   async createCheckpoint(
     contractVersionId: string,
     actorUserId: string,
-    input: CreateDraftCheckpointDto
+    rawInput: unknown
   ) {
-    if (input.name !== undefined && typeof input.name !== "string") {
-      throw new BadRequestException("Checkpoint name must be a string");
-    }
-    return this.prisma.$transaction(async (tx) => {
+    const input = this.parseCheckpointInput(rawInput);
+    return this.runSerializableWithRetry(async (tx) => {
       const { version } = await this.loadOwnedEditableVersion(
         tx,
         contractVersionId,
@@ -259,7 +294,7 @@ export class ContractWorkbenchService {
         businessId: contractVersionId,
         metadata: { checkpointId: checkpoint.id, sequenceNo }
       });
-      return checkpoint;
+      return this.toReadModel(checkpoint);
     });
   }
 
@@ -307,21 +342,22 @@ export class ContractWorkbenchService {
           revisionAfter: version.draftRevision + 1
         }
       });
-      return tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      return this.toReadModel(
+        await tx.contractVersion.findUnique({ where: { id: contractVersionId } })
+      );
     });
   }
 
-  async voidDraft(contractId: string, actorUserId: string, input: VoidDraftDto) {
-    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
-    if (!reason) throw new BadRequestException("Void reason is required");
+  async voidDraft(contractId: string, actorUserId: string, rawInput: unknown) {
+    const { reason } = this.parseVoidInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
-      const contract = await this.loadOwnedContract(tx, contractId, actorUserId);
+      await this.loadOwnedContract(tx, contractId, actorUserId);
       await this.assertContractHasEditableVersion(tx, contractId);
-      if (contract.voidedAt) throw new BadRequestException("Contract draft is already voided");
-      const updated = await tx.contract.update({
-        where: { id: contractId },
+      const updated = await tx.contract.updateMany({
+        where: { id: contractId, ownerUserId: actorUserId, voidedAt: null },
         data: { voidedAt: new Date(), voidedReason: reason }
       });
+      this.assertLifecycleCas(updated.count);
       await this.audit.record(tx, {
         actorUserId,
         action: "contract.draft.void",
@@ -329,46 +365,53 @@ export class ContractWorkbenchService {
         businessId: contractId,
         metadata: { reason }
       });
-      return updated;
+      return this.toReadModel(await tx.contract.findUnique({ where: { id: contractId } }));
     });
   }
 
   async restoreDraft(contractId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const contract = await this.loadOwnedContract(tx, contractId, actorUserId);
+      await this.loadOwnedContract(tx, contractId, actorUserId);
       await this.assertContractHasEditableVersion(tx, contractId);
-      if (!contract.voidedAt) throw new BadRequestException("Contract draft is not voided");
-      const updated = await tx.contract.update({
-        where: { id: contractId },
+      const updated = await tx.contract.updateMany({
+        where: { id: contractId, ownerUserId: actorUserId, voidedAt: { not: null } },
         data: { voidedAt: null, voidedReason: null }
       });
+      this.assertLifecycleCas(updated.count);
       await this.audit.record(tx, {
         actorUserId,
         action: "contract.draft.restore",
         businessType: "contract",
         businessId: contractId
       });
-      return updated;
+      return this.toReadModel(await tx.contract.findUnique({ where: { id: contractId } }));
     });
   }
 
   async transferDraft(
     contractId: string,
     actorUserId: string,
-    input: TransferContractDraftDto
+    rawInput: unknown
   ) {
-    if (typeof input.toUserId !== "string" || !input.toUserId.trim()) {
-      throw new BadRequestException("toUserId is required");
-    }
+    const input = this.parseTransferInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalContractDirector(tx, actorUserId);
       const contract = await tx.contract.findUnique({ where: { id: contractId } });
       if (!contract) throw new NotFoundException("Contract draft not found");
       await this.assertContractHasEditableVersion(tx, contractId);
-      const updated = await tx.contract.update({
-        where: { id: contractId },
+      const targetUser = await tx.user.findUnique({ where: { id: input.toUserId } });
+      if (!targetUser?.isActive) {
+        throw new BadRequestException("Transfer target user must exist and be active");
+      }
+      const updated = await tx.contract.updateMany({
+        where: {
+          id: contractId,
+          ownerUserId: contract.ownerUserId,
+          voidedAt: null
+        },
         data: { ownerUserId: input.toUserId }
       });
+      this.assertLifecycleCas(updated.count);
       await this.audit.record(tx, {
         actorUserId,
         action: "contract.draft.transfer",
@@ -379,16 +422,16 @@ export class ContractWorkbenchService {
           toUserId: input.toUserId
         }
       });
-      return updated;
+      return this.toReadModel(await tx.contract.findUnique({ where: { id: contractId } }));
     });
   }
 
   async previewTypeChange(
     contractVersionId: string,
     actorUserId: string,
-    input: PreviewContractTypeChangeDto
+    rawInput: unknown
   ) {
-    this.validateTypeChangeInput(input);
+    const input = this.parseTypeChangeInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
       const { version } = await this.loadOwnedEditableVersion(
         tx,
@@ -410,12 +453,9 @@ export class ContractWorkbenchService {
   async applyTypeChange(
     contractVersionId: string,
     actorUserId: string,
-    input: ApplyContractTypeChangeDto
+    rawInput: unknown
   ) {
-    this.validateTypeChangeInput(input);
-    if (input.confirmed !== true) {
-      throw new BadRequestException("Contract type change confirmation is required");
-    }
+    const input = this.parseApplyTypeChangeInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
       const { version, contract } = await this.loadOwnedEditableVersion(
         tx,
@@ -554,6 +594,15 @@ export class ContractWorkbenchService {
           }))
         });
       }
+      if (version.amountSource === "bill_sum") {
+        const finalBills = await tx.contractBill.findMany({
+          where: { contractVersionId }
+        });
+        await tx.contractVersion.update({
+          where: { id: contractVersionId },
+          data: { amountCents: this.sumIncludedBills(finalBills) }
+        });
+      }
       await this.audit.record(tx, {
         actorUserId,
         action: "contract.draft.type_change",
@@ -573,7 +622,9 @@ export class ContractWorkbenchService {
           revisionAfter: input.expectedRevision + 1
         }
       });
-      return tx.contractVersion.findUnique({ where: { id: contractVersionId } });
+      return this.toReadModel(
+        await tx.contractVersion.findUnique({ where: { id: contractVersionId } })
+      );
     });
   }
 
@@ -660,37 +711,172 @@ export class ContractWorkbenchService {
     }
   }
 
-  private validateSaveInput(input: SaveContractDraftDto) {
-    if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1) {
+  private parseSaveInput(rawInput: unknown): SaveContractDraftDto {
+    const input = this.requireObject(rawInput, "Save contract draft body");
+    if (
+      typeof input.expectedRevision !== "number" ||
+      !Number.isInteger(input.expectedRevision) ||
+      input.expectedRevision < 1
+    ) {
       throw new BadRequestException("expectedRevision must be a positive integer");
     }
-    if (!input.draftData || typeof input.draftData !== "object" || Array.isArray(input.draftData)) {
+    if (!this.isPlainObject(input.draftData)) {
       throw new BadRequestException("draftData must be an object");
     }
     if (!Array.isArray(input.clauses)) {
       throw new BadRequestException("clauses must be an array");
     }
-    if (!PRICING_NATURES.has(input.pricingNature)) {
+    const clauses = input.clauses.map((clause, index) =>
+      this.parseClause(clause, index)
+    );
+    if (
+      typeof input.pricingNature !== "string" ||
+      !PRICING_NATURES.has(input.pricingNature)
+    ) {
       throw new BadRequestException("Invalid pricingNature");
     }
-    if (!AMOUNT_SOURCES.has(input.amountSource)) {
+    if (
+      typeof input.amountSource !== "string" ||
+      !AMOUNT_SOURCES.has(input.amountSource)
+    ) {
       throw new BadRequestException("Invalid amountSource");
     }
-    if (input.amountSource === "manual") {
-      this.toCents(input.manualAmountCents, "manualAmountCents");
+    if (input.amountSource === "manual" || input.manualAmountCents !== undefined) {
+      this.toCents(input.manualAmountCents as number | undefined, "manualAmountCents");
     }
+    if (
+      input.amountAdjustmentReason !== undefined &&
+      typeof input.amountAdjustmentReason !== "string"
+    ) {
+      throw new BadRequestException("amountAdjustmentReason must be a string");
+    }
+    if (
+      input.layoutTemplateVersionId !== undefined &&
+      (typeof input.layoutTemplateVersionId !== "string" ||
+        !input.layoutTemplateVersionId.trim())
+    ) {
+      throw new BadRequestException("layoutTemplateVersionId must be a non-empty string");
+    }
+    return {
+      expectedRevision: input.expectedRevision as number,
+      draftData: { ...(input.draftData as Record<string, unknown>) },
+      clauses,
+      pricingNature: input.pricingNature as SaveContractDraftDto["pricingNature"],
+      amountSource: input.amountSource as SaveContractDraftDto["amountSource"],
+      ...(input.manualAmountCents === undefined
+        ? {}
+        : { manualAmountCents: input.manualAmountCents as number }),
+      ...(input.amountAdjustmentReason === undefined
+        ? {}
+        : { amountAdjustmentReason: input.amountAdjustmentReason }),
+      ...(input.layoutTemplateVersionId === undefined
+        ? {}
+        : { layoutTemplateVersionId: input.layoutTemplateVersionId })
+    };
   }
 
-  private validateTypeChangeInput(input: PreviewContractTypeChangeDto) {
+  private parseTypeChangeInput(rawInput: unknown): PreviewContractTypeChangeDto {
+    const input = this.requireObject(rawInput, "Contract type change body");
     if (
       typeof input.targetBusinessTemplateVersionId !== "string" ||
       !input.targetBusinessTemplateVersionId.trim()
     ) {
       throw new BadRequestException("targetBusinessTemplateVersionId is required");
     }
-    if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 1) {
+    if (
+      typeof input.expectedRevision !== "number" ||
+      !Number.isInteger(input.expectedRevision) ||
+      input.expectedRevision < 1
+    ) {
       throw new BadRequestException("expectedRevision must be a positive integer");
     }
+    return {
+      targetBusinessTemplateVersionId: input.targetBusinessTemplateVersionId,
+      expectedRevision: input.expectedRevision as number
+    };
+  }
+
+  private parseApplyTypeChangeInput(rawInput: unknown): ApplyContractTypeChangeDto {
+    const input = this.requireObject(rawInput, "Apply contract type change body");
+    const parsed = this.parseTypeChangeInput(input);
+    if (input.confirmed !== true) {
+      throw new BadRequestException("Contract type change confirmation is required");
+    }
+    return { ...parsed, confirmed: true };
+  }
+
+  private parseCheckpointInput(rawInput: unknown): CreateDraftCheckpointDto {
+    const input = this.requireObject(rawInput, "Checkpoint body");
+    if (input.name !== undefined && typeof input.name !== "string") {
+      throw new BadRequestException("Checkpoint name must be a string");
+    }
+    return input.name === undefined ? {} : { name: input.name };
+  }
+
+  private parseVoidInput(rawInput: unknown): VoidDraftDto {
+    const input = this.requireObject(rawInput, "Void draft body");
+    if (typeof input.reason !== "string" || !input.reason.trim()) {
+      throw new BadRequestException("Void reason is required");
+    }
+    return { reason: input.reason.trim() };
+  }
+
+  private parseTransferInput(rawInput: unknown): TransferContractDraftDto {
+    const input = this.requireObject(rawInput, "Transfer draft body");
+    if (typeof input.toUserId !== "string" || !input.toUserId.trim()) {
+      throw new BadRequestException("toUserId is required");
+    }
+    return { toUserId: input.toUserId.trim() };
+  }
+
+  private parseClause(value: unknown, index: number): ContractClauseDefinition {
+    const clause = this.requireObject(value, `clauses[${index}]`);
+    if (
+      typeof clause.key !== "string" ||
+      !clause.key ||
+      typeof clause.title !== "string" ||
+      !clause.title ||
+      (clause.numberingMode !== "automatic" && clause.numberingMode !== "fixed") ||
+      !Object.hasOwn(clause, "content")
+    ) {
+      throw new BadRequestException(`Invalid clauses[${index}]`);
+    }
+    if (clause.required !== undefined && typeof clause.required !== "boolean") {
+      throw new BadRequestException(`Invalid clauses[${index}].required`);
+    }
+    if (
+      clause.standardClauseVersionId !== undefined &&
+      typeof clause.standardClauseVersionId !== "string"
+    ) {
+      throw new BadRequestException(
+        `Invalid clauses[${index}].standardClauseVersionId`
+      );
+    }
+    return {
+      key: clause.key,
+      title: clause.title,
+      numberingMode: clause.numberingMode,
+      content: clause.content,
+      ...(clause.required === undefined ? {} : { required: clause.required }),
+      ...(clause.standardClauseVersionId === undefined
+        ? {}
+        : { standardClauseVersionId: clause.standardClauseVersionId })
+    };
+  }
+
+  private requireObject(value: unknown, label: string): Record<string, unknown> {
+    if (!this.isPlainObject(value)) {
+      throw new BadRequestException(`${label} must be an object`);
+    }
+    return value;
+  }
+
+  private isPlainObject(value: unknown): value is Record<string, unknown> {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
   }
 
   private validateDraftAgainstTemplate(
@@ -958,12 +1144,42 @@ export class ContractWorkbenchService {
     }
   }
 
+  private async runSerializableWithRetry<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= CHECKPOINT_RETRY_LIMIT; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(operation, {
+          isolationLevel: "Serializable"
+        });
+      } catch (error) {
+        if (attempt === CHECKPOINT_RETRY_LIMIT || !this.isRetryableTransactionError(error)) {
+          throw error;
+        }
+      }
+    }
+    throw new Error("Unreachable checkpoint transaction retry state");
+  }
+
+  private isRetryableTransactionError(error: unknown) {
+    return (
+      error !== null &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error.code === "P2034" || error.code === "P2002")
+    );
+  }
+
   private assertRevision(actual: number, expected: number) {
     if (actual !== expected) throw new BadRequestException("Contract draft revision conflict");
   }
 
   private assertCas(count: number) {
     if (count !== 1) throw new BadRequestException("Contract draft revision conflict");
+  }
+
+  private assertLifecycleCas(count: number) {
+    if (count !== 1) throw new BadRequestException("Contract draft state conflict");
   }
 
   private toCents(value: number | undefined, field: string) {
@@ -985,5 +1201,27 @@ export class ContractWorkbenchService {
         typeof item === "bigint" ? item.toString() : item
       )
     ) as Prisma.InputJsonValue;
+  }
+
+  private toReadModel<T>(value: T): T {
+    return this.convertReadValue(value) as T;
+  }
+
+  private convertReadValue(value: unknown): unknown {
+    if (typeof value === "bigint") {
+      return centsToSafeNumber(value);
+    }
+    if (value instanceof Prisma.Decimal) {
+      return value.toString();
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => this.convertReadValue(item));
+    }
+    if (value !== null && typeof value === "object" && !(value instanceof Date)) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [key, this.convertReadValue(item)])
+      );
+    }
+    return value;
   }
 }

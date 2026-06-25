@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { ContractWorkbenchService } from "./contract-workbench.service";
 
@@ -184,7 +185,7 @@ describe("ContractWorkbenchService", () => {
           ownerUserId: "owner-1",
           voidedAt: null
         }),
-        update: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "owner-2" })
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractVersion: {
         findFirst: jest.fn().mockResolvedValue({ id: "version-1" })
@@ -195,15 +196,22 @@ describe("ContractWorkbenchService", () => {
       position: {
         findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
       },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ id: "owner-2", isActive: true })
+      },
       auditLog: { create: jest.fn() }
     };
     const service = makeService(tx);
 
     await service.transferDraft("contract-1", "director-1", { toUserId: "owner-2" });
 
-    expect(tx.contract.update).toHaveBeenCalledWith(
+    expect(tx.contract.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "contract-1" },
+        where: expect.objectContaining({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        }),
         data: { ownerUserId: "owner-2" }
       })
     );
@@ -272,6 +280,63 @@ describe("ContractWorkbenchService", () => {
     await expect(service.getDraft("contract-1", "director-1")).resolves.toEqual(
       expect.objectContaining({ contract: expect.objectContaining({ id: "contract-1" }) })
     );
+  });
+
+  it("returns a JSON-safe detail read model with numeric money and string decimals", async () => {
+    const prisma = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          temporaryCode: "DRAFT-1"
+        })
+      },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          amountCents: 1_234_500n,
+          draftRevision: 2
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "bill-1",
+            contractVersionId: "version-1",
+            taxInclusiveAmountCents: 1_234_500n,
+            taxExclusiveAmountCents: 1_092_478n,
+            taxAmountCents: 142_022n
+          }
+        ])
+      },
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "row-1",
+            contractBillId: "bill-1",
+            quantity: new Prisma.Decimal("2.500000"),
+            unitPrice: new Prisma.Decimal("4938.000000"),
+            taxRate: new Prisma.Decimal("0.130000"),
+            taxInclusiveAmountCents: 1_234_500n,
+            taxExclusiveAmountCents: 1_092_478n,
+            taxAmountCents: 142_022n
+          }
+        ])
+      },
+      contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) }
+    } as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    const result = await service.getDraft("contract-1", "owner-1");
+
+    expect(() => JSON.stringify(result)).not.toThrow();
+    expect(result.version.amountCents).toBe(1_234_500);
+    expect(result.bills[0]?.taxInclusiveAmountCents).toBe(1_234_500);
+    expect(result.bills[0]?.rows[0]?.quantity).toBe("2.5");
   });
 
   it("creates a manual checkpoint snapshot", async () => {
@@ -362,6 +427,41 @@ describe("ContractWorkbenchService", () => {
           })
         ]
       })
+    );
+  });
+
+  it("uses a serializable transaction and retries a checkpoint serialization conflict", async () => {
+    const tx = ownedVersionTx({
+      contractDraftCheckpoint: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: "ckpt-1", sequenceNo: 1 }),
+        deleteMany: jest.fn()
+      }
+    });
+    const transaction = jest
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error("serialization"), { code: "P2034" }))
+      .mockImplementationOnce(
+        (
+          callback: (transactionClient: typeof tx) => unknown,
+          options: { isolationLevel: string }
+        ) => {
+          expect(options.isolationLevel).toBe("Serializable");
+          return callback(tx);
+        }
+      );
+    const service = new ContractWorkbenchService(
+      { $transaction: transaction } as unknown as PrismaService,
+      audit as never
+    );
+
+    await service.createCheckpoint("version-1", "owner-1", {});
+
+    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(transaction).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      { isolationLevel: "Serializable" }
     );
   });
 
@@ -505,8 +605,10 @@ describe("ContractWorkbenchService", () => {
         findUnique: jest
           .fn()
           .mockResolvedValueOnce({ id: "contract-1", ownerUserId: "owner-1", voidedAt: null })
-          .mockResolvedValueOnce({ id: "contract-1", ownerUserId: "owner-1", voidedAt: new Date() }),
-        update: jest.fn().mockResolvedValue({ id: "contract-1" })
+          .mockResolvedValueOnce({ id: "contract-1", ownerUserId: "owner-1", voidedAt: new Date() })
+          .mockResolvedValueOnce({ id: "contract-1", ownerUserId: "owner-1", voidedAt: new Date() })
+          .mockResolvedValueOnce({ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractVersion: {
         findFirst: jest.fn().mockResolvedValue({ id: "version-1" })
@@ -520,18 +622,75 @@ describe("ContractWorkbenchService", () => {
     await service.voidDraft("contract-1", "owner-1", { reason: "重复" });
     await service.restoreDraft("contract-1", "owner-1");
 
-    expect(tx.contract.update).toHaveBeenNthCalledWith(
+    expect(tx.contract.updateMany).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
         data: expect.objectContaining({ voidedReason: "重复" })
       })
     );
-    expect(tx.contract.update).toHaveBeenNthCalledWith(
+    expect(tx.contract.updateMany).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         data: { voidedAt: null, voidedReason: null }
       })
     );
+  });
+
+  it("rejects void, restore, and transfer CAS conflicts without auditing", async () => {
+    const editableVersion = { findFirst: jest.fn().mockResolvedValue({ id: "version-1" }) };
+    const ownerContract = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "contract-1",
+        ownerUserId: "owner-1",
+        voidedAt: null
+      }),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 })
+    };
+    await expect(
+      makeService({
+        contract: ownerContract,
+        contractVersion: editableVersion
+      }).voidDraft("contract-1", "owner-1", { reason: "作废" })
+    ).rejects.toThrow("Contract draft state conflict");
+
+    await expect(
+      makeService({
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-1",
+            ownerUserId: "owner-1",
+            voidedAt: new Date()
+          }),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 })
+        },
+        contractVersion: editableVersion
+      }).restoreDraft("contract-1", "owner-1")
+    ).rejects.toThrow("Contract draft state conflict");
+
+    await expect(
+      makeService({
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-1",
+            ownerUserId: "owner-1",
+            voidedAt: null
+          }),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 })
+        },
+        contractVersion: editableVersion,
+        userPosition: {
+          findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
+        },
+        position: {
+          findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+        },
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ id: "owner-2", isActive: true })
+        }
+      }).transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
+    ).rejects.toThrow("Contract draft state conflict");
+
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it.each(["in_approval", "effective"])(
@@ -603,6 +762,60 @@ describe("ContractWorkbenchService", () => {
       service.transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
     ).rejects.toThrow("Contract has no editable draft version");
     expect(tx.contract.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", null],
+    ["inactive", { id: "owner-2", isActive: false }]
+  ])("rejects transfer to a %s user", async (_label, targetUser) => {
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        }),
+        updateMany: jest.fn()
+      },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue({ id: "version-1" }) },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+      },
+      user: { findUnique: jest.fn().mockResolvedValue(targetUser) }
+    };
+    const service = makeService(tx);
+
+    await expect(
+      service.transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
+    ).rejects.toThrow("Transfer target user must exist and be active");
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed runtime bodies with BadRequestException", async () => {
+    const service = makeService(ownedVersionTx());
+
+    await expect(service.saveDraft("version-1", "owner-1", null)).rejects.toMatchObject({
+      name: "BadRequestException"
+    });
+    await expect(
+      service.saveDraft("version-1", "owner-1", {
+        expectedRevision: 4,
+        draftData: {},
+        clauses: [{ key: "clause_1" }],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: 1
+      })
+    ).rejects.toMatchObject({ name: "BadRequestException" });
+    await expect(service.voidDraft("contract-1", "owner-1", null)).rejects.toMatchObject({
+      name: "BadRequestException"
+    });
+    await expect(
+      service.transferDraft("contract-1", "owner-1", { toUserId: 7 })
+    ).rejects.toMatchObject({ name: "BadRequestException" });
   });
 
   it("previews a contract-type change without mutating the draft", async () => {
@@ -852,7 +1065,7 @@ describe("ContractWorkbenchService", () => {
           draftRevision: 4,
           amountCents: 0n,
           pricingNature: "fixed_total",
-          amountSource: "manual",
+          amountSource: "bill_sum",
           amountAdjustmentReason: null,
           layoutTemplateVersionId: null,
           draftData: {
@@ -876,7 +1089,24 @@ describe("ContractWorkbenchService", () => {
           .mockResolvedValue({ id: "template-2", contractTypeKey: "service" })
       },
       contractBill: {
-        findMany: jest.fn().mockResolvedValue(bills),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce(bills)
+          .mockResolvedValueOnce([
+            bills[0],
+            {
+              id: "bill-changed-new",
+              billKey: "changed_bill",
+              amountRole: "included",
+              taxInclusiveAmountCents: 0n
+            },
+            {
+              id: "bill-added",
+              billKey: "added_bill",
+              amountRole: "provisional",
+              taxInclusiveAmountCents: 0n
+            }
+          ]),
         deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
         createMany: jest.fn().mockResolvedValue({ count: 2 }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -983,6 +1213,10 @@ describe("ContractWorkbenchService", () => {
       })
     );
     expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: { amountCents: 300n }
+    });
     expect(audit.record).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
