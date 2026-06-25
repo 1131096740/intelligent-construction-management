@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -10,12 +9,12 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { calculateBillRow, centsToSafeNumber } from "../money/decimal-money";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
+import { EDITABLE_STATUSES, loadOwnedEditableBill } from "./contract-bill-guards";
 import type {
   ReorderBillRowsDto,
   SaveBillRowDto
 } from "./dto/contract-bill.dto";
 
-const EDITABLE_STATUSES = ["draft", "approval_rejected"];
 const CANONICAL_DECIMAL = /^(0|[1-9]\d*)(\.\d+)?$/;
 
 @Injectable()
@@ -27,7 +26,7 @@ export class ContractBillService {
 
   addRow(billId: string, actorUserId: string, rawInput: unknown) {
     return this.prisma.$transaction(async (tx) => {
-      const { bill, version } = await this.loadOwnedEditableBill(tx, billId, actorUserId);
+      const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       const input = this.parseRowInput(rawInput, bill);
       await this.lockMutation(tx, bill, version, actorUserId, input.expectedBillRevision);
       const amounts = calculateBillRow({
@@ -66,7 +65,7 @@ export class ContractBillService {
     rawInput: unknown
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const { bill, version } = await this.loadOwnedEditableBill(tx, billId, actorUserId);
+      const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       const input = this.parseRowInput(rawInput, bill);
       const row = await this.findRow(tx, billId, rowKey);
       await this.lockMutation(tx, bill, version, actorUserId, input.expectedBillRevision);
@@ -104,7 +103,7 @@ export class ContractBillService {
     expectedBillRevision: number
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const { bill, version } = await this.loadOwnedEditableBill(tx, billId, actorUserId);
+      const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       this.assertExpectedRevision(expectedBillRevision);
       await this.findRow(tx, billId, rowKey);
       await this.lockMutation(tx, bill, version, actorUserId, expectedBillRevision);
@@ -118,7 +117,7 @@ export class ContractBillService {
 
   reorderRows(billId: string, actorUserId: string, rawInput: unknown) {
     return this.prisma.$transaction(async (tx) => {
-      const { bill, version } = await this.loadOwnedEditableBill(tx, billId, actorUserId);
+      const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       const input = this.parseReorderInput(rawInput);
       const rows = await tx.contractBillRow.findMany({
         where: { contractBillId: billId },
@@ -150,32 +149,6 @@ export class ContractBillService {
       }
       return this.finishMutation(tx, bill, version, actorUserId, "reorder", null);
     });
-  }
-
-  private async loadOwnedEditableBill(
-    tx: Prisma.TransactionClient,
-    billId: string,
-    actorUserId: string
-  ) {
-    const bill = await tx.contractBill.findUnique({ where: { id: billId } });
-    if (!bill) throw new NotFoundException("Contract bill not found");
-    if (bill.pricingMode !== "tax_inclusive" && bill.pricingMode !== "tax_exclusive") {
-      throw new BadRequestException("Contract bill pricing mode is invalid");
-    }
-    const version = await tx.contractVersion.findUnique({
-      where: { id: bill.contractVersionId }
-    });
-    if (!version) throw new NotFoundException("Contract draft version not found");
-    const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
-    if (!contract) throw new NotFoundException("Contract draft not found");
-    if (contract.ownerUserId !== actorUserId) {
-      throw new ForbiddenException("Only the contract draft owner may edit");
-    }
-    if (!EDITABLE_STATUSES.includes(version.status)) {
-      throw new BadRequestException("Contract draft is not editable");
-    }
-    if (contract.voidedAt) throw new BadRequestException("Contract draft is voided");
-    return { bill, version };
   }
 
   private async lockMutation(

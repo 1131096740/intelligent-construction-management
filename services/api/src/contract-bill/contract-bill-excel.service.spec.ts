@@ -276,6 +276,41 @@ describe("ContractBillExcelService", () => {
     );
   });
 
+  it("rejects merged cells in the data area", async () => {
+    const { service, rows, fileService } = billFixture();
+    const buffer = await buildWorkbookBuffer({
+      mergeDataCell: true,
+      rows: [
+        {
+          values: {
+            itemName: "钢筋",
+            unit: "t",
+            quantity: "1",
+            unitPrice: "1",
+            taxRatePercent: "0"
+          }
+        }
+      ]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-1", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-1",
+      mode: "append"
+    });
+
+    expect(preview.errors.length).toBeGreaterThan(0);
+    expect(preview.errors).toContainEqual(
+      expect.objectContaining({ sheet: DATA_SHEET, row: 3 })
+    );
+    expect(preview.errors[0].message).toMatch(/merged/i);
+    // 合并单元格的数据行不得落库。
+    expect(rows).toHaveLength(0);
+  });
+
   it("previews append, replace, and update-by-row-key modes", async () => {
     const existing = {
       id: "row-1",

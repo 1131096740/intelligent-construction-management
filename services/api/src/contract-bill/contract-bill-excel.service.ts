@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -13,8 +12,8 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { calculateBillRow, centsToSafeNumber } from "../money/decimal-money";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
+import { EDITABLE_STATUSES, loadOwnedEditableBill } from "./contract-bill-guards";
 
-const EDITABLE_STATUSES = ["draft", "approval_rejected"];
 const CANONICAL_DECIMAL = /^(0|[1-9]\d*)(\.\d+)?$/;
 const DATA_SHEET = "清单数据";
 const INSTRUCTION_SHEET = "填写说明";
@@ -100,7 +99,7 @@ export class ContractBillExcelService {
 
   async exportTemplate(billId: string, actorUserId: string) {
     const { bill } = await this.prisma.$transaction((tx) =>
-      this.loadOwnedEditableBill(tx, billId, actorUserId)
+      this.loadBillContext(tx, billId, actorUserId)
     );
     const columns = this.templateColumns(bill);
     const workbook = new ExcelJS.Workbook();
@@ -150,7 +149,7 @@ export class ContractBillExcelService {
 
     return this.prisma.$transaction(async (tx) => {
       // loadOwnedEditableBill 同时完成 owner + 可编辑状态校验；preview 不改动任何金额或行。
-      const { bill } = await this.loadOwnedEditableBill(tx, billId, actorUserId);
+      const { bill } = await this.loadBillContext(tx, billId, actorUserId);
       const buffer = (await this.files.getFileBuffer(fileId)).buffer;
       const existingRows = await tx.contractBillRow.findMany({
         where: { contractBillId: bill.id },
@@ -197,16 +196,14 @@ export class ContractBillExcelService {
       if (record.status !== "preview") {
         throw new BadRequestException("Contract bill import is not in a previewable state");
       }
-      if (record.createdByUserId !== actorUserId) {
-        throw new ForbiddenException("Only the import creator may apply it");
-      }
-
+      // 应用仅以“清单 owner + 草稿可编辑状态”为准（见 loadBillContext），不要求 applier 是导入创建者，
+      // 以兼容草稿转交（Task 9 transferDraft）后新 owner 应用旧 owner 创建的待应用导入。
       const preview = this.parseStoredPreview(record.preview);
       if (preview.errors.length > 0) {
         throw new BadRequestException("Contract bill import preview contains errors");
       }
 
-      const { bill, version } = await this.loadOwnedEditableBill(
+      const { bill, version } = await this.loadBillContext(
         tx,
         record.contractBillId,
         actorUserId
@@ -721,29 +718,13 @@ export class ContractBillExcelService {
 
   // ── Shared loaders ────────────────────────────────────────────────────
 
-  private async loadOwnedEditableBill(
+  // 复用共享的 owner + 可编辑状态校验，再投影成本服务使用的 BillContext。
+  private async loadBillContext(
     tx: Prisma.TransactionClient,
     billId: string,
     actorUserId: string
   ) {
-    const bill = await tx.contractBill.findUnique({ where: { id: billId } });
-    if (!bill) throw new NotFoundException("Contract bill not found");
-    if (bill.pricingMode !== "tax_inclusive" && bill.pricingMode !== "tax_exclusive") {
-      throw new BadRequestException("Contract bill pricing mode is invalid");
-    }
-    const version = await tx.contractVersion.findUnique({
-      where: { id: bill.contractVersionId }
-    });
-    if (!version) throw new NotFoundException("Contract draft version not found");
-    const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
-    if (!contract) throw new NotFoundException("Contract draft not found");
-    if (contract.ownerUserId !== actorUserId) {
-      throw new ForbiddenException("Only the contract draft owner may edit");
-    }
-    if (!EDITABLE_STATUSES.includes(version.status)) {
-      throw new BadRequestException("Contract draft is not editable");
-    }
-    if (contract.voidedAt) throw new BadRequestException("Contract draft is voided");
+    const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
     return {
       bill: {
         id: bill.id,
@@ -755,7 +736,11 @@ export class ContractBillExcelService {
         unitPriceScale: bill.unitPriceScale,
         schemaSnapshot: bill.schemaSnapshot
       },
-      version: { id: version.id, contractId: version.contractId, amountSource: version.amountSource }
+      version: {
+        id: version.id,
+        contractId: version.contractId,
+        amountSource: version.amountSource
+      }
     };
   }
 
