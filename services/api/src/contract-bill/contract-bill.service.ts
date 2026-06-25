@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { calculateBillRow, centsToSafeNumber } from "../money/decimal-money";
+import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import type {
   ReorderBillRowsDto,
   SaveBillRowDto
@@ -221,39 +222,7 @@ export class ContractBillService {
     action: "create" | "update" | "delete" | "reorder",
     rowKey: string | null
   ) {
-    const rows = await tx.contractBillRow.findMany({
-      where: { contractBillId: bill.id },
-      orderBy: { sortOrder: "asc" }
-    });
-    const totals = rows.reduce(
-      (sum, row) => ({
-        taxInclusiveAmountCents:
-          sum.taxInclusiveAmountCents + row.taxInclusiveAmountCents,
-        taxExclusiveAmountCents:
-          sum.taxExclusiveAmountCents + row.taxExclusiveAmountCents,
-        taxAmountCents: sum.taxAmountCents + row.taxAmountCents
-      }),
-      {
-        taxInclusiveAmountCents: 0n,
-        taxExclusiveAmountCents: 0n,
-        taxAmountCents: 0n
-      }
-    );
-    await tx.contractBill.update({ where: { id: bill.id }, data: totals });
-    if (version.amountSource === "bill_sum") {
-      const bills = await tx.contractBill.findMany({
-        where: { contractVersionId: bill.contractVersionId }
-      });
-      const amountCents = bills
-        .filter(
-          (item) => item.amountRole === "included" || item.amountRole === "provisional"
-        )
-        .reduce((sum, item) => sum + item.taxInclusiveAmountCents, 0n);
-      await tx.contractVersion.update({
-        where: { id: version.id },
-        data: { amountCents }
-      });
-    }
+    const rows = await recalculateBillAndContractAmount(tx, bill, version);
     await this.audit.record(tx, {
       actorUserId,
       action: `contract.bill.row.${action}`,
