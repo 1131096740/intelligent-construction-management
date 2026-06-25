@@ -1,8 +1,10 @@
 import {
+  degrees,
   PageSizes,
   PDFDocument,
   type PDFEmbeddedPage,
-  type PDFImage
+  type PDFImage,
+  type PDFPage
 } from "pdf-lib";
 
 export type PdfAttachmentType = "pdf" | "png" | "jpeg";
@@ -22,6 +24,11 @@ export interface NormalizedContractPdf {
 
 const [A4_WIDTH, A4_HEIGHT] = PageSizes.A4;
 const A4_TOLERANCE_POINTS = 2;
+export const MAX_TOTAL_INPUT_BYTES = 100 * 1024 * 1024;
+export const MAX_TOTAL_PAGES = 500;
+export const MAX_IMAGE_PIXELS = 100_000_000;
+
+class PdfNormalizationLimitError extends Error {}
 
 function near(value: number, expected: number): boolean {
   return Math.abs(value - expected) <= A4_TOLERANCE_POINTS;
@@ -39,36 +46,71 @@ function pageOrientation(
 function drawCenteredPage(
   document: PDFDocument,
   embeddedPage: PDFEmbeddedPage,
+  rotation: number,
   pageSizes: NormalizedContractPdf["pageSizes"]
 ): void {
-  const orientation = pageOrientation(embeddedPage.width, embeddedPage.height);
+  const quarterTurn = rotation === 90 || rotation === 270;
+  const visibleWidth = quarterTurn ? embeddedPage.height : embeddedPage.width;
+  const visibleHeight = quarterTurn ? embeddedPage.width : embeddedPage.height;
+  const orientation = pageOrientation(visibleWidth, visibleHeight);
   const [width, height] =
     orientation === "A4_landscape"
       ? [A4_HEIGHT, A4_WIDTH]
       : [A4_WIDTH, A4_HEIGHT];
-  const scale = Math.min(
-    width / embeddedPage.width,
-    height / embeddedPage.height
-  );
+  const scale = Math.min(width / visibleWidth, height / visibleHeight);
+  const centeredX = (width - visibleWidth * scale) / 2;
+  const centeredY = (height - visibleHeight * scale) / 2;
   const page = document.addPage([width, height]);
   page.drawPage(embeddedPage, {
-    x: (width - embeddedPage.width * scale) / 2,
-    y: (height - embeddedPage.height * scale) / 2,
+    x:
+      centeredX +
+      (rotation === 180 ? embeddedPage.width * scale : 0) +
+      (rotation === 270 ? embeddedPage.height * scale : 0),
+    y:
+      centeredY +
+      (rotation === 90 ? embeddedPage.width * scale : 0) +
+      (rotation === 180 ? embeddedPage.height * scale : 0),
     width: embeddedPage.width * scale,
-    height: embeddedPage.height * scale
+    height: embeddedPage.height * scale,
+    rotate: degrees(rotation === 90 ? -90 : rotation === 270 ? 90 : rotation)
   });
   pageSizes.push(orientation);
+}
+
+function normalizedRotation(page: PDFPage): number {
+  return ((page.getRotation().angle % 360) + 360) % 360;
 }
 
 async function appendPdf(
   document: PDFDocument,
   buffer: Buffer,
-  pageSizes: NormalizedContractPdf["pageSizes"]
+  pageSizes: NormalizedContractPdf["pageSizes"],
+  context: string
 ): Promise<void> {
-  const source = await PDFDocument.load(Uint8Array.from(buffer));
-  const embeddedPages = await document.embedPages(source.getPages());
-  for (const embeddedPage of embeddedPages) {
-    drawCenteredPage(document, embeddedPage, pageSizes);
+  const source = await PDFDocument.load(buffer);
+  const sourcePages = source.getPages();
+  if (pageSizes.length + sourcePages.length > MAX_TOTAL_PAGES) {
+    throw new PdfNormalizationLimitError(
+      pageSizes.length === 0
+        ? `${context} exceeds ${MAX_TOTAL_PAGES} pages`
+        : `PDF normalization exceeds ${MAX_TOTAL_PAGES} total pages while processing ${context}`
+    );
+  }
+
+  for (const sourcePage of sourcePages) {
+    const cropBox = sourcePage.getCropBox();
+    const embeddedPage = await document.embedPage(sourcePage, {
+      left: cropBox.x,
+      bottom: cropBox.y,
+      right: cropBox.x + cropBox.width,
+      top: cropBox.y + cropBox.height
+    });
+    drawCenteredPage(
+      document,
+      embeddedPage,
+      normalizedRotation(sourcePage),
+      pageSizes
+    );
   }
 }
 
@@ -111,16 +153,100 @@ function drawCenteredImage(
   pageSizes.push("A4_portrait");
 }
 
+function assertImagePixels(
+  attachment: PdfAttachment,
+  type: "png" | "jpeg",
+  context: string
+): void {
+  const { width, height } =
+    type === "png"
+      ? pngDimensions(attachment.buffer)
+      : jpegDimensions(attachment.buffer);
+  if (height !== 0 && width > MAX_IMAGE_PIXELS / height) {
+    throw new PdfNormalizationLimitError(
+      `${context} exceeds ${MAX_IMAGE_PIXELS} image pixels`
+    );
+  }
+}
+
+function pngDimensions(buffer: Buffer): { width: number; height: number } {
+  if (buffer.length < 24 || buffer.subarray(12, 16).toString("ascii") !== "IHDR") {
+    throw new Error("Invalid PNG");
+  }
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20)
+  };
+}
+
+function jpegDimensions(buffer: Buffer): { width: number; height: number } {
+  if (buffer[0] !== 0xff || buffer[1] !== 0xd8) throw new Error("Invalid JPEG");
+  let offset = 2;
+  while (offset + 8 < buffer.length) {
+    if (buffer[offset] !== 0xff) throw new Error("Invalid JPEG");
+    while (buffer[offset] === 0xff) offset += 1;
+    const marker = buffer[offset];
+    offset += 1;
+    if (marker === 0xd8 || marker === 0xd9) continue;
+    const length = buffer.readUInt16BE(offset);
+    if (length < 2 || offset + length > buffer.length) throw new Error("Invalid JPEG");
+    if (
+      marker >= 0xc0 &&
+      marker <= 0xcf &&
+      marker !== 0xc4 &&
+      marker !== 0xc8 &&
+      marker !== 0xcc
+    ) {
+      return {
+        height: buffer.readUInt16BE(offset + 3),
+        width: buffer.readUInt16BE(offset + 5)
+      };
+    }
+    offset += length;
+  }
+  throw new Error("Invalid JPEG");
+}
+
+function exactImageBytes(buffer: Buffer): Uint8Array | ArrayBuffer {
+  if (buffer.byteOffset === 0 && buffer.byteLength === buffer.buffer.byteLength) {
+    return buffer;
+  }
+  const bytes = new Uint8Array(buffer.byteLength);
+  bytes.set(buffer);
+  return bytes;
+}
+
 export async function normalizeContractPdf(
   generatedContractPdf: Buffer,
   attachments: readonly PdfAttachment[]
 ): Promise<NormalizedContractPdf> {
+  if (generatedContractPdf.length > MAX_TOTAL_INPUT_BYTES) {
+    throw new PdfNormalizationLimitError(
+      `Total PDF normalization input exceeds ${MAX_TOTAL_INPUT_BYTES} bytes`
+    );
+  }
+  let totalBytes = generatedContractPdf.length;
+  for (const attachment of attachments) {
+    if (attachment.buffer.length > MAX_TOTAL_INPUT_BYTES - totalBytes) {
+      throw new PdfNormalizationLimitError(
+        `Total PDF normalization input exceeds ${MAX_TOTAL_INPUT_BYTES} bytes`
+      );
+    }
+    totalBytes += attachment.buffer.length;
+  }
+
   const document = await PDFDocument.create();
   const pageSizes: NormalizedContractPdf["pageSizes"] = [];
 
   try {
-    await appendPdf(document, generatedContractPdf, pageSizes);
+    await appendPdf(
+      document,
+      generatedContractPdf,
+      pageSizes,
+      "Generated contract PDF"
+    );
   } catch (cause) {
+    if (cause instanceof PdfNormalizationLimitError) throw cause;
     throw new Error("Invalid generated contract PDF", { cause });
   }
 
@@ -135,9 +261,24 @@ export async function normalizeContractPdf(
 
     try {
       if (type === "pdf") {
-        await appendPdf(document, attachment.buffer, pageSizes);
+        await appendPdf(
+          document,
+          attachment.buffer,
+          pageSizes,
+          `${context[0].toUpperCase()}${context.slice(1)}`
+        );
       } else {
-        const bytes = Uint8Array.from(attachment.buffer);
+        if (pageSizes.length >= MAX_TOTAL_PAGES) {
+          throw new PdfNormalizationLimitError(
+            `PDF normalization exceeds ${MAX_TOTAL_PAGES} total pages while processing ${context[0].toUpperCase()}${context.slice(1)}`
+          );
+        }
+        assertImagePixels(
+          attachment,
+          type,
+          `${context[0].toUpperCase()}${context.slice(1)}`
+        );
+        const bytes = exactImageBytes(attachment.buffer);
         const image =
           type === "png"
             ? await document.embedPng(bytes)
@@ -145,6 +286,7 @@ export async function normalizeContractPdf(
         drawCenteredImage(document, image, pageSizes);
       }
     } catch (cause) {
+      if (cause instanceof PdfNormalizationLimitError) throw cause;
       throw new Error(
         `Failed to process ${context}`,
         { cause }

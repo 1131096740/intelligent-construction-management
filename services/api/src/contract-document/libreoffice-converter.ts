@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_ALLOWED_FONTS = "Noto Sans CJK SC,宋体,仿宋,黑体";
+export const CONVERSION_TIMEOUT_MS = 120_000;
 
 export interface ExecFileResult {
   stdout?: string | Buffer;
@@ -14,7 +16,8 @@ export interface ExecFileResult {
 
 export type ExecFileRunner = (
   command: string,
-  args: string[]
+  args: string[],
+  options: { timeout: number }
 ) => Promise<ExecFileResult>;
 
 export interface LibreOfficeConverterOptions {
@@ -22,19 +25,32 @@ export interface LibreOfficeConverterOptions {
   platform?: NodeJS.Platform;
 }
 
-const defaultRunner: ExecFileRunner = async (command, args) => {
-  const result = await execFileAsync(command, args);
+const defaultRunner: ExecFileRunner = async (command, args, options) => {
+  const result = await execFileAsync(command, args, options);
   return { stdout: result.stdout, stderr: result.stderr };
 };
 
-function uniqueTrimmed(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+function uniqueFonts(values: readonly string[]): string[] {
+  const fonts = new Map<string, string>();
+  for (const value of values) {
+    const font = value.trim();
+    if (font) fonts.set(font.toLocaleLowerCase(), font);
+  }
+  return [...fonts.values()];
 }
 
-function errorCode(cause: unknown): unknown {
-  return cause && typeof cause === "object" && "code" in cause
-    ? cause.code
+function errorProperty(cause: unknown, property: string): unknown {
+  return cause && typeof cause === "object" && property in cause
+    ? (cause as Record<string, unknown>)[property]
     : undefined;
+}
+
+function isTimeoutError(cause: unknown): boolean {
+  return (
+    errorProperty(cause, "code") === "ETIMEDOUT" ||
+    errorProperty(cause, "killed") === true ||
+    errorProperty(cause, "signal") === "SIGTERM"
+  );
 }
 
 async function assertFontsAvailable(
@@ -42,13 +58,15 @@ async function assertFontsAvailable(
   runner: ExecFileRunner,
   platform: NodeJS.Platform
 ): Promise<void> {
-  const fonts = uniqueTrimmed(declaredFonts);
+  const fonts = uniqueFonts(declaredFonts);
   const allowedFonts = new Set(
-    uniqueTrimmed(
+    uniqueFonts(
       (process.env.DOC_ALLOWED_FONTS ?? DEFAULT_ALLOWED_FONTS).split(",")
-    )
+    ).map((font) => font.toLocaleLowerCase())
   );
-  const disallowedFonts = fonts.filter((font) => !allowedFonts.has(font));
+  const disallowedFonts = fonts.filter(
+    (font) => !allowedFonts.has(font.toLocaleLowerCase())
+  );
   if (disallowedFonts.length) {
     throw new Error(`Disallowed document fonts: ${disallowedFonts.join(", ")}`);
   }
@@ -57,7 +75,11 @@ async function assertFontsAvailable(
   for (const font of fonts) {
     let result: ExecFileResult;
     try {
-      result = await runner("fc-match", ["--format", "%{family}", font]);
+      result = await runner(
+        "fc-match",
+        ["--format", "%{family}", font],
+        { timeout: CONVERSION_TIMEOUT_MS }
+      );
     } catch (cause) {
       throw new Error(`Failed to verify document font on conversion host: ${font}`, {
         cause
@@ -86,24 +108,37 @@ export async function convertDocxToPdf(
   );
 
   const tempDir = await mkdtemp(path.join(tmpdir(), "contract-doc-"));
+  const profilePath = path.join(tempDir, "profile");
   const inputPath = path.join(tempDir, "input.docx");
   const outputPath = path.join(tempDir, "input.pdf");
 
   try {
+    await mkdir(profilePath);
     await writeFile(inputPath, docxBuffer);
     try {
-      await runner(process.env.DOC_CONVERTER_COMMAND ?? "soffice", [
-        "--headless",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        tempDir,
-        inputPath
-      ]);
+      await runner(
+        process.env.DOC_CONVERTER_COMMAND ?? "soffice",
+        [
+          `-env:UserInstallation=${pathToFileURL(profilePath).href}`,
+          "--headless",
+          "--convert-to",
+          "pdf",
+          "--outdir",
+          tempDir,
+          inputPath
+        ],
+        { timeout: CONVERSION_TIMEOUT_MS }
+      );
     } catch (cause) {
-      if (errorCode(cause) === "ENOENT") {
+      if (errorProperty(cause, "code") === "ENOENT") {
         throw new Error(
           "DOC_CONVERTER_COMMAND is unavailable; install LibreOffice or set the executable path.",
+          { cause }
+        );
+      }
+      if (isTimeoutError(cause)) {
+        throw new Error(
+          `LibreOffice PDF conversion timed out after ${CONVERSION_TIMEOUT_MS / 1000} seconds`,
           { cause }
         );
       }

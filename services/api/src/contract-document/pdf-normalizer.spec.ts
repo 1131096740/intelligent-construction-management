@@ -1,12 +1,20 @@
 import {
   decodePDFRawStream,
+  degrees,
   PageSizes,
   PDFArray,
   PDFDocument,
+  PDFName,
+  PDFNumber,
   PDFRawStream,
   rgb
 } from "pdf-lib";
-import { normalizeContractPdf } from "./pdf-normalizer";
+import {
+  MAX_IMAGE_PIXELS,
+  MAX_TOTAL_INPUT_BYTES,
+  MAX_TOTAL_PAGES,
+  normalizeContractPdf
+} from "./pdf-normalizer";
 
 const [A4_WIDTH, A4_HEIGHT] = PageSizes.A4;
 const PNG = Buffer.from(
@@ -28,7 +36,7 @@ async function createPdf(pageSizes: Array<[number, number]>): Promise<Buffer> {
 }
 
 async function loadOutput(buffer: Buffer): Promise<PDFDocument> {
-  return PDFDocument.load(Uint8Array.from(buffer));
+  return PDFDocument.load(buffer);
 }
 
 function pageContent(document: PDFDocument, pageIndex: number): string {
@@ -45,6 +53,36 @@ function matrices(content: string): number[][] {
   return [...content.matchAll(/(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) cm/g)].map(
     (match) => match.slice(1).map(Number)
   );
+}
+
+function embeddedFormBoxes(document: PDFDocument): number[][] {
+  return document.context
+    .enumerateIndirectObjects()
+    .map(([, object]) => object)
+    .filter(
+      (object): object is PDFRawStream =>
+        object instanceof PDFRawStream &&
+        object.dict.get(PDFName.of("Subtype")) === PDFName.of("Form")
+    )
+    .map((stream) =>
+      stream.dict
+        .lookup(PDFName.of("BBox"), PDFArray)
+        .asArray()
+        .map((value) => (value as PDFNumber).asNumber())
+    );
+}
+
+async function createCroppedRotatedPdf(
+  cropBox: { x: number; y: number; width: number; height: number },
+  rotation: 0 | 90 | 270
+): Promise<Buffer> {
+  const document = await PDFDocument.create();
+  const page = document.addPage([1000, 1000]);
+  page.drawRectangle({ x: 0, y: 0, width: 1000, height: 1000, color: rgb(1, 0, 0) });
+  page.drawRectangle({ ...cropBox, color: rgb(0, 0.8, 0.2) });
+  page.setCropBox(cropBox.x, cropBox.y, cropBox.width, cropBox.height);
+  page.setRotation(degrees(rotation));
+  return Buffer.from(await document.save());
 }
 
 describe("contract PDF A4 normalizer", () => {
@@ -117,6 +155,64 @@ describe("contract PDF A4 normalizer", () => {
     expect(500 * scale).toBeLessThan(A4_WIDTH);
   });
 
+  it.each([
+    [90, "A4_landscape", A4_HEIGHT, A4_WIDTH, [0, -1, 1, 0]],
+    [270, "A4_portrait", A4_WIDTH, A4_HEIGHT, [0, 1, -1, 0]]
+  ] as const)(
+    "normalizes a %d-degree rotated page using its visible orientation",
+    async (rotation, pageSize, width, height, rotationMatrix) => {
+      const source =
+        rotation === 90
+          ? await createCroppedRotatedPdf(
+              { x: 0, y: 0, width: 300, height: 500 },
+              rotation
+            )
+          : await createCroppedRotatedPdf(
+              { x: 0, y: 0, width: 500, height: 300 },
+              rotation
+            );
+      const result = await normalizeContractPdf(source, []);
+      const output = await loadOutput(result.buffer);
+
+      expect(output.getPage(0).getSize()).toEqual({ width, height });
+      expect(result.pageSizes).toEqual([pageSize]);
+      expect(
+        matrices(pageContent(output, 0)).some((matrix) =>
+          rotationMatrix.every(
+            (value, index) => Math.abs(matrix[index] - value) < 0.000001
+          )
+        )
+      ).toBe(true);
+    }
+  );
+
+  it("clips to an offset CropBox before scaling and centering", async () => {
+    const result = await normalizeContractPdf(
+      await createCroppedRotatedPdf(
+        { x: 120, y: 240, width: 300, height: 600 },
+        0
+      ),
+      []
+    );
+    const output = await loadOutput(result.buffer);
+
+    expect(output.getPage(0).getSize()).toEqual({
+      width: A4_WIDTH,
+      height: A4_HEIGHT
+    });
+    expect(embeddedFormBoxes(output)).toContainEqual([120, 240, 420, 840]);
+    expect(matrices(pageContent(output, 0))).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining([
+          A4_HEIGHT / 600,
+          0,
+          0,
+          A4_HEIGHT / 600
+        ])
+      ])
+    );
+  });
+
   it("converts PNG and JPEG attachments into centered A4 pages", async () => {
     const result = await normalizeContractPdf(
       await createPdf([[A4_WIDTH, A4_HEIGHT]]),
@@ -177,5 +273,52 @@ describe("contract PDF A4 normalizer", () => {
         { name: "broken.pdf", type: "pdf", buffer: Buffer.from("%PDF-broken") }
       ])
     ).rejects.toThrow('Failed to process attachment 2 ("broken.pdf")');
+  });
+
+  it("rejects total bytes, page count, and image pixels over resource limits", async () => {
+    const contract = await createPdf([[A4_WIDTH, A4_HEIGHT]]);
+    const repeatedBuffer = Buffer.alloc(1024 * 1024);
+    const oversizedAttachments = Array.from(
+      { length: Math.floor(MAX_TOTAL_INPUT_BYTES / repeatedBuffer.length) + 1 },
+      (_, index) => ({
+        name: `chunk-${index}.pdf`,
+        type: "pdf" as const,
+        buffer: repeatedBuffer
+      })
+    );
+    await expect(
+      normalizeContractPdf(contract, oversizedAttachments)
+    ).rejects.toThrow(
+      `Total PDF normalization input exceeds ${MAX_TOTAL_INPUT_BYTES} bytes`
+    );
+
+    await expect(
+      normalizeContractPdf(
+        contract,
+        [
+          {
+            name: "too-many-pages.pdf",
+            type: "pdf",
+            buffer: await createPdf(
+              Array.from({ length: MAX_TOTAL_PAGES }, () => [1, 1])
+            )
+          }
+        ]
+      )
+    ).rejects.toThrow(
+      `PDF normalization exceeds ${MAX_TOTAL_PAGES} total pages while processing Attachment 1 ("too-many-pages.pdf")`
+    );
+
+    const oversizedPng = Buffer.alloc(24);
+    PNG.copy(oversizedPng, 0, 0, 16);
+    oversizedPng.writeUInt32BE(MAX_IMAGE_PIXELS + 1, 16);
+    oversizedPng.writeUInt32BE(1, 20);
+    await expect(
+      normalizeContractPdf(contract, [
+        { name: "huge.png", type: "png", buffer: oversizedPng }
+      ])
+    ).rejects.toThrow(
+      `Attachment 1 ("huge.png") exceeds ${MAX_IMAGE_PIXELS} image pixels`
+    );
   });
 });

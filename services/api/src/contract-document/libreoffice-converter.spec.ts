@@ -1,6 +1,8 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
+  CONVERSION_TIMEOUT_MS,
   convertDocxToPdf,
   type ExecFileRunner
 } from "./libreoffice-converter";
@@ -19,12 +21,16 @@ describe("LibreOffice converter", () => {
   it("calls LibreOffice with exact headless PDF conversion arguments", async () => {
     process.env.DOC_CONVERTER_COMMAND = "/opt/libreoffice/soffice";
     process.env.DOC_ALLOWED_FONTS = "Noto Sans CJK SC";
-    const calls: Array<{ command: string; args: string[] }> = [];
+    const calls: Array<{
+      command: string;
+      args: string[];
+      options: { timeout: number };
+    }> = [];
     let tempDir = "";
-    const runner: ExecFileRunner = async (command, args) => {
-      calls.push({ command, args });
-      tempDir = args[4];
-      expect(await readFile(args[5])).toEqual(Buffer.from("docx"));
+    const runner: ExecFileRunner = async (command, args, options) => {
+      calls.push({ command, args, options });
+      tempDir = args[5];
+      expect(await readFile(args[6])).toEqual(Buffer.from("docx"));
       await writeFile(path.join(tempDir, "input.pdf"), Buffer.from("%PDF-result"));
       return {};
     };
@@ -40,13 +46,15 @@ describe("LibreOffice converter", () => {
       {
         command: "/opt/libreoffice/soffice",
         args: [
+          `-env:UserInstallation=${pathToFileURL(path.join(tempDir, "profile")).href}`,
           "--headless",
           "--convert-to",
           "pdf",
           "--outdir",
           tempDir,
           path.join(tempDir, "input.docx")
-        ]
+        ],
+        options: { timeout: CONVERSION_TIMEOUT_MS }
       }
     ]);
     await expect(access(tempDir)).rejects.toMatchObject({ code: "ENOENT" });
@@ -60,7 +68,7 @@ describe("LibreOffice converter", () => {
       if (command === "fc-match") {
         return { stdout: args[2] };
       }
-      await writeFile(path.join(args[4], "input.pdf"), Buffer.from("%PDF"));
+      await writeFile(path.join(args[5], "input.pdf"), Buffer.from("%PDF"));
       return {};
     };
 
@@ -78,6 +86,22 @@ describe("LibreOffice converter", () => {
       }
     ]);
     expect(calls[2]?.command).toBe("soffice");
+  });
+
+  it("compares allowed, declared, and host font names case-insensitively", async () => {
+    process.env.DOC_ALLOWED_FONTS = " noto SANS cjk sc ";
+    const runner: ExecFileRunner = async (command, args) => {
+      if (command === "fc-match") return { stdout: "NOTO SANS CJK SC" };
+      await writeFile(path.join(args[5], "input.pdf"), Buffer.from("%PDF"));
+      return {};
+    };
+
+    await expect(
+      convertDocxToPdf(Buffer.from("docx"), [" Noto Sans CJK SC "], {
+        runner,
+        platform: "linux"
+      })
+    ).resolves.toEqual(Buffer.from("%PDF"));
   });
 
   it("rejects declared fonts outside DOC_ALLOWED_FONTS on every platform", async () => {
@@ -126,7 +150,7 @@ describe("LibreOffice converter", () => {
     const cause = Object.assign(new Error("conversion failed"), { code: 1 });
     let tempDir = "";
     const runner: ExecFileRunner = async (_command, args) => {
-      tempDir = args[4];
+      tempDir = args[5];
       throw cause;
     };
 
@@ -140,10 +164,34 @@ describe("LibreOffice converter", () => {
     await expect(access(tempDir)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it.each([
+    { killed: true },
+    { code: "ETIMEDOUT" },
+    { signal: "SIGTERM" }
+  ])("returns a clear timeout error with cause for %o", async (timeoutDetails) => {
+    const cause = Object.assign(new Error("conversion stopped"), timeoutDetails);
+    let tempDir = "";
+    const runner: ExecFileRunner = async (_command, args) => {
+      tempDir = args[5];
+      throw cause;
+    };
+
+    const conversion = convertDocxToPdf(Buffer.from("docx"), [], {
+      runner,
+      platform: "darwin"
+    });
+
+    await expect(conversion).rejects.toThrow(
+      "LibreOffice PDF conversion timed out after 120 seconds"
+    );
+    await expect(conversion).rejects.toMatchObject({ cause });
+    await expect(access(tempDir)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("returns a clear error when LibreOffice produces no PDF and cleans temp files", async () => {
     let tempDir = "";
     const runner: ExecFileRunner = async (_command, args) => {
-      tempDir = args[4];
+      tempDir = args[5];
       return {};
     };
 
