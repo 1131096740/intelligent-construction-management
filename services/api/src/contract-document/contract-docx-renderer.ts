@@ -58,19 +58,27 @@ function formatChineseYuan(value: bigint): string {
   let yuan = value;
   let groupIndex = 0;
   let result = "";
-  let needsZero = false;
+  let lowerGroupHasValue = false;
+  let lowerGroupNeedsLeadingZero = false;
+  let skippedEmptyGroup = false;
 
   while (yuan > 0n) {
     if (groupIndex >= GROUP_UNITS.length) {
       throw new Error("Money value exceeds the supported Chinese uppercase range");
     }
     const section = Number(yuan % 10_000n);
-    if (section !== 0) {
+    if (section === 0) {
+      if (lowerGroupHasValue) skippedEmptyGroup = true;
+    } else {
+      const needsZero =
+        lowerGroupHasValue && (skippedEmptyGroup || lowerGroupNeedsLeadingZero);
       result =
         `${formatChineseSection(section)}${GROUP_UNITS[groupIndex]}` +
         `${needsZero ? CHINESE_DIGITS[0] : ""}${result}`;
+      lowerGroupHasValue = true;
+      lowerGroupNeedsLeadingZero = section < 1_000;
+      skippedEmptyGroup = false;
     }
-    needsZero = section > 0 && section < 1_000;
     yuan /= 10_000n;
     groupIndex += 1;
   }
@@ -103,7 +111,8 @@ function assertRequiredValues(
     (key) =>
       !Object.prototype.hasOwnProperty.call(values, key) ||
       values[key] === null ||
-      values[key] === undefined
+      values[key] === undefined ||
+      (typeof values[key] === "string" && values[key].trim() === "")
   );
   if (missing.length) {
     throw new Error(`Missing required contract document values: ${missing.join(", ")}`);

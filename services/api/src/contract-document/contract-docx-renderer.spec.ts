@@ -153,6 +153,19 @@ describe("contract DOCX renderer", () => {
     );
   });
 
+  it.each([
+    ["contract.name", "   "],
+    ["document.watermark", "\t\n"]
+  ])("rejects blank required string value for %s", (key, value) => {
+    const template = createDocx(paragraph("{contract.name}|{document.watermark}"));
+
+    expect(() =>
+      renderContractDocx(template, {
+        values: requiredValues({ [key]: value })
+      })
+    ).toThrow(`Missing required contract document values: ${key}`);
+  });
+
   it("allows unresolved optional placeholders to render as empty strings", () => {
     const template = createDocx(paragraph("编号：{contract.code}。"));
     const result = renderContractDocx(template, {
@@ -192,6 +205,8 @@ describe("contract money formatting", () => {
     [100_100n, "人民币壹仟零壹元整"],
     [100_010_000n, "人民币壹佰万零壹佰元整"],
     [100_000_000n, "人民币壹佰万元整"],
+    [10_000_000_100n, "人民币壹亿零壹元整"],
+    [100_000_000_000_100n, "人民币壹兆零壹元整"],
     [1_234_567_890_12n, "人民币壹拾贰亿叁仟肆佰伍拾陆万柒仟捌佰玖拾元壹角贰分"]
   ])("formats %s cents as Chinese uppercase money", (cents, expected) => {
     expect(formatChineseUppercaseMoney(cents)).toBe(expected);
