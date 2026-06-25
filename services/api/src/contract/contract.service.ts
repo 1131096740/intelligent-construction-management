@@ -10,7 +10,7 @@ import { FileService } from "../file/file.service";
 import { centsToSafeNumber } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
-import { CreateContractDto, CreateContractDraftDto } from "./dto/create-contract.dto";
+import { CreateContractDraftDto } from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 
@@ -176,76 +176,6 @@ export class ContractService {
           contractTypeKey: input.contractTypeKey,
           businessTemplateVersionId: input.businessTemplateVersionId
         }
-      });
-
-      return { contract, version, terms };
-    });
-  }
-
-  /** @deprecated Use createDraft(CreateContractDraftDto, actorUserId) for workbench drafts. */
-  async createLegacyDraft(input: CreateContractDto) {
-    return this.prisma.$transaction(async (tx) => {
-      // 快照我方主体名称：合同效力期内名称固定，字典后续改名不影响历史合同/审批单。
-      let companyEntityName: string | null = null;
-      if (input.companyEntityId) {
-        const entity = await tx.companyEntity.findUnique({
-          where: { id: input.companyEntityId }
-        });
-        if (!entity) {
-          throw new Error("Company entity not found");
-        }
-        companyEntityName = entity.name;
-      }
-
-      const contract = await tx.contract.create({
-        data: {
-          projectId: input.projectId,
-          code: input.code,
-          name: input.name,
-          counterparty: input.counterparty,
-          companyEntityId: input.companyEntityId ?? null,
-          companyEntityName
-        }
-      });
-
-      const version = await tx.contractVersion.create({
-        data: {
-          contractId: contract.id,
-          versionNo: 1,
-          changeType: "original",
-          status: "draft",
-          amountCents: BigInt(input.amountCents),
-          draftData: {},
-          templateSnapshot: {},
-          clauseSnapshot: {}
-        }
-      });
-
-      const terms = await tx.paymentTermsVersion.create({
-        data: {
-          contractId: contract.id,
-          contractVersionId: version.id,
-          versionNo: 1,
-          status: "draft",
-          originalText: input.paymentTermsOriginalText
-        }
-      });
-
-      await tx.paymentTermsStage.createMany({
-        data: input.paymentStages.map((stage) => ({
-          paymentTermsVersionId: terms.id,
-          name: stage.name,
-          basis: stage.basis,
-          ratioBps: stage.ratioBps,
-          fixedAmountCents: stage.fixedAmountCents,
-          triggerEvent: stage.triggerEvent,
-          dueDays: stage.dueDays,
-          requiresInvoice: stage.requiresInvoice,
-          allowsEarlyPayment: stage.allowsEarlyPayment,
-          allowsInstallments: stage.allowsInstallments,
-          retentionBps: stage.retentionBps,
-          originalText: stage.originalText
-        }))
       });
 
       return { contract, version, terms };
