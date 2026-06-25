@@ -57,7 +57,7 @@ export class ContractReadService {
 
     const status = this.statusView(version.status);
 
-    const contractCode = contract.code ?? contract.id;
+    const contractCode = contract.code ?? contract.temporaryCode ?? contract.id;
     return {
       id: contractCode,
       contractVersionId: version.id,

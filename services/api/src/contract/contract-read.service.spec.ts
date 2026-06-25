@@ -1,6 +1,56 @@
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
+  it("displays temporaryCode when contract has no formal code and tolerates empty payment stages", async () => {
+    const prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-draft-1",
+          projectId: "project-1",
+          code: null,
+          temporaryCode: "DRAFT-20260625-ABCDEFGH",
+          name: "",
+          counterparty: ""
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-1",
+          name: "总部综合楼"
+        })
+      },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-version-draft-1",
+          versionNo: 1,
+          status: "draft",
+          amountCents: 0n
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-draft-1",
+          versionNo: 1,
+          status: "draft"
+        })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const detail = await service.getDetail("contract-draft-1");
+
+    expect(detail.id).toBe("DRAFT-20260625-ABCDEFGH");
+    expect(detail.title).toBe("DRAFT-20260625-ABCDEFGH · ");
+    expect(detail.paymentTermStages).toEqual([]);
+    expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥0.00" });
+  });
+
   it("builds contract detail from persisted contract version and payment terms", async () => {
     const prisma = {
       contract: {

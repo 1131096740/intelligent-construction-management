@@ -169,14 +169,9 @@ async function verifyUnauthenticatedIsRejected() {
 
 async function verifyWrongRoleIsRejected(tokens) {
   // 安全回归：合同部成员不能做用章审批（应为综合部主管），必须 403。
-  // 先建一个进入"待用章"状态的合同版本，再用错误岗位尝试用章。
+  // 先直接通过 Prisma 建一个可处置合同版本（进入"待用章"状态），再用错误岗位尝试用章。
   const codeSuffix = `${Date.now()}-rbac`;
-  const contractResult = await postJson(
-    "/contracts",
-    minimalContractPayload(codeSuffix),
-    tokens.contractStaff
-  );
-  const contractVersionId = contractResult.version.id;
+  const { versionId: contractVersionId } = await seedDisposableContract(codeSuffix);
 
   await postJson(
     `/contracts/${contractVersionId}/approval-submission`,
@@ -204,29 +199,67 @@ async function verifyWrongRoleIsRejected(tokens) {
   console.log(`ok wrong-role seal approval rejected (HTTP 403)`);
 }
 
-function minimalContractPayload(codeSuffix) {
-  return {
-    projectId: coreFlowSeedData.project.id,
-    code: `HT-P1-${codeSuffix}`,
-    name: "Phase1闭环验证合同",
-    counterparty: "Phase1验证供应商",
-    amountCents: 5000000,
-    paymentTermsOriginalText:
-      "当期结算款按已生效结算单金额的80%支付，结算归档确认生效后30天内付款。",
-    paymentStages: [
-      {
-        name: "当期结算款",
-        basis: "current_settlement",
-        ratioBps: 8000,
-        triggerEvent: "结算归档确认生效",
-        dueDays: 30,
-        requiresInvoice: true,
-        allowsEarlyPayment: false,
-        allowsInstallments: true,
-        originalText: "结算归档确认生效后30天内支付当期结算款80%。"
-      }
-    ]
-  };
+/**
+ * 直接通过 Prisma 创建可处置的合同/版本/付款条款行，用于 RBAC 和生命周期验证。
+ * POST /contracts 已替换为工作台草稿接口（需要已发布模板），不再用于验证辅助合同的创建。
+ */
+async function seedDisposableContract(codeSuffix) {
+  const { randomUUID } = require("crypto");
+  const contractId = randomUUID();
+  const versionId = randomUUID();
+  const termsId = randomUUID();
+
+  await prisma.contract.create({
+    data: {
+      id: contractId,
+      projectId: coreFlowSeedData.project.id,
+      code: `HT-P1-${codeSuffix}`,
+      name: "Phase1闭环验证合同",
+      counterparty: "Phase1验证供应商"
+    }
+  });
+
+  await prisma.contractVersion.create({
+    data: {
+      id: versionId,
+      contractId,
+      versionNo: 1,
+      changeType: "original",
+      status: "draft",
+      amountCents: BigInt(5000000),
+      draftData: {},
+      templateSnapshot: {},
+      clauseSnapshot: {}
+    }
+  });
+
+  await prisma.paymentTermsVersion.create({
+    data: {
+      id: termsId,
+      contractId,
+      contractVersionId: versionId,
+      versionNo: 1,
+      status: "draft",
+      originalText: "当期结算款按已生效结算单金额的80%支付，结算归档确认生效后30天内付款。"
+    }
+  });
+
+  await prisma.paymentTermsStage.create({
+    data: {
+      paymentTermsVersionId: termsId,
+      name: "当期结算款",
+      basis: "current_settlement",
+      ratioBps: 8000,
+      triggerEvent: "结算归档确认生效",
+      dueDays: 30,
+      requiresInvoice: true,
+      allowsEarlyPayment: false,
+      allowsInstallments: true,
+      originalText: "结算归档确认生效后30天内支付当期结算款80%。"
+    }
+  });
+
+  return { contractId, versionId, termsId };
 }
 
 async function verifyPhase1WriteLoop(tokens) {
@@ -235,12 +268,8 @@ async function verifyPhase1WriteLoop(tokens) {
   const payableAmountCents = 800000;
 
   // 合同：草稿 → 提交(合同部) → 审批(董事长) → 用章(综合部主管) → 归档上传(合同部) → 归档确认(合同部主管) → 生效
-  const contractResult = await postJson(
-    "/contracts",
-    minimalContractPayload(codeSuffix),
-    tokens.contractStaff
-  );
-  const contractVersionId = contractResult.version.id;
+  // 直接通过 Prisma 创建可处置合同行（POST /contracts 已替换为需要已发布模板的工作台接口）。
+  const { versionId: contractVersionId } = await seedDisposableContract(codeSuffix);
 
   let contractVersion = await postJson(
     `/contracts/${contractVersionId}/approval-submission`,
@@ -429,7 +458,7 @@ async function verifyPhase1WriteLoop(tokens) {
   }
 
   console.log(
-    `ok phase1 write loop ${contractResult.contract.code} -> ${settlement.code} -> ${payment.code}`
+    `ok phase1 write loop ${contractVersionId} -> ${settlement.code} -> ${payment.code}`
   );
 }
 

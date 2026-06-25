@@ -5,7 +5,7 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractReadService } from "./contract-read.service";
 import { ContractService } from "./contract.service";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
-import { CreateContractDto } from "./dto/create-contract.dto";
+import { CreateContractDraftDto } from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 
@@ -16,10 +16,13 @@ export class ContractController {
     private readonly contractRead: ContractReadService
   ) {}
 
-  // 创建合同草稿：策略表未定义 create 动作，草稿在进入受守的审批步骤前无业务效力，仅要求登录。
+  // 创建合同草稿：从已发布模板快照初始化工作台草稿，草稿在进入受守审批步骤前无业务效力，仅要求登录。
   @Post()
-  create(@Body() body: CreateContractDto) {
-    return this.contracts.createDraft(body);
+  create(
+    @Body() body: CreateContractDraftDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.contracts.createDraft(body, user.id);
   }
 
   @Get(":contractId")

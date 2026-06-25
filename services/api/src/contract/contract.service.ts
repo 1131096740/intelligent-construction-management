@@ -10,7 +10,7 @@ import { FileService } from "../file/file.service";
 import { centsToSafeNumber } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
-import { CreateContractDto } from "./dto/create-contract.dto";
+import { CreateContractDto, CreateContractDraftDto } from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 
@@ -60,7 +60,130 @@ export class ContractService {
     private readonly approvalForms?: ApprovalFormService
   ) {}
 
-  async createDraft(input: CreateContractDto) {
+  async createDraft(input: CreateContractDraftDto, actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // 校验模板版本：必须已发布才能用于新建草稿。
+      const templateVersion = await tx.contractBusinessTemplateVersion.findUnique({
+        where: { id: input.businessTemplateVersionId }
+      });
+
+      if (!templateVersion) {
+        throw new Error("Business template version not found");
+      }
+
+      if (templateVersion.status !== "published") {
+        throw new Error(
+          `Business template version is not published (status: ${templateVersion.status})`
+        );
+      }
+
+      // 模板快照：将模板五类 schema 整体冻结到合同版本中。
+      const templateSnapshot = {
+        fieldSchema: templateVersion.fieldSchema,
+        billSchema: templateVersion.billSchema,
+        clauseSchema: templateVersion.clauseSchema,
+        attachmentSchema: templateVersion.attachmentSchema,
+        validationSchema: templateVersion.validationSchema
+      };
+
+      // 从 fieldSchema 中初始化 draftData（每个字段取 defaultValue，否则为 null）。
+      const fields = (templateVersion.fieldSchema as Array<{ key: string; defaultValue?: unknown }>) ?? [];
+      const draftData: Record<string, unknown> = {};
+      for (const field of fields) {
+        draftData[field.key] = field.defaultValue ?? null;
+      }
+
+      // clauseSnapshot 初始化为模板 clauseSchema 中的所有条款定义。
+      const clauseSnapshot = (templateVersion.clauseSchema as unknown[]) ?? [];
+
+      // 生成临时编号：DRAFT-YYYYMMDD-<8位大写字符>
+      const now = new Date();
+      const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+      const randomPart = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8).padEnd(8, "X");
+      const temporaryCode = `DRAFT-${datePart}-${randomPart}`;
+
+      const contract = await tx.contract.create({
+        data: {
+          projectId: input.projectId,
+          contractTypeKey: input.contractTypeKey,
+          ownerUserId: actorUserId,
+          name: "",
+          counterparty: "",
+          code: null,
+          temporaryCode
+        }
+      });
+
+      const version = await tx.contractVersion.create({
+        data: {
+          contractId: contract.id,
+          versionNo: 1,
+          changeType: "original",
+          status: "draft",
+          amountCents: 0n,
+          businessTemplateVersionId: input.businessTemplateVersionId,
+          draftData: draftData as never,
+          templateSnapshot: templateSnapshot as never,
+          clauseSnapshot: clauseSnapshot as never
+        }
+      });
+
+      // 每个 bill 定义创建对应的 ContractBill，金额列保持默认 0。
+      const bills = (templateVersion.billSchema as Array<{
+        key: string;
+        name: string;
+        amountRole: string;
+        pricingMode: string;
+        quantityScale: number;
+        unitPriceScale: number;
+        columns: unknown[];
+      }>) ?? [];
+
+      if (bills.length > 0) {
+        await tx.contractBill.createMany({
+          data: bills.map((bill) => ({
+            contractVersionId: version.id,
+            billKey: bill.key,
+            name: bill.name,
+            amountRole: bill.amountRole,
+            pricingMode: bill.pricingMode,
+            quantityScale: bill.quantityScale,
+            unitPriceScale: bill.unitPriceScale,
+            schemaSnapshot: { columns: bill.columns } as never
+          }))
+        });
+      }
+
+      // 创建空的付款条款版本（无阶段），兼容后续审批流。
+      const terms = await tx.paymentTermsVersion.create({
+        data: {
+          contractId: contract.id,
+          contractVersionId: version.id,
+          versionNo: 1,
+          status: "draft",
+          originalText: ""
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.draft.create",
+        businessType: "contract",
+        businessId: contract.id,
+        metadata: {
+          temporaryCode,
+          projectId: input.projectId,
+          contractTypeKey: input.contractTypeKey,
+          businessTemplateVersionId: input.businessTemplateVersionId
+        }
+      });
+
+      return { contract, version, terms };
+    });
+  }
+
+  /** @deprecated Use createDraft(CreateContractDraftDto, actorUserId) for workbench drafts. */
+  async createLegacyDraft(input: CreateContractDto) {
     return this.prisma.$transaction(async (tx) => {
       // 快照我方主体名称：合同效力期内名称固定，字典后续改名不影响历史合同/审批单。
       let companyEntityName: string | null = null;

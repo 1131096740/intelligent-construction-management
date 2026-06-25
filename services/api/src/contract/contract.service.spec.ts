@@ -86,7 +86,7 @@ describe("ContractService", () => {
       ]
     };
 
-    const result = await service.createDraft(input);
+    const result = await service.createLegacyDraft(input);
 
     expect(result.version.versionNo).toBe(1);
     expect(result.version.status).toBe("draft");
@@ -110,6 +110,91 @@ describe("ContractService", () => {
     });
   });
 
+  it("creates a minimal owned workbench draft from a published template snapshot", async () => {
+    const templateSnapshot = {
+      fieldSchema: [{ key: "project_name", label: "项目名称", type: "text" }],
+      billSchema: [
+        {
+          key: "main_bill",
+          name: "主合同清单",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          columns: []
+        }
+      ],
+      clauseSchema: [{ key: "clause_1", title: "第一条", numberingMode: "automatic", content: {} }],
+      attachmentSchema: [],
+      validationSchema: []
+    };
+    const tx = {
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-version-1",
+          status: "published",
+          fieldSchema: templateSnapshot.fieldSchema,
+          billSchema: templateSnapshot.billSchema,
+          clauseSchema: templateSnapshot.clauseSchema,
+          attachmentSchema: templateSnapshot.attachmentSchema,
+          validationSchema: templateSnapshot.validationSchema
+        })
+      },
+      contract: {
+        create: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          temporaryCode: "DRAFT-20260625-ABCDEFGH",
+          code: null
+        })
+      },
+      contractVersion: {
+        create: jest.fn().mockResolvedValue({
+          id: "version-1",
+          versionNo: 1,
+          status: "draft"
+        })
+      },
+      contractBill: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      paymentTermsVersion: {
+        create: jest.fn().mockResolvedValue({
+          id: "terms-1",
+          versionNo: 1
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    const result = await service.createDraft(
+      {
+        projectId: "project-1",
+        contractTypeKey: "material_purchase",
+        businessTemplateVersionId: "template-version-1"
+      },
+      "contract-user"
+    );
+
+    expect(tx.contract.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        contractTypeKey: "material_purchase",
+        ownerUserId: "contract-user",
+        temporaryCode: expect.stringMatching(/^DRAFT-/),
+        code: null
+      })
+    });
+    expect(result.version.status).toBe("draft");
+  });
+
   it("snapshots the selected company entity name onto the contract", async () => {
     const tx = {
       companyEntity: {
@@ -125,7 +210,7 @@ describe("ContractService", () => {
     } as unknown as PrismaService;
     const service = new ContractService(prisma, audit as never);
 
-    await service.createDraft({
+    await service.createLegacyDraft({
       projectId: "project-1",
       code: "HT-002",
       name: "施工总承包合同",
