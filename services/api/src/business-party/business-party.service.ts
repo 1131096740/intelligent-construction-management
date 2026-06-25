@@ -249,17 +249,6 @@ export class BusinessPartyService {
   ) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertDraftOwner(tx, contractVersionId, actorUserId);
-      const approvalInstance = await tx.approvalInstance.findFirst({
-        where: {
-          businessType: "contract_version",
-          businessId: contractVersionId
-        }
-      });
-      if (approvalInstance) {
-        throw new BadRequestException(
-          "Contract party snapshots cannot be removed after approval submission"
-        );
-      }
       const existing = await tx.contractPartySnapshot.findFirst({
         where: { id: partySnapshotId, contractVersionId }
       });
