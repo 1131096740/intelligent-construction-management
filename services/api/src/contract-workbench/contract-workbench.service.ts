@@ -316,6 +316,7 @@ export class ContractWorkbenchService {
     if (!reason) throw new BadRequestException("Void reason is required");
     return this.prisma.$transaction(async (tx) => {
       const contract = await this.loadOwnedContract(tx, contractId, actorUserId);
+      await this.assertContractHasEditableVersion(tx, contractId);
       if (contract.voidedAt) throw new BadRequestException("Contract draft is already voided");
       const updated = await tx.contract.update({
         where: { id: contractId },
@@ -335,6 +336,7 @@ export class ContractWorkbenchService {
   async restoreDraft(contractId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       const contract = await this.loadOwnedContract(tx, contractId, actorUserId);
+      await this.assertContractHasEditableVersion(tx, contractId);
       if (!contract.voidedAt) throw new BadRequestException("Contract draft is not voided");
       const updated = await tx.contract.update({
         where: { id: contractId },
@@ -362,6 +364,7 @@ export class ContractWorkbenchService {
       await this.assertGlobalContractDirector(tx, actorUserId);
       const contract = await tx.contract.findUnique({ where: { id: contractId } });
       if (!contract) throw new NotFoundException("Contract draft not found");
+      await this.assertContractHasEditableVersion(tx, contractId);
       const updated = await tx.contract.update({
         where: { id: contractId },
         data: { ownerUserId: input.toUserId }
@@ -606,6 +609,19 @@ export class ContractWorkbenchService {
       throw new ForbiddenException("Only the contract draft owner may edit");
     }
     return contract;
+  }
+
+  private async assertContractHasEditableVersion(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ) {
+    const editableVersion = await tx.contractVersion.findFirst({
+      where: { contractId, status: { in: [...EDITABLE_STATUSES] } },
+      select: { id: true }
+    });
+    if (!editableVersion) {
+      throw new BadRequestException("Contract has no editable draft version");
+    }
   }
 
   private async assertCanView(

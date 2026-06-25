@@ -186,6 +186,9 @@ describe("ContractWorkbenchService", () => {
         }),
         update: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "owner-2" })
       },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "version-1" })
+      },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
       },
@@ -505,6 +508,9 @@ describe("ContractWorkbenchService", () => {
           .mockResolvedValueOnce({ id: "contract-1", ownerUserId: "owner-1", voidedAt: new Date() }),
         update: jest.fn().mockResolvedValue({ id: "contract-1" })
       },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "version-1" })
+      },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       position: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: { create: jest.fn() }
@@ -526,6 +532,77 @@ describe("ContractWorkbenchService", () => {
         data: { voidedAt: null, voidedReason: null }
       })
     );
+  });
+
+  it.each(["in_approval", "effective"])(
+    "rejects void when the contract only has a %s version",
+    async (status) => {
+      const tx = {
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-1",
+            ownerUserId: "owner-1",
+            voidedAt: null
+          }),
+          update: jest.fn()
+        },
+        contractVersion: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([{ status }])
+        }
+      };
+      const service = makeService(tx);
+
+      await expect(
+        service.voidDraft("contract-1", "owner-1", { reason: "作废" })
+      ).rejects.toThrow("Contract has no editable draft version");
+      expect(tx.contract.update).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects restore when the contract has no editable version", async () => {
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: new Date()
+        }),
+        update: jest.fn()
+      },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const service = makeService(tx);
+
+    await expect(service.restoreDraft("contract-1", "owner-1")).rejects.toThrow(
+      "Contract has no editable draft version"
+    );
+    expect(tx.contract.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects transfer when the contract has no editable version", async () => {
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1"
+        }),
+        update: jest.fn()
+      },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+      }
+    };
+    const service = makeService(tx);
+
+    await expect(
+      service.transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
+    ).rejects.toThrow("Contract has no editable draft version");
+    expect(tx.contract.update).not.toHaveBeenCalled();
   });
 
   it("previews a contract-type change without mutating the draft", async () => {
