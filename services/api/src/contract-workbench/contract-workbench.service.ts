@@ -72,7 +72,7 @@ interface BillSnapshot {
 
 interface CheckpointSnapshot {
   draftData: Record<string, unknown>;
-  clauses: ContractClauseDefinition[];
+  clauseSnapshot: ContractClauseDefinition[];
   pricingNature: string;
   amountSource: string;
   amountCents: string;
@@ -232,7 +232,7 @@ export class ContractWorkbenchService {
           name: input.name?.trim() || null,
           snapshot: this.toJson({
             draftData: version.draftData,
-            clauses: version.clauseSnapshot,
+            clauseSnapshot: version.clauseSnapshot,
             pricingNature: version.pricingNature,
             amountSource: version.amountSource,
             amountCents: version.amountCents.toString(),
@@ -285,7 +285,7 @@ export class ContractWorkbenchService {
         where: { id: contractVersionId, draftRevision: version.draftRevision },
         data: {
           draftData: this.toJson(snapshot.draftData),
-          clauseSnapshot: this.toJson(snapshot.clauses),
+          clauseSnapshot: this.toJson(snapshot.clauseSnapshot),
           pricingNature: snapshot.pricingNature,
           amountSource: snapshot.amountSource,
           amountCents: BigInt(snapshot.amountCents),
@@ -428,6 +428,9 @@ export class ContractWorkbenchService {
       const currentTemplate = this.parseTemplateSnapshot(version.templateSnapshot);
       const currentData = version.draftData as Record<string, unknown>;
       const oldFields = new Map(currentTemplate.fieldSchema.map((field) => [field.key, field]));
+      const targetFields = new Map(
+        targetTemplate.fieldSchema.map((field) => [field.key, field])
+      );
       const nextData = Object.fromEntries(
         targetTemplate.fieldSchema.map((field) => {
           const old = oldFields.get(field.key);
@@ -439,19 +442,60 @@ export class ContractWorkbenchService {
           ];
         })
       );
-      const removedValues = Object.fromEntries(
-        Object.entries(currentData).filter(([key]) => !Object.hasOwn(nextData, key))
+      const removedFields = Object.fromEntries(
+        Object.entries(currentData).filter(([key]) => {
+          const oldField = oldFields.get(key);
+          const targetField = targetFields.get(key);
+          return !targetField || !oldField || oldField.type !== targetField.type;
+        })
       );
+      const currentClauses = version.clauseSnapshot as unknown as ContractClauseDefinition[];
+      const currentClauseMap = new Map(currentClauses.map((clause) => [clause.key, clause]));
+      const targetClauseMap = new Map(
+        targetTemplate.clauseSchema.map((clause) => [clause.key, clause])
+      );
+      const nextClauses = targetTemplate.clauseSchema.map((targetClause) => {
+        const currentClause = currentClauseMap.get(targetClause.key);
+        return currentClause && this.clauseIsCompatible(currentClause, targetClause)
+          ? { ...targetClause, content: currentClause.content }
+          : targetClause;
+      });
+      const removedClauses = currentClauses.filter((currentClause) => {
+        const targetClause = targetClauseMap.get(currentClause.key);
+        return !targetClause || !this.clauseIsCompatible(currentClause, targetClause);
+      });
       const currentBills = await tx.contractBill.findMany({
         where: { contractVersionId }
       });
       const targetBills = new Map(targetTemplate.billSchema.map((bill) => [bill.key, bill]));
-      const replacedBillIds = currentBills
-        .filter((bill) => {
+      const replacedBills = currentBills.filter((bill) => {
           const targetBill = targetBills.get(bill.billKey);
           return !targetBill || !this.billIsCompatible(bill, targetBill);
-        })
-        .map((bill) => bill.id);
+        });
+      const replacedBillIds = replacedBills.map((bill) => bill.id);
+      const replacedBillRows = replacedBillIds.length
+        ? await tx.contractBillRow.findMany({
+            where: { contractBillId: { in: replacedBillIds } },
+            orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
+          })
+        : [];
+      const removedBills = replacedBills.map((bill) => ({
+        ...bill,
+        taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
+        taxExclusiveAmountCents: bill.taxExclusiveAmountCents.toString(),
+        taxAmountCents: bill.taxAmountCents.toString(),
+        rows: replacedBillRows
+          .filter((row) => row.contractBillId === bill.id)
+          .map((row) => ({
+            ...row,
+            quantity: row.quantity.toString(),
+            unitPrice: row.unitPrice.toString(),
+            taxRate: row.taxRate.toString(),
+            taxInclusiveAmountCents: row.taxInclusiveAmountCents.toString(),
+            taxExclusiveAmountCents: row.taxExclusiveAmountCents.toString(),
+            taxAmountCents: row.taxAmountCents.toString()
+          }))
+      }));
       const retainedKeys = new Set(
         currentBills
           .filter((bill) => {
@@ -470,7 +514,7 @@ export class ContractWorkbenchService {
           businessTemplateVersionId: target.id,
           templateSnapshot: this.toJson(targetTemplate),
           draftData: this.toJson(nextData),
-          clauseSnapshot: this.toJson(targetTemplate.clauseSchema),
+          clauseSnapshot: this.toJson(nextClauses),
           draftRevision: { increment: 1 }
         }
       });
@@ -517,7 +561,11 @@ export class ContractWorkbenchService {
           toBusinessTemplateVersionId: target.id,
           fromContractTypeKey: contract.contractTypeKey,
           toContractTypeKey: template.contractTypeKey,
-          removedValues: this.toJson(removedValues),
+          removedSnapshot: this.toJson({
+            fields: removedFields,
+            clauses: removedClauses,
+            bills: removedBills
+          }),
           revisionBefore: input.expectedRevision,
           revisionAfter: input.expectedRevision + 1
         }
@@ -756,6 +804,17 @@ export class ContractWorkbenchService {
     );
   }
 
+  private clauseIsCompatible(
+    current: ContractClauseDefinition,
+    target: ContractClauseDefinition
+  ) {
+    return (
+      current.key === target.key &&
+      current.numberingMode === target.numberingMode &&
+      current.standardClauseVersionId === target.standardClauseVersionId
+    );
+  }
+
   private billDefinitionData(bill: ContractBillDefinition) {
     return {
       name: bill.name,
@@ -829,7 +888,7 @@ export class ContractWorkbenchService {
     if (
       !snapshot.draftData ||
       typeof snapshot.draftData !== "object" ||
-      !Array.isArray(snapshot.clauses) ||
+      !Array.isArray(snapshot.clauseSnapshot) ||
       !Array.isArray(snapshot.bills) ||
       typeof snapshot.amountCents !== "string"
     ) {

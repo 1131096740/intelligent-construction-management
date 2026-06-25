@@ -49,6 +49,7 @@ describe("ContractWorkbenchService", () => {
           amountCents: 0n,
           pricingNature: "fixed_total",
           amountSource: "manual",
+          amountAdjustmentReason: null,
           layoutTemplateVersionId: null,
           draftData: { project_name: "旧" },
           templateSnapshot: TEMPLATE_SNAPSHOT,
@@ -277,19 +278,86 @@ describe("ContractWorkbenchService", () => {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 })
     };
     const tx = ownedVersionTx({
-      contractDraftCheckpoint: checkpoints
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          draftRevision: 4,
+          amountCents: 1_250_000n,
+          pricingNature: "provisional_total",
+          amountSource: "manual",
+          amountAdjustmentReason: "暂定金额",
+          layoutTemplateVersionId: "layout-1",
+          draftData: { project_name: "检查点项目" },
+          templateSnapshot: TEMPLATE_SNAPSHOT,
+          clauseSnapshot: [
+            {
+              key: "clause_1",
+              title: "第一条",
+              numberingMode: "automatic",
+              content: { text: "检查点条款" }
+            }
+          ],
+          businessTemplateVersionId: "template-version-1"
+        })
+      },
+      contractDraftCheckpoint: checkpoints,
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractBillId: "bill-1",
+            rowKey: "row-1",
+            sortOrder: 1,
+            itemCode: "A-1",
+            itemName: "钢材",
+            specification: "HRB400",
+            unit: "吨",
+            quantity: "10.500000",
+            unitPrice: "5000.000000",
+            taxRate: "0.130000",
+            taxInclusiveAmountCents: 5_250_000n,
+            taxExclusiveAmountCents: 4_646_018n,
+            taxAmountCents: 603_982n,
+            isProvisional: false,
+            settlementBasis: null,
+            customData: { batch: "A" }
+          }
+        ]),
+        createMany: jest.fn(),
+        deleteMany: jest.fn()
+      }
     });
     const service = makeService(tx);
 
     await service.createCheckpoint("version-1", "owner-1", { name: "保存点" });
 
-    expect(checkpoints.create).toHaveBeenCalledWith(
+    const snapshot = checkpoints.create.mock.calls[0][0].data.snapshot;
+    expect(snapshot).toEqual(
       expect.objectContaining({
-        data: expect.objectContaining({
-          contractVersionId: "version-1",
-          sequenceNo: 3,
-          name: "保存点"
-        })
+        draftData: { project_name: "检查点项目" },
+        clauseSnapshot: [
+          expect.objectContaining({ key: "clause_1", content: { text: "检查点条款" } })
+        ],
+        pricingNature: "provisional_total",
+        amountSource: "manual",
+        amountCents: "1250000",
+        amountAdjustmentReason: "暂定金额",
+        layoutTemplateVersionId: "layout-1",
+        bills: [
+          expect.objectContaining({
+            billKey: "main_bill",
+            taxInclusiveAmountCents: "1000000",
+            rows: [
+              expect.objectContaining({
+                rowKey: "row-1",
+                itemName: "钢材",
+                quantity: "10.500000",
+                taxInclusiveAmountCents: "5250000"
+              })
+            ]
+          })
+        ]
       })
     );
   });
@@ -319,34 +387,113 @@ describe("ContractWorkbenchService", () => {
   });
 
   it("restores a checkpoint as a new draft revision", async () => {
+    const checkpoints = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "ckpt-1",
+        contractVersionId: "version-1",
+        snapshot: {
+          draftData: { project_name: "回滚值" },
+          clauseSnapshot: [
+            {
+              key: "clause_1",
+              title: "第一条",
+              numberingMode: "automatic",
+              content: { text: "回滚条款" }
+            }
+          ],
+          pricingNature: "unit_price",
+          amountSource: "manual",
+          amountCents: "1000000",
+          amountAdjustmentReason: "回滚金额",
+          layoutTemplateVersionId: "layout-restored",
+          bills: [
+            {
+              billKey: "restored_bill",
+              name: "恢复清单",
+              amountRole: "included",
+              pricingMode: "tax_inclusive",
+              quantityScale: 3,
+              unitPriceScale: 4,
+              schemaSnapshot: { columns: [{ key: "item", type: "text" }] },
+              sourceExcelFileId: "excel-1",
+              revision: 3,
+              taxInclusiveAmountCents: "1000000",
+              taxExclusiveAmountCents: "884956",
+              taxAmountCents: "115044",
+              rows: [
+                {
+                  rowKey: "restored-row",
+                  sortOrder: 1,
+                  itemCode: "R-1",
+                  itemName: "恢复项",
+                  specification: null,
+                  unit: "项",
+                  quantity: "2.000000",
+                  unitPrice: "5000.000000",
+                  taxRate: "0.130000",
+                  taxInclusiveAmountCents: "1000000",
+                  taxExclusiveAmountCents: "884956",
+                  taxAmountCents: "115044",
+                  isProvisional: false,
+                  settlementBasis: null,
+                  customData: { restored: true }
+                }
+              ]
+            }
+          ]
+        }
+      }),
+      update: jest.fn(),
+      delete: jest.fn(),
+      deleteMany: jest.fn()
+    };
     const tx = ownedVersionTx({
-      contractDraftCheckpoint: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "ckpt-1",
-          contractVersionId: "version-1",
-          snapshot: {
-            draftData: { project_name: "回滚值" },
-            clauses: [],
-            pricingNature: "fixed_total",
-            amountSource: "manual",
-            amountCents: "1000000",
-            amountAdjustmentReason: null,
-            layoutTemplateVersionId: null,
-            bills: []
-          }
-        })
-      }
+      contractDraftCheckpoint: checkpoints
     });
     const service = makeService(tx);
 
     await service.restoreCheckpoint("version-1", "ckpt-1", "owner-1");
 
-    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "version-1", draftRevision: 4 },
-        data: expect.objectContaining({ draftRevision: { increment: 1 } })
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: "version-1", draftRevision: 4 },
+      data: {
+        draftData: { project_name: "回滚值" },
+        clauseSnapshot: [
+          expect.objectContaining({ key: "clause_1", content: { text: "回滚条款" } })
+        ],
+        pricingNature: "unit_price",
+        amountSource: "manual",
+        amountCents: 1_000_000n,
+        amountAdjustmentReason: "回滚金额",
+        layoutTemplateVersionId: "layout-restored",
+        draftRevision: { increment: 1 }
+      }
+    });
+    expect(tx.contractBill.deleteMany).toHaveBeenCalledWith({
+      where: { contractVersionId: "version-1" }
+    });
+    expect(tx.contractBill.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractVersionId: "version-1",
+        billKey: "restored_bill",
+        revision: 3,
+        taxInclusiveAmountCents: 1_000_000n
       })
-    );
+    });
+    expect(tx.contractBillRow.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          contractBillId: "bill-restored",
+          rowKey: "restored-row",
+          quantity: "2.000000",
+          taxInclusiveAmountCents: 1_000_000n,
+          customData: { restored: true }
+        })
+      ]
+    });
+    expect(checkpoints.update).not.toHaveBeenCalled();
+    expect(checkpoints.delete).not.toHaveBeenCalled();
+    expect(checkpoints.deleteMany).not.toHaveBeenCalled();
   });
 
   it("voids and restores a draft without physical deletion", async () => {
@@ -429,7 +576,196 @@ describe("ContractWorkbenchService", () => {
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
   });
 
-  it("keeps compatible fields and replaces incompatible bills when a type change is applied", async () => {
+  it("keeps compatible data and audits all data removed by a type change", async () => {
+    const currentTemplate = {
+      fieldSchema: [
+        { key: "project_name", label: "项目名称", type: "text" },
+        { key: "changed_type", label: "类型变化", type: "long_text" },
+        { key: "removed_field", label: "移除字段", type: "text" }
+      ],
+      billSchema: [
+        {
+          key: "compatible_bill",
+          name: "兼容清单",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          columns: [{ key: "item", label: "项目", type: "text" }]
+        },
+        {
+          key: "changed_bill",
+          name: "变化清单",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          columns: [{ key: "old", label: "旧列", type: "text" }]
+        },
+        {
+          key: "removed_bill",
+          name: "移除清单",
+          amountRole: "reference",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          columns: []
+        }
+      ],
+      clauseSchema: [
+        {
+          key: "kept_clause",
+          title: "保留条款",
+          numberingMode: "automatic",
+          content: { text: "模板旧默认" }
+        },
+        {
+          key: "changed_clause",
+          title: "变化条款",
+          numberingMode: "fixed",
+          content: { text: "旧定义" }
+        },
+        {
+          key: "removed_clause",
+          title: "移除条款",
+          numberingMode: "automatic",
+          content: { text: "将移除" }
+        }
+      ],
+      attachmentSchema: [],
+      validationSchema: []
+    };
+    const currentClauses = [
+      {
+        key: "kept_clause",
+        title: "保留条款",
+        numberingMode: "automatic",
+        content: { text: "用户编辑内容" }
+      },
+      {
+        key: "changed_clause",
+        title: "变化条款",
+        numberingMode: "fixed",
+        content: { text: "不兼容旧内容" }
+      },
+      {
+        key: "removed_clause",
+        title: "移除条款",
+        numberingMode: "automatic",
+        content: { text: "被移除内容" }
+      }
+    ];
+    const targetTemplate = {
+      id: "template-version-2",
+      templateId: "template-2",
+      status: "published",
+      fieldSchema: [
+        { key: "project_name", label: "项目名称", type: "text" },
+        { key: "changed_type", label: "类型变化", type: "number", defaultValue: 7 },
+        { key: "new_field", label: "新增字段", type: "text", defaultValue: "默认值" }
+      ],
+      billSchema: [
+        {
+          key: "compatible_bill",
+          name: "兼容清单新名称",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          columns: [{ key: "item", label: "项目", type: "text" }]
+        },
+        {
+          key: "changed_bill",
+          name: "变化清单新定义",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          columns: [{ key: "new", label: "新列", type: "text" }]
+        },
+        {
+          key: "added_bill",
+          name: "新增清单",
+          amountRole: "provisional",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          columns: []
+        }
+      ],
+      clauseSchema: [
+        {
+          key: "kept_clause",
+          title: "保留条款新标题",
+          numberingMode: "automatic",
+          content: { text: "目标默认不应覆盖用户内容" }
+        },
+        {
+          key: "changed_clause",
+          title: "变化条款",
+          numberingMode: "automatic",
+          content: { text: "不兼容后使用目标默认" }
+        },
+        {
+          key: "added_clause",
+          title: "新增条款",
+          numberingMode: "automatic",
+          content: { text: "新增默认" }
+        }
+      ],
+      attachmentSchema: [],
+      validationSchema: []
+    };
+    const bills = [
+      {
+        id: "bill-compatible",
+        contractVersionId: "version-1",
+        billKey: "compatible_bill",
+        name: "兼容清单",
+        amountRole: "included",
+        pricingMode: "tax_inclusive",
+        quantityScale: 2,
+        unitPriceScale: 2,
+        schemaSnapshot: { columns: [{ key: "item", label: "项目", type: "text" }] },
+        sourceExcelFileId: null,
+        revision: 2,
+        taxInclusiveAmountCents: 300n,
+        taxExclusiveAmountCents: 265n,
+        taxAmountCents: 35n
+      },
+      {
+        id: "bill-changed",
+        contractVersionId: "version-1",
+        billKey: "changed_bill",
+        name: "变化清单",
+        amountRole: "included",
+        pricingMode: "tax_inclusive",
+        quantityScale: 2,
+        unitPriceScale: 2,
+        schemaSnapshot: { columns: [{ key: "old", label: "旧列", type: "text" }] },
+        sourceExcelFileId: "old.xlsx",
+        revision: 4,
+        taxInclusiveAmountCents: 200n,
+        taxExclusiveAmountCents: 177n,
+        taxAmountCents: 23n
+      },
+      {
+        id: "bill-removed",
+        contractVersionId: "version-1",
+        billKey: "removed_bill",
+        name: "移除清单",
+        amountRole: "reference",
+        pricingMode: "tax_inclusive",
+        quantityScale: 2,
+        unitPriceScale: 2,
+        schemaSnapshot: { columns: [] },
+        sourceExcelFileId: null,
+        revision: 1,
+        taxInclusiveAmountCents: 100n,
+        taxExclusiveAmountCents: 88n,
+        taxAmountCents: 12n
+      }
+    ];
     const tx = ownedVersionTx({
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -440,36 +776,22 @@ describe("ContractWorkbenchService", () => {
           amountCents: 0n,
           pricingNature: "fixed_total",
           amountSource: "manual",
+          amountAdjustmentReason: null,
           layoutTemplateVersionId: null,
-          draftData: { project_name: "保留", amount_note: "将丢失" },
-          templateSnapshot: TEMPLATE_SNAPSHOT,
-          clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema,
+          draftData: {
+            project_name: "保留",
+            changed_type: "旧文本",
+            removed_field: "被删除"
+          },
+          templateSnapshot: currentTemplate,
+          clauseSnapshot: currentClauses,
           businessTemplateVersionId: "template-version-1"
         }),
         update: jest.fn().mockResolvedValue({ id: "version-1" }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractBusinessTemplateVersion: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "template-version-2",
-          templateId: "template-2",
-          status: "published",
-          fieldSchema: [{ key: "project_name", label: "项目名称", type: "text" }],
-          billSchema: [
-            {
-              key: "settlement_bill",
-              name: "结算清单",
-              amountRole: "included",
-              pricingMode: "tax_inclusive",
-              quantityScale: 2,
-              unitPriceScale: 2,
-              columns: []
-            }
-          ],
-          clauseSchema: [],
-          attachmentSchema: [],
-          validationSchema: []
-        })
+        findUnique: jest.fn().mockResolvedValue(targetTemplate)
       },
       contractBusinessTemplate: {
         findUnique: jest
@@ -477,24 +799,53 @@ describe("ContractWorkbenchService", () => {
           .mockResolvedValue({ id: "template-2", contractTypeKey: "service" })
       },
       contractBill: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: "bill-1",
-            billKey: "main_bill",
-            amountRole: "included",
-            pricingMode: "tax_inclusive",
-            quantityScale: 2,
-            unitPriceScale: 2,
-            schemaSnapshot: { columns: [] },
-            taxInclusiveAmountCents: 0n
-          }
-        ]),
-        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
-        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue(bills),
+        deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+        createMany: jest.fn().mockResolvedValue({ count: 2 }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractBillRow: {
-        deleteMany: jest.fn().mockResolvedValue({ count: 0 })
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "row-changed",
+            contractBillId: "bill-changed",
+            rowKey: "changed-row",
+            sortOrder: 1,
+            itemCode: null,
+            itemName: "变化项",
+            specification: null,
+            unit: "项",
+            quantity: "1.000000",
+            unitPrice: "2.000000",
+            taxRate: "0.130000",
+            taxInclusiveAmountCents: 200n,
+            taxExclusiveAmountCents: 177n,
+            taxAmountCents: 23n,
+            isProvisional: false,
+            settlementBasis: null,
+            customData: { old: true }
+          },
+          {
+            id: "row-removed",
+            contractBillId: "bill-removed",
+            rowKey: "removed-row",
+            sortOrder: 1,
+            itemCode: null,
+            itemName: "移除项",
+            specification: null,
+            unit: "项",
+            quantity: "1.000000",
+            unitPrice: "1.000000",
+            taxRate: "0.130000",
+            taxInclusiveAmountCents: 100n,
+            taxExclusiveAmountCents: 88n,
+            taxAmountCents: 12n,
+            isProvisional: false,
+            settlementBasis: null,
+            customData: {}
+          }
+        ]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 2 })
       },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
@@ -515,18 +866,96 @@ describe("ContractWorkbenchService", () => {
     });
 
     const updateManyCall = tx.contractVersion.updateMany.mock.calls[0][0];
-    expect(updateManyCall.data.draftData).toEqual(
-      expect.objectContaining({ project_name: "保留" })
+    expect(updateManyCall.data.draftData).toEqual({
+      project_name: "保留",
+      changed_type: 7,
+      new_field: "默认值"
+    });
+    expect(updateManyCall.data.clauseSnapshot).toEqual([
+      expect.objectContaining({
+        key: "kept_clause",
+        title: "保留条款新标题",
+        content: { text: "用户编辑内容" }
+      }),
+      expect.objectContaining({
+        key: "changed_clause",
+        content: { text: "不兼容后使用目标默认" }
+      }),
+      expect.objectContaining({
+        key: "added_clause",
+        content: { text: "新增默认" }
+      })
+    ]);
+    expect(tx.contractBillRow.deleteMany).toHaveBeenCalledWith({
+      where: { contractBillId: { in: ["bill-changed", "bill-removed"] } }
+    });
+    expect(tx.contractBill.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["bill-changed", "bill-removed"] } }
+    });
+    expect(tx.contractBill.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { contractVersionId: "version-1", billKey: "compatible_bill" }
+      })
     );
-    expect(updateManyCall.data.draftData).not.toHaveProperty("amount_note");
-    expect(tx.contractBill.deleteMany).toHaveBeenCalled();
     expect(tx.contractBill.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.arrayContaining([
-          expect.objectContaining({ billKey: "settlement_bill" })
+          expect.objectContaining({ billKey: "changed_bill" }),
+          expect.objectContaining({ billKey: "added_bill" })
         ])
       })
     );
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          removedSnapshot: {
+            fields: {
+              changed_type: "旧文本",
+              removed_field: "被删除"
+            },
+            clauses: [
+              expect.objectContaining({
+                key: "changed_clause",
+                content: { text: "不兼容旧内容" }
+              }),
+              expect.objectContaining({
+                key: "removed_clause",
+                content: { text: "被移除内容" }
+              })
+            ],
+            bills: [
+              expect.objectContaining({
+                id: "bill-changed",
+                billKey: "changed_bill",
+                rows: [
+                  expect.objectContaining({
+                    rowKey: "changed-row",
+                    itemName: "变化项",
+                    taxInclusiveAmountCents: "200"
+                  })
+                ]
+              }),
+              expect.objectContaining({
+                id: "bill-removed",
+                billKey: "removed_bill",
+                rows: [
+                  expect.objectContaining({
+                    rowKey: "removed-row",
+                    itemName: "移除项",
+                    taxInclusiveAmountCents: "100"
+                  })
+                ]
+              })
+            ]
+          }
+        })
+      })
+    );
+    expect(
+      tx.contractBill.deleteMany.mock.calls[0][0].where.id.in
+    ).not.toContain("bill-compatible");
   });
 
   it("throws a draft revision conflict when expectedRevision is stale", async () => {
