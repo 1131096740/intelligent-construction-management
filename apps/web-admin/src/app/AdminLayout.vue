@@ -19,6 +19,12 @@
           合同台账
         </t-menu-item>
         <t-menu-item
+          value="/contract-templates"
+          @click="go('/contract-templates')"
+        >
+          合同模板
+        </t-menu-item>
+        <t-menu-item
           value="/settlements"
           @click="go('/settlements')"
         >

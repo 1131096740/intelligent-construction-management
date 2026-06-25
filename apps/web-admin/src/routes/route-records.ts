@@ -17,8 +17,20 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/contracts/ContractListPage.vue")
       },
       {
+        path: "contracts/new",
+        component: () => import("../pages/contracts/ContractWorkbenchPage.vue")
+      },
+      {
+        path: "contracts/:contractId/workbench",
+        component: () => import("../pages/contracts/ContractWorkbenchPage.vue")
+      },
+      {
         path: "contracts/:contractId",
         component: () => import("../pages/contracts/ContractDetailPage.vue")
+      },
+      {
+        path: "contract-templates",
+        component: () => import("../pages/contract-templates/ContractTemplateListPage.vue")
       },
       {
         path: "settlements",
