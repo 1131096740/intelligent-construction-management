@@ -206,7 +206,11 @@ export class ContractWorkbenchService {
       }
 
       const updated = await tx.contractVersion.updateMany({
-        where: { id: contractVersionId, draftRevision: input.expectedRevision },
+        where: {
+          id: contractVersionId,
+          draftRevision: input.expectedRevision,
+          status: { in: [...EDITABLE_STATUSES] }
+        },
         data: {
           draftData: this.toJson(input.draftData),
           clauseSnapshot: this.toJson(input.clauses),
@@ -219,6 +223,7 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
+      await this.assertEditableParentCas(tx, version.contractId, actorUserId);
 
       await this.audit.record(tx, {
         actorUserId,
@@ -317,7 +322,11 @@ export class ContractWorkbenchService {
       }
       const snapshot = this.parseCheckpoint(checkpoint.snapshot);
       const updated = await tx.contractVersion.updateMany({
-        where: { id: contractVersionId, draftRevision: version.draftRevision },
+        where: {
+          id: contractVersionId,
+          draftRevision: version.draftRevision,
+          status: { in: [...EDITABLE_STATUSES] }
+        },
         data: {
           draftData: this.toJson(snapshot.draftData),
           clauseSnapshot: this.toJson(snapshot.clauseSnapshot),
@@ -330,6 +339,7 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
+      await this.assertEditableParentCas(tx, version.contractId, actorUserId);
       await this.replaceBillsFromSnapshot(tx, contractVersionId, snapshot.bills);
       await this.audit.record(tx, {
         actorUserId,
@@ -350,9 +360,9 @@ export class ContractWorkbenchService {
 
   async voidDraft(contractId: string, actorUserId: string, rawInput: unknown) {
     const { reason } = this.parseVoidInput(rawInput);
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableWithRetry(async (tx) => {
       await this.loadOwnedContract(tx, contractId, actorUserId);
-      await this.assertContractHasEditableVersion(tx, contractId);
+      await this.assertEditableVersionGate(tx, contractId);
       const updated = await tx.contract.updateMany({
         where: { id: contractId, ownerUserId: actorUserId, voidedAt: null },
         data: { voidedAt: new Date(), voidedReason: reason }
@@ -370,9 +380,9 @@ export class ContractWorkbenchService {
   }
 
   async restoreDraft(contractId: string, actorUserId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableWithRetry(async (tx) => {
       await this.loadOwnedContract(tx, contractId, actorUserId);
-      await this.assertContractHasEditableVersion(tx, contractId);
+      await this.assertEditableVersionGate(tx, contractId);
       const updated = await tx.contract.updateMany({
         where: { id: contractId, ownerUserId: actorUserId, voidedAt: { not: null } },
         data: { voidedAt: null, voidedReason: null }
@@ -394,11 +404,11 @@ export class ContractWorkbenchService {
     rawInput: unknown
   ) {
     const input = this.parseTransferInput(rawInput);
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableWithRetry(async (tx) => {
       await this.assertGlobalContractDirector(tx, actorUserId);
       const contract = await tx.contract.findUnique({ where: { id: contractId } });
       if (!contract) throw new NotFoundException("Contract draft not found");
-      await this.assertContractHasEditableVersion(tx, contractId);
+      await this.assertEditableVersionGate(tx, contractId);
       const targetUser = await tx.user.findUnique({ where: { id: input.toUserId } });
       if (!targetUser?.isActive) {
         throw new BadRequestException("Transfer target user must exist and be active");
@@ -552,7 +562,11 @@ export class ContractWorkbenchService {
       );
 
       const updated = await tx.contractVersion.updateMany({
-        where: { id: contractVersionId, draftRevision: input.expectedRevision },
+        where: {
+          id: contractVersionId,
+          draftRevision: input.expectedRevision,
+          status: { in: [...EDITABLE_STATUSES] }
+        },
         data: {
           businessTemplateVersionId: target.id,
           templateSnapshot: this.toJson(targetTemplate),
@@ -562,6 +576,7 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
+      await this.assertEditableParentCas(tx, contract.id, actorUserId);
 
       const template = await tx.contractBusinessTemplate.findUnique({
         where: { id: target.templateId }
@@ -662,16 +677,34 @@ export class ContractWorkbenchService {
     return contract;
   }
 
-  private async assertContractHasEditableVersion(
+  private async assertEditableVersionGate(
     tx: Prisma.TransactionClient,
     contractId: string
   ) {
-    const editableVersion = await tx.contractVersion.findFirst({
+    const editableVersions = await tx.contractVersion.updateMany({
       where: { contractId, status: { in: [...EDITABLE_STATUSES] } },
-      select: { id: true }
+      data: { draftRevision: { increment: 0 } }
     });
-    if (!editableVersion) {
+    if (editableVersions.count === 0) {
       throw new BadRequestException("Contract has no editable draft version");
+    }
+  }
+
+  private async assertEditableParentCas(
+    tx: Prisma.TransactionClient,
+    contractId: string,
+    actorUserId: string
+  ) {
+    const parent = await tx.contract.updateMany({
+      where: {
+        id: contractId,
+        ownerUserId: actorUserId,
+        voidedAt: null
+      },
+      data: { ownerUserId: actorUserId }
+    });
+    if (parent.count !== 1) {
+      throw new BadRequestException("Contract draft revision/status conflict");
     }
   }
 
@@ -1175,7 +1208,9 @@ export class ContractWorkbenchService {
   }
 
   private assertCas(count: number) {
-    if (count !== 1) throw new BadRequestException("Contract draft revision conflict");
+    if (count !== 1) {
+      throw new BadRequestException("Contract draft revision/status conflict");
+    }
   }
 
   private assertLifecycleCas(count: number) {

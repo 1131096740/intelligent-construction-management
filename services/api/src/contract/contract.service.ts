@@ -247,14 +247,37 @@ export class ContractService {
         throw new Error("Contract version not found");
       }
 
-      if (version.status !== "draft") {
-        throw new Error(`Cannot submit contract version from status ${version.status}`);
+      const contract = await tx.contract.findUnique({
+        where: { id: version.contractId }
+      });
+      if (!contract) {
+        throw new Error("Contract not found");
+      }
+      if (contract.voidedAt) {
+        throw new Error("Cannot submit a voided contract");
+      }
+      if (contract.ownerUserId && contract.ownerUserId !== actorUserId) {
+        throw new Error("Only the contract owner can submit approval");
       }
 
-      const updated = await tx.contractVersion.update({
-        where: { id: version.id },
+      const submitted = await tx.contractVersion.updateMany({
+        where: { id: version.id, status: "draft" },
         data: { status: "in_approval" }
       });
+      if (submitted.count !== 1) {
+        throw new Error("Contract approval submission conflict");
+      }
+      const parentGate = await tx.contract.updateMany({
+        where: {
+          id: contract.id,
+          ownerUserId: contract.ownerUserId,
+          voidedAt: null
+        },
+        data: { ownerUserId: contract.ownerUserId }
+      });
+      if (parentGate.count !== 1) {
+        throw new Error("Contract approval submission conflict");
+      }
 
       await tx.approvalInstance.create({
         data: {
@@ -279,7 +302,7 @@ export class ContractService {
         }
       });
 
-      return updated;
+      return { ...version, status: "in_approval" };
     });
   }
 

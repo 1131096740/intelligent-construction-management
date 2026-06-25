@@ -66,7 +66,8 @@ describe("ContractWorkbenchService", () => {
           ownerUserId: "owner-1",
           voidedAt: null,
           contractTypeKey: "material_purchase"
-        })
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractBill: {
         findMany: jest.fn().mockResolvedValue([
@@ -116,7 +117,11 @@ describe("ContractWorkbenchService", () => {
 
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "version-1", draftRevision: 4 },
+        where: {
+          id: "version-1",
+          draftRevision: 4,
+          status: { in: ["draft", "approval_rejected"] }
+        },
         data: expect.objectContaining({ draftRevision: { increment: 1 } })
       })
     );
@@ -188,7 +193,7 @@ describe("ContractWorkbenchService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({ id: "version-1" })
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
@@ -558,7 +563,11 @@ describe("ContractWorkbenchService", () => {
     await service.restoreCheckpoint("version-1", "ckpt-1", "owner-1");
 
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
-      where: { id: "version-1", draftRevision: 4 },
+      where: {
+        id: "version-1",
+        draftRevision: 4,
+        status: { in: ["draft", "approval_rejected"] }
+      },
       data: {
         draftData: { project_name: "回滚值" },
         clauseSnapshot: [
@@ -611,7 +620,7 @@ describe("ContractWorkbenchService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({ id: "version-1" })
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       position: { findMany: jest.fn().mockResolvedValue([]) },
@@ -622,6 +631,14 @@ describe("ContractWorkbenchService", () => {
     await service.voidDraft("contract-1", "owner-1", { reason: "重复" });
     await service.restoreDraft("contract-1", "owner-1");
 
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(2);
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractId: "contract-1",
+        status: { in: ["draft", "approval_rejected"] }
+      },
+      data: { draftRevision: { increment: 0 } }
+    });
     expect(tx.contract.updateMany).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -637,7 +654,7 @@ describe("ContractWorkbenchService", () => {
   });
 
   it("rejects void, restore, and transfer CAS conflicts without auditing", async () => {
-    const editableVersion = { findFirst: jest.fn().mockResolvedValue({ id: "version-1" }) };
+    const editableVersion = { updateMany: jest.fn().mockResolvedValue({ count: 1 }) };
     const ownerContract = {
       findUnique: jest.fn().mockResolvedValue({
         id: "contract-1",
@@ -706,7 +723,7 @@ describe("ContractWorkbenchService", () => {
           update: jest.fn()
         },
         contractVersion: {
-          findFirst: jest.fn().mockResolvedValue(null),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
           findMany: jest.fn().mockResolvedValue([{ status }])
         }
       };
@@ -729,7 +746,7 @@ describe("ContractWorkbenchService", () => {
         }),
         update: jest.fn()
       },
-      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) }
+      contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) }
     };
     const service = makeService(tx);
 
@@ -748,7 +765,7 @@ describe("ContractWorkbenchService", () => {
         }),
         update: jest.fn()
       },
-      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
       },
@@ -777,7 +794,7 @@ describe("ContractWorkbenchService", () => {
         }),
         updateMany: jest.fn()
       },
-      contractVersion: { findFirst: jest.fn().mockResolvedValue({ id: "version-1" }) },
+      contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
       },
@@ -1161,7 +1178,8 @@ describe("ContractWorkbenchService", () => {
           voidedAt: null,
           contractTypeKey: "material_purchase"
         }),
-        update: jest.fn().mockResolvedValue({ id: "contract-1" })
+        update: jest.fn().mockResolvedValue({ id: "contract-1" }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     });
     const service = makeService(tx);
@@ -1301,6 +1319,145 @@ describe("ContractWorkbenchService", () => {
         amountSource: "manual",
         manualAmountCents: 1_000_000
       })
-    ).rejects.toThrow("Contract draft revision conflict");
+    ).rejects.toThrow("Contract draft revision/status conflict");
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: "version-1",
+          draftRevision: 4,
+          status: { in: ["draft", "approval_rejected"] }
+        }
+      })
+    );
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects checkpoint restore when status changes before the version CAS", async () => {
+    const tx = ownedVersionTx({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          draftRevision: 4,
+          amountCents: 0n,
+          pricingNature: "fixed_total",
+          amountSource: "manual",
+          draftData: {},
+          templateSnapshot: TEMPLATE_SNAPSHOT,
+          clauseSnapshot: [],
+          businessTemplateVersionId: "template-version-1"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
+      contractDraftCheckpoint: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "ckpt-1",
+          contractVersionId: "version-1",
+          snapshot: {
+            draftData: {},
+            clauseSnapshot: [],
+            pricingNature: "fixed_total",
+            amountSource: "manual",
+            amountCents: "0",
+            amountAdjustmentReason: null,
+            layoutTemplateVersionId: null,
+            bills: []
+          }
+        })
+      }
+    });
+    const service = makeService(tx);
+
+    await expect(
+      service.restoreCheckpoint("version-1", "ckpt-1", "owner-1")
+    ).rejects.toThrow("Contract draft revision/status conflict");
+    expect(tx.contractBill.deleteMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects save when owner or voided state changes before the parent CAS", async () => {
+    const tx = ownedVersionTx({
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      }
+    });
+    const service = makeService(tx);
+
+    await expect(
+      service.saveDraft("version-1", "owner-1", {
+        expectedRevision: 4,
+        draftData: { project_name: "本地修改" },
+        clauses: [],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: 1_000_000
+      })
+    ).rejects.toThrow("Contract draft revision/status conflict");
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects type change when status changes before the version CAS", async () => {
+    const tx = ownedVersionTx({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          draftRevision: 4,
+          amountCents: 0n,
+          pricingNature: "fixed_total",
+          amountSource: "manual",
+          draftData: {},
+          templateSnapshot: TEMPLATE_SNAPSHOT,
+          clauseSnapshot: [],
+          businessTemplateVersionId: "template-version-1"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-version-2",
+          templateId: "template-2",
+          status: "published",
+          fieldSchema: [],
+          billSchema: [],
+          clauseSchema: [],
+          attachmentSchema: [],
+          validationSchema: []
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn(),
+        createMany: jest.fn(),
+        updateMany: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null,
+          contractTypeKey: "material_purchase"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        update: jest.fn()
+      }
+    });
+    const service = makeService(tx);
+
+    await expect(
+      service.applyTypeChange("version-1", "owner-1", {
+        targetBusinessTemplateVersionId: "template-version-2",
+        expectedRevision: 4,
+        confirmed: true
+      })
+    ).rejects.toThrow("Contract draft revision/status conflict");
+    expect(audit.record).not.toHaveBeenCalled();
   });
 });
