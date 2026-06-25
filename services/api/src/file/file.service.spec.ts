@@ -189,6 +189,28 @@ describe("FileService", () => {
     expect(result.buffer.equals(Buffer.from("docx"))).toBe(true);
   });
 
+  it("authorizes and returns file metadata with the caller transaction", async () => {
+    const file = {
+      id: "file-1",
+      uploadedByUserId: "owner-1"
+    };
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue(file)
+      }
+    };
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.assertCanDownloadFile(tx as never, "file-1", "owner-1")
+    ).resolves.toBe(file);
+    expect(tx.fileObject.findUnique).toHaveBeenCalledWith({ where: { id: "file-1" } });
+  });
+
   it("rejects files over FILE_UPLOAD_MAX_BYTES", async () => {
     const previous = process.env.FILE_UPLOAD_MAX_BYTES;
     process.env.FILE_UPLOAD_MAX_BYTES = "4";

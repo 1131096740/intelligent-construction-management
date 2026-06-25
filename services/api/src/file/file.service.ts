@@ -219,7 +219,7 @@ export class FileService {
         throw new Error("Private file not found");
       }
 
-      await this.assertCanDownloadFile(tx, file, input.actorUserId);
+      await this.assertCanDownloadFileObject(tx, file, input.actorUserId);
 
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
       const expiresAt = new Date(expiresAtMs).toISOString();
@@ -271,7 +271,7 @@ export class FileService {
         throw new Error("Private file not found");
       }
 
-      await this.assertCanDownloadFile(tx, found, input.actorUserId);
+      await this.assertCanDownloadFileObject(tx, found, input.actorUserId);
       return found;
     });
 
@@ -307,12 +307,21 @@ export class FileService {
   // 供其它模块（如审批单下载）按 fileId 复用下载权限校验。
   async assertCanDownloadFileById(fileId: string, actorUserId: string) {
     await this.prisma.$transaction(async (tx) => {
-      const file = await tx.fileObject.findUnique({ where: { id: fileId } });
-      if (!file) {
-        throw new Error("Private file not found");
-      }
-      await this.assertCanDownloadFile(tx, file, actorUserId);
+      await this.assertCanDownloadFile(tx, fileId, actorUserId);
     });
+  }
+
+  async assertCanDownloadFile(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    actorUserId: string
+  ) {
+    const file = await tx.fileObject.findUnique({ where: { id: fileId } });
+    if (!file) {
+      throw new Error("Private file not found");
+    }
+    await this.assertCanDownloadFileObject(tx, file, actorUserId);
+    return file;
   }
 
   private safeFileName(fileName: string) {
@@ -320,7 +329,7 @@ export class FileService {
     return name || "private-file";
   }
 
-  private async assertCanDownloadFile(
+  private async assertCanDownloadFileObject(
     tx: Prisma.TransactionClient,
     file: FileObject,
     actorUserId: string

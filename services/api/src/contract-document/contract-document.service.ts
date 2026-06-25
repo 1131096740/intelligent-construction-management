@@ -26,6 +26,7 @@ export interface ContractDocumentInputSnapshot {
   templateFileId: string;
   outputBaseName: string;
   renderInput: { values: Record<string, unknown> };
+  requiredKeys: string[];
   attachmentFiles: Array<{
     id: string;
     originalName: string;
@@ -34,6 +35,12 @@ export interface ContractDocumentInputSnapshot {
 }
 
 const ACTIVE_DOCUMENT_STATUSES = ["queued", "processing", "success"];
+const EDITABLE_VERSION_STATUSES = ["draft", "approval_rejected"];
+const BASE_REQUIRED_PLACEHOLDERS = [
+  "contract.name",
+  "contract.temporaryCode",
+  "document.watermark"
+];
 const PURPOSES = new Set<ContractDocumentPurpose>([
   "draft",
   "negotiation",
@@ -55,118 +62,137 @@ export class ContractDocumentService {
     rawInput: QueueContractDocumentInput
   ) {
     const input = this.parseQueueInput(rawInput);
-    for (const fileId of input.attachmentFileIds) {
-      await this.files.assertCanDownloadFileById(fileId, actorUserId);
+    let contestedKey: string | undefined;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const { version, contract } = await this.loadOwnedVersion(
+          tx,
+          contractVersionId,
+          actorUserId
+        );
+        if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
+          throw new BadRequestException("Contract version is not editable");
+        }
+        await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
+
+        const layout = await tx.contractLayoutTemplateVersion.findUnique({
+          where: { id: input.layoutTemplateVersionId }
+        });
+        if (!layout || layout.status !== "published") {
+          throw new BadRequestException("Layout template version must be published");
+        }
+        const layoutTemplate = await tx.contractLayoutTemplate.findUnique({
+          where: { id: layout.layoutTemplateId }
+        });
+        if (!layoutTemplate || layoutTemplate.contractTypeKey !== contract.contractTypeKey) {
+          throw new BadRequestException("Layout template contract type does not match");
+        }
+        this.assertInternalReviewReady(
+          input.purpose,
+          version.readinessSnapshot,
+          version.draftRevision
+        );
+
+        const attachmentFiles = [];
+        for (const fileId of input.attachmentFileIds) {
+          attachmentFiles.push(
+            await this.files.assertCanDownloadFile(tx, fileId, actorUserId)
+          );
+        }
+
+        contestedKey = this.idempotencyKey(
+          version.id,
+          version.draftRevision,
+          layout.id,
+          input.purpose,
+          input.attachmentFileIds
+        );
+        const existing = await tx.contractGeneratedDocument.findUnique({
+          where: { idempotencyKey: contestedKey }
+        });
+        if (existing && ACTIVE_DOCUMENT_STATUSES.includes(existing.status)) {
+          return existing;
+        }
+        if (existing) {
+          throw new BadRequestException("Failed document must be retried");
+        }
+
+        const [parties, bills] = await Promise.all([
+          tx.contractPartySnapshot.findMany({
+            where: { contractVersionId: version.id },
+            orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }]
+          }),
+          tx.contractBill.findMany({
+            where: { contractVersionId: version.id },
+            orderBy: { billKey: "asc" }
+          })
+        ]);
+        const rows = bills.length
+          ? await tx.contractBillRow.findMany({
+              where: { contractBillId: { in: bills.map((bill) => bill.id) } },
+              orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
+            })
+          : [];
+        const inputSnapshot: ContractDocumentInputSnapshot = {
+          templateFileId: layout.docxFileId,
+          outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${input.purpose}-r${version.draftRevision}`,
+          renderInput: {
+            values: this.renderValues(
+              contract,
+              version,
+              parties,
+              bills.map((bill) => ({
+                ...bill,
+                rows: rows.filter((row) => row.contractBillId === bill.id)
+              })),
+              input.purpose
+            )
+          },
+          requiredKeys: requiredPlaceholderKeys(
+            layout.placeholderSchema,
+            layout.inspectionReport
+          ),
+          attachmentFiles: attachmentFiles.map(({ id, originalName, mimeType }) => ({
+            id,
+            originalName,
+            mimeType
+          }))
+        };
+        const document = await tx.contractGeneratedDocument.create({
+          data: {
+            contractVersionId: version.id,
+            layoutTemplateVersionId: layout.id,
+            purpose: input.purpose,
+            status: "queued",
+            sourceRevision: version.draftRevision,
+            inputSnapshot: inputSnapshot as unknown as Prisma.InputJsonValue,
+            idempotencyKey: contestedKey,
+            engineVersion: CONTRACT_DOCUMENT_ENGINE_VERSION,
+            createdByUserId: actorUserId
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "contract.document.queue",
+          businessType: "contract_generated_document",
+          businessId: document.id,
+          metadata: {
+            contractVersionId: version.id,
+            sourceRevision: version.draftRevision,
+            purpose: input.purpose
+          }
+        });
+        return document;
+      });
+    } catch (error) {
+      if (!contestedKey || !this.isUniqueConflict(error)) throw error;
+      const winner = await this.prisma.contractGeneratedDocument.findUnique({
+        where: { idempotencyKey: contestedKey }
+      });
+      if (winner && ACTIVE_DOCUMENT_STATUSES.includes(winner.status)) return winner;
+      if (winner) throw new BadRequestException("Failed document must be retried");
+      throw error;
     }
-
-    return this.prisma.$transaction(async (tx) => {
-      const { version, contract } = await this.loadOwnedVersion(
-        tx,
-        contractVersionId,
-        actorUserId
-      );
-      await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
-
-      const layout = await tx.contractLayoutTemplateVersion.findUnique({
-        where: { id: input.layoutTemplateVersionId }
-      });
-      if (!layout || layout.status !== "published") {
-        throw new BadRequestException("Layout template version must be published");
-      }
-      this.assertInternalReviewReady(input.purpose, version.readinessSnapshot);
-
-      const attachmentFiles = input.attachmentFileIds.length
-        ? await tx.fileObject.findMany({
-            where: { id: { in: input.attachmentFileIds } },
-            select: { id: true, originalName: true, mimeType: true }
-          })
-        : [];
-      const fileById = new Map(attachmentFiles.map((file) => [file.id, file]));
-      if (fileById.size !== input.attachmentFileIds.length) {
-        throw new NotFoundException("One or more attachment files were not found");
-      }
-
-      const idempotencyKey = this.idempotencyKey(
-        version.id,
-        version.draftRevision,
-        layout.id,
-        input.purpose,
-        input.attachmentFileIds
-      );
-      const existing = await tx.contractGeneratedDocument.findUnique({
-        where: { idempotencyKey }
-      });
-      if (existing && ACTIVE_DOCUMENT_STATUSES.includes(existing.status)) {
-        return existing;
-      }
-      if (existing) {
-        throw new BadRequestException("Failed document must be retried");
-      }
-
-      const [parties, bills] = await Promise.all([
-        tx.contractPartySnapshot.findMany({
-          where: { contractVersionId: version.id },
-          orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }]
-        }),
-        tx.contractBill.findMany({
-          where: { contractVersionId: version.id },
-          orderBy: { billKey: "asc" }
-        })
-      ]);
-      const rows = bills.length
-        ? await tx.contractBillRow.findMany({
-            where: { contractBillId: { in: bills.map((bill) => bill.id) } },
-            orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
-          })
-        : [];
-      const inputSnapshot: ContractDocumentInputSnapshot = {
-        templateFileId: layout.docxFileId,
-        outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${input.purpose}-r${version.draftRevision}`,
-        renderInput: {
-          values: this.renderValues(
-            contract,
-            version,
-            parties,
-            bills.map((bill) => ({
-              ...bill,
-              rows: rows.filter((row) => row.contractBillId === bill.id)
-            })),
-            input.purpose
-          )
-        },
-        attachmentFiles: input.attachmentFileIds.map((id) => fileById.get(id)!)
-      };
-      const document = await tx.contractGeneratedDocument.upsert({
-        where: { idempotencyKey },
-        update: {},
-        create: {
-          contractVersionId: version.id,
-          layoutTemplateVersionId: layout.id,
-          purpose: input.purpose,
-          status: "queued",
-          sourceRevision: version.draftRevision,
-          inputSnapshot: inputSnapshot as unknown as Prisma.InputJsonValue,
-          idempotencyKey,
-          engineVersion: CONTRACT_DOCUMENT_ENGINE_VERSION,
-          createdByUserId: actorUserId
-        }
-      });
-      if (!ACTIVE_DOCUMENT_STATUSES.includes(document.status)) {
-        throw new BadRequestException("Failed document must be retried");
-      }
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "contract.document.queue",
-        businessType: "contract_generated_document",
-        businessId: document.id,
-        metadata: {
-          contractVersionId: version.id,
-          sourceRevision: version.draftRevision,
-          purpose: input.purpose
-        }
-      });
-      return document;
-    });
   }
 
   async list(contractVersionId: string, actorUserId: string) {
@@ -286,15 +312,36 @@ export class ContractDocumentService {
     });
   }
 
-  private assertInternalReviewReady(purpose: ContractDocumentPurpose, snapshot: Prisma.JsonValue) {
+  private assertInternalReviewReady(
+    purpose: ContractDocumentPurpose,
+    snapshot: Prisma.JsonValue,
+    draftRevision: number
+  ) {
     if (purpose !== "internal_review") return;
     if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
       throw new BadRequestException("Internal review readiness snapshot is required");
     }
-    const blockingErrors = (snapshot as { blockingErrors?: unknown }).blockingErrors;
-    if (!Array.isArray(blockingErrors) || blockingErrors.length > 0) {
+    const readiness = snapshot as {
+      checkedRevision?: unknown;
+      blocking?: unknown;
+      blockingErrors?: unknown;
+    };
+    const canonical = Array.isArray(readiness.blocking);
+    const blocking: unknown[] | null = canonical
+      ? (readiness.blocking as unknown[])
+      : Array.isArray(readiness.blockingErrors)
+        ? readiness.blockingErrors
+        : null;
+    if (canonical && readiness.checkedRevision !== draftRevision) {
+      throw new BadRequestException("Internal review readiness revision is stale");
+    }
+    if (!blocking || blocking.length > 0) {
       throw new BadRequestException("Internal review readiness has blocking errors");
     }
+  }
+
+  private isUniqueConflict(error: unknown) {
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
   }
 
   private idempotencyKey(
@@ -403,10 +450,97 @@ export class ContractDocumentService {
         ...(this.isObject(row.customData) ? row.customData : {})
       }));
     }
-    return values;
+    return Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [key, this.jsonSafeRenderValue(value)])
+    );
+  }
+
+  private jsonSafeRenderValue(value: unknown): unknown {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) throw new BadRequestException("Document value is not finite");
+      return value;
+    }
+    if (typeof value === "boolean" || typeof value === "bigint") return String(value);
+    if (Array.isArray(value)) return value.map((item) => this.jsonSafeRenderValue(item));
+    if (typeof value === "object") {
+      const serializable = value as { toJSON?: () => unknown };
+      if (typeof serializable.toJSON === "function") {
+        return this.jsonSafeRenderValue(serializable.toJSON());
+      }
+      return Object.fromEntries(
+        Object.entries(value).map(([key, nested]) => [
+          key,
+          this.jsonSafeRenderValue(nested)
+        ])
+      );
+    }
+    throw new BadRequestException("Document value is not JSON-safe");
   }
 
   private isObject(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
   }
+}
+
+export function requiredPlaceholderKeys(schema: unknown, report?: unknown): string[] {
+  const required = new Set(BASE_REQUIRED_PLACEHOLDERS);
+  const visit = (value: unknown, namespace?: string) => {
+    if (Array.isArray(value)) {
+      for (const definition of value) {
+        if (!definition || typeof definition !== "object") continue;
+        const item = definition as { key?: unknown; required?: unknown };
+        if (item.required === true && typeof item.key === "string") {
+          required.add(
+            item.key.includes(".") || !namespace
+              ? item.key
+              : namespace === "clause"
+                ? `clause.${item.key}.text`
+                : `${namespace}.${item.key}`
+          );
+        }
+        visit(definition);
+      }
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const object = value as Record<string, unknown>;
+    if (Array.isArray(object.required)) {
+      for (const key of object.required) {
+        if (typeof key === "string") required.add(key);
+      }
+    }
+    for (const [key, nested] of Object.entries(object)) {
+      visit(nested, key === "fields" ? "field" : key === "clauses" ? "clause" : undefined);
+    }
+  };
+  visit(schema);
+  visit(report);
+  return [...required].sort();
+}
+
+export function declaredBillKeys(schema: unknown, report?: unknown): string[] {
+  const keys = new Set<string>();
+  if (schema && typeof schema === "object" && !Array.isArray(schema)) {
+    const bills = (schema as { bills?: unknown }).bills;
+    if (Array.isArray(bills)) {
+      for (const bill of bills) {
+        if (bill && typeof bill === "object" && typeof (bill as { key?: unknown }).key === "string") {
+          keys.add(`bill.${(bill as { key: string }).key}`);
+        }
+      }
+    }
+  }
+  if (report && typeof report === "object" && !Array.isArray(report)) {
+    const placeholders = (report as { placeholders?: unknown }).placeholders;
+    if (Array.isArray(placeholders)) {
+      for (const placeholder of placeholders) {
+        if (typeof placeholder === "string" && /^bill\.[^.]+$/.test(placeholder)) {
+          keys.add(placeholder);
+        }
+      }
+    }
+  }
+  return [...keys].sort();
 }

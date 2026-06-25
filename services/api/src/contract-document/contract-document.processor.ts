@@ -10,12 +10,15 @@ import { FileService } from "../file/file.service";
 import { renderContractDocx } from "./contract-docx-renderer";
 import {
   CONTRACT_DOCUMENT_ENGINE_VERSION,
+  declaredBillKeys,
+  requiredPlaceholderKeys,
   type ContractDocumentInputSnapshot
 } from "./contract-document.service";
 import { convertDocxToPdf } from "./libreoffice-converter";
 import { normalizeContractPdf, type PdfAttachment } from "./pdf-normalizer";
 
 const ERROR_MESSAGE_LIMIT = 2_000;
+const PROCESSING_LEASE_MS = 10 * 60 * 1_000;
 
 @Injectable()
 export class ContractDocumentProcessor
@@ -33,7 +36,9 @@ export class ContractDocumentProcessor
   onApplicationBootstrap() {
     // ponytail: one DB-backed worker matches the current single API deployment;
     // replace with a distributed queue before running multiple API replicas.
-    this.timer = setInterval(() => void this.processNext(), 1_000);
+    this.timer = setInterval(() => {
+      void this.processNext().catch(() => undefined);
+    }, 1_000);
   }
 
   onApplicationShutdown() {
@@ -44,6 +49,7 @@ export class ContractDocumentProcessor
     if (this.running) return false;
     this.running = true;
     try {
+      await this.recoverExpiredJobs();
       const preview = await this.claimPreview();
       if (preview) {
         await this.processPreview(preview);
@@ -56,6 +62,34 @@ export class ContractDocumentProcessor
     } finally {
       this.running = false;
     }
+  }
+
+  private async recoverExpiredJobs() {
+    const expiredBefore = new Date(Date.now() - PROCESSING_LEASE_MS);
+    await this.prisma.contractLayoutPreviewJob.updateMany({
+      where: {
+        status: "processing",
+        startedAt: { lt: expiredBefore }
+      },
+      data: {
+        status: "queued",
+        startedAt: null,
+        completedAt: null,
+        errorMessage: null
+      }
+    });
+    await this.prisma.contractGeneratedDocument.updateMany({
+      where: {
+        status: "processing",
+        startedAt: { lt: expiredBefore }
+      },
+      data: {
+        status: "queued",
+        startedAt: null,
+        completedAt: null,
+        errorMessage: null
+      }
+    });
   }
 
   private async claimPreview() {
@@ -97,10 +131,28 @@ export class ContractDocumentProcessor
         where: { id: job.layoutTemplateVersionId }
       });
       if (!layout) throw new Error("Layout template version not found");
+      if (!["draft", "submitted"].includes(layout.status)) {
+        throw new Error("Layout template version is no longer previewable");
+      }
+      const values = this.previewValues(job.sampleData);
+      const billKeys = declaredBillKeys(
+        layout.placeholderSchema,
+        layout.inspectionReport
+      );
+      for (const billKey of new Set([
+        ...billKeys,
+        ...Object.keys(values).filter((key) => /^bill\.[^.]+$/.test(key))
+      ])) {
+        if (!Array.isArray(values[billKey])) {
+          throw new Error(`Preview bill value must be an array: ${billKey}`);
+        }
+      }
       const source = await this.files.getFileBuffer(layout.docxFileId);
-      const docx = renderContractDocx(source.buffer, {
-        values: this.previewValues(job.sampleData)
-      });
+      const docx = renderContractDocx(
+        source.buffer,
+        { values },
+        requiredPlaceholderKeys(layout.placeholderSchema, layout.inspectionReport)
+      );
       const pdf = await convertDocxToPdf(docx);
       const uploaded = await this.files.uploadPrivateFile({
         originalName: `layout-preview-${job.id}.pdf`,
@@ -111,8 +163,14 @@ export class ContractDocumentProcessor
       });
       const completedAt = new Date();
       await this.prisma.$transaction(async (tx) => {
-        await tx.contractLayoutPreviewJob.update({
-          where: { id: job.id },
+        const currentLayout = await tx.contractLayoutTemplateVersion.findUnique({
+          where: { id: job.layoutTemplateVersionId }
+        });
+        if (!currentLayout || !["draft", "submitted"].includes(currentLayout.status)) {
+          throw new Error("Layout template version is no longer previewable");
+        }
+        const updated = await tx.contractLayoutPreviewJob.updateMany({
+          where: { id: job.id, status: "processing" },
           data: {
             status: "succeeded",
             previewPdfFileId: uploaded.id,
@@ -120,6 +178,7 @@ export class ContractDocumentProcessor
             errorMessage: null
           }
         });
+        if (updated.count !== 1) return;
         await this.audit.record(tx, {
           actorUserId: job.createdByUserId,
           action: "contract.layout_preview.success",
@@ -135,6 +194,7 @@ export class ContractDocumentProcessor
 
   private async processDocument(job: {
     id: string;
+    contractVersionId: string;
     purpose: string;
     sourceRevision: number;
     inputSnapshot: Prisma.JsonValue;
@@ -144,7 +204,11 @@ export class ContractDocumentProcessor
     try {
       const snapshot = this.documentSnapshot(job.inputSnapshot);
       const template = await this.files.getFileBuffer(snapshot.templateFileId);
-      const docx = renderContractDocx(template.buffer, snapshot.renderInput);
+      const docx = renderContractDocx(
+        template.buffer,
+        snapshot.renderInput,
+        snapshot.requiredKeys
+      );
       const convertedPdf = await convertDocxToPdf(docx);
       const attachments: PdfAttachment[] = [];
       for (const attachment of snapshot.attachmentFiles) {
@@ -175,8 +239,26 @@ export class ContractDocumentProcessor
       uploadedFileIds.push(pdfFile.id);
       const completedAt = new Date();
       await this.prisma.$transaction(async (tx) => {
-        await tx.contractGeneratedDocument.update({
-          where: { id: job.id },
+        const version = await tx.contractVersion.findUnique({
+          where: { id: job.contractVersionId }
+        });
+        if (!version || version.draftRevision !== job.sourceRevision) {
+          await tx.contractGeneratedDocument.updateMany({
+            where: {
+              id: job.id,
+              status: "processing",
+              sourceRevision: job.sourceRevision
+            },
+            data: { status: "stale", completedAt, errorMessage: null }
+          });
+          return;
+        }
+        const updated = await tx.contractGeneratedDocument.updateMany({
+          where: {
+            id: job.id,
+            status: "processing",
+            sourceRevision: job.sourceRevision
+          },
           data: {
             status: "success",
             docxFileId: docxFile.id,
@@ -194,6 +276,7 @@ export class ContractDocumentProcessor
             } as unknown as Prisma.InputJsonValue
           }
         });
+        if (updated.count !== 1) return;
         await this.audit.record(tx, {
           actorUserId: job.createdByUserId,
           action: "contract.document.success",
@@ -217,10 +300,11 @@ export class ContractDocumentProcessor
   ) {
     const errorMessage = this.errorMessage(cause);
     await this.prisma.$transaction(async (tx) => {
-      await tx.contractLayoutPreviewJob.updateMany({
+      const updated = await tx.contractLayoutPreviewJob.updateMany({
         where: { id: job.id, status: "processing" },
         data: { status: "failed", errorMessage, completedAt: new Date() }
       });
+      if (updated.count !== 1) return;
       await this.audit.record(tx, {
         actorUserId: job.createdByUserId,
         action: "contract.layout_preview.failure",
@@ -241,10 +325,11 @@ export class ContractDocumentProcessor
       : "";
     const errorMessage = this.errorMessage(`${this.errorMessage(cause)}${orphanNote}`);
     await this.prisma.$transaction(async (tx) => {
-      await tx.contractGeneratedDocument.updateMany({
+      const updated = await tx.contractGeneratedDocument.updateMany({
         where: { id: job.id, status: "processing" },
         data: { status: "failed", errorMessage, completedAt: new Date() }
       });
+      if (updated.count !== 1) return;
       await this.audit.record(tx, {
         actorUserId: job.createdByUserId,
         action: "contract.document.failure",
@@ -266,11 +351,15 @@ export class ContractDocumentProcessor
       !snapshot.outputBaseName.trim() ||
       !snapshot.renderInput ||
       typeof snapshot.renderInput.values !== "object" ||
+      (snapshot.requiredKeys !== undefined && !Array.isArray(snapshot.requiredKeys)) ||
       !Array.isArray(snapshot.attachmentFiles)
     ) {
       throw new Error("Invalid contract document input snapshot");
     }
-    return snapshot;
+    return {
+      ...snapshot,
+      requiredKeys: snapshot.requiredKeys ?? []
+    };
   }
 
   private previewValues(sampleData: Prisma.JsonValue) {
@@ -300,7 +389,12 @@ export class ContractDocumentProcessor
     values["contract.name"] ??= "版式预览合同";
     values["contract.temporaryCode"] ??= "PREVIEW";
     values["document.watermark"] ??= "预览";
-    return values;
+    return Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [
+        key,
+        typeof value === "boolean" ? String(value) : value
+      ])
+    );
   }
 
   private attachmentType(

@@ -3,11 +3,18 @@ import { ContractDocumentService } from "./contract-document.service";
 
 describe("ContractDocumentService", () => {
   const audit = { record: jest.fn() };
-  const files = { assertCanDownloadFileById: jest.fn() };
+  const files = { assertCanDownloadFile: jest.fn() };
 
   beforeEach(() => {
     audit.record.mockReset();
-    files.assertCanDownloadFileById.mockReset().mockResolvedValue(undefined);
+    files.assertCanDownloadFile.mockReset().mockImplementation(
+      (_tx, id: string) =>
+        Promise.resolve({
+          id,
+          originalName: id === "attachment-a" ? "附件A.pdf" : "附件B.png",
+          mimeType: id === "attachment-a" ? "application/pdf" : "image/png"
+        })
+    );
   });
 
   function makeTx(overrides: Record<string, unknown> = {}) {
@@ -16,13 +23,14 @@ describe("ContractDocumentService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
           contractId: "contract-1",
+          status: "draft",
           draftRevision: 7,
           amountCents: 1_000_000n,
           draftData: { deliveryLocation: "项目现场" },
           clauseSnapshot: [
             { key: "payment", content: { text: "结算后付款" } }
           ],
-          readinessSnapshot: { blockingErrors: [], warnings: [] }
+          readinessSnapshot: { checkedRevision: 7, blocking: [], warnings: [] }
         })
       },
       contract: {
@@ -31,6 +39,7 @@ describe("ContractDocumentService", () => {
           ownerUserId: "owner-1",
           voidedAt: null,
           name: "钢材采购合同",
+          contractTypeKey: "materials",
           temporaryCode: "DRAFT-001",
           code: null
         })
@@ -38,15 +47,22 @@ describe("ContractDocumentService", () => {
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "layout-1",
+          layoutTemplateId: "layout-template-1",
           status: "published",
-          docxFileId: "layout-file-1"
+          docxFileId: "layout-file-1",
+          placeholderSchema: {
+            required: ["field.deliveryLocation"],
+            fields: [{ key: "deliveryDate", required: true }],
+            bills: []
+          },
+          inspectionReport: { placeholders: ["field.deliveryLocation"] }
         })
       },
-      fileObject: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: "attachment-a", originalName: "附件A.pdf", mimeType: "application/pdf" },
-          { id: "attachment-b", originalName: "附件B.png", mimeType: "image/png" }
-        ])
+      contractLayoutTemplate: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "layout-template-1",
+          contractTypeKey: "materials"
+        })
       },
       contractPartySnapshot: {
         findMany: jest.fn().mockResolvedValue([
@@ -61,9 +77,9 @@ describe("ContractDocumentService", () => {
       contractBillRow: { findMany: jest.fn().mockResolvedValue([]) },
       contractGeneratedDocument: {
         findUnique: jest.fn().mockResolvedValue(null),
-        upsert: jest.fn().mockImplementation(({ create }) => ({
+        create: jest.fn().mockImplementation(({ data }) => ({
           id: "document-1",
-          ...create
+          ...data
         })),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findMany: jest.fn().mockResolvedValue([]),
@@ -76,16 +92,20 @@ describe("ContractDocumentService", () => {
 
   function makeService(tx: ReturnType<typeof makeTx>) {
     const prisma = {
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
-        callback(tx)
-      )
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+      contractGeneratedDocument: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      }
     } as unknown as PrismaService;
-    return new ContractDocumentService(prisma, audit as never, files as never);
+    return {
+      service: new ContractDocumentService(prisma, audit as never, files as never),
+      prisma
+    };
   }
 
   it("queues a document for the current draft revision with a deterministic attachment order", async () => {
     const tx = makeTx();
-    const service = makeService(tx);
+    const { service } = makeService(tx);
 
     const result = await service.queue("version-1", "owner-1", {
       layoutTemplateVersionId: "layout-1",
@@ -98,15 +118,14 @@ describe("ContractDocumentService", () => {
       sourceRevision: 7,
       status: "queued"
     });
-    expect(files.assertCanDownloadFileById).toHaveBeenNthCalledWith(
+    expect(files.assertCanDownloadFile).toHaveBeenNthCalledWith(
       1,
+      tx,
       "attachment-a",
       "owner-1"
     );
-    expect(tx.contractGeneratedDocument.upsert).toHaveBeenCalledWith({
-      where: { idempotencyKey: expect.any(String) },
-      update: {},
-      create: expect.objectContaining({
+    expect(tx.contractGeneratedDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
         contractVersionId: "version-1",
         layoutTemplateVersionId: "layout-1",
         sourceRevision: 7,
@@ -114,6 +133,13 @@ describe("ContractDocumentService", () => {
         inputSnapshot: expect.objectContaining({
           templateFileId: "layout-file-1",
           outputBaseName: "DRAFT-001-draft-r7",
+          requiredKeys: expect.arrayContaining([
+            "contract.name",
+            "contract.temporaryCode",
+            "document.watermark",
+            "field.deliveryLocation",
+            "field.deliveryDate"
+          ]),
           attachmentFiles: [
             expect.objectContaining({ id: "attachment-a" }),
             expect.objectContaining({ id: "attachment-b" })
@@ -133,7 +159,7 @@ describe("ContractDocumentService", () => {
 
   it("marks older successful documents stale when listing as a safety net", async () => {
     const tx = makeTx();
-    const service = makeService(tx);
+    const { service } = makeService(tx);
 
     await service.list("version-1", "owner-1");
 
@@ -153,7 +179,7 @@ describe("ContractDocumentService", () => {
       id: "existing-document",
       status: "processing"
     });
-    const service = makeService(tx);
+    const { service } = makeService(tx);
 
     await expect(
       service.queue("version-1", "owner-1", {
@@ -161,12 +187,13 @@ describe("ContractDocumentService", () => {
         purpose: "draft"
       })
     ).resolves.toMatchObject({ id: "existing-document" });
-    expect(tx.contractGeneratedDocument.upsert).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
   });
 
   it("allows draft warnings but rejects internal review without a clean readiness snapshot", async () => {
     const tx = makeTx();
-    const service = makeService(tx);
+    const { service } = makeService(tx);
+    const version = await tx.contractVersion.findUnique();
 
     await expect(
       service.queue("version-1", "owner-1", {
@@ -176,7 +203,7 @@ describe("ContractDocumentService", () => {
     ).resolves.toMatchObject({ id: "document-1" });
 
     tx.contractVersion.findUnique.mockResolvedValue({
-      ...(await tx.contractVersion.findUnique()),
+      ...version,
       readinessSnapshot: null
     });
     await expect(
@@ -187,8 +214,8 @@ describe("ContractDocumentService", () => {
     ).rejects.toThrow("Internal review readiness snapshot is required");
 
     tx.contractVersion.findUnique.mockResolvedValue({
-      ...(await tx.contractVersion.findUnique()),
-      readinessSnapshot: { blockingErrors: ["合同金额缺失"] }
+      ...version,
+      readinessSnapshot: { checkedRevision: 7, blocking: ["合同金额缺失"], warnings: [] }
     });
     await expect(
       service.queue("version-1", "owner-1", {
@@ -196,6 +223,138 @@ describe("ContractDocumentService", () => {
         purpose: "internal_review"
       })
     ).rejects.toThrow("Internal review readiness has blocking errors");
+
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...version,
+      readinessSnapshot: { checkedRevision: 6, blocking: [], warnings: [] }
+    });
+    await expect(
+      service.queue("version-1", "owner-1", {
+        layoutTemplateVersionId: "layout-1",
+        purpose: "internal_review"
+      })
+    ).rejects.toThrow("Internal review readiness revision is stale");
+
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...version,
+      readinessSnapshot: { blockingErrors: [], warnings: [] }
+    });
+    await expect(
+      service.queue("version-1", "owner-1", {
+        layoutTemplateVersionId: "layout-1",
+        purpose: "internal_review"
+      })
+    ).resolves.toMatchObject({ id: "document-1" });
+  });
+
+  it("rejects non-editable versions and layouts for another contract type", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+    const version = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...version,
+      status: "in_approval"
+    });
+
+    await expect(
+      service.queue("version-1", "owner-1", {
+        layoutTemplateVersionId: "layout-1",
+        purpose: "draft"
+      })
+    ).rejects.toThrow("Contract version is not editable");
+
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...version,
+      status: "approval_rejected"
+    });
+    tx.contractLayoutTemplate.findUnique.mockResolvedValue({
+      id: "layout-template-1",
+      contractTypeKey: "labor"
+    });
+    await expect(
+      service.queue("version-1", "owner-1", {
+        layoutTemplateVersionId: "layout-1",
+        purpose: "draft"
+      })
+    ).rejects.toThrow("Layout template contract type does not match");
+  });
+
+  it("returns the active winner of an idempotency race without queue audit", async () => {
+    const tx = makeTx();
+    tx.contractGeneratedDocument.create.mockRejectedValue({ code: "P2002" });
+    const { service, prisma } = makeService(tx);
+    (
+      prisma.contractGeneratedDocument.findUnique as jest.Mock
+    ).mockResolvedValue({
+      id: "winner",
+      status: "queued"
+    });
+
+    await expect(
+      service.queue("version-1", "owner-1", {
+        layoutTemplateVersionId: "layout-1",
+        purpose: "draft"
+      })
+    ).resolves.toMatchObject({ id: "winner" });
+    expect(audit.record).not.toHaveBeenCalled();
+
+    (
+      prisma.contractGeneratedDocument.findUnique as jest.Mock
+    ).mockResolvedValue({
+      id: "failed-winner",
+      status: "failed"
+    });
+    await expect(
+      service.queue("version-1", "owner-1", {
+        layoutTemplateVersionId: "layout-1",
+        purpose: "draft"
+      })
+    ).rejects.toThrow("Failed document must be retried");
+  });
+
+  it("stores JSON-safe bill values without bigint or Decimal objects", async () => {
+    const decimal = (value: string) => ({
+      toString: () => value,
+      toJSON: () => value
+    });
+    const tx = makeTx();
+    tx.contractBill.findMany.mockResolvedValue([
+      { id: "bill-1", billKey: "materials" }
+    ]);
+    tx.contractBillRow.findMany.mockResolvedValue([
+      {
+        contractBillId: "bill-1",
+        itemCode: null,
+        itemName: "钢筋",
+        specification: null,
+        unit: "吨",
+        quantity: decimal("2.5"),
+        unitPrice: decimal("3500"),
+        taxRate: decimal("0.13"),
+        taxInclusiveAmountCents: 875_000n,
+        taxExclusiveAmountCents: 774_336n,
+        taxAmountCents: 100_664n,
+        isProvisional: true,
+        settlementBasis: null,
+        customData: { checked: false }
+      }
+    ]);
+    const { service } = makeService(tx);
+
+    await service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft"
+    });
+
+    const snapshot = tx.contractGeneratedDocument.create.mock.calls[0][0].data
+      .inputSnapshot;
+    expect(() => JSON.stringify(snapshot)).not.toThrow();
+    expect(snapshot.renderInput.values["bill.materials"][0]).toMatchObject({
+      quantity: "2.5",
+      unitPrice: "3500",
+      isProvisional: "true",
+      checked: "false"
+    });
   });
 
   it("marks failure retryable and records retry audit", async () => {
@@ -208,7 +367,7 @@ describe("ContractDocumentService", () => {
         status: "failed"
       })
       .mockResolvedValueOnce({ id: "document-1", status: "queued" });
-    const service = makeService(tx);
+    const { service } = makeService(tx);
 
     await expect(service.retry("document-1", "owner-1")).resolves.toMatchObject({
       status: "queued"
