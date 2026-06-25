@@ -139,6 +139,23 @@ describe("ContractWorkbenchService", () => {
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
+  it("allows an incomplete draft to save", async () => {
+    const tx = ownedVersionTx();
+    const service = makeService(tx);
+
+    await expect(
+      service.saveDraft("version-1", "owner-1", {
+        expectedRevision: 4,
+        draftData: {},
+        clauses: [],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: 1_000_000,
+        amountAdjustmentReason: "草稿尚未录完"
+      })
+    ).resolves.toBeDefined();
+  });
+
   it("does not audit a draft save when stale document marking fails", async () => {
     const tx = ownedVersionTx({
       contractGeneratedDocument: {

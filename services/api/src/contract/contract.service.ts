@@ -1,10 +1,15 @@
-import { Injectable, Optional } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import {
+  ContractNumberingService,
+  type ContractNumberOverride
+} from "../contract-workbench/contract-numbering.service";
+import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { centsToSafeNumber } from "../money/decimal-money";
@@ -21,6 +26,10 @@ interface AssignApprovalDto {
 interface GenerateContractPdfArchiveDto {
   templateKey?: string;
   departmentScope?: string;
+}
+
+export interface SubmitContractApprovalDto extends ContractNumberOverride {
+  numberRuleId: string;
 }
 
 interface ContractApprovalAssignment {
@@ -57,7 +66,11 @@ export class ContractService {
     @Optional()
     private readonly files?: FileService,
     @Optional()
-    private readonly approvalForms?: ApprovalFormService
+    private readonly approvalForms?: ApprovalFormService,
+    @Optional()
+    private readonly readiness?: ContractReadinessService,
+    @Optional()
+    private readonly numbering?: ContractNumberingService
   ) {}
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
@@ -237,73 +250,183 @@ export class ContractService {
     });
   }
 
-  async submitApproval(contractVersionId: string, actorUserId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      const version = await tx.contractVersion.findUnique({
-        where: { id: contractVersionId }
-      });
+  async submitApproval(
+    contractVersionId: string,
+    actorUserId: string,
+    rawInput?: unknown
+  ) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const [version] = await tx.$queryRaw<
+          Array<NonNullable<Awaited<ReturnType<typeof tx.contractVersion.findUnique>>>>
+        >(Prisma.sql`
+          SELECT *
+          FROM "ContractVersion"
+          WHERE "id" = ${contractVersionId}
+          FOR UPDATE
+        `);
+        if (!version) throw new Error("Contract version not found");
 
-      if (!version) {
-        throw new Error("Contract version not found");
-      }
+        const contract = await tx.contract.findUnique({
+          where: { id: version.contractId }
+        });
+        if (!contract) throw new Error("Contract not found");
+        if (contract.voidedAt) throw new Error("Cannot submit a voided contract");
+        if (contract.ownerUserId && contract.ownerUserId !== actorUserId) {
+          throw new Error("Only the contract owner can submit approval");
+        }
 
-      const contract = await tx.contract.findUnique({
-        where: { id: version.contractId }
-      });
-      if (!contract) {
-        throw new Error("Contract not found");
-      }
-      if (contract.voidedAt) {
-        throw new Error("Cannot submit a voided contract");
-      }
-      if (contract.ownerUserId && contract.ownerUserId !== actorUserId) {
-        throw new Error("Only the contract owner can submit approval");
-      }
+        const input = contract.ownerUserId ? this.parseSubmissionInput(rawInput) : null;
+        let formalCode = contract.code;
+        let readinessSnapshot = version.readinessSnapshot;
+        let templateSnapshot = version.templateSnapshot;
+        if (input) {
+          if (!this.readiness || !this.numbering) {
+            throw new Error("Contract submission services are required");
+          }
+          const readiness = await this.readiness.check(tx, version, contract, true);
+          if (readiness.blocking.length > 0) {
+            throw new BadRequestException({
+              message: "Contract is not ready for approval submission",
+              readiness
+            });
+          }
+          formalCode = await this.numbering.allocate(
+            tx,
+            input.numberRuleId,
+            contract,
+            actorUserId,
+            input
+          );
+          const submissionSnapshot = await this.readiness.freeze(tx, version);
+          readinessSnapshot = readiness as unknown as Prisma.JsonValue;
+          templateSnapshot = {
+            ...(version.templateSnapshot as Prisma.JsonObject),
+            submissionSnapshot
+          } as unknown as Prisma.JsonValue;
+        }
 
-      const submitted = await tx.contractVersion.updateMany({
-        where: { id: version.id, status: "draft" },
-        data: { status: "in_approval" }
-      });
-      if (submitted.count !== 1) {
-        throw new Error("Contract approval submission conflict");
-      }
-      const parentGate = await tx.contract.updateMany({
-        where: {
-          id: contract.id,
-          ownerUserId: contract.ownerUserId,
-          voidedAt: null
-        },
-        data: { ownerUserId: contract.ownerUserId }
-      });
-      if (parentGate.count !== 1) {
-        throw new Error("Contract approval submission conflict");
-      }
+        const submitted = await tx.contractVersion.updateMany({
+          where: {
+            id: version.id,
+            status: "draft",
+            draftRevision: version.draftRevision
+          },
+          data: {
+            status: "in_approval",
+            ...(input
+              ? {
+                  readinessSnapshot: readinessSnapshot as Prisma.InputJsonValue,
+                  templateSnapshot: templateSnapshot as Prisma.InputJsonValue,
+                  clauseSnapshot: version.clauseSnapshot as Prisma.InputJsonValue
+                }
+              : {})
+          }
+        });
+        if (submitted.count !== 1) {
+          throw new Error("Contract approval submission conflict");
+        }
+        const parentGate = await tx.contract.updateMany({
+          where: {
+            id: contract.id,
+            ownerUserId: contract.ownerUserId,
+            voidedAt: null
+          },
+          data: {
+            ownerUserId: contract.ownerUserId,
+            ...(formalCode ? { code: formalCode } : {})
+          }
+        });
+        if (parentGate.count !== 1) {
+          throw new Error("Contract approval submission conflict");
+        }
 
-      await tx.approvalInstance.create({
-        data: {
-          flowType: "contract.approve",
+        await tx.approvalInstance.create({
+          data: {
+            flowType: "contract.approve",
+            businessType: "contract_version",
+            businessId: version.id,
+            status: "in_progress",
+            currentNodeIndex: 0,
+            frozenNodes: CONTRACT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+            applicantUserId: actorUserId
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "contract.approval.submit",
           businessType: "contract_version",
           businessId: version.id,
-          status: "in_progress",
-          currentNodeIndex: 0,
-          frozenNodes: CONTRACT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
-          applicantUserId: actorUserId
-        }
-      });
+          metadata: {
+            fromStatus: version.status,
+            toStatus: "in_approval",
+            formalCode,
+            draftRevision: version.draftRevision,
+            ...(input
+              ? {
+                  numberRuleId: input.numberRuleId,
+                  ...(input.overrideReason
+                    ? { overrideReason: input.overrideReason }
+                    : {}),
+                  submissionSnapshot: (templateSnapshot as Prisma.JsonObject)
+                    .submissionSnapshot
+                }
+              : {})
+          }
+        });
 
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "contract.approval.submit",
-        businessType: "contract_version",
-        businessId: version.id,
-        metadata: {
-          fromStatus: version.status,
-          toStatus: "in_approval"
-        }
+        return {
+          ...version,
+          status: "in_approval",
+          readinessSnapshot,
+          templateSnapshot,
+          formalCode
+        };
       });
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "P2002"
+      ) {
+        throw new BadRequestException("Contract formal code already exists");
+      }
+      throw error;
+    }
+  }
 
-      return { ...version, status: "in_approval" };
-    });
+  private parseSubmissionInput(rawInput: unknown): SubmitContractApprovalDto {
+    if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) {
+      throw new BadRequestException("Contract approval submission body is required");
+    }
+    const input = rawInput as Record<string, unknown>;
+    if (typeof input.numberRuleId !== "string" || !input.numberRuleId.trim()) {
+      throw new BadRequestException("numberRuleId is required");
+    }
+    if (
+      input.formalCodeOverride !== undefined &&
+      (typeof input.formalCodeOverride !== "string" ||
+        !input.formalCodeOverride.trim())
+    ) {
+      throw new BadRequestException("formalCodeOverride must be a non-empty string");
+    }
+    if (
+      input.overrideReason !== undefined &&
+      (typeof input.overrideReason !== "string" || !input.overrideReason.trim())
+    ) {
+      throw new BadRequestException("overrideReason must be a non-empty string");
+    }
+    return {
+      numberRuleId: input.numberRuleId.trim(),
+      ...(input.formalCodeOverride === undefined
+        ? {}
+        : { formalCodeOverride: input.formalCodeOverride.trim() }),
+      ...(input.overrideReason === undefined
+        ? {}
+        : { overrideReason: input.overrideReason.trim() })
+    };
   }
 
   async reviewApproval(

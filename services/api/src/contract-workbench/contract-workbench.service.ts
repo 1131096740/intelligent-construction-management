@@ -12,6 +12,7 @@ import type {
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { ContractReadinessService } from "./contract-readiness.service";
 import { centsToSafeNumber } from "../money/decimal-money";
 import type {
   ApplyContractTypeChangeDto,
@@ -87,8 +88,14 @@ interface CheckpointSnapshot {
 export class ContractWorkbenchService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly readiness?: ContractReadinessService
   ) {}
+
+  checkReadiness(contractVersionId: string, actorUserId: string) {
+    if (!this.readiness) throw new Error("Contract readiness service is required");
+    return this.readiness.checkAndStore(contractVersionId, actorUserId);
+  }
 
   async listDrafts(actorUserId: string, scope: "my" | "voided") {
     if (scope !== "my" && scope !== "voided") {

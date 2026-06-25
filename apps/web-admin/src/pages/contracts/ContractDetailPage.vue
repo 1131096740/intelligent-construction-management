@@ -55,6 +55,11 @@
             <span>提交、通过、驳回</span>
           </div>
           <div class="action-fields">
+            <t-select
+              v-model="contractArchiveForm.numberRuleId"
+              :options="contractNumberRuleOptions"
+              placeholder="选择合同编号规则"
+            />
             <t-input
               v-model="contractArchiveForm.approvalComment"
               placeholder="审批意见/备注(可选)"
@@ -344,6 +349,7 @@ import {
   confirmContractArchive,
   createPrivateFileDownloadTicket,
   delegateContractApproval,
+  fetchActiveContractNumberRules,
   fetchContractDetail,
   generateContractPdfArchive,
   downloadApprovalForm as requestApprovalFormDownload,
@@ -370,6 +376,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const contractDetail = ref<ContractDetailReadModel | null>(null);
+const contractNumberRules = ref<Array<{ id: string; name: string; pattern: string }>>([]);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
@@ -381,7 +388,8 @@ const contractArchiveForm = reactive({
   assignmentUserId: "",
   downloadFileId: "",
   downloadPassword: "",
-  approvalComment: ""
+  approvalComment: "",
+  numberRuleId: ""
 });
 
 const contractDetailTitleView = computed(() => contractDetail.value?.title ?? contractDetailTitle);
@@ -409,6 +417,12 @@ const canConfirmContractArchive = computed(
   () => !!contractDetail.value?.contractVersionId && contractNextActionValue.value.includes("主管确认归档")
 );
 const canRunContractVersionAction = computed(() => !!contractDetail.value?.contractVersionId);
+const contractNumberRuleOptions = computed(() =>
+  contractNumberRules.value.map((rule) => ({
+    label: `${rule.name}（${rule.pattern}）`,
+    value: rule.id
+  }))
+);
 
 function openChainLink(to: string) {
   void router.push(to);
@@ -429,7 +443,12 @@ async function reloadContractDetail() {
 }
 
 onMounted(async () => {
-  await reloadContractDetail();
+  const [, rules] = await Promise.all([
+    reloadContractDetail(),
+    fetchActiveContractNumberRules().catch(() => [])
+  ]);
+  contractNumberRules.value = rules;
+  contractArchiveForm.numberRuleId ||= rules[0]?.id ?? "";
 });
 
 function requiredText(raw: string, label: string) {
@@ -518,7 +537,11 @@ async function submitContractApprovalAction() {
     "合同版本ID"
   );
 
-  await runArchiveAction("submitApproval", () => submitContractApproval(contractVersionId));
+  await runArchiveAction("submitApproval", () =>
+    submitContractApproval(contractVersionId, {
+      numberRuleId: requiredText(contractArchiveForm.numberRuleId, "合同编号规则")
+    })
+  );
 }
 
 async function submitContractReview(decision: "approve" | "reject") {

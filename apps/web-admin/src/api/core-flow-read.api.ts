@@ -136,6 +136,24 @@ export interface ReviewContractApprovalPayload {
   comment?: string;
 }
 
+export interface SubmitContractApprovalPayload {
+  numberRuleId: string;
+  formalCodeOverride?: string;
+  overrideReason?: string;
+}
+
+export interface ContractNumberRuleReadModel {
+  id: string;
+  name: string;
+  pattern: string;
+  companyEntityId: string | null;
+  projectId: string | null;
+  contractTypeKey: string | null;
+  nextSequence: number;
+  sequenceWidth: number;
+  isActive: boolean;
+}
+
 export interface ReviewSettlementApprovalPayload {
   decision: "approve" | "reject" | "reject_previous" | "return_to_applicant";
   comment?: string;
@@ -250,8 +268,15 @@ export function confirmContractArchive(
   return postJson<unknown>(`/contracts/${contractVersionId}/archive-confirmation`, body);
 }
 
-export function submitContractApproval(contractVersionId: string) {
-  return postJson<unknown>(`/contracts/${contractVersionId}/approval-submission`);
+export function fetchActiveContractNumberRules() {
+  return readJson<ContractNumberRuleReadModel[]>("/contract-number-rules");
+}
+
+export function submitContractApproval(
+  contractVersionId: string,
+  body: SubmitContractApprovalPayload
+) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/approval-submission`, body);
 }
 
 export function reviewContractApproval(

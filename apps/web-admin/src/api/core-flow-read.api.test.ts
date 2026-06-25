@@ -12,6 +12,7 @@ import {
   confirmSettlementArchive,
   delegateContractApproval,
   delegatePaymentApproval,
+  fetchActiveContractNumberRules,
   generateContractPdfArchive,
   generatePaymentPdfArchive,
   generateSettlementPdfArchive,
@@ -222,7 +223,10 @@ describe("core flow read API client", () => {
       json: async () => ({ id: "ok" })
     } as Response);
 
-    await submitContractApproval("contract-version-1");
+    await fetchActiveContractNumberRules();
+    await submitContractApproval("contract-version-1", {
+      numberRuleId: "rule-1"
+    });
     await reviewContractApproval("contract-version-1", {
       decision: "approve"
     });
@@ -248,6 +252,7 @@ describe("core flow read API client", () => {
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contract-number-rules",
       "/api/contracts/contract-version-1/approval-submission",
       "/api/contracts/contract-version-1/approval",
       "/api/contracts/contract-version-1/approval-withdrawal",
@@ -261,8 +266,14 @@ describe("core flow read API client", () => {
       "/api/settlements/settlement-1/approval-transfer",
       "/api/settlements/settlement-1/approval-delegation"
     ]);
-    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
+    expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
+    expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        numberRuleId: "rule-1"
+      })
+    );
+    expect(fetchMock.mock.calls[2][1]?.body).toBe(
       JSON.stringify({
         decision: "approve"
       })

@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
+import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { ContractReadService } from "./contract-read.service";
 import { ContractService } from "./contract.service";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
@@ -13,7 +15,8 @@ import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file
 export class ContractController {
   constructor(
     private readonly contracts: ContractService,
-    private readonly contractRead: ContractReadService
+    private readonly contractRead: ContractReadService,
+    private readonly workbench: ContractWorkbenchService
   ) {}
 
   // 创建合同草稿：从已发布模板快照初始化工作台草稿，草稿在进入受守审批步骤前无业务效力，仅要求登录。
@@ -34,9 +37,18 @@ export class ContractController {
   @RequireProjectRole("contract.submit")
   submitApproval(
     @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: unknown
+  ) {
+    return this.contracts.submitApproval(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/readiness")
+  checkReadiness(
+    @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.contracts.submitApproval(contractVersionId, user.id);
+    return this.workbench.checkReadiness(contractVersionId, user.id);
   }
 
   @Post(":contractVersionId/approval")
@@ -123,5 +135,34 @@ export class ContractController {
     @Body() body: { templateKey?: string; departmentScope?: string }
   ) {
     return this.contracts.generatePdfArchive(contractVersionId, user.id, body);
+  }
+}
+
+@Controller("contract-number-rules")
+export class ContractNumberRuleController {
+  constructor(private readonly numbering: ContractNumberingService) {}
+
+  @Get()
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.numbering.listActive(user.id);
+  }
+
+  @Post()
+  create(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
+    return this.numbering.create(user.id, body);
+  }
+
+  @Patch(":ruleId")
+  update(
+    @Param("ruleId") ruleId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: unknown
+  ) {
+    return this.numbering.update(ruleId, user.id, body);
+  }
+
+  @Post(":ruleId/stop")
+  stop(@Param("ruleId") ruleId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.numbering.stop(ruleId, user.id);
   }
 }
