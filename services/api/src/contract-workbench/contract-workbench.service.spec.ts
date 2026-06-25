@@ -97,6 +97,9 @@ describe("ContractWorkbenchService", () => {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 })
       },
+      contractGeneratedDocument: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
       auditLog: { create: jest.fn() },
       ...overrides
     };
@@ -125,7 +128,38 @@ describe("ContractWorkbenchService", () => {
         data: expect.objectContaining({ draftRevision: { increment: 1 } })
       })
     );
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: "success",
+        sourceRevision: { lt: 5 }
+      },
+      data: { status: "stale" }
+    });
     expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not audit a draft save when stale document marking fails", async () => {
+    const tx = ownedVersionTx({
+      contractGeneratedDocument: {
+        updateMany: jest.fn().mockRejectedValue(new Error("stale update failed"))
+      }
+    });
+    const service = makeService(tx);
+
+    await expect(
+      service.saveDraft("version-1", "owner-1", {
+        expectedRevision: 4,
+        draftData: { project_name: "新名称" },
+        clauses: [],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: 1_000_000
+      })
+    ).rejects.toThrow("stale update failed");
+
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects stale autosave without overwriting server data", async () => {
@@ -163,6 +197,7 @@ describe("ContractWorkbenchService", () => {
     ).rejects.toThrow("Contract draft revision conflict");
 
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
 
   it("allows only the owner to edit a draft", async () => {
@@ -602,6 +637,14 @@ describe("ContractWorkbenchService", () => {
           customData: { restored: true }
         })
       ]
+    });
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: "success",
+        sourceRevision: { lt: 5 }
+      },
+      data: { status: "stale" }
     });
     expect(checkpoints.update).not.toHaveBeenCalled();
     expect(checkpoints.delete).not.toHaveBeenCalled();

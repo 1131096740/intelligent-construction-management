@@ -310,6 +310,21 @@ describe("ContractDocumentProcessor", () => {
 
   it("does not produce duplicate files when a completed job is polled again", async () => {
     const prisma = makePrisma();
+    const documents = [
+      {
+        id: "document-1",
+        status: "success",
+        docxFileId: "docx-file",
+        pdfFileId: "pdf-file",
+        completedAt: new Date()
+      }
+    ];
+    prisma.contractGeneratedDocument.findFirst.mockImplementation(
+      ({ where }: { where: { status: string } }) =>
+        Promise.resolve(
+          documents.find((document) => document.status === where.status) ?? null
+        )
+    );
     const files = {
       getFileBuffer: jest.fn(),
       uploadPrivateFile: jest.fn()
@@ -321,8 +336,19 @@ describe("ContractDocumentProcessor", () => {
     );
 
     await expect(processor.processNext()).resolves.toBe(false);
+    await expect(processor.processNext()).resolves.toBe(false);
 
+    expect(prisma.contractGeneratedDocument.findFirst).toHaveBeenCalledTimes(2);
+    expect(prisma.contractGeneratedDocument.findFirst).toHaveBeenCalledWith({
+      where: { status: "queued" },
+      orderBy: { createdAt: "asc" }
+    });
+    expect(mockedRender).not.toHaveBeenCalled();
+    expect(mockedConvert).not.toHaveBeenCalled();
+    expect(mockedNormalize).not.toHaveBeenCalled();
     expect(files.getFileBuffer).not.toHaveBeenCalled();
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(prisma.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
+    expect(prisma.tx.contractGeneratedDocument.update).not.toHaveBeenCalled();
   });
 });

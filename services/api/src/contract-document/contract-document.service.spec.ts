@@ -131,7 +131,7 @@ describe("ContractDocumentService", () => {
     });
   });
 
-  it("marks older successful documents stale when documents are listed after a draft save", async () => {
+  it("marks older successful documents stale when listing as a safety net", async () => {
     const tx = makeTx();
     const service = makeService(tx);
 

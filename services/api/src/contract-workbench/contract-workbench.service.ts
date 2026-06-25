@@ -223,6 +223,11 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
+      await this.markOlderSuccessfulDocumentsStale(
+        tx,
+        contractVersionId,
+        input.expectedRevision + 1
+      );
       await this.assertEditableParentCas(tx, version.contractId, actorUserId);
 
       await this.audit.record(tx, {
@@ -339,6 +344,11 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
+      await this.markOlderSuccessfulDocumentsStale(
+        tx,
+        contractVersionId,
+        version.draftRevision + 1
+      );
       await this.assertEditableParentCas(tx, version.contractId, actorUserId);
       await this.replaceBillsFromSnapshot(tx, contractVersionId, snapshot.bills);
       await this.audit.record(tx, {
@@ -576,6 +586,11 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
+      await this.markOlderSuccessfulDocumentsStale(
+        tx,
+        contractVersionId,
+        input.expectedRevision + 1
+      );
       await this.assertEditableParentCas(tx, contract.id, actorUserId);
 
       const template = await tx.contractBusinessTemplate.findUnique({
@@ -706,6 +721,21 @@ export class ContractWorkbenchService {
     if (parent.count !== 1) {
       throw new BadRequestException("Contract draft revision/status conflict");
     }
+  }
+
+  private markOlderSuccessfulDocumentsStale(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    currentRevision: number
+  ) {
+    return tx.contractGeneratedDocument.updateMany({
+      where: {
+        contractVersionId,
+        status: "success",
+        sourceRevision: { lt: currentRevision }
+      },
+      data: { status: "stale" }
+    });
   }
 
   private async assertCanView(
