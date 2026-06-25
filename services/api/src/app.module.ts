@@ -6,6 +6,7 @@ import { AuthModule } from "./auth/auth.module";
 import { BusinessPartyModule } from "./business-party/business-party.module";
 import { CompanyEntityModule } from "./company-entity/company-entity.module";
 import { ContractBillModule } from "./contract-bill/contract-bill.module";
+import { ContractDocumentModule } from "./contract-document/contract-document.module";
 import { ContractModule } from "./contract/contract.module";
 import { ContractTemplateModule } from "./contract-template/contract-template.module";
 import { ContractWorkbenchModule } from "./contract-workbench/contract-workbench.module";
@@ -26,6 +27,7 @@ import { SettlementModule } from "./settlement/settlement.module";
     ProjectModule,
     ContractModule,
     ContractBillModule,
+    ContractDocumentModule,
     ContractWorkbenchModule,
     ContractTemplateModule,
     BusinessPartyModule,
