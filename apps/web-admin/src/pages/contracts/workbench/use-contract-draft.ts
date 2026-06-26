@@ -87,10 +87,6 @@ export interface UseContractDraft {
   workbench: Ref<ContractWorkbenchReadModel | null>;
   saveState: Ref<ContractDraftSaveState>;
   conflict: Ref<ContractDraftConflict | null>;
-  /** True while autosave is paused awaiting a conflict decision. */
-  paused: ComputedRef<boolean>;
-  /** True from the first edit until a save resolves successfully. */
-  dirty: ComputedRef<boolean>;
   initializeDraft: InitializeDraftController;
   load: (contractId: string) => Promise<void>;
   markDirty: () => void;
@@ -214,7 +210,7 @@ function readRevision(result: unknown): number | null {
 }
 
 function getStorage(): Storage | null {
-  return typeof localStorage === "undefined" ? null : localStorage;
+  return typeof globalThis.localStorage !== "undefined" ? globalThis.localStorage : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -231,14 +227,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const contractVersionId = ref<string | null>(null);
   const currentRevision = ref<number>(0);
 
-  // Autosave is paused only while a conflict awaits a user decision.
+  // Internal-only. Autosave is paused while a conflict awaits a user decision;
+  // these are not part of the public composable surface (brief: exactly 12 members).
   const pausedRef = ref(false);
-  const paused = computed(() => pausedRef.value);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   // `dirty` stays true from the first edit until a save RESOLVES successfully.
   const dirtyRef = ref(false);
-  const dirty = computed(() => dirtyRef.value);
 
   function backupKey(): string | null {
     return contractVersionId.value ? `${BACKUP_KEY_PREFIX}${contractVersionId.value}` : null;
@@ -524,8 +519,6 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     workbench,
     saveState,
     conflict,
-    paused,
-    dirty,
     initializeDraft,
     load,
     markDirty,

@@ -132,6 +132,23 @@ export function previewContractTypeChange(
   return postJson<unknown>(`/contract-workbench/${contractVersionId}/type-change-preview`, body);
 }
 
+export interface ApplyContractTypeChangePayload {
+  targetBusinessTemplateVersionId: string;
+  expectedRevision: number;
+}
+
+export function applyContractTypeChange(
+  contractVersionId: string,
+  body: ApplyContractTypeChangePayload
+) {
+  // Backend requires explicit `confirmed: true` (ApplyContractTypeChangeDto) so the
+  // migration only runs after the user accepts the preview.
+  return postJson<unknown>(`/contract-workbench/${contractVersionId}/type-change`, {
+    ...body,
+    confirmed: true
+  });
+}
+
 export interface TransferContractDraftPayload {
   toUserId: string;
 }

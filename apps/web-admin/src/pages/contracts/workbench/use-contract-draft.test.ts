@@ -202,6 +202,8 @@ describe("useContractDraft", () => {
     await vi.runOnlyPendingTimersAsync();
     expect(mockSaveDraft).toHaveBeenCalledTimes(2);
     expect(draft.saveState.value).toBe("saved");
+    // The successful retry clears the localStorage backup.
+    expect(globalThis.localStorage.getItem("contract-draft:cv-1")).toBeNull();
   });
 
   it("pauses after a revision conflict until the user chooses local or server data", async () => {

@@ -115,6 +115,21 @@
             当前状态（{{ workbench.contract.status }}）不可编辑，仅供查看。
           </p>
 
+          <div
+            v-if="activeSection === 'overview' && workbench"
+            class="migration-control"
+          >
+            <span class="migration-label">合同类型迁移</span>
+            <t-select
+              :value="workbench.contract.contractTypeKey"
+              :options="contractTypeOptions"
+              :disabled="!editable || migrationBusy"
+              placeholder="切换合同类型"
+              @change="onExistingTypeChange"
+            />
+            <span class="migration-hint">切换类型前会先生成迁移预览，确认后才会应用。</span>
+          </div>
+
           <ContractOverviewSection
             v-if="activeSection === 'overview'"
             :workbench="workbench"
@@ -185,6 +200,31 @@
       </div>
     </t-dialog>
 
+    <!-- Contract-type migration preview ------------------------------------->
+    <t-dialog
+      :visible="migrationVisible"
+      header="合同类型迁移预览"
+      :confirm-btn="{ content: '确认迁移', loading: migrationBusy }"
+      cancel-btn="取消"
+      :close-on-overlay-click="false"
+      @confirm="onConfirmMigration"
+      @close="onCancelMigration"
+    >
+      <div class="migration-preview">
+        <p>
+          将合同类型迁移为
+          <strong>{{ contractTypeLabel(migrationTargetTypeKey) }}</strong>。请确认下列变更：
+        </p>
+        <ul class="migration-diff">
+          <li>保留字段：{{ migrationDiffText("retainedFields") }}</li>
+          <li>移除字段：{{ migrationDiffText("removedFields") }}</li>
+          <li>新增默认字段：{{ migrationDiffText("addedDefaults") }}</li>
+          <li>移除清单：{{ migrationDiffText("removedBills") }}</li>
+          <li>新增清单：{{ migrationDiffText("addedBills") }}</li>
+        </ul>
+      </div>
+    </t-dialog>
+
     <!-- Ownership transfer --------------------------------------------------->
     <t-dialog
       v-model:visible="transferVisible"
@@ -207,7 +247,9 @@ import type { ContractReadinessResult } from "@jiangkong/shared-domain";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
+  applyContractTypeChange,
   listPublishedContractTemplates,
+  previewContractTypeChange,
   transferContractDraft
 } from "../../api/contract-workbench.api";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
@@ -275,6 +317,13 @@ const creating = ref(false);
 const errorMessage = ref("");
 const transferVisible = ref(false);
 const transferUserId = ref("");
+
+// Contract-type migration (existing loaded draft): preview -> confirm -> apply.
+const migrationVisible = ref(false);
+const migrationBusy = ref(false);
+const migrationTargetTypeKey = ref("");
+const migrationTargetTemplateVersionId = ref("");
+const migrationPreview = ref<Record<string, unknown> | null>(null);
 
 // Selector option sources. Projects are seeded minimally here; a later task can
 // wire a real project list endpoint. Templates load per chosen contract type.
@@ -352,6 +401,98 @@ function onContractTypeChange(value: string) {
   initializeDraft.setContractTypeKey(value);
   initializeDraft.setBusinessTemplateVersionId("");
   void loadTemplatesForType(value);
+}
+
+function contractTypeLabel(typeKey: string): string {
+  return contractTypeOptions.find((option) => option.value === typeKey)?.label ?? typeKey;
+}
+
+function firstTemplateVersionId(templates: Array<Record<string, unknown>>): string {
+  const first = templates[0];
+  if (!first) {
+    return "";
+  }
+  return String(first["versionId"] ?? first["id"] ?? "");
+}
+
+// Existing loaded draft: changing the contract type opens a migration preview
+// dialog; the change is applied only after the user confirms. Cancel reverts the
+// selector to the current type (the select is bound to the read model, so simply
+// closing the dialog restores the displayed value).
+async function onExistingTypeChange(value: string) {
+  const wb = workbench.value;
+  if (!wb || value === wb.contract.contractTypeKey) {
+    return;
+  }
+
+  migrationBusy.value = true;
+  errorMessage.value = "";
+  try {
+    const templates = (await listPublishedContractTemplates(value)) as Array<
+      Record<string, unknown>
+    >;
+    const targetTemplateVersionId = firstTemplateVersionId(templates);
+    if (!targetTemplateVersionId) {
+      errorMessage.value = "目标合同类型暂无已发布模板，无法迁移。";
+      return;
+    }
+
+    const preview = (await previewContractTypeChange(wb.version.id, {
+      targetBusinessTemplateVersionId: targetTemplateVersionId,
+      expectedRevision: wb.version.revision
+    })) as Record<string, unknown>;
+
+    migrationTargetTypeKey.value = value;
+    migrationTargetTemplateVersionId.value = targetTemplateVersionId;
+    migrationPreview.value = preview;
+    migrationVisible.value = true;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "迁移预览失败";
+  } finally {
+    migrationBusy.value = false;
+  }
+}
+
+function migrationDiffText(key: string): string {
+  const preview = migrationPreview.value;
+  const value = preview ? preview[key] : undefined;
+  if (Array.isArray(value) && value.length > 0) {
+    return value.map((item) => String(item)).join("、");
+  }
+  return "无";
+}
+
+function resetMigrationState() {
+  migrationVisible.value = false;
+  migrationTargetTypeKey.value = "";
+  migrationTargetTemplateVersionId.value = "";
+  migrationPreview.value = null;
+}
+
+function onCancelMigration() {
+  resetMigrationState();
+}
+
+async function onConfirmMigration() {
+  const wb = workbench.value;
+  if (!wb || !migrationTargetTemplateVersionId.value) {
+    return;
+  }
+
+  migrationBusy.value = true;
+  errorMessage.value = "";
+  try {
+    await applyContractTypeChange(wb.version.id, {
+      targetBusinessTemplateVersionId: migrationTargetTemplateVersionId.value,
+      expectedRevision: wb.version.revision
+    });
+    resetMigrationState();
+    await load(contractId.value);
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "合同类型迁移失败";
+  } finally {
+    migrationBusy.value = false;
+  }
 }
 
 async function onCreateDraft() {
@@ -600,6 +741,43 @@ watch(contractId, (next, previous) => {
 
 .readiness-slot {
   align-self: start;
+}
+
+/* Migration control + preview ----------------------------------------------*/
+.migration-control {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 280px) 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f7f9fc;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+}
+
+.migration-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #424955;
+}
+
+.migration-hint {
+  color: #767f8d;
+  font-size: 12px;
+}
+
+.migration-preview {
+  display: grid;
+  gap: 12px;
+}
+
+.migration-diff {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: #424955;
 }
 
 /* Conflict + transfer -------------------------------------------------------*/

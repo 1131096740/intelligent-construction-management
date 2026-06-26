@@ -4,6 +4,7 @@ import {
   addBillRow,
   addContractParty,
   applyBillExcelImport,
+  applyContractTypeChange,
   createBusinessParty,
   createContractNumberRule,
   createDraftCheckpoint,
@@ -190,6 +191,25 @@ describe("contract workbench API client", () => {
         })
       }
     );
+  });
+
+  it("applyContractTypeChange – POST /contract-workbench/:contractVersionId/type-change with confirmed:true", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ revision: 4 }));
+
+    await applyContractTypeChange("version-1", {
+      targetBusinessTemplateVersionId: "template-version-2",
+      expectedRevision: 2
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/type-change", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        targetBusinessTemplateVersionId: "template-version-2",
+        expectedRevision: 2,
+        confirmed: true
+      })
+    });
   });
 
   it("transferContractDraft – POST /contract-workbench/:contractId/transfer", async () => {
