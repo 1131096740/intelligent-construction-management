@@ -197,17 +197,32 @@ const router = useRouter();
 const noticeMessage = ref("");
 const activeTab = ref<"ledger" | "my" | "voided">("ledger");
 
+// Draft list rows mirror the backend Contract read model fields returned by
+// listDrafts (raw Contract rows): name may be empty for fresh drafts, so
+// temporaryCode is the primary human-readable identifier.
+interface ContractDraftRow {
+  id: string;
+  name?: string | null;
+  temporaryCode?: string | null;
+  code?: string | null;
+  contractTypeKey?: string | null;
+  updatedAt?: string | null;
+}
+
 // Draft tables
 const draftColumns = [
-  { colKey: "id", title: "草稿ID", minWidth: 200 },
-  { colKey: "operation", title: "操作", width: 100, fixed: "right" as const }
+  { colKey: "temporaryCode", title: "草稿编号", minWidth: 180 },
+  { colKey: "name", title: "合同名称", minWidth: 160 },
+  { colKey: "contractTypeKey", title: "合同类型", width: 140 },
+  { colKey: "updatedAt", title: "更新时间", width: 180 },
+  { colKey: "operation", title: "操作", width: 120, fixed: "right" as const }
 ];
 
-const myDrafts = ref<unknown[]>([]);
+const myDrafts = ref<ContractDraftRow[]>([]);
 const draftsLoading = ref(false);
 const draftsError = ref("");
 
-const voidedDrafts = ref<unknown[]>([]);
+const voidedDrafts = ref<ContractDraftRow[]>([]);
 const voidedLoading = ref(false);
 const voidedError = ref("");
 
@@ -215,7 +230,7 @@ async function loadMyDrafts() {
   draftsLoading.value = true;
   draftsError.value = "";
   try {
-    myDrafts.value = await listContractDrafts("my");
+    myDrafts.value = (await listContractDrafts("my")) as ContractDraftRow[];
   } catch (error) {
     draftsError.value = error instanceof Error ? error.message : "加载草稿失败";
   } finally {
@@ -227,7 +242,7 @@ async function loadVoidedDrafts() {
   voidedLoading.value = true;
   voidedError.value = "";
   try {
-    voidedDrafts.value = await listContractDrafts("voided");
+    voidedDrafts.value = (await listContractDrafts("voided")) as ContractDraftRow[];
   } catch (error) {
     voidedError.value = error instanceof Error ? error.message : "加载作废草稿失败";
   } finally {

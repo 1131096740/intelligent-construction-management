@@ -123,6 +123,13 @@ describe("contract workbench API client", () => {
     const [path, options] = mockApiFetch.mock.calls[0];
     expect(path).toBe("/contract-workbench/version-1");
     expect((options as RequestInit).method).toBe("PATCH");
+    expect(JSON.parse((options as RequestInit).body as string)).toMatchObject({
+      expectedRevision: 1,
+      draftData: { name: "钢材采购合同" },
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: 1000000
+    });
   });
 
   it("createDraftCheckpoint – POST /contract-workbench/:contractVersionId/checkpoints", async () => {
