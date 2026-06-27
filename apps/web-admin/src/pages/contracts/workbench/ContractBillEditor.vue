@@ -109,6 +109,17 @@
             </td>
           </tr>
         </tbody>
+        <tfoot>
+          <tr>
+            <td :colspan="Math.max(columns.length - 1, 1)">
+              合计
+            </td>
+            <td>
+              {{ moneyText(bill.taxInclusiveAmountCents) }}
+            </td>
+            <td />
+          </tr>
+        </tfoot>
       </table>
     </div>
 
@@ -126,6 +137,12 @@
         class="message"
       >
         {{ message }}
+      </span>
+      <span
+        v-if="importPreview && !canApply"
+        class="message danger"
+      >
+        导入存在错误，已保留当前清单行，请修正后重新预览。
       </span>
     </div>
   </div>
@@ -399,6 +416,12 @@ function moneyText(value: string | number | undefined): string {
   font-weight: 600;
 }
 
+.bill-table tfoot td {
+  color: #151922;
+  background: #f7f9fc;
+  font-weight: 700;
+}
+
 .bill-table input {
   width: 100%;
   min-width: 80px;
@@ -406,5 +429,9 @@ function moneyText(value: string | number | undefined): string {
   padding: 0 6px;
   border: 1px solid #ccd4df;
   border-radius: 3px;
+}
+
+.danger {
+  color: #b51d2a;
 }
 </style>

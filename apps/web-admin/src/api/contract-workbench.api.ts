@@ -242,6 +242,11 @@ export function listPublishedLayoutTemplates(contractTypeKey?: string) {
   return readJson<unknown[]>(`/contract-layout-templates${qs}`);
 }
 
+export function listPublishedStandardClauses(category?: string) {
+  const qs = category ? `?category=${encodeURIComponent(category)}` : "";
+  return readJson<unknown[]>(`/standard-clauses${qs}`);
+}
+
 // ---------------------------------------------------------------------------
 // Contract bill rows (POST/PATCH /contract-bills/:billId/rows/:rowKey)
 // ---------------------------------------------------------------------------
@@ -325,6 +330,7 @@ export function applyBillExcelImport(importId: string) {
 export interface QueueContractDocumentPayload {
   layoutTemplateVersionId: string;
   purpose?: string;
+  attachmentFileIds?: string[];
   [key: string]: unknown;
 }
 

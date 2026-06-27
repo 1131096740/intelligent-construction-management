@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-27 (CodeX)：收口企业级合同工作台 Phase 1 Task 18 剩余前端缺口。条款区改为受约束 JSON 内容模型（段落/加粗/斜体/列表/小表格，保留 `content.text` 兼容 DOCX 渲染），显示必填、标准条款来源、偏离标准条款与条款级 readiness；接入现有 `GET /standard-clauses` 做标准条款来源插入，若接口未返回正文则只记录来源并提示人工维护。文档区修正版式版本 id 选择，展示版式预览 PDF/可用缩略图字段，支持附件上传与已选附件传入生成队列，文档用途改为分段按钮，展示生成 warning。清单区补合计 footer 与导入错误保留当前 rows 的明确提示。补 API client 与纯函数测试。验证：`web-admin` 指定测试 **105** 个通过，typecheck/lint/build 通过。已知关注：标准条款库接口当前只返回主表，不带已发布版本正文/版本号详情，完整“一键插入正文”需要后端读模型增强。
 - 2026-06-27 (CodeX)：推进企业级合同工作台 Phase 1 Task 18 的前端基础分区。工作台新增「合同清单 / 合同条款 / 合同文档」导航与页面分区；清单区接入已有后端 API，支持按清单切换、行内编辑、新增、复制、删除、上下移动、Excel 模板下载、xlsx 上传预览与无错误应用；条款区编辑当前 clause snapshot 并沿用自动保存；文档区接入已发布版式选择、草稿/磋商/内部送审用途、生成队列、2 秒轮询、stale 标记、失败重试、DOCX/PDF 私有下载票据。补 `deleteBillRow` / `reorderBillRows` / `retryContractDocument` API client 与 6 条清单行为测试。验证：`web-admin` 测试 **101** 个通过，typecheck/lint/build 通过。未做：标准条款库插入、富文本小表格编辑、版式缩略图/附件选择的完整体验，留在 Task 18 后续收口。
 - 2026-06-27 (CodeX)：接手并核对 Claude Code 上下文。用户提供的 Claude data 导出中 `conversations.json` 为空；从 `.claude/worktrees/claude+contract-workbench-phase1` 找到未合入当前 `main` 的合同工作台分支并 fast-forward 合入至 `fd46ecf`。确认 Task 17「工作台外壳与自动保存状态」已由 Web 工作台页面、分区组件、`useContractDraft` 自动保存/冲突状态、readiness panel、类型变更迁移预览等提交完成；补齐进度记录。验证：`web-admin` 工作台/API/路由相关测试 **92** 个通过，`web-admin` typecheck/lint 通过。下一项为 Task 18–22「清单/条款/文档分区、模板中心、种子与端到端验收」。
 - 2026-06-25 (CodeX)：完成企业级合同工作台 Phase 1 Task 14「持久化文档任务与轮询处理器」。新增文档排队/列表/重试 API、数据库幂等键、版式预览优先的单进程轮询 worker、DOCX→PDF→附件归一化→私有文件上传全链路、失败截断与超时 processing 回收、终态 CAS 与审计。所有影响渲染输入的草稿、清单、Excel 导入、合同方快照变更统一提升 `draftRevision` 并将旧成功文档标为 stale；成功落库前锁定合同版本，retry 重新校验 owner、状态、版式、合同类型、readiness 与附件权限。相关文档链路/工作台/清单/文件 **121** 个回归测试 + API typecheck/lint 全绿；下一项为 Task 15「提交就绪校验与审批冻结」。
@@ -73,7 +74,7 @@
 - [x] Task 15：提交就绪校验与审批冻结
 - [x] Task 16：工作台 API 客户端与路由
 - [x] Task 17：工作台外壳与自动保存状态
-- [~] Task 18：清单/条款/文档分区（基础分区与核心 API 操作已接入；标准条款库插入、富文本小表格、版式缩略图/附件选择待收口）
+- [x] Task 18：清单/条款/文档分区（前端已收口；标准条款正文一键插入依赖后端标准条款发布版本读模型返回正文）
 - [ ] Task 19–22：模板中心、种子与端到端验收
 
 ---

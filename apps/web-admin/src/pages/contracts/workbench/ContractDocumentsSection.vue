@@ -16,11 +16,18 @@
       </label>
       <label class="field">
         <span class="field-label">文档用途</span>
-        <t-select
-          v-model="purpose"
-          :options="purposeOptions"
-          :disabled="disabled || busy"
-        />
+        <div class="purpose-segments">
+          <button
+            v-for="option in purposeOptions"
+            :key="option.value"
+            type="button"
+            :class="['segment', { active: purpose === option.value }]"
+            :disabled="disabled || busy"
+            @click="purpose = option.value"
+          >
+            {{ option.label }}
+          </button>
+        </div>
       </label>
       <label class="field">
         <span class="field-label">下载确认密码</span>
@@ -38,6 +45,58 @@
       >
         生成文档
       </t-button>
+    </div>
+
+    <div
+      v-if="selectedLayout"
+      class="layout-preview"
+    >
+      <img
+        v-if="layoutThumbnailUrl(selectedLayout)"
+        :src="layoutThumbnailUrl(selectedLayout)"
+        alt="版式缩略图"
+      >
+      <span>版式 v{{ selectedLayout.versionNo ?? "-" }}</span>
+      <button
+        v-if="selectedLayout.previewPdfFileId"
+        type="button"
+        class="link-button"
+        :disabled="busy"
+        @click="openFile(String(selectedLayout.previewPdfFileId))"
+      >
+        预览 PDF
+      </button>
+    </div>
+
+    <div class="attachments">
+      <label class="file-button">
+        <input
+          type="file"
+          multiple
+          :disabled="disabled || busy"
+          @change="uploadAttachments"
+        >
+        选择附件
+      </label>
+      <div
+        v-if="attachments.length"
+        class="attachment-list"
+      >
+        <span
+          v-for="file in attachments"
+          :key="file.id"
+          class="attachment-chip"
+        >
+          {{ file.originalName }}
+          <button
+            type="button"
+            :disabled="disabled || busy"
+            @click="removeAttachment(file.id)"
+          >
+            ×
+          </button>
+        </span>
+      </div>
     </div>
 
     <p
@@ -68,6 +127,17 @@
           状态 {{ document.status }} · 修订 {{ document.sourceRevision }} ·
           {{ timeText(document.completedAt ?? document.createdAt) }}
         </div>
+        <ul
+          v-if="warningsFor(document).length"
+          class="warning-list"
+        >
+          <li
+            v-for="warning in warningsFor(document)"
+            :key="warning"
+          >
+            {{ warning }}
+          </li>
+        </ul>
       </div>
 
       <div class="document-actions">
@@ -117,8 +187,16 @@ import {
   queueContractDocument,
   retryContractDocument
 } from "../../../api/contract-workbench.api";
-import { createPrivateFileDownloadTicket } from "../../../api/core-flow-read.api";
-import { documentsWithStaleFlag, type WorkbenchDocument } from "./contract-bill-editor";
+import {
+  createPrivateFileDownloadTicket,
+  uploadPrivateFile,
+  type PrivateFileReadModel
+} from "../../../api/core-flow-read.api";
+import {
+  documentWarnings,
+  documentsWithStaleFlag,
+  type WorkbenchDocument
+} from "./contract-bill-editor";
 
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
@@ -135,11 +213,13 @@ const purposeOptions = [
   { label: "内部送审稿", value: "internal_review" }
 ];
 
+const layoutRecords = ref<Array<Record<string, unknown>>>([]);
 const layoutOptions = ref<Array<{ label: string; value: string }>>([]);
 const layoutTemplateVersionId = ref("");
 const purpose = ref("draft");
 const confirmationPassword = ref("");
 const rawDocuments = ref<WorkbenchDocument[]>([]);
+const attachments = ref<PrivateFileReadModel[]>([]);
 const busy = ref(false);
 const message = ref("");
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -151,6 +231,14 @@ const documents = computed(() =>
 );
 const hasActiveDocument = computed(() =>
   documents.value.some((document) => ["queued", "processing"].includes(document.status))
+);
+const selectedLayout = computed(
+  () =>
+    layoutRecords.value.find(
+      (layout) =>
+        String(layout["layoutTemplateVersionId"] ?? layout["versionId"] ?? layout["id"] ?? "") ===
+        layoutTemplateVersionId.value
+    ) ?? null
 );
 
 watch(
@@ -178,6 +266,7 @@ onUnmounted(stopPolling);
 async function loadLayouts() {
   const contractTypeKey = props.workbench?.contract.contractTypeKey;
   if (!contractTypeKey) {
+    layoutRecords.value = [];
     layoutOptions.value = [];
     return;
   }
@@ -185,9 +274,10 @@ async function loadLayouts() {
     const layouts = (await listPublishedLayoutTemplates(contractTypeKey)) as Array<
       Record<string, unknown>
     >;
+    layoutRecords.value = layouts;
     layoutOptions.value = layouts.map((layout) => ({
       label: String(layout["name"] ?? layout["versionName"] ?? layout["id"] ?? "版式"),
-      value: String(layout["versionId"] ?? layout["id"] ?? "")
+      value: String(layout["layoutTemplateVersionId"] ?? layout["versionId"] ?? layout["id"] ?? "")
     }));
     if (!layoutTemplateVersionId.value) {
       layoutTemplateVersionId.value = layoutOptions.value[0]?.value ?? "";
@@ -241,10 +331,35 @@ async function queueDocument() {
       queueContractDocument(versionId.value, {
         layoutTemplateVersionId: layoutTemplateVersionId.value,
         purpose: purpose.value,
-        attachmentFileIds: []
+        attachmentFileIds: attachments.value.map((file) => file.id)
       }),
     "已加入生成队列"
   );
+}
+
+async function uploadAttachments(event: Event) {
+  const files = [...((event.target as HTMLInputElement).files ?? [])];
+  if (!files.length) return;
+  busy.value = true;
+  message.value = "";
+  try {
+    const uploaded = [];
+    for (const file of files) {
+      uploaded.push(await uploadPrivateFile(file, file.name));
+    }
+    const byId = new Map([...attachments.value, ...uploaded].map((file) => [file.id, file]));
+    attachments.value = [...byId.values()];
+    message.value = "附件已加入生成输入";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "附件上传失败";
+  } finally {
+    busy.value = false;
+    (event.target as HTMLInputElement).value = "";
+  }
+}
+
+function removeAttachment(fileId: string) {
+  attachments.value = attachments.value.filter((file) => file.id !== fileId);
 }
 
 async function retryDocument(documentId: string) {
@@ -277,6 +392,18 @@ function purposeLabel(value: string) {
 function timeText(value: unknown): string {
   return typeof value === "string" && value ? new Date(value).toLocaleString() : "未完成";
 }
+
+function warningsFor(document: WorkbenchDocument) {
+  return documentWarnings(document);
+}
+
+function layoutThumbnailUrl(layout: Record<string, unknown>) {
+  return typeof layout["thumbnailUrl"] === "string"
+    ? layout["thumbnailUrl"]
+    : typeof layout["previewThumbnailUrl"] === "string"
+      ? layout["previewThumbnailUrl"]
+      : "";
+}
 </script>
 
 <style scoped>
@@ -294,9 +421,92 @@ function timeText(value: unknown): string {
 
 .document-controls {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 160px 180px auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(240px, auto) 180px auto;
   align-items: end;
   gap: 12px;
+}
+
+.purpose-segments {
+  display: inline-flex;
+  border: 1px solid #b8c7e6;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.segment {
+  min-height: 30px;
+  padding: 0 10px;
+  color: #424955;
+  background: #fff;
+  border: 0;
+  border-right: 1px solid #b8c7e6;
+  cursor: pointer;
+}
+
+.segment:last-child {
+  border-right: 0;
+}
+
+.segment.active {
+  color: #0052d9;
+  background: #eaf2ff;
+  font-weight: 600;
+}
+
+.layout-preview,
+.attachments,
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.layout-preview {
+  padding: 10px 12px;
+  background: #f7f9fc;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  color: #424955;
+  font-size: 12px;
+}
+
+.layout-preview img {
+  width: 72px;
+  height: 96px;
+  object-fit: cover;
+  border: 1px solid #dce1e8;
+}
+
+.file-button,
+.link-button,
+.attachment-chip button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  color: #0052d9;
+  background: #fff;
+  border: 1px solid #b8c7e6;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.file-button input {
+  display: none;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  background: #f7f9fc;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  color: #424955;
+  font-size: 12px;
 }
 
 .field {
@@ -339,6 +549,15 @@ function timeText(value: unknown): string {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.warning-list {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: #9f4f06;
+  font-size: 12px;
 }
 
 @media (max-width: 900px) {

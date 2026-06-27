@@ -38,9 +38,35 @@ export interface WorkbenchDocument {
   purpose?: string;
   createdAt?: string;
   completedAt?: string | null;
+  warnings?: unknown;
+  inputSnapshot?: unknown;
   docxFileId?: string | null;
   pdfFileId?: string | null;
   [key: string]: unknown;
+}
+
+export interface ClauseTextBlock {
+  type: "paragraph";
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+export interface ClauseListBlock {
+  type: "list";
+  items: string[];
+}
+
+export interface ClauseTableBlock {
+  type: "table";
+  rows: string[][];
+}
+
+export type ClauseBlock = ClauseTextBlock | ClauseListBlock | ClauseTableBlock;
+
+export interface ClauseDocument {
+  text: string;
+  blocks: ClauseBlock[];
 }
 
 export interface ImportPreviewCounts {
@@ -117,6 +143,42 @@ export function canApplyImport(preview: unknown): boolean {
   return importPreviewCounts(preview).errors === 0;
 }
 
+export function normalizeClauseDocument(content: unknown): ClauseDocument {
+  if (isClauseDocument(content)) {
+    return {
+      text: content.text,
+      blocks: content.blocks.map((block) => cloneClauseBlock(block))
+    };
+  }
+  const text = contentText(content);
+  return {
+    text,
+    blocks: text ? [{ type: "paragraph", text }] : [{ type: "paragraph", text: "" }]
+  };
+}
+
+export function clauseDocumentText(document: ClauseDocument): string {
+  return document.blocks
+    .map((block) => {
+      if (block.type === "paragraph") return block.text;
+      if (block.type === "list") return block.items.join("\n");
+      return block.rows.map((row) => row.join(" | ")).join("\n");
+    })
+    .join("\n")
+    .trim();
+}
+
+export function clauseReadinessMessages(readiness: unknown, clauseKey: string) {
+  const keyPrefix = `clause.${clauseKey}`;
+  return readinessEntries(readiness).filter((entry) => entry.key.startsWith(keyPrefix));
+}
+
+export function documentWarnings(document: WorkbenchDocument): string[] {
+  const direct = stringsFromUnknown(document.warnings);
+  const snapshot = objectValue(document.inputSnapshot);
+  return [...direct, ...stringsFromUnknown(snapshot["warnings"])];
+}
+
 export function documentsWithStaleFlag(
   documents: WorkbenchDocument[],
   currentRevision: number
@@ -131,6 +193,80 @@ function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function isClauseDocument(value: unknown): value is ClauseDocument {
+  const record = objectValue(value);
+  return typeof record.text === "string" && Array.isArray(record.blocks);
+}
+
+function cloneClauseBlock(block: ClauseBlock): ClauseBlock {
+  if (block.type === "list") {
+    return { ...block, items: [...block.items] };
+  }
+  if (block.type === "table") {
+    return { ...block, rows: block.rows.map((row) => [...row]) };
+  }
+  return { ...block };
+}
+
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content === null || content === undefined) return "";
+  if (Array.isArray(content)) return content.map((item) => contentText(item)).join("\n");
+  if (typeof content === "object") {
+    const record = content as Record<string, unknown>;
+    if (typeof record["text"] === "string") return record["text"];
+    return Object.values(record).map((item) => contentText(item)).join("\n");
+  }
+  return String(content);
+}
+
+function readinessEntries(readiness: unknown): Array<{ key: string; message: string; level: string }> {
+  const record = objectValue(readiness);
+  const fromStructured = [
+    ...readinessEntryList(record["blocking"], "blocking"),
+    ...readinessEntryList(record["warnings"], "warning")
+  ];
+  if (fromStructured.length) return fromStructured;
+  return [
+    ...readinessMessages(record["blockingMessages"], "blocking"),
+    ...readinessMessages(record["warningMessages"], "warning")
+  ];
+}
+
+function readinessEntryList(value: unknown, level: string) {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const record = objectValue(item);
+        return typeof record.key === "string" && typeof record.message === "string"
+          ? [{ key: record.key, message: record.message, level }]
+          : [];
+      })
+    : [];
+}
+
+function readinessMessages(value: unknown, level: string) {
+  return Array.isArray(value)
+    ? value
+        .filter((message): message is string => typeof message === "string")
+        .map((message) => ({ key: "", message, level }))
+    : [];
+}
+
+function stringsFromUnknown(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => stringsFromUnknown(item));
+  }
+  if (typeof value === "string" && value.trim()) {
+    return [value];
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === "string") return [record.message];
+    if (typeof record.text === "string") return [record.text];
+  }
+  return [];
 }
 
 function readCount(source: Record<string, unknown>, keys: readonly string[]): number {

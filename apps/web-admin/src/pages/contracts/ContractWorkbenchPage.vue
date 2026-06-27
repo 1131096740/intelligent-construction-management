@@ -173,6 +173,7 @@
           <ContractClausesSection
             v-else-if="activeSection === 'clauses'"
             :model="model"
+            :readiness="workbench?.readiness"
             :disabled="!editable"
             @update="applyPatch"
           />

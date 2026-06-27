@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   billTabs,
   canApplyImport,
+  clauseDocumentText,
+  clauseReadinessMessages,
   documentsWithStaleFlag,
+  documentWarnings,
   importPreviewCounts,
+  normalizeClauseDocument,
   selectedBillForDownload,
   updateRowPreservingKey,
   type WorkbenchBill
@@ -79,5 +83,48 @@ describe("contract bill editor helpers", () => {
       { id: "doc-1", status: "success", sourceRevision: 4, stale: true },
       { id: "doc-2", status: "success", sourceRevision: 5, stale: false }
     ]);
+  });
+
+  it("keeps clause content in a constrained JSON document model", () => {
+    const document = normalizeClauseDocument("付款条件");
+
+    expect(document).toEqual({
+      text: "付款条件",
+      blocks: [{ type: "paragraph", text: "付款条件" }]
+    });
+    expect(
+      clauseDocumentText({
+        text: "",
+        blocks: [
+          { type: "paragraph", text: "质量要求", bold: true },
+          { type: "list", items: ["提供合格证", "验收通过"] },
+          { type: "table", rows: [["项目", "要求"], ["钢筋", "国标"]] }
+        ]
+      })
+    ).toContain("钢筋 | 国标");
+  });
+
+  it("finds clause readiness messages from structured readiness snapshots", () => {
+    expect(
+      clauseReadinessMessages(
+        {
+          blocking: [{ key: "clause.payment", message: "付款条款不能为空" }],
+          warnings: [{ key: "clause.quality.phrase", message: "质量条款缺少验收" }]
+        },
+        "payment"
+      )
+    ).toEqual([{ key: "clause.payment", message: "付款条款不能为空", level: "blocking" }]);
+  });
+
+  it("reads generated document warnings from document or input snapshot", () => {
+    expect(
+      documentWarnings({
+        id: "doc-1",
+        status: "success",
+        sourceRevision: 1,
+        warnings: [{ message: "附件已转 A4" }],
+        inputSnapshot: { warnings: ["图片页较大"] }
+      })
+    ).toEqual(["附件已转 A4", "图片页较大"]);
   });
 });

@@ -18,6 +18,7 @@ import {
   listContractNumberRules,
   listPublishedContractTemplates,
   listPublishedLayoutTemplates,
+  listPublishedStandardClauses,
   previewBillExcelImport,
   previewContractTypeChange,
   queueContractDocument,
@@ -320,6 +321,14 @@ describe("contract workbench API client", () => {
     );
   });
 
+  it("listPublishedStandardClauses – GET /standard-clauses?category=payment", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson([]));
+
+    await listPublishedStandardClauses("payment");
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/standard-clauses?category=payment");
+  });
+
   it("addBillRow – POST /contract-bills/:billId/rows", async () => {
     mockApiFetch.mockReturnValue(makeOkJson({ rowKey: "row-1" }));
 
@@ -456,7 +465,8 @@ describe("contract workbench API client", () => {
 
     await queueContractDocument("version-1", {
       layoutTemplateVersionId: "layout-version-1",
-      purpose: "draft"
+      purpose: "draft",
+      attachmentFileIds: ["file-1"]
     });
 
     expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/documents", {
@@ -464,7 +474,8 @@ describe("contract workbench API client", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         layoutTemplateVersionId: "layout-version-1",
-        purpose: "draft"
+        purpose: "draft",
+        attachmentFileIds: ["file-1"]
       })
     });
   });
