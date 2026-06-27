@@ -164,6 +164,24 @@
             :disabled="!editable"
             @update="applyPatch"
           />
+          <ContractBillsSection
+            v-else-if="activeSection === 'bills'"
+            :workbench="workbench"
+            :disabled="!editable"
+            @reload="reloadCurrent"
+          />
+          <ContractClausesSection
+            v-else-if="activeSection === 'clauses'"
+            :model="model"
+            :disabled="!editable"
+            @update="applyPatch"
+          />
+          <ContractDocumentsSection
+            v-else-if="activeSection === 'documents'"
+            :workbench="workbench"
+            :disabled="!editable"
+            @reload="reloadCurrent"
+          />
         </main>
 
         <ContractReadinessPanel
@@ -253,6 +271,9 @@ import {
   transferContractDraft
 } from "../../api/contract-workbench.api";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
+import ContractBillsSection from "./workbench/ContractBillsSection.vue";
+import ContractClausesSection from "./workbench/ContractClausesSection.vue";
+import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
 import ContractOverviewSection from "./workbench/ContractOverviewSection.vue";
 import ContractPartySection from "./workbench/ContractPartySection.vue";
 import ContractPricingSection from "./workbench/ContractPricingSection.vue";
@@ -307,7 +328,10 @@ const sections = [
   { key: "basic", label: "基础信息" },
   { key: "party", label: "合作单位" },
   { key: "pricing", label: "计价与金额" },
-  { key: "fields", label: "专业字段" }
+  { key: "fields", label: "专业字段" },
+  { key: "bills", label: "合同清单" },
+  { key: "clauses", label: "合同条款" },
+  { key: "documents", label: "合同文档" }
 ] as const;
 
 type SectionKey = (typeof sections)[number]["key"];
@@ -509,6 +533,12 @@ async function onCreateDraft() {
 
 async function onSave() {
   await saveNow();
+}
+
+async function reloadCurrent() {
+  if (contractId.value) {
+    await load(contractId.value);
+  }
 }
 
 async function onCreateCheckpoint() {

@@ -50,6 +50,16 @@ async function patchJson<TResponse>(path: string, body?: unknown): Promise<TResp
   return response.json() as Promise<TResponse>;
 }
 
+async function deleteJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+  const response = await apiFetch(path, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {})
+  });
+  await ensureOk(response, "删除失败");
+  return response.json() as Promise<TResponse>;
+}
+
 function saveBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -255,6 +265,27 @@ export function updateBillRow(billId: string, rowKey: string, body: SaveBillRowP
   return patchJson<unknown>(`/contract-bills/${billId}/rows/${rowKey}`, body);
 }
 
+export interface DeleteBillRowPayload {
+  expectedBillRevision: number;
+}
+
+export function deleteBillRow(
+  billId: string,
+  rowKey: string,
+  body: DeleteBillRowPayload
+) {
+  return deleteJson<unknown>(`/contract-bills/${billId}/rows/${rowKey}`, body);
+}
+
+export interface ReorderBillRowsPayload {
+  expectedBillRevision: number;
+  rowKeys: string[];
+}
+
+export function reorderBillRows(billId: string, body: ReorderBillRowsPayload) {
+  return postJson<unknown>(`/contract-bills/${billId}/rows/reorder`, body);
+}
+
 // ---------------------------------------------------------------------------
 // Contract bill Excel (GET blob, POST JSON preview, POST apply)
 // ---------------------------------------------------------------------------
@@ -306,4 +337,8 @@ export function queueContractDocument(
 
 export function listContractDocuments(contractVersionId: string) {
   return readJson<unknown[]>(`/contract-workbench/${contractVersionId}/documents`);
+}
+
+export function retryContractDocument(documentId: string) {
+  return postJson<unknown>(`/contract-documents/${documentId}/retry`);
 }

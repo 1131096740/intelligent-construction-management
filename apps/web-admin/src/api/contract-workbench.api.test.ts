@@ -9,6 +9,7 @@ import {
   createContractNumberRule,
   createDraftCheckpoint,
   createWorkbenchDraft,
+  deleteBillRow,
   downloadBillExcelTemplate,
   fetchContractWorkbench,
   listBusinessParties,
@@ -20,7 +21,9 @@ import {
   previewBillExcelImport,
   previewContractTypeChange,
   queueContractDocument,
+  reorderBillRows,
   restoreDraftCheckpoint,
+  retryContractDocument,
   saveContractDraft,
   transferContractDraft,
   updateBillRow,
@@ -363,6 +366,36 @@ describe("contract workbench API client", () => {
     expect((options as RequestInit).method).toBe("PATCH");
   });
 
+  it("deleteBillRow – DELETE /contract-bills/:billId/rows/:rowKey", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({}));
+
+    await deleteBillRow("bill-1", "row-1", { expectedBillRevision: 3 });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-bills/bill-1/rows/row-1", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedBillRevision: 3 })
+    });
+  });
+
+  it("reorderBillRows – POST /contract-bills/:billId/rows/reorder", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({}));
+
+    await reorderBillRows("bill-1", {
+      expectedBillRevision: 4,
+      rowKeys: ["row-2", "row-1"]
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-bills/bill-1/rows/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expectedBillRevision: 4,
+        rowKeys: ["row-2", "row-1"]
+      })
+    });
+  });
+
   it("downloadBillExcelTemplate – GET blob from /contract-bills/:billId/excel-template", async () => {
     // Minimal DOM stubs for a Node environment (no jsdom).
     const anchor = { href: "", download: "", click: vi.fn(), remove: vi.fn() };
@@ -442,5 +475,17 @@ describe("contract workbench API client", () => {
     await listContractDocuments("version-1");
 
     expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/documents");
+  });
+
+  it("retryContractDocument – POST /contract-documents/:documentId/retry", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({}));
+
+    await retryContractDocument("doc-1");
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-documents/doc-1/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
   });
 });
