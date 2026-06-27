@@ -19,6 +19,7 @@ import {
   listPublishedContractTemplates,
   listPublishedLayoutTemplates,
   listPublishedStandardClauses,
+  type PublishedStandardClause,
   previewBillExcelImport,
   previewContractTypeChange,
   queueContractDocument,
@@ -322,11 +323,27 @@ describe("contract workbench API client", () => {
   });
 
   it("listPublishedStandardClauses – GET /standard-clauses?category=payment", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson([]));
+    mockApiFetch.mockReturnValue(
+      makeOkJson([
+        {
+          standardClauseVersionId: "clause-version-2",
+          versionId: "clause-version-2",
+          versionNo: 2,
+          title: "付款条款",
+          content: { text: "结算确认后付款。" },
+          clauseId: "clause-1",
+          code: "CLS-PAY",
+          name: "付款标准条款",
+          category: "payment"
+        }
+      ] satisfies PublishedStandardClause[])
+    );
 
-    await listPublishedStandardClauses("payment");
+    const result = await listPublishedStandardClauses("payment");
 
     expect(mockApiFetch).toHaveBeenCalledWith("/standard-clauses?category=payment");
+    expect(result[0].standardClauseVersionId).toBe("clause-version-2");
+    expect(result[0].content).toEqual({ text: "结算确认后付款。" });
   });
 
   it("addBillRow – POST /contract-bills/:billId/rows", async () => {

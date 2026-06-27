@@ -139,6 +139,35 @@ export function importPreviewCounts(preview: unknown): ImportPreviewCounts {
   };
 }
 
+export function importPreviewErrors(preview: unknown): string[] {
+  const source = objectValue(preview);
+  const summary = objectValue(source.summary);
+  return stringsFromUnknown(source.errors).concat(stringsFromUnknown(summary.errors));
+}
+
+export function importPreviewRows(preview: unknown): Record<string, unknown>[] {
+  const source = objectValue(preview);
+  const summary = objectValue(source.summary);
+  for (const value of [
+    source.rows,
+    source.changedRows,
+    source.previewRows,
+    summary.rows,
+    summary.changedRows,
+    summary.added,
+    summary.updated,
+    summary.removed
+  ]) {
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => {
+        const row = objectValue(item);
+        return Object.keys(row).length ? [row] : [];
+      });
+    }
+  }
+  return [];
+}
+
 export function canApplyImport(preview: unknown): boolean {
   return importPreviewCounts(preview).errors === 0;
 }

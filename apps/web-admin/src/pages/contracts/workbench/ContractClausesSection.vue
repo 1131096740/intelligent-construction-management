@@ -59,7 +59,7 @@
           theme="primary"
           variant="light"
         >
-          标准条款 {{ clause.standardClauseVersionId }}
+          {{ standardClauseLabel(clause) }}
         </t-tag>
         <t-tag
           v-if="isDeviated(clause)"
@@ -207,7 +207,10 @@
 <script setup lang="ts">
 import type { ContractClauseDefinition } from "@jiangkong/shared-domain";
 import { computed, onMounted, ref } from "vue";
-import { listPublishedStandardClauses } from "../../../api/contract-workbench.api";
+import {
+  listPublishedStandardClauses,
+  type PublishedStandardClause
+} from "../../../api/contract-workbench.api";
 import {
   clauseDocumentText,
   clauseReadinessMessages,
@@ -231,15 +234,15 @@ const numberingOptions = [
   { label: "自动编号", value: "automatic" },
   { label: "固定编号", value: "fixed" }
 ];
-const standardClauses = ref<Array<Record<string, unknown>>>([]);
+const standardClauses = ref<PublishedStandardClause[]>([]);
 const selectedClauseIds = ref<Record<string, string>>({});
 const libraryBusy = ref(false);
 const message = ref("");
 
 const standardClauseOptions = computed(() =>
   standardClauses.value.map((clause) => ({
-    label: String(clause["name"] ?? clause["title"] ?? clause["code"] ?? clause["id"] ?? "标准条款"),
-    value: String(clause["versionId"] ?? clause["standardClauseVersionId"] ?? clause["id"] ?? "")
+    label: `${clause.name || clause.title || clause.code} v${clause.versionNo}`,
+    value: clause.standardClauseVersionId
   }))
 );
 
@@ -258,8 +261,10 @@ function clauseDocument(content: unknown): ClauseDocument {
 }
 
 function updateClauseBlocks(key: string, blocks: ClauseBlock[]) {
+  const clause = props.model.clauses.find((item) => item.key === key);
+  const meta = standardContentMeta(clause?.content);
   const text = clauseDocumentText({ text: "", blocks });
-  updateClause(key, { content: { text, blocks } });
+  updateClause(key, { content: { text, blocks, ...meta } });
 }
 
 function updateBlock(key: string, index: number, block: ClauseBlock) {
@@ -324,7 +329,7 @@ function updateTableCell(
 async function loadStandardClauses() {
   libraryBusy.value = true;
   try {
-    standardClauses.value = (await listPublishedStandardClauses()) as Array<Record<string, unknown>>;
+    standardClauses.value = await listPublishedStandardClauses();
   } catch (error) {
     message.value = error instanceof Error ? error.message : "标准条款库加载失败";
   } finally {
@@ -334,22 +339,20 @@ async function loadStandardClauses() {
 
 function insertStandardClause(key: string) {
   const selectedId = selectedClauseIds.value[key];
-  const source = standardClauses.value.find((item) =>
-    [item["versionId"], item["standardClauseVersionId"], item["id"]].some(
-      (value) => String(value ?? "") === selectedId
-    )
-  );
+  const source = standardClauses.value.find((item) => item.standardClauseVersionId === selectedId);
   if (!source) return;
-  const content = source["content"];
+  const content = normalizeClauseDocument(source.content);
   updateClause(key, {
-    standardClauseVersionId: selectedId,
-    ...(typeof source["title"] === "string" ? { title: source["title"] } : {}),
-    ...(content === undefined ? {} : { content })
+    standardClauseVersionId: source.standardClauseVersionId,
+    title: source.title,
+    content: {
+      ...content,
+      standardContent: source.content,
+      standardClauseSourceName: source.name || source.title || source.code,
+      standardClauseVersionNo: source.versionNo
+    }
   });
-  message.value =
-    content === undefined
-      ? "已记录标准条款来源；当前接口未返回条款正文，请手动维护正文。"
-      : "已插入标准条款。";
+  message.value = "已插入标准条款。";
 }
 
 function selectStandardClause(key: string, value: string) {
@@ -381,17 +384,45 @@ function contentText(content: unknown): string {
 }
 
 function isDeviated(clause: ContractClauseDefinition): boolean {
-  const record = clause as ContractClauseDefinition & {
-    standardContent?: unknown;
-    deviatedFromStandard?: boolean;
-  };
-  if (record.deviatedFromStandard) {
+  const content = clauseContentRecord(clause.content);
+  if (content["deviatedFromStandard"] === true) {
     return true;
   }
   return (
-    record.standardContent !== undefined &&
-    contentText(record.standardContent) !== contentText(clause.content)
+    content["standardContent"] !== undefined &&
+    contentText(content["standardContent"]) !== contentText(clause.content)
   );
+}
+
+function standardClauseLabel(clause: ContractClauseDefinition): string {
+  const content = clauseContentRecord(clause.content);
+  const name =
+    typeof content["standardClauseSourceName"] === "string"
+      ? content["standardClauseSourceName"]
+      : "标准条款";
+  const versionNo = content["standardClauseVersionNo"];
+  return typeof versionNo === "number" ? `${name} v${versionNo}` : name;
+}
+
+function standardContentMeta(content: unknown) {
+  const record = clauseContentRecord(content);
+  return {
+    ...(record["standardContent"] === undefined
+      ? {}
+      : { standardContent: record["standardContent"] }),
+    ...(typeof record["standardClauseSourceName"] === "string"
+      ? { standardClauseSourceName: record["standardClauseSourceName"] }
+      : {}),
+    ...(typeof record["standardClauseVersionNo"] === "number"
+      ? { standardClauseVersionNo: record["standardClauseVersionNo"] }
+      : {})
+  };
+}
+
+function clauseContentRecord(content: unknown): Record<string, unknown> {
+  return content && typeof content === "object" && !Array.isArray(content)
+    ? (content as Record<string, unknown>)
+    : {};
 }
 </script>
 

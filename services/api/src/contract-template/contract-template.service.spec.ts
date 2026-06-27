@@ -500,31 +500,57 @@ describe("ContractTemplateService", () => {
     expect(prisma.contractBusinessTemplate.findMany).not.toHaveBeenCalled();
   });
 
-  it("listPublishedClauses returns only clauses with a published version", async () => {
+  it("listPublishedClauses returns latest published version content with clause metadata", async () => {
     const prisma = {
       standardClauseVersion: {
-        findMany: jest.fn().mockResolvedValue([{ clauseId: "clause-published" }])
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-2",
+            clauseId: "clause-published",
+            versionNo: 2,
+            title: "付款条款 v2",
+            content: { text: "结算确认后30天内付款。" }
+          },
+          {
+            id: "version-1",
+            clauseId: "clause-published",
+            versionNo: 1,
+            title: "付款条款 v1",
+            content: { text: "旧付款条款。" }
+          }
+        ])
       },
       standardClause: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "clause-published", code: "CLS-PUB", category: "general" }
+          { id: "clause-published", code: "CLS-PUB", name: "付款标准条款", category: "payment" }
         ])
       }
     } as unknown as PrismaService;
     const service = new ContractTemplateService(prisma, audit as never);
 
-    const result = await service.listPublishedClauses();
+    const result = await service.listPublishedClauses("payment");
 
     expect((prisma.standardClauseVersion.findMany as jest.Mock)).toHaveBeenCalledWith({
       where: { status: "published" },
-      select: { clauseId: true }
+      select: { id: true, clauseId: true, versionNo: true, title: true, content: true },
+      orderBy: [{ clauseId: "asc" }, { versionNo: "desc" }]
     });
     expect((prisma.standardClause.findMany as jest.Mock)).toHaveBeenCalledWith({
-      where: { id: { in: ["clause-published"] } },
+      where: { id: { in: ["clause-published"] }, category: "payment" },
       orderBy: { createdAt: "asc" }
     });
-    expect(result.map((c: { id: string }) => c.id)).toEqual(["clause-published"]);
-    expect(result.map((c: { id: string }) => c.id)).not.toContain("clause-draft");
-    expect(result.map((c: { id: string }) => c.id)).not.toContain("clause-stopped");
+    expect(result).toEqual([
+      {
+        standardClauseVersionId: "version-2",
+        versionId: "version-2",
+        versionNo: 2,
+        title: "付款条款 v2",
+        content: { text: "结算确认后30天内付款。" },
+        clauseId: "clause-published",
+        code: "CLS-PUB",
+        name: "付款标准条款",
+        category: "payment"
+      }
+    ]);
   });
 });

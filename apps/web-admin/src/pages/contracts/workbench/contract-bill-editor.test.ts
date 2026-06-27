@@ -6,7 +6,9 @@ import {
   clauseReadinessMessages,
   documentsWithStaleFlag,
   documentWarnings,
+  importPreviewErrors,
   importPreviewCounts,
+  importPreviewRows,
   normalizeClauseDocument,
   selectedBillForDownload,
   updateRowPreservingKey,
@@ -68,6 +70,18 @@ describe("contract bill editor helpers", () => {
   it("does not apply an import containing errors", () => {
     expect(canApplyImport({ errorCount: 1 })).toBe(false);
     expect(canApplyImport({ errorCount: 0 })).toBe(true);
+  });
+
+  it("reads import preview errors and changed rows for the preview dialog", () => {
+    const preview = {
+      summary: {
+        errors: [{ row: 4, message: "数量为空" }],
+        updated: [{ rowKey: "row-1", itemName: "钢筋" }]
+      }
+    };
+
+    expect(importPreviewErrors(preview)).toEqual(["数量为空"]);
+    expect(importPreviewRows(preview)).toEqual([{ rowKey: "row-1", itemName: "钢筋" }]);
   });
 
   it("marks generated documents stale after bill changes", () => {

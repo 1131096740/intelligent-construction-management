@@ -242,9 +242,21 @@ export function listPublishedLayoutTemplates(contractTypeKey?: string) {
   return readJson<unknown[]>(`/contract-layout-templates${qs}`);
 }
 
+export interface PublishedStandardClause {
+  standardClauseVersionId: string;
+  versionId: string;
+  versionNo: number;
+  title: string;
+  content: unknown;
+  clauseId: string;
+  code: string;
+  name: string;
+  category: string;
+}
+
 export function listPublishedStandardClauses(category?: string) {
   const qs = category ? `?category=${encodeURIComponent(category)}` : "";
-  return readJson<unknown[]>(`/standard-clauses${qs}`);
+  return readJson<PublishedStandardClause[]>(`/standard-clauses${qs}`);
 }
 
 // ---------------------------------------------------------------------------

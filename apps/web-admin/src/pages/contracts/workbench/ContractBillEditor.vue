@@ -33,14 +33,57 @@
       </div>
     </div>
 
-    <div
-      v-if="importPreview"
-      class="import-summary"
+    <t-dialog
+      v-model:visible="previewVisible"
+      header="导入预览"
+      width="640px"
+      :footer="false"
     >
-      新增 {{ importCounts.added }} · 更新 {{ importCounts.updated }} · 移除
-      {{ importCounts.removed }} · 跳过 {{ importCounts.skipped }} · 错误
-      {{ importCounts.errors }}
-    </div>
+      <div class="preview-dialog">
+        <div class="import-summary">
+          新增 {{ importCounts.added }} · 更新 {{ importCounts.updated }} · 移除
+          {{ importCounts.removed }} · 跳过 {{ importCounts.skipped }} · 错误
+          {{ importCounts.errors }}
+        </div>
+        <ul
+          v-if="previewErrors.length"
+          class="preview-list danger"
+        >
+          <li
+            v-for="error in previewErrors"
+            :key="error"
+          >
+            {{ error }}
+          </li>
+        </ul>
+        <div
+          v-if="previewRows.length"
+          class="preview-rows"
+        >
+          <div
+            v-for="(row, index) in previewRows"
+            :key="index"
+          >
+            {{ previewRowText(row) }}
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <t-button
+            variant="outline"
+            @click="previewVisible = false"
+          >
+            关闭
+          </t-button>
+          <t-button
+            theme="primary"
+            :disabled="disabled || busy || !canApply"
+            @click="applyImport"
+          >
+            应用导入
+          </t-button>
+        </div>
+      </div>
+    </t-dialog>
 
     <div class="table-wrap">
       <table class="bill-table">
@@ -163,7 +206,9 @@ import { uploadPrivateFile } from "../../../api/core-flow-read.api";
 import {
   billColumns,
   canApplyImport,
+  importPreviewErrors,
   importPreviewCounts,
+  importPreviewRows,
   rowValue,
   updateRowPreservingKey,
   type WorkbenchBill,
@@ -183,9 +228,12 @@ const localRows = ref<WorkbenchBillRow[]>([]);
 const busy = ref(false);
 const message = ref("");
 const importPreview = ref<unknown>(null);
+const previewVisible = ref(false);
 
 const columns = computed(() => billColumns(props.bill));
 const importCounts = computed(() => importPreviewCounts(importPreview.value));
+const previewErrors = computed(() => importPreviewErrors(importPreview.value));
+const previewRows = computed(() => importPreviewRows(importPreview.value));
 const canApply = computed(() => Boolean(importId.value) && canApplyImport(importPreview.value));
 const importId = computed(() => {
   const value = importPreview.value;
@@ -204,6 +252,7 @@ watch(
       customData: { ...(row.customData ?? {}) }
     }));
     importPreview.value = null;
+    previewVisible.value = false;
     message.value = "";
   },
   { immediate: true }
@@ -318,6 +367,7 @@ async function previewImport(event: Event) {
       fileId: uploaded.id,
       mode: "replace"
     });
+    previewVisible.value = true;
     message.value = "预览完成";
   } catch (error) {
     message.value = error instanceof Error ? error.message : "导入预览失败";
@@ -331,12 +381,19 @@ async function applyImport() {
   if (!importId.value || !canApply.value) {
     return;
   }
+  previewVisible.value = false;
   await run(() => applyBillExcelImport(importId.value), "已应用导入");
 }
 
 function moneyText(value: string | number | undefined): string {
   const cents = Number(value ?? 0);
   return `${(cents / 100).toFixed(2)} 元`;
+}
+
+function previewRowText(row: Record<string, unknown>): string {
+  return Object.entries(row)
+    .map(([key, value]) => `${key}: ${String(value ?? "")}`)
+    .join(" · ");
 }
 </script>
 
@@ -386,10 +443,39 @@ function moneyText(value: string | number | undefined): string {
   display: none;
 }
 
+.preview-dialog {
+  display: grid;
+  gap: 12px;
+}
+
 .import-summary,
 .message {
   color: #424955;
   font-size: 12px;
+}
+
+.preview-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.preview-rows {
+  display: grid;
+  max-height: 220px;
+  overflow: auto;
+  gap: 6px;
+  padding: 8px;
+  background: #f7f9fc;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .table-wrap {
