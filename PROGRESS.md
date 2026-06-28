@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-28 (CodeX)：修复 Task 18 质量复审指出的两个 Important 问题。清单 Excel 导入预览现在在 `ContractBillImport.preview` 中记录生成时的 bill revision，应用导入时若当前 bill revision 已变化则拒绝并要求重新预览，避免应用与对话框不一致的导入结果；补 API 回归单测覆盖 stale preview apply。文档区 `hasActiveDocument` watcher 改为 immediate，初始已有 queued/processing 文档时会立即启动轮询。验证：`@jiangkong/api` 的 `contract-bill-excel.service.spec.ts` 9 个通过，API typecheck 通过；`@jiangkong/web-admin` typecheck/lint 通过。
 - 2026-06-27 (CodeX)：修复企业级合同工作台 Phase 1 Task 18 规格审查缺口。`GET /standard-clauses` 现在返回每个标准条款最新已发布版本的正文、版本号与主表元数据；工作台条款区用真实 `standardClauseVersionId` 插入返回正文，并在内容快照中保留标准正文、来源名和版本号，badge 显示来源 + vN，编辑后可可靠触发“已偏离标准条款”；清单 Excel 导入预览改为 `t-dialog`，展示 counts、errors 与 changed rows，存在错误时禁用应用且不覆盖当前 rows。补后端 service spec、前端 API/helper 测试。验证：API 目标单测 **13** 个通过；web-admin 指定测试 **106** 个通过，API typecheck 通过，web-admin typecheck/lint/build 通过（本机需先执行 `pnpm --filter @jiangkong/api exec prisma generate` 以刷新 Prisma Client）。
 - 2026-06-27 (CodeX)：收口企业级合同工作台 Phase 1 Task 18 剩余前端缺口。条款区改为受约束 JSON 内容模型（段落/加粗/斜体/列表/小表格，保留 `content.text` 兼容 DOCX 渲染），显示必填、标准条款来源、偏离标准条款与条款级 readiness；接入现有 `GET /standard-clauses` 做标准条款来源插入，若接口未返回正文则只记录来源并提示人工维护。文档区修正版式版本 id 选择，展示版式预览 PDF/可用缩略图字段，支持附件上传与已选附件传入生成队列，文档用途改为分段按钮，展示生成 warning。清单区补合计 footer 与导入错误保留当前 rows 的明确提示。补 API client 与纯函数测试。验证：`web-admin` 指定测试 **105** 个通过，typecheck/lint/build 通过。已知关注：标准条款库接口当前只返回主表，不带已发布版本正文/版本号详情，完整“一键插入正文”需要后端读模型增强。
 - 2026-06-27 (CodeX)：推进企业级合同工作台 Phase 1 Task 18 的前端基础分区。工作台新增「合同清单 / 合同条款 / 合同文档」导航与页面分区；清单区接入已有后端 API，支持按清单切换、行内编辑、新增、复制、删除、上下移动、Excel 模板下载、xlsx 上传预览与无错误应用；条款区编辑当前 clause snapshot 并沿用自动保存；文档区接入已发布版式选择、草稿/磋商/内部送审用途、生成队列、2 秒轮询、stale 标记、失败重试、DOCX/PDF 私有下载票据。补 `deleteBillRow` / `reorderBillRows` / `retryContractDocument` API client 与 6 条清单行为测试。验证：`web-admin` 测试 **101** 个通过，typecheck/lint/build 通过。未做：标准条款库插入、富文本小表格编辑、版式缩略图/附件选择的完整体验，留在 Task 18 后续收口。
@@ -75,7 +76,7 @@
 - [x] Task 15：提交就绪校验与审批冻结
 - [x] Task 16：工作台 API 客户端与路由
 - [x] Task 17：工作台外壳与自动保存状态
-- [x] Task 18：清单/条款/文档分区（规格审查缺口已修：标准条款最新已发布版本正文插入、来源版本 badge、偏离判断、清单导入预览对话框）
+- [x] Task 18：清单/条款/文档分区（规格审查缺口已修：标准条款最新已发布版本正文插入、来源版本 badge、偏离判断、清单导入预览对话框；质量复审缺陷已修：导入应用校验预览时 bill revision、初始活跃文档立即轮询）
 - [ ] Task 19–22：模板中心、种子与端到端验收
 
 ---

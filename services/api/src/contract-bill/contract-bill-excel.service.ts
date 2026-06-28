@@ -71,6 +71,11 @@ export interface BillImportPreview {
   errors: PreviewError[];
 }
 
+interface StoredBillImportPreview {
+  billRevision: number;
+  preview: BillImportPreview;
+}
+
 // 行计算后产生的可落库数据（金额为分，BigInt）。
 interface ResolvedRow {
   rowKey: string;
@@ -164,7 +169,7 @@ export class ContractBillExcelService {
           fileId,
           mode,
           status: "preview",
-          preview: this.toJson(preview),
+          preview: this.toJson({ billRevision: bill.revision, preview }),
           createdByUserId: actorUserId
         }
       });
@@ -199,8 +204,8 @@ export class ContractBillExcelService {
       }
       // 应用仅以“清单 owner + 草稿可编辑状态”为准（见 loadBillContext），不要求 applier 是导入创建者，
       // 以兼容草稿转交（Task 9 transferDraft）后新 owner 应用旧 owner 创建的待应用导入。
-      const preview = this.parseStoredPreview(record.preview);
-      if (preview.errors.length > 0) {
+      const storedPreview = this.parseStoredPreview(record.preview);
+      if (storedPreview.preview.errors.length > 0) {
         throw new BadRequestException("Contract bill import preview contains errors");
       }
 
@@ -209,6 +214,9 @@ export class ContractBillExcelService {
         record.contractBillId,
         actorUserId
       );
+      if (bill.revision !== storedPreview.billRevision) {
+        throw new BadRequestException("Contract bill import preview is stale; please preview again");
+      }
       const buffer = (await this.files.getFileBuffer(record.fileId)).buffer;
       const existingRows = await tx.contractBillRow.findMany({
         where: { contractBillId: bill.id },
@@ -844,11 +852,17 @@ export class ContractBillExcelService {
     return { fileId: input.fileId.trim(), mode: input.mode };
   }
 
-  private parseStoredPreview(value: Prisma.JsonValue): BillImportPreview {
-    if (!this.isPlainObject(value) || !Array.isArray(value.errors)) {
+  private parseStoredPreview(value: Prisma.JsonValue): StoredBillImportPreview {
+    if (
+      !this.isPlainObject(value) ||
+      typeof value.billRevision !== "number" ||
+      !Number.isInteger(value.billRevision) ||
+      !this.isPlainObject(value.preview) ||
+      !Array.isArray(value.preview.errors)
+    ) {
       throw new BadRequestException("Contract bill import preview is invalid");
     }
-    return value as unknown as BillImportPreview;
+    return value as unknown as StoredBillImportPreview;
   }
 
   private isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -453,4 +453,39 @@ describe("ContractBillExcelService", () => {
     expect(imports[0].fileId).toBe("file-xyz");
     expect(imports[0].status).toBe("applied");
   });
+
+  it("rejects applying a preview after the bill revision changed", async () => {
+    const { service, tx, bill, rows, imports, fileService } = billFixture();
+    const buffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "钢筋",
+            unit: "t",
+            quantity: "1",
+            unitPrice: "1",
+            taxRatePercent: "0"
+          }
+        }
+      ]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-1", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-1",
+      mode: "append"
+    });
+    bill.revision += 1;
+
+    await expect(
+      service.applyImport((preview as { importId: string }).importId, "owner-1")
+    ).rejects.toThrow("Contract bill import preview is stale");
+
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+    expect(rows).toHaveLength(0);
+    expect(imports[0].status).toBe("preview");
+  });
 });

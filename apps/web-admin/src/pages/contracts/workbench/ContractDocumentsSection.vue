@@ -258,7 +258,7 @@ watch(hasActiveDocument, (active) => {
   } else {
     stopPolling();
   }
-});
+}, { immediate: true });
 
 onMounted(loadLayouts);
 onUnmounted(stopPolling);
