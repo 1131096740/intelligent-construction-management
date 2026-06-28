@@ -6,6 +6,7 @@ import {
   canPublishLayoutVersion,
   fieldTypeOptions,
   hasOnlyAllowedNumberRuleTokens,
+  isValidContractNumberPattern,
   pricingModeOptions,
   quantityScaleOptions,
   templateListActions,
@@ -105,5 +106,7 @@ describe("contract template center config", () => {
       true
     );
     expect(hasOnlyAllowedNumberRuleTokens("HT-{company}-{month}-{sequence}")).toBe(false);
+    expect(isValidContractNumberPattern("HT-{year}-{sequence}")).toBe(true);
+    expect(isValidContractNumberPattern("HT-{year}")).toBe(false);
   });
 });

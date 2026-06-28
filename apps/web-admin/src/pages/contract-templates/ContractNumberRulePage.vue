@@ -100,6 +100,7 @@ import {
 } from "../../api/contract-workbench.api";
 import {
   hasOnlyAllowedNumberRuleTokens,
+  isValidContractNumberPattern,
   previewContractNumber
 } from "./contract-template.config";
 
@@ -140,11 +141,11 @@ const form = reactive({
   contractTypeKey: ""
 });
 
-const patternValid = computed(() => hasOnlyAllowedNumberRuleTokens(form.pattern));
+const patternValid = computed(() => isValidContractNumberPattern(form.pattern));
 const nextPreview = computed(() =>
   patternValid.value
     ? previewContractNumber(form.pattern, 1, Number(form.sequenceWidth) || 3)
-    : "包含不允许的占位符"
+    : hasOnlyAllowedNumberRuleTokens(form.pattern) ? "必须包含 {sequence}" : "包含不允许的占位符"
 );
 
 function payload() {

@@ -50,6 +50,7 @@
         <label><span>标准条款版本 ID</span><t-input v-model="submitForm.versionId" /></label>
         <t-button
           theme="primary"
+          :disabled="!submitForm.versionId.trim()"
           @click="submitClause"
         >
           提交
@@ -67,6 +68,7 @@
         <label><span>发布说明</span><t-input v-model="publishForm.changeSummary" /></label>
         <t-button
           theme="primary"
+          :disabled="!publishForm.versionId.trim()"
           @click="publishClause"
         >
           发布
@@ -171,9 +173,15 @@ async function createClause() {
 }
 
 async function submitClause() {
+  const versionId = submitForm.versionId.trim();
+  if (!versionId) {
+    message.value = "请先填写标准条款版本 ID";
+    tone.value = "danger";
+    return;
+  }
   try {
-    await submitStandardClauseVersion(submitForm.versionId.trim());
-    publishForm.versionId = submitForm.versionId.trim();
+    await submitStandardClauseVersion(versionId);
+    publishForm.versionId = versionId;
     message.value = "条款版本已提交";
     tone.value = "success";
   } catch (error) {
@@ -183,8 +191,14 @@ async function submitClause() {
 }
 
 async function publishClause() {
+  const versionId = publishForm.versionId.trim();
+  if (!versionId) {
+    message.value = "请先填写标准条款版本 ID";
+    tone.value = "danger";
+    return;
+  }
   try {
-    await publishStandardClauseVersion(publishForm.versionId.trim(), {
+    await publishStandardClauseVersion(versionId, {
       changeSummary: publishForm.changeSummary.trim() || "发布标准条款"
     });
     message.value = "条款版本已发布";

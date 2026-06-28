@@ -556,6 +556,10 @@ async function action(kind: "clone" | "submit" | "publish" | "stop" | "revoke") 
 
 onMounted(async () => {
   const templateId = String(route.params.templateId);
+  const queryVersionId = Array.isArray(route.query.versionId)
+    ? route.query.versionId[0]
+    : route.query.versionId;
+  versionId.value = String(queryVersionId ?? "");
   try {
     template.value = (await getContractTemplate(templateId)) as Record<string, unknown>;
     templateName.value = String(template.value.name ?? "业务模板编辑器");

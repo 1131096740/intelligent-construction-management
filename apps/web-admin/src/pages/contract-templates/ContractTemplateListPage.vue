@@ -137,9 +137,15 @@ async function createTemplate() {
       schema: emptySchema
     });
     const templateId = (created as { template?: { id?: string } }).template?.id;
-    message.value = "业务模板草稿已创建";
+    const versionId = (created as { version?: { id?: string } }).version?.id;
+    message.value = versionId ? `业务模板草稿已创建，版本 ID：${versionId}` : "业务模板草稿已创建";
     tone.value = "success";
-    if (templateId) go(`/contract-templates/${templateId}`);
+    if (templateId) {
+      void router.push({
+        path: `/contract-templates/${templateId}`,
+        query: versionId ? { versionId } : undefined
+      });
+    }
     await loadTemplates();
   } catch (error) {
     message.value = error instanceof Error ? error.message : "创建模板失败";

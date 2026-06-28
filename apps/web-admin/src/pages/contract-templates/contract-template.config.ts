@@ -68,6 +68,10 @@ export function hasOnlyAllowedNumberRuleTokens(pattern: string) {
   return [...pattern.matchAll(/\{[^{}]+\}/g)].every((match) => allowed.has(match[0]));
 }
 
+export function isValidContractNumberPattern(pattern: string) {
+  return hasOnlyAllowedNumberRuleTokens(pattern) && pattern.includes("{sequence}");
+}
+
 export function previewContractNumber(pattern: string, sequence: number, width: number) {
   const values: Record<string, string> = {
     "{company}": "GS",

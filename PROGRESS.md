@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-28 (CodeX)：修复企业级合同工作台 Phase 1 Task 19 质量复审 UI 闭环缺口。业务模板创建后 Web 会携带后端返回的 `version.id` 跳转编辑页并自动填充当前版本 ID，避免新建后只能外部抓响应；标准条款提交/发布空版本 ID 时禁用按钮并在函数入口 guard，避免请求 `/standard-clause-versions//...`；合同编号规则前端校验补齐必须包含 `{sequence}`，与后端保存规则一致。补模板中心 config 回归测试。
 - 2026-06-28 (CodeX)：修复企业级合同工作台 Phase 1 Task 19「标准条款库」发布闭环缺口。后端新增标准条款版本 `draft -> submitted` 提交 service 与 `POST /standard-clause-versions/:versionId/submission`，要求 global `contract_staff` 并记录 `standard_clause.submit_version` 审计；Web API 与标准条款库页面新增“提交版本”动作，文案改为创建草稿 -> 提交 -> 发布，避免草稿直接发布必然失败。补后端 service 与前端 API wrapper 回归测试。
 - 2026-06-28 (CodeX)：完成企业级合同工作台 Phase 1 Task 19「模板中心 Web UI」。新增模板中心静态配置与单测，锁定模板列表列/动作、字段类型白名单、数量/单价精度、published 版本不可直接编辑、版式发布 inspection+preview PDF gate、合作单位变更新建版本、编号规则占位符白名单；补业务模板/版式/标准条款/合作单位/编号规则 API wrappers 与测试。Web 新增业务模板列表与编辑器、版式编辑器、标准条款库、编号规则维护、合作单位档案列表与详情新版本页，并挂载计划内路由和侧边栏“合作单位档案”。验证：`web-admin` 指定测试 **120** 个通过，typecheck/lint/build 通过（build 仅保留 Vite 大 chunk 既有提示）。
 - 2026-06-28 (CodeX)：修复 Task 18 质量复审指出的两个 Important 问题。清单 Excel 导入预览现在在 `ContractBillImport.preview` 中记录生成时的 bill revision，应用导入时若当前 bill revision 已变化则拒绝并要求重新预览，避免应用与对话框不一致的导入结果；补 API 回归单测覆盖 stale preview apply。文档区 `hasActiveDocument` watcher 改为 immediate，初始已有 queued/processing 文档时会立即启动轮询。验证：`@jiangkong/api` 的 `contract-bill-excel.service.spec.ts` 9 个通过，API typecheck 通过；`@jiangkong/web-admin` typecheck/lint 通过。
