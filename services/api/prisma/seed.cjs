@@ -399,12 +399,7 @@ async function seedMaterialPurchaseWorkbench() {
     where: { id: data.layout.previewJob.id },
     update: {
       status: data.layout.previewJob.status,
-      sampleData: {
-        contract: { name: "材料采购合同样张", temporaryCode: "TMP-MAT-001" },
-        field: { deliveryLocation: "项目现场" },
-        clause: { payment: { text: data.standardPaymentClause.content.text } },
-        bill: { materials: [] }
-      },
+      sampleData: data.layout.previewJob.sampleData,
       previewPdfFileId: data.layout.previewPdfFile.id,
       errorMessage: null,
       completedAt: data.layout.previewJob.completedAt
@@ -413,12 +408,7 @@ async function seedMaterialPurchaseWorkbench() {
       id: data.layout.previewJob.id,
       layoutTemplateVersionId: data.layout.versionId,
       status: data.layout.previewJob.status,
-      sampleData: {
-        contract: { name: "材料采购合同样张", temporaryCode: "TMP-MAT-001" },
-        field: { deliveryLocation: "项目现场" },
-        clause: { payment: { text: data.standardPaymentClause.content.text } },
-        bill: { materials: [] }
-      },
+      sampleData: data.layout.previewJob.sampleData,
       previewPdfFileId: data.layout.previewPdfFile.id,
       completedAt: data.layout.previewJob.completedAt,
       createdByUserId: seed.users.contractStaff.id

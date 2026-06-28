@@ -72,6 +72,13 @@ describe("coreFlowSeedData", () => {
         "bill.materials"
       ])
     );
+    expect(seed.layout.previewJob.sampleData.contract).toMatchObject({
+      amountUppercase: "人民币壹拾贰万捌仟元整"
+    });
+    expect(seed.layout.previewJob.sampleData.bill.materials[0]).toMatchObject({
+      itemName: "钢筋",
+      taxInclusiveAmount: "42000.00"
+    });
 
     expect(seed.numberingRule).toMatchObject({
       pattern: "HT-{project}-{year}-{type}-{sequence}",

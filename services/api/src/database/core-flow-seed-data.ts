@@ -221,7 +221,33 @@ export const coreFlowSeedData = {
       previewJob: {
         id: "seed-layout-preview-material-purchase-v1",
         status: "succeeded",
-        completedAt: new Date("2026-06-01T00:05:00.000Z")
+        completedAt: new Date("2026-06-01T00:05:00.000Z"),
+        sampleData: {
+          contract: {
+            name: "材料采购合同样张",
+            temporaryCode: "TMP-MAT-001",
+            amountUppercase: "人民币壹拾贰万捌仟元整"
+          },
+          field: { deliveryLocation: "项目现场" },
+          clause: {
+            payment: {
+              text: "甲方依据已生效结算单和合规发票付款，结算归档确认后30日内支付当期应付款的80%，余款按合同约定支付。"
+            }
+          },
+          bill: {
+            materials: [
+              {
+                itemName: "钢筋",
+                specification: "HRB400E 直径18",
+                unit: "吨",
+                quantity: "10.000",
+                unitPrice: "4200.0000",
+                taxRatePercent: "13",
+                taxInclusiveAmount: "42000.00"
+              }
+            ]
+          }
+        }
       },
       inspectionReport: {
         placeholders: [
