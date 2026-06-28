@@ -199,6 +199,14 @@ export function createBusinessParty(body: CreateBusinessPartyPayload) {
   return postJson<unknown>("/business-parties", body);
 }
 
+export function getBusinessParty(partyId: string) {
+  return readJson<unknown>(`/business-parties/${partyId}`);
+}
+
+export function createBusinessPartyVersion(partyId: string, body: CreateBusinessPartyPayload) {
+  return postJson<unknown>(`/business-parties/${partyId}/versions`, body);
+}
+
 export interface AddContractPartyPayload {
   roleKey: string;
   businessPartyVersionId: string;
@@ -228,8 +236,16 @@ export function createContractNumberRule(body: CreateContractNumberRulePayload) 
   return postJson<unknown>("/contract-number-rules", body);
 }
 
+export function updateContractNumberRule(ruleId: string, body: CreateContractNumberRulePayload) {
+  return patchJson<unknown>(`/contract-number-rules/${ruleId}`, body);
+}
+
+export function stopContractNumberRule(ruleId: string) {
+  return postJson<unknown>(`/contract-number-rules/${ruleId}/stop`);
+}
+
 // ---------------------------------------------------------------------------
-// Templates (GET /contract-templates, GET /contract-layout-templates)
+// Templates and template versions
 // ---------------------------------------------------------------------------
 
 export function listPublishedContractTemplates(contractTypeKey?: string) {
@@ -237,9 +253,121 @@ export function listPublishedContractTemplates(contractTypeKey?: string) {
   return readJson<unknown[]>(`/contract-templates${qs}`);
 }
 
+export function getContractTemplate(templateId: string) {
+  return readJson<unknown>(`/contract-templates/${templateId}`);
+}
+
+export interface ContractTemplateSchemaPayload {
+  fields: unknown[];
+  bills: unknown[];
+  clauses: unknown[];
+  attachments: unknown[];
+  validations: unknown[];
+}
+
+export interface CreateContractTemplatePayload {
+  code: string;
+  name: string;
+  contractTypeKey: string;
+  schema: ContractTemplateSchemaPayload;
+}
+
+export function createContractTemplate(body: CreateContractTemplatePayload) {
+  return postJson<unknown>("/contract-templates", body);
+}
+
+export interface UpdateContractTemplateVersionPayload {
+  schema: ContractTemplateSchemaPayload;
+  changeSummary?: string;
+}
+
+export function updateContractTemplateVersion(
+  versionId: string,
+  body: UpdateContractTemplateVersionPayload
+) {
+  return patchJson<unknown>(`/contract-template-versions/${versionId}`, body);
+}
+
+export function cloneContractTemplateVersion(versionId: string) {
+  return postJson<unknown>(`/contract-template-versions/${versionId}/clone`);
+}
+
+export function submitContractTemplateVersion(versionId: string) {
+  return postJson<unknown>(`/contract-template-versions/${versionId}/submission`);
+}
+
+export function publishContractTemplateVersion(
+  versionId: string,
+  body: { changeSummary: string }
+) {
+  return postJson<unknown>(`/contract-template-versions/${versionId}/publication`, body);
+}
+
+export function stopContractTemplateVersion(versionId: string) {
+  return postJson<unknown>(`/contract-template-versions/${versionId}/stop`);
+}
+
+export function revokeContractTemplateVersion(versionId: string) {
+  return postJson<unknown>(`/contract-template-versions/${versionId}/revoke`);
+}
+
 export function listPublishedLayoutTemplates(contractTypeKey?: string) {
   const qs = contractTypeKey ? `?contractTypeKey=${encodeURIComponent(contractTypeKey)}` : "";
   return readJson<unknown[]>(`/contract-layout-templates${qs}`);
+}
+
+export interface CreateLayoutTemplatePayload {
+  name: string;
+  contractTypeKey: string;
+  docxFileId: string;
+  placeholderSchema: unknown;
+}
+
+export function createLayoutTemplate(body: CreateLayoutTemplatePayload) {
+  return postJson<unknown>("/contract-layout-templates", body);
+}
+
+export function inspectLayoutTemplateVersion(versionId: string) {
+  return postJson<unknown>(`/contract-layout-template-versions/${versionId}/inspection`);
+}
+
+export function queueLayoutTemplatePreview(versionId: string, sampleData: unknown) {
+  return postJson<unknown>(
+    `/contract-layout-template-versions/${versionId}/preview-generation`,
+    sampleData
+  );
+}
+
+export function getLatestLayoutTemplatePreview(versionId: string) {
+  return readJson<unknown>(
+    `/contract-layout-template-versions/${versionId}/preview-generation`
+  );
+}
+
+export function submitLayoutTemplateVersion(versionId: string) {
+  return postJson<unknown>(`/contract-layout-template-versions/${versionId}/submission`);
+}
+
+export function publishLayoutTemplateVersion(
+  versionId: string,
+  body: { changeSummary: string }
+) {
+  return postJson<unknown>(
+    `/contract-layout-template-versions/${versionId}/publication`,
+    body
+  );
+}
+
+export function cloneLayoutTemplateVersion(versionId: string) {
+  return postJson<unknown>(`/contract-layout-template-versions/${versionId}/clone`);
+}
+
+export function stopLayoutTemplateVersion(versionId: string) {
+  return postJson<unknown>(`/contract-layout-template-versions/${versionId}/stop`);
+}
+
+export function revokeLayoutTemplateVersion(versionId: string) {
+  return postJson<unknown>(`/contract-layout-template-versions/${versionId}/revoke`);
 }
 
 export interface PublishedStandardClause {
@@ -257,6 +385,25 @@ export interface PublishedStandardClause {
 export function listPublishedStandardClauses(category?: string) {
   const qs = category ? `?category=${encodeURIComponent(category)}` : "";
   return readJson<PublishedStandardClause[]>(`/standard-clauses${qs}`);
+}
+
+export interface CreateStandardClausePayload {
+  code: string;
+  category: string;
+  name: string;
+  title: string;
+  content: unknown;
+}
+
+export function createStandardClause(body: CreateStandardClausePayload) {
+  return postJson<unknown>("/standard-clauses", body);
+}
+
+export function publishStandardClauseVersion(
+  versionId: string,
+  body: { changeSummary: string }
+) {
+  return postJson<unknown>(`/standard-clause-versions/${versionId}/publication`, body);
 }
 
 // ---------------------------------------------------------------------------

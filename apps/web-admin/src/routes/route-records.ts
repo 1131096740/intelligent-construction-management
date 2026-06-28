@@ -33,6 +33,30 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/contract-templates/ContractTemplateListPage.vue")
       },
       {
+        path: "contract-templates/:templateId",
+        component: () => import("../pages/contract-templates/ContractTemplateEditorPage.vue")
+      },
+      {
+        path: "contract-layout-templates/:layoutTemplateId",
+        component: () => import("../pages/contract-templates/LayoutTemplateEditorPage.vue")
+      },
+      {
+        path: "standard-clauses",
+        component: () => import("../pages/contract-templates/StandardClauseLibraryPage.vue")
+      },
+      {
+        path: "contract-number-rules",
+        component: () => import("../pages/contract-templates/ContractNumberRulePage.vue")
+      },
+      {
+        path: "business-parties",
+        component: () => import("../pages/business-parties/BusinessPartyListPage.vue")
+      },
+      {
+        path: "business-parties/:partyId",
+        component: () => import("../pages/business-parties/BusinessPartyEditorPage.vue")
+      },
+      {
         path: "settlements",
         component: () => import("../pages/settlements/SettlementListPage.vue")
       },

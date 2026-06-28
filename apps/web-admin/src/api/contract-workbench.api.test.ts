@@ -5,13 +5,23 @@ import {
   addContractParty,
   applyBillExcelImport,
   applyContractTypeChange,
+  cloneContractTemplateVersion,
+  cloneLayoutTemplateVersion,
+  createBusinessPartyVersion,
+  createContractTemplate,
   createBusinessParty,
   createContractNumberRule,
   createDraftCheckpoint,
+  createLayoutTemplate,
+  createStandardClause,
   createWorkbenchDraft,
   deleteBillRow,
   downloadBillExcelTemplate,
   fetchContractWorkbench,
+  getBusinessParty,
+  getContractTemplate,
+  getLatestLayoutTemplatePreview,
+  inspectLayoutTemplateVersion,
   listBusinessParties,
   listContractDocuments,
   listContractDrafts,
@@ -22,12 +32,25 @@ import {
   type PublishedStandardClause,
   previewBillExcelImport,
   previewContractTypeChange,
+  publishContractTemplateVersion,
+  publishLayoutTemplateVersion,
+  publishStandardClauseVersion,
+  queueLayoutTemplatePreview,
   queueContractDocument,
   reorderBillRows,
+  revokeContractTemplateVersion,
+  revokeLayoutTemplateVersion,
   restoreDraftCheckpoint,
   retryContractDocument,
   saveContractDraft,
+  stopContractNumberRule,
+  stopContractTemplateVersion,
+  stopLayoutTemplateVersion,
+  submitContractTemplateVersion,
+  submitLayoutTemplateVersion,
   transferContractDraft,
+  updateContractNumberRule,
+  updateContractTemplateVersion,
   updateBillRow,
   voidContractDraft
 } from "./contract-workbench.api";
@@ -257,6 +280,34 @@ describe("contract workbench API client", () => {
     });
   });
 
+  it("getBusinessParty – GET /business-parties/:partyId", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ party: { id: "party-1" }, versions: [] }));
+
+    await getBusinessParty("party-1");
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/business-parties/party-1");
+  });
+
+  it("createBusinessPartyVersion – POST /business-parties/:partyId/versions", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ id: "party-version-2" }));
+
+    await createBusinessPartyVersion("party-1", {
+      name: "云南示例供应商有限公司",
+      unifiedSocialCreditCode: "91530000EXAMPLE01",
+      attachments: []
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/business-parties/party-1/versions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "云南示例供应商有限公司",
+        unifiedSocialCreditCode: "91530000EXAMPLE01",
+        attachments: []
+      })
+    });
+  });
+
   it("addContractParty – POST /contract-workbench/:contractVersionId/parties", async () => {
     mockApiFetch.mockReturnValue(makeOkJson({}));
 
@@ -302,6 +353,38 @@ describe("contract workbench API client", () => {
     });
   });
 
+  it("updateContractNumberRule – PATCH /contract-number-rules/:ruleId", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ id: "rule-1" }));
+
+    await updateContractNumberRule("rule-1", {
+      name: "项目材料合同编号",
+      pattern: "HT-{project}-{year}-{type}-{sequence}",
+      sequenceWidth: 4
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-number-rules/rule-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "项目材料合同编号",
+        pattern: "HT-{project}-{year}-{type}-{sequence}",
+        sequenceWidth: 4
+      })
+    });
+  });
+
+  it("stopContractNumberRule – POST /contract-number-rules/:ruleId/stop", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ id: "rule-1" }));
+
+    await stopContractNumberRule("rule-1");
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-number-rules/rule-1/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+  });
+
   it("listPublishedContractTemplates – GET /contract-templates?contractTypeKey=material_purchase", async () => {
     mockApiFetch.mockReturnValue(makeOkJson([]));
 
@@ -312,6 +395,37 @@ describe("contract workbench API client", () => {
     );
   });
 
+  it("contract template version mutations use existing endpoints", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson({ id: "template-version-1" }));
+
+    const schema = { fields: [], bills: [], clauses: [], attachments: [], validations: [] };
+    await getContractTemplate("template-1");
+    await createContractTemplate({
+      code: "TPL-MAT",
+      name: "材料采购模板",
+      contractTypeKey: "material_purchase",
+      schema
+    });
+    await updateContractTemplateVersion("template-version-1", { schema, changeSummary: "补字段" });
+    await cloneContractTemplateVersion("template-version-1");
+    await submitContractTemplateVersion("template-version-1");
+    await publishContractTemplateVersion("template-version-1", { changeSummary: "发布" });
+    await stopContractTemplateVersion("template-version-1");
+    await revokeContractTemplateVersion("template-version-1");
+
+    expect(mockApiFetch.mock.calls.map((call) => call[0])).toEqual([
+      "/contract-templates/template-1",
+      "/contract-templates",
+      "/contract-template-versions/template-version-1",
+      "/contract-template-versions/template-version-1/clone",
+      "/contract-template-versions/template-version-1/submission",
+      "/contract-template-versions/template-version-1/publication",
+      "/contract-template-versions/template-version-1/stop",
+      "/contract-template-versions/template-version-1/revoke"
+    ]);
+    expect((mockApiFetch.mock.calls[2][1] as RequestInit).method).toBe("PATCH");
+  });
+
   it("listPublishedLayoutTemplates – GET /contract-layout-templates?contractTypeKey=material_purchase", async () => {
     mockApiFetch.mockReturnValue(makeOkJson([]));
 
@@ -320,6 +434,38 @@ describe("contract workbench API client", () => {
     expect(mockApiFetch).toHaveBeenCalledWith(
       "/contract-layout-templates?contractTypeKey=material_purchase"
     );
+  });
+
+  it("layout template version wrappers use existing endpoints", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson({ id: "layout-version-1" }));
+
+    await createLayoutTemplate({
+      name: "合同标准版式",
+      contractTypeKey: "material_purchase",
+      docxFileId: "file-1",
+      placeholderSchema: { bills: [] }
+    });
+    await inspectLayoutTemplateVersion("layout-version-1");
+    await queueLayoutTemplatePreview("layout-version-1", { contract: { name: "样张" } });
+    await getLatestLayoutTemplatePreview("layout-version-1");
+    await submitLayoutTemplateVersion("layout-version-1");
+    await publishLayoutTemplateVersion("layout-version-1", { changeSummary: "发布" });
+    await cloneLayoutTemplateVersion("layout-version-1");
+    await stopLayoutTemplateVersion("layout-version-1");
+    await revokeLayoutTemplateVersion("layout-version-1");
+
+    expect(mockApiFetch.mock.calls.map((call) => call[0])).toEqual([
+      "/contract-layout-templates",
+      "/contract-layout-template-versions/layout-version-1/inspection",
+      "/contract-layout-template-versions/layout-version-1/preview-generation",
+      "/contract-layout-template-versions/layout-version-1/preview-generation",
+      "/contract-layout-template-versions/layout-version-1/submission",
+      "/contract-layout-template-versions/layout-version-1/publication",
+      "/contract-layout-template-versions/layout-version-1/clone",
+      "/contract-layout-template-versions/layout-version-1/stop",
+      "/contract-layout-template-versions/layout-version-1/revoke"
+    ]);
+    expect((mockApiFetch.mock.calls[3][1] as RequestInit | undefined)?.method).toBeUndefined();
   });
 
   it("listPublishedStandardClauses – GET /standard-clauses?category=payment", async () => {
@@ -344,6 +490,24 @@ describe("contract workbench API client", () => {
     expect(mockApiFetch).toHaveBeenCalledWith("/standard-clauses?category=payment");
     expect(result[0].standardClauseVersionId).toBe("clause-version-2");
     expect(result[0].content).toEqual({ text: "结算确认后付款。" });
+  });
+
+  it("standard clause create and publish wrappers use existing endpoints", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson({ id: "clause-version-1" }));
+
+    await createStandardClause({
+      code: "CLS-PAY",
+      category: "payment",
+      name: "付款标准条款",
+      title: "付款",
+      content: { text: "结算确认后付款。" }
+    });
+    await publishStandardClauseVersion("clause-version-1", { changeSummary: "发布" });
+
+    expect(mockApiFetch.mock.calls.map((call) => call[0])).toEqual([
+      "/standard-clauses",
+      "/standard-clause-versions/clause-version-1/publication"
+    ]);
   });
 
   it("addBillRow – POST /contract-bills/:billId/rows", async () => {

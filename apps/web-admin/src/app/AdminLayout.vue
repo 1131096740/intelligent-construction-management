@@ -22,7 +22,13 @@
           value="/contract-templates"
           @click="go('/contract-templates')"
         >
-          合同模板
+          模板中心
+        </t-menu-item>
+        <t-menu-item
+          value="/business-parties"
+          @click="go('/business-parties')"
+        >
+          合作单位档案
         </t-menu-item>
         <t-menu-item
           value="/settlements"
