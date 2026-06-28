@@ -1,5 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
+const { copyFile, mkdir, stat, writeFile } = require("fs/promises");
+const { dirname, join } = require("path");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
 
 const prisma = new PrismaClient();
@@ -181,6 +183,271 @@ async function seedAuthAssignments() {
   }
 }
 
+function privateStoragePath(objectKey) {
+  return join(process.cwd(), "storage", "private", objectKey);
+}
+
+async function copyPrivateSeedFile(file, sourcePath) {
+  const targetPath = privateStoragePath(file.objectKey);
+  await mkdir(dirname(targetPath), { recursive: true });
+  await copyFile(sourcePath, targetPath);
+  return (await stat(targetPath)).size;
+}
+
+async function writePrivateSeedFile(file, buffer) {
+  const targetPath = privateStoragePath(file.objectKey);
+  await mkdir(dirname(targetPath), { recursive: true });
+  await writeFile(targetPath, buffer);
+  return buffer.length;
+}
+
+function minimalPreviewPdf() {
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents 4 0 R >>\nendobj\n",
+    "4 0 obj\n<< /Length 44 >>\nstream\nBT /F1 12 Tf 72 760 Td (Template preview) Tj ET\nendstream\nendobj\n"
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = objects.map((object) => {
+    const offset = Buffer.byteLength(body);
+    body += object;
+    return offset;
+  });
+  const xrefOffset = Buffer.byteLength(body);
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  body += offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(body);
+}
+
+async function upsertSeedFile(file, uploadedByUserId, sizeBytes) {
+  await prisma.fileObject.upsert({
+    where: { id: file.id },
+    update: {
+      bucket: file.bucket,
+      objectKey: file.objectKey,
+      originalName: file.originalName,
+      mimeType: file.mimeType,
+      sizeBytes,
+      uploadedByUserId
+    },
+    create: {
+      id: file.id,
+      bucket: file.bucket,
+      objectKey: file.objectKey,
+      originalName: file.originalName,
+      mimeType: file.mimeType,
+      sizeBytes,
+      uploadedByUserId
+    }
+  });
+}
+
+async function seedMaterialPurchaseWorkbench() {
+  const data = seed.materialPurchaseWorkbench;
+  const docxSize = await copyPrivateSeedFile(
+    data.layout.docxFile,
+    join(__dirname, "..", "assets", "templates", "material-purchase-v1.docx")
+  );
+  const previewSize = await writePrivateSeedFile(
+    data.layout.previewPdfFile,
+    minimalPreviewPdf()
+  );
+
+  await upsertSeedFile(data.layout.docxFile, seed.users.contractStaff.id, docxSize);
+  await upsertSeedFile(data.layout.previewPdfFile, seed.users.contractStaff.id, previewSize);
+
+  await prisma.standardClause.upsert({
+    where: { code: data.standardPaymentClause.code },
+    update: {
+      category: data.standardPaymentClause.category,
+      name: data.standardPaymentClause.name
+    },
+    create: {
+      id: data.standardPaymentClause.id,
+      code: data.standardPaymentClause.code,
+      category: data.standardPaymentClause.category,
+      name: data.standardPaymentClause.name,
+      createdByUserId: seed.users.contractStaff.id
+    }
+  });
+  await prisma.standardClauseVersion.upsert({
+    where: { id: data.standardPaymentClause.versionId },
+    update: {
+      title: data.standardPaymentClause.title,
+      content: data.standardPaymentClause.content,
+      status: data.standardPaymentClause.status,
+      submittedByUserId: seed.users.contractStaff.id,
+      publishedByUserId: "seed-user-contract-director",
+      publishedAt: data.publishedAt,
+      changeSummary: data.version.changeSummary
+    },
+    create: {
+      id: data.standardPaymentClause.versionId,
+      clauseId: data.standardPaymentClause.id,
+      versionNo: data.standardPaymentClause.versionNo,
+      title: data.standardPaymentClause.title,
+      content: data.standardPaymentClause.content,
+      status: data.standardPaymentClause.status,
+      submittedByUserId: seed.users.contractStaff.id,
+      publishedByUserId: "seed-user-contract-director",
+      publishedAt: data.publishedAt,
+      changeSummary: data.version.changeSummary
+    }
+  });
+
+  await prisma.contractBusinessTemplate.upsert({
+    where: { code: data.template.code },
+    update: {
+      name: data.template.name,
+      contractTypeKey: data.template.contractTypeKey,
+      status: data.template.status
+    },
+    create: {
+      id: data.template.id,
+      code: data.template.code,
+      name: data.template.name,
+      contractTypeKey: data.template.contractTypeKey,
+      status: data.template.status,
+      createdByUserId: seed.users.contractStaff.id
+    }
+  });
+  await prisma.contractBusinessTemplateVersion.upsert({
+    where: { id: data.version.id },
+    update: {
+      status: data.version.status,
+      fieldSchema: data.fields,
+      billSchema: data.bills,
+      clauseSchema: data.clauses,
+      attachmentSchema: data.attachments,
+      validationSchema: data.validations,
+      submittedByUserId: seed.users.contractStaff.id,
+      publishedByUserId: "seed-user-contract-director",
+      publishedAt: data.publishedAt,
+      changeSummary: data.version.changeSummary
+    },
+    create: {
+      id: data.version.id,
+      templateId: data.template.id,
+      versionNo: data.version.versionNo,
+      status: data.version.status,
+      fieldSchema: data.fields,
+      billSchema: data.bills,
+      clauseSchema: data.clauses,
+      attachmentSchema: data.attachments,
+      validationSchema: data.validations,
+      submittedByUserId: seed.users.contractStaff.id,
+      publishedByUserId: "seed-user-contract-director",
+      publishedAt: data.publishedAt,
+      changeSummary: data.version.changeSummary
+    }
+  });
+
+  await prisma.contractLayoutTemplate.upsert({
+    where: { id: data.layout.id },
+    update: {
+      name: data.layout.name,
+      contractTypeKey: data.template.contractTypeKey
+    },
+    create: {
+      id: data.layout.id,
+      name: data.layout.name,
+      contractTypeKey: data.template.contractTypeKey,
+      createdByUserId: seed.users.contractStaff.id
+    }
+  });
+  await prisma.contractLayoutTemplateVersion.upsert({
+    where: { id: data.layout.versionId },
+    update: {
+      status: data.layout.status,
+      docxFileId: data.layout.docxFile.id,
+      placeholderSchema: {
+        fields: data.fields,
+        bills: data.bills,
+        clauses: data.clauses,
+        required: ["contract.amountUppercase"]
+      },
+      previewPdfFileId: data.layout.previewPdfFile.id,
+      inspectionReport: data.layout.inspectionReport,
+      submittedByUserId: seed.users.contractStaff.id,
+      publishedByUserId: "seed-user-contract-director",
+      publishedAt: data.publishedAt,
+      changeSummary: data.version.changeSummary
+    },
+    create: {
+      id: data.layout.versionId,
+      layoutTemplateId: data.layout.id,
+      versionNo: data.layout.versionNo,
+      status: data.layout.status,
+      docxFileId: data.layout.docxFile.id,
+      placeholderSchema: {
+        fields: data.fields,
+        bills: data.bills,
+        clauses: data.clauses,
+        required: ["contract.amountUppercase"]
+      },
+      previewPdfFileId: data.layout.previewPdfFile.id,
+      inspectionReport: data.layout.inspectionReport,
+      submittedByUserId: seed.users.contractStaff.id,
+      publishedByUserId: "seed-user-contract-director",
+      publishedAt: data.publishedAt,
+      changeSummary: data.version.changeSummary
+    }
+  });
+  await prisma.contractLayoutPreviewJob.upsert({
+    where: { id: data.layout.previewJob.id },
+    update: {
+      status: data.layout.previewJob.status,
+      sampleData: {
+        contract: { name: "材料采购合同样张", temporaryCode: "TMP-MAT-001" },
+        field: { deliveryLocation: "项目现场" },
+        clause: { payment: { text: data.standardPaymentClause.content.text } },
+        bill: { materials: [] }
+      },
+      previewPdfFileId: data.layout.previewPdfFile.id,
+      errorMessage: null,
+      completedAt: data.layout.previewJob.completedAt
+    },
+    create: {
+      id: data.layout.previewJob.id,
+      layoutTemplateVersionId: data.layout.versionId,
+      status: data.layout.previewJob.status,
+      sampleData: {
+        contract: { name: "材料采购合同样张", temporaryCode: "TMP-MAT-001" },
+        field: { deliveryLocation: "项目现场" },
+        clause: { payment: { text: data.standardPaymentClause.content.text } },
+        bill: { materials: [] }
+      },
+      previewPdfFileId: data.layout.previewPdfFile.id,
+      completedAt: data.layout.previewJob.completedAt,
+      createdByUserId: seed.users.contractStaff.id
+    }
+  });
+
+  await prisma.contractNumberRule.upsert({
+    where: { id: data.numberingRule.id },
+    update: {
+      name: data.numberingRule.name,
+      pattern: data.numberingRule.pattern,
+      contractTypeKey: data.numberingRule.contractTypeKey,
+      nextSequence: data.numberingRule.nextSequence,
+      sequenceWidth: data.numberingRule.sequenceWidth,
+      isActive: data.numberingRule.isActive
+    },
+    create: {
+      id: data.numberingRule.id,
+      name: data.numberingRule.name,
+      pattern: data.numberingRule.pattern,
+      contractTypeKey: data.numberingRule.contractTypeKey,
+      nextSequence: data.numberingRule.nextSequence,
+      sequenceWidth: data.numberingRule.sequenceWidth,
+      isActive: data.numberingRule.isActive,
+      createdByUserId: "seed-user-contract-director"
+    }
+  });
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash(testPassword, 10);
 
@@ -207,6 +474,7 @@ async function main() {
   });
 
   await seedAuthAssignments();
+  await seedMaterialPurchaseWorkbench();
 
   await prisma.contract.upsert({
     where: { code: seed.contract.code },
