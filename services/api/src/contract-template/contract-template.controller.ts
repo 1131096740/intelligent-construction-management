@@ -199,6 +199,14 @@ export class ContractTemplateController {
     return this.templates.createClause(user.id, body);
   }
 
+  @Post("standard-clause-versions/:versionId/submission")
+  submitClauseVersion(
+    @Param("versionId") versionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.templates.submitClauseVersion(versionId, user.id);
+  }
+
   @Post("standard-clause-versions/:versionId/publication")
   publishClauseVersion(
     @Param("versionId") versionId: string,

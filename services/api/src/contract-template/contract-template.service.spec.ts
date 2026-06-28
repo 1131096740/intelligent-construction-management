@@ -340,6 +340,52 @@ describe("ContractTemplateService", () => {
     );
   });
 
+  it("submits a standard clause draft version", async () => {
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+      },
+      standardClauseVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          clauseId: "clause-1",
+          status: "draft"
+        }),
+        update: jest.fn().mockResolvedValue({ id: "version-1", status: "submitted" })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    const result = await service.submitClauseVersion("version-1", "contract-staff");
+
+    expect(result.status).toBe("submitted");
+    expect(tx.standardClauseVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: {
+        status: "submitted",
+        submittedByUserId: "contract-staff"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: "contract-staff",
+        action: "standard_clause.submit_version",
+        businessType: "standard_clause_version",
+        businessId: "version-1"
+      })
+    );
+  });
+
   it("enforces contract_director role for publishVersion", async () => {
     const tx = {
       userPosition: {

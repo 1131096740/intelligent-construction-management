@@ -455,6 +455,37 @@ export class ContractTemplateService {
     });
   }
 
+  async submitClauseVersion(versionId: string, actorUserId: string) {
+    return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
+      await this.assertGlobalRole(tx as never, actorUserId, "contract_staff");
+
+      const version = await tx.standardClauseVersion.findUnique({
+        where: { id: versionId }
+      });
+      if (!version) throw new NotFoundException("Clause version not found");
+      if (version.status !== "draft") {
+        throw new BadRequestException("Only draft versions can be submitted");
+      }
+
+      const updated = await tx.standardClauseVersion.update({
+        where: { id: versionId },
+        data: {
+          status: "submitted",
+          submittedByUserId: actorUserId
+        }
+      });
+
+      await this.audit.record(tx as never, {
+        actorUserId,
+        action: "standard_clause.submit_version",
+        businessType: "standard_clause_version",
+        businessId: versionId
+      });
+
+      return updated;
+    });
+  }
+
   async publishClauseVersion(versionId: string, actorUserId: string, changeSummary: string) {
     return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
       await this.assertGlobalRole(tx as never, actorUserId, "contract_director");

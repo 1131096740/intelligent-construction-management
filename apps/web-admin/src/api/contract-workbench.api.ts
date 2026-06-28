@@ -399,6 +399,10 @@ export function createStandardClause(body: CreateStandardClausePayload) {
   return postJson<unknown>("/standard-clauses", body);
 }
 
+export function submitStandardClauseVersion(versionId: string) {
+  return postJson<unknown>(`/standard-clause-versions/${versionId}/submission`);
+}
+
 export function publishStandardClauseVersion(
   versionId: string,
   body: { changeSummary: string }

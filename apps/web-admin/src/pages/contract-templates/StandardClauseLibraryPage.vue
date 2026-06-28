@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>标准条款库</h1>
-        <p>当前后端只提供最新已发布条款列表；草稿创建后请用返回版本 ID 发布</p>
+        <p>当前后端只提供最新已发布条款列表；草稿创建后请先提交，再用返回版本 ID 发布</p>
       </div>
       <t-space>
         <t-input
@@ -39,6 +39,22 @@
       >
         创建草稿
       </t-button>
+    </t-card>
+
+    <t-card
+      title="提交版本"
+      :bordered="true"
+      class="panel"
+    >
+      <div class="form-grid submit-grid">
+        <label><span>标准条款版本 ID</span><t-input v-model="submitForm.versionId" /></label>
+        <t-button
+          theme="primary"
+          @click="submitClause"
+        >
+          提交
+        </t-button>
+      </div>
     </t-card>
 
     <t-card
@@ -98,6 +114,7 @@ import {
   createStandardClause,
   listPublishedStandardClauses,
   publishStandardClauseVersion,
+  submitStandardClauseVersion,
   type PublishedStandardClause
 } from "../../api/contract-workbench.api";
 
@@ -117,6 +134,7 @@ const creating = ref(false);
 const message = ref("");
 const tone = ref<"success" | "danger">("success");
 const form = reactive({ code: "", category: "", name: "", title: "", text: "" });
+const submitForm = reactive({ versionId: "" });
 const publishForm = reactive({ versionId: "", changeSummary: "" });
 
 async function loadClauses() {
@@ -141,7 +159,7 @@ async function createClause() {
       title: form.title.trim(),
       content: { text: form.text }
     });
-    publishForm.versionId = String((created as { version?: { id?: string } }).version?.id ?? "");
+    submitForm.versionId = String((created as { version?: { id?: string } }).version?.id ?? "");
     message.value = "条款草稿已创建";
     tone.value = "success";
   } catch (error) {
@@ -149,6 +167,18 @@ async function createClause() {
     tone.value = "danger";
   } finally {
     creating.value = false;
+  }
+}
+
+async function submitClause() {
+  try {
+    await submitStandardClauseVersion(submitForm.versionId.trim());
+    publishForm.versionId = submitForm.versionId.trim();
+    message.value = "条款版本已提交";
+    tone.value = "success";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "提交失败";
+    tone.value = "danger";
   }
 }
 
@@ -176,6 +206,7 @@ onMounted(loadClauses);
 .page-head p, label span, .hint { margin: 0; color: #767f8d; font-size: 12px; }
 .panel { margin-bottom: 16px; border-radius: 3px; }
 .form-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; align-items: end; margin-bottom: 12px; }
+.submit-grid { grid-template-columns: 1fr auto; }
 .publish-grid { grid-template-columns: 1fr 1fr auto; }
 label { display: grid; gap: 4px; }
 .textarea { margin-bottom: 12px; }

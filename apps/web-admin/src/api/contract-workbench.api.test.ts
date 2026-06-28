@@ -46,6 +46,7 @@ import {
   stopContractNumberRule,
   stopContractTemplateVersion,
   stopLayoutTemplateVersion,
+  submitStandardClauseVersion,
   submitContractTemplateVersion,
   submitLayoutTemplateVersion,
   transferContractDraft,
@@ -492,7 +493,7 @@ describe("contract workbench API client", () => {
     expect(result[0].content).toEqual({ text: "结算确认后付款。" });
   });
 
-  it("standard clause create and publish wrappers use existing endpoints", async () => {
+  it("standard clause create, submit and publish wrappers use existing endpoints", async () => {
     mockApiFetch.mockImplementation(() => makeOkJson({ id: "clause-version-1" }));
 
     await createStandardClause({
@@ -502,10 +503,12 @@ describe("contract workbench API client", () => {
       title: "付款",
       content: { text: "结算确认后付款。" }
     });
+    await submitStandardClauseVersion("clause-version-1");
     await publishStandardClauseVersion("clause-version-1", { changeSummary: "发布" });
 
     expect(mockApiFetch.mock.calls.map((call) => call[0])).toEqual([
       "/standard-clauses",
+      "/standard-clause-versions/clause-version-1/submission",
       "/standard-clause-versions/clause-version-1/publication"
     ]);
   });
