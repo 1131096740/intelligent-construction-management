@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-29 (CodeX)：推进企业级合同工作台 Phase 1 Task 22「浏览器验收与项目进度」。API 与 Web dev server 均可启动：API `Nest application successfully started`，Vite `http://localhost:5173/` ready；活体探针确认 `GET /health` 200、Web `/contracts` 200、合同员工登录 201、`GET /contract-templates?contractTypeKey=material_purchase` 200 且返回 1 个已发布物资合同模板。自动化验证：API 全量测试 **381/381**（43 suites）通过，Web 全量测试 **120/120**（17 files）通过；API lint/typecheck/build、Web typecheck/lint/build 通过（Web build 仅保留 Vite >500k chunk 既有警告）。未完成的 Task22 浏览器交互验收：Playwright 包可用但浏览器未安装，系统 Chrome 在当前沙箱下因 Crashpad/权限 `Operation not permitted` / `SIGABRT` 无法被 Playwright 控制，Computer Use 只能读取现有 Chrome 窗口不能输入导航；因此尚未实际点击验证工作台多主体、Excel UI、文档预览、双标签冲突和 1440x900/1100x800 响应式。完整 live 合同工作台验收仍被 LibreOffice runtime 阻塞，见上一条 `liblcms2.2.dylib`。剩余二阶段/后续：线下磋商差异、OCR 归档、补充协议加强审批、终止清算、电子签章/招投标/银企直联、小程序移动端、生产部署与备份演练。
 - 2026-06-29 (CodeX)：推进企业级合同工作台 Phase 1 Task 21「端到端核心路径验收」。新增 `verify:contract-workbench` live 验证脚本与静态覆盖测试，脚本覆盖合同员工登录、读取已发布物资合同模板、创建草稿、保存字段/条款/清单、手动检查点、Excel 模板导出与内存回填上传、导入预览/应用、草稿与内部送审文档生成轮询、readiness 校验、提交审批、版本状态与审计日志核对；同时补 `seed.cjs` 旧合同版本必填 JSON 字段，修复 `AuditService` type-only import 导致 Nest 运行时 DI 失败的问题。验证：API lint/typecheck/build 通过，Task21 spec 2 个通过，`node -c` 通过，`git diff --check` 通过，`pnpm --filter @jiangkong/api seed` 可重放，API 可启动成功。完整 live 验收当前被本机 LibreOffice 运行时依赖阻塞：`soffice --version` 缺少 `/opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib`；脚本已按计划用精确错误 `DOC_CONVERTER_COMMAND is unavailable; install LibreOffice or set the executable path.` 失败。下一步：修复/安装 LibreOffice 运行时依赖后重跑 `DOC_CONVERTER_COMMAND=<soffice> pnpm --filter @jiangkong/api verify:contract-workbench`，通过后再将 Task 21 勾选完成。
 - 2026-06-28 (CodeX)：完成企业级合同工作台 Phase 1 Task 20「合同工作台种子数据与模板样张」。新增稳定、幂等的 `material_purchase` 材料采购业务模板 v1 seed，覆盖 delivery/quality/tax/settlement 字段、材料价格清单与运费清单、付款依据必填规则、已发布标准付款条款、已发布 DOCX 版式版本、preview PDF 元数据与 succeeded preview job、合同编号规则 `HT-{project}-{year}-{type}-{sequence}`。新增朴素 A4 DOCX fixture，包含合同、字段、条款和 `bill.materials` 循环占位符；`seed.cjs` 会把 DOCX asset 与最小 preview PDF 写入 `storage/private/seed/templates/...` 后再 upsert `FileObject`，保证本地 `FileService.getFileBuffer` 可读。验证：API seed data 单测 2 个通过，API typecheck/build 通过。
 - 2026-06-28 (CodeX)：修复企业级合同工作台 Phase 1 Task 19 质量复审 UI 闭环缺口。业务模板创建后 Web 会携带后端返回的 `version.id` 跳转编辑页并自动填充当前版本 ID，避免新建后只能外部抓响应；标准条款提交/发布空版本 ID 时禁用按钮并在函数入口 guard，避免请求 `/standard-clause-versions//...`；合同编号规则前端校验补齐必须包含 `{sequence}`，与后端保存规则一致。补模板中心 config 回归测试。
@@ -85,7 +86,7 @@
 - [x] Task 19：模板中心 Web UI（业务模板、版式模板、标准条款、合作单位档案、编号规则最小管理页；后端缺少版本 read model 的区域已做诚实空态/版本 ID 输入）
 - [x] Task 20：合同工作台种子数据与模板样张
 - [~] Task 21：端到端核心路径验收（验证脚本、静态测试、seed 重放与 API 启动已完成；完整 live 验收被本机 LibreOffice 缺少 `liblcms2.2.dylib` 阻塞）
-- [ ] Task 22：Phase 1 收口与移交
+- [~] Task 22：Phase 1 收口与移交（API/Web server 启动、HTTP 活体探针、全量自动化测试和构建已验证；完整浏览器交互验收因当前 Chrome/Playwright 沙箱权限阻塞未完成）
 
 ---
 
