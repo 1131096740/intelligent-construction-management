@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import { validateContractTemplateSchema, type ContractTemplateSchema } from "@jiangkong/shared-domain";
-import type { AuditService } from "../audit/audit.service";
+import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import type {
   CreateBusinessTemplateDto,
@@ -10,9 +10,13 @@ import type {
 } from "./dto/contract-template.dto";
 
 type Delegate = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create(args: unknown): Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findUnique(args: unknown): Promise<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findMany(args: unknown): Promise<any[]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   update(args: unknown): Promise<any>;
 };
 

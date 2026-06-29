@@ -1,0 +1,415 @@
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+const ExcelJS = require("exceljs");
+const { PrismaClient } = require("@prisma/client");
+const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
+
+const execFileAsync = promisify(execFile);
+const prisma = new PrismaClient();
+const baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:3000";
+const PASSWORD = process.env.SEED_PASSWORD || "Jgzg@2026";
+const CONVERTER = process.env.DOC_CONVERTER_COMMAND || "soffice";
+
+function authHeaders(token) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+async function assertConverterAvailable() {
+  try {
+    await execFileAsync(CONVERTER, ["--version"]);
+  } catch {
+    throw new Error(
+      "DOC_CONVERTER_COMMAND is unavailable; install LibreOffice or set the executable path."
+    );
+  }
+}
+
+async function login() {
+  const response = await fetch(`${baseUrl}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phone: coreFlowSeedData.users.contractStaff.phone,
+      password: PASSWORD
+    })
+  });
+  assert(response.ok, `login returned HTTP ${response.status}: ${await response.text()}`);
+  const body = await response.json();
+  assert(body.tokens?.accessToken, "login did not return an access token");
+  console.log("ok login");
+  return body.tokens.accessToken;
+}
+
+async function getJson(path, token) {
+  const response = await fetch(`${baseUrl}${path}`, { headers: authHeaders(token) });
+  assert(response.ok, `${path} returned HTTP ${response.status}: ${await response.text()}`);
+  return response.json();
+}
+
+async function postJson(path, body, token) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify(body)
+  });
+  assert(response.ok, `${path} returned HTTP ${response.status}: ${await response.text()}`);
+  return response.json();
+}
+
+async function patchJson(path, body, token) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify(body)
+  });
+  assert(response.ok, `${path} returned HTTP ${response.status}: ${await response.text()}`);
+  return response.json();
+}
+
+async function uploadFile(fileName, mimeType, buffer, token) {
+  const form = new FormData();
+  form.append("file", new Blob([buffer], { type: mimeType }), fileName);
+  const response = await fetch(`${baseUrl}/files`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: form
+  });
+  assert(response.ok, `/files returned HTTP ${response.status}: ${await response.text()}`);
+  return response.json();
+}
+
+async function downloadBuffer(path, token) {
+  const response = await fetch(`${baseUrl}${path}`, { headers: authHeaders(token) });
+  assert(response.ok, `${path} returned HTTP ${response.status}: ${await response.text()}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function assertSeedReady() {
+  const [project, templateVersion, layoutVersion, numberRule] = await Promise.all([
+    prisma.project.findUnique({ where: { id: coreFlowSeedData.project.id } }),
+    prisma.contractBusinessTemplateVersion.findUnique({
+      where: { id: coreFlowSeedData.materialPurchaseWorkbench.version.id }
+    }),
+    prisma.contractLayoutTemplateVersion.findUnique({
+      where: { id: coreFlowSeedData.materialPurchaseWorkbench.layout.versionId }
+    }),
+    prisma.contractNumberRule.findUnique({
+      where: { id: coreFlowSeedData.materialPurchaseWorkbench.numberingRule.id }
+    })
+  ]);
+  assert(project, "Seed project is missing. Run `pnpm --filter @jiangkong/api seed` first.");
+  assert(templateVersion?.status === "published", "Published material template seed is missing.");
+  assert(layoutVersion?.status === "published", "Published layout template seed is missing.");
+  assert(numberRule?.isActive, "Active material contract number rule seed is missing.");
+}
+
+async function listPublishedTemplates(token) {
+  const templates = await getJson("/contract-templates?contractTypeKey=material_purchase", token);
+  assert(
+    templates.some((template) => template.code === "material_purchase"),
+    "material_purchase template was not listed as published"
+  );
+  console.log("ok list published templates");
+}
+
+async function createMinimalDraft(token) {
+  const result = await postJson(
+    "/contracts",
+    {
+      projectId: coreFlowSeedData.project.id,
+      contractTypeKey: "material_purchase",
+      businessTemplateVersionId: coreFlowSeedData.materialPurchaseWorkbench.version.id
+    },
+    token
+  );
+  assert(result.contract?.id && result.version?.id, "create minimal draft did not return ids");
+  await prisma.contract.update({
+    where: { id: result.contract.id },
+    data: {
+      name: "Phase1材料采购验收合同",
+      counterparty: "Phase1材料供应商",
+      companyEntityName: "建工智管建设有限公司"
+    }
+  });
+  console.log(`ok create minimal draft ${result.contract.temporaryCode}`);
+  return { contractId: result.contract.id, contractVersionId: result.version.id };
+}
+
+async function getWorkbench(contractId, token) {
+  return getJson(`/contract-workbench/${contractId}`, token);
+}
+
+function billByKey(workbench, key) {
+  const bill = workbench.bills.find((item) => item.billKey === key);
+  assert(bill, `missing bill ${key}`);
+  return bill;
+}
+
+async function saveDraft(contractVersionId, workbench, token) {
+  const seed = coreFlowSeedData.materialPurchaseWorkbench;
+  const saved = await patchJson(
+    `/contract-workbench/${contractVersionId}`,
+    {
+      expectedRevision: workbench.version.draftRevision,
+      draftData: {
+        deliveryLocation: "建设项目一期现场",
+        deliveryDeadline: "2026-07-20",
+        qualityStandard: "符合国家现行质量标准和项目验收要求",
+        taxRatePercent: 13,
+        settlementMethod: "monthly"
+      },
+      clauses: seed.clauses,
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: 12800000,
+      amountAdjustmentReason: "Phase 1 验收脚本手工合同金额",
+      layoutTemplateVersionId: seed.layout.versionId
+    },
+    token
+  );
+  assert(saved.draftRevision === workbench.version.draftRevision + 1, "autosave revision mismatch");
+  console.log("ok autosave");
+}
+
+async function createCheckpoint(contractVersionId, token) {
+  const checkpoint = await postJson(
+    `/contract-workbench/${contractVersionId}/checkpoints`,
+    { name: "Phase 1 验收检查点" },
+    token
+  );
+  assert(checkpoint.id, "manual checkpoint did not return an id");
+  console.log("ok manual checkpoint");
+}
+
+async function addBillRow(bill, token) {
+  const row = await postJson(
+    `/contract-bills/${bill.id}/rows`,
+    {
+      expectedBillRevision: bill.revision,
+      itemName: "钢筋",
+      specification: "HRB400E 直径18",
+      unit: "吨",
+      quantity: "10.000",
+      unitPrice: "10000.0000",
+      taxRatePercent: "13",
+      isProvisional: false,
+      settlementBasis: "按到货验收数量结算",
+      customData: {
+        specification: "HRB400E 直径18",
+        quantity: "10.000",
+        unitPrice: "10000.0000",
+        taxRatePercent: "13",
+        taxInclusiveAmount: "100000.00"
+      }
+    },
+    token
+  );
+  assert(row.rowKey, "add bill row did not return rowKey");
+  console.log("ok add bill row");
+}
+
+async function exportExcelTemplate(bill, token) {
+  const buffer = await downloadBuffer(`/contract-bills/${bill.id}/excel-template`, token);
+  assert(buffer.length > 0, "export Excel template returned an empty file");
+  console.log("ok export Excel template");
+  return buffer;
+}
+
+async function fillExcelTemplate(buffer) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.getWorksheet("清单数据") || workbook.worksheets[1];
+  assert(sheet, "Excel template data sheet is missing");
+  const codes = new Map();
+  sheet.getRow(2).eachCell((cell, colNumber) => {
+    codes.set(String(cell.value), colNumber);
+  });
+  const values = {
+    itemName: "水泥",
+    specification: "P.O 42.5",
+    unit: "吨",
+    quantity: "20.000",
+    unitPrice: "480.0000",
+    taxRatePercent: "13",
+    taxInclusiveAmount: "9600.00"
+  };
+  for (const [code, value] of Object.entries(values)) {
+    const column = codes.get(code);
+    assert(column, `Excel template is missing column ${code}`);
+    sheet.getRow(3).getCell(column).value = value;
+  }
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+async function uploadImportApplyExcel(bill, token) {
+  const template = await exportExcelTemplate(bill, token);
+  const edited = await fillExcelTemplate(template);
+  const file = await uploadFile(
+    `phase1-materials-${Date.now()}.xlsx`,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    edited,
+    token
+  );
+  const preview = await postJson(
+    `/contract-bills/${bill.id}/excel-imports`,
+    { fileId: file.id, mode: "append" },
+    token
+  );
+  assert(preview.importId, "upload/import/apply Excel preview did not return importId");
+  assert(preview.errors.length === 0, `Excel import preview has errors: ${JSON.stringify(preview.errors)}`);
+  const applied = await postJson(`/contract-bill-imports/${preview.importId}/apply`, {}, token);
+  assert(applied.bill?.id === bill.id, "Excel import apply returned the wrong bill");
+  console.log("ok upload/import/apply Excel");
+  return preview.importId;
+}
+
+async function addParties(contractVersionId, token) {
+  const snapshot = (name) => ({
+    name,
+    unifiedSocialCreditCode: `91310000${Math.floor(Math.random() * 100000000).toString().padStart(8, "0")}`,
+    legalRepresentative: "张三",
+    address: "上海市",
+    contactName: "李四",
+    contactPhone: "13800009999",
+    attachments: []
+  });
+  await postJson(
+    `/contract-workbench/${contractVersionId}/parties`,
+    { roleKey: "party_a", snapshot: snapshot("建工智管建设有限公司") },
+    token
+  );
+  await postJson(
+    `/contract-workbench/${contractVersionId}/parties`,
+    { roleKey: "party_b", snapshot: snapshot("Phase1材料供应商") },
+    token
+  );
+}
+
+async function checkReadiness(contractVersionId, token) {
+  const readiness = await postJson(`/contracts/${contractVersionId}/readiness`, {}, token);
+  assert(
+    readiness.blocking.length === 0,
+    `readiness has blocking errors: ${JSON.stringify(readiness.blocking)}`
+  );
+  return readiness;
+}
+
+async function queueDocument(contractVersionId, purpose, token) {
+  const document = await postJson(
+    `/contract-workbench/${contractVersionId}/documents`,
+    {
+      layoutTemplateVersionId: coreFlowSeedData.materialPurchaseWorkbench.layout.versionId,
+      purpose
+    },
+    token
+  );
+  assert(document.id, `queue ${purpose} document did not return id`);
+  console.log(`ok queue ${purpose} document`);
+  return document;
+}
+
+async function pollDocumentSuccess(contractVersionId, documentId, token) {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const documents = await getJson(`/contract-workbench/${contractVersionId}/documents`, token);
+    const document = documents.find((item) => item.id === documentId);
+    if (document?.status === "success") {
+      assert(document.docxFileId && document.pdfFileId, "successful document is missing file ids");
+      console.log(`ok poll document success ${documentId}`);
+      return document;
+    }
+    if (document?.status === "failed") {
+      throw new Error(`document generation failed: ${document.errorMessage || documentId}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(`document ${documentId} did not succeed within 60 seconds`);
+}
+
+async function submitApproval(contractVersionId, token) {
+  const submitted = await postJson(
+    `/contracts/${contractVersionId}/approval-submission`,
+    { numberRuleId: coreFlowSeedData.materialPurchaseWorkbench.numberingRule.id },
+    token
+  );
+  assert(submitted.status === "in_approval", "submit approval did not enter in_approval");
+  console.log(`ok submit approval ${submitted.formalCode}`);
+}
+
+async function assertAudit(contractId, contractVersionId, importId, draftDocumentId, reviewDocumentId) {
+  const rows = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { businessType: "contract", businessId: contractId },
+        { businessType: "contract_version", businessId: contractVersionId },
+        { businessType: "contract_bill_import", businessId: importId },
+        { businessType: "contract_generated_document", businessId: draftDocumentId },
+        { businessType: "contract_generated_document", businessId: reviewDocumentId }
+      ]
+    },
+    select: { action: true, businessId: true }
+  });
+  const actions = new Set(rows.map((row) => row.action));
+  const required = [
+    "contract.draft.create",
+    "contract.draft.save",
+    "contract.bill.import.apply",
+    "contract.document.success",
+    "contract.approval.submit"
+  ];
+  const missing = required.filter((action) => !actions.has(action));
+  assert(missing.length === 0, `Missing audit actions: ${missing.join(", ")}`);
+  const hasDocumentSuccess = (documentId) =>
+    rows.some((row) => row.businessId === documentId && row.action === "contract.document.success");
+  assert(hasDocumentSuccess(draftDocumentId), "Missing draft document success audit");
+  assert(hasDocumentSuccess(reviewDocumentId), "Missing internal review document success audit");
+  console.log("ok audit logs");
+}
+
+async function main() {
+  await assertConverterAvailable();
+  await assertSeedReady();
+  const token = await login();
+  await listPublishedTemplates(token);
+  const draft = await createMinimalDraft(token);
+  let workbench = await getWorkbench(draft.contractId, token);
+  await saveDraft(draft.contractVersionId, workbench, token);
+  await createCheckpoint(draft.contractVersionId, token);
+  workbench = await getWorkbench(draft.contractId, token);
+  await addBillRow(billByKey(workbench, "materials"), token);
+  workbench = await getWorkbench(draft.contractId, token);
+  const importId = await uploadImportApplyExcel(billByKey(workbench, "materials"), token);
+  await addParties(draft.contractVersionId, token);
+  workbench = await getWorkbench(draft.contractId, token);
+  const draftDocument = await queueDocument(draft.contractVersionId, "draft", token);
+  await pollDocumentSuccess(draft.contractVersionId, draftDocument.id, token);
+  await checkReadiness(draft.contractVersionId, token);
+  const reviewDocument = await queueDocument(draft.contractVersionId, "internal_review", token);
+  await pollDocumentSuccess(draft.contractVersionId, reviewDocument.id, token);
+  await submitApproval(draft.contractVersionId, token);
+  const version = await prisma.contractVersion.findUnique({
+    where: { id: draft.contractVersionId }
+  });
+  assert(version?.status === "in_approval", "contract version is not in_approval");
+  await assertAudit(
+    draft.contractId,
+    draft.contractVersionId,
+    importId,
+    draftDocument.id,
+    reviewDocument.id
+  );
+  console.log("ok contract workbench phase 1 verification");
+}
+
+main()
+  .catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

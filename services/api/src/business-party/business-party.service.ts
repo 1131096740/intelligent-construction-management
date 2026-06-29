@@ -5,7 +5,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
-import type { AuditService } from "../audit/audit.service";
+import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import type {

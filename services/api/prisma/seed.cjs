@@ -487,7 +487,10 @@ async function main() {
     update: {
       status: seed.contractVersion.status,
       amountCents: BigInt(seed.contractVersion.amountCents),
-      effectiveAt: seed.contractVersion.effectiveAt
+      effectiveAt: seed.contractVersion.effectiveAt,
+      draftData: {},
+      templateSnapshot: {},
+      clauseSnapshot: []
     },
     create: {
       id: seed.contractVersion.id,
@@ -496,7 +499,10 @@ async function main() {
       changeType: seed.contractVersion.changeType,
       status: seed.contractVersion.status,
       amountCents: BigInt(seed.contractVersion.amountCents),
-      effectiveAt: seed.contractVersion.effectiveAt
+      effectiveAt: seed.contractVersion.effectiveAt,
+      draftData: {},
+      templateSnapshot: {},
+      clauseSnapshot: []
     }
   });
 

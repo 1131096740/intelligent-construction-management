@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import PizZip from "pizzip";
-import type { AuditService } from "../audit/audit.service";
+import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 
