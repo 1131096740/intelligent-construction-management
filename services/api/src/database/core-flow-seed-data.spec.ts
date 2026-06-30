@@ -1,4 +1,12 @@
+import { readFileSync } from "fs";
+import { join } from "path";
+import PizZip from "pizzip";
 import { coreFlowSeedData } from "./core-flow-seed-data";
+
+function templateText(originalName: string): string {
+  const buffer = readFileSync(join(process.cwd(), "assets", "templates", originalName));
+  return new PizZip(buffer).file("word/document.xml")?.asText() ?? "";
+}
 
 describe("coreFlowSeedData", () => {
   it("describes the first contract-settlement-payment closed loop", () => {
@@ -120,5 +128,24 @@ describe("coreFlowSeedData", () => {
       "safety_agreement",
       "wage_commitment"
     ]);
+  });
+
+  it.each([
+    [
+      "equipment rental",
+      coreFlowSeedData.equipmentRentalWorkbench.layout.docxFile.originalName,
+      ["field.useLocation", "clause.payment.text", "bill.equipmentRentals"]
+    ],
+    [
+      "labor subcontract",
+      coreFlowSeedData.laborSubcontractWorkbench.layout.docxFile.originalName,
+      ["field.workLocation", "clause.payment.text", "bill.laborItems"]
+    ]
+  ])("ships a matching %s DOCX seed asset", (_label, originalName, placeholders) => {
+    const text = templateText(originalName);
+
+    for (const placeholder of placeholders) {
+      expect(text).toContain(placeholder);
+    }
   });
 });

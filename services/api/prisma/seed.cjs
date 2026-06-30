@@ -247,7 +247,7 @@ async function upsertSeedFile(file, uploadedByUserId, sizeBytes) {
 async function seedWorkbenchTemplate(data) {
   const docxSize = await copyPrivateSeedFile(
     data.layout.docxFile,
-    join(__dirname, "..", "assets", "templates", "material-purchase-v1.docx")
+    join(__dirname, "..", "assets", "templates", data.layout.docxFile.originalName)
   );
   const previewSize = await writePrivateSeedFile(
     data.layout.previewPdfFile,
