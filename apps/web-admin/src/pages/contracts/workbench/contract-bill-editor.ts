@@ -45,6 +45,13 @@ export interface WorkbenchDocument {
   [key: string]: unknown;
 }
 
+export interface OfflineRevisionFormState<TFile = unknown> {
+  file: TFile | null;
+  label: string;
+  note: string;
+  confirmed: boolean;
+}
+
 export interface ClauseTextBlock {
   type: "paragraph";
   text: string;
@@ -93,6 +100,8 @@ export const coreBillColumns: WorkbenchBillColumn[] = [
   { key: "unitPrice", label: "单价", required: true },
   { key: "taxRatePercent", label: "税率%", required: true }
 ];
+
+export const defaultOfflineRevisionLabel = "线下修订稿";
 
 export function billTabs(bills: WorkbenchBill[]) {
   return bills.map((bill) => ({ label: bill.name, value: bill.billKey }));
@@ -216,6 +225,27 @@ export function documentsWithStaleFlag(
     ...document,
     stale: document.status === "stale" || document.sourceRevision !== currentRevision
   }));
+}
+
+export function defaultOfflineRevisionFormState<
+  TFile = unknown
+>(): OfflineRevisionFormState<TFile> {
+  return {
+    file: null,
+    label: defaultOfflineRevisionLabel,
+    note: "",
+    confirmed: false
+  };
+}
+
+export function offlineRevisionFormForVersionChange<TFile>(
+  current: OfflineRevisionFormState<TFile>,
+  previousVersionId: string | undefined,
+  nextVersionId: string
+): OfflineRevisionFormState<TFile> {
+  return previousVersionId !== undefined && previousVersionId !== nextVersionId
+    ? defaultOfflineRevisionFormState<TFile>()
+    : { ...current };
 }
 
 function objectValue(value: unknown): Record<string, unknown> {

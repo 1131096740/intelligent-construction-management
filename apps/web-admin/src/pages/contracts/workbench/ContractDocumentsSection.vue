@@ -275,8 +275,11 @@ import {
   type PrivateFileReadModel
 } from "../../../api/core-flow-read.api";
 import {
+  defaultOfflineRevisionFormState,
   documentWarnings,
   documentsWithStaleFlag,
+  offlineRevisionFormForVersionChange,
+  type OfflineRevisionFormState,
   type WorkbenchDocument
 } from "./contract-bill-editor";
 
@@ -304,7 +307,7 @@ const rawDocuments = ref<WorkbenchDocument[]>([]);
 const attachments = ref<PrivateFileReadModel[]>([]);
 const offlineRevisions = ref<Array<Record<string, unknown>>>([]);
 const offlineRevisionFile = ref<PrivateFileReadModel | null>(null);
-const offlineRevisionLabel = ref("线下修订稿");
+const offlineRevisionLabel = ref(defaultOfflineRevisionFormState<PrivateFileReadModel>().label);
 const offlineRevisionNote = ref("");
 const offlineRevisionConfirmed = ref(false);
 const busy = ref(false);
@@ -339,6 +342,16 @@ watch(
   },
   { immediate: true }
 );
+
+watch(versionId, (nextVersionId, previousVersionId) => {
+  applyOfflineRevisionFormState(
+    offlineRevisionFormForVersionChange(
+      currentOfflineRevisionFormState(),
+      previousVersionId,
+      nextVersionId
+    )
+  );
+}, { immediate: true });
 
 watch(hasActiveDocument, (active) => {
   if (active) {
@@ -394,6 +407,22 @@ async function loadOfflineRevisions() {
   } catch (error) {
     message.value = error instanceof Error ? error.message : "线下修订稿加载失败";
   }
+}
+
+function currentOfflineRevisionFormState(): OfflineRevisionFormState<PrivateFileReadModel> {
+  return {
+    file: offlineRevisionFile.value,
+    label: offlineRevisionLabel.value,
+    note: offlineRevisionNote.value,
+    confirmed: offlineRevisionConfirmed.value
+  };
+}
+
+function applyOfflineRevisionFormState(state: OfflineRevisionFormState<PrivateFileReadModel>) {
+  offlineRevisionFile.value = state.file;
+  offlineRevisionLabel.value = state.label;
+  offlineRevisionNote.value = state.note;
+  offlineRevisionConfirmed.value = state.confirmed;
 }
 
 function startPolling() {
@@ -489,10 +518,7 @@ async function submitOfflineRevision() {
       note: offlineRevisionNote.value.trim() || undefined,
       confirmationStatementAccepted: true
     });
-    offlineRevisionFile.value = null;
-    offlineRevisionLabel.value = "线下修订稿";
-    offlineRevisionNote.value = "";
-    offlineRevisionConfirmed.value = false;
+    applyOfflineRevisionFormState(defaultOfflineRevisionFormState<PrivateFileReadModel>());
     await loadOfflineRevisions();
     emit("reload");
     message.value = "线下修订稿已记录";
@@ -669,8 +695,25 @@ function layoutThumbnailUrl(layout: Record<string, unknown>) {
   cursor: pointer;
 }
 
+.file-button {
+  position: relative;
+}
+
 .file-button input {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.file-button:focus-within {
+  outline: 2px solid #0052d9;
+  outline-offset: 2px;
 }
 
 .attachment-chip {
