@@ -5,6 +5,8 @@ import { ContractDocumentService, requiredPlaceholderKeys } from "./contract-doc
 describe("ContractDocumentService", () => {
   const audit = { record: jest.fn() };
   const files = { assertCanDownloadFile: jest.fn() };
+  const docxMime =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
   beforeEach(() => {
     audit.record.mockReset();
@@ -12,8 +14,16 @@ describe("ContractDocumentService", () => {
       (_tx, id: string) =>
         Promise.resolve({
           id,
-          originalName: id === "attachment-a" ? "附件A.pdf" : "附件B.png",
-          mimeType: id === "attachment-a" ? "application/pdf" : "image/png"
+          originalName: id.startsWith("revision-file")
+            ? "线下修订稿.docx"
+            : id === "attachment-a"
+              ? "附件A.pdf"
+              : "附件B.png",
+          mimeType: id.startsWith("revision-file")
+            ? docxMime
+            : id === "attachment-a"
+              ? "application/pdf"
+              : "image/png"
         })
     );
   });
@@ -545,6 +555,22 @@ describe("ContractDocumentService", () => {
       "revision-file-1",
       "owner-1"
     );
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "version-1",
+        draftRevision: 7,
+        status: { in: ["draft", "approval_rejected"] }
+      },
+      data: { draftRevision: { increment: 0 } }
+    });
+    expect(tx.contract.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "contract-1",
+        ownerUserId: "owner-1",
+        voidedAt: null
+      },
+      data: { ownerUserId: "owner-1" }
+    });
     expect(tx.contractOfflineRevision.create).toHaveBeenCalledWith({
       data: {
         contractVersionId: "version-1",
@@ -586,6 +612,73 @@ describe("ContractDocumentService", () => {
       })
     ).rejects.toThrow("Only the contract draft owner may manage documents");
     expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+  });
+
+  it("does not create an offline revision when file authorization is revoked", async () => {
+    const tx = makeTx();
+    files.assertCanDownloadFile.mockRejectedValueOnce(
+      new ForbiddenException("File access denied")
+    );
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-file-1",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow("File access denied");
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
+  });
+
+  it("requires offline revision uploads to be DOCX documents", async () => {
+    const tx = makeTx();
+    files.assertCanDownloadFile.mockResolvedValueOnce({
+      id: "revision-pdf",
+      originalName: "线下修订稿.pdf",
+      mimeType: "application/pdf"
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-pdf",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow("Offline revision file must be a DOCX document");
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts DOCX offline revisions by filename when MIME is odd", async () => {
+    const tx = makeTx();
+    files.assertCanDownloadFile.mockResolvedValueOnce({
+      id: "revision-file-odd-mime",
+      originalName: "线下修订稿.DOCX",
+      mimeType: "application/octet-stream"
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-file-odd-mime",
+        confirmationStatementAccepted: true
+      })
+    ).resolves.toMatchObject({ fileId: "revision-file-odd-mime" });
+  });
+
+  it("rejects offline revision upload when status gates race", async () => {
+    const tx = makeTx();
+    tx.contractVersion.updateMany.mockResolvedValueOnce({ count: 0 });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-file-1",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow("Contract offline revision status conflict");
+    expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
   });
 
   it("rejects offline revision upload for non-editable contract versions", async () => {
@@ -636,7 +729,7 @@ describe("ContractDocumentService", () => {
     ]);
     expect(tx.contractOfflineRevision.findMany).toHaveBeenCalledWith({
       where: { contractVersionId: "version-1" },
-      orderBy: { createdAt: "desc" }
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
     });
   });
 });

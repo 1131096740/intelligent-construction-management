@@ -44,6 +44,8 @@ export interface ContractDocumentInputSnapshot {
 
 const ACTIVE_DOCUMENT_STATUSES = ["queued", "processing", "success"];
 const EDITABLE_VERSION_STATUSES = ["draft", "approval_rejected"];
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const BASE_REQUIRED_PLACEHOLDERS = [
   "contract.name",
   "contract.temporaryCode",
@@ -221,7 +223,7 @@ export class ContractDocumentService {
   ) {
     const input = this.parseOfflineRevisionInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
-      const { version } = await this.loadOwnedVersion(
+      const { version, contract } = await this.loadOwnedVersion(
         tx,
         contractVersionId,
         actorUserId
@@ -229,7 +231,19 @@ export class ContractDocumentService {
       if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
         throw new BadRequestException("Contract version is not editable");
       }
-      await this.files.assertCanDownloadFile(tx, input.fileId, actorUserId);
+      const file = await this.files.assertCanDownloadFile(
+        tx,
+        input.fileId,
+        actorUserId
+      );
+      if (
+        file.mimeType !== DOCX_MIME &&
+        !file.originalName.toLowerCase().endsWith(".docx")
+      ) {
+        throw new BadRequestException(
+          "Offline revision file must be a DOCX document"
+        );
+      }
       if (input.sourceGeneratedDocumentId) {
         const source = await tx.contractGeneratedDocument.findUnique({
           where: { id: input.sourceGeneratedDocumentId }
@@ -239,6 +253,28 @@ export class ContractDocumentService {
             "Source generated document does not belong to this contract version"
           );
         }
+      }
+      const versionGate = await tx.contractVersion.updateMany({
+        where: {
+          id: version.id,
+          draftRevision: version.draftRevision,
+          status: { in: EDITABLE_VERSION_STATUSES }
+        },
+        data: { draftRevision: { increment: 0 } }
+      });
+      if (versionGate.count !== 1) {
+        throw new BadRequestException("Contract offline revision status conflict");
+      }
+      const ownerGate = await tx.contract.updateMany({
+        where: {
+          id: contract.id,
+          ownerUserId: actorUserId,
+          voidedAt: null
+        },
+        data: { ownerUserId: actorUserId }
+      });
+      if (ownerGate.count !== 1) {
+        throw new BadRequestException("Contract offline revision status conflict");
       }
       const revision = await tx.contractOfflineRevision.create({
         data: {
@@ -270,7 +306,7 @@ export class ContractDocumentService {
       const { version } = await this.loadOwnedVersion(tx, contractVersionId, actorUserId);
       return tx.contractOfflineRevision.findMany({
         where: { contractVersionId: version.id },
-        orderBy: { createdAt: "desc" }
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       });
     });
   }
