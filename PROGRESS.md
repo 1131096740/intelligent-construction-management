@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-30 (CodeX)：完成 Task 5「合同文档区线下修订稿简易 UI」。Web 合同文档分区新增 DOCX 线下修订稿上传确认、标签/备注、确认声明与已上传修订列表；前端 API 补 `GET/POST /contract-workbench/:versionId/offline-revisions` wrappers 与回归测试。验证：`pnpm --filter @jiangkong/web-admin test -- contract-workbench.api.test.ts`、`pnpm --filter @jiangkong/web-admin typecheck` 通过。
 - 2026-06-30 (CodeX)：修复 Task 4 线下 Word 修订稿上传质量审查问题。上传线下修订稿在创建记录前复用合同版本 revision/status 与合同 owner/voided 条件 gate，文件权限校验返回值必须是 DOCX（标准 MIME 或 `.docx` 文件名兜底），修订列表排序补稳定 `id desc` 次序，并补回归覆盖文件权限撤销、不允许非 DOCX、MIME 异常但文件名为 DOCX、并发状态冲突。验证：`pnpm --filter @jiangkong/api test -- contract-document.service.spec.ts`、`pnpm --filter @jiangkong/api typecheck` 通过。
 - 2026-06-30 (CodeX)：完成 Task 4「线下 Word 修订稿上传持久化」。新增 `ContractOfflineRevision` Prisma 模型与迁移，合同文档服务支持合同控制人对可编辑草稿版本确认上传线下修订稿，复用版本归属/作废/状态 gate 与 `FileService.assertCanDownloadFile` 文件权限校验，可按最新优先列出修订记录，并记录 `contract.document.offline_revision.confirm` 审计。验证：`pnpm --filter @jiangkong/api exec prisma generate`、`pnpm --filter @jiangkong/api test -- contract-document.service.spec.ts`、`pnpm --filter @jiangkong/api typecheck` 通过。
 - 2026-06-30 (CodeX)：修复 Task 3 质量审查问题。`generic_contract` 通用合同 seed 字段 schema 补齐 DOCX 已引用的 `projectName` 与 `counterpartyName`，同步预览样例数据、版式 inspection placeholders 和 seed data 回归测试，避免生成通用合同时项目/相对方字段空渲染且 readiness 无法发现。验证：`pnpm --filter @jiangkong/api test -- core-flow-seed-data.spec.ts contract-workbench-verification.spec.ts contract-template-docx-assets.spec.ts` 通过。

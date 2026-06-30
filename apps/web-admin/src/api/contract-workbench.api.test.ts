@@ -22,6 +22,7 @@ import {
   getContractTemplate,
   getLatestLayoutTemplatePreview,
   inspectLayoutTemplateVersion,
+  listContractOfflineRevisions,
   listBusinessParties,
   listContractDocuments,
   listContractDrafts,
@@ -52,6 +53,7 @@ import {
   transferContractDraft,
   updateContractNumberRule,
   updateContractTemplateVersion,
+  uploadContractOfflineRevision,
   updateBillRow,
   voidContractDraft
 } from "./contract-workbench.api";
@@ -712,5 +714,42 @@ describe("contract workbench API client", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({})
     });
+  });
+
+  it("listContractOfflineRevisions – GET /contract-workbench/:contractVersionId/offline-revisions", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson([]));
+
+    await listContractOfflineRevisions("version-1");
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/contract-workbench/version-1/offline-revisions"
+    );
+  });
+
+  it("uploadContractOfflineRevision – POST /contract-workbench/:contractVersionId/offline-revisions", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ id: "revision-1" }));
+
+    await uploadContractOfflineRevision("version-1", {
+      fileId: "file-1",
+      sourceGeneratedDocumentId: "doc-1",
+      label: "线下修订稿",
+      note: "已人工修改",
+      confirmationStatementAccepted: true
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/contract-workbench/version-1/offline-revisions",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileId: "file-1",
+          sourceGeneratedDocumentId: "doc-1",
+          label: "线下修订稿",
+          note: "已人工修改",
+          confirmationStatementAccepted: true
+        })
+      }
+    );
   });
 });
