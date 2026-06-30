@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-30 (CodeX)：继续 Superpowers loop 推进企业级合同工作台。结算审批路线改为优先按 `contractTypeKey` 显式判断：`labor_subcontract`/`professional_subcontract` 走劳务/专业分包路线，`material_purchase`/`equipment_rental` 走材料/机械路线；历史无类型合同仍回退到合同名称/相对方文本推断，避免老数据断流。验证：`settlement.service.spec.ts` 30 个通过，API typecheck 通过。
 - 2026-06-30 (CodeX)：继续 Superpowers loop 推进企业级合同工作台。新增 `equipment_rental` 工程机械设备租赁、`labor_subcontract` 劳务分包两个已发布业务模板 seed，覆盖合同类型、专业字段、清单列、付款条款、附件要求、朴素 A4 版式元数据、预览任务和编号规则；seed 脚本由单一材料模板改为循环写入三类模板。当前先复用朴素 DOCX 版式，真实 Word 模板封面/长条款/签署页占位符化留后续精修。验证：API seed data 单测、API typecheck/lint、`node -c services/api/prisma/seed.cjs`、`pnpm --filter @jiangkong/api seed` 通过，数据库已查到三类 published 模板。
 - 2026-06-30 (CodeX)：对齐企业级合同工作台需求：所有合同类型均由合同员或合同部主管统一创建草稿并可发起合同审批流；合同员/合同部主管是合同控制人，可录入主要字段、清单、可变条款并下载 Word 初稿线下修订后回传确认，当前阶段不做 Word 反解析覆盖系统结构化数据。实现收紧 `POST /contracts` 为 `contract.create` 权限，`contract.create`/`contract.submit` 均允许 `contract_staff` 与 `contract_director`；新建合同页合同类型改为从已发布业务模板动态加载，不再写死材料采购。同步更新设计文档。
 - 2026-06-30 (CodeX)：继续收口 Task22 浏览器评论修复。合同工作台「合作单位」快照表单补充实际收款开户行字段，并明确开户行/开户账号与实际收款开户行/实际收款账号按合同约定选填一组；表单提示说明当前“保存合作单位”仅写入本合同合作单位快照，不会自动进入合作单位档案。资质附件调整为开户许可证无需有效期，法人身份证正反面共用一个有效期，保存时反面附件沿用正面有效期。Browser 验证：开户许可证 0 个有效期输入、身份证卡片 1 个有效期输入，收款信息与快照保存提示可见，控制台无 error/warn。验证：Web test **121/121**、typecheck、lint、`git diff --check` 通过。

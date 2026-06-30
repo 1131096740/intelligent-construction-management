@@ -817,7 +817,11 @@ export class SettlementService {
     });
   }
 
-  private settlementApprovalNodesFor(contract: { name: string; counterparty: string }) {
+  private settlementApprovalNodesFor(contract: {
+    contractTypeKey?: string | null;
+    name: string;
+    counterparty: string;
+  }) {
     const kind = this.inferSettlementContractKind(contract);
     const nodes =
       kind === "labor_professional"
@@ -828,9 +832,23 @@ export class SettlementService {
   }
 
   private inferSettlementContractKind(contract: {
+    contractTypeKey?: string | null;
     name: string;
     counterparty: string;
   }): SettlementContractKind {
+    if (
+      contract.contractTypeKey === "labor_subcontract" ||
+      contract.contractTypeKey === "professional_subcontract"
+    ) {
+      return "labor_professional";
+    }
+    if (
+      contract.contractTypeKey === "material_purchase" ||
+      contract.contractTypeKey === "equipment_rental"
+    ) {
+      return "material_mechanical";
+    }
+
     const text = `${contract.name} ${contract.counterparty}`;
 
     if (text.includes("劳务") || text.includes("专业") || text.includes("分包")) {

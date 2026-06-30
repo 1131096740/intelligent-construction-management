@@ -113,6 +113,7 @@ describe("SettlementService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
           projectId: "project-1",
+          contractTypeKey: "material_purchase",
           name: "钢材采购合同",
           counterparty: "钢材供应商"
         })
@@ -166,7 +167,7 @@ describe("SettlementService", () => {
     });
   });
 
-  it("freezes labor/professional settlement approval route from contract wording", async () => {
+  it("freezes labor/professional settlement approval route from contract type", async () => {
     const tx = {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -179,8 +180,9 @@ describe("SettlementService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
           projectId: "project-1",
-          name: "劳务分包合同",
-          counterparty: "劳务单位"
+          contractTypeKey: "labor_subcontract",
+          name: "作业合同",
+          counterparty: "施工单位"
         })
       },
       paymentTermsVersion: {
@@ -210,6 +212,68 @@ describe("SettlementService", () => {
       {
         contractVersionId: "contract-version-1",
         code: "JS-2026-020",
+        periodLabel: "2026-06",
+        amountCents: 10000000
+      },
+      "user-contract-staff"
+    );
+
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        frozenNodes: expect.arrayContaining([
+          { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
+          { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
+          { name: "工程技术部", mode: "any", roleKeys: ["engineering_tech"] }
+        ])
+      })
+    });
+  });
+
+  it("falls back to contract wording for legacy settlement approval routing", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: null,
+          name: "劳务分包合同",
+          counterparty: "劳务单位"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      settlement: {
+        create: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-021"
+        })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await settlementService.create(
+      {
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-021",
         periodLabel: "2026-06",
         amountCents: 10000000
       },
