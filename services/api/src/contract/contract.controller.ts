@@ -19,8 +19,9 @@ export class ContractController {
     private readonly workbench: ContractWorkbenchService
   ) {}
 
-  // 创建合同草稿：从已发布模板快照初始化工作台草稿，草稿在进入受守审批步骤前无业务效力，仅要求登录。
+  // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
   @Post()
+  @RequireProjectRole("contract.create")
   create(
     @Body() body: CreateContractDraftDto,
     @CurrentUser() user: AuthenticatedUser

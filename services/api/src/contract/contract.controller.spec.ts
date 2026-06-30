@@ -16,6 +16,7 @@ describe("ContractController authorization wiring", () => {
   });
 
   it.each([
+    ["create", "contract.create"],
     ["submitApproval", "contract.submit"],
     ["checkReadiness", "contract.submit"],
     ["reviewApproval", "contract.approve"],

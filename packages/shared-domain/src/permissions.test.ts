@@ -74,6 +74,14 @@ describe("final approval OR-sign", () => {
 });
 
 describe("role-specific gates", () => {
+  it("allows contract staff and directors to create and submit contract drafts", () => {
+    expect(canPerform("contract.create", ["contract_staff"])).toBe(true);
+    expect(canPerform("contract.submit", ["contract_staff"])).toBe(true);
+    expect(canPerform("contract.create", ["contract_director"])).toBe(true);
+    expect(canPerform("contract.submit", ["contract_director"])).toBe(true);
+    expect(canPerform("contract.create", ["project_manager"])).toBe(false);
+  });
+
   it("requires comprehensive_director for seal approval", () => {
     expect(canPerform("contract.seal", ["comprehensive_director"])).toBe(true);
     expect(canPerform("contract.seal", ["contract_staff"])).toBe(false);

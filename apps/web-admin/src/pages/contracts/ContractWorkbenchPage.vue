@@ -352,13 +352,12 @@ const migrationTargetTemplateVersionId = ref("");
 const migrationPreview = ref<Record<string, unknown> | null>(null);
 
 // Selector option sources. Projects are seeded minimally here; a later task can
-// wire a real project list endpoint. Templates load per chosen contract type.
+// wire a real project list endpoint. Contract types come from published
+// business templates, so adding a new type is a template-center operation.
 const projectOptions = ref<Array<{ label: string; value: string }>>([
   { label: "建设项目一期（JGXM-001）", value: "seed-project-jgxm-001" }
 ]);
-const contractTypeOptions = [
-  { label: "材料采购合同", value: "material_purchase" }
-];
+const contractTypeOptions = ref<Array<{ label: string; value: string }>>([]);
 const templateOptions = ref<Array<{ label: string; value: string }>>([]);
 
 const contractId = computed(() => {
@@ -423,6 +422,36 @@ async function loadTemplatesForType(contractTypeKey: string) {
   }
 }
 
+function contractTypeDisplayName(typeKey: string): string {
+  const known: Record<string, string> = {
+    material_purchase: "材料采购合同",
+    equipment_rental: "工程机械设备租赁合同",
+    labor_subcontract: "劳务分包合同"
+  };
+  return known[typeKey] ?? typeKey;
+}
+
+async function loadContractTypeOptions() {
+  try {
+    const templates = (await listPublishedContractTemplates()) as Array<
+      Record<string, unknown>
+    >;
+    const typeKeys = [
+      ...new Set(
+        templates
+          .map((template) => String(template["contractTypeKey"] ?? "").trim())
+          .filter(Boolean)
+      )
+    ];
+    contractTypeOptions.value = typeKeys.map((typeKey) => ({
+      label: contractTypeDisplayName(typeKey),
+      value: typeKey
+    }));
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "合同类型加载失败";
+  }
+}
+
 function onContractTypeChange(value: string) {
   initializeDraft.setContractTypeKey(value);
   initializeDraft.setBusinessTemplateVersionId("");
@@ -430,7 +459,10 @@ function onContractTypeChange(value: string) {
 }
 
 function contractTypeLabel(typeKey: string): string {
-  return contractTypeOptions.find((option) => option.value === typeKey)?.label ?? typeKey;
+  return (
+    contractTypeOptions.value.find((option) => option.value === typeKey)?.label ??
+    contractTypeDisplayName(typeKey)
+  );
 }
 
 function firstTemplateVersionId(templates: Array<Record<string, unknown>>): string {
@@ -589,7 +621,10 @@ async function loadExisting() {
   }
 }
 
-onMounted(loadExisting);
+onMounted(() => {
+  void loadContractTypeOptions();
+  void loadExisting();
+});
 
 // Loading a different contract (or arriving from the create flow) reloads.
 watch(contractId, (next, previous) => {
