@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-30 (CodeX)：修复 Task 5 前端质量审查问题。合同文档区提交线下修订稿时固定本次请求的合同版本 id，POST 完成后仅在仍停留于同一版本时清空表单、刷新线下修订列表、触发 reload 与成功提示，避免跨合同切换后的过期提交写入当前视图。验证：`pnpm --filter @jiangkong/web-admin test -- contract-workbench.api.test.ts contract-bill-editor.test.ts`、`pnpm --filter @jiangkong/web-admin typecheck`、`git diff --check` 通过。
 - 2026-06-30 (CodeX)：修复 Task 5 前端质量审查问题。合同文档区线下修订稿列表加载与 DOCX 上传完成后会校验当前合同版本 id，忽略跨合同切换后的过期异步结果，避免旧合同的修订列表、上传文件或提示消息写入新合同视图。验证：`pnpm --filter @jiangkong/web-admin test -- contract-workbench.api.test.ts contract-bill-editor.test.ts`、`pnpm --filter @jiangkong/web-admin typecheck`、`git diff --check` 通过。
 - 2026-06-30 (CodeX)：修复 Task 5 前端质量审查问题。合同文档区线下修订稿表单仅在合同版本 id 变化时清空，避免跨合同残留已选 DOCX/标签/备注/确认状态；文件上传控件改为 visually hidden 输入框并保留键盘焦点样式，附件上传、线下修订稿上传及同类清单导入入口可键盘访问。验证：`pnpm --filter @jiangkong/web-admin test -- contract-workbench.api.test.ts contract-bill-editor.test.ts`、`pnpm --filter @jiangkong/web-admin typecheck`、`git diff --check` 通过。
 - 2026-06-30 (CodeX)：完成 Task 5「合同文档区线下修订稿简易 UI」。Web 合同文档分区新增 DOCX 线下修订稿上传确认、标签/备注、确认声明与已上传修订列表；前端 API 补 `GET/POST /contract-workbench/:versionId/offline-revisions` wrappers 与回归测试。验证：`pnpm --filter @jiangkong/web-admin test -- contract-workbench.api.test.ts`、`pnpm --filter @jiangkong/web-admin typecheck` 通过。

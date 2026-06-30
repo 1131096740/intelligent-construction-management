@@ -521,21 +521,26 @@ async function submitOfflineRevision() {
   if (!offlineRevisionFile.value || !offlineRevisionConfirmed.value) {
     return;
   }
+  const requestVersionId = versionId.value;
   busy.value = true;
   message.value = "";
   try {
-    await uploadContractOfflineRevision(versionId.value, {
+    await uploadContractOfflineRevision(requestVersionId, {
       fileId: offlineRevisionFile.value.id,
       label: offlineRevisionLabel.value.trim() || "线下修订稿",
       note: offlineRevisionNote.value.trim() || undefined,
       confirmationStatementAccepted: true
     });
-    applyOfflineRevisionFormState(defaultOfflineRevisionFormState<PrivateFileReadModel>());
-    await loadOfflineRevisions();
-    emit("reload");
-    message.value = "线下修订稿已记录";
+    if (versionId.value === requestVersionId) {
+      applyOfflineRevisionFormState(defaultOfflineRevisionFormState<PrivateFileReadModel>());
+      await loadOfflineRevisions();
+      emit("reload");
+      message.value = "线下修订稿已记录";
+    }
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "线下修订稿记录失败";
+    if (versionId.value === requestVersionId) {
+      message.value = error instanceof Error ? error.message : "线下修订稿记录失败";
+    }
   } finally {
     busy.value = false;
   }
