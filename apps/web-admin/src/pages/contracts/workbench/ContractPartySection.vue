@@ -67,6 +67,9 @@
         <strong>录入合作单位快照</strong>
         <span>{{ message }}</span>
       </div>
+      <p class="section-hint">
+        保存后仅写入本合同合作单位快照，不会自动进入合作单位档案；需要长期复用时请到合作单位档案建档。
+      </p>
 
       <div class="party-fields">
         <label class="field">
@@ -114,10 +117,17 @@
               <span>{{ upload.fileId ? `已上传：${upload.name}` : "未上传" }}</span>
             </div>
             <t-input
+              v-if="upload.hasValidUntil"
               v-model="upload.validUntil"
               :disabled="disabled || busy"
               placeholder="有效期 YYYY-MM-DD"
             />
+            <span
+              v-else
+              class="attachment-no-expiry"
+            >
+              无需有效期
+            </span>
             <input
               type="file"
               :disabled="disabled || busy"
@@ -126,6 +136,9 @@
           </div>
         </div>
       </div>
+      <p class="section-hint">
+        开户行/开户账号与实际收款开户行/实际收款账号按合同约定选填一组；若使用一般户收款，请填写实际收款信息，便于后续财务付款。
+      </p>
 
       <div class="form-actions">
         <t-button
@@ -196,7 +209,8 @@ const snapshotFields = [
   { key: "authorizedAgentIdNo", label: "代理人身份证号", placeholder: "身份证号码" },
   { key: "openingBank", label: "开户行", placeholder: "开户银行" },
   { key: "bankAccount", label: "开户账号", placeholder: "银行账号" },
-  { key: "paymentAccount", label: "收款账号", placeholder: "不同于开户账号时填写" }
+  { key: "paymentBank", label: "实际收款开户行", placeholder: "使用一般户收款时填写" },
+  { key: "paymentAccount", label: "实际收款账号", placeholder: "使用一般户收款时填写" }
 ] as const;
 
 type SnapshotFieldKey = (typeof snapshotFields)[number]["key"];
@@ -208,6 +222,7 @@ interface AttachmentForm {
   fileId: string;
   name: string;
   validUntil: string;
+  hasValidUntil: boolean;
 }
 
 interface AttachmentCard {
@@ -228,6 +243,7 @@ const form = reactive<Record<SnapshotFieldKey | "roleKey", string>>({
   authorizedAgentIdNo: "",
   openingBank: "",
   bankAccount: "",
+  paymentBank: "",
   paymentAccount: ""
 });
 const attachmentCards = reactive<AttachmentCard[]>([
@@ -241,13 +257,14 @@ const attachmentCards = reactive<AttachmentCard[]>([
         category: "business_license",
         fileId: "",
         name: "营业执照",
-        validUntil: ""
+        validUntil: "",
+        hasValidUntil: true
       }
     ]
   },
   {
     title: "开户许可证上传",
-    description: "上传开户许可证或基本户证明。",
+    description: "上传开户许可证或基本户证明，无需填写有效期。",
     uploads: [
       {
         key: "bank_account",
@@ -255,13 +272,14 @@ const attachmentCards = reactive<AttachmentCard[]>([
         category: "bank_account",
         fileId: "",
         name: "开户许可证",
-        validUntil: ""
+        validUntil: "",
+        hasValidUntil: false
       }
     ]
   },
   {
     title: "法人身份证正反面上传",
-    description: "分别上传法人身份证正面和反面。",
+    description: "分别上传法人身份证正面和反面，两面共用同一个有效期。",
     uploads: [
       {
         key: "legal_id_front",
@@ -269,7 +287,8 @@ const attachmentCards = reactive<AttachmentCard[]>([
         category: "legal_id",
         fileId: "",
         name: "法人身份证正面",
-        validUntil: ""
+        validUntil: "",
+        hasValidUntil: true
       },
       {
         key: "legal_id_back",
@@ -277,7 +296,8 @@ const attachmentCards = reactive<AttachmentCard[]>([
         category: "legal_id",
         fileId: "",
         name: "法人身份证反面",
-        validUntil: ""
+        validUntil: "",
+        hasValidUntil: false
       }
     ]
   }
@@ -317,6 +337,13 @@ function flatAttachments() {
   return attachmentCards.flatMap((card) => card.uploads);
 }
 
+function attachmentValidUntil(attachment: AttachmentForm) {
+  if (attachment.key === "legal_id_back") {
+    return flatAttachments().find((item) => item.key === "legal_id_front")?.validUntil ?? "";
+  }
+  return attachment.validUntil;
+}
+
 async function uploadAttachment(attachment: AttachmentForm, event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -348,7 +375,9 @@ function buildSnapshot() {
       category: attachment.category,
       fileId: attachment.fileId,
       name: attachment.name.trim(),
-      ...(attachment.validUntil.trim() ? { validUntil: attachment.validUntil.trim() } : {})
+      ...(attachmentValidUntil(attachment).trim()
+        ? { validUntil: attachmentValidUntil(attachment).trim() }
+        : {})
     }));
   return snapshot;
 }
@@ -477,6 +506,11 @@ async function submitInlineParty() {
 .attachment-file {
   display: grid;
   gap: 4px;
+}
+
+.attachment-no-expiry {
+  color: #767f8d;
+  font-size: 12px;
 }
 
 .snapshot-attachments {
