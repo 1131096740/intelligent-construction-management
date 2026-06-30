@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-30 (CodeX)：修复 Task 5 前端质量审查问题。合同文档区线下修订稿列表加载与 DOCX 上传完成后会校验当前合同版本 id，忽略跨合同切换后的过期异步结果，避免旧合同的修订列表、上传文件或提示消息写入新合同视图。验证：`pnpm --filter @jiangkong/web-admin test -- contract-workbench.api.test.ts contract-bill-editor.test.ts`、`pnpm --filter @jiangkong/web-admin typecheck`、`git diff --check` 通过。
 - 2026-06-30 (CodeX)：修复 Task 5 前端质量审查问题。合同文档区线下修订稿表单仅在合同版本 id 变化时清空，避免跨合同残留已选 DOCX/标签/备注/确认状态；文件上传控件改为 visually hidden 输入框并保留键盘焦点样式，附件上传、线下修订稿上传及同类清单导入入口可键盘访问。验证：`pnpm --filter @jiangkong/web-admin test -- contract-workbench.api.test.ts contract-bill-editor.test.ts`、`pnpm --filter @jiangkong/web-admin typecheck`、`git diff --check` 通过。
 - 2026-06-30 (CodeX)：完成 Task 5「合同文档区线下修订稿简易 UI」。Web 合同文档分区新增 DOCX 线下修订稿上传确认、标签/备注、确认声明与已上传修订列表；前端 API 补 `GET/POST /contract-workbench/:versionId/offline-revisions` wrappers 与回归测试。验证：`pnpm --filter @jiangkong/web-admin test -- contract-workbench.api.test.ts`、`pnpm --filter @jiangkong/web-admin typecheck` 通过。
 - 2026-06-30 (CodeX)：修复 Task 4 线下 Word 修订稿上传质量审查问题。上传线下修订稿在创建记录前复用合同版本 revision/status 与合同 owner/voided 条件 gate，文件权限校验返回值必须是 DOCX（标准 MIME 或 `.docx` 文件名兜底），修订列表排序补稳定 `id desc` 次序，并补回归覆盖文件权限撤销、不允许非 DOCX、MIME 异常但文件名为 DOCX、并发状态冲突。验证：`pnpm --filter @jiangkong/api test -- contract-document.service.spec.ts`、`pnpm --filter @jiangkong/api typecheck` 通过。

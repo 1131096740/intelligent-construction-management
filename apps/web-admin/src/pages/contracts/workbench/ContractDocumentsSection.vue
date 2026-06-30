@@ -400,12 +400,18 @@ async function loadOfflineRevisions() {
     offlineRevisions.value = [];
     return;
   }
+  const requestVersionId = versionId.value;
   try {
-    offlineRevisions.value = (await listContractOfflineRevisions(versionId.value)) as Array<
+    const revisions = (await listContractOfflineRevisions(requestVersionId)) as Array<
       Record<string, unknown>
     >;
+    if (versionId.value === requestVersionId) {
+      offlineRevisions.value = revisions;
+    }
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "线下修订稿加载失败";
+    if (versionId.value === requestVersionId) {
+      message.value = error instanceof Error ? error.message : "线下修订稿加载失败";
+    }
   }
 }
 
@@ -492,13 +498,19 @@ async function uploadAttachments(event: Event) {
 async function uploadOfflineRevisionFile(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
+  const requestVersionId = versionId.value;
   busy.value = true;
   message.value = "";
   try {
-    offlineRevisionFile.value = await uploadPrivateFile(file, file.name);
-    message.value = "DOCX 已上传，确认后记录线下修订稿";
+    const uploadedFile = await uploadPrivateFile(file, file.name);
+    if (versionId.value === requestVersionId) {
+      offlineRevisionFile.value = uploadedFile;
+      message.value = "DOCX 已上传，确认后记录线下修订稿";
+    }
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "线下修订稿上传失败";
+    if (versionId.value === requestVersionId) {
+      message.value = error instanceof Error ? error.message : "线下修订稿上传失败";
+    }
   } finally {
     busy.value = false;
     (event.target as HTMLInputElement).value = "";
