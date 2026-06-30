@@ -115,9 +115,19 @@ async function assertSeedReady() {
 }
 
 async function listPublishedTemplates(token) {
-  const templates = await getJson("/contract-templates?contractTypeKey=material_purchase", token);
+  const templates = await getJson("/contract-templates", token);
+  for (const code of ["material_purchase", "equipment_rental", "labor_subcontract"]) {
+    assert(
+      templates.some((template) => template.code === code),
+      `${code} template was not listed as published`
+    );
+  }
+  const materialTemplates = await getJson(
+    "/contract-templates?contractTypeKey=material_purchase",
+    token
+  );
   assert(
-    templates.some((template) => template.code === "material_purchase"),
+    materialTemplates.some((template) => template.code === "material_purchase"),
     "material_purchase template was not listed as published"
   );
   console.log("ok list published templates");

@@ -9,7 +9,10 @@ describe("contract workbench verification script", () => {
   it("covers the phase-1 workbench path", () => {
     for (const expected of [
       "/auth/login",
+      "/contract-templates",
       "/contract-templates?contractTypeKey=material_purchase",
+      "equipment_rental",
+      "labor_subcontract",
       "/contracts",
       "/contract-workbench/${contractVersionId}",
       "/checkpoints",

@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-30 (CodeX)：继续 Superpowers loop 推进企业级合同工作台。增强 `verify:contract-workbench` live 验收脚本：除材料采购专用模板查询外，新增全量 `/contract-templates` 检查，要求 `material_purchase`、`equipment_rental`、`labor_subcontract` 三类已发布业务模板均可被 API 列出。验证：`contract-workbench-verification.spec.ts`、`node -c prisma/verify-contract-workbench.cjs` 通过。
 - 2026-06-30 (CodeX)：继续 Superpowers loop 推进企业级合同工作台。修复新机械/劳务模板 seed 的 DOCX 资产占位符不匹配隐患：新增 `equipment-rental-v1.docx` 与 `labor-subcontract-v1.docx` 极简可渲染模板，seed 脚本改为按各模板 `originalName` 复制资产，并补单测校验 DOCX 内含对应字段、条款和清单循环占位符。验证：API seed data 单测、API typecheck、`pnpm --filter @jiangkong/api seed` 通过。
 - 2026-06-30 (CodeX)：继续 Superpowers loop 推进企业级合同工作台。结算审批路线改为优先按 `contractTypeKey` 显式判断：`labor_subcontract`/`professional_subcontract` 走劳务/专业分包路线，`material_purchase`/`equipment_rental` 走材料/机械路线；历史无类型合同仍回退到合同名称/相对方文本推断，避免老数据断流。验证：`settlement.service.spec.ts` 30 个通过，API typecheck 通过。
 - 2026-06-30 (CodeX)：继续 Superpowers loop 推进企业级合同工作台。新增 `equipment_rental` 工程机械设备租赁、`labor_subcontract` 劳务分包两个已发布业务模板 seed，覆盖合同类型、专业字段、清单列、付款条款、附件要求、朴素 A4 版式元数据、预览任务和编号规则；seed 脚本由单一材料模板改为循环写入三类模板。当前先复用朴素 DOCX 版式，真实 Word 模板封面/长条款/签署页占位符化留后续精修。验证：API seed data 单测、API typecheck/lint、`node -c services/api/prisma/seed.cjs`、`pnpm --filter @jiangkong/api seed` 通过，数据库已查到三类 published 模板。
