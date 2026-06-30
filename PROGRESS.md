@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-30 (CodeX)：修复真实合同 Word 模板资产入库规格审查问题。三份 `*-real-v1.docx` 已从源模板重新生成，不再前置“合同工作台填写区”；合同编号、合同名称、金额、付款/结算、关键业务字段和清单循环改为落在原合同正文/原清单位置，移除材料/机械/劳务源模板中的旧样例合同编号和机械合同旧相对方/项目名；劳务模板删除营业执照、开户许可证等本轮不保留附件标签；三份真实模板均补充可渲染水印页眉并保留页脚。验证：XML stale text 检查、占位符/循环检查、header/footer 检查、Docxtemplater 样例渲染、DOCX zip 校验通过。
 - 2026-06-30 (CodeX)：完成真实合同 Word 模板资产入库 Task 1。已复制材料采购、工程机械设备租赁真实 DOCX 源模板，使用 LibreOffice 将劳务 `.doc` 转为 `.docx`，新增 source README；基于三份真实源模板生成 `*-real-v1.docx` 渲染资产，在源版式前插入合同工作台填写区、核心字段、条款和清单循环占位符，并新增通用合同 fallback DOCX。验证：source/renderable DOCX 均为有效 Word/OOXML ZIP，四份渲染模板均可被当前 Docxtemplater 以样例数据渲染。
 - 2026-06-30 (CodeX)：对齐下一轮企业级合同工作台目标并固化实施计划：以三份真实合同模板生成高保真 Word 初稿为优先，精修页边距、分页、页眉页脚和表格样式；关键条款可编辑、长条款固定；劳务合同下一轮限定主合同、安全协议、农民工工资承诺书、劳务清单；无专用模板的合同类型先走通用 Word 模板，后续上传专用模板后新合同切换使用，历史文件不受影响；线下修改回传先做上传确认的简单版。计划已保存至 `docs/superpowers/plans/2026-06-30-real-contract-word-template-generation.md`。
 - 2026-06-30 (CodeX)：继续 Superpowers loop 推进企业级合同工作台。增强 `verify:contract-workbench` live 验收脚本：除材料采购专用模板查询外，新增全量 `/contract-templates` 检查，要求 `material_purchase`、`equipment_rental`、`labor_subcontract` 三类已发布业务模板均可被 API 列出。验证：`contract-workbench-verification.spec.ts`、`node -c prisma/verify-contract-workbench.cjs` 通过。
