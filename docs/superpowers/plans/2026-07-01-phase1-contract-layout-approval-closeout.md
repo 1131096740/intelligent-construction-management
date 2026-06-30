@@ -57,10 +57,10 @@
 - [x] Queue `draft` generation for all four types and assert each document has both `docxFileId` and `pdfFileId`.
 - [x] Keep internal-review generation, offline revision upload, readiness check, and approval submission on the material path only.
 - [x] Update `contract-workbench-verification.spec.ts` to assert the verifier contains all four live generation labels.
-- [ ] Run:
+- [x] Run:
   - `pnpm --filter @jiangkong/api test -- contract-workbench-verification.spec.ts core-flow-seed-data.spec.ts contract-template-docx-assets.spec.ts`
   - `DOC_CONVERTER_COMMAND=/Applications/LibreOffice.app/Contents/MacOS/soffice pnpm --filter @jiangkong/api verify:contract-workbench`
-- [ ] Commit: `test: verify all phase1 contract document generation`.
+- [x] Commit: `test: verify all phase1 contract document generation`.
 
 ### Task 3: Attachment Image A4 Layout And ID-Side Guidance
 
@@ -76,29 +76,29 @@
 - [x] Run:
   - `pnpm --filter @jiangkong/api test -- src/contract-document/contract-document.processor.spec.ts`
   - relevant Web tests if UI copy is touched.
-- [ ] Commit: `fix: center contract attachment images on a4`.
+- [x] Commit: `fix: center contract attachment images on a4`.
 
 ### Task 4: Contract Approval Return Controls
 
-- [ ] Extend `ReviewContractApprovalDto.decision` to include `reject_previous` and `return_to_applicant`.
-- [ ] Add tests in `contract.service.spec.ts`:
+- [x] Extend `ReviewContractApprovalDto.decision` to include `reject_previous` and `return_to_applicant`.
+- [x] Add tests in `contract.service.spec.ts`:
   - `reject_previous` decrements `currentNodeIndex`, keeps `ApprovalInstance.status = in_progress`, keeps `ContractVersion.status = in_approval`, writes `ApprovalActionLog.action = reject_previous`, and audits `contract.approval.reject_previous`.
   - `return_to_applicant` sets `ContractVersion.status = draft`, sets `ApprovalInstance.status = returned`, writes `ApprovalActionLog.action = return_to_applicant`, and audits `contract.approval.return_to_applicant`.
   - rejecting previous from node index `0` is rejected.
-- [ ] Implement in `contract.service.ts` by mirroring the settlement service logic and keeping existing approve/reject behavior unchanged.
-- [ ] Run:
+- [x] Implement in `contract.service.ts` by mirroring the settlement service logic and keeping existing approve/reject behavior unchanged.
+- [x] Run:
   - `pnpm --filter @jiangkong/api test -- src/contract/contract.service.spec.ts`
 - [ ] Commit: `feat: complete contract approval return controls`.
 
 ### Task 5: Payment Approval Return Controls
 
-- [ ] Extend `ReviewPaymentApprovalDto.decision` to include `reject_previous` and `return_to_applicant`.
-- [ ] Add tests in `payment-request.service.spec.ts`:
+- [x] Extend `ReviewPaymentApprovalDto.decision` to include `reject_previous` and `return_to_applicant`.
+- [x] Add tests in `payment-request.service.spec.ts`:
   - `reject_previous` decrements `currentNodeIndex`, keeps `ApprovalInstance.status = in_progress`, keeps payment status in approval, writes log and audit.
   - `return_to_applicant` sets `PaymentRequest.status = draft`, sets instance returned, writes log and audit.
   - previous-node rejection from node index `0` is rejected.
-- [ ] Implement in `payment-request.service.ts` by mirroring the settlement service pattern.
-- [ ] Run:
+- [x] Implement in `payment-request.service.ts` by mirroring the settlement service pattern.
+- [x] Run:
   - `pnpm --filter @jiangkong/api test -- src/payment/payment-request.service.spec.ts`
 - [ ] Commit: `feat: complete payment approval return controls`.
 

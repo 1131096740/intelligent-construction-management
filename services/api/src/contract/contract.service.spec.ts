@@ -809,6 +809,233 @@ describe("ContractService", () => {
     });
   });
 
+  it("rejects unsupported contract approval decisions before the transaction", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.reviewApproval("contract-version-1", "chairman-1", {
+        decision: "invalid"
+      } as never)
+    ).rejects.toThrow("Unsupported contract approval decision");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a contract approval to the previous node and keeps it in approval", async () => {
+    const frozenNodes = [
+      {
+        name: "合同部主管",
+        mode: "any",
+        roleKeys: ["contract_director"],
+        approvedRoleKeys: ["contract_director"]
+      },
+      {
+        name: "董事长/总经理",
+        mode: "any",
+        roleKeys: ["chairman", "general_manager"],
+        approvedRoleKeys: ["chairman"]
+      }
+    ];
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "in_approval"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 1,
+          frozenNodes
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    const result = await service.reviewApproval("contract-version-1", "chairman-1", {
+      decision: "reject_previous"
+    });
+
+    expect(result.status).toBe("in_approval");
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "contract-version-1" },
+      data: { status: "in_approval" }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            ...frozenNodes[0],
+            approvedRoleKeys: []
+          },
+          {
+            ...frozenNodes[1],
+            approvedRoleKeys: []
+          }
+        ],
+        status: "in_progress"
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "reject_previous",
+        actorUserId: "chairman-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "chairman-1",
+      action: "contract.approval.reject_previous",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        fromStatus: "in_approval",
+        toStatus: "in_approval",
+        fromNodeName: "董事长/总经理",
+        toNodeName: "合同部主管",
+        approvedRoleKey: "chairman"
+      }
+    });
+  });
+
+  it("rejects returning a contract approval to previous node from first node", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.reviewApproval("contract-version-1", "chairman-1", {
+        decision: "reject_previous"
+      })
+    ).rejects.toThrow("Cannot reject contract approval to previous node from first node");
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it("returns a contract approval to applicant as draft and closes the instance", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "draft"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("general_manager")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    const result = await service.reviewApproval("contract-version-1", "general-manager-1", {
+      decision: "return_to_applicant"
+    });
+
+    expect(result.status).toBe("draft");
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "contract-version-1" },
+      data: { status: "draft" }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: { status: "returned_to_applicant" }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "return_to_applicant",
+        actorUserId: "general-manager-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "general-manager-1",
+      action: "contract.approval.return_to_applicant",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      metadata: {
+        fromStatus: "in_approval",
+        toStatus: "draft",
+        nodeName: "董事长/总经理",
+        approvedRoleKey: "general_manager"
+      }
+    });
+  });
+
   it("transfers the current contract approval node", async () => {
     const frozenNodes = [
       {

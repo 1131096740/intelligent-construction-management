@@ -41,6 +41,7 @@ interface PaymentApprovalNode {
   name: string;
   mode: "any";
   roleKeys: RoleKey[];
+  approvedRoleKeys?: RoleKey[];
   assignments?: PaymentApprovalAssignment[];
 }
 
@@ -314,6 +315,13 @@ export class PaymentRequestService {
     if (!this.prisma) {
       throw new Error("Prisma service is required to review payment approval");
     }
+    if (
+      !["approve", "reject", "reject_previous", "return_to_applicant"].includes(
+        input.decision
+      )
+    ) {
+      throw new Error("Unsupported payment approval decision");
+    }
 
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
@@ -366,6 +374,95 @@ export class PaymentRequestService {
 
       if (!approvedRoleKey) {
         throw new Error(`Actor cannot approve payment node ${currentNode.name}`);
+      }
+
+      if (input.decision === "reject_previous") {
+        if (instance.currentNodeIndex === 0) {
+          throw new Error("Cannot reject payment approval to previous node from first node");
+        }
+
+        const previousNodeIndex = instance.currentNodeIndex - 1;
+        const nextNodes = nodes.map((node, index) =>
+          index === previousNodeIndex || index === instance.currentNodeIndex
+            ? { ...node, approvedRoleKeys: [] }
+            : node
+        );
+        const updated = await tx.paymentRequest.update({
+          where: { id: payment.id },
+          data: { status: "approval_pending" }
+        });
+
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: {
+            currentNodeIndex: previousNodeIndex,
+            frozenNodes: nextNodes as unknown as Prisma.InputJsonValue,
+            status: "in_progress"
+          }
+        });
+
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "reject_previous",
+            actorUserId,
+            comment: input.comment?.trim() || undefined
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "payment.approval.reject_previous",
+          businessType: "payment_request",
+          businessId: payment.id,
+          metadata: {
+            code: payment.code,
+            fromStatus: payment.status,
+            toStatus: "approval_pending",
+            fromNodeName: currentNode.name,
+            toNodeName: nextNodes[previousNodeIndex].name,
+            approvedRoleKey
+          }
+        });
+
+        return updated;
+      }
+
+      if (input.decision === "return_to_applicant") {
+        const updated = await tx.paymentRequest.update({
+          where: { id: payment.id },
+          data: { status: "draft" }
+        });
+
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: { status: "returned_to_applicant" }
+        });
+
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "return_to_applicant",
+            actorUserId,
+            comment: input.comment?.trim() || undefined
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "payment.approval.return_to_applicant",
+          businessType: "payment_request",
+          businessId: payment.id,
+          metadata: {
+            code: payment.code,
+            fromStatus: payment.status,
+            toStatus: "draft",
+            nodeName: currentNode.name,
+            approvedRoleKey
+          }
+        });
+
+        return updated;
       }
 
       if (input.decision === "reject") {

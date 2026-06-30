@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-07-01 (CodeX)：补齐合同/付款审批打回控制。合同与付款审批 review 支持 `reject_previous`、`return_to_applicant`，并新增运行时 decision 白名单；退回上一节点会清空上一节点和当前节点已批角色、实例保持 `in_progress`、业务保持审批中；打回申请人会把合同版本/付款申请退回 `draft`，审批实例置 `returned_to_applicant`，并写入对应 `ApprovalActionLog` 与审计动作。验证：`pnpm --filter @jiangkong/api test -- src/contract/contract.service.spec.ts src/payment/payment-request.service.spec.ts`、`pnpm --filter @jiangkong/api typecheck` 通过。
 - 2026-07-01 (CodeX)：补齐合同生成附件图片排版规则。合同文档生成会把 PNG/JPEG 图片附件追加进 DOCX 初稿：普通图片独立 A4 页居中适配，身份证人像面/国徽面合并到同一 A4 页上下居中并标注面别；PDF 由已追加图片页的 DOCX 转换后再追加 PDF 类附件，避免图片重复。合同文档区新增身份证人像面/国徽面专用上传入口和附件说明；合作单位快照、合作单位档案页统一改为人像面/国徽面提示。未设置阻断式校验，只做清晰提示和规范命名。验证：`pnpm --filter @jiangkong/api test -- docx-attachment-appender.spec.ts contract-document.processor.spec.ts pdf-normalizer.spec.ts`、`pnpm --filter @jiangkong/api test -- pdf-normalizer.spec.ts contract-template-docx-assets.spec.ts contract-workbench-verification.spec.ts`、`pnpm --filter @jiangkong/web-admin typecheck` 通过；完整 live verifier 尚未在本条后重跑。
 - 2026-07-01 (CodeX)：补齐合同工作台 live 验收最终修复。`verify:contract-workbench` 在材料采购 draft DOCX 生成成功且合同版本仍可编辑时，复用生成的 `docxFileId` 实跑 `POST/GET /contract-workbench/:contractVersionId/offline-revisions`，校验线下修订稿持久化与列表回读；材料采购草稿数据补 `projectName`，避免模板就绪/生成缺字段。live 验证前需先执行 `pnpm --filter @jiangkong/api exec prisma migrate deploy`，确保 `ContractOfflineRevision` 迁移已应用。
 - 2026-07-01 (CodeX)：修复真实合同模板渲染别名与合同类型/模板一致性问题。合同 DOCX 渲染值新增 `party.owner.*`、`party.counterparty.*` 别名，材料采购 seed schema/sample/inspection 补齐真实模板使用的 `field.projectName`，真实 DOCX 资产测试覆盖材料/机械模板的甲乙方占位；合同草稿创建会校验所选业务模板版本的父模板 `contractTypeKey` 与输入合同类型一致，不一致返回 BadRequest。验证：`pnpm --filter @jiangkong/api test -- contract-document.service.spec.ts core-flow-seed-data.spec.ts contract-template-docx-assets.spec.ts contract.service.spec.ts`、`pnpm --filter @jiangkong/api typecheck`、`git diff --check` 通过。
@@ -155,7 +156,7 @@
 - [~] 审批节点冻结服务 (`approval-freeze.service`)
 - [x] 会签 / 或签 流转（结算审批支持冻结节点会签；合同/付款终审 OR-sign 已接 ApprovalInstance）
 - [~] 条件节点（结算审批已按合同名称/相对方推断物资机械 vs 劳务专业分包路线；缺显式合同类型字段）
-- [~] 驳回上一节点 / 打回申请人 / 撤回（撤回已覆盖结算/合同/付款三类审批：合同撤回退回 draft、付款撤回为终态 withdrawn；退回上一节点/打回申请人仍仅结算审批支持）
+- [x] 驳回上一节点 / 打回申请人 / 撤回（撤回已覆盖结算/合同/付款三类审批：合同撤回退回 draft、付款撤回为终态 withdrawn；退回上一节点/打回申请人已覆盖结算/合同/付款，打回申请人退回业务草稿态并关闭审批实例）
 - [x] 转审 / 委托代理（结算/合同/付款审批当前节点均支持转审/委托 assignment；常驻委托台账 `ApprovalDelegation` 已闭环：管理 API `/approval-delegations` + Web 管理页 + review 自动套用全流程通用；节点级委托写台账时仍带 30 天临时窗口，可由管理页自定义窗口替代）
 - [x] 超时催办（结算/合同/付款三类审批均支持：SLA 超时判定 + 重复节流 + ApprovalActionLog/审计；申请人发起，`POST /{settlements|contracts|payments}/:id/approval-reminder`）
 

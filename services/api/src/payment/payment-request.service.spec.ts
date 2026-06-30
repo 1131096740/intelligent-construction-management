@@ -527,6 +527,232 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("rejects unsupported payment approval decisions before the transaction", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        decision: "invalid"
+      } as never)
+    ).rejects.toThrow("Unsupported payment approval decision");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a payment approval to the previous node and keeps it pending", async () => {
+    const frozenNodes = [
+      {
+        name: "预算部主管",
+        mode: "any",
+        roleKeys: ["budget_director"],
+        approvedRoleKeys: ["budget_director"]
+      },
+      {
+        name: "董事长/总经理",
+        mode: "any",
+        roleKeys: ["chairman", "general_manager"],
+        approvedRoleKeys: ["chairman"]
+      }
+    ];
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 1,
+          frozenNodes
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const result = await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+      decision: "reject_previous"
+    });
+
+    expect(result.status).toBe("approval_pending");
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: { status: "approval_pending" }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            ...frozenNodes[0],
+            approvedRoleKeys: []
+          },
+          {
+            ...frozenNodes[1],
+            approvedRoleKeys: []
+          }
+        ],
+        status: "in_progress"
+      }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "reject_previous",
+        actorUserId: "chairman-1"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "chairman-1",
+        action: "payment.approval.reject_previous",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
+    });
+  });
+
+  it("rejects returning to a previous node from the first payment approval node", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        decision: "reject_previous"
+      })
+    ).rejects.toThrow("Cannot reject payment approval to previous node from first node");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it("returns a payment approval to the applicant as draft and closes the instance", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "draft"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("general_manager")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const result = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      decision: "return_to_applicant"
+    });
+
+    expect(result.status).toBe("draft");
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: { status: "draft" }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: { status: "returned_to_applicant" }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "return_to_applicant",
+        actorUserId: "general-manager-1"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "general-manager-1",
+        action: "payment.approval.return_to_applicant",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
+    });
+  });
+
   it("transfers the current payment approval node", async () => {
     const frozenNodes = [
       {

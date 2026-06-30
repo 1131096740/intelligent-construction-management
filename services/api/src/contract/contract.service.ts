@@ -43,6 +43,7 @@ interface ContractApprovalNode {
   name: string;
   mode: "any";
   roleKeys: RoleKey[];
+  approvedRoleKeys?: RoleKey[];
   assignments?: ContractApprovalAssignment[];
 }
 
@@ -444,6 +445,14 @@ export class ContractService {
     actorUserId: string,
     input: ReviewContractApprovalDto
   ) {
+    if (
+      !["approve", "reject", "reject_previous", "return_to_applicant"].includes(
+        input.decision
+      )
+    ) {
+      throw new Error("Unsupported contract approval decision");
+    }
+
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
@@ -495,6 +504,93 @@ export class ContractService {
 
       if (!approvedRoleKey) {
         throw new Error(`Actor cannot approve contract node ${currentNode.name}`);
+      }
+
+      if (input.decision === "reject_previous") {
+        if (instance.currentNodeIndex === 0) {
+          throw new Error("Cannot reject contract approval to previous node from first node");
+        }
+
+        const previousNodeIndex = instance.currentNodeIndex - 1;
+        const nextNodes = nodes.map((node, index) =>
+          index === previousNodeIndex || index === instance.currentNodeIndex
+            ? { ...node, approvedRoleKeys: [] }
+            : node
+        );
+        const updated = await tx.contractVersion.update({
+          where: { id: version.id },
+          data: { status: "in_approval" }
+        });
+
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: {
+            currentNodeIndex: previousNodeIndex,
+            frozenNodes: nextNodes as unknown as Prisma.InputJsonValue,
+            status: "in_progress"
+          }
+        });
+
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "reject_previous",
+            actorUserId,
+            comment: input.comment?.trim() || undefined
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "contract.approval.reject_previous",
+          businessType: "contract_version",
+          businessId: version.id,
+          metadata: {
+            fromStatus: version.status,
+            toStatus: "in_approval",
+            fromNodeName: currentNode.name,
+            toNodeName: nextNodes[previousNodeIndex].name,
+            approvedRoleKey
+          }
+        });
+
+        return updated;
+      }
+
+      if (input.decision === "return_to_applicant") {
+        const updated = await tx.contractVersion.update({
+          where: { id: version.id },
+          data: { status: "draft" }
+        });
+
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: { status: "returned_to_applicant" }
+        });
+
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "return_to_applicant",
+            actorUserId,
+            comment: input.comment?.trim() || undefined
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "contract.approval.return_to_applicant",
+          businessType: "contract_version",
+          businessId: version.id,
+          metadata: {
+            fromStatus: version.status,
+            toStatus: "draft",
+            nodeName: currentNode.name,
+            approvedRoleKey
+          }
+        });
+
+        return updated;
       }
 
       const nextStatus =
