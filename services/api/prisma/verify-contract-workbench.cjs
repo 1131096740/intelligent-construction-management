@@ -116,7 +116,12 @@ async function assertSeedReady() {
 
 async function listPublishedTemplates(token) {
   const templates = await getJson("/contract-templates", token);
-  for (const code of ["material_purchase", "equipment_rental", "labor_subcontract"]) {
+  for (const code of [
+    "material_purchase",
+    "equipment_rental",
+    "labor_subcontract",
+    "generic_contract"
+  ]) {
     assert(
       templates.some((template) => template.code === code),
       `${code} template was not listed as published`
@@ -129,6 +134,17 @@ async function listPublishedTemplates(token) {
   assert(
     materialTemplates.some((template) => template.code === "material_purchase"),
     "material_purchase template was not listed as published"
+  );
+  const genericTemplates = await getJson(
+    "/contract-templates?contractTypeKey=generic_contract",
+    token
+  );
+  assert(
+    genericTemplates.length === 1 &&
+      genericTemplates[0]?.code === "generic_contract" &&
+      genericTemplates[0]?.status === "published" &&
+      genericTemplates[0]?.versionId,
+    "generic_contract query did not return one published template version"
   );
   console.log("ok list published templates");
 }

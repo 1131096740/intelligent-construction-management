@@ -65,7 +65,10 @@ describe("coreFlowSeedData", () => {
     expect(seed.layout).toMatchObject({
       status: "published",
       versionNo: 1,
-      docxFile: { objectKey: "seed/templates/material-purchase-v1.docx" },
+      docxFile: {
+        objectKey: "seed/templates/material-purchase-real-v1.docx",
+        originalName: "material-purchase-real-v1.docx"
+      },
       previewPdfFile: { objectKey: "seed/templates/material-purchase-v1-preview.pdf" },
       previewJob: { status: "succeeded" }
     });
@@ -98,19 +101,28 @@ describe("coreFlowSeedData", () => {
     const seeds = [
       coreFlowSeedData.materialPurchaseWorkbench,
       coreFlowSeedData.equipmentRentalWorkbench,
-      coreFlowSeedData.laborSubcontractWorkbench
+      coreFlowSeedData.laborSubcontractWorkbench,
+      coreFlowSeedData.genericContractWorkbench
     ];
 
     expect(seeds.map((seed) => seed.template.contractTypeKey)).toEqual([
       "material_purchase",
       "equipment_rental",
-      "labor_subcontract"
+      "labor_subcontract",
+      "generic_contract"
     ]);
     expect(seeds.every((seed) => seed.version.status === "published")).toBe(true);
     expect(seeds.map((seed) => seed.layout.status)).toEqual([
       "published",
       "published",
+      "published",
       "published"
+    ]);
+    expect(seeds.map((seed) => seed.layout.docxFile.originalName)).toEqual([
+      "material-purchase-real-v1.docx",
+      "equipment-rental-real-v1.docx",
+      "labor-subcontract-real-v1.docx",
+      "generic-contract-v1.docx"
     ]);
     expect(coreFlowSeedData.equipmentRentalWorkbench.bills[0].columns.map((column) => column.key)).toEqual([
       "itemName",
@@ -124,13 +136,58 @@ describe("coreFlowSeedData", () => {
       "taxInclusiveAmount",
       "remark"
     ]);
+    expect(coreFlowSeedData.genericContractWorkbench.template).toMatchObject({
+      code: "generic_contract",
+      status: "published"
+    });
+    expect(coreFlowSeedData.genericContractWorkbench.fields.map((field) => field.key)).toEqual([
+      "businessSummary",
+      "settlementCycle",
+      "paymentRatioPercent"
+    ]);
+    expect(coreFlowSeedData.genericContractWorkbench.bills[0].columns.map((column) => column.key)).toEqual([
+      "itemName",
+      "specification",
+      "unit",
+      "quantity",
+      "unitPrice",
+      "taxInclusiveAmount",
+      "remark"
+    ]);
+    expect(coreFlowSeedData.genericContractWorkbench.clauses.map((clause) => clause.key)).toEqual([
+      "payment",
+      "specialAgreement"
+    ]);
     expect(coreFlowSeedData.laborSubcontractWorkbench.attachments.map((attachment) => attachment.key)).toEqual([
       "safety_agreement",
       "wage_commitment"
     ]);
+    expect(coreFlowSeedData.laborSubcontractWorkbench.fields.map((field) => field.key)).toEqual([
+      "workScope",
+      "workLocation",
+      "plannedStartDate",
+      "plannedEndDate",
+      "settlementCycle",
+      "progressPaymentRatioPercent"
+    ]);
+    expect(coreFlowSeedData.laborSubcontractWorkbench.clauses.map((clause) => clause.key)).toEqual([
+      "payment",
+      "safety",
+      "wageCommitment"
+    ]);
+    expect(coreFlowSeedData.laborSubcontractWorkbench.bills.map((bill) => bill.key)).toEqual(["laborItems"]);
+    expect(coreFlowSeedData.genericContractWorkbench.numberingRule).toMatchObject({
+      contractTypeKey: "generic_contract",
+      isActive: true
+    });
   });
 
   it.each([
+    [
+      "material purchase",
+      coreFlowSeedData.materialPurchaseWorkbench.layout.docxFile.originalName,
+      ["field.deliveryLocation", "clause.payment.text", "bill.materials"]
+    ],
     [
       "equipment rental",
       coreFlowSeedData.equipmentRentalWorkbench.layout.docxFile.originalName,
@@ -139,7 +196,24 @@ describe("coreFlowSeedData", () => {
     [
       "labor subcontract",
       coreFlowSeedData.laborSubcontractWorkbench.layout.docxFile.originalName,
-      ["field.workLocation", "clause.payment.text", "bill.laborItems"]
+      [
+        "field.workLocation",
+        "field.plannedStartDate",
+        "clause.payment.text",
+        "clause.safety.text",
+        "clause.wageCommitment.text",
+        "bill.laborItems"
+      ]
+    ],
+    [
+      "generic contract",
+      coreFlowSeedData.genericContractWorkbench.layout.docxFile.originalName,
+      [
+        "field.businessSummary",
+        "clause.payment.text",
+        "clause.specialAgreement.text",
+        "bill.genericItems"
+      ]
     ]
   ])("ships a matching %s DOCX seed asset", (_label, originalName, placeholders) => {
     const text = templateText(originalName);

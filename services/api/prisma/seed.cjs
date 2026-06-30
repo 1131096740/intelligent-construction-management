@@ -441,7 +441,8 @@ async function seedContractWorkbenchTemplates() {
   for (const data of [
     seed.materialPurchaseWorkbench,
     seed.equipmentRentalWorkbench,
-    seed.laborSubcontractWorkbench
+    seed.laborSubcontractWorkbench,
+    seed.genericContractWorkbench
   ]) {
     await seedWorkbenchTemplate(data);
   }

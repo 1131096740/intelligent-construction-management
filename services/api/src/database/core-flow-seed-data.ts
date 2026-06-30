@@ -207,8 +207,8 @@ export const coreFlowSeedData = {
       docxFile: {
         id: "seed-file-layout-material-purchase-v1-docx",
         bucket: "private-local",
-        objectKey: "seed/templates/material-purchase-v1.docx",
-        originalName: "material-purchase-v1.docx",
+        objectKey: "seed/templates/material-purchase-real-v1.docx",
+        originalName: "material-purchase-real-v1.docx",
         mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       },
       previewPdfFile: {
@@ -358,8 +358,8 @@ export const coreFlowSeedData = {
       docxFile: {
         id: "seed-file-layout-equipment-rental-v1-docx",
         bucket: "private-local",
-        objectKey: "seed/templates/equipment-rental-v1.docx",
-        originalName: "equipment-rental-v1.docx",
+        objectKey: "seed/templates/equipment-rental-real-v1.docx",
+        originalName: "equipment-rental-real-v1.docx",
         mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       },
       previewPdfFile: {
@@ -429,10 +429,10 @@ export const coreFlowSeedData = {
     fields: [
       { key: "workScope", label: "劳务分包作业范围及内容", type: "long_text", required: true, group: "scope", order: 10 },
       { key: "workLocation", label: "劳务分包作业地点", type: "text", required: true, group: "scope", order: 20 },
-      { key: "pricingMethod", label: "计价方式", type: "single_select", required: true, group: "pricing", order: 30, options: [{ label: "固定单价", value: "fixed_unit_price" }, { label: "固定总价", value: "fixed_total" }] },
-      { key: "taxRatePercent", label: "税率(%)", type: "number", required: true, defaultValue: 3, group: "tax", order: 40 },
-      { key: "progressPaymentRatioPercent", label: "进度款支付比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 50 },
-      { key: "retentionRatioPercent", label: "质保金比例(%)", type: "number", required: true, defaultValue: 5, group: "payment", order: 60 }
+      { key: "plannedStartDate", label: "计划开工日期", type: "date", required: true, group: "period", order: 30 },
+      { key: "plannedEndDate", label: "计划完工日期", type: "date", required: true, group: "period", order: 40 },
+      { key: "settlementCycle", label: "结算周期", type: "text", required: true, defaultValue: "按月结算", group: "settlement", order: 50 },
+      { key: "progressPaymentRatioPercent", label: "进度款支付比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 60 }
     ],
     bills: [
       {
@@ -461,6 +461,24 @@ export const coreFlowSeedData = {
         standardClauseVersionId: "seed-standard-clause-labor-payment-v1",
         content: {
           text: "甲方结合总分包合同和发包人付款情况，按每月审核确认的合格工程进度款约定比例支付，剩余款项按竣工验收、外部结算和质保期条件支付。"
+        }
+      },
+      {
+        key: "safety",
+        title: "安全生产管理协议",
+        numberingMode: "automatic",
+        required: true,
+        content: {
+          text: "乙方应遵守甲方项目安全生产管理制度，落实班组安全教育、现场防护、特种作业持证和事故报告义务。"
+        }
+      },
+      {
+        key: "wageCommitment",
+        title: "农民工工资兑现承诺书",
+        numberingMode: "automatic",
+        required: true,
+        content: {
+          text: "乙方承诺按实名制管理要求及时足额发放农民工工资，接受甲方对工资支付资料的核验。"
         }
       }
     ],
@@ -491,8 +509,8 @@ export const coreFlowSeedData = {
       docxFile: {
         id: "seed-file-layout-labor-subcontract-v1-docx",
         bucket: "private-local",
-        objectKey: "seed/templates/labor-subcontract-v1.docx",
-        originalName: "labor-subcontract-v1.docx",
+        objectKey: "seed/templates/labor-subcontract-real-v1.docx",
+        originalName: "labor-subcontract-real-v1.docx",
         mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       },
       previewPdfFile: {
@@ -508,13 +526,39 @@ export const coreFlowSeedData = {
         completedAt: new Date("2026-06-01T00:05:00.000Z"),
         sampleData: {
           contract: { name: "劳务分包合同样张", temporaryCode: "TMP-LAB-001", amountUppercase: "人民币壹万元整" },
-          field: { workLocation: "项目现场" },
-          clause: { payment: { text: "甲方结合总分包合同和发包人付款情况支付劳务工程款。" } },
+          field: {
+            workScope: "主体结构劳务作业",
+            workLocation: "项目现场",
+            plannedStartDate: "2026-07-01",
+            plannedEndDate: "2026-09-30",
+            settlementCycle: "按月结算",
+            progressPaymentRatioPercent: 80
+          },
+          clause: {
+            payment: { text: "甲方结合总分包合同和发包人付款情况支付劳务工程款。" },
+            safety: { text: "乙方应遵守甲方项目安全生产管理制度。" },
+            wageCommitment: { text: "乙方承诺及时足额发放农民工工资。" }
+          },
           bill: { laborItems: [{ itemName: "劳务作业", unit: "项", quantity: "1.000", unitPrice: "10000.0000", taxInclusiveAmount: "10000.00" }] }
         }
       },
       inspectionReport: {
-        placeholders: ["bill.laborItems", "clause.payment.text", "contract.amountUppercase", "contract.name", "contract.temporaryCode", "document.watermark", "field.workLocation"],
+        placeholders: [
+          "bill.laborItems",
+          "clause.payment.text",
+          "clause.safety.text",
+          "clause.wageCommitment.text",
+          "contract.amountUppercase",
+          "contract.name",
+          "contract.temporaryCode",
+          "document.watermark",
+          "field.plannedEndDate",
+          "field.plannedStartDate",
+          "field.progressPaymentRatioPercent",
+          "field.settlementCycle",
+          "field.workLocation",
+          "field.workScope"
+        ],
         unknownPlaceholders: [],
         missingRequiredPlaceholders: [],
         hasBillLoop: true,
@@ -527,6 +571,154 @@ export const coreFlowSeedData = {
       name: "劳务分包合同编号规则",
       pattern: "HT-{project}-{year}-{type}-{sequence}",
       contractTypeKey: "labor_subcontract",
+      nextSequence: 1,
+      sequenceWidth: 3,
+      isActive: true
+    }
+  },
+  genericContractWorkbench: {
+    publishedAt: new Date("2026-06-01T00:00:00.000Z"),
+    template: {
+      id: "seed-template-generic-contract",
+      code: "generic_contract",
+      name: "通用合同模板",
+      contractTypeKey: "generic_contract",
+      status: "published"
+    },
+    version: {
+      id: "seed-template-generic-contract-v1",
+      versionNo: 1,
+      status: "published",
+      changeSummary: "初始化无专用模板合同的通用模板 v1"
+    },
+    fields: [
+      { key: "businessSummary", label: "业务摘要", type: "long_text", required: true, group: "basic", order: 10 },
+      { key: "settlementCycle", label: "结算周期", type: "text", required: true, defaultValue: "按双方确认结算", group: "settlement", order: 20 },
+      { key: "paymentRatioPercent", label: "付款比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 30 }
+    ],
+    bills: [
+      {
+        key: "genericItems",
+        name: "合同清单",
+        amountRole: "included",
+        pricingMode: "tax_inclusive",
+        quantityScale: 3,
+        unitPriceScale: 4,
+        columns: [
+          { key: "itemName", label: "项目名称", type: "text", required: true },
+          { key: "specification", label: "规格/说明", type: "text" },
+          { key: "unit", label: "单位", type: "text", required: true },
+          { key: "quantity", label: "数量", type: "number", required: true },
+          { key: "unitPrice", label: "含税单价", type: "number", required: true },
+          { key: "taxInclusiveAmount", label: "含税金额", type: "number", required: true },
+          { key: "remark", label: "备注", type: "text" }
+        ]
+      }
+    ],
+    clauses: [
+      {
+        key: "payment",
+        title: "付款及结算",
+        numberingMode: "automatic",
+        required: true,
+        standardClauseVersionId: "seed-standard-clause-generic-payment-v1",
+        content: {
+          text: "甲方依据双方确认的结算资料和合规发票付款，具体比例、周期及条件以本合同约定为准。"
+        }
+      },
+      {
+        key: "specialAgreement",
+        title: "特别约定",
+        numberingMode: "automatic",
+        required: false,
+        content: { text: "" }
+      }
+    ],
+    attachments: [],
+    validations: [],
+    standardPaymentClause: {
+      id: "seed-standard-clause-generic-payment",
+      code: "STD-PAYMENT-GENERIC-001",
+      category: "payment",
+      name: "通用合同标准付款条款",
+      versionId: "seed-standard-clause-generic-payment-v1",
+      versionNo: 1,
+      title: "通用合同付款条款",
+      status: "published",
+      content: {
+        text: "甲方依据双方确认的结算资料和合规发票付款，具体比例、周期及条件以本合同约定为准。"
+      }
+    },
+    layout: {
+      id: "seed-layout-generic-contract",
+      name: "通用合同 Word 版式",
+      versionId: "seed-layout-generic-contract-v1",
+      versionNo: 1,
+      status: "published",
+      docxFile: {
+        id: "seed-file-layout-generic-contract-v1-docx",
+        bucket: "private-local",
+        objectKey: "seed/templates/generic-contract-v1.docx",
+        originalName: "generic-contract-v1.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      },
+      previewPdfFile: {
+        id: "seed-file-layout-generic-contract-v1-preview-pdf",
+        bucket: "private-local",
+        objectKey: "seed/templates/generic-contract-v1-preview.pdf",
+        originalName: "generic-contract-v1-preview.pdf",
+        mimeType: "application/pdf"
+      },
+      previewJob: {
+        id: "seed-layout-preview-generic-contract-v1",
+        status: "succeeded",
+        completedAt: new Date("2026-06-01T00:05:00.000Z"),
+        sampleData: {
+          contract: { name: "通用合同样张", temporaryCode: "TMP-GEN-001", amountUppercase: "人民币壹万元整" },
+          field: { businessSummary: "双方约定的业务内容", settlementCycle: "按月结算", paymentRatioPercent: 80 },
+          clause: {
+            payment: { text: "甲方依据双方确认的结算资料和合规发票付款。" },
+            specialAgreement: { text: "" }
+          },
+          bill: {
+            genericItems: [
+              {
+                itemName: "服务项目",
+                specification: "按现场要求",
+                unit: "项",
+                quantity: "1.000",
+                unitPrice: "10000.0000",
+                taxInclusiveAmount: "10000.00"
+              }
+            ]
+          }
+        }
+      },
+      inspectionReport: {
+        placeholders: [
+          "bill.genericItems",
+          "clause.payment.text",
+          "clause.specialAgreement.text",
+          "contract.amountUppercase",
+          "contract.name",
+          "contract.temporaryCode",
+          "document.watermark",
+          "field.businessSummary",
+          "field.paymentRatioPercent",
+          "field.settlementCycle"
+        ],
+        unknownPlaceholders: [],
+        missingRequiredPlaceholders: [],
+        hasBillLoop: true,
+        blockingErrors: [],
+        warnings: []
+      }
+    },
+    numberingRule: {
+      id: "seed-contract-number-rule-generic-contract",
+      name: "通用合同编号规则",
+      pattern: "HT-{project}-{year}-{type}-{sequence}",
+      contractTypeKey: "generic_contract",
       nextSequence: 1,
       sequenceWidth: 3,
       isActive: true
