@@ -244,8 +244,7 @@ async function upsertSeedFile(file, uploadedByUserId, sizeBytes) {
   });
 }
 
-async function seedMaterialPurchaseWorkbench() {
-  const data = seed.materialPurchaseWorkbench;
+async function seedWorkbenchTemplate(data) {
   const docxSize = await copyPrivateSeedFile(
     data.layout.docxFile,
     join(__dirname, "..", "assets", "templates", "material-purchase-v1.docx")
@@ -438,6 +437,16 @@ async function seedMaterialPurchaseWorkbench() {
   });
 }
 
+async function seedContractWorkbenchTemplates() {
+  for (const data of [
+    seed.materialPurchaseWorkbench,
+    seed.equipmentRentalWorkbench,
+    seed.laborSubcontractWorkbench
+  ]) {
+    await seedWorkbenchTemplate(data);
+  }
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash(testPassword, 10);
 
@@ -464,7 +473,7 @@ async function main() {
   });
 
   await seedAuthAssignments();
-  await seedMaterialPurchaseWorkbench();
+  await seedContractWorkbenchTemplates();
 
   await prisma.contract.upsert({
     where: { code: seed.contract.code },

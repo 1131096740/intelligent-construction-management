@@ -85,4 +85,40 @@ describe("coreFlowSeedData", () => {
       isActive: true
     });
   });
+
+  it("describes the initial enterprise contract template types", () => {
+    const seeds = [
+      coreFlowSeedData.materialPurchaseWorkbench,
+      coreFlowSeedData.equipmentRentalWorkbench,
+      coreFlowSeedData.laborSubcontractWorkbench
+    ];
+
+    expect(seeds.map((seed) => seed.template.contractTypeKey)).toEqual([
+      "material_purchase",
+      "equipment_rental",
+      "labor_subcontract"
+    ]);
+    expect(seeds.every((seed) => seed.version.status === "published")).toBe(true);
+    expect(seeds.map((seed) => seed.layout.status)).toEqual([
+      "published",
+      "published",
+      "published"
+    ]);
+    expect(coreFlowSeedData.equipmentRentalWorkbench.bills[0].columns.map((column) => column.key)).toEqual([
+      "itemName",
+      "specification",
+      "quantity",
+      "unit",
+      "fuelIncluded",
+      "operatorIncluded",
+      "unitPrice",
+      "taxRatePercent",
+      "taxInclusiveAmount",
+      "remark"
+    ]);
+    expect(coreFlowSeedData.laborSubcontractWorkbench.attachments.map((attachment) => attachment.key)).toEqual([
+      "safety_agreement",
+      "wage_commitment"
+    ]);
+  });
 });
