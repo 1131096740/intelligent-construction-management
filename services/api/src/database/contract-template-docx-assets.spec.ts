@@ -6,6 +6,10 @@ const repoRoot = path.resolve(__dirname, "../../../..");
 const templatesRoot = path.join(repoRoot, "services/api/assets/templates");
 const blockedProvenanceStrings = ["WPS", "wpsCustomData", "LibreOffice", "Lenovo", "LIYI", "hdid", "userId"];
 
+function countOccurrences(text: string, value: string) {
+  return text.split(value).length - 1;
+}
+
 function readDocxXml(fileName: string) {
   const filePath = path.join(templatesRoot, fileName);
   expect(existsSync(filePath)).toBe(true);
@@ -70,6 +74,8 @@ describe("contract DOCX template assets", () => {
         "contract.name",
         "contract.temporaryCode",
         "contract.amountUppercase",
+        "party.owner.name",
+        "party.counterparty.name",
         "field.workScope",
         "field.workLocation",
         "field.plannedStartDate",
@@ -117,5 +123,20 @@ describe("contract DOCX template assets", () => {
     for (const provenance of blockedProvenanceStrings) {
       expect(`${docx.coreXml}\n${docx.appXml}\n${docx.contentTypesXml}\n${docx.relationshipsText}\n${docx.text}`).not.toContain(provenance);
     }
+  });
+
+  it("binds material purchase seller on both cover and signature pages", () => {
+    const docx = readDocxXml("material-purchase-real-v1.docx");
+    expect(countOccurrences(docx.text, "party.counterparty.name")).toBeGreaterThanOrEqual(2);
+    const signatureLabelIndex = docx.text.lastIndexOf("卖方");
+    expect(signatureLabelIndex).toBeGreaterThanOrEqual(0);
+    expect(docx.text.slice(signatureLabelIndex, signatureLabelIndex + 600)).toContain(
+      "party.counterparty.name"
+    );
+  });
+
+  it("keeps the equipment certificate attachment upright", () => {
+    const docx = readDocxXml("equipment-rental-real-v1.docx");
+    expect(docx.text).not.toContain('rot="16200000"');
   });
 });
