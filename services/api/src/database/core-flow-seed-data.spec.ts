@@ -141,6 +141,8 @@ describe("coreFlowSeedData", () => {
       status: "published"
     });
     expect(coreFlowSeedData.genericContractWorkbench.fields.map((field) => field.key)).toEqual([
+      "projectName",
+      "counterpartyName",
       "businessSummary",
       "settlementCycle",
       "paymentRatioPercent"
@@ -209,6 +211,8 @@ describe("coreFlowSeedData", () => {
       "generic contract",
       coreFlowSeedData.genericContractWorkbench.layout.docxFile.originalName,
       [
+        "field.projectName",
+        "field.counterpartyName",
         "field.businessSummary",
         "clause.payment.text",
         "clause.specialAgreement.text",

@@ -592,9 +592,11 @@ export const coreFlowSeedData = {
       changeSummary: "初始化无专用模板合同的通用模板 v1"
     },
     fields: [
-      { key: "businessSummary", label: "业务摘要", type: "long_text", required: true, group: "basic", order: 10 },
-      { key: "settlementCycle", label: "结算周期", type: "text", required: true, defaultValue: "按双方确认结算", group: "settlement", order: 20 },
-      { key: "paymentRatioPercent", label: "付款比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 30 }
+      { key: "projectName", label: "项目名称", type: "text", required: true, group: "basic", order: 10 },
+      { key: "counterpartyName", label: "相对方名称", type: "text", required: true, group: "basic", order: 20 },
+      { key: "businessSummary", label: "业务摘要", type: "long_text", required: true, group: "basic", order: 30 },
+      { key: "settlementCycle", label: "结算周期", type: "text", required: true, defaultValue: "按双方确认结算", group: "settlement", order: 40 },
+      { key: "paymentRatioPercent", label: "付款比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 50 }
     ],
     bills: [
       {
@@ -675,7 +677,13 @@ export const coreFlowSeedData = {
         completedAt: new Date("2026-06-01T00:05:00.000Z"),
         sampleData: {
           contract: { name: "通用合同样张", temporaryCode: "TMP-GEN-001", amountUppercase: "人民币壹万元整" },
-          field: { businessSummary: "双方约定的业务内容", settlementCycle: "按月结算", paymentRatioPercent: 80 },
+          field: {
+            projectName: "建设项目一期",
+            counterpartyName: "通用合同相对方",
+            businessSummary: "双方约定的业务内容",
+            settlementCycle: "按月结算",
+            paymentRatioPercent: 80
+          },
           clause: {
             payment: { text: "甲方依据双方确认的结算资料和合规发票付款。" },
             specialAgreement: { text: "" }
@@ -704,7 +712,9 @@ export const coreFlowSeedData = {
           "contract.temporaryCode",
           "document.watermark",
           "field.businessSummary",
+          "field.counterpartyName",
           "field.paymentRatioPercent",
+          "field.projectName",
           "field.settlementCycle"
         ],
         unknownPlaceholders: [],

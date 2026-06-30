@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-30 (CodeX)：修复 Task 3 质量审查问题。`generic_contract` 通用合同 seed 字段 schema 补齐 DOCX 已引用的 `projectName` 与 `counterpartyName`，同步预览样例数据、版式 inspection placeholders 和 seed data 回归测试，避免生成通用合同时项目/相对方字段空渲染且 readiness 无法发现。验证：`pnpm --filter @jiangkong/api test -- core-flow-seed-data.spec.ts contract-workbench-verification.spec.ts contract-template-docx-assets.spec.ts` 通过。
 - 2026-06-30 (CodeX)：完成合同工作台真实模板 seed 指向与通用 fallback 模板 Task 3。三类既有 seed 版式 DOCX 已切到 `*-real-v1.docx` 真实渲染资产，新增已发布 `generic_contract` 通用合同业务模板/版式/预览/编号规则，劳务模板补齐主合同数据、安全协议、农民工工资承诺书与劳务清单占位；seed 循环和 live 验收脚本覆盖四类模板。验证：`pnpm --filter @jiangkong/api test -- core-flow-seed-data.spec.ts contract-workbench-verification.spec.ts contract-template-docx-assets.spec.ts`、`pnpm --filter @jiangkong/api seed` 通过。
 - 2026-06-30 (CodeX)：完成真实合同 Word 模板资产验证 Task 2。新增 DOCX 资产回归测试，覆盖四份渲染模板的必需占位符、页眉页脚、分节、水印标记，以及 customXml/custom props 缺失、core/app 中性元数据和 WPS/LibreOffice/设备/用户来源字符串清理。验证：`pnpm --filter @jiangkong/api test -- contract-template-docx-assets.spec.ts` 通过。
 - 2026-06-30 (CodeX)：修复真实合同 Word 模板资产入库规格审查问题。三份 `*-real-v1.docx` 已从源模板重新生成，不再前置“合同工作台填写区”；合同编号、合同名称、金额、付款/结算、关键业务字段和清单循环改为落在原合同正文/原清单位置，移除材料/机械/劳务源模板中的旧样例合同编号和机械合同旧相对方/项目名；劳务模板删除营业执照、开户许可证等本轮不保留附件标签；三份真实模板均补充可渲染水印页眉并保留页脚。验证：XML stale text 检查、占位符/循环检查、header/footer 检查、Docxtemplater 样例渲染、DOCX zip 校验通过。
