@@ -1,6 +1,6 @@
 import { ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
-import { ContractDocumentService } from "./contract-document.service";
+import { ContractDocumentService, requiredPlaceholderKeys } from "./contract-document.service";
 
 describe("ContractDocumentService", () => {
   const audit = { record: jest.fn() };
@@ -16,6 +16,21 @@ describe("ContractDocumentService", () => {
           mimeType: id === "attachment-a" ? "application/pdf" : "image/png"
         })
     );
+  });
+
+  it("does not require bill loop columns as top-level render values", () => {
+    const keys = requiredPlaceholderKeys({
+      fields: [{ key: "deliveryLocation", required: true }],
+      bills: [
+        {
+          key: "materials",
+          columns: [{ key: "itemName", required: true }]
+        }
+      ]
+    });
+
+    expect(keys).toContain("field.deliveryLocation");
+    expect(keys).not.toContain("itemName");
   });
 
   function makeTx(overrides: Record<string, unknown> = {}) {

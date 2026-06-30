@@ -61,6 +61,7 @@ describe("LibreOffice converter", () => {
   });
 
   it("checks trimmed unique declared fonts with fc-match on Linux", async () => {
+    process.env.DOC_CONVERTER_COMMAND = "soffice";
     process.env.DOC_ALLOWED_FONTS = "宋体, Noto Sans CJK SC";
     const calls: Array<{ command: string; args: string[] }> = [];
     const runner: ExecFileRunner = async (command, args) => {

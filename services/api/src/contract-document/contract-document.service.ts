@@ -560,7 +560,7 @@ export function requiredPlaceholderKeys(schema: unknown, report?: unknown): stri
       for (const definition of value) {
         if (!definition || typeof definition !== "object") continue;
         const item = definition as { key?: unknown; required?: unknown };
-        if (item.required === true && typeof item.key === "string") {
+        if (namespace !== "billColumn" && item.required === true && typeof item.key === "string") {
           required.add(
             item.key.includes(".") || !namespace
               ? item.key
@@ -569,19 +569,19 @@ export function requiredPlaceholderKeys(schema: unknown, report?: unknown): stri
                 : `${namespace}.${item.key}`
           );
         }
-        visit(definition);
+        visit(definition, namespace);
       }
       return;
     }
     if (!value || typeof value !== "object") return;
     const object = value as Record<string, unknown>;
-    if (Array.isArray(object.required)) {
+    if (namespace !== "billColumn" && Array.isArray(object.required)) {
       for (const key of object.required) {
         if (typeof key === "string") required.add(key);
       }
     }
     for (const [key, nested] of Object.entries(object)) {
-      visit(nested, key === "fields" ? "field" : key === "clauses" ? "clause" : undefined);
+      visit(nested, key === "fields" ? "field" : key === "clauses" ? "clause" : key === "columns" ? "billColumn" : undefined);
     }
   };
   visit(schema);

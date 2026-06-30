@@ -191,7 +191,7 @@ export class ContractService {
         }
       });
 
-      return { contract, version, terms };
+      return { contract, version: { ...version, amountCents: String(version.amountCents ?? 0) }, terms };
     });
   }
 
@@ -378,6 +378,7 @@ export class ContractService {
 
         return {
           ...version,
+          amountCents: String(version.amountCents ?? 0),
           status: "in_approval",
           readinessSnapshot,
           templateSnapshot,

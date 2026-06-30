@@ -37,8 +37,9 @@ async function login() {
       password: PASSWORD
     })
   });
-  assert(response.ok, `login returned HTTP ${response.status}: ${await response.text()}`);
-  const body = await response.json();
+  const text = await response.text();
+  assert(response.ok, `login returned HTTP ${response.status}: ${text}`);
+  const body = JSON.parse(text);
   assert(body.tokens?.accessToken, "login did not return an access token");
   console.log("ok login");
   return body.tokens.accessToken;
@@ -46,8 +47,9 @@ async function login() {
 
 async function getJson(path, token) {
   const response = await fetch(`${baseUrl}${path}`, { headers: authHeaders(token) });
-  assert(response.ok, `${path} returned HTTP ${response.status}: ${await response.text()}`);
-  return response.json();
+  const text = await response.text();
+  assert(response.ok, `${path} returned HTTP ${response.status}: ${text}`);
+  return JSON.parse(text);
 }
 
 async function postJson(path, body, token) {
@@ -56,8 +58,9 @@ async function postJson(path, body, token) {
     headers: { "Content-Type": "application/json", ...authHeaders(token) },
     body: JSON.stringify(body)
   });
-  assert(response.ok, `${path} returned HTTP ${response.status}: ${await response.text()}`);
-  return response.json();
+  const text = await response.text();
+  assert(response.ok, `${path} returned HTTP ${response.status}: ${text}`);
+  return JSON.parse(text);
 }
 
 async function patchJson(path, body, token) {
@@ -66,8 +69,9 @@ async function patchJson(path, body, token) {
     headers: { "Content-Type": "application/json", ...authHeaders(token) },
     body: JSON.stringify(body)
   });
-  assert(response.ok, `${path} returned HTTP ${response.status}: ${await response.text()}`);
-  return response.json();
+  const text = await response.text();
+  assert(response.ok, `${path} returned HTTP ${response.status}: ${text}`);
+  return JSON.parse(text);
 }
 
 async function uploadFile(fileName, mimeType, buffer, token) {
@@ -78,13 +82,16 @@ async function uploadFile(fileName, mimeType, buffer, token) {
     headers: authHeaders(token),
     body: form
   });
-  assert(response.ok, `/files returned HTTP ${response.status}: ${await response.text()}`);
-  return response.json();
+  const text = await response.text();
+  assert(response.ok, `/files returned HTTP ${response.status}: ${text}`);
+  return JSON.parse(text);
 }
 
 async function downloadBuffer(path, token) {
   const response = await fetch(`${baseUrl}${path}`, { headers: authHeaders(token) });
-  assert(response.ok, `${path} returned HTTP ${response.status}: ${await response.text()}`);
+  if (!response.ok) {
+    throw new Error(`${path} returned HTTP ${response.status}: ${await response.text()}`);
+  }
   return Buffer.from(await response.arrayBuffer());
 }
 
@@ -199,7 +206,9 @@ async function addBillRow(bill, token) {
       isProvisional: false,
       settlementBasis: "按到货验收数量结算",
       customData: {
+        itemName: "钢筋",
         specification: "HRB400E 直径18",
+        unit: "吨",
         quantity: "10.000",
         unitPrice: "10000.0000",
         taxRatePercent: "13",
@@ -208,7 +217,8 @@ async function addBillRow(bill, token) {
     },
     token
   );
-  assert(row.rowKey, "add bill row did not return rowKey");
+  const createdRow = row.rows?.find((item) => item.itemName === "钢筋");
+  assert(createdRow?.rowKey, "add bill row did not return the created row");
   console.log("ok add bill row");
 }
 
