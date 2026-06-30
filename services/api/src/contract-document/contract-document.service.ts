@@ -22,6 +22,14 @@ export interface QueueContractDocumentInput {
   attachmentFileIds?: string[];
 }
 
+export interface UploadOfflineRevisionInput {
+  fileId: string;
+  sourceGeneratedDocumentId?: string;
+  label?: string;
+  note?: string;
+  confirmationStatementAccepted: boolean;
+}
+
 export interface ContractDocumentInputSnapshot {
   templateFileId: string;
   outputBaseName: string;
@@ -206,6 +214,67 @@ export class ContractDocumentService {
     });
   }
 
+  async uploadOfflineRevision(
+    contractVersionId: string,
+    actorUserId: string,
+    rawInput: UploadOfflineRevisionInput
+  ) {
+    const input = this.parseOfflineRevisionInput(rawInput);
+    return this.prisma.$transaction(async (tx) => {
+      const { version } = await this.loadOwnedVersion(
+        tx,
+        contractVersionId,
+        actorUserId
+      );
+      if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
+        throw new BadRequestException("Contract version is not editable");
+      }
+      await this.files.assertCanDownloadFile(tx, input.fileId, actorUserId);
+      if (input.sourceGeneratedDocumentId) {
+        const source = await tx.contractGeneratedDocument.findUnique({
+          where: { id: input.sourceGeneratedDocumentId }
+        });
+        if (!source || source.contractVersionId !== version.id) {
+          throw new BadRequestException(
+            "Source generated document does not belong to this contract version"
+          );
+        }
+      }
+      const revision = await tx.contractOfflineRevision.create({
+        data: {
+          contractVersionId: version.id,
+          sourceGeneratedDocumentId: input.sourceGeneratedDocumentId ?? null,
+          fileId: input.fileId,
+          label: input.label,
+          note: input.note,
+          confirmedByUserId: actorUserId
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.document.offline_revision.confirm",
+        businessType: "contract_offline_revision",
+        businessId: revision.id,
+        metadata: {
+          contractVersionId: version.id,
+          fileId: input.fileId,
+          sourceGeneratedDocumentId: input.sourceGeneratedDocumentId ?? null
+        }
+      });
+      return revision;
+    });
+  }
+
+  async listOfflineRevisions(contractVersionId: string, actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const { version } = await this.loadOwnedVersion(tx, contractVersionId, actorUserId);
+      return tx.contractOfflineRevision.findMany({
+        where: { contractVersionId: version.id },
+        orderBy: { createdAt: "desc" }
+      });
+    });
+  }
+
   async retry(documentId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       const document = await tx.contractGeneratedDocument.findUnique({
@@ -329,6 +398,37 @@ export class ContractDocumentService {
       layoutTemplateVersionId: input.layoutTemplateVersionId,
       purpose: input.purpose,
       attachmentFileIds
+    };
+  }
+
+  private parseOfflineRevisionInput(input: UploadOfflineRevisionInput) {
+    if (!input || typeof input !== "object") {
+      throw new BadRequestException("Offline revision body is required");
+    }
+    if (input.confirmationStatementAccepted !== true) {
+      throw new BadRequestException("Offline revision confirmation is required");
+    }
+    if (typeof input.fileId !== "string" || !input.fileId.trim()) {
+      throw new BadRequestException("fileId is required");
+    }
+    if (
+      input.sourceGeneratedDocumentId !== undefined &&
+      (typeof input.sourceGeneratedDocumentId !== "string" ||
+        !input.sourceGeneratedDocumentId.trim())
+    ) {
+      throw new BadRequestException("sourceGeneratedDocumentId must be non-empty");
+    }
+    return {
+      fileId: input.fileId.trim(),
+      sourceGeneratedDocumentId: input.sourceGeneratedDocumentId?.trim(),
+      label:
+        typeof input.label === "string" && input.label.trim()
+          ? input.label.trim()
+          : "线下修订稿",
+      note:
+        typeof input.note === "string" && input.note.trim()
+          ? input.note.trim()
+          : null
     };
   }
 

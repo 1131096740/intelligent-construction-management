@@ -568,3 +568,18 @@ model ContractGeneratedDocument {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 }
+
+model ContractOfflineRevision {
+  id                        String   @id @default(uuid())
+  contractVersionId         String
+  sourceGeneratedDocumentId String?
+  fileId                    String
+  label                     String
+  note                      String?
+  confirmedByUserId         String
+  confirmedAt               DateTime @default(now())
+  createdAt                 DateTime @default(now())
+
+  @@index([contractVersionId, createdAt])
+  @@index([fileId])
+}

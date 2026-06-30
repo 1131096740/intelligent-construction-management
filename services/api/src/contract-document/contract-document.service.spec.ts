@@ -103,6 +103,18 @@ describe("ContractDocumentService", () => {
         findMany: jest.fn().mockResolvedValue([]),
         findUniqueOrThrow: jest.fn()
       },
+      contractOfflineRevision: {
+        create: jest.fn().mockImplementation(({ data }) => ({
+          id: "offline-revision-1",
+          createdAt: new Date("2026-06-30T10:00:00.000Z"),
+          confirmedAt: new Date("2026-06-30T10:00:00.000Z"),
+          ...data
+        })),
+        findMany: jest.fn().mockResolvedValue([
+          { id: "revision-new", createdAt: new Date("2026-06-30T10:00:00.000Z") },
+          { id: "revision-old", createdAt: new Date("2026-06-30T09:00:00.000Z") }
+        ])
+      },
       auditLog: { create: jest.fn() },
       ...overrides
     };
@@ -515,5 +527,116 @@ describe("ContractDocumentService", () => {
       "File access denied"
     );
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("lets the owner upload an offline revision for an editable draft version", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    const result = await service.uploadOfflineRevision("version-1", "owner-1", {
+      fileId: "revision-file-1",
+      label: "线下磋商稿",
+      note: "按对方意见修订",
+      confirmationStatementAccepted: true
+    });
+
+    expect(files.assertCanDownloadFile).toHaveBeenCalledWith(
+      tx,
+      "revision-file-1",
+      "owner-1"
+    );
+    expect(tx.contractOfflineRevision.create).toHaveBeenCalledWith({
+      data: {
+        contractVersionId: "version-1",
+        sourceGeneratedDocumentId: null,
+        fileId: "revision-file-1",
+        label: "线下磋商稿",
+        note: "按对方意见修订",
+        confirmedByUserId: "owner-1"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "contract.document.offline_revision.confirm",
+        businessType: "contract_offline_revision",
+        businessId: "offline-revision-1",
+        metadata: {
+          contractVersionId: "version-1",
+          fileId: "revision-file-1",
+          sourceGeneratedDocumentId: null
+        }
+      })
+    );
+    expect(result).toMatchObject({
+      id: "offline-revision-1",
+      fileId: "revision-file-1",
+      label: "线下磋商稿"
+    });
+  });
+
+  it("rejects offline revision upload from a non-owner through the owned version gate", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "other-user", {
+        fileId: "revision-file-1",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow("Only the contract draft owner may manage documents");
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects offline revision upload for non-editable contract versions", async () => {
+    const tx = makeTx();
+    const version = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...version,
+      status: "in_approval"
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-file-1",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow("Contract version is not editable");
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+  });
+
+  it("requires the source generated document to belong to the same contract version", async () => {
+    const tx = makeTx();
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-other",
+      contractVersionId: "version-other"
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-file-1",
+        sourceGeneratedDocumentId: "document-other",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow(
+      "Source generated document does not belong to this contract version"
+    );
+    expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
+  });
+
+  it("lists offline revisions newest first after the owned version gate", async () => {
+    const tx = makeTx();
+    const { service } = makeService(tx);
+
+    await expect(service.listOfflineRevisions("version-1", "owner-1")).resolves.toEqual([
+      { id: "revision-new", createdAt: new Date("2026-06-30T10:00:00.000Z") },
+      { id: "revision-old", createdAt: new Date("2026-06-30T09:00:00.000Z") }
+    ]);
+    expect(tx.contractOfflineRevision.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: "version-1" },
+      orderBy: { createdAt: "desc" }
+    });
   });
 });

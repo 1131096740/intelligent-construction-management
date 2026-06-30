@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-06-30 (CodeX)：完成 Task 4「线下 Word 修订稿上传持久化」。新增 `ContractOfflineRevision` Prisma 模型与迁移，合同文档服务支持合同控制人对可编辑草稿版本确认上传线下修订稿，复用版本归属/作废/状态 gate 与 `FileService.assertCanDownloadFile` 文件权限校验，可按最新优先列出修订记录，并记录 `contract.document.offline_revision.confirm` 审计。验证：`pnpm --filter @jiangkong/api exec prisma generate`、`pnpm --filter @jiangkong/api test -- contract-document.service.spec.ts`、`pnpm --filter @jiangkong/api typecheck` 通过。
 - 2026-06-30 (CodeX)：修复 Task 3 质量审查问题。`generic_contract` 通用合同 seed 字段 schema 补齐 DOCX 已引用的 `projectName` 与 `counterpartyName`，同步预览样例数据、版式 inspection placeholders 和 seed data 回归测试，避免生成通用合同时项目/相对方字段空渲染且 readiness 无法发现。验证：`pnpm --filter @jiangkong/api test -- core-flow-seed-data.spec.ts contract-workbench-verification.spec.ts contract-template-docx-assets.spec.ts` 通过。
 - 2026-06-30 (CodeX)：完成合同工作台真实模板 seed 指向与通用 fallback 模板 Task 3。三类既有 seed 版式 DOCX 已切到 `*-real-v1.docx` 真实渲染资产，新增已发布 `generic_contract` 通用合同业务模板/版式/预览/编号规则，劳务模板补齐主合同数据、安全协议、农民工工资承诺书与劳务清单占位；seed 循环和 live 验收脚本覆盖四类模板。验证：`pnpm --filter @jiangkong/api test -- core-flow-seed-data.spec.ts contract-workbench-verification.spec.ts contract-template-docx-assets.spec.ts`、`pnpm --filter @jiangkong/api seed` 通过。
 - 2026-06-30 (CodeX)：完成真实合同 Word 模板资产验证 Task 2。新增 DOCX 资产回归测试，覆盖四份渲染模板的必需占位符、页眉页脚、分节、水印标记，以及 customXml/custom props 缺失、core/app 中性元数据和 WPS/LibreOffice/设备/用户来源字符串清理。验证：`pnpm --filter @jiangkong/api test -- contract-template-docx-assets.spec.ts` 通过。

@@ -3,7 +3,8 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   ContractDocumentService,
-  type QueueContractDocumentInput
+  type QueueContractDocumentInput,
+  type UploadOfflineRevisionInput
 } from "./contract-document.service";
 
 @Controller()
@@ -25,6 +26,23 @@ export class ContractDocumentController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.documents.list(contractVersionId, user.id);
+  }
+
+  @Post("contract-workbench/:contractVersionId/offline-revisions")
+  uploadOfflineRevision(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: UploadOfflineRevisionInput
+  ) {
+    return this.documents.uploadOfflineRevision(contractVersionId, user.id, body);
+  }
+
+  @Get("contract-workbench/:contractVersionId/offline-revisions")
+  listOfflineRevisions(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.documents.listOfflineRevisions(contractVersionId, user.id);
   }
 
   @Post("contract-documents/:documentId/retry")
