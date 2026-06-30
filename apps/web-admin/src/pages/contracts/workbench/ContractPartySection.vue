@@ -94,50 +94,36 @@
       <div class="attachments">
         <div class="attachment-head">
           <strong>资质附件</strong>
-          <t-button
-            type="button"
-            size="small"
-            variant="outline"
-            :disabled="disabled || busy"
-            @click="addAttachment"
-          >
-            添加附件
-          </t-button>
         </div>
         <div
-          v-for="(attachment, index) in attachments"
-          :key="attachment.localId"
-          class="attachment-row"
+          v-for="card in attachmentCards"
+          :key="card.title"
+          class="attachment-card"
         >
-          <t-select
-            v-model="attachment.category"
-            :options="attachmentCategoryOptions"
-            :disabled="disabled || busy"
-          />
-          <t-input
-            v-model="attachment.name"
-            :disabled="disabled || busy"
-            placeholder="附件名称"
-          />
-          <t-input
-            v-model="attachment.validUntil"
-            :disabled="disabled || busy"
-            placeholder="有效期 YYYY-MM-DD"
-          />
-          <input
-            type="file"
-            :disabled="disabled || busy"
-            @change="(event) => uploadAttachment(index, event)"
+          <div class="attachment-card-head">
+            <strong>{{ card.title }}</strong>
+            <span>{{ card.description }}</span>
+          </div>
+          <div
+            v-for="upload in card.uploads"
+            :key="upload.key"
+            class="attachment-upload"
           >
-          <t-button
-            type="button"
-            size="small"
-            variant="text"
-            :disabled="disabled || busy"
-            @click="removeAttachment(index)"
-          >
-            移除
-          </t-button>
+            <div class="attachment-file">
+              <strong>{{ upload.label }}</strong>
+              <span>{{ upload.fileId ? `已上传：${upload.name}` : "未上传" }}</span>
+            </div>
+            <t-input
+              v-model="upload.validUntil"
+              :disabled="disabled || busy"
+              placeholder="有效期 YYYY-MM-DD"
+            />
+            <input
+              type="file"
+              :disabled="disabled || busy"
+              @change="(event) => uploadAttachment(upload, event)"
+            >
+          </div>
         </div>
       </div>
 
@@ -185,14 +171,20 @@ const ROLE_LABELS: Record<string, string> = {
 const parties = computed(() => props.workbench?.parties ?? []);
 
 const roleOptions = Object.entries(ROLE_LABELS).map(([value, label]) => ({ label, value }));
-const attachmentCategoryOptions = [
-  { label: "营业执照", value: "business_license" },
-  { label: "开户许可证", value: "bank_account" },
-  { label: "法人身份证", value: "legal_id" },
-  { label: "授权委托书", value: "authorization" },
-  { label: "资质文件", value: "qualification" },
-  { label: "其他", value: "other" }
-];
+const ATTACHMENT_LABELS: Record<string, string> = {
+  business_license: "营业执照",
+  bank_account: "开户许可证",
+  legal_id: "法人身份证",
+  authorization: "授权委托书",
+  qualification: "资质文件",
+  other: "其他"
+};
+const DEFAULT_ATTACHMENT_NAMES: Record<string, string> = {
+  business_license: "营业执照",
+  bank_account: "开户许可证",
+  legal_id_front: "法人身份证正面",
+  legal_id_back: "法人身份证反面"
+};
 const snapshotFields = [
   { key: "name", label: "公司名称", placeholder: "请输入公司名称" },
   { key: "unifiedSocialCreditCode", label: "纳税人识别号", placeholder: "统一社会信用代码" },
@@ -210,11 +202,18 @@ const snapshotFields = [
 type SnapshotFieldKey = (typeof snapshotFields)[number]["key"];
 
 interface AttachmentForm {
-  localId: string;
+  key: string;
+  label: string;
   category: "business_license" | "bank_account" | "legal_id" | "authorization" | "qualification" | "other";
   fileId: string;
   name: string;
   validUntil: string;
+}
+
+interface AttachmentCard {
+  title: string;
+  description: string;
+  uploads: AttachmentForm[];
 }
 
 const form = reactive<Record<SnapshotFieldKey | "roleKey", string>>({
@@ -231,7 +230,58 @@ const form = reactive<Record<SnapshotFieldKey | "roleKey", string>>({
   bankAccount: "",
   paymentAccount: ""
 });
-const attachments = ref<AttachmentForm[]>([]);
+const attachmentCards = reactive<AttachmentCard[]>([
+  {
+    title: "营业执照上传",
+    description: "上传合作单位营业执照。",
+    uploads: [
+      {
+        key: "business_license",
+        label: "营业执照",
+        category: "business_license",
+        fileId: "",
+        name: "营业执照",
+        validUntil: ""
+      }
+    ]
+  },
+  {
+    title: "开户许可证上传",
+    description: "上传开户许可证或基本户证明。",
+    uploads: [
+      {
+        key: "bank_account",
+        label: "开户许可证",
+        category: "bank_account",
+        fileId: "",
+        name: "开户许可证",
+        validUntil: ""
+      }
+    ]
+  },
+  {
+    title: "法人身份证正反面上传",
+    description: "分别上传法人身份证正面和反面。",
+    uploads: [
+      {
+        key: "legal_id_front",
+        label: "身份证正面",
+        category: "legal_id",
+        fileId: "",
+        name: "法人身份证正面",
+        validUntil: ""
+      },
+      {
+        key: "legal_id_back",
+        label: "身份证反面",
+        category: "legal_id",
+        fileId: "",
+        name: "法人身份证反面",
+        validUntil: ""
+      }
+    ]
+  }
+]);
 const busy = ref(false);
 const message = ref("");
 
@@ -260,24 +310,14 @@ function partyAttachments(party: ContractWorkbenchReadModel["parties"][number]) 
 }
 
 function attachmentLabel(category: string) {
-  return attachmentCategoryOptions.find((option) => option.value === category)?.label ?? category;
+  return ATTACHMENT_LABELS[category] ?? category;
 }
 
-function addAttachment() {
-  attachments.value.push({
-    localId: crypto.randomUUID(),
-    category: "business_license",
-    fileId: "",
-    name: "",
-    validUntil: ""
-  });
+function flatAttachments() {
+  return attachmentCards.flatMap((card) => card.uploads);
 }
 
-function removeAttachment(index: number) {
-  attachments.value.splice(index, 1);
-}
-
-async function uploadAttachment(index: number, event: Event) {
+async function uploadAttachment(attachment: AttachmentForm, event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
@@ -285,11 +325,8 @@ async function uploadAttachment(index: number, event: Event) {
   message.value = "";
   try {
     const uploaded = await uploadPrivateFile(file, file.name);
-    const attachment = attachments.value[index];
-    if (attachment) {
-      attachment.fileId = uploaded.id;
-      attachment.name ||= file.name;
-    }
+    attachment.fileId = uploaded.id;
+    attachment.name = `${attachment.label} - ${file.name}`;
     message.value = "附件已上传";
   } catch (error) {
     message.value = error instanceof Error ? error.message : "附件上传失败";
@@ -305,7 +342,7 @@ function buildSnapshot() {
     const value = form[field.key].trim();
     if (value) snapshot[field.key] = value;
   }
-  snapshot.attachments = attachments.value
+  snapshot.attachments = flatAttachments()
     .filter((attachment) => attachment.fileId && attachment.name.trim())
     .map((attachment) => ({
       category: attachment.category,
@@ -321,7 +358,11 @@ function resetForm() {
     form[field.key] = "";
   }
   form.roleKey = "party_b";
-  attachments.value = [];
+  for (const attachment of flatAttachments()) {
+    attachment.fileId = "";
+    attachment.name = DEFAULT_ATTACHMENT_NAMES[attachment.key] ?? attachment.label;
+    attachment.validUntil = "";
+  }
 }
 
 async function submitInlineParty() {
@@ -406,11 +447,36 @@ async function submitInlineParty() {
   gap: 12px;
 }
 
-.attachment-row {
+.attachment-card {
   display: grid;
-  grid-template-columns: minmax(120px, 160px) minmax(140px, 1fr) minmax(130px, 160px) minmax(180px, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #f8fafc;
+}
+
+.attachment-card-head {
+  display: grid;
+  gap: 4px;
+}
+
+.attachment-card-head span,
+.attachment-file span {
+  color: #767f8d;
+  font-size: 12px;
+}
+
+.attachment-upload {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(140px, 180px) minmax(180px, 1fr);
   gap: 10px;
   align-items: center;
+}
+
+.attachment-file {
+  display: grid;
+  gap: 4px;
 }
 
 .snapshot-attachments {
