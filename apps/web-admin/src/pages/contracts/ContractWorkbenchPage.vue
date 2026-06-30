@@ -112,7 +112,7 @@
             v-if="!editable && workbench"
             class="readonly-banner"
           >
-            当前状态（{{ workbench.contract.status }}）不可编辑，仅供查看。
+            当前状态（{{ workbench.version.status }}）不可编辑，仅供查看。
           </p>
 
           <div
@@ -352,11 +352,11 @@ const migrationPreview = ref<Record<string, unknown> | null>(null);
 
 // Selector option sources. Projects are seeded minimally here; a later task can
 // wire a real project list endpoint. Templates load per chosen contract type.
-const projectOptions = ref<Array<{ label: string; value: string }>>([]);
+const projectOptions = ref<Array<{ label: string; value: string }>>([
+  { label: "建设项目一期（JGXM-001）", value: "seed-project-jgxm-001" }
+]);
 const contractTypeOptions = [
-  { label: "分包合同", value: "subcontract" },
-  { label: "采购合同", value: "purchase" },
-  { label: "劳务合同", value: "labor" }
+  { label: "材料采购合同", value: "material_purchase" }
 ];
 const templateOptions = ref<Array<{ label: string; value: string }>>([]);
 
@@ -367,7 +367,7 @@ const contractId = computed(() => {
 const isNewDraft = computed(() => !contractId.value);
 
 const editable = computed(() => {
-  const status = workbench.value?.contract.status;
+  const status = workbench.value?.version.status;
   return status ? EDITABLE_STATUSES.has(status) : false;
 });
 
@@ -464,7 +464,7 @@ async function onExistingTypeChange(value: string) {
 
     const preview = (await previewContractTypeChange(wb.version.id, {
       targetBusinessTemplateVersionId: targetTemplateVersionId,
-      expectedRevision: wb.version.revision
+      expectedRevision: wb.version.draftRevision
     })) as Record<string, unknown>;
 
     migrationTargetTypeKey.value = value;
@@ -509,7 +509,7 @@ async function onConfirmMigration() {
   try {
     await applyContractTypeChange(wb.version.id, {
       targetBusinessTemplateVersionId: migrationTargetTemplateVersionId.value,
-      expectedRevision: wb.version.revision
+      expectedRevision: wb.version.draftRevision
     });
     resetMigrationState();
     await load(contractId.value);

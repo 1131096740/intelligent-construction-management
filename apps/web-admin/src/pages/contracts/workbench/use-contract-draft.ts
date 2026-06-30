@@ -153,7 +153,9 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
     fieldValues: isRecord(draftData["fieldValues"]) ? { ...draftData["fieldValues"] } : {},
     partyValues: isRecord(draftData["partyValues"]) ? { ...draftData["partyValues"] } : {},
     extraDraftData,
-    clauses: Array.isArray(workbench.version.clauses) ? [...workbench.version.clauses] : []
+    clauses: Array.isArray(workbench.version.clauseSnapshot)
+      ? [...workbench.version.clauseSnapshot]
+      : []
   };
 }
 
@@ -201,7 +203,8 @@ function isConflictError(error: unknown): boolean {
 
 function readRevision(result: unknown): number | null {
   if (isRecord(result) && isRecord(result["version"])) {
-    const revision = (result["version"] as Record<string, unknown>)["revision"];
+    const version = result["version"] as Record<string, unknown>;
+    const revision = version["draftRevision"] ?? version["revision"];
     if (typeof revision === "number") {
       return revision;
     }
@@ -287,7 +290,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     const result = (await fetchContractWorkbench(contractId)) as ContractWorkbenchReadModel;
     workbench.value = result;
     contractVersionId.value = result.version.id;
-    currentRevision.value = result.version.revision;
+    currentRevision.value = result.version.draftRevision;
     conflict.value = null;
     pausedRef.value = false;
     dirtyRef.value = false;
@@ -389,7 +392,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
           workbench.value?.contract.id ?? contractVersionId.value
         )) as ContractWorkbenchReadModel;
         workbench.value = fresh;
-        currentRevision.value = fresh.version.revision;
+        currentRevision.value = fresh.version.draftRevision;
         server = modelFromWorkbench(fresh);
       } catch {
         // If the re-fetch fails we still surface the conflict with local data
@@ -494,7 +497,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       businessTemplateVersionId: initBusinessTemplateVersionId.value
     });
 
-    options.replace(`/contracts/${created.id}/workbench`);
+    options.replace(`/contracts/${created.contract.id}/workbench`);
   }
 
   const initializeDraft: InitializeDraftController = {

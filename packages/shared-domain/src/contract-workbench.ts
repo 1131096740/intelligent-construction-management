@@ -136,17 +136,24 @@ export interface ContractWorkbenchReadModel {
     contractTypeKey: string;
     ownerUserId: string;
     name: string;
-    status: string;
   };
   version: {
     id: string;
-    revision: number;
+    versionNo: number;
+    status: string;
+    draftRevision: number;
     amountCents: number;
     pricingNature: string;
     amountSource: string;
     draftData: Record<string, unknown>;
-    clauses: ContractClauseDefinition[];
-    template: ContractTemplateSchema;
+    clauseSnapshot: ContractClauseDefinition[];
+    templateSnapshot: {
+      fieldSchema: ContractTemplateSchema["fields"];
+      billSchema: ContractTemplateSchema["bills"];
+      clauseSchema: ContractTemplateSchema["clauses"];
+      attachmentSchema: ContractTemplateSchema["attachments"];
+      validationSchema: ContractTemplateSchema["validations"];
+    };
   };
   parties: Array<{
     id: string;

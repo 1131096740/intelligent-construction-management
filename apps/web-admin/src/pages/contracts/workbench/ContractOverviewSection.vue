@@ -86,8 +86,8 @@ const metaItems = computed(() => {
     { label: "临时编号", value: workbench.contract.temporaryCode },
     { label: "正式编号", value: workbench.contract.code ?? "未生成" },
     { label: "合同类型", value: workbench.contract.contractTypeKey },
-    { label: "状态", value: workbench.contract.status },
-    { label: "版本号", value: String(workbench.version.revision) }
+    { label: "状态", value: workbench.version.status },
+    { label: "版本号", value: String(workbench.version.versionNo) }
   ];
 });
 </script>

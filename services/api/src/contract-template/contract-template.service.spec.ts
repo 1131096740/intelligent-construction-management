@@ -500,7 +500,10 @@ describe("ContractTemplateService", () => {
   it("listPublished returns only templates with a published version", async () => {
     const prisma = {
       contractBusinessTemplateVersion: {
-        findMany: jest.fn().mockResolvedValue([{ templateId: "template-published" }])
+        findMany: jest.fn().mockResolvedValue([
+          { id: "version-2", templateId: "template-published", versionNo: 2 },
+          { id: "version-1", templateId: "template-published", versionNo: 1 }
+        ])
       },
       contractBusinessTemplate: {
         findMany: jest.fn().mockResolvedValue([
@@ -517,7 +520,8 @@ describe("ContractTemplateService", () => {
       (prisma.contractBusinessTemplateVersion.findMany as jest.Mock)
     ).toHaveBeenCalledWith({
       where: { status: "published" },
-      select: { templateId: true }
+      select: { id: true, templateId: true, versionNo: true },
+      orderBy: { versionNo: "desc" }
     });
     // template query restricted to the published template ids only
     expect((prisma.contractBusinessTemplate.findMany as jest.Mock)).toHaveBeenCalledWith({
@@ -525,6 +529,15 @@ describe("ContractTemplateService", () => {
       orderBy: { createdAt: "asc" }
     });
     expect(result.map((t: { id: string }) => t.id)).toEqual(["template-published"]);
+    expect(result).toEqual([
+      {
+        id: "template-published",
+        code: "TPL-PUB",
+        contractTypeKey: "procurement",
+        versionId: "version-2",
+        versionNo: 2
+      }
+    ]);
     expect(result.map((t: { id: string }) => t.id)).not.toContain("template-draft");
     expect(result.map((t: { id: string }) => t.id)).not.toContain("template-stopped");
   });

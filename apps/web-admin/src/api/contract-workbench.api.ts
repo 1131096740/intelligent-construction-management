@@ -82,8 +82,8 @@ export interface CreateWorkbenchDraftPayload {
 }
 
 export interface CreateWorkbenchDraftReadModel {
-  id: string;
-  versionId: string;
+  contract: { id: string };
+  version: { id: string };
   [key: string]: unknown;
 }
 

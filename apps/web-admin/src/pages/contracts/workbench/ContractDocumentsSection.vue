@@ -225,7 +225,7 @@ const message = ref("");
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const versionId = computed(() => props.workbench?.version.id ?? "");
-const currentRevision = computed(() => props.workbench?.version.revision ?? 0);
+const currentRevision = computed(() => props.workbench?.version.draftRevision ?? 0);
 const documents = computed(() =>
   documentsWithStaleFlag(rawDocuments.value, currentRevision.value)
 );

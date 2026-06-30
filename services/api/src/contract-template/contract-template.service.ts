@@ -101,20 +101,36 @@ export class ContractTemplateService {
   async listPublished(contractTypeKey?: string) {
     const publishedVersions = await this.prisma.contractBusinessTemplateVersion.findMany({
       where: { status: "published" },
-      select: { templateId: true }
+      select: { id: true, templateId: true, versionNo: true },
+      orderBy: { versionNo: "desc" }
     });
-    const publishedTemplateIds = [
-      ...new Set(publishedVersions.map((v: { templateId: string }) => v.templateId))
-    ];
+    const versionByTemplateId = new Map<
+      string,
+      { id: string; templateId: string; versionNo: number }
+    >();
+    for (const version of publishedVersions as Array<{
+      id: string;
+      templateId: string;
+      versionNo: number;
+    }>) {
+      if (!versionByTemplateId.has(version.templateId)) {
+        versionByTemplateId.set(version.templateId, version);
+      }
+    }
+    const publishedTemplateIds = [...versionByTemplateId.keys()];
     if (!publishedTemplateIds.length) {
       return [];
     }
-    return this.prisma.contractBusinessTemplate.findMany({
+    const templates = await this.prisma.contractBusinessTemplate.findMany({
       where: {
         id: { in: publishedTemplateIds },
         ...(contractTypeKey ? { contractTypeKey } : {})
       },
       orderBy: { createdAt: "asc" }
+    });
+    return templates.map((template: { id: string }) => {
+      const version = versionByTemplateId.get(template.id);
+      return { ...template, versionId: version?.id, versionNo: version?.versionNo };
     });
   }
 

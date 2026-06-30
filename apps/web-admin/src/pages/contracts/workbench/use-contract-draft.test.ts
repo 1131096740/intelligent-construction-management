@@ -51,18 +51,25 @@ function makeWorkbench(overrides: Record<string, unknown> = {}) {
       projectId: "p-1",
       contractTypeKey: "subcontract",
       ownerUserId: "u-1",
-      name: "测试合同",
-      status: "draft"
+      name: "测试合同"
     },
     version: {
       id: "cv-1",
-      revision: 3,
+      versionNo: 1,
+      status: "draft",
+      draftRevision: 3,
       amountCents: 0,
       pricingNature: "fixed_price",
       amountSource: "manual",
       draftData: { contractName: "测试合同" },
-      clauses: [],
-      template: { fields: [], bills: [], clauses: [], attachments: [], validations: [] }
+      clauseSnapshot: [],
+      templateSnapshot: {
+        fieldSchema: [],
+        billSchema: [],
+        clauseSchema: [],
+        attachmentSchema: [],
+        validationSchema: []
+      }
     },
     parties: [],
     bills: [],
@@ -106,7 +113,7 @@ describe("useContractDraft", () => {
   it("creates the draft after project, type, and template are selected", async () => {
     const replace = vi.fn();
     const draft = useContractDraft({ replace });
-    mockCreateDraft.mockResolvedValue({ id: "ct-9", versionId: "cv-9" });
+    mockCreateDraft.mockResolvedValue({ contract: { id: "ct-9" }, version: { id: "cv-9" } });
 
     draft.initializeDraft.setProjectId("p-1");
     draft.initializeDraft.setContractTypeKey("subcontract");
@@ -124,7 +131,7 @@ describe("useContractDraft", () => {
   it("debounces autosave", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
-    mockSaveDraft.mockResolvedValue({ version: { revision: 4 } });
+    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
 
     await draft.load("ct-1");
 
@@ -161,7 +168,7 @@ describe("useContractDraft", () => {
     );
     const firstSave = draft.saveNow();
     expect(draft.saveState.value).toBe("saving");
-    resolveSave({ version: { revision: 4 } });
+    resolveSave({ version: { draftRevision: 4 } });
     await firstSave;
     expect(draft.saveState.value).toBe("saved");
 
@@ -172,7 +179,9 @@ describe("useContractDraft", () => {
 
     // conflict (backend revision-conflict phrase)
     mockSaveDraft.mockRejectedValueOnce(new Error("Contract draft revision conflict"));
-    mockFetchWorkbench.mockResolvedValue(makeWorkbench({ version: { ...makeWorkbench().version, revision: 7 } }));
+    mockFetchWorkbench.mockResolvedValue(
+      makeWorkbench({ version: { ...makeWorkbench().version, draftRevision: 7 } })
+    );
     await draft.saveNow();
     expect(draft.saveState.value).toBe("conflict");
   });
@@ -196,7 +205,7 @@ describe("useContractDraft", () => {
     expect(backup).toContain("未保存的改动");
 
     // A non-conflict failure does NOT pause: the next change schedules another save.
-    mockSaveDraft.mockResolvedValueOnce({ version: { revision: 4 } });
+    mockSaveDraft.mockResolvedValueOnce({ version: { draftRevision: 4 } });
     draft.model.contractName = "重试的改动";
     draft.markDirty();
     await vi.runOnlyPendingTimersAsync();
@@ -217,7 +226,7 @@ describe("useContractDraft", () => {
       makeWorkbench({
         version: {
           ...makeWorkbench().version,
-          revision: 9,
+          draftRevision: 9,
           draftData: { contractName: "服务器上的名字" }
         }
       })
@@ -239,7 +248,7 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft.mock.calls.length).toBe(callsAfterConflict);
 
     // Keeping local re-applies local edits against the latest server revision and resumes.
-    mockSaveDraft.mockResolvedValueOnce({ version: { revision: 10 } });
+    mockSaveDraft.mockResolvedValueOnce({ version: { draftRevision: 10 } });
     await draft.keepLocalAfterConflict();
     expect(draft.saveState.value).not.toBe("conflict");
     expect(draft.conflict.value).toBeNull();

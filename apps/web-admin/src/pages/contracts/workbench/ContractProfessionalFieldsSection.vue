@@ -69,7 +69,7 @@ const emit = defineEmits<{
   (event: "update", patch: Partial<ContractDraftModel>): void;
 }>();
 
-const fields = computed(() => props.workbench?.version.template.fields ?? []);
+const fields = computed(() => props.workbench?.version.templateSnapshot.fieldSchema ?? []);
 
 function stringValue(key: string): string {
   const value = props.model.fieldValues[key];
