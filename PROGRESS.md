@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-07-01 (CodeX)：补齐合同生成附件图片排版规则。合同文档生成会把 PNG/JPEG 图片附件追加进 DOCX 初稿：普通图片独立 A4 页居中适配，身份证人像面/国徽面合并到同一 A4 页上下居中并标注面别；PDF 由已追加图片页的 DOCX 转换后再追加 PDF 类附件，避免图片重复。合同文档区新增身份证人像面/国徽面专用上传入口和附件说明；合作单位快照、合作单位档案页统一改为人像面/国徽面提示。未设置阻断式校验，只做清晰提示和规范命名。验证：`pnpm --filter @jiangkong/api test -- docx-attachment-appender.spec.ts contract-document.processor.spec.ts pdf-normalizer.spec.ts`、`pnpm --filter @jiangkong/api test -- pdf-normalizer.spec.ts contract-template-docx-assets.spec.ts contract-workbench-verification.spec.ts`、`pnpm --filter @jiangkong/web-admin typecheck` 通过；完整 live verifier 尚未在本条后重跑。
 - 2026-07-01 (CodeX)：补齐合同工作台 live 验收最终修复。`verify:contract-workbench` 在材料采购 draft DOCX 生成成功且合同版本仍可编辑时，复用生成的 `docxFileId` 实跑 `POST/GET /contract-workbench/:contractVersionId/offline-revisions`，校验线下修订稿持久化与列表回读；材料采购草稿数据补 `projectName`，避免模板就绪/生成缺字段。live 验证前需先执行 `pnpm --filter @jiangkong/api exec prisma migrate deploy`，确保 `ContractOfflineRevision` 迁移已应用。
 - 2026-07-01 (CodeX)：修复真实合同模板渲染别名与合同类型/模板一致性问题。合同 DOCX 渲染值新增 `party.owner.*`、`party.counterparty.*` 别名，材料采购 seed schema/sample/inspection 补齐真实模板使用的 `field.projectName`，真实 DOCX 资产测试覆盖材料/机械模板的甲乙方占位；合同草稿创建会校验所选业务模板版本的父模板 `contractTypeKey` 与输入合同类型一致，不一致返回 BadRequest。验证：`pnpm --filter @jiangkong/api test -- contract-document.service.spec.ts core-flow-seed-data.spec.ts contract-template-docx-assets.spec.ts contract.service.spec.ts`、`pnpm --filter @jiangkong/api typecheck`、`git diff --check` 通过。
 - 2026-07-01 (CodeX)：完成 Task 6「真实与通用合同 Word 生成验证」。`verify:contract-workbench` 静态覆盖扩展到 `material_purchase`、`equipment_rental`、`labor_subcontract`、`generic_contract`、`offline-revisions` 与四份 DOCX 资产名；live 验收保留材料采购完整 happy path，新增四类已发布模板过滤检查、四类 seed 版式真实 DOCX 文件校验、通用合同草稿保存 + 通用清单行 + draft DOCX/PDF 生成轮询。未做人工打开 Word spot-check，本轮依据 Task 1 已完成的 DOCX/LibreOffice 自动校验、`contract-template-docx-assets.spec.ts` 资产回归和 live LibreOffice 转换结果。验证：`pnpm --filter @jiangkong/api test -- contract-workbench-verification.spec.ts contract-template-docx-assets.spec.ts contract-document.service.spec.ts`、`pnpm --filter @jiangkong/api seed`、`DOC_CONVERTER_COMMAND=/Applications/LibreOffice.app/Contents/MacOS/soffice pnpm --filter @jiangkong/api verify:contract-workbench`、`pnpm --filter @jiangkong/api typecheck`、`pnpm --filter @jiangkong/api lint`、`pnpm --filter @jiangkong/web-admin test`、`pnpm --filter @jiangkong/web-admin typecheck`、`pnpm --filter @jiangkong/web-admin lint` 通过。
@@ -103,7 +104,7 @@
 - [x] Task 10：结构化合同清单行 CRUD 与汇总
 - [x] Task 11：Excel 模板下载与导入预览/应用
 - [x] Task 12：DOCX 渲染
-- [x] Task 13：PDF 转换与附件 A4 归一化
+- [x] Task 13：PDF 转换与附件 A4 归一化（图片附件已追加进 DOCX 初稿并随 DOCX 转 PDF；普通图片 A4 居中，身份证人像面/国徽面同页上下居中）
 - [x] Task 14：持久化文档任务与轮询处理器
 - [x] Task 15：提交就绪校验与审批冻结
 - [x] Task 16：工作台 API 客户端与路由

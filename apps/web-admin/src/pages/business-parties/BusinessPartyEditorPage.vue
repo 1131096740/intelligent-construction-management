@@ -34,7 +34,7 @@
             营业执照
           </option>
           <option value="legal_id">
-            法人证件
+            法人身份证
           </option>
           <option value="authorization">
             授权文件
@@ -48,7 +48,7 @@
         </select>
         <t-input
           v-model="attachment.name"
-          placeholder="附件名称"
+          :placeholder="attachment.category === 'legal_id' ? '法人身份证人像面/国徽面' : '附件名称'"
         />
         <t-input
           v-model="attachment.validUntil"
@@ -60,6 +60,9 @@
         >
         <span class="file-id">{{ attachment.fileId || "未上传" }}</span>
       </div>
+      <p class="attachment-hint">
+        上传法人身份证时请分两条附件记录，并在名称中明确标注“人像面”或“国徽面”；合同生成时两面按同一 A4 页面上下居中处理。
+      </p>
       <t-space>
         <t-button @click="addAttachment">
           新增附件
@@ -180,10 +183,17 @@ function addAttachment() {
 }
 
 async function onAttachmentFile(index: number, event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0];
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
   if (!file) return;
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
+    const name = attachments.value[index].name.trim();
+    const uploaded = await uploadPrivateFile(
+      file,
+      name && attachments.value[index].category === "legal_id"
+        ? `${name} - ${file.name}`
+        : file.name
+    );
     attachments.value[index].fileId = uploaded.id;
     attachments.value[index].name ||= file.name;
   } catch (error) {
@@ -247,6 +257,7 @@ label { display: grid; gap: 4px; }
 .attachment-row { display: grid; grid-template-columns: 150px 1fr 160px 220px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
 .attachment-row select { height: 32px; border: 1px solid #dcdfe6; border-radius: 3px; }
 .file-id, .attachment-line, .message { font-size: 12px; }
+.attachment-hint { margin: 4px 0 12px; color: #767f8d; font-size: 12px; }
 .success { color: #1b6b3a; }
 .danger { color: #b51d2a; }
 @media (max-width: 1000px) { .page-head, .form-grid, .attachment-row { display: grid; grid-template-columns: 1fr; } }

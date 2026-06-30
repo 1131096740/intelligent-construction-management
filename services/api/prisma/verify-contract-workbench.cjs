@@ -36,6 +36,90 @@ const WORKBENCH_SEEDS = [
   }
 ];
 
+const LIVE_GENERATION_CASES = [
+  {
+    label: "generic_contract",
+    seed: coreFlowSeedData.genericContractWorkbench,
+    names: {
+      name: "Phase1通用合同验收",
+      counterparty: "Phase1通用合同相对方"
+    },
+    draftData: {
+      projectName: coreFlowSeedData.project.name,
+      counterpartyName: "Phase1通用合同相对方",
+      businessSummary: "Task 6 通用合同 Word 生成验收",
+      settlementCycle: "按双方确认结算",
+      paymentRatioPercent: 80
+    },
+    billKey: "genericItems",
+    row: {
+      itemName: "通用服务",
+      specification: "按现场要求",
+      unit: "项",
+      quantity: "1.000",
+      unitPrice: "10000.0000",
+      taxRatePercent: "6",
+      taxInclusiveAmount: "10000.00",
+      remark: "Task 6 通用合同验收"
+    }
+  },
+  {
+    label: "equipment_rental",
+    seed: coreFlowSeedData.equipmentRentalWorkbench,
+    names: {
+      name: "Phase1机械租赁验收合同",
+      counterparty: "Phase1机械租赁公司"
+    },
+    draftData: {
+      rentalStartDate: "2026-07-01",
+      rentalEndDate: "2026-09-30",
+      useLocation: "建设项目一期现场",
+      settlementCycle: "上月16日至本月15日",
+      paymentRatioPercent: 80
+    },
+    billKey: "equipmentRentals",
+    row: {
+      itemName: "挖掘机租赁",
+      specification: "神钢350",
+      unit: "台班",
+      quantity: "10.000",
+      unitPrice: "430.0000",
+      taxRatePercent: "1",
+      taxInclusiveAmount: "4300.00",
+      fuelIncluded: false,
+      operatorIncluded: true,
+      remark: "Phase1机械租赁验收"
+    }
+  },
+  {
+    label: "labor_subcontract",
+    seed: coreFlowSeedData.laborSubcontractWorkbench,
+    names: {
+      name: "Phase1劳务分包验收合同",
+      counterparty: "Phase1劳务班组"
+    },
+    draftData: {
+      projectName: coreFlowSeedData.project.name,
+      workScope: "主体结构劳务作业",
+      workLocation: "建设项目一期现场",
+      plannedStartDate: "2026-07-01",
+      plannedEndDate: "2026-09-30",
+      settlementCycle: "按月结算",
+      progressPaymentRatioPercent: 80
+    },
+    billKey: "laborItems",
+    row: {
+      itemName: "钢筋绑扎劳务",
+      unit: "项",
+      quantity: "1.000",
+      unitPrice: "10000.0000",
+      taxRatePercent: "3",
+      taxInclusiveAmount: "10000.00",
+      remark: "Phase1劳务分包验收"
+    }
+  }
+];
+
 function authHeaders(token) {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -241,33 +325,26 @@ async function saveDraft(contractVersionId, workbench, token) {
   console.log("ok autosave");
 }
 
-async function saveGenericDraft(contractVersionId, workbench, token) {
-  const seed = coreFlowSeedData.genericContractWorkbench;
+async function saveLiveGenerationDraft(contractVersionId, workbench, seed, draftData, token) {
   const saved = await patchJson(
     `/contract-workbench/${contractVersionId}`,
     {
       expectedRevision: workbench.version.draftRevision,
-      draftData: {
-        projectName: coreFlowSeedData.project.name,
-        counterpartyName: "Phase1通用合同相对方",
-        businessSummary: "Task 6 通用合同 Word 生成验收",
-        settlementCycle: "按双方确认结算",
-        paymentRatioPercent: 80
-      },
+      draftData,
       clauses: seed.clauses,
       pricingNature: "fixed_total",
       amountSource: "manual",
       manualAmountCents: 1000000,
-      amountAdjustmentReason: "Task 6 通用合同验收金额",
+      amountAdjustmentReason: `${seed.template.name} live document generation smoke`,
       layoutTemplateVersionId: seed.layout.versionId
     },
     token
   );
   assert(
     saved.draftRevision === workbench.version.draftRevision + 1,
-    "generic autosave revision mismatch"
+    `${seed.template.code} autosave revision mismatch`
   );
-  console.log("ok generic autosave");
+  console.log(`ok ${seed.template.code} autosave`);
 }
 
 async function createCheckpoint(contractVersionId, token) {
@@ -310,36 +387,28 @@ async function addBillRow(bill, token) {
   console.log("ok add bill row");
 }
 
-async function addGenericBillRow(bill, token) {
+async function addBillRowFromData(bill, rowData, token, label) {
   const row = await postJson(
     `/contract-bills/${bill.id}/rows`,
     {
       expectedBillRevision: bill.revision,
-      itemName: "通用服务",
-      specification: "按现场要求",
-      unit: "项",
-      quantity: "1.000",
-      unitPrice: "10000.0000",
-      taxRatePercent: "6",
+      itemName: rowData.itemName,
+      specification: rowData.specification,
+      unit: rowData.unit,
+      quantity: rowData.quantity,
+      unitPrice: rowData.unitPrice,
+      taxRatePercent: rowData.taxRatePercent,
       isProvisional: false,
       settlementBasis: "按双方确认结算资料结算",
-      customData: {
-        itemName: "通用服务",
-        specification: "按现场要求",
-        unit: "项",
-        quantity: "1.000",
-        unitPrice: "10000.0000",
-        taxInclusiveAmount: "10000.00",
-        remark: "Task 6 通用合同验收"
-      }
+      customData: rowData
     },
     token
   );
   assert(
-    row.rows?.some((item) => item.itemName === "通用服务"),
-    "add generic bill row did not return the created row"
+    row.rows?.some((item) => item.itemName === rowData.itemName),
+    `${label} add bill row did not return the created row`
   );
-  console.log("ok add generic bill row");
+  console.log(`ok add ${label} bill row`);
 }
 
 async function exportExcelTemplate(bill, token) {
@@ -397,7 +466,12 @@ async function uploadImportApplyExcel(bill, token) {
   return preview.importId;
 }
 
-async function addParties(contractVersionId, token) {
+async function addParties(
+  contractVersionId,
+  token,
+  ownerName = "建工智管建设有限公司",
+  counterpartyName = "Phase1材料供应商"
+) {
   const snapshot = (name) => ({
     name,
     unifiedSocialCreditCode: `91310000${Math.floor(Math.random() * 100000000).toString().padStart(8, "0")}`,
@@ -409,14 +483,43 @@ async function addParties(contractVersionId, token) {
   });
   await postJson(
     `/contract-workbench/${contractVersionId}/parties`,
-    { roleKey: "party_a", snapshot: snapshot("建工智管建设有限公司") },
+    { roleKey: "party_a", snapshot: snapshot(ownerName) },
     token
   );
   await postJson(
     `/contract-workbench/${contractVersionId}/parties`,
-    { roleKey: "party_b", snapshot: snapshot("Phase1材料供应商") },
+    { roleKey: "party_b", snapshot: snapshot(counterpartyName) },
     token
   );
+}
+
+async function generateLiveDraftDocument(token, config) {
+  const draft = await createMinimalDraft(token, config.seed, config.names);
+  let workbench = await getWorkbench(draft.contractId, token);
+  await saveLiveGenerationDraft(
+    draft.contractVersionId,
+    workbench,
+    config.seed,
+    config.draftData,
+    token
+  );
+  workbench = await getWorkbench(draft.contractId, token);
+  await addBillRowFromData(billByKey(workbench, config.billKey), config.row, token, config.label);
+  await addParties(
+    draft.contractVersionId,
+    token,
+    "建工智管建设有限公司",
+    config.names.counterparty
+  );
+  const document = await queueDocument(
+    draft.contractVersionId,
+    "draft",
+    token,
+    config.seed.layout.versionId
+  );
+  const generated = await pollDocumentSuccess(draft.contractVersionId, document.id, token);
+  console.log(`ok ${config.label} live draft document`);
+  return { ...draft, draftDocument: generated };
 }
 
 async function checkReadiness(contractVersionId, token) {
@@ -547,21 +650,9 @@ async function main() {
   await assertSeedReady();
   const token = await login();
   await listPublishedTemplates(token);
-  const genericDraft = await createMinimalDraft(token, coreFlowSeedData.genericContractWorkbench, {
-    name: "Phase1通用合同验收",
-    counterparty: "Phase1通用合同相对方"
-  });
-  let genericWorkbench = await getWorkbench(genericDraft.contractId, token);
-  await saveGenericDraft(genericDraft.contractVersionId, genericWorkbench, token);
-  genericWorkbench = await getWorkbench(genericDraft.contractId, token);
-  await addGenericBillRow(billByKey(genericWorkbench, "genericItems"), token);
-  const genericDocument = await queueDocument(
-    genericDraft.contractVersionId,
-    "draft",
-    token,
-    coreFlowSeedData.genericContractWorkbench.layout.versionId
-  );
-  await pollDocumentSuccess(genericDraft.contractVersionId, genericDocument.id, token);
+  for (const config of LIVE_GENERATION_CASES) {
+    await generateLiveDraftDocument(token, config);
+  }
   const draft = await createMinimalDraft(token);
   let workbench = await getWorkbench(draft.contractId, token);
   await saveDraft(draft.contractVersionId, workbench, token);

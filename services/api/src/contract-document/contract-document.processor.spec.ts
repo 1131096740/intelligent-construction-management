@@ -4,6 +4,9 @@ jest.mock("./contract-docx-renderer", () => ({
 jest.mock("./libreoffice-converter", () => ({
   convertDocxToPdf: jest.fn(async () => Buffer.from("%PDF-converted"))
 }));
+jest.mock("./docx-attachment-appender", () => ({
+  appendDocxImageAttachments: jest.fn(() => Buffer.from("docx-with-image-attachments"))
+}));
 jest.mock("./pdf-normalizer", () => ({
   normalizeContractPdf: jest.fn(async () => ({
     buffer: Buffer.from("%PDF-normalized"),
@@ -15,11 +18,15 @@ jest.mock("./pdf-normalizer", () => ({
 
 import { PrismaService } from "../database/prisma.service";
 import { renderContractDocx } from "./contract-docx-renderer";
+import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { ContractDocumentProcessor } from "./contract-document.processor";
 import { convertDocxToPdf } from "./libreoffice-converter";
 import { normalizeContractPdf } from "./pdf-normalizer";
 
 const mockedRender = renderContractDocx as jest.MockedFunction<typeof renderContractDocx>;
+const mockedAppendDocxAttachments = appendDocxImageAttachments as jest.MockedFunction<
+  typeof appendDocxImageAttachments
+>;
 const mockedConvert = convertDocxToPdf as jest.MockedFunction<typeof convertDocxToPdf>;
 const mockedNormalize = normalizeContractPdf as jest.MockedFunction<
   typeof normalizeContractPdf
@@ -31,6 +38,9 @@ describe("ContractDocumentProcessor", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedRender.mockReturnValue(Buffer.from("rendered-docx"));
+    mockedAppendDocxAttachments.mockReturnValue(
+      Buffer.from("docx-with-image-attachments")
+    );
     mockedConvert.mockResolvedValue(Buffer.from("%PDF-converted"));
     mockedNormalize.mockResolvedValue({
       buffer: Buffer.from("%PDF-normalized"),
@@ -141,6 +151,11 @@ describe("ContractDocumentProcessor", () => {
             id: "attachment-file",
             originalName: "清单.pdf",
             mimeType: "application/pdf"
+          },
+          {
+            id: "image-file",
+            originalName: "营业执照.png",
+            mimeType: "image/png"
           }
         ]
       },
@@ -157,6 +172,10 @@ describe("ContractDocumentProcessor", () => {
         .mockResolvedValueOnce({
           file: { id: "attachment-file" },
           buffer: Buffer.from("%PDF-attachment")
+        })
+        .mockResolvedValueOnce({
+          file: { id: "image-file" },
+          buffer: Buffer.from("png-attachment")
         }),
       uploadPrivateFile: jest
         .fn()
@@ -176,7 +195,19 @@ describe("ContractDocumentProcessor", () => {
       { values: { "contract.name": "合同" } },
       []
     );
-    expect(mockedConvert).toHaveBeenCalledWith(Buffer.from("rendered-docx"));
+    expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(Buffer.from("rendered-docx"), [
+      {
+        name: "清单.pdf",
+        buffer: Buffer.from("%PDF-attachment"),
+        type: "pdf"
+      },
+      {
+        name: "营业执照.png",
+        buffer: Buffer.from("png-attachment"),
+        type: "png"
+      }
+    ]);
+    expect(mockedConvert).toHaveBeenCalledWith(Buffer.from("docx-with-image-attachments"));
     expect(mockedNormalize).toHaveBeenCalledWith(Buffer.from("%PDF-converted"), [
       {
         name: "清单.pdf",
@@ -190,7 +221,9 @@ describe("ContractDocumentProcessor", () => {
         originalName: "DRAFT-001-negotiation-r8.docx",
         mimeType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        uploadedByUserId: "owner-1"
+        uploadedByUserId: "owner-1",
+        buffer: Buffer.from("docx-with-image-attachments"),
+        sizeBytes: Buffer.from("docx-with-image-attachments").length
       })
     );
     expect(files.uploadPrivateFile).toHaveBeenNthCalledWith(

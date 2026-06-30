@@ -20,6 +20,8 @@
 - Modify `services/api/src/database/contract-workbench-verification.spec.ts`: assert the verifier covers all four live generation paths.
 - Modify `services/api/src/contract/dto/review-contract-approval.dto.ts`: allow `reject_previous` and `return_to_applicant`.
 - Modify `services/api/src/payment/dto/review-payment-approval.dto.ts`: allow `reject_previous` and `return_to_applicant`.
+- Modify `services/api/src/contract-document/pdf-normalizer.ts`: ensure generated attachment image pages are A4-centered and proportionally fitted.
+- Modify Web upload surfaces that collect identity-card attachments: remind users to label the portrait side and national-emblem side.
 - Modify `services/api/src/contract/contract.service.ts`: implement previous-node rejection and return-to-applicant for contract approval using current frozen nodes.
 - Modify `services/api/src/payment/payment-request.service.ts`: implement previous-node rejection and return-to-applicant for payment approval using current frozen nodes.
 - Modify `services/api/src/contract/contract.service.spec.ts`: cover contract approval previous-node rejection and return-to-applicant.
@@ -30,37 +32,53 @@
 
 ### Task 1: Word Template Spot-Check Fixes
 
-- [ ] Add regression assertions in `contract-template-docx-assets.spec.ts`:
+- [x] Add regression assertions in `contract-template-docx-assets.spec.ts`:
   - material purchase DOCX contains `party.counterparty.name` in the signature table.
   - labor subcontract DOCX contains `field.projectName`, `party.owner.name`, and `party.counterparty.name` in the cover/start fields.
-- [ ] Run:
+- [x] Run:
   - `pnpm --filter @jiangkong/api test -- contract-template-docx-assets.spec.ts`
   - Expected before fix: fail on missing placeholders.
-- [ ] Patch the DOCX XML in the smallest possible way:
+- [x] Patch the DOCX XML in the smallest possible way:
   - material: insert `{party.counterparty.name}` after `卖方（章）：`.
   - material: keep the tax-rate `%` pair on the same run/line if simple XML patch is enough.
   - labor: replace blank underline runs after `工程名称：` with `{field.projectName}`, after `发 包 人：` with `{party.owner.name}`, and after `承 包 人：` with `{party.counterparty.name}`.
   - equipment: rotate/crop the embedded certificate image only if the image can be identified without rebuilding the whole document; otherwise record a manual-template-edit follow-up.
-- [ ] Re-run the asset test.
-- [ ] Convert the three DOCX assets to PDF with LibreOffice and spot-check first/last pages.
-- [ ] Commit: `fix: polish phase1 contract docx templates`.
+- [x] Re-run the asset test.
+- [x] Convert the three DOCX assets to PDF with LibreOffice and spot-check first/last pages.
+- [x] Commit: `fix: polish phase1 contract docx templates`.
 
 ### Task 2: Four-Type Live Contract Generation Verifier
 
-- [ ] Refactor `verify-contract-workbench.cjs` just enough to create and save a draft per workbench seed:
+- [x] Refactor `verify-contract-workbench.cjs` just enough to create and save a draft per workbench seed:
   - generic: existing generic fields and `genericItems`.
   - material: existing material fields and `materials`.
   - equipment: use existing equipment seed schema and its primary bill key from `core-flow-seed-data.ts`.
   - labor: use existing labor seed schema and `laborItems`.
-- [ ] Queue `draft` generation for all four types and assert each document has both `docxFileId` and `pdfFileId`.
-- [ ] Keep internal-review generation, offline revision upload, readiness check, and approval submission on the material path only.
-- [ ] Update `contract-workbench-verification.spec.ts` to assert the verifier contains all four live generation labels.
+- [x] Queue `draft` generation for all four types and assert each document has both `docxFileId` and `pdfFileId`.
+- [x] Keep internal-review generation, offline revision upload, readiness check, and approval submission on the material path only.
+- [x] Update `contract-workbench-verification.spec.ts` to assert the verifier contains all four live generation labels.
 - [ ] Run:
   - `pnpm --filter @jiangkong/api test -- contract-workbench-verification.spec.ts core-flow-seed-data.spec.ts contract-template-docx-assets.spec.ts`
   - `DOC_CONVERTER_COMMAND=/Applications/LibreOffice.app/Contents/MacOS/soffice pnpm --filter @jiangkong/api verify:contract-workbench`
 - [ ] Commit: `test: verify all phase1 contract document generation`.
 
-### Task 3: Contract Approval Return Controls
+### Task 3: Attachment Image A4 Layout And ID-Side Guidance
+
+- [x] Add/adjust tests for `pdf-normalizer.ts`:
+  - generic image attachments render on A4 pages with the image centered and scaled to fit within page margins.
+  - multiple normal image attachments occupy separate pages.
+  - identity-card portrait/national-emblem images can be grouped on one A4 page, portrait above emblem, both centered.
+- [x] Implement by reusing the existing PDF/image normalization path; do not create a separate rendering engine.
+- [x] Update Web upload copy only where identity-card uploads exist or are introduced by the current contract attachment workflow:
+  - require/select side label: `人像面` / `国徽面`.
+  - show a short reminder near upload controls.
+- [x] Rule: optional attachments do not create blank placeholder pages; only uploaded attachments are appended to generated documents.
+- [x] Run:
+  - `pnpm --filter @jiangkong/api test -- src/contract-document/contract-document.processor.spec.ts`
+  - relevant Web tests if UI copy is touched.
+- [ ] Commit: `fix: center contract attachment images on a4`.
+
+### Task 4: Contract Approval Return Controls
 
 - [ ] Extend `ReviewContractApprovalDto.decision` to include `reject_previous` and `return_to_applicant`.
 - [ ] Add tests in `contract.service.spec.ts`:
@@ -72,7 +90,7 @@
   - `pnpm --filter @jiangkong/api test -- src/contract/contract.service.spec.ts`
 - [ ] Commit: `feat: complete contract approval return controls`.
 
-### Task 4: Payment Approval Return Controls
+### Task 5: Payment Approval Return Controls
 
 - [ ] Extend `ReviewPaymentApprovalDto.decision` to include `reject_previous` and `return_to_applicant`.
 - [ ] Add tests in `payment-request.service.spec.ts`:
@@ -84,7 +102,7 @@
   - `pnpm --filter @jiangkong/api test -- src/payment/payment-request.service.spec.ts`
 - [ ] Commit: `feat: complete payment approval return controls`.
 
-### Task 5: Phase 1 Final Verification And Progress
+### Task 6: Phase 1 Final Verification And Progress
 
 - [ ] Run backend targeted tests:
   - `pnpm --filter @jiangkong/api test -- contract-template-docx-assets.spec.ts contract-workbench-verification.spec.ts contract.service.spec.ts payment-request.service.spec.ts settlement.service.spec.ts`

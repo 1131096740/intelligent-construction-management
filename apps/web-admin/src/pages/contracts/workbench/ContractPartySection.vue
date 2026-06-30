@@ -195,8 +195,8 @@ const ATTACHMENT_LABELS: Record<string, string> = {
 const DEFAULT_ATTACHMENT_NAMES: Record<string, string> = {
   business_license: "营业执照",
   bank_account: "开户许可证",
-  legal_id_front: "法人身份证正面",
-  legal_id_back: "法人身份证反面"
+  legal_id_front: "法人身份证人像面",
+  legal_id_back: "法人身份证国徽面"
 };
 const snapshotFields = [
   { key: "name", label: "公司名称", placeholder: "请输入公司名称" },
@@ -278,24 +278,24 @@ const attachmentCards = reactive<AttachmentCard[]>([
     ]
   },
   {
-    title: "法人身份证正反面上传",
-    description: "分别上传法人身份证正面和反面，两面共用同一个有效期。",
+    title: "法人身份证人像面/国徽面上传",
+    description: "分别上传法人身份证人像面和国徽面；生成附件页时人像面在上、国徽面在下，两面共用同一个有效期。",
     uploads: [
       {
         key: "legal_id_front",
-        label: "身份证正面",
+        label: "身份证人像面",
         category: "legal_id",
         fileId: "",
-        name: "法人身份证正面",
+        name: "法人身份证人像面",
         validUntil: "",
         hasValidUntil: true
       },
       {
         key: "legal_id_back",
-        label: "身份证反面",
+        label: "身份证国徽面",
         category: "legal_id",
         fileId: "",
-        name: "法人身份证反面",
+        name: "法人身份证国徽面",
         validUntil: "",
         hasValidUntil: false
       }
@@ -351,7 +351,7 @@ async function uploadAttachment(attachment: AttachmentForm, event: Event) {
   busy.value = true;
   message.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
+    const uploaded = await uploadPrivateFile(file, `${attachment.label} - ${file.name}`);
     attachment.fileId = uploaded.id;
     attachment.name = `${attachment.label} - ${file.name}`;
     message.value = "附件已上传";

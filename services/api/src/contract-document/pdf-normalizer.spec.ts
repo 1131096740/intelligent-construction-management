@@ -17,6 +17,7 @@ import {
 } from "./pdf-normalizer";
 
 const [A4_WIDTH, A4_HEIGHT] = PageSizes.A4;
+const IMAGE_ATTACHMENT_MARGIN_POINTS = 36;
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nGQAAAAASUVORK5CYII=",
   "base64"
@@ -224,14 +225,15 @@ describe("contract PDF A4 normalizer", () => {
     const output = await loadOutput(result.buffer);
 
     for (const pageIndex of [1, 2]) {
+      const maxWidth = A4_WIDTH - IMAGE_ATTACHMENT_MARGIN_POINTS * 2;
       const pageMatrices = matrices(pageContent(output, pageIndex));
       expect(
         pageMatrices.some(
           ([a, b, c, d]) =>
-            Math.abs(a - A4_WIDTH) < 0.01 &&
+            Math.abs(a - maxWidth) < 0.01 &&
             b === 0 &&
             c === 0 &&
-            Math.abs(d - A4_WIDTH) < 0.01
+            Math.abs(d - maxWidth) < 0.01
         )
       ).toBe(true);
       expect(
@@ -241,11 +243,65 @@ describe("contract PDF A4 normalizer", () => {
             b === 0 &&
             c === 0 &&
             d === 1 &&
-            Math.abs(x) < 0.01 &&
-            Math.abs(y - (A4_HEIGHT - A4_WIDTH) / 2) < 0.01
+            Math.abs(x - IMAGE_ATTACHMENT_MARGIN_POINTS) < 0.01 &&
+            Math.abs(y - (A4_HEIGHT - maxWidth) / 2) < 0.01
         )
       ).toBe(true);
     }
+  });
+
+  it("places identity card portrait and emblem images on one centered A4 page", async () => {
+    const result = await normalizeContractPdf(
+      await createPdf([[A4_WIDTH, A4_HEIGHT]]),
+      [
+        { name: "法人身份证人像面.png", type: "png", buffer: PNG },
+        { name: "法人身份证国徽面.jpg", buffer: JPEG }
+      ]
+    );
+    const output = await loadOutput(result.buffer);
+    const pageMatrices = matrices(pageContent(output, 1));
+    const maxWidth = A4_WIDTH - IMAGE_ATTACHMENT_MARGIN_POINTS * 2;
+    const boxHeight = (A4_HEIGHT - IMAGE_ATTACHMENT_MARGIN_POINTS * 3) / 2;
+    const imageX = IMAGE_ATTACHMENT_MARGIN_POINTS + (maxWidth - boxHeight) / 2;
+    const topY = A4_HEIGHT - IMAGE_ATTACHMENT_MARGIN_POINTS - boxHeight;
+
+    expect(output.getPageCount()).toBe(2);
+    expect(output.getPage(1).getSize()).toEqual({
+      width: A4_WIDTH,
+      height: A4_HEIGHT
+    });
+    expect(result.pageSizes).toEqual(["A4_portrait", "A4_portrait"]);
+    expect(
+      pageMatrices.filter(
+        ([a, b, c, d]) =>
+          Math.abs(a - boxHeight) < 0.01 &&
+          b === 0 &&
+          c === 0 &&
+          Math.abs(d - boxHeight) < 0.01
+      )
+    ).toHaveLength(2);
+    expect(
+      pageMatrices.some(
+        ([a, b, c, d, x, y]) =>
+          a === 1 &&
+          b === 0 &&
+          c === 0 &&
+          d === 1 &&
+          Math.abs(x - imageX) < 0.01 &&
+          Math.abs(y - topY) < 0.01
+      )
+    ).toBe(true);
+    expect(
+      pageMatrices.some(
+        ([a, b, c, d, x, y]) =>
+          a === 1 &&
+          b === 0 &&
+          c === 0 &&
+          d === 1 &&
+          Math.abs(x - imageX) < 0.01 &&
+          Math.abs(y - IMAGE_ATTACHMENT_MARGIN_POINTS) < 0.01
+      )
+    ).toBe(true);
   });
 
   it("returns inspection metadata and contextual attachment errors", async () => {

@@ -24,6 +24,7 @@ export interface NormalizedContractPdf {
 
 const [A4_WIDTH, A4_HEIGHT] = PageSizes.A4;
 const A4_TOLERANCE_POINTS = 2;
+const IMAGE_ATTACHMENT_MARGIN_POINTS = 36;
 export const MAX_TOTAL_INPUT_BYTES = 100 * 1024 * 1024;
 export const MAX_TOTAL_PAGES = 500;
 export const MAX_IMAGE_PIXELS = 100_000_000;
@@ -140,7 +141,9 @@ function drawCenteredImage(
   image: PDFImage,
   pageSizes: NormalizedContractPdf["pageSizes"]
 ): void {
-  const scale = Math.min(A4_WIDTH / image.width, A4_HEIGHT / image.height);
+  const maxWidth = A4_WIDTH - IMAGE_ATTACHMENT_MARGIN_POINTS * 2;
+  const maxHeight = A4_HEIGHT - IMAGE_ATTACHMENT_MARGIN_POINTS * 2;
+  const scale = Math.min(maxWidth / image.width, maxHeight / image.height);
   const width = image.width * scale;
   const height = image.height * scale;
   const page = document.addPage(PageSizes.A4);
@@ -151,6 +154,78 @@ function drawCenteredImage(
     height
   });
   pageSizes.push("A4_portrait");
+}
+
+function drawIdentityCardImages(
+  document: PDFDocument,
+  portraitImage: PDFImage,
+  emblemImage: PDFImage,
+  pageSizes: NormalizedContractPdf["pageSizes"]
+): void {
+  const page = document.addPage(PageSizes.A4);
+  const maxWidth = A4_WIDTH - IMAGE_ATTACHMENT_MARGIN_POINTS * 2;
+  const boxHeight = (A4_HEIGHT - IMAGE_ATTACHMENT_MARGIN_POINTS * 3) / 2;
+  drawImageInBox(
+    page,
+    portraitImage,
+    IMAGE_ATTACHMENT_MARGIN_POINTS,
+    A4_HEIGHT - IMAGE_ATTACHMENT_MARGIN_POINTS - boxHeight,
+    maxWidth,
+    boxHeight
+  );
+  drawImageInBox(
+    page,
+    emblemImage,
+    IMAGE_ATTACHMENT_MARGIN_POINTS,
+    IMAGE_ATTACHMENT_MARGIN_POINTS,
+    maxWidth,
+    boxHeight
+  );
+  pageSizes.push("A4_portrait");
+}
+
+function drawImageInBox(
+  page: PDFPage,
+  image: PDFImage,
+  boxX: number,
+  boxY: number,
+  boxWidth: number,
+  boxHeight: number
+): void {
+  const scale = Math.min(boxWidth / image.width, boxHeight / image.height);
+  const width = image.width * scale;
+  const height = image.height * scale;
+  page.drawImage(image, {
+    x: boxX + (boxWidth - width) / 2,
+    y: boxY + (boxHeight - height) / 2,
+    width,
+    height
+  });
+}
+
+function identityCardSide(name: string): "portrait" | "emblem" | undefined {
+  const normalized = name.replace(/\s+/g, "");
+  if (!/(身份证|idcard|id-card|id card)/i.test(name)) return undefined;
+  if (/人像面|正面|front/i.test(normalized)) return "portrait";
+  if (/国徽面|反面|back/i.test(normalized)) return "emblem";
+  return undefined;
+}
+
+function findIdentityCardPairIndex(
+  attachments: readonly PdfAttachment[],
+  currentIndex: number,
+  side: "portrait" | "emblem",
+  consumedIndexes: ReadonlySet<number>
+): number {
+  const expectedSide = side === "portrait" ? "emblem" : "portrait";
+  return attachments.findIndex((attachment, index) => {
+    if (index <= currentIndex || consumedIndexes.has(index)) return false;
+    const type = attachmentType(attachment);
+    return (
+      (type === "png" || type === "jpeg") &&
+      identityCardSide(attachment.name) === expectedSide
+    );
+  });
 }
 
 function assertImagePixels(
@@ -216,6 +291,15 @@ function exactImageBytes(buffer: Buffer): Uint8Array | ArrayBuffer {
   return bytes;
 }
 
+async function embedImageAttachment(
+  document: PDFDocument,
+  attachment: PdfAttachment,
+  type: "png" | "jpeg"
+): Promise<PDFImage> {
+  const bytes = exactImageBytes(attachment.buffer);
+  return type === "png" ? document.embedPng(bytes) : document.embedJpg(bytes);
+}
+
 export async function normalizeContractPdf(
   generatedContractPdf: Buffer,
   attachments: readonly PdfAttachment[]
@@ -250,7 +334,11 @@ export async function normalizeContractPdf(
     throw new Error("Invalid generated contract PDF", { cause });
   }
 
+  const consumedAttachmentIndexes = new Set<number>();
   for (const [index, attachment] of attachments.entries()) {
+    if (consumedAttachmentIndexes.has(index)) {
+      continue;
+    }
     const context = `attachment ${index + 1} ("${attachment.name}")`;
     const type = attachmentType(attachment);
     if (!type) {
@@ -278,12 +366,43 @@ export async function normalizeContractPdf(
           type,
           `${context[0].toUpperCase()}${context.slice(1)}`
         );
-        const bytes = exactImageBytes(attachment.buffer);
-        const image =
-          type === "png"
-            ? await document.embedPng(bytes)
-            : await document.embedJpg(bytes);
-        drawCenteredImage(document, image, pageSizes);
+        const identitySide = identityCardSide(attachment.name);
+        const pairIndex = identitySide
+          ? findIdentityCardPairIndex(
+              attachments,
+              index,
+              identitySide,
+              consumedAttachmentIndexes
+            )
+          : -1;
+        if (pairIndex > -1) {
+          const pair = attachments[pairIndex];
+          const pairType = attachmentType(pair);
+          const pairContext = `attachment ${pairIndex + 1} ("${pair.name}")`;
+          if (pairType !== "png" && pairType !== "jpeg") {
+            throw new Error(`${pairContext} has an unsupported file type`);
+          }
+          assertImagePixels(
+            pair,
+            pairType,
+            `${pairContext[0].toUpperCase()}${pairContext.slice(1)}`
+          );
+          const currentImage = await embedImageAttachment(document, attachment, type);
+          const pairImage = await embedImageAttachment(document, pair, pairType);
+          drawIdentityCardImages(
+            document,
+            identitySide === "portrait" ? currentImage : pairImage,
+            identitySide === "emblem" ? currentImage : pairImage,
+            pageSizes
+          );
+          consumedAttachmentIndexes.add(pairIndex);
+        } else {
+          drawCenteredImage(
+            document,
+            await embedImageAttachment(document, attachment, type),
+            pageSizes
+          );
+        }
       }
     } catch (cause) {
       if (cause instanceof PdfNormalizationLimitError) throw cause;

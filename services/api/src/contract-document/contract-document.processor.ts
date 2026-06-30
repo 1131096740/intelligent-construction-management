@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { renderContractDocx } from "./contract-docx-renderer";
 import {
   CONTRACT_DOCUMENT_ENGINE_VERSION,
@@ -209,7 +210,6 @@ export class ContractDocumentProcessor
         snapshot.renderInput,
         snapshot.requiredKeys
       );
-      const convertedPdf = await convertDocxToPdf(docx);
       const attachments: PdfAttachment[] = [];
       for (const attachment of snapshot.attachmentFiles) {
         const source = await this.files.getFileBuffer(attachment.id);
@@ -219,14 +219,17 @@ export class ContractDocumentProcessor
           type: this.attachmentType(attachment.originalName, attachment.mimeType)
         });
       }
-      const normalized = await normalizeContractPdf(convertedPdf, attachments);
+      const finalDocx = appendDocxImageAttachments(docx, attachments);
+      const convertedPdf = await convertDocxToPdf(finalDocx);
+      const pdfAttachments = attachments.filter((attachment) => attachment.type === "pdf");
+      const normalized = await normalizeContractPdf(convertedPdf, pdfAttachments);
       const docxFile = await this.files.uploadPrivateFile({
         originalName: `${snapshot.outputBaseName}.docx`,
         mimeType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        sizeBytes: docx.length,
+        sizeBytes: finalDocx.length,
         uploadedByUserId: job.createdByUserId,
-        buffer: docx
+        buffer: finalDocx
       });
       uploadedFileIds.push(docxFile.id);
       const pdfFile = await this.files.uploadPrivateFile({

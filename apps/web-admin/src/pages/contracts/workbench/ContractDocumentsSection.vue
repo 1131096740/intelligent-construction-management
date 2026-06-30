@@ -78,6 +78,27 @@
         >
         选择附件
       </label>
+      <label class="file-button">
+        <input
+          type="file"
+          accept="image/*"
+          :disabled="disabled || busy"
+          @change="(event) => uploadIdentityAttachment('portrait', event)"
+        >
+        身份证人像面
+      </label>
+      <label class="file-button">
+        <input
+          type="file"
+          accept="image/*"
+          :disabled="disabled || busy"
+          @change="(event) => uploadIdentityAttachment('emblem', event)"
+        >
+        身份证国徽面
+      </label>
+      <p class="attachment-hint">
+        附件按需上传；未上传则生成文档不占位。图片附件会按 A4 居中追加；身份证请分别上传人像面和国徽面，生成时同页上下排列。
+      </p>
       <div
         v-if="attachments.length"
         class="attachment-list"
@@ -297,6 +318,10 @@ const purposeOptions = [
   { label: "对外磋商稿", value: "negotiation" },
   { label: "内部送审稿", value: "internal_review" }
 ];
+const identityAttachmentLabels = {
+  portrait: "身份证人像面",
+  emblem: "身份证国徽面"
+} as const;
 
 const layoutRecords = ref<Array<Record<string, unknown>>>([]);
 const layoutOptions = ref<Array<{ label: string; value: string }>>([]);
@@ -492,6 +517,29 @@ async function uploadAttachments(event: Event) {
   } finally {
     busy.value = false;
     (event.target as HTMLInputElement).value = "";
+  }
+}
+
+async function uploadIdentityAttachment(
+  side: keyof typeof identityAttachmentLabels,
+  event: Event
+) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  busy.value = true;
+  message.value = "";
+  try {
+    const label = identityAttachmentLabels[side];
+    const uploaded = await uploadPrivateFile(file, `${label} - ${file.name}`);
+    const byId = new Map([...attachments.value, uploaded].map((item) => [item.id, item]));
+    attachments.value = [...byId.values()];
+    message.value = `${label}已加入生成输入`;
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "身份证附件上传失败";
+  } finally {
+    busy.value = false;
+    input.value = "";
   }
 }
 
@@ -742,6 +790,13 @@ function layoutThumbnailUrl(layout: Record<string, unknown>) {
   border: 1px solid #dce1e8;
   border-radius: 3px;
   color: #424955;
+  font-size: 12px;
+}
+
+.attachment-hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: #767f8d;
   font-size: 12px;
 }
 
