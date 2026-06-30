@@ -439,6 +439,7 @@ export const coreFlowSeedData = {
       changeSummary: "初始化劳务分包合同模板 v1"
     },
     fields: [
+      { key: "projectName", label: "项目名称", type: "text", required: true, defaultValue: "建设项目一期", group: "basic", order: 5 },
       { key: "workScope", label: "劳务分包作业范围及内容", type: "long_text", required: true, group: "scope", order: 10 },
       { key: "workLocation", label: "劳务分包作业地点", type: "text", required: true, group: "scope", order: 20 },
       { key: "plannedStartDate", label: "计划开工日期", type: "date", required: true, group: "period", order: 30 },
@@ -539,6 +540,7 @@ export const coreFlowSeedData = {
         sampleData: {
           contract: { name: "劳务分包合同样张", temporaryCode: "TMP-LAB-001", amountUppercase: "人民币壹万元整" },
           field: {
+            projectName: "建设项目一期",
             workScope: "主体结构劳务作业",
             workLocation: "项目现场",
             plannedStartDate: "2026-07-01",
@@ -564,6 +566,7 @@ export const coreFlowSeedData = {
           "contract.name",
           "contract.temporaryCode",
           "document.watermark",
+          "field.projectName",
           "field.plannedEndDate",
           "field.plannedStartDate",
           "field.progressPaymentRatioPercent",

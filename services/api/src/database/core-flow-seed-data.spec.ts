@@ -169,6 +169,7 @@ describe("coreFlowSeedData", () => {
       "wage_commitment"
     ]);
     expect(coreFlowSeedData.laborSubcontractWorkbench.fields.map((field) => field.key)).toEqual([
+      "projectName",
       "workScope",
       "workLocation",
       "plannedStartDate",

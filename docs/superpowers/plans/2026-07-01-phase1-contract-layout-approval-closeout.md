@@ -88,7 +88,7 @@
 - [x] Implement in `contract.service.ts` by mirroring the settlement service logic and keeping existing approve/reject behavior unchanged.
 - [x] Run:
   - `pnpm --filter @jiangkong/api test -- src/contract/contract.service.spec.ts`
-- [ ] Commit: `feat: complete contract approval return controls`.
+- [x] Commit: `feat: complete approval return controls` (`f28342e`).
 
 ### Task 5: Payment Approval Return Controls
 
@@ -100,21 +100,21 @@
 - [x] Implement in `payment-request.service.ts` by mirroring the settlement service pattern.
 - [x] Run:
   - `pnpm --filter @jiangkong/api test -- src/payment/payment-request.service.spec.ts`
-- [ ] Commit: `feat: complete payment approval return controls`.
+- [x] Commit: `feat: complete approval return controls` (`f28342e`).
 
 ### Task 6: Phase 1 Final Verification And Progress
 
-- [ ] Run backend targeted tests:
+- [x] Run backend targeted tests:
   - `pnpm --filter @jiangkong/api test -- contract-template-docx-assets.spec.ts contract-workbench-verification.spec.ts contract.service.spec.ts payment-request.service.spec.ts settlement.service.spec.ts`
-- [ ] Run backend migration/seed/live verifier:
+- [x] Run backend migration/seed/live verifier:
   - `pnpm --filter @jiangkong/api exec prisma migrate deploy`
   - `pnpm --filter @jiangkong/api seed`
   - `DOC_CONVERTER_COMMAND=/Applications/LibreOffice.app/Contents/MacOS/soffice pnpm --filter @jiangkong/api verify:contract-workbench`
-- [ ] Run compile/lint checks:
+- [x] Run compile/lint checks:
   - `pnpm --filter @jiangkong/api typecheck`
   - `pnpm --filter @jiangkong/api lint`
   - `pnpm --filter @jiangkong/web-admin typecheck`
   - `pnpm --filter @jiangkong/web-admin lint`
-- [ ] Convert latest generated PDFs to PNG and manually spot-check material, equipment, labor, and generic first/signature/attachment pages.
-- [ ] Update `PROGRESS.md`: Task 22 complete if verification passes; explicitly note deployment and mini program remain out of Phase 1.
+- [x] Convert latest generated PDFs to PNG and manually spot-check material, equipment, labor, and generic first/signature/attachment pages.
+- [x] Update `PROGRESS.md`: Task 22 complete if verification passes; explicitly note deployment and mini program remain out of Phase 1.
 - [ ] Commit: `docs: close phase1 contract workbench progress`.

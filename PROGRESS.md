@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-07-01 (CodeX)：完成 Phase 1 合同工作台 Web 管理端 + 后端核心闭环收口。四类合同 `material_purchase`、`equipment_rental`、`labor_subcontract`、`generic_contract` 均已由 live verifier 创建草稿并生成 DOCX/PDF；材料采购路径额外覆盖线下修订稿上传回读、内部送审稿生成、审批提交与审计日志。修复劳务真实模板生成缺 `field.projectName` 的 seed/schema/inspection 覆盖缺口。人工抽查最新生成 PDF 首尾页：材料采购、机械租赁、劳务分包和通用合同均保持 A4、页眉页脚、表格边框和附件图片居中适配。验证：目标 API 测试 114 个通过、`migrate deploy`、`seed`、`verify:contract-workbench`、API/Web typecheck 与 lint 均通过。生产部署、小程序移动端和更完整浏览器响应式矩阵不纳入本次 Phase 1 闭环。
 - 2026-07-01 (CodeX)：补齐合同/付款审批打回控制。合同与付款审批 review 支持 `reject_previous`、`return_to_applicant`，并新增运行时 decision 白名单；退回上一节点会清空上一节点和当前节点已批角色、实例保持 `in_progress`、业务保持审批中；打回申请人会把合同版本/付款申请退回 `draft`，审批实例置 `returned_to_applicant`，并写入对应 `ApprovalActionLog` 与审计动作。验证：`pnpm --filter @jiangkong/api test -- src/contract/contract.service.spec.ts src/payment/payment-request.service.spec.ts`、`pnpm --filter @jiangkong/api typecheck` 通过。
 - 2026-07-01 (CodeX)：补齐合同生成附件图片排版规则。合同文档生成会把 PNG/JPEG 图片附件追加进 DOCX 初稿：普通图片独立 A4 页居中适配，身份证人像面/国徽面合并到同一 A4 页上下居中并标注面别；PDF 由已追加图片页的 DOCX 转换后再追加 PDF 类附件，避免图片重复。合同文档区新增身份证人像面/国徽面专用上传入口和附件说明；合作单位快照、合作单位档案页统一改为人像面/国徽面提示。未设置阻断式校验，只做清晰提示和规范命名。验证：`pnpm --filter @jiangkong/api test -- docx-attachment-appender.spec.ts contract-document.processor.spec.ts pdf-normalizer.spec.ts`、`pnpm --filter @jiangkong/api test -- pdf-normalizer.spec.ts contract-template-docx-assets.spec.ts contract-workbench-verification.spec.ts`、`pnpm --filter @jiangkong/web-admin typecheck` 通过；完整 live verifier 尚未在本条后重跑。
 - 2026-07-01 (CodeX)：补齐合同工作台 live 验收最终修复。`verify:contract-workbench` 在材料采购 draft DOCX 生成成功且合同版本仍可编辑时，复用生成的 `docxFileId` 实跑 `POST/GET /contract-workbench/:contractVersionId/offline-revisions`，校验线下修订稿持久化与列表回读；材料采购草稿数据补 `projectName`，避免模板就绪/生成缺字段。live 验证前需先执行 `pnpm --filter @jiangkong/api exec prisma migrate deploy`，确保 `ContractOfflineRevision` 迁移已应用。
@@ -92,7 +93,7 @@
 
 ## 企业级合同工作台第一阶段（22 Tasks）
 
-- 2026-07-01 (CodeX)：完成人工版式 spot-check。材料采购 live 生成版为 A4 23 页，封面、正文页、签章表、页眉页脚和表格边框整体稳定；通用合同 live 生成版为 A4 1 页，作为无模板兜底初稿可用。三份真实模板资产可被 LibreOffice 正常转 PDF：采购 22 页、设备租赁 25 页、劳务分包 19 页。发现待精修项：采购签章页“卖方（章）”缺少 `{party.counterparty.name}` 绑定；采购第 8 页税率字段出现 `%)` 孤行风险；设备末页扫描证照附件为横向图片，需后续转正/裁边；劳务首页“工程名称/发包人”缺占位符，劳务生成态尚未覆盖；当前 verifier 仅对采购和通用做 live 生成链路，设备/劳务需补 live 生成级验收。
+- 2026-07-01 (CodeX)：完成 Phase 1 最终人工版式 spot-check。材料采购 live 生成版为 A4 23 页，签章页买卖双方字段已绑定；机械租赁 live 生成版为 A4 25 页，证照附件页居中适配；劳务分包 live 生成版为 A4 19 页，首页工程名称/发包人及末页劳务清单均已渲染；通用合同 live 生成版为 A4 1 页，可作为无专用模板类型的兜底 Word 初稿。四类合同均已由 `verify:contract-workbench` live 创建草稿并生成 DOCX/PDF。
 - [x] Task 1：文档与表格依赖、转换器和上传限制环境配置
 - [x] Task 2：Phase 1 Prisma 模型与迁移
 - [x] Task 3：共享工作台 schema 与 read models
@@ -114,7 +115,7 @@
 - [x] Task 19：模板中心 Web UI（业务模板、版式模板、标准条款、合作单位档案、编号规则最小管理页；后端缺少版本 read model 的区域已做诚实空态/版本 ID 输入）
 - [x] Task 20：合同工作台种子数据与模板样张
 - [x] Task 21：端到端核心路径验收（验证脚本、静态测试、seed 重放、API 启动与 LibreOffice live 验收均已完成；使用 `/Applications/LibreOffice.app/Contents/MacOS/soffice` 实跑 `verify:contract-workbench` 通过）
-- [~] Task 22：Phase 1 收口与移交（API/Web server 启动、HTTP 活体探针、全量自动化测试和构建已验证；完整浏览器交互验收因当前 Chrome/Playwright 沙箱权限阻塞未完成）
+- [x] Task 22：Phase 1 收口与移交（Web 管理端 + 后端合同工作台核心闭环已完成：API/Web 基础验证、目标测试、迁移、seed、四类合同 live DOCX/PDF 生成、人工版式抽查、审批打回控制与进度文档均已收口；生产部署、小程序移动端和更完整浏览器响应式矩阵留后续阶段）
 
 ---
 
