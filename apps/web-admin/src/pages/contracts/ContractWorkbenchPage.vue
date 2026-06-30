@@ -149,6 +149,7 @@
             :workbench="workbench"
             :disabled="!editable"
             @update="applyPatch"
+            @reload="reloadCurrent"
           />
           <ContractPricingSection
             v-else-if="activeSection === 'pricing'"

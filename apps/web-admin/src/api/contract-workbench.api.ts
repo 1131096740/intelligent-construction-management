@@ -209,7 +209,8 @@ export function createBusinessPartyVersion(partyId: string, body: CreateBusiness
 
 export interface AddContractPartyPayload {
   roleKey: string;
-  businessPartyVersionId: string;
+  businessPartyVersionId?: string;
+  snapshot?: Record<string, unknown>;
 }
 
 export function addContractParty(contractVersionId: string, body: AddContractPartyPayload) {

@@ -324,6 +324,36 @@ describe("contract workbench API client", () => {
     });
   });
 
+  it("addContractParty – POST inline snapshot for temporary party data", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({}));
+
+    await addContractParty("version-1", {
+      roleKey: "party_b",
+      snapshot: {
+        name: "云南示例供应商有限公司",
+        unifiedSocialCreditCode: "91530000EXAMPLE01",
+        openingBank: "建设银行昆明支行",
+        bankAccount: "530000000000000000",
+        attachments: []
+      }
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/parties", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roleKey: "party_b",
+        snapshot: {
+          name: "云南示例供应商有限公司",
+          unifiedSocialCreditCode: "91530000EXAMPLE01",
+          openingBank: "建设银行昆明支行",
+          bankAccount: "530000000000000000",
+          attachments: []
+        }
+      })
+    });
+  });
+
   it("listContractNumberRules – GET /contract-number-rules", async () => {
     mockApiFetch.mockReturnValue(makeOkJson([]));
 
