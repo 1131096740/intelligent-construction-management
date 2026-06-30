@@ -54,12 +54,19 @@ describe("ContractService", () => {
       contractBusinessTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "template-version-1",
+          templateId: "template-1",
           status: "published",
           fieldSchema: templateSnapshot.fieldSchema,
           billSchema: templateSnapshot.billSchema,
           clauseSchema: templateSnapshot.clauseSchema,
           attachmentSchema: templateSnapshot.attachmentSchema,
           validationSchema: templateSnapshot.validationSchema
+        })
+      },
+      contractBusinessTemplate: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-1",
+          contractTypeKey: "material_purchase"
         })
       },
       contract: {
@@ -115,6 +122,54 @@ describe("ContractService", () => {
       })
     });
     expect(result.version.status).toBe("draft");
+  });
+
+  it("rejects draft creation when selected template type does not match input type", async () => {
+    const tx = {
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-version-1",
+          templateId: "template-1",
+          status: "published",
+          fieldSchema: [],
+          billSchema: [],
+          clauseSchema: [],
+          attachmentSchema: [],
+          validationSchema: []
+        })
+      },
+      contractBusinessTemplate: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-1",
+          contractTypeKey: "equipment_rental"
+        })
+      },
+      contract: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.createDraft(
+        {
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          businessTemplateVersionId: "template-version-1"
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("Business template contract type does not match");
+
+    expect(tx.contract.create).not.toHaveBeenCalled();
   });
 
   it("uploads a signed contract archive file and waits for director confirmation", async () => {

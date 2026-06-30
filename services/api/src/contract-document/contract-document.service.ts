@@ -628,6 +628,12 @@ export class ContractDocumentService {
     for (const party of parties) {
       if (!this.isObject(party.snapshot)) continue;
       const key = `party.${party.roleKey}`;
+      const alias =
+        party.roleKey === "party_a"
+          ? "party.owner"
+          : party.roleKey === "party_b"
+            ? "party.counterparty"
+            : null;
       const existing = values[key];
       values[key] = Array.isArray(existing)
         ? [...existing, party.snapshot]
@@ -635,6 +641,14 @@ export class ContractDocumentService {
       if (!values[`${key}.name`]) {
         for (const [field, value] of Object.entries(party.snapshot)) {
           values[`${key}.${field}`] = value;
+        }
+      }
+      if (alias) {
+        values[alias] = values[key];
+        if (!values[`${alias}.name`]) {
+          for (const [field, value] of Object.entries(party.snapshot)) {
+            values[`${alias}.${field}`] = value;
+          }
         }
       }
     }

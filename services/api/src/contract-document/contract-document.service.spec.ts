@@ -52,7 +52,7 @@ describe("ContractDocumentService", () => {
           status: "draft",
           draftRevision: 7,
           amountCents: 1_000_000n,
-          draftData: { deliveryLocation: "项目现场" },
+          draftData: { projectName: "建设项目一期", deliveryLocation: "项目现场" },
           clauseSnapshot: [
             { key: "payment", content: { text: "结算后付款" } }
           ],
@@ -94,6 +94,11 @@ describe("ContractDocumentService", () => {
       },
       contractPartySnapshot: {
         findMany: jest.fn().mockResolvedValue([
+          {
+            roleKey: "party_a",
+            displayOrder: 0,
+            snapshot: { name: "建工智管建设有限公司" }
+          },
           {
             roleKey: "party_b",
             displayOrder: 1,
@@ -187,8 +192,11 @@ describe("ContractDocumentService", () => {
           renderInput: {
             values: expect.objectContaining({
               "contract.name": "钢材采购合同",
+              "field.projectName": "建设项目一期",
               "field.deliveryLocation": "项目现场",
+              "party.owner.name": "建工智管建设有限公司",
               "party.party_b.name": "示例供应商",
+              "party.counterparty.name": "示例供应商",
               "document.watermark": "草稿"
             })
           }

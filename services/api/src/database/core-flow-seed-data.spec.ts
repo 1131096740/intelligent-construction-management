@@ -33,6 +33,7 @@ describe("coreFlowSeedData", () => {
     expect(seed.version).toMatchObject({ versionNo: 1, status: "published" });
 
     expect(seed.fields.map((field) => field.key)).toEqual([
+      "projectName",
       "deliveryLocation",
       "deliveryDeadline",
       "qualityStandard",
@@ -78,7 +79,10 @@ describe("coreFlowSeedData", () => {
         "contract.name",
         "contract.temporaryCode",
         "contract.amountUppercase",
+        "field.projectName",
         "field.deliveryLocation",
+        "party.owner.name",
+        "party.counterparty.name",
         "clause.payment.text",
         "bill.materials"
       ])
@@ -188,12 +192,25 @@ describe("coreFlowSeedData", () => {
     [
       "material purchase",
       coreFlowSeedData.materialPurchaseWorkbench.layout.docxFile.originalName,
-      ["field.deliveryLocation", "clause.payment.text", "bill.materials"]
+      [
+        "field.projectName",
+        "field.deliveryLocation",
+        "party.owner.name",
+        "party.counterparty.name",
+        "clause.payment.text",
+        "bill.materials"
+      ]
     ],
     [
       "equipment rental",
       coreFlowSeedData.equipmentRentalWorkbench.layout.docxFile.originalName,
-      ["field.useLocation", "clause.payment.text", "bill.equipmentRentals"]
+      [
+        "field.useLocation",
+        "party.owner.name",
+        "party.counterparty.name",
+        "clause.payment.text",
+        "bill.equipmentRentals"
+      ]
     ],
     [
       "labor subcontract",

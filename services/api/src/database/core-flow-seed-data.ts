@@ -110,6 +110,7 @@ export const coreFlowSeedData = {
       changeSummary: "初始化材料采购合同模板 v1"
     },
     fields: [
+      { key: "projectName", label: "项目名称", type: "text", required: true, group: "basic", order: 5 },
       { key: "deliveryLocation", label: "交货地点", type: "text", required: true, group: "delivery", order: 10 },
       { key: "deliveryDeadline", label: "交货期限", type: "date", required: true, group: "delivery", order: 20 },
       { key: "qualityStandard", label: "质量标准", type: "long_text", required: true, group: "quality", order: 30 },
@@ -228,7 +229,11 @@ export const coreFlowSeedData = {
             temporaryCode: "TMP-MAT-001",
             amountUppercase: "人民币壹拾贰万捌仟元整"
           },
-          field: { deliveryLocation: "项目现场" },
+          field: { projectName: "建设项目一期", deliveryLocation: "项目现场" },
+          party: {
+            owner: { name: "建工智管建设有限公司" },
+            counterparty: { name: "示例供应商" }
+          },
           clause: {
             payment: {
               text: "甲方依据已生效结算单和合规发票付款，结算归档确认后30日内支付当期应付款的80%，余款按合同约定支付。"
@@ -257,7 +262,10 @@ export const coreFlowSeedData = {
           "contract.name",
           "contract.temporaryCode",
           "document.watermark",
-          "field.deliveryLocation"
+          "field.projectName",
+          "field.deliveryLocation",
+          "party.owner.name",
+          "party.counterparty.name"
         ],
         unknownPlaceholders: [],
         missingRequiredPlaceholders: [],
@@ -376,6 +384,10 @@ export const coreFlowSeedData = {
         sampleData: {
           contract: { name: "机械租赁合同样张", temporaryCode: "TMP-EQP-001", amountUppercase: "人民币壹万元整" },
           field: { useLocation: "项目现场" },
+          party: {
+            owner: { name: "建工智管建设有限公司" },
+            counterparty: { name: "示例租赁公司" }
+          },
           clause: { payment: { text: "甲方依据双方确认的对账结算凭证和合规发票支付租赁费用。" } },
           bill: {
             equipmentRentals: [
@@ -393,7 +405,7 @@ export const coreFlowSeedData = {
         }
       },
       inspectionReport: {
-        placeholders: ["bill.equipmentRentals", "clause.payment.text", "contract.amountUppercase", "contract.name", "contract.temporaryCode", "document.watermark", "field.useLocation"],
+        placeholders: ["bill.equipmentRentals", "clause.payment.text", "contract.amountUppercase", "contract.name", "contract.temporaryCode", "document.watermark", "field.useLocation", "party.owner.name", "party.counterparty.name"],
         unknownPlaceholders: [],
         missingRequiredPlaceholders: [],
         hasBillLoop: true,

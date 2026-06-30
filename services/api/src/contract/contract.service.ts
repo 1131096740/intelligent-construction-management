@@ -89,6 +89,15 @@ export class ContractService {
           `Business template version is not published (status: ${templateVersion.status})`
         );
       }
+      const template = await tx.contractBusinessTemplate.findUnique({
+        where: { id: templateVersion.templateId }
+      });
+      if (!template) {
+        throw new Error("Business template not found");
+      }
+      if (template.contractTypeKey !== input.contractTypeKey) {
+        throw new BadRequestException("Business template contract type does not match");
+      }
 
       // 模板快照：将模板五类 schema 整体冻结到合同版本中。
       const templateSnapshot = {
