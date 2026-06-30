@@ -18,7 +18,9 @@ describe("contract workbench verification script", () => {
       "equipment_rental",
       "labor_subcontract",
       "generic_contract",
-      "offline-revisions",
+      "/contract-workbench/${contractVersionId}/offline-revisions",
+      "Live线下修订稿",
+      "verify-contract-workbench smoke",
       "material-purchase-real-v1.docx",
       "equipment-rental-real-v1.docx",
       "labor-subcontract-real-v1.docx",
@@ -37,6 +39,7 @@ describe("contract workbench verification script", () => {
     ]) {
       expect(script).toContain(expected);
     }
+    expect(script).not.toContain("offline-revisions upload stays in service/API tests");
   });
 
   it("fails clearly when LibreOffice is unavailable", () => {

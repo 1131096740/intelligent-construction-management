@@ -221,6 +221,7 @@ async function saveDraft(contractVersionId, workbench, token) {
     {
       expectedRevision: workbench.version.draftRevision,
       draftData: {
+        projectName: coreFlowSeedData.project.name,
         deliveryLocation: "建设项目一期现场",
         deliveryDeadline: "2026-07-20",
         qualityStandard: "符合国家现行质量标准和项目验收要求",
@@ -464,6 +465,35 @@ async function pollDocumentSuccess(contractVersionId, documentId, token) {
   throw new Error(`document ${documentId} did not succeed within 60 seconds`);
 }
 
+async function confirmOfflineRevision(contractVersionId, draftDocument, token) {
+  assert(draftDocument.docxFileId, "draft document is missing docxFileId");
+  const revision = await postJson(
+    `/contract-workbench/${contractVersionId}/offline-revisions`,
+    {
+      fileId: draftDocument.docxFileId,
+      sourceGeneratedDocumentId: draftDocument.id,
+      label: "Live线下修订稿",
+      note: "verify-contract-workbench smoke",
+      confirmationStatementAccepted: true
+    },
+    token
+  );
+  const revisions = await getJson(
+    `/contract-workbench/${contractVersionId}/offline-revisions`,
+    token
+  );
+  assert(
+    revisions.some(
+      (item) =>
+        item.id === revision.id &&
+        item.fileId === draftDocument.docxFileId &&
+        item.label === "Live线下修订稿"
+    ),
+    "offline revision was not persisted or listed"
+  );
+  console.log("ok offline revision live smoke");
+}
+
 async function submitApproval(contractVersionId, token) {
   const nextSequence = Math.floor(Date.now() / 1000);
   await prisma.contractNumberRule.updateMany({
@@ -532,7 +562,6 @@ async function main() {
     coreFlowSeedData.genericContractWorkbench.layout.versionId
   );
   await pollDocumentSuccess(genericDraft.contractVersionId, genericDocument.id, token);
-  // offline-revisions upload stays in service/API tests; live DBs may lag migrations.
   const draft = await createMinimalDraft(token);
   let workbench = await getWorkbench(draft.contractId, token);
   await saveDraft(draft.contractVersionId, workbench, token);
@@ -544,7 +573,12 @@ async function main() {
   await addParties(draft.contractVersionId, token);
   workbench = await getWorkbench(draft.contractId, token);
   const draftDocument = await queueDocument(draft.contractVersionId, "draft", token);
-  await pollDocumentSuccess(draft.contractVersionId, draftDocument.id, token);
+  const generatedDraftDocument = await pollDocumentSuccess(
+    draft.contractVersionId,
+    draftDocument.id,
+    token
+  );
+  await confirmOfflineRevision(draft.contractVersionId, generatedDraftDocument, token);
   await checkReadiness(draft.contractVersionId, token);
   const reviewDocument = await queueDocument(draft.contractVersionId, "internal_review", token);
   await pollDocumentSuccess(draft.contractVersionId, reviewDocument.id, token);
