@@ -9,6 +9,32 @@ const prisma = new PrismaClient();
 const baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:3000";
 const PASSWORD = process.env.SEED_PASSWORD || "Jgzg@2026";
 const CONVERTER = process.env.DOC_CONVERTER_COMMAND || "soffice";
+const WORKBENCH_SEEDS = [
+  {
+    code: "material_purchase",
+    filterPath: "/contract-templates?contractTypeKey=material_purchase",
+    seed: coreFlowSeedData.materialPurchaseWorkbench,
+    docxName: "material-purchase-real-v1.docx"
+  },
+  {
+    code: "equipment_rental",
+    filterPath: "/contract-templates?contractTypeKey=equipment_rental",
+    seed: coreFlowSeedData.equipmentRentalWorkbench,
+    docxName: "equipment-rental-real-v1.docx"
+  },
+  {
+    code: "labor_subcontract",
+    filterPath: "/contract-templates?contractTypeKey=labor_subcontract",
+    seed: coreFlowSeedData.laborSubcontractWorkbench,
+    docxName: "labor-subcontract-real-v1.docx"
+  },
+  {
+    code: "generic_contract",
+    filterPath: "/contract-templates?contractTypeKey=generic_contract",
+    seed: coreFlowSeedData.genericContractWorkbench,
+    docxName: "generic-contract-v1.docx"
+  }
+];
 
 function authHeaders(token) {
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -96,66 +122,72 @@ async function downloadBuffer(path, token) {
 }
 
 async function assertSeedReady() {
-  const [project, templateVersion, layoutVersion, numberRule] = await Promise.all([
+  const [project, ...seedRecords] = await Promise.all([
     prisma.project.findUnique({ where: { id: coreFlowSeedData.project.id } }),
-    prisma.contractBusinessTemplateVersion.findUnique({
-      where: { id: coreFlowSeedData.materialPurchaseWorkbench.version.id }
-    }),
-    prisma.contractLayoutTemplateVersion.findUnique({
-      where: { id: coreFlowSeedData.materialPurchaseWorkbench.layout.versionId }
-    }),
-    prisma.contractNumberRule.findUnique({
-      where: { id: coreFlowSeedData.materialPurchaseWorkbench.numberingRule.id }
-    })
+    ...WORKBENCH_SEEDS.flatMap(({ seed }) => [
+      prisma.contractBusinessTemplateVersion.findUnique({
+        where: { id: seed.version.id }
+      }),
+      prisma.contractLayoutTemplateVersion.findUnique({
+        where: { id: seed.layout.versionId }
+      }),
+      prisma.fileObject.findUnique({
+        where: { id: seed.layout.docxFile.id }
+      }),
+      prisma.contractNumberRule.findUnique({
+        where: { id: seed.numberingRule.id }
+      })
+    ])
   ]);
   assert(project, "Seed project is missing. Run `pnpm --filter @jiangkong/api seed` first.");
-  assert(templateVersion?.status === "published", "Published material template seed is missing.");
-  assert(layoutVersion?.status === "published", "Published layout template seed is missing.");
-  assert(numberRule?.isActive, "Active material contract number rule seed is missing.");
+  for (const [index, { code, docxName }] of WORKBENCH_SEEDS.entries()) {
+    const [templateVersion, layoutVersion, file, numberRule] = seedRecords.slice(
+      index * 4,
+      index * 4 + 4
+    );
+    assert(
+      templateVersion?.status === "published",
+      `Published ${code} template seed is missing.`
+    );
+    assert(layoutVersion?.status === "published", `Published ${code} layout seed is missing.`);
+    assert(file?.originalName === docxName, `${code} layout does not use ${docxName}`);
+    assert(numberRule?.isActive, `Active ${code} contract number rule seed is missing.`);
+  }
 }
 
 async function listPublishedTemplates(token) {
   const templates = await getJson("/contract-templates", token);
-  for (const code of [
-    "material_purchase",
-    "equipment_rental",
-    "labor_subcontract",
-    "generic_contract"
-  ]) {
+  for (const { code, filterPath } of WORKBENCH_SEEDS) {
     assert(
       templates.some((template) => template.code === code),
       `${code} template was not listed as published`
     );
+    const filtered = await getJson(filterPath, token);
+    assert(
+      filtered.length === 1 &&
+        filtered[0]?.code === code &&
+        filtered[0]?.status === "published" &&
+        filtered[0]?.versionId,
+      `${code} query did not return one published template version`
+    );
   }
-  const materialTemplates = await getJson(
-    "/contract-templates?contractTypeKey=material_purchase",
-    token
-  );
-  assert(
-    materialTemplates.some((template) => template.code === "material_purchase"),
-    "material_purchase template was not listed as published"
-  );
-  const genericTemplates = await getJson(
-    "/contract-templates?contractTypeKey=generic_contract",
-    token
-  );
-  assert(
-    genericTemplates.length === 1 &&
-      genericTemplates[0]?.code === "generic_contract" &&
-      genericTemplates[0]?.status === "published" &&
-      genericTemplates[0]?.versionId,
-    "generic_contract query did not return one published template version"
-  );
   console.log("ok list published templates");
 }
 
-async function createMinimalDraft(token) {
+async function createMinimalDraft(
+  token,
+  seed = coreFlowSeedData.materialPurchaseWorkbench,
+  names = {
+    name: "Phase1材料采购验收合同",
+    counterparty: "Phase1材料供应商"
+  }
+) {
   const result = await postJson(
     "/contracts",
     {
       projectId: coreFlowSeedData.project.id,
-      contractTypeKey: "material_purchase",
-      businessTemplateVersionId: coreFlowSeedData.materialPurchaseWorkbench.version.id
+      contractTypeKey: seed.template.contractTypeKey,
+      businessTemplateVersionId: seed.version.id
     },
     token
   );
@@ -163,12 +195,12 @@ async function createMinimalDraft(token) {
   await prisma.contract.update({
     where: { id: result.contract.id },
     data: {
-      name: "Phase1材料采购验收合同",
-      counterparty: "Phase1材料供应商",
+      name: names.name,
+      counterparty: names.counterparty,
       companyEntityName: "建工智管建设有限公司"
     }
   });
-  console.log(`ok create minimal draft ${result.contract.temporaryCode}`);
+  console.log(`ok create ${seed.template.code} draft ${result.contract.temporaryCode}`);
   return { contractId: result.contract.id, contractVersionId: result.version.id };
 }
 
@@ -206,6 +238,35 @@ async function saveDraft(contractVersionId, workbench, token) {
   );
   assert(saved.draftRevision === workbench.version.draftRevision + 1, "autosave revision mismatch");
   console.log("ok autosave");
+}
+
+async function saveGenericDraft(contractVersionId, workbench, token) {
+  const seed = coreFlowSeedData.genericContractWorkbench;
+  const saved = await patchJson(
+    `/contract-workbench/${contractVersionId}`,
+    {
+      expectedRevision: workbench.version.draftRevision,
+      draftData: {
+        projectName: coreFlowSeedData.project.name,
+        counterpartyName: "Phase1通用合同相对方",
+        businessSummary: "Task 6 通用合同 Word 生成验收",
+        settlementCycle: "按双方确认结算",
+        paymentRatioPercent: 80
+      },
+      clauses: seed.clauses,
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: 1000000,
+      amountAdjustmentReason: "Task 6 通用合同验收金额",
+      layoutTemplateVersionId: seed.layout.versionId
+    },
+    token
+  );
+  assert(
+    saved.draftRevision === workbench.version.draftRevision + 1,
+    "generic autosave revision mismatch"
+  );
+  console.log("ok generic autosave");
 }
 
 async function createCheckpoint(contractVersionId, token) {
@@ -246,6 +307,38 @@ async function addBillRow(bill, token) {
   const createdRow = row.rows?.find((item) => item.itemName === "钢筋");
   assert(createdRow?.rowKey, "add bill row did not return the created row");
   console.log("ok add bill row");
+}
+
+async function addGenericBillRow(bill, token) {
+  const row = await postJson(
+    `/contract-bills/${bill.id}/rows`,
+    {
+      expectedBillRevision: bill.revision,
+      itemName: "通用服务",
+      specification: "按现场要求",
+      unit: "项",
+      quantity: "1.000",
+      unitPrice: "10000.0000",
+      taxRatePercent: "6",
+      isProvisional: false,
+      settlementBasis: "按双方确认结算资料结算",
+      customData: {
+        itemName: "通用服务",
+        specification: "按现场要求",
+        unit: "项",
+        quantity: "1.000",
+        unitPrice: "10000.0000",
+        taxInclusiveAmount: "10000.00",
+        remark: "Task 6 通用合同验收"
+      }
+    },
+    token
+  );
+  assert(
+    row.rows?.some((item) => item.itemName === "通用服务"),
+    "add generic bill row did not return the created row"
+  );
+  console.log("ok add generic bill row");
 }
 
 async function exportExcelTemplate(bill, token) {
@@ -334,11 +427,16 @@ async function checkReadiness(contractVersionId, token) {
   return readiness;
 }
 
-async function queueDocument(contractVersionId, purpose, token) {
+async function queueDocument(
+  contractVersionId,
+  purpose,
+  token,
+  layoutTemplateVersionId = coreFlowSeedData.materialPurchaseWorkbench.layout.versionId
+) {
   const document = await postJson(
     `/contract-workbench/${contractVersionId}/documents`,
     {
-      layoutTemplateVersionId: coreFlowSeedData.materialPurchaseWorkbench.layout.versionId,
+      layoutTemplateVersionId,
       purpose
     },
     token
@@ -367,6 +465,14 @@ async function pollDocumentSuccess(contractVersionId, documentId, token) {
 }
 
 async function submitApproval(contractVersionId, token) {
+  const nextSequence = Math.floor(Date.now() / 1000);
+  await prisma.contractNumberRule.updateMany({
+    where: {
+      id: coreFlowSeedData.materialPurchaseWorkbench.numberingRule.id,
+      nextSequence: { lt: nextSequence }
+    },
+    data: { nextSequence }
+  });
   const submitted = await postJson(
     `/contracts/${contractVersionId}/approval-submission`,
     { numberRuleId: coreFlowSeedData.materialPurchaseWorkbench.numberingRule.id },
@@ -411,6 +517,22 @@ async function main() {
   await assertSeedReady();
   const token = await login();
   await listPublishedTemplates(token);
+  const genericDraft = await createMinimalDraft(token, coreFlowSeedData.genericContractWorkbench, {
+    name: "Phase1通用合同验收",
+    counterparty: "Phase1通用合同相对方"
+  });
+  let genericWorkbench = await getWorkbench(genericDraft.contractId, token);
+  await saveGenericDraft(genericDraft.contractVersionId, genericWorkbench, token);
+  genericWorkbench = await getWorkbench(genericDraft.contractId, token);
+  await addGenericBillRow(billByKey(genericWorkbench, "genericItems"), token);
+  const genericDocument = await queueDocument(
+    genericDraft.contractVersionId,
+    "draft",
+    token,
+    coreFlowSeedData.genericContractWorkbench.layout.versionId
+  );
+  await pollDocumentSuccess(genericDraft.contractVersionId, genericDocument.id, token);
+  // offline-revisions upload stays in service/API tests; live DBs may lag migrations.
   const draft = await createMinimalDraft(token);
   let workbench = await getWorkbench(draft.contractId, token);
   await saveDraft(draft.contractVersionId, workbench, token);
