@@ -23,6 +23,7 @@ function readDocxXml(fileName: string) {
     contentTypesXml: zip.file("[Content_Types].xml")?.asText() ?? "",
     coreXml: zip.file("docProps/core.xml")?.asText() ?? "",
     fileNames,
+    fontTableXml: zip.file("word/fontTable.xml")?.asText() ?? "",
     relationshipsText: fileNames
       .filter((name) => name.endsWith(".rels"))
       .map((name) => zip.file(name)?.asText() ?? "")
@@ -115,13 +116,14 @@ describe("contract DOCX template assets", () => {
     );
     expect(docx.stylesXml).toContain('w:style w:type="paragraph" w:default="1" w:styleId="Normal"');
     expect(docx.stylesXml).toContain('w:ascii="Times New Roman"');
-    expect(docx.stylesXml).toContain('w:eastAsia="仿宋"');
+    expect(docx.stylesXml).toContain('w:eastAsia="仿宋_GB2312"');
     expect(docx.stylesXml).toContain('w:line="500" w:lineRule="exact"');
     expect(docx.stylesXml).toContain('w:firstLineChars="200"');
     expect(docx.stylesXml).toContain('w:style w:type="paragraph" w:styleId="ContractTitle"');
-    expect(docx.stylesXml).toContain('w:eastAsia="黑体"');
+    expect(docx.stylesXml).toContain('w:eastAsia="方正小标宋简体"');
+    expect(docx.fontTableXml).toContain('w:font w:name="楷体_GB2312"');
     expect(`${docx.stylesXml}\n${docx.text}`).not.toMatch(
-      /宋体|仿宋_GB2312|方正仿宋简体|方正小标宋简体|方正宋三简体|Calibri|楷体/
+      /宋体|方正仿宋简体|方正宋三简体|Calibri/
     );
     expect(docx.text).not.toContain('w:color w:val="FF0000"');
     expect(docx.text).not.toContain('<w:pgSz w:orient="landscape" w:w="11906" w:h="16838"/>');

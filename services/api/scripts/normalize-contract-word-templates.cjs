@@ -20,7 +20,7 @@ const standardStyles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
       <w:jc w:val="both"/>
     </w:pPr>
     <w:rPr>
-      <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="仿宋" w:cs="Times New Roman"/>
+      <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="仿宋_GB2312" w:cs="Times New Roman"/>
       <w:sz w:val="28"/>
       <w:szCs w:val="28"/>
     </w:rPr>
@@ -33,9 +33,7 @@ const standardStyles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
       <w:jc w:val="center"/>
     </w:pPr>
     <w:rPr>
-      <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="黑体" w:cs="Times New Roman"/>
-      <w:b/>
-      <w:bCs/>
+      <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="方正小标宋简体" w:cs="Times New Roman"/>
       <w:sz w:val="44"/>
       <w:szCs w:val="44"/>
     </w:rPr>
@@ -48,7 +46,7 @@ const standardStyles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
       <w:ind w:firstLineChars="0"/>
     </w:pPr>
     <w:rPr>
-      <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="仿宋" w:cs="Times New Roman"/>
+      <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="仿宋_GB2312" w:cs="Times New Roman"/>
       <w:sz w:val="28"/>
       <w:szCs w:val="28"/>
     </w:rPr>
@@ -58,18 +56,19 @@ const standardStyles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 const standardFontTable = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:font w:name="Times New Roman"><w:family w:val="roman"/><w:pitch w:val="variable"/></w:font>
-  <w:font w:name="仿宋"><w:family w:val="modern"/><w:pitch w:val="variable"/></w:font>
+  <w:font w:name="仿宋_GB2312"><w:family w:val="modern"/><w:pitch w:val="variable"/></w:font>
+  <w:font w:name="方正小标宋简体"><w:family w:val="auto"/><w:pitch w:val="variable"/></w:font>
   <w:font w:name="黑体"><w:family w:val="auto"/><w:pitch w:val="variable"/></w:font>
+  <w:font w:name="楷体_GB2312"><w:family w:val="auto"/><w:pitch w:val="variable"/></w:font>
   <w:font w:name="Wingdings"><w:family w:val="auto"/><w:pitch w:val="variable"/></w:font>
 </w:fonts>`;
 
 function normalizeXml(xml) {
   return xml
-    .replace(/(w:(?:ascii|hAnsi|cs))="(?:Calibri|宋体|仿宋|仿宋_GB2312|方正仿宋简体|方正宋三简体;宋体|楷体)"/g, '$1="Times New Roman"')
-    .replace(/(w:eastAsia)="(?:Calibri|宋体|仿宋_GB2312|方正仿宋简体|方正宋三简体;宋体|楷体|zh-CN|zh-Hans)"/g, '$1="仿宋"')
-    .replace(/(w:(?:ascii|hAnsi|eastAsia|cs))="方正小标宋简体"/g, '$1="黑体"')
+    .replace(/(w:(?:ascii|hAnsi|cs))="(?:Calibri|宋体|仿宋|仿宋_GB2312|方正仿宋简体|方正宋三简体;宋体|楷体|楷体_GB2312|方正小标宋简体)"/g, '$1="Times New Roman"')
+    .replace(/(w:eastAsia)="(?:Calibri|宋体|仿宋|方正仿宋简体|方正宋三简体;宋体|zh-CN|zh-Hans)"/g, '$1="仿宋_GB2312"')
     .replace(/typeface="(?:Calibri Light|Calibri)"/g, 'typeface="Times New Roman"')
-    .replace(/typeface="(?:宋体|仿宋_GB2312|方正仿宋简体|方正宋三简体|方正小标宋简体|楷体)"/g, 'typeface="仿宋"')
+    .replace(/typeface="(?:宋体|仿宋|方正仿宋简体|方正宋三简体)"/g, 'typeface="仿宋_GB2312"')
     .replace(/<w:sz w:val="(?:22|24|32)"\/>/g, '<w:sz w:val="28"/>')
     .replace(/<w:szCs w:val="(?:22|24|32)"\/>/g, '<w:szCs w:val="28"/>')
     .replace(/<w:sz w:val="(?:72|84)"\/>/g, '<w:sz w:val="44"/>')
@@ -91,8 +90,8 @@ function removeStaticAttachmentParagraphs(xml) {
 }
 
 function genericDocumentXml() {
-  const titleRunPr = '<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="黑体" w:cs="Times New Roman"/><w:b/><w:bCs/><w:sz w:val="44"/><w:szCs w:val="44"/></w:rPr>';
-  const metaRunPr = '<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="仿宋" w:cs="Times New Roman"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr>';
+  const titleRunPr = '<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="方正小标宋简体" w:cs="Times New Roman"/><w:sz w:val="44"/><w:szCs w:val="44"/></w:rPr>';
+  const metaRunPr = '<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="仿宋_GB2312" w:cs="Times New Roman"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr>';
   const blank = '<w:p><w:pPr><w:pStyle w:val="ContractMeta"/></w:pPr><w:r><w:t xml:space="preserve"> </w:t></w:r></w:p>';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
