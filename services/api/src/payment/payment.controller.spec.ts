@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
+import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { PaymentController } from "./payment.controller";
 
@@ -30,4 +31,19 @@ describe("PaymentController authorization wiring", () => {
       expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBeUndefined();
     }
   );
+
+  it("guards the payment ledger with business positions", () => {
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, PaymentController.prototype.list)).toEqual([
+      "chairman",
+      "general_manager",
+      "project_manager",
+      "contract_director",
+      "contract_staff",
+      "budget_director",
+      "budget_staff",
+      "finance_director",
+      "finance_staff",
+      "super_admin"
+    ]);
+  });
 });

@@ -52,7 +52,7 @@
 
     <div class="summary-strip">
       <div
-        v-for="item in paymentSummaryItems"
+        v-for="item in summaryValues"
         :key="item.label"
         class="summary-item"
       >
@@ -89,13 +89,13 @@
       <t-button
         class="filter-action"
         theme="primary"
-        @click="showNotice('当前台账为静态种子数据，查询条件接后端列表接口后生效。')"
+        @click="loadPaymentLedger"
       >
         查询
       </t-button>
       <t-button
         class="filter-action"
-        @click="showNotice('筛选条件已保持为空；后端列表接口接入后可重置真实查询。')"
+        @click="loadPaymentLedger"
       >
         重置
       </t-button>
@@ -117,6 +117,7 @@
         size="small"
         :columns="paymentLedgerColumns"
         :data="paymentLedgerRows"
+        :loading="ledgerLoading"
         empty="暂无付款数据"
       >
         <template #approvalStatus="{ row }">
@@ -151,14 +152,13 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { createPaymentRequest } from "../../api/core-flow-read.api";
-import type { PaymentTone } from "./payment-list.config";
+import { createPaymentRequest, fetchPaymentLedger } from "../../api/core-flow-read.api";
+import type { PaymentLedgerRow, PaymentTone } from "./payment-list.config";
 import {
   paymentFilterFields,
   paymentLedgerColumns,
-  paymentLedgerRows,
   paymentRules,
   paymentSummaryItems
 } from "./payment-list.config";
@@ -168,6 +168,29 @@ const showCreateForm = ref(false);
 const createBusy = ref(false);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
+const paymentLedgerRows = ref<PaymentLedgerRow[]>([]);
+const ledgerLoading = ref(false);
+const ledgerSummary = ref({
+  total: 0,
+  pendingApproval: 0,
+  orSign: 0,
+  pendingPayment: 0,
+  paid: 0
+});
+const summaryValues = computed(() => {
+  const values = [
+    ledgerSummary.value.total,
+    ledgerSummary.value.pendingApproval,
+    ledgerSummary.value.orSign,
+    ledgerSummary.value.pendingPayment,
+    ledgerSummary.value.paid
+  ];
+
+  return paymentSummaryItems.map((item, index) => ({
+    ...item,
+    value: String(values[index] ?? 0)
+  }));
+});
 const createForm = reactive({
   settlementId: "",
   code: `FK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
@@ -178,9 +201,19 @@ function openDetail(paymentId: string) {
   void router.push(`/payments/${paymentId}`);
 }
 
-function showNotice(text: string) {
-  message.value = text;
-  messageTone.value = "default";
+async function loadPaymentLedger() {
+  ledgerLoading.value = true;
+  message.value = "";
+  try {
+    const result = await fetchPaymentLedger();
+    paymentLedgerRows.value = result.rows;
+    ledgerSummary.value = result.summary;
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "加载付款台账失败";
+    messageTone.value = "danger";
+  } finally {
+    ledgerLoading.value = false;
+  }
 }
 
 function requiredText(raw: string, label: string) {
@@ -227,11 +260,16 @@ function statusTagTheme(tone: PaymentTone) {
     default: "default",
     primary: "primary",
     warning: "warning",
+    danger: "danger",
     success: "success"
   } as const;
 
   return themeByTone[tone];
 }
+
+onMounted(() => {
+  void loadPaymentLedger();
+});
 </script>
 
 <style scoped>

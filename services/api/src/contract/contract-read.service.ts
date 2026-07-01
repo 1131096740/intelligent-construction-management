@@ -10,6 +10,72 @@ import { centsToSafeNumber } from "../money/decimal-money";
 export class ContractReadService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async listRecent(rawLimit?: string | number) {
+    const take = this.limit(rawLimit);
+    const contracts = await this.prisma.contract.findMany({
+      take,
+      orderBy: { updatedAt: "desc" }
+    });
+    const contractIds = contracts.map((contract) => contract.id);
+    const [versions, terms, projects] = await Promise.all([
+      contractIds.length
+        ? this.prisma.contractVersion.findMany({
+            where: { contractId: { in: contractIds } },
+            orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+          })
+        : Promise.resolve([]),
+      contractIds.length
+        ? this.prisma.paymentTermsVersion.findMany({
+            where: { contractId: { in: contractIds } },
+            orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+          })
+        : Promise.resolve([]),
+      this.prisma.project.findMany({
+        where: { id: { in: [...new Set(contracts.map((contract) => contract.projectId))] } }
+      })
+    ]);
+    const versionByContractId = new Map<string, (typeof versions)[number]>();
+    for (const version of versions) {
+      if (!versionByContractId.has(version.contractId)) versionByContractId.set(version.contractId, version);
+    }
+    const termsByContractId = new Map<string, (typeof terms)[number]>();
+    for (const term of terms) {
+      if (!termsByContractId.has(term.contractId)) termsByContractId.set(term.contractId, term);
+    }
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+
+    const rows = contracts.map((contract) => {
+      const version = versionByContractId.get(contract.id);
+      const termsVersion = termsByContractId.get(contract.id);
+      const status = this.statusView(version?.status ?? "draft");
+      return {
+        id: contract.code ?? contract.id,
+        contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
+        name: contract.name,
+        project: projectById.get(contract.projectId)?.name ?? contract.projectId,
+        counterparty: contract.counterparty,
+        amount: version ? this.formatMoney(version.amountCents) : "-",
+        version: version ? `v${version.versionNo}` : "-",
+        currentNode: this.nextActionLabel(version?.status ?? "draft"),
+        nodeTone: status.tone,
+        ownerDepartment: this.currentOwnerLabel(version?.status ?? "draft"),
+        updatedAt: this.date(contract.updatedAt),
+        paymentTermsVersion: termsVersion ? `v${termsVersion.versionNo}` : "-"
+      };
+    });
+
+    return {
+      rows,
+      summary: {
+        total: rows.length,
+        inApproval: rows.filter((row) => row.currentNode === "等待审批").length,
+        pendingSeal: rows.filter((row) => row.currentNode === "发起用章").length,
+        pendingArchive: rows.filter((row) => row.currentNode.includes("归档")).length,
+        effective: rows.filter((row) => row.currentNode === "可发起结算").length
+      }
+    };
+  }
+
   async getDetail(contractId: string): Promise<ContractDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(contractId);
@@ -315,5 +381,15 @@ export class ContractReadService {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;
+  }
+
+  private limit(rawLimit?: string | number) {
+    const parsed = typeof rawLimit === "number" ? rawLimit : Number(rawLimit ?? 100);
+    if (!Number.isFinite(parsed)) return 100;
+    return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+  }
+
+  private date(value: Date) {
+    return value.toLocaleString("zh-CN", { hour12: false });
   }
 }

@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
+import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import {
   ContractController,
@@ -40,6 +41,23 @@ describe("ContractController authorization wiring", () => {
       expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler as object)).toBeUndefined();
     }
   );
+
+  it("guards the contract ledger with business positions", () => {
+    const handler = ContractController.prototype.list;
+
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual([
+      "chairman",
+      "general_manager",
+      "project_manager",
+      "contract_director",
+      "contract_staff",
+      "budget_director",
+      "budget_staff",
+      "finance_director",
+      "finance_staff",
+      "super_admin"
+    ]);
+  });
 
   it("forwards the required numbering body on approval submission", async () => {
     const contracts = { submitApproval: jest.fn() };

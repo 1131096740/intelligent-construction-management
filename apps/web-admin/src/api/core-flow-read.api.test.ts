@@ -2,8 +2,13 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchContractDetail,
+  fetchContractLedger,
   fetchPaymentDetail,
+  fetchPaymentLedger,
   fetchSettlementDetail,
+  fetchSettlementLedger,
+  fetchArchives,
+  fetchAuditLogs,
   createContractDraft,
   createPaymentRequest,
   createPrivateFileDownloadTicket,
@@ -65,6 +70,27 @@ describe("core flow read API client", () => {
       "/api/contracts/HT-2026-001",
       "/api/settlements/JS-2026-018",
       "/api/payments/FK-2026-006"
+    ]);
+  });
+
+  it("requests operational ledger endpoints", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ rows: [], summary: {} })
+    } as Response);
+
+    await fetchContractLedger();
+    await fetchSettlementLedger();
+    await fetchPaymentLedger();
+    await fetchAuditLogs();
+    await fetchArchives();
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts",
+      "/api/settlements",
+      "/api/payments",
+      "/api/audit-logs",
+      "/api/archives"
     ]);
   });
 

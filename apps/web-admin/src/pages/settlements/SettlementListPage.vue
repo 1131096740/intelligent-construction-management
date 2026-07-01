@@ -57,7 +57,7 @@
 
     <div class="summary-strip">
       <div
-        v-for="item in settlementSummaryItems"
+        v-for="item in summaryValues"
         :key="item.label"
         class="summary-item"
       >
@@ -94,13 +94,13 @@
       <t-button
         class="filter-action"
         theme="primary"
-        @click="showNotice('当前台账为静态种子数据，查询条件接后端列表接口后生效。')"
+        @click="loadSettlementLedger"
       >
         查询
       </t-button>
       <t-button
         class="filter-action"
-        @click="showNotice('筛选条件已保持为空；后端列表接口接入后可重置真实查询。')"
+        @click="loadSettlementLedger"
       >
         重置
       </t-button>
@@ -122,6 +122,7 @@
         size="small"
         :columns="settlementLedgerColumns"
         :data="settlementLedgerRows"
+        :loading="ledgerLoading"
         empty="暂无结算数据"
       >
         <template #currentNode="{ row }">
@@ -147,14 +148,13 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { createSettlementDraft } from "../../api/core-flow-read.api";
-import type { SettlementTone } from "./settlement-list.config";
+import { createSettlementDraft, fetchSettlementLedger } from "../../api/core-flow-read.api";
+import type { SettlementLedgerRow, SettlementTone } from "./settlement-list.config";
 import {
   settlementFilterFields,
   settlementLedgerColumns,
-  settlementLedgerRows,
   settlementRules,
   settlementSummaryItems
 } from "./settlement-list.config";
@@ -164,6 +164,29 @@ const showCreateForm = ref(false);
 const createBusy = ref(false);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
+const settlementLedgerRows = ref<SettlementLedgerRow[]>([]);
+const ledgerLoading = ref(false);
+const ledgerSummary = ref({
+  total: 0,
+  inApproval: 0,
+  pendingArchive: 0,
+  effective: 0,
+  payable: 0
+});
+const summaryValues = computed(() => {
+  const values = [
+    ledgerSummary.value.total,
+    ledgerSummary.value.inApproval,
+    ledgerSummary.value.pendingArchive,
+    ledgerSummary.value.effective,
+    ledgerSummary.value.payable
+  ];
+
+  return settlementSummaryItems.map((item, index) => ({
+    ...item,
+    value: String(values[index] ?? 0)
+  }));
+});
 const createForm = reactive({
   contractVersionId: "seed-contract-version-ht-2026-001-v1",
   code: `JS-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
@@ -175,9 +198,19 @@ function openDetail(settlementId: string) {
   void router.push(`/settlements/${settlementId}`);
 }
 
-function showNotice(text: string) {
-  message.value = text;
-  messageTone.value = "default";
+async function loadSettlementLedger() {
+  ledgerLoading.value = true;
+  message.value = "";
+  try {
+    const result = await fetchSettlementLedger();
+    settlementLedgerRows.value = result.rows;
+    ledgerSummary.value = result.summary;
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "加载结算台账失败";
+    messageTone.value = "danger";
+  } finally {
+    ledgerLoading.value = false;
+  }
 }
 
 function requiredText(raw: string, label: string) {
@@ -225,11 +258,16 @@ function statusTagTheme(tone: SettlementTone) {
     default: "default",
     primary: "primary",
     warning: "warning",
+    danger: "danger",
     success: "success"
   } as const;
 
   return themeByTone[tone];
 }
+
+onMounted(() => {
+  void loadSettlementLedger();
+});
 </script>
 
 <style scoped>

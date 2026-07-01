@@ -6,6 +6,70 @@ import { PrismaService } from "../database/prisma.service";
 export class PaymentReadService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async listRecent(rawLimit?: string | number) {
+    const take = this.limit(rawLimit);
+    const payments = await this.prisma.paymentRequest.findMany({
+      take,
+      orderBy: { updatedAt: "desc" }
+    });
+    const paymentIds = payments.map((payment) => payment.id);
+    const settlementIds = [...new Set(payments.map((payment) => payment.settlementId))];
+    const projectIds = [...new Set(payments.map((payment) => payment.projectId))];
+    const [settlements, projects, executions] = await Promise.all([
+      settlementIds.length
+        ? this.prisma.settlement.findMany({ where: { id: { in: settlementIds } } })
+        : Promise.resolve([]),
+      projectIds.length
+        ? this.prisma.project.findMany({ where: { id: { in: projectIds } } })
+        : Promise.resolve([]),
+      paymentIds.length
+        ? this.prisma.paymentExecution.findMany({ where: { paymentRequestId: { in: paymentIds } } })
+        : Promise.resolve([])
+    ]);
+    const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+    const paidByPaymentId = new Map<string, number>();
+    for (const execution of executions) {
+      paidByPaymentId.set(
+        execution.paymentRequestId,
+        (paidByPaymentId.get(execution.paymentRequestId) ?? 0) + execution.amountCents
+      );
+    }
+
+    const rows = payments.map((payment) => {
+      const paidAmountCents = paidByPaymentId.get(payment.id) ?? payment.paidAmountCents;
+      const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
+      const approval = this.approvalStatusView(payment.status);
+      const execution = this.executionStatusView(payment.status, paidAmountCents, payableAmountCents);
+
+      return {
+        id: payment.code,
+        paymentNo: payment.code,
+        settlementNo: settlementById.get(payment.settlementId)?.code ?? payment.settlementId,
+        project: projectById.get(payment.projectId)?.name ?? payment.projectId,
+        requestedAmount: this.formatMoney(payment.requestedAmountCents),
+        approvalStatus: approval.label,
+        approvalTone: approval.tone,
+        paymentStatus: execution.label,
+        paymentTone: execution.tone,
+        currentNode: this.nextActionLabel(payment.status, execution.complete),
+        ownerDepartment: this.currentOwnerLabel(payment.status, execution.complete),
+        updatedAt: this.date(payment.updatedAt)
+      };
+    });
+
+    return {
+      rows,
+      summary: {
+        total: rows.length,
+        pendingApproval: payments.filter((payment) => ["draft", "approval_pending"].includes(payment.status)).length,
+        orSign: payments.filter((payment) => payment.status === "approval_pending").length,
+        pendingPayment: payments.filter((payment) => payment.status === "approved_pending_payment").length,
+        paid: rows.filter((row) => row.paymentStatus === "已付款").length
+      }
+    };
+  }
+
   async getDetail(paymentId: string): Promise<PaymentDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(paymentId);
@@ -208,6 +272,24 @@ export class PaymentReadService {
     return "等待付款审批";
   }
 
+  private currentOwnerLabel(status: string, complete: boolean): string {
+    if (complete) {
+      return "财务部";
+    }
+
+    const labels: Record<string, string> = {
+      draft: "项目经理",
+      approval_pending: "审批节点处理人",
+      approved_pending_payment: "出纳/财务",
+      partially_paid: "出纳/财务",
+      paid: "财务部",
+      completed: "财务部",
+      rejected: "项目经理"
+    };
+
+    return labels[status] ?? "财务部";
+  }
+
   private settlementStatusLabel(status: string): string {
     const labels: Record<string, string> = {
       approval_pending: "审批中",
@@ -292,5 +374,15 @@ export class PaymentReadService {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;
+  }
+
+  private limit(rawLimit?: string | number) {
+    const parsed = typeof rawLimit === "number" ? rawLimit : Number(rawLimit ?? 100);
+    if (!Number.isFinite(parsed)) return 100;
+    return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+  }
+
+  private date(value: Date) {
+    return value.toLocaleString("zh-CN", { hour12: false });
   }
 }

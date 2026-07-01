@@ -15,7 +15,7 @@
 
     <div class="summary-strip">
       <div
-        v-for="item in contractSummaryItems"
+        v-for="item in summaryValues"
         :key="item.label"
         class="summary-item"
       >
@@ -64,13 +64,13 @@
         <t-button
           class="filter-action"
           theme="primary"
-          @click="showNotice('当前台账为静态种子数据，查询条件接后端列表接口后生效。')"
+          @click="loadContractLedger"
         >
           查询
         </t-button>
         <t-button
           class="filter-action"
-          @click="showNotice('筛选条件已保持为空；后端列表接口接入后可重置真实查询。')"
+          @click="loadContractLedger"
         >
           重置
         </t-button>
@@ -92,6 +92,7 @@
           size="small"
           :columns="contractLedgerColumns"
           :data="contractLedgerRows"
+          :loading="ledgerLoading"
           empty="暂无合同数据"
         >
           <template #currentNode="{ row }">
@@ -194,14 +195,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import { fetchContractLedger } from "../../api/core-flow-read.api";
 import { listContractDrafts } from "../../api/contract-workbench.api";
-import type { ContractStatusTone } from "./contract-list.config";
+import type { ContractLedgerRow, ContractStatusTone } from "./contract-list.config";
 import {
   contractFilterFields,
   contractLedgerColumns,
-  contractLedgerRows,
   contractSummaryItems
 } from "./contract-list.config";
 import { contractTypeLabel } from "./contract-labels";
@@ -209,6 +210,29 @@ import { contractTypeLabel } from "./contract-labels";
 const router = useRouter();
 const noticeMessage = ref("");
 const activeTab = ref<"ledger" | "my" | "voided">("my");
+const contractLedgerRows = ref<ContractLedgerRow[]>([]);
+const ledgerLoading = ref(false);
+const ledgerSummary = ref({
+  total: 0,
+  inApproval: 0,
+  pendingSeal: 0,
+  pendingArchive: 0,
+  effective: 0
+});
+const summaryValues = computed(() => {
+  const values = [
+    ledgerSummary.value.total,
+    ledgerSummary.value.inApproval,
+    ledgerSummary.value.pendingSeal,
+    ledgerSummary.value.pendingArchive,
+    ledgerSummary.value.effective
+  ];
+
+  return contractSummaryItems.map((item, index) => ({
+    ...item,
+    value: String(values[index] ?? 0)
+  }));
+});
 
 // Draft list rows mirror the backend Contract read model fields returned by
 // listDrafts (raw Contract rows): name may be empty for fresh drafts, so
@@ -271,14 +295,34 @@ async function loadVoidedDrafts() {
   }
 }
 
+async function loadContractLedger() {
+  ledgerLoading.value = true;
+  noticeMessage.value = "";
+  try {
+    const result = await fetchContractLedger();
+    contractLedgerRows.value = result.rows;
+    ledgerSummary.value = result.summary;
+  } catch (error) {
+    noticeMessage.value = error instanceof Error ? error.message : "加载合同台账失败";
+  } finally {
+    ledgerLoading.value = false;
+  }
+}
+
 watch(
   activeTab,
   (tab) => {
+    if (tab === "ledger") void loadContractLedger();
     if (tab === "my") void loadMyDrafts();
     if (tab === "voided") void loadVoidedDrafts();
   },
   { immediate: false }
 );
+
+onMounted(() => {
+  void loadContractLedger();
+  void loadMyDrafts();
+});
 
 function goNewWorkbench() {
   void router.push("/contracts/new");
@@ -290,10 +334,6 @@ function openDetail(contractId: string) {
 
 function openWorkbench(contractId: string) {
   void router.push(`/contracts/${contractId}/workbench`);
-}
-
-function showNotice(message: string) {
-  noticeMessage.value = message;
 }
 
 function formatDraftUpdatedAt(value?: string | null) {
@@ -308,6 +348,7 @@ function statusTagTheme(tone: ContractStatusTone) {
     default: "default",
     primary: "primary",
     warning: "warning",
+    danger: "danger",
     success: "success"
   } as const;
 

@@ -1,6 +1,78 @@
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
+  it("builds contract ledger rows and summary from persisted contracts", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            projectId: "project-1",
+            code: "HT-2026-009",
+            temporaryCode: null,
+            name: "幕墙分包合同",
+            counterparty: "幕墙分包单位",
+            updatedAt: new Date("2026-06-30T10:00:00.000Z")
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-version-2",
+            contractId: "contract-1",
+            versionNo: 2,
+            status: "effective",
+            amountCents: 98650000n
+          }
+        ])
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "terms-version-2",
+            contractId: "contract-1",
+            versionNo: 2
+          }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "project-1",
+            name: "总部综合楼"
+          }
+        ])
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const ledger = await service.listRecent(50);
+
+    expect(prisma.contract.findMany).toHaveBeenCalledWith({
+      take: 50,
+      orderBy: { updatedAt: "desc" }
+    });
+    expect(ledger.rows[0]).toMatchObject({
+      id: "HT-2026-009",
+      contractNo: "HT-2026-009",
+      name: "幕墙分包合同",
+      project: "总部综合楼",
+      amount: "¥986,500.00",
+      version: "v2",
+      currentNode: "可发起结算",
+      ownerDepartment: "系统归档",
+      paymentTermsVersion: "v2"
+    });
+    expect(ledger.summary).toEqual({
+      total: 1,
+      inApproval: 0,
+      pendingSeal: 0,
+      pendingArchive: 0,
+      effective: 1
+    });
+  });
+
   it("displays temporaryCode when contract has no formal code and tolerates empty payment stages", async () => {
     const prisma = {
       contract: {

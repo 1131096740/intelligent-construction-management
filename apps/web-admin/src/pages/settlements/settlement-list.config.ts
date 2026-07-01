@@ -1,6 +1,6 @@
 import type { PrimaryTableCol } from "tdesign-vue-next";
 
-export type SettlementTone = "default" | "primary" | "warning" | "success";
+export type SettlementTone = "default" | "primary" | "warning" | "danger" | "success";
 
 export interface SettlementFilterField {
   key: string;

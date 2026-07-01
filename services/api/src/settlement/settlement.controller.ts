@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
@@ -21,6 +22,23 @@ export class SettlementController {
   @Post()
   create(@Body() body: CreateSettlementDto, @CurrentUser() user: AuthenticatedUser) {
     return this.settlements.create(body, user.id);
+  }
+
+  @Get()
+  @RequirePositions(
+    "chairman",
+    "general_manager",
+    "project_manager",
+    "contract_director",
+    "contract_staff",
+    "budget_director",
+    "budget_staff",
+    "finance_director",
+    "finance_staff",
+    "super_admin"
+  )
+  list(@Query("limit") limit?: string) {
+    return this.settlementRead.listRecent(limit);
   }
 
   @Get(":settlementId")

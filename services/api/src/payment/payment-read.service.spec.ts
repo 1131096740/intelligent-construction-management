@@ -1,6 +1,96 @@
 import { PaymentReadService } from "./payment-read.service";
 
 describe("PaymentReadService", () => {
+  it("builds payment ledger rows and summary from persisted requests and executions", async () => {
+    const prisma = {
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "payment-1",
+            projectId: "project-1",
+            settlementId: "settlement-1",
+            code: "FK-2026-011",
+            status: "approved_pending_payment",
+            requestedAmountCents: 49300000,
+            approvedAmountCents: 49300000,
+            paidAmountCents: 0,
+            updatedAt: new Date("2026-06-30T10:00:00.000Z")
+          },
+          {
+            id: "payment-2",
+            projectId: "project-1",
+            settlementId: "settlement-2",
+            code: "FK-2026-012",
+            status: "paid",
+            requestedAmountCents: 20000000,
+            approvedAmountCents: 20000000,
+            paidAmountCents: 0,
+            updatedAt: new Date("2026-07-01T10:00:00.000Z")
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-1",
+            code: "JS-2026-031"
+          },
+          {
+            id: "settlement-2",
+            code: "JS-2026-032"
+          }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "project-1",
+            name: "总部综合楼"
+          }
+        ])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            paymentRequestId: "payment-2",
+            amountCents: 20000000
+          }
+        ])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const ledger = await service.listRecent(20);
+
+    expect(prisma.paymentRequest.findMany).toHaveBeenCalledWith({
+      take: 20,
+      orderBy: { updatedAt: "desc" }
+    });
+    expect(ledger.rows[0]).toMatchObject({
+      id: "FK-2026-011",
+      paymentNo: "FK-2026-011",
+      settlementNo: "JS-2026-031",
+      project: "总部综合楼",
+      requestedAmount: "¥493,000.00",
+      approvalStatus: "已通过",
+      paymentStatus: "已批待付",
+      currentNode: "出纳付款登记",
+      ownerDepartment: "出纳/财务"
+    });
+    expect(ledger.rows[1]).toMatchObject({
+      paymentNo: "FK-2026-012",
+      paymentStatus: "已付款",
+      currentNode: "财务入账归档"
+    });
+    expect(ledger.summary).toEqual({
+      total: 2,
+      pendingApproval: 0,
+      orSign: 0,
+      pendingPayment: 1,
+      paid: 1
+    });
+  });
+
   it("builds payment detail from persisted payment request and executions", async () => {
     const prisma = {
       paymentRequest: {

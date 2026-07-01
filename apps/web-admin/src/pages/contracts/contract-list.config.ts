@@ -1,6 +1,6 @@
 import type { PrimaryTableCol } from "tdesign-vue-next";
 
-export type ContractStatusTone = "default" | "primary" | "warning" | "success";
+export type ContractStatusTone = "default" | "primary" | "warning" | "danger" | "success";
 
 export interface ContractFilterField {
   key: string;

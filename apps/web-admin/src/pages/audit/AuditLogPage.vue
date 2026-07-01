@@ -8,7 +8,7 @@
       <div class="actions">
         <t-button
           theme="primary"
-          @click="showNotice('审计导出接口尚未接入；当前页面先展示审计范围和静态台账。')"
+          @click="showNotice('导出审计暂未接入；当前先支持最近审计记录在线查询。')"
         >
           导出审计
         </t-button>
@@ -20,7 +20,7 @@
 
     <div class="summary-strip">
       <div
-        v-for="item in auditSummaryItems"
+        v-for="item in summaryValues"
         :key="item.label"
         class="summary-item"
       >
@@ -57,13 +57,13 @@
       <t-button
         class="filter-action"
         theme="primary"
-        @click="showNotice('当前审计台账为静态数据，查询条件接后端审计列表接口后生效。')"
+        @click="loadAuditLogs"
       >
         查询
       </t-button>
       <t-button
         class="filter-action"
-        @click="showNotice('筛选条件已保持为空；后端审计列表接口接入后可重置真实查询。')"
+        @click="loadAuditLogs"
       >
         重置
       </t-button>
@@ -84,8 +84,9 @@
         row-key="id"
         size="small"
         :columns="auditLedgerColumns"
-        :data="auditLogRows"
+        :data="auditRows"
         empty="暂无审计日志"
+        :loading="loading"
       >
         <template #action="{ row }">
           <t-tag
@@ -108,7 +109,7 @@
         <template #operation="{ row }">
           <t-link
             theme="primary"
-            @click="showNotice(`审计记录 ${row.id} 的详情页尚未拆分，当前追溯信息已在台账展示。`)"
+            @click="showNotice(`审计记录 ${row.id} 的追溯信息：${row.trace}`)"
           >
             详情
           </t-link>
@@ -119,17 +120,55 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import type { AuditTone } from "./audit-log.config";
+import { computed, onMounted, ref } from "vue";
+import { fetchAuditLogs } from "../../api/core-flow-read.api";
+import type { AuditLogRow, AuditTone } from "./audit-log.config";
 import {
   auditFilterFields,
   auditLedgerColumns,
-  auditLogRows,
   auditRequiredActions,
   auditSummaryItems
 } from "./audit-log.config";
 
 const message = ref("");
+const loading = ref(false);
+const auditRows = ref<AuditLogRow[]>([]);
+const summary = ref({
+  total: 0,
+  login: 0,
+  approval: 0,
+  file: 0,
+  security: 0
+});
+
+const summaryValues = computed(() => {
+  const values = [
+    summary.value.total,
+    summary.value.login,
+    summary.value.approval,
+    summary.value.file,
+    summary.value.security
+  ];
+  return auditSummaryItems.map((item, index) => ({ ...item, value: String(values[index] ?? 0) }));
+});
+
+onMounted(() => {
+  void loadAuditLogs();
+});
+
+async function loadAuditLogs() {
+  loading.value = true;
+  try {
+    const result = await fetchAuditLogs();
+    auditRows.value = result.rows;
+    summary.value = result.summary;
+    message.value = "";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "读取审计日志失败";
+  } finally {
+    loading.value = false;
+  }
+}
 
 function showNotice(text: string) {
   message.value = text;

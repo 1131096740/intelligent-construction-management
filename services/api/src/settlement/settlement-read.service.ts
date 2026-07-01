@@ -9,6 +9,64 @@ import { PrismaService } from "../database/prisma.service";
 export class SettlementReadService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async listRecent(rawLimit?: string | number) {
+    const take = this.limit(rawLimit);
+    const settlements = await this.prisma.settlement.findMany({
+      take,
+      orderBy: { updatedAt: "desc" }
+    });
+    const contractIds = [...new Set(settlements.map((settlement) => settlement.contractId))];
+    const termsIds = [...new Set(settlements.map((settlement) => settlement.paymentTermsVersionId))];
+    const projectIds = [...new Set(settlements.map((settlement) => settlement.projectId))];
+    const [contracts, terms, projects] = await Promise.all([
+      contractIds.length
+        ? this.prisma.contract.findMany({ where: { id: { in: contractIds } } })
+        : Promise.resolve([]),
+      termsIds.length
+        ? this.prisma.paymentTermsVersion.findMany({ where: { id: { in: termsIds } } })
+        : Promise.resolve([]),
+      projectIds.length
+        ? this.prisma.project.findMany({ where: { id: { in: projectIds } } })
+        : Promise.resolve([])
+    ]);
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const termsById = new Map(terms.map((term) => [term.id, term]));
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+
+    const rows = settlements.map((settlement) => {
+      const contract = contractById.get(settlement.contractId);
+      const termsVersion = termsById.get(settlement.paymentTermsVersionId);
+      const status = this.statusView(settlement.status);
+
+      return {
+        id: settlement.code,
+        settlementNo: settlement.code,
+        contractNo: contract?.code ?? contract?.temporaryCode ?? settlement.contractId,
+        project: projectById.get(settlement.projectId)?.name ?? settlement.projectId,
+        period: settlement.periodLabel,
+        amount: this.formatMoney(settlement.amountCents),
+        paymentTermsVersion: termsVersion ? `v${termsVersion.versionNo}` : "-",
+        currentNode: this.nextActionLabel(settlement.status),
+        nodeTone: status.tone,
+        ownerDepartment: this.currentOwnerLabel(settlement.status),
+        updatedAt: this.date(settlement.updatedAt)
+      };
+    });
+
+    return {
+      rows,
+      summary: {
+        total: rows.length,
+        inApproval: settlements.filter((settlement) => settlement.status === "approval_pending").length,
+        pendingArchive: settlements.filter((settlement) =>
+          ["approved_pending_archive", "archive_pending", "pending_archive_confirm"].includes(settlement.status)
+        ).length,
+        effective: settlements.filter((settlement) => settlement.status === "effective").length,
+        payable: settlements.filter((settlement) => settlement.status === "effective").length
+      }
+    };
+  }
+
   async getDetail(settlementId: string): Promise<SettlementDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(settlementId);
@@ -191,6 +249,22 @@ export class SettlementReadService {
     return labels[status] ?? "待处理";
   }
 
+  private currentOwnerLabel(status: string): string {
+    const labels: Record<string, string> = {
+      approval_pending: "审批节点处理人",
+      approval_rejected: "项目经理",
+      withdrawn: "项目经理",
+      approved_pending_archive: "合同部成员",
+      archive_pending: "合同部主管",
+      pending_archive_confirm: "合同部主管",
+      effective: "系统归档",
+      rejected: "项目经理",
+      voided: "系统归档"
+    };
+
+    return labels[status] ?? "合同部";
+  }
+
   private effectivenessSteps(status: string): SettlementDetailReadModel["effectivenessSteps"] {
     if (status === "effective") {
       return [
@@ -256,5 +330,15 @@ export class SettlementReadService {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;
+  }
+
+  private limit(rawLimit?: string | number) {
+    const parsed = typeof rawLimit === "number" ? rawLimit : Number(rawLimit ?? 100);
+    if (!Number.isFinite(parsed)) return 100;
+    return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+  }
+
+  private date(value: Date) {
+    return value.toLocaleString("zh-CN", { hour12: false });
   }
 }

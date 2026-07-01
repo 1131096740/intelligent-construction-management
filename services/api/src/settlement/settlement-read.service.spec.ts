@@ -1,6 +1,89 @@
 import { SettlementReadService } from "./settlement-read.service";
 
 describe("SettlementReadService", () => {
+  it("builds settlement ledger rows and summary from persisted settlements", async () => {
+    const prisma = {
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-1",
+            projectId: "project-1",
+            contractId: "contract-1",
+            paymentTermsVersionId: "terms-version-2",
+            code: "JS-2026-031",
+            periodLabel: "2026-06",
+            status: "archive_pending",
+            amountCents: 58000000,
+            updatedAt: new Date("2026-06-30T10:00:00.000Z")
+          },
+          {
+            id: "settlement-2",
+            projectId: "project-1",
+            contractId: "contract-1",
+            paymentTermsVersionId: "terms-version-2",
+            code: "JS-2026-032",
+            periodLabel: "2026-07",
+            status: "effective",
+            amountCents: 62000000,
+            updatedAt: new Date("2026-07-01T10:00:00.000Z")
+          }
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-2026-009",
+            temporaryCode: null
+          }
+        ])
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "terms-version-2",
+            versionNo: 2
+          }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "project-1",
+            name: "总部综合楼"
+          }
+        ])
+      }
+    };
+    const service = new SettlementReadService(prisma as never);
+
+    const ledger = await service.listRecent();
+
+    expect(prisma.settlement.findMany).toHaveBeenCalledWith({
+      take: 100,
+      orderBy: { updatedAt: "desc" }
+    });
+    expect(ledger.rows[0]).toMatchObject({
+      id: "JS-2026-031",
+      settlementNo: "JS-2026-031",
+      contractNo: "HT-2026-009",
+      project: "总部综合楼",
+      period: "2026-06",
+      amount: "¥580,000.00",
+      paymentTermsVersion: "v2",
+      currentNode: "主管确认归档",
+      nodeTone: "primary",
+      ownerDepartment: "合同部主管"
+    });
+    expect(ledger.summary).toEqual({
+      total: 2,
+      inApproval: 0,
+      pendingArchive: 1,
+      effective: 1,
+      payable: 1
+    });
+  });
+
   it("builds settlement detail from persisted settlement and payment terms", async () => {
     const prisma = {
       settlement: {

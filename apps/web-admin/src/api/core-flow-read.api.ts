@@ -224,6 +224,145 @@ export interface PrivateFileDownloadTicketReadModel {
   downloadUrl: string;
 }
 
+export type LedgerTone = "default" | "primary" | "warning" | "danger" | "success";
+
+export interface ContractLedgerListReadModel {
+  rows: Array<{
+    id: string;
+    contractNo: string;
+    name: string;
+    project: string;
+    counterparty: string;
+    amount: string;
+    version: string;
+    currentNode: string;
+    nodeTone: LedgerTone;
+    ownerDepartment: string;
+    updatedAt: string;
+    paymentTermsVersion?: string;
+  }>;
+  summary: {
+    total: number;
+    inApproval: number;
+    pendingSeal: number;
+    pendingArchive: number;
+    effective: number;
+  };
+}
+
+export interface SettlementLedgerListReadModel {
+  rows: Array<{
+    id: string;
+    settlementNo: string;
+    contractNo: string;
+    project: string;
+    period: string;
+    amount: string;
+    paymentTermsVersion: string;
+    currentNode: string;
+    nodeTone: LedgerTone;
+    ownerDepartment: string;
+    updatedAt: string;
+  }>;
+  summary: {
+    total: number;
+    inApproval: number;
+    pendingArchive: number;
+    effective: number;
+    payable: number;
+  };
+}
+
+export interface PaymentLedgerListReadModel {
+  rows: Array<{
+    id: string;
+    paymentNo: string;
+    settlementNo: string;
+    project: string;
+    requestedAmount: string;
+    approvalStatus: string;
+    approvalTone: LedgerTone;
+    paymentStatus: string;
+    paymentTone: LedgerTone;
+    currentNode: string;
+    ownerDepartment: string;
+    updatedAt: string;
+  }>;
+  summary: {
+    total: number;
+    pendingApproval: number;
+    orSign: number;
+    pendingPayment: number;
+    paid: number;
+  };
+}
+
+export interface AuditLogListReadModel {
+  rows: Array<{
+    id: string;
+    occurredAt: string;
+    actor: string;
+    action: string;
+    actionTone: LedgerTone;
+    businessType: string;
+    businessTarget: string;
+    ipAddress: string;
+    resultRisk: string;
+    riskTone: LedgerTone;
+    trace: string;
+  }>;
+  summary: {
+    total: number;
+    login: number;
+    approval: number;
+    file: number;
+    security: number;
+  };
+}
+
+export interface ArchiveListReadModel {
+  rows: Array<{
+    id: string;
+    documentNo: string;
+    documentType: string;
+    businessRef: string;
+    project: string;
+    fileSource: string;
+    archiveStatus: string;
+    statusTone: Exclude<LedgerTone, "danger">;
+    uploadDepartment: string;
+    confirmedBy: string;
+    lastAction: string;
+  }>;
+  summary: {
+    total: number;
+    contractArchives: number;
+    settlementArchives: number;
+    paymentFiles: number;
+    pending: number;
+  };
+}
+
+export function fetchContractLedger() {
+  return readJson<ContractLedgerListReadModel>("/contracts");
+}
+
+export function fetchSettlementLedger() {
+  return readJson<SettlementLedgerListReadModel>("/settlements");
+}
+
+export function fetchPaymentLedger() {
+  return readJson<PaymentLedgerListReadModel>("/payments");
+}
+
+export function fetchAuditLogs() {
+  return readJson<AuditLogListReadModel>("/audit-logs");
+}
+
+export function fetchArchives() {
+  return readJson<ArchiveListReadModel>("/archives");
+}
+
 export function uploadPrivateFile(file: Blob, fileName: string) {
   const form = new FormData();
   form.append("file", file, fileName);

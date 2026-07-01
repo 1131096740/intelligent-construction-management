@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
@@ -27,6 +28,23 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.contracts.createDraft(body, user.id);
+  }
+
+  @Get()
+  @RequirePositions(
+    "chairman",
+    "general_manager",
+    "project_manager",
+    "contract_director",
+    "contract_staff",
+    "budget_director",
+    "budget_staff",
+    "finance_director",
+    "finance_staff",
+    "super_admin"
+  )
+  list(@Query("limit") limit?: string) {
+    return this.contractRead.listRecent(limit);
   }
 
   @Get(":contractId")

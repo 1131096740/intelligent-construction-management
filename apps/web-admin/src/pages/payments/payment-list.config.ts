@@ -1,6 +1,6 @@
 import type { PrimaryTableCol } from "tdesign-vue-next";
 
-export type PaymentTone = "default" | "primary" | "warning" | "success";
+export type PaymentTone = "default" | "primary" | "warning" | "danger" | "success";
 
 export interface PaymentFilterField {
   key: string;

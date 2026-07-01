@@ -18,7 +18,7 @@
           type="file"
           @change="submitUpload"
         >
-        <t-button @click="showNotice('审计导出接口尚未接入；当前可在审计日志页查看规则和记录。')">
+        <t-button @click="showNotice('下载审计请在审计日志页查看；当前资料库先支持最近归档资料查询。')">
           下载审计
         </t-button>
       </div>
@@ -26,7 +26,7 @@
 
     <div class="summary-strip">
       <div
-        v-for="item in archiveSummaryItems"
+        v-for="item in summaryValues"
         :key="item.label"
         class="summary-item"
       >
@@ -63,13 +63,13 @@
       <t-button
         class="filter-action"
         theme="primary"
-        @click="showNotice('当前资料库为静态台账，查询条件接后端列表接口后生效。')"
+        @click="loadArchives"
       >
         查询
       </t-button>
       <t-button
         class="filter-action"
-        @click="showNotice('筛选条件已保持为空；后端列表接口接入后可重置真实查询。')"
+        @click="loadArchives"
       >
         重置
       </t-button>
@@ -90,8 +90,9 @@
         row-key="id"
         size="small"
         :columns="archiveLedgerColumns"
-        :data="archiveLedgerRows"
+        :data="archiveRows"
         empty="暂无归档资料"
+        :loading="loading"
       >
         <template #archiveStatus="{ row }">
           <t-tag
@@ -106,7 +107,7 @@
           <div class="table-actions">
             <t-link
               theme="primary"
-              @click="showNotice(`资料 ${row.documentNo} 的详情页尚未拆分，当前行信息已在台账展示。`)"
+              @click="showNotice(`资料 ${row.documentNo} 已关联 ${row.businessRef}`)"
             >
               查看
             </t-link>
@@ -124,13 +125,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { uploadPrivateFile } from "../../api/core-flow-read.api";
-import type { ArchiveTone } from "./archive-list.config";
+import { computed, onMounted, ref } from "vue";
+import { fetchArchives, uploadPrivateFile } from "../../api/core-flow-read.api";
+import type { ArchiveLedgerRow, ArchiveTone } from "./archive-list.config";
 import {
   archiveFilterFields,
   archiveLedgerColumns,
-  archiveLedgerRows,
   archiveRules,
   archiveSummaryItems
 } from "./archive-list.config";
@@ -138,10 +138,50 @@ import {
 const uploadInput = ref<HTMLInputElement | null>(null);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
+const loading = ref(false);
+const archiveRows = ref<ArchiveLedgerRow[]>([]);
+const summary = ref({
+  total: 0,
+  contractArchives: 0,
+  settlementArchives: 0,
+  paymentFiles: 0,
+  pending: 0
+});
+
+const summaryValues = computed(() => {
+  const values = [
+    summary.value.total,
+    summary.value.contractArchives,
+    summary.value.settlementArchives,
+    summary.value.paymentFiles,
+    summary.value.pending
+  ];
+  return archiveSummaryItems.map((item, index) => ({ ...item, value: String(values[index] ?? 0) }));
+});
+
+onMounted(() => {
+  void loadArchives();
+});
 
 function showNotice(text: string) {
   message.value = text;
   messageTone.value = "default";
+}
+
+async function loadArchives() {
+  loading.value = true;
+  try {
+    const result = await fetchArchives();
+    archiveRows.value = result.rows;
+    summary.value = result.summary;
+    message.value = "";
+    messageTone.value = "default";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "读取资料库失败";
+    messageTone.value = "danger";
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function submitUpload(event: Event) {
@@ -155,6 +195,7 @@ async function submitUpload(event: Event) {
     const uploaded = await uploadPrivateFile(file, file.name);
     message.value = `文件已上传，文件编号：${uploaded.id}`;
     messageTone.value = "success";
+    await loadArchives();
   } catch (error) {
     message.value = error instanceof Error ? error.message : "上传资料失败";
     messageTone.value = "danger";
