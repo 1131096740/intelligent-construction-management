@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-07-02 (CodeX)：完成腾讯云轻量服务器首版 Web/API 部署记录。服务器为 Ubuntu 24.04，公网 IP `162.14.116.192`；`jgzg.site` 与 `www.jgzg.site` 已解析并启用 HTTPS；Nginx 反向代理、`jiangkong-api` systemd 守护、PostgreSQL、每日本机备份和 certbot + DNSPod API 自动续期已配置并验证 `/api/health` 正常。上线安全提醒已记录：当前仍按用户确认暂用 seed 通用密码 `Jgzg@2026`，正式试运行前必须修改/停用；DNSPod API Token 仅保存在服务器 `/etc/jiangkong/dnspod.env`（root 600），不得入仓、截图或外传，若暴露必须立即吊销重建。
 - 2026-07-01 (CodeX)：启动 Web/API 上线前收口，小程序明确暂缓、不纳入本轮 P0。采用 subagent-driven 方式确认最短上线缺口后，补齐真实运营台账读取：后端新增/完善 `GET /contracts`、`GET /settlements`、`GET /payments`、`GET /archives`、`GET /audit-logs`，Web 合同/结算/付款/资料库/审计页面从静态表格切换为后端真实数据、加载态、错误态和汇总数。合同、结算、付款列表保持轻量 `limit=100` 读取，筛选控件本轮只作为刷新入口，复杂筛选/分页留 UAT 后按真实使用频率补。验证：API 台账服务目标测试 12 个、Web API/页面配置相关测试 126 个、API/Web typecheck、API/Web lint 均通过。
 - 2026-07-01 (CodeX)：同步 Obsidian 项目笔记到当前真实进度。已更新 iCloud Obsidian `Ai-Obsidian/建工智管` 下总览、上线就绪度、待改功能、审批流、权限系统、页面清单、数据库、后端模块清单、知识库总览、第一阶段 MVP、项目目标与开发规格等文档；新增 `建工智管_项目状态报告_20260701.md`，并将 2026-06-23 状态报告标注为历史快照。同步 repo 内 `obsidian-current/` 镜像。当前口径：后端核心闭环与 Web 合同工作台 Phase 1 已基本收口；上线前 P0 是生产等价环境、真实数据初始化、合同母版人工验收、安全验收、最小运营台账和部署运维；小程序仍未开始。
 - 2026-07-01 (CodeX)：完成 Web 管理端企业级 UI P0/P1 收口。采用 subagent-driven 方式复核并修复后台首屏、窄屏布局、合同工作台就绪面板、模板中心和付款详情的上线观感问题：管理端标题去除 MVP 口径，窄屏下侧栏改为顶部可达布局并避免挤压主内容；合同台账默认进入“我的草稿”真实列表/空态，草稿更新时间改为中文本地格式；模板中心/模板编辑器移除“后端未返回”等技术文案；付款详情金额按“元”录入并提交前转分，时间改为原生日期时间控件，文件/人员字段改为业务“编号”口径，付款状态说明不再暴露 `approved_pending_payment`；合同工作台 read model 补 `readinessSnapshot` 顶层映射，前端就绪面板兼容结构化 `blocking/warnings`，未检查时显示“待补全”而不再出现“未就绪但无阻断项”的矛盾状态。验证：Web 125 个单测、Web typecheck/lint/build，API 付款 read + 合同工作台 read model 目标测试 32 个、API typecheck/lint/build、`git diff --check`、Browser/IAB 登录后桌面与窄屏截图检查均通过。
@@ -109,8 +110,9 @@
 - [ ] 数据库上线：执行并记录 `prisma migrate deploy`，确认 PostgreSQL 不公网暴露，备份策略和恢复演练通过。
 - [ ] 文件与对象存储：COS 私有桶、后端短时效下载、上传/下载权限、敏感下载二次确认、审计日志在生产环境实测通过。
 - [ ] 账号与权限：初始化真实岗位/项目授权，停用或改掉种子账号通用密码 `Jgzg@2026`，确认合同员/合同部主管能创建草稿并发起审批。
+- [ ] DNSPod API Token：生产服务器 `/etc/jiangkong/dnspod.env` 保存证书自动续期凭据（root 600），不得提交、截图或外传；如聊天、截图或人员流转中暴露，必须立即在 DNSPod 吊销并重建。
 - [ ] 合同工作台上线验收：在生产等价环境跑 `verify:contract-workbench`，重新生成 `contract-master:review-pack`，抽查四类 DOCX/PDF。
-- [ ] 基础上线项：HTTPS/域名、反向代理、日志、进程守护、数据库/附件备份、错误告警、服务器时间同步确认完成。
+- [ ] 基础上线项：HTTPS/域名、反向代理、进程守护、数据库/附件每日本机备份已完成；日志、错误告警、异地备份、恢复演练、服务器时间同步仍需确认。
 
 ---
 
@@ -222,7 +224,7 @@
 
 ## Milestone 8：部署上线
 
-- [ ] 生产环境变量 / 密钥管理
-- [ ] HTTPS / 域名
-- [ ] PostgreSQL 不公开 + 每日备份且演练恢复
-- [ ] 附件备份 / 日志监控 / 上线初始化脚本
+- [~] 生产环境变量 / 密钥管理（服务器 env 与证书续期凭据已配置；COS、正式账号、密钥轮换制度待收口）
+- [x] HTTPS / 域名（`jgzg.site` / `www.jgzg.site`，certbot + DNSPod API 自动续期）
+- [~] PostgreSQL 不公开 + 每日备份且演练恢复（本机每日备份已配置；恢复演练和异地备份待补）
+- [~] 附件备份 / 日志监控 / 上线初始化脚本（本机附件备份已配置；日志告警和真实数据初始化待补）
