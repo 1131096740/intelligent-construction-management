@@ -37,8 +37,23 @@ function paragraph(text: string): string {
   return `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
 }
 
+function table(rows: string[][]): string {
+  return `<w:tbl>${rows
+    .map(
+      (row) =>
+        `<w:tr>${row
+          .map((cell) => `<w:tc><w:p><w:r><w:t xml:space="preserve">${cell}</w:t></w:r></w:p></w:tc>`)
+          .join("")}</w:tr>`
+    )
+    .join("")}</w:tbl>`;
+}
+
 function renderedDocumentXml(buffer: Buffer): string {
   return new PizZip(buffer).file("word/document.xml")?.asText() ?? "";
+}
+
+function countOccurrences(text: string, value: string): number {
+  return text.split(value).length - 1;
 }
 
 function requiredValues(values: Record<string, unknown> = {}) {
@@ -115,6 +130,49 @@ describe("contract DOCX renderer", () => {
     expect(xml).toContain("盘螺");
     expect(xml).toContain("HRB400E Φ8");
     expect(xml).not.toContain("bill.materials");
+  });
+
+  it("merges repeated bill tables after rendering a table-level loop", () => {
+    const template = createDocx(
+      [
+        paragraph("{#bill.materials}"),
+        table([
+          ["序号", "货物名称", "规格型号", "计量单位", "数量", "含税单价", "税率(%)", "价税合计"],
+          ["", "{itemName}", "{specification}", "{unit}", "{quantity}", "{unitPrice}", "{taxRatePercent}", "{taxInclusiveAmount}"]
+        ]),
+        paragraph("{/bill.materials}")
+      ].join("")
+    );
+
+    const result = renderContractDocx(template, {
+      values: requiredValues({
+        "bill.materials": [
+          {
+            itemName: "钢筋",
+            specification: "HRB400E 直径18",
+            unit: "吨",
+            quantity: "10.000",
+            unitPrice: "10000.0000",
+            taxRatePercent: "13",
+            taxInclusiveAmount: "100000.00"
+          },
+          {
+            itemName: "水泥",
+            specification: "P.O 42.5",
+            unit: "吨",
+            quantity: "20.000",
+            unitPrice: "480.0000",
+            taxRatePercent: "13",
+            taxInclusiveAmount: "9600.00"
+          }
+        ]
+      })
+    });
+
+    const xml = renderedDocumentXml(result);
+    expect(countOccurrences(xml, "货物名称")).toBe(1);
+    expect(xml).toContain("钢筋");
+    expect(xml).toContain("水泥");
   });
 
   it("uses formatted money and uppercase money values", () => {

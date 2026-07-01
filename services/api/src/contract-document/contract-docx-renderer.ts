@@ -7,6 +7,12 @@ const REQUIRED_VALUES = [
   "contract.temporaryCode",
   "document.watermark"
 ] as const;
+const MERGEABLE_BILL_TABLE_HEADERS = new Set([
+  "序号货物名称规格型号计量单位数量含税单价税率(%)价税合计",
+  "机械设备名称或费用名称规格型号暂估数量计价单位含税租金单价税率(%)价税合计租金备注",
+  "序号项目名称单位工程量含税单价合计备注",
+  "名称规格/说明单位数量单价金额备注"
+]);
 const CHINESE_DIGITS = ["零", "壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖"];
 const SECTION_UNITS = ["", "拾", "佰", "仟"];
 const GROUP_UNITS = ["", "万", "亿", "兆", "京"];
@@ -119,6 +125,66 @@ function assertRequiredValues(
   }
 }
 
+function tableRows(tableXml: string): string[] {
+  return tableXml.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) ?? [];
+}
+
+function rowText(rowXml: string): string {
+  return [...rowXml.matchAll(/<w:t(?: [^>]*)?>(.*?)<\/w:t>/g)]
+    .map((match) => match[1])
+    .join("");
+}
+
+function tableHeaderText(tableXml: string): string {
+  return rowText(tableRows(tableXml)[0] ?? "");
+}
+
+function mergeTableRows(targetTableXml: string, sourceTableXml: string): string {
+  const sourceDataRows = tableRows(sourceTableXml).slice(1).join("");
+  if (!sourceDataRows) return targetTableXml;
+  return targetTableXml.replace("</w:tbl>", `${sourceDataRows}</w:tbl>`);
+}
+
+function mergeRepeatedBillTables(documentXml: string): string {
+  const tablePattern = /<w:tbl\b[\s\S]*?<\/w:tbl>/g;
+  let result = "";
+  let cursor = 0;
+  let pendingTable: { header: string; xml: string } | undefined;
+
+  for (const match of documentXml.matchAll(tablePattern)) {
+    const tableXml = match[0];
+    const tableStart = match.index ?? 0;
+    const tableEnd = tableStart + tableXml.length;
+    const between = documentXml.slice(cursor, tableStart);
+    const header = tableHeaderText(tableXml);
+
+    if (
+      pendingTable &&
+      between.trim() === "" &&
+      pendingTable.header === header &&
+      MERGEABLE_BILL_TABLE_HEADERS.has(header)
+    ) {
+      pendingTable = {
+        header,
+        xml: mergeTableRows(pendingTable.xml, tableXml)
+      };
+      cursor = tableEnd;
+      continue;
+    }
+
+    if (pendingTable) {
+      result += pendingTable.xml + between;
+    } else {
+      result += between;
+    }
+    pendingTable = { header, xml: tableXml };
+    cursor = tableEnd;
+  }
+
+  if (pendingTable) return result + pendingTable.xml + documentXml.slice(cursor);
+  return documentXml;
+}
+
 export function renderContractDocx(
   templateBuffer: Buffer,
   renderInput: ContractDocumentRenderInput,
@@ -145,7 +211,12 @@ export function renderContractDocx(
       nullGetter: () => ""
     });
     document.render(renderInput.values);
-    return document.getZip().generate({ type: "nodebuffer" });
+    const renderedZip = document.getZip();
+    const documentXml = renderedZip.file("word/document.xml")?.asText();
+    if (documentXml) {
+      renderedZip.file("word/document.xml", mergeRepeatedBillTables(documentXml));
+    }
+    return renderedZip.generate({ type: "nodebuffer" });
   } catch (cause) {
     throw new Error("Failed to render contract DOCX template", { cause });
   }
