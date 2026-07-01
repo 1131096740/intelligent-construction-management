@@ -56,8 +56,8 @@
           </div>
           <div class="action-fields">
             <t-input
-              v-model="paymentActionForm.approvedAmountCents"
-              placeholder="审批金额(分)"
+              v-model="paymentActionForm.approvedAmountYuan"
+              placeholder="审批金额（元）"
             />
             <t-input
               v-model="paymentActionForm.approvalComment"
@@ -100,16 +100,18 @@
           </div>
           <div class="action-fields">
             <t-input
-              v-model="paymentActionForm.executionAmountCents"
-              placeholder="实付金额(分)"
+              v-model="paymentActionForm.executionAmountYuan"
+              placeholder="实付金额（元）"
             />
-            <t-input
+            <input
               v-model="paymentActionForm.paidAt"
-              placeholder="付款时间 ISO"
-            />
+              class="native-input"
+              type="datetime-local"
+              aria-label="付款时间"
+            >
             <t-input
               v-model="paymentActionForm.voucherFileId"
-              placeholder="付款凭证文件ID"
+              placeholder="付款凭证编号（上传后自动带入）"
             />
             <t-input
               v-model="paymentActionForm.executionConfirmationPassword"
@@ -139,13 +141,15 @@
           </div>
           <div class="action-fields">
             <t-input
-              v-model="paymentActionForm.financeAmountCents"
-              placeholder="入账金额(分)"
+              v-model="paymentActionForm.financeAmountYuan"
+              placeholder="入账金额（元）"
             />
-            <t-input
+            <input
               v-model="paymentActionForm.occurredAt"
-              placeholder="入账时间 ISO"
-            />
+              class="native-input"
+              type="datetime-local"
+              aria-label="入账时间"
+            >
           </div>
           <t-button
             theme="primary"
@@ -165,7 +169,7 @@
           <div class="action-fields">
             <t-input
               v-model="paymentActionForm.pdfFileId"
-              placeholder="PDF文件ID"
+              placeholder="归档 PDF 编号"
             />
           </div>
           <t-button
@@ -194,7 +198,7 @@
           <div class="action-fields">
             <t-input
               v-model="paymentActionForm.assignmentUserId"
-              placeholder="目标用户ID"
+              placeholder="目标人员编号"
             />
           </div>
           <div class="action-buttons">
@@ -237,7 +241,7 @@
           <div class="action-fields">
             <t-input
               v-model="paymentActionForm.downloadFileId"
-              placeholder="文件ID"
+              placeholder="文件编号"
             />
             <t-input
               v-model="paymentActionForm.downloadPassword"
@@ -396,14 +400,14 @@ const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
 const selectedPaymentVoucherFile = ref<File | null>(null);
 const paymentActionForm = reactive({
-  approvedAmountCents: "",
+  approvedAmountYuan: "",
   approvalComment: "",
-  executionAmountCents: "",
-  paidAt: new Date().toISOString(),
+  executionAmountYuan: "",
+  paidAt: toDatetimeLocalValue(new Date()),
   voucherFileId: "",
   executionConfirmationPassword: "",
-  financeAmountCents: "",
-  occurredAt: new Date().toISOString(),
+  financeAmountYuan: "",
+  occurredAt: toDatetimeLocalValue(new Date()),
   pdfFileId: "",
   assignmentUserId: "",
   downloadFileId: "",
@@ -463,21 +467,48 @@ onMounted(async () => {
   await reloadPaymentDetail();
 });
 
-function parseCentAmount(raw: string, label: string) {
-  const amount = Number(raw);
-  if (!Number.isInteger(amount) || amount <= 0) {
-    throw new Error(`${label}必须为正整数分`);
+function toDatetimeLocalValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
+
+function toIsoDatetime(raw: string, label: string) {
+  const value = requiredText(raw, label);
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${label}格式不正确`);
+  }
+
+  return date.toISOString();
+}
+
+function parseYuanAmount(raw: string, label: string) {
+  const value = raw.trim();
+
+  if (!/^\d+(?:\.\d{1,2})?$/.test(value)) {
+    throw new Error(`${label}必须为正数，最多两位小数`);
+  }
+
+  const [yuanText, centText = ""] = value.split(".");
+  const amount = Number(yuanText) * 100 + Number(centText.padEnd(2, "0"));
+
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error(`${label}必须为正数，最多两位小数`);
   }
 
   return amount;
 }
 
-function optionalCentAmount(raw: string, label: string) {
+function optionalYuanAmount(raw: string, label: string) {
   if (!raw.trim()) {
     return undefined;
   }
 
-  return parseCentAmount(raw, label);
+  return parseYuanAmount(raw, label);
 }
 
 function requiredText(raw: string, label: string) {
@@ -523,7 +554,7 @@ async function submitApproval(decision: "approve" | "reject") {
       decision,
       approvedAmountCents:
         decision === "approve"
-          ? optionalCentAmount(paymentActionForm.approvedAmountCents, "审批金额")
+          ? optionalYuanAmount(paymentActionForm.approvedAmountYuan, "审批金额")
           : undefined,
       comment: paymentActionForm.approvalComment.trim() || undefined
     })
@@ -546,11 +577,11 @@ async function submitExecution() {
     const uploadedFileId = file ? (await uploadPrivateFile(file, file.name)).id : "";
 
     return recordPaymentExecution(paymentId, {
-      amountCents: parseCentAmount(paymentActionForm.executionAmountCents, "实付金额"),
-      paidAt: requiredText(paymentActionForm.paidAt, "付款时间"),
+      amountCents: parseYuanAmount(paymentActionForm.executionAmountYuan, "实付金额"),
+      paidAt: toIsoDatetime(paymentActionForm.paidAt, "付款时间"),
       voucherFileId: requiredText(
         uploadedFileId || paymentActionForm.voucherFileId,
-        "付款凭证文件ID"
+        "付款凭证编号"
       ),
       confirmationPassword: requiredText(
         paymentActionForm.executionConfirmationPassword,
@@ -565,8 +596,8 @@ async function submitFinance() {
 
   await runPaymentAction("finance", () =>
     recordPaymentFinance(paymentId, {
-      amountCents: parseCentAmount(paymentActionForm.financeAmountCents, "入账金额"),
-      occurredAt: requiredText(paymentActionForm.occurredAt, "入账时间")
+      amountCents: parseYuanAmount(paymentActionForm.financeAmountYuan, "入账金额"),
+      occurredAt: toIsoDatetime(paymentActionForm.occurredAt, "入账时间")
     })
   );
 }
@@ -576,7 +607,7 @@ async function submitPdfArchive() {
 
   await runPaymentAction("pdfArchive", () =>
     recordPaymentPdfArchive(paymentId, {
-      fileId: requiredText(paymentActionForm.pdfFileId, "PDF文件ID")
+      fileId: requiredText(paymentActionForm.pdfFileId, "归档 PDF 编号")
     })
   );
 }
@@ -601,7 +632,7 @@ async function submitPaymentReminder() {
 
 async function submitPaymentAssignment(kind: "transfer" | "delegate") {
   const paymentId = String(route.params.paymentId ?? "FK-2026-006");
-  const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标用户ID");
+  const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标人员编号");
 
   await runPaymentAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
     kind === "transfer"
@@ -613,7 +644,7 @@ async function submitPaymentAssignment(kind: "transfer" | "delegate") {
 async function submitPaymentFileDownload() {
   await runPaymentAction("download", async () => {
     const ticket = await createPrivateFileDownloadTicket(
-      requiredText(paymentActionForm.downloadFileId, "文件ID"),
+      requiredText(paymentActionForm.downloadFileId, "文件编号"),
       {
         confirmationPassword: requiredText(paymentActionForm.downloadPassword, "当前登录密码")
       }
@@ -868,7 +899,8 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
   gap: 8px;
 }
 
-.file-input {
+.file-input,
+.native-input {
   box-sizing: border-box;
   width: 100%;
   min-height: 32px;

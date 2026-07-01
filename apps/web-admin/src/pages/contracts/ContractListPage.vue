@@ -138,6 +138,9 @@
           <template #contractTypeKey="{ row }">
             {{ contractTypeLabel(row.contractTypeKey) }}
           </template>
+          <template #updatedAt="{ row }">
+            {{ formatDraftUpdatedAt(row.updatedAt) }}
+          </template>
           <template #operation="{ row }">
             <t-link
               theme="primary"
@@ -173,6 +176,9 @@
           <template #contractTypeKey="{ row }">
             {{ contractTypeLabel(row.contractTypeKey) }}
           </template>
+          <template #updatedAt="{ row }">
+            {{ formatDraftUpdatedAt(row.updatedAt) }}
+          </template>
           <template #operation="{ row }">
             <t-link
               theme="primary"
@@ -202,7 +208,7 @@ import { contractTypeLabel } from "./contract-labels";
 
 const router = useRouter();
 const noticeMessage = ref("");
-const activeTab = ref<"ledger" | "my" | "voided">("ledger");
+const activeTab = ref<"ledger" | "my" | "voided">("my");
 
 // Draft list rows mirror the backend Contract read model fields returned by
 // listDrafts (raw Contract rows): name may be empty for fresh drafts, so
@@ -232,6 +238,14 @@ const draftsError = ref("");
 const voidedDrafts = ref<ContractDraftRow[]>([]);
 const voidedLoading = ref(false);
 const voidedError = ref("");
+const draftUpdatedAtFormatter = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false
+});
 
 async function loadMyDrafts() {
   draftsLoading.value = true;
@@ -280,6 +294,13 @@ function openWorkbench(contractId: string) {
 
 function showNotice(message: string) {
   noticeMessage.value = message;
+}
+
+function formatDraftUpdatedAt(value?: string | null) {
+  if (!value) return "暂无更新时间";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "暂无更新时间";
+  return draftUpdatedAtFormatter.format(date);
 }
 
 function statusTagTheme(tone: ContractStatusTone) {

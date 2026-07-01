@@ -89,6 +89,6 @@ export const paymentLedgerRows: PaymentLedgerRow[] = [];
 export const paymentRules = [
   "只能从已生效结算创建付款申请",
   "所有付款审批需董事长/总经理二选一或签",
-  "审批通过后进入 approved_pending_payment，不代表已付款",
+  "审批通过后进入已批待付，不代表已付款",
   "出纳/财务登记实付并上传付款凭证"
 ];

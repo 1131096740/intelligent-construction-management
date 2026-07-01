@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>{{ templateName }}</h1>
-        <p>后端详情当前只返回模板主表；版本 ID 需来自创建/克隆/审批返回结果后再维护</p>
+        <p>维护字段、条款、清单、附件与版本治理状态</p>
       </div>
       <t-space>
         <t-button @click="action('clone')">
@@ -41,11 +41,11 @@
       <div class="form-grid">
         <label><span>当前版本 ID</span><t-input
           v-model="versionId"
-          placeholder="后端暂未返回版本列表，请粘贴版本 ID"
+          placeholder="暂无版本时，请先创建或克隆草稿版本"
         /></label>
         <label><span>变更摘要</span><t-input v-model="changeSummary" /></label>
         <label><span>模板状态</span><t-input
-          :value="template?.status ? templateStatusLabel(String(template.status)) : '后端未返回'"
+          :value="template?.status ? templateStatusLabel(String(template.status)) : '暂无状态记录'"
           readonly
         /></label>
         <t-button

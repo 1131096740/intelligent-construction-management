@@ -55,7 +55,7 @@ describe("payment detail page configuration", () => {
   it("states the traceability rules for payment detail", () => {
     expect(paymentTraceRules).toEqual([
       "付款申请只能来自已生效结算",
-      "审批通过进入 approved_pending_payment",
+      "审批通过进入已批待付",
       "审批通过不等于实际付款完成",
       "实付登记必须上传付款凭证并写入审计日志"
     ]);

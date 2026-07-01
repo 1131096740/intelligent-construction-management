@@ -169,6 +169,7 @@ export class ContractWorkbenchService {
     return this.toReadModel({
       contract,
       version,
+      readiness: this.readinessFromSnapshot(version.readinessSnapshot),
       bills: bills.map((bill) => ({
         ...bill,
         rows: rows
@@ -1293,6 +1294,53 @@ export class ContractWorkbenchService {
 
   private toReadModel<T>(value: T): T {
     return this.convertReadValue(value) as T;
+  }
+
+  private readinessFromSnapshot(snapshot: unknown) {
+    const record = this.objectValue(snapshot);
+    const blocking = this.readinessEntries(record["blocking"]);
+    const warnings = this.readinessEntries(record["warnings"]);
+    const blockingMessages =
+      blocking.length > 0 ? blocking.map((item) => item.message) : this.readinessMessages(record["blockingMessages"]);
+    const warningMessages =
+      warnings.length > 0 ? warnings.map((item) => item.message) : this.readinessMessages(record["warningMessages"]);
+    const hasSnapshot = Object.keys(record).length > 0;
+
+    return {
+      ready: hasSnapshot && blockingMessages.length === 0,
+      blockingMessages,
+      warningMessages,
+      blocking,
+      warnings,
+      checkedRevision: typeof record["checkedRevision"] === "number" ? record["checkedRevision"] : null
+    };
+  }
+
+  private readinessEntries(value: unknown) {
+    if (!Array.isArray(value)) return [];
+
+    return value.flatMap((item) => {
+      const record = this.objectValue(item);
+      return typeof record["message"] === "string"
+        ? [{
+            key: typeof record["key"] === "string" ? record["key"] : "",
+            section: typeof record["section"] === "string" ? record["section"] : "",
+            message: record["message"]
+          }]
+        : [];
+    });
+  }
+
+  private readinessMessages(value: unknown) {
+    return Array.isArray(value)
+      ? value.filter((message): message is string => typeof message === "string")
+      : [];
+  }
+
+  private objectValue(value: unknown): Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
   }
 
   private convertReadValue(value: unknown): unknown {

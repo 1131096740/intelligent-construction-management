@@ -113,7 +113,7 @@
           <div class="action-fields">
             <t-input
               v-model="settlementArchiveForm.assignmentUserId"
-              placeholder="目标用户ID"
+              placeholder="目标人员编号"
             />
           </div>
           <div class="action-buttons">
@@ -223,7 +223,7 @@
           <div class="action-fields">
             <t-input
               v-model="settlementArchiveForm.downloadFileId"
-              placeholder="文件ID"
+              placeholder="文件编号"
             />
             <t-input
               v-model="settlementArchiveForm.downloadPassword"
@@ -527,7 +527,7 @@ async function submitSettlementReminder() {
 
 async function submitSettlementAssignment(kind: "transfer" | "delegate") {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
-  const toUserId = requiredText(settlementArchiveForm.assignmentUserId, "目标用户ID");
+  const toUserId = requiredText(settlementArchiveForm.assignmentUserId, "目标人员编号");
 
   await runArchiveAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
     kind === "transfer"
@@ -545,7 +545,7 @@ async function submitSettlementPdfGeneration() {
 async function submitSettlementFileDownload() {
   await runArchiveAction("download", async () => {
     const ticket = await createPrivateFileDownloadTicket(
-      requiredText(settlementArchiveForm.downloadFileId, "文件ID"),
+      requiredText(settlementArchiveForm.downloadFileId, "文件编号"),
       {
         confirmationPassword: requiredText(settlementArchiveForm.downloadPassword, "当前登录密码")
       }

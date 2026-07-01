@@ -47,7 +47,7 @@
         :columns="columns"
         :data="templates"
         :loading="loading"
-        empty="暂无已发布业务模板；后端当前列表只返回已有 published version 的模板主表"
+        empty="暂无已发布业务模板"
       >
         <template #status="{ row }">
           <t-tag
@@ -61,10 +61,10 @@
           {{ contractTypeLabel(row.contractTypeKey) }}
         </template>
         <template #latestVersion="{ row }">
-          {{ row.versionNo ? `v${row.versionNo}` : "后端未返回" }}
+          {{ row.versionNo ? `v${row.versionNo}` : "暂无发布版本" }}
         </template>
         <template #publishedBy="{ row }">
-          {{ row.publishedByUserId ?? "后端未返回" }}
+          {{ row.publishedByUserId ?? "暂无发布记录" }}
         </template>
         <template #operation="{ row }">
           <t-link

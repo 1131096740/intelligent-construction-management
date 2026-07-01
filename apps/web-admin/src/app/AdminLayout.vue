@@ -71,7 +71,7 @@
 
     <t-layout class="main-shell">
       <t-header class="header">
-        <span>审批与合同付款闭环 MVP</span>
+        <span>合同付款闭环管理</span>
         <span class="header-user">建设企业 · 合同部主管</span>
       </t-header>
       <t-content class="content">
@@ -102,6 +102,7 @@ function go(path: string) {
 }
 
 .aside {
+  flex: 0 0 208px;
   background: #f9fafc;
   border-right: 1px solid #dce1e8;
 }
@@ -133,6 +134,7 @@ function go(path: string) {
   border-bottom: 1px solid #dce1e8;
   color: #424955;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .header-user {
@@ -146,11 +148,52 @@ function go(path: string) {
   min-width: 0;
   min-height: calc(100vh - 48px);
   padding: 24px;
-  overflow-x: hidden;
+  overflow-x: auto;
   background: #f4f6f9;
 }
 
 .main-shell {
   min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .admin-shell {
+    display: block;
+  }
+
+  .aside {
+    width: 100% !important;
+    border-right: 0;
+    border-bottom: 1px solid #dce1e8;
+  }
+
+  .brand {
+    height: 44px;
+    padding: 0 12px;
+  }
+
+  .menu {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 4px;
+    padding: 8px 6px;
+  }
+
+  .header {
+    min-height: 44px;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .header-user {
+    margin-left: 0;
+  }
+
+  .content {
+    min-height: calc(100vh - 44px);
+    padding: 12px;
+  }
 }
 </style>

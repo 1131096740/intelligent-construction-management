@@ -93,7 +93,7 @@ export class PaymentReadService {
       ),
       traceRules: [
         "付款申请只能来自已生效结算",
-        "审批通过进入 approved_pending_payment",
+        "审批通过进入已批待付",
         "审批通过不等于实际付款完成",
         "实付登记必须上传付款凭证并写入审计日志"
       ],
@@ -133,7 +133,7 @@ export class PaymentReadService {
         { label: "部门审核", status: "已通过", owner: "工程/预算", tone: "success" },
         { label: "财务复核", status: "已通过", owner: "财务主管", tone: "success" },
         { label: "董事长/总经理或签", status: "已通过", owner: "董事长或总经理", tone: "success" },
-        { label: "审批通过", status: "approved_pending_payment", owner: "系统", tone: "warning" }
+        { label: "审批通过", status: "已批待付", owner: "系统", tone: "warning" }
       ],
       executionSteps: [
         { label: "已批待付", status: "当前状态", owner: "财务部", tone: "warning" },
@@ -144,7 +144,7 @@ export class PaymentReadService {
       ],
       traceRules: [
         "付款申请只能来自已生效结算",
-        "审批通过进入 approved_pending_payment",
+        "审批通过进入已批待付",
         "审批通过不等于实际付款完成",
         "实付登记必须上传付款凭证并写入审计日志"
       ],
@@ -231,7 +231,7 @@ export class PaymentReadService {
       { label: "董事长/总经理或签", status: approvalComplete ? "已通过" : "待处理", owner: "董事长或总经理", tone: approvalComplete ? "success" : "default" },
       {
         label: "审批通过",
-        status: approvalComplete ? "approved_pending_payment" : "未完成",
+        status: approvalComplete ? "已批待付" : "未完成",
         owner: "系统",
         tone: approvalComplete ? "warning" : "default"
       }
@@ -273,7 +273,7 @@ export class PaymentReadService {
     }
 
     if (status !== "approved_pending_payment") {
-      return "付款申请仍在审批中；审批通过后才会进入 approved_pending_payment，并开放出纳付款登记。";
+      return "付款申请仍在审批中；审批通过后才会进入已批待付，并开放出纳付款登记。";
     }
 
     return "付款审批已通过，但尚未登记实际付款；必须由出纳/财务登记实付金额并上传付款凭证后，才能进入财务入账与付款完成。";

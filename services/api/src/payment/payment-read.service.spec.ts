@@ -69,7 +69,7 @@ describe("PaymentReadService", () => {
     expect(detail.executionSteps.map((step) => step.label)).toContain("付款凭证上传");
     expect(detail.approvalSteps.at(-1)).toMatchObject({
       label: "审批通过",
-      status: "approved_pending_payment",
+      status: "已批待付",
       tone: "warning"
     });
     expect(detail.executionSteps.at(-1)).toMatchObject({
@@ -198,7 +198,7 @@ describe("PaymentReadService", () => {
     expect(detail.meta).toContainEqual({ label: "下一步动作", value: "继续出纳付款登记", tone: "warning" });
     expect(detail.approvalSteps.at(-1)).toMatchObject({
       label: "审批通过",
-      status: "approved_pending_payment",
+      status: "已批待付",
       tone: "warning"
     });
     expect(detail.executionBlockMessage).toContain("已登记部分实际付款");

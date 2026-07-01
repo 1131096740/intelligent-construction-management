@@ -111,7 +111,7 @@
           <div class="action-fields">
             <t-input
               v-model="contractArchiveForm.assignmentUserId"
-              placeholder="目标用户ID"
+              placeholder="目标人员编号"
             />
           </div>
           <div class="action-buttons">
@@ -232,7 +232,7 @@
           <div class="action-fields">
             <t-input
               v-model="contractArchiveForm.downloadFileId"
-              placeholder="文件ID"
+              placeholder="文件编号"
             />
             <t-input
               v-model="contractArchiveForm.downloadPassword"
@@ -592,7 +592,7 @@ async function submitContractAssignment(kind: "transfer" | "delegate") {
     contractDetail.value?.contractVersionId ?? "",
     "合同版本ID"
   );
-  const toUserId = requiredText(contractArchiveForm.assignmentUserId, "目标用户ID");
+  const toUserId = requiredText(contractArchiveForm.assignmentUserId, "目标人员编号");
 
   await runArchiveAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
     kind === "transfer"
@@ -622,7 +622,7 @@ async function submitContractPdfGeneration() {
 async function submitContractFileDownload() {
   await runArchiveAction("download", async () => {
     const ticket = await createPrivateFileDownloadTicket(
-      requiredText(contractArchiveForm.downloadFileId, "文件ID"),
+      requiredText(contractArchiveForm.downloadFileId, "文件编号"),
       {
         confirmationPassword: requiredText(contractArchiveForm.downloadPassword, "当前登录密码")
       }

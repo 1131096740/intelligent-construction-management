@@ -252,7 +252,7 @@
       :on-confirm="onConfirmTransfer"
     >
       <label class="field">
-        <span class="field-label">目标用户ID</span>
+        <span class="field-label">目标人员编号</span>
         <t-input
           v-model="transferUserId"
           placeholder="输入接收人用户ID"

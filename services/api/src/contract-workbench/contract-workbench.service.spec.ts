@@ -351,11 +351,28 @@ describe("ContractWorkbenchService", () => {
       contractVersion: {
         findFirst: jest.fn().mockResolvedValue({
           id: "version-1",
-          contractId: "contract-1",
-          status: "draft",
-          amountCents: 1_234_500n,
-          draftRevision: 2
-        })
+            contractId: "contract-1",
+            status: "draft",
+            amountCents: 1_234_500n,
+            draftRevision: 2,
+            readinessSnapshot: {
+              blocking: [
+                {
+                  key: "field.projectName",
+                  section: "fields",
+                  message: "工程名称不能为空"
+                }
+              ],
+              warnings: [
+                {
+                  key: "clause.payment",
+                  section: "clauses",
+                  message: "付款条款建议复核"
+                }
+              ],
+              checkedRevision: 2
+            }
+          })
       },
       contractBill: {
         findMany: jest.fn().mockResolvedValue([
@@ -397,6 +414,26 @@ describe("ContractWorkbenchService", () => {
     const row = result.bills[0]?.rows[0] as Record<string, unknown> | undefined;
     expect(row?.unitPrice).toBe("4938.00");
     expect(row?.taxRatePercent).toBe("13");
+    expect(result.readiness).toEqual({
+      ready: false,
+      blockingMessages: ["工程名称不能为空"],
+      warningMessages: ["付款条款建议复核"],
+      blocking: [
+        {
+          key: "field.projectName",
+          section: "fields",
+          message: "工程名称不能为空"
+        }
+      ],
+      warnings: [
+        {
+          key: "clause.payment",
+          section: "clauses",
+          message: "付款条款建议复核"
+        }
+      ],
+      checkedRevision: 2
+    });
   });
 
   it("creates a manual checkpoint snapshot", async () => {

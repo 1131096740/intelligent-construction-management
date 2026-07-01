@@ -112,7 +112,7 @@
             </t-link>
             <t-link
               theme="primary"
-              @click="showNotice('请在对应合同/结算/付款详情页输入文件ID和当前密码签发下载票据。')"
+              @click="showNotice('请在对应合同/结算/付款详情页输入文件编号和当前密码签发下载票据。')"
             >
               授权下载
             </t-link>
@@ -153,7 +153,7 @@ async function submitUpload(event: Event) {
 
   try {
     const uploaded = await uploadPrivateFile(file, file.name);
-    message.value = `文件已上传，文件ID：${uploaded.id}`;
+    message.value = `文件已上传，文件编号：${uploaded.id}`;
     messageTone.value = "success";
   } catch (error) {
     message.value = error instanceof Error ? error.message : "上传资料失败";

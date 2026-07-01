@@ -40,7 +40,7 @@ export const paymentApprovalSteps: PaymentDetailStep[] = [
   { label: "部门审核", status: "已通过", owner: "工程/预算", tone: "success" },
   { label: "财务复核", status: "已通过", owner: "财务主管", tone: "success" },
   { label: "董事长/总经理或签", status: "已通过", owner: "董事长或总经理", tone: "success" },
-  { label: "审批通过", status: "approved_pending_payment", owner: "系统", tone: "warning" }
+  { label: "审批通过", status: "已批待付", owner: "系统", tone: "warning" }
 ];
 
 export const paymentExecutionSteps: PaymentDetailStep[] = [
@@ -53,7 +53,7 @@ export const paymentExecutionSteps: PaymentDetailStep[] = [
 
 export const paymentTraceRules = [
   "付款申请只能来自已生效结算",
-  "审批通过进入 approved_pending_payment",
+  "审批通过进入已批待付",
   "审批通过不等于实际付款完成",
   "实付登记必须上传付款凭证并写入审计日志"
 ];
