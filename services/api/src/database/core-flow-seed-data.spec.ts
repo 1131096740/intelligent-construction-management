@@ -38,6 +38,7 @@ describe("coreFlowSeedData", () => {
       "deliveryDeadline",
       "qualityStandard",
       "taxRatePercent",
+      "invoiceType",
       "settlementMethod"
     ]);
     expect(seed.bills.map((bill) => bill.key)).toEqual(["materials", "transportFees"]);
@@ -92,6 +93,7 @@ describe("coreFlowSeedData", () => {
     });
     expect(seed.layout.previewJob.sampleData.bill.materials[0]).toMatchObject({
       itemName: "钢筋",
+      unitPrice: "4200.00",
       taxInclusiveAmount: "42000.00"
     });
 
@@ -149,7 +151,9 @@ describe("coreFlowSeedData", () => {
       "counterpartyName",
       "businessSummary",
       "settlementCycle",
-      "paymentRatioPercent"
+      "paymentRatioPercent",
+      "taxRatePercent",
+      "invoiceType"
     ]);
     expect(coreFlowSeedData.genericContractWorkbench.bills[0].columns.map((column) => column.key)).toEqual([
       "itemName",
@@ -175,7 +179,9 @@ describe("coreFlowSeedData", () => {
       "plannedStartDate",
       "plannedEndDate",
       "settlementCycle",
-      "progressPaymentRatioPercent"
+      "progressPaymentRatioPercent",
+      "taxRatePercent",
+      "invoiceType"
     ]);
     expect(coreFlowSeedData.laborSubcontractWorkbench.clauses.map((clause) => clause.key)).toEqual([
       "payment",
@@ -183,6 +189,23 @@ describe("coreFlowSeedData", () => {
       "wageCommitment"
     ]);
     expect(coreFlowSeedData.laborSubcontractWorkbench.bills.map((bill) => bill.key)).toEqual(["laborItems"]);
+    expect(
+      [
+        ...coreFlowSeedData.materialPurchaseWorkbench.bills,
+        ...coreFlowSeedData.equipmentRentalWorkbench.bills,
+        ...coreFlowSeedData.laborSubcontractWorkbench.bills,
+        ...coreFlowSeedData.genericContractWorkbench.bills
+      ].every((bill) => bill.unitPriceScale === 2)
+    ).toBe(true);
+    expect(coreFlowSeedData.equipmentRentalWorkbench.fields.map((field) => field.key)).toEqual([
+      "rentalStartDate",
+      "rentalEndDate",
+      "useLocation",
+      "settlementCycle",
+      "paymentRatioPercent",
+      "taxRatePercent",
+      "invoiceType"
+    ]);
     expect(coreFlowSeedData.genericContractWorkbench.numberingRule).toMatchObject({
       contractTypeKey: "generic_contract",
       isActive: true

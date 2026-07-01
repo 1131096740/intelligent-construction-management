@@ -53,7 +53,7 @@ export interface ContractBillDefinition {
   pricingMode: "tax_inclusive" | "tax_exclusive";
   /** Decimal places for quantity; valid range 0–6 */
   quantityScale: number;
-  /** Decimal places for unit price; valid range 2–6 */
+  /** Decimal places for unit price; company contract standard is fixed at 2 */
   unitPriceScale: number;
   columns: Array<{
     key: string;
@@ -221,7 +221,7 @@ function assertNoDuplicateKeys(
  * - Attachment keys unique within `attachments`.
  * - Validation keys unique within `validations`.
  * - `quantityScale` in [0, 6] for every bill.
- * - `unitPriceScale` in [2, 6] for every bill.
+ * - `unitPriceScale` must be exactly 2 for every bill.
  */
 export function validateContractTemplateSchema(schema: ContractTemplateSchema): void {
   assertNoDuplicateKeys(schema.fields, "field");
@@ -234,8 +234,8 @@ export function validateContractTemplateSchema(schema: ContractTemplateSchema): 
     if (bill.quantityScale < 0 || bill.quantityScale > 6) {
       throw new Error(`quantityScale must be between 0 and 6 (bill: ${bill.key})`);
     }
-    if (bill.unitPriceScale < 2 || bill.unitPriceScale > 6) {
-      throw new Error(`unitPriceScale must be between 2 and 6 (bill: ${bill.key})`);
+    if (bill.unitPriceScale !== 2) {
+      throw new Error(`unitPriceScale must be exactly 2 (bill: ${bill.key})`);
     }
   }
 }

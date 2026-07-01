@@ -24,7 +24,7 @@ describe("ContractBillService", () => {
       pricingMode: options.pricingMode ?? "tax_inclusive",
       amountRole: options.amountRole ?? "included",
       quantityScale: options.quantityScale ?? 3,
-      unitPriceScale: options.unitPriceScale ?? 4,
+      unitPriceScale: options.unitPriceScale ?? 2,
       schemaSnapshot: options.schemaSnapshot ?? { columns: [] },
       taxInclusiveAmountCents: 0n,
       taxExclusiveAmountCents: 0n,
@@ -135,7 +135,7 @@ describe("ContractBillService", () => {
     itemName: "钢筋",
     unit: "t",
     quantity: "3.333",
-    unitPrice: "100.1234",
+    unitPrice: "100.12",
     taxRatePercent: "13",
     customData: {}
   };
@@ -149,12 +149,12 @@ describe("ContractBillService", () => {
       data: expect.objectContaining({
         contractBillId: "bill-1",
         rowKey: expect.any(String),
-        taxInclusiveAmountCents: 33371n,
-        taxExclusiveAmountCents: 29532n,
+        taxInclusiveAmountCents: 33370n,
+        taxExclusiveAmountCents: 29531n,
         taxAmountCents: 3839n
       })
     });
-    expect(result.bill!.taxInclusiveAmountCents).toBe(33371);
+    expect(result.bill!.taxInclusiveAmountCents).toBe(33370);
     expect(result.rows[0].quantity).toBe("3.333");
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {

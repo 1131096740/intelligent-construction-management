@@ -654,19 +654,19 @@ export class ContractDocumentService {
     }
     for (const bill of bills) {
       values[`bill.${bill.billKey}`] = bill.rows.map((row) => ({
+        ...(this.isObject(row.customData) ? row.customData : {}),
         itemCode: row.itemCode ?? "",
         itemName: row.itemName,
         specification: row.specification ?? "",
         unit: row.unit,
         quantity: row.quantity.toString(),
-        unitPrice: row.unitPrice.toString(),
-        taxRatePercent: `${Number(row.taxRate.toString()) * 100}%`,
+        unitPrice: row.unitPrice.toFixed(2),
+        taxRatePercent: `${row.taxRate.toString()}%`,
         taxInclusiveAmount: formatMoneyCents(row.taxInclusiveAmountCents),
         taxExclusiveAmount: formatMoneyCents(row.taxExclusiveAmountCents),
         taxAmount: formatMoneyCents(row.taxAmountCents),
         isProvisional: row.isProvisional,
-        settlementBasis: row.settlementBasis ?? "",
-        ...(this.isObject(row.customData) ? row.customData : {})
+        settlementBasis: row.settlementBasis ?? ""
       }));
     }
     return Object.fromEntries(

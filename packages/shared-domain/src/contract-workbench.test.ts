@@ -178,7 +178,7 @@ describe("contract workbench schema", () => {
     expect(() => validateContractTemplateSchema(makeSchema(6))).not.toThrow();
   });
 
-  it("rejects unit price scale out of range 2-6", () => {
+  it("rejects unit price scale other than two decimals", () => {
     const makeSchema = (unitPriceScale: number) => ({
       fields: [],
       bills: [
@@ -198,14 +198,12 @@ describe("contract workbench schema", () => {
     });
 
     expect(() => validateContractTemplateSchema(makeSchema(1))).toThrow(
-      "unitPriceScale must be between 2 and 6"
+      "unitPriceScale must be exactly 2"
     );
-    expect(() => validateContractTemplateSchema(makeSchema(7))).toThrow(
-      "unitPriceScale must be between 2 and 6"
+    expect(() => validateContractTemplateSchema(makeSchema(3))).toThrow(
+      "unitPriceScale must be exactly 2"
     );
-    // valid range boundaries
     expect(() => validateContractTemplateSchema(makeSchema(2))).not.toThrow();
-    expect(() => validateContractTemplateSchema(makeSchema(6))).not.toThrow();
   });
 
   it("accepts a valid complete schema", () => {

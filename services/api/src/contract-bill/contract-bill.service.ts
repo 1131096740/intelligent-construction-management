@@ -17,6 +17,7 @@ import type {
 } from "./dto/contract-bill.dto";
 
 const CANONICAL_DECIMAL = /^(0|[1-9]\d*)(\.\d+)?$/;
+const COMPANY_UNIT_PRICE_SCALE = 2;
 
 @Injectable()
 export class ContractBillService {
@@ -289,7 +290,12 @@ export class ContractBillService {
     this.assertOptionalString(input.specification, "specification");
     this.assertOptionalString(input.settlementBasis, "settlementBasis");
     this.assertDecimal(input.quantity, "quantity", bill.quantityScale, 18);
-    this.assertDecimal(input.unitPrice, "unitPrice", bill.unitPriceScale, 18);
+    this.assertDecimal(
+      input.unitPrice,
+      "unitPrice",
+      Math.min(bill.unitPriceScale, COMPANY_UNIT_PRICE_SCALE),
+      18
+    );
     this.assertDecimal(input.taxRatePercent, "taxRatePercent", 6, 3);
     if (new Prisma.Decimal(input.taxRatePercent as string).gt(100)) {
       throw new BadRequestException("taxRatePercent must be between 0 and 100");

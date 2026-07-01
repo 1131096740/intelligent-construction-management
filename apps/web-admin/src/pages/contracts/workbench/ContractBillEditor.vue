@@ -107,7 +107,22 @@
               v-for="column in columns"
               :key="column.key"
             >
+              <select
+                v-if="column.key === 'taxRatePercent'"
+                :value="rowValue(row, column.key)"
+                :disabled="disabled || busy"
+                @change="onCellInput(row.rowKey, column.key, $event)"
+              >
+                <option
+                  v-for="option in taxRateOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
               <input
+                v-else
                 :value="rowValue(row, column.key)"
                 :disabled="disabled || busy"
                 @input="onCellInput(row.rowKey, column.key, $event)"
@@ -229,6 +244,14 @@ const busy = ref(false);
 const message = ref("");
 const importPreview = ref<unknown>(null);
 const previewVisible = ref(false);
+const taxRateOptions = [
+  { label: "0%", value: "0" },
+  { label: "1%", value: "1" },
+  { label: "3%", value: "3" },
+  { label: "6%", value: "6" },
+  { label: "9%", value: "9" },
+  { label: "13%", value: "13" }
+];
 
 const columns = computed(() => billColumns(props.bill));
 const importCounts = computed(() => importPreviewCounts(importPreview.value));
@@ -525,7 +548,8 @@ function previewRowText(row: Record<string, unknown>): string {
   font-weight: 700;
 }
 
-.bill-table input {
+.bill-table input,
+.bill-table select {
   width: 100%;
   min-width: 80px;
   height: 28px;

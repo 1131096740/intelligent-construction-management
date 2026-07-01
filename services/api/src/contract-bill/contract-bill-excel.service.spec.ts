@@ -59,7 +59,7 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
     pricingMode: "tax_inclusive",
     amountRole: "included",
     quantityScale: 3,
-    unitPriceScale: 4,
+    unitPriceScale: 2,
     schemaSnapshot: { columns: [] },
     taxInclusiveAmountCents: 0n,
     taxExclusiveAmountCents: 0n,

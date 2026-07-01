@@ -49,7 +49,9 @@ const LIVE_GENERATION_CASES = [
       counterpartyName: "Phase1通用合同相对方",
       businessSummary: "Task 6 通用合同 Word 生成验收",
       settlementCycle: "按双方确认结算",
-      paymentRatioPercent: 80
+      paymentRatioPercent: 80,
+      taxRatePercent: "6",
+      invoiceType: "增值税普通发票"
     },
     billKey: "genericItems",
     row: {
@@ -57,7 +59,7 @@ const LIVE_GENERATION_CASES = [
       specification: "按现场要求",
       unit: "项",
       quantity: "1.000",
-      unitPrice: "10000.0000",
+      unitPrice: "10000.00",
       taxRatePercent: "6",
       taxInclusiveAmount: "10000.00",
       remark: "Task 6 通用合同验收"
@@ -75,7 +77,9 @@ const LIVE_GENERATION_CASES = [
       rentalEndDate: "2026-09-30",
       useLocation: "建设项目一期现场",
       settlementCycle: "上月16日至本月15日",
-      paymentRatioPercent: 80
+      paymentRatioPercent: 80,
+      taxRatePercent: "1",
+      invoiceType: "增值税专用发票"
     },
     billKey: "equipmentRentals",
     row: {
@@ -83,7 +87,7 @@ const LIVE_GENERATION_CASES = [
       specification: "神钢350",
       unit: "台班",
       quantity: "10.000",
-      unitPrice: "430.0000",
+      unitPrice: "430.00",
       taxRatePercent: "1",
       taxInclusiveAmount: "4300.00",
       fuelIncluded: false,
@@ -105,14 +109,16 @@ const LIVE_GENERATION_CASES = [
       plannedStartDate: "2026-07-01",
       plannedEndDate: "2026-09-30",
       settlementCycle: "按月结算",
-      progressPaymentRatioPercent: 80
+      progressPaymentRatioPercent: 80,
+      taxRatePercent: "3",
+      invoiceType: "增值税普通发票"
     },
     billKey: "laborItems",
     row: {
       itemName: "钢筋绑扎劳务",
       unit: "项",
       quantity: "1.000",
-      unitPrice: "10000.0000",
+      unitPrice: "10000.00",
       taxRatePercent: "3",
       taxInclusiveAmount: "10000.00",
       remark: "Phase1劳务分包验收"
@@ -309,7 +315,8 @@ async function saveDraft(contractVersionId, workbench, token) {
         deliveryLocation: "建设项目一期现场",
         deliveryDeadline: "2026-07-20",
         qualityStandard: "符合国家现行质量标准和项目验收要求",
-        taxRatePercent: 13,
+        taxRatePercent: "13",
+        invoiceType: "增值税专用发票",
         settlementMethod: "monthly"
       },
       clauses: seed.clauses,
@@ -366,7 +373,7 @@ async function addBillRow(bill, token) {
       specification: "HRB400E 直径18",
       unit: "吨",
       quantity: "10.000",
-      unitPrice: "10000.0000",
+      unitPrice: "10000.00",
       taxRatePercent: "13",
       isProvisional: false,
       settlementBasis: "按到货验收数量结算",
@@ -375,7 +382,7 @@ async function addBillRow(bill, token) {
         specification: "HRB400E 直径18",
         unit: "吨",
         quantity: "10.000",
-        unitPrice: "10000.0000",
+        unitPrice: "10000.00",
         taxRatePercent: "13",
         taxInclusiveAmount: "100000.00"
       }
@@ -432,7 +439,7 @@ async function fillExcelTemplate(buffer) {
     specification: "P.O 42.5",
     unit: "吨",
     quantity: "20.000",
-    unitPrice: "480.0000",
+    unitPrice: "480.00",
     taxRatePercent: "13",
     taxInclusiveAmount: "9600.00"
   };

@@ -1,3 +1,39 @@
+const CONTRACT_TAX_RATE_OPTIONS = [
+  { label: "0%", value: "0" },
+  { label: "1%", value: "1" },
+  { label: "3%", value: "3" },
+  { label: "6%", value: "6" },
+  { label: "9%", value: "9" },
+  { label: "13%", value: "13" }
+] as const;
+
+const CONTRACT_INVOICE_TYPE_OPTIONS = [
+  { label: "增值税专用发票", value: "增值税专用发票" },
+  { label: "增值税普通发票", value: "增值税普通发票" }
+] as const;
+
+const taxRateField = (order: number) =>
+  ({
+    key: "taxRatePercent",
+    label: "税率(%)",
+    type: "single_select",
+    required: true,
+    group: "tax",
+    order,
+    options: CONTRACT_TAX_RATE_OPTIONS
+  }) as const;
+
+const invoiceTypeField = (order: number) =>
+  ({
+    key: "invoiceType",
+    label: "发票类型",
+    type: "single_select",
+    required: true,
+    group: "tax",
+    order,
+    options: CONTRACT_INVOICE_TYPE_OPTIONS
+  }) as const;
+
 export const coreFlowSeedData = {
   users: {
     contractStaff: {
@@ -114,7 +150,8 @@ export const coreFlowSeedData = {
       { key: "deliveryLocation", label: "交货地点", type: "text", required: true, group: "delivery", order: 10 },
       { key: "deliveryDeadline", label: "交货期限", type: "date", required: true, group: "delivery", order: 20 },
       { key: "qualityStandard", label: "质量标准", type: "long_text", required: true, group: "quality", order: 30 },
-      { key: "taxRatePercent", label: "税率(%)", type: "number", required: true, group: "tax", order: 40 },
+      taxRateField(40),
+      invoiceTypeField(45),
       {
         key: "settlementMethod",
         label: "结算方式",
@@ -135,7 +172,7 @@ export const coreFlowSeedData = {
         amountRole: "included",
         pricingMode: "tax_inclusive",
         quantityScale: 3,
-        unitPriceScale: 4,
+        unitPriceScale: 2,
         columns: [
           { key: "itemName", label: "材料名称", type: "text", required: true },
           { key: "specification", label: "规格型号", type: "text", required: true },
@@ -229,7 +266,12 @@ export const coreFlowSeedData = {
             temporaryCode: "TMP-MAT-001",
             amountUppercase: "人民币壹拾贰万捌仟元整"
           },
-          field: { projectName: "建设项目一期", deliveryLocation: "项目现场" },
+          field: {
+            projectName: "建设项目一期",
+            deliveryLocation: "项目现场",
+            taxRatePercent: "13",
+            invoiceType: "增值税专用发票"
+          },
           party: {
             owner: { name: "建工智管建设有限公司" },
             counterparty: { name: "示例供应商" }
@@ -246,7 +288,7 @@ export const coreFlowSeedData = {
                 specification: "HRB400E 直径18",
                 unit: "吨",
                 quantity: "10.000",
-                unitPrice: "4200.0000",
+                unitPrice: "4200.00",
                 taxRatePercent: "13",
                 taxInclusiveAmount: "42000.00"
               }
@@ -304,7 +346,9 @@ export const coreFlowSeedData = {
       { key: "rentalEndDate", label: "租赁结束日期", type: "date", required: true, group: "period", order: 20 },
       { key: "useLocation", label: "使用项目及地点", type: "text", required: true, group: "project", order: 30 },
       { key: "settlementCycle", label: "对账结算周期", type: "text", required: true, defaultValue: "上月16日至本月15日", group: "settlement", order: 40 },
-      { key: "paymentRatioPercent", label: "当期付款比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 50 }
+      { key: "paymentRatioPercent", label: "当期付款比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 50 },
+      taxRateField(60),
+      invoiceTypeField(70)
     ],
     bills: [
       {
@@ -313,7 +357,7 @@ export const coreFlowSeedData = {
         amountRole: "included",
         pricingMode: "tax_inclusive",
         quantityScale: 3,
-        unitPriceScale: 4,
+        unitPriceScale: 2,
         columns: [
           { key: "itemName", label: "机械设备名称或费用名称", type: "text", required: true },
           { key: "specification", label: "规格型号", type: "text" },
@@ -383,7 +427,11 @@ export const coreFlowSeedData = {
         completedAt: new Date("2026-06-01T00:05:00.000Z"),
         sampleData: {
           contract: { name: "机械租赁合同样张", temporaryCode: "TMP-EQP-001", amountUppercase: "人民币壹万元整" },
-          field: { useLocation: "项目现场" },
+          field: {
+            useLocation: "项目现场",
+            taxRatePercent: "1",
+            invoiceType: "增值税专用发票"
+          },
           party: {
             owner: { name: "建工智管建设有限公司" },
             counterparty: { name: "示例租赁公司" }
@@ -396,7 +444,7 @@ export const coreFlowSeedData = {
                 specification: "神钢350",
                 unit: "台/小时",
                 quantity: "1.000",
-                unitPrice: "430.0000",
+                unitPrice: "430.00",
                 taxRatePercent: "1",
                 taxInclusiveAmount: "430.00"
               }
@@ -445,7 +493,9 @@ export const coreFlowSeedData = {
       { key: "plannedStartDate", label: "计划开工日期", type: "date", required: true, group: "period", order: 30 },
       { key: "plannedEndDate", label: "计划完工日期", type: "date", required: true, group: "period", order: 40 },
       { key: "settlementCycle", label: "结算周期", type: "text", required: true, defaultValue: "按月结算", group: "settlement", order: 50 },
-      { key: "progressPaymentRatioPercent", label: "进度款支付比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 60 }
+      { key: "progressPaymentRatioPercent", label: "进度款支付比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 60 },
+      taxRateField(70),
+      invoiceTypeField(80)
     ],
     bills: [
       {
@@ -454,7 +504,7 @@ export const coreFlowSeedData = {
         amountRole: "included",
         pricingMode: "tax_inclusive",
         quantityScale: 3,
-        unitPriceScale: 4,
+        unitPriceScale: 2,
         columns: [
           { key: "itemName", label: "项目名称", type: "text", required: true },
           { key: "unit", label: "单位", type: "text", required: true },
@@ -546,14 +596,16 @@ export const coreFlowSeedData = {
             plannedStartDate: "2026-07-01",
             plannedEndDate: "2026-09-30",
             settlementCycle: "按月结算",
-            progressPaymentRatioPercent: 80
+            progressPaymentRatioPercent: 80,
+            taxRatePercent: "3",
+            invoiceType: "增值税普通发票"
           },
           clause: {
             payment: { text: "甲方结合总分包合同和发包人付款情况支付劳务工程款。" },
             safety: { text: "乙方应遵守甲方项目安全生产管理制度。" },
             wageCommitment: { text: "乙方承诺及时足额发放农民工工资。" }
           },
-          bill: { laborItems: [{ itemName: "劳务作业", unit: "项", quantity: "1.000", unitPrice: "10000.0000", taxInclusiveAmount: "10000.00" }] }
+          bill: { laborItems: [{ itemName: "劳务作业", unit: "项", quantity: "1.000", unitPrice: "10000.00", taxInclusiveAmount: "10000.00" }] }
         }
       },
       inspectionReport: {
@@ -611,7 +663,9 @@ export const coreFlowSeedData = {
       { key: "counterpartyName", label: "相对方名称", type: "text", required: true, group: "basic", order: 20 },
       { key: "businessSummary", label: "业务摘要", type: "long_text", required: true, group: "basic", order: 30 },
       { key: "settlementCycle", label: "结算周期", type: "text", required: true, defaultValue: "按双方确认结算", group: "settlement", order: 40 },
-      { key: "paymentRatioPercent", label: "付款比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 50 }
+      { key: "paymentRatioPercent", label: "付款比例(%)", type: "number", required: true, defaultValue: 80, group: "payment", order: 50 },
+      taxRateField(60),
+      invoiceTypeField(70)
     ],
     bills: [
       {
@@ -620,7 +674,7 @@ export const coreFlowSeedData = {
         amountRole: "included",
         pricingMode: "tax_inclusive",
         quantityScale: 3,
-        unitPriceScale: 4,
+        unitPriceScale: 2,
         columns: [
           { key: "itemName", label: "项目名称", type: "text", required: true },
           { key: "specification", label: "规格/说明", type: "text" },
@@ -697,7 +751,9 @@ export const coreFlowSeedData = {
             counterpartyName: "通用合同相对方",
             businessSummary: "双方约定的业务内容",
             settlementCycle: "按月结算",
-            paymentRatioPercent: 80
+            paymentRatioPercent: 80,
+            taxRatePercent: "6",
+            invoiceType: "增值税普通发票"
           },
           clause: {
             payment: { text: "甲方依据双方确认的结算资料和合规发票付款。" },
@@ -710,7 +766,7 @@ export const coreFlowSeedData = {
                 specification: "按现场要求",
                 unit: "项",
                 quantity: "1.000",
-                unitPrice: "10000.0000",
+                unitPrice: "10000.00",
                 taxInclusiveAmount: "10000.00"
               }
             ]

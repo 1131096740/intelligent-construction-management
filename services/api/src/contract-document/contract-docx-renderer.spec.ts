@@ -152,7 +152,7 @@ describe("contract DOCX renderer", () => {
             specification: "HRB400E 直径18",
             unit: "吨",
             quantity: "10.000",
-            unitPrice: "10000.0000",
+            unitPrice: "10000.00",
             taxRatePercent: "13",
             taxInclusiveAmount: "100000.00"
           },
@@ -161,7 +161,7 @@ describe("contract DOCX renderer", () => {
             specification: "P.O 42.5",
             unit: "吨",
             quantity: "20.000",
-            unitPrice: "480.0000",
+            unitPrice: "480.00",
             taxRatePercent: "13",
             taxInclusiveAmount: "9600.00"
           }

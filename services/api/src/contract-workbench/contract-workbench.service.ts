@@ -64,6 +64,7 @@ interface BillSnapshot {
     quantity: string;
     unitPrice: string;
     taxRate: string;
+    taxRatePercent?: string;
     taxInclusiveAmountCents: string;
     taxExclusiveAmountCents: string;
     taxAmountCents: string;
@@ -170,7 +171,13 @@ export class ContractWorkbenchService {
       version,
       bills: bills.map((bill) => ({
         ...bill,
-        rows: rows.filter((row) => row.contractBillId === bill.id)
+        rows: rows
+          .filter((row) => row.contractBillId === bill.id)
+          .map((row) => ({
+            ...row,
+            unitPrice: this.formatUnitPrice(row.unitPrice),
+            taxRatePercent: row.taxRate.toString()
+          }))
       })),
       checkpoints,
       parties,
@@ -559,8 +566,9 @@ export class ContractWorkbenchService {
           .map((row) => ({
             ...row,
             quantity: row.quantity.toString(),
-            unitPrice: row.unitPrice.toString(),
+            unitPrice: this.formatUnitPrice(row.unitPrice),
             taxRate: row.taxRate.toString(),
+            taxRatePercent: row.taxRate.toString(),
             taxInclusiveAmountCents: row.taxInclusiveAmountCents.toString(),
             taxExclusiveAmountCents: row.taxExclusiveAmountCents.toString(),
             taxAmountCents: row.taxAmountCents.toString()
@@ -1140,8 +1148,9 @@ export class ContractWorkbenchService {
           specification: row.specification,
           unit: row.unit,
           quantity: row.quantity.toString(),
-          unitPrice: row.unitPrice.toString(),
+          unitPrice: this.formatUnitPrice(row.unitPrice),
           taxRate: row.taxRate.toString(),
+          taxRatePercent: row.taxRate.toString(),
           taxInclusiveAmountCents: row.taxInclusiveAmountCents.toString(),
           taxExclusiveAmountCents: row.taxExclusiveAmountCents.toString(),
           taxAmountCents: row.taxAmountCents.toString(),
@@ -1273,6 +1282,13 @@ export class ContractWorkbenchService {
         typeof item === "bigint" ? item.toString() : item
       )
     ) as Prisma.InputJsonValue;
+  }
+
+  private formatUnitPrice(value: { toFixed?: (scale: number) => string; toString: () => string }) {
+    if (typeof value.toFixed === "function") {
+      return value.toFixed(2);
+    }
+    return new Prisma.Decimal(value.toString()).toFixed(2);
   }
 
   private toReadModel<T>(value: T): T {

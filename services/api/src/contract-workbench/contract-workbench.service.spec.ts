@@ -375,7 +375,7 @@ describe("ContractWorkbenchService", () => {
             contractBillId: "bill-1",
             quantity: new Prisma.Decimal("2.500000"),
             unitPrice: new Prisma.Decimal("4938.000000"),
-            taxRate: new Prisma.Decimal("0.130000"),
+            taxRate: new Prisma.Decimal("13"),
             taxInclusiveAmountCents: 1_234_500n,
             taxExclusiveAmountCents: 1_092_478n,
             taxAmountCents: 142_022n
@@ -394,6 +394,9 @@ describe("ContractWorkbenchService", () => {
     expect(result.version.amountCents).toBe(1_234_500);
     expect(result.bills[0]?.taxInclusiveAmountCents).toBe(1_234_500);
     expect(result.bills[0]?.rows[0]?.quantity).toBe("2.5");
+    const row = result.bills[0]?.rows[0] as Record<string, unknown> | undefined;
+    expect(row?.unitPrice).toBe("4938.00");
+    expect(row?.taxRatePercent).toBe("13");
   });
 
   it("creates a manual checkpoint snapshot", async () => {
@@ -439,8 +442,8 @@ describe("ContractWorkbenchService", () => {
             specification: "HRB400",
             unit: "吨",
             quantity: "10.500000",
-            unitPrice: "5000.000000",
-            taxRate: "0.130000",
+            unitPrice: "5000.00",
+            taxRate: "13",
             taxInclusiveAmountCents: 5_250_000n,
             taxExclusiveAmountCents: 4_646_018n,
             taxAmountCents: 603_982n,
@@ -573,7 +576,7 @@ describe("ContractWorkbenchService", () => {
               amountRole: "included",
               pricingMode: "tax_inclusive",
               quantityScale: 3,
-              unitPriceScale: 4,
+              unitPriceScale: 2,
               schemaSnapshot: { columns: [{ key: "item", type: "text" }] },
               sourceExcelFileId: "excel-1",
               revision: 3,
@@ -589,8 +592,8 @@ describe("ContractWorkbenchService", () => {
                   specification: null,
                   unit: "项",
                   quantity: "2.000000",
-                  unitPrice: "5000.000000",
-                  taxRate: "0.130000",
+                  unitPrice: "5000.00",
+                  taxRate: "13",
                   taxInclusiveAmountCents: "1000000",
                   taxExclusiveAmountCents: "884956",
                   taxAmountCents: "115044",
@@ -1201,7 +1204,7 @@ describe("ContractWorkbenchService", () => {
             unit: "项",
             quantity: "1.000000",
             unitPrice: "2.000000",
-            taxRate: "0.130000",
+            taxRate: "13",
             taxInclusiveAmountCents: 200n,
             taxExclusiveAmountCents: 177n,
             taxAmountCents: 23n,
@@ -1220,7 +1223,7 @@ describe("ContractWorkbenchService", () => {
             unit: "项",
             quantity: "1.000000",
             unitPrice: "1.000000",
-            taxRate: "0.130000",
+            taxRate: "13",
             taxInclusiveAmountCents: 100n,
             taxExclusiveAmountCents: 88n,
             taxAmountCents: 12n,

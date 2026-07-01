@@ -20,7 +20,7 @@ export const fieldTypeOptions = [
 ] as const;
 
 export const quantityScaleOptions = [0, 1, 2, 3, 4, 5, 6] as const;
-export const unitPriceScaleOptions = [2, 3, 4, 5, 6] as const;
+export const unitPriceScaleOptions = [2] as const;
 
 export const billAmountRoleOptions = [
   { label: "计入合同金额", value: "included" },

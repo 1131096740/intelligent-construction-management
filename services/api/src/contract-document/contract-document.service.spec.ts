@@ -363,6 +363,7 @@ describe("ContractDocumentService", () => {
   it("stores JSON-safe bill values without bigint or Decimal objects", async () => {
     const decimal = (value: string) => ({
       toString: () => value,
+      toFixed: (scale?: number) => Number(value).toFixed(scale ?? 0),
       toJSON: () => value
     });
     const tx = makeTx();
@@ -378,13 +379,13 @@ describe("ContractDocumentService", () => {
         unit: "吨",
         quantity: decimal("2.5"),
         unitPrice: decimal("3500"),
-        taxRate: decimal("0.13"),
+        taxRate: decimal("13"),
         taxInclusiveAmountCents: 875_000n,
         taxExclusiveAmountCents: 774_336n,
         taxAmountCents: 100_664n,
         isProvisional: true,
         settlementBasis: null,
-        customData: { checked: false }
+        customData: { checked: false, unitPrice: "3500.0000", taxRatePercent: "13" }
       }
     ]);
     const { service } = makeService(tx);
@@ -399,7 +400,8 @@ describe("ContractDocumentService", () => {
     expect(() => JSON.stringify(snapshot)).not.toThrow();
     expect(snapshot.renderInput.values["bill.materials"][0]).toMatchObject({
       quantity: "2.5",
-      unitPrice: "3500",
+      unitPrice: "3500.00",
+      taxRatePercent: "13%",
       isProvisional: "true",
       checked: "false"
     });

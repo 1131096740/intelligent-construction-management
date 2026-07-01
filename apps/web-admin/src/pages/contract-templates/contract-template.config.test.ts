@@ -59,9 +59,9 @@ describe("contract template center config", () => {
     ]);
   });
 
-  it("uses shared scale ranges: quantity 0-6 and unit price 2-6", () => {
+  it("uses shared scale ranges: quantity 0-6 and unit price fixed to two decimals", () => {
     expect(quantityScaleOptions).toEqual([0, 1, 2, 3, 4, 5, 6]);
-    expect(unitPriceScaleOptions).toEqual([2, 3, 4, 5, 6]);
+    expect(unitPriceScaleOptions).toEqual([2]);
   });
 
   it("does not expose direct edit for published template versions", () => {

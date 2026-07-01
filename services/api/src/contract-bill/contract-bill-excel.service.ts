@@ -20,6 +20,7 @@ const DATA_SHEET = "清单数据";
 const INSTRUCTION_SHEET = "填写说明";
 const ROW_KEY_CODE = "__rowKey";
 const HEADER_ROWS = 2;
+const COMPANY_UNIT_PRICE_SCALE = 2;
 
 export type ImportMode = "replace" | "update" | "append";
 
@@ -124,7 +125,9 @@ export class ContractBillExcelService {
     sheet.views = [{ state: "frozen", ySplit: HEADER_ROWS }];
 
     const quantityFormat = this.numberFormat(bill.quantityScale);
-    const unitPriceFormat = this.numberFormat(bill.unitPriceScale);
+    const unitPriceFormat = this.numberFormat(
+      Math.min(bill.unitPriceScale, COMPANY_UNIT_PRICE_SCALE)
+    );
     columns.forEach((column, index) => {
       const sheetColumn = sheet.getColumn(index + 1);
       sheetColumn.width = 18;
@@ -479,7 +482,14 @@ export class ContractBillExcelService {
     const unitPrice = this.asString(raw.unitPrice);
     const taxRatePercent = this.asString(raw.taxRatePercent);
     this.validateDecimal(quantity, "quantity", bill.quantityScale, 18, rowNumber, errors);
-    this.validateDecimal(unitPrice, "unitPrice", bill.unitPriceScale, 18, rowNumber, errors);
+    this.validateDecimal(
+      unitPrice,
+      "unitPrice",
+      Math.min(bill.unitPriceScale, COMPANY_UNIT_PRICE_SCALE),
+      18,
+      rowNumber,
+      errors
+    );
     this.validateDecimal(taxRatePercent, "taxRatePercent", 6, 3, rowNumber, errors);
     if (CANONICAL_DECIMAL.test(taxRatePercent) && new Prisma.Decimal(taxRatePercent).gt(100)) {
       errors.push(
