@@ -141,13 +141,14 @@ export class ContractReadinessService {
     const warnings: ContractReadinessResult["warnings"] = [];
     const template = this.template(version.templateSnapshot);
     const draftData = this.object(version.draftData);
+    const fieldData = this.fieldData(draftData);
     const clauses = this.clauses(version.clauseSnapshot);
 
     for (const field of template.fieldSchema) {
       if (
         field.required &&
-        this.isVisible(field, draftData) &&
-        this.isEmpty(draftData[field.key])
+        this.isVisible(field, fieldData) &&
+        this.isEmpty(fieldData[field.key])
       ) {
         blocking.push({
           key: `field.${field.key}`,
@@ -395,6 +396,10 @@ export class ContractReadinessService {
     return value && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
+  }
+
+  private fieldData(draftData: Record<string, unknown>) {
+    return { ...draftData, ...this.object(draftData["fieldValues"]) };
   }
 
   private isVisible(

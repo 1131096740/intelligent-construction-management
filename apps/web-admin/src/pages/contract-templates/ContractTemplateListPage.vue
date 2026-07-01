@@ -54,8 +54,11 @@
             size="small"
             variant="light"
           >
-            {{ row.status ?? "未知" }}
+            {{ templateStatusLabel(row.status) }}
           </t-tag>
+        </template>
+        <template #contractTypeKey="{ row }">
+          {{ contractTypeLabel(row.contractTypeKey) }}
         </template>
         <template #latestVersion="{ row }">
           {{ row.versionNo ? `v${row.versionNo}` : "后端未返回" }}
@@ -90,6 +93,7 @@ import {
   createContractTemplate,
   listPublishedContractTemplates
 } from "../../api/contract-workbench.api";
+import { contractTypeLabel, templateStatusLabel } from "../contracts/contract-labels";
 import { templateListColumns } from "./contract-template.config";
 
 interface TemplateRow {

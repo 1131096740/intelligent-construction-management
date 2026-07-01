@@ -18,11 +18,11 @@
       <div class="form-grid">
         <label><span>规则 ID（更新时填写）</span><t-input v-model="form.ruleId" /></label>
         <label><span>名称</span><t-input v-model="form.name" /></label>
-        <label><span>Pattern</span><t-input v-model="form.pattern" /></label>
-        <label><span>Sequence width</span><t-input v-model.number="form.sequenceWidth" /></label>
-        <label><span>公司主体 Scope</span><t-input v-model="form.companyEntityId" /></label>
-        <label><span>项目 Scope</span><t-input v-model="form.projectId" /></label>
-        <label><span>合同类型 Scope</span><t-input v-model="form.contractTypeKey" /></label>
+        <label><span>编号格式</span><t-input v-model="form.pattern" /></label>
+        <label><span>流水号位数</span><t-input v-model.number="form.sequenceWidth" /></label>
+        <label><span>适用公司主体</span><t-input v-model="form.companyEntityId" /></label>
+        <label><span>适用项目</span><t-input v-model="form.projectId" /></label>
+        <label><span>适用合同类型</span><t-input v-model="form.contractTypeKey" /></label>
       </div>
       <p :class="['preview', patternValid ? 'success' : 'danger']">
         下一编号预览：{{ nextPreview }}
@@ -58,6 +58,9 @@
         :loading="loading"
         empty="暂无编号规则"
       >
+        <template #contractTypeKey="{ row }">
+          {{ contractTypeLabel(row.contractTypeKey) }}
+        </template>
         <template #next="{ row }">
           {{ previewContractNumber(row.pattern, row.nextSequence ?? 1, row.sequenceWidth ?? 3) }}
         </template>
@@ -98,6 +101,7 @@ import {
   stopContractNumberRule,
   updateContractNumberRule
 } from "../../api/contract-workbench.api";
+import { contractTypeLabel } from "../contracts/contract-labels";
 import {
   hasOnlyAllowedNumberRuleTokens,
   isValidContractNumberPattern,
@@ -118,10 +122,10 @@ interface RuleRow {
 
 const columns = [
   { colKey: "name", title: "名称", minWidth: 160 },
-  { colKey: "pattern", title: "Pattern", minWidth: 220 },
-  { colKey: "companyEntityId", title: "公司 Scope", width: 130 },
-  { colKey: "projectId", title: "项目 Scope", width: 130 },
-  { colKey: "contractTypeKey", title: "类型 Scope", width: 130 },
+  { colKey: "pattern", title: "编号格式", minWidth: 220 },
+  { colKey: "companyEntityId", title: "适用公司", width: 130 },
+  { colKey: "projectId", title: "适用项目", width: 130 },
+  { colKey: "contractTypeKey", title: "适用类型", width: 130 },
   { colKey: "next", title: "下一编号", minWidth: 160 },
   { colKey: "isActive", title: "状态", width: 90 },
   { colKey: "operation", title: "操作", width: 90 }

@@ -407,6 +407,44 @@ describe("ContractDocumentService", () => {
     });
   });
 
+  it("renders professional fields saved by the web workbench under fieldValues", async () => {
+    const tx = makeTx({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          draftRevision: 7,
+          amountCents: 1_000_000n,
+          draftData: {
+            fieldValues: {
+              projectName: "前端录入项目",
+              taxRatePercent: "13",
+              invoiceType: "增值税专用发票"
+            }
+          },
+          clauseSnapshot: [],
+          readinessSnapshot: { checkedRevision: 7, blocking: [], warnings: [] }
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const { service } = makeService(tx);
+
+    await service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft"
+    });
+
+    const snapshot = tx.contractGeneratedDocument.create.mock.calls[0][0].data
+      .inputSnapshot;
+    expect(snapshot.renderInput.values).toMatchObject({
+      "field.projectName": "前端录入项目",
+      "field.taxRatePercent": "13",
+      "field.invoiceType": "增值税专用发票"
+    });
+  });
+
   it("marks failure retryable and records retry audit", async () => {
     const tx = makeTx();
     tx.contractGeneratedDocument.findUnique

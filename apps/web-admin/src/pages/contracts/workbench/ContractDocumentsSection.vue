@@ -145,7 +145,7 @@
           </t-tag>
         </div>
         <div class="document-meta">
-          状态 {{ document.status }} · 修订 {{ document.sourceRevision }} ·
+          状态 {{ documentStatusLabel(document.status) }} · 修订 {{ document.sourceRevision }} ·
           {{ timeText(document.completedAt ?? document.createdAt) }}
         </div>
         <ul
@@ -623,6 +623,18 @@ async function openFile(fileId: string) {
 
 function purposeLabel(value: string) {
   return purposeOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function documentStatusLabel(value: string) {
+  return (
+    {
+      queued: "排队中",
+      processing: "生成中",
+      success: "已生成",
+      failed: "生成失败",
+      stale: "已过期"
+    }[value] ?? value
+  );
 }
 
 function timeText(value: unknown): string {

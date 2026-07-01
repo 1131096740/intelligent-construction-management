@@ -152,6 +152,7 @@ import {
   stopLayoutTemplateVersion,
   submitLayoutTemplateVersion
 } from "../../api/contract-workbench.api";
+import { templateStatusLabel } from "../contracts/contract-labels";
 import { canPublishLayoutVersion } from "./contract-template.config";
 
 const route = useRoute();
@@ -175,7 +176,9 @@ const placeholders = [
 ];
 
 const inspectionText = computed(() => inspectionReport.value ? JSON.stringify(inspectionReport.value, null, 2) : "尚未检查");
-const previewStatus = computed(() => String(latestPreview.value?.status ?? "尚未生成"));
+const previewStatus = computed(() =>
+  latestPreview.value?.status ? templateStatusLabel(String(latestPreview.value.status)) : "尚未生成"
+);
 const latestPreviewPdfFileId = computed(() => String(latestPreview.value?.previewPdfFileId ?? ""));
 const canPublish = computed(() => canPublishLayoutVersion({ inspectionReport: inspectionReport.value, latestPreview: latestPreview.value }));
 

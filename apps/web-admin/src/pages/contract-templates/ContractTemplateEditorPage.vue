@@ -45,7 +45,7 @@
         /></label>
         <label><span>变更摘要</span><t-input v-model="changeSummary" /></label>
         <label><span>模板状态</span><t-input
-          :value="String(template?.status ?? '后端未返回')"
+          :value="template?.status ? templateStatusLabel(String(template.status)) : '后端未返回'"
           readonly
         /></label>
         <t-button
@@ -383,6 +383,7 @@ import {
   submitContractTemplateVersion,
   updateContractTemplateVersion
 } from "../../api/contract-workbench.api";
+import { templateStatusLabel } from "../contracts/contract-labels";
 import {
   billAmountRoleOptions,
   fieldTypeOptions,

@@ -112,7 +112,7 @@
             v-if="!editable && workbench"
             class="readonly-banner"
           >
-            当前状态（{{ workbench.version.status }}）不可编辑，仅供查看。
+            当前状态（{{ contractVersionStatusLabel(workbench.version.status) }}）不可编辑，仅供查看。
           </p>
 
           <div
@@ -272,6 +272,7 @@ import {
   previewContractTypeChange,
   transferContractDraft
 } from "../../api/contract-workbench.api";
+import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
@@ -422,15 +423,6 @@ async function loadTemplatesForType(contractTypeKey: string) {
   }
 }
 
-function contractTypeDisplayName(typeKey: string): string {
-  const known: Record<string, string> = {
-    material_purchase: "材料采购合同",
-    equipment_rental: "工程机械设备租赁合同",
-    labor_subcontract: "劳务分包合同"
-  };
-  return known[typeKey] ?? typeKey;
-}
-
 async function loadContractTypeOptions() {
   try {
     const templates = (await listPublishedContractTemplates()) as Array<
@@ -444,7 +436,7 @@ async function loadContractTypeOptions() {
       )
     ];
     contractTypeOptions.value = typeKeys.map((typeKey) => ({
-      label: contractTypeDisplayName(typeKey),
+      label: contractTypeLabel(typeKey),
       value: typeKey
     }));
   } catch (error) {
@@ -456,13 +448,6 @@ function onContractTypeChange(value: string) {
   initializeDraft.setContractTypeKey(value);
   initializeDraft.setBusinessTemplateVersionId("");
   void loadTemplatesForType(value);
-}
-
-function contractTypeLabel(typeKey: string): string {
-  return (
-    contractTypeOptions.value.find((option) => option.value === typeKey)?.label ??
-    contractTypeDisplayName(typeKey)
-  );
 }
 
 function firstTemplateVersionId(templates: Array<Record<string, unknown>>): string {

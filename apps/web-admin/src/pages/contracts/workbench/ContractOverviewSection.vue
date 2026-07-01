@@ -64,6 +64,7 @@
 <script setup lang="ts">
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed } from "vue";
+import { contractTypeLabel, contractVersionStatusLabel } from "../contract-labels";
 
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
@@ -85,8 +86,8 @@ const metaItems = computed(() => {
   return [
     { label: "临时编号", value: workbench.contract.temporaryCode },
     { label: "正式编号", value: workbench.contract.code ?? "未生成" },
-    { label: "合同类型", value: workbench.contract.contractTypeKey },
-    { label: "状态", value: workbench.version.status },
+    { label: "合同类型", value: contractTypeLabel(workbench.contract.contractTypeKey) },
+    { label: "状态", value: contractVersionStatusLabel(workbench.version.status) },
     { label: "版本号", value: String(workbench.version.versionNo) }
   ];
 });

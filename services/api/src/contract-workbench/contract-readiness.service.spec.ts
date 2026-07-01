@@ -128,6 +128,17 @@ describe("ContractReadinessService", () => {
     );
   });
 
+  it("accepts required fields saved by the web workbench under fieldValues", async () => {
+    const result = await new ContractReadinessService().check(
+      tx() as never,
+      { ...version, draftData: { fieldValues: { project_name: "建设项目" } } } as never,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toEqual([]);
+  });
+
   it("blocks when a required clause is empty", async () => {
     const result = await new ContractReadinessService().check(
       tx() as never,

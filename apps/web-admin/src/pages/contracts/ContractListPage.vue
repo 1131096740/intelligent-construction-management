@@ -135,6 +135,9 @@
           :loading="draftsLoading"
           empty="暂无草稿"
         >
+          <template #contractTypeKey="{ row }">
+            {{ contractTypeLabel(row.contractTypeKey) }}
+          </template>
           <template #operation="{ row }">
             <t-link
               theme="primary"
@@ -167,6 +170,9 @@
           :loading="voidedLoading"
           empty="暂无作废草稿"
         >
+          <template #contractTypeKey="{ row }">
+            {{ contractTypeLabel(row.contractTypeKey) }}
+          </template>
           <template #operation="{ row }">
             <t-link
               theme="primary"
@@ -192,6 +198,7 @@ import {
   contractLedgerRows,
   contractSummaryItems
 } from "./contract-list.config";
+import { contractTypeLabel } from "./contract-labels";
 
 const router = useRouter();
 const noticeMessage = ref("");

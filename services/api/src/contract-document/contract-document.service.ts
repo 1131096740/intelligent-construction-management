@@ -622,6 +622,11 @@ export class ContractDocumentService {
       for (const [key, value] of Object.entries(version.draftData)) {
         values[`field.${key}`] = value;
       }
+      if (this.isObject(version.draftData.fieldValues)) {
+        for (const [key, value] of Object.entries(version.draftData.fieldValues)) {
+          values[`field.${key}`] = value;
+        }
+      }
     }
     if (Array.isArray(version.clauseSnapshot)) {
       for (const clause of version.clauseSnapshot) {
