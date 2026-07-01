@@ -2,6 +2,7 @@ const { createHash } = require("node:crypto");
 const { copyFile, mkdir, readFile, readdir, writeFile } = require("node:fs/promises");
 const { execFile } = require("node:child_process");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const { promisify } = require("node:util");
 const { PrismaClient } = require("@prisma/client");
 
@@ -101,6 +102,10 @@ function pagePreviewPath(item, pageNumber) {
   return `pages/${item.prefix}/${item.prefix}-${padded}.png`;
 }
 
+function localLink(relativePath) {
+  return pathToFileURL(path.join(outputRoot, relativePath)).href;
+}
+
 function checklist(items) {
   const lines = [
     "# 公司级正式合同母版 1.0 逐页验收清单",
@@ -124,7 +129,7 @@ function checklist(items) {
     "| --- | --- | --- | ---: | --- |",
     ...items.map(
       (item) =>
-        `| ${item.label} | [DOCX](documents/${item.prefix}.docx) | [PDF](documents/${item.prefix}.pdf) | ${item.pages} | ${item.temporaryCode} |`
+        `| ${item.label} | [DOCX](${localLink(`documents/${item.prefix}.docx`)}) | [PDF](${localLink(`documents/${item.prefix}.pdf`)}) | ${item.pages} | ${item.temporaryCode} |`
     ),
     "",
     "## 逐页验收",
@@ -136,7 +141,7 @@ function checklist(items) {
   for (const item of items) {
     for (let page = 1; page <= item.pages; page += 1) {
       lines.push(
-        `| ${item.label} | ${page}/${item.pages} | [PNG](${pagePreviewPath(item, page)}) |  |  |  |  |  |`
+        `| ${item.label} | ${page}/${item.pages} | [PNG](${localLink(pagePreviewPath(item, page))}) |  |  |  |  |  |`
       );
     }
   }
