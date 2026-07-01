@@ -345,7 +345,7 @@ describe("ContractWorkbenchService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
           ownerUserId: "owner-1",
-          temporaryCode: "DRAFT-1"
+          temporaryCode: "草稿-1"
         })
       },
       contractVersion: {

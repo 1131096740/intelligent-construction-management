@@ -121,8 +121,8 @@ describe("ContractNumberingService", () => {
     ]);
 
     expect([first, second]).toEqual([
-      "HT-JGXM-2026-material_purchase-001",
-      "HT-JGXM-2026-material_purchase-002"
+      "HT-JGXM-2026-材料-001",
+      "HT-JGXM-2026-材料-002"
     ]);
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.contractNumberRule.update).toHaveBeenCalledTimes(2);
@@ -203,7 +203,7 @@ describe("ContractNumberingService", () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it("accepts a token value of '0' (falsy string) without throwing", async () => {
+  it("uses a Chinese fallback label for an unknown contract type token", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
         {
@@ -233,7 +233,7 @@ describe("ContractNumberingService", () => {
 
     const code = await service.allocate(tx as never, "rule-1", contract, "staff-1", {});
 
-    expect(code).toBe("HT-0-001");
+    expect(code).toBe("HT-其他-001");
   });
 
   it("never reuses a consumed sequence after a later contract is voided", async () => {

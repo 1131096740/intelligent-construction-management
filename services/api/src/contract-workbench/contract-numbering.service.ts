@@ -9,6 +9,12 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 
 const TOKENS = new Set(["company", "project", "year", "type", "sequence"]);
+const CONTRACT_TYPE_CODE_LABELS: Record<string, string> = {
+  material_purchase: "材料",
+  equipment_rental: "机械",
+  labor_subcontract: "劳务",
+  generic_contract: "通用"
+};
 
 export interface ContractNumberRuleInput {
   name: string;
@@ -173,7 +179,7 @@ export class ContractNumberingService {
       company: contract.companyEntityName?.trim() || contract.companyEntityId || "",
       project: project?.code ?? "",
       year: String(now.getFullYear()),
-      type: contract.contractTypeKey ?? "",
+      type: contract.contractTypeKey ? CONTRACT_TYPE_CODE_LABELS[contract.contractTypeKey] ?? "其他" : "",
       sequence: String(rule.nextSequence).padStart(rule.sequenceWidth, "0")
     };
     for (const token of this.tokens(rule.pattern)) {

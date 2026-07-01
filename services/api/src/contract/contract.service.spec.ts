@@ -72,7 +72,7 @@ describe("ContractService", () => {
       contract: {
         create: jest.fn().mockResolvedValue({
           id: "contract-1",
-          temporaryCode: "DRAFT-20260625-ABCDEFGH",
+          temporaryCode: "草稿-20260625-12345678",
           code: null
         })
       },
@@ -117,7 +117,7 @@ describe("ContractService", () => {
         projectId: "project-1",
         contractTypeKey: "material_purchase",
         ownerUserId: "contract-user",
-        temporaryCode: expect.stringMatching(/^DRAFT-/),
+        temporaryCode: expect.stringMatching(/^草稿-/),
         code: null
       })
     });
@@ -288,7 +288,7 @@ describe("ContractService", () => {
       })
     };
     const numbering = {
-      allocate: jest.fn().mockResolvedValue("HT-JGXM-2026-material_purchase-001")
+      allocate: jest.fn().mockResolvedValue("HT-JGXM-2026-材料-001")
     };
     const service = new ContractService(
       prisma,
@@ -335,7 +335,7 @@ describe("ContractService", () => {
       },
       data: {
         ownerUserId: "user-contract-staff",
-        code: "HT-JGXM-2026-material_purchase-001"
+        code: "HT-JGXM-2026-材料-001"
       }
     });
     expect(tx.approvalInstance.create).toHaveBeenCalledWith({
@@ -363,7 +363,7 @@ describe("ContractService", () => {
       metadata: {
         fromStatus: "draft",
         toStatus: "in_approval",
-        formalCode: "HT-JGXM-2026-material_purchase-001",
+        formalCode: "HT-JGXM-2026-材料-001",
         numberRuleId: "rule-1",
         draftRevision: 4,
         submissionSnapshot: expect.objectContaining({ draftRevision: 4 })

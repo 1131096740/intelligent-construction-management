@@ -87,7 +87,7 @@ async function uploadPrivateFile(fileName, token) {
   const form = new FormData();
   form.append(
     "file",
-    new Blob([`Phase 1 verification file: ${fileName}\n`], {
+    new Blob([`一期闭环验证文件：${fileName}\n`], {
       type: "application/pdf"
     }),
     fileName
@@ -214,8 +214,8 @@ async function seedDisposableContract(codeSuffix) {
       id: contractId,
       projectId: coreFlowSeedData.project.id,
       code: `HT-P1-${codeSuffix}`,
-      name: "Phase1闭环验证合同",
-      counterparty: "Phase1验证供应商"
+      name: "一期闭环验证合同",
+      counterparty: "一期验证供应商"
     }
   });
 

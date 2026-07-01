@@ -59,7 +59,7 @@ function countOccurrences(text: string, value: string): number {
 function requiredValues(values: Record<string, unknown> = {}) {
   return {
     "contract.name": "钢材采购合同",
-    "contract.temporaryCode": "DRAFT-20260624-AB12CD34",
+    "contract.temporaryCode": "草稿-20260624-12345678",
     "document.watermark": "草稿",
     ...values
   };
@@ -85,7 +85,7 @@ describe("contract DOCX renderer", () => {
 
     const xml = renderedDocumentXml(result);
     expect(xml).toContain("钢材采购合同");
-    expect(xml).toContain("DRAFT-20260624-AB12CD34");
+    expect(xml).toContain("草稿-20260624-12345678");
     expect(xml).toContain("云南示例供应商有限公司");
     expect(xml).toContain("项目现场");
     expect(xml).toContain("结算单生效后方可付款。");

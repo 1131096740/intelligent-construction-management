@@ -67,7 +67,7 @@ describe("ContractDocumentService", () => {
           voidedAt: null,
           name: "钢材采购合同",
           contractTypeKey: "materials",
-          temporaryCode: "DRAFT-001",
+          temporaryCode: "草稿-001",
           code: null
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -177,7 +177,7 @@ describe("ContractDocumentService", () => {
         purpose: "draft",
         inputSnapshot: expect.objectContaining({
           templateFileId: "layout-file-1",
-          outputBaseName: "DRAFT-001-draft-r7",
+          outputBaseName: "草稿-001-草稿-修订7",
           requiredKeys: expect.arrayContaining([
             "contract.name",
             "contract.temporaryCode",

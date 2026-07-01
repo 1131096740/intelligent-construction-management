@@ -56,6 +56,11 @@ const PURPOSES = new Set<ContractDocumentPurpose>([
   "negotiation",
   "internal_review"
 ]);
+const PURPOSE_FILE_LABELS: Record<ContractDocumentPurpose, string> = {
+  draft: "草稿",
+  negotiation: "对外磋商稿",
+  internal_review: "内部送审稿"
+};
 export const CONTRACT_DOCUMENT_ENGINE_VERSION = "contract-document-v1";
 
 @Injectable()
@@ -145,7 +150,7 @@ export class ContractDocumentService {
           : [];
         const inputSnapshot: ContractDocumentInputSnapshot = {
           templateFileId: layout.docxFileId,
-          outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${input.purpose}-r${version.draftRevision}`,
+          outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${PURPOSE_FILE_LABELS[input.purpose]}-修订${version.draftRevision}`,
           renderInput: {
             values: this.renderValues(
               contract,

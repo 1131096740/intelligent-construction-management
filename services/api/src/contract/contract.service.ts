@@ -119,11 +119,11 @@ export class ContractService {
       // clauseSnapshot 初始化为模板 clauseSchema 中的所有条款定义。
       const clauseSnapshot = (templateVersion.clauseSchema as unknown[]) ?? [];
 
-      // 生成临时编号：DRAFT-YYYYMMDD-<8位大写字符>
+      // 生成临时编号：草稿-YYYYMMDD-<8位数字>
       const now = new Date();
       const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-      const randomPart = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8).padEnd(8, "X");
-      const temporaryCode = `DRAFT-${datePart}-${randomPart}`;
+      const randomPart = Math.floor(Math.random() * 100_000_000).toString().padStart(8, "0");
+      const temporaryCode = `草稿-${datePart}-${randomPart}`;
 
       const contract = await tx.contract.create({
         data: {

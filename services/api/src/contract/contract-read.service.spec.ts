@@ -8,7 +8,7 @@ describe("ContractReadService", () => {
           id: "contract-draft-1",
           projectId: "project-1",
           code: null,
-          temporaryCode: "DRAFT-20260625-ABCDEFGH",
+          temporaryCode: "草稿-20260625-12345678",
           name: "",
           counterparty: ""
         })
@@ -45,8 +45,8 @@ describe("ContractReadService", () => {
 
     const detail = await service.getDetail("contract-draft-1");
 
-    expect(detail.id).toBe("DRAFT-20260625-ABCDEFGH");
-    expect(detail.title).toBe("DRAFT-20260625-ABCDEFGH · ");
+    expect(detail.id).toBe("草稿-20260625-12345678");
+    expect(detail.title).toBe("草稿-20260625-12345678 · ");
     expect(detail.paymentTermStages).toEqual([]);
     expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥0.00" });
   });

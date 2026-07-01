@@ -41,13 +41,13 @@ const LIVE_GENERATION_CASES = [
     label: "generic_contract",
     seed: coreFlowSeedData.genericContractWorkbench,
     names: {
-      name: "Phase1通用合同验收",
-      counterparty: "Phase1通用合同相对方"
+      name: "一期通用合同验收",
+      counterparty: "一期通用合同相对方"
     },
     draftData: {
       projectName: coreFlowSeedData.project.name,
-      counterpartyName: "Phase1通用合同相对方",
-      businessSummary: "Task 6 通用合同 Word 生成验收",
+      counterpartyName: "一期通用合同相对方",
+      businessSummary: "通用合同生成验收",
       settlementCycle: "按双方确认结算",
       paymentRatioPercent: 80,
       taxRatePercent: "6",
@@ -62,15 +62,15 @@ const LIVE_GENERATION_CASES = [
       unitPrice: "10000.00",
       taxRatePercent: "6",
       taxInclusiveAmount: "10000.00",
-      remark: "Task 6 通用合同验收"
+      remark: "通用合同生成验收"
     }
   },
   {
     label: "equipment_rental",
     seed: coreFlowSeedData.equipmentRentalWorkbench,
     names: {
-      name: "Phase1机械租赁验收合同",
-      counterparty: "Phase1机械租赁公司"
+      name: "一期机械租赁验收合同",
+      counterparty: "一期机械租赁公司"
     },
     draftData: {
       rentalStartDate: "2026-07-01",
@@ -92,15 +92,15 @@ const LIVE_GENERATION_CASES = [
       taxInclusiveAmount: "4300.00",
       fuelIncluded: false,
       operatorIncluded: true,
-      remark: "Phase1机械租赁验收"
+      remark: "机械租赁生成验收"
     }
   },
   {
     label: "labor_subcontract",
     seed: coreFlowSeedData.laborSubcontractWorkbench,
     names: {
-      name: "Phase1劳务分包验收合同",
-      counterparty: "Phase1劳务班组"
+      name: "一期劳务分包验收合同",
+      counterparty: "一期劳务班组"
     },
     draftData: {
       projectName: coreFlowSeedData.project.name,
@@ -121,7 +121,7 @@ const LIVE_GENERATION_CASES = [
       unitPrice: "10000.00",
       taxRatePercent: "3",
       taxInclusiveAmount: "10000.00",
-      remark: "Phase1劳务分包验收"
+      remark: "劳务分包生成验收"
     }
   }
 ];
@@ -268,8 +268,8 @@ async function createMinimalDraft(
   token,
   seed = coreFlowSeedData.materialPurchaseWorkbench,
   names = {
-    name: "Phase1材料采购验收合同",
-    counterparty: "Phase1材料供应商"
+    name: "一期材料采购验收合同",
+    counterparty: "一期材料供应商"
   }
 ) {
   const result = await postJson(
@@ -323,7 +323,7 @@ async function saveDraft(contractVersionId, workbench, token) {
       pricingNature: "fixed_total",
       amountSource: "manual",
       manualAmountCents: 12800000,
-      amountAdjustmentReason: "Phase 1 验收脚本手工合同金额",
+      amountAdjustmentReason: "一期验收脚本手工合同金额",
       layoutTemplateVersionId: seed.layout.versionId
     },
     token
@@ -342,7 +342,7 @@ async function saveLiveGenerationDraft(contractVersionId, workbench, seed, draft
       pricingNature: "fixed_total",
       amountSource: "manual",
       manualAmountCents: 1000000,
-      amountAdjustmentReason: `${seed.template.name} live document generation smoke`,
+      amountAdjustmentReason: `${seed.template.name}自动生成验收`,
       layoutTemplateVersionId: seed.layout.versionId
     },
     token
@@ -357,7 +357,7 @@ async function saveLiveGenerationDraft(contractVersionId, workbench, seed, draft
 async function createCheckpoint(contractVersionId, token) {
   const checkpoint = await postJson(
     `/contract-workbench/${contractVersionId}/checkpoints`,
-    { name: "Phase 1 验收检查点" },
+    { name: "一期验收检查点" },
     token
   );
   assert(checkpoint.id, "manual checkpoint did not return an id");
@@ -455,7 +455,7 @@ async function uploadImportApplyExcel(bill, token) {
   const template = await exportExcelTemplate(bill, token);
   const edited = await fillExcelTemplate(template);
   const file = await uploadFile(
-    `phase1-materials-${Date.now()}.xlsx`,
+    `一期材料清单-${Date.now()}.xlsx`,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     edited,
     token
@@ -477,7 +477,7 @@ async function addParties(
   contractVersionId,
   token,
   ownerName = "建工智管建设有限公司",
-  counterpartyName = "Phase1材料供应商"
+  counterpartyName = "一期材料供应商"
 ) {
   const snapshot = (name) => ({
     name,
@@ -582,8 +582,8 @@ async function confirmOfflineRevision(contractVersionId, draftDocument, token) {
     {
       fileId: draftDocument.docxFileId,
       sourceGeneratedDocumentId: draftDocument.id,
-      label: "Live线下修订稿",
-      note: "verify-contract-workbench smoke",
+      label: "线上验收线下修订稿",
+      note: "合同工作台验收",
       confirmationStatementAccepted: true
     },
     token
@@ -597,7 +597,7 @@ async function confirmOfflineRevision(contractVersionId, draftDocument, token) {
       (item) =>
         item.id === revision.id &&
         item.fileId === draftDocument.docxFileId &&
-        item.label === "Live线下修订稿"
+        item.label === "线上验收线下修订稿"
     ),
     "offline revision was not persisted or listed"
   );

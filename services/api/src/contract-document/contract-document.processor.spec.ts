@@ -96,7 +96,7 @@ describe("ContractDocumentProcessor", () => {
       sourceRevision: 3,
       inputSnapshot: {
         templateFileId: "layout-file",
-        outputBaseName: "DRAFT-001-draft-r3",
+        outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },
         attachmentFiles: []
       },
@@ -144,7 +144,7 @@ describe("ContractDocumentProcessor", () => {
       sourceRevision: 8,
       inputSnapshot: {
         templateFileId: "layout-file",
-        outputBaseName: "DRAFT-001-negotiation-r8",
+        outputBaseName: "草稿-001-对外磋商稿-修订8",
         renderInput: { values: { "contract.name": "合同" } },
         attachmentFiles: [
           {
@@ -218,7 +218,7 @@ describe("ContractDocumentProcessor", () => {
     expect(files.uploadPrivateFile).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        originalName: "DRAFT-001-negotiation-r8.docx",
+        originalName: "草稿-001-对外磋商稿-修订8.docx",
         mimeType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         uploadedByUserId: "owner-1",
@@ -229,7 +229,7 @@ describe("ContractDocumentProcessor", () => {
     expect(files.uploadPrivateFile).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        originalName: "DRAFT-001-negotiation-r8.pdf",
+        originalName: "草稿-001-对外磋商稿-修订8.pdf",
         mimeType: "application/pdf",
         uploadedByUserId: "owner-1"
       })
@@ -299,7 +299,7 @@ describe("ContractDocumentProcessor", () => {
       expect.objectContaining({
         values: expect.objectContaining({
           "contract.name": "预览合同",
-          "contract.temporaryCode": "PREVIEW",
+          "contract.temporaryCode": "预览",
           "document.watermark": "预览"
         })
       }),
@@ -330,7 +330,7 @@ describe("ContractDocumentProcessor", () => {
       sourceRevision: 2,
       inputSnapshot: {
         templateFileId: "layout-file",
-        outputBaseName: "DRAFT-001-draft-r2",
+        outputBaseName: "草稿-001-草稿-修订2",
         renderInput: { values: {} },
         attachmentFiles: []
       },
@@ -378,7 +378,7 @@ describe("ContractDocumentProcessor", () => {
       sourceRevision: 3,
       inputSnapshot: {
         templateFileId: "layout-file",
-        outputBaseName: "DRAFT-001-draft-r3",
+        outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },
         requiredKeys: [],
         attachmentFiles: []
@@ -431,7 +431,7 @@ describe("ContractDocumentProcessor", () => {
       sourceRevision: 3,
       inputSnapshot: {
         templateFileId: "layout-file",
-        outputBaseName: "DRAFT-001-draft-r3",
+        outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },
         requiredKeys: [],
         attachmentFiles: []
@@ -490,7 +490,7 @@ describe("ContractDocumentProcessor", () => {
       sourceRevision: 3,
       inputSnapshot: {
         templateFileId: "layout-file",
-        outputBaseName: "DRAFT-001-draft-r3",
+        outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },
         requiredKeys: [],
         attachmentFiles: []
@@ -530,7 +530,7 @@ describe("ContractDocumentProcessor", () => {
       sourceRevision: 3,
       inputSnapshot: {
         templateFileId: "layout-file",
-        outputBaseName: "DRAFT-001-draft-r3",
+        outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },
         requiredKeys: [],
         attachmentFiles: []

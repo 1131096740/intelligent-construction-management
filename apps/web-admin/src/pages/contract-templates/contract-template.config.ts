@@ -74,10 +74,10 @@ export function isValidContractNumberPattern(pattern: string) {
 
 export function previewContractNumber(pattern: string, sequence: number, width: number) {
   const values: Record<string, string> = {
-    "{company}": "GS",
-    "{project}": "XM",
+    "{company}": "公司",
+    "{project}": "项目",
     "{year}": String(new Date().getFullYear()),
-    "{type}": "HT",
+    "{type}": "材料",
     "{sequence}": String(sequence).padStart(width, "0")
   };
   return numberRuleTokens.reduce((text, token) => text.split(token).join(values[token]), pattern);

@@ -263,7 +263,7 @@ export const coreFlowSeedData = {
         sampleData: {
           contract: {
             name: "材料采购合同样张",
-            temporaryCode: "TMP-MAT-001",
+            temporaryCode: "样张-材料-001",
             amountUppercase: "人民币壹拾贰万捌仟元整"
           },
           field: {
@@ -426,7 +426,7 @@ export const coreFlowSeedData = {
         status: "succeeded",
         completedAt: new Date("2026-06-01T00:05:00.000Z"),
         sampleData: {
-          contract: { name: "机械租赁合同样张", temporaryCode: "TMP-EQP-001", amountUppercase: "人民币壹万元整" },
+          contract: { name: "机械租赁合同样张", temporaryCode: "样张-机械-001", amountUppercase: "人民币壹万元整" },
           field: {
             useLocation: "项目现场",
             taxRatePercent: "1",
@@ -588,7 +588,7 @@ export const coreFlowSeedData = {
         status: "succeeded",
         completedAt: new Date("2026-06-01T00:05:00.000Z"),
         sampleData: {
-          contract: { name: "劳务分包合同样张", temporaryCode: "TMP-LAB-001", amountUppercase: "人民币壹万元整" },
+          contract: { name: "劳务分包合同样张", temporaryCode: "样张-劳务-001", amountUppercase: "人民币壹万元整" },
           field: {
             projectName: "建设项目一期",
             workScope: "主体结构劳务作业",
@@ -745,7 +745,7 @@ export const coreFlowSeedData = {
         status: "succeeded",
         completedAt: new Date("2026-06-01T00:05:00.000Z"),
         sampleData: {
-          contract: { name: "通用合同样张", temporaryCode: "TMP-GEN-001", amountUppercase: "人民币壹万元整" },
+          contract: { name: "通用合同样张", temporaryCode: "样张-通用-001", amountUppercase: "人民币壹万元整" },
           field: {
             projectName: "建设项目一期",
             counterpartyName: "通用合同相对方",

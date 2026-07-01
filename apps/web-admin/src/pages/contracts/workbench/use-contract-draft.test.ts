@@ -46,7 +46,7 @@ function makeWorkbench(overrides: Record<string, unknown> = {}) {
   return {
     contract: {
       id: "ct-1",
-      temporaryCode: "TMP-1",
+      temporaryCode: "草稿-1",
       code: null,
       projectId: "p-1",
       contractTypeKey: "subcontract",

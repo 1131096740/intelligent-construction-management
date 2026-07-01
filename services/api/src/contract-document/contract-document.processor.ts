@@ -399,7 +399,7 @@ export class ContractDocumentProcessor
       flatten(sampleData);
     }
     values["contract.name"] ??= "版式预览合同";
-    values["contract.temporaryCode"] ??= "PREVIEW";
+    values["contract.temporaryCode"] ??= "预览";
     values["document.watermark"] ??= "预览";
     return Object.fromEntries(
       Object.entries(values).map(([key, value]) => [

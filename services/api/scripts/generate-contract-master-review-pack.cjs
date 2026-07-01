@@ -20,10 +20,10 @@ const pdfInfoCommand = process.env.PDFINFO_COMMAND || "pdfinfo";
 const pdfToPpmCommand = process.env.PDFTOPPM_COMMAND || "pdftoppm";
 
 const targets = [
-  { code: "material_purchase", label: "材料采购合同", prefix: "01-material-purchase" },
-  { code: "equipment_rental", label: "工程机械设备租赁合同", prefix: "02-equipment-rental" },
-  { code: "labor_subcontract", label: "劳务分包合同", prefix: "03-labor-subcontract" },
-  { code: "generic_contract", label: "通用合同", prefix: "04-generic-contract" }
+  { code: "material_purchase", label: "材料采购合同", prefix: "01-材料采购合同" },
+  { code: "equipment_rental", label: "工程机械设备租赁合同", prefix: "02-工程机械设备租赁合同" },
+  { code: "labor_subcontract", label: "劳务分包合同", prefix: "03-劳务分包合同" },
+  { code: "generic_contract", label: "通用合同", prefix: "04-通用合同" }
 ];
 
 function stamp() {
