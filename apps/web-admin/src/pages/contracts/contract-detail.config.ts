@@ -25,6 +25,32 @@ export interface PaymentTermStage {
   triggerEvent: string;
 }
 
+export interface ContractSettlementLedgerRow {
+  id: string;
+  settlementNo: string;
+  period: string;
+  settlementDate: string;
+  settlementMethod: string;
+  currentAmount: string;
+  cumulativeBeforeAmount: string;
+  cumulativeAfterAmount: string;
+  approvalStatus: string;
+  archiveStatus: string;
+}
+
+export interface ContractPaymentLedgerRow {
+  id: string;
+  paymentNo: string;
+  settlementNo: string;
+  requestedAmount: string;
+  approvedAmount: string;
+  paidAmount: string;
+  paymentDate: string;
+  approvalStatus: string;
+  paymentStatus: string;
+  voucherStatus: string;
+}
+
 export const contractDetailTitle = "HT-2026-001 · 钢材采购合同";
 
 export const contractDetailMeta: DetailMetaItem[] = [
@@ -89,3 +115,29 @@ export const contractPaymentTermStages: PaymentTermStage[] = [
 
 export const contractSettlementBlockMessage =
   "合同尚未生效，暂不可发起结算；结算未生效前不可创建付款申请。";
+
+export const contractSettlementLedgerColumns: PrimaryTableCol<ContractSettlementLedgerRow>[] = [
+  { colKey: "settlementNo", title: "结算编号", width: 150 },
+  { colKey: "period", title: "期次", width: 112 },
+  { colKey: "settlementDate", title: "更新时间", width: 150 },
+  { colKey: "settlementMethod", title: "结算方式", width: 120 },
+  { colKey: "currentAmount", title: "本期结算金额", width: 140, align: "right" },
+  { colKey: "cumulativeBeforeAmount", title: "期前累计结算", width: 140, align: "right" },
+  { colKey: "cumulativeAfterAmount", title: "期后累计结算", width: 140, align: "right" },
+  { colKey: "approvalStatus", title: "审批状态", width: 112 },
+  { colKey: "archiveStatus", title: "归档状态", width: 112 },
+  { colKey: "operation", title: "操作", width: 72, fixed: "right" }
+];
+
+export const contractPaymentLedgerColumns: PrimaryTableCol<ContractPaymentLedgerRow>[] = [
+  { colKey: "paymentNo", title: "付款申请单号", width: 150 },
+  { colKey: "settlementNo", title: "关联结算", width: 150 },
+  { colKey: "requestedAmount", title: "申请金额", width: 120, align: "right" },
+  { colKey: "approvedAmount", title: "已批金额", width: 120, align: "right" },
+  { colKey: "paidAmount", title: "已实付金额", width: 120, align: "right" },
+  { colKey: "paymentDate", title: "最近付款日期", width: 150 },
+  { colKey: "approvalStatus", title: "审批状态", width: 112 },
+  { colKey: "paymentStatus", title: "付款状态", width: 112 },
+  { colKey: "voucherStatus", title: "凭证状态", width: 112 },
+  { colKey: "operation", title: "操作", width: 72, fixed: "right" }
+];

@@ -10,6 +10,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-07-02 (CodeX)：继续推进结算付款模板升级，完成合同详情页“结算与付款”只读页签。后端 `ContractReadService.getDetail` 汇总合同维度结算、结算归档文件、付款申请和实付记录，输出累计生效结算、保守可申请余额、审批中占用、已批待付、已实付、最新合同剩余额度、结算台账和付款台账；当前可申请余额明确为“已生效应付 - 已实付 - 审批中占用 - 已批待付”的保守口径，不伪造账期、质保金、预付款扣回或项目资金池能力。Web 将原“关联结算/付款”占位替换为摘要条、结算台账、付款台账，并使用中文详情路径跳转；详情读取失败时只显示错误态，不回落到样例合同。合同、结算、付款详情接口补业务岗位读权限，`PermissionGuard` 支持从 `contractId`、`settlementId`、`paymentId` 解析真实项目，避免金额页签登录即读。验证：API 合同读模型与权限 Guard 目标测试、Web 合同详情配置测试、全包 typecheck/lint 通过。
 - 2026-07-02 (CodeX)：完成 Task 3 付款审批流升级。付款申请审批路线从单一最终审批升级为“项目经理 -> 合同结算部/预算部 -> 财务 -> 董事长/总经理或签”，中间节点审批后保持 `approval_pending` 并冻结节点进度，最终或签通过后进入 `approved_pending_payment`；批准金额必须为正整数且不超过申请金额，非最终节点不得填写批准金额。共享权限动作 `payment.approve` 同步扩展到项目经理、合同/预算/财务负责人和董事长/总经理；后端 `PermissionGuard` 改为从真实 `paymentId` 解析项目权限，避免请求体伪造 `projectId` 绕过审批权限；付款详情和读模型步骤文案同步为新路线。验证：API 付款/权限目标测试、Web 付款配置测试、shared-domain 权限测试通过。
 - 2026-07-02 (CodeX)：修复 Task 2 质量审查问题。项目经营页切换项目时立即清空旧总览，并只在返回数据仍匹配当前选中项目时写入，避免慢请求覆盖新选择；项目经营金额 `sumCents` 改为先以 BigInt 聚合再做安全整数转换，补覆盖“单项安全但合计溢出”的单测。验证：API project service 目标测试、Web API/route 目标测试、API/Web typecheck、`git diff --check` 通过。
 - 2026-07-02 (CodeX)：按规格审查修正 Task 2 项目经营权限和合同金额口径。`GET /projects` 改为仅要求登录并按当前用户过滤：全局资金全貌岗位可看全部 active 项目，项目级 `ProjectMember.positionKey` 或项目级 `UserPosition -> Position.key` 只返回对应 active 项目，普通员工返回空列表；项目经营总览的生效合同额改为每个合同只取最高 `versionNo` 的 effective 合同版本，避免补充/变更历史重复计入。验证：API project 目标测试、Web API/route 目标测试、API/Web typecheck、`git diff --check` 通过。

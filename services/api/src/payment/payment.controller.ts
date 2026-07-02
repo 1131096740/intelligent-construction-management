@@ -129,6 +129,17 @@ export class PaymentController {
   }
 
   @Get(":paymentId")
+  @RequirePositions(
+    "chairman",
+    "general_manager",
+    "project_manager",
+    "contract_director",
+    "contract_staff",
+    "budget_director",
+    "budget_staff",
+    "finance_director",
+    "finance_staff"
+  )
   detail(@Param("paymentId") paymentId: string) {
     return this.paymentRead.getDetail(paymentId);
   }

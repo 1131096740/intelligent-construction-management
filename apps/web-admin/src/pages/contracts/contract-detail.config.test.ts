@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   contractDetailMeta,
   contractEffectivenessSteps,
+  contractPaymentLedgerColumns,
   contractPaymentTermColumns,
+  contractSettlementLedgerColumns,
   contractSettlementBlockMessage
 } from "./contract-detail.config";
 
@@ -45,5 +47,32 @@ describe("contract detail page configuration", () => {
     expect(contractSettlementBlockMessage).toBe(
       "合同尚未生效，暂不可发起结算；结算未生效前不可创建付款申请。"
     );
+  });
+
+  it("shows contract settlement and payment ledger columns", () => {
+    expect(contractSettlementLedgerColumns.map((column) => column.title)).toEqual([
+      "结算编号",
+      "期次",
+      "更新时间",
+      "结算方式",
+      "本期结算金额",
+      "期前累计结算",
+      "期后累计结算",
+      "审批状态",
+      "归档状态",
+      "操作"
+    ]);
+    expect(contractPaymentLedgerColumns.map((column) => column.title)).toEqual([
+      "付款申请单号",
+      "关联结算",
+      "申请金额",
+      "已批金额",
+      "已实付金额",
+      "最近付款日期",
+      "审批状态",
+      "付款状态",
+      "凭证状态",
+      "操作"
+    ]);
   });
 });

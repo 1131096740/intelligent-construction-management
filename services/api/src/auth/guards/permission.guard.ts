@@ -111,6 +111,26 @@ export class PermissionGuard implements CanActivate {
       return payment?.projectId;
     }
 
+    const settlementId = request.params?.settlementId;
+    if (settlementId) {
+      const settlement = await this.prisma.settlement.findFirst({
+        where: { OR: [{ id: settlementId }, { code: settlementId }] },
+        select: { projectId: true }
+      });
+
+      return settlement?.projectId;
+    }
+
+    const contractId = request.params?.contractId;
+    if (contractId) {
+      const contract = await this.prisma.contract.findFirst({
+        where: { OR: [{ id: contractId }, { code: contractId }] },
+        select: { projectId: true }
+      });
+
+      return contract?.projectId;
+    }
+
     const fromParams = request.params?.projectId;
     const fromQuery = request.query?.projectId;
     const fromBody =

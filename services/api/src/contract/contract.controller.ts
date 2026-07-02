@@ -48,6 +48,17 @@ export class ContractController {
   }
 
   @Get(":contractId")
+  @RequirePositions(
+    "chairman",
+    "general_manager",
+    "project_manager",
+    "contract_director",
+    "contract_staff",
+    "budget_director",
+    "budget_staff",
+    "finance_director",
+    "finance_staff"
+  )
   detail(@Param("contractId") contractId: string) {
     return this.contractRead.getDetail(contractId);
   }

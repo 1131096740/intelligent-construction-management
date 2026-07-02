@@ -18,325 +18,406 @@
       </div>
     </div>
 
-    <div class="meta-panel">
-      <div
-        v-for="item in contractDetailMetaView"
-        :key="item.label"
-        class="meta-item"
-      >
-        <span>{{ item.label }}</span>
-        <strong :class="item.tone ? `tone-${item.tone}` : undefined">
-          {{ item.value }}
-        </strong>
-      </div>
-    </div>
-
-    <div class="chain-strip">
-      <span>业务链路</span>
-      <t-link
-        v-for="link in contractDetailChainLinksView"
-        :key="link.to"
-        theme="primary"
-        @click="openChainLink(link.to)"
-      >
-        {{ link.label }}
-      </t-link>
-    </div>
-
     <t-card
-      class="section-card action-card"
-      title="流程动作"
+      v-if="contractDetailError"
+      class="section-card"
+      title="合同详情"
       :bordered="true"
     >
-      <div class="action-grid">
-        <div class="action-group">
-          <div class="action-title">
-            <strong>合同审批</strong>
-            <span>提交、通过、驳回</span>
-          </div>
-          <div class="action-fields">
-            <t-select
-              v-model="contractArchiveForm.numberRuleId"
-              :options="contractNumberRuleOptions"
-              placeholder="选择合同编号规则"
-            />
-            <t-input
-              v-model="contractArchiveForm.approvalComment"
-              placeholder="审批意见/备注(可选)"
-            />
-          </div>
-          <div class="action-buttons">
-            <t-button
-              theme="primary"
-              :loading="archiveActionBusy === 'submitApproval'"
-              :disabled="!canRunContractVersionAction"
-              @click="submitContractApprovalAction"
-            >
-              提交审批
-            </t-button>
-            <t-button
-              theme="primary"
-              variant="outline"
-              :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!canRunContractVersionAction"
-              @click="submitContractReview('approve')"
-            >
-              通过
-            </t-button>
-            <t-button
-              theme="danger"
-              variant="outline"
-              :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!canRunContractVersionAction"
-              @click="submitContractReview('reject')"
-            >
-              驳回
-            </t-button>
-            <t-button
-              theme="default"
-              variant="outline"
-              :loading="archiveActionBusy === 'approvalForm'"
-              @click="downloadContractApprovalForm"
-            >
-              下载审批单
-            </t-button>
-          </div>
-        </div>
-
-        <div class="action-group">
-          <div class="action-title">
-            <strong>审批辅助</strong>
-            <span>撤回、催办、转审、委托</span>
-          </div>
-          <div class="action-fields">
-            <t-input
-              v-model="contractArchiveForm.assignmentUserId"
-              placeholder="目标人员编号"
-            />
-          </div>
-          <div class="action-buttons">
-            <t-button
-              :loading="archiveActionBusy === 'withdrawApproval'"
-              :disabled="!canRunContractVersionAction"
-              @click="submitContractWithdrawal"
-            >
-              撤回
-            </t-button>
-            <t-button
-              :loading="archiveActionBusy === 'remindApproval'"
-              :disabled="!canRunContractVersionAction"
-              @click="submitContractReminder"
-            >
-              催办
-            </t-button>
-            <t-button
-              theme="primary"
-              variant="outline"
-              :loading="archiveActionBusy === 'transferApproval'"
-              :disabled="!canRunContractVersionAction"
-              @click="submitContractAssignment('transfer')"
-            >
-              转审
-            </t-button>
-            <t-button
-              theme="primary"
-              variant="outline"
-              :loading="archiveActionBusy === 'delegateApproval'"
-              :disabled="!canRunContractVersionAction"
-              @click="submitContractAssignment('delegate')"
-            >
-              委托
-            </t-button>
-          </div>
-        </div>
-
-        <div class="action-group">
-          <div class="action-title">
-            <strong>用章与PDF</strong>
-            <span>后端生成归档PDF</span>
-          </div>
-          <div class="action-buttons">
-            <t-button
-              theme="primary"
-              :loading="archiveActionBusy === 'seal'"
-              :disabled="!canRunContractVersionAction"
-              @click="submitContractSeal"
-            >
-              用章通过
-            </t-button>
-            <t-button
-              theme="primary"
-              variant="outline"
-              :loading="archiveActionBusy === 'pdf'"
-              :disabled="!canRunContractVersionAction"
-              @click="submitContractPdfGeneration"
-            >
-              生成PDF归档
-            </t-button>
-          </div>
-        </div>
-
-        <div class="action-group">
-          <div class="action-title">
-            <strong>上传盖章合同</strong>
-            <span>合同部成员</span>
-          </div>
-          <div class="action-fields">
-            <input
-              class="file-input"
-              type="file"
-              @change="selectContractArchiveFile"
-            >
-          </div>
-          <t-button
-            theme="primary"
-            :loading="archiveActionBusy === 'upload'"
-            :disabled="!canUploadContractArchive"
-            @click="submitContractArchiveUpload"
-          >
-            提交归档件
-          </t-button>
-        </div>
-
-        <div class="action-group">
-          <div class="action-title">
-            <strong>主管确认归档</strong>
-            <span>确认后合同版本生效</span>
-          </div>
-          <div class="action-fields">
-            <t-input
-              v-model="contractArchiveForm.archiveFileId"
-              placeholder="归档记录ID"
-            />
-            <t-input
-              v-model="contractArchiveForm.confirmationPassword"
-              type="password"
-              placeholder="当前登录密码确认"
-            />
-          </div>
-          <t-button
-            theme="primary"
-            :loading="archiveActionBusy === 'confirm'"
-            :disabled="!canConfirmContractArchive"
-            @click="submitContractArchiveConfirmation"
-          >
-            确认生效
-          </t-button>
-        </div>
-
-        <div class="action-group">
-          <div class="action-title">
-            <strong>敏感文件下载</strong>
-            <span>签发短时效票据</span>
-          </div>
-          <div class="action-fields">
-            <t-input
-              v-model="contractArchiveForm.downloadFileId"
-              placeholder="文件编号"
-            />
-            <t-input
-              v-model="contractArchiveForm.downloadPassword"
-              type="password"
-              placeholder="当前登录密码确认"
-            />
-          </div>
-          <t-button
-            theme="primary"
-            variant="outline"
-            :loading="archiveActionBusy === 'download'"
-            @click="submitContractFileDownload"
-          >
-            下载文件
-          </t-button>
-        </div>
-      </div>
-
-      <div
-        v-if="archiveActionMessage"
-        :class="['action-message', archiveActionMessageTone]"
-      >
-        {{ archiveActionMessage }}
+      <div class="state-message danger">
+        {{ contractDetailError }}
       </div>
     </t-card>
 
-    <div class="detail-grid">
+    <t-card
+      v-else-if="!contractDetail"
+      class="section-card"
+      title="合同详情"
+      :bordered="true"
+    >
+      <div class="state-message">
+        正在加载合同详情
+      </div>
+    </t-card>
+
+    <template v-else>
+      <div class="meta-panel">
+        <div
+          v-for="item in contractDetailMetaView"
+          :key="item.label"
+          class="meta-item"
+        >
+          <span>{{ item.label }}</span>
+          <strong :class="item.tone ? `tone-${item.tone}` : undefined">
+            {{ item.value }}
+          </strong>
+        </div>
+      </div>
+
+      <div class="chain-strip">
+        <span>业务链路</span>
+        <t-link
+          v-for="link in contractDetailChainLinksView"
+          :key="link.to"
+          theme="primary"
+          @click="openChainLink(link.to)"
+        >
+          {{ link.label }}
+        </t-link>
+      </div>
+
       <t-card
-        title="基础信息"
+        class="section-card action-card"
+        title="流程动作"
         :bordered="true"
       >
-        <dl class="info-list">
-          <template
-            v-for="item in contractBaseInfoView"
-            :key="item.label"
-          >
-            <dt>{{ item.label }}</dt>
-            <dd>{{ item.value }}</dd>
+        <div class="action-grid">
+          <div class="action-group">
+            <div class="action-title">
+              <strong>合同审批</strong>
+              <span>提交、通过、驳回</span>
+            </div>
+            <div class="action-fields">
+              <t-select
+                v-model="contractArchiveForm.numberRuleId"
+                :options="contractNumberRuleOptions"
+                placeholder="选择合同编号规则"
+              />
+              <t-input
+                v-model="contractArchiveForm.approvalComment"
+                placeholder="审批意见/备注(可选)"
+              />
+            </div>
+            <div class="action-buttons">
+              <t-button
+                theme="primary"
+                :loading="archiveActionBusy === 'submitApproval'"
+                :disabled="!canRunContractVersionAction"
+                @click="submitContractApprovalAction"
+              >
+                提交审批
+              </t-button>
+              <t-button
+                theme="primary"
+                variant="outline"
+                :loading="archiveActionBusy === 'reviewApproval'"
+                :disabled="!canRunContractVersionAction"
+                @click="submitContractReview('approve')"
+              >
+                通过
+              </t-button>
+              <t-button
+                theme="danger"
+                variant="outline"
+                :loading="archiveActionBusy === 'reviewApproval'"
+                :disabled="!canRunContractVersionAction"
+                @click="submitContractReview('reject')"
+              >
+                驳回
+              </t-button>
+              <t-button
+                theme="default"
+                variant="outline"
+                :loading="archiveActionBusy === 'approvalForm'"
+                @click="downloadContractApprovalForm"
+              >
+                下载审批单
+              </t-button>
+            </div>
+          </div>
+
+          <div class="action-group">
+            <div class="action-title">
+              <strong>审批辅助</strong>
+              <span>撤回、催办、转审、委托</span>
+            </div>
+            <div class="action-fields">
+              <t-input
+                v-model="contractArchiveForm.assignmentUserId"
+                placeholder="目标人员编号"
+              />
+            </div>
+            <div class="action-buttons">
+              <t-button
+                :loading="archiveActionBusy === 'withdrawApproval'"
+                :disabled="!canRunContractVersionAction"
+                @click="submitContractWithdrawal"
+              >
+                撤回
+              </t-button>
+              <t-button
+                :loading="archiveActionBusy === 'remindApproval'"
+                :disabled="!canRunContractVersionAction"
+                @click="submitContractReminder"
+              >
+                催办
+              </t-button>
+              <t-button
+                theme="primary"
+                variant="outline"
+                :loading="archiveActionBusy === 'transferApproval'"
+                :disabled="!canRunContractVersionAction"
+                @click="submitContractAssignment('transfer')"
+              >
+                转审
+              </t-button>
+              <t-button
+                theme="primary"
+                variant="outline"
+                :loading="archiveActionBusy === 'delegateApproval'"
+                :disabled="!canRunContractVersionAction"
+                @click="submitContractAssignment('delegate')"
+              >
+                委托
+              </t-button>
+            </div>
+          </div>
+
+          <div class="action-group">
+            <div class="action-title">
+              <strong>用章与PDF</strong>
+              <span>后端生成归档PDF</span>
+            </div>
+            <div class="action-buttons">
+              <t-button
+                theme="primary"
+                :loading="archiveActionBusy === 'seal'"
+                :disabled="!canRunContractVersionAction"
+                @click="submitContractSeal"
+              >
+                用章通过
+              </t-button>
+              <t-button
+                theme="primary"
+                variant="outline"
+                :loading="archiveActionBusy === 'pdf'"
+                :disabled="!canRunContractVersionAction"
+                @click="submitContractPdfGeneration"
+              >
+                生成PDF归档
+              </t-button>
+            </div>
+          </div>
+
+          <div class="action-group">
+            <div class="action-title">
+              <strong>上传盖章合同</strong>
+              <span>合同部成员</span>
+            </div>
+            <div class="action-fields">
+              <input
+                class="file-input"
+                type="file"
+                @change="selectContractArchiveFile"
+              >
+            </div>
+            <t-button
+              theme="primary"
+              :loading="archiveActionBusy === 'upload'"
+              :disabled="!canUploadContractArchive"
+              @click="submitContractArchiveUpload"
+            >
+              提交归档件
+            </t-button>
+          </div>
+
+          <div class="action-group">
+            <div class="action-title">
+              <strong>主管确认归档</strong>
+              <span>确认后合同版本生效</span>
+            </div>
+            <div class="action-fields">
+              <t-input
+                v-model="contractArchiveForm.archiveFileId"
+                placeholder="归档记录ID"
+              />
+              <t-input
+                v-model="contractArchiveForm.confirmationPassword"
+                type="password"
+                placeholder="当前登录密码确认"
+              />
+            </div>
+            <t-button
+              theme="primary"
+              :loading="archiveActionBusy === 'confirm'"
+              :disabled="!canConfirmContractArchive"
+              @click="submitContractArchiveConfirmation"
+            >
+              确认生效
+            </t-button>
+          </div>
+
+          <div class="action-group">
+            <div class="action-title">
+              <strong>敏感文件下载</strong>
+              <span>签发短时效票据</span>
+            </div>
+            <div class="action-fields">
+              <t-input
+                v-model="contractArchiveForm.downloadFileId"
+                placeholder="文件编号"
+              />
+              <t-input
+                v-model="contractArchiveForm.downloadPassword"
+                type="password"
+                placeholder="当前登录密码确认"
+              />
+            </div>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="archiveActionBusy === 'download'"
+              @click="submitContractFileDownload"
+            >
+              下载文件
+            </t-button>
+          </div>
+        </div>
+
+        <div
+          v-if="archiveActionMessage"
+          :class="['action-message', archiveActionMessageTone]"
+        >
+          {{ archiveActionMessage }}
+        </div>
+      </t-card>
+
+      <div class="detail-grid">
+        <t-card
+          title="基础信息"
+          :bordered="true"
+        >
+          <dl class="info-list">
+            <template
+              v-for="item in contractBaseInfoView"
+              :key="item.label"
+            >
+              <dt>{{ item.label }}</dt>
+              <dd>{{ item.value }}</dd>
+            </template>
+          </dl>
+        </t-card>
+
+        <t-card
+          title="生效流程与阻断点"
+          :bordered="true"
+        >
+          <div class="flow-list">
+            <div
+              v-for="step in contractEffectivenessStepsView"
+              :key="step.label"
+              class="flow-row"
+            >
+              <span :class="['flow-dot', `dot-${step.tone}`]" />
+              <span>{{ step.label }}</span>
+              <t-tag
+                size="small"
+                :theme="tagTheme(step.tone)"
+                variant="light"
+              >
+                {{ step.status }}
+              </t-tag>
+            </div>
+          </div>
+        </t-card>
+      </div>
+
+      <t-card
+        class="section-card"
+        title="付款条款版本记录"
+        :bordered="true"
+      >
+        <t-table
+          row-key="id"
+          size="small"
+          :columns="contractPaymentTermColumns"
+          :data="contractPaymentTermStagesView"
+        >
+          <template #operation="{ row }">
+            <t-link
+              theme="primary"
+              @click="showContractNotice(`付款条款 ${row.paymentTermsVersion} 已在当前表格展示。`)"
+            >
+              查看
+            </t-link>
           </template>
-        </dl>
+        </t-table>
       </t-card>
 
+      <div
+        v-if="contractNotice"
+        class="action-message success"
+      >
+        {{ contractNotice }}
+      </div>
+
       <t-card
-        title="生效流程与阻断点"
+        class="section-card"
+        title="结算与付款"
         :bordered="true"
       >
-        <div class="flow-list">
-          <div
-            v-for="step in contractEffectivenessStepsView"
-            :key="step.label"
-            class="flow-row"
-          >
-            <span :class="['flow-dot', `dot-${step.tone}`]" />
-            <span>{{ step.label }}</span>
-            <t-tag
-              size="small"
-              :theme="tagTheme(step.tone)"
-              variant="light"
+        <div class="settlement-payment-panel">
+          <div class="money-summary">
+            <div
+              v-for="item in contractSettlementPaymentView.summary"
+              :key="item.label"
+              class="money-summary-item"
             >
-              {{ step.status }}
-            </t-tag>
+              <span>{{ item.label }}</span>
+              <strong :class="item.tone ? `tone-${item.tone}` : undefined">
+                {{ item.value }}
+              </strong>
+            </div>
+          </div>
+
+          <div class="calculation-note">
+            {{ contractSettlementPaymentView.calculationNote }}
+          </div>
+
+          <section class="ledger-section">
+            <header>结算台账</header>
+            <t-table
+              row-key="id"
+              size="small"
+              :columns="contractSettlementLedgerColumns"
+              :data="contractSettlementPaymentView.settlementRows"
+            >
+              <template #operation="{ row }">
+                <t-link
+                  theme="primary"
+                  @click="openChainLink(`/结算管理/${row.settlementNo}`)"
+                >
+                  查看
+                </t-link>
+              </template>
+            </t-table>
+          </section>
+
+          <section class="ledger-section">
+            <header>付款台账</header>
+            <t-table
+              row-key="id"
+              size="small"
+              :columns="contractPaymentLedgerColumns"
+              :data="contractSettlementPaymentView.paymentRows"
+            >
+              <template #operation="{ row }">
+                <t-link
+                  theme="primary"
+                  @click="openChainLink(`/付款管理/${row.paymentNo}`)"
+                >
+                  查看
+                </t-link>
+              </template>
+            </t-table>
+          </section>
+
+          <div class="block-message">
+            {{ contractSettlementBlockMessageView }}
           </div>
         </div>
       </t-card>
-    </div>
-
-    <t-card
-      class="section-card"
-      title="付款条款版本记录"
-      :bordered="true"
-    >
-      <t-table
-        row-key="id"
-        size="small"
-        :columns="contractPaymentTermColumns"
-        :data="contractPaymentTermStagesView"
-      >
-        <template #operation="{ row }">
-          <t-link
-            theme="primary"
-            @click="showContractNotice(`付款条款 ${row.paymentTermsVersion} 已在当前表格展示。`)"
-          >
-            查看
-          </t-link>
-        </template>
-      </t-table>
-    </t-card>
-
-    <div
-      v-if="contractNotice"
-      class="action-message success"
-    >
-      {{ contractNotice }}
-    </div>
-
-    <t-card
-      class="section-card"
-      title="关联结算 / 付款"
-      :bordered="true"
-    >
-      <div class="block-message">
-        {{ contractSettlementBlockMessageView }}
-      </div>
-    </t-card>
+    </template>
   </section>
 </template>
 
@@ -366,16 +447,18 @@ import type { DetailTone } from "./contract-detail.config";
 import {
   contractBaseInfo,
   contractDetailMeta,
-  contractDetailTitle,
   contractEffectivenessSteps,
+  contractPaymentLedgerColumns,
   contractPaymentTermColumns,
   contractPaymentTermStages,
+  contractSettlementLedgerColumns,
   contractSettlementBlockMessage
 } from "./contract-detail.config";
 
 const route = useRoute();
 const router = useRouter();
 const contractDetail = ref<ContractDetailReadModel | null>(null);
+const contractDetailError = ref("");
 const contractNumberRules = ref<Array<{ id: string; name: string; pattern: string }>>([]);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
@@ -392,7 +475,9 @@ const contractArchiveForm = reactive({
   numberRuleId: ""
 });
 
-const contractDetailTitleView = computed(() => contractDetail.value?.title ?? contractDetailTitle);
+const contractDetailTitleView = computed(() =>
+  contractDetailError.value || contractDetail.value?.title || "正在加载合同详情"
+);
 const contractDetailMetaView = computed(() => contractDetail.value?.meta ?? contractDetailMeta);
 const contractBaseInfoView = computed(() => contractDetail.value?.baseInfo ?? contractBaseInfo);
 const contractEffectivenessStepsView = computed(
@@ -403,6 +488,15 @@ const contractPaymentTermStagesView = computed(
 );
 const contractSettlementBlockMessageView = computed(
   () => contractDetail.value?.settlementBlockMessage ?? contractSettlementBlockMessage
+);
+const contractSettlementPaymentView = computed(
+  () =>
+    contractDetail.value?.settlementPayment ?? {
+      summary: [],
+      settlementRows: [],
+      paymentRows: [],
+      calculationNote: contractSettlementBlockMessage
+    }
 );
 const contractDetailChainLinksView = computed(
   () => contractDetail.value?.chainLinks ?? contractDetailChainLinks
@@ -434,11 +528,13 @@ function showContractNotice(message: string) {
 
 async function reloadContractDetail() {
   const contractId = String(route.params.contractId ?? "HT-2026-001");
+  contractDetailError.value = "";
 
   try {
     contractDetail.value = await fetchContractDetail(contractId);
   } catch {
     contractDetail.value = null;
+    contractDetailError.value = "合同详情读取失败，请确认权限或稍后重试。";
   }
 }
 
@@ -875,10 +971,77 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   background: #fff5f5;
 }
 
-.block-message {
+.state-message {
   padding: 18px 20px;
+  color: #424955;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.state-message.danger {
+  color: #b51d2a;
+  background: #fff5f5;
+}
+
+.block-message {
+  padding: 12px 0 0;
   color: #b51d2a;
   font-weight: 600;
+}
+
+.settlement-payment-panel {
+  display: grid;
+  gap: 16px;
+  min-width: 920px;
+  padding: 16px;
+}
+
+.money-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #dce1e8;
+}
+
+.money-summary-item {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  background: #fff;
+}
+
+.money-summary-item span {
+  color: #767f8d;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.money-summary-item strong {
+  font-size: 15px;
+}
+
+.calculation-note {
+  padding: 10px 12px;
+  border-left: 3px solid #9f4f06;
+  background: #fff8ed;
+  color: #6d3b06;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ledger-section {
+  display: grid;
+  gap: 10px;
+}
+
+.ledger-section header {
+  color: #151922;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 @media (max-width: 980px) {

@@ -174,4 +174,133 @@ describe("PermissionGuard", () => {
       where: { userId: "user-1", projectId: "project-a" }
     });
   });
+
+  it("resolves project roles from contract route ids before reading contract detail", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(where.projectId === "project-a" ? [{ positionKey: "contract_staff" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(["contract_staff"])
+          .mockReturnValueOnce(undefined)
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { contractId: "HT-2026-009" },
+          body: { projectId: "project-b" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.contract.findFirst).toHaveBeenCalledWith({
+      where: { OR: [{ id: "HT-2026-009" }, { code: "HT-2026-009" }] },
+      select: { projectId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-a" }
+    });
+  });
+
+  it("rejects forged project ids on contract resource routes", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(where.projectId === "project-b" ? [{ positionKey: "contract_staff" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(["contract_staff"])
+          .mockReturnValueOnce(undefined)
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { contractId: "HT-2026-009" },
+          body: { projectId: "project-b" }
+        })
+      )
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-a" }
+    });
+  });
+
+  it("resolves project roles from settlement route ids", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "budget_staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(["budget_staff"])
+          .mockReturnValueOnce(undefined)
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { settlementId: "JS-2026-001" },
+          body: { projectId: "project-b" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.settlement.findFirst).toHaveBeenCalledWith({
+      where: { OR: [{ id: "JS-2026-001" }, { code: "JS-2026-001" }] },
+      select: { projectId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-a" }
+    });
+  });
 });

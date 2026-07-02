@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type {
   ContractDetailReadModel,
+  ContractSettlementPaymentReadModel,
   CoreFlowTone
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
@@ -110,20 +111,40 @@ export class ContractReadService {
       throw new NotFoundException("Payment terms version not found");
     }
 
-    const [stages, settlement] = await Promise.all([
+    const [stages, settlements, paymentRequests] = await Promise.all([
       this.prisma.paymentTermsStage.findMany({
         where: { paymentTermsVersionId: terms.id },
         orderBy: { createdAt: "asc" }
       }),
-      this.prisma.settlement.findFirst({
-        where: { contractVersionId: version.id },
-        orderBy: { createdAt: "desc" }
+      this.prisma.settlement.findMany({
+        where: { contractId: contract.id },
+        orderBy: { createdAt: "asc" }
+      }),
+      this.prisma.paymentRequest.findMany({
+        where: { contractId: contract.id },
+        orderBy: { updatedAt: "desc" }
       })
+    ]);
+    const paymentIds = paymentRequests.map((payment) => payment.id);
+    const settlementIds = settlements.map((settlement) => settlement.id);
+    const [paymentExecutions, settlementArchiveFiles] = await Promise.all([
+      paymentIds.length
+        ? this.prisma.paymentExecution.findMany({
+            where: { paymentRequestId: { in: paymentIds } }
+          })
+        : Promise.resolve([]),
+      settlementIds.length
+        ? this.prisma.settlementArchiveFile.findMany({
+            where: { settlementId: { in: settlementIds } },
+            orderBy: { createdAt: "desc" }
+          })
+        : Promise.resolve([])
     ]);
 
     const status = this.statusView(version.status);
 
     const contractCode = contract.code ?? contract.temporaryCode ?? contract.id;
+    const latestSettlement = settlements.at(-1);
     return {
       id: contractCode,
       contractVersionId: version.id,
@@ -157,9 +178,16 @@ export class ContractReadService {
         triggerEvent: stage.triggerEvent
       })),
       settlementBlockMessage: this.settlementBlockMessage(version.status),
+      settlementPayment: this.settlementPayment(
+        version.amountCents,
+        settlements,
+        settlementArchiveFiles,
+        paymentRequests,
+        paymentExecutions
+      ),
       chainLinks: [
         { label: "关联合同台账", to: "/contracts" },
-        { label: "关联结算", to: settlement ? `/settlements/${settlement.code}` : "/settlements" },
+        { label: "关联结算", to: latestSettlement ? `/settlements/${latestSettlement.code}` : "/settlements" },
         { label: "归档资料", to: "/archives" },
         { label: "审计日志", to: "/audit" }
       ]
@@ -220,12 +248,173 @@ export class ContractReadService {
       ],
       settlementBlockMessage:
         "合同尚未生效，暂不可发起结算；结算未生效前不可创建付款申请。",
+      settlementPayment: {
+        summary: [
+          { label: "累计生效结算", value: "¥0.00", tone: "default" },
+          { label: "保守可申请余额", value: "¥0.00", tone: "warning" },
+          { label: "审批中占用", value: "¥0.00", tone: "warning" },
+          { label: "已批待付", value: "¥0.00", tone: "default" },
+          { label: "已实付", value: "¥0.00", tone: "default" },
+          { label: "最新合同剩余额度", value: "¥1,280,000.00", tone: "primary" }
+        ],
+        settlementRows: [],
+        paymentRows: [],
+        calculationNote:
+          "当前可申请余额暂按已生效应付金额 - 已实付 - 审批中占用 - 已批待付计算，未纳入账期、质保金、预付款扣回和项目资金池；最新合同剩余额度以当前最新合同金额扣减合同维度累计生效结算，仅作台账提示。"
+      },
       chainLinks: [
         { label: "关联合同台账", to: "/contracts" },
         { label: "关联结算", to: "/settlements/JS-2026-018" },
         { label: "归档资料", to: "/archives" },
         { label: "审计日志", to: "/audit" }
       ]
+    };
+  }
+
+  private settlementPayment(
+    contractAmountCents: number | bigint,
+    settlements: Array<{
+      id: string;
+      code: string;
+      periodLabel: string;
+      status: string;
+      amountCents: number;
+      payableAmountCents: number;
+      updatedAt: Date;
+    }>,
+    settlementArchiveFiles: Array<{
+      settlementId: string;
+      status: string;
+      confirmedAt: Date | null;
+    }>,
+    paymentRequests: Array<{
+      id: string;
+      settlementId: string;
+      code: string;
+      status: string;
+      requestedAmountCents: number;
+      approvedAmountCents: number | null;
+      paidAmountCents: number;
+      updatedAt: Date;
+    }>,
+    paymentExecutions: Array<{
+      paymentRequestId: string;
+      amountCents: number;
+      paidAt: Date;
+      voucherFileId: string;
+    }>
+  ): ContractSettlementPaymentReadModel {
+    const archiveFileBySettlementId = new Map<string, (typeof settlementArchiveFiles)[number]>();
+    for (const archiveFile of settlementArchiveFiles) {
+      if (!archiveFileBySettlementId.has(archiveFile.settlementId)) {
+        archiveFileBySettlementId.set(archiveFile.settlementId, archiveFile);
+      }
+    }
+    const paidByPaymentId = new Map<
+      string,
+      { amountCents: bigint; paidAt: Date | null; hasVoucher: boolean }
+    >();
+    for (const execution of paymentExecutions) {
+      const current = paidByPaymentId.get(execution.paymentRequestId) ?? {
+        amountCents: 0n,
+        paidAt: null,
+        hasVoucher: false
+      };
+      paidByPaymentId.set(execution.paymentRequestId, {
+        amountCents: current.amountCents + BigInt(execution.amountCents),
+        paidAt:
+          !current.paidAt || execution.paidAt.getTime() > current.paidAt.getTime()
+            ? execution.paidAt
+            : current.paidAt,
+        hasVoucher: current.hasVoucher || !!execution.voucherFileId
+      });
+    }
+
+    let cumulativeEffectiveSettlementCents = 0n;
+    let cumulativeEffectivePayableCents = 0n;
+    const settlementRows = settlements.map((settlement) => {
+      const archiveFile = archiveFileBySettlementId.get(settlement.id);
+      const before = cumulativeEffectiveSettlementCents;
+      if (this.isEffectiveSettlementStatus(settlement.status)) {
+        cumulativeEffectiveSettlementCents += BigInt(settlement.amountCents);
+        cumulativeEffectivePayableCents += BigInt(settlement.payableAmountCents);
+      }
+
+      return {
+        id: settlement.code,
+        settlementNo: settlement.code,
+        period: settlement.periodLabel,
+        settlementDate: this.date(settlement.updatedAt),
+        settlementMethod: "待补充",
+        currentAmount: this.formatMoney(settlement.amountCents),
+        cumulativeBeforeAmount: this.formatMoney(before),
+        cumulativeAfterAmount: this.formatMoney(cumulativeEffectiveSettlementCents),
+        approvalStatus: this.settlementApprovalStatusLabel(settlement.status),
+        archiveStatus: archiveFile
+          ? this.settlementArchiveFileStatusLabel(archiveFile)
+          : this.settlementArchiveStatusLabel(settlement.status)
+      };
+    });
+    const settlementNoById = new Map(settlements.map((settlement) => [settlement.id, settlement.code]));
+
+    let actualPaidCents = 0n;
+    let approvalPendingCents = 0n;
+    let approvedPendingCents = 0n;
+    const paymentRows = paymentRequests.map((payment) => {
+      const execution = paidByPaymentId.get(payment.id);
+      const paidCents = execution?.amountCents ?? BigInt(payment.paidAmountCents);
+      const approved = this.isApprovedPaymentStatus(payment.status);
+      const approvedCents = approved
+        ? BigInt(payment.approvedAmountCents ?? payment.requestedAmountCents)
+        : 0n;
+      const remainingApprovedCents = approvedCents - paidCents;
+      actualPaidCents += paidCents;
+      if (["approval_pending", "in_approval"].includes(payment.status)) {
+        approvalPendingCents += BigInt(Math.max(payment.requestedAmountCents - payment.paidAmountCents, 0));
+      }
+      if (["approved_pending_payment", "partially_paid"].includes(payment.status)) {
+        approvedPendingCents += remainingApprovedCents > 0n ? remainingApprovedCents : 0n;
+      }
+
+      return {
+        id: payment.code,
+        paymentNo: payment.code,
+        settlementNo: settlementNoById.get(payment.settlementId) ?? payment.settlementId,
+        requestedAmount: this.formatMoney(payment.requestedAmountCents),
+        approvedAmount: approved ? this.formatMoney(approvedCents) : "待审批",
+        paidAmount: this.formatMoney(paidCents),
+        paymentDate: execution?.paidAt ? this.date(execution.paidAt) : "-",
+        approvalStatus: this.paymentApprovalStatusLabel(payment.status),
+        paymentStatus: this.paymentExecutionStatusLabel(payment.status, paidCents, approvedCents),
+        voucherStatus: execution?.hasVoucher ? "已上传" : paidCents > 0n ? "待上传" : "未上传"
+      };
+    });
+    const conservativeAvailableCents =
+      cumulativeEffectivePayableCents - actualPaidCents - approvalPendingCents - approvedPendingCents;
+    const remainingContractCents =
+      BigInt(contractAmountCents) - cumulativeEffectiveSettlementCents;
+
+    return {
+      summary: [
+        { label: "累计生效结算", value: this.formatMoney(cumulativeEffectiveSettlementCents), tone: "success" },
+        {
+          label: "保守可申请余额",
+          value: this.formatMoney(conservativeAvailableCents > 0n ? conservativeAvailableCents : 0n),
+          tone: "warning"
+        },
+        { label: "审批中占用", value: this.formatMoney(approvalPendingCents), tone: "warning" },
+        { label: "已批待付", value: this.formatMoney(approvedPendingCents), tone: "warning" },
+        { label: "已实付", value: this.formatMoney(actualPaidCents), tone: "success" },
+        {
+          label: "最新合同剩余额度",
+          value: this.formatMoney(remainingContractCents > 0n ? remainingContractCents : 0n),
+          tone: "primary"
+        }
+      ],
+      settlementRows,
+      paymentRows,
+      calculationNote:
+        "当前可申请余额暂按已生效应付金额 - 已实付 - 审批中占用 - 已批待付计算，未纳入账期、质保金、预付款扣回和项目资金池；最新合同剩余额度以当前最新合同金额扣减合同维度累计生效结算，仅作台账提示。"
     };
   }
 
@@ -354,6 +543,91 @@ export class ContractReadService {
     }
 
     return "合同尚未生效，暂不可发起结算；结算未生效前不可创建付款申请。";
+  }
+
+  private settlementApprovalStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      draft: "草稿",
+      in_approval: "审批中",
+      approval_pending: "审批中",
+      approval_rejected: "审批退回",
+      withdrawn: "已撤回",
+      approved_pending_archive: "审批通过",
+      archive_pending: "审批通过",
+      pending_archive_confirm: "审批通过",
+      effective: "审批通过",
+      partially_paid: "审批通过",
+      paid: "审批通过",
+      rejected: "审批退回",
+      voided: "已作废"
+    };
+
+    return labels[status] ?? status;
+  }
+
+  private settlementArchiveStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      draft: "未归档",
+      in_approval: "未归档",
+      approval_pending: "未归档",
+      approval_rejected: "未归档",
+      withdrawn: "未归档",
+      approved_pending_archive: "待上传盖章件",
+      archive_pending: "待上传盖章件",
+      pending_archive_confirm: "待确认归档",
+      effective: "已归档确认",
+      partially_paid: "已归档确认",
+      paid: "已归档确认",
+      rejected: "未归档",
+      voided: "已作废"
+    };
+
+    return labels[status] ?? "未归档";
+  }
+
+  private isEffectiveSettlementStatus(status: string): boolean {
+    return ["effective", "partially_paid", "paid"].includes(status);
+  }
+
+  private settlementArchiveFileStatusLabel(archiveFile: {
+    status: string;
+    confirmedAt: Date | null;
+  }): string {
+    if (archiveFile.confirmedAt || archiveFile.status === "confirmed") return "已归档确认";
+    if (archiveFile.status === "pending_confirm") return "待确认归档";
+    return archiveFile.status;
+  }
+
+  private paymentApprovalStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      draft: "草稿",
+      in_approval: "审批中",
+      approval_pending: "审批中",
+      approval_rejected: "审批退回",
+      approved_pending_payment: "审批通过",
+      partially_paid: "审批通过",
+      paid: "审批通过",
+      completed: "审批通过",
+      rejected: "审批退回",
+      voided: "已作废"
+    };
+
+    return labels[status] ?? status;
+  }
+
+  private paymentExecutionStatusLabel(
+    status: string,
+    paidAmountCents: bigint,
+    payableAmountCents: bigint
+  ): string {
+    if (paidAmountCents >= payableAmountCents && payableAmountCents > 0n) return "已付款";
+    if (paidAmountCents > 0n) return "部分付款";
+    if (status === "approved_pending_payment") return "已批待付";
+    return "未付款";
+  }
+
+  private isApprovedPaymentStatus(status: string): boolean {
+    return ["approved_pending_payment", "partially_paid", "paid", "completed"].includes(status);
   }
 
   private basisLabel(basis: string): string {

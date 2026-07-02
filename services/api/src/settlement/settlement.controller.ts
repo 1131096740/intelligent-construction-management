@@ -42,6 +42,17 @@ export class SettlementController {
   }
 
   @Get(":settlementId")
+  @RequirePositions(
+    "chairman",
+    "general_manager",
+    "project_manager",
+    "contract_director",
+    "contract_staff",
+    "budget_director",
+    "budget_staff",
+    "finance_director",
+    "finance_staff"
+  )
   detail(@Param("settlementId") settlementId: string) {
     return this.settlementRead.getDetail(settlementId);
   }

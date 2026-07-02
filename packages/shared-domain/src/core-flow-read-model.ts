@@ -36,6 +36,45 @@ export interface ContractPaymentTermStageReadModel {
   triggerEvent: string;
 }
 
+export interface ContractSettlementPaymentSummaryItem {
+  label: string;
+  value: string;
+  tone?: CoreFlowTone;
+}
+
+export interface ContractSettlementLedgerRowReadModel {
+  id: string;
+  settlementNo: string;
+  period: string;
+  settlementDate: string;
+  settlementMethod: string;
+  currentAmount: string;
+  cumulativeBeforeAmount: string;
+  cumulativeAfterAmount: string;
+  approvalStatus: string;
+  archiveStatus: string;
+}
+
+export interface ContractPaymentLedgerRowReadModel {
+  id: string;
+  paymentNo: string;
+  settlementNo: string;
+  requestedAmount: string;
+  approvedAmount: string;
+  paidAmount: string;
+  paymentDate: string;
+  approvalStatus: string;
+  paymentStatus: string;
+  voucherStatus: string;
+}
+
+export interface ContractSettlementPaymentReadModel {
+  summary: ContractSettlementPaymentSummaryItem[];
+  settlementRows: ContractSettlementLedgerRowReadModel[];
+  paymentRows: ContractPaymentLedgerRowReadModel[];
+  calculationNote: string;
+}
+
 export interface ContractDetailReadModel {
   id: string;
   contractVersionId: string;
@@ -45,6 +84,7 @@ export interface ContractDetailReadModel {
   effectivenessSteps: DetailStep[];
   paymentTermStages: ContractPaymentTermStageReadModel[];
   settlementBlockMessage: string;
+  settlementPayment: ContractSettlementPaymentReadModel;
   chainLinks: BusinessChainLink[];
 }
 
