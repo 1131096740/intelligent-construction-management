@@ -11,7 +11,9 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import {
+  calculateContractDuePaymentCapacity,
   calculateSettlementPaymentCapacity,
+  CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
   sumSafeCents
 } from "../payment/settlement-payment-capacity";
@@ -447,6 +449,7 @@ export class ProjectService {
 
       let linkedContractId = requestedContractId ?? null;
       let linkedSettlementId = requestedSettlementId ?? null;
+      let contractDueCapacityChecked = false;
 
       if (requestedContractId) {
         const contract = await tx.contract.findFirst({
@@ -478,9 +481,7 @@ export class ProjectService {
           select: {
             id: true,
             contractId: true,
-            status: true,
-            payableAmountCents: true,
-            paidAmountCents: true
+            status: true
           }
         });
 
@@ -496,14 +497,35 @@ export class ProjectService {
           throw new BadRequestException("Linked settlement does not belong to linked contract");
         }
 
+        linkedSettlementId = settlement.id;
+        linkedContractId = settlement.contractId;
+        await this.assertContractDueProxyPaymentCapacity(tx, linkedContractId, amountCents);
+        contractDueCapacityChecked = true;
+
+        const lockedSettlement = await tx.settlement.findFirst({
+          where: {
+            id: settlement.id,
+            status: { in: [...EFFECTIVE_SETTLEMENT_STATUSES] }
+          },
+          select: {
+            id: true,
+            payableAmountCents: true,
+            paidAmountCents: true
+          }
+        });
+
+        if (!lockedSettlement) {
+          throw new BadRequestException("Linked settlement is not effective");
+        }
+
         const [existingProxyPayments, paymentRequests] = await Promise.all([
           tx.projectProxyPayment.findMany({
-            where: { settlementId: settlement.id, voidedAt: null },
+            where: { settlementId: lockedSettlement.id, voidedAt: null },
             select: { amountCents: true }
           }),
           tx.paymentRequest.findMany({
             where: {
-              settlementId: settlement.id,
+              settlementId: lockedSettlement.id,
               status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES] }
             },
             select: {
@@ -516,8 +538,8 @@ export class ProjectService {
         ]);
         const proxyPaidCents = sumSafeCents(existingProxyPayments.map((payment) => payment.amountCents));
         const capacity = calculateSettlementPaymentCapacity({
-          payableAmountCents: settlement.payableAmountCents,
-          actualPaidAmountCents: settlement.paidAmountCents,
+          payableAmountCents: lockedSettlement.payableAmountCents,
+          actualPaidAmountCents: lockedSettlement.paidAmountCents,
           proxyPaidAmountCents: proxyPaidCents,
           paymentRequests
         });
@@ -530,9 +552,10 @@ export class ProjectService {
             )}`
           );
         }
+      }
 
-        linkedSettlementId = settlement.id;
-        linkedContractId = settlement.contractId;
+      if (linkedContractId && !contractDueCapacityChecked) {
+        await this.assertContractDueProxyPaymentCapacity(tx, linkedContractId, amountCents);
       }
 
       const proxyPayment = await tx.projectProxyPayment.create({
@@ -571,6 +594,160 @@ export class ProjectService {
 
       return toProxyPaymentReadModel(proxyPayment);
     });
+  }
+
+  private async assertContractDueProxyPaymentCapacity(
+    tx: Prisma.TransactionClient,
+    contractId: string,
+    amountCents: number
+  ): Promise<void> {
+    const clients = tx as unknown as {
+      $queryRaw?: <T = unknown>(query: Prisma.Sql) => Promise<T>;
+      settlement?: {
+        findMany?: (args: {
+          where: { contractId: string; status: { in: string[] } };
+          select: {
+            id: true;
+            status: true;
+            amountCents: true;
+            paidAmountCents: true;
+            paymentTermsVersionId: true;
+          };
+        }) => Promise<
+          Array<{
+            id: string;
+            status: string;
+            amountCents: number;
+            paidAmountCents: number;
+            paymentTermsVersionId: string;
+          }>
+        >;
+      };
+      paymentTermsStage?: {
+        findMany: (args: {
+          where: { paymentTermsVersionId: { in: string[] }; basis: string };
+          select: {
+            paymentTermsVersionId: true;
+            basis: true;
+            ratioBps: true;
+            fixedAmountCents: true;
+            dueDays: true;
+          };
+        }) => Promise<
+          Array<{
+            paymentTermsVersionId: string;
+            basis: string;
+            ratioBps: number | null;
+            fixedAmountCents: number | null;
+            dueDays: number;
+          }>
+        >;
+      };
+      settlementArchiveFile?: {
+        findMany: (args: {
+          where: { settlementId: { in: string[] }; status: string; confirmedAt: { not: null } };
+          select: { settlementId: true; confirmedAt: true };
+        }) => Promise<Array<{ settlementId: string; confirmedAt: Date | null }>>;
+      };
+    };
+
+    if (
+      !clients.$queryRaw ||
+      !clients.settlement?.findMany ||
+      !clients.paymentTermsStage ||
+      !clients.settlementArchiveFile
+    ) {
+      throw new Error("Project proxy payment contract capacity dependencies are required");
+    }
+
+    await clients.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "Settlement"
+      WHERE "contractId" = ${contractId}
+        AND "status" IN (${Prisma.join([...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES])})
+      FOR UPDATE
+    `);
+
+    const contractSettlements = await clients.settlement.findMany({
+      where: {
+        contractId,
+        status: { in: [...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES] }
+      },
+      select: {
+        id: true,
+        status: true,
+        amountCents: true,
+        paidAmountCents: true,
+        paymentTermsVersionId: true
+      }
+    });
+    const settlementIds = contractSettlements.map((settlement) => settlement.id);
+    const paymentTermsVersionIds = [
+      ...new Set(contractSettlements.map((settlement) => settlement.paymentTermsVersionId))
+    ];
+
+    if (!settlementIds.length || !paymentTermsVersionIds.length) {
+      throw new BadRequestException("Project proxy payment exceeds contract due payable amount: 0");
+    }
+
+    const [paymentTermsStages, settlementArchiveFiles, paymentRequests, proxyPayments] = await Promise.all([
+      clients.paymentTermsStage.findMany({
+        where: {
+          paymentTermsVersionId: { in: paymentTermsVersionIds },
+          basis: "current_settlement"
+        },
+        select: {
+          paymentTermsVersionId: true,
+          basis: true,
+          ratioBps: true,
+          fixedAmountCents: true,
+          dueDays: true
+        }
+      }),
+      clients.settlementArchiveFile.findMany({
+        where: {
+          settlementId: { in: settlementIds },
+          status: "confirmed",
+          confirmedAt: { not: null }
+        },
+        select: { settlementId: true, confirmedAt: true }
+      }),
+      tx.paymentRequest.findMany({
+        where: {
+          contractId,
+          status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES] }
+        },
+        select: {
+          settlementId: true,
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
+      tx.projectProxyPayment.findMany({
+        where: {
+          voidedAt: null,
+          OR: [{ contractId }, { settlementId: { in: settlementIds } }]
+        },
+        select: { amountCents: true }
+      })
+    ]);
+
+    const capacity = calculateContractDuePaymentCapacity({
+      asOf: new Date(),
+      settlements: contractSettlements,
+      paymentTermsStages,
+      settlementArchiveFiles,
+      paymentRequests,
+      proxyPaidAmountCents: sumSafeCents(proxyPayments.map((payment) => payment.amountCents))
+    });
+
+    if (amountCents > capacity.remainingCents) {
+      throw new BadRequestException(
+        `Project proxy payment exceeds contract due payable amount: ${Math.max(capacity.remainingCents, 0)}`
+      );
+    }
   }
 
   async recordUpstreamSettlement(
