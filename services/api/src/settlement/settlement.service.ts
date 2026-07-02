@@ -1,5 +1,5 @@
-import { Injectable, Optional } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import {
   approvalElapsedHours,
   canCreateSettlementFromContractStatus,
@@ -59,6 +59,15 @@ const LABOR_PROFESSIONAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
   { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
   { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
 ];
+const SETTLEMENT_QUOTA_OCCUPANCY_STATUSES = [
+  "approval_pending",
+  "approved_pending_archive",
+  "pending_archive_confirm",
+  "effective",
+  "partially_paid",
+  "paid"
+] as const;
+const SETTLEMENT_EXCEPTION_USAGE_ACTIVE_STATUSES = ["occupied", "used"] as const;
 
 @Injectable()
 export class SettlementService {
@@ -116,6 +125,13 @@ export class SettlementService {
         throw new Error("Effective payment terms version not found");
       }
 
+      const exceptionQuotaAllocations = await this.reserveSettlementQuota(
+        tx,
+        contract.projectId,
+        version.contractId,
+        input.amountCents
+      );
+
       const currentSettlementStage = await tx.paymentTermsStage.findFirst({
         where: {
           paymentTermsVersionId: terms.id,
@@ -143,6 +159,36 @@ export class SettlementService {
         }
       });
 
+      if (exceptionQuotaAllocations.length) {
+        await tx.projectSettlementExceptionQuotaUsage.createMany({
+          data: exceptionQuotaAllocations.map((allocation) => ({
+            quotaId: allocation.quotaId,
+            settlementId: settlement.id,
+            projectId: contract.projectId,
+            contractId: version.contractId,
+            amountCents: allocation.amountCents,
+            status: "occupied"
+          }))
+        });
+
+        if (applicantUserId) {
+          await this.audit.record(tx, {
+            actorUserId: applicantUserId,
+            action: "settlement.exception_quota.occupy",
+            businessType: "settlement",
+            businessId: settlement.id,
+            metadata: {
+              projectId: contract.projectId,
+              contractId: version.contractId,
+              allocations: exceptionQuotaAllocations.map((allocation) => ({
+                quotaId: allocation.quotaId,
+                amountCents: allocation.amountCents.toString()
+              }))
+            }
+          });
+        }
+      }
+
       if (applicantUserId) {
         await tx.approvalInstance.create({
           data: {
@@ -159,6 +205,159 @@ export class SettlementService {
 
       return settlement;
     });
+  }
+
+  private async reserveSettlementQuota(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    contractId: string,
+    amountCents: number
+  ): Promise<Array<{ quotaId: string; amountCents: bigint }>> {
+    const requestedAmountCents = BigInt(amountCents);
+    if (requestedAmountCents <= 0n) {
+      throw new Error("Settlement amount must be greater than zero");
+    }
+
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "Project"
+      WHERE "id" = ${projectId}
+      FOR UPDATE
+    `);
+
+    const [
+      upstreamSettlements,
+      downstreamSettlements,
+      activeExceptionUsages,
+      currentContractQuotas
+    ] = await Promise.all([
+      tx.projectUpstreamSettlement.findMany({
+        where: { projectId, voidedAt: null },
+        select: { approvedAmountCents: true }
+      }),
+      tx.settlement.findMany({
+        where: {
+          projectId,
+          status: { in: [...SETTLEMENT_QUOTA_OCCUPANCY_STATUSES] }
+        },
+        select: { amountCents: true }
+      }),
+      tx.projectSettlementExceptionQuotaUsage.findMany({
+        where: {
+          projectId,
+          status: { in: [...SETTLEMENT_EXCEPTION_USAGE_ACTIVE_STATUSES] }
+        },
+        select: { amountCents: true }
+      }),
+      tx.projectSettlementExceptionQuota.findMany({
+        where: {
+          projectId,
+          contractId,
+          status: "approved",
+          validUntil: { gte: new Date() }
+        },
+        select: { id: true, amountCents: true },
+        orderBy: { validUntil: "asc" }
+      })
+    ]);
+
+    const upstreamApprovedCents = sumBigInt(
+      upstreamSettlements.map((settlement) => settlement.approvedAmountCents)
+    );
+    const downstreamOccupiedCents = sumBigInt(
+      downstreamSettlements.map((settlement) => settlement.amountCents)
+    );
+    const activeExceptionUsageCents = sumBigInt(
+      activeExceptionUsages.map((usage) => usage.amountCents)
+    );
+    const totalAfterCurrentSettlement = downstreamOccupiedCents + requestedAmountCents;
+    const requiredExceptionCents =
+      totalAfterCurrentSettlement > upstreamApprovedCents + activeExceptionUsageCents
+        ? totalAfterCurrentSettlement - upstreamApprovedCents - activeExceptionUsageCents
+        : 0n;
+
+    if (requiredExceptionCents === 0n) {
+      return [];
+    }
+
+    const quotaIds = currentContractQuotas.map((quota) => quota.id);
+    const quotaUsages = quotaIds.length
+      ? await tx.projectSettlementExceptionQuotaUsage.findMany({
+          where: {
+            quotaId: { in: quotaIds },
+            status: { in: [...SETTLEMENT_EXCEPTION_USAGE_ACTIVE_STATUSES] }
+          },
+          select: { quotaId: true, amountCents: true }
+        })
+      : [];
+    const usedByQuotaId = quotaUsages.reduce((used, usage) => {
+      used.set(usage.quotaId, (used.get(usage.quotaId) ?? 0n) + BigInt(usage.amountCents));
+      return used;
+    }, new Map<string, bigint>());
+
+    let remaining = requiredExceptionCents;
+    const allocations: Array<{ quotaId: string; amountCents: bigint }> = [];
+    for (const quota of currentContractQuotas) {
+      const available = BigInt(quota.amountCents) - (usedByQuotaId.get(quota.id) ?? 0n);
+      if (available <= 0n) {
+        continue;
+      }
+      const amount = available >= remaining ? remaining : available;
+      allocations.push({ quotaId: quota.id, amountCents: amount });
+      remaining -= amount;
+      if (remaining === 0n) {
+        break;
+      }
+    }
+
+    if (remaining > 0n) {
+      throw new BadRequestException("下游结算额度不足");
+    }
+
+    return allocations;
+  }
+
+  private async releaseSettlementExceptionQuotaUsage(
+    tx: Prisma.TransactionClient,
+    settlementId: string,
+    actorUserId: string,
+    action: string
+  ) {
+    const updated = await tx.projectSettlementExceptionQuotaUsage.updateMany({
+      where: { settlementId, status: "occupied" },
+      data: { status: "released" }
+    });
+
+    if (updated.count > 0) {
+      await this.audit.record(tx, {
+        actorUserId,
+        action,
+        businessType: "settlement",
+        businessId: settlementId,
+        metadata: { releasedUsageCount: updated.count }
+      });
+    }
+  }
+
+  private async useSettlementExceptionQuotaUsage(
+    tx: Prisma.TransactionClient,
+    settlementId: string,
+    actorUserId: string
+  ) {
+    const updated = await tx.projectSettlementExceptionQuotaUsage.updateMany({
+      where: { settlementId, status: "occupied" },
+      data: { status: "used" }
+    });
+
+    if (updated.count > 0) {
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.exception_quota.use",
+        businessType: "settlement",
+        businessId: settlementId,
+        metadata: { usedUsageCount: updated.count }
+      });
+    }
   }
 
   private calculatePayableAmount(amountCents: number, ratioBps: number | null): number {
@@ -364,6 +563,13 @@ export class SettlementService {
           }
         });
 
+        await this.releaseSettlementExceptionQuotaUsage(
+          tx,
+          settlement.id,
+          actorUserId,
+          "settlement.exception_quota.release.return_to_applicant"
+        );
+
         await this.audit.record(tx, {
           actorUserId,
           action: "settlement.approval.return_to_applicant",
@@ -398,6 +604,13 @@ export class SettlementService {
             comment: input.comment?.trim() || undefined
           }
         });
+
+        await this.releaseSettlementExceptionQuotaUsage(
+          tx,
+          settlement.id,
+          actorUserId,
+          "settlement.exception_quota.release.reject"
+        );
 
         await this.audit.record(tx, {
           actorUserId,
@@ -530,6 +743,13 @@ export class SettlementService {
           actorUserId
         }
       });
+
+      await this.releaseSettlementExceptionQuotaUsage(
+        tx,
+        settlement.id,
+        actorUserId,
+        "settlement.exception_quota.release.withdraw"
+      );
 
       await this.audit.record(tx, {
         actorUserId,
@@ -705,6 +925,8 @@ export class SettlementService {
         where: { id: settlement.id },
         data: { status: "effective" satisfies SettlementStatus }
       });
+
+      await this.useSettlementExceptionQuotaUsage(tx, settlement.id, actorUserId);
 
       await this.audit.record(tx, {
         actorUserId,
@@ -1020,4 +1242,8 @@ export class SettlementService {
       return updated;
     });
   }
+}
+
+function sumBigInt(values: Array<bigint | number>): bigint {
+  return values.reduce<bigint>((total, value) => total + BigInt(value), 0n);
 }

@@ -111,6 +111,15 @@ describe("role-specific gates", () => {
     expect(canPerform("contract.archive.upload", ["contract_director"])).toBe(false);
   });
 
+  it("requires contract or budget roles to create settlements", () => {
+    expect(canPerform("settlement.create", ["contract_staff"])).toBe(true);
+    expect(canPerform("settlement.create", ["contract_director"])).toBe(true);
+    expect(canPerform("settlement.create", ["budget_staff"])).toBe(true);
+    expect(canPerform("settlement.create", ["budget_director"])).toBe(true);
+    expect(canPerform("settlement.create", ["project_manager"])).toBe(false);
+    expect(canPerform("settlement.create", ["finance_staff"])).toBe(false);
+  });
+
   it("requires finance_staff (cashier) to record actual payment execution", () => {
     expect(canPerform("payment.execution", ["finance_staff"])).toBe(true);
     expect(canPerform("payment.execution", ["finance_director"])).toBe(false);
@@ -146,6 +155,17 @@ describe("role-specific gates", () => {
     expect(canPerform("project.owner_contract.confirm", ["contract_staff"])).toBe(false);
     expect(canPerform("project.owner_contract.record", ["finance_staff"])).toBe(false);
     expect(canPerform("project.owner_contract.confirm", ["chairman"])).toBe(false);
+  });
+
+  it("routes settlement exception quota request and approval through business roles", () => {
+    expect(canPerform("project.settlement_exception_quota.request", ["project_manager"])).toBe(true);
+    expect(canPerform("project.settlement_exception_quota.request", ["budget_director"])).toBe(false);
+    expect(canPerform("project.settlement_exception_quota.approve", ["project_manager"])).toBe(true);
+    expect(canPerform("project.settlement_exception_quota.approve", ["budget_director"])).toBe(true);
+    expect(canPerform("project.settlement_exception_quota.approve", ["contract_director"])).toBe(true);
+    expect(canPerform("project.settlement_exception_quota.approve", ["chairman"])).toBe(true);
+    expect(canPerform("project.settlement_exception_quota.approve", ["general_manager"])).toBe(true);
+    expect(canPerform("project.settlement_exception_quota.approve", ["finance_staff"])).toBe(false);
   });
 });
 

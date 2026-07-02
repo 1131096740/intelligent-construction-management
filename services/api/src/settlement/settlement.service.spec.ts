@@ -29,6 +29,23 @@ describe("SettlementService", () => {
     };
   }
 
+  function settlementQuotaTables() {
+    return {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+      projectUpstreamSettlement: {
+        findMany: jest.fn().mockResolvedValue([{ approvedAmountCents: BigInt(20000000) }])
+      },
+      projectSettlementExceptionQuota: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectSettlementExceptionQuotaUsage: {
+        findMany: jest.fn().mockResolvedValue([]),
+        createMany: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      }
+    };
+  }
+
   it("rejects settlement creation before contract version is effective", () => {
     expect(() => service.assertContractVersionEffective("pending_archive_confirm")).toThrow(
       "Cannot create settlement"
@@ -65,11 +82,13 @@ describe("SettlementService", () => {
         })
       },
       settlement: {
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({
           id: "settlement-1",
           code: "JS-2026-019"
         })
-      }
+      },
+      ...settlementQuotaTables()
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -96,6 +115,157 @@ describe("SettlementService", () => {
         amountCents: 10000000,
         payableAmountCents: 8000000,
         paidAmountCents: 0
+      }
+    });
+  });
+
+  it("blocks settlement creation when upstream approved quota is insufficient", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn()
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: 8000000, status: "effective" }
+        ]),
+        create: jest.fn()
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+      projectUpstreamSettlement: {
+        findMany: jest.fn().mockResolvedValue([{ approvedAmountCents: BigInt(10000000) }])
+      },
+      projectSettlementExceptionQuota: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectSettlementExceptionQuotaUsage: {
+        findMany: jest.fn().mockResolvedValue([]),
+        createMany: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create(
+        {
+          contractVersionId: "contract-version-1",
+          code: "JS-2026-030",
+          periodLabel: "2026-06",
+          amountCents: 3000000
+        },
+        "user-contract-staff"
+      )
+    ).rejects.toThrow("下游结算额度不足");
+    expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(tx.projectSettlementExceptionQuotaUsage.createMany).not.toHaveBeenCalled();
+  });
+
+  it("occupies approved settlement exception quota when upstream approved quota is insufficient", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          name: "钢材采购合同",
+          counterparty: "钢材供应商"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 8000000, status: "effective" }]),
+        create: jest.fn().mockResolvedValue({ id: "settlement-1", code: "JS-2026-031" })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+      projectUpstreamSettlement: {
+        findMany: jest.fn().mockResolvedValue([{ approvedAmountCents: BigInt(10000000) }])
+      },
+      projectSettlementExceptionQuota: {
+        findMany: jest.fn().mockResolvedValue([{ id: "quota-1", amountCents: BigInt(5000000) }])
+      },
+      projectSettlementExceptionQuotaUsage: {
+        findMany: jest.fn().mockResolvedValue([]),
+        createMany: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await settlementService.create(
+      {
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-031",
+        periodLabel: "2026-06",
+        amountCents: 3000000
+      },
+      "user-contract-staff"
+    );
+
+    expect(tx.projectSettlementExceptionQuotaUsage.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          quotaId: "quota-1",
+          settlementId: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: BigInt(1000000),
+          status: "occupied"
+        }
+      ]
+    });
+    expect(tx.approvalInstance.create).toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "user-contract-staff",
+      action: "settlement.exception_quota.occupy",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: {
+        projectId: "project-1",
+        contractId: "contract-1",
+        allocations: [{ quotaId: "quota-1", amountCents: "1000000" }]
       }
     });
   });
@@ -127,6 +297,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       },
       settlement: {
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({
           id: "settlement-1",
           code: "JS-2026-019"
@@ -134,7 +305,8 @@ describe("SettlementService", () => {
       },
       approvalInstance: {
         create: jest.fn()
-      }
+      },
+      ...settlementQuotaTables()
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -194,6 +366,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       },
       settlement: {
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({
           id: "settlement-1",
           code: "JS-2026-020"
@@ -201,7 +374,8 @@ describe("SettlementService", () => {
       },
       approvalInstance: {
         create: jest.fn()
-      }
+      },
+      ...settlementQuotaTables()
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -256,6 +430,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       },
       settlement: {
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({
           id: "settlement-1",
           code: "JS-2026-021"
@@ -263,7 +438,8 @@ describe("SettlementService", () => {
       },
       approvalInstance: {
         create: jest.fn()
-      }
+      },
+      ...settlementQuotaTables()
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -301,6 +477,7 @@ describe("SettlementService", () => {
         })
       },
       settlement: {
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn()
       }
     };
@@ -725,6 +902,9 @@ describe("SettlementService", () => {
       approvalActionLog: {
         create: jest.fn()
       },
+      projectSettlementExceptionQuotaUsage: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       ...approvalRoleTables("material_director")
     };
     const prisma = {
@@ -747,6 +927,17 @@ describe("SettlementService", () => {
         action: "return_to_applicant",
         actorUserId: "material-director-1"
       }
+    });
+    expect(tx.projectSettlementExceptionQuotaUsage.updateMany).toHaveBeenCalledWith({
+      where: { settlementId: "settlement-1", status: "occupied" },
+      data: { status: "released" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "material-director-1",
+      action: "settlement.exception_quota.release.return_to_applicant",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: { releasedUsageCount: 1 }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "material-director-1",
@@ -783,6 +974,9 @@ describe("SettlementService", () => {
       },
       approvalActionLog: {
         create: jest.fn()
+      },
+      projectSettlementExceptionQuotaUsage: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
       }
     };
     const prisma = {
@@ -807,6 +1001,17 @@ describe("SettlementService", () => {
         action: "withdraw",
         actorUserId: "applicant-1"
       }
+    });
+    expect(tx.projectSettlementExceptionQuotaUsage.updateMany).toHaveBeenCalledWith({
+      where: { settlementId: "settlement-1", status: "occupied" },
+      data: { status: "released" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "applicant-1",
+      action: "settlement.exception_quota.release.withdraw",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: { releasedUsageCount: 1 }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "applicant-1",
@@ -1229,6 +1434,9 @@ describe("SettlementService", () => {
           status: "confirmed"
         })
       },
+      projectSettlementExceptionQuotaUsage: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       auditLog: {
         create: jest.fn()
       }
@@ -1263,6 +1471,17 @@ describe("SettlementService", () => {
     expect(tx.settlement.update).toHaveBeenCalledWith({
       where: { id: "settlement-1" },
       data: { status: "effective" }
+    });
+    expect(tx.projectSettlementExceptionQuotaUsage.updateMany).toHaveBeenCalledWith({
+      where: { settlementId: "settlement-1", status: "occupied" },
+      data: { status: "used" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "user-contract-director",
+      action: "settlement.exception_quota.use",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      metadata: { usedUsageCount: 1 }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "user-contract-director",

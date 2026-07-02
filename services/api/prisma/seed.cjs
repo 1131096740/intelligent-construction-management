@@ -523,6 +523,47 @@ async function main() {
     }
   });
 
+  const upstreamSettlementFileSize = await writePrivateSeedFile(
+    seed.upstreamSettlementFile,
+    minimalPreviewPdf()
+  );
+  await upsertSeedFile(
+    seed.upstreamSettlementFile,
+    "seed-user-budget-staff",
+    upstreamSettlementFileSize
+  );
+  await prisma.projectUpstreamSettlement.upsert({
+    where: { id: seed.upstreamSettlement.id },
+    update: {
+      projectId: seed.project.id,
+      settledAt: seed.upstreamSettlement.settledAt,
+      reportedAmountCents: BigInt(seed.upstreamSettlement.reportedAmountCents),
+      approvedAmountCents: BigInt(seed.upstreamSettlement.approvedAmountCents),
+      approvingPartyName: seed.upstreamSettlement.approvingPartyName,
+      periodLabel: seed.upstreamSettlement.periodLabel,
+      isFinal: seed.upstreamSettlement.isFinal,
+      description: seed.upstreamSettlement.description,
+      voucherFileId: seed.upstreamSettlementFile.id,
+      recordedByUserId: "seed-user-budget-staff",
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null
+    },
+    create: {
+      id: seed.upstreamSettlement.id,
+      projectId: seed.project.id,
+      settledAt: seed.upstreamSettlement.settledAt,
+      reportedAmountCents: BigInt(seed.upstreamSettlement.reportedAmountCents),
+      approvedAmountCents: BigInt(seed.upstreamSettlement.approvedAmountCents),
+      approvingPartyName: seed.upstreamSettlement.approvingPartyName,
+      periodLabel: seed.upstreamSettlement.periodLabel,
+      isFinal: seed.upstreamSettlement.isFinal,
+      description: seed.upstreamSettlement.description,
+      voucherFileId: seed.upstreamSettlementFile.id,
+      recordedByUserId: "seed-user-budget-staff"
+    }
+  });
+
   await prisma.contract.upsert({
     where: { code: seed.contract.code },
     update: {

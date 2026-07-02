@@ -772,6 +772,121 @@ describe("FileService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("allows approval roles to create download tickets for settlement exception quota attachments", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "例外结算额度附件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "project-manager-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectReceipt: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectProxyPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectUpstreamSettlement: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectSettlementExceptionQuota: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "exception-quota-1",
+          projectId: "project-1",
+          attachmentFileId: "file-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "contract_director" }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "contract-director-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=contract-director-1");
+    expect(tx.projectSettlementExceptionQuota.findFirst).toHaveBeenCalledWith({
+      where: { attachmentFileId: "file-1" },
+      select: { projectId: true }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "contract-director-1",
+      action: "file.download.ticket",
+      businessType: "file_object",
+      businessId: "file-1",
+      metadata: {
+        expiresAt: ticket.expiresAt
+      }
+    });
+  });
+
+  it("rejects finance users from downloading settlement exception quota attachments", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "例外结算额度附件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "project-manager-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectReceipt: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectProxyPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectUpstreamSettlement: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectSettlementExceptionQuota: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "exception-quota-1",
+          projectId: "project-1",
+          attachmentFileId: "file-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
+    ).rejects.toThrow("Actor cannot download private file");
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("allows archive-readable contract roles to download active project owner contract files", async () => {
     const tx = {
       fileObject: {

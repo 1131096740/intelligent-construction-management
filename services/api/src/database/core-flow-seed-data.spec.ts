@@ -20,6 +20,9 @@ describe("coreFlowSeedData", () => {
     expect(coreFlowSeedData.paymentRequest.code).toBe("FK-2026-006");
     expect(coreFlowSeedData.paymentRequest.status).toBe("approved_pending_payment");
     expect(coreFlowSeedData.paymentExecution.amountCents).toBe(12800000);
+    expect(coreFlowSeedData.upstreamSettlement.approvedAmountCents).toBeGreaterThanOrEqual(
+      coreFlowSeedData.settlement.amountCents
+    );
   });
 
   it("describes the material purchase workbench template seed", () => {

@@ -8,6 +8,8 @@ import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-c
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
+import type { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exception-quota.dto";
+import type { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
 import { ProjectService } from "./project.service";
 
 const FUNDS_OVERVIEW_POSITIONS = [
@@ -82,5 +84,26 @@ export class ProjectController {
     @Body() body: ConfirmProjectOwnerContractDto
   ) {
     return this.projects.confirmOwnerContract(projectId, ownerContractId, user.id, body);
+  }
+
+  @Post(":projectId/settlement-exception-quotas")
+  @RequireProjectRole("project.settlement_exception_quota.request")
+  requestSettlementExceptionQuota(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RequestSettlementExceptionQuotaDto
+  ) {
+    return this.projects.requestSettlementExceptionQuota(projectId, user.id, body);
+  }
+
+  @Post(":projectId/settlement-exception-quotas/:quotaId/approval")
+  @RequireProjectRole("project.settlement_exception_quota.approve")
+  reviewSettlementExceptionQuota(
+    @Param("projectId") projectId: string,
+    @Param("quotaId") quotaId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ReviewSettlementExceptionQuotaDto
+  ) {
+    return this.projects.reviewSettlementExceptionQuota(projectId, quotaId, user.id, body);
   }
 }

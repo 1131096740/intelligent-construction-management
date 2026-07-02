@@ -74,6 +74,14 @@ export const coreFlowSeedData = {
     mimeType: "application/pdf",
     sizeBytes: 128000
   },
+  upstreamSettlementFile: {
+    id: "seed-file-upstream-settlement-sd-2026-001",
+    bucket: "private-archive",
+    objectKey: "seed/upstream-settlements/SD-2026-001.pdf",
+    originalName: "SD-2026-001-对上审定凭证.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 128000
+  },
   ownerContract: {
     id: "seed-owner-contract-yz-2026-001",
     ownerName: "建设单位",
@@ -87,6 +95,16 @@ export const coreFlowSeedData = {
     retentionSummary: "按合同金额3%预留质保金。",
     status: "effective",
     confirmedAt: new Date("2026-04-21T00:00:00.000Z")
+  },
+  upstreamSettlement: {
+    id: "seed-upstream-settlement-sd-2026-001",
+    settledAt: new Date("2026-05-31T00:00:00.000Z"),
+    reportedAmountCents: 420000000,
+    approvedAmountCents: 400000000,
+    approvingPartyName: "建设单位",
+    periodLabel: "2026-05",
+    isFinal: false,
+    description: "项目一期对上进度审定，覆盖种子结算与核心闭环验证。"
   },
   paymentTermsVersion: {
     id: "seed-payment-terms-ht-2026-001-v1",

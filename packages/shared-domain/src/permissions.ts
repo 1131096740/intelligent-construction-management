@@ -13,6 +13,7 @@ export const BUSINESS_ACTIONS = [
   "contract.seal",
   "contract.archive.upload",
   "contract.archive.confirm",
+  "settlement.create",
   "settlement.approve",
   "settlement.archive.upload",
   "settlement.archive.confirm",
@@ -21,6 +22,8 @@ export const BUSINESS_ACTIONS = [
   "project.upstream_settlement.record",
   "project.owner_contract.record",
   "project.owner_contract.confirm",
+  "project.settlement_exception_quota.request",
+  "project.settlement_exception_quota.approve",
   "payment.approve",
   "payment.execution",
   "payment.finance_record",
@@ -59,6 +62,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "contract.seal": ["comprehensive_director"],
   "contract.archive.upload": ["contract_staff"],
   "contract.archive.confirm": ["contract_director"],
+  "settlement.create": ["contract_staff", "contract_director", "budget_staff", "budget_director"],
   // 评审级；具体按合同类型的路由留待审批引擎，明确不含 chairman / general_manager
   "settlement.approve": [
     "project_manager",
@@ -78,6 +82,14 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "project.upstream_settlement.record": ["budget_staff", "budget_director"],
   "project.owner_contract.record": ["contract_staff"],
   "project.owner_contract.confirm": ["contract_director"],
+  "project.settlement_exception_quota.request": ["project_manager"],
+  "project.settlement_exception_quota.approve": [
+    "project_manager",
+    "contract_director",
+    "budget_director",
+    "chairman",
+    "general_manager"
+  ],
   "payment.approve": [
     "project_manager",
     "contract_director",

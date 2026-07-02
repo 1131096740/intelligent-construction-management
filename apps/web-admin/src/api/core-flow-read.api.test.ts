@@ -16,6 +16,8 @@ import {
   recordProjectOwnerContract,
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
+  requestSettlementExceptionQuota,
+  reviewSettlementExceptionQuota,
   createContractDraft,
   createPaymentRequest,
   createPrivateFileDownloadTicket,
@@ -264,6 +266,48 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[1][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
+    );
+  });
+
+  it("requests and reviews settlement exception quotas through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "quota-1" })
+    } as Response);
+
+    await requestSettlementExceptionQuota("project-1", {
+      contractId: "contract-1",
+      amountCents: 1200000,
+      reason: "对上审定暂未覆盖的现场签证",
+      validUntil: "2026-08-31",
+      attachmentFileId: "file-quota-1"
+    });
+    await reviewSettlementExceptionQuota("project-1", "quota-1", {
+      decision: "approve",
+      confirmationPassword: "current-password",
+      comment: "同意"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/settlement-exception-quotas",
+      "/api/projects/project-1/settlement-exception-quotas/quota-1/approval"
+    ]);
+    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        contractId: "contract-1",
+        amountCents: 1200000,
+        reason: "对上审定暂未覆盖的现场签证",
+        validUntil: "2026-08-31",
+        attachmentFileId: "file-quota-1"
+      })
+    );
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        confirmationPassword: "current-password",
+        comment: "同意"
+      })
     );
   });
 

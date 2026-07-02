@@ -39,6 +39,13 @@ const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
 
 const PAYMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["finance_staff", "finance_director"];
 const UPSTREAM_SETTLEMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["budget_staff", "budget_director"];
+const SETTLEMENT_EXCEPTION_QUOTA_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
+  "project_manager",
+  "contract_director",
+  "budget_director",
+  "chairman",
+  "general_manager"
+];
 const ALLOWED_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf", ".png", ".jpg", ".jpeg"]);
 
 @Injectable()
@@ -496,6 +503,32 @@ export class FileService {
         actorUserId,
         projectUpstreamSettlement.projectId,
         UPSTREAM_SETTLEMENT_FILE_DOWNLOAD_ROLES
+      ))
+    ) {
+      return;
+    }
+
+    const projectSettlementExceptionQuotaClient = (tx as unknown as {
+      projectSettlementExceptionQuota?: {
+        findFirst: (args: {
+          where: { attachmentFileId: string };
+          select: { projectId: true };
+        }) => Promise<{ projectId: string } | null>;
+      };
+    }).projectSettlementExceptionQuota;
+    const projectSettlementExceptionQuota = projectSettlementExceptionQuotaClient
+      ? await projectSettlementExceptionQuotaClient.findFirst({
+          where: { attachmentFileId: file.id },
+          select: { projectId: true }
+        })
+      : null;
+    if (
+      projectSettlementExceptionQuota &&
+      (await this.hasProjectRole(
+        tx,
+        actorUserId,
+        projectSettlementExceptionQuota.projectId,
+        SETTLEMENT_EXCEPTION_QUOTA_FILE_DOWNLOAD_ROLES
       ))
     ) {
       return;

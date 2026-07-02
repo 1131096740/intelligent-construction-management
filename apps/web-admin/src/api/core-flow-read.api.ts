@@ -427,6 +427,20 @@ export interface ConfirmProjectOwnerContractPayload {
   confirmationPassword: string;
 }
 
+export interface RequestSettlementExceptionQuotaPayload {
+  contractId: string;
+  amountCents: number;
+  reason: string;
+  validUntil: string;
+  attachmentFileId: string;
+}
+
+export interface ReviewSettlementExceptionQuotaPayload {
+  decision: "approve" | "reject";
+  confirmationPassword: string;
+  comment?: string;
+}
+
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
@@ -460,6 +474,24 @@ export function confirmProjectOwnerContract(
   body: ConfirmProjectOwnerContractPayload
 ) {
   return postJson<unknown>(`/projects/${projectId}/owner-contracts/${ownerContractId}/confirmation`, body);
+}
+
+export function requestSettlementExceptionQuota(
+  projectId: string,
+  body: RequestSettlementExceptionQuotaPayload
+) {
+  return postJson<unknown>(`/projects/${projectId}/settlement-exception-quotas`, body);
+}
+
+export function reviewSettlementExceptionQuota(
+  projectId: string,
+  quotaId: string,
+  body: ReviewSettlementExceptionQuotaPayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/settlement-exception-quotas/${quotaId}/approval`,
+    body
+  );
 }
 
 export function fetchContractLedger() {

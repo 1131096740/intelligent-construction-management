@@ -16,6 +16,18 @@ describe("ProjectController authorization wiring", () => {
     fileId: string;
   };
   type OwnerContractConfirmBody = { confirmationPassword: string };
+  type SettlementExceptionQuotaRequestBody = {
+    contractId: string;
+    amountCents: number;
+    reason: string;
+    validUntil: string;
+    attachmentFileId: string;
+  };
+  type SettlementExceptionQuotaReviewBody = {
+    decision: "approve" | "reject";
+    confirmationPassword: string;
+    comment?: string;
+  };
 
   const fundsOverviewPositions = [
     "chairman",
@@ -66,6 +78,23 @@ describe("ProjectController authorization wiring", () => {
         (ProjectController.prototype as never as { confirmOwnerContract: object }).confirmOwnerContract
       )
     ).toBe("project.owner_contract.confirm");
+  });
+
+  it("guards settlement exception quota request and approval with project roles", () => {
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        (ProjectController.prototype as never as { requestSettlementExceptionQuota: object })
+          .requestSettlementExceptionQuota
+      )
+    ).toBe("project.settlement_exception_quota.request");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        (ProjectController.prototype as never as { reviewSettlementExceptionQuota: object })
+          .reviewSettlementExceptionQuota
+      )
+    ).toBe("project.settlement_exception_quota.approve");
   });
 
   it("forwards the authenticated user id when listing projects", async () => {
@@ -197,6 +226,58 @@ describe("ProjectController authorization wiring", () => {
       "project-1",
       "owner-contract-1",
       "director-1",
+      body
+    );
+  });
+
+  it("forwards settlement exception quota request payload with authenticated user id", async () => {
+    const projects = { requestSettlementExceptionQuota: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = {
+      contractId: "contract-1",
+      amountCents: 1000000,
+      reason: "对上审定暂未覆盖本期必要结算",
+      validUntil: "2099-07-02T00:00:00.000Z",
+      attachmentFileId: "file-1"
+    };
+
+    await (controller as never as {
+      requestSettlementExceptionQuota: (
+        projectId: string,
+        user: { id: string },
+        body: SettlementExceptionQuotaRequestBody
+      ) => Promise<unknown>;
+    }).requestSettlementExceptionQuota("project-1", { id: "project-manager-1" }, body);
+
+    expect(projects.requestSettlementExceptionQuota).toHaveBeenCalledWith(
+      "project-1",
+      "project-manager-1",
+      body
+    );
+  });
+
+  it("forwards settlement exception quota approval metadata and actor", async () => {
+    const projects = { reviewSettlementExceptionQuota: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = {
+      decision: "approve" as const,
+      confirmationPassword: "current-password",
+      comment: "同意"
+    };
+
+    await (controller as never as {
+      reviewSettlementExceptionQuota: (
+        projectId: string,
+        quotaId: string,
+        user: { id: string },
+        body: SettlementExceptionQuotaReviewBody
+      ) => Promise<unknown>;
+    }).reviewSettlementExceptionQuota("project-1", "quota-1", { id: "budget-director-1" }, body);
+
+    expect(projects.reviewSettlementExceptionQuota).toHaveBeenCalledWith(
+      "project-1",
+      "quota-1",
+      "budget-director-1",
       body
     );
   });

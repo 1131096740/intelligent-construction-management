@@ -18,8 +18,8 @@ export class SettlementController {
     private readonly settlements: SettlementService
   ) {}
 
-  // 创建结算单：策略表未定义 create 动作，结算在审批前无业务效力，仅要求登录。
   @Post()
+  @RequireProjectRole("settlement.create")
   create(@Body() body: CreateSettlementDto, @CurrentUser() user: AuthenticatedUser) {
     return this.settlements.create(body, user.id);
   }

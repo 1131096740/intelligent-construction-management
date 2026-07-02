@@ -121,7 +121,11 @@ export class PermissionGuard implements CanActivate {
       return settlement?.projectId;
     }
 
-    const contractVersionId = request.params?.contractVersionId;
+    const contractVersionId =
+      request.params?.contractVersionId ??
+      (typeof request.body?.contractVersionId === "string"
+        ? request.body.contractVersionId
+        : undefined);
     if (contractVersionId) {
       const contractVersion = await this.prisma.contractVersion.findUnique({
         where: { id: contractVersionId },

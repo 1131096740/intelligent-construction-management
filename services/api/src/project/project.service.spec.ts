@@ -955,6 +955,397 @@ describe("ProjectService", () => {
     });
   });
 
+  it("requests a settlement exception quota with attachment and frozen approval route", async () => {
+    const validUntil = "2099-07-02T00:00:00.000Z";
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({ id: "contract-1" })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "project-manager-1" })
+      },
+      projectSettlementExceptionQuota: {
+        create: jest.fn().mockResolvedValue({
+          id: "quota-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: BigInt(3000000),
+          reason: "对上审定暂未覆盖本期必要结算",
+          validUntil: new Date(validUntil),
+          attachmentFileId: "file-1",
+          requestedByUserId: "project-manager-1",
+          approvedByUserId: null,
+          approvedAt: null,
+          status: "approval_pending",
+          createdAt,
+          updatedAt: createdAt
+        })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ProjectService(prisma as never);
+
+    const result = await service.requestSettlementExceptionQuota(
+      "project-1",
+      "project-manager-1",
+      {
+        contractId: "contract-1",
+        amountCents: 3000000,
+        reason: " 对上审定暂未覆盖本期必要结算 ",
+        validUntil,
+        attachmentFileId: "file-1"
+      }
+    );
+
+    expect(result).toMatchObject({
+      id: "quota-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      amountCents: 3000000,
+      status: "approval_pending",
+      approvedByUserId: null
+    });
+    expect(tx.projectSettlementExceptionQuota.create).toHaveBeenCalledWith({
+      data: {
+        projectId: "project-1",
+        contractId: "contract-1",
+        amountCents: BigInt(3000000),
+        reason: "对上审定暂未覆盖本期必要结算",
+        validUntil: new Date(validUntil),
+        attachmentFileId: "file-1",
+        requestedByUserId: "project-manager-1",
+        status: "approval_pending"
+      }
+    });
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        flowType: "settlement_exception_quota.approve",
+        businessType: "project_settlement_exception_quota",
+        businessId: "quota-1",
+        status: "in_progress",
+        currentNodeIndex: 0,
+        applicantUserId: "project-manager-1",
+        frozenNodes: [
+          { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+          { name: "合同/预算负责人", mode: "any", roleKeys: ["contract_director", "budget_director"] },
+          { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+        ]
+      })
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "project-manager-1",
+        action: "project.settlement_exception_quota.request",
+        businessType: "project_settlement_exception_quota",
+        businessId: "quota-1"
+      })
+    });
+  });
+
+  it("advances settlement exception quota approval from the project manager node", async () => {
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const tx = {
+      projectSettlementExceptionQuota: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "quota-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: BigInt(3000000),
+          reason: "对上审定暂未覆盖本期必要结算",
+          validUntil: new Date("2099-07-02T00:00:00.000Z"),
+          attachmentFileId: "file-1",
+          requestedByUserId: "project-manager-1",
+          approvedByUserId: null,
+          approvedAt: null,
+          status: "approval_pending",
+          createdAt,
+          updatedAt: createdAt
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "quota-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: BigInt(3000000),
+          reason: "对上审定暂未覆盖本期必要结算",
+          validUntil: new Date("2099-07-02T00:00:00.000Z"),
+          attachmentFileId: "file-1",
+          requestedByUserId: "project-manager-1",
+          approvedByUserId: null,
+          approvedAt: null,
+          status: "approval_pending",
+          createdAt,
+          updatedAt: createdAt
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+            { name: "合同/预算负责人", mode: "any", roleKeys: ["contract_director", "budget_director"] },
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "project_manager" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    const result = await service.reviewSettlementExceptionQuota(
+      "project-1",
+      "quota-1",
+      "project-manager-1",
+      { decision: "approve", confirmationPassword: "current-password" }
+    );
+
+    expect(result.status).toBe("approval_pending");
+    expect(auth.confirmPassword).toHaveBeenCalledWith("project-manager-1", "current-password");
+    expect(tx.projectSettlementExceptionQuota.update).toHaveBeenCalledWith({
+      where: { id: "quota-1" },
+      data: { status: "approval_pending" }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: {
+        currentNodeIndex: 1,
+        frozenNodes: [
+          {
+            name: "项目经理",
+            mode: "any",
+            roleKeys: ["project_manager"],
+            approvedRoleKeys: ["project_manager"]
+          },
+          {
+            name: "合同/预算负责人",
+            mode: "any",
+            roleKeys: ["contract_director", "budget_director"]
+          },
+          { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+        ],
+        status: "in_progress"
+      }
+    });
+  });
+
+  it("advances settlement exception quota approval from the contract or budget node", async () => {
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const tx = {
+      projectSettlementExceptionQuota: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "quota-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: BigInt(3000000),
+          reason: "对上审定暂未覆盖本期必要结算",
+          validUntil: new Date("2099-07-02T00:00:00.000Z"),
+          attachmentFileId: "file-1",
+          requestedByUserId: "project-manager-1",
+          approvedByUserId: null,
+          approvedAt: null,
+          status: "approval_pending",
+          createdAt,
+          updatedAt: createdAt
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "quota-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: BigInt(3000000),
+          reason: "对上审定暂未覆盖本期必要结算",
+          validUntil: new Date("2099-07-02T00:00:00.000Z"),
+          attachmentFileId: "file-1",
+          requestedByUserId: "project-manager-1",
+          approvedByUserId: null,
+          approvedAt: null,
+          status: "approval_pending",
+          createdAt,
+          updatedAt: createdAt
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-1",
+          currentNodeIndex: 1,
+          frozenNodes: [
+            {
+              name: "项目经理",
+              mode: "any",
+              roleKeys: ["project_manager"],
+              approvedRoleKeys: ["project_manager"]
+            },
+            { name: "合同/预算负责人", mode: "any", roleKeys: ["contract_director", "budget_director"] },
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "budget_director" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    const result = await service.reviewSettlementExceptionQuota(
+      "project-1",
+      "quota-1",
+      "budget-director-1",
+      { decision: "approve", confirmationPassword: "current-password" }
+    );
+
+    expect(result.status).toBe("approval_pending");
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: {
+        currentNodeIndex: 2,
+        frozenNodes: [
+          {
+            name: "项目经理",
+            mode: "any",
+            roleKeys: ["project_manager"],
+            approvedRoleKeys: ["project_manager"]
+          },
+          {
+            name: "合同/预算负责人",
+            mode: "any",
+            roleKeys: ["contract_director", "budget_director"],
+            approvedRoleKeys: ["budget_director"]
+          },
+          { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+        ],
+        status: "in_progress"
+      }
+    });
+  });
+
+  it("approves a settlement exception quota after final OR-sign", async () => {
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const approvedAt = new Date("2026-07-02T02:00:00.000Z");
+    const tx = {
+      projectSettlementExceptionQuota: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "quota-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: BigInt(3000000),
+          reason: "对上审定暂未覆盖本期必要结算",
+          validUntil: new Date("2099-07-02T00:00:00.000Z"),
+          attachmentFileId: "file-1",
+          requestedByUserId: "project-manager-1",
+          approvedByUserId: null,
+          approvedAt: null,
+          status: "approval_pending",
+          createdAt,
+          updatedAt: createdAt
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "quota-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          amountCents: BigInt(3000000),
+          reason: "对上审定暂未覆盖本期必要结算",
+          validUntil: new Date("2099-07-02T00:00:00.000Z"),
+          attachmentFileId: "file-1",
+          requestedByUserId: "project-manager-1",
+          approvedByUserId: "general-manager-1",
+          approvedAt,
+          status: "approved",
+          createdAt,
+          updatedAt: approvedAt
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-1",
+          currentNodeIndex: 2,
+          frozenNodes: [
+            {
+              name: "项目经理",
+              mode: "any",
+              roleKeys: ["project_manager"],
+              approvedRoleKeys: ["project_manager"]
+            },
+            {
+              name: "合同/预算负责人",
+              mode: "any",
+              roleKeys: ["contract_director", "budget_director"],
+              approvedRoleKeys: ["budget_director"]
+            },
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "general_manager" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    const result = await service.reviewSettlementExceptionQuota(
+      "project-1",
+      "quota-1",
+      "general-manager-1",
+      { decision: "approve", confirmationPassword: "current-password", comment: "同意" }
+    );
+
+    expect(result.status).toBe("approved");
+    expect(tx.projectSettlementExceptionQuota.update).toHaveBeenCalledWith({
+      where: { id: "quota-1" },
+      data: {
+        status: "approved",
+        approvedByUserId: "general-manager-1",
+        approvedAt: expect.any(Date)
+      }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: expect.objectContaining({
+        currentNodeIndex: 3,
+        status: "approved"
+      })
+    });
+  });
+
   it("rejects upstream settlement voucher uploaded by another user", async () => {
     const tx = {
       project: {

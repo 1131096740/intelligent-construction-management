@@ -10,6 +10,7 @@ describe("SettlementController authorization wiring", () => {
   });
 
   it.each([
+    ["create", "settlement.create"],
     ["reviewApproval", "settlement.approve"],
     ["transferApproval", "settlement.approve"],
     ["delegateApproval", "settlement.approve"],

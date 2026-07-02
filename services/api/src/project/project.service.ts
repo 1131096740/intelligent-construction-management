@@ -23,6 +23,8 @@ import type { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner
 import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import type { RecordProjectReceiptDto, ProjectReceiptSourceType } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
+import type { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exception-quota.dto";
+import type { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
 
 const UPSTREAM_SETTLEMENT_GAP =
   "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。";
@@ -51,6 +53,18 @@ const PROXY_PAYMENT_TYPE_LABELS: Record<ProjectProxyPaymentType, string> = {
   other: "其他"
 };
 const EFFECTIVE_SETTLEMENT_STATUSES = new Set(["effective", "partially_paid", "paid"]);
+interface SettlementExceptionQuotaApprovalNode {
+  name: string;
+  mode: "any";
+  roleKeys: RoleKey[];
+  approvedRoleKeys?: RoleKey[];
+}
+
+const SETTLEMENT_EXCEPTION_QUOTA_APPROVAL_NODES: SettlementExceptionQuotaApprovalNode[] = [
+  { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+  { name: "合同/预算负责人", mode: "any", roleKeys: ["contract_director", "budget_director"] },
+  { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+];
 
 @Injectable()
 export class ProjectService {
@@ -753,6 +767,263 @@ export class ProjectService {
       return toOwnerContractReadModel(confirmed);
     });
   }
+
+  async requestSettlementExceptionQuota(
+    projectId: string,
+    actorUserId: string,
+    input: RequestSettlementExceptionQuotaDto
+  ) {
+    const contractId = requiredTrimmed(input.contractId, "Settlement exception quota contract is required");
+    const amountCents = normalizePositiveSafeInteger(
+      input.amountCents,
+      "Settlement exception quota amount must be greater than zero"
+    );
+    const reason = requiredTrimmed(input.reason, "Settlement exception quota reason is required");
+    const validUntil = parseFutureDate(
+      input.validUntil,
+      "Settlement exception quota valid until date is invalid",
+      "Settlement exception quota valid until date must be in the future"
+    );
+    const attachmentFileId = requiredTrimmed(
+      input.attachmentFileId,
+      "Settlement exception quota attachment file is required"
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      const [project, contract, file] = await Promise.all([
+        tx.project.findFirst({
+          where: { id: projectId, isActive: true },
+          select: { id: true }
+        }),
+        tx.contract.findFirst({
+          where: { id: contractId, projectId, voidedAt: null },
+          select: { id: true }
+        }),
+        tx.fileObject.findUnique({
+          where: { id: attachmentFileId },
+          select: { id: true, uploadedByUserId: true }
+        })
+      ]);
+
+      if (!project) {
+        throw new NotFoundException("Project not found");
+      }
+      if (!contract) {
+        throw new NotFoundException("Settlement exception quota contract not found");
+      }
+      if (!file) {
+        throw new NotFoundException("Settlement exception quota attachment file not found");
+      }
+      if (file.uploadedByUserId !== actorUserId) {
+        throw new BadRequestException("Settlement exception quota attachment file must be uploaded by the requester");
+      }
+
+      const quota = await tx.projectSettlementExceptionQuota.create({
+        data: {
+          projectId: project.id,
+          contractId: contract.id,
+          amountCents: BigInt(amountCents),
+          reason,
+          validUntil,
+          attachmentFileId,
+          requestedByUserId: actorUserId,
+          status: "approval_pending"
+        }
+      });
+
+      await tx.approvalInstance.create({
+        data: {
+          flowType: "settlement_exception_quota.approve",
+          businessType: "project_settlement_exception_quota",
+          businessId: quota.id,
+          status: "in_progress",
+          currentNodeIndex: 0,
+          frozenNodes: SETTLEMENT_EXCEPTION_QUOTA_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+          applicantUserId: actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project.settlement_exception_quota.request",
+        businessType: "project_settlement_exception_quota",
+        businessId: quota.id,
+        metadata: {
+          projectId: project.id,
+          contractId: contract.id,
+          amountCents,
+          validUntil: validUntil.toISOString(),
+          attachmentFileId
+        }
+      });
+
+      return toSettlementExceptionQuotaReadModel(quota);
+    });
+  }
+
+  async reviewSettlementExceptionQuota(
+    projectId: string,
+    quotaId: string,
+    actorUserId: string,
+    input: ReviewSettlementExceptionQuotaDto
+  ) {
+    if (input.decision !== "approve" && input.decision !== "reject") {
+      throw new BadRequestException("Settlement exception quota approval decision is invalid");
+    }
+    const confirmationPassword = requiredTrimmed(
+      input.confirmationPassword,
+      "Settlement exception quota approval password is required"
+    );
+    if (!this.auth) {
+      throw new Error("Auth service is required to review settlement exception quota");
+    }
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      const quota = await tx.projectSettlementExceptionQuota.findFirst({
+        where: { id: quotaId, projectId }
+      });
+      if (!quota) {
+        throw new NotFoundException("Settlement exception quota not found");
+      }
+      if (quota.status !== "approval_pending") {
+        throw new BadRequestException(`Cannot review settlement exception quota from status ${quota.status}`);
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "project_settlement_exception_quota",
+          businessId: quota.id,
+          flowType: "settlement_exception_quota.approve",
+          status: "in_progress"
+        }
+      });
+      if (!instance) {
+        throw new BadRequestException("Settlement exception quota approval instance not found");
+      }
+
+      const nodes = instance.frozenNodes as unknown as SettlementExceptionQuotaApprovalNode[];
+      const currentNode = nodes[instance.currentNodeIndex];
+      if (!currentNode) {
+        throw new BadRequestException("Settlement exception quota approval current node not found");
+      }
+
+      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, quota.projectId);
+      const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+      if (!approvedRoleKey) {
+        throw new BadRequestException(`Actor cannot approve settlement exception quota node ${currentNode.name}`);
+      }
+
+      if (input.decision === "reject") {
+        const rejected = await tx.projectSettlementExceptionQuota.update({
+          where: { id: quota.id },
+          data: { status: "rejected" }
+        });
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: { status: "rejected" }
+        });
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "reject",
+            actorUserId,
+            comment: input.comment?.trim() || undefined
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.settlement_exception_quota.reject",
+          businessType: "project_settlement_exception_quota",
+          businessId: quota.id,
+          metadata: {
+            projectId: quota.projectId,
+            contractId: quota.contractId,
+            nodeName: currentNode.name
+          }
+        });
+        return toSettlementExceptionQuotaReadModel(rejected);
+      }
+
+      const nextNodes = [...nodes];
+      const nextNode = {
+        ...currentNode,
+        approvedRoleKeys: [...new Set([...(currentNode.approvedRoleKeys ?? []), approvedRoleKey])]
+      };
+      nextNodes[instance.currentNodeIndex] = nextNode;
+      const nextNodeIndex = instance.currentNodeIndex + 1;
+      const flowCompleted = nextNodeIndex >= nextNodes.length;
+      const approvedAt = flowCompleted ? new Date() : undefined;
+      const updated = await tx.projectSettlementExceptionQuota.update({
+        where: { id: quota.id },
+        data: flowCompleted
+          ? {
+              status: "approved",
+              approvedByUserId: actorUserId,
+              approvedAt
+            }
+          : { status: "approval_pending" }
+      });
+      await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: {
+          currentNodeIndex: nextNodeIndex,
+          frozenNodes: nextNodes as unknown as Prisma.InputJsonValue,
+          status: flowCompleted ? "approved" : "in_progress"
+        }
+      });
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "approve",
+          actorUserId,
+          comment: input.comment?.trim() || undefined
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project.settlement_exception_quota.approve",
+        businessType: "project_settlement_exception_quota",
+        businessId: quota.id,
+        metadata: {
+          projectId: quota.projectId,
+          contractId: quota.contractId,
+          nodeName: currentNode.name,
+          flowCompleted
+        }
+      });
+
+      return toSettlementExceptionQuotaReadModel(updated);
+    });
+  }
+
+  private async loadActorRoleKeys(
+    tx: {
+      userPosition: { findMany(input: unknown): Promise<Array<{ positionId: string; projectId: string | null }>> };
+      projectMember: { findMany(input: unknown): Promise<Array<{ positionKey: string }>> };
+      position: { findMany(input: unknown): Promise<Array<{ id: string; key: string }>> };
+    },
+    actorUserId: string,
+    projectId: string
+  ): Promise<RoleKey[]> {
+    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId: null } }),
+      tx.userPosition.findMany({ where: { userId: actorUserId, projectId } }),
+      tx.projectMember.findMany({ where: { userId: actorUserId, projectId } })
+    ]);
+    const positionIds = Array.from(
+      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
+    );
+    const positions = positionIds.length
+      ? await tx.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    return Array.from(
+      new Set([
+        ...positions.map((position) => position.key as RoleKey),
+        ...projectMembers.map((member) => member.positionKey as RoleKey)
+      ])
+    );
+  }
 }
 
 function isFundsOverviewPosition(positionKey: RoleKey | undefined): boolean {
@@ -842,6 +1113,20 @@ function parseOwnerContractDate(value: unknown): Date {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     throw new BadRequestException("Project owner contract signed date is invalid");
+  }
+  return parsed;
+}
+
+function parseFutureDate(value: unknown, invalidMessage: string, pastMessage: string): Date {
+  if (typeof value !== "string") {
+    throw new BadRequestException(invalidMessage);
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new BadRequestException(invalidMessage);
+  }
+  if (parsed.getTime() <= Date.now()) {
+    throw new BadRequestException(pastMessage);
   }
   return parsed;
 }
@@ -1020,5 +1305,37 @@ function toOwnerContractReadModel(ownerContract: {
     status: ownerContract.status,
     createdAt: ownerContract.createdAt.toISOString(),
     updatedAt: ownerContract.updatedAt.toISOString()
+  };
+}
+
+function toSettlementExceptionQuotaReadModel(quota: {
+  id: string;
+  projectId: string;
+  contractId: string;
+  amountCents: bigint | number;
+  reason: string;
+  validUntil: Date;
+  attachmentFileId: string;
+  requestedByUserId: string;
+  approvedByUserId?: string | null;
+  approvedAt?: Date | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: quota.id,
+    projectId: quota.projectId,
+    contractId: quota.contractId,
+    amountCents: toSafeNumber(quota.amountCents),
+    reason: quota.reason,
+    validUntil: quota.validUntil.toISOString(),
+    attachmentFileId: quota.attachmentFileId,
+    requestedByUserId: quota.requestedByUserId,
+    approvedByUserId: quota.approvedByUserId ?? null,
+    approvedAt: quota.approvedAt?.toISOString() ?? null,
+    status: quota.status,
+    createdAt: quota.createdAt.toISOString(),
+    updatedAt: quota.updatedAt.toISOString()
   };
 }
