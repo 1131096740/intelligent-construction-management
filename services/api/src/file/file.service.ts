@@ -46,6 +46,12 @@ const SETTLEMENT_EXCEPTION_QUOTA_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "chairman",
   "general_manager"
 ];
+const PROJECT_FINANCING_QUOTA_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
+  "project_manager",
+  "finance_director",
+  "chairman",
+  "general_manager"
+];
 const ALLOWED_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf", ".png", ".jpg", ".jpeg"]);
 
 @Injectable()
@@ -529,6 +535,32 @@ export class FileService {
         actorUserId,
         projectSettlementExceptionQuota.projectId,
         SETTLEMENT_EXCEPTION_QUOTA_FILE_DOWNLOAD_ROLES
+      ))
+    ) {
+      return;
+    }
+
+    const projectFinancingQuotaClient = (tx as unknown as {
+      projectFinancingQuota?: {
+        findFirst: (args: {
+          where: { attachmentFileId: string };
+          select: { projectId: true };
+        }) => Promise<{ projectId: string } | null>;
+      };
+    }).projectFinancingQuota;
+    const projectFinancingQuota = projectFinancingQuotaClient
+      ? await projectFinancingQuotaClient.findFirst({
+          where: { attachmentFileId: file.id },
+          select: { projectId: true }
+        })
+      : null;
+    if (
+      projectFinancingQuota &&
+      (await this.hasProjectRole(
+        tx,
+        actorUserId,
+        projectFinancingQuota.projectId,
+        PROJECT_FINANCING_QUOTA_FILE_DOWNLOAD_ROLES
       ))
     ) {
       return;

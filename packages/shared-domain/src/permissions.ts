@@ -24,6 +24,8 @@ export const BUSINESS_ACTIONS = [
   "project.owner_contract.confirm",
   "project.settlement_exception_quota.request",
   "project.settlement_exception_quota.approve",
+  "project.financing_quota.request",
+  "project.financing_quota.approve",
   "payment.create",
   "payment.approve",
   "payment.execution",
@@ -88,6 +90,13 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
     "project_manager",
     "contract_director",
     "budget_director",
+    "chairman",
+    "general_manager"
+  ],
+  "project.financing_quota.request": ["project_manager"],
+  "project.financing_quota.approve": [
+    "project_manager",
+    "finance_director",
     "chairman",
     "general_manager"
   ],

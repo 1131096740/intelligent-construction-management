@@ -441,6 +441,19 @@ export interface ReviewSettlementExceptionQuotaPayload {
   comment?: string;
 }
 
+export interface RequestProjectFinancingQuotaPayload {
+  amountCents: number;
+  reason: string;
+  validUntil: string;
+  attachmentFileId: string;
+}
+
+export interface ReviewProjectFinancingQuotaPayload {
+  decision: "approve" | "reject";
+  confirmationPassword: string;
+  comment?: string;
+}
+
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
@@ -492,6 +505,21 @@ export function reviewSettlementExceptionQuota(
     `/projects/${projectId}/settlement-exception-quotas/${quotaId}/approval`,
     body
   );
+}
+
+export function requestProjectFinancingQuota(
+  projectId: string,
+  body: RequestProjectFinancingQuotaPayload
+) {
+  return postJson<unknown>(`/projects/${projectId}/financing-quotas`, body);
+}
+
+export function reviewProjectFinancingQuota(
+  projectId: string,
+  quotaId: string,
+  body: ReviewProjectFinancingQuotaPayload
+) {
+  return postJson<unknown>(`/projects/${projectId}/financing-quotas/${quotaId}/approval`, body);
 }
 
 export function fetchContractLedger() {

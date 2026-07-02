@@ -82,6 +82,14 @@ export const coreFlowSeedData = {
     mimeType: "application/pdf",
     sizeBytes: 128000
   },
+  projectReceiptFile: {
+    id: "seed-file-project-receipt-sk-2026-001",
+    bucket: "private-archive",
+    objectKey: "seed/project-receipts/SK-2026-001.pdf",
+    originalName: "SK-2026-001-项目收款凭证.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 128000
+  },
   ownerContract: {
     id: "seed-owner-contract-yz-2026-001",
     ownerName: "建设单位",
@@ -105,6 +113,14 @@ export const coreFlowSeedData = {
     periodLabel: "2026-05",
     isFinal: false,
     description: "项目一期对上进度审定，覆盖种子结算与核心闭环验证。"
+  },
+  projectReceipt: {
+    id: "seed-project-receipt-sk-2026-001",
+    receivedAt: new Date("2026-06-01T00:00:00.000Z"),
+    amountCents: 80000000,
+    payerName: "建设单位",
+    sourceType: "owner_direct_payment",
+    description: "项目一期启动收款，覆盖种子付款与核心闭环验证。"
   },
   paymentTermsVersion: {
     id: "seed-payment-terms-ht-2026-001-v1",

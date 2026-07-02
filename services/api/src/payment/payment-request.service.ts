@@ -50,6 +50,17 @@ interface PaymentApprovalNode {
   assignments?: PaymentApprovalAssignment[];
 }
 
+interface PaymentExecutionLockRow {
+  id: string;
+  code: string;
+  projectId: string;
+  settlementId: string;
+  status: string;
+  requestedAmountCents: number;
+  approvedAmountCents: number | null;
+  paidAmountCents: number;
+}
+
 const PAYMENT_APPROVAL_NODES = [
   {
     name: "项目经理",
@@ -79,6 +90,7 @@ const PROJECT_CASH_POOL_PAYMENT_STATUSES = [
   "partially_paid",
   "paid"
 ] as const;
+const PROJECT_FINANCING_USAGE_ACTIVE_STATUSES = ["occupied", "used"] as const;
 
 @Injectable()
 export class PaymentRequestService {
@@ -151,7 +163,7 @@ export class PaymentRequestService {
       };
 
       this.amount.assertCanRequest(capacity, input.requestedAmountCents);
-      await this.assertProjectCashPoolCanRequest(
+      const financingQuotaAllocations = await this.reserveProjectCashPool(
         tx,
         settlement.projectId,
         input.requestedAmountCents
@@ -172,6 +184,34 @@ export class PaymentRequestService {
         }
       });
 
+      if (financingQuotaAllocations.length) {
+        await tx.projectFinancingQuotaUsage.createMany({
+          data: financingQuotaAllocations.map((allocation) => ({
+            quotaId: allocation.quotaId,
+            paymentRequestId: payment.id,
+            projectId: settlement.projectId,
+            amountCents: allocation.amountCents,
+            status: "occupied"
+          }))
+        });
+
+        if (applicantUserId) {
+          await this.audit.record(tx, {
+            actorUserId: applicantUserId,
+            action: "payment.financing_quota.occupy",
+            businessType: "payment_request",
+            businessId: payment.id,
+            metadata: {
+              projectId: settlement.projectId,
+              allocations: financingQuotaAllocations.map((allocation) => ({
+                quotaId: allocation.quotaId,
+                amountCents: allocation.amountCents.toString()
+              }))
+            }
+          });
+        }
+      }
+
       if (applicantUserId) {
         await tx.approvalInstance.create({
           data: {
@@ -190,19 +230,22 @@ export class PaymentRequestService {
     });
   }
 
-  private async assertProjectCashPoolCanRequest(
+  private async reserveProjectCashPool(
     tx: Prisma.TransactionClient,
     projectId: string,
     requestedAmountCents: number
-  ) {
-    await tx.$queryRaw(Prisma.sql`
-      SELECT "id"
+  ): Promise<Array<{ quotaId: string; amountCents: bigint }>> {
+    const lockedProjects = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
+      SELECT "id", "isActive"
       FROM "Project"
       WHERE "id" = ${projectId}
       FOR UPDATE
     `);
+    if (!lockedProjects[0]?.isActive) {
+      throw new BadRequestException("Project is inactive");
+    }
 
-    const [projectReceipts, projectPayments] = await Promise.all([
+    const [projectReceipts, projectPayments, financingQuotas] = await Promise.all([
       tx.projectReceipt.findMany({
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
@@ -218,6 +261,15 @@ export class PaymentRequestService {
           approvedAmountCents: true,
           paidAmountCents: true
         }
+      }),
+      tx.projectFinancingQuota.findMany({
+        where: {
+          projectId,
+          status: "approved",
+          validUntil: { gte: new Date() }
+        },
+        select: { id: true, amountCents: true },
+        orderBy: { validUntil: "asc" }
       })
     ]);
 
@@ -228,11 +280,270 @@ export class PaymentRequestService {
     const occupiedCents = sumSafeCents(
       projectPayments.map((payment) => projectCashPoolOutstandingCents(payment))
     );
-    const availableCents = actualReceiptsCents - actualPaidCents - occupiedCents;
+    const cashAvailableCents = actualReceiptsCents - actualPaidCents - occupiedCents;
+    const cashAvailableForCurrent = Math.max(cashAvailableCents, 0);
 
-    if (requestedAmountCents > availableCents) {
-      throw new BadRequestException(`项目现金资金池余额不足: ${Math.max(availableCents, 0)}`);
+    if (requestedAmountCents <= cashAvailableForCurrent) {
+      return [];
     }
+
+    const quotaIds = financingQuotas.map((quota) => quota.id);
+    const financingUsages = quotaIds.length
+      ? await tx.projectFinancingQuotaUsage.findMany({
+          where: {
+            quotaId: { in: quotaIds },
+            status: { in: [...PROJECT_FINANCING_USAGE_ACTIVE_STATUSES] }
+          },
+          select: { quotaId: true, amountCents: true }
+        })
+      : [];
+    const usedByQuotaId = financingUsages.reduce((used, usage) => {
+      used.set(usage.quotaId, (used.get(usage.quotaId) ?? 0n) + BigInt(usage.amountCents));
+      return used;
+    }, new Map<string, bigint>());
+
+    let remaining = BigInt(requestedAmountCents - cashAvailableForCurrent);
+    const allocations: Array<{ quotaId: string; amountCents: bigint }> = [];
+    let totalAvailableFinancingCents = 0n;
+    for (const quota of financingQuotas) {
+      const available = BigInt(quota.amountCents) - (usedByQuotaId.get(quota.id) ?? 0n);
+      if (available <= 0n) {
+        continue;
+      }
+      totalAvailableFinancingCents += available;
+      const amount = available >= remaining ? remaining : available;
+      allocations.push({ quotaId: quota.id, amountCents: amount });
+      remaining -= amount;
+      if (remaining === 0n) {
+        break;
+      }
+    }
+
+    if (remaining > 0n) {
+      const availableCents = BigInt(cashAvailableForCurrent) + totalAvailableFinancingCents;
+      throw new BadRequestException(`项目现金资金池余额不足: ${availableCents.toString()}`);
+    }
+
+    return allocations;
+  }
+
+  private async releaseFinancingQuotaUsage(
+    tx: Prisma.TransactionClient,
+    paymentRequestId: string,
+    actorUserId: string,
+    action: string
+  ) {
+    const releasedAmountCents = await this.moveFinancingQuotaUsage(
+      tx,
+      paymentRequestId,
+      undefined,
+      "released"
+    );
+
+    if (releasedAmountCents > 0n) {
+      await this.audit.record(tx, {
+        actorUserId,
+        action,
+        businessType: "payment_request",
+        businessId: paymentRequestId,
+        metadata: { releasedAmountCents: releasedAmountCents.toString() }
+      });
+    }
+  }
+
+  private async useFinancingQuotaUsage(
+    tx: Prisma.TransactionClient,
+    payment: PaymentExecutionLockRow,
+    actorUserId: string
+  ) {
+    const usageTotals = await this.financingUsageTotals(tx, payment.id);
+    const approvedAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
+    const activeFinancingCents = usageTotals.occupied + usageTotals.used;
+    const cashAllocatedCents = BigInt(approvedAmountCents) - activeFinancingCents;
+    const targetUsedCents =
+      BigInt(payment.paidAmountCents) > cashAllocatedCents
+        ? BigInt(payment.paidAmountCents) - cashAllocatedCents
+        : 0n;
+    const amountToUse = targetUsedCents > usageTotals.used ? targetUsedCents - usageTotals.used : 0n;
+    const usedAmountCents = await this.moveFinancingQuotaUsage(
+      tx,
+      payment.id,
+      amountToUse,
+      "used"
+    );
+
+    if (usedAmountCents > 0n) {
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "payment.financing_quota.use",
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: { usedAmountCents: usedAmountCents.toString() }
+      });
+    }
+  }
+
+  private async releaseInvalidFinancingQuotaBeforeExecution(
+    tx: Prisma.TransactionClient,
+    payment: PaymentExecutionLockRow,
+    actorUserId: string
+  ) {
+    const occupiedUsages = await tx.projectFinancingQuotaUsage.findMany({
+      where: { paymentRequestId: payment.id, status: "occupied" },
+      select: {
+        quotaId: true,
+        projectId: true
+      }
+    });
+    if (!occupiedUsages.length) {
+      return false;
+    }
+
+    const lockedProjects = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
+      SELECT "id", "isActive"
+      FROM "Project"
+      WHERE "id" = ${payment.projectId}
+      FOR UPDATE
+    `);
+    const quotaIds = [...new Set(occupiedUsages.map((usage) => usage.quotaId))];
+    const quotas = await tx.projectFinancingQuota.findMany({
+      where: { id: { in: quotaIds } },
+      select: { id: true, status: true, validUntil: true }
+    });
+    const quotaById = new Map(quotas.map((quota) => [quota.id, quota]));
+    const now = new Date();
+    const hasInvalidQuota =
+      !lockedProjects[0]?.isActive ||
+      occupiedUsages.some((usage) => {
+        const quota = quotaById.get(usage.quotaId);
+        return !quota || quota.status !== "approved" || quota.validUntil < now;
+      });
+
+    if (!hasInvalidQuota) {
+      return false;
+    }
+
+    await this.releaseFinancingQuotaUsage(
+      tx,
+      payment.id,
+      actorUserId,
+      "payment.financing_quota.release.invalid_before_execution"
+    );
+    return true;
+  }
+
+  private async shrinkFinancingQuotaUsageToApprovedAmount(
+    tx: Prisma.TransactionClient,
+    payment: {
+      id: string;
+      requestedAmountCents: number;
+      approvedAmountCents: number | null;
+    },
+    approvedAmountCents: number,
+    actorUserId: string
+  ) {
+    const usageTotals = await this.financingUsageTotals(tx, payment.id);
+    const cashAllocatedCents = BigInt(payment.requestedAmountCents) - usageTotals.occupied - usageTotals.used;
+    const targetFinancingCents =
+      BigInt(approvedAmountCents) > cashAllocatedCents
+        ? BigInt(approvedAmountCents) - cashAllocatedCents
+        : 0n;
+    const activeFinancingCents = usageTotals.occupied + usageTotals.used;
+    const amountToRelease =
+      activeFinancingCents > targetFinancingCents ? activeFinancingCents - targetFinancingCents : 0n;
+    if (amountToRelease === 0n) {
+      return;
+    }
+
+    const releasedAmountCents = await this.moveFinancingQuotaUsage(
+      tx,
+      payment.id,
+      amountToRelease,
+      "released"
+    );
+    if (releasedAmountCents > 0n) {
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "payment.financing_quota.release.approval_amount_reduced",
+        businessType: "payment_request",
+        businessId: payment.id,
+        metadata: { releasedAmountCents: releasedAmountCents.toString() }
+      });
+    }
+  }
+
+  private async financingUsageTotals(tx: Prisma.TransactionClient, paymentRequestId: string) {
+    const usages = await tx.projectFinancingQuotaUsage.findMany({
+      where: { paymentRequestId, status: { in: ["occupied", "used"] } },
+      select: { amountCents: true, status: true }
+    });
+    return usages.reduce(
+      (totals, usage) => ({
+        occupied: totals.occupied + (usage.status === "occupied" ? BigInt(usage.amountCents) : 0n),
+        used: totals.used + (usage.status === "used" ? BigInt(usage.amountCents) : 0n)
+      }),
+      { occupied: 0n, used: 0n }
+    );
+  }
+
+  private async moveFinancingQuotaUsage(
+    tx: Prisma.TransactionClient,
+    paymentRequestId: string,
+    amountCents: bigint | undefined,
+    status: "released" | "used"
+  ) {
+    let remaining = amountCents;
+    let moved = 0n;
+    const occupiedUsages = await tx.projectFinancingQuotaUsage.findMany({
+      where: { paymentRequestId, status: "occupied" },
+      select: {
+        id: true,
+        quotaId: true,
+        projectId: true,
+        amountCents: true
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+
+    for (const usage of occupiedUsages) {
+      if (remaining !== undefined && remaining <= 0n) {
+        break;
+      }
+
+      const available = BigInt(usage.amountCents);
+      const amount = remaining === undefined || available <= remaining ? available : remaining;
+      if (amount <= 0n) {
+        continue;
+      }
+
+      if (amount === available) {
+        await tx.projectFinancingQuotaUsage.update({
+          where: { id: usage.id },
+          data: { status }
+        });
+      } else {
+        await tx.projectFinancingQuotaUsage.update({
+          where: { id: usage.id },
+          data: { amountCents: available - amount }
+        });
+        await tx.projectFinancingQuotaUsage.create({
+          data: {
+            quotaId: usage.quotaId,
+            paymentRequestId,
+            projectId: usage.projectId,
+            amountCents: amount,
+            status
+          }
+        });
+      }
+
+      moved += amount;
+      if (remaining !== undefined) {
+        remaining -= amount;
+      }
+    }
+
+    return moved;
   }
 
   private async sumProjectProxyPaymentCents(
@@ -258,6 +569,28 @@ export class PaymentRequestService {
     });
 
     return sumSafeCents(payments.map((payment) => payment.amountCents));
+  }
+
+  private async lockPaymentRequestForExecution(
+    tx: Prisma.TransactionClient,
+    paymentId: string
+  ): Promise<PaymentExecutionLockRow | null> {
+    const rows = await tx.$queryRaw<Array<PaymentExecutionLockRow>>(Prisma.sql`
+      SELECT
+        "id",
+        "code",
+        "projectId",
+        "settlementId",
+        "status",
+        "requestedAmountCents",
+        "approvedAmountCents",
+        "paidAmountCents"
+      FROM "PaymentRequest"
+      WHERE "id" = ${paymentId} OR "code" = ${paymentId}
+      LIMIT 1
+      FOR UPDATE
+    `);
+    return rows[0] ?? null;
   }
 
   // 申请人撤回进行中的付款审批：付款请求无草稿态，撤回为终态 withdrawn（重试须新建付款申请）。
@@ -313,6 +646,13 @@ export class PaymentRequestService {
           actorUserId
         }
       });
+
+      await this.releaseFinancingQuotaUsage(
+        tx,
+        payment.id,
+        actorUserId,
+        "payment.financing_quota.release.withdraw"
+      );
 
       await this.audit.record(tx, {
         actorUserId,
@@ -552,6 +892,13 @@ export class PaymentRequestService {
           }
         });
 
+        await this.releaseFinancingQuotaUsage(
+          tx,
+          payment.id,
+          actorUserId,
+          "payment.financing_quota.release.return_to_applicant"
+        );
+
         await this.audit.record(tx, {
           actorUserId,
           action: "payment.approval.return_to_applicant",
@@ -589,6 +936,12 @@ export class PaymentRequestService {
             comment: input.comment?.trim() || undefined
           }
         });
+        await this.releaseFinancingQuotaUsage(
+          tx,
+          payment.id,
+          actorUserId,
+          "payment.financing_quota.release.reject"
+        );
         await this.audit.record(tx, {
           actorUserId,
           action: "payment.approval.reject",
@@ -663,6 +1016,14 @@ export class PaymentRequestService {
           comment: input.comment?.trim() || undefined
         }
       });
+      if (flowCompleted) {
+        await this.shrinkFinancingQuotaUsageToApprovedAmount(
+          tx,
+          payment,
+          approvedAmountCents,
+          actorUserId
+        );
+      }
       await this.audit.record(tx, {
         actorUserId,
         action: "payment.approval.approve",
@@ -729,10 +1090,9 @@ export class PaymentRequestService {
 
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
-    return this.prisma.$transaction(async (tx) => {
-      const payment = await tx.paymentRequest.findFirst({
-        where: { OR: [{ id: paymentId }, { code: paymentId }] }
-      });
+    let blockedReason: string | undefined;
+    const execution = await this.prisma.$transaction(async (tx) => {
+      const payment = await this.lockPaymentRequestForExecution(tx, paymentId);
 
       if (!payment) {
         throw new Error("Payment request not found");
@@ -777,6 +1137,16 @@ export class PaymentRequestService {
       const newSettlementStatus =
         newSettlementPaidAmountCents >= settlement.payableAmountCents ? "paid" : "partially_paid";
 
+      const invalidFinancingQuota = await this.releaseInvalidFinancingQuotaBeforeExecution(
+        tx,
+        payment,
+        actorUserId
+      );
+      if (invalidFinancingQuota) {
+        blockedReason = "项目垫资额度已失效，请重新提交付款申请";
+        return null;
+      }
+
       const execution = await tx.paymentExecution.create({
         data: {
           paymentRequestId: payment.id,
@@ -804,6 +1174,15 @@ export class PaymentRequestService {
         }
       });
 
+      await this.useFinancingQuotaUsage(
+        tx,
+        {
+          ...payment,
+          paidAmountCents: newPaymentPaidAmountCents
+        },
+        actorUserId
+      );
+
       await this.audit.record(tx, {
         actorUserId,
         action: "payment.execution.record",
@@ -821,6 +1200,12 @@ export class PaymentRequestService {
 
       return execution;
     });
+
+    if (blockedReason || !execution) {
+      throw new BadRequestException(blockedReason ?? "付款实付登记被阻断");
+    }
+
+    return execution;
   }
 
   async recordFinance(paymentId: string, actorUserId: string, input: RecordFinanceRecordDto) {

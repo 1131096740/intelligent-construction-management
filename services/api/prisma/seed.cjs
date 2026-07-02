@@ -564,6 +564,39 @@ async function main() {
     }
   });
 
+  const projectReceiptFileSize = await writePrivateSeedFile(
+    seed.projectReceiptFile,
+    minimalPreviewPdf()
+  );
+  await upsertSeedFile(seed.projectReceiptFile, seed.users.cashier.id, projectReceiptFileSize);
+  await prisma.projectReceipt.upsert({
+    where: { id: seed.projectReceipt.id },
+    update: {
+      projectId: seed.project.id,
+      receivedAt: seed.projectReceipt.receivedAt,
+      amountCents: BigInt(seed.projectReceipt.amountCents),
+      payerName: seed.projectReceipt.payerName,
+      sourceType: seed.projectReceipt.sourceType,
+      description: seed.projectReceipt.description,
+      voucherFileId: seed.projectReceiptFile.id,
+      recordedByUserId: seed.users.cashier.id,
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null
+    },
+    create: {
+      id: seed.projectReceipt.id,
+      projectId: seed.project.id,
+      receivedAt: seed.projectReceipt.receivedAt,
+      amountCents: BigInt(seed.projectReceipt.amountCents),
+      payerName: seed.projectReceipt.payerName,
+      sourceType: seed.projectReceipt.sourceType,
+      description: seed.projectReceipt.description,
+      voucherFileId: seed.projectReceiptFile.id,
+      recordedByUserId: seed.users.cashier.id
+    }
+  });
+
   await prisma.contract.upsert({
     where: { code: seed.contract.code },
     update: {

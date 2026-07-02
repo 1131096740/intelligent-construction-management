@@ -28,6 +28,17 @@ describe("ProjectController authorization wiring", () => {
     confirmationPassword: string;
     comment?: string;
   };
+  type ProjectFinancingQuotaRequestBody = {
+    amountCents: number;
+    reason: string;
+    validUntil: string;
+    attachmentFileId: string;
+  };
+  type ProjectFinancingQuotaReviewBody = {
+    decision: "approve" | "reject";
+    confirmationPassword: string;
+    comment?: string;
+  };
 
   const fundsOverviewPositions = [
     "chairman",
@@ -95,6 +106,23 @@ describe("ProjectController authorization wiring", () => {
           .reviewSettlementExceptionQuota
       )
     ).toBe("project.settlement_exception_quota.approve");
+  });
+
+  it("guards project financing quota request and approval with project roles", () => {
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        (ProjectController.prototype as never as { requestProjectFinancingQuota: object })
+          .requestProjectFinancingQuota
+      )
+    ).toBe("project.financing_quota.request");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        (ProjectController.prototype as never as { reviewProjectFinancingQuota: object })
+          .reviewProjectFinancingQuota
+      )
+    ).toBe("project.financing_quota.approve");
   });
 
   it("forwards the authenticated user id when listing projects", async () => {
@@ -278,6 +306,57 @@ describe("ProjectController authorization wiring", () => {
       "project-1",
       "quota-1",
       "budget-director-1",
+      body
+    );
+  });
+
+  it("forwards project financing quota request payload with authenticated user id", async () => {
+    const projects = { requestProjectFinancingQuota: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = {
+      amountCents: 1000000,
+      reason: "阶段性垫资保障项目付款",
+      validUntil: "2099-07-02T00:00:00.000Z",
+      attachmentFileId: "file-1"
+    };
+
+    await (controller as never as {
+      requestProjectFinancingQuota: (
+        projectId: string,
+        user: { id: string },
+        body: ProjectFinancingQuotaRequestBody
+      ) => Promise<unknown>;
+    }).requestProjectFinancingQuota("project-1", { id: "project-manager-1" }, body);
+
+    expect(projects.requestProjectFinancingQuota).toHaveBeenCalledWith(
+      "project-1",
+      "project-manager-1",
+      body
+    );
+  });
+
+  it("forwards project financing quota approval metadata and actor", async () => {
+    const projects = { reviewProjectFinancingQuota: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = {
+      decision: "approve" as const,
+      confirmationPassword: "current-password",
+      comment: "同意"
+    };
+
+    await (controller as never as {
+      reviewProjectFinancingQuota: (
+        projectId: string,
+        quotaId: string,
+        user: { id: string },
+        body: ProjectFinancingQuotaReviewBody
+      ) => Promise<unknown>;
+    }).reviewProjectFinancingQuota("project-1", "quota-1", { id: "finance-director-1" }, body);
+
+    expect(projects.reviewProjectFinancingQuota).toHaveBeenCalledWith(
+      "project-1",
+      "quota-1",
+      "finance-director-1",
       body
     );
   });

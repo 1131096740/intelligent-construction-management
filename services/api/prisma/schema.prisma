@@ -362,6 +362,39 @@ model ProjectSettlementExceptionQuotaUsage {
   @@index([projectId, contractId])
 }
 
+model ProjectFinancingQuota {
+  id                String    @id @default(uuid())
+  projectId         String
+  amountCents       BigInt
+  reason            String
+  validUntil        DateTime
+  attachmentFileId  String
+  requestedByUserId String
+  approvedByUserId  String?
+  approvedAt        DateTime?
+  status            String    @default("approval_pending")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([projectId, validUntil])
+  @@index([attachmentFileId])
+}
+
+model ProjectFinancingQuotaUsage {
+  id               String   @id @default(uuid())
+  quotaId          String
+  paymentRequestId String
+  projectId        String
+  amountCents      BigInt
+  status           String   @default("occupied")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([quotaId, paymentRequestId])
+  @@index([paymentRequestId])
+  @@index([projectId])
+}
+
 model ApprovalFlow {
   id        String   @id @default(uuid())
   type      String

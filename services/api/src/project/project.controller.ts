@@ -8,7 +8,9 @@ import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-c
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
+import type { RequestProjectFinancingQuotaDto } from "./dto/request-project-financing-quota.dto";
 import type { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exception-quota.dto";
+import type { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financing-quota.dto";
 import type { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
 import { ProjectService } from "./project.service";
 
@@ -105,5 +107,26 @@ export class ProjectController {
     @Body() body: ReviewSettlementExceptionQuotaDto
   ) {
     return this.projects.reviewSettlementExceptionQuota(projectId, quotaId, user.id, body);
+  }
+
+  @Post(":projectId/financing-quotas")
+  @RequireProjectRole("project.financing_quota.request")
+  requestProjectFinancingQuota(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RequestProjectFinancingQuotaDto
+  ) {
+    return this.projects.requestProjectFinancingQuota(projectId, user.id, body);
+  }
+
+  @Post(":projectId/financing-quotas/:quotaId/approval")
+  @RequireProjectRole("project.financing_quota.approve")
+  reviewProjectFinancingQuota(
+    @Param("projectId") projectId: string,
+    @Param("quotaId") quotaId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ReviewProjectFinancingQuotaDto
+  ) {
+    return this.projects.reviewProjectFinancingQuota(projectId, quotaId, user.id, body);
   }
 }

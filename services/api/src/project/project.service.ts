@@ -23,16 +23,14 @@ import type { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner
 import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import type { RecordProjectReceiptDto, ProjectReceiptSourceType } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
+import type { RequestProjectFinancingQuotaDto } from "./dto/request-project-financing-quota.dto";
 import type { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exception-quota.dto";
+import type { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financing-quota.dto";
 import type { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
 
 const UPSTREAM_SETTLEMENT_GAP =
   "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。";
 const FINANCING_LIMIT_GAP = "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。";
-const DATA_GAPS = [
-  UPSTREAM_SETTLEMENT_GAP,
-  FINANCING_LIMIT_GAP
-];
 const FUNDS_OVERVIEW_POSITIONS = new Set<RoleKey>([
   "chairman",
   "general_manager",
@@ -63,6 +61,11 @@ interface SettlementExceptionQuotaApprovalNode {
 const SETTLEMENT_EXCEPTION_QUOTA_APPROVAL_NODES: SettlementExceptionQuotaApprovalNode[] = [
   { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
   { name: "合同/预算负责人", mode: "any", roleKeys: ["contract_director", "budget_director"] },
+  { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+];
+const PROJECT_FINANCING_QUOTA_APPROVAL_NODES: SettlementExceptionQuotaApprovalNode[] = [
+  { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+  { name: "财务", mode: "any", roleKeys: ["finance_director"] },
   { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
 ];
 
@@ -139,7 +142,8 @@ export class ProjectService {
       financeRecords,
       projectReceipts,
       projectProxyPayments,
-      projectUpstreamSettlements
+      projectUpstreamSettlements,
+      projectFinancingQuotas
     ] = await Promise.all([
       this.prisma.contract.findMany({
         where: { projectId, voidedAt: null },
@@ -174,6 +178,10 @@ export class ProjectService {
       this.prisma.projectUpstreamSettlement.findMany({
         where: { projectId, voidedAt: null },
         select: { approvedAmountCents: true }
+      }),
+      this.prisma.projectFinancingQuota.findMany({
+        where: { projectId, status: "approved", validUntil: { gte: new Date() } },
+        select: { amountCents: true }
       })
     ]);
     const contractIds = contracts.map((contract) => contract.id);
@@ -197,6 +205,7 @@ export class ProjectService {
     const upstreamSettlementCents = sumCents(
       projectUpstreamSettlements.map((settlement) => settlement.approvedAmountCents)
     );
+    const availableFinancingCents = sumCents(projectFinancingQuotas.map((quota) => quota.amountCents));
     const actualPaidCents = sumNumbers(executions.map((execution) => execution.amountCents));
     const operatingIncomeCents = projectUpstreamSettlements.length
       ? upstreamSettlementCents
@@ -218,7 +227,12 @@ export class ProjectService {
       actualReceiptsCents -
       actualPaidCents -
       approvalPendingOccupancyCents -
-      approvedPendingPaymentCents;
+      approvedPendingPaymentCents +
+      availableFinancingCents;
+    const dataGaps = [
+      ...(projectUpstreamSettlements.length ? [] : [UPSTREAM_SETTLEMENT_GAP]),
+      ...(projectFinancingQuotas.length ? [] : [FINANCING_LIMIT_GAP])
+    ];
 
     return {
       project,
@@ -243,7 +257,7 @@ export class ProjectService {
         settlements: settlements.length,
         payments: payments.length
       },
-      dataGaps: projectUpstreamSettlements.length ? [FINANCING_LIMIT_GAP] : DATA_GAPS
+      dataGaps
     };
   }
 
@@ -997,6 +1011,223 @@ export class ProjectService {
     });
   }
 
+  async requestProjectFinancingQuota(
+    projectId: string,
+    actorUserId: string,
+    input: RequestProjectFinancingQuotaDto
+  ) {
+    const amountCents = normalizePositiveSafeInteger(
+      input.amountCents,
+      "项目垫资额度金额必须大于零"
+    );
+    const reason = requiredTrimmed(input.reason, "项目垫资额度申请原因必填");
+    const validUntil = parseFutureDate(
+      input.validUntil,
+      "项目垫资额度有效期无效",
+      "项目垫资额度有效期必须晚于当前时间"
+    );
+    const attachmentFileId = requiredTrimmed(
+      input.attachmentFileId,
+      "项目垫资额度附件必填"
+    );
+
+    return this.prisma.$transaction(async (tx) => {
+      const [project, file] = await Promise.all([
+        tx.project.findFirst({
+          where: { id: projectId, isActive: true },
+          select: { id: true }
+        }),
+        tx.fileObject.findUnique({
+          where: { id: attachmentFileId },
+          select: { id: true, uploadedByUserId: true }
+        })
+      ]);
+
+      if (!project) {
+        throw new NotFoundException("项目不存在或已停用");
+      }
+      if (!file) {
+        throw new NotFoundException("项目垫资额度附件不存在");
+      }
+      if (file.uploadedByUserId !== actorUserId) {
+        throw new BadRequestException("项目垫资额度附件必须由申请人本人上传");
+      }
+
+      const quota = await tx.projectFinancingQuota.create({
+        data: {
+          projectId: project.id,
+          amountCents: BigInt(amountCents),
+          reason,
+          validUntil,
+          attachmentFileId,
+          requestedByUserId: actorUserId,
+          status: "approval_pending"
+        }
+      });
+
+      await tx.approvalInstance.create({
+        data: {
+          flowType: "project_financing_quota.approve",
+          businessType: "project_financing_quota",
+          businessId: quota.id,
+          status: "in_progress",
+          currentNodeIndex: 0,
+          frozenNodes: PROJECT_FINANCING_QUOTA_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+          applicantUserId: actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project.financing_quota.request",
+        businessType: "project_financing_quota",
+        businessId: quota.id,
+        metadata: {
+          projectId: project.id,
+          amountCents,
+          validUntil: validUntil.toISOString(),
+          attachmentFileId
+        }
+      });
+
+      return toProjectFinancingQuotaReadModel(quota);
+    });
+  }
+
+  async reviewProjectFinancingQuota(
+    projectId: string,
+    quotaId: string,
+    actorUserId: string,
+    input: ReviewProjectFinancingQuotaDto
+  ) {
+    if (input.decision !== "approve" && input.decision !== "reject") {
+      throw new BadRequestException("项目垫资额度审批动作无效");
+    }
+    const confirmationPassword = requiredTrimmed(
+      input.confirmationPassword,
+      "项目垫资额度审批需要当前登录密码确认"
+    );
+    if (!this.auth) {
+      throw new Error("Auth service is required to review project financing quota");
+    }
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      const quota = await tx.projectFinancingQuota.findFirst({
+        where: { id: quotaId, projectId }
+      });
+      if (!quota) {
+        throw new NotFoundException("项目垫资额度不存在");
+      }
+      if (quota.status !== "approval_pending") {
+        throw new BadRequestException("当前项目垫资额度状态不可审批");
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "project_financing_quota",
+          businessId: quota.id,
+          flowType: "project_financing_quota.approve",
+          status: "in_progress"
+        }
+      });
+      if (!instance) {
+        throw new BadRequestException("项目垫资额度审批实例不存在");
+      }
+
+      const nodes = instance.frozenNodes as unknown as SettlementExceptionQuotaApprovalNode[];
+      const currentNode = nodes[instance.currentNodeIndex];
+      if (!currentNode) {
+        throw new BadRequestException("项目垫资额度当前审批节点不存在");
+      }
+
+      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, quota.projectId);
+      const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
+      if (!approvedRoleKey) {
+        throw new BadRequestException(`当前用户不能审批项目垫资额度节点：${currentNode.name}`);
+      }
+
+      if (input.decision === "reject") {
+        const rejected = await tx.projectFinancingQuota.update({
+          where: { id: quota.id },
+          data: { status: "rejected" }
+        });
+        await tx.approvalInstance.update({
+          where: { id: instance.id },
+          data: { status: "rejected" }
+        });
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: instance.id,
+            action: "reject",
+            actorUserId,
+            comment: input.comment?.trim() || undefined
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.financing_quota.reject",
+          businessType: "project_financing_quota",
+          businessId: quota.id,
+          metadata: {
+            projectId: quota.projectId,
+            nodeName: currentNode.name
+          }
+        });
+        return toProjectFinancingQuotaReadModel(rejected);
+      }
+
+      const nextNodes = [...nodes];
+      const nextNode = {
+        ...currentNode,
+        approvedRoleKeys: [...new Set([...(currentNode.approvedRoleKeys ?? []), approvedRoleKey])]
+      };
+      nextNodes[instance.currentNodeIndex] = nextNode;
+      const nextNodeIndex = instance.currentNodeIndex + 1;
+      const flowCompleted = nextNodeIndex >= nextNodes.length;
+      const approvedAt = flowCompleted ? new Date() : undefined;
+      const updated = await tx.projectFinancingQuota.update({
+        where: { id: quota.id },
+        data: flowCompleted
+          ? {
+              status: "approved",
+              approvedByUserId: actorUserId,
+              approvedAt
+            }
+          : { status: "approval_pending" }
+      });
+      await tx.approvalInstance.update({
+        where: { id: instance.id },
+        data: {
+          currentNodeIndex: nextNodeIndex,
+          frozenNodes: nextNodes as unknown as Prisma.InputJsonValue,
+          status: flowCompleted ? "approved" : "in_progress"
+        }
+      });
+      await tx.approvalActionLog.create({
+        data: {
+          approvalInstanceId: instance.id,
+          action: "approve",
+          actorUserId,
+          comment: input.comment?.trim() || undefined
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project.financing_quota.approve",
+        businessType: "project_financing_quota",
+        businessId: quota.id,
+        metadata: {
+          projectId: quota.projectId,
+          nodeName: currentNode.name,
+          flowCompleted
+        }
+      });
+
+      return toProjectFinancingQuotaReadModel(updated);
+    });
+  }
+
   private async loadActorRoleKeys(
     tx: {
       userPosition: { findMany(input: unknown): Promise<Array<{ positionId: string; projectId: string | null }>> };
@@ -1327,6 +1558,36 @@ function toSettlementExceptionQuotaReadModel(quota: {
     id: quota.id,
     projectId: quota.projectId,
     contractId: quota.contractId,
+    amountCents: toSafeNumber(quota.amountCents),
+    reason: quota.reason,
+    validUntil: quota.validUntil.toISOString(),
+    attachmentFileId: quota.attachmentFileId,
+    requestedByUserId: quota.requestedByUserId,
+    approvedByUserId: quota.approvedByUserId ?? null,
+    approvedAt: quota.approvedAt?.toISOString() ?? null,
+    status: quota.status,
+    createdAt: quota.createdAt.toISOString(),
+    updatedAt: quota.updatedAt.toISOString()
+  };
+}
+
+function toProjectFinancingQuotaReadModel(quota: {
+  id: string;
+  projectId: string;
+  amountCents: bigint | number;
+  reason: string;
+  validUntil: Date;
+  attachmentFileId: string;
+  requestedByUserId: string;
+  approvedByUserId?: string | null;
+  approvedAt?: Date | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: quota.id,
+    projectId: quota.projectId,
     amountCents: toSafeNumber(quota.amountCents),
     reason: quota.reason,
     validUntil: quota.validUntil.toISOString(),

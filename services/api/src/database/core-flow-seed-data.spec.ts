@@ -23,6 +23,9 @@ describe("coreFlowSeedData", () => {
     expect(coreFlowSeedData.upstreamSettlement.approvedAmountCents).toBeGreaterThanOrEqual(
       coreFlowSeedData.settlement.amountCents
     );
+    expect(coreFlowSeedData.projectReceipt.amountCents).toBeGreaterThanOrEqual(
+      coreFlowSeedData.paymentRequest.approvedAmountCents
+    );
   });
 
   it("describes the material purchase workbench template seed", () => {
