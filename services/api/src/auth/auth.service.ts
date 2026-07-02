@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException
 } from "@nestjs/common";
+import type { RoleKey } from "@jiangkong/shared-domain";
 import * as bcrypt from "bcryptjs";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -50,19 +51,56 @@ export class AuthService {
       metadata: { phone: user.phone }
     });
 
-    return this.issueTokens({
+    const roleKeys = await this.loadUserRoleKeys(user.id);
+    const tokens = await this.issueTokens({
       id: user.id,
       name: user.name,
       phone: user.phone
-    }).then((tokens) => ({
+    });
+
+    return {
       user: {
         id: user.id,
         name: user.name,
         phone: user.phone,
-        mustChangePassword: user.mustChangePassword
+        mustChangePassword: user.mustChangePassword,
+        roleKeys
       },
       tokens
-    }));
+    };
+  }
+
+  private async loadUserRoleKeys(userId: string): Promise<RoleKey[]> {
+    const [userPositions, projectMembers] = await Promise.all([
+      this.prisma.userPosition.findMany({ where: { userId } }),
+      this.prisma.projectMember.findMany({ where: { userId } })
+    ]);
+    const positionIds = Array.from(new Set(userPositions.map((position) => position.positionId)));
+    const positions = positionIds.length
+      ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+
+    return Array.from(
+      new Set([
+        ...positions.map((position) => position.key as RoleKey),
+        ...projectMembers.map((member) => member.positionKey as RoleKey)
+      ])
+    );
+  }
+
+  private userSummary(user: {
+    id: string;
+    name: string;
+    phone: string | null;
+    mustChangePassword: boolean;
+  }, roleKeys: RoleKey[]) {
+    return {
+      id: user.id,
+      name: user.name,
+      phone: user.phone,
+      mustChangePassword: user.mustChangePassword,
+      roleKeys
+    };
   }
 
   async refresh(input: RefreshTokenDto) {
@@ -197,18 +235,16 @@ export class AuthService {
       businessId: user.id
     });
 
+    const roleKeys = await this.loadUserRoleKeys(user.id);
+    const tokens = await this.issueTokens({
+      id: user.id,
+      name: user.name,
+      phone: user.phone
+    });
+
     return {
-      user: {
-        id: user.id,
-        name: user.name,
-        phone: user.phone,
-        mustChangePassword: user.mustChangePassword
-      },
-      tokens: await this.issueTokens({
-        id: user.id,
-        name: user.name,
-        phone: user.phone
-      })
+      user: this.userSummary(user, roleKeys),
+      tokens
     };
   }
 

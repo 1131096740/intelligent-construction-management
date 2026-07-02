@@ -13,58 +13,12 @@
         :value="activePath"
       >
         <t-menu-item
-          value="/contracts"
-          @click="go('/contracts')"
+          v-for="item in adminNavigationItems"
+          :key="item.path"
+          :value="item.path"
+          @click="go(item.path)"
         >
-          合同台账
-        </t-menu-item>
-        <t-menu-item
-          value="/contract-templates"
-          @click="go('/contract-templates')"
-        >
-          模板中心
-        </t-menu-item>
-        <t-menu-item
-          value="/business-parties"
-          @click="go('/business-parties')"
-        >
-          合作单位档案
-        </t-menu-item>
-        <t-menu-item
-          value="/settlements"
-          @click="go('/settlements')"
-        >
-          结算管理
-        </t-menu-item>
-        <t-menu-item
-          value="/payments"
-          @click="go('/payments')"
-        >
-          付款管理
-        </t-menu-item>
-        <t-menu-item
-          value="/archives"
-          @click="go('/archives')"
-        >
-          资料库
-        </t-menu-item>
-        <t-menu-item
-          value="/delegations"
-          @click="go('/delegations')"
-        >
-          委托台账
-        </t-menu-item>
-        <t-menu-item
-          value="/audit"
-          @click="go('/audit')"
-        >
-          审计日志
-        </t-menu-item>
-        <t-menu-item
-          value="/settings"
-          @click="go('/settings')"
-        >
-          设置
+          {{ item.label }}
         </t-menu-item>
       </t-menu>
     </t-aside>
@@ -84,11 +38,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "../auth/auth.store";
+import { visibleAdminNavigationItems } from "../routes/route-records";
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 
 const activePath = computed(() => route.path);
+const adminNavigationItems = computed(() => visibleAdminNavigationItems(auth.user?.roleKeys));
 
 function go(path: string) {
   void router.push(path);

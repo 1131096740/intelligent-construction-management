@@ -6,6 +6,16 @@ describe("PaymentRequestService", () => {
   const auth = {
     confirmPassword: jest.fn()
   };
+  const paymentApprovalNodes = [
+    { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+    {
+      name: "合同结算部/预算部",
+      mode: "any",
+      roleKeys: ["contract_director", "budget_director"]
+    },
+    { name: "财务", mode: "any", roleKeys: ["finance_director"] },
+    { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+  ];
 
   beforeEach(() => {
     auth.confirmPassword.mockReset();
@@ -123,7 +133,7 @@ describe("PaymentRequestService", () => {
     });
   });
 
-  it("freezes payment approval OR-sign route when payment request is created by an applicant", async () => {
+  it("freezes payment approval route when payment request is created by an applicant", async () => {
     const tx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -169,13 +179,7 @@ describe("PaymentRequestService", () => {
         businessId: "payment-1",
         status: "in_progress",
         currentNodeIndex: 0,
-        frozenNodes: [
-          {
-            name: "董事长/总经理",
-            mode: "any",
-            roleKeys: ["chairman", "general_manager"]
-          }
-        ],
+        frozenNodes: paymentApprovalNodes,
         applicantUserId: "contract-staff-1"
       })
     });
@@ -250,7 +254,135 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
-  it("approves a pending payment request into approved pending payment", async () => {
+  it("approves the first payment node, keeps payment pending, and advances the instance", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending",
+          approvedAmountCents: null
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: paymentApprovalNodes
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("project_manager")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const approved = await paymentService.reviewApproval("FK-2026-012", "pm-1", {
+      decision: "approve"
+    });
+
+    expect(approved.status).toBe("approval_pending");
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: { status: "approval_pending" }
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: {
+        currentNodeIndex: 1,
+        frozenNodes: [
+          {
+            ...paymentApprovalNodes[0],
+            approvedRoleKeys: ["project_manager"]
+          },
+          paymentApprovalNodes[1],
+          paymentApprovalNodes[2],
+          paymentApprovalNodes[3]
+        ],
+        status: "in_progress"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "pm-1",
+        action: "payment.approval.approve",
+        businessType: "payment_request",
+        businessId: "payment-1"
+      })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: {
+        approvalInstanceId: "approval-instance-1",
+        action: "approve",
+        actorUserId: "pm-1"
+      }
+    });
+  });
+
+  it("rejects setting approved amount before the final payment approval node", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: paymentApprovalNodes
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("project_manager")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "pm-1", {
+        decision: "approve",
+        approvedAmountCents: 45_000
+      })
+    ).rejects.toThrow("Approved amount can only be set on final payment approval node");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+  });
+
+  it("approves the final OR node into approved pending payment", async () => {
+    const frozenNodes = [
+      { ...paymentApprovalNodes[0], approvedRoleKeys: ["project_manager"] },
+      { ...paymentApprovalNodes[1], approvedRoleKeys: ["contract_director"] },
+      { ...paymentApprovalNodes[2], approvedRoleKeys: ["finance_director"] },
+      paymentApprovalNodes[3]
+    ];
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
@@ -270,14 +402,8 @@ describe("PaymentRequestService", () => {
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
-          currentNodeIndex: 0,
-          frozenNodes: [
-            {
-              name: "董事长/总经理",
-              mode: "any",
-              roleKeys: ["chairman", "general_manager"]
-            }
-          ]
+          currentNodeIndex: 3,
+          frozenNodes
         }),
         update: jest.fn()
       },
@@ -307,21 +433,75 @@ describe("PaymentRequestService", () => {
         approvedAmountCents: 45_000
       }
     });
-    expect(tx.auditLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        actorUserId: "chairman-1",
-        action: "payment.approval.approve",
-        businessType: "payment_request",
-        businessId: "payment-1"
-      })
-    });
-    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
       data: {
-        approvalInstanceId: "approval-instance-1",
-        action: "approve",
-        actorUserId: "chairman-1"
+        currentNodeIndex: 4,
+        frozenNodes: [
+          frozenNodes[0],
+          frozenNodes[1],
+          frozenNodes[2],
+          {
+            ...paymentApprovalNodes[3],
+            approvedRoleKeys: ["chairman"]
+          }
+        ],
+        status: "approved"
       }
     });
+  });
+
+  it.each([
+    ["zero", 0],
+    ["negative", -1],
+    ["non-integer", 45_000.5],
+    ["non-finite", Number.NaN]
+  ])("rejects %s approved amount values", async (_label, approvedAmountCents) => {
+    const frozenNodes = [
+      { ...paymentApprovalNodes[0], approvedRoleKeys: ["project_manager"] },
+      { ...paymentApprovalNodes[1], approvedRoleKeys: ["contract_director"] },
+      { ...paymentApprovalNodes[2], approvedRoleKeys: ["finance_director"] },
+      paymentApprovalNodes[3]
+    ];
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 3,
+          frozenNodes
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        decision: "approve",
+        approvedAmountCents
+      })
+    ).rejects.toThrow("Approved amount must be a positive integer");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
   it("persists the approver's remark on the approval action log", async () => {

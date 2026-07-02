@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import type { RoleKey } from "@jiangkong/shared-domain";
 
 export const AUTH_STORAGE_KEY = "jiangkong-web-admin-auth";
 
@@ -7,6 +8,7 @@ export interface AuthUser {
   name: string;
   phone: string | null;
   mustChangePassword: boolean;
+  roleKeys: RoleKey[];
 }
 
 interface AuthTokens {
@@ -46,6 +48,13 @@ async function postAuth<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function normalizeUser(user: AuthUser): AuthUser {
+  return {
+    ...user,
+    roleKeys: Array.isArray(user.roleKeys) ? user.roleKeys : []
+  };
+}
+
 export const useAuthStore = defineStore("auth", {
   state: (): AuthState => ({
     accessToken: null,
@@ -66,7 +75,7 @@ export const useAuthStore = defineStore("auth", {
         const session: PersistedSession = {
           accessToken: this.accessToken,
           refreshToken: this.refreshToken,
-          user: this.user
+          user: normalizeUser(this.user)
         };
         storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
       } else {
@@ -83,7 +92,7 @@ export const useAuthStore = defineStore("auth", {
         const session = JSON.parse(raw) as PersistedSession;
         this.accessToken = session.accessToken;
         this.refreshToken = session.refreshToken;
-        this.user = session.user;
+        this.user = normalizeUser(session.user);
       } catch {
         this.clearSession();
       }
@@ -102,7 +111,7 @@ export const useAuthStore = defineStore("auth", {
 
       this.accessToken = result.tokens.accessToken;
       this.refreshToken = result.tokens.refreshToken;
-      this.user = result.user;
+      this.user = normalizeUser(result.user);
       this.persist();
 
       return result.user;

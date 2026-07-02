@@ -49,21 +49,33 @@ describe("permission policy table", () => {
 });
 
 describe("final approval OR-sign", () => {
-  it("lets either chairman or general_manager perform final contract/payment approval", () => {
+  it("lets either chairman or general_manager perform final contract approval and payment final node", () => {
     expect(canPerform("contract.approve", ["chairman"])).toBe(true);
     expect(canPerform("contract.approve", ["general_manager"])).toBe(true);
     expect(canPerform("payment.approve", ["chairman"])).toBe(true);
     expect(canPerform("payment.approve", ["general_manager"])).toBe(true);
   });
 
-  it("rejects non-leadership roles from final approval", () => {
+  it("rejects non-leadership roles from contract final approval", () => {
     expect(canPerform("contract.approve", ["contract_director"])).toBe(false);
-    expect(canPerform("payment.approve", ["finance_director"])).toBe(false);
+  });
+
+  it("allows payment approval route roles before service-level node checks", () => {
+    for (const role of [
+      "project_manager",
+      "contract_director",
+      "budget_director",
+      "finance_director",
+      "chairman",
+      "general_manager"
+    ] as const) {
+      expect(canPerform("payment.approve", [role])).toBe(true);
+    }
   });
 
   it("flags final approval actions and only those", () => {
     expect(isFinalApprovalAction("contract.approve")).toBe(true);
-    expect(isFinalApprovalAction("payment.approve")).toBe(true);
+    expect(isFinalApprovalAction("payment.approve")).toBe(false);
     expect(isFinalApprovalAction("contract.seal")).toBe(false);
     expect(isFinalApprovalAction("settlement.approve")).toBe(false);
   });

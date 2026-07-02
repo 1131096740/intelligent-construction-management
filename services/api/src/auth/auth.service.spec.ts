@@ -13,6 +13,15 @@ describe("AuthService", () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
+    userPosition: {
+      findMany: jest.Mock;
+    };
+    projectMember: {
+      findMany: jest.Mock;
+    };
+    position: {
+      findMany: jest.Mock;
+    };
     auditLog: {
       create: jest.Mock;
     };
@@ -32,6 +41,15 @@ describe("AuthService", () => {
         create: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn()
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
       },
       auditLog: {
         create: jest.fn()
@@ -53,6 +71,18 @@ describe("AuthService", () => {
     prisma.user.update.mockResolvedValue({});
     prisma.refreshToken.create.mockResolvedValue({});
     prisma.auditLog.create.mockResolvedValue({});
+    prisma.userPosition.findMany.mockResolvedValue([
+      { positionId: "pos-finance-director" },
+      { positionId: "pos-project-manager" }
+    ]);
+    prisma.position.findMany.mockResolvedValue([
+      { id: "pos-finance-director", key: "finance_director" },
+      { id: "pos-project-manager", key: "project_manager" }
+    ]);
+    prisma.projectMember.findMany.mockResolvedValue([
+      { positionKey: "project_manager" },
+      { positionKey: "finance_staff" }
+    ]);
 
     const result = await service.login({
       phone: "13800000001",
@@ -61,7 +91,8 @@ describe("AuthService", () => {
 
     expect(result.user).toMatchObject({
       id: "user-1",
-      mustChangePassword: true
+      mustChangePassword: true,
+      roleKeys: ["finance_director", "project_manager", "finance_staff"]
     });
     expect(result.tokens.accessToken).toEqual(expect.any(String));
     expect(result.tokens.refreshToken).toEqual(expect.any(String));
@@ -76,6 +107,44 @@ describe("AuthService", () => {
         actorUserId: "user-1",
         action: "auth.login"
       })
+    });
+  });
+
+  it("returns deduped role keys for wx login", async () => {
+    process.env.WX_APP_ID = "wx-app";
+    process.env.WX_APP_SECRET = "wx-secret";
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ openid: "openid-1" })
+    });
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-2",
+      name: "财务 张工",
+      phone: "13800000002",
+      wxOpenid: "openid-1",
+      mustChangePassword: false,
+      isActive: true
+    });
+    prisma.user.update.mockResolvedValue({});
+    prisma.refreshToken.create.mockResolvedValue({});
+    prisma.auditLog.create.mockResolvedValue({});
+    prisma.userPosition.findMany.mockResolvedValue([{ positionId: "pos-chairman" }]);
+    prisma.position.findMany.mockResolvedValue([{ id: "pos-chairman", key: "chairman" }]);
+    prisma.projectMember.findMany.mockResolvedValue([
+      { positionKey: "chairman" },
+      { positionKey: "finance_staff" }
+    ]);
+
+    const result = await service.wxLogin({ code: "wx-code" });
+
+    expect(result).toMatchObject({
+      user: {
+        id: "user-2",
+        roleKeys: ["chairman", "finance_staff"]
+      },
+      tokens: {
+        accessToken: expect.any(String)
+      }
     });
   });
 

@@ -9,6 +9,8 @@ import {
   fetchSettlementLedger,
   fetchArchives,
   fetchAuditLogs,
+  fetchProjectOperatingOverview,
+  fetchProjects,
   createContractDraft,
   createPaymentRequest,
   createPrivateFileDownloadTicket,
@@ -91,6 +93,21 @@ describe("core flow read API client", () => {
       "/api/payments",
       "/api/audit-logs",
       "/api/archives"
+    ]);
+  });
+
+  it("requests project operating overview endpoints", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ project: { id: "project-1" } })
+    } as Response);
+
+    await fetchProjects();
+    await fetchProjectOperatingOverview("project-1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects",
+      "/api/projects/project-1/operating-funds-overview"
     ]);
   });
 

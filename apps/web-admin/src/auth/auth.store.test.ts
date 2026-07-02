@@ -23,7 +23,13 @@ function memoryStorage(): Storage {
 function loginResponse() {
   return new Response(
     JSON.stringify({
-      user: { id: "u1", name: "合同部 李工", phone: "13800000001", mustChangePassword: false },
+      user: {
+        id: "u1",
+        name: "合同部 李工",
+        phone: "13800000001",
+        mustChangePassword: false,
+        roleKeys: ["finance_staff"]
+      },
       tokens: { accessToken: "access-1", refreshToken: "refresh-1", expiresIn: 900 }
     }),
     { status: 200 }
@@ -49,6 +55,7 @@ describe("useAuthStore", () => {
     expect(store.isAuthenticated).toBe(true);
     expect(store.accessToken).toBe("access-1");
     expect(store.user?.name).toBe("合同部 李工");
+    expect(store.user?.roleKeys).toEqual(["finance_staff"]);
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain("refresh-1");
   });
 
@@ -87,6 +94,7 @@ describe("useAuthStore", () => {
 
     expect(store.isAuthenticated).toBe(true);
     expect(store.user?.id).toBe("u9");
+    expect(store.user?.roleKeys).toEqual([]);
     expect(store.accessToken).toBe("access-x");
   });
 

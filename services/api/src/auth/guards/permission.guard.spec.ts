@@ -91,4 +91,87 @@ describe("PermissionGuard", () => {
       )
     ).resolves.toBe(true);
   });
+
+  it("resolves project roles from payment route ids", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "project_manager" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("payment.approve")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { paymentId: "payment-1" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.paymentRequest.findFirst).toHaveBeenCalledWith({
+      where: { OR: [{ id: "payment-1" }, { code: "payment-1" }] },
+      select: { projectId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-1" }
+    });
+  });
+
+  it("rejects forged project ids on payment resource routes", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(where.projectId === "project-b" ? [{ positionKey: "project_manager" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("payment.approve")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { paymentId: "payment-1" },
+          body: { projectId: "project-b" }
+        })
+      )
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-a" }
+    });
+  });
 });

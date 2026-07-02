@@ -1,16 +1,46 @@
 import { createMemoryHistory, createRouter, createWebHistory } from "vue-router";
+import type { RoleKey } from "@jiangkong/shared-domain";
 import { useAuthStore } from "../auth/auth.store";
-import { webAdminRoutes } from "./route-records";
+import { hasAnyRole, webAdminRoutes } from "./route-records";
 
 export const router = createRouter({
   history: typeof window === "undefined" ? createMemoryHistory() : createWebHistory(),
   routes: webAdminRoutes
 });
 
-router.beforeEach((to) => {
-  if (to.meta.public || useAuthStore().isAuthenticated) {
+interface RouteAccessTarget {
+  fullPath: string;
+  meta: {
+    public?: unknown;
+    requiredRoleKeys?: readonly RoleKey[];
+  };
+}
+
+interface RouteAccessAuth {
+  isAuthenticated: boolean;
+  roleKeys: readonly RoleKey[] | undefined;
+}
+
+export function resolveRouteAccess(to: RouteAccessTarget, auth: RouteAccessAuth) {
+  if (to.meta.public) {
     return true;
   }
 
-  return { path: "/login", query: { redirect: to.fullPath } };
+  if (!auth.isAuthenticated) {
+    return { path: "/login", query: { redirect: to.fullPath } };
+  }
+
+  if (!hasAnyRole(auth.roleKeys, to.meta.requiredRoleKeys)) {
+    return { path: "/首页" };
+  }
+
+  return true;
+}
+
+router.beforeEach((to) => {
+  const auth = useAuthStore();
+  return resolveRouteAccess(to, {
+    isAuthenticated: auth.isAuthenticated,
+    roleKeys: auth.user?.roleKeys
+  });
 });

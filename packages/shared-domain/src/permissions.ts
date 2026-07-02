@@ -37,7 +37,7 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
  * 动作 → 允许执行的岗位集合。集合内为「或」语义：持有任一岗位即可执行。
  *
  * 设计依据 AGENTS.md：
- * - 合同 / 付款最终审批：董事长「或」总经理（OR-sign）。
+ * - 合同最终审批、付款最终节点：董事长「或」总经理（OR-sign）。
  * - 结算审批「不」经过董事长 / 总经理。
  * - 归档件上传：合同部成员；归档确认：合同部主管。
  * - 用章审批：综合部主管。
@@ -45,7 +45,7 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
  *
  * 注意：
  * - `super_admin` 是技术管理员，**不是业务审批岗**，因此不出现在任何业务动作里。
- * - `settlement.approve` 这里只做粗放行；具体节点顺序、会签与合同类型路由由后端审批实例校验。
+ * - `settlement.approve` / `payment.approve` 这里只做粗放行；具体节点顺序、会签与路由由后端审批实例校验。
  */
 export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> = {
   "contract.create": ["contract_staff", "contract_director"],
@@ -68,7 +68,14 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "settlement.archive.upload": ["contract_staff"],
   "settlement.archive.confirm": ["contract_director"],
-  "payment.approve": FINAL_APPROVAL_ROLES,
+  "payment.approve": [
+    "project_manager",
+    "contract_director",
+    "budget_director",
+    "finance_director",
+    "chairman",
+    "general_manager"
+  ],
   "payment.execution": ["finance_staff"],
   "payment.finance_record": ["finance_staff", "finance_director"],
   "payment.pdf_archive": ["finance_staff", "finance_director", "contract_staff"]
@@ -118,7 +125,7 @@ export function missingRolesFor(
 }
 
 /**
- * 该动作是否为「董事长 / 总经理或签」的最终审批动作。
+ * 该动作是否为仅「董事长 / 总经理或签」可进入的最终审批动作。
  * Service 层可据此做二次校验（Guard 粗放行 + Service 复校）。
  */
 export function isFinalApprovalAction(action: BusinessAction): boolean {

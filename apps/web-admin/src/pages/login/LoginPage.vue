@@ -58,7 +58,7 @@ const form = reactive({
 
 function redirectPath() {
   const redirect = route.query.redirect;
-  return typeof redirect === "string" && redirect.startsWith("/") ? redirect : "/contracts";
+  return typeof redirect === "string" && redirect.startsWith("/") ? redirect : "/首页";
 }
 
 async function submitLogin() {

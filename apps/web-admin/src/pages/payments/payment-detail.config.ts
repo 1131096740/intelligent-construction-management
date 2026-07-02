@@ -37,7 +37,8 @@ export const paymentBaseInfo: PaymentDetailMetaItem[] = [
 
 export const paymentApprovalSteps: PaymentDetailStep[] = [
   { label: "付款申请", status: "已提交", owner: "项目经理", tone: "success" },
-  { label: "部门审核", status: "已通过", owner: "工程/预算", tone: "success" },
+  { label: "项目经理审批", status: "已通过", owner: "项目经理", tone: "success" },
+  { label: "合同结算部/预算部审批", status: "已通过", owner: "合同结算部/预算部", tone: "success" },
   { label: "财务复核", status: "已通过", owner: "财务主管", tone: "success" },
   { label: "董事长/总经理或签", status: "已通过", owner: "董事长或总经理", tone: "success" },
   { label: "审批通过", status: "已批待付", owner: "系统", tone: "warning" }

@@ -43,7 +43,7 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException("Authenticated user is required");
     }
 
-    const projectId = this.extractProjectId(request);
+    const projectId = await this.extractProjectId(request);
     const effectiveRoleKeys = await this.loadEffectiveRoleKeys(request.user.id, projectId);
 
     if (requiredPositions?.length) {
@@ -100,12 +100,26 @@ export class PermissionGuard implements CanActivate {
     return resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys);
   }
 
-  private extractProjectId(request: AuthenticatedRequest) {
+  private async extractProjectId(request: AuthenticatedRequest) {
+    const paymentId = request.params?.paymentId;
+    if (paymentId) {
+      const payment = await this.prisma.paymentRequest.findFirst({
+        where: { OR: [{ id: paymentId }, { code: paymentId }] },
+        select: { projectId: true }
+      });
+
+      return payment?.projectId;
+    }
+
     const fromParams = request.params?.projectId;
     const fromQuery = request.query?.projectId;
     const fromBody =
       typeof request.body?.projectId === "string" ? request.body.projectId : undefined;
 
-    return fromParams ?? fromQuery ?? fromBody;
+    if (fromParams ?? fromQuery ?? fromBody) {
+      return fromParams ?? fromQuery ?? fromBody;
+    }
+
+    return undefined;
   }
 }

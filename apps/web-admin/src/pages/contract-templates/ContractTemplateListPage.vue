@@ -2,17 +2,17 @@
   <section class="page">
     <div class="page-head">
       <div>
-        <h1>模板中心</h1>
+        <h1>合同模板库</h1>
         <p>业务模板、版式、标准条款和编号规则统一维护</p>
       </div>
       <t-space>
-        <t-button @click="go('/contract-layout-templates/new')">
+        <t-button @click="go('/合同模板库/版式/new')">
           版式模板
         </t-button>
-        <t-button @click="go('/standard-clauses')">
+        <t-button @click="go('/合同模板库/标准条款')">
           标准条款
         </t-button>
-        <t-button @click="go('/contract-number-rules')">
+        <t-button @click="go('/合同模板库/编号规则')">
           编号规则
         </t-button>
       </t-space>
@@ -69,7 +69,7 @@
         <template #operation="{ row }">
           <t-link
             theme="primary"
-            @click="go(`/contract-templates/${row.id}`)"
+            @click="go(`/合同模板库/${row.id}`)"
           >
             编辑/治理
           </t-link>
@@ -146,7 +146,7 @@ async function createTemplate() {
     tone.value = "success";
     if (templateId) {
       void router.push({
-        path: `/contract-templates/${templateId}`,
+        path: `/合同模板库/${templateId}`,
         query: versionId ? { versionId } : undefined
       });
     }

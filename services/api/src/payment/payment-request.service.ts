@@ -47,6 +47,21 @@ interface PaymentApprovalNode {
 
 const PAYMENT_APPROVAL_NODES = [
   {
+    name: "项目经理",
+    mode: "any",
+    roleKeys: ["project_manager"]
+  },
+  {
+    name: "合同结算部/预算部",
+    mode: "any",
+    roleKeys: ["contract_director", "budget_director"]
+  },
+  {
+    name: "财务",
+    mode: "any",
+    roleKeys: ["finance_director"]
+  },
+  {
     name: "董事长/总经理",
     mode: "any",
     roleKeys: ["chairman", "general_manager"]
@@ -501,23 +516,54 @@ export class PaymentRequestService {
         return rejected;
       }
 
-      const approvedAmountCents = input.approvedAmountCents ?? payment.requestedAmountCents;
-      if (approvedAmountCents > payment.requestedAmountCents) {
+      if (
+        input.approvedAmountCents !== undefined &&
+        (!Number.isFinite(input.approvedAmountCents) ||
+          !Number.isInteger(input.approvedAmountCents) ||
+          input.approvedAmountCents <= 0)
+      ) {
+        throw new Error("Approved amount must be a positive integer");
+      }
+
+      if (
+        input.approvedAmountCents !== undefined &&
+        input.approvedAmountCents > payment.requestedAmountCents
+      ) {
         throw new Error("Approved amount cannot exceed requested amount");
+      }
+
+      const nextNodes = [...nodes];
+      const nextNode = { ...currentNode };
+      const approvedRoleKeys = new Set(nextNode.approvedRoleKeys ?? []);
+      approvedRoleKeys.add(approvedRoleKey);
+      nextNode.approvedRoleKeys = [...approvedRoleKeys];
+      nextNodes[instance.currentNodeIndex] = nextNode;
+
+      const nodeCompleted =
+        nextNode.mode === "any" || nextNode.roleKeys.every((role) => approvedRoleKeys.has(role));
+      const nextNodeIndex = nodeCompleted ? instance.currentNodeIndex + 1 : instance.currentNodeIndex;
+      const flowCompleted = nextNodeIndex >= nextNodes.length;
+      const approvedAmountCents = input.approvedAmountCents ?? payment.requestedAmountCents;
+
+      if (!flowCompleted && input.approvedAmountCents !== undefined) {
+        throw new Error("Approved amount can only be set on final payment approval node");
       }
 
       const approved = await tx.paymentRequest.update({
         where: { id: payment.id },
-        data: {
-          status: "approved_pending_payment",
-          approvedAmountCents
-        }
+        data: flowCompleted
+          ? {
+              status: "approved_pending_payment",
+              approvedAmountCents
+            }
+          : { status: "approval_pending" }
       });
       await tx.approvalInstance.update({
         where: { id: instance.id },
         data: {
-          currentNodeIndex: instance.currentNodeIndex + 1,
-          status: "approved"
+          currentNodeIndex: nextNodeIndex,
+          frozenNodes: nextNodes as unknown as Prisma.InputJsonValue,
+          status: flowCompleted ? "approved" : "in_progress"
         }
       });
       await tx.approvalActionLog.create({
@@ -536,14 +582,17 @@ export class PaymentRequestService {
         metadata: {
           code: payment.code,
           fromStatus: payment.status,
-          toStatus: "approved_pending_payment",
+          toStatus: flowCompleted ? "approved_pending_payment" : "approval_pending",
           requestedAmountCents: payment.requestedAmountCents,
-          approvedAmountCents,
+          approvedAmountCents: flowCompleted ? approvedAmountCents : undefined,
           nodeName: currentNode.name,
-          approvedRoleKey
+          approvedRoleKey,
+          nodeCompleted
         }
       });
-      completedInstanceId = instance.id;
+      if (flowCompleted) {
+        completedInstanceId = instance.id;
+      }
       return approved;
     });
 

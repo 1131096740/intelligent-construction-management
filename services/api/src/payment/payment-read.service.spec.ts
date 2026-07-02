@@ -155,7 +155,14 @@ describe("PaymentReadService", () => {
     expect(detail.title).toBe("FK-2026-011 · 2026-06付款申请");
     expect(detail.baseInfo).toContainEqual({ label: "申请金额", value: "¥493,000.00" });
     expect(detail.baseInfo).toContainEqual({ label: "已付金额", value: "¥120,000.00" });
-    expect(detail.approvalSteps.map((step) => step.label)).toContain("董事长/总经理或签");
+    expect(detail.approvalSteps.map((step) => step.label)).toEqual([
+      "付款申请",
+      "项目经理审批",
+      "合同结算部/预算部审批",
+      "财务复核",
+      "董事长/总经理或签",
+      "审批通过"
+    ]);
     expect(detail.executionSteps.map((step) => step.label)).toContain("付款凭证上传");
     expect(detail.approvalSteps.at(-1)).toMatchObject({
       label: "审批通过",

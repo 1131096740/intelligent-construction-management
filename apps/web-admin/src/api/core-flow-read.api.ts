@@ -343,6 +343,46 @@ export interface ArchiveListReadModel {
   };
 }
 
+export interface ProjectOptionReadModel {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface ProjectOperatingOverviewReadModel {
+  project: ProjectOptionReadModel;
+  cash: {
+    actualReceiptsCents: number | null;
+    availableFundsCents: number | null;
+    actualPaidCents: number;
+    approvalPendingOccupancyCents: number;
+    approvedPendingPaymentCents: number;
+    financeRecordedOutflowCents: number;
+  };
+  business: {
+    effectiveContractAmountCents: number;
+    effectiveSettlementAmountCents: number;
+    payableSettlementAmountCents: number;
+    operatingIncomeCents: number | null;
+    operatingCostCents: number | null;
+    grossProfitCents: number | null;
+  };
+  counts: {
+    contracts: number;
+    settlements: number;
+    payments: number;
+  };
+  dataGaps: string[];
+}
+
+export function fetchProjects() {
+  return readJson<ProjectOptionReadModel[]>("/projects");
+}
+
+export function fetchProjectOperatingOverview(projectId: string) {
+  return readJson<ProjectOperatingOverviewReadModel>(`/projects/${projectId}/operating-funds-overview`);
+}
+
 export function fetchContractLedger() {
   return readJson<ContractLedgerListReadModel>("/contracts");
 }

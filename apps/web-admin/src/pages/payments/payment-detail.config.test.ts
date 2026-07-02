@@ -32,10 +32,11 @@ describe("payment detail page configuration", () => {
     ]);
   });
 
-  it("requires chairman or general manager OR-sign in the approval chain", () => {
+  it("shows the full project payment approval chain", () => {
     expect(paymentApprovalSteps.map((step) => step.label)).toEqual([
       "付款申请",
-      "部门审核",
+      "项目经理审批",
+      "合同结算部/预算部审批",
       "财务复核",
       "董事长/总经理或签",
       "审批通过"
