@@ -611,6 +611,7 @@ export class ProjectService {
             status: true;
             amountCents: true;
             paidAmountCents: true;
+            isFinal: true;
             paymentTermsVersionId: true;
           };
         }) => Promise<
@@ -619,6 +620,7 @@ export class ProjectService {
             status: string;
             amountCents: number;
             paidAmountCents: number;
+            isFinal: boolean;
             paymentTermsVersionId: string;
           }>
         >;
@@ -628,17 +630,21 @@ export class ProjectService {
           where: { paymentTermsVersionId: { in: string[] }; basis: string };
           select: {
             paymentTermsVersionId: true;
+            stageType: true;
             basis: true;
             ratioBps: true;
             fixedAmountCents: true;
+            triggerAnchor: true;
             dueDays: true;
           };
         }) => Promise<
           Array<{
             paymentTermsVersionId: string;
+            stageType: string;
             basis: string;
             ratioBps: number | null;
             fixedAmountCents: number | null;
+            triggerAnchor: string;
             dueDays: number;
           }>
         >;
@@ -678,6 +684,7 @@ export class ProjectService {
         status: true,
         amountCents: true,
         paidAmountCents: true,
+        isFinal: true,
         paymentTermsVersionId: true
       }
     });
@@ -698,9 +705,11 @@ export class ProjectService {
         },
         select: {
           paymentTermsVersionId: true,
+          stageType: true,
           basis: true,
           ratioBps: true,
           fixedAmountCents: true,
+          triggerAnchor: true,
           dueDays: true
         }
       }),

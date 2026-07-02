@@ -469,7 +469,18 @@ describe("PaymentRequestService", () => {
           where: {
             contractId: "contract-1",
             status: { in: ["effective", "partially_paid", "paid"] }
-          }
+          },
+          select: expect.objectContaining({
+            isFinal: true
+          })
+        })
+      );
+      expect(tx.paymentTermsStage.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            stageType: true,
+            triggerAnchor: true
+          })
         })
       );
       expect(tx.$queryRaw).toHaveBeenCalled();

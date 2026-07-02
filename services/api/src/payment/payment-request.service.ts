@@ -249,17 +249,21 @@ export class PaymentRequestService {
           where: { paymentTermsVersionId: { in: string[] }; basis: string };
           select: {
             paymentTermsVersionId: true;
+            stageType: true;
             basis: true;
             ratioBps: true;
             fixedAmountCents: true;
+            triggerAnchor: true;
             dueDays: true;
           };
         }) => Promise<
           Array<{
             paymentTermsVersionId: string;
+            stageType: string;
             basis: string;
             ratioBps: number | null;
             fixedAmountCents: number | null;
+            triggerAnchor: string;
             dueDays: number;
           }>
         >;
@@ -292,6 +296,7 @@ export class PaymentRequestService {
         status: true,
         amountCents: true,
         paidAmountCents: true,
+        isFinal: true,
         paymentTermsVersionId: true
       }
     });
@@ -311,9 +316,11 @@ export class PaymentRequestService {
           },
           select: {
             paymentTermsVersionId: true,
+            stageType: true,
             basis: true,
             ratioBps: true,
             fixedAmountCents: true,
+            triggerAnchor: true,
             dueDays: true
           }
         }),

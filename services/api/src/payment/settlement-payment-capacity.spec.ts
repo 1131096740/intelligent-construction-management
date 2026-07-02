@@ -5,13 +5,16 @@ interface ContractDueSettlement {
   status: string;
   amountCents: number;
   paymentTermsVersionId: string;
+  isFinal?: boolean;
 }
 
 interface ContractDuePaymentTermsStage {
   paymentTermsVersionId: string;
+  stageType?: string;
   basis: string;
   ratioBps: number | null;
   fixedAmountCents: number | null;
+  triggerAnchor?: string;
   dueDays: number;
 }
 
@@ -263,6 +266,94 @@ describe("calculateContractDuePaymentCapacity", () => {
     });
 
     expect(capacity.remainingCents).toBe(80_000);
+  });
+
+  it("does not release final-settlement anchored stages from non-final settlements", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      settlements: [
+        {
+          id: "settlement-progress",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-version-1",
+          isFinal: false
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-version-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-version-1",
+          stageType: "retention",
+          basis: "current_settlement",
+          ratioBps: 2000,
+          fixedAmountCents: null,
+          triggerAnchor: "final_settlement_effective",
+          dueDays: 0
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-progress",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: []
+    });
+
+    expect(capacity.duePayableCents).toBe(80_000);
+  });
+
+  it("releases final-settlement anchored stages only after final settlement is due", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      settlements: [
+        {
+          id: "settlement-final",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-version-1",
+          isFinal: true
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-version-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-version-1",
+          stageType: "retention",
+          basis: "current_settlement",
+          ratioBps: 2000,
+          fixedAmountCents: null,
+          triggerAnchor: "final_settlement_effective",
+          dueDays: 30
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-final",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: []
+    });
+
+    expect(capacity.duePayableCents).toBe(100_000);
   });
 
   it("does not count effective settlements without archive confirmation time", () => {

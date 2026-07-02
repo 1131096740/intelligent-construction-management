@@ -32,13 +32,16 @@ export interface ContractDueSettlement {
   amountCents: number;
   paidAmountCents?: number;
   paymentTermsVersionId: string;
+  isFinal?: boolean;
 }
 
 export interface ContractDuePaymentTermsStage {
   paymentTermsVersionId: string;
+  stageType?: string;
   basis: string;
   ratioBps: number | null;
   fixedAmountCents: number | null;
+  triggerAnchor?: string;
   dueDays: number;
 }
 
@@ -120,6 +123,7 @@ export function calculateContractDuePaymentCapacity(input: {
 
     const stages = currentSettlementStagesByTerms.get(settlement.paymentTermsVersionId) ?? [];
     const settlementDueCents = stages.reduce<bigint>((stageTotal, stage) => {
+      if (!isStageApplicableToSettlement(stage, settlement)) return stageTotal;
       if (!isStageDue(confirmedAt, stage.dueDays, input.asOf)) return stageTotal;
       return stageTotal + contractStageAmountCents(settlement.amountCents, stage);
     }, 0n);
@@ -152,6 +156,22 @@ export function sumSafeCents(values: Array<bigint | number>): number {
   return centsToSafeNumber(
     values.reduce<bigint>((total, value) => total + BigInt(value), 0n)
   );
+}
+
+function isStageApplicableToSettlement(
+  stage: ContractDuePaymentTermsStage,
+  settlement: ContractDueSettlement
+): boolean {
+  const anchor = stage.triggerAnchor ?? "settlement_effective";
+  if (anchor === "settlement_effective") {
+    return true;
+  }
+
+  if (anchor === "final_settlement_effective") {
+    return settlement.isFinal === true;
+  }
+
+  return false;
 }
 
 function isStageDue(confirmedAt: Date, dueDays: number, asOf: Date): boolean {
