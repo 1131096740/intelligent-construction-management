@@ -3,6 +3,20 @@ import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.dec
 import { ProjectController } from "./project.controller";
 
 describe("ProjectController authorization wiring", () => {
+  type OwnerContractRecordBody = {
+    ownerName: string;
+    contractName: string;
+    contractCode: string;
+    signedAt: string;
+    amountCents: number;
+    taxRateBps: number;
+    pricingMethod: string;
+    paymentTermsSummary: string;
+    retentionSummary: string;
+    fileId: string;
+  };
+  type OwnerContractConfirmBody = { confirmationPassword: string };
+
   const fundsOverviewPositions = [
     "chairman",
     "general_manager",
@@ -37,6 +51,21 @@ describe("ProjectController authorization wiring", () => {
     expect(
       Reflect.getMetadata("requiredProjectAction", ProjectController.prototype.recordUpstreamSettlement)
     ).toBe("project.upstream_settlement.record");
+  });
+
+  it("guards project owner contract recording and confirmation with contract project roles", () => {
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        (ProjectController.prototype as never as { recordOwnerContract: object }).recordOwnerContract
+      )
+    ).toBe("project.owner_contract.record");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        (ProjectController.prototype as never as { confirmOwnerContract: object }).confirmOwnerContract
+      )
+    ).toBe("project.owner_contract.confirm");
   });
 
   it("forwards the authenticated user id when listing projects", async () => {
@@ -115,6 +144,59 @@ describe("ProjectController authorization wiring", () => {
     expect(projects.recordUpstreamSettlement).toHaveBeenCalledWith(
       "project-1",
       "budget-1",
+      body
+    );
+  });
+
+  it("forwards project owner contract record payload with authenticated user id", async () => {
+    const projects = { recordOwnerContract: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = {
+      ownerName: "建设单位",
+      contractName: "一期施工总承包合同",
+      contractCode: "YZ-2026-001",
+      signedAt: "2026-07-02T00:00:00.000Z",
+      amountCents: 200000000,
+      taxRateBps: 900,
+      pricingMethod: "fixed_total",
+      paymentTermsSummary: "按进度支付",
+      retentionSummary: "3%质保金",
+      fileId: "file-1"
+    };
+
+    await (controller as never as {
+      recordOwnerContract: (
+        projectId: string,
+        user: { id: string },
+        body: OwnerContractRecordBody
+      ) => Promise<unknown>;
+    }).recordOwnerContract("project-1", { id: "contract-staff-1" }, body);
+
+    expect(projects.recordOwnerContract).toHaveBeenCalledWith(
+      "project-1",
+      "contract-staff-1",
+      body
+    );
+  });
+
+  it("forwards project owner contract confirmation metadata and actor", async () => {
+    const projects = { confirmOwnerContract: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = { confirmationPassword: "current-password" };
+
+    await (controller as never as {
+      confirmOwnerContract: (
+        projectId: string,
+        ownerContractId: string,
+        user: { id: string },
+        body: OwnerContractConfirmBody
+      ) => Promise<unknown>;
+    }).confirmOwnerContract("project-1", "owner-contract-1", { id: "director-1" }, body);
+
+    expect(projects.confirmOwnerContract).toHaveBeenCalledWith(
+      "project-1",
+      "owner-contract-1",
+      "director-1",
       body
     );
   });

@@ -55,6 +55,15 @@ const CONTRACT_APPROVAL_NODES = [
   }
 ] satisfies ContractApprovalNode[];
 
+const DOWNSTREAM_CONTRACT_OCCUPANCY_STATUSES = [
+  "in_approval",
+  "approved_pending_seal",
+  "in_seal",
+  "seal_approved_pending_archive",
+  "pending_archive_confirm",
+  "effective"
+] as const;
+
 @Injectable()
 export class ContractService {
   constructor(
@@ -301,15 +310,20 @@ export class ContractService {
               readiness
             });
           }
-          formalCode = await this.numbering.allocate(
+          readinessSnapshot = readiness as unknown as Prisma.JsonValue;
+        }
+
+        await this.assertOwnerContractQuota(tx, contract.projectId, contract.id, version.amountCents);
+
+        if (input) {
+          formalCode = await this.numbering!.allocate(
             tx,
             input.numberRuleId,
             contract,
             actorUserId,
             input
           );
-          const submissionSnapshot = await this.readiness.freeze(tx, version);
-          readinessSnapshot = readiness as unknown as Prisma.JsonValue;
+          const submissionSnapshot = await this.readiness!.freeze(tx, version);
           templateSnapshot = {
             ...(version.templateSnapshot as Prisma.JsonObject),
             submissionSnapshot
@@ -405,6 +419,69 @@ export class ContractService {
         throw new BadRequestException("Contract formal code already exists");
       }
       throw error;
+    }
+  }
+
+  private async assertOwnerContractQuota(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    currentContractId: string,
+    amountCents: bigint | number
+  ) {
+    const requestedAmountCents = BigInt(amountCents);
+    if (requestedAmountCents <= 0n) {
+      throw new BadRequestException("Contract amount must be greater than zero");
+    }
+
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "Project"
+      WHERE "id" = ${projectId}
+      FOR UPDATE
+    `);
+
+    const ownerContracts = await tx.projectOwnerContract.findMany({
+      where: { projectId, status: "effective", voidedAt: null },
+      select: { amountCents: true }
+    });
+    const ownerQuotaCents = sumBigInt(ownerContracts.map((contract) => contract.amountCents));
+
+    const projectContracts = await tx.contract.findMany({
+      where: {
+        projectId,
+        voidedAt: null
+      },
+      select: { id: true }
+    });
+    const contractIds = projectContracts.map((contract) => contract.id);
+    const occupyingVersions = contractIds.length
+      ? await tx.contractVersion.findMany({
+          where: {
+            contractId: { in: contractIds },
+            status: { in: [...DOWNSTREAM_CONTRACT_OCCUPANCY_STATUSES] }
+          },
+          select: {
+            contractId: true,
+            versionNo: true,
+            amountCents: true
+          }
+        })
+      : [];
+    const contractOccupancies = maxContractOccupancies(occupyingVersions);
+    const hasCurrentOccupancy = contractOccupancies.some(
+      (version) => version.contractId === currentContractId
+    );
+    const occupiedCents =
+      sumBigInt(
+        contractOccupancies.map((version) =>
+          version.contractId === currentContractId
+            ? maxBigInt(version.amountCents, requestedAmountCents)
+            : version.amountCents
+        )
+      ) + (hasCurrentOccupancy ? 0n : requestedAmountCents);
+
+    if (ownerQuotaCents <= 0n || occupiedCents > ownerQuotaCents) {
+      throw new BadRequestException("业主主合同额度不足");
     }
   }
 
@@ -1211,4 +1288,28 @@ export class ContractService {
       return updated;
     });
   }
+}
+
+function sumBigInt(values: Array<bigint | number>): bigint {
+  return values.reduce<bigint>((total, value) => total + BigInt(value), 0n);
+}
+
+function maxBigInt(left: bigint | number, right: bigint | number): bigint {
+  const normalizedLeft = BigInt(left);
+  const normalizedRight = BigInt(right);
+  return normalizedLeft > normalizedRight ? normalizedLeft : normalizedRight;
+}
+
+function maxContractOccupancies<T extends { contractId: string; amountCents: bigint | number }>(
+  versions: T[]
+): T[] {
+  return Array.from(
+    versions.reduce((maxByContract, version) => {
+      const current = maxByContract.get(version.contractId);
+      if (!current || BigInt(version.amountCents) > BigInt(current.amountCents)) {
+        maxByContract.set(version.contractId, version);
+      }
+      return maxByContract;
+    }, new Map<string, T>()).values()
+  );
 }

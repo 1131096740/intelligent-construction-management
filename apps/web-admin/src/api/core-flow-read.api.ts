@@ -410,6 +410,23 @@ export interface RecordProjectUpstreamSettlementPayload {
   confirmationPassword: string;
 }
 
+export interface RecordProjectOwnerContractPayload {
+  ownerName: string;
+  contractName: string;
+  contractCode: string;
+  signedAt: string;
+  amountCents: number;
+  taxRateBps: number;
+  pricingMethod: string;
+  paymentTermsSummary: string;
+  retentionSummary: string;
+  fileId: string;
+}
+
+export interface ConfirmProjectOwnerContractPayload {
+  confirmationPassword: string;
+}
+
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
@@ -431,6 +448,18 @@ export function recordProjectUpstreamSettlement(
   body: RecordProjectUpstreamSettlementPayload
 ) {
   return postJson<unknown>(`/projects/${projectId}/upstream-settlements`, body);
+}
+
+export function recordProjectOwnerContract(projectId: string, body: RecordProjectOwnerContractPayload) {
+  return postJson<unknown>(`/projects/${projectId}/owner-contracts`, body);
+}
+
+export function confirmProjectOwnerContract(
+  projectId: string,
+  ownerContractId: string,
+  body: ConfirmProjectOwnerContractPayload
+) {
+  return postJson<unknown>(`/projects/${projectId}/owner-contracts/${ownerContractId}/confirmation`, body);
 }
 
 export function fetchContractLedger() {

@@ -11,7 +11,9 @@ import {
   fetchAuditLogs,
   fetchProjectOperatingOverview,
   fetchProjects,
+  confirmProjectOwnerContract,
   recordProjectReceipt,
+  recordProjectOwnerContract,
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
   createContractDraft,
@@ -216,6 +218,52 @@ describe("core flow read API client", () => {
         voucherFileId: "file-upstream-1",
         confirmationPassword: "current-password"
       })
+    );
+  });
+
+  it("records and confirms project owner contracts through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "owner-contract-1" })
+    } as Response);
+
+    await recordProjectOwnerContract("project-1", {
+      ownerName: "建设单位",
+      contractName: "一期施工总承包合同",
+      contractCode: "YZ-2026-001",
+      signedAt: "2026-07-02",
+      amountCents: 200000000,
+      taxRateBps: 900,
+      pricingMethod: "fixed_total",
+      paymentTermsSummary: "按进度支付",
+      retentionSummary: "3%质保金",
+      fileId: "file-owner-contract-1"
+    });
+    await confirmProjectOwnerContract("project-1", "owner-contract-1", {
+      confirmationPassword: "current-password"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/owner-contracts",
+      "/api/projects/project-1/owner-contracts/owner-contract-1/confirmation"
+    ]);
+    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        ownerName: "建设单位",
+        contractName: "一期施工总承包合同",
+        contractCode: "YZ-2026-001",
+        signedAt: "2026-07-02",
+        amountCents: 200000000,
+        taxRateBps: 900,
+        pricingMethod: "fixed_total",
+        paymentTermsSummary: "按进度支付",
+        retentionSummary: "3%质保金",
+        fileId: "file-owner-contract-1"
+      })
+    );
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({ confirmationPassword: "current-password" })
     );
   });
 

@@ -5,6 +5,7 @@ import {
   NotFoundException,
   Optional
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -18,6 +19,8 @@ import type {
   RecordProjectProxyPaymentDto,
   ProjectProxyPaymentType
 } from "./dto/record-project-proxy-payment.dto";
+import type { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
+import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import type { RecordProjectReceiptDto, ProjectReceiptSourceType } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 
@@ -575,6 +578,181 @@ export class ProjectService {
       return toUpstreamSettlementReadModel(upstreamSettlement);
     });
   }
+
+  async recordOwnerContract(
+    projectId: string,
+    actorUserId: string,
+    input: RecordProjectOwnerContractDto
+  ) {
+    const ownerName = requiredTrimmed(input.ownerName, "Project owner is required");
+    const contractName = requiredTrimmed(input.contractName, "Project owner contract name is required");
+    const contractCode = requiredTrimmed(input.contractCode, "Project owner contract code is required");
+    const signedAt = parseOwnerContractDate(input.signedAt);
+    const amountCents = normalizePositiveSafeInteger(
+      input.amountCents,
+      "Project owner contract amount must be greater than zero"
+    );
+    const taxRateBps = normalizeRequiredBps(
+      input.taxRateBps,
+      "Project owner contract tax rate is required"
+    );
+    const pricingMethod = requiredTrimmed(input.pricingMethod, "Project owner contract pricing method is required");
+    const paymentTermsSummary = requiredTrimmed(
+      input.paymentTermsSummary,
+      "Project owner contract payment terms summary is required"
+    );
+    const retentionSummary = requiredTrimmed(
+      input.retentionSummary,
+      "Project owner contract retention summary is required"
+    );
+    const fileId = requiredTrimmed(input.fileId, "Project owner contract file is required");
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const project = await tx.project.findFirst({
+          where: { id: projectId, isActive: true },
+          select: { id: true }
+        });
+
+        if (!project) {
+          throw new NotFoundException("Project not found");
+        }
+
+        const existing = await tx.projectOwnerContract.findFirst({
+          where: { projectId: project.id, contractCode, voidedAt: null },
+          select: { id: true }
+        });
+
+        if (existing) {
+          throw new BadRequestException("Project owner contract code already exists");
+        }
+
+        const existingFile = await tx.projectOwnerContract.findFirst({
+          where: { fileId, voidedAt: null },
+          select: { id: true }
+        });
+
+        if (existingFile) {
+          throw new BadRequestException("Project owner contract file already exists");
+        }
+
+        const file = await tx.fileObject.findUnique({
+          where: { id: fileId },
+          select: { id: true, uploadedByUserId: true }
+        });
+
+        if (!file) {
+          throw new NotFoundException("Project owner contract file not found");
+        }
+
+        if (file.uploadedByUserId !== actorUserId) {
+          throw new BadRequestException("Project owner contract file must be uploaded by the recorder");
+        }
+
+        const ownerContract = await tx.projectOwnerContract.create({
+          data: {
+            projectId: project.id,
+            ownerName,
+            contractName,
+            contractCode,
+            signedAt,
+            amountCents: BigInt(amountCents),
+            taxRateBps,
+            pricingMethod,
+            paymentTermsSummary,
+            retentionSummary,
+            fileId,
+            recordedByUserId: actorUserId,
+            status: "pending_confirm"
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.owner_contract.record",
+          businessType: "project_owner_contract",
+          businessId: ownerContract.id,
+          metadata: {
+            projectId: project.id,
+            ownerContractId: ownerContract.id,
+            amountCents,
+            ownerName,
+            contractName,
+            contractCode,
+            fileId
+          }
+        });
+
+        return toOwnerContractReadModel(ownerContract);
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("Project owner contract already exists");
+      }
+      throw error;
+    }
+  }
+
+  async confirmOwnerContract(
+    projectId: string,
+    ownerContractId: string,
+    actorUserId: string,
+    input: ConfirmProjectOwnerContractDto
+  ) {
+    const confirmationPassword = requiredTrimmed(
+      input.confirmationPassword,
+      "Project owner contract confirmation password is required"
+    );
+
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm project owner contract");
+    }
+
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      const confirmedAt = new Date();
+      const updated = await tx.projectOwnerContract.updateMany({
+        where: {
+          id: ownerContractId,
+          projectId,
+          status: "pending_confirm",
+          voidedAt: null
+        },
+        data: {
+          status: "effective",
+          confirmedByUserId: actorUserId,
+          confirmedAt
+        }
+      });
+
+      if (updated.count !== 1) {
+        throw new BadRequestException("Project owner contract is not pending confirmation");
+      }
+
+      const confirmed = await tx.projectOwnerContract.findUnique({
+        where: { id: ownerContractId }
+      });
+      if (!confirmed) {
+        throw new InternalServerErrorException("Project owner contract confirmation was not persisted");
+      }
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project.owner_contract.confirm",
+        businessType: "project_owner_contract",
+        businessId: confirmed.id,
+        metadata: {
+          projectId,
+          ownerContractId: confirmed.id,
+          amountCents: toSafeNumber(confirmed.amountCents),
+          confirmedAt: confirmedAt.toISOString()
+        }
+      });
+
+      return toOwnerContractReadModel(confirmed);
+    });
+  }
 }
 
 function isFundsOverviewPosition(positionKey: RoleKey | undefined): boolean {
@@ -657,6 +835,17 @@ function parseUpstreamSettlementDate(value: unknown): Date {
   return parsed;
 }
 
+function parseOwnerContractDate(value: unknown): Date {
+  if (typeof value !== "string") {
+    throw new BadRequestException("Project owner contract signed date is invalid");
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new BadRequestException("Project owner contract signed date is invalid");
+  }
+  return parsed;
+}
+
 function requiredTrimmed(value: unknown, message: string): string {
   const trimmed = typeof value === "string" ? value.trim() : "";
   if (!trimmed) {
@@ -667,6 +856,17 @@ function requiredTrimmed(value: unknown, message: string): string {
 
 function optionalTrimmed(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() || undefined : undefined;
+}
+
+function normalizeRequiredBps(value: unknown, message: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 10000) {
+    throw new BadRequestException(message);
+  }
+  return value;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
 function normalizeSourceType(value: unknown): ProjectReceiptSourceType {
@@ -778,5 +978,47 @@ function toUpstreamSettlementReadModel(upstreamSettlement: {
     voucherFileId: upstreamSettlement.voucherFileId,
     recordedByUserId: upstreamSettlement.recordedByUserId,
     createdAt: upstreamSettlement.createdAt.toISOString()
+  };
+}
+
+function toOwnerContractReadModel(ownerContract: {
+  id: string;
+  projectId: string;
+  ownerName: string;
+  contractName: string;
+  contractCode: string;
+  signedAt: Date;
+  amountCents: bigint | number;
+  taxRateBps?: number | null;
+  pricingMethod: string;
+  paymentTermsSummary?: string | null;
+  retentionSummary?: string | null;
+  fileId: string;
+  recordedByUserId: string;
+  confirmedByUserId?: string | null;
+  confirmedAt?: Date | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: ownerContract.id,
+    projectId: ownerContract.projectId,
+    ownerName: ownerContract.ownerName,
+    contractName: ownerContract.contractName,
+    contractCode: ownerContract.contractCode,
+    signedAt: ownerContract.signedAt.toISOString(),
+    amountCents: toSafeNumber(ownerContract.amountCents),
+    taxRateBps: ownerContract.taxRateBps ?? null,
+    pricingMethod: ownerContract.pricingMethod,
+    paymentTermsSummary: ownerContract.paymentTermsSummary ?? null,
+    retentionSummary: ownerContract.retentionSummary ?? null,
+    fileId: ownerContract.fileId,
+    recordedByUserId: ownerContract.recordedByUserId,
+    confirmedByUserId: ownerContract.confirmedByUserId ?? null,
+    confirmedAt: ownerContract.confirmedAt?.toISOString() ?? null,
+    status: ownerContract.status,
+    createdAt: ownerContract.createdAt.toISOString(),
+    updatedAt: ownerContract.updatedAt.toISOString()
   };
 }

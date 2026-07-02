@@ -476,6 +476,53 @@ async function main() {
   await seedAuthAssignments();
   await seedContractWorkbenchTemplates();
 
+  const ownerContractFileSize = await writePrivateSeedFile(
+    seed.ownerContractFile,
+    minimalPreviewPdf()
+  );
+  await upsertSeedFile(seed.ownerContractFile, seed.users.contractStaff.id, ownerContractFileSize);
+  await prisma.projectOwnerContract.upsert({
+    where: { id: seed.ownerContract.id },
+    update: {
+      projectId: seed.project.id,
+      ownerName: seed.ownerContract.ownerName,
+      contractName: seed.ownerContract.contractName,
+      contractCode: seed.ownerContract.contractCode,
+      signedAt: seed.ownerContract.signedAt,
+      amountCents: BigInt(seed.ownerContract.amountCents),
+      taxRateBps: seed.ownerContract.taxRateBps,
+      pricingMethod: seed.ownerContract.pricingMethod,
+      paymentTermsSummary: seed.ownerContract.paymentTermsSummary,
+      retentionSummary: seed.ownerContract.retentionSummary,
+      fileId: seed.ownerContractFile.id,
+      recordedByUserId: seed.users.contractStaff.id,
+      confirmedByUserId: "seed-user-contract-director",
+      confirmedAt: seed.ownerContract.confirmedAt,
+      status: seed.ownerContract.status,
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null
+    },
+    create: {
+      id: seed.ownerContract.id,
+      projectId: seed.project.id,
+      ownerName: seed.ownerContract.ownerName,
+      contractName: seed.ownerContract.contractName,
+      contractCode: seed.ownerContract.contractCode,
+      signedAt: seed.ownerContract.signedAt,
+      amountCents: BigInt(seed.ownerContract.amountCents),
+      taxRateBps: seed.ownerContract.taxRateBps,
+      pricingMethod: seed.ownerContract.pricingMethod,
+      paymentTermsSummary: seed.ownerContract.paymentTermsSummary,
+      retentionSummary: seed.ownerContract.retentionSummary,
+      fileId: seed.ownerContractFile.id,
+      recordedByUserId: seed.users.contractStaff.id,
+      confirmedByUserId: "seed-user-contract-director",
+      confirmedAt: seed.ownerContract.confirmedAt,
+      status: seed.ownerContract.status
+    }
+  });
+
   await prisma.contract.upsert({
     where: { code: seed.contract.code },
     update: {

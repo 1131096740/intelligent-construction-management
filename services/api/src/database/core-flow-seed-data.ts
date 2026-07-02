@@ -66,6 +66,28 @@ export const coreFlowSeedData = {
     amountCents: 128000000,
     effectiveAt: new Date("2026-05-01T00:00:00.000Z")
   },
+  ownerContractFile: {
+    id: "seed-file-owner-contract-yz-2026-001",
+    bucket: "private-archive",
+    objectKey: "seed/owner-contracts/YZ-2026-001.pdf",
+    originalName: "YZ-2026-001-业主主合同.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 128000
+  },
+  ownerContract: {
+    id: "seed-owner-contract-yz-2026-001",
+    ownerName: "建设单位",
+    contractName: "建设项目一期施工总承包合同",
+    contractCode: "YZ-2026-001",
+    signedAt: new Date("2026-04-20T00:00:00.000Z"),
+    amountCents: 500000000,
+    taxRateBps: 900,
+    pricingMethod: "fixed_total",
+    paymentTermsSummary: "按月进度和业主审定节点支付。",
+    retentionSummary: "按合同金额3%预留质保金。",
+    status: "effective",
+    confirmedAt: new Date("2026-04-21T00:00:00.000Z")
+  },
   paymentTermsVersion: {
     id: "seed-payment-terms-ht-2026-001-v1",
     versionNo: 1,

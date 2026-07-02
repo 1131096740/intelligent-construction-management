@@ -3,6 +3,8 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import type { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
+import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
@@ -59,5 +61,26 @@ export class ProjectController {
     @Body() body: RecordProjectUpstreamSettlementDto
   ) {
     return this.projects.recordUpstreamSettlement(projectId, user.id, body);
+  }
+
+  @Post(":projectId/owner-contracts")
+  @RequireProjectRole("project.owner_contract.record")
+  recordOwnerContract(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectOwnerContractDto
+  ) {
+    return this.projects.recordOwnerContract(projectId, user.id, body);
+  }
+
+  @Post(":projectId/owner-contracts/:ownerContractId/confirmation")
+  @RequireProjectRole("project.owner_contract.confirm")
+  confirmOwnerContract(
+    @Param("projectId") projectId: string,
+    @Param("ownerContractId") ownerContractId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmProjectOwnerContractDto
+  ) {
+    return this.projects.confirmOwnerContract(projectId, ownerContractId, user.id, body);
   }
 }

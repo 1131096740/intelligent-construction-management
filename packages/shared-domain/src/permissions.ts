@@ -19,6 +19,8 @@ export const BUSINESS_ACTIONS = [
   "project.receipt.record",
   "project.proxy_payment.record",
   "project.upstream_settlement.record",
+  "project.owner_contract.record",
+  "project.owner_contract.confirm",
   "payment.approve",
   "payment.execution",
   "payment.finance_record",
@@ -74,6 +76,8 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "project.receipt.record": ["finance_staff", "finance_director"],
   "project.proxy_payment.record": ["finance_staff", "finance_director"],
   "project.upstream_settlement.record": ["budget_staff", "budget_director"],
+  "project.owner_contract.record": ["contract_staff"],
+  "project.owner_contract.confirm": ["contract_director"],
   "payment.approve": [
     "project_manager",
     "contract_director",

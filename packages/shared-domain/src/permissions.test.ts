@@ -138,6 +138,15 @@ describe("role-specific gates", () => {
     expect(canPerform("project.upstream_settlement.record", ["project_manager"])).toBe(false);
     expect(canPerform("project.upstream_settlement.record", ["chairman"])).toBe(false);
   });
+
+  it("requires contract roles for project owner contract recording and confirmation", () => {
+    expect(canPerform("project.owner_contract.record", ["contract_staff"])).toBe(true);
+    expect(canPerform("project.owner_contract.record", ["contract_director"])).toBe(false);
+    expect(canPerform("project.owner_contract.confirm", ["contract_director"])).toBe(true);
+    expect(canPerform("project.owner_contract.confirm", ["contract_staff"])).toBe(false);
+    expect(canPerform("project.owner_contract.record", ["finance_staff"])).toBe(false);
+    expect(canPerform("project.owner_contract.confirm", ["chairman"])).toBe(false);
+  });
 });
 
 describe("effective role resolution", () => {

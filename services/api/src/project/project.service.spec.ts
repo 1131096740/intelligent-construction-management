@@ -589,6 +589,372 @@ describe("ProjectService", () => {
     });
   });
 
+  it("records a project owner contract as pending confirmation with uploaded file and audit log", async () => {
+    const signedAt = "2026-07-02T00:00:00.000Z";
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "contract-staff-1" })
+      },
+      projectOwnerContract: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "owner-contract-1",
+          projectId: "project-1",
+          ownerName: "建设单位",
+          contractName: "一期施工总承包合同",
+          contractCode: "YZ-2026-001",
+          signedAt: new Date(signedAt),
+          amountCents: BigInt(200000000),
+          taxRateBps: 900,
+          pricingMethod: "fixed_total",
+          paymentTermsSummary: "按进度支付",
+          retentionSummary: "3%质保金",
+          fileId: "file-1",
+          recordedByUserId: "contract-staff-1",
+          confirmedByUserId: null,
+          confirmedAt: null,
+          status: "pending_confirm",
+          voidedAt: null,
+          createdAt,
+          updatedAt: createdAt
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ProjectService(prisma as never);
+
+    const result = await (service as never as {
+      recordOwnerContract: (
+        projectId: string,
+        actorUserId: string,
+        input: {
+          ownerName: string;
+          contractName: string;
+          contractCode: string;
+          signedAt: string;
+          amountCents: number;
+          taxRateBps?: number;
+          pricingMethod: string;
+          paymentTermsSummary?: string;
+          retentionSummary?: string;
+          fileId: string;
+        }
+      ) => Promise<unknown>;
+    }).recordOwnerContract("project-1", "contract-staff-1", {
+      ownerName: "建设单位",
+      contractName: "一期施工总承包合同",
+      contractCode: "YZ-2026-001",
+      signedAt,
+      amountCents: 200000000,
+      taxRateBps: 900,
+      pricingMethod: "fixed_total",
+      paymentTermsSummary: "按进度支付",
+      retentionSummary: "3%质保金",
+      fileId: "file-1"
+    });
+
+    expect(result).toMatchObject({
+      id: "owner-contract-1",
+      projectId: "project-1",
+      signedAt,
+      amountCents: 200000000,
+      status: "pending_confirm",
+      fileId: "file-1",
+      recordedByUserId: "contract-staff-1",
+      confirmedByUserId: null,
+      confirmedAt: null
+    });
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenCalledWith({
+      where: { projectId: "project-1", contractCode: "YZ-2026-001", voidedAt: null },
+      select: { id: true }
+    });
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenCalledWith({
+      where: { fileId: "file-1", voidedAt: null },
+      select: { id: true }
+    });
+    expect(tx.projectOwnerContract.create).toHaveBeenCalledWith({
+      data: {
+        projectId: "project-1",
+        ownerName: "建设单位",
+        contractName: "一期施工总承包合同",
+        contractCode: "YZ-2026-001",
+        signedAt: new Date(signedAt),
+        amountCents: BigInt(200000000),
+        taxRateBps: 900,
+        pricingMethod: "fixed_total",
+        paymentTermsSummary: "按进度支付",
+        retentionSummary: "3%质保金",
+        fileId: "file-1",
+        recordedByUserId: "contract-staff-1",
+        status: "pending_confirm"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "contract-staff-1",
+        action: "project.owner_contract.record",
+        businessType: "project_owner_contract",
+        businessId: "owner-contract-1"
+      })
+    });
+  });
+
+  it("rejects duplicate active project owner contract code before quota can be inflated", async () => {
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn()
+      },
+      projectOwnerContract: {
+        findFirst: jest.fn().mockResolvedValue({ id: "owner-contract-existing" }),
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      (service as never as {
+        recordOwnerContract: (
+          projectId: string,
+          actorUserId: string,
+          input: {
+            ownerName: string;
+            contractName: string;
+            contractCode: string;
+            signedAt: string;
+            amountCents: number;
+            taxRateBps: number;
+            pricingMethod: string;
+            paymentTermsSummary: string;
+            retentionSummary: string;
+            fileId: string;
+          }
+        ) => Promise<unknown>;
+      }).recordOwnerContract("project-1", "contract-staff-1", {
+        ownerName: "建设单位",
+        contractName: "一期施工总承包合同",
+        contractCode: "YZ-2026-001",
+        signedAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 200000000,
+        taxRateBps: 900,
+        pricingMethod: "fixed_total",
+        paymentTermsSummary: "按进度支付",
+        retentionSummary: "3%质保金",
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("Project owner contract code already exists");
+    expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
+    expect(tx.projectOwnerContract.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate active project owner contract file before file access becomes ambiguous", async () => {
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn()
+      },
+      projectOwnerContract: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: "owner-contract-existing" }),
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      (service as never as {
+        recordOwnerContract: (
+          projectId: string,
+          actorUserId: string,
+          input: {
+            ownerName: string;
+            contractName: string;
+            contractCode: string;
+            signedAt: string;
+            amountCents: number;
+            taxRateBps: number;
+            pricingMethod: string;
+            paymentTermsSummary: string;
+            retentionSummary: string;
+            fileId: string;
+          }
+        ) => Promise<unknown>;
+      }).recordOwnerContract("project-1", "contract-staff-1", {
+        ownerName: "建设单位",
+        contractName: "一期施工总承包合同",
+        contractCode: "YZ-2026-002",
+        signedAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 200000000,
+        taxRateBps: 900,
+        pricingMethod: "fixed_total",
+        paymentTermsSummary: "按进度支付",
+        retentionSummary: "3%质保金",
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("Project owner contract file already exists");
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { projectId: "project-1", contractCode: "YZ-2026-002", voidedAt: null },
+      select: { id: true }
+    });
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { fileId: "file-1", voidedAt: null },
+      select: { id: true }
+    });
+    expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
+    expect(tx.projectOwnerContract.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects project owner contract recording without required commercial terms", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      (service as never as {
+        recordOwnerContract: (
+          projectId: string,
+          actorUserId: string,
+          input: {
+            ownerName: string;
+            contractName: string;
+            contractCode: string;
+            signedAt: string;
+            amountCents: number;
+            pricingMethod: string;
+            paymentTermsSummary: string;
+            retentionSummary: string;
+            fileId: string;
+          }
+        ) => Promise<unknown>;
+      }).recordOwnerContract("project-1", "contract-staff-1", {
+        ownerName: "建设单位",
+        contractName: "一期施工总承包合同",
+        contractCode: "YZ-2026-001",
+        signedAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 200000000,
+        pricingMethod: "fixed_total",
+        paymentTermsSummary: "按进度支付",
+        retentionSummary: "3%质保金",
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("Project owner contract tax rate is required");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("confirms a pending project owner contract with password and audit log", async () => {
+    const signedAt = "2026-07-02T00:00:00.000Z";
+    const confirmedAt = new Date("2026-07-02T02:00:00.000Z");
+    const tx = {
+      projectOwnerContract: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "owner-contract-1",
+          projectId: "project-1",
+          ownerName: "建设单位",
+          contractName: "一期施工总承包合同",
+          contractCode: "YZ-2026-001",
+          signedAt: new Date(signedAt),
+          amountCents: BigInt(200000000),
+          taxRateBps: 900,
+          pricingMethod: "fixed_total",
+          paymentTermsSummary: "按进度支付",
+          retentionSummary: "3%质保金",
+          fileId: "file-1",
+          recordedByUserId: "contract-staff-1",
+          confirmedByUserId: "contract-director-1",
+          confirmedAt,
+          status: "effective",
+          voidedAt: null,
+          createdAt: new Date("2026-07-02T01:00:00.000Z"),
+          updatedAt: confirmedAt
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    const result = await (service as never as {
+      confirmOwnerContract: (
+        projectId: string,
+        ownerContractId: string,
+        actorUserId: string,
+        input: { confirmationPassword: string }
+      ) => Promise<unknown>;
+    }).confirmOwnerContract("project-1", "owner-contract-1", "contract-director-1", {
+      confirmationPassword: "current-password"
+    });
+
+    expect(result).toMatchObject({
+      id: "owner-contract-1",
+      status: "effective",
+      confirmedByUserId: "contract-director-1",
+      confirmedAt: confirmedAt.toISOString()
+    });
+    expect(auth.confirmPassword).toHaveBeenCalledWith("contract-director-1", "current-password");
+    expect(tx.projectOwnerContract.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "owner-contract-1",
+        projectId: "project-1",
+        status: "pending_confirm",
+        voidedAt: null
+      },
+      data: {
+        status: "effective",
+        confirmedByUserId: "contract-director-1",
+        confirmedAt: expect.any(Date)
+      }
+    });
+    expect(tx.projectOwnerContract.findUnique).toHaveBeenCalledWith({
+      where: { id: "owner-contract-1" }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "contract-director-1",
+        action: "project.owner_contract.confirm",
+        businessType: "project_owner_contract",
+        businessId: "owner-contract-1"
+      })
+    });
+  });
+
   it("rejects upstream settlement voucher uploaded by another user", async () => {
     const tx = {
       project: {
@@ -621,6 +987,122 @@ describe("ProjectService", () => {
       } satisfies RecordProjectUpstreamSettlementDto)
     ).rejects.toThrow("Upstream settlement voucher file must be uploaded by the recorder");
     expect(tx.projectUpstreamSettlement.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects owner contract file uploaded by another user", async () => {
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "other-user" })
+      },
+      projectOwnerContract: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      (service as never as {
+        recordOwnerContract: (
+          projectId: string,
+          actorUserId: string,
+          input: {
+            ownerName: string;
+            contractName: string;
+            contractCode: string;
+            signedAt: string;
+            amountCents: number;
+            taxRateBps: number;
+            pricingMethod: string;
+            paymentTermsSummary: string;
+            retentionSummary: string;
+            fileId: string;
+          }
+        ) => Promise<unknown>;
+      }).recordOwnerContract("project-1", "contract-staff-1", {
+        ownerName: "建设单位",
+        contractName: "一期施工总承包合同",
+        contractCode: "YZ-2026-001",
+        signedAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 200000000,
+        taxRateBps: 900,
+        pricingMethod: "fixed_total",
+        paymentTermsSummary: "按进度支付",
+        retentionSummary: "3%质保金",
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("Project owner contract file must be uploaded by the recorder");
+    expect(tx.projectOwnerContract.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects project owner contract confirmation when it is not pending", async () => {
+    const tx = {
+      projectOwnerContract: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findUnique: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    await expect(
+      (service as never as {
+        confirmOwnerContract: (
+          projectId: string,
+          ownerContractId: string,
+          actorUserId: string,
+          input: { confirmationPassword: string }
+        ) => Promise<unknown>;
+      }).confirmOwnerContract("project-1", "owner-contract-1", "contract-director-1", {
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("Project owner contract is not pending confirmation");
+    expect(tx.projectOwnerContract.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("does not audit project owner contract confirmation when the CAS update loses a race", async () => {
+    const tx = {
+      projectOwnerContract: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findUnique: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    await expect(
+      (service as never as {
+        confirmOwnerContract: (
+          projectId: string,
+          ownerContractId: string,
+          actorUserId: string,
+          input: { confirmationPassword: string }
+        ) => Promise<unknown>;
+      }).confirmOwnerContract("project-1", "owner-contract-1", "contract-director-1", {
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("Project owner contract is not pending confirmation");
+    expect(tx.projectOwnerContract.findUnique).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("rejects project proxy payment when linked settlement belongs to another project", async () => {

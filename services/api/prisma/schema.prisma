@@ -300,6 +300,33 @@ model ProjectUpstreamSettlement {
   @@index([voucherFileId])
 }
 
+model ProjectOwnerContract {
+  id                  String    @id @default(uuid())
+  projectId           String
+  ownerName           String
+  contractName        String
+  contractCode        String
+  signedAt            DateTime
+  amountCents         BigInt
+  taxRateBps          Int
+  pricingMethod       String
+  paymentTermsSummary String
+  retentionSummary    String
+  fileId              String
+  recordedByUserId    String
+  confirmedByUserId   String?
+  confirmedAt         DateTime?
+  status              String    @default("pending_confirm")
+  voidedAt            DateTime?
+  voidedByUserId      String?
+  voidReason          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([projectId, signedAt])
+  @@index([fileId])
+}
+
 model ApprovalFlow {
   id        String   @id @default(uuid())
   type      String

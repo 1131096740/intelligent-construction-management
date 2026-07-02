@@ -772,6 +772,186 @@ describe("FileService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("allows archive-readable contract roles to download active project owner contract files", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "业主主合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-uploader"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectReceipt: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectProxyPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectUpstreamSettlement: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectOwnerContract: {
+        findFirst: jest.fn(({ where }: { where: { voidedAt?: null | { not: null } } }) =>
+          Promise.resolve(
+            where.voidedAt === null
+              ? {
+                  id: "owner-contract-1",
+                  projectId: "project-1",
+                  fileId: "file-1",
+                  voidedAt: null
+                }
+              : {
+                  id: "owner-contract-voided",
+                  projectId: "project-1",
+                  fileId: "file-1",
+                  voidedAt: new Date("2026-07-01T00:00:00.000Z")
+                }
+          )
+        )
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "contract_director" }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "contract-director-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=contract-director-1");
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenCalledWith({
+      where: { fileId: "file-1", voidedAt: null },
+      select: { projectId: true }
+    });
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "contract-director-1",
+      action: "file.download.ticket",
+      businessType: "file_object",
+      businessId: "file-1",
+      metadata: {
+        expiresAt: ticket.expiresAt
+      }
+    });
+  });
+
+  it("does not grant project owner contract file access through voided records", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "作废业主主合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-uploader"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectReceipt: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectProxyPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectUpstreamSettlement: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectOwnerContract: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: "owner-contract-voided" })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "contract_director" }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", { actorUserId: "contract-director-1" })
+    ).rejects.toThrow("Actor cannot download private file");
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { fileId: "file-1", voidedAt: null },
+      select: { projectId: true }
+    });
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { fileId: "file-1", voidedAt: { not: null } },
+      select: { id: true }
+    });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects uploader download when the project owner contract file belongs to a voided record", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "作废业主主合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-uploader"
+        })
+      },
+      projectOwnerContract: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: "owner-contract-voided" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", { actorUserId: "contract-uploader" })
+    ).rejects.toThrow("Actor cannot download private file");
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { fileId: "file-1", voidedAt: null },
+      select: { projectId: true }
+    });
+    expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { fileId: "file-1", voidedAt: { not: null } },
+      select: { id: true }
+    });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("allows the applicant to download an approval-form PDF", async () => {
     const tx = {
       fileObject: {

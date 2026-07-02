@@ -241,6 +241,7 @@ describe("ContractService", () => {
       contractId: "contract-1",
       status: "draft",
       draftRevision: 4,
+      amountCents: BigInt(5000000),
       readinessSnapshot: null,
       templateSnapshot: { fieldSchema: [] },
       clauseSnapshot: []
@@ -248,6 +249,7 @@ describe("ContractService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([version]),
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contract: {
@@ -261,7 +263,11 @@ describe("ContractService", () => {
           companyEntityId: null,
           companyEntityName: null
         }),
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(200000000) }])
       },
       approvalInstance: {
         create: jest.fn()
@@ -355,6 +361,17 @@ describe("ContractService", () => {
         applicantUserId: "user-contract-staff"
       })
     });
+    expect(tx.projectOwnerContract.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1", status: "effective", voidedAt: null },
+      select: { amountCents: true }
+    });
+    const projectLockCall = tx.$queryRaw.mock.calls.find((call) =>
+      String(call[0].strings?.join(" ") ?? call[0]).includes('FROM "Project"')
+    );
+    expect(projectLockCall).toBeDefined();
+    expect(
+      tx.$queryRaw.mock.invocationCallOrder[1]
+    ).toBeLessThan(tx.projectOwnerContract.findMany.mock.invocationCallOrder[0]);
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "user-contract-staff",
       action: "contract.approval.submit",
@@ -369,6 +386,462 @@ describe("ContractService", () => {
         submissionSnapshot: expect.objectContaining({ draftRevision: 4 })
       }
     });
+  });
+
+  it("blocks approval submission when downstream contracts exceed effective owner contract quota before numbering", async () => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 4,
+      amountCents: BigInt(5000000),
+      readinessSnapshot: null,
+      templateSnapshot: { fieldSchema: [] },
+      clauseSnapshot: []
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([version]),
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(10000000) }])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractId: "contract-old",
+            versionNo: 1,
+            status: "effective",
+            amountCents: BigInt(6000000)
+          }
+        ]),
+        updateMany: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "user-contract-staff",
+          voidedAt: null,
+          code: null,
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          companyEntityId: null,
+          companyEntityName: null
+        }),
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-old" }]),
+        updateMany: jest.fn()
+      },
+      approvalInstance: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const readiness = {
+      check: jest.fn().mockResolvedValue({
+        blocking: [],
+        warnings: [],
+        checkedRevision: 4
+      }),
+      freeze: jest.fn()
+    };
+    const numbering = {
+      allocate: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      readiness as never,
+      numbering as never
+    );
+
+    await expect(
+      service.submitApproval("contract-version-1", "user-contract-staff", { numberRuleId: "rule-1" })
+    ).rejects.toThrow("业主主合同额度不足");
+    expect(numbering.allocate).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
+
+  it("continues approval submission when effective owner contract quota is enough", async () => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 4,
+      amountCents: BigInt(5000000),
+      readinessSnapshot: null,
+      templateSnapshot: { fieldSchema: [] },
+      clauseSnapshot: []
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([version]),
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(20000000) }])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractId: "contract-old",
+            versionNo: 1,
+            status: "effective",
+            amountCents: BigInt(6000000)
+          }
+        ]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "user-contract-staff",
+          voidedAt: null,
+          code: null,
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          companyEntityId: null,
+          companyEntityName: null
+        }),
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-old" }]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const readiness = {
+      check: jest.fn().mockResolvedValue({
+        blocking: [],
+        warnings: [],
+        checkedRevision: 4
+      }),
+      freeze: jest.fn().mockResolvedValue({
+        draftRevision: 4,
+        layoutTemplateVersionId: "layout-1"
+      })
+    };
+    const numbering = {
+      allocate: jest.fn().mockResolvedValue("HT-JGXM-2026-材料-002")
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      readiness as never,
+      numbering as never
+    );
+
+    await expect(
+      service.submitApproval("contract-version-1", "user-contract-staff", { numberRuleId: "rule-1" })
+    ).resolves.toMatchObject({ status: "in_approval" });
+    expect(numbering.allocate).toHaveBeenCalled();
+    expect(tx.approvalInstance.create).toHaveBeenCalled();
+  });
+
+  it("queries every pre-effective downstream contract state as owner contract quota occupancy", async () => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 4,
+      amountCents: BigInt(4000000),
+      readinessSnapshot: null,
+      templateSnapshot: { fieldSchema: [] },
+      clauseSnapshot: []
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([version]),
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(10000000) }])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractId: "contract-old",
+            versionNo: 1,
+            status: "effective",
+            amountCents: BigInt(2000000)
+          },
+          {
+            contractId: "contract-old",
+            versionNo: 2,
+            status: "pending_archive_confirm",
+            amountCents: BigInt(7000000)
+          }
+        ]),
+        updateMany: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "user-contract-staff",
+          voidedAt: null,
+          code: null,
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          companyEntityId: null,
+          companyEntityName: null
+        }),
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-old" }]),
+        updateMany: jest.fn()
+      },
+      approvalInstance: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const readiness = {
+      check: jest.fn().mockResolvedValue({
+        blocking: [],
+        warnings: [],
+        checkedRevision: 4
+      }),
+      freeze: jest.fn()
+    };
+    const numbering = {
+      allocate: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      readiness as never,
+      numbering as never
+    );
+
+    await expect(
+      service.submitApproval("contract-version-1", "user-contract-staff", { numberRuleId: "rule-1" })
+    ).rejects.toThrow("业主主合同额度不足");
+    expect(tx.contractVersion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: {
+            in: expect.arrayContaining([
+              "in_approval",
+              "approved_pending_seal",
+              "in_seal",
+              "seal_approved_pending_archive",
+              "pending_archive_confirm",
+              "effective"
+            ])
+          }
+        })
+      })
+    );
+    expect(numbering.allocate).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
+
+  it("does not release the current contract's existing quota occupancy before a lower draft is effective", async () => {
+    const version = {
+      id: "contract-version-2",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 4,
+      amountCents: BigInt(2000000),
+      readinessSnapshot: null,
+      templateSnapshot: { fieldSchema: [] },
+      clauseSnapshot: []
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([version]),
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(10000000) }])
+      },
+      contractVersion: {
+        findMany: jest.fn(async (args?: { where?: { contractId?: { in?: string[] } } }) => {
+          const versions = [
+            {
+              contractId: "contract-1",
+              versionNo: 1,
+              status: "effective",
+              amountCents: BigInt(8000000)
+            },
+            {
+              contractId: "contract-old",
+              versionNo: 1,
+              status: "effective",
+              amountCents: BigInt(3000000)
+            }
+          ];
+          const contractIds = args?.where?.contractId?.in ?? [];
+          return versions.filter((candidate) => contractIds.includes(candidate.contractId));
+        }),
+        updateMany: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "user-contract-staff",
+          voidedAt: null,
+          code: "HT-JGXM-2026-材料-001",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          companyEntityId: null,
+          companyEntityName: null
+        }),
+        findMany: jest.fn(async (args?: { where?: { id?: { not?: string } } }) =>
+          args?.where?.id?.not === "contract-1"
+            ? [{ id: "contract-old" }]
+            : [{ id: "contract-1" }, { id: "contract-old" }]
+        ),
+        updateMany: jest.fn()
+      },
+      approvalInstance: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const readiness = {
+      check: jest.fn().mockResolvedValue({
+        blocking: [],
+        warnings: [],
+        checkedRevision: 4
+      }),
+      freeze: jest.fn()
+    };
+    const numbering = {
+      allocate: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      readiness as never,
+      numbering as never
+    );
+
+    await expect(
+      service.submitApproval("contract-version-2", "user-contract-staff", { numberRuleId: "rule-1" })
+    ).rejects.toThrow("业主主合同额度不足");
+    expect(numbering.allocate).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
+
+  it("does not release another contract's existing quota occupancy before its lower draft is effective", async () => {
+    const version = {
+      id: "contract-version-b-1",
+      contractId: "contract-b",
+      status: "draft",
+      draftRevision: 4,
+      amountCents: BigInt(3000000),
+      readinessSnapshot: null,
+      templateSnapshot: { fieldSchema: [] },
+      clauseSnapshot: []
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([version]),
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(10000000) }])
+      },
+      contractVersion: {
+        findMany: jest.fn(async (args?: { where?: { contractId?: { in?: string[] } } }) => {
+          const versions = [
+            {
+              contractId: "contract-a",
+              versionNo: 1,
+              status: "effective",
+              amountCents: BigInt(8000000)
+            },
+            {
+              contractId: "contract-a",
+              versionNo: 2,
+              status: "in_approval",
+              amountCents: BigInt(2000000)
+            }
+          ];
+          const contractIds = args?.where?.contractId?.in ?? [];
+          return versions.filter((candidate) => contractIds.includes(candidate.contractId));
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-b",
+          ownerUserId: "user-contract-staff",
+          voidedAt: null,
+          code: "HT-JGXM-2026-材料-002",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          companyEntityId: null,
+          companyEntityName: null
+        }),
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-a" }, { id: "contract-b" }]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const readiness = {
+      check: jest.fn().mockResolvedValue({
+        blocking: [],
+        warnings: [],
+        checkedRevision: 4
+      }),
+      freeze: jest.fn().mockResolvedValue({
+        draftRevision: 4,
+        layoutTemplateVersionId: "layout-1"
+      })
+    };
+    const numbering = {
+      allocate: jest.fn().mockResolvedValue("HT-JGXM-2026-材料-003")
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      readiness as never,
+      numbering as never
+    );
+
+    await expect(
+      service.submitApproval("contract-version-b-1", "user-contract-staff", { numberRuleId: "rule-1" })
+    ).rejects.toThrow("业主主合同额度不足");
+    expect(numbering.allocate).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
   });
 
   it("blocks approval submission when readiness check returns blocking issues", async () => {
@@ -523,21 +996,28 @@ describe("ContractService", () => {
           contractId: "contract-1",
           status: "draft",
           draftRevision: 1,
+          amountCents: BigInt(5000000),
           readinessSnapshot: null,
           templateSnapshot: {},
           clauseSnapshot: []
         }
       ]),
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(200000000) }])
       },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
           ownerUserId: null,
           voidedAt: null,
-          code: "HT-LEGACY-001"
-        })
+          code: "HT-LEGACY-001",
+          projectId: "project-1"
+        }),
+        findMany: jest.fn().mockResolvedValue([])
       },
       approvalInstance: { create: jest.fn() }
     };
@@ -565,21 +1045,28 @@ describe("ContractService", () => {
           contractId: "contract-1",
           status: "draft",
           draftRevision: 1,
+          amountCents: BigInt(5000000),
           readinessSnapshot: null,
           templateSnapshot: {},
           clauseSnapshot: []
         }
       ]),
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(200000000) }])
       },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
           ownerUserId: null,
           voidedAt: null,
-          code: "HT-LEGACY-001"
+          code: "HT-LEGACY-001",
+          projectId: "project-1"
         }),
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
       },
       approvalInstance: { create: jest.fn() }

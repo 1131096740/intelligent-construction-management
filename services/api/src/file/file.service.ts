@@ -335,7 +335,45 @@ export class FileService {
     file: FileObject,
     actorUserId: string
   ) {
-    if (file.uploadedByUserId === actorUserId) {
+    const projectOwnerContractClient = (tx as unknown as {
+      projectOwnerContract?: {
+        findFirst: (args: {
+          where: { fileId: string; voidedAt?: null | { not: null } };
+          select: { id?: true; projectId?: true };
+        }) => Promise<{ id?: string; projectId?: string } | null>;
+      };
+    }).projectOwnerContract;
+    const projectOwnerContract = projectOwnerContractClient
+      ? await projectOwnerContractClient.findFirst({
+          where: { fileId: file.id, voidedAt: null },
+          select: { projectId: true }
+        })
+      : null;
+
+    if (
+      projectOwnerContract?.projectId &&
+      (await this.hasProjectRole(
+        tx,
+        actorUserId,
+        projectOwnerContract.projectId,
+        ARCHIVE_FILE_DOWNLOAD_ROLES
+      ))
+    ) {
+      return;
+    }
+
+    const voidedProjectOwnerContract = projectOwnerContractClient
+      ? await projectOwnerContractClient.findFirst({
+          where: { fileId: file.id, voidedAt: { not: null } },
+          select: { id: true }
+        })
+      : null;
+
+    if (voidedProjectOwnerContract) {
+      throw new Error("Actor cannot download private file");
+    }
+
+    if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
       return;
     }
 
