@@ -1,0 +1,23 @@
+export interface CreateProjectExpenseRequestDto {
+  code: string;
+  expenseType: "sporadic_payment" | "loan_reserve";
+  expenseSubtype:
+    | "sporadic_material"
+    | "sporadic_machinery"
+    | "sporadic_labor"
+    | "temporary_service"
+    | "other_sporadic"
+    | "employee_loan"
+    | "owner_loan"
+    | "project_reserve";
+  paymentSubject: string;
+  reason: string;
+  requestedAmountCents: number;
+  paymentMethod: "cash" | "wechat" | "alipay" | "bank_transfer" | "other";
+  counterpartyName?: string;
+  counterpartyAccountName?: string;
+  counterpartyBankName?: string;
+  counterpartyBankAccount?: string;
+  handlerUserId?: string;
+  attachmentFileId?: string;
+}

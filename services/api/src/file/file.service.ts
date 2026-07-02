@@ -52,6 +52,13 @@ const PROJECT_FINANCING_QUOTA_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "chairman",
   "general_manager"
 ];
+const PROJECT_EXPENSE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
+  "project_manager",
+  "comprehensive_director",
+  "finance_director",
+  "chairman",
+  "general_manager"
+];
 const ALLOWED_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf", ".png", ".jpg", ".jpeg"]);
 
 @Injectable()
@@ -446,6 +453,32 @@ export class FileService {
       }
     }
 
+    const projectExpenseExecutionClient = (tx as unknown as {
+      projectExpenseExecution?: {
+        findFirst: (args: {
+          where: { voucherFileId: string };
+          select: { projectId: true };
+        }) => Promise<{ projectId: string } | null>;
+      };
+    }).projectExpenseExecution;
+    const projectExpenseExecution = projectExpenseExecutionClient
+      ? await projectExpenseExecutionClient.findFirst({
+          where: { voucherFileId: file.id },
+          select: { projectId: true }
+        })
+      : null;
+    if (
+      projectExpenseExecution &&
+      (await this.hasProjectRole(
+        tx,
+        actorUserId,
+        projectExpenseExecution.projectId,
+        PAYMENT_FILE_DOWNLOAD_ROLES
+      ))
+    ) {
+      return;
+    }
+
     const projectReceiptClient = (tx as unknown as {
       projectReceipt?: {
         findFirst: (args: {
@@ -562,6 +595,33 @@ export class FileService {
         projectFinancingQuota.projectId,
         PROJECT_FINANCING_QUOTA_FILE_DOWNLOAD_ROLES
       ))
+    ) {
+      return;
+    }
+
+    const projectExpenseRequestClient = (tx as unknown as {
+      projectExpenseRequest?: {
+        findFirst: (args: {
+          where: { attachmentFileId: string; voidedAt: null };
+          select: { projectId: true; applicantUserId: true };
+        }) => Promise<{ projectId: string; applicantUserId: string } | null>;
+      };
+    }).projectExpenseRequest;
+    const projectExpenseRequest = projectExpenseRequestClient
+      ? await projectExpenseRequestClient.findFirst({
+          where: { attachmentFileId: file.id, voidedAt: null },
+          select: { projectId: true, applicantUserId: true }
+        })
+      : null;
+    if (
+      projectExpenseRequest &&
+      (projectExpenseRequest.applicantUserId === actorUserId ||
+        (await this.hasProjectRole(
+          tx,
+          actorUserId,
+          projectExpenseRequest.projectId,
+          PROJECT_EXPENSE_FILE_DOWNLOAD_ROLES
+        )))
     ) {
       return;
     }

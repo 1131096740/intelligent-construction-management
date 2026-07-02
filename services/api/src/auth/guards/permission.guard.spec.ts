@@ -72,6 +72,76 @@ describe("PermissionGuard", () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
+  it("rejects global-only employees from creating project expense requests", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([{ positionId: "position-employee" }])
+          .mockResolvedValueOnce([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ id: "position-employee", key: "employee" }])
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("project_expense.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { projectId: "project-1" }
+        })
+      )
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it("allows project-scoped employees to create project expense requests", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([{ positionId: "position-employee" }])
+          .mockResolvedValueOnce([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "employee" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ id: "position-employee", key: "employee" }])
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("project_expense.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { projectId: "project-1" }
+        })
+      )
+    ).resolves.toBe(true);
+  });
+
   it("allows direct required positions", async () => {
     const guard = new PermissionGuard(
       {

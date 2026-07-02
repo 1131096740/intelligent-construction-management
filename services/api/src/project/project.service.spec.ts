@@ -189,7 +189,19 @@ describe("ProjectService", () => {
         ])
       },
       projectFinancingQuota: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(2000000) }])
+        findMany: jest.fn().mockResolvedValue([{ id: "financing-quota-1", amountCents: BigInt(2000000) }])
+      },
+      projectFinancingQuotaUsage: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectExpenseFinancingQuotaUsage: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectExpenseExecution: {
+        findMany: jest.fn()
       }
     };
     const service = new ProjectService(prisma as never);
@@ -229,7 +241,49 @@ describe("ProjectService", () => {
     });
     expect(prisma.projectFinancingQuota.findMany).toHaveBeenCalledWith({
       where: { projectId: "project-1", status: "approved", validUntil: { gte: expect.any(Date) } },
-      select: { amountCents: true }
+      select: { id: true, amountCents: true }
+    });
+  });
+
+  it("deducts occupied and used financing quota usage from operating available funds", async () => {
+    const prisma = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "project-1",
+          code: "JG-001",
+          name: "总部综合楼"
+        })
+      },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
+      projectFinancingQuota: {
+        findMany: jest.fn().mockResolvedValue([{ id: "financing-quota-1", amountCents: BigInt(2000000) }])
+      },
+      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      projectFinancingQuotaUsage: {
+        findMany: jest.fn().mockResolvedValue([{ quotaId: "financing-quota-1", amountCents: BigInt(500000) }])
+      },
+      projectExpenseFinancingQuotaUsage: {
+        findMany: jest.fn().mockResolvedValue([{ quotaId: "financing-quota-1", amountCents: BigInt(300000) }])
+      }
+    };
+    const service = new ProjectService(prisma as never);
+
+    const overview = await service.getOperatingFundsOverview("project-1");
+
+    expect(overview.cash.availableFundsCents).toBe(1200000);
+    expect(prisma.projectFinancingQuotaUsage.findMany).toHaveBeenCalledWith({
+      where: { quotaId: { in: ["financing-quota-1"] }, status: { in: ["occupied", "used"] } },
+      select: { quotaId: true, amountCents: true }
+    });
+    expect(prisma.projectExpenseFinancingQuotaUsage.findMany).toHaveBeenCalledWith({
+      where: { quotaId: { in: ["financing-quota-1"] }, status: { in: ["occupied", "used"] } },
+      select: { quotaId: true, amountCents: true }
     });
   });
 
@@ -259,7 +313,9 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
-      projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) }
+      projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
+      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      projectExpenseExecution: { findMany: jest.fn() }
     };
     const service = new ProjectService(prisma as never);
 
@@ -293,7 +349,9 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
-      projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) }
+      projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
+      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      projectExpenseExecution: { findMany: jest.fn() }
     };
     const service = new ProjectService(prisma as never);
 

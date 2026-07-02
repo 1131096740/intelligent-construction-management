@@ -20,6 +20,12 @@ import {
   requestProjectFinancingQuota,
   reviewSettlementExceptionQuota,
   reviewProjectFinancingQuota,
+  createProjectExpenseRequest,
+  reviewProjectExpenseApproval,
+  withdrawProjectExpenseApproval,
+  voidProjectExpenseRequest,
+  recordProjectExpenseExecution,
+  recordProjectExpenseFinance,
   createContractDraft,
   createPaymentRequest,
   createPrivateFileDownloadTicket,
@@ -349,6 +355,97 @@ describe("core flow read API client", () => {
         decision: "approve",
         confirmationPassword: "current-password",
         comment: "同意"
+      })
+    );
+  });
+
+  it("posts project expense request workflow actions to the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "expense-1" })
+    } as Response);
+
+    await createProjectExpenseRequest("project-1", {
+      code: "ZC-2026-001",
+      expenseType: "sporadic_payment",
+      expenseSubtype: "sporadic_machinery",
+      paymentSubject: "零星吊车费",
+      reason: "现场临时吊装",
+      requestedAmountCents: 80000,
+      paymentMethod: "bank_transfer",
+      counterpartyName: "张三",
+      counterpartyAccountName: "张三",
+      counterpartyBankName: "建设银行",
+      counterpartyBankAccount: "6222000000000000",
+      handlerUserId: "handler-1",
+      attachmentFileId: "file-expense-1"
+    });
+    await reviewProjectExpenseApproval("project-1", "expense-1", {
+      decision: "approve",
+      approvedAmountCents: 80000,
+      comment: "同意"
+    });
+    await withdrawProjectExpenseApproval("project-1", "expense-1");
+    await voidProjectExpenseRequest("project-1", "expense-1", {
+      reason: "重复提交"
+    });
+    await recordProjectExpenseExecution("project-1", "expense-1", {
+      amountCents: 80000,
+      paidAt: "2026-07-02T10:00:00.000Z",
+      voucherFileId: "file-voucher-1",
+      confirmationPassword: "current-password"
+    });
+    await recordProjectExpenseFinance("project-1", "expense-1", {
+      amountCents: 80000,
+      occurredAt: "2026-07-02T11:00:00.000Z"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/expense-requests",
+      "/api/projects/project-1/expense-requests/expense-1/approval",
+      "/api/projects/project-1/expense-requests/expense-1/approval-withdrawal",
+      "/api/projects/project-1/expense-requests/expense-1/voiding",
+      "/api/projects/project-1/expense-requests/expense-1/executions",
+      "/api/projects/project-1/expense-requests/expense-1/finance-records"
+    ]);
+    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        code: "ZC-2026-001",
+        expenseType: "sporadic_payment",
+        expenseSubtype: "sporadic_machinery",
+        paymentSubject: "零星吊车费",
+        reason: "现场临时吊装",
+        requestedAmountCents: 80000,
+        paymentMethod: "bank_transfer",
+        counterpartyName: "张三",
+        counterpartyAccountName: "张三",
+        counterpartyBankName: "建设银行",
+        counterpartyBankAccount: "6222000000000000",
+        handlerUserId: "handler-1",
+        attachmentFileId: "file-expense-1"
+      })
+    );
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        approvedAmountCents: 80000,
+        comment: "同意"
+      })
+    );
+    expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify({ reason: "重复提交" }));
+    expect(fetchMock.mock.calls[4][1]?.body).toBe(
+      JSON.stringify({
+        amountCents: 80000,
+        paidAt: "2026-07-02T10:00:00.000Z",
+        voucherFileId: "file-voucher-1",
+        confirmationPassword: "current-password"
+      })
+    );
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
+      JSON.stringify({
+        amountCents: 80000,
+        occurredAt: "2026-07-02T11:00:00.000Z"
       })
     );
   });

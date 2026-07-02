@@ -17,6 +17,7 @@ import { MeModule } from "./me/me.module";
 import { OrganizationModule } from "./organization/organization.module";
 import { PaymentModule } from "./payment/payment.module";
 import { PdfModule } from "./pdf/pdf.module";
+import { ProjectExpenseModule } from "./project-expense/project-expense.module";
 import { ProjectModule } from "./project/project.module";
 import { SettlementModule } from "./settlement/settlement.module";
 
@@ -34,6 +35,7 @@ import { SettlementModule } from "./settlement/settlement.module";
     CompanyEntityModule,
     SettlementModule,
     PaymentModule,
+    ProjectExpenseModule,
     ApprovalModule,
     FileModule,
     MeModule,

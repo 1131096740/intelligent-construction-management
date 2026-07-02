@@ -245,7 +245,36 @@ export class PaymentRequestService {
       throw new BadRequestException("Project is inactive");
     }
 
-    const [projectReceipts, projectPayments, financingQuotas] = await Promise.all([
+    const projectExpenseRequestClient = (tx as unknown as {
+      projectExpenseRequest?: {
+        findMany: (args: {
+          where: { projectId: string; status: { in: string[] }; voidedAt: null };
+          select: {
+            status: true;
+            requestedAmountCents: true;
+            approvedAmountCents: true;
+            paidAmountCents: true;
+          };
+        }) => Promise<
+          Array<{
+            status: string;
+            requestedAmountCents: number;
+            approvedAmountCents: number | null;
+            paidAmountCents: number;
+          }>
+        >;
+      };
+    }).projectExpenseRequest;
+    const projectExpenseFinancingUsageClient = (tx as unknown as {
+      projectExpenseFinancingQuotaUsage?: {
+        findMany: (args: {
+          where: { quotaId: { in: string[] }; status: { in: string[] } };
+          select: { quotaId: true; amountCents: true };
+        }) => Promise<Array<{ quotaId: string; amountCents: bigint | number }>>;
+      };
+    }).projectExpenseFinancingQuotaUsage;
+
+    const [projectReceipts, projectPayments, projectExpenseRequests, financingQuotas] = await Promise.all([
       tx.projectReceipt.findMany({
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
@@ -262,6 +291,21 @@ export class PaymentRequestService {
           paidAmountCents: true
         }
       }),
+      projectExpenseRequestClient
+        ? projectExpenseRequestClient.findMany({
+            where: {
+              projectId,
+              status: { in: [...PROJECT_CASH_POOL_PAYMENT_STATUSES] },
+              voidedAt: null
+            },
+            select: {
+              status: true,
+              requestedAmountCents: true,
+              approvedAmountCents: true,
+              paidAmountCents: true
+            }
+          })
+        : Promise.resolve([]),
       tx.projectFinancingQuota.findMany({
         where: {
           projectId,
@@ -276,9 +320,14 @@ export class PaymentRequestService {
     const actualReceiptsCents = sumSafeCents(
       projectReceipts.map((receipt) => receipt.amountCents)
     );
-    const actualPaidCents = sumSafeCents(projectPayments.map((payment) => payment.paidAmountCents));
+    const actualPaidCents =
+      sumSafeCents(projectPayments.map((payment) => payment.paidAmountCents)) +
+      sumSafeCents(projectExpenseRequests.map((request) => request.paidAmountCents));
     const occupiedCents = sumSafeCents(
-      projectPayments.map((payment) => projectCashPoolOutstandingCents(payment))
+      [
+        ...projectPayments.map((payment) => projectCashPoolOutstandingCents(payment)),
+        ...projectExpenseRequests.map((request) => projectCashPoolOutstandingCents(request))
+      ]
     );
     const cashAvailableCents = actualReceiptsCents - actualPaidCents - occupiedCents;
     const cashAvailableForCurrent = Math.max(cashAvailableCents, 0);
@@ -288,16 +337,27 @@ export class PaymentRequestService {
     }
 
     const quotaIds = financingQuotas.map((quota) => quota.id);
-    const financingUsages = quotaIds.length
-      ? await tx.projectFinancingQuotaUsage.findMany({
-          where: {
-            quotaId: { in: quotaIds },
-            status: { in: [...PROJECT_FINANCING_USAGE_ACTIVE_STATUSES] }
-          },
-          select: { quotaId: true, amountCents: true }
-        })
-      : [];
-    const usedByQuotaId = financingUsages.reduce((used, usage) => {
+    const [paymentFinancingUsages, expenseFinancingUsages] = quotaIds.length
+      ? await Promise.all([
+          tx.projectFinancingQuotaUsage.findMany({
+            where: {
+              quotaId: { in: quotaIds },
+              status: { in: [...PROJECT_FINANCING_USAGE_ACTIVE_STATUSES] }
+            },
+            select: { quotaId: true, amountCents: true }
+          }),
+          projectExpenseFinancingUsageClient
+            ? projectExpenseFinancingUsageClient.findMany({
+                where: {
+                  quotaId: { in: quotaIds },
+                  status: { in: [...PROJECT_FINANCING_USAGE_ACTIVE_STATUSES] }
+                },
+                select: { quotaId: true, amountCents: true }
+              })
+            : Promise.resolve([])
+        ])
+      : [[], []];
+    const usedByQuotaId = [...paymentFinancingUsages, ...expenseFinancingUsages].reduce((used, usage) => {
       used.set(usage.quotaId, (used.get(usage.quotaId) ?? 0n) + BigInt(usage.amountCents));
       return used;
     }, new Map<string, bigint>());

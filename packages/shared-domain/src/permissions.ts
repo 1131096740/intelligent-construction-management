@@ -30,7 +30,12 @@ export const BUSINESS_ACTIONS = [
   "payment.approve",
   "payment.execution",
   "payment.finance_record",
-  "payment.pdf_archive"
+  "payment.pdf_archive",
+  "project_expense.create",
+  "project_expense.approve",
+  "project_expense.execution",
+  "project_expense.finance_record",
+  "project_expense.void"
 ] as const;
 
 export type BusinessAction = (typeof BUSINESS_ACTIONS)[number];
@@ -111,7 +116,22 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "payment.execution": ["finance_staff"],
   "payment.finance_record": ["finance_staff", "finance_director"],
-  "payment.pdf_archive": ["finance_staff", "finance_director", "contract_staff"]
+  "payment.pdf_archive": ["finance_staff", "finance_director", "contract_staff"],
+  "project_expense.create": ["employee", "project_manager"],
+  "project_expense.approve": [
+    "project_manager",
+    "contract_director",
+    "budget_director",
+    "material_director",
+    "engineering_director",
+    "comprehensive_director",
+    "finance_director",
+    "chairman",
+    "general_manager"
+  ],
+  "project_expense.execution": ["finance_staff"],
+  "project_expense.finance_record": ["finance_staff", "finance_director"],
+  "project_expense.void": ["finance_director", "project_manager"]
 };
 
 /**

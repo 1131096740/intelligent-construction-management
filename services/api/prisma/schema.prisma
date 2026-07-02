@@ -222,15 +222,78 @@ model PaymentExecution {
 }
 
 model FinanceRecord {
-  id               String   @id @default(uuid())
-  projectId        String
-  paymentRequestId String?
-  settlementId     String?
-  direction        String
-  amountCents      Int
-  occurredAt       DateTime
-  createdByUserId  String
-  createdAt        DateTime @default(now())
+  id                      String   @id @default(uuid())
+  projectId               String
+  paymentRequestId        String?
+  projectExpenseRequestId String?
+  settlementId            String?
+  direction               String
+  amountCents             Int
+  occurredAt              DateTime
+  createdByUserId         String
+  createdAt               DateTime @default(now())
+
+  @@index([projectExpenseRequestId])
+}
+
+model ProjectExpenseRequest {
+  id                      String    @id @default(uuid())
+  projectId               String
+  code                    String    @unique
+  expenseType             String
+  expenseSubtype          String
+  paymentSubject          String
+  reason                  String
+  requestedAmountCents    Int
+  approvedAmountCents     Int?
+  paidAmountCents         Int       @default(0)
+  paymentMethod           String
+  counterpartyName        String?
+  counterpartyAccountName String?
+  counterpartyBankName    String?
+  counterpartyBankAccount String?
+  handlerUserId           String
+  applicantUserId         String
+  attachmentFileId        String?
+  status                  String
+  voidedAt                DateTime?
+  voidedByUserId          String?
+  voidReason              String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([projectId, status])
+  @@index([attachmentFileId])
+}
+
+model ProjectExpenseExecution {
+  id                      String   @id @default(uuid())
+  projectExpenseRequestId String
+  projectId               String
+  amountCents             Int
+  paidAt                  DateTime
+  executedByUserId        String
+  voucherFileId           String
+  createdAt               DateTime @default(now())
+
+  @@index([projectExpenseRequestId])
+  @@index([projectId])
+  @@index([voucherFileId])
+}
+
+model ProjectExpenseFinancingQuotaUsage {
+  id                      String   @id @default(uuid())
+  quotaId                 String
+  projectExpenseRequestId String
+  projectId               String
+  amountCents             BigInt
+  status                  String   @default("occupied")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([quotaId, projectExpenseRequestId])
+  @@index([projectExpenseRequestId])
+  @@index([projectId])
 }
 
 model ProjectReceipt {

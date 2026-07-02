@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import {
+  ACTION_REQUIRED_ROLES,
   canPerform,
   resolveEffectiveRoleKeys,
   type BusinessAction,
@@ -44,7 +45,11 @@ export class PermissionGuard implements CanActivate {
     }
 
     const projectId = await this.extractProjectId(request);
-    const effectiveRoleKeys = await this.loadEffectiveRoleKeys(request.user.id, projectId);
+    const roleScopes = await this.loadRoleScopes(request.user.id, projectId);
+    const effectiveRoleKeys = resolveEffectiveRoleKeys(
+      roleScopes.globalRoleKeys,
+      roleScopes.projectRoleKeys
+    );
 
     if (requiredPositions?.length) {
       const allowed = requiredPositions.some((position) => effectiveRoleKeys.includes(position));
@@ -54,14 +59,29 @@ export class PermissionGuard implements CanActivate {
       }
     }
 
-    if (requiredAction && !canPerform(requiredAction, effectiveRoleKeys)) {
-      throw new ForbiddenException("Missing required project role");
+    if (requiredAction) {
+      if (!canPerform(requiredAction, effectiveRoleKeys)) {
+        throw new ForbiddenException("Missing required project role");
+      }
+
+      if (
+        requiredAction === "project_expense.create" &&
+        projectId &&
+        !this.hasProjectScopedActionRole(requiredAction, roleScopes)
+      ) {
+        throw new ForbiddenException("Missing required project role");
+      }
     }
 
     return true;
   }
 
   async loadEffectiveRoleKeys(userId: string, projectId?: string): Promise<RoleKey[]> {
+    const roleScopes = await this.loadRoleScopes(userId, projectId);
+    return resolveEffectiveRoleKeys(roleScopes.globalRoleKeys, roleScopes.projectRoleKeys);
+  }
+
+  private async loadRoleScopes(userId: string, projectId?: string) {
     const [globalPositions, userProjectPositions, projectMemberPositions] = await Promise.all([
       this.prisma.userPosition.findMany({
         where: { userId, projectId: null }
@@ -97,7 +117,18 @@ export class PermissionGuard implements CanActivate {
       ...projectMemberPositions.map((position) => position.positionKey as RoleKey)
     ];
 
-    return resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys);
+    return { globalRoleKeys, projectRoleKeys };
+  }
+
+  private hasProjectScopedActionRole(
+    action: BusinessAction,
+    roleScopes: { globalRoleKeys: RoleKey[]; projectRoleKeys: RoleKey[] }
+  ) {
+    const requiredRoles = ACTION_REQUIRED_ROLES[action];
+    return (
+      roleScopes.projectRoleKeys.some((role) => requiredRoles.includes(role)) ||
+      roleScopes.globalRoleKeys.some((role) => role !== "employee" && requiredRoles.includes(role))
+    );
   }
 
   private async extractProjectId(request: AuthenticatedRequest) {

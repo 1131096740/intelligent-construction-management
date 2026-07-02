@@ -143,7 +143,8 @@ export class ProjectService {
       projectReceipts,
       projectProxyPayments,
       projectUpstreamSettlements,
-      projectFinancingQuotas
+      projectFinancingQuotas,
+      projectExpenseRequests
     ] = await Promise.all([
       this.prisma.contract.findMany({
         where: { projectId, voidedAt: null },
@@ -181,11 +182,22 @@ export class ProjectService {
       }),
       this.prisma.projectFinancingQuota.findMany({
         where: { projectId, status: "approved", validUntil: { gte: new Date() } },
-        select: { amountCents: true }
+        select: { id: true, amountCents: true }
+      }),
+      this.prisma.projectExpenseRequest.findMany({
+        where: { projectId, voidedAt: null },
+        select: {
+          id: true,
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
       })
     ]);
     const contractIds = contracts.map((contract) => contract.id);
     const paymentIds = payments.map((payment) => payment.id);
+    const expenseRequestIds = projectExpenseRequests.map((request) => request.id);
     const contractVersions = contractIds.length
       ? await this.prisma.contractVersion.findMany({
           where: { contractId: { in: contractIds }, status: "effective" },
@@ -200,29 +212,76 @@ export class ProjectService {
           select: { amountCents: true }
         })
       : [];
+    const expenseExecutions = expenseRequestIds.length
+      ? await this.prisma.projectExpenseExecution.findMany({
+          where: { projectExpenseRequestId: { in: expenseRequestIds } },
+          select: { amountCents: true }
+        })
+      : [];
+    const financingQuotaIds = projectFinancingQuotas.map((quota) => quota.id);
+    const [paymentFinancingUsages, expenseFinancingUsages] = financingQuotaIds.length
+      ? await Promise.all([
+          this.prisma.projectFinancingQuotaUsage.findMany({
+            where: { quotaId: { in: financingQuotaIds }, status: { in: ["occupied", "used"] } },
+            select: { quotaId: true, amountCents: true }
+          }),
+          this.prisma.projectExpenseFinancingQuotaUsage.findMany({
+            where: { quotaId: { in: financingQuotaIds }, status: { in: ["occupied", "used"] } },
+            select: { quotaId: true, amountCents: true }
+          })
+        ])
+      : [[], []];
+    const financingUsageByQuotaId = [...paymentFinancingUsages, ...expenseFinancingUsages].reduce(
+      (totals, usage) => {
+        totals.set(usage.quotaId, (totals.get(usage.quotaId) ?? 0n) + BigInt(usage.amountCents));
+        return totals;
+      },
+      new Map<string, bigint>()
+    );
     const actualReceiptsCents = sumCents(projectReceipts.map((receipt) => receipt.amountCents));
     const proxyPaymentCents = sumCents(projectProxyPayments.map((payment) => payment.amountCents));
     const upstreamSettlementCents = sumCents(
       projectUpstreamSettlements.map((settlement) => settlement.approvedAmountCents)
     );
-    const availableFinancingCents = sumCents(projectFinancingQuotas.map((quota) => quota.amountCents));
-    const actualPaidCents = sumNumbers(executions.map((execution) => execution.amountCents));
+    const availableFinancingCents = sumCents(
+      projectFinancingQuotas.map((quota) => {
+        const available = BigInt(quota.amountCents) - (financingUsageByQuotaId.get(quota.id) ?? 0n);
+        return available > 0n ? available : 0n;
+      })
+    );
+    const actualPaidCents =
+      sumNumbers(executions.map((execution) => execution.amountCents)) +
+      sumNumbers(expenseExecutions.map((execution) => execution.amountCents));
     const operatingIncomeCents = projectUpstreamSettlements.length
       ? upstreamSettlementCents
       : actualReceiptsCents + proxyPaymentCents;
     const operatingCostCents = actualPaidCents + proxyPaymentCents;
-    const approvalPendingOccupancyCents = sumNumbers(
-      payments
-        .filter((payment) => payment.status === "approval_pending")
-        .map((payment) => payment.requestedAmountCents)
-    );
-    const approvedPendingPaymentCents = sumNumbers(
-      payments
-        .filter((payment) => ["approved_pending_payment", "partially_paid"].includes(payment.status))
-        .map((payment) =>
-          Math.max((payment.approvedAmountCents ?? payment.requestedAmountCents) - payment.paidAmountCents, 0)
-        )
-    );
+    const approvalPendingOccupancyCents =
+      sumNumbers(
+        payments
+          .filter((payment) => payment.status === "approval_pending")
+          .map((payment) => payment.requestedAmountCents)
+      ) +
+      sumNumbers(
+        projectExpenseRequests
+          .filter((request) => request.status === "approval_pending")
+          .map((request) => request.requestedAmountCents)
+      );
+    const approvedPendingPaymentCents =
+      sumNumbers(
+        payments
+          .filter((payment) => ["approved_pending_payment", "partially_paid"].includes(payment.status))
+          .map((payment) =>
+            Math.max((payment.approvedAmountCents ?? payment.requestedAmountCents) - payment.paidAmountCents, 0)
+          )
+      ) +
+      sumNumbers(
+        projectExpenseRequests
+          .filter((request) => ["approved_pending_payment", "partially_paid"].includes(request.status))
+          .map((request) =>
+            Math.max((request.approvedAmountCents ?? request.requestedAmountCents) - request.paidAmountCents, 0)
+          )
+      );
     const availableFundsCents =
       actualReceiptsCents -
       actualPaidCents -

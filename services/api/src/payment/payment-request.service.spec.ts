@@ -43,11 +43,18 @@ describe("PaymentRequestService", () => {
   function projectCashPoolTables({
     receiptAmountCents = 200_000,
     projectPayments = [],
+    projectExpenses = [],
     financingQuotas = [],
     financingUsages = []
   }: {
     receiptAmountCents?: number;
     projectPayments?: Array<{
+      status: string;
+      requestedAmountCents: number;
+      approvedAmountCents?: number | null;
+      paidAmountCents: number;
+    }>;
+    projectExpenses?: Array<{
       status: string;
       requestedAmountCents: number;
       approvedAmountCents?: number | null;
@@ -71,6 +78,12 @@ describe("PaymentRequestService", () => {
           findMany: jest.fn().mockResolvedValue(financingUsages),
           createMany: jest.fn(),
           updateMany: jest.fn().mockResolvedValue({ count: 0 })
+        },
+        projectExpenseRequest: {
+          findMany: jest.fn().mockResolvedValue(projectExpenses)
+        },
+        projectExpenseFinancingQuotaUsage: {
+          findMany: jest.fn().mockResolvedValue([])
         }
       },
       projectPayments
@@ -539,6 +552,55 @@ describe("PaymentRequestService", () => {
         requestedAmountCents: 31_000
       })
     ).rejects.toThrow("项目现金资金池余额不足: 30000");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("counts approved project expense balances against project cash pool", async () => {
+    const cashPool = projectCashPoolTables({
+      receiptAmountCents: 100_000,
+      projectExpenses: [
+        {
+          status: "approved_pending_payment",
+          requestedAmountCents: 90_000,
+          approvedAmountCents: 90_000,
+          paidAmountCents: 0
+        }
+      ]
+    });
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 300_000,
+          paidAmountCents: 0
+        })
+      },
+      paymentRequest: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce(cashPool.projectPayments),
+        create: jest.fn()
+      },
+      ...cashPool.tables
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        code: "FK-2026-EXP",
+        requestedAmountCents: 20_000
+      })
+    ).rejects.toThrow("项目现金资金池余额不足: 10000");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 

@@ -454,6 +454,63 @@ export interface ReviewProjectFinancingQuotaPayload {
   comment?: string;
 }
 
+export type ProjectExpenseType = "sporadic_payment" | "loan_reserve";
+
+export type ProjectExpenseSubtype =
+  | "sporadic_material"
+  | "sporadic_machinery"
+  | "sporadic_labor"
+  | "temporary_service"
+  | "other_sporadic"
+  | "employee_loan"
+  | "owner_loan"
+  | "project_reserve";
+
+export type ProjectExpensePaymentMethod =
+  | "cash"
+  | "wechat"
+  | "alipay"
+  | "bank_transfer"
+  | "other";
+
+export interface CreateProjectExpenseRequestPayload {
+  code: string;
+  expenseType: ProjectExpenseType;
+  expenseSubtype: ProjectExpenseSubtype;
+  paymentSubject: string;
+  reason: string;
+  requestedAmountCents: number;
+  paymentMethod: ProjectExpensePaymentMethod;
+  counterpartyName?: string;
+  counterpartyAccountName?: string;
+  counterpartyBankName?: string;
+  counterpartyBankAccount?: string;
+  handlerUserId?: string;
+  attachmentFileId?: string;
+}
+
+export interface ReviewProjectExpenseApprovalPayload {
+  decision: "approve" | "reject";
+  approvedAmountCents?: number;
+  comment?: string;
+}
+
+export interface VoidProjectExpenseRequestPayload {
+  reason: string;
+}
+
+export interface RecordProjectExpenseExecutionPayload {
+  amountCents: number;
+  paidAt: string;
+  voucherFileId: string;
+  confirmationPassword: string;
+}
+
+export interface RecordProjectExpenseFinancePayload {
+  amountCents: number;
+  occurredAt: string;
+}
+
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
@@ -520,6 +577,63 @@ export function reviewProjectFinancingQuota(
   body: ReviewProjectFinancingQuotaPayload
 ) {
   return postJson<unknown>(`/projects/${projectId}/financing-quotas/${quotaId}/approval`, body);
+}
+
+export function createProjectExpenseRequest(
+  projectId: string,
+  body: CreateProjectExpenseRequestPayload
+) {
+  return postJson<unknown>(`/projects/${projectId}/expense-requests`, body);
+}
+
+export function reviewProjectExpenseApproval(
+  projectId: string,
+  expenseRequestId: string,
+  body: ReviewProjectExpenseApprovalPayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/approval`,
+    body
+  );
+}
+
+export function withdrawProjectExpenseApproval(projectId: string, expenseRequestId: string) {
+  return postJson<unknown>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/approval-withdrawal`
+  );
+}
+
+export function voidProjectExpenseRequest(
+  projectId: string,
+  expenseRequestId: string,
+  body: VoidProjectExpenseRequestPayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/voiding`,
+    body
+  );
+}
+
+export function recordProjectExpenseExecution(
+  projectId: string,
+  expenseRequestId: string,
+  body: RecordProjectExpenseExecutionPayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/executions`,
+    body
+  );
+}
+
+export function recordProjectExpenseFinance(
+  projectId: string,
+  expenseRequestId: string,
+  body: RecordProjectExpenseFinancePayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/finance-records`,
+    body
+  );
 }
 
 export function fetchContractLedger() {
