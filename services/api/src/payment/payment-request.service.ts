@@ -21,7 +21,9 @@ import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
 import {
+  calculateContractDuePaymentCapacity,
   calculateSettlementPaymentCapacity,
+  CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
   sumSafeCents
 } from "./settlement-payment-capacity";
@@ -163,6 +165,7 @@ export class PaymentRequestService {
       };
 
       this.amount.assertCanRequest(capacity, input.requestedAmountCents);
+      await this.assertContractDuePaymentCapacity(tx, settlement, input.requestedAmountCents);
       const financingQuotaAllocations = await this.reserveProjectCashPool(
         tx,
         settlement.projectId,
@@ -228,6 +231,141 @@ export class PaymentRequestService {
 
       return payment;
     });
+  }
+
+  private async assertContractDuePaymentCapacity(
+    tx: Prisma.TransactionClient,
+    settlement: {
+      id: string;
+      contractId: string;
+      amountCents: number;
+      paymentTermsVersionId: string;
+    },
+    requestedAmountCents: number
+  ): Promise<void> {
+    const paymentTermsStageClient = (tx as unknown as {
+      paymentTermsStage?: {
+        findMany: (args: {
+          where: { paymentTermsVersionId: { in: string[] }; basis: string };
+          select: {
+            paymentTermsVersionId: true;
+            basis: true;
+            ratioBps: true;
+            fixedAmountCents: true;
+            dueDays: true;
+          };
+        }) => Promise<
+          Array<{
+            paymentTermsVersionId: string;
+            basis: string;
+            ratioBps: number | null;
+            fixedAmountCents: number | null;
+            dueDays: number;
+          }>
+        >;
+      };
+      settlementArchiveFile?: {
+        findMany: (args: {
+          where: {
+            settlementId: { in: string[] };
+            status: string;
+            confirmedAt: { not: null };
+          };
+          select: { settlementId: true; confirmedAt: true };
+        }) => Promise<Array<{ settlementId: string; confirmedAt: Date | null }>>;
+      };
+    });
+
+    if (!paymentTermsStageClient.paymentTermsStage || !paymentTermsStageClient.settlementArchiveFile) {
+      return;
+    }
+
+    await this.lockContractPaymentCapacityRows(tx, settlement.contractId);
+
+    const contractSettlements = await tx.settlement.findMany({
+      where: {
+        contractId: settlement.contractId,
+        status: { in: [...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES] }
+      },
+      select: {
+        id: true,
+        status: true,
+        amountCents: true,
+        paidAmountCents: true,
+        paymentTermsVersionId: true
+      }
+    });
+    const settlementIds = contractSettlements.map((row) => row.id);
+    const paymentTermsVersionIds = [...new Set(contractSettlements.map((row) => row.paymentTermsVersionId))];
+
+    if (!settlementIds.length || !paymentTermsVersionIds.length) {
+      throw new Error("合同到期可付额度不足: 0");
+    }
+
+    const [paymentTermsStages, settlementArchiveFiles, contractPaymentRequests, proxyPaidAmountCents] =
+      await Promise.all([
+        paymentTermsStageClient.paymentTermsStage.findMany({
+          where: {
+            paymentTermsVersionId: { in: paymentTermsVersionIds },
+            basis: "current_settlement"
+          },
+          select: {
+            paymentTermsVersionId: true,
+            basis: true,
+            ratioBps: true,
+            fixedAmountCents: true,
+            dueDays: true
+          }
+        }),
+        paymentTermsStageClient.settlementArchiveFile.findMany({
+          where: {
+            settlementId: { in: settlementIds },
+            status: "confirmed",
+            confirmedAt: { not: null }
+          },
+          select: { settlementId: true, confirmedAt: true }
+        }),
+        tx.paymentRequest.findMany({
+          where: {
+            contractId: settlement.contractId,
+            status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES] }
+          },
+          select: {
+            settlementId: true,
+            status: true,
+            requestedAmountCents: true,
+            approvedAmountCents: true,
+            paidAmountCents: true
+          }
+        }),
+        this.sumProjectProxyPaymentCentsForContract(tx, settlement.contractId, settlementIds)
+      ]);
+
+    const capacity = calculateContractDuePaymentCapacity({
+      asOf: new Date(),
+      settlements: contractSettlements,
+      paymentTermsStages,
+      settlementArchiveFiles,
+      paymentRequests: contractPaymentRequests,
+      proxyPaidAmountCents
+    });
+
+    if (requestedAmountCents > capacity.remainingCents) {
+      throw new Error(`合同到期可付额度不足: ${Math.max(capacity.remainingCents, 0)}`);
+    }
+  }
+
+  private async lockContractPaymentCapacityRows(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ): Promise<void> {
+    await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "Settlement"
+      WHERE "contractId" = ${contractId}
+        AND "status" IN (${Prisma.join([...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES])})
+      FOR UPDATE
+    `);
   }
 
   private async reserveProjectCashPool(
@@ -625,6 +763,38 @@ export class PaymentRequestService {
 
     const payments = await projectProxyPaymentClient.findMany({
       where: { settlementId, voidedAt: null },
+      select: { amountCents: true }
+    });
+
+    return sumSafeCents(payments.map((payment) => payment.amountCents));
+  }
+
+  private async sumProjectProxyPaymentCentsForContract(
+    tx: Prisma.TransactionClient,
+    contractId: string,
+    settlementIds: string[]
+  ): Promise<number> {
+    const projectProxyPaymentClient = (tx as unknown as {
+      projectProxyPayment?: {
+        findMany: (args: {
+          where: {
+            voidedAt: null;
+            OR: Array<{ contractId: string } | { settlementId: { in: string[] } }>;
+          };
+          select: { amountCents: true };
+        }) => Promise<Array<{ amountCents: bigint | number }>>;
+      };
+    }).projectProxyPayment;
+
+    if (!projectProxyPaymentClient) {
+      return 0;
+    }
+
+    const payments = await projectProxyPaymentClient.findMany({
+      where: {
+        voidedAt: null,
+        OR: [{ contractId }, { settlementId: { in: settlementIds } }]
+      },
       select: { amountCents: true }
     });
 

@@ -366,6 +366,122 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
+  it("blocks payment request creation above contract due payment capacity", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
+
+    try {
+      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+      const tx = {
+        settlement: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "settlement-1",
+            projectId: "project-1",
+            contractId: "contract-1",
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1",
+            status: "effective",
+            amountCents: 100_000,
+            payableAmountCents: 100_000,
+            paidAmountCents: 0
+          }),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: "settlement-1",
+              amountCents: 100_000,
+              paidAmountCents: 0,
+              paymentTermsVersionId: "terms-version-1",
+              status: "effective"
+            },
+            {
+              id: "settlement-2",
+              amountCents: 100_000,
+              paidAmountCents: 0,
+              paymentTermsVersionId: "terms-version-1",
+              status: "effective"
+            }
+          ])
+        },
+        paymentTermsStage: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              paymentTermsVersionId: "terms-version-1",
+              basis: "current_settlement",
+              ratioBps: 8000,
+              fixedAmountCents: null,
+              dueDays: 30
+            }
+          ])
+        },
+        settlementArchiveFile: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              settlementId: "settlement-1",
+              confirmedAt: new Date("2026-01-01T00:00:00.000Z")
+            },
+            {
+              settlementId: "settlement-2",
+              confirmedAt: new Date()
+            }
+          ])
+        },
+        projectProxyPayment: {
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        paymentRequest: {
+          findMany: jest.fn((args: { where?: { settlementId?: string; contractId?: string; projectId?: string } }) => {
+            if (args.where?.contractId === "contract-1") {
+              return Promise.resolve([
+                {
+                  settlementId: "settlement-2",
+                  status: "approval_pending",
+                  requestedAmountCents: 30_000,
+                  approvedAmountCents: null,
+                  paidAmountCents: 0
+                }
+              ]);
+            }
+
+            if (args.where?.projectId === "project-1") {
+              return Promise.resolve(cashPool.projectPayments);
+            }
+
+            return Promise.resolve([]);
+          }),
+          create: jest.fn()
+        },
+        ...cashPool.tables
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      };
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          settlementId: "settlement-1",
+          code: "FK-2026-014",
+          requestedAmountCents: 60_000
+        })
+      ).rejects.toThrow("合同到期可付额度不足: 50000");
+      expect(tx.settlement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            contractId: "contract-1",
+            status: { in: ["effective", "partially_paid", "paid"] }
+          }
+        })
+      );
+      expect(tx.$queryRaw).toHaveBeenCalled();
+      expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.settlement.findMany.mock.invocationCallOrder[0]
+      );
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("blocks payment request creation when project cash pool is insufficient", async () => {
     const cashPool = projectCashPoolTables({
       receiptAmountCents: 100_000,
