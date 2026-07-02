@@ -3,4 +3,5 @@ export interface CreateSettlementDto {
   code: string;
   periodLabel: string;
   amountCents: number;
+  isFinal?: boolean;
 }

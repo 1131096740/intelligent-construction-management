@@ -68,6 +68,7 @@ export function fetchPaymentDetail(paymentId: string) {
 // 操作人统一来自登录态（access token），写入负载不再携带 *ByUserId。
 export interface CreatePaymentTermsStagePayload {
   name: string;
+  stageType?: "advance" | "progress" | "final" | "retention" | "other";
   basis:
     | "contract_amount"
     | "current_settlement"
@@ -76,6 +77,7 @@ export interface CreatePaymentTermsStagePayload {
     | "manual_amount";
   ratioBps?: number;
   fixedAmountCents?: number;
+  triggerAnchor?: "contract_effective" | "settlement_effective" | "final_settlement_effective";
   triggerEvent: string;
   dueDays: number;
   requiresInvoice: boolean;
@@ -107,6 +109,7 @@ export interface CreateSettlementPayload {
   code: string;
   periodLabel: string;
   amountCents: number;
+  isFinal?: boolean;
 }
 
 export interface CreateSettlementReadModel {

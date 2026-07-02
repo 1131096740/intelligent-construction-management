@@ -248,8 +248,10 @@ async function seedDisposableContract(codeSuffix) {
     data: {
       paymentTermsVersionId: termsId,
       name: "当期结算款",
+      stageType: "progress",
       basis: "current_settlement",
       ratioBps: 8000,
+      triggerAnchor: "settlement_effective",
       triggerEvent: "结算归档确认生效",
       dueDays: 30,
       requiresInvoice: true,

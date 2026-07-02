@@ -132,8 +132,10 @@ export const coreFlowSeedData = {
     {
       id: "seed-payment-stage-current-settlement",
       name: "当期结算款",
+      stageType: "progress",
       basis: "current_settlement",
       ratioBps: 8000,
+      triggerAnchor: "settlement_effective",
       triggerEvent: "结算归档确认生效",
       dueDays: 30,
       requiresInvoice: true,
@@ -144,8 +146,10 @@ export const coreFlowSeedData = {
     {
       id: "seed-payment-stage-retention",
       name: "质保金",
+      stageType: "retention",
       basis: "current_settlement",
       ratioBps: 2000,
+      triggerAnchor: "final_settlement_effective",
       triggerEvent: "质保期满",
       dueDays: 365,
       requiresInvoice: false,
@@ -162,7 +166,8 @@ export const coreFlowSeedData = {
     status: "effective",
     amountCents: 32000000,
     payableAmountCents: 25600000,
-    paidAmountCents: 12800000
+    paidAmountCents: 12800000,
+    isFinal: false
   },
   paymentRequest: {
     id: "seed-payment-request-fk-2026-006",

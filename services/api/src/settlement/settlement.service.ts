@@ -155,7 +155,8 @@ export class SettlementService {
           status: "approval_pending",
           amountCents: input.amountCents,
           payableAmountCents,
-          paidAmountCents: 0
+          paidAmountCents: 0,
+          ...(input.isFinal === true ? { isFinal: true } : {})
         }
       });
 

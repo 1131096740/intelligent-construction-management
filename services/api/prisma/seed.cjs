@@ -658,9 +658,11 @@ async function main() {
       where: { id: stage.id },
       update: {
         name: stage.name,
+        stageType: stage.stageType,
         basis: stage.basis,
         ratioBps: stage.ratioBps,
         triggerEvent: stage.triggerEvent,
+        triggerAnchor: stage.triggerAnchor,
         dueDays: stage.dueDays,
         requiresInvoice: stage.requiresInvoice,
         allowsEarlyPayment: stage.allowsEarlyPayment,
@@ -672,8 +674,10 @@ async function main() {
         id: stage.id,
         paymentTermsVersionId: seed.paymentTermsVersion.id,
         name: stage.name,
+        stageType: stage.stageType,
         basis: stage.basis,
         ratioBps: stage.ratioBps,
+        triggerAnchor: stage.triggerAnchor,
         triggerEvent: stage.triggerEvent,
         dueDays: stage.dueDays,
         requiresInvoice: stage.requiresInvoice,
@@ -691,7 +695,8 @@ async function main() {
       status: seed.settlement.status,
       amountCents: seed.settlement.amountCents,
       payableAmountCents: seed.settlement.payableAmountCents,
-      paidAmountCents: seed.settlement.paidAmountCents
+      paidAmountCents: seed.settlement.paidAmountCents,
+      isFinal: seed.settlement.isFinal
     },
     create: {
       id: seed.settlement.id,
@@ -704,7 +709,8 @@ async function main() {
       status: seed.settlement.status,
       amountCents: seed.settlement.amountCents,
       payableAmountCents: seed.settlement.payableAmountCents,
-      paidAmountCents: seed.settlement.paidAmountCents
+      paidAmountCents: seed.settlement.paidAmountCents,
+      isFinal: seed.settlement.isFinal
     }
   });
 

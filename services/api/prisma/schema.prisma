@@ -142,9 +142,11 @@ model PaymentTermsStage {
   id                    String   @id @default(uuid())
   paymentTermsVersionId String
   name                  String
+  stageType             String   @default("progress")
   basis                 String
   ratioBps              Int?
   fixedAmountCents      Int?
+  triggerAnchor         String   @default("settlement_effective")
   triggerEvent          String
   dueDays               Int
   requiresInvoice       Boolean  @default(false)
@@ -178,6 +180,7 @@ model Settlement {
   amountCents           Int
   payableAmountCents    Int
   paidAmountCents       Int      @default(0)
+  isFinal               Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }

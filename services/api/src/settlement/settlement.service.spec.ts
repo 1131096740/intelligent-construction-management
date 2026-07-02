@@ -99,7 +99,8 @@ describe("SettlementService", () => {
       contractVersionId: "contract-version-1",
       code: "JS-2026-019",
       periodLabel: "2026-06",
-      amountCents: 10000000
+      amountCents: 10000000,
+      isFinal: true
     });
 
     expect(created.code).toBe("JS-2026-019");
@@ -114,7 +115,8 @@ describe("SettlementService", () => {
         status: "approval_pending",
         amountCents: 10000000,
         payableAmountCents: 8000000,
-        paidAmountCents: 0
+        paidAmountCents: 0,
+        isFinal: true
       }
     });
   });

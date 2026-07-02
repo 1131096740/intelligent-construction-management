@@ -15,8 +15,17 @@ describe("coreFlowSeedData", () => {
     expect(coreFlowSeedData.contractVersion.status).toBe("effective");
     expect(coreFlowSeedData.paymentTermsVersion.status).toBe("effective");
     expect(coreFlowSeedData.paymentStages.map((stage) => stage.ratioBps)).toEqual([8000, 2000]);
+    expect(coreFlowSeedData.paymentStages.map((stage) => stage.stageType)).toEqual([
+      "progress",
+      "retention"
+    ]);
+    expect(coreFlowSeedData.paymentStages.map((stage) => stage.triggerAnchor)).toEqual([
+      "settlement_effective",
+      "final_settlement_effective"
+    ]);
     expect(coreFlowSeedData.settlement.code).toBe("JS-2026-018");
     expect(coreFlowSeedData.settlement.status).toBe("effective");
+    expect(coreFlowSeedData.settlement.isFinal).toBe(false);
     expect(coreFlowSeedData.paymentRequest.code).toBe("FK-2026-006");
     expect(coreFlowSeedData.paymentRequest.status).toBe("approved_pending_payment");
     expect(coreFlowSeedData.paymentExecution.amountCents).toBe(12800000);

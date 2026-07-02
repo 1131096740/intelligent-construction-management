@@ -469,6 +469,8 @@ describe("core flow read API client", () => {
       paymentStages: [
         {
           name: "当期结算款",
+          stageType: "progress",
+          triggerAnchor: "settlement_effective",
           basis: "current_settlement",
           ratioBps: 8000,
           triggerEvent: "结算归档确认生效",
@@ -495,7 +497,8 @@ describe("core flow read API client", () => {
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
       code: "JS-2026-019",
       periodLabel: "2026-06",
-      amountCents: 32000000
+      amountCents: 32000000,
+      isFinal: true
     });
     await createPaymentRequest({
       settlementId: "seed-settlement-js-2026-018",
@@ -508,6 +511,7 @@ describe("core flow read API client", () => {
       "/api/payments"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string).isFinal).toBe(true);
   });
 
   it("posts payment workflow actions to the backend", async () => {
