@@ -375,12 +375,26 @@ export interface ProjectOperatingOverviewReadModel {
   dataGaps: string[];
 }
 
+export interface RecordProjectReceiptPayload {
+  receivedAt: string;
+  amountCents: number;
+  payerName: string;
+  sourceType: "general_contractor_payment" | "owner_direct_payment" | "other";
+  description?: string;
+  voucherFileId: string;
+  confirmationPassword: string;
+}
+
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
 
 export function fetchProjectOperatingOverview(projectId: string) {
   return readJson<ProjectOperatingOverviewReadModel>(`/projects/${projectId}/operating-funds-overview`);
+}
+
+export function recordProjectReceipt(projectId: string, body: RecordProjectReceiptPayload) {
+  return postJson<unknown>(`/projects/${projectId}/receipts`, body);
 }
 
 export function fetchContractLedger() {

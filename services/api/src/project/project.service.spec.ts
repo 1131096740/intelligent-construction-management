@@ -1,4 +1,5 @@
 import { NotFoundException } from "@nestjs/common";
+import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import { ProjectService } from "./project.service";
 
 describe("ProjectService", () => {
@@ -95,7 +96,7 @@ describe("ProjectService", () => {
     expect(prisma.project.findMany).not.toHaveBeenCalled();
   });
 
-  it("aggregates operating funds overview from existing tables only", async () => {
+  it("aggregates operating funds overview with actual project receipts", async () => {
     const prisma = {
       project: {
         findFirst: jest.fn().mockResolvedValue({
@@ -129,32 +130,49 @@ describe("ProjectService", () => {
             id: "payment-1",
             status: "approval_pending",
             requestedAmountCents: 3000000,
-            approvedAmountCents: null
+            approvedAmountCents: null,
+            paidAmountCents: 0
           },
           {
             id: "payment-2",
             status: "approved_pending_payment",
             requestedAmountCents: 5000000,
-            approvedAmountCents: 4800000
+            approvedAmountCents: 4800000,
+            paidAmountCents: 0
           },
           {
             id: "payment-3",
             status: "paid",
             requestedAmountCents: 2000000,
-            approvedAmountCents: 2000000
+            approvedAmountCents: 2000000,
+            paidAmountCents: 2000000
+          },
+          {
+            id: "payment-4",
+            status: "partially_paid",
+            requestedAmountCents: 3000000,
+            approvedAmountCents: 3000000,
+            paidAmountCents: 1000000
           }
         ])
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
           { amountCents: 1000000 },
-          { amountCents: 2000000 }
+          { amountCents: 2000000 },
+          { amountCents: 1000000 }
         ])
       },
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
           { amountCents: 900000 },
           { amountCents: 1900000 }
+        ])
+      },
+      projectReceipt: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: BigInt(10000000) },
+          { amountCents: BigInt(5000000) }
         ])
       }
     };
@@ -163,11 +181,11 @@ describe("ProjectService", () => {
     await expect(service.getOperatingFundsOverview("project-1")).resolves.toEqual({
       project: { id: "project-1", code: "JG-001", name: "总部综合楼" },
       cash: {
-        actualReceiptsCents: null,
-        availableFundsCents: null,
-        actualPaidCents: 3000000,
+        actualReceiptsCents: 15000000,
+        availableFundsCents: 1200000,
+        actualPaidCents: 4000000,
         approvalPendingOccupancyCents: 3000000,
-        approvedPendingPaymentCents: 4800000,
+        approvedPendingPaymentCents: 6800000,
         financeRecordedOutflowCents: 2800000
       },
       business: {
@@ -178,13 +196,16 @@ describe("ProjectService", () => {
         operatingCostCents: null,
         grossProfitCents: null
       },
-      counts: { contracts: 2, settlements: 3, payments: 3 },
+      counts: { contracts: 2, settlements: 3, payments: 4 },
       dataGaps: [
-        "缺少项目实际收款台账，暂不能计算实际收款和可用资金。",
         "缺少总包代付台账，暂不能识别已由总包直接支付的支出。",
         "缺少对上结算/业主审定台账，暂不能计算经营收入和毛利。",
-        "缺少项目垫资额度与资金预占台账，暂不能计算真实可用资金。"
+        "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。"
       ]
+    });
+    expect(prisma.projectReceipt.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1", voidedAt: null },
+      select: { amountCents: true }
     });
   });
 
@@ -210,7 +231,8 @@ describe("ProjectService", () => {
       settlement: { findMany: jest.fn().mockResolvedValue([]) },
       paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       paymentExecution: { findMany: jest.fn() },
-      financeRecord: { findMany: jest.fn().mockResolvedValue([]) }
+      financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ProjectService(prisma as never);
 
@@ -240,7 +262,8 @@ describe("ProjectService", () => {
       settlement: { findMany: jest.fn().mockResolvedValue([]) },
       paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       paymentExecution: { findMany: jest.fn() },
-      financeRecord: { findMany: jest.fn().mockResolvedValue([]) }
+      financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ProjectService(prisma as never);
 
@@ -256,5 +279,140 @@ describe("ProjectService", () => {
     const service = new ProjectService(prisma as never);
 
     await expect(service.getOperatingFundsOverview("missing")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("records actual project receipt with voucher and audit log", async () => {
+    const receivedAt = "2026-07-02T00:00:00.000Z";
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
+      },
+      projectReceipt: {
+        create: jest.fn().mockResolvedValue({
+          id: "receipt-1",
+          projectId: "project-1",
+          receivedAt: new Date(receivedAt),
+          amountCents: BigInt(2500000),
+          payerName: "总包单位",
+          sourceType: "general_contractor_payment",
+          description: "六月进度款",
+          voucherFileId: "file-1",
+          recordedByUserId: "finance-1",
+          voidedAt: null,
+          createdAt
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    const receipt = await service.recordReceipt("project-1", "finance-1", {
+      receivedAt,
+      amountCents: 2500000,
+      payerName: "总包单位",
+      sourceType: "general_contractor_payment",
+      description: "六月进度款",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    } satisfies RecordProjectReceiptDto);
+
+    expect(receipt).toEqual({
+      id: "receipt-1",
+      projectId: "project-1",
+      receivedAt,
+      amountCents: 2500000,
+      payerName: "总包单位",
+      sourceType: "general_contractor_payment",
+      sourceTypeLabel: "总包付款",
+      description: "六月进度款",
+      voucherFileId: "file-1",
+      recordedByUserId: "finance-1",
+      createdAt: createdAt.toISOString()
+    });
+    expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
+    expect(tx.projectReceipt.create).toHaveBeenCalledWith({
+      data: {
+        projectId: "project-1",
+        receivedAt: new Date(receivedAt),
+        amountCents: BigInt(2500000),
+        payerName: "总包单位",
+        sourceType: "general_contractor_payment",
+        description: "六月进度款",
+        voucherFileId: "file-1",
+        recordedByUserId: "finance-1"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "finance-1",
+        action: "project.receipt.record",
+        businessType: "project_receipt",
+        businessId: "receipt-1"
+      })
+    });
+  });
+
+  it("rejects actual project receipt without voucher file", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      service.recordReceipt("project-1", "finance-1", {
+        receivedAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 2500000,
+        payerName: "总包单位",
+        sourceType: "general_contractor_payment",
+        voucherFileId: "",
+        confirmationPassword: "current-password"
+      } satisfies RecordProjectReceiptDto)
+    ).rejects.toThrow("Receipt voucher file is required");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects receipt voucher uploaded by another user", async () => {
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "other-user" })
+      },
+      projectReceipt: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    await expect(
+      service.recordReceipt("project-1", "finance-1", {
+        receivedAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 2500000,
+        payerName: "总包单位",
+        sourceType: "general_contractor_payment",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      } satisfies RecordProjectReceiptDto)
+    ).rejects.toThrow("Receipt voucher file must be uploaded by the recorder");
+    expect(tx.projectReceipt.create).not.toHaveBeenCalled();
   });
 });

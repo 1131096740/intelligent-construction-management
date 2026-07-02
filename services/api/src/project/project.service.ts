@@ -1,12 +1,20 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  Optional
+} from "@nestjs/common";
 import type { RoleKey } from "@jiangkong/shared-domain";
+import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import type { RecordProjectReceiptDto, ProjectReceiptSourceType } from "./dto/record-project-receipt.dto";
 
 const DATA_GAPS = [
-  "缺少项目实际收款台账，暂不能计算实际收款和可用资金。",
   "缺少总包代付台账，暂不能识别已由总包直接支付的支出。",
   "缺少对上结算/业主审定台账，暂不能计算经营收入和毛利。",
-  "缺少项目垫资额度与资金预占台账，暂不能计算真实可用资金。"
+  "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。"
 ];
 const FUNDS_OVERVIEW_POSITIONS = new Set<RoleKey>([
   "chairman",
@@ -15,10 +23,21 @@ const FUNDS_OVERVIEW_POSITIONS = new Set<RoleKey>([
   "finance_director",
   "finance_staff"
 ]);
+const RECEIPT_SOURCE_LABELS: Record<ProjectReceiptSourceType, string> = {
+  general_contractor_payment: "总包付款",
+  owner_direct_payment: "甲方直付",
+  other: "其他"
+};
 
 @Injectable()
 export class ProjectService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly audit: AuditService = new AuditService(),
+    @Optional()
+    private readonly auth?: AuthService
+  ) {}
 
   async listActiveOptions(userId: string) {
     const [globalUserPositions, projectUserPositions, projectMemberPositions] = await Promise.all([
@@ -76,7 +95,7 @@ export class ProjectService {
       throw new NotFoundException("Project not found");
     }
 
-    const [contracts, settlements, payments, financeRecords] = await Promise.all([
+    const [contracts, settlements, payments, financeRecords, projectReceipts] = await Promise.all([
       this.prisma.contract.findMany({
         where: { projectId, voidedAt: null },
         select: { id: true }
@@ -91,11 +110,16 @@ export class ProjectService {
           id: true,
           status: true,
           requestedAmountCents: true,
-          approvedAmountCents: true
+          approvedAmountCents: true,
+          paidAmountCents: true
         }
       }),
       this.prisma.financeRecord.findMany({
         where: { projectId, direction: "outflow" },
+        select: { amountCents: true }
+      }),
+      this.prisma.projectReceipt.findMany({
+        where: { projectId, voidedAt: null },
         select: { amountCents: true }
       })
     ]);
@@ -115,23 +139,34 @@ export class ProjectService {
           select: { amountCents: true }
         })
       : [];
+    const actualReceiptsCents = sumCents(projectReceipts.map((receipt) => receipt.amountCents));
+    const actualPaidCents = sumNumbers(executions.map((execution) => execution.amountCents));
+    const approvalPendingOccupancyCents = sumNumbers(
+      payments
+        .filter((payment) => payment.status === "approval_pending")
+        .map((payment) => payment.requestedAmountCents)
+    );
+    const approvedPendingPaymentCents = sumNumbers(
+      payments
+        .filter((payment) => ["approved_pending_payment", "partially_paid"].includes(payment.status))
+        .map((payment) =>
+          Math.max((payment.approvedAmountCents ?? payment.requestedAmountCents) - payment.paidAmountCents, 0)
+        )
+    );
+    const availableFundsCents =
+      actualReceiptsCents -
+      actualPaidCents -
+      approvalPendingOccupancyCents -
+      approvedPendingPaymentCents;
 
     return {
       project,
       cash: {
-        actualReceiptsCents: null,
-        availableFundsCents: null,
-        actualPaidCents: sumNumbers(executions.map((execution) => execution.amountCents)),
-        approvalPendingOccupancyCents: sumNumbers(
-          payments
-            .filter((payment) => payment.status === "approval_pending")
-            .map((payment) => payment.requestedAmountCents)
-        ),
-        approvedPendingPaymentCents: sumNumbers(
-          payments
-            .filter((payment) => payment.status === "approved_pending_payment")
-            .map((payment) => payment.approvedAmountCents ?? payment.requestedAmountCents)
-        ),
+        actualReceiptsCents,
+        availableFundsCents,
+        actualPaidCents,
+        approvalPendingOccupancyCents,
+        approvedPendingPaymentCents,
         financeRecordedOutflowCents: sumNumbers(financeRecords.map((record) => record.amountCents))
       },
       business: {
@@ -149,6 +184,80 @@ export class ProjectService {
       },
       dataGaps: DATA_GAPS
     };
+  }
+
+  async recordReceipt(projectId: string, actorUserId: string, input: RecordProjectReceiptDto) {
+    const amountCents = normalizePositiveSafeInteger(input.amountCents, "Receipt amount must be greater than zero");
+    const receivedAt = parseReceiptDate(input.receivedAt);
+    const payerName = requiredTrimmed(input.payerName, "Receipt payer is required");
+    const sourceType = normalizeSourceType(input.sourceType);
+    const voucherFileId = requiredTrimmed(input.voucherFileId, "Receipt voucher file is required");
+    const confirmationPassword = requiredTrimmed(
+      input.confirmationPassword,
+      "Receipt confirmation password is required"
+    );
+    const description =
+      typeof input.description === "string" ? input.description.trim() || undefined : undefined;
+
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm project receipt");
+    }
+
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      const project = await tx.project.findFirst({
+        where: { id: projectId, isActive: true },
+        select: { id: true }
+      });
+
+      if (!project) {
+        throw new NotFoundException("Project not found");
+      }
+
+      const voucher = await tx.fileObject.findUnique({
+        where: { id: voucherFileId },
+        select: { id: true, uploadedByUserId: true }
+      });
+
+      if (!voucher) {
+        throw new NotFoundException("Receipt voucher file not found");
+      }
+
+      if (voucher.uploadedByUserId !== actorUserId) {
+        throw new BadRequestException("Receipt voucher file must be uploaded by the recorder");
+      }
+
+      const receipt = await tx.projectReceipt.create({
+        data: {
+          projectId: project.id,
+          receivedAt,
+          amountCents: BigInt(amountCents),
+          payerName,
+          sourceType,
+          description,
+          voucherFileId,
+          recordedByUserId: actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project.receipt.record",
+        businessType: "project_receipt",
+        businessId: receipt.id,
+        metadata: {
+          projectId: project.id,
+          receiptId: receipt.id,
+          amountCents,
+          sourceType,
+          payerName,
+          voucherFileId
+        }
+      });
+
+      return toReceiptReadModel(receipt);
+    });
   }
 }
 
@@ -190,4 +299,68 @@ function toSafeNumber(value: bigint | number): number {
     throw new InternalServerErrorException("Amount exceeds safe integer range");
   }
   return converted;
+}
+
+function normalizePositiveSafeInteger(value: unknown, message: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throw new BadRequestException(message);
+  }
+  return value;
+}
+
+function parseReceiptDate(value: unknown): Date {
+  if (typeof value !== "string") {
+    throw new BadRequestException("Receipt date is invalid");
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new BadRequestException("Receipt date is invalid");
+  }
+  return parsed;
+}
+
+function requiredTrimmed(value: unknown, message: string): string {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed) {
+    throw new BadRequestException(message);
+  }
+  return trimmed;
+}
+
+function normalizeSourceType(value: unknown): ProjectReceiptSourceType {
+  if (typeof value !== "string") {
+    throw new BadRequestException("Receipt source type is invalid");
+  }
+  if (!Object.prototype.hasOwnProperty.call(RECEIPT_SOURCE_LABELS, value)) {
+    throw new BadRequestException("Receipt source type is invalid");
+  }
+  return value as ProjectReceiptSourceType;
+}
+
+function toReceiptReadModel(receipt: {
+  id: string;
+  projectId: string;
+  receivedAt: Date;
+  amountCents: bigint | number;
+  payerName: string;
+  sourceType: string;
+  description?: string | null;
+  voucherFileId: string;
+  recordedByUserId: string;
+  createdAt: Date;
+}) {
+  const sourceType = normalizeSourceType(receipt.sourceType as ProjectReceiptSourceType);
+  return {
+    id: receipt.id,
+    projectId: receipt.projectId,
+    receivedAt: receipt.receivedAt.toISOString(),
+    amountCents: toSafeNumber(receipt.amountCents),
+    payerName: receipt.payerName,
+    sourceType,
+    sourceTypeLabel: RECEIPT_SOURCE_LABELS[sourceType],
+    description: receipt.description ?? null,
+    voucherFileId: receipt.voucherFileId,
+    recordedByUserId: receipt.recordedByUserId,
+    createdAt: receipt.createdAt.toISOString()
+  };
 }

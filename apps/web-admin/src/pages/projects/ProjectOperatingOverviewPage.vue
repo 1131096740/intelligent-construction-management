@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>项目经营</h1>
-        <p>只汇总当前系统已有合同、结算、付款和财务出账数据</p>
+        <p>只汇总当前系统已有合同、结算、付款、实际收款和财务出账数据</p>
       </div>
       <label class="project-picker">
         <span>项目</span>
@@ -76,6 +76,86 @@
         </section>
       </div>
 
+      <section class="panel receipt-panel">
+        <div class="panel-head">
+          <h2>实际收款登记</h2>
+          <button
+            type="button"
+            :disabled="receiptSubmitting"
+            @click="submitReceipt"
+          >
+            {{ receiptSubmitting ? "提交中" : "登记收款" }}
+          </button>
+        </div>
+        <form
+          class="receipt-form"
+          @submit.prevent="submitReceipt"
+        >
+          <label>
+            <span>收款日期</span>
+            <input
+              v-model="receiptForm.receivedAt"
+              type="date"
+              required
+            >
+          </label>
+          <label>
+            <span>收款金额(元)</span>
+            <input
+              v-model.trim="receiptForm.amountYuan"
+              inputmode="decimal"
+              placeholder="0.00"
+              required
+            >
+          </label>
+          <label>
+            <span>付款单位</span>
+            <input
+              v-model.trim="receiptForm.payerName"
+              required
+            >
+          </label>
+          <label>
+            <span>收款来源类型</span>
+            <select v-model="receiptForm.sourceType">
+              <option value="general_contractor_payment">总包付款</option>
+              <option value="owner_direct_payment">业主直付</option>
+              <option value="other">其他</option>
+            </select>
+          </label>
+          <label>
+            <span>收款凭证</span>
+            <input
+              ref="receiptVoucherInput"
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+              required
+              @change="selectReceiptVoucher"
+            >
+          </label>
+          <label>
+            <span>当前登录密码</span>
+            <input
+              v-model="receiptForm.confirmationPassword"
+              type="password"
+              autocomplete="current-password"
+              required
+            >
+          </label>
+          <label class="receipt-description">
+            <span>收款说明</span>
+            <input v-model.trim="receiptForm.description">
+          </label>
+        </form>
+        <div
+          v-if="receiptMessage"
+          class="receipt-message"
+          :class="receiptMessageTone"
+        >
+          {{ receiptMessage }}
+        </div>
+      </section>
+
       <section class="gap-panel">
         <h2>数据缺口</h2>
         <ul>
@@ -96,9 +176,23 @@ import { computed, onMounted, ref } from "vue";
 import {
   fetchProjectOperatingOverview,
   fetchProjects,
+  recordProjectReceipt,
+  uploadPrivateFile,
   type ProjectOperatingOverviewReadModel,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
+
+type ReceiptSourceType = "general_contractor_payment" | "owner_direct_payment" | "other";
+
+interface ReceiptFormState {
+  receivedAt: string;
+  amountYuan: string;
+  payerName: string;
+  sourceType: ReceiptSourceType;
+  description: string;
+  voucherFile: File | null;
+  confirmationPassword: string;
+}
 
 const projects = ref<ProjectOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
@@ -106,6 +200,11 @@ const selectedProjectId = ref("");
 const loadingProjects = ref(false);
 const loadingOverview = ref(false);
 const message = ref("");
+const receiptSubmitting = ref(false);
+const receiptMessage = ref("");
+const receiptMessageTone = ref<"success" | "danger">("success");
+const receiptForm = ref<ReceiptFormState>(createReceiptForm());
+const receiptVoucherInput = ref<HTMLInputElement | null>(null);
 
 const summaryItems = computed(() => {
   const counts = overview.value?.counts ?? { contracts: 0, settlements: 0, payments: 0 };
@@ -164,6 +263,7 @@ async function loadProjects() {
 async function loadOverview() {
   const projectId = selectedProjectId.value;
   overview.value = null;
+  receiptMessage.value = "";
   if (!projectId) {
     overview.value = null;
     return;
@@ -186,6 +286,100 @@ async function loadOverview() {
       loadingOverview.value = false;
     }
   }
+}
+
+async function submitReceipt() {
+  const projectId = selectedProjectId.value;
+  if (!projectId) {
+    setReceiptError("请先选择项目");
+    return;
+  }
+
+  receiptSubmitting.value = true;
+  receiptMessage.value = "";
+  try {
+    const form = receiptForm.value;
+    if (!form.voucherFile) {
+      throw new Error("请上传收款凭证");
+    }
+    const receivedAt = requiredText(form.receivedAt, "收款日期");
+    const amountCents = parseYuanToCents(form.amountYuan);
+    const payerName = requiredText(form.payerName, "付款单位");
+    const confirmationPassword = requiredText(form.confirmationPassword, "当前登录密码");
+    const voucher = await uploadPrivateFile(form.voucherFile, form.voucherFile.name);
+    await recordProjectReceipt(projectId, {
+      receivedAt,
+      amountCents,
+      payerName,
+      sourceType: form.sourceType,
+      description: form.description.trim() || undefined,
+      voucherFileId: voucher.id,
+      confirmationPassword
+    });
+    receiptForm.value = createReceiptForm(form.sourceType);
+    if (receiptVoucherInput.value) {
+      receiptVoucherInput.value.value = "";
+    }
+    await loadOverview();
+    receiptMessageTone.value = "success";
+    receiptMessage.value = "实际收款已登记，项目经营数据已刷新。";
+  } catch (error) {
+    setReceiptError(error instanceof Error ? error.message : "登记收款失败");
+  } finally {
+    receiptSubmitting.value = false;
+  }
+}
+
+function createReceiptForm(sourceType: ReceiptSourceType = "general_contractor_payment"): ReceiptFormState {
+  return {
+    receivedAt: todayText(),
+    amountYuan: "",
+    payerName: "",
+    sourceType,
+    description: "",
+    voucherFile: null,
+    confirmationPassword: ""
+  };
+}
+
+function selectReceiptVoucher(event: Event) {
+  const input = event.target as HTMLInputElement;
+  receiptForm.value.voucherFile = input.files?.[0] ?? null;
+}
+
+function todayText(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function requiredText(value: string, label: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`请填写${label}`);
+  }
+  return trimmed;
+}
+
+function parseYuanToCents(value: string): number {
+  const trimmed = value.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(trimmed)) {
+    throw new Error("收款金额必须是大于 0 的数字，最多保留两位小数");
+  }
+
+  const [yuan, cents = ""] = trimmed.split(".");
+  const amountCents = Number(yuan) * 100 + Number(cents.padEnd(2, "0"));
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+    throw new Error("收款金额必须大于 0");
+  }
+  return amountCents;
+}
+
+function setReceiptError(messageText: string) {
+  receiptMessageTone.value = "danger";
+  receiptMessage.value = messageText;
 }
 
 function formatCents(value: number | null): string {
@@ -248,6 +442,30 @@ select {
   background: #fff;
 }
 
+input {
+  height: 32px;
+  min-width: 0;
+  border: 1px solid #cfd7e3;
+  border-radius: 4px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+button {
+  height: 32px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 14px;
+  color: #fff;
+  background: #165dff;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  background: #a8b1c2;
+}
+
 .summary-strip,
 .overview-grid {
   display: grid;
@@ -266,6 +484,52 @@ select {
   border: 1px solid #dce1e8;
   border-radius: 8px;
   padding: 16px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.receipt-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.receipt-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.receipt-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.receipt-form span {
+  color: #5f6673;
+}
+
+.receipt-description {
+  grid-column: span 3;
+}
+
+.receipt-message {
+  padding: 10px 12px;
+  border-radius: 6px;
+}
+
+.receipt-message.success {
+  color: #0f7a3b;
+  background: #edf8f0;
+}
+
+.receipt-message.danger {
+  color: #b42318;
+  background: #fff1f0;
 }
 
 .summary-item {
@@ -321,6 +585,14 @@ dd {
   .summary-strip,
   .overview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .receipt-form {
+    grid-template-columns: 1fr;
+  }
+
+  .receipt-description {
+    grid-column: auto;
   }
 }
 </style>

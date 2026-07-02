@@ -233,6 +233,26 @@ model FinanceRecord {
   createdAt        DateTime @default(now())
 }
 
+model ProjectReceipt {
+  id               String    @id @default(uuid())
+  projectId        String
+  receivedAt       DateTime
+  amountCents      BigInt
+  payerName        String
+  sourceType       String
+  description      String?
+  voucherFileId    String
+  recordedByUserId String
+  voidedAt         DateTime?
+  voidedByUserId   String?
+  voidReason       String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([projectId, receivedAt])
+  @@index([voucherFileId])
+}
+
 model ApprovalFlow {
   id        String   @id @default(uuid())
   type      String

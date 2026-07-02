@@ -116,6 +116,13 @@ describe("role-specific gates", () => {
     expect(canPerform("payment.execution", ["finance_director"])).toBe(false);
     expect(canPerform("payment.execution", ["chairman"])).toBe(false);
   });
+
+  it("requires finance staff or finance director to record project receipts", () => {
+    expect(canPerform("project.receipt.record", ["finance_staff"])).toBe(true);
+    expect(canPerform("project.receipt.record", ["finance_director"])).toBe(true);
+    expect(canPerform("project.receipt.record", ["project_manager"])).toBe(false);
+    expect(canPerform("project.receipt.record", ["chairman"])).toBe(false);
+  });
 });
 
 describe("effective role resolution", () => {

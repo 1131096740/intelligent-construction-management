@@ -11,6 +11,7 @@ import {
   fetchAuditLogs,
   fetchProjectOperatingOverview,
   fetchProjects,
+  recordProjectReceipt,
   createContractDraft,
   createPaymentRequest,
   createPrivateFileDownloadTicket,
@@ -109,6 +110,39 @@ describe("core flow read API client", () => {
       "/api/projects",
       "/api/projects/project-1/operating-funds-overview"
     ]);
+  });
+
+  it("records project actual receipts through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "receipt-1" })
+    } as Response);
+
+    await recordProjectReceipt("project-1", {
+      receivedAt: "2026-07-02",
+      amountCents: 123456,
+      payerName: "建设单位",
+      sourceType: "owner_direct_payment",
+      description: "业主直付",
+      voucherFileId: "file-receipt-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/receipts"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        receivedAt: "2026-07-02",
+        amountCents: 123456,
+        payerName: "建设单位",
+        sourceType: "owner_direct_payment",
+        description: "业主直付",
+        voucherFileId: "file-receipt-1",
+        confirmationPassword: "current-password"
+      })
+    );
   });
 
   it("creates contract drafts through the backend", async () => {

@@ -16,6 +16,7 @@ export const BUSINESS_ACTIONS = [
   "settlement.approve",
   "settlement.archive.upload",
   "settlement.archive.confirm",
+  "project.receipt.record",
   "payment.approve",
   "payment.execution",
   "payment.finance_record",
@@ -68,6 +69,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "settlement.archive.upload": ["contract_staff"],
   "settlement.archive.confirm": ["contract_director"],
+  "project.receipt.record": ["finance_staff", "finance_director"],
   "payment.approve": [
     "project_manager",
     "contract_director",
