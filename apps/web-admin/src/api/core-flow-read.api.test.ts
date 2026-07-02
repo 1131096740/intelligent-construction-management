@@ -13,6 +13,7 @@ import {
   fetchProjects,
   recordProjectReceipt,
   recordProjectProxyPayment,
+  recordProjectUpstreamSettlement,
   createContractDraft,
   createPaymentRequest,
   createPrivateFileDownloadTicket,
@@ -176,6 +177,43 @@ describe("core flow read API client", () => {
         paymentType: "material",
         description: "总包代付材料款",
         voucherFileId: "file-direct-payment-1",
+        confirmationPassword: "current-password"
+      })
+    );
+  });
+
+  it("records project upstream settlements through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "upstream-1" })
+    } as Response);
+
+    await recordProjectUpstreamSettlement("project-1", {
+      settledAt: "2026-07-02",
+      reportedAmountCents: 35000000,
+      approvedAmountCents: 30000000,
+      approvingPartyName: "总包单位",
+      periodLabel: "2026-06",
+      isFinal: false,
+      description: "六月对上审定",
+      voucherFileId: "file-upstream-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/upstream-settlements"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        settledAt: "2026-07-02",
+        reportedAmountCents: 35000000,
+        approvedAmountCents: 30000000,
+        approvingPartyName: "总包单位",
+        periodLabel: "2026-06",
+        isFinal: false,
+        description: "六月对上审定",
+        voucherFileId: "file-upstream-1",
         confirmationPassword: "current-password"
       })
     );

@@ -38,6 +38,7 @@ const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
 ];
 
 const PAYMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["finance_staff", "finance_director"];
+const UPSTREAM_SETTLEMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["budget_staff", "budget_director"];
 const ALLOWED_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf", ".png", ".jpg", ".jpeg"]);
 
 @Injectable()
@@ -432,6 +433,32 @@ export class FileService {
     if (
       projectProxyPayment &&
       (await this.hasProjectRole(tx, actorUserId, projectProxyPayment.projectId, PAYMENT_FILE_DOWNLOAD_ROLES))
+    ) {
+      return;
+    }
+
+    const projectUpstreamSettlementClient = (tx as unknown as {
+      projectUpstreamSettlement?: {
+        findFirst: (args: {
+          where: { voucherFileId: string; voidedAt: null };
+          select: { projectId: true };
+        }) => Promise<{ projectId: string } | null>;
+      };
+    }).projectUpstreamSettlement;
+    const projectUpstreamSettlement = projectUpstreamSettlementClient
+      ? await projectUpstreamSettlementClient.findFirst({
+          where: { voucherFileId: file.id, voidedAt: null },
+          select: { projectId: true }
+        })
+      : null;
+    if (
+      projectUpstreamSettlement &&
+      (await this.hasProjectRole(
+        tx,
+        actorUserId,
+        projectUpstreamSettlement.projectId,
+        UPSTREAM_SETTLEMENT_FILE_DOWNLOAD_ROLES
+      ))
     ) {
       return;
     }

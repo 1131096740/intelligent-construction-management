@@ -19,10 +19,14 @@ import type {
   ProjectProxyPaymentType
 } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto, ProjectReceiptSourceType } from "./dto/record-project-receipt.dto";
+import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 
+const UPSTREAM_SETTLEMENT_GAP =
+  "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。";
+const FINANCING_LIMIT_GAP = "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。";
 const DATA_GAPS = [
-  "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。",
-  "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。"
+  UPSTREAM_SETTLEMENT_GAP,
+  FINANCING_LIMIT_GAP
 ];
 const FUNDS_OVERVIEW_POSITIONS = new Set<RoleKey>([
   "chairman",
@@ -117,7 +121,8 @@ export class ProjectService {
       payments,
       financeRecords,
       projectReceipts,
-      projectProxyPayments
+      projectProxyPayments,
+      projectUpstreamSettlements
     ] = await Promise.all([
       this.prisma.contract.findMany({
         where: { projectId, voidedAt: null },
@@ -148,6 +153,10 @@ export class ProjectService {
       this.prisma.projectProxyPayment.findMany({
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
+      }),
+      this.prisma.projectUpstreamSettlement.findMany({
+        where: { projectId, voidedAt: null },
+        select: { approvedAmountCents: true }
       })
     ]);
     const contractIds = contracts.map((contract) => contract.id);
@@ -168,7 +177,14 @@ export class ProjectService {
       : [];
     const actualReceiptsCents = sumCents(projectReceipts.map((receipt) => receipt.amountCents));
     const proxyPaymentCents = sumCents(projectProxyPayments.map((payment) => payment.amountCents));
+    const upstreamSettlementCents = sumCents(
+      projectUpstreamSettlements.map((settlement) => settlement.approvedAmountCents)
+    );
     const actualPaidCents = sumNumbers(executions.map((execution) => execution.amountCents));
+    const operatingIncomeCents = projectUpstreamSettlements.length
+      ? upstreamSettlementCents
+      : actualReceiptsCents + proxyPaymentCents;
+    const operatingCostCents = actualPaidCents + proxyPaymentCents;
     const approvalPendingOccupancyCents = sumNumbers(
       payments
         .filter((payment) => payment.status === "approval_pending")
@@ -201,16 +217,16 @@ export class ProjectService {
         effectiveContractAmountCents: sumCents(latestEffectiveContractVersions.map((version) => version.amountCents)),
         effectiveSettlementAmountCents: sumNumbers(effectiveSettlements.map((settlement) => settlement.amountCents)),
         payableSettlementAmountCents: sumNumbers(effectiveSettlements.map((settlement) => settlement.payableAmountCents)),
-        operatingIncomeCents: actualReceiptsCents + proxyPaymentCents,
-        operatingCostCents: actualPaidCents + proxyPaymentCents,
-        grossProfitCents: actualReceiptsCents - actualPaidCents
+        operatingIncomeCents,
+        operatingCostCents,
+        grossProfitCents: operatingIncomeCents - operatingCostCents
       },
       counts: {
         contracts: contracts.length,
         settlements: settlements.length,
         payments: payments.length
       },
-      dataGaps: DATA_GAPS
+      dataGaps: projectUpstreamSettlements.length ? [FINANCING_LIMIT_GAP] : DATA_GAPS
     };
   }
 
@@ -466,6 +482,99 @@ export class ProjectService {
       return toProxyPaymentReadModel(proxyPayment);
     });
   }
+
+  async recordUpstreamSettlement(
+    projectId: string,
+    actorUserId: string,
+    input: RecordProjectUpstreamSettlementDto
+  ) {
+    const reportedAmountCents = normalizePositiveSafeInteger(
+      input.reportedAmountCents,
+      "Upstream settlement reported amount must be greater than zero"
+    );
+    const approvedAmountCents = normalizePositiveSafeInteger(
+      input.approvedAmountCents,
+      "Upstream settlement approved amount must be greater than zero"
+    );
+    const settledAt = parseUpstreamSettlementDate(input.settledAt);
+    const approvingPartyName = requiredTrimmed(
+      input.approvingPartyName,
+      "Upstream settlement approving party is required"
+    );
+    const periodLabel = requiredTrimmed(input.periodLabel, "Upstream settlement period is required");
+    const isFinal = input.isFinal === true;
+    const voucherFileId = requiredTrimmed(input.voucherFileId, "Upstream settlement voucher file is required");
+    const confirmationPassword = requiredTrimmed(
+      input.confirmationPassword,
+      "Upstream settlement confirmation password is required"
+    );
+    const description =
+      typeof input.description === "string" ? input.description.trim() || undefined : undefined;
+
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm upstream settlement");
+    }
+
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      const project = await tx.project.findFirst({
+        where: { id: projectId, isActive: true },
+        select: { id: true }
+      });
+
+      if (!project) {
+        throw new NotFoundException("Project not found");
+      }
+
+      const voucher = await tx.fileObject.findUnique({
+        where: { id: voucherFileId },
+        select: { id: true, uploadedByUserId: true }
+      });
+
+      if (!voucher) {
+        throw new NotFoundException("Upstream settlement voucher file not found");
+      }
+
+      if (voucher.uploadedByUserId !== actorUserId) {
+        throw new BadRequestException("Upstream settlement voucher file must be uploaded by the recorder");
+      }
+
+      const upstreamSettlement = await tx.projectUpstreamSettlement.create({
+        data: {
+          projectId: project.id,
+          settledAt,
+          reportedAmountCents: BigInt(reportedAmountCents),
+          approvedAmountCents: BigInt(approvedAmountCents),
+          approvingPartyName,
+          periodLabel,
+          isFinal,
+          description,
+          voucherFileId,
+          recordedByUserId: actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project.upstream_settlement.record",
+        businessType: "project_upstream_settlement",
+        businessId: upstreamSettlement.id,
+        metadata: {
+          projectId: project.id,
+          upstreamSettlementId: upstreamSettlement.id,
+          reportedAmountCents,
+          approvedAmountCents,
+          approvingPartyName,
+          periodLabel,
+          isFinal,
+          voucherFileId
+        }
+      });
+
+      return toUpstreamSettlementReadModel(upstreamSettlement);
+    });
+  }
 }
 
 function isFundsOverviewPosition(positionKey: RoleKey | undefined): boolean {
@@ -533,6 +642,17 @@ function parseProxyPaymentDate(value: unknown): Date {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     throw new BadRequestException("Project proxy payment date is invalid");
+  }
+  return parsed;
+}
+
+function parseUpstreamSettlementDate(value: unknown): Date {
+  if (typeof value !== "string") {
+    throw new BadRequestException("Upstream settlement date is invalid");
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new BadRequestException("Upstream settlement date is invalid");
   }
   return parsed;
 }
@@ -628,5 +748,35 @@ function toProxyPaymentReadModel(proxyPayment: {
     contractId: proxyPayment.contractId ?? null,
     settlementId: proxyPayment.settlementId ?? null,
     createdAt: proxyPayment.createdAt.toISOString()
+  };
+}
+
+function toUpstreamSettlementReadModel(upstreamSettlement: {
+  id: string;
+  projectId: string;
+  settledAt: Date;
+  reportedAmountCents: bigint | number;
+  approvedAmountCents: bigint | number;
+  approvingPartyName: string;
+  periodLabel: string;
+  isFinal: boolean;
+  description?: string | null;
+  voucherFileId: string;
+  recordedByUserId: string;
+  createdAt: Date;
+}) {
+  return {
+    id: upstreamSettlement.id,
+    projectId: upstreamSettlement.projectId,
+    settledAt: upstreamSettlement.settledAt.toISOString(),
+    reportedAmountCents: toSafeNumber(upstreamSettlement.reportedAmountCents),
+    approvedAmountCents: toSafeNumber(upstreamSettlement.approvedAmountCents),
+    approvingPartyName: upstreamSettlement.approvingPartyName,
+    periodLabel: upstreamSettlement.periodLabel,
+    isFinal: upstreamSettlement.isFinal,
+    description: upstreamSettlement.description ?? null,
+    voucherFileId: upstreamSettlement.voucherFileId,
+    recordedByUserId: upstreamSettlement.recordedByUserId,
+    createdAt: upstreamSettlement.createdAt.toISOString()
   };
 }

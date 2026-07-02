@@ -33,6 +33,12 @@ describe("ProjectController authorization wiring", () => {
     ).toBe("project.proxy_payment.record");
   });
 
+  it("guards project upstream settlement recording with budget project role", () => {
+    expect(
+      Reflect.getMetadata("requiredProjectAction", ProjectController.prototype.recordUpstreamSettlement)
+    ).toBe("project.upstream_settlement.record");
+  });
+
   it("forwards the authenticated user id when listing projects", async () => {
     const projects = { listActiveOptions: jest.fn() };
     const controller = new ProjectController(projects as never);
@@ -86,6 +92,29 @@ describe("ProjectController authorization wiring", () => {
     expect(projects.recordProxyPayment).toHaveBeenCalledWith(
       "project-1",
       "finance-1",
+      body
+    );
+  });
+
+  it("forwards project upstream settlement payload with authenticated user id", async () => {
+    const projects = { recordUpstreamSettlement: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = {
+      settledAt: "2026-07-02T00:00:00.000Z",
+      reportedAmountCents: 120000,
+      approvedAmountCents: 100000,
+      approvingPartyName: "总包单位",
+      periodLabel: "2026-06",
+      isFinal: false,
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    };
+
+    await controller.recordUpstreamSettlement("project-1", { id: "budget-1" } as never, body);
+
+    expect(projects.recordUpstreamSettlement).toHaveBeenCalledWith(
+      "project-1",
+      "budget-1",
       body
     );
   });

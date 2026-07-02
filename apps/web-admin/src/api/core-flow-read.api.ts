@@ -398,6 +398,18 @@ export interface RecordProjectProxyPaymentPayload {
   settlementId?: string;
 }
 
+export interface RecordProjectUpstreamSettlementPayload {
+  settledAt: string;
+  reportedAmountCents: number;
+  approvedAmountCents: number;
+  approvingPartyName: string;
+  periodLabel: string;
+  isFinal?: boolean;
+  description?: string;
+  voucherFileId: string;
+  confirmationPassword: string;
+}
+
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
@@ -412,6 +424,13 @@ export function recordProjectReceipt(projectId: string, body: RecordProjectRecei
 
 export function recordProjectProxyPayment(projectId: string, body: RecordProjectProxyPaymentPayload) {
   return postJson<unknown>(`/projects/${projectId}/proxy-payments`, body);
+}
+
+export function recordProjectUpstreamSettlement(
+  projectId: string,
+  body: RecordProjectUpstreamSettlementPayload
+) {
+  return postJson<unknown>(`/projects/${projectId}/upstream-settlements`, body);
 }
 
 export function fetchContractLedger() {

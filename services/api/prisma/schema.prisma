@@ -278,6 +278,28 @@ model ProjectProxyPayment {
   @@index([voucherFileId])
 }
 
+model ProjectUpstreamSettlement {
+  id                  String    @id @default(uuid())
+  projectId           String
+  settledAt           DateTime
+  reportedAmountCents BigInt
+  approvedAmountCents BigInt
+  approvingPartyName  String
+  periodLabel         String
+  isFinal             Boolean   @default(false)
+  description         String?
+  voucherFileId       String
+  recordedByUserId    String
+  voidedAt            DateTime?
+  voidedByUserId      String?
+  voidReason          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([projectId, settledAt])
+  @@index([voucherFileId])
+}
+
 model ApprovalFlow {
   id        String   @id @default(uuid())
   type      String

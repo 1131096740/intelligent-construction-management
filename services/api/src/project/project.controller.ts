@@ -5,6 +5,7 @@ import { RequirePositions } from "../auth/decorators/require-positions.decorator
 import type { AuthenticatedUser } from "../auth/auth.types";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
+import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 import { ProjectService } from "./project.service";
 
 const FUNDS_OVERVIEW_POSITIONS = [
@@ -48,5 +49,15 @@ export class ProjectController {
     @Body() body: RecordProjectProxyPaymentDto
   ) {
     return this.projects.recordProxyPayment(projectId, user.id, body);
+  }
+
+  @Post(":projectId/upstream-settlements")
+  @RequireProjectRole("project.upstream_settlement.record")
+  recordUpstreamSettlement(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectUpstreamSettlementDto
+  ) {
+    return this.projects.recordUpstreamSettlement(projectId, user.id, body);
   }
 }

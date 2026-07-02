@@ -1,6 +1,7 @@
 import { NotFoundException } from "@nestjs/common";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
+import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
 import { ProjectService } from "./project.service";
 
 describe("ProjectService", () => {
@@ -97,7 +98,7 @@ describe("ProjectService", () => {
     expect(prisma.project.findMany).not.toHaveBeenCalled();
   });
 
-  it("aggregates operating funds overview with receipts and contractor direct payments", async () => {
+  it("aggregates operating funds overview with upstream settlements when available", async () => {
     const prisma = {
       project: {
         findFirst: jest.fn().mockResolvedValue({
@@ -181,6 +182,11 @@ describe("ProjectService", () => {
           { amountCents: BigInt(2000000) },
           { amountCents: BigInt(500000) }
         ])
+      },
+      projectUpstreamSettlement: {
+        findMany: jest.fn().mockResolvedValue([
+          { approvedAmountCents: BigInt(30000000) }
+        ])
       }
     };
     const service = new ProjectService(prisma as never);
@@ -199,13 +205,12 @@ describe("ProjectService", () => {
         effectiveContractAmountCents: 35000000,
         effectiveSettlementAmountCents: 20000000,
         payableSettlementAmountCents: 16000000,
-        operatingIncomeCents: 17500000,
+        operatingIncomeCents: 30000000,
         operatingCostCents: 6500000,
-        grossProfitCents: 11000000
+        grossProfitCents: 23500000
       },
       counts: { contracts: 2, settlements: 3, payments: 4 },
       dataGaps: [
-        "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。",
         "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。"
       ]
     });
@@ -216,6 +221,10 @@ describe("ProjectService", () => {
     expect(prisma.projectProxyPayment.findMany).toHaveBeenCalledWith({
       where: { projectId: "project-1", voidedAt: null },
       select: { amountCents: true }
+    });
+    expect(prisma.projectUpstreamSettlement.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1", voidedAt: null },
+      select: { approvedAmountCents: true }
     });
   });
 
@@ -243,7 +252,8 @@ describe("ProjectService", () => {
       paymentExecution: { findMany: jest.fn() },
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
-      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) }
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ProjectService(prisma as never);
 
@@ -275,7 +285,8 @@ describe("ProjectService", () => {
       paymentExecution: { findMany: jest.fn() },
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
-      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) }
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ProjectService(prisma as never);
 
@@ -486,6 +497,130 @@ describe("ProjectService", () => {
         businessId: "proxy-payment-1"
       })
     });
+  });
+
+  it("records project upstream settlement with voucher and audit log", async () => {
+    const settledAt = "2026-07-02T00:00:00.000Z";
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "budget-1" })
+      },
+      projectUpstreamSettlement: {
+        create: jest.fn().mockResolvedValue({
+          id: "upstream-1",
+          projectId: "project-1",
+          settledAt: new Date(settledAt),
+          reportedAmountCents: BigInt(35000000),
+          approvedAmountCents: BigInt(30000000),
+          approvingPartyName: "总包单位",
+          periodLabel: "2026-06",
+          isFinal: false,
+          description: "六月对上审定",
+          voucherFileId: "file-1",
+          recordedByUserId: "budget-1",
+          voidedAt: null,
+          createdAt
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    const result = await service.recordUpstreamSettlement("project-1", "budget-1", {
+      settledAt,
+      reportedAmountCents: 35000000,
+      approvedAmountCents: 30000000,
+      approvingPartyName: "总包单位",
+      periodLabel: "2026-06",
+      isFinal: false,
+      description: "六月对上审定",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    } satisfies RecordProjectUpstreamSettlementDto);
+
+    expect(result).toEqual({
+      id: "upstream-1",
+      projectId: "project-1",
+      settledAt,
+      reportedAmountCents: 35000000,
+      approvedAmountCents: 30000000,
+      approvingPartyName: "总包单位",
+      periodLabel: "2026-06",
+      isFinal: false,
+      description: "六月对上审定",
+      voucherFileId: "file-1",
+      recordedByUserId: "budget-1",
+      createdAt: createdAt.toISOString()
+    });
+    expect(auth.confirmPassword).toHaveBeenCalledWith("budget-1", "current-password");
+    expect(tx.projectUpstreamSettlement.create).toHaveBeenCalledWith({
+      data: {
+        projectId: "project-1",
+        settledAt: new Date(settledAt),
+        reportedAmountCents: BigInt(35000000),
+        approvedAmountCents: BigInt(30000000),
+        approvingPartyName: "总包单位",
+        periodLabel: "2026-06",
+        isFinal: false,
+        description: "六月对上审定",
+        voucherFileId: "file-1",
+        recordedByUserId: "budget-1"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "budget-1",
+        action: "project.upstream_settlement.record",
+        businessType: "project_upstream_settlement",
+        businessId: "upstream-1"
+      })
+    });
+  });
+
+  it("rejects upstream settlement voucher uploaded by another user", async () => {
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "other-user" })
+      },
+      projectUpstreamSettlement: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    await expect(
+      service.recordUpstreamSettlement("project-1", "budget-1", {
+        settledAt: "2026-07-02T00:00:00.000Z",
+        reportedAmountCents: 35000000,
+        approvedAmountCents: 30000000,
+        approvingPartyName: "总包单位",
+        periodLabel: "2026-06",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      } satisfies RecordProjectUpstreamSettlementDto)
+    ).rejects.toThrow("Upstream settlement voucher file must be uploaded by the recorder");
+    expect(tx.projectUpstreamSettlement.create).not.toHaveBeenCalled();
   });
 
   it("rejects project proxy payment when linked settlement belongs to another project", async () => {

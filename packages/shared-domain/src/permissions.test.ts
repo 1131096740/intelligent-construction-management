@@ -130,6 +130,14 @@ describe("role-specific gates", () => {
     expect(canPerform("project.proxy_payment.record", ["project_manager"])).toBe(false);
     expect(canPerform("project.proxy_payment.record", ["chairman"])).toBe(false);
   });
+
+  it("requires budget staff or budget director to record upstream settlements", () => {
+    expect(canPerform("project.upstream_settlement.record", ["budget_staff"])).toBe(true);
+    expect(canPerform("project.upstream_settlement.record", ["budget_director"])).toBe(true);
+    expect(canPerform("project.upstream_settlement.record", ["finance_staff"])).toBe(false);
+    expect(canPerform("project.upstream_settlement.record", ["project_manager"])).toBe(false);
+    expect(canPerform("project.upstream_settlement.record", ["chairman"])).toBe(false);
+  });
 });
 
 describe("effective role resolution", () => {
