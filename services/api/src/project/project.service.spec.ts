@@ -1,4 +1,5 @@
 import { NotFoundException } from "@nestjs/common";
+import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import { ProjectService } from "./project.service";
 
@@ -96,7 +97,7 @@ describe("ProjectService", () => {
     expect(prisma.project.findMany).not.toHaveBeenCalled();
   });
 
-  it("aggregates operating funds overview with actual project receipts", async () => {
+  it("aggregates operating funds overview with receipts and contractor direct payments", async () => {
     const prisma = {
       project: {
         findFirst: jest.fn().mockResolvedValue({
@@ -174,6 +175,12 @@ describe("ProjectService", () => {
           { amountCents: BigInt(10000000) },
           { amountCents: BigInt(5000000) }
         ])
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: BigInt(2000000) },
+          { amountCents: BigInt(500000) }
+        ])
       }
     };
     const service = new ProjectService(prisma as never);
@@ -192,18 +199,21 @@ describe("ProjectService", () => {
         effectiveContractAmountCents: 35000000,
         effectiveSettlementAmountCents: 20000000,
         payableSettlementAmountCents: 16000000,
-        operatingIncomeCents: null,
-        operatingCostCents: null,
-        grossProfitCents: null
+        operatingIncomeCents: 17500000,
+        operatingCostCents: 6500000,
+        grossProfitCents: 11000000
       },
       counts: { contracts: 2, settlements: 3, payments: 4 },
       dataGaps: [
-        "缺少总包代付台账，暂不能识别已由总包直接支付的支出。",
-        "缺少对上结算/业主审定台账，暂不能计算经营收入和毛利。",
+        "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。",
         "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。"
       ]
     });
     expect(prisma.projectReceipt.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1", voidedAt: null },
+      select: { amountCents: true }
+    });
+    expect(prisma.projectProxyPayment.findMany).toHaveBeenCalledWith({
       where: { projectId: "project-1", voidedAt: null },
       select: { amountCents: true }
     });
@@ -232,7 +242,8 @@ describe("ProjectService", () => {
       paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       paymentExecution: { findMany: jest.fn() },
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
-      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) }
+      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ProjectService(prisma as never);
 
@@ -263,7 +274,8 @@ describe("ProjectService", () => {
       paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
       paymentExecution: { findMany: jest.fn() },
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
-      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) }
+      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ProjectService(prisma as never);
 
@@ -362,6 +374,265 @@ describe("ProjectService", () => {
         businessId: "receipt-1"
       })
     });
+  });
+
+  it("records project proxy payment with voucher, settlement linkage, and audit log", async () => {
+    const paidAt = "2026-07-02T00:00:00.000Z";
+    const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
+      },
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({ id: "contract-1", projectId: "project-1" })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          status: "effective",
+          paidAmountCents: 1000000,
+          payableAmountCents: 5000000
+        })
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({
+          id: "proxy-payment-1",
+          projectId: "project-1",
+          paidAt: new Date(paidAt),
+          amountCents: BigInt(2000000),
+          generalContractorName: "总包单位",
+          paidTargetName: "材料供应商",
+          paymentType: "material",
+          description: "钢材款总包代付",
+          voucherFileId: "file-1",
+          recordedByUserId: "finance-1",
+          contractId: "contract-1",
+          settlementId: "settlement-1",
+          voidedAt: null,
+          createdAt
+        })
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    const result = await service.recordProxyPayment("project-1", "finance-1", {
+      paidAt,
+      amountCents: 2000000,
+      generalContractorName: "总包单位",
+      paidTargetName: "材料供应商",
+      paymentType: "material",
+      description: "钢材款总包代付",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password",
+      contractId: "HT-2026-001",
+      settlementId: "JS-2026-001"
+    } satisfies RecordProjectProxyPaymentDto);
+
+    expect(result).toEqual({
+      id: "proxy-payment-1",
+      projectId: "project-1",
+      paidAt,
+      amountCents: 2000000,
+      generalContractorName: "总包单位",
+      paidTargetName: "材料供应商",
+      paymentType: "material",
+      paymentTypeLabel: "材料",
+      description: "钢材款总包代付",
+      voucherFileId: "file-1",
+      recordedByUserId: "finance-1",
+      contractId: "contract-1",
+      settlementId: "settlement-1",
+      createdAt: createdAt.toISOString()
+    });
+    expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
+    expect(tx.projectProxyPayment.create).toHaveBeenCalledWith({
+      data: {
+        projectId: "project-1",
+        paidAt: new Date(paidAt),
+        amountCents: BigInt(2000000),
+        generalContractorName: "总包单位",
+        paidTargetName: "材料供应商",
+        paymentType: "material",
+        description: "钢材款总包代付",
+        voucherFileId: "file-1",
+        recordedByUserId: "finance-1",
+        contractId: "contract-1",
+        settlementId: "settlement-1"
+      }
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "finance-1",
+        action: "project.proxy_payment.record",
+        businessType: "project_proxy_payment",
+        businessId: "proxy-payment-1"
+      })
+    });
+  });
+
+  it("rejects project proxy payment when linked settlement belongs to another project", async () => {
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
+      },
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({ id: "contract-1", projectId: "project-1" })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      projectProxyPayment: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    await expect(
+      service.recordProxyPayment("project-1", "finance-1", {
+        paidAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 2000000,
+        generalContractorName: "总包单位",
+        paidTargetName: "材料供应商",
+        paymentType: "material",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password",
+        contractId: "contract-1",
+        settlementId: "settlement-other"
+      } satisfies RecordProjectProxyPaymentDto)
+    ).rejects.toThrow("Linked settlement not found in project");
+    expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects project proxy payment that exceeds linked settlement remaining payable amount", async () => {
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          status: "effective",
+          paidAmountCents: 4000000,
+          payableAmountCents: 5000000
+        })
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(500000) }]),
+        create: jest.fn()
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    await expect(
+      service.recordProxyPayment("project-1", "finance-1", {
+        paidAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 2000000,
+        generalContractorName: "总包单位",
+        paidTargetName: "材料供应商",
+        paymentType: "material",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password",
+        settlementId: "settlement-1"
+      } satisfies RecordProjectProxyPaymentDto)
+    ).rejects.toThrow("Project proxy payment exceeds settlement remaining payable amount: 500000");
+    expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects project proxy payment that would overrun approved pending payment occupancy", async () => {
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          status: "effective",
+          paidAmountCents: 1000000,
+          payableAmountCents: 5000000
+        })
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(500000) }]),
+        create: jest.fn()
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            status: "approved_pending_payment",
+            requestedAmountCents: 3000000,
+            approvedAmountCents: 3000000,
+            paidAmountCents: 0
+          }
+        ])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new ProjectService(prisma as never, undefined, auth as never);
+
+    await expect(
+      service.recordProxyPayment("project-1", "finance-1", {
+        paidAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 600000,
+        generalContractorName: "总包单位",
+        paidTargetName: "材料供应商",
+        paymentType: "material",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password",
+        settlementId: "settlement-1"
+      } satisfies RecordProjectProxyPaymentDto)
+    ).rejects.toThrow("Project proxy payment exceeds settlement remaining payable amount: 500000");
+    expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
   });
 
   it("rejects actual project receipt without voucher file", async () => {

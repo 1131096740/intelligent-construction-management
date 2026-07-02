@@ -353,6 +353,11 @@ describe("ContractReadService", () => {
             voucherFileId: "voucher-1"
           }
         ])
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([
+          { settlementId: "settlement-1", amountCents: BigInt(1000000) }
+        ])
       }
     };
     const service = new ContractReadService(prisma as never);
@@ -361,10 +366,12 @@ describe("ContractReadService", () => {
 
     expect(detail.settlementPayment.summary).toEqual([
       { label: "累计生效结算", value: "¥320,000.00", tone: "success" },
-      { label: "保守可申请余额", value: "¥40,000.00", tone: "warning" },
+      { label: "保守可申请余额", value: "¥30,000.00", tone: "warning" },
       { label: "审批中占用", value: "¥10,000.00", tone: "warning" },
       { label: "已批待付", value: "¥50,000.00", tone: "warning" },
       { label: "已实付", value: "¥220,000.00", tone: "success" },
+      { label: "总包代付", value: "¥10,000.00", tone: "success" },
+      { label: "累计已支付", value: "¥230,000.00", tone: "success" },
       { label: "最新合同剩余额度", value: "¥680,000.00", tone: "primary" }
     ]);
     expect(detail.settlementPayment.settlementRows.map((row) => row.settlementNo)).toEqual([

@@ -127,7 +127,7 @@ export class ContractReadService {
     ]);
     const paymentIds = paymentRequests.map((payment) => payment.id);
     const settlementIds = settlements.map((settlement) => settlement.id);
-    const [paymentExecutions, settlementArchiveFiles] = await Promise.all([
+    const [paymentExecutions, settlementArchiveFiles, projectProxyPayments] = await Promise.all([
       paymentIds.length
         ? this.prisma.paymentExecution.findMany({
             where: { paymentRequestId: { in: paymentIds } }
@@ -138,7 +138,8 @@ export class ContractReadService {
             where: { settlementId: { in: settlementIds } },
             orderBy: { createdAt: "desc" }
           })
-        : Promise.resolve([])
+        : Promise.resolve([]),
+      settlementIds.length ? this.findProjectProxyPayments(settlementIds) : Promise.resolve([])
     ]);
 
     const status = this.statusView(version.status);
@@ -183,7 +184,8 @@ export class ContractReadService {
         settlements,
         settlementArchiveFiles,
         paymentRequests,
-        paymentExecutions
+        paymentExecutions,
+        projectProxyPayments
       ),
       chainLinks: [
         { label: "关联合同台账", to: "/contracts" },
@@ -271,6 +273,26 @@ export class ContractReadService {
     };
   }
 
+  private async findProjectProxyPayments(settlementIds: string[]) {
+    const projectProxyPaymentClient = (this.prisma as unknown as {
+      projectProxyPayment?: {
+        findMany: (args: {
+          where: { settlementId: { in: string[] }; voidedAt: null };
+          select: { settlementId: true; amountCents: true };
+        }) => Promise<Array<{ settlementId: string | null; amountCents: bigint | number }>>;
+      };
+    }).projectProxyPayment;
+
+    if (!projectProxyPaymentClient) {
+      return [];
+    }
+
+    return projectProxyPaymentClient.findMany({
+      where: { settlementId: { in: settlementIds }, voidedAt: null },
+      select: { settlementId: true, amountCents: true }
+    });
+  }
+
   private settlementPayment(
     contractAmountCents: number | bigint,
     settlements: Array<{
@@ -302,6 +324,10 @@ export class ContractReadService {
       amountCents: number;
       paidAt: Date;
       voucherFileId: string;
+    }>,
+    projectProxyPayments: Array<{
+      settlementId: string | null;
+      amountCents: bigint | number;
     }>
   ): ContractSettlementPaymentReadModel {
     const archiveFileBySettlementId = new Map<string, (typeof settlementArchiveFiles)[number]>();
@@ -356,8 +382,20 @@ export class ContractReadService {
       };
     });
     const settlementNoById = new Map(settlements.map((settlement) => [settlement.id, settlement.code]));
+    const proxyPaidBySettlementId = new Map<string, bigint>();
+    for (const proxyPayment of projectProxyPayments) {
+      if (!proxyPayment.settlementId) {
+        continue;
+      }
+      proxyPaidBySettlementId.set(
+        proxyPayment.settlementId,
+        (proxyPaidBySettlementId.get(proxyPayment.settlementId) ?? 0n) +
+          this.toBigIntCents(proxyPayment.amountCents)
+      );
+    }
 
     let actualPaidCents = 0n;
+    let proxyPaidCents = 0n;
     let approvalPendingCents = 0n;
     let approvedPendingCents = 0n;
     const paymentRows = paymentRequests.map((payment) => {
@@ -389,32 +427,45 @@ export class ContractReadService {
         voucherStatus: execution?.hasVoucher ? "已上传" : paidCents > 0n ? "待上传" : "未上传"
       };
     });
+    for (const proxyAmountCents of proxyPaidBySettlementId.values()) {
+      proxyPaidCents += proxyAmountCents;
+    }
+    const cumulativePaidCents = actualPaidCents + proxyPaidCents;
     const conservativeAvailableCents =
-      cumulativeEffectivePayableCents - actualPaidCents - approvalPendingCents - approvedPendingCents;
+      cumulativeEffectivePayableCents - cumulativePaidCents - approvalPendingCents - approvedPendingCents;
     const remainingContractCents =
       BigInt(contractAmountCents) - cumulativeEffectiveSettlementCents;
+    const summary: ContractSettlementPaymentReadModel["summary"] = [
+      { label: "累计生效结算", value: this.formatMoney(cumulativeEffectiveSettlementCents), tone: "success" },
+      {
+        label: "保守可申请余额",
+        value: this.formatMoney(conservativeAvailableCents > 0n ? conservativeAvailableCents : 0n),
+        tone: "warning"
+      },
+      { label: "审批中占用", value: this.formatMoney(approvalPendingCents), tone: "warning" },
+      { label: "已批待付", value: this.formatMoney(approvedPendingCents), tone: "warning" },
+      { label: "已实付", value: this.formatMoney(actualPaidCents), tone: "success" }
+    ];
+
+    if (proxyPaidCents > 0n) {
+      summary.push(
+        { label: "总包代付", value: this.formatMoney(proxyPaidCents), tone: "success" },
+        { label: "累计已支付", value: this.formatMoney(cumulativePaidCents), tone: "success" }
+      );
+    }
+
+    summary.push({
+      label: "最新合同剩余额度",
+      value: this.formatMoney(remainingContractCents > 0n ? remainingContractCents : 0n),
+      tone: "primary"
+    });
 
     return {
-      summary: [
-        { label: "累计生效结算", value: this.formatMoney(cumulativeEffectiveSettlementCents), tone: "success" },
-        {
-          label: "保守可申请余额",
-          value: this.formatMoney(conservativeAvailableCents > 0n ? conservativeAvailableCents : 0n),
-          tone: "warning"
-        },
-        { label: "审批中占用", value: this.formatMoney(approvalPendingCents), tone: "warning" },
-        { label: "已批待付", value: this.formatMoney(approvedPendingCents), tone: "warning" },
-        { label: "已实付", value: this.formatMoney(actualPaidCents), tone: "success" },
-        {
-          label: "最新合同剩余额度",
-          value: this.formatMoney(remainingContractCents > 0n ? remainingContractCents : 0n),
-          tone: "primary"
-        }
-      ],
+      summary,
       settlementRows,
       paymentRows,
       calculationNote:
-        "当前可申请余额暂按已生效应付金额 - 已实付 - 审批中占用 - 已批待付计算，未纳入账期、质保金、预付款扣回和项目资金池；最新合同剩余额度以当前最新合同金额扣减合同维度累计生效结算，仅作台账提示。"
+        "当前可申请余额暂按已生效应付金额 - 已实付 - 总包代付 - 审批中占用 - 已批待付计算，未纳入账期、质保金、预付款扣回和项目资金池；最新合同剩余额度以当前最新合同金额扣减合同维度累计生效结算，仅作台账提示。"
     };
   }
 
@@ -655,6 +706,10 @@ export class ContractReadService {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;
+  }
+
+  private toBigIntCents(amountCents: number | bigint): bigint {
+    return typeof amountCents === "bigint" ? amountCents : BigInt(amountCents);
   }
 
   private limit(rawLimit?: string | number) {

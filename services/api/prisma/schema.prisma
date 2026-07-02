@@ -253,6 +253,31 @@ model ProjectReceipt {
   @@index([voucherFileId])
 }
 
+model ProjectProxyPayment {
+  id                    String    @id @default(uuid())
+  projectId             String
+  paidAt                DateTime
+  amountCents           BigInt
+  generalContractorName String
+  paidTargetName        String
+  paymentType           String
+  description           String?
+  voucherFileId         String
+  recordedByUserId      String
+  contractId            String?
+  settlementId          String?
+  voidedAt              DateTime?
+  voidedByUserId        String?
+  voidReason            String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([projectId, paidAt])
+  @@index([contractId])
+  @@index([settlementId])
+  @@index([voucherFileId])
+}
+
 model ApprovalFlow {
   id        String   @id @default(uuid())
   type      String

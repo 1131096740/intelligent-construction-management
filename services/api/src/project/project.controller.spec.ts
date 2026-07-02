@@ -27,6 +27,12 @@ describe("ProjectController authorization wiring", () => {
     );
   });
 
+  it("guards project proxy payment recording with finance project role", () => {
+    expect(
+      Reflect.getMetadata("requiredProjectAction", ProjectController.prototype.recordProxyPayment)
+    ).toBe("project.proxy_payment.record");
+  });
+
   it("forwards the authenticated user id when listing projects", async () => {
     const projects = { listActiveOptions: jest.fn() };
     const controller = new ProjectController(projects as never);
@@ -60,5 +66,27 @@ describe("ProjectController authorization wiring", () => {
     await controller.recordReceipt("project-1", { id: "finance-1" } as never, body);
 
     expect(projects.recordReceipt).toHaveBeenCalledWith("project-1", "finance-1", body);
+  });
+
+  it("forwards project proxy payment payload with authenticated user id", async () => {
+    const projects = { recordProxyPayment: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = {
+      paidAt: "2026-07-02T00:00:00.000Z",
+      amountCents: 100000,
+      generalContractorName: "总包单位",
+      paidTargetName: "材料供应商",
+      paymentType: "material" as const,
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    };
+
+    await controller.recordProxyPayment("project-1", { id: "finance-1" } as never, body);
+
+    expect(projects.recordProxyPayment).toHaveBeenCalledWith(
+      "project-1",
+      "finance-1",
+      body
+    );
   });
 });

@@ -555,6 +555,66 @@ describe("FileService", () => {
     });
   });
 
+  it("allows finance users to create download tickets for project proxy payment vouchers", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "总包代付凭证.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-uploader"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectReceipt: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectProxyPayment: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "proxy-payment-1",
+          projectId: "project-1",
+          voucherFileId: "file-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "finance-1",
+      action: "file.download.ticket",
+      businessType: "file_object",
+      businessId: "file-1",
+      metadata: {
+        expiresAt: ticket.expiresAt
+      }
+    });
+  });
+
   it("allows the applicant to download an approval-form PDF", async () => {
     const tx = {
       fileObject: {

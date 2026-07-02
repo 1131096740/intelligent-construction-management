@@ -232,7 +232,9 @@ describe("PaymentRequestService", () => {
       paymentRequest: {
         findMany: jest.fn().mockResolvedValue([
           {
+            status: "approved_pending_payment",
             requestedAmountCents: 30_000,
+            approvedAmountCents: 30_000,
             paidAmountCents: 0
           }
         ]),
@@ -251,6 +253,56 @@ describe("PaymentRequestService", () => {
         requestedAmountCents: 51_000
       })
     ).rejects.toThrow("Payment request exceeds remaining settlement capacity: 50000");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("counts linked project proxy payments against remaining settlement capacity", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 100_000,
+          paidAmountCents: 20_000
+        })
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            status: "approved_pending_payment",
+            requestedAmountCents: 30_000,
+            approvedAmountCents: 30_000,
+            paidAmountCents: 0
+          }
+        ]),
+        create: jest.fn()
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: BigInt(25_000) }
+        ])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        code: "FK-2026-012",
+        requestedAmountCents: 26_000
+      })
+    ).rejects.toThrow("Payment request exceeds remaining settlement capacity: 25000");
+    expect(tx.projectProxyPayment.findMany).toHaveBeenCalledWith({
+      where: { settlementId: "settlement-1", voidedAt: null },
+      select: { amountCents: true }
+    });
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
@@ -1446,6 +1498,57 @@ describe("PaymentRequestService", () => {
         confirmationPassword: "current-password"
       })
     ).rejects.toThrow("Payment execution exceeds approved remaining amount: 30000");
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution when proxy payments consumed settlement capacity after approval", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          settlementId: "settlement-1",
+          status: "approved_pending_payment",
+          approvedAmountCents: 80_000,
+          requestedAmountCents: 80_000,
+          paidAmountCents: 0
+        }),
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "effective",
+          payableAmountCents: 100_000,
+          paidAmountCents: 0
+        })
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(80_000) }])
+      },
+      paymentExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 80_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("Payment execution exceeds settlement remaining payable amount: 20000");
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
 

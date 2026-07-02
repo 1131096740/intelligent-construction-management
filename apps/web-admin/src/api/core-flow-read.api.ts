@@ -385,6 +385,19 @@ export interface RecordProjectReceiptPayload {
   confirmationPassword: string;
 }
 
+export interface RecordProjectProxyPaymentPayload {
+  paidAt: string;
+  amountCents: number;
+  generalContractorName: string;
+  paidTargetName: string;
+  paymentType: "material" | "equipment" | "labor" | "professional_subcontract" | "other";
+  description?: string;
+  voucherFileId: string;
+  confirmationPassword: string;
+  contractId?: string;
+  settlementId?: string;
+}
+
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
@@ -395,6 +408,10 @@ export function fetchProjectOperatingOverview(projectId: string) {
 
 export function recordProjectReceipt(projectId: string, body: RecordProjectReceiptPayload) {
   return postJson<unknown>(`/projects/${projectId}/receipts`, body);
+}
+
+export function recordProjectProxyPayment(projectId: string, body: RecordProjectProxyPaymentPayload) {
+  return postJson<unknown>(`/projects/${projectId}/proxy-payments`, body);
 }
 
 export function fetchContractLedger() {

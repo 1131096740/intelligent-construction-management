@@ -12,6 +12,7 @@ import {
   fetchProjectOperatingOverview,
   fetchProjects,
   recordProjectReceipt,
+  recordProjectProxyPayment,
   createContractDraft,
   createPaymentRequest,
   createPrivateFileDownloadTicket,
@@ -140,6 +141,41 @@ describe("core flow read API client", () => {
         sourceType: "owner_direct_payment",
         description: "业主直付",
         voucherFileId: "file-receipt-1",
+        confirmationPassword: "current-password"
+      })
+    );
+  });
+
+  it("records project proxy payments through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "direct-payment-1" })
+    } as Response);
+
+    await recordProjectProxyPayment("project-1", {
+      paidAt: "2026-07-02",
+      amountCents: 123456,
+      generalContractorName: "总包单位",
+      paidTargetName: "材料供应商",
+      paymentType: "material",
+      description: "总包代付材料款",
+      voucherFileId: "file-direct-payment-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/proxy-payments"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        paidAt: "2026-07-02",
+        amountCents: 123456,
+        generalContractorName: "总包单位",
+        paidTargetName: "材料供应商",
+        paymentType: "material",
+        description: "总包代付材料款",
+        voucherFileId: "file-direct-payment-1",
         confirmationPassword: "current-password"
       })
     );

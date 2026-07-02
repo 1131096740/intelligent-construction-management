@@ -156,6 +156,103 @@
         </div>
       </section>
 
+      <section class="panel receipt-panel">
+        <div class="panel-head">
+          <h2>总包代付登记</h2>
+          <button
+            type="button"
+            :disabled="proxySubmitting"
+            @click="submitProxyPayment"
+          >
+            {{ proxySubmitting ? "提交中" : "登记代付" }}
+          </button>
+        </div>
+        <form
+          class="receipt-form"
+          @submit.prevent="submitProxyPayment"
+        >
+          <label>
+            <span>代付日期</span>
+            <input
+              v-model="proxyForm.paidAt"
+              type="date"
+              required
+            >
+          </label>
+          <label>
+            <span>代付金额(元)</span>
+            <input
+              v-model.trim="proxyForm.amountYuan"
+              inputmode="decimal"
+              placeholder="0.00"
+              required
+            >
+          </label>
+          <label>
+            <span>总包单位</span>
+            <input
+              v-model.trim="proxyForm.generalContractorName"
+              required
+            >
+          </label>
+          <label>
+            <span>代付对象</span>
+            <input
+              v-model.trim="proxyForm.paidTargetName"
+              required
+            >
+          </label>
+          <label>
+            <span>代付类型</span>
+            <select v-model="proxyForm.paymentType">
+              <option value="material">材料</option>
+              <option value="equipment">机械</option>
+              <option value="labor">劳务</option>
+              <option value="professional_subcontract">专业分包</option>
+              <option value="other">其他</option>
+            </select>
+          </label>
+          <label>
+            <span>代付凭证</span>
+            <input
+              ref="proxyVoucherInput"
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+              required
+              @change="selectProxyVoucher"
+            >
+          </label>
+          <label>
+            <span>关联合同编号/ID</span>
+            <input v-model.trim="proxyForm.contractId">
+          </label>
+          <label>
+            <span>关联结算编号/ID</span>
+            <input v-model.trim="proxyForm.settlementId">
+          </label>
+          <label>
+            <span>当前登录密码</span>
+            <input
+              v-model="proxyForm.confirmationPassword"
+              type="password"
+              autocomplete="current-password"
+              required
+            >
+          </label>
+          <label class="receipt-description">
+            <span>代付说明</span>
+            <input v-model.trim="proxyForm.description">
+          </label>
+        </form>
+        <div
+          v-if="proxyMessage"
+          class="receipt-message"
+          :class="proxyMessageTone"
+        >
+          {{ proxyMessage }}
+        </div>
+      </section>
+
       <section class="gap-panel">
         <h2>数据缺口</h2>
         <ul>
@@ -176,6 +273,7 @@ import { computed, onMounted, ref } from "vue";
 import {
   fetchProjectOperatingOverview,
   fetchProjects,
+  recordProjectProxyPayment,
   recordProjectReceipt,
   uploadPrivateFile,
   type ProjectOperatingOverviewReadModel,
@@ -183,6 +281,7 @@ import {
 } from "../../api/core-flow-read.api";
 
 type ReceiptSourceType = "general_contractor_payment" | "owner_direct_payment" | "other";
+type ProxyPaymentType = "material" | "equipment" | "labor" | "professional_subcontract" | "other";
 
 interface ReceiptFormState {
   receivedAt: string;
@@ -192,6 +291,19 @@ interface ReceiptFormState {
   description: string;
   voucherFile: File | null;
   confirmationPassword: string;
+}
+
+interface ProxyPaymentFormState {
+  paidAt: string;
+  amountYuan: string;
+  generalContractorName: string;
+  paidTargetName: string;
+  paymentType: ProxyPaymentType;
+  description: string;
+  voucherFile: File | null;
+  confirmationPassword: string;
+  contractId: string;
+  settlementId: string;
 }
 
 const projects = ref<ProjectOptionReadModel[]>([]);
@@ -205,6 +317,11 @@ const receiptMessage = ref("");
 const receiptMessageTone = ref<"success" | "danger">("success");
 const receiptForm = ref<ReceiptFormState>(createReceiptForm());
 const receiptVoucherInput = ref<HTMLInputElement | null>(null);
+const proxySubmitting = ref(false);
+const proxyMessage = ref("");
+const proxyMessageTone = ref<"success" | "danger">("success");
+const proxyForm = ref<ProxyPaymentFormState>(createProxyForm());
+const proxyVoucherInput = ref<HTMLInputElement | null>(null);
 
 const summaryItems = computed(() => {
   const counts = overview.value?.counts ?? { contracts: 0, settlements: 0, payments: 0 };
@@ -264,6 +381,7 @@ async function loadOverview() {
   const projectId = selectedProjectId.value;
   overview.value = null;
   receiptMessage.value = "";
+  proxyMessage.value = "";
   if (!projectId) {
     overview.value = null;
     return;
@@ -303,7 +421,7 @@ async function submitReceipt() {
       throw new Error("请上传收款凭证");
     }
     const receivedAt = requiredText(form.receivedAt, "收款日期");
-    const amountCents = parseYuanToCents(form.amountYuan);
+    const amountCents = parseYuanToCents(form.amountYuan, "收款金额");
     const payerName = requiredText(form.payerName, "付款单位");
     const confirmationPassword = requiredText(form.confirmationPassword, "当前登录密码");
     const voucher = await uploadPrivateFile(form.voucherFile, form.voucherFile.name);
@@ -330,6 +448,52 @@ async function submitReceipt() {
   }
 }
 
+async function submitProxyPayment() {
+  const projectId = selectedProjectId.value;
+  if (!projectId) {
+    setProxyError("请先选择项目");
+    return;
+  }
+
+  proxySubmitting.value = true;
+  proxyMessage.value = "";
+  try {
+    const form = proxyForm.value;
+    if (!form.voucherFile) {
+      throw new Error("请上传代付凭证");
+    }
+    const paidAt = requiredText(form.paidAt, "代付日期");
+    const amountCents = parseYuanToCents(form.amountYuan, "代付金额");
+    const generalContractorName = requiredText(form.generalContractorName, "总包单位");
+    const paidTargetName = requiredText(form.paidTargetName, "代付对象");
+    const confirmationPassword = requiredText(form.confirmationPassword, "当前登录密码");
+    const voucher = await uploadPrivateFile(form.voucherFile, form.voucherFile.name);
+    await recordProjectProxyPayment(projectId, {
+      paidAt,
+      amountCents,
+      generalContractorName,
+      paidTargetName,
+      paymentType: form.paymentType,
+      description: form.description.trim() || undefined,
+      voucherFileId: voucher.id,
+      confirmationPassword,
+      contractId: form.contractId.trim() || undefined,
+      settlementId: form.settlementId.trim() || undefined
+    });
+    proxyForm.value = createProxyForm(form.paymentType);
+    if (proxyVoucherInput.value) {
+      proxyVoucherInput.value.value = "";
+    }
+    await loadOverview();
+    proxyMessageTone.value = "success";
+    proxyMessage.value = "总包代付已登记，项目经营数据已刷新。";
+  } catch (error) {
+    setProxyError(error instanceof Error ? error.message : "登记总包代付失败");
+  } finally {
+    proxySubmitting.value = false;
+  }
+}
+
 function createReceiptForm(sourceType: ReceiptSourceType = "general_contractor_payment"): ReceiptFormState {
   return {
     receivedAt: todayText(),
@@ -342,9 +506,29 @@ function createReceiptForm(sourceType: ReceiptSourceType = "general_contractor_p
   };
 }
 
+function createProxyForm(paymentType: ProxyPaymentType = "material"): ProxyPaymentFormState {
+  return {
+    paidAt: todayText(),
+    amountYuan: "",
+    generalContractorName: "",
+    paidTargetName: "",
+    paymentType,
+    description: "",
+    voucherFile: null,
+    confirmationPassword: "",
+    contractId: "",
+    settlementId: ""
+  };
+}
+
 function selectReceiptVoucher(event: Event) {
   const input = event.target as HTMLInputElement;
   receiptForm.value.voucherFile = input.files?.[0] ?? null;
+}
+
+function selectProxyVoucher(event: Event) {
+  const input = event.target as HTMLInputElement;
+  proxyForm.value.voucherFile = input.files?.[0] ?? null;
 }
 
 function todayText(): string {
@@ -363,16 +547,16 @@ function requiredText(value: string, label: string): string {
   return trimmed;
 }
 
-function parseYuanToCents(value: string): number {
+function parseYuanToCents(value: string, label: string): number {
   const trimmed = value.trim();
   if (!/^\d+(?:\.\d{1,2})?$/.test(trimmed)) {
-    throw new Error("收款金额必须是大于 0 的数字，最多保留两位小数");
+    throw new Error(`${label}必须是大于 0 的数字，最多保留两位小数`);
   }
 
   const [yuan, cents = ""] = trimmed.split(".");
   const amountCents = Number(yuan) * 100 + Number(cents.padEnd(2, "0"));
   if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
-    throw new Error("收款金额必须大于 0");
+    throw new Error(`${label}必须大于 0`);
   }
   return amountCents;
 }
@@ -380,6 +564,11 @@ function parseYuanToCents(value: string): number {
 function setReceiptError(messageText: string) {
   receiptMessageTone.value = "danger";
   receiptMessage.value = messageText;
+}
+
+function setProxyError(messageText: string) {
+  proxyMessageTone.value = "danger";
+  proxyMessage.value = messageText;
 }
 
 function formatCents(value: number | null): string {

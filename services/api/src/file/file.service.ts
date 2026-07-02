@@ -415,6 +415,27 @@ export class FileService {
       return;
     }
 
+    const projectProxyPaymentClient = (tx as unknown as {
+      projectProxyPayment?: {
+        findFirst: (args: {
+          where: { voucherFileId: string; voidedAt: null };
+          select: { projectId: true };
+        }) => Promise<{ projectId: string } | null>;
+      };
+    }).projectProxyPayment;
+    const projectProxyPayment = projectProxyPaymentClient
+      ? await projectProxyPaymentClient.findFirst({
+          where: { voucherFileId: file.id, voidedAt: null },
+          select: { projectId: true }
+        })
+      : null;
+    if (
+      projectProxyPayment &&
+      (await this.hasProjectRole(tx, actorUserId, projectProxyPayment.projectId, PAYMENT_FILE_DOWNLOAD_ROLES))
+    ) {
+      return;
+    }
+
     // 审批单 PDF：申请人、任一签批人，或该项目的归档可读岗位均可下载。
     const approvalForm = await tx.pdfDocument.findFirst({
       where: { fileId: file.id, templateKey: "approval_form" }

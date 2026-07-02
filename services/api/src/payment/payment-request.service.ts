@@ -20,6 +20,11 @@ import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
+import {
+  calculateSettlementPaymentCapacity,
+  SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
+  sumSafeCents
+} from "./settlement-payment-capacity";
 
 interface AssignApprovalDto {
   toUserId: string;
@@ -121,19 +126,21 @@ export class PaymentRequestService {
         where: {
           settlementId: settlement.id,
           status: {
-            in: ["approval_pending", "approved_pending_payment"]
+            in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES]
           }
         }
       });
-      const approvedPendingPaymentCents = existingApprovedOrPending.reduce(
-        (total, payment) =>
-          total + Math.max(payment.requestedAmountCents - payment.paidAmountCents, 0),
-        0
-      );
+      const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
+      const capacityView = calculateSettlementPaymentCapacity({
+        payableAmountCents: settlement.payableAmountCents,
+        actualPaidAmountCents: settlement.paidAmountCents,
+        proxyPaidAmountCents: proxyPaidCents,
+        paymentRequests: existingApprovedOrPending
+      });
       const capacity: PaymentCapacity = {
         payableAmountCents: settlement.payableAmountCents,
-        approvedPendingPaymentCents,
-        paidAmountCents: settlement.paidAmountCents
+        approvedPendingPaymentCents: capacityView.outstandingPaymentCents,
+        paidAmountCents: settlement.paidAmountCents + proxyPaidCents
       };
 
       this.amount.assertCanRequest(capacity, input.requestedAmountCents);
@@ -169,6 +176,31 @@ export class PaymentRequestService {
 
       return payment;
     });
+  }
+
+  private async sumProjectProxyPaymentCents(
+    tx: Prisma.TransactionClient,
+    settlementId: string
+  ): Promise<number> {
+    const projectProxyPaymentClient = (tx as unknown as {
+      projectProxyPayment?: {
+        findMany: (args: {
+          where: { settlementId: string; voidedAt: null };
+          select: { amountCents: true };
+        }) => Promise<Array<{ amountCents: bigint | number }>>;
+      };
+    }).projectProxyPayment;
+
+    if (!projectProxyPaymentClient) {
+      return 0;
+    }
+
+    const payments = await projectProxyPaymentClient.findMany({
+      where: { settlementId, voidedAt: null },
+      select: { amountCents: true }
+    });
+
+    return sumSafeCents(payments.map((payment) => payment.amountCents));
   }
 
   // 申请人撤回进行中的付款审批：付款请求无草稿态，撤回为终态 withdrawn（重试须新建付款申请）。
@@ -667,6 +699,18 @@ export class PaymentRequestService {
 
       if (!settlement) {
         throw new Error("Payment settlement not found");
+      }
+
+      const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
+      const settlementExecutionRemainingCents =
+        settlement.payableAmountCents - settlement.paidAmountCents - proxyPaidCents;
+      if (input.amountCents > settlementExecutionRemainingCents) {
+        throw new Error(
+          `Payment execution exceeds settlement remaining payable amount: ${Math.max(
+            settlementExecutionRemainingCents,
+            0
+          )}`
+        );
       }
 
       const newPaymentPaidAmountCents = payment.paidAmountCents + input.amountCents;
