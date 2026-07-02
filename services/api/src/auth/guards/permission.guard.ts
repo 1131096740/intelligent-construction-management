@@ -111,7 +111,9 @@ export class PermissionGuard implements CanActivate {
       return payment?.projectId;
     }
 
-    const settlementId = request.params?.settlementId;
+    const settlementId =
+      request.params?.settlementId ??
+      (typeof request.body?.settlementId === "string" ? request.body.settlementId : undefined);
     if (settlementId) {
       const settlement = await this.prisma.settlement.findFirst({
         where: { OR: [{ id: settlementId }, { code: settlementId }] },

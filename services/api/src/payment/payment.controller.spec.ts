@@ -10,6 +10,7 @@ describe("PaymentController authorization wiring", () => {
   });
 
   it.each([
+    ["create", "payment.create"],
     ["reviewApproval", "payment.approve"],
     ["transferApproval", "payment.approve"],
     ["delegateApproval", "payment.approve"],

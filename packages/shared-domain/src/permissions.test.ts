@@ -126,6 +126,14 @@ describe("role-specific gates", () => {
     expect(canPerform("payment.execution", ["chairman"])).toBe(false);
   });
 
+  it("requires contract or project manager roles to create payment requests", () => {
+    expect(canPerform("payment.create", ["contract_staff"])).toBe(true);
+    expect(canPerform("payment.create", ["contract_director"])).toBe(true);
+    expect(canPerform("payment.create", ["project_manager"])).toBe(true);
+    expect(canPerform("payment.create", ["finance_staff"])).toBe(false);
+    expect(canPerform("payment.create", ["employee"])).toBe(false);
+  });
+
   it("requires finance staff or finance director to record project receipts", () => {
     expect(canPerform("project.receipt.record", ["finance_staff"])).toBe(true);
     expect(canPerform("project.receipt.record", ["finance_director"])).toBe(true);

@@ -18,8 +18,8 @@ export class PaymentController {
     private readonly payments: PaymentRequestService
   ) {}
 
-  // 创建付款申请：策略表未定义 create 动作，申请在审批前无业务效力，仅要求登录。
   @Post()
+  @RequireProjectRole("payment.create")
   create(@Body() body: CreatePaymentRequestDto, @CurrentUser() user: AuthenticatedUser) {
     return this.payments.create(body, user.id);
   }

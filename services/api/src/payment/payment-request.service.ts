@@ -1,5 +1,5 @@
-import { Injectable, Optional } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import {
   approvalElapsedHours,
   canCreatePaymentFromSettlementStatus,
@@ -72,6 +72,13 @@ const PAYMENT_APPROVAL_NODES = [
     roleKeys: ["chairman", "general_manager"]
   }
 ] satisfies PaymentApprovalNode[];
+const PROJECT_CASH_POOL_PAYMENT_STATUSES = [
+  "approval_pending",
+  "in_approval",
+  "approved_pending_payment",
+  "partially_paid",
+  "paid"
+] as const;
 
 @Injectable()
 export class PaymentRequestService {
@@ -144,6 +151,11 @@ export class PaymentRequestService {
       };
 
       this.amount.assertCanRequest(capacity, input.requestedAmountCents);
+      await this.assertProjectCashPoolCanRequest(
+        tx,
+        settlement.projectId,
+        input.requestedAmountCents
+      );
 
       const payment = await tx.paymentRequest.create({
         data: {
@@ -176,6 +188,51 @@ export class PaymentRequestService {
 
       return payment;
     });
+  }
+
+  private async assertProjectCashPoolCanRequest(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    requestedAmountCents: number
+  ) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT "id"
+      FROM "Project"
+      WHERE "id" = ${projectId}
+      FOR UPDATE
+    `);
+
+    const [projectReceipts, projectPayments] = await Promise.all([
+      tx.projectReceipt.findMany({
+        where: { projectId, voidedAt: null },
+        select: { amountCents: true }
+      }),
+      tx.paymentRequest.findMany({
+        where: {
+          projectId,
+          status: { in: [...PROJECT_CASH_POOL_PAYMENT_STATUSES] }
+        },
+        select: {
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
+      })
+    ]);
+
+    const actualReceiptsCents = sumSafeCents(
+      projectReceipts.map((receipt) => receipt.amountCents)
+    );
+    const actualPaidCents = sumSafeCents(projectPayments.map((payment) => payment.paidAmountCents));
+    const occupiedCents = sumSafeCents(
+      projectPayments.map((payment) => projectCashPoolOutstandingCents(payment))
+    );
+    const availableCents = actualReceiptsCents - actualPaidCents - occupiedCents;
+
+    if (requestedAmountCents > availableCents) {
+      throw new BadRequestException(`项目现金资金池余额不足: ${Math.max(availableCents, 0)}`);
+    }
   }
 
   private async sumProjectProxyPaymentCents(
@@ -1158,4 +1215,24 @@ export class PaymentRequestService {
       return updated;
     });
   }
+}
+
+function projectCashPoolOutstandingCents(payment: {
+  status: string;
+  requestedAmountCents: number;
+  approvedAmountCents?: number | null;
+  paidAmountCents: number;
+}): number {
+  if (["approval_pending", "in_approval"].includes(payment.status)) {
+    return Math.max(payment.requestedAmountCents - payment.paidAmountCents, 0);
+  }
+
+  if (["approved_pending_payment", "partially_paid"].includes(payment.status)) {
+    return Math.max(
+      (payment.approvedAmountCents ?? payment.requestedAmountCents) - payment.paidAmountCents,
+      0
+    );
+  }
+
+  return 0;
 }

@@ -36,6 +36,31 @@ describe("PaymentRequestService", () => {
     };
   }
 
+  function projectCashPoolTables({
+    receiptAmountCents = 200_000,
+    projectPayments = []
+  }: {
+    receiptAmountCents?: number;
+    projectPayments?: Array<{
+      status: string;
+      requestedAmountCents: number;
+      approvedAmountCents?: number | null;
+      paidAmountCents: number;
+    }>;
+  } = {}) {
+    return {
+      tables: {
+        $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+        projectReceipt: {
+          findMany: jest.fn().mockResolvedValue(
+            receiptAmountCents > 0 ? [{ amountCents: BigInt(receiptAmountCents) }] : []
+          )
+        }
+      },
+      projectPayments
+    };
+  }
+
   it("rejects payment request before settlement is effective", () => {
     expect(() =>
       service.assertRequestAllowed(
@@ -79,6 +104,7 @@ describe("PaymentRequestService", () => {
   });
 
   it("creates payment request from an effective settlement within remaining capacity", async () => {
+    const cashPool = projectCashPoolTables();
     const tx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -93,17 +119,23 @@ describe("PaymentRequestService", () => {
         })
       },
       paymentRequest: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            requestedAmountCents: 30_000,
-            paidAmountCents: 10_000
-          }
-        ]),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              status: "approved_pending_payment",
+              requestedAmountCents: 30_000,
+              approvedAmountCents: 30_000,
+              paidAmountCents: 10_000
+            }
+          ])
+          .mockResolvedValueOnce(cashPool.projectPayments),
         create: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012"
         })
-      }
+      },
+      ...cashPool.tables
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -134,6 +166,7 @@ describe("PaymentRequestService", () => {
   });
 
   it("freezes payment approval route when payment request is created by an applicant", async () => {
+    const cashPool = projectCashPoolTables();
     const tx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -148,7 +181,10 @@ describe("PaymentRequestService", () => {
         })
       },
       paymentRequest: {
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce(cashPool.projectPayments),
         create: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012"
@@ -156,7 +192,8 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         create: jest.fn()
-      }
+      },
+      ...cashPool.tables
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -256,6 +293,121 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
+  it("blocks payment request creation when project cash pool is insufficient", async () => {
+    const cashPool = projectCashPoolTables({
+      receiptAmountCents: 100_000,
+      projectPayments: [
+        {
+          status: "paid",
+          requestedAmountCents: 80_000,
+          approvedAmountCents: 80_000,
+          paidAmountCents: 80_000
+        },
+        {
+          status: "approval_pending",
+          requestedAmountCents: 10_000,
+          approvedAmountCents: null,
+          paidAmountCents: 0
+        }
+      ]
+    });
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 200_000,
+          paidAmountCents: 0
+        })
+      },
+      paymentRequest: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce(cashPool.projectPayments),
+        create: jest.fn()
+      },
+      ...cashPool.tables
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        code: "FK-2026-013",
+        requestedAmountCents: 20_000
+      })
+    ).rejects.toThrow("项目现金资金池余额不足: 10000");
+    expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.projectReceipt.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1", voidedAt: null },
+      select: { amountCents: true }
+    });
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("counts approved and partially-paid payment balances against project cash pool", async () => {
+    const cashPool = projectCashPoolTables({
+      receiptAmountCents: 150_000,
+      projectPayments: [
+        {
+          status: "approved_pending_payment",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 40_000,
+          paidAmountCents: 0
+        },
+        {
+          status: "partially_paid",
+          requestedAmountCents: 80_000,
+          approvedAmountCents: 80_000,
+          paidAmountCents: 30_000
+        }
+      ]
+    });
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 300_000,
+          paidAmountCents: 0
+        })
+      },
+      paymentRequest: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce(cashPool.projectPayments),
+        create: jest.fn()
+      },
+      ...cashPool.tables
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        code: "FK-2026-014",
+        requestedAmountCents: 31_000
+      })
+    ).rejects.toThrow("项目现金资金池余额不足: 30000");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
   it("counts linked project proxy payments against remaining settlement capacity", async () => {
     const tx = {
       settlement: {
@@ -299,6 +451,52 @@ describe("PaymentRequestService", () => {
         requestedAmountCents: 26_000
       })
     ).rejects.toThrow("Payment request exceeds remaining settlement capacity: 25000");
+    expect(tx.projectProxyPayment.findMany).toHaveBeenCalledWith({
+      where: { settlementId: "settlement-1", voidedAt: null },
+      select: { amountCents: true }
+    });
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("does not treat project proxy payments as project cash receipts", async () => {
+    const cashPool = projectCashPoolTables({ receiptAmountCents: 0 });
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 100_000,
+          paidAmountCents: 0
+        })
+      },
+      paymentRequest: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce(cashPool.projectPayments),
+        create: jest.fn()
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(90_000) }])
+      },
+      ...cashPool.tables
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        code: "FK-2026-015",
+        requestedAmountCents: 10_000
+      })
+    ).rejects.toThrow("项目现金资金池余额不足: 0");
     expect(tx.projectProxyPayment.findMany).toHaveBeenCalledWith({
       where: { settlementId: "settlement-1", voidedAt: null },
       select: { amountCents: true }
