@@ -73,6 +73,100 @@ describe("ProjectExpenseService", () => {
     };
   }
 
+  it("lists project expense requests with summary for operating overview", async () => {
+    const createdAt = new Date("2026-07-02T00:00:00.000Z");
+    const updatedAt = new Date("2026-07-02T01:00:00.000Z");
+    const prisma = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "expense-1",
+            code: "ZC-2026-001",
+            expenseType: "sporadic_payment",
+            expenseSubtype: "sporadic_material",
+            paymentSubject: "建工智管",
+            reason: "零星材料",
+            requestedAmountCents: 30_000,
+            approvedAmountCents: 30_000,
+            paidAmountCents: 10_000,
+            paymentMethod: "bank_transfer",
+            counterpartyName: "材料供应商",
+            status: "partially_paid",
+            createdAt,
+            updatedAt
+          },
+          {
+            id: "expense-2",
+            code: "ZC-2026-002",
+            expenseType: "loan_reserve",
+            expenseSubtype: "project_reserve",
+            paymentSubject: "建工智管",
+            reason: "项目备用金",
+            requestedAmountCents: 20_000,
+            approvedAmountCents: null,
+            paidAmountCents: 0,
+            paymentMethod: "cash",
+            counterpartyName: null,
+            status: "approval_pending",
+            createdAt,
+            updatedAt
+          }
+        ])
+      }
+    };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await expect(service.list("project-1")).resolves.toEqual({
+      rows: [
+        expect.objectContaining({
+          id: "expense-1",
+          code: "ZC-2026-001",
+          createdAt: createdAt.toISOString(),
+          updatedAt: updatedAt.toISOString()
+        }),
+        expect.objectContaining({
+          id: "expense-2",
+          code: "ZC-2026-002",
+          createdAt: createdAt.toISOString(),
+          updatedAt: updatedAt.toISOString()
+        })
+      ],
+      summary: {
+        total: 2,
+        approvalPending: 1,
+        approvedPendingPayment: 1,
+        paid: 0,
+        paymentBlocked: 0,
+        totalRequestedCents: 50_000,
+        totalPaidCents: 10_000
+      }
+    });
+    expect(prisma.projectExpenseRequest.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1" },
+      orderBy: [{ createdAt: "desc" }, { code: "asc" }],
+      take: 100,
+      select: expect.any(Object)
+    });
+  });
+
+  it("throws NotFound when listing project expenses for an inactive project", async () => {
+    const prisma = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn()
+      }
+    };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await expect(service.list("project-1")).rejects.toThrow("项目不存在或已停用");
+    expect(prisma.projectExpenseRequest.findMany).not.toHaveBeenCalled();
+  });
+
   it("submits a sporadic payment request without settlement or payment terms", async () => {
     const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
     const tx = {

@@ -511,12 +511,44 @@ export interface RecordProjectExpenseFinancePayload {
   occurredAt: string;
 }
 
+export interface ProjectExpenseRequestListReadModel {
+  rows: Array<{
+    id: string;
+    code: string;
+    expenseType: ProjectExpenseType;
+    expenseSubtype: ProjectExpenseSubtype;
+    paymentSubject: string;
+    reason: string;
+    requestedAmountCents: number;
+    approvedAmountCents: number | null;
+    paidAmountCents: number;
+    paymentMethod: ProjectExpensePaymentMethod;
+    counterpartyName: string | null;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  summary: {
+    total: number;
+    approvalPending: number;
+    approvedPendingPayment: number;
+    paid: number;
+    paymentBlocked: number;
+    totalRequestedCents: number;
+    totalPaidCents: number;
+  };
+}
+
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
 
 export function fetchProjectOperatingOverview(projectId: string) {
   return readJson<ProjectOperatingOverviewReadModel>(`/projects/${projectId}/operating-funds-overview`);
+}
+
+export function fetchProjectExpenseRequests(projectId: string) {
+  return readJson<ProjectExpenseRequestListReadModel>(`/projects/${projectId}/expense-requests`);
 }
 
 export function recordProjectReceipt(projectId: string, body: RecordProjectReceiptPayload) {

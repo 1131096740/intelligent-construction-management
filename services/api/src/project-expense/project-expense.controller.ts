@@ -1,5 +1,6 @@
-import { Body, Controller, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CreateProjectExpenseRequestDto } from "./dto/create-project-expense-request.dto";
@@ -8,9 +9,23 @@ import { RecordProjectExpenseFinanceRecordDto } from "./dto/record-project-expen
 import { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
 import { ProjectExpenseService } from "./project-expense.service";
 
+const FUNDS_OVERVIEW_POSITIONS = [
+  "chairman",
+  "general_manager",
+  "project_manager",
+  "finance_director",
+  "finance_staff"
+] as const;
+
 @Controller("projects/:projectId/expense-requests")
 export class ProjectExpenseController {
   constructor(private readonly expenses: ProjectExpenseService) {}
+
+  @Get()
+  @RequirePositions(...FUNDS_OVERVIEW_POSITIONS)
+  list(@Param("projectId") projectId: string) {
+    return this.expenses.list(projectId);
+  }
 
   @Post()
   @RequireProjectRole("project_expense.create")

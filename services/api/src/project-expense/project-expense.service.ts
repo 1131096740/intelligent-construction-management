@@ -91,6 +91,57 @@ export class ProjectExpenseService {
     private readonly auth?: AuthService
   ) {}
 
+  async list(projectId: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, isActive: true },
+      select: { id: true }
+    });
+    if (!project) {
+      throw new NotFoundException("项目不存在或已停用");
+    }
+
+    const rows = await this.prisma.projectExpenseRequest.findMany({
+      where: { projectId },
+      orderBy: [{ createdAt: "desc" }, { code: "asc" }],
+      take: 100,
+      select: {
+        id: true,
+        code: true,
+        expenseType: true,
+        expenseSubtype: true,
+        paymentSubject: true,
+        reason: true,
+        requestedAmountCents: true,
+        approvedAmountCents: true,
+        paidAmountCents: true,
+        paymentMethod: true,
+        counterpartyName: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    return {
+      rows: rows.map((row) => ({
+        ...row,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString()
+      })),
+      summary: {
+        total: rows.length,
+        approvalPending: rows.filter((row) => row.status === "approval_pending").length,
+        approvedPendingPayment: rows.filter((row) =>
+          ["approved_pending_payment", "partially_paid"].includes(row.status)
+        ).length,
+        paid: rows.filter((row) => row.status === "paid").length,
+        paymentBlocked: rows.filter((row) => row.status === "payment_blocked").length,
+        totalRequestedCents: sumNumbers(rows.map((row) => row.requestedAmountCents)),
+        totalPaidCents: sumNumbers(rows.map((row) => row.paidAmountCents))
+      }
+    };
+  }
+
   async create(projectId: string, actorUserId: string, input: CreateProjectExpenseRequestDto) {
     const code = requiredTrimmed(input.code, "支出单号必填");
     const expenseType = enumValue(input.expenseType, EXPENSE_TYPES, "项目支出类型无效");

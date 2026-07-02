@@ -253,6 +253,176 @@
         </div>
       </section>
 
+      <section class="panel receipt-panel">
+        <div class="panel-head">
+          <h2>支出明细</h2>
+          <button
+            type="button"
+            :disabled="expenseSubmitting"
+            @click="submitProjectExpense"
+          >
+            {{ expenseSubmitting ? "提交中" : "发起支出" }}
+          </button>
+        </div>
+        <div class="expense-summary">
+          <span
+            v-for="item in projectExpenseSummaryItems"
+            :key="item.label"
+          >
+            {{ item.label }}：<strong>{{ item.value }}</strong>
+          </span>
+        </div>
+        <form
+          class="receipt-form"
+          @submit.prevent="submitProjectExpense"
+        >
+          <label>
+            <span>支出单号</span>
+            <input
+              v-model.trim="expenseForm.code"
+              required
+            >
+          </label>
+          <label>
+            <span>一级类型</span>
+            <select
+              v-model="expenseForm.expenseType"
+              @change="syncExpenseSubtype"
+            >
+              <option
+                v-for="option in expenseTypeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>明细类型</span>
+            <select v-model="expenseForm.expenseSubtype">
+              <option
+                v-for="option in currentExpenseSubtypeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>付款主体</span>
+            <input
+              v-model.trim="expenseForm.paymentSubject"
+              required
+            >
+          </label>
+          <label>
+            <span>申请金额(元)</span>
+            <input
+              v-model.trim="expenseForm.amountYuan"
+              inputmode="decimal"
+              placeholder="0.00"
+              required
+            >
+          </label>
+          <label>
+            <span>付款方式</span>
+            <select v-model="expenseForm.paymentMethod">
+              <option
+                v-for="option in expensePaymentMethodOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+          <label>
+            <span>对方名称</span>
+            <input v-model.trim="expenseForm.counterpartyName">
+          </label>
+          <label>
+            <span>对方户名</span>
+            <input v-model.trim="expenseForm.counterpartyAccountName">
+          </label>
+          <label>
+            <span>开户银行</span>
+            <input v-model.trim="expenseForm.counterpartyBankName">
+          </label>
+          <label>
+            <span>银行账号</span>
+            <input v-model.trim="expenseForm.counterpartyBankAccount">
+          </label>
+          <label>
+            <span>支出附件</span>
+            <input
+              ref="expenseAttachmentInput"
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+              @change="selectExpenseAttachment"
+            >
+          </label>
+          <label class="receipt-description">
+            <span>付款事由</span>
+            <input
+              v-model.trim="expenseForm.reason"
+              required
+            >
+          </label>
+        </form>
+        <div
+          v-if="expenseMessage"
+          class="receipt-message"
+          :class="expenseMessageTone"
+        >
+          {{ expenseMessage }}
+        </div>
+        <div class="expense-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>支出单号</th>
+                <th>类型</th>
+                <th>付款主体</th>
+                <th>申请金额</th>
+                <th>已批金额</th>
+                <th>已实付</th>
+                <th>付款方式</th>
+                <th>状态</th>
+                <th>提交时间</th>
+              </tr>
+            </thead>
+            <tbody v-if="projectExpenseRows.length">
+              <tr
+                v-for="row in projectExpenseRows"
+                :key="row.id"
+              >
+                <td>{{ row.code }}</td>
+                <td>{{ expenseTypeLabel(row.expenseType) }} · {{ expenseSubtypeLabel(row.expenseSubtype) }}</td>
+                <td>{{ row.paymentSubject }}</td>
+                <td>{{ formatCents(row.requestedAmountCents) }}</td>
+                <td>{{ formatCents(row.approvedAmountCents) }}</td>
+                <td>{{ formatCents(row.paidAmountCents) }}</td>
+                <td>{{ expensePaymentMethodLabel(row.paymentMethod) }}</td>
+                <td>{{ expenseStatusLabel(row.status) }}</td>
+                <td>{{ formatDateTime(row.createdAt) }}</td>
+              </tr>
+            </tbody>
+            <tbody v-else>
+              <tr>
+                <td
+                  class="empty-cell"
+                  colspan="9"
+                >
+                  暂无支出明细
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="gap-panel">
         <h2>数据缺口</h2>
         <ul>
@@ -271,17 +441,24 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import {
+  createProjectExpenseRequest,
+  fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
   recordProjectProxyPayment,
   recordProjectReceipt,
   uploadPrivateFile,
+  type ProjectExpensePaymentMethod,
+  type ProjectExpenseRequestListReadModel,
+  type ProjectExpenseSubtype,
+  type ProjectExpenseType,
   type ProjectOperatingOverviewReadModel,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
 
 type ReceiptSourceType = "general_contractor_payment" | "owner_direct_payment" | "other";
 type ProxyPaymentType = "material" | "equipment" | "labor" | "professional_subcontract" | "other";
+type ProjectExpenseRow = ProjectExpenseRequestListReadModel["rows"][number];
 
 interface ReceiptFormState {
   receivedAt: string;
@@ -306,8 +483,24 @@ interface ProxyPaymentFormState {
   settlementId: string;
 }
 
+interface ProjectExpenseFormState {
+  code: string;
+  expenseType: ProjectExpenseType;
+  expenseSubtype: ProjectExpenseSubtype;
+  paymentSubject: string;
+  reason: string;
+  amountYuan: string;
+  paymentMethod: ProjectExpensePaymentMethod;
+  counterpartyName: string;
+  counterpartyAccountName: string;
+  counterpartyBankName: string;
+  counterpartyBankAccount: string;
+  attachmentFile: File | null;
+}
+
 const projects = ref<ProjectOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
+const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
 const selectedProjectId = ref("");
 const loadingProjects = ref(false);
 const loadingOverview = ref(false);
@@ -322,6 +515,39 @@ const proxyMessage = ref("");
 const proxyMessageTone = ref<"success" | "danger">("success");
 const proxyForm = ref<ProxyPaymentFormState>(createProxyForm());
 const proxyVoucherInput = ref<HTMLInputElement | null>(null);
+const expenseSubmitting = ref(false);
+const expenseMessage = ref("");
+const expenseMessageTone = ref<"success" | "danger">("success");
+const expenseAttachmentInput = ref<HTMLInputElement | null>(null);
+
+const expenseTypeOptions: Array<{ value: ProjectExpenseType; label: string }> = [
+  { value: "sporadic_payment", label: "零星付款" },
+  { value: "loan_reserve", label: "借款/备用金" }
+];
+
+const sporadicSubtypeOptions: Array<{ value: ProjectExpenseSubtype; label: string }> = [
+  { value: "sporadic_material", label: "零星材料" },
+  { value: "sporadic_machinery", label: "零星机械" },
+  { value: "sporadic_labor", label: "零星用工" },
+  { value: "temporary_service", label: "临时服务" },
+  { value: "other_sporadic", label: "其他零星" }
+];
+
+const loanReserveSubtypeOptions: Array<{ value: ProjectExpenseSubtype; label: string }> = [
+  { value: "employee_loan", label: "员工借款" },
+  { value: "owner_loan", label: "老板借款" },
+  { value: "project_reserve", label: "项目备用金" }
+];
+
+const expensePaymentMethodOptions: Array<{ value: ProjectExpensePaymentMethod; label: string }> = [
+  { value: "cash", label: "现金" },
+  { value: "wechat", label: "微信" },
+  { value: "alipay", label: "支付宝" },
+  { value: "bank_transfer", label: "网银转账" },
+  { value: "other", label: "其他" }
+];
+
+const expenseForm = ref<ProjectExpenseFormState>(createProjectExpenseForm());
 
 const summaryItems = computed(() => {
   const counts = overview.value?.counts ?? { contracts: 0, settlements: 0, payments: 0 };
@@ -332,6 +558,20 @@ const summaryItems = computed(() => {
     { label: "可用资金", value: formatCents(overview.value?.cash.availableFundsCents ?? null) }
   ];
 });
+
+const projectExpenseRows = computed<ProjectExpenseRow[]>(() => projectExpenses.value?.rows ?? []);
+
+const projectExpenseSummaryItems = computed(() => {
+  const summary = projectExpenses.value?.summary;
+  return [
+    { label: "支出单", value: String(summary?.total ?? 0) },
+    { label: "审批中", value: String(summary?.approvalPending ?? 0) },
+    { label: "已批待付", value: String(summary?.approvedPendingPayment ?? 0) },
+    { label: "已实付", value: formatCents(summary?.totalPaidCents ?? 0) }
+  ];
+});
+
+const currentExpenseSubtypeOptions = computed(() => subtypeOptionsFor(expenseForm.value.expenseType));
 
 const cashItems = computed(() => {
   const cash = overview.value?.cash;
@@ -380,8 +620,10 @@ async function loadProjects() {
 async function loadOverview() {
   const projectId = selectedProjectId.value;
   overview.value = null;
+  projectExpenses.value = null;
   receiptMessage.value = "";
   proxyMessage.value = "";
+  expenseMessage.value = "";
   if (!projectId) {
     overview.value = null;
     return;
@@ -390,9 +632,13 @@ async function loadOverview() {
   loadingOverview.value = true;
   message.value = "";
   try {
-    const nextOverview = await fetchProjectOperatingOverview(projectId);
+    const [nextOverview, nextExpenses] = await Promise.all([
+      fetchProjectOperatingOverview(projectId),
+      fetchProjectExpenseRequests(projectId)
+    ]);
     if (selectedProjectId.value === projectId) {
       overview.value = nextOverview;
+      projectExpenses.value = nextExpenses;
     }
   } catch (error) {
     if (selectedProjectId.value === projectId) {
@@ -403,6 +649,55 @@ async function loadOverview() {
     if (selectedProjectId.value === projectId) {
       loadingOverview.value = false;
     }
+  }
+}
+
+async function submitProjectExpense() {
+  const projectId = selectedProjectId.value;
+  if (!projectId) {
+    setExpenseError("请先选择项目");
+    return;
+  }
+
+  expenseSubmitting.value = true;
+  expenseMessage.value = "";
+  try {
+    const form = expenseForm.value;
+    const code = requiredText(form.code, "支出单号");
+    const paymentSubject = requiredText(form.paymentSubject, "付款主体");
+    const reason = requiredText(form.reason, "付款事由");
+    const requestedAmountCents = parseYuanToCents(form.amountYuan, "申请金额");
+    if (requestedAmountCents > 2_147_483_647) {
+      throw new Error("申请金额超过系统支持范围");
+    }
+    const attachment = form.attachmentFile
+      ? await uploadPrivateFile(form.attachmentFile, form.attachmentFile.name)
+      : null;
+    await createProjectExpenseRequest(projectId, {
+      code,
+      expenseType: form.expenseType,
+      expenseSubtype: form.expenseSubtype,
+      paymentSubject,
+      reason,
+      requestedAmountCents,
+      paymentMethod: form.paymentMethod,
+      counterpartyName: form.counterpartyName.trim() || undefined,
+      counterpartyAccountName: form.counterpartyAccountName.trim() || undefined,
+      counterpartyBankName: form.counterpartyBankName.trim() || undefined,
+      counterpartyBankAccount: form.counterpartyBankAccount.trim() || undefined,
+      attachmentFileId: attachment?.id
+    });
+    expenseForm.value = createProjectExpenseForm(form.expenseType);
+    if (expenseAttachmentInput.value) {
+      expenseAttachmentInput.value.value = "";
+    }
+    await loadOverview();
+    expenseMessageTone.value = "success";
+    expenseMessage.value = "项目支出已提交审批，资金占用已刷新。";
+  } catch (error) {
+    setExpenseError(error instanceof Error ? error.message : "提交项目支出失败");
+  } finally {
+    expenseSubmitting.value = false;
   }
 }
 
@@ -521,6 +816,25 @@ function createProxyForm(paymentType: ProxyPaymentType = "material"): ProxyPayme
   };
 }
 
+function createProjectExpenseForm(
+  expenseType: ProjectExpenseType = "sporadic_payment"
+): ProjectExpenseFormState {
+  return {
+    code: "",
+    expenseType,
+    expenseSubtype: subtypeOptionsFor(expenseType)[0].value,
+    paymentSubject: "",
+    reason: "",
+    amountYuan: "",
+    paymentMethod: "bank_transfer",
+    counterpartyName: "",
+    counterpartyAccountName: "",
+    counterpartyBankName: "",
+    counterpartyBankAccount: "",
+    attachmentFile: null
+  };
+}
+
 function selectReceiptVoucher(event: Event) {
   const input = event.target as HTMLInputElement;
   receiptForm.value.voucherFile = input.files?.[0] ?? null;
@@ -529,6 +843,51 @@ function selectReceiptVoucher(event: Event) {
 function selectProxyVoucher(event: Event) {
   const input = event.target as HTMLInputElement;
   proxyForm.value.voucherFile = input.files?.[0] ?? null;
+}
+
+function selectExpenseAttachment(event: Event) {
+  const input = event.target as HTMLInputElement;
+  expenseForm.value.attachmentFile = input.files?.[0] ?? null;
+}
+
+function syncExpenseSubtype() {
+  const options = subtypeOptionsFor(expenseForm.value.expenseType);
+  if (!options.some((option) => option.value === expenseForm.value.expenseSubtype)) {
+    expenseForm.value.expenseSubtype = options[0].value;
+  }
+}
+
+function subtypeOptionsFor(expenseType: ProjectExpenseType) {
+  return expenseType === "sporadic_payment" ? sporadicSubtypeOptions : loanReserveSubtypeOptions;
+}
+
+function expenseTypeLabel(value: ProjectExpenseType) {
+  return expenseTypeOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function expenseSubtypeLabel(value: ProjectExpenseSubtype) {
+  return (
+    [...sporadicSubtypeOptions, ...loanReserveSubtypeOptions].find((option) => option.value === value)
+      ?.label ?? value
+  );
+}
+
+function expensePaymentMethodLabel(value: ProjectExpensePaymentMethod) {
+  return expensePaymentMethodOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function expenseStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    approval_pending: "审批中",
+    withdrawn: "已撤回",
+    rejected: "已驳回",
+    approved_pending_payment: "已批待付款",
+    partially_paid: "部分付款",
+    paid: "已付款",
+    voided: "已作废",
+    payment_blocked: "付款阻断"
+  };
+  return labels[status] ?? status;
 }
 
 function todayText(): string {
@@ -571,6 +930,11 @@ function setProxyError(messageText: string) {
   proxyMessage.value = messageText;
 }
 
+function setExpenseError(messageText: string) {
+  expenseMessageTone.value = "danger";
+  expenseMessage.value = messageText;
+}
+
 function formatCents(value: number | null): string {
   if (value === null) {
     return "暂无数据";
@@ -579,6 +943,16 @@ function formatCents(value: number | null): string {
     style: "currency",
     currency: "CNY"
   }).format(value / 100);
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 </script>
 
@@ -719,6 +1093,56 @@ button:disabled {
 .receipt-message.danger {
   color: #b42318;
   background: #fff1f0;
+}
+
+.expense-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  color: #5f6673;
+}
+
+.expense-summary strong {
+  color: #1f2733;
+}
+
+.expense-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #edf0f5;
+  border-radius: 6px;
+}
+
+table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #edf0f5;
+}
+
+th {
+  color: #5f6673;
+  font-weight: 600;
+  background: #f7f9fc;
+}
+
+td {
+  color: #1f2733;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.empty-cell {
+  color: #5f6673;
+  text-align: center;
 }
 
 .summary-item {

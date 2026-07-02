@@ -9,6 +9,7 @@ import {
   fetchSettlementLedger,
   fetchArchives,
   fetchAuditLogs,
+  fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
   confirmProjectOwnerContract,
@@ -119,10 +120,12 @@ describe("core flow read API client", () => {
 
     await fetchProjects();
     await fetchProjectOperatingOverview("project-1");
+    await fetchProjectExpenseRequests("project-1");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects",
-      "/api/projects/project-1/operating-funds-overview"
+      "/api/projects/project-1/operating-funds-overview",
+      "/api/projects/project-1/expense-requests"
     ]);
   });
 
