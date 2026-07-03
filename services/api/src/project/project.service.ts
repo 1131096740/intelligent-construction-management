@@ -45,6 +45,11 @@ const FUNDS_OVERVIEW_POSITIONS = new Set<RoleKey>([
   "finance_director",
   "finance_staff"
 ]);
+const PROJECT_OPTION_POSITIONS = new Set<RoleKey>([
+  ...FUNDS_OVERVIEW_POSITIONS,
+  "contract_staff",
+  "contract_director"
+]);
 const RECEIPT_SOURCE_LABELS: Record<ProjectReceiptSourceType, string> = {
   general_contractor_payment: "总包付款",
   owner_direct_payment: "甲方直付",
@@ -99,21 +104,21 @@ export class ProjectService {
       ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
       : [];
     const positionKeyById = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
-    const hasGlobalFundsOverview = globalUserPositions.some((position) =>
-      isFundsOverviewPosition(positionKeyById.get(position.positionId))
+    const hasGlobalProjectOptionAccess = globalUserPositions.some((position) =>
+      isProjectOptionPosition(positionKeyById.get(position.positionId))
     );
 
-    if (hasGlobalFundsOverview) {
+    if (hasGlobalProjectOptionAccess) {
       return this.findActiveProjectOptions();
     }
 
     const visibleProjectIds = unique([
       ...projectUserPositions
-        .filter((position) => isFundsOverviewPosition(positionKeyById.get(position.positionId)))
+        .filter((position) => isProjectOptionPosition(positionKeyById.get(position.positionId)))
         .map((position) => position.projectId)
         .filter((projectId): projectId is string => typeof projectId === "string"),
       ...projectMemberPositions
-        .filter((position) => isFundsOverviewPosition(position.positionKey as RoleKey))
+        .filter((position) => isProjectOptionPosition(position.positionKey as RoleKey))
         .map((position) => position.projectId)
     ]);
 
@@ -1654,8 +1659,8 @@ export class ProjectService {
   }
 }
 
-function isFundsOverviewPosition(positionKey: RoleKey | undefined): boolean {
-  return !!positionKey && FUNDS_OVERVIEW_POSITIONS.has(positionKey);
+function isProjectOptionPosition(positionKey: RoleKey | undefined): boolean {
+  return !!positionKey && PROJECT_OPTION_POSITIONS.has(positionKey);
 }
 
 function unique(values: string[]): string[] {

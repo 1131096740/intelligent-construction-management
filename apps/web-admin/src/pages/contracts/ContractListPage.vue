@@ -5,12 +5,17 @@
         <h1>合同台账</h1>
         <p>合同、合同版本、付款条款版本、归档状态统一台账</p>
       </div>
-      <t-button
-        theme="primary"
-        @click="goNewWorkbench"
-      >
-        新建合同
-      </t-button>
+      <t-space>
+        <t-button @click="goContractTakeover">
+          历史合同接管
+        </t-button>
+        <t-button
+          theme="primary"
+          @click="goNewWorkbench"
+        >
+          新建合同
+        </t-button>
+      </t-space>
     </div>
 
     <div class="summary-strip">
@@ -326,6 +331,10 @@ onMounted(() => {
 
 function goNewWorkbench() {
   void router.push("/contracts/new");
+}
+
+function goContractTakeover() {
+  void router.push("/contract-takeovers");
 }
 
 function openDetail(contractId: string) {

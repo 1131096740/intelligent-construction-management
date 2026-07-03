@@ -14,6 +14,42 @@ describe("ContractTakeoverService", () => {
     auth.confirmPassword.mockResolvedValue({ ok: true });
   });
 
+  function takeoverRecord(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "takeover-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "contract-version-1",
+      paymentTermsVersionId: "terms-version-1",
+      takeoverLevel: "A",
+      takeoverStatus: "draft",
+      lifecycleStatus: "in_progress",
+      signedAt: new Date("2026-01-10T00:00:00.000Z"),
+      historicalSettledCents: 600_000n,
+      historicalApprovalPendingPaymentCents: 40_000n,
+      historicalApprovedPendingPaymentCents: 100_000n,
+      historicalPaidCents: 300_000n,
+      historicalProxyPaidCents: 20_000n,
+      historicalAdvancePaidCents: 50_000n,
+      historicalAdvanceDeductedCents: 10_000n,
+      historicalRetentionWithheldCents: 30_000n,
+      historicalRetentionReleasedCents: 0n,
+      otherConfirmedOccupancyCents: 5_000n,
+      balanceSourceSummary: "Finance ledger checked.",
+      evidenceSummary: "Signed scan and finance ledger.",
+      createdByUserId: "contract-user",
+      submittedByUserId: null,
+      submittedAt: null,
+      confirmedByUserId: null,
+      confirmedAt: null,
+      historicalBalanceConfirmedByUserId: null,
+      historicalBalanceConfirmedAt: null,
+      createdAt: new Date("2026-07-03T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-03T00:00:00.000Z"),
+      ...overrides
+    };
+  }
+
   it("creates a historical contract takeover draft on existing contract tables", async () => {
     const tx = {
       project: {
@@ -29,10 +65,7 @@ describe("ContractTakeoverService", () => {
         create: jest.fn().mockResolvedValue({ id: "terms-version-1" })
       },
       contractTakeover: {
-        create: jest.fn().mockResolvedValue({
-          id: "takeover-1",
-          takeoverStatus: "draft"
-        })
+        create: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
       },
       auditLog: {
         create: jest.fn()
@@ -74,6 +107,17 @@ describe("ContractTakeoverService", () => {
     );
 
     expect(result.takeoverStatus).toBe("draft");
+    expect(result).toMatchObject({
+      id: "takeover-1",
+      contractNo: "HT-HIS-001",
+      contractName: "Historical material contract",
+      counterparty: "Supplier A",
+      amountCents: "1000000",
+      historicalPaidCents: "300000"
+    });
+    expect(result).not.toHaveProperty("contractVersionId");
+    expect(result).not.toHaveProperty("paymentTermsVersionId");
+    expect(result).not.toHaveProperty("createdByUserId");
     expect(tx.contract.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         projectId: "project-1",
@@ -200,17 +244,29 @@ describe("ContractTakeoverService", () => {
   it("submits a draft takeover for review and records audit", async () => {
     const tx = {
       contractTakeover: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "takeover-1",
-          projectId: "project-1",
-          contractId: "contract-1",
-          contractVersionId: "contract-version-1",
-          takeoverStatus: "draft"
-        }),
-        update: jest.fn().mockResolvedValue({
-          id: "takeover-1",
-          takeoverStatus: "pending_review"
-        })
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" })),
+        update: jest.fn().mockResolvedValue(
+          takeoverRecord({
+            takeoverStatus: "pending_review",
+            submittedAt: new Date("2026-07-03T01:00:00.000Z")
+          })
+        )
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A"
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
       },
       auditLog: {
         create: jest.fn()
@@ -226,6 +282,8 @@ describe("ContractTakeoverService", () => {
     const result = await service.submitReview("project-1", "takeover-1", "contract-user");
 
     expect(result.takeoverStatus).toBe("pending_review");
+    expect(result).not.toHaveProperty("contractVersionId");
+    expect(result).not.toHaveProperty("submittedByUserId");
     expect(tx.contractTakeover.update).toHaveBeenCalledWith({
       where: { id: "takeover-1" },
       data: {
@@ -249,24 +307,36 @@ describe("ContractTakeoverService", () => {
   it("confirms takeover with second confirmation and makes version and terms effective", async () => {
     const tx = {
       contractTakeover: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "takeover-1",
-          projectId: "project-1",
-          contractId: "contract-1",
-          contractVersionId: "contract-version-1",
-          paymentTermsVersionId: "terms-version-1",
-          takeoverStatus: "pending_review"
-        }),
-        update: jest.fn().mockResolvedValue({
-          id: "takeover-1",
-          takeoverStatus: "confirmed"
-        })
+        findUnique: jest.fn().mockResolvedValue(
+          takeoverRecord({ takeoverStatus: "pending_review" })
+        ),
+        update: jest.fn().mockResolvedValue(
+          takeoverRecord({
+            takeoverStatus: "confirmed",
+            confirmedAt: new Date("2026-07-03T02:00:00.000Z"),
+            historicalBalanceConfirmedAt: new Date("2026-07-03T02:00:00.000Z")
+          })
+        )
       },
       contractVersion: {
-        update: jest.fn().mockResolvedValue({})
+        update: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
       },
       paymentTermsVersion: {
         update: jest.fn().mockResolvedValue({})
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A"
+          }
+        ])
       },
       auditLog: {
         create: jest.fn()
@@ -284,6 +354,8 @@ describe("ContractTakeoverService", () => {
     });
 
     expect(result.takeoverStatus).toBe("confirmed");
+    expect(result).not.toHaveProperty("contractVersionId");
+    expect(result).not.toHaveProperty("confirmedByUserId");
     expect(auth.confirmPassword).toHaveBeenCalledWith("director-1", "current-password");
     expect(tx.contractVersion.update).toHaveBeenCalledWith({
       where: { id: "contract-version-1" },
@@ -314,5 +386,51 @@ describe("ContractTakeoverService", () => {
         contractVersionId: "contract-version-1"
       })
     });
+  });
+
+  it("lists historical takeover rows as business read models without internal IDs", async () => {
+    const prisma = {
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          takeoverRecord({ takeoverStatus: "pending_review" })
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A"
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(service.list("project-1")).resolves.toEqual([
+      expect.objectContaining({
+        id: "takeover-1",
+        contractNo: "HT-HIS-001",
+        contractName: "Historical material contract",
+        counterparty: "Supplier A",
+        amountCents: "1000000",
+        takeoverStatus: "pending_review",
+        historicalSettledCents: "600000"
+      })
+    ]);
+    const [row] = await service.list("project-1");
+    expect(row).not.toHaveProperty("contractVersionId");
+    expect(row).not.toHaveProperty("paymentTermsVersionId");
+    expect(row).not.toHaveProperty("createdByUserId");
+    expect(row).not.toHaveProperty("submittedByUserId");
+    expect(row).not.toHaveProperty("confirmedByUserId");
+    expect(row).not.toHaveProperty("historicalBalanceConfirmedByUserId");
   });
 });

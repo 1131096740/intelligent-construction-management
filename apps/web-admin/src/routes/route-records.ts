@@ -9,6 +9,11 @@ export const fundsOverviewRoleKeys = [
   "finance_staff"
 ] as const satisfies readonly RoleKey[];
 
+export const historicalTakeoverRoleKeys = [
+  "contract_staff",
+  "contract_director"
+] as const satisfies readonly RoleKey[];
+
 interface AdminNavigationItem {
   label: string;
   path: string;
@@ -18,6 +23,7 @@ interface AdminNavigationItem {
 export const adminNavigationItems: AdminNavigationItem[] = [
   { label: "首页", path: "/首页" },
   { label: "合同管理", path: "/合同管理" },
+  { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
   { label: "合同工作台", path: "/合同工作台" },
   { label: "项目经营", path: "/项目经营", requiredRoleKeys: fundsOverviewRoleKeys },
   { label: "结算管理", path: "/结算管理" },
@@ -82,6 +88,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "合同管理/:contractId",
         component: () => import("../pages/contracts/ContractDetailPage.vue")
+      },
+      {
+        path: "历史合同接管",
+        component: () => import("../pages/contracts/ContractTakeoverPage.vue"),
+        meta: { requiredRoleKeys: historicalTakeoverRoleKeys, title: "历史合同接管" }
       },
       {
         path: "合同模板库",
@@ -150,6 +161,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       { path: "contracts", redirect: "/合同管理" },
       { path: "contracts/new", redirect: "/合同工作台" },
+      { path: "contract-takeovers", redirect: "/历史合同接管" },
       { path: "contracts/:contractId/workbench", redirect: contractWorkbenchRedirect },
       { path: "contracts/:contractId", redirect: contractDetailRedirect },
       { path: "contract-templates", redirect: "/合同模板库" },

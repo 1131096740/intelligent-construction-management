@@ -33,6 +33,66 @@ const MONEY_FIELDS = [
 ] as const satisfies readonly (keyof CreateContractTakeoverDto)[];
 
 type TakeoverClient = Pick<Prisma.TransactionClient, "contractTakeover">;
+type TakeoverReadClient = Pick<
+  Prisma.TransactionClient,
+  "contract" | "contractVersion"
+>;
+
+type ContractTakeoverRecord = {
+  id: string;
+  contractId: string;
+  contractVersionId: string;
+  takeoverLevel: string;
+  takeoverStatus: string;
+  lifecycleStatus: string;
+  signedAt: Date;
+  historicalSettledCents: bigint | number;
+  historicalApprovalPendingPaymentCents: bigint | number;
+  historicalApprovedPendingPaymentCents: bigint | number;
+  historicalPaidCents: bigint | number;
+  historicalProxyPaidCents: bigint | number;
+  historicalAdvancePaidCents: bigint | number;
+  historicalAdvanceDeductedCents: bigint | number;
+  historicalRetentionWithheldCents: bigint | number;
+  historicalRetentionReleasedCents: bigint | number;
+  otherConfirmedOccupancyCents: bigint | number;
+  balanceSourceSummary: string | null;
+  evidenceSummary: string | null;
+  submittedAt: Date | null;
+  confirmedAt: Date | null;
+  historicalBalanceConfirmedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export interface ContractTakeoverBusinessReadModel {
+  id: string;
+  contractNo: string;
+  contractName: string;
+  counterparty: string;
+  amountCents: string;
+  takeoverLevel: string;
+  takeoverStatus: string;
+  lifecycleStatus: string;
+  signedAt: Date;
+  historicalSettledCents: string;
+  historicalApprovalPendingPaymentCents: string;
+  historicalApprovedPendingPaymentCents: string;
+  historicalPaidCents: string;
+  historicalProxyPaidCents: string;
+  historicalAdvancePaidCents: string;
+  historicalAdvanceDeductedCents: string;
+  historicalRetentionWithheldCents: string;
+  historicalRetentionReleasedCents: string;
+  otherConfirmedOccupancyCents: string;
+  balanceSourceSummary: string | null;
+  evidenceSummary: string | null;
+  submittedAt: Date | null;
+  confirmedAt: Date | null;
+  historicalBalanceConfirmedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 @Injectable()
 export class ContractTakeoverService {
@@ -131,19 +191,27 @@ export class ContractTakeoverService {
         }
       });
 
-      return takeover;
+      return this.toReadModel(takeover, {
+        contractNo: data.code,
+        contractName: data.name,
+        counterparty: data.counterparty,
+        amountCents: data.amountCents
+      });
     });
   }
 
-  list(projectId: string) {
-    return this.prisma.contractTakeover.findMany({
+  async list(projectId: string) {
+    const takeovers = await this.prisma.contractTakeover.findMany({
       where: { projectId },
       orderBy: { createdAt: "desc" }
     });
+
+    return this.toReadModels(this.prisma, takeovers);
   }
 
   async detail(projectId: string, takeoverId: string) {
-    return this.getProjectTakeover(this.prisma, projectId, takeoverId);
+    const takeover = await this.getProjectTakeover(this.prisma, projectId, takeoverId);
+    return this.toReadModelFromDatabase(this.prisma, takeover);
   }
 
   async submitReview(projectId: string, takeoverId: string, actorUserId: string) {
@@ -177,7 +245,7 @@ export class ContractTakeoverService {
         }
       });
 
-      return updated;
+      return this.toReadModelFromDatabase(tx, updated);
     });
   }
 
@@ -236,7 +304,7 @@ export class ContractTakeoverService {
         }
       });
 
-      return updated;
+      return this.toReadModelFromDatabase(tx, updated);
     });
   }
 
@@ -253,6 +321,94 @@ export class ContractTakeoverService {
     }
 
     return takeover;
+  }
+
+  private async toReadModels(
+    client: TakeoverReadClient,
+    takeovers: ContractTakeoverRecord[]
+  ): Promise<ContractTakeoverBusinessReadModel[]> {
+    if (!takeovers.length) {
+      return [];
+    }
+
+    const contractIds = unique(takeovers.map((takeover) => takeover.contractId));
+    const contractVersionIds = unique(takeovers.map((takeover) => takeover.contractVersionId));
+    const [contracts, versions] = await Promise.all([
+      client.contract.findMany({
+        where: { id: { in: contractIds } },
+        select: { id: true, code: true, temporaryCode: true, name: true, counterparty: true }
+      }),
+      client.contractVersion.findMany({
+        where: { id: { in: contractVersionIds } },
+        select: { id: true, amountCents: true }
+      })
+    ]);
+
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const versionById = new Map(versions.map((version) => [version.id, version]));
+
+    return takeovers.map((takeover) =>
+      this.toReadModel(takeover, {
+        contractNo:
+          contractById.get(takeover.contractId)?.code ??
+          contractById.get(takeover.contractId)?.temporaryCode ??
+          takeover.id,
+        contractName: contractById.get(takeover.contractId)?.name ?? "未读取合同名称",
+        counterparty: contractById.get(takeover.contractId)?.counterparty ?? "未读取相对方",
+        amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0
+      })
+    );
+  }
+
+  private async toReadModelFromDatabase(
+    client: TakeoverReadClient,
+    takeover: ContractTakeoverRecord
+  ) {
+    const [readModel] = await this.toReadModels(client, [takeover]);
+    return readModel;
+  }
+
+  private toReadModel(
+    takeover: ContractTakeoverRecord,
+    contract: {
+      contractNo: string;
+      contractName: string;
+      counterparty: string;
+      amountCents: bigint | number;
+    }
+  ): ContractTakeoverBusinessReadModel {
+    return {
+      id: takeover.id,
+      contractNo: contract.contractNo,
+      contractName: contract.contractName,
+      counterparty: contract.counterparty,
+      amountCents: moneyString(contract.amountCents),
+      takeoverLevel: takeover.takeoverLevel,
+      takeoverStatus: takeover.takeoverStatus,
+      lifecycleStatus: takeover.lifecycleStatus,
+      signedAt: takeover.signedAt,
+      historicalSettledCents: moneyString(takeover.historicalSettledCents),
+      historicalApprovalPendingPaymentCents: moneyString(
+        takeover.historicalApprovalPendingPaymentCents
+      ),
+      historicalApprovedPendingPaymentCents: moneyString(
+        takeover.historicalApprovedPendingPaymentCents
+      ),
+      historicalPaidCents: moneyString(takeover.historicalPaidCents),
+      historicalProxyPaidCents: moneyString(takeover.historicalProxyPaidCents),
+      historicalAdvancePaidCents: moneyString(takeover.historicalAdvancePaidCents),
+      historicalAdvanceDeductedCents: moneyString(takeover.historicalAdvanceDeductedCents),
+      historicalRetentionWithheldCents: moneyString(takeover.historicalRetentionWithheldCents),
+      historicalRetentionReleasedCents: moneyString(takeover.historicalRetentionReleasedCents),
+      otherConfirmedOccupancyCents: moneyString(takeover.otherConfirmedOccupancyCents),
+      balanceSourceSummary: takeover.balanceSourceSummary,
+      evidenceSummary: takeover.evidenceSummary,
+      submittedAt: takeover.submittedAt,
+      confirmedAt: takeover.confirmedAt,
+      historicalBalanceConfirmedAt: takeover.historicalBalanceConfirmedAt,
+      createdAt: takeover.createdAt,
+      updatedAt: takeover.updatedAt
+    };
   }
 
   private normalizeCreateInput(input: CreateContractTakeoverDto) {
@@ -297,4 +453,12 @@ export class ContractTakeoverService {
       signedAt
     };
   }
+}
+
+function unique<T>(values: T[]): T[] {
+  return Array.from(new Set(values));
+}
+
+function moneyString(value: bigint | number): string {
+  return (typeof value === "bigint" ? value : BigInt(value)).toString();
 }

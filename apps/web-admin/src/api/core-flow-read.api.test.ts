@@ -29,9 +29,11 @@ import {
   recordProjectExpenseExecution,
   recordProjectExpenseFinance,
   createContractDraft,
+  createContractTakeover,
   createPaymentRequest,
   createPrivateFileDownloadTicket,
   createSettlementDraft,
+  confirmContractTakeover,
   confirmContractArchive,
   confirmSettlementArchive,
   delegateContractApproval,
@@ -63,9 +65,12 @@ import {
   delegateSettlementApproval,
   transferContractApproval,
   transferPaymentApproval,
+  getContractTakeover,
+  listContractTakeovers,
   listApprovalDelegations,
   createApprovalDelegation,
-  revokeApprovalDelegation
+  revokeApprovalDelegation,
+  submitContractTakeoverReview
 } from "./core-flow-read.api";
 
 describe("core flow read API client", () => {
@@ -501,6 +506,86 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/contracts"]);
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+  });
+
+  it("manages historical contract takeover workflow through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "takeover-1" })
+    } as Response);
+
+    await listContractTakeovers("project-1");
+    await getContractTakeover("project-1", "takeover-1");
+    await createContractTakeover("project-1", {
+      code: "HT-LS-2026-001",
+      name: "历史材料采购合同",
+      counterparty: "历史供应商",
+      companyEntityName: "建工集团",
+      amountCents: 100000000,
+      signedAt: "2026-01-01",
+      takeoverLevel: "B",
+      lifecycleStatus: "in_progress",
+      paymentTermsOriginalText: "按月结算付款。",
+      historicalSettledCents: 60000000,
+      historicalApprovalPendingPaymentCents: 1000000,
+      historicalApprovedPendingPaymentCents: 2000000,
+      historicalPaidCents: 30000000,
+      historicalProxyPaidCents: 4000000,
+      historicalAdvancePaidCents: 5000000,
+      historicalAdvanceDeductedCents: 1000000,
+      historicalRetentionWithheldCents: 3000000,
+      historicalRetentionReleasedCents: 1000000,
+      otherConfirmedOccupancyCents: 800000,
+      balanceSourceSummary: "财务台账核对",
+      evidenceSummary: "合同与付款凭证已归档"
+    });
+    await submitContractTakeoverReview("project-1", "takeover-1");
+    await confirmContractTakeover("project-1", "takeover-1", {
+      confirmationPassword: "current-password"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/contract-takeovers",
+      "/api/projects/project-1/contract-takeovers/takeover-1",
+      "/api/projects/project-1/contract-takeovers",
+      "/api/projects/project-1/contract-takeovers/takeover-1/review-submission",
+      "/api/projects/project-1/contract-takeovers/takeover-1/confirmation"
+    ]);
+    expect(fetchMock.mock.calls.map((call) => call[1]?.method)).toEqual([
+      undefined,
+      undefined,
+      "POST",
+      "POST",
+      "POST"
+    ]);
+    expect(fetchMock.mock.calls[2][1]?.body).toBe(
+      JSON.stringify({
+        code: "HT-LS-2026-001",
+        name: "历史材料采购合同",
+        counterparty: "历史供应商",
+        companyEntityName: "建工集团",
+        amountCents: 100000000,
+        signedAt: "2026-01-01",
+        takeoverLevel: "B",
+        lifecycleStatus: "in_progress",
+        paymentTermsOriginalText: "按月结算付款。",
+        historicalSettledCents: 60000000,
+        historicalApprovalPendingPaymentCents: 1000000,
+        historicalApprovedPendingPaymentCents: 2000000,
+        historicalPaidCents: 30000000,
+        historicalProxyPaidCents: 4000000,
+        historicalAdvancePaidCents: 5000000,
+        historicalAdvanceDeductedCents: 1000000,
+        historicalRetentionWithheldCents: 3000000,
+        historicalRetentionReleasedCents: 1000000,
+        otherConfirmedOccupancyCents: 800000,
+        balanceSourceSummary: "财务台账核对",
+        evidenceSummary: "合同与付款凭证已归档"
+      })
+    );
+    expect(fetchMock.mock.calls[4][1]?.body).toBe(
+      JSON.stringify({ confirmationPassword: "current-password" })
+    );
   });
 
   it("creates settlement and payment requests through the backend", async () => {

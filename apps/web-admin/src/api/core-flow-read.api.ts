@@ -115,6 +115,84 @@ export interface CreateContractReadModel {
   terms: { id: string };
 }
 
+export type ContractTakeoverLevel = "A" | "B" | "C";
+
+export type ContractLifecycleStatus =
+  | "signed_not_started"
+  | "in_progress"
+  | "suspended"
+  | "completed"
+  | "terminated"
+  | "disputed";
+
+export type ContractTakeoverStatus =
+  | "draft"
+  | "pending_review"
+  | "confirmed"
+  | "needs_supplement"
+  | "voided";
+
+export type ContractTakeoverCentsValue = number | string;
+
+export interface ContractTakeoverReadModel {
+  id: string;
+  contractNo: string;
+  contractName: string;
+  counterparty: string;
+  amountCents: ContractTakeoverCentsValue;
+  takeoverLevel: ContractTakeoverLevel;
+  takeoverStatus: ContractTakeoverStatus;
+  lifecycleStatus: ContractLifecycleStatus;
+  signedAt: string;
+  historicalSettledCents: ContractTakeoverCentsValue;
+  historicalApprovalPendingPaymentCents: ContractTakeoverCentsValue;
+  historicalApprovedPendingPaymentCents: ContractTakeoverCentsValue;
+  historicalPaidCents: ContractTakeoverCentsValue;
+  historicalProxyPaidCents: ContractTakeoverCentsValue;
+  historicalAdvancePaidCents: ContractTakeoverCentsValue;
+  historicalAdvanceDeductedCents: ContractTakeoverCentsValue;
+  historicalRetentionWithheldCents: ContractTakeoverCentsValue;
+  historicalRetentionReleasedCents: ContractTakeoverCentsValue;
+  otherConfirmedOccupancyCents: ContractTakeoverCentsValue;
+  balanceSourceSummary: string | null;
+  evidenceSummary: string | null;
+  submittedAt: string | null;
+  confirmedAt: string | null;
+  historicalBalanceConfirmedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateContractTakeoverPayload {
+  code: string;
+  name: string;
+  counterparty: string;
+  contractTypeKey?: string;
+  companyEntityId?: string;
+  companyEntityName?: string;
+  amountCents: number;
+  signedAt: string;
+  takeoverLevel: ContractTakeoverLevel;
+  lifecycleStatus: ContractLifecycleStatus;
+  paymentTermsOriginalText?: string;
+  historicalSettledCents?: number;
+  historicalApprovalPendingPaymentCents?: number;
+  historicalApprovedPendingPaymentCents?: number;
+  historicalPaidCents?: number;
+  historicalProxyPaidCents?: number;
+  historicalAdvancePaidCents?: number;
+  historicalAdvanceDeductedCents?: number;
+  historicalRetentionWithheldCents?: number;
+  historicalRetentionReleasedCents?: number;
+  otherConfirmedOccupancyCents?: number;
+  balanceSourceSummary?: string;
+  evidenceSummary?: string;
+}
+
+export interface ConfirmContractTakeoverPayload {
+  confirmationPassword: string;
+}
+
 export interface CreateSettlementPayload {
   contractVersionId: string;
   code: string;
@@ -725,6 +803,40 @@ export function createPrivateFileDownloadTicket(
 
 export function createContractDraft(body: CreateContractPayload) {
   return postJson<CreateContractReadModel>("/contracts", body);
+}
+
+export function listContractTakeovers(projectId: string) {
+  return readJson<ContractTakeoverReadModel[]>(`/projects/${projectId}/contract-takeovers`);
+}
+
+export function getContractTakeover(projectId: string, takeoverId: string) {
+  return readJson<ContractTakeoverReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}`
+  );
+}
+
+export function createContractTakeover(
+  projectId: string,
+  body: CreateContractTakeoverPayload
+) {
+  return postJson<ContractTakeoverReadModel>(`/projects/${projectId}/contract-takeovers`, body);
+}
+
+export function submitContractTakeoverReview(projectId: string, takeoverId: string) {
+  return postJson<ContractTakeoverReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/review-submission`
+  );
+}
+
+export function confirmContractTakeover(
+  projectId: string,
+  takeoverId: string,
+  body: ConfirmContractTakeoverPayload
+) {
+  return postJson<ContractTakeoverReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/confirmation`,
+    body
+  );
 }
 
 export function createSettlementDraft(body: CreateSettlementPayload) {

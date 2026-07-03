@@ -3,6 +3,7 @@ import { resolveRouteAccess } from "./index";
 import {
   adminNavigationItems,
   fundsOverviewRoleKeys,
+  historicalTakeoverRoleKeys,
   visibleAdminNavigationItems,
   webAdminRoutes
 } from "./route-records";
@@ -40,6 +41,7 @@ describe("web admin routes", () => {
     expect(childPaths).toEqual(expect.arrayContaining([
       "首页",
       "合同管理",
+      "历史合同接管",
       "合同工作台",
       "合同工作台/:contractId",
       "合同管理/:contractId",
@@ -58,6 +60,7 @@ describe("web admin routes", () => {
   it("keeps legacy English routes as redirects to Chinese routes", () => {
     expect(redirectOf("contracts")).toBe("/合同管理");
     expect(redirectOf("contracts/new")).toBe("/合同工作台");
+    expect(redirectOf("contract-takeovers")).toBe("/历史合同接管");
     expect(redirectOf("contracts/:contractId/workbench", { contractId: "HT-1" })).toBe("/合同工作台/HT-1");
     expect(redirectOf("settlements")).toBe("/结算管理");
     expect(redirectOf("payments")).toBe("/付款管理");
@@ -76,10 +79,18 @@ describe("web admin routes", () => {
     expect(String(childRoute("项目经营")?.component)).toContain("ProjectOperatingOverviewPage.vue");
   });
 
+  it("guards historical contract takeover as a contract department module", () => {
+    expect(childRoute("历史合同接管")?.meta).toMatchObject({
+      requiredRoleKeys: historicalTakeoverRoleKeys
+    });
+    expect(String(childRoute("历史合同接管")?.component)).toContain("ContractTakeoverPage.vue");
+  });
+
   it("uses Chinese top-level navigation labels and paths", () => {
     expect(adminNavigationItems.map((item) => ({ label: item.label, path: item.path }))).toEqual([
       { label: "首页", path: "/首页" },
       { label: "合同管理", path: "/合同管理" },
+      { label: "历史合同接管", path: "/历史合同接管" },
       { label: "合同工作台", path: "/合同工作台" },
       { label: "项目经营", path: "/项目经营" },
       { label: "结算管理", path: "/结算管理" },
@@ -99,6 +110,12 @@ describe("web admin routes", () => {
     expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).not.toContain("/项目经营");
   });
 
+  it("hides historical contract takeover from nav when the user lacks contract department roles", () => {
+    expect(visibleAdminNavigationItems(["finance_staff"]).map((item) => item.path)).not.toContain("/历史合同接管");
+    expect(visibleAdminNavigationItems(["contract_staff"]).map((item) => item.path)).toContain("/历史合同接管");
+    expect(visibleAdminNavigationItems(["contract_director"]).map((item) => item.path)).toContain("/历史合同接管");
+  });
+
   it("redirects authenticated users without funds overview roles away from project operations", () => {
     const projectRoute = {
       meta: childRoute("项目经营")?.meta ?? {},
@@ -113,5 +130,21 @@ describe("web admin routes", () => {
       path: "/首页"
     });
     expect(resolveRouteAccess(projectRoute, { isAuthenticated: true, roleKeys: ["finance_director"] })).toBe(true);
+  });
+
+  it("redirects authenticated users without contract department roles away from historical takeover", () => {
+    const takeoverRoute = {
+      meta: childRoute("历史合同接管")?.meta ?? {},
+      fullPath: "/历史合同接管"
+    };
+
+    expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: false, roleKeys: [] })).toEqual({
+      path: "/login",
+      query: { redirect: "/历史合同接管" }
+    });
+    expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: true, roleKeys: ["finance_staff"] })).toEqual({
+      path: "/首页"
+    });
+    expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: true, roleKeys: ["contract_director"] })).toBe(true);
   });
 });
