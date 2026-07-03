@@ -17,6 +17,7 @@
     "preverify:trial-run": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:trial-run": "node prisma/verify-trial-run.cjs",
     "verify:production-readiness": "node scripts/verify-production-readiness.cjs",
+    "create:trial-users": "node scripts/create-trial-users.cjs",
     "contract-master:review-pack": "node scripts/generate-contract-master-review-pack.cjs",
     "pretest": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "test": "jest",
