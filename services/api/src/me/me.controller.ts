@@ -37,4 +37,9 @@ export class MeController {
   signatureTicket(@CurrentUser() user: AuthenticatedUser) {
     return this.me.getSignatureTicket(user.id);
   }
+
+  @Get("workbench-summary")
+  workbenchSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.me.getWorkbenchSummary(user.id);
+  }
 }

@@ -9,6 +9,7 @@ import {
   fetchSettlementDetail,
   fetchSettlementContractOptions,
   fetchSettlementLedger,
+  fetchWorkbenchSummary,
   fetchContractPaymentApplication,
   fetchArchives,
   fetchAuditLogs,
@@ -147,6 +148,19 @@ describe("core flow read API client", () => {
       "/api/payments",
       "/api/audit-logs",
       "/api/archives"
+    ]);
+  });
+
+  it("requests the personal workbench summary endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ cards: [] })
+    } as Response);
+
+    await fetchWorkbenchSummary();
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/me/workbench-summary"
     ]);
   });
 

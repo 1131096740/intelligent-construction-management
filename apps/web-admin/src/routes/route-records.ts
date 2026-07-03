@@ -70,7 +70,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
     children: [
       {
         path: "首页",
-        component: () => import("../pages/route-placeholder/RoutePlaceholderPage.vue"),
+        component: () => import("../pages/home/HomePage.vue"),
         meta: { title: "首页" }
       },
       {

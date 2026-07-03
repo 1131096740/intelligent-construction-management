@@ -57,6 +57,11 @@ describe("web admin routes", () => {
     ]));
   });
 
+  it("renders the real home workbench instead of the placeholder page", () => {
+    expect(String(childRoute("首页")?.component)).toContain("HomePage.vue");
+    expect(String(childRoute("首页")?.component)).not.toContain("RoutePlaceholderPage.vue");
+  });
+
   it("keeps legacy English routes as redirects to Chinese routes", () => {
     expect(redirectOf("contracts")).toBe("/合同管理");
     expect(redirectOf("contracts/new")).toBe("/合同工作台");

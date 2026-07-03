@@ -635,6 +635,28 @@ export interface ProjectExpenseRequestListReadModel {
   };
 }
 
+export type WorkbenchCardTone = "default" | "primary" | "warning" | "danger" | "success";
+
+export interface WorkbenchSummaryCardReadModel {
+  id: string;
+  title: string;
+  count: number;
+  description: string;
+  targetPath: string;
+  actionText: string;
+  tone: WorkbenchCardTone;
+}
+
+export interface WorkbenchSummaryReadModel {
+  generatedAt: string;
+  visibleProjectCount: number;
+  cards: WorkbenchSummaryCardReadModel[];
+}
+
+export function fetchWorkbenchSummary() {
+  return readJson<WorkbenchSummaryReadModel>("/me/workbench-summary");
+}
+
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
