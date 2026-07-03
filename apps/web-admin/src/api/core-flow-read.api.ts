@@ -80,6 +80,9 @@ export interface CreatePaymentTermsStagePayload {
   triggerAnchor?: "contract_effective" | "settlement_effective" | "final_settlement_effective";
   triggerEvent: string;
   dueDays: number;
+  advanceDeductionMode?: "none" | "per_settlement_ratio" | "after_cumulative_settlement_ratio";
+  advanceDeductionRatioBps?: number;
+  advanceDeductionStartRatioBps?: number;
   requiresInvoice: boolean;
   allowsEarlyPayment: boolean;
   allowsInstallments: boolean;

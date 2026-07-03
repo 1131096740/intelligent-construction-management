@@ -31,6 +31,7 @@ export interface ContractDueSettlement {
   status: string;
   amountCents: number;
   paidAmountCents?: number;
+  contractVersionId?: string;
   paymentTermsVersionId: string;
   isFinal?: boolean;
 }
@@ -43,6 +44,9 @@ export interface ContractDuePaymentTermsStage {
   fixedAmountCents: number | null;
   triggerAnchor?: string;
   dueDays: number;
+  advanceDeductionMode?: string | null;
+  advanceDeductionRatioBps?: number | null;
+  advanceDeductionStartRatioBps?: number | null;
 }
 
 export interface ContractDueSettlementArchiveFile {
@@ -54,12 +58,15 @@ export interface ContractDuePaymentRequest extends SettlementCapacityPaymentRequ
   settlementId: string | null;
 }
 
-export interface ContractAdvancePaymentRequest extends SettlementCapacityPaymentRequest {}
+export interface ContractAdvancePaymentRequest extends SettlementCapacityPaymentRequest {
+  paymentTermsVersionId?: string;
+}
 
 export interface ContractDuePaymentCapacity {
   duePayableCents: number;
   occupiedCents: number;
   remainingCents: number;
+  advanceDeductionCents?: number;
 }
 
 export function calculateSettlementPaymentCapacity(input: {
@@ -92,6 +99,9 @@ export function calculateContractDuePaymentCapacity(input: {
   settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
   paymentRequests: readonly ContractDuePaymentRequest[];
   proxyPaidAmountCents?: number;
+  contractAmountCents?: number;
+  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number>>;
+  advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
 }): ContractDuePaymentCapacity {
   const confirmedAtBySettlement = new Map<string, Date>();
   for (const archiveFile of input.settlementArchiveFiles) {
@@ -111,6 +121,8 @@ export function calculateContractDuePaymentCapacity(input: {
     currentSettlementStagesByTerms.set(stage.paymentTermsVersionId, [...stages, stage]);
   }
 
+  const dueSettlementBasisCentsByTerms = new Map<string, bigint>();
+  const cumulativeConfirmedSettlementCentsByTerms = new Map<string, bigint>();
   const duePayableCents = input.settlements.reduce<bigint>((total, settlement) => {
     if (
       !CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES.includes(
@@ -122,13 +134,28 @@ export function calculateContractDuePaymentCapacity(input: {
 
     const confirmedAt = confirmedAtBySettlement.get(settlement.id);
     if (!confirmedAt) return total;
+    addMapBigInt(
+      cumulativeConfirmedSettlementCentsByTerms,
+      settlement.paymentTermsVersionId,
+      BigInt(settlement.amountCents)
+    );
 
     const stages = currentSettlementStagesByTerms.get(settlement.paymentTermsVersionId) ?? [];
+    let hasDueStage = false;
     const settlementDueCents = stages.reduce<bigint>((stageTotal, stage) => {
       if (!isStageApplicableToSettlement(stage, settlement)) return stageTotal;
       if (!isStageDue(confirmedAt, stage.dueDays, input.asOf)) return stageTotal;
+      hasDueStage = true;
       return stageTotal + contractStageAmountCents(settlement.amountCents, stage);
     }, 0n);
+
+    if (hasDueStage) {
+      addMapBigInt(
+        dueSettlementBasisCentsByTerms,
+        settlement.paymentTermsVersionId,
+        BigInt(settlement.amountCents)
+      );
+    }
 
     return total + minBigInt(settlementDueCents, BigInt(settlement.amountCents));
   }, 0n);
@@ -141,16 +168,29 @@ export function calculateContractDuePaymentCapacity(input: {
     (total, payment) => total + BigInt(outstandingPaymentRequestCents(payment)),
     0n
   );
+  const advanceDeductionCents = calculateAdvanceDeductionCents({
+    paidAdvanceCentsByTerms: paidAdvanceCentsByTerms(input.advancePaymentRequests ?? []),
+    contractAmountCents: BigInt(input.contractAmountCents ?? 0),
+    contractAmountCentsByTerms: contractAmountCentsByTerms(
+      input.contractAmountCentsByPaymentTermsVersionId
+    ),
+    dueSettlementBasisCentsByTerms,
+    cumulativeConfirmedSettlementCentsByTerms,
+    paymentTermsStages: input.paymentTermsStages
+  });
   const occupiedCents =
     actualPaidAmountCents +
     BigInt(input.proxyPaidAmountCents ?? 0) +
     outstandingPaymentCents;
-  const remainingCents = duePayableCents - occupiedCents;
+  const remainingCents = duePayableCents - occupiedCents - advanceDeductionCents;
 
   return {
     duePayableCents: centsToSafeNumber(duePayableCents),
     occupiedCents: centsToSafeNumber(occupiedCents),
-    remainingCents: centsToSafeNumber(remainingCents)
+    remainingCents: centsToSafeNumber(remainingCents),
+    ...(input.advancePaymentRequests
+      ? { advanceDeductionCents: centsToSafeNumber(advanceDeductionCents) }
+      : {})
   };
 }
 
@@ -219,6 +259,120 @@ function isContractAdvanceStage(stage: ContractDuePaymentTermsStage): boolean {
     stage.basis === "contract_amount" &&
     stage.triggerAnchor === "contract_effective"
   );
+}
+
+function calculateAdvanceDeductionCents(input: {
+  paidAdvanceCentsByTerms: ReadonlyMap<string, bigint>;
+  contractAmountCents: bigint;
+  contractAmountCentsByTerms: ReadonlyMap<string, bigint>;
+  dueSettlementBasisCentsByTerms: ReadonlyMap<string, bigint>;
+  cumulativeConfirmedSettlementCentsByTerms: ReadonlyMap<string, bigint>;
+  paymentTermsStages: readonly ContractDuePaymentTermsStage[];
+}): bigint {
+  const scheduledDeductionCentsByTerms = input.paymentTermsStages.reduce<Map<string, bigint>>((totals, stage) => {
+    if (!isContractAdvanceStage(stage)) return totals;
+    const mode = stage.advanceDeductionMode ?? "none";
+    if (mode === "none") return totals;
+    if (mode !== "per_settlement_ratio" && mode !== "after_cumulative_settlement_ratio") {
+      throw new Error(`Unsupported advance deduction mode: ${mode}`);
+    }
+
+    if (stage.advanceDeductionRatioBps === null || stage.advanceDeductionRatioBps === undefined) {
+      throw new Error("Advance deduction ratio is required for active deduction mode");
+    }
+    const ratioBps = stage.advanceDeductionRatioBps;
+    if (ratioBps <= 0) {
+      throw new Error("Advance deduction ratio must be greater than zero");
+    }
+
+    const paidAdvanceCents = input.paidAdvanceCentsByTerms.get(stage.paymentTermsVersionId) ?? 0n;
+    const dueSettlementBasisCents =
+      input.dueSettlementBasisCentsByTerms.get(stage.paymentTermsVersionId) ?? 0n;
+    if (paidAdvanceCents <= 0n || dueSettlementBasisCents <= 0n) {
+      return totals;
+    }
+
+    if (mode === "after_cumulative_settlement_ratio") {
+      if (
+        stage.advanceDeductionStartRatioBps === null ||
+        stage.advanceDeductionStartRatioBps === undefined
+      ) {
+        throw new Error("Advance deduction start ratio is required for conditional deduction mode");
+      }
+      const startRatioBps = stage.advanceDeductionStartRatioBps;
+      const startAmountCents =
+        (contractAmountCentsForTerms(input, stage.paymentTermsVersionId) *
+          BigInt(Math.max(startRatioBps, 0))) /
+        10000n;
+      const cumulativeConfirmedSettlementCents =
+        input.cumulativeConfirmedSettlementCentsByTerms.get(stage.paymentTermsVersionId) ?? 0n;
+      if (cumulativeConfirmedSettlementCents < startAmountCents) {
+        return totals;
+      }
+    }
+
+    const scheduledCents = (dueSettlementBasisCents * BigInt(Math.max(ratioBps, 0))) / 10000n;
+    addMapBigInt(totals, stage.paymentTermsVersionId, scheduledCents);
+    return totals;
+  }, new Map<string, bigint>());
+
+  return [...scheduledDeductionCentsByTerms.entries()].reduce<bigint>(
+    (total, [paymentTermsVersionId, scheduledCents]) =>
+      total +
+      minBigInt(
+        scheduledCents,
+        input.paidAdvanceCentsByTerms.get(paymentTermsVersionId) ?? 0n
+      ),
+    0n
+  );
+}
+
+function paidAdvanceCentsByTerms(
+  paymentRequests: readonly ContractAdvancePaymentRequest[]
+): ReadonlyMap<string, bigint> {
+  const totals = new Map<string, bigint>();
+  for (const payment of paymentRequests) {
+    if (!payment.paymentTermsVersionId) {
+      continue;
+    }
+
+    addMapBigInt(
+      totals,
+      payment.paymentTermsVersionId,
+      BigInt(Math.max(payment.paidAmountCents ?? 0, 0))
+    );
+  }
+
+  return totals;
+}
+
+function contractAmountCentsByTerms(
+  values: Readonly<Record<string, number>> | undefined
+): ReadonlyMap<string, bigint> {
+  const totals = new Map<string, bigint>();
+  if (!values) {
+    return totals;
+  }
+
+  for (const [termsId, amountCents] of Object.entries(values)) {
+    totals.set(termsId, BigInt(Math.max(amountCents, 0)));
+  }
+
+  return totals;
+}
+
+function contractAmountCentsForTerms(
+  input: {
+    contractAmountCents: bigint;
+    contractAmountCentsByTerms: ReadonlyMap<string, bigint>;
+  },
+  paymentTermsVersionId: string
+): bigint {
+  return input.contractAmountCentsByTerms.get(paymentTermsVersionId) ?? input.contractAmountCents;
+}
+
+function addMapBigInt(map: Map<string, bigint>, key: string, amount: bigint): void {
+  map.set(key, (map.get(key) ?? 0n) + amount);
 }
 
 function isStageDue(confirmedAt: Date, dueDays: number, asOf: Date): boolean {

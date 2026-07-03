@@ -57,6 +57,7 @@ interface PaymentExecutionLockRow {
   id: string;
   code: string;
   projectId: string;
+  contractId: string;
   settlementId: string | null;
   sourceType?: string;
   status: string;
@@ -425,6 +426,7 @@ export class PaymentRequestService {
     settlement: {
       id: string;
       contractId: string;
+      contractVersionId?: string;
       amountCents: number;
       paymentTermsVersionId: string;
     },
@@ -433,7 +435,10 @@ export class PaymentRequestService {
     const paymentTermsStageClient = (tx as unknown as {
       paymentTermsStage?: {
         findMany: (args: {
-          where: { paymentTermsVersionId: { in: string[] }; basis: string };
+          where: {
+            paymentTermsVersionId: { in: string[] };
+            OR: Array<{ basis?: string; stageType?: string }>;
+          };
           select: {
             paymentTermsVersionId: true;
             stageType: true;
@@ -442,6 +447,9 @@ export class PaymentRequestService {
             fixedAmountCents: true;
             triggerAnchor: true;
             dueDays: true;
+            advanceDeductionMode: true;
+            advanceDeductionRatioBps: true;
+            advanceDeductionStartRatioBps: true;
           };
         }) => Promise<
           Array<{
@@ -452,6 +460,9 @@ export class PaymentRequestService {
             fixedAmountCents: number | null;
             triggerAnchor: string;
             dueDays: number;
+            advanceDeductionMode: string | null;
+            advanceDeductionRatioBps: number | null;
+            advanceDeductionStartRatioBps: number | null;
           }>
         >;
       };
@@ -483,6 +494,7 @@ export class PaymentRequestService {
         status: true,
         amountCents: true,
         paidAmountCents: true,
+        contractVersionId: true,
         isFinal: true,
         paymentTermsVersionId: true
       }
@@ -499,7 +511,7 @@ export class PaymentRequestService {
         paymentTermsStageClient.paymentTermsStage.findMany({
           where: {
             paymentTermsVersionId: { in: paymentTermsVersionIds },
-            basis: "current_settlement"
+            OR: [{ basis: "current_settlement" }, { stageType: "advance" }]
           },
           select: {
             paymentTermsVersionId: true,
@@ -508,7 +520,10 @@ export class PaymentRequestService {
             ratioBps: true,
             fixedAmountCents: true,
             triggerAnchor: true,
-            dueDays: true
+            dueDays: true,
+            advanceDeductionMode: true,
+            advanceDeductionRatioBps: true,
+            advanceDeductionStartRatioBps: true
           }
         }),
         paymentTermsStageClient.settlementArchiveFile.findMany({
@@ -535,6 +550,26 @@ export class PaymentRequestService {
         }),
         this.sumProjectProxyPaymentCentsForContract(tx, settlement.contractId, settlementIds)
       ]);
+    const advancePaymentRequests = await tx.paymentRequest.findMany({
+      where: {
+        contractId: settlement.contractId,
+        sourceType: "contract_advance",
+        paymentTermsVersionId: { in: paymentTermsVersionIds },
+        paidAmountCents: { gt: 0 }
+      },
+      select: {
+        paymentTermsVersionId: true,
+        status: true,
+        requestedAmountCents: true,
+        approvedAmountCents: true,
+        paidAmountCents: true
+      }
+    });
+    const contractAmountCentsByPaymentTermsVersionId =
+      await this.contractAmountCentsByPaymentTermsVersionIdForCapacity(
+      tx,
+      contractSettlements
+    );
 
     const capacity = calculateContractDuePaymentCapacity({
       asOf: new Date(),
@@ -542,7 +577,10 @@ export class PaymentRequestService {
       paymentTermsStages,
       settlementArchiveFiles,
       paymentRequests: contractPaymentRequests,
-      proxyPaidAmountCents
+      proxyPaidAmountCents,
+      contractAmountCents: contractAmountCentsByPaymentTermsVersionId[settlement.paymentTermsVersionId],
+      contractAmountCentsByPaymentTermsVersionId,
+      advancePaymentRequests
     });
 
     if (requestedAmountCents > capacity.remainingCents) {
@@ -554,6 +592,7 @@ export class PaymentRequestService {
     tx: Prisma.TransactionClient,
     contractId: string
   ): Promise<void> {
+    await this.lockContractAdvancePaymentRows(tx, contractId);
     await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id"
       FROM "Settlement"
@@ -561,6 +600,49 @@ export class PaymentRequestService {
         AND "status" IN (${Prisma.join([...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES])})
       FOR UPDATE
     `);
+  }
+
+  private async contractAmountCentsByPaymentTermsVersionIdForCapacity(
+    tx: Prisma.TransactionClient,
+    contractSettlements: Array<{
+      amountCents: number;
+      contractVersionId?: string;
+      paymentTermsVersionId: string;
+    }>
+  ): Promise<Record<string, number>> {
+    const contractVersionClient = (tx as unknown as {
+      contractVersion?: {
+        findMany: (args: {
+          where: { id: { in: string[] } };
+          select: { id: true; amountCents: true };
+        }) => Promise<Array<{ id: string; amountCents: number }>>;
+      };
+    }).contractVersion;
+    const versionIds = [
+      ...new Set(contractSettlements.map((settlement) => settlement.contractVersionId).filter(Boolean))
+    ] as string[];
+    const amountByVersionId =
+      contractVersionClient && versionIds.length
+        ? new Map(
+            (
+              await contractVersionClient.findMany({
+                where: { id: { in: versionIds } },
+                select: { id: true, amountCents: true }
+              })
+            ).map((version) => [version.id, version.amountCents])
+          )
+        : new Map<string, number>();
+
+    const fallbackAmountCents = sumSafeCents(contractSettlements.map((settlement) => settlement.amountCents));
+    const amountByTermsId: Record<string, number> = {};
+    for (const settlement of contractSettlements) {
+      amountByTermsId[settlement.paymentTermsVersionId] =
+        (settlement.contractVersionId
+          ? amountByVersionId.get(settlement.contractVersionId)
+          : undefined) ?? fallbackAmountCents;
+    }
+
+    return amountByTermsId;
   }
 
   private async lockContractAdvancePaymentRows(
@@ -1017,6 +1099,7 @@ export class PaymentRequestService {
         "id",
         "code",
         "projectId",
+        "contractId",
         "settlementId",
         "sourceType",
         "status",
@@ -1550,6 +1633,10 @@ export class PaymentRequestService {
 
       if (!["approved_pending_payment", "partially_paid"].includes(payment.status)) {
         throw new Error(`Cannot record payment execution from status ${payment.status}`);
+      }
+
+      if (payment.sourceType === "contract_advance") {
+        await this.lockContractAdvancePaymentRows(tx, payment.contractId);
       }
 
       const approvedAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;

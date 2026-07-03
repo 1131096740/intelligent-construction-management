@@ -16,6 +16,9 @@ interface ContractDuePaymentTermsStage {
   fixedAmountCents: number | null;
   triggerAnchor?: string;
   dueDays: number;
+  advanceDeductionMode?: string | null;
+  advanceDeductionRatioBps?: number | null;
+  advanceDeductionStartRatioBps?: number | null;
 }
 
 interface ContractDueSettlementArchiveFile {
@@ -35,9 +38,11 @@ interface ContractDuePaymentCapacity {
   duePayableCents: number;
   occupiedCents: number;
   remainingCents: number;
+  advanceDeductionCents?: number;
 }
 
 interface ContractAdvancePaymentRequest {
+  paymentTermsVersionId?: string;
   status: string;
   requestedAmountCents: number;
   approvedAmountCents?: number | null;
@@ -51,6 +56,9 @@ type ContractDuePaymentCapacityCalculator = (input: {
   settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
   paymentRequests: readonly ContractDuePaymentRequest[];
   proxyPaidAmountCents?: number;
+  contractAmountCents?: number;
+  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number>>;
+  advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
 }) => ContractDuePaymentCapacity;
 
 type ContractAdvancePaymentCapacityCalculator = (input: {
@@ -438,6 +446,535 @@ describe("calculateContractDuePaymentCapacity", () => {
       occupiedCents: 0,
       remainingCents: 10_000
     });
+  });
+
+  it("does not deduct unpaid contract advances from settlement payment capacity", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      contractAmountCents: 1_000_000,
+      settlements: [
+        {
+          id: "settlement-1",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "per_settlement_ratio",
+          advanceDeductionRatioBps: 2000
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-1",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: [],
+      advancePaymentRequests: [
+        {
+          paymentTermsVersionId: "terms-1",
+          status: "approval_pending",
+          requestedAmountCents: 100_000,
+          approvedAmountCents: null,
+          paidAmountCents: 0
+        }
+      ]
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 80_000,
+      occupiedCents: 0,
+      remainingCents: 80_000,
+      advanceDeductionCents: 0
+    });
+  });
+
+  it("deducts paid contract advances from settlement capacity and caps deduction to paid advance", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      contractAmountCents: 1_000_000,
+      settlements: [
+        {
+          id: "settlement-1",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-1"
+        },
+        {
+          id: "settlement-2",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "per_settlement_ratio",
+          advanceDeductionRatioBps: 2000
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-1",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        },
+        {
+          settlementId: "settlement-2",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: [],
+      advancePaymentRequests: [
+        {
+          paymentTermsVersionId: "terms-1",
+          status: "paid",
+          requestedAmountCents: 30_000,
+          approvedAmountCents: 30_000,
+          paidAmountCents: 30_000
+        }
+      ]
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 160_000,
+      occupiedCents: 0,
+      remainingCents: 130_000,
+      advanceDeductionCents: 30_000
+    });
+  });
+
+  it("starts conditional advance deduction only after cumulative settlements reach the configured ratio", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      contractAmountCents: 1_000_000,
+      settlements: [
+        {
+          id: "settlement-1",
+          status: "effective",
+          amountCents: 400_000,
+          paymentTermsVersionId: "terms-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "after_cumulative_settlement_ratio",
+          advanceDeductionRatioBps: 2000,
+          advanceDeductionStartRatioBps: 5000
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-1",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: [],
+      advancePaymentRequests: [
+        {
+          paymentTermsVersionId: "terms-1",
+          status: "paid",
+          requestedAmountCents: 100_000,
+          approvedAmountCents: 100_000,
+          paidAmountCents: 100_000
+        }
+      ]
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 320_000,
+      occupiedCents: 0,
+      remainingCents: 320_000,
+      advanceDeductionCents: 0
+    });
+  });
+
+  it("applies advance deductions only to settlements using the same payment terms version", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      contractAmountCents: 1_000_000,
+      contractAmountCentsByPaymentTermsVersionId: {
+        "terms-old": 1_000_000,
+        "terms-new": 2_000_000
+      },
+      settlements: [
+        {
+          id: "settlement-old",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-old"
+        },
+        {
+          id: "settlement-new",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-new"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-old",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-old",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "per_settlement_ratio",
+          advanceDeductionRatioBps: 1000
+        },
+        {
+          paymentTermsVersionId: "terms-new",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-new",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "per_settlement_ratio",
+          advanceDeductionRatioBps: 2000
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-old",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        },
+        {
+          settlementId: "settlement-new",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: [],
+      advancePaymentRequests: [
+        {
+          paymentTermsVersionId: "terms-old",
+          status: "paid",
+          requestedAmountCents: 100_000,
+          approvedAmountCents: 100_000,
+          paidAmountCents: 100_000
+        },
+        {
+          paymentTermsVersionId: "terms-new",
+          status: "paid",
+          requestedAmountCents: 100_000,
+          approvedAmountCents: 100_000,
+          paidAmountCents: 100_000
+        }
+      ]
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 160_000,
+      occupiedCents: 0,
+      remainingCents: 130_000,
+      advanceDeductionCents: 30_000
+    });
+  });
+
+  it("caps multiple advance deduction stages under one terms version to paid advance total", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      contractAmountCents: 1_000_000,
+      settlements: [
+        {
+          id: "settlement-1",
+          status: "effective",
+          amountCents: 400_000,
+          paymentTermsVersionId: "terms-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 500,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "per_settlement_ratio",
+          advanceDeductionRatioBps: 2000
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 500,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "per_settlement_ratio",
+          advanceDeductionRatioBps: 2000
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-1",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: [],
+      advancePaymentRequests: [
+        {
+          paymentTermsVersionId: "terms-1",
+          status: "paid",
+          requestedAmountCents: 100_000,
+          approvedAmountCents: 100_000,
+          paidAmountCents: 100_000
+        }
+      ]
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 320_000,
+      occupiedCents: 0,
+      remainingCents: 220_000,
+      advanceDeductionCents: 100_000
+    });
+  });
+
+  it("rejects active advance deduction modes without a positive deduction ratio", () => {
+    expect(() =>
+      calculateContractCapacity({
+        asOf,
+        contractAmountCents: 1_000_000,
+        settlements: [
+          {
+            id: "settlement-1",
+            status: "effective",
+            amountCents: 100_000,
+            paymentTermsVersionId: "terms-1"
+          }
+        ],
+        paymentTermsStages: [
+          {
+            paymentTermsVersionId: "terms-1",
+            stageType: "progress",
+            basis: "current_settlement",
+            ratioBps: 8000,
+            fixedAmountCents: null,
+            triggerAnchor: "settlement_effective",
+            dueDays: 0
+          },
+          {
+            paymentTermsVersionId: "terms-1",
+            stageType: "advance",
+            basis: "contract_amount",
+            ratioBps: 1000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            dueDays: 0,
+            advanceDeductionMode: "per_settlement_ratio",
+            advanceDeductionRatioBps: null
+          }
+        ],
+        settlementArchiveFiles: [
+          {
+            settlementId: "settlement-1",
+            confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+          }
+        ],
+        paymentRequests: [],
+        advancePaymentRequests: [
+          {
+            paymentTermsVersionId: "terms-1",
+            status: "paid",
+            requestedAmountCents: 100_000,
+            approvedAmountCents: 100_000,
+            paidAmountCents: 100_000
+          }
+        ]
+      })
+    ).toThrow("Advance deduction ratio is required for active deduction mode");
+  });
+
+  it("rejects conditional advance deduction without a start ratio", () => {
+    expect(() =>
+      calculateContractCapacity({
+        asOf,
+        contractAmountCents: 1_000_000,
+        settlements: [
+          {
+            id: "settlement-1",
+            status: "effective",
+            amountCents: 100_000,
+            paymentTermsVersionId: "terms-1"
+          }
+        ],
+        paymentTermsStages: [
+          {
+            paymentTermsVersionId: "terms-1",
+            stageType: "progress",
+            basis: "current_settlement",
+            ratioBps: 8000,
+            fixedAmountCents: null,
+            triggerAnchor: "settlement_effective",
+            dueDays: 0
+          },
+          {
+            paymentTermsVersionId: "terms-1",
+            stageType: "advance",
+            basis: "contract_amount",
+            ratioBps: 1000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            dueDays: 0,
+            advanceDeductionMode: "after_cumulative_settlement_ratio",
+            advanceDeductionRatioBps: 2000,
+            advanceDeductionStartRatioBps: null
+          }
+        ],
+        settlementArchiveFiles: [
+          {
+            settlementId: "settlement-1",
+            confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+          }
+        ],
+        paymentRequests: [],
+        advancePaymentRequests: [
+          {
+            paymentTermsVersionId: "terms-1",
+            status: "paid",
+            requestedAmountCents: 100_000,
+            approvedAmountCents: 100_000,
+            paidAmountCents: 100_000
+          }
+        ]
+      })
+    ).toThrow("Advance deduction start ratio is required for conditional deduction mode");
+  });
+
+  it("rejects unsupported advance deduction modes instead of ignoring them", () => {
+    expect(() =>
+      calculateContractCapacity({
+        asOf,
+        contractAmountCents: 1_000_000,
+        settlements: [
+          {
+            id: "settlement-1",
+            status: "effective",
+            amountCents: 100_000,
+            paymentTermsVersionId: "terms-1"
+          }
+        ],
+        paymentTermsStages: [
+          {
+            paymentTermsVersionId: "terms-1",
+            stageType: "progress",
+            basis: "current_settlement",
+            ratioBps: 8000,
+            fixedAmountCents: null,
+            triggerAnchor: "settlement_effective",
+            dueDays: 0
+          },
+          {
+            paymentTermsVersionId: "terms-1",
+            stageType: "advance",
+            basis: "contract_amount",
+            ratioBps: 1000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            dueDays: 0,
+            advanceDeductionMode: "unsupported_mode",
+            advanceDeductionRatioBps: 2000
+          }
+        ],
+        settlementArchiveFiles: [
+          {
+            settlementId: "settlement-1",
+            confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+          }
+        ],
+        paymentRequests: [],
+        advancePaymentRequests: [
+          {
+            paymentTermsVersionId: "terms-1",
+            status: "paid",
+            requestedAmountCents: 100_000,
+            approvedAmountCents: 100_000,
+            paidAmountCents: 100_000
+          }
+        ]
+      })
+    ).toThrow("Unsupported advance deduction mode: unsupported_mode");
   });
 });
 

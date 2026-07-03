@@ -114,7 +114,9 @@ describe("PaymentRequestService", () => {
       id: string;
       code: string;
       projectId: string;
+      contractId: string;
       settlementId: string | null;
+      sourceType: string;
       status: string;
       requestedAmountCents: number;
       approvedAmountCents: number | null;
@@ -125,7 +127,9 @@ describe("PaymentRequestService", () => {
       id: "payment-1",
       code: "FK-2026-012",
       projectId: "project-1",
+      contractId: "contract-1",
       settlementId: "settlement-1",
+      sourceType: "settlement",
       status: "approved_pending_payment",
       requestedAmountCents: 50_000,
       approvedAmountCents: 50_000,
@@ -211,6 +215,7 @@ describe("PaymentRequestService", () => {
       ...cashPool.tables,
       $queryRaw: jest
         .fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([{ id: "settlement-1" }])
         .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
     };
@@ -457,6 +462,7 @@ describe("PaymentRequestService", () => {
       ...cashPool.tables,
       $queryRaw: jest
         .fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([{ id: "settlement-1" }])
         .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
     };
@@ -687,6 +693,135 @@ describe("PaymentRequestService", () => {
       expect(tx.$queryRaw).toHaveBeenCalled();
       expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
         tx.settlement.findMany.mock.invocationCallOrder[0]
+      );
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("deducts paid contract advances from contract due payment capacity", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
+
+    try {
+      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+      const tx = {
+        settlement: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "settlement-1",
+            projectId: "project-1",
+            contractId: "contract-1",
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1",
+            status: "effective",
+            amountCents: 100_000,
+            payableAmountCents: 100_000,
+            paidAmountCents: 0
+          }),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: "settlement-1",
+              amountCents: 100_000,
+              paidAmountCents: 0,
+              paymentTermsVersionId: "terms-version-1",
+              status: "effective",
+              isFinal: false
+            }
+          ])
+        },
+        paymentTermsStage: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              paymentTermsVersionId: "terms-version-1",
+              stageType: "progress",
+              basis: "current_settlement",
+              ratioBps: 8000,
+              fixedAmountCents: null,
+              triggerAnchor: "settlement_effective",
+              dueDays: 0,
+              advanceDeductionMode: null,
+              advanceDeductionRatioBps: null,
+              advanceDeductionStartRatioBps: null
+            },
+            {
+              paymentTermsVersionId: "terms-version-1",
+              stageType: "advance",
+              basis: "contract_amount",
+              ratioBps: 1000,
+              fixedAmountCents: null,
+              triggerAnchor: "contract_effective",
+              dueDays: 0,
+              advanceDeductionMode: "per_settlement_ratio",
+              advanceDeductionRatioBps: 2000,
+              advanceDeductionStartRatioBps: null
+            }
+          ])
+        },
+        settlementArchiveFile: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              settlementId: "settlement-1",
+              confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+            }
+          ])
+        },
+        projectProxyPayment: {
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        paymentRequest: {
+          findMany: jest.fn((args: { where?: { settlementId?: string; contractId?: string; projectId?: string; sourceType?: string } }) => {
+            if (args.where?.contractId === "contract-1" && args.where?.sourceType === "contract_advance") {
+              return Promise.resolve([
+                {
+                  paymentTermsVersionId: "terms-version-1",
+                  status: "paid",
+                  requestedAmountCents: 20_000,
+                  approvedAmountCents: 20_000,
+                  paidAmountCents: 20_000
+                }
+              ]);
+            }
+
+            if (args.where?.projectId === "project-1") {
+              return Promise.resolve(cashPool.projectPayments);
+            }
+
+            return Promise.resolve([]);
+          }),
+          create: jest.fn()
+        },
+        ...cashPool.tables,
+        $queryRaw: jest
+          .fn()
+          .mockResolvedValueOnce([{ id: "contract-1" }])
+          .mockResolvedValueOnce([{ id: "settlement-1" }])
+          .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      };
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          settlementId: "settlement-1",
+          code: "FK-2026-ADV-DED",
+          requestedAmountCents: 61_000
+        })
+      ).rejects.toThrow("合同到期可付额度不足: 60000");
+      expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contractId: "contract-1",
+            sourceType: "contract_advance",
+            paymentTermsVersionId: { in: ["terms-version-1"] },
+            paidAmountCents: { gt: 0 }
+          }),
+          select: expect.objectContaining({
+            paidAmountCents: true
+          })
+        })
       );
       expect(tx.paymentRequest.create).not.toHaveBeenCalled();
     } finally {
@@ -2096,16 +2231,20 @@ describe("PaymentRequestService", () => {
 
   it("records contract advance execution without touching settlement ledger", async () => {
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        paymentExecutionRow({
-          id: "payment-advance-1",
-          code: "FK-YF-2026-001",
-          settlementId: null,
-          requestedAmountCents: 100_000,
-          approvedAmountCents: 100_000,
-          paidAmountCents: 0
-        })
-      ]),
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          paymentExecutionRow({
+            id: "payment-advance-1",
+            code: "FK-YF-2026-001",
+            settlementId: null,
+            sourceType: "contract_advance",
+            requestedAmountCents: 100_000,
+            approvedAmountCents: 100_000,
+            paidAmountCents: 0
+          })
+        ])
+        .mockResolvedValueOnce([{ id: "contract-1" }]),
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-advance-1",
@@ -2163,6 +2302,10 @@ describe("PaymentRequestService", () => {
     });
 
     expect(execution.id).toBe("execution-advance-1");
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
+      tx.paymentRequest.update.mock.invocationCallOrder[0]
+    );
     expect(tx.settlement.findUnique).not.toHaveBeenCalled();
     expect(tx.settlement.update).not.toHaveBeenCalled();
     expect(tx.paymentExecution.create).toHaveBeenCalledWith({

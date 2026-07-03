@@ -23,6 +23,9 @@ export interface PaymentTermStage {
   ratio: string;
   accountPeriod: string;
   triggerEvent: string;
+  advanceDeductionMode?: string;
+  advanceDeductionRatioBps?: number | null;
+  advanceDeductionStartRatioBps?: number | null;
 }
 
 export interface ContractSettlementLedgerRow {

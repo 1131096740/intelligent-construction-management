@@ -176,7 +176,10 @@ export class ContractReadService {
         basis: this.basisLabel(stage.basis),
         ratio: this.ratioLabel(stage.ratioBps),
         accountPeriod: `${stage.dueDays}天`,
-        triggerEvent: stage.triggerEvent
+        triggerEvent: stage.triggerEvent,
+        advanceDeductionMode: stage.advanceDeductionMode,
+        advanceDeductionRatioBps: stage.advanceDeductionRatioBps,
+        advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps
       })),
       settlementBlockMessage: this.settlementBlockMessage(version.status),
       settlementPayment: this.settlementPayment(

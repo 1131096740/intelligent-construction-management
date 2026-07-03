@@ -611,6 +611,7 @@ export class ProjectService {
             status: true;
             amountCents: true;
             paidAmountCents: true;
+            contractVersionId: true;
             isFinal: true;
             paymentTermsVersionId: true;
           };
@@ -620,6 +621,7 @@ export class ProjectService {
             status: string;
             amountCents: number;
             paidAmountCents: number;
+            contractVersionId?: string;
             isFinal: boolean;
             paymentTermsVersionId: string;
           }>
@@ -627,7 +629,10 @@ export class ProjectService {
       };
       paymentTermsStage?: {
         findMany: (args: {
-          where: { paymentTermsVersionId: { in: string[] }; basis: string };
+          where: {
+            paymentTermsVersionId: { in: string[] };
+            OR: Array<{ basis?: string; stageType?: string }>;
+          };
           select: {
             paymentTermsVersionId: true;
             stageType: true;
@@ -636,6 +641,9 @@ export class ProjectService {
             fixedAmountCents: true;
             triggerAnchor: true;
             dueDays: true;
+            advanceDeductionMode: true;
+            advanceDeductionRatioBps: true;
+            advanceDeductionStartRatioBps: true;
           };
         }) => Promise<
           Array<{
@@ -646,8 +654,17 @@ export class ProjectService {
             fixedAmountCents: number | null;
             triggerAnchor: string;
             dueDays: number;
+            advanceDeductionMode: string | null;
+            advanceDeductionRatioBps: number | null;
+            advanceDeductionStartRatioBps: number | null;
           }>
         >;
+      };
+      contractVersion?: {
+        findMany: (args: {
+          where: { id: { in: string[] } };
+          select: { id: true; amountCents: true };
+        }) => Promise<Array<{ id: string; amountCents: number }>>;
       };
       settlementArchiveFile?: {
         findMany: (args: {
@@ -668,6 +685,13 @@ export class ProjectService {
 
     await clients.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id"
+      FROM "Contract"
+      WHERE "id" = ${contractId}
+      FOR UPDATE
+    `);
+
+    await clients.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
       FROM "Settlement"
       WHERE "contractId" = ${contractId}
         AND "status" IN (${Prisma.join([...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES])})
@@ -684,6 +708,7 @@ export class ProjectService {
         status: true,
         amountCents: true,
         paidAmountCents: true,
+        contractVersionId: true,
         isFinal: true,
         paymentTermsVersionId: true
       }
@@ -697,11 +722,18 @@ export class ProjectService {
       throw new BadRequestException("Project proxy payment exceeds contract due payable amount: 0");
     }
 
-    const [paymentTermsStages, settlementArchiveFiles, paymentRequests, proxyPayments] = await Promise.all([
+    const [
+      paymentTermsStages,
+      settlementArchiveFiles,
+      paymentRequests,
+      advancePaymentRequests,
+      proxyPayments,
+      contractVersion
+    ] = await Promise.all([
       clients.paymentTermsStage.findMany({
         where: {
           paymentTermsVersionId: { in: paymentTermsVersionIds },
-          basis: "current_settlement"
+          OR: [{ basis: "current_settlement" }, { stageType: "advance" }]
         },
         select: {
           paymentTermsVersionId: true,
@@ -710,7 +742,10 @@ export class ProjectService {
           ratioBps: true,
           fixedAmountCents: true,
           triggerAnchor: true,
-          dueDays: true
+          dueDays: true,
+          advanceDeductionMode: true,
+          advanceDeductionRatioBps: true,
+          advanceDeductionStartRatioBps: true
         }
       }),
       clients.settlementArchiveFile.findMany({
@@ -735,14 +770,59 @@ export class ProjectService {
           paidAmountCents: true
         }
       }),
+      tx.paymentRequest.findMany({
+        where: {
+          contractId,
+          sourceType: "contract_advance",
+          paymentTermsVersionId: { in: paymentTermsVersionIds },
+          paidAmountCents: { gt: 0 }
+        },
+        select: {
+          paymentTermsVersionId: true,
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
       tx.projectProxyPayment.findMany({
         where: {
           voidedAt: null,
           OR: [{ contractId }, { settlementId: { in: settlementIds } }]
         },
         select: { amountCents: true }
-      })
+      }),
+      clients.contractVersion
+        ? clients.contractVersion.findMany({
+            where: {
+              id: {
+                in: [
+                  ...new Set(
+                    contractSettlements
+                      .map((settlement) => settlement.contractVersionId)
+                      .filter(Boolean)
+                  )
+                ] as string[]
+              }
+            },
+            select: { id: true, amountCents: true }
+          })
+        : Promise.resolve([])
     ]);
+    const amountByVersionId = new Map(contractVersion.map((version) => [version.id, version.amountCents]));
+    const fallbackContractAmountCents = sumSafeCents(
+      contractSettlements.map((settlement) => settlement.amountCents)
+    );
+    const contractAmountCentsByPaymentTermsVersionId = contractSettlements.reduce<Record<string, number>>(
+      (amountByTermsId, settlement) => ({
+        ...amountByTermsId,
+        [settlement.paymentTermsVersionId]:
+          (settlement.contractVersionId
+            ? amountByVersionId.get(settlement.contractVersionId)
+            : undefined) ?? fallbackContractAmountCents
+      }),
+      {}
+    );
 
     const capacity = calculateContractDuePaymentCapacity({
       asOf: new Date(),
@@ -750,7 +830,10 @@ export class ProjectService {
       paymentTermsStages,
       settlementArchiveFiles,
       paymentRequests,
-      proxyPaidAmountCents: sumSafeCents(proxyPayments.map((payment) => payment.amountCents))
+      proxyPaidAmountCents: sumSafeCents(proxyPayments.map((payment) => payment.amountCents)),
+      contractAmountCents: fallbackContractAmountCents,
+      contractAmountCentsByPaymentTermsVersionId,
+      advancePaymentRequests
     });
 
     if (amountCents > capacity.remainingCents) {

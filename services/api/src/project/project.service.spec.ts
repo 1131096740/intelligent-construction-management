@@ -2214,6 +2214,153 @@ describe("ProjectService", () => {
     }
   });
 
+  it("deducts paid contract advances from project proxy payment contract capacity", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
+
+    try {
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
+        project: {
+          findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+        },
+        fileObject: {
+          findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-1" })
+        },
+        settlement: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: "settlement-1",
+              projectId: "project-1",
+              contractId: "contract-1",
+              status: "effective"
+            })
+            .mockResolvedValueOnce({
+              id: "settlement-1",
+              projectId: "project-1",
+              contractId: "contract-1",
+              status: "effective",
+              paidAmountCents: 0,
+              payableAmountCents: 100000
+            }),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: "settlement-1",
+              status: "effective",
+              amountCents: 100000,
+              paidAmountCents: 0,
+              contractVersionId: "contract-version-1",
+              isFinal: false,
+              paymentTermsVersionId: "terms-version-1"
+            }
+          ])
+        },
+        paymentTermsStage: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              paymentTermsVersionId: "terms-version-1",
+              stageType: "progress",
+              basis: "current_settlement",
+              ratioBps: 8000,
+              fixedAmountCents: null,
+              triggerAnchor: "settlement_effective",
+              dueDays: 0,
+              advanceDeductionMode: null,
+              advanceDeductionRatioBps: null,
+              advanceDeductionStartRatioBps: null
+            },
+            {
+              paymentTermsVersionId: "terms-version-1",
+              stageType: "advance",
+              basis: "contract_amount",
+              ratioBps: 1000,
+              fixedAmountCents: null,
+              triggerAnchor: "contract_effective",
+              dueDays: 0,
+              advanceDeductionMode: "per_settlement_ratio",
+              advanceDeductionRatioBps: 2000,
+              advanceDeductionStartRatioBps: null
+            }
+          ])
+        },
+        settlementArchiveFile: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              settlementId: "settlement-1",
+              confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+            }
+          ])
+        },
+        contractVersion: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: "contract-version-1",
+              amountCents: 1000000
+            }
+          ])
+        },
+        projectProxyPayment: {
+          findMany: jest.fn().mockResolvedValue([]),
+          create: jest.fn()
+        },
+        paymentRequest: {
+          findMany: jest.fn((args: { where?: { sourceType?: string } }) => {
+            if (args.where?.sourceType === "contract_advance") {
+              return Promise.resolve([
+                {
+                  paymentTermsVersionId: "terms-version-1",
+                  status: "paid",
+                  requestedAmountCents: 20000,
+                  approvedAmountCents: 20000,
+                  paidAmountCents: 20000
+                }
+              ]);
+            }
+
+            return Promise.resolve([]);
+          })
+        },
+        auditLog: {
+          create: jest.fn()
+        }
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      };
+      const auth = {
+        confirmPassword: jest.fn().mockResolvedValue(undefined)
+      };
+      const service = new ProjectService(prisma as never, undefined, auth as never);
+
+      await expect(
+        service.recordProxyPayment("project-1", "finance-1", {
+          paidAt: "2026-07-02T00:00:00.000Z",
+          amountCents: 61000,
+          generalContractorName: "总包单位",
+          paidTargetName: "材料供应商",
+          paymentType: "material",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password",
+          settlementId: "settlement-1"
+        } satisfies RecordProjectProxyPaymentDto)
+      ).rejects.toThrow("Project proxy payment exceeds contract due payable amount: 60000");
+      expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contractId: "contract-1",
+            sourceType: "contract_advance",
+            paymentTermsVersionId: { in: ["terms-version-1"] },
+            paidAmountCents: { gt: 0 }
+          })
+        })
+      );
+      expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("rejects actual project receipt without voucher file", async () => {
     const prisma = {
       $transaction: jest.fn()

@@ -139,22 +139,25 @@ model PaymentTermsVersion {
 }
 
 model PaymentTermsStage {
-  id                    String   @id @default(uuid())
-  paymentTermsVersionId String
-  name                  String
-  stageType             String   @default("progress")
-  basis                 String
-  ratioBps              Int?
-  fixedAmountCents      Int?
-  triggerAnchor         String   @default("settlement_effective")
-  triggerEvent          String
-  dueDays               Int
-  requiresInvoice       Boolean  @default(false)
-  allowsEarlyPayment    Boolean  @default(false)
-  allowsInstallments    Boolean  @default(true)
-  retentionBps          Int?
-  originalText          String
-  createdAt             DateTime @default(now())
+  id                            String   @id @default(uuid())
+  paymentTermsVersionId         String
+  name                          String
+  stageType                     String   @default("progress")
+  basis                         String
+  ratioBps                      Int?
+  fixedAmountCents              Int?
+  triggerAnchor                 String   @default("settlement_effective")
+  triggerEvent                  String
+  dueDays                       Int
+  advanceDeductionMode          String   @default("none")
+  advanceDeductionRatioBps      Int?
+  advanceDeductionStartRatioBps Int?
+  requiresInvoice               Boolean  @default(false)
+  allowsEarlyPayment            Boolean  @default(false)
+  allowsInstallments            Boolean  @default(true)
+  retentionBps                  Int?
+  originalText                  String
+  createdAt                     DateTime @default(now())
 }
 
 model ContractArchiveFile {
