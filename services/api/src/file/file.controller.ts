@@ -28,6 +28,18 @@ interface CreateDownloadTicketDto {
   confirmationPassword?: string;
 }
 
+function normalizeUploadedOriginalName(originalName: string) {
+  const decoded = Buffer.from(originalName, "latin1").toString("utf8");
+  const looksLikeMojibake = /[\u00c0-\u00ff]/.test(originalName);
+  const decodedToChinese = /[\u4e00-\u9fff]/.test(decoded);
+  const alreadyChinese = /[\u4e00-\u9fff]/.test(originalName);
+
+  if (looksLikeMojibake && decodedToChinese && !alreadyChinese && !decoded.includes("\uFFFD")) {
+    return decoded;
+  }
+  return originalName;
+}
+
 @Controller("files")
 export class FileController {
   constructor(private readonly files: FileService, private readonly auth: AuthService) {}
@@ -49,7 +61,7 @@ export class FileController {
     }
 
     return this.files.uploadPrivateFile({
-      originalName: file.originalname,
+      originalName: normalizeUploadedOriginalName(file.originalname),
       mimeType: file.mimetype,
       sizeBytes: file.size,
       uploadedByUserId: user.id,

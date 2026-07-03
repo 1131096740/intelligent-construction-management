@@ -19,6 +19,61 @@ describe("FileController authorization wiring", () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, FileController.prototype.download)).toBe(true);
   });
 
+  it("normalizes mojibake multipart Chinese filenames before private upload", async () => {
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
+    };
+    const auth = {
+      confirmPassword: jest.fn()
+    };
+    const controller = new FileController(files as never, auth as never);
+
+    await controller.upload(
+      {
+        originalname: Buffer.from("综合费用申请附件.pdf", "utf8").toString("latin1"),
+        mimetype: "application/pdf",
+        size: 12,
+        buffer: Buffer.from("private-file")
+      },
+      { id: "user-1", name: "张三", phone: "13800000000" }
+    );
+
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalName: "综合费用申请附件.pdf"
+      })
+    );
+  });
+
+  it.each(["综合费用申请附件.pdf", "expense-attachment.pdf", "café.pdf"])(
+    "keeps already valid multipart filename unchanged: %s",
+    async (originalName) => {
+      const files = {
+        uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
+      };
+      const auth = {
+        confirmPassword: jest.fn()
+      };
+      const controller = new FileController(files as never, auth as never);
+
+      await controller.upload(
+        {
+          originalname: originalName,
+          mimetype: "application/pdf",
+          size: 12,
+          buffer: Buffer.from("private-file")
+        },
+        { id: "user-1", name: "张三", phone: "13800000000" }
+      );
+
+      expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalName
+        })
+      );
+    }
+  );
+
   it("confirms password before issuing a private file download ticket", async () => {
     const files = {
       createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })
