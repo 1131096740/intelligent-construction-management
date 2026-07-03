@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   settlementArchiveResponsibilities,
+  settlementAttachmentTemplates,
   settlementDetailMeta,
   settlementEffectivenessSteps,
   settlementPaymentBlockMessage,
@@ -34,6 +35,15 @@ describe("settlement detail page configuration", () => {
       "结算归档件由合同部成员上传",
       "归档由合同部主管确认",
       "财务只读取业务归档件"
+    ]);
+  });
+
+  it("exposes the four offline settlement attachment templates", () => {
+    expect(settlementAttachmentTemplates.map((item) => item.label)).toEqual([
+      "收方单",
+      "签工单",
+      "零星机械签认单",
+      "台班记录表"
     ]);
   });
 

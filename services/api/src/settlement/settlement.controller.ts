@@ -9,6 +9,10 @@ import { CreateSettlementDto } from "./dto/create-settlement.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 import { SettlementReadService } from "./settlement-read.service";
+import {
+  SETTLEMENT_ATTACHMENT_TEMPLATE_MIME,
+  SettlementAttachmentTemplateService
+} from "./settlement-attachment-template.service";
 import { SettlementService } from "./settlement.service";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -17,6 +21,7 @@ const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 export class SettlementController {
   constructor(
     private readonly settlementRead: SettlementReadService,
+    private readonly attachmentTemplates: SettlementAttachmentTemplateService,
     private readonly settlements: SettlementService
   ) {}
 
@@ -41,6 +46,27 @@ export class SettlementController {
   )
   list(@Query("limit") limit?: string) {
     return this.settlementRead.listRecent(limit);
+  }
+
+  @Get(":settlementId/attachment-templates/:templateKey/download")
+  @RequireProjectRole("settlement.archive.upload")
+  async downloadAttachmentTemplate(
+    @Param("settlementId") settlementId: string,
+    @Param("templateKey") templateKey: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.attachmentTemplates.exportTemplate(settlementId, templateKey, user.id);
+    response.set({
+      "Content-Type": SETTLEMENT_ATTACHMENT_TEMPLATE_MIME,
+      "Content-Length": String(result.buffer.length),
+      "Content-Disposition": [
+        "attachment",
+        `filename="${this.asciiFallback(result.fileName)}"`,
+        `filename*=UTF-8''${encodeURIComponent(result.fileName)}`
+      ].join("; ")
+    });
+    return new StreamableFile(result.buffer);
   }
 
   @Get(":settlementId")

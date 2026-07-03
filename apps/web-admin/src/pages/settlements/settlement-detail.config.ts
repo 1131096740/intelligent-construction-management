@@ -23,6 +23,11 @@ export interface SettlementPaymentRule {
   paymentRequestStatus: string;
 }
 
+export interface SettlementAttachmentTemplateAction {
+  key: string;
+  label: string;
+}
+
 export const settlementDetailTitle = "JS-2026-018 · 5月材料结算单";
 
 export const settlementDetailMeta: SettlementDetailMetaItem[] = [
@@ -55,6 +60,13 @@ export const settlementArchiveResponsibilities = [
   "结算归档件由合同部成员上传",
   "归档由合同部主管确认",
   "财务只读取业务归档件"
+];
+
+export const settlementAttachmentTemplates: SettlementAttachmentTemplateAction[] = [
+  { key: "receipt-form", label: "收方单" },
+  { key: "labor-signoff", label: "签工单" },
+  { key: "sporadic-machinery-confirmation", label: "零星机械签认单" },
+  { key: "shift-record", label: "台班记录表" }
 ];
 
 export const settlementPaymentRuleColumns: PrimaryTableCol<SettlementPaymentRule>[] = [

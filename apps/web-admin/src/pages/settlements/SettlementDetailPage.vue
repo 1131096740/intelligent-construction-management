@@ -173,6 +173,19 @@
           >
             生成PDF归档
           </t-button>
+          <div class="template-actions">
+            <t-button
+              v-for="template in settlementAttachmentTemplates"
+              :key="template.key"
+              variant="outline"
+              size="small"
+              :loading="archiveActionBusy === `attachmentTemplate:${template.key}`"
+              :disabled="!canRunSettlementAction"
+              @click="downloadSettlementAttachment(template.key)"
+            >
+              {{ template.label }}
+            </t-button>
+          </div>
         </div>
 
         <div class="action-group">
@@ -340,6 +353,7 @@ import {
   confirmSettlementArchive,
   createPrivateFileDownloadTicket,
   delegateSettlementApproval,
+  downloadSettlementAttachmentTemplate,
   downloadSettlementDraftExcel,
   downloadSettlementLatestApprovalPdf,
   fetchSettlementDetail,
@@ -355,6 +369,7 @@ import { settlementDetailChainLinks } from "../business-chain-links.config";
 import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
   settlementArchiveResponsibilities,
+  settlementAttachmentTemplates,
   settlementBaseInfo,
   settlementDetailMeta,
   settlementDetailTitle,
@@ -555,6 +570,14 @@ async function downloadSettlementDraft() {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
 
   await runArchiveAction("draftExcel", () => downloadSettlementDraftExcel(settlementId));
+}
+
+async function downloadSettlementAttachment(templateKey: string) {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+
+  await runArchiveAction(`attachmentTemplate:${templateKey}`, () =>
+    downloadSettlementAttachmentTemplate(settlementId, templateKey)
+  );
 }
 
 async function submitSettlementFileDownload() {
@@ -800,6 +823,12 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
 }
 
 .action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

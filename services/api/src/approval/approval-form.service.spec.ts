@@ -1,4 +1,7 @@
-import { ApprovalFormService } from "./approval-form.service";
+import {
+  ApprovalFormService,
+  buildProjectPaymentApprovalRows
+} from "./approval-form.service";
 
 // 有效 1x1 PNG，供签名图嵌入测试（doc.image 需要可解码图片）。
 const PNG_1X1 = Buffer.from(
@@ -50,16 +53,43 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
         code: "PAY-2026-001",
         settlementId: "set-1",
         contractId: "con-1",
+        contractVersionId: "version-1",
         requestedAmountCents: 123456,
         approvedAmountCents: 123456,
+        paidAmountCents: 0,
+        sourceType: "settlement",
+        createdAt: new Date("2026-06-24T00:00:00.000Z"),
         dueDate: new Date("2026-07-01T00:00:00.000Z")
-      })
+      }),
+      findMany: jest.fn().mockResolvedValue([{ paidAmountCents: 100000 }])
+    },
+    project: {
+      findUnique: jest.fn().mockResolvedValue({ id: "proj-1", name: "建工智管试运行项目" })
     },
     settlement: {
-      findUnique: jest.fn().mockResolvedValue({ id: "set-1", code: "SET-2026-001" })
+      findUnique: jest.fn().mockResolvedValue({
+        id: "set-1",
+        code: "SET-2026-001",
+        periodLabel: "2026-06",
+        amountCents: 2000000,
+        payableAmountCents: 1600000
+      }),
+      findMany: jest.fn().mockResolvedValue([{ amountCents: 2000000 }])
     },
     contract: {
-      findUnique: jest.fn().mockResolvedValue({ id: "con-1", counterparty: "某某建筑公司" })
+      findUnique: jest.fn().mockResolvedValue({
+        id: "con-1",
+        code: "HT-2026-001",
+        name: "钢材采购合同",
+        counterparty: "某某建筑公司",
+        companyEntityName: "四川建工智管建筑工程有限公司"
+      })
+    },
+    contractVersion: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "version-1",
+        amountCents: 5000000
+      })
     },
     user: {
       findMany: jest.fn().mockResolvedValue([
@@ -76,6 +106,59 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
 }
 
 describe("ApprovalFormService", () => {
+  it("builds the real company project payment approval form rows", () => {
+    const rows = buildProjectPaymentApprovalRows({
+      payment: {
+        sourceType: "settlement",
+        requestedAmountCents: 123456,
+        approvedAmountCents: 120000,
+        createdAt: new Date("2026-06-24T00:00:00.000Z"),
+        dueDate: new Date("2026-07-01T00:00:00.000Z")
+      },
+      applicantName: "申请人甲",
+      companyName: "四川建工智管建筑工程有限公司",
+      projectName: "建工智管试运行项目",
+      contract: {
+        code: "HT-2026-001",
+        name: "钢材采购合同",
+        counterparty: "某某建筑公司"
+      },
+      settlement: { code: "SET-2026-001", periodLabel: "2026-06" },
+      contractAmountCents: 5000000,
+      cumulativeSettledCents: 2000000,
+      cumulativePaidCents: 100000
+    });
+
+    expect(rows.map((row) => row.label)).toEqual([
+      "项目名称",
+      "申请日期",
+      "付款主体",
+      "经办人",
+      "付款事由",
+      "计划付款日期",
+      "合同名称",
+      "合同编号",
+      "付款方式",
+      "付款类型",
+      "合同金额",
+      "累计生效结算金额",
+      "累计已付款",
+      "当前可申请余额",
+      "发票类型提醒",
+      "本次付款金额",
+      "收款方名称",
+      "开户银行",
+      "银行账号",
+      "转款手续费",
+      "备注"
+    ]);
+    expect(rows.find((row) => row.label === "本次付款金额")?.value).toBe("1,234.56 元");
+    expect(rows.find((row) => row.label === "当前可申请余额")?.value).toBe("—");
+    expect(rows.find((row) => row.label === "付款事由")?.value).toBe(
+      "2026-06 结算付款（SET-2026-001）"
+    );
+  });
+
   it("renders an approval-form PDF and archives it as a PdfDocument", async () => {
     const prisma = buildPrisma();
     let uploaded: { buffer: Buffer; sizeBytes: number; originalName: string } | undefined;
@@ -96,7 +179,7 @@ describe("ApprovalFormService", () => {
     expect(uploaded?.buffer.subarray(0, 5).toString()).toBe("%PDF-");
     expect(uploaded?.sizeBytes).toBe(uploaded?.buffer.length);
     expect(uploaded?.buffer.length).toBeGreaterThan(1000);
-    expect(uploaded?.originalName).toBe("审批单-PAY-2026-001.pdf");
+    expect(uploaded?.originalName).toBe("项目付款审批表-PAY-2026-001.pdf");
     expect(prisma.pdfDocument.create).toHaveBeenCalledWith({
       data: {
         businessType: "payment_request",
@@ -154,7 +237,8 @@ describe("ApprovalFormService", () => {
 
   it("renders a contract advance approval form without querying a null settlement", async () => {
     const settlement = {
-      findUnique: jest.fn()
+      findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([])
     };
     const prisma = buildPrisma({
       paymentRequest: {
@@ -165,10 +249,14 @@ describe("ApprovalFormService", () => {
           sourceType: "contract_advance",
           settlementId: null,
           contractId: "con-1",
+          contractVersionId: "version-1",
           requestedAmountCents: 10000000,
           approvedAmountCents: 10000000,
+          paidAmountCents: 0,
+          createdAt: new Date("2026-06-24T00:00:00.000Z"),
           dueDate: null
-        })
+        }),
+        findMany: jest.fn().mockResolvedValue([])
       },
       settlement,
       contract: {
@@ -210,7 +298,7 @@ describe("ApprovalFormService", () => {
 
     expect(files.assertCanDownloadFileById).toHaveBeenCalledWith("file-1", "user-chair");
     expect(result.buffer.subarray(0, 5).toString()).toBe("%PDF-");
-    expect(result.fileName).toBe("审批单-PAY-2026-001.pdf");
+    expect(result.fileName).toBe("项目付款审批表-PAY-2026-001.pdf");
     expect(audit.record).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ action: "approval.form.download", actorUserId: "user-chair" })

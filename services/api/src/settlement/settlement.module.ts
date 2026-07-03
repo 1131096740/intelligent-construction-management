@@ -4,13 +4,14 @@ import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { FileModule } from "../file/file.module";
 import { SettlementController } from "./settlement.controller";
+import { SettlementAttachmentTemplateService } from "./settlement-attachment-template.service";
 import { SettlementReadService } from "./settlement-read.service";
 import { SettlementService } from "./settlement.service";
 
 @Module({
   imports: [ApprovalModule, AuditModule, AuthModule, FileModule],
   controllers: [SettlementController],
-  providers: [SettlementService, SettlementReadService],
+  providers: [SettlementService, SettlementReadService, SettlementAttachmentTemplateService],
   exports: [SettlementService, SettlementReadService]
 })
 export class SettlementModule {}

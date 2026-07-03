@@ -41,6 +41,7 @@ import {
   confirmSettlementArchive,
   delegateContractApproval,
   delegatePaymentApproval,
+  downloadSettlementAttachmentTemplate,
   downloadSettlementLatestApprovalPdf,
   downloadSettlementDraftExcel,
   fetchActiveContractNumberRules,
@@ -941,6 +942,52 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
     );
+  });
+
+  it("downloads settlement attachment templates through the backend", async () => {
+    const click = vi.fn();
+    const appendChild = vi.fn();
+    const anchor = {
+      click,
+      remove: vi.fn(),
+      set href(value: string) {
+        this._href = value;
+      },
+      get href() {
+        return this._href;
+      },
+      set download(value: string) {
+        this._download = value;
+      },
+      get download() {
+        return this._download;
+      },
+      _href: "",
+      _download: ""
+    };
+    vi.stubGlobal("document", {
+      createElement: vi.fn().mockReturnValue(anchor),
+      body: { appendChild }
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn().mockReturnValue("blob:template"),
+      revokeObjectURL: vi.fn()
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["xlsx"]),
+      headers: new Headers({
+        "Content-Disposition": "attachment; filename*=UTF-8''%E6%94%B6%E6%96%B9%E5%8D%95%E6%A8%A1%E6%9D%BF.xlsx"
+      })
+    } as Response);
+
+    await downloadSettlementAttachmentTemplate("JS-2026-018", "receipt-form");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/settlements/JS-2026-018/attachment-templates/receipt-form/download"
+    ]);
+    expect(anchor._download).toBe("收方单模板.xlsx");
+    expect(click).toHaveBeenCalledTimes(1);
   });
 
   it("manages approval delegations through the backend", async () => {

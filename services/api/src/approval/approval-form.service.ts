@@ -52,7 +52,7 @@ const ACTION_LABELS: Record<string, string> = {
 const BUSINESS_TYPE_LABELS: Record<string, string> = {
   contract_version: "合同审批单",
   settlement: "结算审批单",
-  payment_request: "付款审批单"
+  payment_request: "项目付款审批表"
 };
 
 const roleLabel = (key: string) => ROLE_LABELS[key] ?? key;
@@ -101,6 +101,116 @@ interface RenderInput {
     signature: Buffer | null;
   }>;
   watermark?: string[];
+}
+
+interface ProjectPaymentApprovalRowsInput {
+  payment: {
+    sourceType?: string | null;
+    requestedAmountCents: number | bigint;
+    approvedAmountCents?: number | bigint | null;
+    createdAt?: Date | null;
+    dueDate?: Date | null;
+  };
+  applicantName: string;
+  companyName: string;
+  projectName?: string | null;
+  contract?: {
+    code?: string | null;
+    name?: string | null;
+    counterparty?: string | null;
+    companyEntityName?: string | null;
+  } | null;
+  settlement?: {
+    code?: string | null;
+    periodLabel?: string | null;
+  } | null;
+  contractAmountCents?: number | bigint | null;
+  cumulativeSettledCents?: number | bigint | null;
+  cumulativePaidCents?: number | bigint | null;
+  currentAvailableCents?: number | bigint | null;
+}
+
+type ApprovalFormRow = { label: string; value: string };
+
+const empty = (value?: string | null): string => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : "—";
+};
+
+function sourceTypeLabel(sourceType?: string | null): string {
+  if (sourceType === "contract_advance") return "合同预付款";
+  if (sourceType === "contract_due") return "合同累计付款";
+  return "结算付款";
+}
+
+function paymentReason(input: ProjectPaymentApprovalRowsInput): string {
+  if (input.payment.sourceType === "contract_advance") {
+    return `${empty(input.contract?.name)}合同预付款`;
+  }
+  if (input.payment.sourceType === "contract_due") {
+    return `${empty(input.contract?.name)}合同累计付款`;
+  }
+  const period = input.settlement?.periodLabel;
+  const code = input.settlement?.code;
+  if (period && code) return `${period} 结算付款（${code}）`;
+  if (code) return `结算付款（${code}）`;
+  return `${empty(input.contract?.name)}结算付款`;
+}
+
+function formatOptionalYuan(cents?: number | bigint | null): string {
+  return cents == null ? "—" : formatYuan(cents);
+}
+
+export function buildProjectPaymentApprovalRows(
+  input: ProjectPaymentApprovalRowsInput
+): ApprovalFormRow[] {
+  const companyName = input.companyName || input.contract?.companyEntityName || "";
+
+  return [
+    { label: "项目名称", value: empty(input.projectName) },
+    { label: "申请日期", value: input.payment.createdAt ? formatDate(input.payment.createdAt) : "—" },
+    { label: "付款主体", value: empty(companyName) },
+    { label: "经办人", value: empty(input.applicantName) },
+    { label: "付款事由", value: paymentReason(input) },
+    { label: "计划付款日期", value: input.payment.dueDate ? formatDate(input.payment.dueDate) : "—" },
+    { label: "合同名称", value: empty(input.contract?.name) },
+    { label: "合同编号", value: empty(input.contract?.code) },
+    { label: "付款方式", value: "网银转账" },
+    { label: "付款类型", value: sourceTypeLabel(input.payment.sourceType) },
+    { label: "合同金额", value: formatOptionalYuan(input.contractAmountCents) },
+    { label: "累计生效结算金额", value: formatOptionalYuan(input.cumulativeSettledCents) },
+    { label: "累计已付款", value: formatOptionalYuan(input.cumulativePaidCents) },
+    { label: "当前可申请余额", value: formatOptionalYuan(input.currentAvailableCents) },
+    { label: "发票类型提醒", value: "按合同约定提交" },
+    { label: "本次付款金额", value: formatYuan(input.payment.requestedAmountCents) },
+    { label: "收款方名称", value: empty(input.contract?.counterparty) },
+    { label: "开户银行", value: "—" },
+    { label: "银行账号", value: "—" },
+    { label: "转款手续费", value: "—" },
+    { label: "备注", value: "付款创建时已通过后端额度校验" }
+  ];
+}
+
+function sumCents(rows: Array<{ amountCents?: number | bigint; paidAmountCents?: number | bigint }>) {
+  return rows.reduce<bigint>((total, row) => {
+    const value = row.amountCents ?? row.paidAmountCents ?? 0;
+    return total + (typeof value === "bigint" ? value : BigInt(value));
+  }, 0n);
+}
+
+function approvalFileName(input: Pick<RenderInput, "title" | "businessCode">): string {
+  const prefix = input.title === "项目付款审批表" ? "项目付款审批表" : "审批单";
+  return `${prefix}-${input.businessCode}.pdf`;
+}
+
+function pairRows(rows: ApprovalFormRow[]): string[][] {
+  const paired: string[][] = [];
+  for (let index = 0; index < rows.length; index += 2) {
+    const left = rows[index];
+    const right = rows[index + 1];
+    paired.push([left.label, left.value, right?.label ?? "", right?.value ?? ""]);
+  }
+  return paired;
 }
 
 // 画带框线的表格，返回表格底部 y。单元格内文本自动换行；行高随内容增长。
@@ -245,7 +355,7 @@ export class ApprovalFormService {
 
     const file = await this.files.uploadPrivateFile({
       buffer,
-      originalName: `审批单-${input.businessCode}.pdf`,
+      originalName: approvalFileName(input),
       mimeType: "application/pdf",
       sizeBytes: buffer.length,
       uploadedByUserId: actorUserId
@@ -309,7 +419,7 @@ export class ApprovalFormService {
       metadata: { fileId: pdfDocument.fileId, businessCode: input.businessCode }
     });
 
-    return { buffer, fileName: `审批单-${input.businessCode}.pdf` };
+    return { buffer, fileName: approvalFileName(input) };
   }
 
   // 收集渲染审批单所需的全部数据（业务摘要、我方主体、签批人姓名/职位/签名图）。
@@ -326,10 +436,9 @@ export class ApprovalFormService {
       orderBy: { createdAt: "asc" }
     });
 
-    const [projectId, businessCode, summary, companyName] = await Promise.all([
+    const [projectId, businessCode, companyName] = await Promise.all([
       this.resolveProjectId(prisma, instance.businessType, instance.businessId),
       this.resolveBusinessCode(prisma, instance.businessType, instance.businessId),
-      this.resolveBusinessSummary(prisma, instance.businessType, instance.businessId),
       this.resolveCompanyName(prisma, instance.businessType, instance.businessId)
     ]);
 
@@ -362,11 +471,22 @@ export class ApprovalFormService {
       signatureBufferById.set(log.actorUserId, isEmbeddableImage(buffer) ? buffer : null);
     }
 
+    const applicantName = nameById.get(instance.applicantUserId) ?? instance.applicantUserId;
+    const summary = await this.resolveBusinessSummary(
+      prisma,
+      instance.businessType,
+      instance.businessId,
+      {
+        applicantName,
+        companyName
+      }
+    );
+
     return {
       title: BUSINESS_TYPE_LABELS[instance.businessType] ?? "审批单",
       companyName,
       businessCode,
-      applicantName: nameById.get(instance.applicantUserId) ?? instance.applicantUserId,
+      applicantName,
       summary,
       nodes: instance.frozenNodes as unknown as FrozenNode[],
       logs: logs.map((log) => ({
@@ -430,25 +550,42 @@ export class ApprovalFormService {
     doc.fontSize(20).text(input.title, left, doc.y, { width: contentWidth, align: "center" });
     let y = doc.y + 14;
 
-    // 业务信息栏（label | value 两列），含单号/申请人/生成时间 + 业务摘要
-    const infoRows: string[][] = [
-      ["单号", input.businessCode],
-      ["申请人", input.applicantName],
-      ...input.summary.map((item): string[] => [item.label, item.value]),
-      ["生成时间", formatDateTime(new Date())]
-    ];
-    y =
-      drawTable(
-        doc,
-        left,
-        y,
-        [
-          { header: "项目", width: 100 },
-          { header: "内容", width: contentWidth - 100 }
-        ],
-        infoRows,
-        { headerRow: false }
-      ) + 16;
+    if (input.title === "项目付款审批表") {
+      y =
+        drawTable(
+          doc,
+          left,
+          y,
+          [
+            { header: "项目", width: 88 },
+            { header: "内容", width: 178 },
+            { header: "项目", width: 88 },
+            { header: "内容", width: contentWidth - 88 - 178 - 88 }
+          ],
+          pairRows([{ label: "付款申请单号", value: input.businessCode }, ...input.summary]),
+          { headerRow: false, minRowHeight: 28 }
+        ) + 16;
+    } else {
+      // 业务信息栏（label | value 两列），含单号/申请人/生成时间 + 业务摘要。
+      const infoRows: string[][] = [
+        ["单号", input.businessCode],
+        ["申请人", input.applicantName],
+        ...input.summary.map((item): string[] => [item.label, item.value]),
+        ["生成时间", formatDateTime(new Date())]
+      ];
+      y =
+        drawTable(
+          doc,
+          left,
+          y,
+          [
+            { header: "项目", width: 100 },
+            { header: "内容", width: contentWidth - 100 }
+          ],
+          infoRows,
+          { headerRow: false }
+        ) + 16;
+    }
 
     // 审批路线
     doc.fontSize(12).text("审批路线", left, y);
@@ -590,30 +727,41 @@ export class ApprovalFormService {
   private async resolveBusinessSummary(
     prisma: PrismaService,
     businessType: string,
-    businessId: string
+    businessId: string,
+    context: { applicantName: string; companyName: string }
   ): Promise<Array<{ label: string; value: string }>> {
     if (businessType === "payment_request") {
       const payment = await prisma.paymentRequest.findUnique({ where: { id: businessId } });
       if (!payment) return [];
-      const [settlement, contract] = await Promise.all([
+      const [project, settlement, contract, contractVersion, effectiveSettlements, paidPayments] =
+        await Promise.all([
+          prisma.project.findUnique({ where: { id: payment.projectId } }),
         payment.settlementId
           ? prisma.settlement.findUnique({ where: { id: payment.settlementId } })
           : Promise.resolve(null),
-        prisma.contract.findUnique({ where: { id: payment.contractId } })
-      ]);
-      const rows: Array<{ label: string; value: string }> = [
-        { label: "申请金额", value: formatYuan(payment.requestedAmountCents) }
-      ];
-      if (payment.approvedAmountCents != null) {
-        rows.push({ label: "批准金额", value: formatYuan(payment.approvedAmountCents) });
-      }
-      if (payment.sourceType === "contract_advance") {
-        rows.push({ label: "付款类型", value: "合同预付款" });
-      }
-      if (contract) rows.push({ label: "收款方", value: contract.counterparty });
-      if (settlement) rows.push({ label: "对应结算", value: settlement.code });
-      if (payment.dueDate) rows.push({ label: "付款期限", value: formatDate(payment.dueDate) });
-      return rows;
+          prisma.contract.findUnique({ where: { id: payment.contractId } }),
+          prisma.contractVersion.findUnique({ where: { id: payment.contractVersionId } }),
+          prisma.settlement.findMany({
+            where: { contractId: payment.contractId, status: { in: ["effective", "partially_paid", "paid"] } },
+            select: { amountCents: true }
+          }),
+          prisma.paymentRequest.findMany({
+            where: { contractId: payment.contractId, status: { in: ["partially_paid", "paid"] } },
+            select: { paidAmountCents: true }
+          })
+        ]);
+
+      return buildProjectPaymentApprovalRows({
+        payment,
+        applicantName: context.applicantName,
+        companyName: context.companyName,
+        projectName: project?.name,
+        contract,
+        settlement,
+        contractAmountCents: contractVersion?.amountCents,
+        cumulativeSettledCents: sumCents(effectiveSettlements),
+        cumulativePaidCents: sumCents(paidPayments)
+      });
     }
 
     if (businessType === "settlement") {

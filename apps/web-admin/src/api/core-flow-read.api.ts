@@ -1036,6 +1036,21 @@ export async function downloadSettlementDraftExcel(settlementId: string): Promis
   saveBlob(blob, fileName);
 }
 
+export async function downloadSettlementAttachmentTemplate(
+  settlementId: string,
+  templateKey: string
+): Promise<void> {
+  const response = await apiFetch(
+    `/settlements/${settlementId}/attachment-templates/${templateKey}/download`
+  );
+  await ensureOk(response, "下载结算附件模板失败");
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : `${templateKey}-结算附件模板.xlsx`;
+  saveBlob(blob, fileName);
+}
+
 export async function downloadSettlementLatestApprovalPdf(settlementId: string): Promise<void> {
   const response = await apiFetch(`/settlements/${settlementId}/approval-pdf/latest`);
   await ensureOk(response, "下载结算审批PDF失败");
