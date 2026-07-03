@@ -142,6 +142,15 @@ export class PermissionGuard implements CanActivate {
       return payment?.projectId;
     }
 
+    const contractAdvanceVersionId =
+      request.body?.sourceType === "contract_advance" &&
+      typeof request.body?.contractVersionId === "string"
+        ? request.body.contractVersionId
+        : undefined;
+    if (contractAdvanceVersionId) {
+      return this.extractProjectIdFromContractVersion(contractAdvanceVersionId);
+    }
+
     const settlementId =
       request.params?.settlementId ??
       (typeof request.body?.settlementId === "string" ? request.body.settlementId : undefined);
@@ -160,19 +169,7 @@ export class PermissionGuard implements CanActivate {
         ? request.body.contractVersionId
         : undefined);
     if (contractVersionId) {
-      const contractVersion = await this.prisma.contractVersion.findUnique({
-        where: { id: contractVersionId },
-        select: { contractId: true }
-      });
-      if (!contractVersion) {
-        return undefined;
-      }
-      const contract = await this.prisma.contract.findUnique({
-        where: { id: contractVersion.contractId },
-        select: { projectId: true }
-      });
-
-      return contract?.projectId;
+      return this.extractProjectIdFromContractVersion(contractVersionId);
     }
 
     const contractId = request.params?.contractId;
@@ -195,5 +192,21 @@ export class PermissionGuard implements CanActivate {
     }
 
     return undefined;
+  }
+
+  private async extractProjectIdFromContractVersion(contractVersionId: string) {
+    const contractVersion = await this.prisma.contractVersion.findUnique({
+      where: { id: contractVersionId },
+      select: { contractId: true }
+    });
+    if (!contractVersion) {
+      return undefined;
+    }
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractVersion.contractId },
+      select: { projectId: true }
+    });
+
+    return contract?.projectId;
   }
 }

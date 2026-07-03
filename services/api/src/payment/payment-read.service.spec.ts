@@ -91,6 +91,53 @@ describe("PaymentReadService", () => {
     });
   });
 
+  it("builds payment ledger rows for contract advance requests without settlement", async () => {
+    const prisma = {
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "payment-advance-1",
+            projectId: "project-1",
+            settlementId: null,
+            sourceType: "contract_advance",
+            code: "FK-YF-2026-001",
+            status: "approval_pending",
+            requestedAmountCents: 10000000,
+            approvedAmountCents: null,
+            paidAmountCents: 0,
+            updatedAt: new Date("2026-07-20T10:00:00.000Z")
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "project-1",
+            name: "总部综合楼"
+          }
+        ])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const ledger = await service.listRecent(20);
+
+    expect(prisma.settlement.findMany).not.toHaveBeenCalled();
+    expect(ledger.rows[0]).toMatchObject({
+      paymentNo: "FK-YF-2026-001",
+      settlementNo: "合同预付款",
+      project: "总部综合楼",
+      requestedAmount: "¥100,000.00",
+      approvalStatus: "审批中"
+    });
+  });
+
   it("builds payment detail from persisted payment request and executions", async () => {
     const prisma = {
       paymentRequest: {
@@ -177,6 +224,85 @@ describe("PaymentReadService", () => {
     expect(detail.traceRules).toContain("审批通过不等于实际付款完成");
     expect(detail.chainLinks.map((link) => link.to)).toEqual([
       "/settlements/JS-2026-031",
+      "/archives",
+      "/audit"
+    ]);
+  });
+
+  it("builds contract advance payment detail without requiring settlement", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-advance-1",
+          sourceType: "contract_advance",
+          settlementId: null,
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-YF-2026-001",
+          status: "approved_pending_payment",
+          requestedAmountCents: 10000000,
+          approvedAmountCents: 10000000,
+          paidAmountCents: 0
+        })
+      },
+      settlement: {
+        findUnique: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          code: "HT-2026-009",
+          name: "幕墙分包合同"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "terms-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "stage-advance",
+          name: "预付款",
+          ratioBps: 1000,
+          dueDays: 30
+        })
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const detail = await service.getDetail("FK-YF-2026-001");
+
+    expect(prisma.settlement.findUnique).not.toHaveBeenCalled();
+    expect(prisma.paymentTermsStage.findFirst).toHaveBeenCalledWith({
+      where: {
+        paymentTermsVersionId: "terms-version-1",
+        stageType: "advance",
+        basis: "contract_amount",
+        triggerAnchor: "contract_effective"
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    expect(detail.title).toBe("FK-YF-2026-001 · 合同预付款申请");
+    expect(detail.baseInfo).toContainEqual({ label: "付款来源", value: "合同预付款" });
+    expect(detail.baseInfo).toContainEqual({ label: "关联合同", value: "HT-2026-009 · 幕墙分包合同" });
+    expect(detail.traceRules).toContain("预付款按合同生效日和账期计算，不依赖结算单");
+    expect(detail.chainLinks.map((link) => link.to)).toEqual([
+      "/contracts/HT-2026-009",
       "/archives",
       "/audit"
     ]);

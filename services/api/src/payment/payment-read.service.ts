@@ -13,7 +13,13 @@ export class PaymentReadService {
       orderBy: { updatedAt: "desc" }
     });
     const paymentIds = payments.map((payment) => payment.id);
-    const settlementIds = [...new Set(payments.map((payment) => payment.settlementId))];
+    const settlementIds = [
+      ...new Set(
+        payments
+          .map((payment) => payment.settlementId)
+          .filter((settlementId): settlementId is string => typeof settlementId === "string")
+      )
+    ];
     const projectIds = [...new Set(payments.map((payment) => payment.projectId))];
     const [settlements, projects, executions] = await Promise.all([
       settlementIds.length
@@ -45,7 +51,9 @@ export class PaymentReadService {
       return {
         id: payment.code,
         paymentNo: payment.code,
-        settlementNo: settlementById.get(payment.settlementId)?.code ?? payment.settlementId,
+        settlementNo: payment.settlementId
+          ? (settlementById.get(payment.settlementId)?.code ?? payment.settlementId)
+          : this.paymentSourceLabel(payment.sourceType),
         project: projectById.get(payment.projectId)?.name ?? payment.projectId,
         requestedAmount: this.formatMoney(payment.requestedAmountCents),
         approvalStatus: approval.label,
@@ -83,8 +91,14 @@ export class PaymentReadService {
       throw new NotFoundException("Payment request not found");
     }
 
-    const [settlement, contractVersion, terms, executions, financeRecords] = await Promise.all([
-      this.prisma.settlement.findUnique({ where: { id: payment.settlementId } }),
+    const isContractAdvance = payment.sourceType === "contract_advance" || !payment.settlementId;
+    const [settlement, contract, contractVersion, terms, executions, financeRecords] = await Promise.all([
+      payment.settlementId
+        ? this.prisma.settlement.findUnique({ where: { id: payment.settlementId } })
+        : Promise.resolve(null),
+      isContractAdvance
+        ? this.prisma.contract.findUnique({ where: { id: payment.contractId } })
+        : Promise.resolve(null),
       this.prisma.contractVersion.findUnique({ where: { id: payment.contractVersionId } }),
       this.prisma.paymentTermsVersion.findUnique({
         where: { id: payment.paymentTermsVersionId }
@@ -98,7 +112,7 @@ export class PaymentReadService {
       })
     ]);
 
-    if (!settlement) {
+    if (payment.settlementId && !settlement) {
       throw new NotFoundException("Payment settlement not found");
     }
 
@@ -111,7 +125,14 @@ export class PaymentReadService {
     }
 
     const stage = await this.prisma.paymentTermsStage.findFirst({
-      where: { paymentTermsVersionId: terms.id },
+      where: isContractAdvance
+        ? {
+            paymentTermsVersionId: terms.id,
+            stageType: "advance",
+            basis: "contract_amount",
+            triggerAnchor: "contract_effective"
+          }
+        : { paymentTermsVersionId: terms.id },
       orderBy: { createdAt: "asc" }
     });
     const executionAmountCents = executions.reduce(
@@ -129,7 +150,9 @@ export class PaymentReadService {
 
     return {
       id: payment.code,
-      title: `${payment.code} · ${settlement.periodLabel}付款申请`,
+      title: isContractAdvance
+        ? `${payment.code} · 合同预付款申请`
+        : `${payment.code} · ${settlement?.periodLabel}付款申请`,
       meta: [
         { label: "审批状态", value: approval.label, tone: approval.tone },
         { label: "实付状态", value: execution.label, tone: execution.tone },
@@ -140,8 +163,21 @@ export class PaymentReadService {
       ],
       baseInfo: [
         { label: "付款编号", value: payment.code },
-        { label: "关联结算", value: `${settlement.code} · ${settlement.periodLabel}结算单` },
-        { label: "结算状态", value: this.settlementStatusLabel(settlement.status) },
+        ...(isContractAdvance
+          ? [
+              { label: "付款来源", value: this.paymentSourceLabel(payment.sourceType) },
+              {
+                label: "关联合同",
+                value: `${contract?.code ?? payment.contractId} · ${contract?.name ?? payment.contractId}`
+              }
+            ]
+          : [
+              {
+                label: "关联结算",
+                value: `${settlement?.code ?? payment.settlementId} · ${settlement?.periodLabel ?? ""}结算单`
+              },
+              { label: "结算状态", value: this.settlementStatusLabel(settlement?.status ?? "") }
+            ]),
         { label: "付款阶段", value: stage?.name ?? "按付款条款执行" },
         { label: "付款比例", value: this.ratioLabel(stage?.ratioBps ?? null) },
         { label: "付款账期", value: stage ? `${stage.dueDays}天` : "-" },
@@ -156,14 +192,18 @@ export class PaymentReadService {
         financeRecordedAmountCents
       ),
       traceRules: [
-        "付款申请只能来自已生效结算",
+        isContractAdvance
+          ? "预付款按合同生效日和账期计算，不依赖结算单"
+          : "付款申请只能来自已生效结算",
         "审批通过进入已批待付",
         "审批通过不等于实际付款完成",
         "实付登记必须上传付款凭证并写入审计日志"
       ],
       executionBlockMessage: this.executionBlockMessage(payment.status, execution.complete),
       chainLinks: [
-        { label: "关联结算", to: `/settlements/${settlement.code}` },
+        isContractAdvance
+          ? { label: "关联合同", to: `/contracts/${contract?.code ?? payment.contractId}` }
+          : { label: "关联结算", to: `/settlements/${settlement?.code ?? payment.settlementId}` },
         { label: "付款凭证", to: "/archives" },
         { label: "审计日志", to: "/audit" }
       ]
@@ -221,6 +261,14 @@ export class PaymentReadService {
         { label: "审计日志", to: "/audit" }
       ]
     };
+  }
+
+  private paymentSourceLabel(sourceType?: string | null) {
+    if (sourceType === "contract_advance") {
+      return "合同预付款";
+    }
+
+    return "未关联结算";
   }
 
   private approvalStatusView(status: string): { label: string; tone: CoreFlowTone } {

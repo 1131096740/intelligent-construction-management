@@ -411,4 +411,88 @@ describe("ContractReadService", () => {
     });
     expect(detail.settlementPayment.calculationNote).toContain("未纳入账期");
   });
+
+  it("labels contract advance payment rows without settlement", async () => {
+    const prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          code: "HT-2026-009",
+          name: "幕墙分包合同",
+          counterparty: "幕墙分包单位"
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-1",
+          name: "总部综合楼"
+        })
+      },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          versionNo: 1,
+          status: "effective",
+          amountCents: 100000000
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1",
+          versionNo: 1,
+          status: "effective"
+        })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "payment-advance-1",
+            settlementId: null,
+            sourceType: "contract_advance",
+            code: "FK-YF-2026-001",
+            status: "paid",
+            requestedAmountCents: 10000000,
+            approvedAmountCents: 10000000,
+            paidAmountCents: 10000000,
+            updatedAt: new Date("2026-07-20T08:00:00.000Z")
+          }
+        ])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "execution-advance-1",
+            paymentRequestId: "payment-advance-1",
+            amountCents: 10000000,
+            paidAt: new Date("2026-07-21T08:00:00.000Z"),
+            voucherFileId: "voucher-advance-1"
+          }
+        ])
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const detail = await service.getDetail("HT-2026-009");
+
+    expect(detail.settlementPayment.paymentRows[0]).toMatchObject({
+      paymentNo: "FK-YF-2026-001",
+      settlementNo: "合同预付款",
+      paidAmount: "¥100,000.00",
+      paymentStatus: "已付款",
+      voucherStatus: "已上传"
+    });
+  });
 });

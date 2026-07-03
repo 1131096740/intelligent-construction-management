@@ -21,6 +21,7 @@ import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
 import {
+  calculateContractAdvancePaymentCapacity,
   calculateContractDuePaymentCapacity,
   calculateSettlementPaymentCapacity,
   CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
@@ -56,7 +57,8 @@ interface PaymentExecutionLockRow {
   id: string;
   code: string;
   projectId: string;
-  settlementId: string;
+  settlementId: string | null;
+  sourceType?: string;
   status: string;
   requestedAmountCents: number;
   approvedAmountCents: number | null;
@@ -133,7 +135,20 @@ export class PaymentRequestService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const settlement = await tx.settlement.findUnique({
+      const sourceType = input.sourceType ?? "settlement";
+      if (sourceType === "contract_advance") {
+        return this.createContractAdvancePaymentRequest(tx, input, applicantUserId);
+      }
+
+      if (sourceType !== "settlement") {
+        throw new Error(`Unsupported payment request source type: ${sourceType}`);
+      }
+
+      if (!input.settlementId) {
+        throw new Error("Settlement is required for settlement payment request");
+      }
+
+      let settlement = await tx.settlement.findUnique({
         where: { id: input.settlementId }
       });
 
@@ -141,6 +156,14 @@ export class PaymentRequestService {
         throw new Error("Settlement not found");
       }
 
+      this.assertSettlementEffective(settlement.status as SettlementStatus);
+      await this.lockContractPaymentCapacityRows(tx, settlement.contractId);
+      settlement = await tx.settlement.findUnique({
+        where: { id: settlement.id }
+      });
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
       this.assertSettlementEffective(settlement.status as SettlementStatus);
 
       const existingApprovedOrPending = await tx.paymentRequest.findMany({
@@ -176,6 +199,7 @@ export class PaymentRequestService {
         data: {
           projectId: settlement.projectId,
           settlementId: settlement.id,
+          sourceType: "settlement",
           contractId: settlement.contractId,
           contractVersionId: settlement.contractVersionId,
           paymentTermsVersionId: settlement.paymentTermsVersionId,
@@ -231,6 +255,169 @@ export class PaymentRequestService {
 
       return payment;
     });
+  }
+
+  private async createContractAdvancePaymentRequest(
+    tx: Prisma.TransactionClient,
+    input: CreatePaymentRequestDto,
+    applicantUserId?: string
+  ) {
+    if (!input.contractVersionId) {
+      throw new Error("Contract version is required for contract advance payment request");
+    }
+
+    const contractVersion = await tx.contractVersion.findUnique({
+      where: { id: input.contractVersionId },
+      select: {
+        id: true,
+        contractId: true,
+        status: true,
+        amountCents: true,
+        effectiveAt: true
+      }
+    });
+    if (!contractVersion) {
+      throw new Error("Contract version not found");
+    }
+    if (contractVersion.status !== "effective") {
+      throw new Error("Cannot create contract advance payment from a non-effective contract version");
+    }
+    if (!contractVersion.effectiveAt) {
+      throw new Error("Contract effective date is required for contract advance payment request");
+    }
+
+    const contract = await tx.contract.findUnique({
+      where: { id: contractVersion.contractId },
+      select: { projectId: true }
+    });
+    if (!contract) {
+      throw new Error("Contract not found");
+    }
+
+    await this.lockContractAdvancePaymentRows(tx, contractVersion.contractId);
+
+    const paymentTermsVersion = await tx.paymentTermsVersion.findFirst({
+      where: {
+        ...(input.paymentTermsVersionId ? { id: input.paymentTermsVersionId } : {}),
+        contractVersionId: contractVersion.id,
+        status: "effective"
+      },
+      orderBy: { versionNo: "desc" }
+    });
+    if (!paymentTermsVersion) {
+      throw new Error("Effective payment terms version not found");
+    }
+
+    const paymentTermsStages = await tx.paymentTermsStage.findMany({
+      where: {
+        paymentTermsVersionId: paymentTermsVersion.id,
+        stageType: "advance",
+        basis: "contract_amount",
+        triggerAnchor: "contract_effective"
+      },
+      select: {
+        paymentTermsVersionId: true,
+        stageType: true,
+        basis: true,
+        ratioBps: true,
+        fixedAmountCents: true,
+        triggerAnchor: true,
+        dueDays: true
+      }
+    });
+    const existingAdvancePayments = await tx.paymentRequest.findMany({
+      where: {
+        contractId: contractVersion.contractId,
+        sourceType: "contract_advance",
+        status: { in: [...PROJECT_CASH_POOL_PAYMENT_STATUSES] }
+      },
+      select: {
+        status: true,
+        requestedAmountCents: true,
+        approvedAmountCents: true,
+        paidAmountCents: true
+      }
+    });
+    const capacity = calculateContractAdvancePaymentCapacity({
+      asOf: new Date(),
+      contractAmountCents: sumSafeCents([contractVersion.amountCents]),
+      contractEffectiveAt: contractVersion.effectiveAt,
+      paymentTermsStages,
+      paymentRequests: existingAdvancePayments
+    });
+
+    if (!Number.isInteger(input.requestedAmountCents) || input.requestedAmountCents <= 0) {
+      throw new Error("Payment request amount must be positive cents");
+    }
+    if (input.requestedAmountCents > capacity.remainingCents) {
+      throw new Error(`合同预付款到期可付额度不足: ${Math.max(capacity.remainingCents, 0)}`);
+    }
+
+    const financingQuotaAllocations = await this.reserveProjectCashPool(
+      tx,
+      contract.projectId,
+      input.requestedAmountCents
+    );
+
+    const payment = await tx.paymentRequest.create({
+      data: {
+        projectId: contract.projectId,
+        settlementId: null,
+        sourceType: "contract_advance",
+        contractId: contractVersion.contractId,
+        contractVersionId: contractVersion.id,
+        paymentTermsVersionId: paymentTermsVersion.id,
+        code: input.code,
+        status: "approval_pending",
+        requestedAmountCents: input.requestedAmountCents,
+        approvedAmountCents: null,
+        paidAmountCents: 0
+      }
+    });
+
+    if (financingQuotaAllocations.length) {
+      await tx.projectFinancingQuotaUsage.createMany({
+        data: financingQuotaAllocations.map((allocation) => ({
+          quotaId: allocation.quotaId,
+          paymentRequestId: payment.id,
+          projectId: contract.projectId,
+          amountCents: allocation.amountCents,
+          status: "occupied"
+        }))
+      });
+
+      if (applicantUserId) {
+        await this.audit.record(tx, {
+          actorUserId: applicantUserId,
+          action: "payment.financing_quota.occupy",
+          businessType: "payment_request",
+          businessId: payment.id,
+          metadata: {
+            projectId: contract.projectId,
+            allocations: financingQuotaAllocations.map((allocation) => ({
+              quotaId: allocation.quotaId,
+              amountCents: allocation.amountCents.toString()
+            }))
+          }
+        });
+      }
+    }
+
+    if (applicantUserId) {
+      await tx.approvalInstance.create({
+        data: {
+          flowType: "payment.approve",
+          businessType: "payment_request",
+          businessId: payment.id,
+          status: "in_progress",
+          currentNodeIndex: 0,
+          frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+          applicantUserId
+        }
+      });
+    }
+
+    return payment;
   }
 
   private async assertContractDuePaymentCapacity(
@@ -335,6 +522,7 @@ export class PaymentRequestService {
         tx.paymentRequest.findMany({
           where: {
             contractId: settlement.contractId,
+            sourceType: "settlement",
             status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES] }
           },
           select: {
@@ -371,6 +559,18 @@ export class PaymentRequestService {
       FROM "Settlement"
       WHERE "contractId" = ${contractId}
         AND "status" IN (${Prisma.join([...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES])})
+      FOR UPDATE
+    `);
+  }
+
+  private async lockContractAdvancePaymentRows(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ): Promise<void> {
+    await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "Contract"
+      WHERE "id" = ${contractId}
       FOR UPDATE
     `);
   }
@@ -818,6 +1018,7 @@ export class PaymentRequestService {
         "code",
         "projectId",
         "settlementId",
+        "sourceType",
         "status",
         "requestedAmountCents",
         "approvedAmountCents",
@@ -828,6 +1029,18 @@ export class PaymentRequestService {
       FOR UPDATE
     `);
     return rows[0] ?? null;
+  }
+
+  private async lockSettlementForPaymentExecution(
+    tx: Prisma.TransactionClient,
+    settlementId: string
+  ): Promise<void> {
+    await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "Settlement"
+      WHERE "id" = ${settlementId}
+      FOR UPDATE
+    `);
   }
 
   // 申请人撤回进行中的付款审批：付款请求无草稿态，撤回为终态 withdrawn（重试须新建付款申请）。
@@ -1347,32 +1560,43 @@ export class PaymentRequestService {
         );
       }
 
-      const settlement = await tx.settlement.findUnique({
-        where: { id: payment.settlementId }
-      });
-
-      if (!settlement) {
-        throw new Error("Payment settlement not found");
-      }
-
-      const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
-      const settlementExecutionRemainingCents =
-        settlement.payableAmountCents - settlement.paidAmountCents - proxyPaidCents;
-      if (input.amountCents > settlementExecutionRemainingCents) {
-        throw new Error(
-          `Payment execution exceeds settlement remaining payable amount: ${Math.max(
-            settlementExecutionRemainingCents,
-            0
-          )}`
-        );
-      }
-
       const newPaymentPaidAmountCents = payment.paidAmountCents + input.amountCents;
       const newPaymentStatus =
         newPaymentPaidAmountCents >= approvedAmountCents ? "paid" : "partially_paid";
-      const newSettlementPaidAmountCents = settlement.paidAmountCents + input.amountCents;
-      const newSettlementStatus =
-        newSettlementPaidAmountCents >= settlement.payableAmountCents ? "paid" : "partially_paid";
+      let settlement:
+        | { id: string; payableAmountCents: number; paidAmountCents: number }
+        | null = null;
+      let newSettlementPaidAmountCents: number | null = null;
+      let newSettlementStatus: "paid" | "partially_paid" | null = null;
+
+      if (payment.settlementId) {
+        await this.lockSettlementForPaymentExecution(tx, payment.settlementId);
+        settlement = await tx.settlement.findUnique({
+          where: { id: payment.settlementId }
+        });
+
+        if (!settlement) {
+          throw new Error("Payment settlement not found");
+        }
+
+        const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
+        const settlementExecutionRemainingCents =
+          settlement.payableAmountCents - settlement.paidAmountCents - proxyPaidCents;
+        if (input.amountCents > settlementExecutionRemainingCents) {
+          throw new Error(
+            `Payment execution exceeds settlement remaining payable amount: ${Math.max(
+              settlementExecutionRemainingCents,
+              0
+            )}`
+          );
+        }
+
+        newSettlementPaidAmountCents = settlement.paidAmountCents + input.amountCents;
+        newSettlementStatus =
+          newSettlementPaidAmountCents >= settlement.payableAmountCents
+            ? "paid"
+            : "partially_paid";
+      }
 
       const invalidFinancingQuota = await this.releaseInvalidFinancingQuotaBeforeExecution(
         tx,
@@ -1403,13 +1627,15 @@ export class PaymentRequestService {
         }
       });
 
-      await tx.settlement.update({
-        where: { id: settlement.id },
-        data: {
-          paidAmountCents: newSettlementPaidAmountCents,
-          status: newSettlementStatus
-        }
-      });
+      if (settlement && newSettlementPaidAmountCents !== null && newSettlementStatus) {
+        await tx.settlement.update({
+          where: { id: settlement.id },
+          data: {
+            paidAmountCents: newSettlementPaidAmountCents,
+            status: newSettlementStatus
+          }
+        });
+      }
 
       await this.useFinancingQuotaUsage(
         tx,

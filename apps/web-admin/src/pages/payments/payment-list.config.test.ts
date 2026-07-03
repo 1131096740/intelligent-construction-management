@@ -10,7 +10,7 @@ describe("payment ledger page configuration", () => {
   it("uses compact enterprise payment filter fields", () => {
     expect(paymentFilterFields.map((field) => field.label)).toEqual([
       "项目",
-      "结算编号",
+      "付款来源",
       "审批状态",
       "实付状态",
       "关键词"
@@ -30,7 +30,7 @@ describe("payment ledger page configuration", () => {
   it("shows approval status and actual payment status as separate ledger columns", () => {
     expect(paymentLedgerColumns.map((column) => column.title)).toEqual([
       "付款编号",
-      "关联结算",
+      "付款来源",
       "项目",
       "申请金额",
       "审批状态",
@@ -44,7 +44,7 @@ describe("payment ledger page configuration", () => {
 
   it("states the core payment gate and execution rules", () => {
     expect(paymentRules).toEqual([
-      "只能从已生效结算创建付款申请",
+      "结算付款只能从已生效结算创建，合同预付款按合同生效日和账期计算",
       "所有付款审批需董事长/总经理二选一或签",
       "审批通过后进入已批待付，不代表已付款",
       "出纳/财务登记实付并上传付款凭证"

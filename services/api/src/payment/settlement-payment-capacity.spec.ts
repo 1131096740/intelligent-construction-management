@@ -24,7 +24,7 @@ interface ContractDueSettlementArchiveFile {
 }
 
 interface ContractDuePaymentRequest {
-  settlementId: string;
+  settlementId: string | null;
   status: string;
   requestedAmountCents: number;
   approvedAmountCents?: number | null;
@@ -37,6 +37,13 @@ interface ContractDuePaymentCapacity {
   remainingCents: number;
 }
 
+interface ContractAdvancePaymentRequest {
+  status: string;
+  requestedAmountCents: number;
+  approvedAmountCents?: number | null;
+  paidAmountCents: number;
+}
+
 type ContractDuePaymentCapacityCalculator = (input: {
   asOf: Date;
   settlements: readonly ContractDueSettlement[];
@@ -46,11 +53,25 @@ type ContractDuePaymentCapacityCalculator = (input: {
   proxyPaidAmountCents?: number;
 }) => ContractDuePaymentCapacity;
 
+type ContractAdvancePaymentCapacityCalculator = (input: {
+  asOf: Date;
+  contractAmountCents: number;
+  contractEffectiveAt: Date | null;
+  paymentTermsStages: readonly ContractDuePaymentTermsStage[];
+  paymentRequests: readonly ContractAdvancePaymentRequest[];
+}) => ContractDuePaymentCapacity;
+
 const calculateContractDuePaymentCapacity = (
   settlementPaymentCapacity as unknown as {
     calculateContractDuePaymentCapacity?: ContractDuePaymentCapacityCalculator;
   }
 ).calculateContractDuePaymentCapacity;
+
+const calculateContractAdvancePaymentCapacity = (
+  settlementPaymentCapacity as unknown as {
+    calculateContractAdvancePaymentCapacity?: ContractAdvancePaymentCapacityCalculator;
+  }
+).calculateContractAdvancePaymentCapacity;
 
 function calculateContractCapacity(
   input: Parameters<ContractDuePaymentCapacityCalculator>[0]
@@ -60,6 +81,16 @@ function calculateContractCapacity(
   }
 
   return calculateContractDuePaymentCapacity(input);
+}
+
+function calculateAdvanceCapacity(
+  input: Parameters<ContractAdvancePaymentCapacityCalculator>[0]
+): ContractDuePaymentCapacity {
+  if (!calculateContractAdvancePaymentCapacity) {
+    throw new Error("calculateContractAdvancePaymentCapacity is not exported");
+  }
+
+  return calculateContractAdvancePaymentCapacity(input);
 }
 
 describe("calculateContractDuePaymentCapacity", () => {
@@ -405,6 +436,99 @@ describe("calculateContractDuePaymentCapacity", () => {
     expect(capacity).toEqual({
       duePayableCents: 10_000,
       occupiedCents: 0,
+      remainingCents: 10_000
+    });
+  });
+});
+
+describe("calculateContractAdvancePaymentCapacity", () => {
+  it("counts contract-effective advance stages after their due date", () => {
+    const capacity = calculateAdvanceCapacity({
+      asOf: new Date("2026-07-20T00:00:00.000Z"),
+      contractAmountCents: 1_000_000,
+      contractEffectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 30
+        }
+      ],
+      paymentRequests: []
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 100_000,
+      occupiedCents: 0,
+      remainingCents: 100_000
+    });
+  });
+
+  it("keeps contract-effective advance stages unavailable before due date", () => {
+    const capacity = calculateAdvanceCapacity({
+      asOf: new Date("2026-06-20T00:00:00.000Z"),
+      contractAmountCents: 1_000_000,
+      contractEffectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 30
+        }
+      ],
+      paymentRequests: []
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 0,
+      occupiedCents: 0,
+      remainingCents: 0
+    });
+  });
+
+  it("subtracts paid and in-flight contract advance requests from advance capacity", () => {
+    const capacity = calculateAdvanceCapacity({
+      asOf: new Date("2026-07-20T00:00:00.000Z"),
+      contractAmountCents: 1_000_000,
+      contractEffectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 30
+        }
+      ],
+      paymentRequests: [
+        {
+          status: "paid",
+          requestedAmountCents: 60_000,
+          approvedAmountCents: 60_000,
+          paidAmountCents: 60_000
+        },
+        {
+          status: "approval_pending",
+          requestedAmountCents: 30_000,
+          approvedAmountCents: null,
+          paidAmountCents: 0
+        }
+      ]
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 100_000,
+      occupiedCents: 90_000,
       remainingCents: 10_000
     });
   });

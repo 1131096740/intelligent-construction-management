@@ -505,13 +505,26 @@ describe("core flow read API client", () => {
       code: "FK-2026-007",
       requestedAmountCents: 25600000
     });
+    await createPaymentRequest({
+      sourceType: "contract_advance",
+      contractVersionId: "seed-contract-version-ht-2026-001-v1",
+      code: "FK-YF-2026-001",
+      requestedAmountCents: 10000000
+    });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/settlements",
+      "/api/payments",
       "/api/payments"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string).isFinal).toBe(true);
+    expect(JSON.parse(fetchMock.mock.calls[2][1]?.body as string)).toEqual({
+      sourceType: "contract_advance",
+      contractVersionId: "seed-contract-version-ht-2026-001-v1",
+      code: "FK-YF-2026-001",
+      requestedAmountCents: 10000000
+    });
   });
 
   it("posts payment workflow actions to the backend", async () => {

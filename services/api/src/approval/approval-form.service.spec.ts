@@ -152,6 +152,45 @@ describe("ApprovalFormService", () => {
     expect(uploaded?.buffer.subarray(0, 5).toString()).toBe("%PDF-");
   });
 
+  it("renders a contract advance approval form without querying a null settlement", async () => {
+    const settlement = {
+      findUnique: jest.fn()
+    };
+    const prisma = buildPrisma({
+      paymentRequest: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "pay-advance-1",
+          projectId: "proj-1",
+          code: "PAY-YF-2026-001",
+          sourceType: "contract_advance",
+          settlementId: null,
+          contractId: "con-1",
+          requestedAmountCents: 10000000,
+          approvedAmountCents: 10000000,
+          dueDate: null
+        })
+      },
+      settlement,
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "con-1",
+          code: "HT-2026-009",
+          name: "幕墙分包合同",
+          counterparty: "某某建筑公司"
+        })
+      }
+    });
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
+    };
+    const service = new ApprovalFormService(prisma as never, files as never, { record: jest.fn() } as never);
+
+    await service.generateForInstance("inst-1", "user-chair");
+
+    expect(settlement.findUnique).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).toHaveBeenCalledTimes(1);
+  });
+
   it("renderForDownload stamps a per-downloader watermark and audits the download", async () => {
     const prisma = buildPrisma({
       pdfDocument: {

@@ -199,7 +199,8 @@ model SettlementArchiveFile {
 model PaymentRequest {
   id                    String    @id @default(uuid())
   projectId             String
-  settlementId          String
+  settlementId          String?
+  sourceType            String    @default("settlement")
   contractId            String
   contractVersionId     String
   paymentTermsVersionId String
@@ -216,7 +217,7 @@ model PaymentRequest {
 model PaymentExecution {
   id               String   @id @default(uuid())
   paymentRequestId String
-  settlementId     String
+  settlementId     String?
   amountCents      Int
   paidAt           DateTime
   executedByUserId String

@@ -2200,6 +2200,14 @@ describe("ProjectService", () => {
       expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
         findProxyPayments.mock.invocationCallOrder[0]
       );
+      expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contractId: "contract-1",
+            sourceType: "settlement"
+          })
+        })
+      );
       expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();

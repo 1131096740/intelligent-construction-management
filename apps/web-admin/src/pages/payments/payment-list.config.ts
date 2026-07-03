@@ -39,7 +39,7 @@ export const paymentFilterFields: PaymentFilterField[] = [
   },
   {
     key: "settlementNo",
-    label: "结算编号",
+    label: "付款来源",
     placeholder: "全部",
     type: "select"
   },
@@ -73,7 +73,7 @@ export const paymentSummaryItems: PaymentSummaryItem[] = [
 
 export const paymentLedgerColumns: PrimaryTableCol<PaymentLedgerRow>[] = [
   { colKey: "paymentNo", title: "付款编号", width: 104 },
-  { colKey: "settlementNo", title: "关联结算", width: 104 },
+  { colKey: "settlementNo", title: "付款来源", width: 104 },
   { colKey: "project", title: "项目", minWidth: 120 },
   { colKey: "requestedAmount", title: "申请金额", width: 96, align: "right" },
   { colKey: "approvalStatus", title: "审批状态", width: 96 },
@@ -87,7 +87,7 @@ export const paymentLedgerColumns: PrimaryTableCol<PaymentLedgerRow>[] = [
 export const paymentLedgerRows: PaymentLedgerRow[] = [];
 
 export const paymentRules = [
-  "只能从已生效结算创建付款申请",
+  "结算付款只能从已生效结算创建，合同预付款按合同生效日和账期计算",
   "所有付款审批需董事长/总经理二选一或签",
   "审批通过后进入已批待付，不代表已付款",
   "出纳/财务登记实付并上传付款凭证"

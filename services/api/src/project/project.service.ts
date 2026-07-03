@@ -724,6 +724,7 @@ export class ProjectService {
       tx.paymentRequest.findMany({
         where: {
           contractId,
+          sourceType: "settlement",
           status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES] }
         },
         select: {

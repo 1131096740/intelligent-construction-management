@@ -311,7 +311,8 @@ export class ContractReadService {
     }>,
     paymentRequests: Array<{
       id: string;
-      settlementId: string;
+      settlementId: string | null;
+      sourceType?: string | null;
       code: string;
       status: string;
       requestedAmountCents: number;
@@ -417,7 +418,9 @@ export class ContractReadService {
       return {
         id: payment.code,
         paymentNo: payment.code,
-        settlementNo: settlementNoById.get(payment.settlementId) ?? payment.settlementId,
+        settlementNo: payment.settlementId
+          ? (settlementNoById.get(payment.settlementId) ?? payment.settlementId)
+          : this.paymentSourceLabel(payment.sourceType),
         requestedAmount: this.formatMoney(payment.requestedAmountCents),
         approvedAmount: approved ? this.formatMoney(approvedCents) : "待审批",
         paidAmount: this.formatMoney(paidCents),
@@ -679,6 +682,14 @@ export class ContractReadService {
 
   private isApprovedPaymentStatus(status: string): boolean {
     return ["approved_pending_payment", "partially_paid", "paid", "completed"].includes(status);
+  }
+
+  private paymentSourceLabel(sourceType?: string | null): string {
+    if (sourceType === "contract_advance") {
+      return "合同预付款";
+    }
+
+    return "未关联结算";
   }
 
   private basisLabel(basis: string): string {

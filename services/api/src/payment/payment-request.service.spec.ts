@@ -114,7 +114,7 @@ describe("PaymentRequestService", () => {
       id: string;
       code: string;
       projectId: string;
-      settlementId: string;
+      settlementId: string | null;
       status: string;
       requestedAmountCents: number;
       approvedAmountCents: number | null;
@@ -208,7 +208,11 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012"
         })
       },
-      ...cashPool.tables
+      ...cashPool.tables,
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
+        .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -222,10 +226,14 @@ describe("PaymentRequestService", () => {
     });
 
     expect(created.code).toBe("FK-2026-012");
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.paymentRequest.findMany.mock.invocationCallOrder[0]
+    );
     expect(tx.paymentRequest.create).toHaveBeenCalledWith({
       data: {
         projectId: "project-1",
         settlementId: "settlement-1",
+        sourceType: "settlement",
         contractId: "contract-1",
         contractVersionId: "contract-version-1",
         paymentTermsVersionId: "terms-version-1",
@@ -236,6 +244,186 @@ describe("PaymentRequestService", () => {
         paidAmountCents: 0
       }
     });
+  });
+
+  it("creates a contract advance payment request from an effective contract version without settlement", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
+
+    try {
+      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+      const tx = {
+        settlement: {
+          findUnique: jest.fn()
+        },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "effective",
+            amountCents: BigInt(1_000_000),
+            effectiveAt: new Date("2026-06-01T00:00:00.000Z")
+          })
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-1",
+            projectId: "project-1"
+          })
+        },
+        paymentTermsVersion: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "terms-version-1",
+            contractId: "contract-1",
+            contractVersionId: "contract-version-1",
+            status: "effective"
+          })
+        },
+        paymentTermsStage: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              paymentTermsVersionId: "terms-version-1",
+              stageType: "advance",
+              basis: "contract_amount",
+              ratioBps: 1000,
+              fixedAmountCents: null,
+              triggerAnchor: "contract_effective",
+              dueDays: 30
+            }
+          ])
+        },
+        paymentRequest: {
+          findMany: jest.fn((args: { where?: { contractId?: string; projectId?: string } }) => {
+            if (args.where?.contractId === "contract-1") {
+              return Promise.resolve([]);
+            }
+
+            if (args.where?.projectId === "project-1") {
+              return Promise.resolve(cashPool.projectPayments);
+            }
+
+            return Promise.resolve([]);
+          }),
+          create: jest.fn().mockResolvedValue({
+            id: "payment-advance-1",
+            code: "FK-YF-2026-001"
+          })
+        },
+        ...cashPool.tables
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      };
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      const created = await paymentService.create({
+        sourceType: "contract_advance",
+        contractVersionId: "contract-version-1",
+        code: "FK-YF-2026-001",
+        requestedAmountCents: 100_000
+      } as never);
+
+      expect(created.code).toBe("FK-YF-2026-001");
+      expect(tx.settlement.findUnique).not.toHaveBeenCalled();
+      expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.paymentRequest.findMany.mock.invocationCallOrder[0]
+      );
+      expect(tx.paymentRequest.create).toHaveBeenCalledWith({
+        data: {
+          projectId: "project-1",
+          settlementId: null,
+          sourceType: "contract_advance",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-YF-2026-001",
+          status: "approval_pending",
+          requestedAmountCents: 100_000,
+          approvedAmountCents: null,
+          paidAmountCents: 0
+        }
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("rejects a contract advance payment request before the contract-effective due date", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-06-20T00:00:00.000Z"));
+
+    try {
+      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+      const tx = {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "effective",
+            amountCents: BigInt(1_000_000),
+            effectiveAt: new Date("2026-06-01T00:00:00.000Z")
+          })
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-1",
+            projectId: "project-1"
+          })
+        },
+        paymentTermsVersion: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "terms-version-1",
+            contractId: "contract-1",
+            contractVersionId: "contract-version-1",
+            status: "effective"
+          })
+        },
+        paymentTermsStage: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              paymentTermsVersionId: "terms-version-1",
+              stageType: "advance",
+              basis: "contract_amount",
+              ratioBps: 1000,
+              fixedAmountCents: null,
+              triggerAnchor: "contract_effective",
+              dueDays: 30
+            }
+          ])
+        },
+        paymentRequest: {
+          findMany: jest.fn((args: { where?: { contractId?: string; projectId?: string } }) => {
+            if (args.where?.contractId === "contract-1") {
+              return Promise.resolve([]);
+            }
+
+            if (args.where?.projectId === "project-1") {
+              return Promise.resolve(cashPool.projectPayments);
+            }
+
+            return Promise.resolve([]);
+          }),
+          create: jest.fn()
+        },
+        ...cashPool.tables
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      };
+      const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+      await expect(
+        paymentService.create({
+          sourceType: "contract_advance",
+          contractVersionId: "contract-version-1",
+          code: "FK-YF-2026-002",
+          requestedAmountCents: 100_000
+        } as never)
+      ).rejects.toThrow("合同预付款到期可付额度不足: 0");
+      expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("freezes payment approval route when payment request is created by an applicant", async () => {
@@ -266,7 +454,11 @@ describe("PaymentRequestService", () => {
       approvalInstance: {
         create: jest.fn()
       },
-      ...cashPool.tables
+      ...cashPool.tables,
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
+        .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -327,6 +519,7 @@ describe("PaymentRequestService", () => {
 
   it("rejects create payment request above remaining settlement capacity", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -480,6 +673,14 @@ describe("PaymentRequestService", () => {
           select: expect.objectContaining({
             stageType: true,
             triggerAnchor: true
+          })
+        })
+      );
+      expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contractId: "contract-1",
+            sourceType: "settlement"
           })
         })
       );
@@ -733,6 +934,7 @@ describe("PaymentRequestService", () => {
 
   it("counts linked project proxy payments against remaining settlement capacity", async () => {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -1855,6 +2057,9 @@ describe("PaymentRequestService", () => {
     expect(execution.id).toBe("execution-1");
     expect(auth.confirmPassword).toHaveBeenCalledWith("cashier-1", "current-password");
     expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
+      tx.settlement.findUnique.mock.invocationCallOrder[0]
+    );
     expect(tx.paymentExecution.create).toHaveBeenCalledWith({
       data: {
         paymentRequestId: "payment-1",
@@ -1886,6 +2091,96 @@ describe("PaymentRequestService", () => {
         businessType: "payment_request",
         businessId: "payment-1"
       })
+    });
+  });
+
+  it("records contract advance execution without touching settlement ledger", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        paymentExecutionRow({
+          id: "payment-advance-1",
+          code: "FK-YF-2026-001",
+          settlementId: null,
+          requestedAmountCents: 100_000,
+          approvedAmountCents: 100_000,
+          paidAmountCents: 0
+        })
+      ]),
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-advance-1",
+          code: "FK-YF-2026-001",
+          settlementId: null,
+          status: "approved_pending_payment",
+          requestedAmountCents: 100_000,
+          approvedAmountCents: 100_000,
+          paidAmountCents: 0
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "payment-advance-1",
+          status: "paid",
+          paidAmountCents: 100_000
+        }),
+        findUnique: jest.fn().mockResolvedValue({
+          requestedAmountCents: 100_000,
+          approvedAmountCents: 100_000,
+          paidAmountCents: 100_000
+        })
+      },
+      settlement: {
+        findUnique: jest.fn(),
+        update: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn().mockResolvedValue({
+          id: "execution-advance-1",
+          paymentRequestId: "payment-advance-1",
+          amountCents: 100_000,
+          voucherFileId: "file-1"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...financingUsageUpdates()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    const execution = await paymentService.recordExecution("FK-YF-2026-001", "cashier-1", {
+      amountCents: 100_000,
+      paidAt: "2026-07-20T00:00:00.000Z",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(execution.id).toBe("execution-advance-1");
+    expect(tx.settlement.findUnique).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+    expect(tx.paymentExecution.create).toHaveBeenCalledWith({
+      data: {
+        paymentRequestId: "payment-advance-1",
+        settlementId: null,
+        amountCents: 100_000,
+        paidAt: new Date("2026-07-20T00:00:00.000Z"),
+        executedByUserId: "cashier-1",
+        voucherFileId: "file-1"
+      }
+    });
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({
+      where: { id: "payment-advance-1" },
+      data: {
+        paidAmountCents: 100_000,
+        status: "paid"
+      }
     });
   });
 
@@ -1976,6 +2271,7 @@ describe("PaymentRequestService", () => {
             paidAmountCents: 0
           })
         ])
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
         .mockResolvedValueOnce([{ id: "project-1", isActive: true }]),
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
@@ -2076,6 +2372,7 @@ describe("PaymentRequestService", () => {
       $queryRaw: jest
         .fn()
         .mockResolvedValueOnce([paymentExecutionRow({ paidAmountCents: 0 })])
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
         .mockResolvedValueOnce([{ id: "project-1", isActive: true }]),
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue(paymentExecutionRow({ paidAmountCents: 0 })),
@@ -2167,6 +2464,7 @@ describe("PaymentRequestService", () => {
         $queryRaw: jest
           .fn()
           .mockResolvedValueOnce([paymentExecutionRow({ paidAmountCents: 0 })])
+          .mockResolvedValueOnce([{ id: "settlement-1" }])
           .mockResolvedValueOnce(lockedProjects),
         paymentRequest: {
           findFirst: jest.fn().mockResolvedValue(paymentExecutionRow({ paidAmountCents: 0 })),

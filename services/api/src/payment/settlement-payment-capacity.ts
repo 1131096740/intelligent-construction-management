@@ -51,8 +51,10 @@ export interface ContractDueSettlementArchiveFile {
 }
 
 export interface ContractDuePaymentRequest extends SettlementCapacityPaymentRequest {
-  settlementId: string;
+  settlementId: string | null;
 }
+
+export interface ContractAdvancePaymentRequest extends SettlementCapacityPaymentRequest {}
 
 export interface ContractDuePaymentCapacity {
   duePayableCents: number;
@@ -152,6 +154,43 @@ export function calculateContractDuePaymentCapacity(input: {
   };
 }
 
+export function calculateContractAdvancePaymentCapacity(input: {
+  asOf: Date;
+  contractAmountCents: number;
+  contractEffectiveAt: Date | null;
+  paymentTermsStages: readonly ContractDuePaymentTermsStage[];
+  paymentRequests: readonly ContractAdvancePaymentRequest[];
+}): ContractDuePaymentCapacity {
+  const contractEffectiveAt = input.contractEffectiveAt;
+  const duePayableCents = contractEffectiveAt
+    ? input.paymentTermsStages.reduce<bigint>((total, stage) => {
+        if (!isContractAdvanceStage(stage)) return total;
+        if (!isStageDue(contractEffectiveAt, stage.dueDays, input.asOf)) return total;
+        return total + contractStageAmountCents(input.contractAmountCents, stage);
+      }, 0n)
+    : 0n;
+  const cappedDuePayableCents = minBigInt(
+    duePayableCents,
+    BigInt(Math.max(input.contractAmountCents, 0))
+  );
+  const actualPaidAmountCents = input.paymentRequests.reduce<bigint>(
+    (total, payment) => total + BigInt(payment.paidAmountCents ?? 0),
+    0n
+  );
+  const outstandingPaymentCents = input.paymentRequests.reduce<bigint>(
+    (total, payment) => total + BigInt(outstandingPaymentRequestCents(payment)),
+    0n
+  );
+  const occupiedCents = actualPaidAmountCents + outstandingPaymentCents;
+  const remainingCents = cappedDuePayableCents - occupiedCents;
+
+  return {
+    duePayableCents: centsToSafeNumber(cappedDuePayableCents),
+    occupiedCents: centsToSafeNumber(occupiedCents),
+    remainingCents: centsToSafeNumber(remainingCents)
+  };
+}
+
 export function sumSafeCents(values: Array<bigint | number>): number {
   return centsToSafeNumber(
     values.reduce<bigint>((total, value) => total + BigInt(value), 0n)
@@ -172,6 +211,14 @@ function isStageApplicableToSettlement(
   }
 
   return false;
+}
+
+function isContractAdvanceStage(stage: ContractDuePaymentTermsStage): boolean {
+  return (
+    stage.stageType === "advance" &&
+    stage.basis === "contract_amount" &&
+    stage.triggerAnchor === "contract_effective"
+  );
 }
 
 function isStageDue(confirmedAt: Date, dueDays: number, asOf: Date): boolean {

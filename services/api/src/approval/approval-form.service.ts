@@ -596,7 +596,9 @@ export class ApprovalFormService {
       const payment = await prisma.paymentRequest.findUnique({ where: { id: businessId } });
       if (!payment) return [];
       const [settlement, contract] = await Promise.all([
-        prisma.settlement.findUnique({ where: { id: payment.settlementId } }),
+        payment.settlementId
+          ? prisma.settlement.findUnique({ where: { id: payment.settlementId } })
+          : Promise.resolve(null),
         prisma.contract.findUnique({ where: { id: payment.contractId } })
       ]);
       const rows: Array<{ label: string; value: string }> = [
@@ -604,6 +606,9 @@ export class ApprovalFormService {
       ];
       if (payment.approvedAmountCents != null) {
         rows.push({ label: "批准金额", value: formatYuan(payment.approvedAmountCents) });
+      }
+      if (payment.sourceType === "contract_advance") {
+        rows.push({ label: "付款类型", value: "合同预付款" });
       }
       if (contract) rows.push({ label: "收款方", value: contract.counterparty });
       if (settlement) rows.push({ label: "对应结算", value: settlement.code });
