@@ -56,6 +56,7 @@ export interface ContractDueSettlementArchiveFile {
 
 export interface ContractDuePaymentRequest extends SettlementCapacityPaymentRequest {
   settlementId: string | null;
+  sourceType?: string | null;
 }
 
 export interface ContractAdvancePaymentRequest extends SettlementCapacityPaymentRequest {
@@ -144,8 +145,8 @@ export function calculateContractDuePaymentCapacity(input: {
   settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
   paymentRequests: readonly ContractDuePaymentRequest[];
   proxyPaidAmountCents?: number;
-  contractAmountCents?: number;
-  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number>>;
+  contractAmountCents?: number | bigint;
+  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number | bigint>>;
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
 }): ContractDuePaymentCapacity {
   const confirmedAtBySettlement = new Map<string, Date>();
@@ -205,10 +206,16 @@ export function calculateContractDuePaymentCapacity(input: {
     return total + minBigInt(settlementDueCents, BigInt(settlement.amountCents));
   }, 0n);
 
-  const actualPaidAmountCents = input.settlements.reduce<bigint>(
-    (total, settlement) => total + BigInt(settlement.paidAmountCents ?? 0),
-    0n
-  );
+  const actualPaidAmountCents =
+    input.settlements.reduce<bigint>(
+      (total, settlement) => total + BigInt(settlement.paidAmountCents ?? 0),
+      0n
+    ) +
+    input.paymentRequests.reduce<bigint>(
+      (total, payment) =>
+        payment.settlementId === null ? total + BigInt(payment.paidAmountCents ?? 0) : total,
+      0n
+    );
   const outstandingPaymentCents = input.paymentRequests.reduce<bigint>(
     (total, payment) => total + BigInt(outstandingPaymentRequestCents(payment)),
     0n
@@ -253,8 +260,8 @@ export function buildContractPaymentApplicationPreview(input: {
   settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
   paymentRequests: readonly ContractDuePaymentRequest[];
   proxyPaidAmountCents?: number;
-  contractAmountCents?: number;
-  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number>>;
+  contractAmountCents?: number | bigint;
+  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number | bigint>>;
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
 }): ContractPaymentApplicationPreview {
   const confirmedAtBySettlement = earliestConfirmedAtBySettlement(input.settlementArchiveFiles);
@@ -659,7 +666,7 @@ function paidAdvanceCentsByTerms(
 }
 
 function contractAmountCentsByTerms(
-  values: Readonly<Record<string, number>> | undefined
+  values: Readonly<Record<string, number | bigint>> | undefined
 ): ReadonlyMap<string, bigint> {
   const totals = new Map<string, bigint>();
   if (!values) {
@@ -667,7 +674,7 @@ function contractAmountCentsByTerms(
   }
 
   for (const [termsId, amountCents] of Object.entries(values)) {
-    totals.set(termsId, BigInt(Math.max(amountCents, 0)));
+    totals.set(termsId, nonNegativeBigIntCents(amountCents));
   }
 
   return totals;
@@ -685,6 +692,11 @@ function contractAmountCentsForTerms(
 
 function addMapBigInt(map: Map<string, bigint>, key: string, amount: bigint): void {
   map.set(key, (map.get(key) ?? 0n) + amount);
+}
+
+function nonNegativeBigIntCents(value: bigint | number): bigint {
+  const cents = BigInt(value);
+  return cents > 0n ? cents : 0n;
 }
 
 function isStageDue(confirmedAt: Date, dueDays: number, asOf: Date): boolean {

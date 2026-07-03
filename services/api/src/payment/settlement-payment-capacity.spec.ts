@@ -29,6 +29,7 @@ interface ContractDueSettlementArchiveFile {
 
 interface ContractDuePaymentRequest {
   settlementId: string | null;
+  sourceType?: string | null;
   status: string;
   requestedAmountCents: number;
   approvedAmountCents?: number | null;
@@ -268,6 +269,61 @@ describe("calculateContractDuePaymentCapacity", () => {
       duePayableCents: 120_000,
       occupiedCents: 30_000,
       remainingCents: 90_000
+    });
+  });
+
+  it("deducts paid contract-level due payments that are not allocated to a settlement", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      settlements: [
+        {
+          id: "settlement-1",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-1",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: [
+        {
+          settlementId: null,
+          sourceType: "contract_due",
+          status: "paid",
+          requestedAmountCents: 20_000,
+          approvedAmountCents: 20_000,
+          paidAmountCents: 20_000
+        },
+        {
+          settlementId: null,
+          sourceType: "contract_due",
+          status: "partially_paid",
+          requestedAmountCents: 30_000,
+          approvedAmountCents: 30_000,
+          paidAmountCents: 10_000
+        }
+      ]
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 80_000,
+      occupiedCents: 50_000,
+      remainingCents: 30_000
     });
   });
 

@@ -525,9 +525,16 @@ describe("core flow read API client", () => {
       code: "FK-YF-2026-001",
       requestedAmountCents: 10000000
     });
+    await createPaymentRequest({
+      sourceType: "contract_due",
+      contractVersionId: "seed-contract-version-ht-2026-001-v1",
+      code: "FK-HT-2026-001",
+      requestedAmountCents: 8000000
+    });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/settlements",
+      "/api/payments",
       "/api/payments",
       "/api/payments"
     ]);
@@ -538,6 +545,12 @@ describe("core flow read API client", () => {
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
       code: "FK-YF-2026-001",
       requestedAmountCents: 10000000
+    });
+    expect(JSON.parse(fetchMock.mock.calls[3][1]?.body as string)).toEqual({
+      sourceType: "contract_due",
+      contractVersionId: "seed-contract-version-ht-2026-001-v1",
+      code: "FK-HT-2026-001",
+      requestedAmountCents: 8000000
     });
   });
 

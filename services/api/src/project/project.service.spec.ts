@@ -2204,7 +2204,7 @@ describe("ProjectService", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             contractId: "contract-1",
-            sourceType: "settlement"
+            sourceType: { in: ["settlement", "contract_due"] }
           })
         })
       );

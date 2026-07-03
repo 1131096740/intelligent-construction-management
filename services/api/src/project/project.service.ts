@@ -664,7 +664,7 @@ export class ProjectService {
         findMany: (args: {
           where: { id: { in: string[] } };
           select: { id: true; amountCents: true };
-        }) => Promise<Array<{ id: string; amountCents: number }>>;
+        }) => Promise<Array<{ id: string; amountCents: number | bigint }>>;
       };
       settlementArchiveFile?: {
         findMany: (args: {
@@ -759,11 +759,12 @@ export class ProjectService {
       tx.paymentRequest.findMany({
         where: {
           contractId,
-          sourceType: "settlement",
-          status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES] }
+          sourceType: { in: ["settlement", "contract_due"] },
+          status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES, "paid"] }
         },
         select: {
           settlementId: true,
+          sourceType: true,
           status: true,
           requestedAmountCents: true,
           approvedAmountCents: true,
@@ -813,7 +814,7 @@ export class ProjectService {
     const fallbackContractAmountCents = sumSafeCents(
       contractSettlements.map((settlement) => settlement.amountCents)
     );
-    const contractAmountCentsByPaymentTermsVersionId = contractSettlements.reduce<Record<string, number>>(
+    const contractAmountCentsByPaymentTermsVersionId = contractSettlements.reduce<Record<string, number | bigint>>(
       (amountByTermsId, settlement) => ({
         ...amountByTermsId,
         [settlement.paymentTermsVersionId]:

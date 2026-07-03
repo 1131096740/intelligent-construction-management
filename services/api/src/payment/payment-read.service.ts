@@ -101,12 +101,13 @@ export class PaymentReadService {
       throw new NotFoundException("Payment request not found");
     }
 
-    const isContractAdvance = payment.sourceType === "contract_advance" || !payment.settlementId;
+    const isContractAdvance = payment.sourceType === "contract_advance";
+    const isContractLevelPayment = isContractAdvance || payment.sourceType === "contract_due" || !payment.settlementId;
     const [settlement, contract, contractVersion, terms, executions, financeRecords] = await Promise.all([
       payment.settlementId
         ? this.prisma.settlement.findUnique({ where: { id: payment.settlementId } })
         : Promise.resolve(null),
-      isContractAdvance
+      isContractLevelPayment
         ? this.prisma.contract.findUnique({ where: { id: payment.contractId } })
         : Promise.resolve(null),
       this.prisma.contractVersion.findUnique({ where: { id: payment.contractVersionId } }),
@@ -142,7 +143,12 @@ export class PaymentReadService {
             basis: "contract_amount",
             triggerAnchor: "contract_effective"
           }
-        : { paymentTermsVersionId: terms.id },
+        : {
+            paymentTermsVersionId: terms.id,
+            ...(payment.sourceType === "contract_due"
+              ? { basis: "current_settlement" }
+              : {})
+          },
       orderBy: { createdAt: "asc" }
     });
     const executionAmountCents = executions.reduce(
@@ -162,6 +168,8 @@ export class PaymentReadService {
       id: payment.code,
       title: isContractAdvance
         ? `${payment.code} · 合同预付款申请`
+        : payment.sourceType === "contract_due"
+          ? `${payment.code} · 合同累计结算付款申请`
         : `${payment.code} · ${settlement?.periodLabel}付款申请`,
       meta: [
         { label: "审批状态", value: approval.label, tone: approval.tone },
@@ -173,7 +181,7 @@ export class PaymentReadService {
       ],
       baseInfo: [
         { label: "付款编号", value: payment.code },
-        ...(isContractAdvance
+        ...(isContractLevelPayment
           ? [
               { label: "付款来源", value: this.paymentSourceLabel(payment.sourceType) },
               {
@@ -204,6 +212,8 @@ export class PaymentReadService {
       traceRules: [
         isContractAdvance
           ? "预付款按合同生效日和账期计算，不依赖结算单"
+          : payment.sourceType === "contract_due"
+            ? "付款申请按合同下全部已生效结算累计计算，不分摊到单张结算"
           : "付款申请只能来自已生效结算",
         "审批通过进入已批待付",
         "审批通过不等于实际付款完成",
@@ -211,7 +221,7 @@ export class PaymentReadService {
       ],
       executionBlockMessage: this.executionBlockMessage(payment.status, execution.complete),
       chainLinks: [
-        isContractAdvance
+        isContractLevelPayment
           ? { label: "关联合同", to: `/contracts/${contract?.code ?? payment.contractId}` }
           : { label: "关联结算", to: `/settlements/${settlement?.code ?? payment.settlementId}` },
         { label: "付款凭证", to: "/archives" },
@@ -384,7 +394,10 @@ export class PaymentReadService {
     }
 
     const settlementPaymentRequests = paymentRequests.filter(
-      (payment) => payment.sourceType === "settlement" || payment.settlementId
+      (payment) =>
+        payment.sourceType === "settlement" ||
+        payment.sourceType === "contract_due" ||
+        payment.settlementId
     );
     const advancePaymentRequests = paymentRequests.filter(
       (payment) =>
@@ -407,7 +420,13 @@ export class PaymentReadService {
     });
     const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
     const occupancy = this.paymentOccupancyBreakdown(settlementPaymentRequests);
-    const actualPaidCents = sumSafeCents(settlements.map((settlement) => settlement.paidAmountCents));
+    const actualPaidCents =
+      sumSafeCents(settlements.map((settlement) => settlement.paidAmountCents)) +
+      sumSafeCents(
+        settlementPaymentRequests
+          .filter((payment) => payment.settlementId === null)
+          .map((payment) => payment.paidAmountCents)
+      );
 
     return {
       contract: {
@@ -519,6 +538,10 @@ export class PaymentReadService {
   private paymentSourceLabel(sourceType?: string | null) {
     if (sourceType === "contract_advance") {
       return "合同预付款";
+    }
+
+    if (sourceType === "contract_due") {
+      return "合同累计结算付款";
     }
 
     return "未关联结算";

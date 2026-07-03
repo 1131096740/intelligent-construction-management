@@ -141,6 +141,10 @@ export class PaymentRequestService {
         return this.createContractAdvancePaymentRequest(tx, input, applicantUserId);
       }
 
+      if (sourceType === "contract_due") {
+        return this.createContractDuePaymentRequest(tx, input, applicantUserId);
+      }
+
       if (sourceType !== "settlement") {
         throw new Error(`Unsupported payment request source type: ${sourceType}`);
       }
@@ -256,6 +260,131 @@ export class PaymentRequestService {
 
       return payment;
     });
+  }
+
+  private async createContractDuePaymentRequest(
+    tx: Prisma.TransactionClient,
+    input: CreatePaymentRequestDto,
+    applicantUserId?: string
+  ) {
+    if (input.settlementId) {
+      throw new Error("Settlement must not be provided for contract due payment request");
+    }
+
+    if (!input.contractVersionId) {
+      throw new Error("Contract version is required for contract due payment request");
+    }
+
+    const contractVersion = await tx.contractVersion.findUnique({
+      where: { id: input.contractVersionId },
+      select: {
+        id: true,
+        contractId: true,
+        status: true
+      }
+    });
+    if (!contractVersion) {
+      throw new Error("Contract version not found");
+    }
+    if (contractVersion.status !== "effective") {
+      throw new Error("Cannot create contract due payment from a non-effective contract version");
+    }
+
+    const contract = await tx.contract.findUnique({
+      where: { id: contractVersion.contractId },
+      select: { projectId: true }
+    });
+    if (!contract) {
+      throw new Error("Contract not found");
+    }
+
+    const paymentTermsVersion = await tx.paymentTermsVersion.findFirst({
+      where: {
+        ...(input.paymentTermsVersionId ? { id: input.paymentTermsVersionId } : {}),
+        contractVersionId: contractVersion.id,
+        status: "effective"
+      },
+      orderBy: { versionNo: "desc" }
+    });
+    if (!paymentTermsVersion) {
+      throw new Error("Effective payment terms version not found");
+    }
+
+    if (!Number.isInteger(input.requestedAmountCents) || input.requestedAmountCents <= 0) {
+      throw new Error("Payment request amount must be positive cents");
+    }
+
+    await this.assertContractDuePaymentCapacityForContract(
+      tx,
+      contractVersion.contractId,
+      paymentTermsVersion.id,
+      input.requestedAmountCents
+    );
+    const financingQuotaAllocations = await this.reserveProjectCashPool(
+      tx,
+      contract.projectId,
+      input.requestedAmountCents
+    );
+
+    const payment = await tx.paymentRequest.create({
+      data: {
+        projectId: contract.projectId,
+        settlementId: null,
+        sourceType: "contract_due",
+        contractId: contractVersion.contractId,
+        contractVersionId: contractVersion.id,
+        paymentTermsVersionId: paymentTermsVersion.id,
+        code: input.code,
+        status: "approval_pending",
+        requestedAmountCents: input.requestedAmountCents,
+        approvedAmountCents: null,
+        paidAmountCents: 0
+      }
+    });
+
+    if (financingQuotaAllocations.length) {
+      await tx.projectFinancingQuotaUsage.createMany({
+        data: financingQuotaAllocations.map((allocation) => ({
+          quotaId: allocation.quotaId,
+          paymentRequestId: payment.id,
+          projectId: contract.projectId,
+          amountCents: allocation.amountCents,
+          status: "occupied"
+        }))
+      });
+
+      if (applicantUserId) {
+        await this.audit.record(tx, {
+          actorUserId: applicantUserId,
+          action: "payment.financing_quota.occupy",
+          businessType: "payment_request",
+          businessId: payment.id,
+          metadata: {
+            projectId: contract.projectId,
+            allocations: financingQuotaAllocations.map((allocation) => ({
+              quotaId: allocation.quotaId,
+              amountCents: allocation.amountCents.toString()
+            }))
+          }
+        });
+      }
+    }
+
+    if (applicantUserId) {
+      await tx.approvalInstance.create({
+        data: {
+          flowType: "payment.approve",
+          businessType: "payment_request",
+          businessId: payment.id,
+          status: "in_progress",
+          currentNodeIndex: 0,
+          frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+          applicantUserId
+        }
+      });
+    }
+
+    return payment;
   }
 
   private async createContractAdvancePaymentRequest(
@@ -432,6 +561,20 @@ export class PaymentRequestService {
     },
     requestedAmountCents: number
   ): Promise<void> {
+    await this.assertContractDuePaymentCapacityForContract(
+      tx,
+      settlement.contractId,
+      settlement.paymentTermsVersionId,
+      requestedAmountCents
+    );
+  }
+
+  private async assertContractDuePaymentCapacityForContract(
+    tx: Prisma.TransactionClient,
+    contractId: string,
+    paymentTermsVersionId: string | undefined,
+    requestedAmountCents: number
+  ): Promise<void> {
     const paymentTermsStageClient = (tx as unknown as {
       paymentTermsStage?: {
         findMany: (args: {
@@ -482,11 +625,11 @@ export class PaymentRequestService {
       return;
     }
 
-    await this.lockContractPaymentCapacityRows(tx, settlement.contractId);
+    await this.lockContractPaymentCapacityRows(tx, contractId);
 
     const contractSettlements = await tx.settlement.findMany({
       where: {
-        contractId: settlement.contractId,
+        contractId,
         status: { in: [...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES] }
       },
       select: {
@@ -536,23 +679,24 @@ export class PaymentRequestService {
         }),
         tx.paymentRequest.findMany({
           where: {
-            contractId: settlement.contractId,
-            sourceType: "settlement",
-            status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES] }
+            contractId,
+            sourceType: { in: ["settlement", "contract_due"] },
+            status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES, "paid"] }
           },
           select: {
             settlementId: true,
+            sourceType: true,
             status: true,
             requestedAmountCents: true,
             approvedAmountCents: true,
             paidAmountCents: true
           }
         }),
-        this.sumProjectProxyPaymentCentsForContract(tx, settlement.contractId, settlementIds)
+        this.sumProjectProxyPaymentCentsForContract(tx, contractId, settlementIds)
       ]);
     const advancePaymentRequests = await tx.paymentRequest.findMany({
       where: {
-        contractId: settlement.contractId,
+        contractId,
         sourceType: "contract_advance",
         paymentTermsVersionId: { in: paymentTermsVersionIds },
         paidAmountCents: { gt: 0 }
@@ -578,7 +722,9 @@ export class PaymentRequestService {
       settlementArchiveFiles,
       paymentRequests: contractPaymentRequests,
       proxyPaidAmountCents,
-      contractAmountCents: contractAmountCentsByPaymentTermsVersionId[settlement.paymentTermsVersionId],
+      contractAmountCents: paymentTermsVersionId
+        ? contractAmountCentsByPaymentTermsVersionId[paymentTermsVersionId]
+        : undefined,
       contractAmountCentsByPaymentTermsVersionId,
       advancePaymentRequests
     });
@@ -609,13 +755,13 @@ export class PaymentRequestService {
       contractVersionId?: string;
       paymentTermsVersionId: string;
     }>
-  ): Promise<Record<string, number>> {
+  ): Promise<Record<string, number | bigint>> {
     const contractVersionClient = (tx as unknown as {
       contractVersion?: {
         findMany: (args: {
           where: { id: { in: string[] } };
           select: { id: true; amountCents: true };
-        }) => Promise<Array<{ id: string; amountCents: number }>>;
+        }) => Promise<Array<{ id: string; amountCents: number | bigint }>>;
       };
     }).contractVersion;
     const versionIds = [
@@ -634,7 +780,7 @@ export class PaymentRequestService {
         : new Map<string, number>();
 
     const fallbackAmountCents = sumSafeCents(contractSettlements.map((settlement) => settlement.amountCents));
-    const amountByTermsId: Record<string, number> = {};
+    const amountByTermsId: Record<string, number | bigint> = {};
     for (const settlement of contractSettlements) {
       amountByTermsId[settlement.paymentTermsVersionId] =
         (settlement.contractVersionId

@@ -20,10 +20,29 @@
       :bordered="true"
     >
       <div class="create-grid">
+        <label class="create-field">
+          <span>付款来源</span>
+          <select v-model="createForm.sourceType">
+            <option
+              v-for="option in paymentCreateSourceOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+        </label>
         <t-input
+          v-if="createForm.sourceType === 'settlement'"
           v-model="createForm.settlementId"
           label="结算ID"
           placeholder="有剩余可付额度的结算ID"
+        />
+        <t-input
+          v-else
+          v-model="createForm.contractVersionId"
+          label="合同版本ID"
+          placeholder="已生效合同版本ID"
         />
         <t-input
           v-model="createForm.code"
@@ -35,6 +54,27 @@
           label="申请金额(分)"
           placeholder="25600000"
         />
+      </div>
+      <div
+        v-if="createForm.sourceType === 'contract_due'"
+        class="preview-actions"
+      >
+        <t-button
+          variant="outline"
+          :loading="previewBusy"
+          @click="loadContractPaymentPreview"
+        >
+          读取合同可申请额
+        </t-button>
+        <div
+          v-if="contractPaymentPreview"
+          class="preview-strip"
+        >
+          <span>{{ contractPaymentPreview.contract.contractNo }}</span>
+          <span>累计结算 {{ formatCents(contractPaymentPreview.capacity.cumulativeEffectiveSettlementCents) }}</span>
+          <span>最多可申请 {{ formatCents(contractPaymentPreview.capacity.maxRequestableCents) }}</span>
+          <span>纳入 {{ contractPaymentPreview.includedSettlements.length }} 张结算</span>
+        </div>
       </div>
       <div class="create-actions">
         <t-button
@@ -154,9 +194,18 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { createPaymentRequest, fetchPaymentLedger } from "../../api/core-flow-read.api";
-import type { PaymentLedgerRow, PaymentTone } from "./payment-list.config";
 import {
+  createPaymentRequest,
+  fetchContractPaymentApplication,
+  fetchPaymentLedger
+} from "../../api/core-flow-read.api";
+import type {
+  PaymentCreateSourceType,
+  PaymentLedgerRow,
+  PaymentTone
+} from "./payment-list.config";
+import {
+  paymentCreateSourceOptions,
   paymentFilterFields,
   paymentLedgerColumns,
   paymentRules,
@@ -166,10 +215,12 @@ import {
 const router = useRouter();
 const showCreateForm = ref(false);
 const createBusy = ref(false);
+const previewBusy = ref(false);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const paymentLedgerRows = ref<PaymentLedgerRow[]>([]);
 const ledgerLoading = ref(false);
+const contractPaymentPreview = ref<Awaited<ReturnType<typeof fetchContractPaymentApplication>> | null>(null);
 const ledgerSummary = ref({
   total: 0,
   pendingApproval: 0,
@@ -192,7 +243,9 @@ const summaryValues = computed(() => {
   }));
 });
 const createForm = reactive({
+  sourceType: "contract_due" as PaymentCreateSourceType,
   settlementId: "",
+  contractVersionId: "",
   code: `FK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
   requestedAmountCents: ""
 });
@@ -234,16 +287,53 @@ function positiveInteger(raw: string, label: string) {
   return value;
 }
 
+function formatCents(amountCents: number) {
+  return `¥${(amountCents / 100).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
+}
+
+async function loadContractPaymentPreview() {
+  previewBusy.value = true;
+  message.value = "";
+
+  try {
+    contractPaymentPreview.value = await fetchContractPaymentApplication(
+      requiredText(createForm.contractVersionId, "合同版本ID")
+    );
+  } catch (error) {
+    contractPaymentPreview.value = null;
+    message.value = error instanceof Error ? error.message : "读取合同可申请额失败";
+    messageTone.value = "danger";
+  } finally {
+    previewBusy.value = false;
+  }
+}
+
 async function submitCreatePayment() {
   createBusy.value = true;
   message.value = "";
 
   try {
-    const payment = await createPaymentRequest({
-      settlementId: requiredText(createForm.settlementId, "结算ID"),
+    const sourceType = createForm.sourceType;
+    const commonPayload = {
       code: requiredText(createForm.code, "付款编号"),
       requestedAmountCents: positiveInteger(createForm.requestedAmountCents, "申请金额")
-    });
+    };
+    const payment = await createPaymentRequest(
+      sourceType === "settlement"
+        ? {
+            sourceType,
+            settlementId: requiredText(createForm.settlementId, "结算ID"),
+            ...commonPayload
+          }
+        : {
+            sourceType,
+            contractVersionId: requiredText(createForm.contractVersionId, "合同版本ID"),
+            ...commonPayload
+          }
+    );
     message.value = "付款申请已创建。";
     messageTone.value = "success";
     await router.push(`/payments/${payment.code}`);
@@ -317,6 +407,49 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.create-field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.create-field span {
+  color: #565f6d;
+  font-size: 12px;
+}
+
+.create-field select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d2d8e1;
+  border-radius: 3px;
+  background: #fff;
+  color: #151922;
+}
+
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.preview-strip {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  color: #424955;
+  font-size: 12px;
+}
+
+.preview-strip span {
+  white-space: nowrap;
 }
 
 .create-actions {

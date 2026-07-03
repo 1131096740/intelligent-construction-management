@@ -15,6 +15,13 @@ export interface PaymentSummaryItem {
   tone: PaymentTone;
 }
 
+export type PaymentCreateSourceType = "settlement" | "contract_due" | "contract_advance";
+
+export interface PaymentCreateSourceOption {
+  value: PaymentCreateSourceType;
+  label: string;
+}
+
 export interface PaymentLedgerRow {
   id: string;
   paymentNo: string;
@@ -71,6 +78,12 @@ export const paymentSummaryItems: PaymentSummaryItem[] = [
   { label: "已实付", value: "0", tone: "success" }
 ];
 
+export const paymentCreateSourceOptions: PaymentCreateSourceOption[] = [
+  { value: "contract_due", label: "合同累计结算付款" },
+  { value: "settlement", label: "单张结算付款" },
+  { value: "contract_advance", label: "合同预付款" }
+];
+
 export const paymentLedgerColumns: PrimaryTableCol<PaymentLedgerRow>[] = [
   { colKey: "paymentNo", title: "付款编号", width: 104 },
   { colKey: "settlementNo", title: "付款来源", width: 104 },
@@ -87,7 +100,7 @@ export const paymentLedgerColumns: PrimaryTableCol<PaymentLedgerRow>[] = [
 export const paymentLedgerRows: PaymentLedgerRow[] = [];
 
 export const paymentRules = [
-  "结算付款只能从已生效结算创建，合同预付款按合同生效日和账期计算",
+  "普通付款按合同累计已生效结算发起，单张结算入口保留兼容",
   "所有付款审批需董事长/总经理二选一或签",
   "审批通过后进入已批待付，不代表已付款",
   "出纳/财务登记实付并上传付款凭证"

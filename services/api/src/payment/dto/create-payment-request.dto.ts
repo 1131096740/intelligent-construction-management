@@ -1,5 +1,5 @@
 export interface CreatePaymentRequestDto {
-  sourceType?: "settlement" | "contract_advance";
+  sourceType?: "settlement" | "contract_advance" | "contract_due";
   settlementId?: string;
   contractVersionId?: string;
   paymentTermsVersionId?: string;

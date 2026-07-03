@@ -172,13 +172,13 @@ export class PermissionGuard implements CanActivate {
       return projectIdFromParams;
     }
 
-    const contractAdvanceVersionId =
-      request.body?.sourceType === "contract_advance" &&
+    const contractLevelPaymentVersionId =
+      ["contract_advance", "contract_due"].includes(String(request.body?.sourceType)) &&
       typeof request.body?.contractVersionId === "string"
         ? request.body.contractVersionId
         : undefined;
-    if (contractAdvanceVersionId) {
-      return this.extractProjectIdFromContractVersion(contractAdvanceVersionId);
+    if (contractLevelPaymentVersionId) {
+      return this.extractProjectIdFromContractVersion(contractLevelPaymentVersionId);
     }
 
     const settlementIdFromBody =
@@ -207,8 +207,8 @@ export class PermissionGuard implements CanActivate {
     const fromBody =
       typeof request.body?.projectId === "string" ? request.body.projectId : undefined;
 
-    if (fromQuery ?? fromBody) {
-      return fromQuery ?? fromBody;
+    if (fromBody ?? fromQuery) {
+      return fromBody ?? fromQuery;
     }
 
     return undefined;
