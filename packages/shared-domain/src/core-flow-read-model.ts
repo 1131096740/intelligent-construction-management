@@ -121,6 +121,14 @@ export interface PaymentDetailReadModel {
   baseInfo: DetailMetaItem[];
   approvalSteps: DetailStep[];
   executionSteps: DetailStep[];
+  executionAllocations: Array<{
+    id: string;
+    executionCode: string;
+    settlementNo: string;
+    stageName: string;
+    allocationType: string;
+    amountCents: number;
+  }>;
   traceRules: string[];
   executionBlockMessage: string;
   chainLinks: BusinessChainLink[];

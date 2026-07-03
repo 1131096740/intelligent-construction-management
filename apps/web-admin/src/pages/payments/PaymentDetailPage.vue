@@ -299,6 +299,20 @@
       </t-card>
     </div>
 
+    <t-card
+      class="section-card"
+      title="实付分摊台账"
+      :bordered="true"
+    >
+      <t-table
+        row-key="id"
+        size="small"
+        :columns="paymentExecutionAllocationColumns"
+        :data="paymentExecutionAllocationRowsView"
+        empty="暂无实付分摊数据"
+      />
+    </t-card>
+
     <div class="timeline-grid">
       <t-card
         title="付款审批链"
@@ -381,12 +395,13 @@ import {
   withdrawPaymentApproval
 } from "../../api/core-flow-read.api";
 import { paymentDetailChainLinks } from "../business-chain-links.config";
-import type { PaymentDetailTone } from "./payment-detail.config";
+import type { PaymentDetailTone, PaymentExecutionAllocationRow } from "./payment-detail.config";
 import {
   paymentApprovalSteps,
   paymentBaseInfo,
   paymentDetailMeta,
   paymentDetailTitle,
+  paymentExecutionAllocationColumns,
   paymentExecutionBlockMessage,
   paymentExecutionSteps,
   paymentTraceRules
@@ -423,6 +438,16 @@ const paymentApprovalStepsView = computed(
 );
 const paymentExecutionStepsView = computed(
   () => paymentDetail.value?.executionSteps ?? paymentExecutionSteps
+);
+const paymentExecutionAllocationRowsView = computed<PaymentExecutionAllocationRow[]>(() =>
+  (paymentDetail.value?.executionAllocations ?? []).map((allocation) => ({
+    id: allocation.id,
+    executionCode: allocation.executionCode,
+    settlementNo: allocation.settlementNo,
+    stageName: allocation.stageName,
+    allocationType: allocation.allocationType,
+    amount: formatCents(allocation.amountCents)
+  }))
 );
 const paymentExecutionBlockMessageView = computed(
   () => paymentDetail.value?.executionBlockMessage ?? paymentExecutionBlockMessage
@@ -509,6 +534,13 @@ function optionalYuanAmount(raw: string, label: string) {
   }
 
   return parseYuanAmount(raw, label);
+}
+
+function formatCents(amountCents: number) {
+  return `¥${(amountCents / 100).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
 }
 
 function requiredText(raw: string, label: string) {

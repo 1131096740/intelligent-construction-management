@@ -189,6 +189,9 @@ describe("PaymentReadService", () => {
       },
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecutionAllocation: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new PaymentReadService(prisma as never);
@@ -281,6 +284,9 @@ describe("PaymentReadService", () => {
       },
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecutionAllocation: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new PaymentReadService(prisma as never);
@@ -306,6 +312,150 @@ describe("PaymentReadService", () => {
       "/archives",
       "/audit"
     ]);
+  });
+
+  it("builds contract-level due payment detail with execution allocation ledger rows", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-due-1",
+          sourceType: "contract_due",
+          settlementId: null,
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-HT-2026-001",
+          status: "paid",
+          requestedAmountCents: 100_000,
+          approvedAmountCents: 100_000,
+          paidAmountCents: 100_000
+        })
+      },
+      settlement: {
+        findUnique: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-1",
+            code: "JS-2026-031",
+            periodLabel: "2026-06"
+          },
+          {
+            id: "settlement-2",
+            code: "JS-2026-032",
+            periodLabel: "2026-07"
+          }
+        ])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          code: "HT-2026-009",
+          name: "幕墙分包合同"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "terms-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "stage-progress",
+          name: "进度款",
+          ratioBps: 8000,
+          dueDays: 0
+        })
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "execution-1", amountCents: 100_000 }
+        ])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecutionAllocation: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "allocation-0",
+            settlementId: "settlement-1",
+            stageName: "进度款",
+            stageType: "progress",
+            allocationType: "advance_deduction",
+            amountCents: 10_000,
+            allocationOrder: 0
+          },
+          {
+            id: "allocation-1",
+            settlementId: "settlement-1",
+            stageName: "进度款",
+            stageType: "progress",
+            allocationType: "contract_due_payment",
+            amountCents: 60_000,
+            allocationOrder: 1
+          },
+          {
+            id: "allocation-2",
+            settlementId: "settlement-2",
+            stageName: "进度款",
+            stageType: "progress",
+            allocationType: "contract_due_payment",
+            amountCents: 40_000,
+            allocationOrder: 2
+          }
+        ])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const detail = await service.getDetail("FK-HT-2026-001");
+
+    expect(prisma.settlement.findUnique).not.toHaveBeenCalled();
+    expect(prisma.paymentExecutionAllocation.findMany).toHaveBeenCalledWith({
+      where: { paymentRequestId: "payment-due-1" },
+      orderBy: [{ createdAt: "asc" }, { allocationOrder: "asc" }]
+    });
+    expect(prisma.settlement.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["settlement-1", "settlement-2"] } },
+      select: { id: true, code: true, periodLabel: true }
+    });
+    expect(detail.title).toBe("FK-HT-2026-001 · 合同累计结算付款申请");
+    expect(detail.executionAllocations).toEqual([
+      {
+        id: "allocation-0",
+        executionCode: "FK-HT-2026-001 · 第1笔",
+        settlementNo: "JS-2026-031 · 2026-06",
+        stageName: "进度款",
+        allocationType: "预付款扣回",
+        amountCents: 10_000
+      },
+      {
+        id: "allocation-1",
+        executionCode: "FK-HT-2026-001 · 第2笔",
+        settlementNo: "JS-2026-031 · 2026-06",
+        stageName: "进度款",
+        allocationType: "合同累计结算付款分摊",
+        amountCents: 60_000
+      },
+      {
+        id: "allocation-2",
+        executionCode: "FK-HT-2026-001 · 第3笔",
+        settlementNo: "JS-2026-032 · 2026-07",
+        stageName: "进度款",
+        allocationType: "合同累计结算付款分摊",
+        amountCents: 40_000
+      }
+    ]);
+    expect(detail.traceRules).toContain(
+      "付款申请按合同下全部已生效结算累计计算，实付后自动生成分摊台账"
+    );
   });
 
   it("does not show actual payment block message before approval passes", async () => {
@@ -355,6 +505,9 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
@@ -410,6 +563,9 @@ describe("PaymentReadService", () => {
         ])
       },
       financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
@@ -474,6 +630,9 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([
           { id: "finance-1", amountCents: 5000000 }
         ])
+      },
+      paymentExecutionAllocation: {
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new PaymentReadService(prisma as never);

@@ -21,6 +21,8 @@ import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
 import {
+  allocateContractDuePaymentExecution,
+  buildContractPaymentApplicationPreview,
   calculateContractAdvancePaymentCapacity,
   calculateContractDuePaymentCapacity,
   calculateSettlementPaymentCapacity,
@@ -180,16 +182,20 @@ export class PaymentRequestService {
         }
       });
       const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
+      const contractDueAllocatedCents = await this.sumContractDueAllocatedCentsForSettlement(
+        tx,
+        settlement.id
+      );
       const capacityView = calculateSettlementPaymentCapacity({
         payableAmountCents: settlement.payableAmountCents,
         actualPaidAmountCents: settlement.paidAmountCents,
-        proxyPaidAmountCents: proxyPaidCents,
+        proxyPaidAmountCents: proxyPaidCents + contractDueAllocatedCents,
         paymentRequests: existingApprovedOrPending
       });
       const capacity: PaymentCapacity = {
         payableAmountCents: settlement.payableAmountCents,
         approvedPendingPaymentCents: capacityView.outstandingPaymentCents,
-        paidAmountCents: settlement.paidAmountCents + proxyPaidCents
+        paidAmountCents: settlement.paidAmountCents + proxyPaidCents + contractDueAllocatedCents
       };
 
       this.amount.assertCanRequest(capacity, input.requestedAmountCents);
@@ -1236,6 +1242,51 @@ export class PaymentRequestService {
     return sumSafeCents(payments.map((payment) => payment.amountCents));
   }
 
+  private async sumContractDueAllocatedCentsForSettlement(
+    tx: Prisma.TransactionClient,
+    settlementId: string
+  ): Promise<number> {
+    const allocationClient = (tx as unknown as {
+      paymentExecutionAllocation?: {
+        findMany: (args: {
+          where: {
+            settlementId: string;
+            allocationType: { in: string[] };
+          };
+          select: { amountCents: true };
+        }) => Promise<Array<{ amountCents: number | bigint }>>;
+      };
+    }).paymentExecutionAllocation;
+
+    if (!allocationClient) {
+      return 0;
+    }
+
+    const allocations = await allocationClient.findMany({
+      where: {
+        settlementId,
+        allocationType: { in: ["contract_due_payment", "advance_deduction"] }
+      },
+      select: { amountCents: true }
+    });
+
+    return sumSafeCents(allocations.map((allocation) => allocation.amountCents));
+  }
+
+  private paymentRequestOutstandingCents(payment: {
+    status: string;
+    requestedAmountCents: number;
+    approvedAmountCents: number | null;
+    paidAmountCents: number;
+  }): number {
+    const payableAmountCents =
+      ["approved_pending_payment", "partially_paid", "paid"].includes(payment.status)
+        ? (payment.approvedAmountCents ?? payment.requestedAmountCents)
+        : payment.requestedAmountCents;
+
+    return Math.max(payableAmountCents - payment.paidAmountCents, 0);
+  }
+
   private async lockPaymentRequestForExecution(
     tx: Prisma.TransactionClient,
     paymentId: string
@@ -1742,6 +1793,342 @@ export class PaymentRequestService {
     return this.assignApproval("delegate", paymentId, actorUserId, input);
   }
 
+  private async createContractDuePaymentExecutionAllocations(
+    tx: Prisma.TransactionClient,
+    payment: PaymentExecutionLockRow,
+    paymentExecutionId: string,
+    amountCents: number,
+    paidAt: Date,
+    actorUserId: string
+  ): Promise<void> {
+    const contractSettlements = await tx.settlement.findMany({
+      where: {
+        contractId: payment.contractId,
+        status: { in: [...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES] }
+      },
+      select: {
+        id: true,
+        status: true,
+        amountCents: true,
+        paidAmountCents: true,
+        contractVersionId: true,
+        paymentTermsVersionId: true,
+        isFinal: true
+      }
+    });
+    const settlementIds = contractSettlements.map((settlement) => settlement.id);
+    const paymentTermsVersionIds = [
+      ...new Set(contractSettlements.map((settlement) => settlement.paymentTermsVersionId))
+    ];
+
+    if (!settlementIds.length || !paymentTermsVersionIds.length) {
+      throw new Error("Contract due payment execution has no effective settlements to allocate");
+    }
+
+    const paymentRequestClient = tx.paymentRequest as unknown as {
+      findMany: (args: {
+        where: Record<string, unknown>;
+        select: Record<string, boolean>;
+      }) => Promise<Array<{
+        id?: string;
+        settlementId?: string | null;
+        paymentTermsVersionId?: string | null;
+        status: string;
+        requestedAmountCents: number;
+        approvedAmountCents: number | null;
+        paidAmountCents: number;
+      }>>;
+    };
+    const projectProxyPaymentClient = (tx as unknown as {
+      projectProxyPayment?: {
+        findMany: (args: {
+          where: Record<string, unknown>;
+          select: Record<string, boolean>;
+        }) => Promise<Array<{ settlementId: string | null; amountCents: bigint | number }>>;
+      };
+    }).projectProxyPayment;
+
+    const [
+      paymentTermsStages,
+      settlementArchiveFiles,
+      existingAllocations,
+      contractDuePaidRequests,
+      settlementPaymentRequests,
+      advancePaymentRequests,
+      projectProxyPayments,
+      contractAmountCentsByPaymentTermsVersionId
+    ] = await Promise.all([
+      tx.paymentTermsStage.findMany({
+        where: {
+          paymentTermsVersionId: { in: paymentTermsVersionIds },
+          OR: [{ basis: "current_settlement" }, { stageType: "advance" }]
+        },
+        select: {
+          id: true,
+          name: true,
+          paymentTermsVersionId: true,
+          stageType: true,
+          basis: true,
+          ratioBps: true,
+          fixedAmountCents: true,
+          triggerAnchor: true,
+          dueDays: true,
+          advanceDeductionMode: true,
+          advanceDeductionRatioBps: true,
+          advanceDeductionStartRatioBps: true
+        }
+      }),
+      tx.settlementArchiveFile.findMany({
+        where: {
+          settlementId: { in: settlementIds },
+          status: "confirmed",
+          confirmedAt: { not: null }
+        },
+        select: { settlementId: true, confirmedAt: true }
+      }),
+      tx.paymentExecutionAllocation.findMany({
+        where: {
+          contractId: payment.contractId,
+          allocationType: { in: ["contract_due_payment", "advance_deduction"] }
+        },
+        select: { paymentRequestId: true, allocationType: true, sourceRowId: true, amountCents: true }
+      }),
+      paymentRequestClient.findMany({
+        where: {
+          contractId: payment.contractId,
+          sourceType: "contract_due",
+          settlementId: null,
+          paidAmountCents: { gt: 0 }
+        },
+        select: {
+          id: true,
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
+      paymentRequestClient.findMany({
+        where: {
+          contractId: payment.contractId,
+          sourceType: "settlement",
+          settlementId: { in: settlementIds },
+          status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES] }
+        },
+        select: {
+          settlementId: true,
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
+      paymentRequestClient.findMany({
+        where: {
+          contractId: payment.contractId,
+          sourceType: "contract_advance",
+          paymentTermsVersionId: { in: paymentTermsVersionIds },
+          paidAmountCents: { gt: 0 }
+        },
+        select: {
+          paymentTermsVersionId: true,
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
+      projectProxyPaymentClient
+        ? projectProxyPaymentClient.findMany({
+            where: {
+              voidedAt: null,
+              OR: [{ contractId: payment.contractId }, { settlementId: { in: settlementIds } }]
+            },
+            select: { settlementId: true, amountCents: true }
+          })
+        : Promise.resolve([]),
+      this.contractAmountCentsByPaymentTermsVersionIdForCapacity(tx, contractSettlements)
+    ]);
+
+    const normalizedAdvancePaymentRequests = advancePaymentRequests.flatMap((request) =>
+      request.paymentTermsVersionId
+        ? [
+            {
+              paymentTermsVersionId: request.paymentTermsVersionId,
+              status: request.status,
+              requestedAmountCents: request.requestedAmountCents,
+              approvedAmountCents: request.approvedAmountCents,
+              paidAmountCents: request.paidAmountCents
+            }
+          ]
+        : []
+    );
+
+    const preview = buildContractPaymentApplicationPreview({
+      asOf: paidAt,
+      settlements: contractSettlements,
+      paymentTermsStages,
+      settlementArchiveFiles,
+      paymentRequests: [],
+      advancePaymentRequests: normalizedAdvancePaymentRequests,
+      contractAmountCentsByPaymentTermsVersionId
+    });
+    const existingConsumptionRows = existingAllocations.map((allocation) => ({
+      sourceRowId: allocation.sourceRowId,
+      amountCents: allocation.amountCents
+    }));
+    const registerSyntheticConsumption = (
+      syntheticAmountCents: number,
+      sections = preview.sections
+    ) => {
+      if (syntheticAmountCents <= 0) return;
+      const syntheticAllocations = allocateContractDuePaymentExecution({
+        amountCents: syntheticAmountCents,
+        sections,
+        existingAllocations: existingConsumptionRows
+      });
+      existingConsumptionRows.push(
+        ...syntheticAllocations.map((allocation) => ({
+          sourceRowId: allocation.sourceRowId,
+          amountCents: allocation.amountCents
+        }))
+      );
+    };
+
+    for (const settlement of contractSettlements) {
+      if ((settlement.paidAmountCents ?? 0) <= 0) continue;
+      registerSyntheticConsumption(
+        settlement.paidAmountCents ?? 0,
+        this.contractDueSectionsForSettlement(preview.sections, settlement.id)
+      );
+    }
+
+    for (const settlementPayment of settlementPaymentRequests) {
+      if (!settlementPayment.settlementId) continue;
+
+      registerSyntheticConsumption(
+        this.paymentRequestOutstandingCents(settlementPayment),
+        this.contractDueSectionsForSettlement(preview.sections, settlementPayment.settlementId)
+      );
+    }
+
+    for (const proxyPayment of projectProxyPayments) {
+      const syntheticAmountCents = sumSafeCents([proxyPayment.amountCents]);
+      registerSyntheticConsumption(
+        syntheticAmountCents,
+        proxyPayment.settlementId
+          ? this.contractDueSectionsForSettlement(preview.sections, proxyPayment.settlementId)
+          : preview.sections
+      );
+    }
+
+    const allocatedCentsByPaymentRequestId = existingAllocations
+      .filter((allocation) => allocation.allocationType === "contract_due_payment")
+      .reduce<Map<string, number>>(
+        (totals, allocation) => {
+          totals.set(
+            allocation.paymentRequestId,
+            (totals.get(allocation.paymentRequestId) ?? 0) + allocation.amountCents
+          );
+          return totals;
+        },
+        new Map()
+      );
+    for (const paidRequest of contractDuePaidRequests) {
+      if (!paidRequest.id) continue;
+      const residualPaidCents =
+        paidRequest.paidAmountCents - (allocatedCentsByPaymentRequestId.get(paidRequest.id) ?? 0);
+      registerSyntheticConsumption(residualPaidCents);
+    }
+    const existingAdvanceDeductionCents = sumSafeCents(
+      existingAllocations
+        .filter((allocation) => allocation.allocationType === "advance_deduction")
+        .map((allocation) => allocation.amountCents)
+    );
+    const residualAdvanceDeductionCents = Math.max(
+      preview.advanceDeduction.currentDeductionCents - existingAdvanceDeductionCents,
+      0
+    );
+    const advanceDeductionAllocations =
+      residualAdvanceDeductionCents > 0
+        ? allocateContractDuePaymentExecution({
+            amountCents: residualAdvanceDeductionCents,
+            sections: preview.sections,
+            existingAllocations: existingConsumptionRows
+          })
+        : [];
+    existingConsumptionRows.push(
+      ...advanceDeductionAllocations.map((allocation) => ({
+        sourceRowId: allocation.sourceRowId,
+        amountCents: allocation.amountCents
+      }))
+    );
+
+    const allocations = allocateContractDuePaymentExecution({
+      amountCents,
+      sections: preview.sections,
+      existingAllocations: existingConsumptionRows
+    });
+
+    if (!advanceDeductionAllocations.length && !allocations.length) {
+      return;
+    }
+
+    const toAllocationRows = (
+      allocationType: "advance_deduction" | "contract_due_payment",
+      allocationRows: typeof allocations,
+      allocationOrderOffset: number
+    ) =>
+      allocationRows.map((allocation, index) => ({
+        paymentExecutionId,
+        paymentRequestId: payment.id,
+        projectId: payment.projectId,
+        contractId: payment.contractId,
+        contractVersionId: allocation.contractVersionId,
+        settlementId: allocation.settlementId,
+        sourceType: "contract_due",
+        allocationType,
+        sourceRowId: allocation.sourceRowId,
+        paymentTermsVersionId: allocation.paymentTermsVersionId,
+        stageType: allocation.stageType,
+        stageId: allocation.stageId,
+        stageName: allocation.stageName,
+        triggerAnchor: allocation.triggerAnchor,
+        dueDays: allocation.dueDays,
+        ratioBps: allocation.ratioBps,
+        fixedAmountCents: allocation.fixedAmountCents,
+        sourceEffectiveAt: allocation.sourceEffectiveAt,
+        expectedPayableAt: allocation.expectedPayableAt,
+        sourcePayableAmountCents: allocation.sourcePayableAmountCents,
+        amountCents: allocation.amountCents,
+        allocationOrder: allocationOrderOffset + index,
+        createdByUserId: actorUserId
+      }));
+
+    await tx.paymentExecutionAllocation.createMany({
+      data: [
+        ...toAllocationRows("advance_deduction", advanceDeductionAllocations, 0),
+        ...toAllocationRows(
+          "contract_due_payment",
+          allocations,
+          advanceDeductionAllocations.length
+        )
+      ]
+    });
+  }
+
+  private contractDueSectionsForSettlement(
+    sections: ReturnType<typeof buildContractPaymentApplicationPreview>["sections"],
+    settlementId: string
+  ) {
+    return sections
+      .map((section) => ({
+        ...section,
+        rows: section.rows.filter((row) => row.settlementId === settlementId)
+      }))
+      .filter((section) => section.rows.length > 0);
+  }
+
   async recordExecution(
     paymentId: string,
     actorUserId: string,
@@ -1763,6 +2150,14 @@ export class PaymentRequestService {
       throw new Error("Payment execution confirmation password is required");
     }
 
+    const paidAt = new Date(input.paidAt);
+    if (Number.isNaN(paidAt.getTime())) {
+      throw new Error("Payment execution date is invalid");
+    }
+    if (paidAt.getTime() > Date.now()) {
+      throw new Error("Payment execution date cannot be in the future");
+    }
+
     if (!this.auth) {
       throw new Error("Auth service is required to confirm payment execution");
     }
@@ -1781,7 +2176,9 @@ export class PaymentRequestService {
         throw new Error(`Cannot record payment execution from status ${payment.status}`);
       }
 
-      if (payment.sourceType === "contract_advance") {
+      if (payment.sourceType === "contract_due" && !payment.settlementId) {
+        await this.lockContractPaymentCapacityRows(tx, payment.contractId);
+      } else if (payment.sourceType === "contract_advance") {
         await this.lockContractAdvancePaymentRows(tx, payment.contractId);
       }
 
@@ -1813,8 +2210,15 @@ export class PaymentRequestService {
         }
 
         const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
+        const contractDueAllocatedCents = await this.sumContractDueAllocatedCentsForSettlement(
+          tx,
+          settlement.id
+        );
         const settlementExecutionRemainingCents =
-          settlement.payableAmountCents - settlement.paidAmountCents - proxyPaidCents;
+          settlement.payableAmountCents -
+          settlement.paidAmountCents -
+          proxyPaidCents -
+          contractDueAllocatedCents;
         if (input.amountCents > settlementExecutionRemainingCents) {
           throw new Error(
             `Payment execution exceeds settlement remaining payable amount: ${Math.max(
@@ -1846,11 +2250,22 @@ export class PaymentRequestService {
           paymentRequestId: payment.id,
           settlementId: payment.settlementId,
           amountCents: input.amountCents,
-          paidAt: new Date(input.paidAt),
+          paidAt,
           executedByUserId: actorUserId,
           voucherFileId: input.voucherFileId
         }
       });
+
+      if (payment.sourceType === "contract_due" && !payment.settlementId) {
+        await this.createContractDuePaymentExecutionAllocations(
+          tx,
+          payment,
+          execution.id,
+          input.amountCents,
+          paidAt,
+          actorUserId
+        );
+      }
 
       await tx.paymentRequest.update({
         where: { id: payment.id },

@@ -79,9 +79,14 @@ export type ContractPaymentApplicationSectionType =
 export interface ContractPaymentApplicationRow {
   id: string;
   settlementId: string | null;
+  contractVersionId?: string;
   paymentTermsVersionId: string;
   stageId?: string;
   stageName?: string;
+  triggerAnchor?: string;
+  dueDays?: number;
+  ratioBps?: number | null;
+  fixedAmountCents?: number | null;
   source: string;
   currentSettlementAmountCents: number;
   cumulativeBeforeAmountCents: number;
@@ -113,6 +118,24 @@ export interface ContractPaymentApplicationPreview {
     remainingAdvanceToDeductCents: number;
   };
   sections: ContractPaymentApplicationSection[];
+}
+
+export interface ContractDuePaymentExecutionAllocation {
+  sourceRowId: string;
+  settlementId: string;
+  contractVersionId: string | null;
+  paymentTermsVersionId: string;
+  stageType: Exclude<ContractPaymentApplicationSectionType, "advance">;
+  stageId: string | null;
+  stageName: string | null;
+  triggerAnchor: string | null;
+  dueDays: number | null;
+  ratioBps: number | null;
+  fixedAmountCents: number | null;
+  sourceEffectiveAt: Date | null;
+  expectedPayableAt: Date | null;
+  sourcePayableAmountCents: number;
+  amountCents: number;
 }
 
 export function calculateSettlementPaymentCapacity(input: {
@@ -335,9 +358,14 @@ export function buildContractPaymentApplicationPreview(input: {
       section.rows.push({
         id: `${settlement.id}:${sectionType}:${stageIndex}`,
         settlementId: settlement.id,
+        contractVersionId: settlement.contractVersionId,
         paymentTermsVersionId: settlement.paymentTermsVersionId,
         stageId: stage.id,
         stageName: stage.name,
+        triggerAnchor: stage.triggerAnchor,
+        dueDays: stage.dueDays,
+        ratioBps: stage.ratioBps,
+        fixedAmountCents: stage.fixedAmountCents,
         source: settlement.code ?? settlement.id,
         currentSettlementAmountCents: settlement.amountCents,
         cumulativeBeforeAmountCents: centsToSafeNumber(before),
@@ -373,9 +401,14 @@ export function buildContractPaymentApplicationPreview(input: {
     section.rows.push({
       id: `contract:${stage.paymentTermsVersionId}:advance:${stageIndex}`,
       settlementId: null,
+      contractVersionId: undefined,
       paymentTermsVersionId: stage.paymentTermsVersionId,
       stageId: stage.id,
       stageName: stage.name,
+      triggerAnchor: stage.triggerAnchor,
+      dueDays: stage.dueDays,
+      ratioBps: stage.ratioBps,
+      fixedAmountCents: stage.fixedAmountCents,
       source: "合同生效",
       currentSettlementAmountCents: 0,
       cumulativeBeforeAmountCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
@@ -419,6 +452,78 @@ export function buildContractPaymentApplicationPreview(input: {
       .map((type) => sectionsByType.get(type))
       .filter((section): section is ContractPaymentApplicationSection => !!section && section.rows.length > 0)
   };
+}
+
+export function allocateContractDuePaymentExecution(input: {
+  amountCents: number;
+  sections: readonly ContractPaymentApplicationSection[];
+  existingAllocations?: readonly {
+    sourceRowId: string;
+    amountCents: number;
+  }[];
+}): ContractDuePaymentExecutionAllocation[] {
+  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+    throw new Error("Contract due payment execution amount must be greater than zero");
+  }
+
+  const allocatedCentsByRow = new Map<string, bigint>();
+  for (const allocation of input.existingAllocations ?? []) {
+    addMapBigInt(
+      allocatedCentsByRow,
+      allocation.sourceRowId,
+      BigInt(Math.max(allocation.amountCents, 0))
+    );
+  }
+
+  let remainingToAllocate = BigInt(input.amountCents);
+  let totalAvailable = 0n;
+  const allocations: ContractDuePaymentExecutionAllocation[] = [];
+
+  for (const section of input.sections) {
+    if (section.type === "advance") continue;
+
+    for (const row of section.rows) {
+      if (!row.isDue || !row.settlementId) continue;
+
+      const rowAvailable =
+        BigInt(Math.max(row.includableAmountCents, 0)) -
+        (allocatedCentsByRow.get(row.id) ?? 0n);
+      if (rowAvailable <= 0n) continue;
+
+      totalAvailable += rowAvailable;
+      if (remainingToAllocate <= 0n) continue;
+
+      const amount = minBigInt(rowAvailable, remainingToAllocate);
+      allocations.push({
+        sourceRowId: row.id,
+        settlementId: row.settlementId,
+        contractVersionId: row.contractVersionId ?? null,
+        paymentTermsVersionId: row.paymentTermsVersionId,
+        stageType: section.type,
+        stageId: row.stageId ?? null,
+        stageName: row.stageName ?? null,
+        triggerAnchor: row.triggerAnchor ?? null,
+        dueDays: row.dueDays ?? null,
+        ratioBps: row.ratioBps ?? null,
+        fixedAmountCents: row.fixedAmountCents ?? null,
+        sourceEffectiveAt: row.effectiveAt,
+        expectedPayableAt: row.expectedPayableAt,
+        sourcePayableAmountCents: row.includableAmountCents,
+        amountCents: centsToSafeNumber(amount)
+      });
+      remainingToAllocate -= amount;
+    }
+  }
+
+  if (remainingToAllocate > 0n) {
+    throw new Error(
+      `Contract due payment execution exceeds allocatable due rows: ${centsToSafeNumber(
+        totalAvailable
+      )}`
+    );
+  }
+
+  return allocations;
 }
 
 export function calculateContractAdvancePaymentCapacity(input: {

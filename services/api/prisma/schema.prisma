@@ -228,6 +228,41 @@ model PaymentExecution {
   createdAt        DateTime @default(now())
 }
 
+model PaymentExecutionAllocation {
+  id                       String    @id @default(uuid())
+  paymentExecutionId       String
+  paymentRequestId         String
+  projectId                String
+  contractId               String
+  contractVersionId        String?
+  settlementId             String?
+  sourceType               String
+  allocationType           String
+  sourceRowId              String
+  paymentTermsVersionId    String
+  stageType                String
+  stageId                  String?
+  stageName                String?
+  triggerAnchor            String?
+  dueDays                  Int?
+  ratioBps                 Int?
+  fixedAmountCents         Int?
+  sourceEffectiveAt        DateTime?
+  expectedPayableAt        DateTime?
+  sourcePayableAmountCents Int
+  amountCents              Int
+  allocationOrder          Int
+  createdByUserId          String
+  createdAt                DateTime  @default(now())
+
+  @@unique([paymentExecutionId, allocationType, allocationOrder], map: "PaymentExecutionAllocation_execution_type_order_key")
+  @@unique([paymentExecutionId, allocationType, sourceRowId], map: "PaymentExecutionAllocation_execution_type_row_key")
+  @@index([paymentRequestId])
+  @@index([contractId])
+  @@index([settlementId])
+  @@index([contractId, settlementId, stageId], map: "PaymentExecutionAllocation_contract_settlement_stage_idx")
+}
+
 model FinanceRecord {
   id                      String   @id @default(uuid())
   projectId               String

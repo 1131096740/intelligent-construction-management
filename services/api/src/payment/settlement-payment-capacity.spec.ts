@@ -70,6 +70,15 @@ interface ContractPaymentApplicationPreview {
     rows: Array<{
       id: string;
       source: string;
+      settlementId?: string | null;
+      contractVersionId?: string;
+      paymentTermsVersionId?: string;
+      stageId?: string;
+      stageName?: string;
+      triggerAnchor?: string;
+      dueDays?: number;
+      ratioBps?: number | null;
+      fixedAmountCents?: number | null;
       currentSettlementAmountCents: number;
       cumulativeBeforeAmountCents: number;
       cumulativeAfterAmountCents: number;
@@ -99,6 +108,33 @@ type ContractPaymentApplicationPreviewBuilder = (
   input: Parameters<ContractDuePaymentCapacityCalculator>[0]
 ) => ContractPaymentApplicationPreview;
 
+interface ContractDuePaymentExecutionAllocation {
+  sourceRowId: string;
+  settlementId: string;
+  contractVersionId: string | null;
+  paymentTermsVersionId: string;
+  stageType: "progress" | "final" | "retention";
+  stageId: string | null;
+  stageName: string | null;
+  triggerAnchor: string | null;
+  dueDays: number | null;
+  ratioBps: number | null;
+  fixedAmountCents: number | null;
+  sourceEffectiveAt: Date | null;
+  expectedPayableAt: Date | null;
+  sourcePayableAmountCents: number;
+  amountCents: number;
+}
+
+type ContractDuePaymentExecutionAllocator = (input: {
+  amountCents: number;
+  sections: ContractPaymentApplicationPreview["sections"];
+  existingAllocations?: readonly {
+    sourceRowId: string;
+    amountCents: number;
+  }[];
+}) => ContractDuePaymentExecutionAllocation[];
+
 type ContractAdvancePaymentCapacityCalculator = (input: {
   asOf: Date;
   contractAmountCents: number;
@@ -124,6 +160,12 @@ const buildContractPaymentApplicationPreview = (
     buildContractPaymentApplicationPreview?: ContractPaymentApplicationPreviewBuilder;
   }
 ).buildContractPaymentApplicationPreview;
+
+const allocateContractDuePaymentExecution = (
+  settlementPaymentCapacity as unknown as {
+    allocateContractDuePaymentExecution?: ContractDuePaymentExecutionAllocator;
+  }
+).allocateContractDuePaymentExecution;
 
 function calculateContractCapacity(
   input: Parameters<ContractDuePaymentCapacityCalculator>[0]
@@ -1346,6 +1388,215 @@ describe("buildContractPaymentApplicationPreview", () => {
       currentDeductionCents: 20_000,
       remainingAdvanceToDeductCents: 30_000
     });
+  });
+});
+
+describe("allocateContractDuePaymentExecution", () => {
+  it("allocates actual contract-level payments to due settlement rows in order", () => {
+    expect(allocateContractDuePaymentExecution?.({
+      amountCents: 70_000,
+      sections: [
+        {
+          type: "advance",
+          title: "预付款",
+          rows: [
+            {
+              id: "advance-row",
+              source: "合同生效",
+              settlementId: null,
+              paymentTermsVersionId: "terms-v1",
+              currentSettlementAmountCents: 0,
+              cumulativeBeforeAmountCents: 0,
+              cumulativeAfterAmountCents: 0,
+              effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+              expectedPayableAt: new Date("2026-07-01T00:00:00.000Z"),
+              paymentRule: "10%",
+              isDue: true,
+              includableAmountCents: 30_000
+            }
+          ]
+        },
+        {
+          type: "progress",
+          title: "进度款",
+          rows: [
+            {
+              id: "settlement-1:progress:0",
+              source: "JS-001",
+              settlementId: "settlement-1",
+              contractVersionId: "contract-version-1",
+              paymentTermsVersionId: "terms-v1",
+              stageId: "stage-progress",
+              stageName: "进度款",
+              triggerAnchor: "settlement_effective",
+              dueDays: 0,
+              ratioBps: 5000,
+              fixedAmountCents: null,
+              currentSettlementAmountCents: 100_000,
+              cumulativeBeforeAmountCents: 0,
+              cumulativeAfterAmountCents: 100_000,
+              effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+              expectedPayableAt: new Date("2026-07-01T00:00:00.000Z"),
+              paymentRule: "80%",
+              isDue: true,
+              includableAmountCents: 50_000
+            },
+            {
+              id: "settlement-2:progress:0",
+              source: "JS-002",
+              settlementId: "settlement-2",
+              contractVersionId: "contract-version-1",
+              paymentTermsVersionId: "terms-v1",
+              stageId: "stage-progress",
+              stageName: "进度款",
+              triggerAnchor: "settlement_effective",
+              dueDays: 0,
+              ratioBps: 8000,
+              fixedAmountCents: null,
+              currentSettlementAmountCents: 80_000,
+              cumulativeBeforeAmountCents: 100_000,
+              cumulativeAfterAmountCents: 180_000,
+              effectiveAt: new Date("2026-07-02T00:00:00.000Z"),
+              expectedPayableAt: new Date("2026-07-02T00:00:00.000Z"),
+              paymentRule: "80%",
+              isDue: true,
+              includableAmountCents: 64_000
+            },
+            {
+              id: "settlement-3:progress:0",
+              source: "JS-003",
+              settlementId: "settlement-3",
+              paymentTermsVersionId: "terms-v1",
+              currentSettlementAmountCents: 90_000,
+              cumulativeBeforeAmountCents: 180_000,
+              cumulativeAfterAmountCents: 270_000,
+              effectiveAt: new Date("2026-07-03T00:00:00.000Z"),
+              expectedPayableAt: new Date("2026-09-03T00:00:00.000Z"),
+              paymentRule: "80%",
+              isDue: false,
+              includableAmountCents: 72_000
+            }
+          ]
+        }
+      ]
+    })).toEqual([
+      {
+        sourceRowId: "settlement-1:progress:0",
+        settlementId: "settlement-1",
+        contractVersionId: "contract-version-1",
+        paymentTermsVersionId: "terms-v1",
+        stageType: "progress",
+        stageId: "stage-progress",
+        stageName: "进度款",
+        triggerAnchor: "settlement_effective",
+        dueDays: 0,
+        ratioBps: 5000,
+        fixedAmountCents: null,
+        sourceEffectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+        expectedPayableAt: new Date("2026-07-01T00:00:00.000Z"),
+        sourcePayableAmountCents: 50_000,
+        amountCents: 50_000
+      },
+      {
+        sourceRowId: "settlement-2:progress:0",
+        settlementId: "settlement-2",
+        contractVersionId: "contract-version-1",
+        paymentTermsVersionId: "terms-v1",
+        stageType: "progress",
+        stageId: "stage-progress",
+        stageName: "进度款",
+        triggerAnchor: "settlement_effective",
+        dueDays: 0,
+        ratioBps: 8000,
+        fixedAmountCents: null,
+        sourceEffectiveAt: new Date("2026-07-02T00:00:00.000Z"),
+        expectedPayableAt: new Date("2026-07-02T00:00:00.000Z"),
+        sourcePayableAmountCents: 64_000,
+        amountCents: 20_000
+      }
+    ]);
+  });
+
+  it("deducts existing allocation rows before allocating a new execution", () => {
+    expect(allocateContractDuePaymentExecution?.({
+      amountCents: 20_000,
+      existingAllocations: [{ sourceRowId: "settlement-1:progress:0", amountCents: 40_000 }],
+      sections: [
+        {
+          type: "progress",
+          title: "进度款",
+          rows: [
+            {
+              id: "settlement-1:progress:0",
+              source: "JS-001",
+              settlementId: "settlement-1",
+              paymentTermsVersionId: "terms-v1",
+              currentSettlementAmountCents: 100_000,
+              cumulativeBeforeAmountCents: 0,
+              cumulativeAfterAmountCents: 100_000,
+              effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+              expectedPayableAt: new Date("2026-07-01T00:00:00.000Z"),
+              paymentRule: "80%",
+              isDue: true,
+              includableAmountCents: 50_000
+            },
+            {
+              id: "settlement-2:progress:0",
+              source: "JS-002",
+              settlementId: "settlement-2",
+              paymentTermsVersionId: "terms-v1",
+              currentSettlementAmountCents: 50_000,
+              cumulativeBeforeAmountCents: 100_000,
+              cumulativeAfterAmountCents: 150_000,
+              effectiveAt: new Date("2026-07-02T00:00:00.000Z"),
+              expectedPayableAt: new Date("2026-07-02T00:00:00.000Z"),
+              paymentRule: "80%",
+              isDue: true,
+              includableAmountCents: 40_000
+            }
+          ]
+        }
+      ]
+    })).toEqual([
+      expect.objectContaining({
+        sourceRowId: "settlement-1:progress:0",
+        amountCents: 10_000
+      }),
+      expect.objectContaining({
+        sourceRowId: "settlement-2:progress:0",
+        amountCents: 10_000
+      })
+    ]);
+  });
+
+  it("rejects allocations above remaining due settlement rows", () => {
+    expect(() =>
+      allocateContractDuePaymentExecution?.({
+        amountCents: 60_001,
+        sections: [
+          {
+            type: "progress",
+            title: "进度款",
+            rows: [
+              {
+                id: "settlement-1:progress:0",
+                source: "JS-001",
+                settlementId: "settlement-1",
+                paymentTermsVersionId: "terms-v1",
+                currentSettlementAmountCents: 100_000,
+                cumulativeBeforeAmountCents: 0,
+                cumulativeAfterAmountCents: 100_000,
+                effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+                expectedPayableAt: new Date("2026-07-01T00:00:00.000Z"),
+                paymentRule: "60%",
+                isDue: true,
+                includableAmountCents: 60_000
+              }
+            ]
+          }
+        ]
+      })
+    ).toThrow("Contract due payment execution exceeds allocatable due rows: 60000");
   });
 });
 

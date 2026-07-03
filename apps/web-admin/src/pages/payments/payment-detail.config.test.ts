@@ -3,6 +3,7 @@ import {
   paymentApprovalSteps,
   paymentBaseInfo,
   paymentDetailMeta,
+  paymentExecutionAllocationColumns,
   paymentExecutionSteps,
   paymentTraceRules
 } from "./payment-detail.config";
@@ -53,9 +54,20 @@ describe("payment detail page configuration", () => {
     ]);
   });
 
+  it("shows contract-level execution allocation ledger columns", () => {
+    expect(paymentExecutionAllocationColumns.map((column) => column.title)).toEqual([
+      "实付记录",
+      "结算单",
+      "付款阶段",
+      "分摊/抵扣类型",
+      "分摊金额"
+    ]);
+  });
+
   it("states the traceability rules for payment detail", () => {
     expect(paymentTraceRules).toEqual([
-      "付款申请只能来自已生效结算",
+      "付款申请来自已生效结算或合同累计结算付款",
+      "合同累计结算付款实付后自动形成分摊台账",
       "审批通过进入已批待付",
       "审批通过不等于实际付款完成",
       "实付登记必须上传付款凭证并写入审计日志"

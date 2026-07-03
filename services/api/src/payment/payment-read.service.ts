@@ -155,6 +155,29 @@ export class PaymentReadService {
       (total, execution) => total + execution.amountCents,
       0
     );
+    const executionAllocations = await this.prisma.paymentExecutionAllocation.findMany({
+      where: { paymentRequestId: payment.id },
+      orderBy: [{ createdAt: "asc" }, { allocationOrder: "asc" }]
+    });
+    const allocationSettlementIds = [
+      ...new Set(
+        executionAllocations
+          .map((allocation) => allocation.settlementId)
+          .filter((settlementId): settlementId is string => typeof settlementId === "string")
+      )
+    ];
+    const allocationSettlements = allocationSettlementIds.length
+      ? await this.prisma.settlement.findMany({
+          where: { id: { in: allocationSettlementIds } },
+          select: { id: true, code: true, periodLabel: true }
+        })
+      : [];
+    const settlementByAllocationId = new Map(
+      allocationSettlements.map((allocationSettlement) => [
+        allocationSettlement.id,
+        allocationSettlement
+      ])
+    );
     const financeRecordedAmountCents = financeRecords.reduce(
       (total, record) => total + record.amountCents,
       0
@@ -209,11 +232,27 @@ export class PaymentReadService {
         payableAmountCents,
         financeRecordedAmountCents
       ),
+      executionAllocations: executionAllocations.map((allocation) => {
+        const allocationSettlement = allocation.settlementId
+          ? settlementByAllocationId.get(allocation.settlementId)
+          : undefined;
+
+        return {
+          id: allocation.id,
+          executionCode: `${payment.code} · 第${allocation.allocationOrder + 1}笔`,
+          settlementNo: allocationSettlement
+            ? `${allocationSettlement.code} · ${allocationSettlement.periodLabel}`
+            : (allocation.settlementId ?? "-"),
+          stageName: allocation.stageName ?? allocation.stageType,
+          allocationType: this.allocationTypeLabel(allocation.allocationType),
+          amountCents: allocation.amountCents
+        };
+      }),
       traceRules: [
         isContractAdvance
           ? "预付款按合同生效日和账期计算，不依赖结算单"
           : payment.sourceType === "contract_due"
-            ? "付款申请按合同下全部已生效结算累计计算，不分摊到单张结算"
+            ? "付款申请按合同下全部已生效结算累计计算，实付后自动生成分摊台账"
           : "付款申请只能来自已生效结算",
         "审批通过进入已批待付",
         "审批通过不等于实际付款完成",
@@ -519,6 +558,7 @@ export class PaymentReadService {
         { label: "财务入账", status: "待处理", owner: "财务部", tone: "default" },
         { label: "付款完成", status: "未完成", owner: "系统", tone: "danger" }
       ],
+      executionAllocations: [],
       traceRules: [
         "付款申请只能来自已生效结算",
         "审批通过进入已批待付",
@@ -545,6 +585,18 @@ export class PaymentReadService {
     }
 
     return "未关联结算";
+  }
+
+  private allocationTypeLabel(allocationType: string) {
+    if (allocationType === "contract_due_payment") {
+      return "合同累计结算付款分摊";
+    }
+
+    if (allocationType === "advance_deduction") {
+      return "预付款扣回";
+    }
+
+    return allocationType;
   }
 
   private approvalStatusView(status: string): { label: string; tone: CoreFlowTone } {
