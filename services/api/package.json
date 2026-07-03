@@ -14,6 +14,8 @@
     "verify:core-flow": "node prisma/verify-core-flow.cjs",
     "preverify:contract-workbench": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:contract-workbench": "node prisma/verify-contract-workbench.cjs",
+    "preverify:trial-run": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
+    "verify:trial-run": "node prisma/verify-trial-run.cjs",
     "verify:production-readiness": "node scripts/verify-production-readiness.cjs",
     "contract-master:review-pack": "node scripts/generate-contract-master-review-pack.cjs",
     "pretest": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",

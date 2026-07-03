@@ -1160,10 +1160,20 @@ describe("PaymentRequestService", () => {
           .mockResolvedValueOnce(cashPool.projectPayments),
         create: jest.fn().mockResolvedValue({
           id: "payment-1",
-          code: "FK-2026-012"
+          projectId: "project-1",
+          settlementId: "settlement-1",
+          sourceType: "settlement",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-2026-012",
+          requestedAmountCents: 50_000
         })
       },
       approvalInstance: {
+        create: jest.fn()
+      },
+      auditLog: {
         create: jest.fn()
       },
       ...cashPool.tables,
@@ -1197,6 +1207,24 @@ describe("PaymentRequestService", () => {
         frozenNodes: paymentApprovalNodes,
         applicantUserId: "contract-staff-1"
       })
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: {
+        actorUserId: "contract-staff-1",
+        action: "payment.request.create",
+        businessType: "payment_request",
+        businessId: "payment-1",
+        metadata: {
+          projectId: "project-1",
+          settlementId: "settlement-1",
+          sourceType: "settlement",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-2026-012",
+          requestedAmountCents: 50_000
+        }
+      }
     });
   });
 

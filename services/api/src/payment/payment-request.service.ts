@@ -73,6 +73,8 @@ interface PaymentExecutionLockRow {
   paidAmountCents: number;
 }
 
+type AuditWriteClient = Pick<Prisma.TransactionClient, "auditLog">;
+
 const PAYMENT_APPROVAL_NODES = [
   {
     name: "项目经理",
@@ -248,7 +250,8 @@ export class PaymentRequestService {
       return;
     }
 
-    await this.audit.record(tx, {
+    const auditClient = this.auditClientOutsideFailedTransaction(tx);
+    await this.audit.record(auditClient, {
       actorUserId: input.actorUserId,
       action: "payment.contract_takeover.blocked",
       businessType: input.businessType,
@@ -259,6 +262,52 @@ export class PaymentRequestService {
         sourceType: input.sourceType,
         reason: input.reason,
         takeoverStatus: input.takeoverStatus ?? null
+      }
+    });
+  }
+
+  private auditClientOutsideFailedTransaction(tx: Prisma.TransactionClient): AuditWriteClient {
+    const rootClient = this.prisma as unknown as AuditWriteClient | undefined;
+    return rootClient?.auditLog ? rootClient : tx;
+  }
+
+  private async recordPaymentRequestCreated(
+    tx: Prisma.TransactionClient,
+    payment: {
+      id: string;
+      code: string;
+      projectId: string;
+      settlementId: string | null;
+      sourceType?: string | null;
+      contractId: string;
+      contractVersionId?: string | null;
+      paymentTermsVersionId?: string | null;
+      requestedAmountCents: number;
+    },
+    actorUserId?: string
+  ) {
+    if (!actorUserId) {
+      return;
+    }
+    const auditClient = tx as unknown as AuditWriteClient;
+    if (!auditClient.auditLog) {
+      return;
+    }
+
+    await this.audit.record(auditClient, {
+      actorUserId,
+      action: "payment.request.create",
+      businessType: "payment_request",
+      businessId: payment.id,
+      metadata: {
+        projectId: payment.projectId,
+        settlementId: payment.settlementId,
+        sourceType: payment.sourceType ?? "settlement",
+        contractId: payment.contractId,
+        contractVersionId: payment.contractVersionId ?? null,
+        paymentTermsVersionId: payment.paymentTermsVersionId ?? null,
+        code: payment.code,
+        requestedAmountCents: payment.requestedAmountCents
       }
     });
   }
@@ -434,6 +483,7 @@ export class PaymentRequestService {
         });
       }
 
+      await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
       return payment;
     });
   }
@@ -566,6 +616,7 @@ export class PaymentRequestService {
       });
     }
 
+    await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
     return payment;
   }
 
@@ -740,6 +791,7 @@ export class PaymentRequestService {
       });
     }
 
+    await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
     return payment;
   }
 
