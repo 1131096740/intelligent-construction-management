@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>结算管理</h1>
-        <p>按合同版本、付款条款版本、结算期间和归档状态管理结算单</p>
+        <p>按项目、合同、结算期间和归档状态管理结算单</p>
       </div>
       <t-button
         theme="primary"
@@ -20,11 +20,45 @@
       :bordered="true"
     >
       <div class="create-grid">
-        <t-input
-          v-model="createForm.contractVersionId"
-          label="合同版本ID"
-          placeholder="effective 合同版本ID"
-        />
+        <label class="create-field">
+          <span>项目</span>
+          <select
+            v-model="createForm.projectId"
+            :disabled="loadingProjects || projects.length === 0"
+            @change="loadSettlementContracts"
+          >
+            <option value="">
+              请选择项目
+            </option>
+            <option
+              v-for="project in projects"
+              :key="project.id"
+              :value="project.id"
+            >
+              {{ project.code }} · {{ project.name }}
+            </option>
+          </select>
+        </label>
+        <label class="create-field span-2">
+          <span>合同</span>
+          <select
+            v-model="createForm.contractOptionValue"
+            :disabled="loadingContracts || contractSelectOptions.length === 0"
+          >
+            <option value="">
+              请选择已生效合同
+            </option>
+            <option
+              v-for="option in contractSelectOptions"
+              :key="option.value"
+              :value="option.value"
+              :disabled="option.disabled"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <small>{{ selectedContractHint }}</small>
+        </label>
         <t-input
           v-model="createForm.code"
           label="结算编号"
@@ -36,9 +70,9 @@
           placeholder="2026-06"
         />
         <t-input
-          v-model="createForm.amountCents"
-          label="结算金额(分)"
-          placeholder="32000000"
+          v-model="createForm.amountYuan"
+          label="结算金额（元）"
+          placeholder="320000.00"
         />
       </div>
       <div class="create-actions">
@@ -148,9 +182,21 @@
 </template>
 
 <script setup lang="ts">
+import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { createSettlementDraft, fetchSettlementLedger } from "../../api/core-flow-read.api";
+import {
+  createSettlementDraft,
+  fetchProjects,
+  fetchSettlementContractOptions,
+  fetchSettlementLedger,
+  type ProjectOptionReadModel
+} from "../../api/core-flow-read.api";
+import {
+  buildSettlementCreatePayload,
+  findContractOption,
+  toContractSelectOptions
+} from "../contracts/contract-business-options.config";
 import type { SettlementLedgerRow, SettlementTone } from "./settlement-list.config";
 import {
   settlementFilterFields,
@@ -166,6 +212,10 @@ const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const settlementLedgerRows = ref<SettlementLedgerRow[]>([]);
 const ledgerLoading = ref(false);
+const projects = ref<ProjectOptionReadModel[]>([]);
+const contracts = ref<ContractBusinessOptionReadModel[]>([]);
+const loadingProjects = ref(false);
+const loadingContracts = ref(false);
 const ledgerSummary = ref({
   total: 0,
   inApproval: 0,
@@ -188,10 +238,23 @@ const summaryValues = computed(() => {
   }));
 });
 const createForm = reactive({
-  contractVersionId: "seed-contract-version-ht-2026-001-v1",
+  projectId: "",
+  contractOptionValue: "",
   code: `JS-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
   periodLabel: "2026-06",
-  amountCents: ""
+  amountYuan: ""
+});
+const contractSelectOptions = computed(() => toContractSelectOptions(contracts.value, "settlement"));
+const selectedContract = computed(() =>
+  findContractOption(contracts.value, createForm.contractOptionValue)
+);
+const selectedContractHint = computed(() => {
+  const contract = selectedContract.value;
+  if (!contract) {
+    return "请先选择项目和合同";
+  }
+
+  return contract.settlementUnavailableReason ?? "合同已生效，可创建结算";
 });
 
 function openDetail(settlementId: string) {
@@ -213,22 +276,38 @@ async function loadSettlementLedger() {
   }
 }
 
-function requiredText(raw: string, label: string) {
-  const value = raw.trim();
-  if (!value) {
-    throw new Error(`${label}不能为空`);
+async function loadProjects() {
+  loadingProjects.value = true;
+  try {
+    projects.value = await fetchProjects();
+    if (!createForm.projectId && projects.value[0]) {
+      createForm.projectId = projects.value[0].id;
+      await loadSettlementContracts();
+    }
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "加载项目失败";
+    messageTone.value = "danger";
+  } finally {
+    loadingProjects.value = false;
   }
-
-  return value;
 }
 
-function positiveInteger(raw: string, label: string) {
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${label}必须为正整数`);
+async function loadSettlementContracts() {
+  contracts.value = [];
+  createForm.contractOptionValue = "";
+  if (!createForm.projectId) {
+    return;
   }
-
-  return value;
+  loadingContracts.value = true;
+  message.value = "";
+  try {
+    contracts.value = await fetchSettlementContractOptions(createForm.projectId);
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "加载合同选项失败";
+    messageTone.value = "danger";
+  } finally {
+    loadingContracts.value = false;
+  }
 }
 
 async function submitCreateSettlement() {
@@ -236,12 +315,9 @@ async function submitCreateSettlement() {
   message.value = "";
 
   try {
-    const settlement = await createSettlementDraft({
-      contractVersionId: requiredText(createForm.contractVersionId, "合同版本ID"),
-      code: requiredText(createForm.code, "结算编号"),
-      periodLabel: requiredText(createForm.periodLabel, "结算期间"),
-      amountCents: positiveInteger(createForm.amountCents, "结算金额")
-    });
+    const settlement = await createSettlementDraft(
+      buildSettlementCreatePayload(selectedContract.value, createForm)
+    );
     message.value = "结算单已创建。";
     messageTone.value = "success";
     await router.push(`/settlements/${settlement.code}`);
@@ -267,6 +343,7 @@ function statusTagTheme(tone: SettlementTone) {
 
 onMounted(() => {
   void loadSettlementLedger();
+  void loadProjects();
 });
 </script>
 
@@ -315,6 +392,39 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+
+.create-field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.create-field.span-2 {
+  grid-column: span 2;
+}
+
+.create-field span,
+.create-field small {
+  color: #565f6d;
+  font-size: 12px;
+}
+
+.create-field small {
+  min-height: 16px;
+  color: #767f8d;
+  overflow-wrap: anywhere;
+}
+
+.create-field select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d2d8e1;
+  border-radius: 3px;
+  background: #fff;
+  color: #151922;
 }
 
 .create-actions {
@@ -455,6 +565,10 @@ onMounted(() => {
   }
 
   .filter-field.keyword {
+    grid-column: span 2;
+  }
+
+  .create-field.span-2 {
     grid-column: span 2;
   }
 }

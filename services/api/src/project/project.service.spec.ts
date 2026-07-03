@@ -105,6 +105,35 @@ describe("ProjectService", () => {
     });
   });
 
+  it("lists all active project options for global settlement creation budget positions", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-budget" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ id: "position-budget", key: "budget_staff" }])
+      },
+      projectMember: {
+        findMany: jest.fn()
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "project-1", code: "JG-001", name: "总部综合楼" }
+        ])
+      }
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(service.listActiveOptions("budget-staff")).resolves.toEqual([
+      { id: "project-1", code: "JG-001", name: "总部综合楼" }
+    ]);
+    expect(prisma.project.findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
+      select: { id: true, code: true, name: true },
+      orderBy: [{ code: "asc" }, { name: "asc" }]
+    });
+  });
+
   it("lists scoped project options for project contract takeover members", async () => {
     const prisma = {
       userPosition: {

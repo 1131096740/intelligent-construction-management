@@ -47,6 +47,18 @@ export class ContractController {
     return this.contractRead.listRecent(limit);
   }
 
+  @Get("settlement-create-options")
+  @RequireProjectRole("settlement.create")
+  settlementCreateOptions(@Query("projectId") projectId: string) {
+    return this.contractRead.listCreateOptions(projectId);
+  }
+
+  @Get("payment-create-options")
+  @RequireProjectRole("payment.create")
+  paymentCreateOptions(@Query("projectId") projectId: string) {
+    return this.contractRead.listCreateOptions(projectId);
+  }
+
   @Get(":contractId")
   @RequirePositions(
     "chairman",

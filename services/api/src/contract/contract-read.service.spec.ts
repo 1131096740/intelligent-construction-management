@@ -73,6 +73,208 @@ describe("ContractReadService", () => {
     });
   });
 
+  it("lists business contract options for settlement and payment creation", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-historical",
+            projectId: "project-1",
+            source: "historical_takeover",
+            code: "HT-LS-001",
+            temporaryCode: null,
+            name: "历史材料合同",
+            counterparty: "历史供应商",
+            voidedAt: null,
+            updatedAt: new Date("2026-07-03T08:00:00.000Z")
+          },
+          {
+            id: "contract-draft",
+            projectId: "project-1",
+            source: "system",
+            code: "HT-DRAFT-001",
+            temporaryCode: null,
+            name: "未生效合同",
+            counterparty: "分包单位",
+            voidedAt: null,
+            updatedAt: new Date("2026-07-03T09:00:00.000Z")
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-historical",
+            contractId: "contract-historical",
+            versionNo: 1,
+            status: "effective",
+            amountCents: 100000000n
+          },
+          {
+            id: "version-draft",
+            contractId: "contract-draft",
+            versionNo: 1,
+            status: "draft",
+            amountCents: 200000000n
+          }
+        ])
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractId: "contract-historical",
+            takeoverLevel: "B",
+            takeoverStatus: "confirmed",
+            historicalBalanceConfirmedAt: new Date("2026-07-03T10:00:00.000Z"),
+            balanceSourceSummary: "财务台账"
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-effective",
+            projectId: "project-1",
+            contractId: "contract-historical",
+            code: "JS-001",
+            periodLabel: "2026-06",
+            status: "effective",
+            amountCents: 30000000,
+            payableAmountCents: 24000000,
+            paidAmountCents: 0,
+            createdAt: new Date("2026-07-03T11:00:00.000Z")
+          },
+          {
+            id: "settlement-paid",
+            projectId: "project-1",
+            contractId: "contract-historical",
+            code: "JS-000",
+            periodLabel: "2026-05",
+            status: "paid",
+            amountCents: 20000000,
+            payableAmountCents: 16000000,
+            paidAmountCents: 16000000,
+            createdAt: new Date("2026-07-02T11:00:00.000Z")
+          }
+        ])
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const options = await service.listCreateOptions("project-1");
+
+    expect(prisma.contract.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1", voidedAt: null },
+      orderBy: [{ code: "asc" }, { temporaryCode: "asc" }, { updatedAt: "desc" }]
+    });
+    expect(options[0]).toMatchObject({
+      contractId: "contract-historical",
+      contractVersionId: "version-historical",
+      contractNo: "HT-LS-001",
+      contractName: "历史材料合同",
+      counterparty: "历史供应商",
+      amountCents: 100000000,
+      versionLabel: "合同 v1",
+      contractStatusLabel: "已生效",
+      source: "historical_takeover",
+      sourceLabel: "历史接管 · 财务台账",
+      takeoverLevel: "B",
+      takeoverStatusLabel: "已接管",
+      canCreateSettlement: true,
+      settlementUnavailableReason: null,
+      canCreatePayment: true,
+      paymentUnavailableReason: null
+    });
+    expect(options[0].historicalBalanceConfirmedAt).toBe("2026-07-03T10:00:00.000Z");
+    expect(options[0].settlements).toEqual([
+      {
+        settlementId: "settlement-effective",
+        settlementNo: "JS-001",
+        periodLabel: "2026-06",
+        amountCents: 30000000,
+        payableAmountCents: 24000000,
+        paidAmountCents: 0,
+        status: "effective",
+        statusLabel: "审批通过",
+        canCreatePayment: true,
+        unavailableReason: null
+      },
+      {
+        settlementId: "settlement-paid",
+        settlementNo: "JS-000",
+        periodLabel: "2026-05",
+        amountCents: 20000000,
+        payableAmountCents: 16000000,
+        paidAmountCents: 16000000,
+        status: "paid",
+        statusLabel: "审批通过",
+        canCreatePayment: false,
+        unavailableReason: "结算未生效或已付款完成"
+      }
+    ]);
+    expect(options[1]).toMatchObject({
+      contractId: "contract-draft",
+      contractVersionId: null,
+      contractStatusLabel: "草拟中",
+      canCreateSettlement: false,
+      settlementUnavailableReason: "合同尚未生效，不能发起结算",
+      canCreatePayment: false,
+      paymentUnavailableReason: "合同状态为草拟中，不能发起付款"
+    });
+  });
+
+  it("blocks payment option for historical contracts before balance confirmation", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-historical",
+            projectId: "project-1",
+            source: "historical_takeover",
+            code: "HT-LS-002",
+            temporaryCode: null,
+            name: "待确认历史合同",
+            counterparty: "历史供应商",
+            voidedAt: null,
+            updatedAt: new Date("2026-07-03T08:00:00.000Z")
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-historical",
+            contractId: "contract-historical",
+            versionNo: 1,
+            status: "effective",
+            amountCents: 100000000
+          }
+        ])
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractId: "contract-historical",
+            takeoverLevel: "C",
+            takeoverStatus: "confirmed",
+            historicalBalanceConfirmedAt: null,
+            balanceSourceSummary: null
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const [option] = await service.listCreateOptions("project-1");
+
+    expect(option.canCreateSettlement).toBe(true);
+    expect(option.canCreatePayment).toBe(false);
+    expect(option.paymentUnavailableReason).toBe("历史余额尚未确认，不能发起付款");
+  });
+
   it("displays temporaryCode when contract has no formal code and tolerates empty payment stages", async () => {
     const prisma = {
       contract: {

@@ -5,7 +5,9 @@ import {
   fetchContractLedger,
   fetchPaymentDetail,
   fetchPaymentLedger,
+  fetchPaymentContractOptions,
   fetchSettlementDetail,
+  fetchSettlementContractOptions,
   fetchSettlementLedger,
   fetchContractPaymentApplication,
   fetchArchives,
@@ -109,6 +111,21 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/payments/contract-application?contractVersionId=contract-version%2F1"
+    ]);
+  });
+
+  it("requests business contract option endpoints for settlement and payment forms", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => []
+    } as Response);
+
+    await fetchSettlementContractOptions("project/1");
+    await fetchPaymentContractOptions("project/1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/settlement-create-options?projectId=project%2F1",
+      "/api/contracts/payment-create-options?projectId=project%2F1"
     ]);
   });
 

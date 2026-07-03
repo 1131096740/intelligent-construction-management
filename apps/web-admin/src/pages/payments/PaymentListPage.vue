@@ -21,8 +21,51 @@
     >
       <div class="create-grid">
         <label class="create-field">
+          <span>项目</span>
+          <select
+            v-model="createForm.projectId"
+            :disabled="loadingProjects || projects.length === 0"
+            @change="loadPaymentContracts"
+          >
+            <option value="">
+              请选择项目
+            </option>
+            <option
+              v-for="project in projects"
+              :key="project.id"
+              :value="project.id"
+            >
+              {{ project.code }} · {{ project.name }}
+            </option>
+          </select>
+        </label>
+        <label class="create-field span-2">
+          <span>合同</span>
+          <select
+            v-model="createForm.contractOptionValue"
+            :disabled="loadingContracts || contractSelectOptions.length === 0"
+            @change="clearContractSelectionState"
+          >
+            <option value="">
+              请选择合同
+            </option>
+            <option
+              v-for="option in contractSelectOptions"
+              :key="option.value"
+              :value="option.value"
+              :disabled="option.disabled"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <small>{{ selectedContractHint }}</small>
+        </label>
+        <label class="create-field">
           <span>付款来源</span>
-          <select v-model="createForm.sourceType">
+          <select
+            v-model="createForm.sourceType"
+            @change="clearSourceState"
+          >
             <option
               v-for="option in paymentCreateSourceOptions"
               :key="option.value"
@@ -32,27 +75,35 @@
             </option>
           </select>
         </label>
-        <t-input
+        <label
           v-if="createForm.sourceType === 'settlement'"
-          v-model="createForm.settlementId"
-          label="结算ID"
-          placeholder="有剩余可付额度的结算ID"
-        />
-        <t-input
-          v-else
-          v-model="createForm.contractVersionId"
-          label="合同版本ID"
-          placeholder="已生效合同版本ID"
-        />
+          class="create-field span-2"
+        >
+          <span>结算单</span>
+          <select v-model="createForm.settlementOptionValue">
+            <option value="">
+              请选择已生效或部分付款结算
+            </option>
+            <option
+              v-for="option in settlementSelectOptions"
+              :key="option.value"
+              :value="option.value"
+              :disabled="option.disabled"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <small>{{ selectedSettlementHint }}</small>
+        </label>
         <t-input
           v-model="createForm.code"
           label="付款编号"
           placeholder="FK-2026-007"
         />
         <t-input
-          v-model="createForm.requestedAmountCents"
-          label="申请金额(分)"
-          placeholder="25600000"
+          v-model="createForm.requestedAmountYuan"
+          label="申请金额（元）"
+          placeholder="256000.00"
         />
       </div>
       <div
@@ -64,7 +115,7 @@
           :loading="previewBusy"
           @click="loadContractPaymentPreview"
         >
-          读取合同可申请额
+          读取付款预览
         </t-button>
         <div
           v-if="visibleContractPaymentPreview"
@@ -223,13 +274,24 @@
 </template>
 
 <script setup lang="ts">
+import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   createPaymentRequest,
   fetchContractPaymentApplication,
-  fetchPaymentLedger
+  fetchPaymentContractOptions,
+  fetchPaymentLedger,
+  fetchProjects,
+  type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
+import {
+  buildPaymentCreatePayload,
+  findContractOption,
+  findSettlementOption,
+  toContractSelectOptions,
+  toSettlementSelectOptions
+} from "../contracts/contract-business-options.config";
 import type {
   PaymentApplicationPreviewRow,
   PaymentCreateSourceType,
@@ -256,6 +318,10 @@ const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const paymentLedgerRows = ref<PaymentLedgerRow[]>([]);
 const ledgerLoading = ref(false);
+const projects = ref<ProjectOptionReadModel[]>([]);
+const contracts = ref<ContractBusinessOptionReadModel[]>([]);
+const loadingProjects = ref(false);
+const loadingContracts = ref(false);
 const contractPaymentPreview = ref<Awaited<ReturnType<typeof fetchContractPaymentApplication>> | null>(null);
 const previewContractVersionId = ref("");
 const ledgerSummary = ref({
@@ -266,11 +332,36 @@ const ledgerSummary = ref({
   paid: 0
 });
 const createForm = reactive({
+  projectId: "",
+  contractOptionValue: "",
+  settlementOptionValue: "",
   sourceType: "contract_due" as PaymentCreateSourceType,
-  settlementId: "",
-  contractVersionId: "",
   code: `FK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
-  requestedAmountCents: ""
+  requestedAmountYuan: ""
+});
+const contractSelectOptions = computed(() => toContractSelectOptions(contracts.value, "payment"));
+const selectedContract = computed(() =>
+  findContractOption(contracts.value, createForm.contractOptionValue)
+);
+const settlementSelectOptions = computed(() => toSettlementSelectOptions(selectedContract.value));
+const selectedSettlement = computed(() =>
+  findSettlementOption(selectedContract.value, createForm.settlementOptionValue)
+);
+const selectedContractHint = computed(() => {
+  const contract = selectedContract.value;
+  if (!contract) {
+    return "请先选择项目和合同";
+  }
+
+  return contract.paymentUnavailableReason ?? "可读取预览后填写申请金额";
+});
+const selectedSettlementHint = computed(() => {
+  const settlement = selectedSettlement.value;
+  if (!settlement) {
+    return "单张结算付款需选择结算单";
+  }
+
+  return settlement.unavailableReason ?? `${settlement.statusLabel} · 可发起单结算付款`;
 });
 const summaryValues = computed(() => {
   const values = [
@@ -291,7 +382,7 @@ const showContractPaymentPreview = computed(() =>
     createForm.sourceType,
     contractPaymentPreview.value,
     previewContractVersionId.value,
-    createForm.contractVersionId
+    selectedContract.value?.contractVersionId ?? ""
   )
 );
 const visibleContractPaymentPreview = computed(() =>
@@ -326,24 +417,6 @@ async function loadPaymentLedger() {
   }
 }
 
-function requiredText(raw: string, label: string) {
-  const value = raw.trim();
-  if (!value) {
-    throw new Error(`${label}不能为空`);
-  }
-
-  return value;
-}
-
-function positiveInteger(raw: string, label: string) {
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${label}必须为正整数`);
-  }
-
-  return value;
-}
-
 function formatCents(amountCents: number) {
   return `¥${(amountCents / 100).toLocaleString("zh-CN", {
     minimumFractionDigits: 2,
@@ -360,7 +433,10 @@ async function loadContractPaymentPreview() {
   message.value = "";
 
   try {
-    const contractVersionId = requiredText(createForm.contractVersionId, "合同版本ID");
+    const contractVersionId = selectedContract.value?.contractVersionId;
+    if (!contractVersionId || !selectedContract.value?.canCreatePayment) {
+      throw new Error(selectedContract.value?.paymentUnavailableReason ?? "请选择可付款合同");
+    }
     contractPaymentPreview.value = await fetchContractPaymentApplication(contractVersionId);
     previewContractVersionId.value = contractVersionId;
   } catch (error) {
@@ -373,28 +449,66 @@ async function loadContractPaymentPreview() {
   }
 }
 
+function clearPaymentPreview() {
+  contractPaymentPreview.value = null;
+  previewContractVersionId.value = "";
+}
+
+function clearContractSelectionState() {
+  clearPaymentPreview();
+  createForm.settlementOptionValue = "";
+}
+
+function clearSourceState() {
+  clearPaymentPreview();
+  createForm.settlementOptionValue = "";
+}
+
+async function loadProjects() {
+  loadingProjects.value = true;
+  try {
+    projects.value = await fetchProjects();
+    if (!createForm.projectId && projects.value[0]) {
+      createForm.projectId = projects.value[0].id;
+      await loadPaymentContracts();
+    }
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "加载项目失败";
+    messageTone.value = "danger";
+  } finally {
+    loadingProjects.value = false;
+  }
+}
+
+async function loadPaymentContracts() {
+  contracts.value = [];
+  createForm.contractOptionValue = "";
+  clearContractSelectionState();
+  if (!createForm.projectId) {
+    return;
+  }
+  loadingContracts.value = true;
+  message.value = "";
+  try {
+    contracts.value = await fetchPaymentContractOptions(createForm.projectId);
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "加载合同选项失败";
+    messageTone.value = "danger";
+  } finally {
+    loadingContracts.value = false;
+  }
+}
+
 async function submitCreatePayment() {
   createBusy.value = true;
   message.value = "";
 
   try {
-    const sourceType = createForm.sourceType;
-    const commonPayload = {
-      code: requiredText(createForm.code, "付款编号"),
-      requestedAmountCents: positiveInteger(createForm.requestedAmountCents, "申请金额")
-    };
+    if (createForm.sourceType === "contract_due" && !visibleContractPaymentPreview.value) {
+      throw new Error("请先读取付款预览，确认可申请余额后再提交");
+    }
     const payment = await createPaymentRequest(
-      sourceType === "settlement"
-        ? {
-            sourceType,
-            settlementId: requiredText(createForm.settlementId, "结算ID"),
-            ...commonPayload
-          }
-        : {
-            sourceType,
-            contractVersionId: requiredText(createForm.contractVersionId, "合同版本ID"),
-            ...commonPayload
-          }
+      buildPaymentCreatePayload(selectedContract.value, selectedSettlement.value, createForm)
     );
     message.value = "付款申请已创建。";
     messageTone.value = "success";
@@ -421,6 +535,7 @@ function statusTagTheme(tone: PaymentTone) {
 
 onMounted(() => {
   void loadPaymentLedger();
+  void loadProjects();
 });
 </script>
 
@@ -477,9 +592,20 @@ onMounted(() => {
   gap: 6px;
 }
 
-.create-field span {
+.create-field.span-2 {
+  grid-column: span 2;
+}
+
+.create-field span,
+.create-field small {
   color: #565f6d;
   font-size: 12px;
+}
+
+.create-field small {
+  min-height: 16px;
+  color: #767f8d;
+  overflow-wrap: anywhere;
 }
 
 .create-field select {
@@ -721,6 +847,10 @@ onMounted(() => {
   }
 
   .filter-field.keyword {
+    grid-column: span 2;
+  }
+
+  .create-field.span-2 {
     grid-column: span 2;
   }
 }

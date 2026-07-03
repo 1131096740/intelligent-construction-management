@@ -1,4 +1,5 @@
 import type {
+  ContractBusinessOptionReadModel,
   ContractDetailReadModel,
   ContractPaymentApplicationPreviewReadModel,
   PaymentDetailReadModel,
@@ -765,6 +766,18 @@ export function recordProjectExpenseFinance(
 
 export function fetchContractLedger() {
   return readJson<ContractLedgerListReadModel>("/contracts");
+}
+
+export function fetchSettlementContractOptions(projectId: string) {
+  return readJson<ContractBusinessOptionReadModel[]>(
+    `/contracts/settlement-create-options?projectId=${encodeURIComponent(projectId)}`
+  );
+}
+
+export function fetchPaymentContractOptions(projectId: string) {
+  return readJson<ContractBusinessOptionReadModel[]>(
+    `/contracts/payment-create-options?projectId=${encodeURIComponent(projectId)}`
+  );
 }
 
 export function fetchSettlementLedger() {

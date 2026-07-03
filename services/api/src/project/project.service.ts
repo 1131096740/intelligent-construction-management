@@ -48,7 +48,9 @@ const FUNDS_OVERVIEW_POSITIONS = new Set<RoleKey>([
 const PROJECT_OPTION_POSITIONS = new Set<RoleKey>([
   ...FUNDS_OVERVIEW_POSITIONS,
   "contract_staff",
-  "contract_director"
+  "contract_director",
+  "budget_staff",
+  "budget_director"
 ]);
 const RECEIPT_SOURCE_LABELS: Record<ProjectReceiptSourceType, string> = {
   general_contractor_payment: "总包付款",

@@ -1,5 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import type {
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  canCreatePaymentFromSettlementStatus,
+  type SettlementStatus,
+  ContractBusinessOptionReadModel,
   ContractDetailReadModel,
   ContractSettlementPaymentReadModel,
   CoreFlowTone
@@ -111,6 +114,142 @@ export class ContractReadService {
         effective: rows.filter((row) => row.currentNode === "可发起结算").length
       }
     };
+  }
+
+  async listCreateOptions(projectId: string): Promise<ContractBusinessOptionReadModel[]> {
+    if (!projectId?.trim()) {
+      throw new BadRequestException("项目不能为空");
+    }
+
+    const contracts = await this.prisma.contract.findMany({
+      where: { projectId, voidedAt: null },
+      orderBy: [{ code: "asc" }, { temporaryCode: "asc" }, { updatedAt: "desc" }]
+    });
+    const contractIds = contracts.map((contract) => contract.id);
+    if (!contractIds.length) {
+      return [];
+    }
+
+    const [versions, takeovers, settlements] = await Promise.all([
+      this.prisma.contractVersion.findMany({
+        where: { contractId: { in: contractIds } },
+        orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+      }),
+      (this.prisma as unknown as {
+        contractTakeover?: {
+          findMany(args: {
+            where: { projectId: string; contractId: { in: string[] } };
+            select: {
+              contractId: true;
+              takeoverLevel: true;
+              takeoverStatus: true;
+              historicalBalanceConfirmedAt: true;
+              balanceSourceSummary: true;
+            };
+            orderBy: { updatedAt: "desc" };
+          }): Promise<
+            Array<{
+              contractId: string;
+              takeoverLevel: string;
+              takeoverStatus: string;
+              historicalBalanceConfirmedAt: Date | null;
+              balanceSourceSummary: string | null;
+            }>
+          >;
+        };
+      }).contractTakeover?.findMany({
+        where: { projectId, contractId: { in: contractIds } },
+        select: {
+          contractId: true,
+          takeoverLevel: true,
+          takeoverStatus: true,
+          historicalBalanceConfirmedAt: true,
+          balanceSourceSummary: true
+        },
+        orderBy: { updatedAt: "desc" }
+      }) ?? Promise.resolve([]),
+      this.prisma.settlement.findMany({
+        where: { projectId, contractId: { in: contractIds } },
+        orderBy: [{ contractId: "asc" }, { createdAt: "desc" }]
+      })
+    ]);
+
+    const latestVersionByContractId = new Map<string, (typeof versions)[number]>();
+    const effectiveVersionByContractId = new Map<string, (typeof versions)[number]>();
+    for (const version of versions) {
+      if (!latestVersionByContractId.has(version.contractId)) {
+        latestVersionByContractId.set(version.contractId, version);
+      }
+      if (version.status === "effective" && !effectiveVersionByContractId.has(version.contractId)) {
+        effectiveVersionByContractId.set(version.contractId, version);
+      }
+    }
+
+    const takeoverByContractId = new Map<string, (typeof takeovers)[number]>();
+    for (const takeover of takeovers) {
+      if (!takeoverByContractId.has(takeover.contractId)) {
+        takeoverByContractId.set(takeover.contractId, takeover);
+      }
+    }
+
+    const settlementsByContractId = new Map<string, typeof settlements>();
+    for (const settlement of settlements) {
+      const rows = settlementsByContractId.get(settlement.contractId) ?? [];
+      settlementsByContractId.set(settlement.contractId, [...rows, settlement]);
+    }
+
+    return contracts.map((contract) => {
+      const latestVersion = latestVersionByContractId.get(contract.id);
+      const effectiveVersion = effectiveVersionByContractId.get(contract.id);
+      const takeover = takeoverByContractId.get(contract.id);
+      const source = contract.source === "historical_takeover" ? "historical_takeover" : "system";
+      const paymentUnavailableReason = this.contractPaymentUnavailableReason(
+        source,
+        latestVersion?.status ?? "draft",
+        effectiveVersion?.id ?? null,
+        takeover
+      );
+
+      return {
+        contractId: contract.id,
+        contractVersionId: effectiveVersion?.id ?? null,
+        contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
+        contractName: contract.name,
+        counterparty: contract.counterparty,
+        amountCents: this.centsValue(effectiveVersion?.amountCents ?? latestVersion?.amountCents ?? 0),
+        versionLabel: effectiveVersion ? `合同 v${effectiveVersion.versionNo}` : "-",
+        contractStatus: effectiveVersion?.status ?? latestVersion?.status ?? "draft",
+        contractStatusLabel: this.statusView(effectiveVersion?.status ?? latestVersion?.status ?? "draft").label,
+        source,
+        sourceLabel:
+          source === "historical_takeover"
+            ? `历史接管${takeover?.balanceSourceSummary ? ` · ${takeover.balanceSourceSummary}` : ""}`
+            : "系统合同",
+        takeoverLevel: takeover?.takeoverLevel ?? null,
+        takeoverStatus: takeover?.takeoverStatus ?? null,
+        takeoverStatusLabel: takeover ? this.takeoverStatusLabel(takeover.takeoverStatus) : null,
+        historicalBalanceConfirmedAt: takeover?.historicalBalanceConfirmedAt?.toISOString() ?? null,
+        canCreateSettlement: Boolean(effectiveVersion),
+        settlementUnavailableReason: effectiveVersion ? null : "合同尚未生效，不能发起结算",
+        canCreatePayment: !paymentUnavailableReason,
+        paymentUnavailableReason,
+        settlements: (settlementsByContractId.get(contract.id) ?? []).map((settlement) => {
+          const canCreatePayment = canCreatePaymentFromSettlementStatus(settlement.status as SettlementStatus);
+          return {
+            settlementId: settlement.id,
+            settlementNo: settlement.code,
+            periodLabel: settlement.periodLabel,
+            amountCents: settlement.amountCents,
+            payableAmountCents: settlement.payableAmountCents,
+            paidAmountCents: settlement.paidAmountCents,
+            status: settlement.status,
+            statusLabel: this.settlementApprovalStatusLabel(settlement.status),
+            canCreatePayment,
+            unavailableReason: canCreatePayment ? null : "结算未生效或已付款完成"
+          };
+        })
+      };
+    });
   }
 
   async getDetail(contractId: string): Promise<ContractDetailReadModel> {
@@ -632,6 +771,48 @@ export class ContractReadService {
     return views[status] ?? { label: status, tone: "default" };
   }
 
+  private takeoverStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      draft: "草稿",
+      pending_review: "待复核",
+      confirmed: "已接管",
+      needs_supplement: "待补充",
+      voided: "已作废"
+    };
+
+    return labels[status] ?? status;
+  }
+
+  private contractPaymentUnavailableReason(
+    source: "system" | "historical_takeover",
+    latestStatus: string,
+    effectiveVersionId: string | null,
+    takeover:
+      | {
+          takeoverStatus: string;
+          historicalBalanceConfirmedAt: Date | null;
+        }
+      | undefined
+  ): string | null {
+    if (!effectiveVersionId) {
+      return `合同状态为${this.statusView(latestStatus).label}，不能发起付款`;
+    }
+    if (source !== "historical_takeover") {
+      return null;
+    }
+    if (!takeover) {
+      return "历史合同尚未完成接管确认";
+    }
+    if (takeover.takeoverStatus !== "confirmed") {
+      return `历史合同接管状态为${this.takeoverStatusLabel(takeover.takeoverStatus)}，确认后才能付款`;
+    }
+    if (!takeover.historicalBalanceConfirmedAt) {
+      return "历史余额尚未确认，不能发起付款";
+    }
+
+    return null;
+  }
+
   private termsStatusLabel(status: string): string {
     const labels: Record<string, string> = {
       draft: "草拟中",
@@ -868,6 +1049,16 @@ export class ContractReadService {
     const parsed = typeof rawLimit === "number" ? rawLimit : Number(rawLimit ?? 100);
     if (!Number.isFinite(parsed)) return 100;
     return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+  }
+
+  private centsValue(amountCents: number | bigint): number | string {
+    if (typeof amountCents === "bigint") {
+      return amountCents <= BigInt(Number.MAX_SAFE_INTEGER)
+        ? Number(amountCents)
+        : amountCents.toString();
+    }
+
+    return amountCents;
   }
 
   private date(value: Date) {

@@ -216,3 +216,39 @@ export interface ContractPaymentApplicationPreviewReadModel {
   }>;
   formula: string;
 }
+
+export type ContractBusinessOptionSource = "system" | "historical_takeover";
+
+export interface ContractBusinessOptionReadModel {
+  contractId: string;
+  contractVersionId: string | null;
+  contractNo: string;
+  contractName: string;
+  counterparty: string;
+  amountCents: number | string;
+  versionLabel: string;
+  contractStatus: string;
+  contractStatusLabel: string;
+  source: ContractBusinessOptionSource;
+  sourceLabel: string;
+  takeoverLevel: string | null;
+  takeoverStatus: string | null;
+  takeoverStatusLabel: string | null;
+  historicalBalanceConfirmedAt: string | null;
+  canCreateSettlement: boolean;
+  settlementUnavailableReason: string | null;
+  canCreatePayment: boolean;
+  paymentUnavailableReason: string | null;
+  settlements: Array<{
+    settlementId: string;
+    settlementNo: string;
+    periodLabel: string;
+    amountCents: number;
+    payableAmountCents: number;
+    paidAmountCents: number;
+    status: string;
+    statusLabel: string;
+    canCreatePayment: boolean;
+    unavailableReason: string | null;
+  }>;
+}
