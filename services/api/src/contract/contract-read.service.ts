@@ -6,10 +6,46 @@ import type {
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 import { centsToSafeNumber } from "../money/decimal-money";
+import {
+  CONTRACT_TAKEOVER_BALANCE_SELECT,
+  type ContractTakeoverBalanceRow,
+  toHistoricalContractPaymentBalance
+} from "../payment/contract-takeover-balance";
+import type { HistoricalContractPaymentBalance } from "../payment/settlement-payment-capacity";
 
 @Injectable()
 export class ContractReadService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async confirmedHistoricalBalanceForContract(contractId: string) {
+    const takeoverClient = (this.prisma as unknown as {
+      contractTakeover?: {
+        findFirst(args: {
+          where: {
+            contractId: string;
+            takeoverStatus: string;
+            historicalBalanceConfirmedAt: { not: null };
+          };
+          select: typeof CONTRACT_TAKEOVER_BALANCE_SELECT;
+        }): Promise<ContractTakeoverBalanceRow | null>;
+      };
+    }).contractTakeover;
+
+    if (!takeoverClient) {
+      return undefined;
+    }
+
+    const takeover = await takeoverClient.findFirst({
+      where: {
+        contractId,
+        takeoverStatus: "confirmed",
+        historicalBalanceConfirmedAt: { not: null }
+      },
+      select: CONTRACT_TAKEOVER_BALANCE_SELECT
+    });
+
+    return toHistoricalContractPaymentBalance(takeover);
+  }
 
   async listRecent(rawLimit?: string | number) {
     const take = this.limit(rawLimit);
@@ -141,6 +177,7 @@ export class ContractReadService {
         : Promise.resolve([]),
       settlementIds.length ? this.findProjectProxyPayments(settlementIds) : Promise.resolve([])
     ]);
+    const historicalBalance = await this.confirmedHistoricalBalanceForContract(contract.id);
 
     const status = this.statusView(version.status);
 
@@ -188,7 +225,8 @@ export class ContractReadService {
         settlementArchiveFiles,
         paymentRequests,
         paymentExecutions,
-        projectProxyPayments
+        projectProxyPayments,
+        historicalBalance
       ),
       chainLinks: [
         { label: "关联合同台账", to: "/contracts" },
@@ -332,8 +370,37 @@ export class ContractReadService {
     projectProxyPayments: Array<{
       settlementId: string | null;
       amountCents: bigint | number;
-    }>
+    }>,
+    historicalBalance?: HistoricalContractPaymentBalance
   ): ContractSettlementPaymentReadModel {
+    const historicalSettledCents = this.toBigIntCents(historicalBalance?.settledCents ?? 0);
+    const historicalApprovalPendingCents = this.toBigIntCents(
+      historicalBalance?.approvalPendingPaymentCents ?? 0
+    );
+    const historicalApprovedPendingCents = this.toBigIntCents(
+      historicalBalance?.approvedPendingPaymentCents ?? 0
+    );
+    const historicalPaidCents = this.toBigIntCents(historicalBalance?.paidCents ?? 0);
+    const historicalProxyPaidCents = this.toBigIntCents(historicalBalance?.proxyPaidCents ?? 0);
+    const historicalAdvancePaidCents = this.toBigIntCents(
+      historicalBalance?.advancePaidCents ?? 0
+    );
+    const historicalAdvanceDeductedCents = this.toBigIntCents(
+      historicalBalance?.advanceDeductedCents ?? 0
+    );
+    const historicalOtherConfirmedOccupancyCents = this.toBigIntCents(
+      historicalBalance?.otherConfirmedOccupancyCents ?? 0
+    );
+    const hasHistoricalBalance =
+      historicalSettledCents +
+        historicalApprovalPendingCents +
+        historicalApprovedPendingCents +
+        historicalPaidCents +
+        historicalProxyPaidCents +
+        historicalAdvancePaidCents +
+        historicalAdvanceDeductedCents +
+        historicalOtherConfirmedOccupancyCents >
+      0n;
     const archiveFileBySettlementId = new Map<string, (typeof settlementArchiveFiles)[number]>();
     for (const archiveFile of settlementArchiveFiles) {
       if (!archiveFileBySettlementId.has(archiveFile.settlementId)) {
@@ -436,27 +503,98 @@ export class ContractReadService {
     for (const proxyAmountCents of proxyPaidBySettlementId.values()) {
       proxyPaidCents += proxyAmountCents;
     }
-    const cumulativePaidCents = actualPaidCents + proxyPaidCents;
+    const totalEffectiveSettlementCents =
+      cumulativeEffectiveSettlementCents + historicalSettledCents;
+    const totalApprovalPendingCents = approvalPendingCents + historicalApprovalPendingCents;
+    const totalApprovedPendingCents = approvedPendingCents + historicalApprovedPendingCents;
+    const totalActualPaidCents = actualPaidCents + historicalPaidCents;
+    const totalProxyPaidCents = proxyPaidCents + historicalProxyPaidCents;
+    const cumulativePaidCents = totalActualPaidCents + totalProxyPaidCents;
     const conservativeAvailableCents =
-      cumulativeEffectivePayableCents - cumulativePaidCents - approvalPendingCents - approvedPendingCents;
+      cumulativeEffectivePayableCents -
+      cumulativePaidCents -
+      totalApprovalPendingCents -
+      totalApprovedPendingCents -
+      historicalOtherConfirmedOccupancyCents;
     const remainingContractCents =
-      BigInt(contractAmountCents) - cumulativeEffectiveSettlementCents;
+      BigInt(contractAmountCents) - totalEffectiveSettlementCents;
     const summary: ContractSettlementPaymentReadModel["summary"] = [
-      { label: "累计生效结算", value: this.formatMoney(cumulativeEffectiveSettlementCents), tone: "success" },
+      { label: "累计生效结算", value: this.formatMoney(totalEffectiveSettlementCents), tone: "success" },
+      ...(hasHistoricalBalance
+        ? [
+            {
+              label: "系统内累计生效结算",
+              value: this.formatMoney(cumulativeEffectiveSettlementCents),
+              tone: "default" as const
+            },
+            {
+              label: "历史累计生效结算",
+              value: this.formatMoney(historicalSettledCents),
+              tone: "success" as const
+            }
+          ]
+        : []),
       {
         label: "保守可申请余额",
         value: this.formatMoney(conservativeAvailableCents > 0n ? conservativeAvailableCents : 0n),
         tone: "warning"
       },
-      { label: "审批中占用", value: this.formatMoney(approvalPendingCents), tone: "warning" },
-      { label: "已批待付", value: this.formatMoney(approvedPendingCents), tone: "warning" },
-      { label: "已实付", value: this.formatMoney(actualPaidCents), tone: "success" }
+      ...(hasHistoricalBalance
+        ? [
+            {
+              label: "系统内审批中占用",
+              value: this.formatMoney(approvalPendingCents),
+              tone: "warning" as const
+            },
+            {
+              label: "历史审批中占用",
+              value: this.formatMoney(historicalApprovalPendingCents),
+              tone: "warning" as const
+            },
+            {
+              label: "系统内已批待付",
+              value: this.formatMoney(approvedPendingCents),
+              tone: "warning" as const
+            },
+            {
+              label: "历史已批待付",
+              value: this.formatMoney(historicalApprovedPendingCents),
+              tone: "warning" as const
+            },
+            {
+              label: "系统内已实付",
+              value: this.formatMoney(actualPaidCents),
+              tone: "success" as const
+            },
+            {
+              label: "历史已实付",
+              value: this.formatMoney(historicalPaidCents),
+              tone: "success" as const
+            }
+          ]
+        : [
+            { label: "审批中占用", value: this.formatMoney(approvalPendingCents), tone: "warning" as const },
+            { label: "已批待付", value: this.formatMoney(approvedPendingCents), tone: "warning" as const },
+            { label: "已实付", value: this.formatMoney(actualPaidCents), tone: "success" as const }
+          ])
     ];
 
-    if (proxyPaidCents > 0n) {
+    if (hasHistoricalBalance || proxyPaidCents > 0n) {
+      if (hasHistoricalBalance) {
+        summary.push(
+          { label: "系统内总包代付", value: this.formatMoney(proxyPaidCents), tone: "success" },
+          { label: "历史总包代付", value: this.formatMoney(historicalProxyPaidCents), tone: "success" }
+        );
+      } else {
+        summary.push({ label: "总包代付", value: this.formatMoney(proxyPaidCents), tone: "success" });
+      }
+      summary.push({ label: "累计已支付", value: this.formatMoney(cumulativePaidCents), tone: "success" });
+    }
+    if (hasHistoricalBalance) {
       summary.push(
-        { label: "总包代付", value: this.formatMoney(proxyPaidCents), tone: "success" },
-        { label: "累计已支付", value: this.formatMoney(cumulativePaidCents), tone: "success" }
+        { label: "历史其他确认占用", value: this.formatMoney(historicalOtherConfirmedOccupancyCents), tone: "warning" },
+        { label: "历史预付款已付", value: this.formatMoney(historicalAdvancePaidCents), tone: "success" },
+        { label: "历史预付款已扣回", value: this.formatMoney(historicalAdvanceDeductedCents), tone: "default" }
       );
     }
 
@@ -471,7 +609,7 @@ export class ContractReadService {
       settlementRows,
       paymentRows,
       calculationNote:
-        "当前可申请余额暂按已生效应付金额 - 已实付 - 总包代付 - 审批中占用 - 已批待付计算，未纳入账期、质保金、预付款扣回和项目资金池；最新合同剩余额度以当前最新合同金额扣减合同维度累计生效结算，仅作台账提示。"
+        "合同详情为金额摘要，系统内金额与历史接管余额分列；精确可申请额以付款申请预览的到账期、预付款扣回、总包代付和历史余额硬扣减口径为准。"
     };
   }
 

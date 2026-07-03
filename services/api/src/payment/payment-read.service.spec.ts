@@ -861,7 +861,179 @@ describe("PaymentReadService", () => {
       })
     ]);
     expect(preview.formula).toContain(
-      "当前累计可付款金额 - 已实际付款金额 - 审批中占用 - 已批待付款金额 - 总包代付金额 - 本次应扣回预付款金额"
+      "当前累计可付款金额（系统内 + 历史接管）"
     );
+  });
+
+  it("builds contract payment application preview with historical takeover balance breakdown", async () => {
+    const confirmedAt = new Date("2026-07-01T00:00:00.000Z");
+    const prisma = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          versionNo: 1,
+          status: "effective",
+          amountCents: BigInt(1_000_000),
+          effectiveAt: new Date("2026-06-01T00:00:00.000Z")
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-version-1",
+            amountCents: BigInt(1_000_000)
+          }
+        ])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          code: "HT-HIS-001",
+          temporaryCode: null,
+          name: "历史幕墙分包合同"
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-1",
+          name: "总部综合楼"
+        })
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "terms-version-1" }])
+      },
+      contractTakeover: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          takeoverStatus: "confirmed",
+          historicalBalanceConfirmedAt: confirmedAt,
+          historicalSettledCents: BigInt(200_000),
+          historicalApprovalPendingPaymentCents: BigInt(0),
+          historicalApprovedPendingPaymentCents: BigInt(20_000),
+          historicalPaidCents: BigInt(50_000),
+          historicalProxyPaidCents: BigInt(10_000),
+          historicalAdvancePaidCents: BigInt(40_000),
+          historicalAdvanceDeductedCents: BigInt(10_000),
+          otherConfirmedOccupancyCents: BigInt(0)
+        })
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-1",
+            code: "JS-2026-041",
+            periodLabel: "2026-07",
+            status: "effective",
+            amountCents: 100_000,
+            paidAmountCents: 10_000,
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1",
+            isFinal: false,
+            createdAt: new Date("2026-07-01T00:00:00.000Z")
+          }
+        ])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            settlementId: "settlement-1",
+            confirmedAt: new Date("2026-07-01T00:00:00.000Z")
+          }
+        ])
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "stage-progress",
+            paymentTermsVersionId: "terms-version-1",
+            name: "进度款",
+            stageType: "progress",
+            basis: "current_settlement",
+            ratioBps: 8000,
+            fixedAmountCents: null,
+            triggerAnchor: "settlement_effective",
+            triggerEvent: "结算归档确认",
+            dueDays: 0,
+            advanceDeductionMode: "none",
+            advanceDeductionRatioBps: null,
+            advanceDeductionStartRatioBps: null
+          },
+          {
+            id: "stage-advance",
+            paymentTermsVersionId: "terms-version-1",
+            name: "预付款",
+            stageType: "advance",
+            basis: "contract_amount",
+            ratioBps: 1000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            triggerEvent: "合同生效",
+            dueDays: 0,
+            advanceDeductionMode: "per_settlement_ratio",
+            advanceDeductionRatioBps: 2000,
+            advanceDeductionStartRatioBps: null
+          }
+        ])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            settlementId: "settlement-1",
+            sourceType: "settlement",
+            paymentTermsVersionId: "terms-version-1",
+            status: "approved_pending_payment",
+            requestedAmountCents: 10_000,
+            approvedAmountCents: 10_000,
+            paidAmountCents: 0
+          }
+        ])
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const preview = await service.getContractApplication(
+      "contract-version-1",
+      "2026-07-20T00:00:00.000Z"
+    );
+
+    expect(preview.capacity).toMatchObject({
+      systemCumulativeEffectiveSettlementCents: 100_000,
+      historicalSettledCents: 200_000,
+      cumulativeEffectiveSettlementCents: 300_000,
+      duePayableCents: 80_000,
+      actualPaidCents: 10_000,
+      approvedPendingCents: 10_000,
+      proxyPaidCents: 0,
+      historicalPaidCents: 50_000,
+      historicalApprovedPendingCents: 20_000,
+      historicalProxyPaidCents: 10_000,
+      historicalOccupiedCents: 80_000,
+      advanceDeductionCents: 10_000,
+      maxRequestableCents: 0
+    });
+    expect(preview.historicalBalance).toEqual({
+      settledCents: 200_000,
+      approvalPendingPaymentCents: 0,
+      approvedPendingPaymentCents: 20_000,
+      paidCents: 50_000,
+      proxyPaidCents: 10_000,
+      advancePaidCents: 40_000,
+      advanceDeductedCents: 10_000,
+      otherConfirmedOccupancyCents: 0
+    });
+    expect(preview.advanceDeduction).toMatchObject({
+      paidAdvanceCents: 40_000,
+      systemPaidAdvanceCents: 0,
+      historicalAdvancePaidCents: 40_000,
+      historicalAdvanceDeductedCents: 10_000,
+      currentDeductionCents: 10_000,
+      remainingAdvanceToDeductCents: 20_000
+    });
   });
 });

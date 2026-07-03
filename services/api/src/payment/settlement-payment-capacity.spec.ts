@@ -51,18 +51,47 @@ interface ContractAdvancePaymentRequest {
   paidAmountCents: number;
 }
 
+interface HistoricalContractPaymentBalance {
+  paymentTermsVersionId?: string;
+  balanceConfirmedAt?: Date | null;
+  settledCents?: number | bigint;
+  approvalPendingPaymentCents?: number | bigint;
+  approvedPendingPaymentCents?: number | bigint;
+  paidCents?: number | bigint;
+  proxyPaidCents?: number | bigint;
+  advancePaidCents?: number | bigint;
+  advanceDeductedCents?: number | bigint;
+  otherConfirmedOccupancyCents?: number | bigint;
+}
+
 interface ContractPaymentApplicationPreview {
   capacity: {
     cumulativeEffectiveSettlementCents: number;
+    systemCumulativeEffectiveSettlementCents?: number;
+    historicalSettledCents?: number;
     duePayableCents: number;
     occupiedCents: number;
+    historicalOccupiedCents?: number;
     advanceDeductionCents: number;
     maxRequestableCents: number;
   };
   advanceDeduction: {
     paidAdvanceCents: number;
+    systemPaidAdvanceCents?: number;
+    historicalAdvancePaidCents?: number;
+    historicalAdvanceDeductedCents?: number;
     currentDeductionCents: number;
     remainingAdvanceToDeductCents: number;
+  };
+  historicalBalance?: {
+    settledCents: number;
+    approvalPendingPaymentCents: number;
+    approvedPendingPaymentCents: number;
+    paidCents: number;
+    proxyPaidCents: number;
+    advancePaidCents: number;
+    advanceDeductedCents: number;
+    otherConfirmedOccupancyCents: number;
   };
   sections: Array<{
     type: "advance" | "progress" | "final" | "retention";
@@ -102,6 +131,7 @@ type ContractDuePaymentCapacityCalculator = (input: {
   contractAmountCents?: number;
   contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number>>;
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
+  historicalBalance?: HistoricalContractPaymentBalance;
 }) => ContractDuePaymentCapacity;
 
 type ContractPaymentApplicationPreviewBuilder = (
@@ -141,6 +171,7 @@ type ContractAdvancePaymentCapacityCalculator = (input: {
   contractEffectiveAt: Date | null;
   paymentTermsStages: readonly ContractDuePaymentTermsStage[];
   paymentRequests: readonly ContractAdvancePaymentRequest[];
+  historicalBalance?: HistoricalContractPaymentBalance;
 }) => ContractDuePaymentCapacity;
 
 const calculateContractDuePaymentCapacity = (
@@ -366,6 +397,79 @@ describe("calculateContractDuePaymentCapacity", () => {
       duePayableCents: 80_000,
       occupiedCents: 50_000,
       remainingCents: 30_000
+    });
+  });
+
+  it("deducts confirmed historical takeover balances without releasing historical settled capacity", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      contractAmountCents: 1_000_000,
+      settlements: [
+        {
+          id: "settlement-after-takeover",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "per_settlement_ratio",
+          advanceDeductionRatioBps: 2000
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-after-takeover",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: [
+        {
+          settlementId: null,
+          sourceType: "contract_due",
+          status: "approval_pending",
+          requestedAmountCents: 10_000,
+          approvedAmountCents: null,
+          paidAmountCents: 0
+        }
+      ],
+      historicalBalance: {
+        paymentTermsVersionId: "terms-1",
+        balanceConfirmedAt: new Date("2026-06-01T00:00:00.000Z"),
+        settledCents: 200_000,
+        paidCents: 120_000,
+        approvalPendingPaymentCents: 20_000,
+        approvedPendingPaymentCents: 30_000,
+        proxyPaidCents: 10_000,
+        otherConfirmedOccupancyCents: 5_000,
+        advancePaidCents: 50_000,
+        advanceDeductedCents: 20_000
+      },
+      advancePaymentRequests: []
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 80_000,
+      occupiedCents: 195_000,
+      remainingCents: -115_000,
+      advanceDeductionCents: 0
     });
   });
 
@@ -1389,6 +1493,99 @@ describe("buildContractPaymentApplicationPreview", () => {
       remainingAdvanceToDeductCents: 30_000
     });
   });
+
+  it("separates historical takeover balances from in-system preview amounts", () => {
+    const preview = buildApplicationPreview({
+      asOf,
+      contractAmountCents: 1_000_000,
+      settlements: [
+        {
+          id: "settlement-1",
+          status: "effective",
+          amountCents: 100_000,
+          paidAmountCents: 10_000,
+          paymentTermsVersionId: "terms-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "per_settlement_ratio",
+          advanceDeductionRatioBps: 2000
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-1",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: [
+        {
+          settlementId: "settlement-1",
+          status: "approved_pending_payment",
+          requestedAmountCents: 10_000,
+          approvedAmountCents: 10_000,
+          paidAmountCents: 0
+        }
+      ],
+      advancePaymentRequests: [],
+      historicalBalance: {
+        paymentTermsVersionId: "terms-1",
+        balanceConfirmedAt: new Date("2026-06-01T00:00:00.000Z"),
+        settledCents: 200_000,
+        paidCents: 50_000,
+        approvedPendingPaymentCents: 20_000,
+        proxyPaidCents: 10_000,
+        advancePaidCents: 40_000,
+        advanceDeductedCents: 10_000
+      }
+    });
+
+    expect(preview.capacity).toMatchObject({
+      systemCumulativeEffectiveSettlementCents: 100_000,
+      historicalSettledCents: 200_000,
+      cumulativeEffectiveSettlementCents: 300_000,
+      duePayableCents: 80_000,
+      occupiedCents: 100_000,
+      historicalOccupiedCents: 80_000,
+      advanceDeductionCents: 10_000,
+      maxRequestableCents: 0
+    });
+    expect(preview.historicalBalance).toEqual({
+      settledCents: 200_000,
+      approvalPendingPaymentCents: 0,
+      approvedPendingPaymentCents: 20_000,
+      paidCents: 50_000,
+      proxyPaidCents: 10_000,
+      advancePaidCents: 40_000,
+      advanceDeductedCents: 10_000,
+      otherConfirmedOccupancyCents: 0
+    });
+    expect(preview.advanceDeduction).toEqual({
+      paidAdvanceCents: 40_000,
+      systemPaidAdvanceCents: 0,
+      historicalAdvancePaidCents: 40_000,
+      historicalAdvanceDeductedCents: 10_000,
+      currentDeductionCents: 10_000,
+      remainingAdvanceToDeductCents: 20_000
+    });
+  });
 });
 
 describe("allocateContractDuePaymentExecution", () => {
@@ -1683,6 +1880,43 @@ describe("calculateContractAdvancePaymentCapacity", () => {
           paidAmountCents: 0
         }
       ]
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 100_000,
+      occupiedCents: 90_000,
+      remainingCents: 10_000
+    });
+  });
+
+  it("subtracts confirmed historical advance paid from advance capacity", () => {
+    const capacity = calculateAdvanceCapacity({
+      asOf: new Date("2026-07-20T00:00:00.000Z"),
+      contractAmountCents: 1_000_000,
+      contractEffectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 30
+        }
+      ],
+      paymentRequests: [
+        {
+          status: "approval_pending",
+          requestedAmountCents: 20_000,
+          approvedAmountCents: null,
+          paidAmountCents: 0
+        }
+      ],
+      historicalBalance: {
+        balanceConfirmedAt: new Date("2026-06-01T00:00:00.000Z"),
+        advancePaidCents: 70_000
+      }
     });
 
     expect(capacity).toEqual({

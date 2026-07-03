@@ -11,6 +11,11 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import {
+  CONTRACT_TAKEOVER_BALANCE_SELECT,
+  type ContractTakeoverBalanceRow,
+  toHistoricalContractPaymentBalance
+} from "../payment/contract-takeover-balance";
+import {
   calculateContractDuePaymentCapacity,
   calculateSettlementPaymentCapacity,
   CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
@@ -596,6 +601,63 @@ export class ProjectService {
     });
   }
 
+  private async historicalBalanceForProxyPaymentContract(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ) {
+    const clients = tx as unknown as {
+      contract?: {
+        findUnique(args: {
+          where: { id: string };
+          select: { source: true };
+        }): Promise<{ source?: string | null } | null>;
+      };
+      contractTakeover?: {
+        findFirst(args: {
+          where: { contractId: string };
+          select: typeof CONTRACT_TAKEOVER_BALANCE_SELECT;
+        }): Promise<ContractTakeoverBalanceRow | null>;
+      };
+    };
+
+    const [contract, takeover] = await Promise.all([
+      clients.contract?.findUnique
+        ? clients.contract.findUnique({
+            where: { id: contractId },
+            select: { source: true }
+          })
+        : Promise.resolve(null),
+      clients.contractTakeover?.findFirst
+        ? clients.contractTakeover.findFirst({
+            where: { contractId },
+            select: CONTRACT_TAKEOVER_BALANCE_SELECT
+          })
+        : Promise.resolve(null)
+    ]);
+
+    if (takeover) {
+      if (takeover.takeoverStatus !== "confirmed") {
+        throw new BadRequestException(
+          "Historical contract takeover must be confirmed before recording project proxy payment"
+        );
+      }
+      if (!takeover.historicalBalanceConfirmedAt) {
+        throw new BadRequestException(
+          "Historical balance must be confirmed before recording project proxy payment"
+        );
+      }
+      return toHistoricalContractPaymentBalance(takeover);
+    }
+
+    if (contract?.source === "historical_takeover") {
+      throw new BadRequestException(
+        "Historical contract takeover must be confirmed before recording project proxy payment"
+      );
+    }
+
+    return undefined;
+  }
+
   private async assertContractDueProxyPaymentCapacity(
     tx: Prisma.TransactionClient,
     contractId: string,
@@ -697,6 +759,7 @@ export class ProjectService {
         AND "status" IN (${Prisma.join([...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES])})
       FOR UPDATE
     `);
+    const historicalBalance = await this.historicalBalanceForProxyPaymentContract(tx, contractId);
 
     const contractSettlements = await clients.settlement.findMany({
       where: {
@@ -715,10 +778,13 @@ export class ProjectService {
     });
     const settlementIds = contractSettlements.map((settlement) => settlement.id);
     const paymentTermsVersionIds = [
-      ...new Set(contractSettlements.map((settlement) => settlement.paymentTermsVersionId))
+      ...new Set([
+        ...contractSettlements.map((settlement) => settlement.paymentTermsVersionId),
+        ...(historicalBalance?.paymentTermsVersionId ? [historicalBalance.paymentTermsVersionId] : [])
+      ])
     ];
 
-    if (!settlementIds.length || !paymentTermsVersionIds.length) {
+    if (!paymentTermsVersionIds.length) {
       throw new BadRequestException("Project proxy payment exceeds contract due payable amount: 0");
     }
 
@@ -834,7 +900,8 @@ export class ProjectService {
       proxyPaidAmountCents: sumSafeCents(proxyPayments.map((payment) => payment.amountCents)),
       contractAmountCents: fallbackContractAmountCents,
       contractAmountCentsByPaymentTermsVersionId,
-      advancePaymentRequests
+      advancePaymentRequests,
+      historicalBalance
     });
 
     if (amountCents > capacity.remainingCents) {

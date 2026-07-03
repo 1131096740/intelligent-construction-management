@@ -6,6 +6,11 @@ import type {
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 import {
+  CONTRACT_TAKEOVER_BALANCE_SELECT,
+  type ContractTakeoverBalanceRow,
+  toHistoricalContractPaymentBalance
+} from "./contract-takeover-balance";
+import {
   buildContractPaymentApplicationPreview,
   CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
@@ -15,6 +20,36 @@ import {
 @Injectable()
 export class PaymentReadService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private async confirmedHistoricalBalanceForContract(contractId: string) {
+    const takeoverClient = (this.prisma as unknown as {
+      contractTakeover?: {
+        findFirst(args: {
+          where: {
+            contractId: string;
+            takeoverStatus: string;
+            historicalBalanceConfirmedAt: { not: null };
+          };
+          select: typeof CONTRACT_TAKEOVER_BALANCE_SELECT;
+        }): Promise<ContractTakeoverBalanceRow | null>;
+      };
+    }).contractTakeover;
+
+    if (!takeoverClient) {
+      return undefined;
+    }
+
+    const takeover = await takeoverClient.findFirst({
+      where: {
+        contractId,
+        takeoverStatus: "confirmed",
+        historicalBalanceConfirmedAt: { not: null }
+      },
+      select: CONTRACT_TAKEOVER_BALANCE_SELECT
+    });
+
+    return toHistoricalContractPaymentBalance(takeover);
+  }
 
   async listRecent(rawLimit?: string | number) {
     const take = this.limit(rawLimit);
@@ -319,10 +354,12 @@ export class PaymentReadService {
       },
       select: { id: true }
     });
+    const historicalBalance = await this.confirmedHistoricalBalanceForContract(contract.id);
     const paymentTermsVersionIds = [
       ...new Set([
         ...settlementTermsVersionIds,
-        ...paymentTermsVersions.map((terms) => terms.id)
+        ...paymentTermsVersions.map((terms) => terms.id),
+        ...(historicalBalance?.paymentTermsVersionId ? [historicalBalance.paymentTermsVersionId] : [])
       ])
     ];
 
@@ -431,6 +468,11 @@ export class PaymentReadService {
         contractAmountCentsByPaymentTermsVersionId[terms.id] ??
         sumSafeCents([contractVersion.amountCents]);
     }
+    if (historicalBalance?.paymentTermsVersionId) {
+      contractAmountCentsByPaymentTermsVersionId[historicalBalance.paymentTermsVersionId] =
+        contractAmountCentsByPaymentTermsVersionId[historicalBalance.paymentTermsVersionId] ??
+        sumSafeCents([contractVersion.amountCents]);
+    }
 
     const settlementPaymentRequests = paymentRequests.filter(
       (payment) =>
@@ -455,7 +497,8 @@ export class PaymentReadService {
       proxyPaidAmountCents: proxyPaidCents,
       contractAmountCents: sumSafeCents([contractVersion.amountCents]),
       contractAmountCentsByPaymentTermsVersionId,
-      advancePaymentRequests
+      advancePaymentRequests,
+      historicalBalance
     });
     const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
     const occupancy = this.paymentOccupancyBreakdown(settlementPaymentRequests);
@@ -491,9 +534,22 @@ export class PaymentReadService {
         actualPaidCents,
         approvalPendingCents: occupancy.approvalPendingCents,
         approvedPendingCents: occupancy.approvedPendingCents,
-        proxyPaidCents
+        proxyPaidCents,
+        ...(preview.historicalBalance
+          ? {
+              historicalPaidCents: preview.historicalBalance.paidCents,
+              historicalApprovalPendingCents:
+                preview.historicalBalance.approvalPendingPaymentCents,
+              historicalApprovedPendingCents:
+                preview.historicalBalance.approvedPendingPaymentCents,
+              historicalProxyPaidCents: preview.historicalBalance.proxyPaidCents,
+              historicalOtherConfirmedOccupancyCents:
+                preview.historicalBalance.otherConfirmedOccupancyCents
+            }
+          : {})
       },
       advanceDeduction: preview.advanceDeduction,
+      ...(preview.historicalBalance ? { historicalBalance: preview.historicalBalance } : {}),
       sections: preview.sections.map((section) => ({
         type: section.type,
         title: section.title,
@@ -517,7 +573,7 @@ export class PaymentReadService {
         })
       })),
       formula:
-        "当前累计可付款金额 - 已实际付款金额 - 审批中占用 - 已批待付款金额 - 总包代付金额 - 本次应扣回预付款金额 = 本次最多可申请金额"
+        "当前累计可付款金额（系统内 + 历史接管） - 已实际付款金额（系统内 + 历史） - 审批中占用（系统内 + 历史） - 已批待付款金额（系统内 + 历史） - 总包代付金额（系统内 + 历史） - 本次应扣回预付款金额 = 本次最多可申请金额"
     };
   }
 

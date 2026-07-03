@@ -63,6 +63,19 @@ export interface ContractAdvancePaymentRequest extends SettlementCapacityPayment
   paymentTermsVersionId?: string;
 }
 
+export interface HistoricalContractPaymentBalance {
+  paymentTermsVersionId?: string;
+  balanceConfirmedAt?: Date | null;
+  settledCents?: number | bigint;
+  approvalPendingPaymentCents?: number | bigint;
+  approvedPendingPaymentCents?: number | bigint;
+  paidCents?: number | bigint;
+  proxyPaidCents?: number | bigint;
+  advancePaidCents?: number | bigint;
+  advanceDeductedCents?: number | bigint;
+  otherConfirmedOccupancyCents?: number | bigint;
+}
+
 export interface ContractDuePaymentCapacity {
   duePayableCents: number;
   occupiedCents: number;
@@ -107,15 +120,31 @@ export interface ContractPaymentApplicationSection {
 export interface ContractPaymentApplicationPreview {
   capacity: {
     cumulativeEffectiveSettlementCents: number;
+    systemCumulativeEffectiveSettlementCents?: number;
+    historicalSettledCents?: number;
     duePayableCents: number;
     occupiedCents: number;
+    historicalOccupiedCents?: number;
     advanceDeductionCents: number;
     maxRequestableCents: number;
   };
   advanceDeduction: {
     paidAdvanceCents: number;
+    systemPaidAdvanceCents?: number;
+    historicalAdvancePaidCents?: number;
+    historicalAdvanceDeductedCents?: number;
     currentDeductionCents: number;
     remainingAdvanceToDeductCents: number;
+  };
+  historicalBalance?: {
+    settledCents: number;
+    approvalPendingPaymentCents: number;
+    approvedPendingPaymentCents: number;
+    paidCents: number;
+    proxyPaidCents: number;
+    advancePaidCents: number;
+    advanceDeductedCents: number;
+    otherConfirmedOccupancyCents: number;
   };
   sections: ContractPaymentApplicationSection[];
 }
@@ -171,7 +200,9 @@ export function calculateContractDuePaymentCapacity(input: {
   contractAmountCents?: number | bigint;
   contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number | bigint>>;
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
+  historicalBalance?: HistoricalContractPaymentBalance;
 }): ContractDuePaymentCapacity {
+  const historicalBalance = normalizeHistoricalBalance(input.historicalBalance);
   const confirmedAtBySettlement = new Map<string, Date>();
   for (const archiveFile of input.settlementArchiveFiles) {
     if (!archiveFile.confirmedAt) continue;
@@ -228,7 +259,6 @@ export function calculateContractDuePaymentCapacity(input: {
 
     return total + minBigInt(settlementDueCents, BigInt(settlement.amountCents));
   }, 0n);
-
   const actualPaidAmountCents =
     input.settlements.reduce<bigint>(
       (total, settlement) => total + BigInt(settlement.paidAmountCents ?? 0),
@@ -243,8 +273,14 @@ export function calculateContractDuePaymentCapacity(input: {
     (total, payment) => total + BigInt(outstandingPaymentRequestCents(payment)),
     0n
   );
+  const paidAdvanceCentsForCapacity = paidAdvanceCentsByTerms(input.advancePaymentRequests ?? []);
+  const paidAdvanceCentsForCapacityWithHistory = withHistoricalAdvancePaid(
+    paidAdvanceCentsForCapacity,
+    historicalBalance
+  );
   const advanceDeductionCents = calculateAdvanceDeductionCents({
-    paidAdvanceCentsByTerms: paidAdvanceCentsByTerms(input.advancePaymentRequests ?? []),
+    paidAdvanceCentsByTerms: paidAdvanceCentsForCapacityWithHistory,
+    historicalAdvanceDeductedCentsByTerms: historicalAdvanceDeductedCentsByTerms(historicalBalance),
     contractAmountCents: BigInt(input.contractAmountCents ?? 0),
     contractAmountCentsByTerms: contractAmountCentsByTerms(
       input.contractAmountCentsByPaymentTermsVersionId
@@ -256,7 +292,8 @@ export function calculateContractDuePaymentCapacity(input: {
   const occupiedCents =
     actualPaidAmountCents +
     BigInt(input.proxyPaidAmountCents ?? 0) +
-    outstandingPaymentCents;
+    outstandingPaymentCents +
+    historicalOccupiedCents(historicalBalance);
   const remainingCents = duePayableCents - occupiedCents - advanceDeductionCents;
 
   return {
@@ -286,7 +323,9 @@ export function buildContractPaymentApplicationPreview(input: {
   contractAmountCents?: number | bigint;
   contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number | bigint>>;
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
+  historicalBalance?: HistoricalContractPaymentBalance;
 }): ContractPaymentApplicationPreview {
+  const historicalBalance = normalizeHistoricalBalance(input.historicalBalance);
   const confirmedAtBySettlement = earliestConfirmedAtBySettlement(input.settlementArchiveFiles);
   const effectiveSettlements = input.settlements.filter((settlement) =>
     CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES.includes(
@@ -427,17 +466,43 @@ export function buildContractPaymentApplicationPreview(input: {
     ...input,
     advancePaymentRequests: input.advancePaymentRequests ?? []
   });
-  const paidAdvanceCents = centsToSafeNumber(
+  const systemPaidAdvanceCents = centsToSafeNumber(
     [...paidAdvanceCentsByTerms(input.advancePaymentRequests ?? []).values()].reduce(
       (total, amount) => total + amount,
       0n
     )
   );
+  const paidAdvanceCents = centsToSafeNumber(
+    BigInt(systemPaidAdvanceCents) + historicalBalance.advancePaidCents
+  );
   const currentDeductionCents = capacity.advanceDeductionCents ?? 0;
+  const hasHistorical = hasHistoricalBalance(historicalBalance);
+  const systemCumulativeEffectiveSettlementCents = centsToSafeNumber(
+    cumulativeEffectiveSettlementCents
+  );
+  const totalCumulativeEffectiveSettlementCents = centsToSafeNumber(
+    cumulativeEffectiveSettlementCents + historicalBalance.settledCents
+  );
+  const historicalSettledCents = centsToSafeNumber(historicalBalance.settledCents);
+  const historicalOccupiedAmountCents = centsToSafeNumber(historicalOccupiedCents(historicalBalance));
+  const historicalAdvanceDeductedCents = centsToSafeNumber(
+    historicalBalance.advanceDeductedCents
+  );
+  const remainingAdvanceToDeductCents = Math.max(
+    paidAdvanceCents - historicalAdvanceDeductedCents - currentDeductionCents,
+    0
+  );
 
   return {
     capacity: {
-      cumulativeEffectiveSettlementCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
+      cumulativeEffectiveSettlementCents: totalCumulativeEffectiveSettlementCents,
+      ...(hasHistorical
+        ? {
+            systemCumulativeEffectiveSettlementCents,
+            historicalSettledCents,
+            historicalOccupiedCents: historicalOccupiedAmountCents
+          }
+        : {}),
       duePayableCents: capacity.duePayableCents,
       occupiedCents: capacity.occupiedCents,
       advanceDeductionCents: currentDeductionCents,
@@ -445,9 +510,21 @@ export function buildContractPaymentApplicationPreview(input: {
     },
     advanceDeduction: {
       paidAdvanceCents,
+      ...(hasHistorical
+        ? {
+            systemPaidAdvanceCents,
+            historicalAdvancePaidCents: centsToSafeNumber(historicalBalance.advancePaidCents),
+            historicalAdvanceDeductedCents
+          }
+        : {}),
       currentDeductionCents,
-      remainingAdvanceToDeductCents: Math.max(paidAdvanceCents - currentDeductionCents, 0)
+      remainingAdvanceToDeductCents
     },
+    ...(hasHistorical
+      ? {
+          historicalBalance: historicalBalanceReadModel(historicalBalance)
+        }
+      : {}),
     sections: paymentApplicationSectionOrder
       .map((type) => sectionsByType.get(type))
       .filter((section): section is ContractPaymentApplicationSection => !!section && section.rows.length > 0)
@@ -532,7 +609,9 @@ export function calculateContractAdvancePaymentCapacity(input: {
   contractEffectiveAt: Date | null;
   paymentTermsStages: readonly ContractDuePaymentTermsStage[];
   paymentRequests: readonly ContractAdvancePaymentRequest[];
+  historicalBalance?: HistoricalContractPaymentBalance;
 }): ContractDuePaymentCapacity {
+  const historicalBalance = normalizeHistoricalBalance(input.historicalBalance);
   const contractEffectiveAt = input.contractEffectiveAt;
   const duePayableCents = contractEffectiveAt
     ? input.paymentTermsStages.reduce<bigint>((total, stage) => {
@@ -553,7 +632,13 @@ export function calculateContractAdvancePaymentCapacity(input: {
     (total, payment) => total + BigInt(outstandingPaymentRequestCents(payment)),
     0n
   );
-  const occupiedCents = actualPaidAmountCents + outstandingPaymentCents;
+  const historicalAdvanceOccupancyCents =
+    historicalBalance.advancePaidCents +
+    historicalBalance.approvalPendingPaymentCents +
+    historicalBalance.approvedPendingPaymentCents +
+    historicalBalance.otherConfirmedOccupancyCents;
+  const occupiedCents =
+    actualPaidAmountCents + outstandingPaymentCents + historicalAdvanceOccupancyCents;
   const remainingCents = cappedDuePayableCents - occupiedCents;
 
   return {
@@ -567,6 +652,121 @@ export function sumSafeCents(values: Array<bigint | number>): number {
   return centsToSafeNumber(
     values.reduce<bigint>((total, value) => total + BigInt(value), 0n)
   );
+}
+
+interface NormalizedHistoricalContractPaymentBalance {
+  paymentTermsVersionId?: string;
+  balanceConfirmedAt: Date | null;
+  settledCents: bigint;
+  approvalPendingPaymentCents: bigint;
+  approvedPendingPaymentCents: bigint;
+  paidCents: bigint;
+  proxyPaidCents: bigint;
+  advancePaidCents: bigint;
+  advanceDeductedCents: bigint;
+  otherConfirmedOccupancyCents: bigint;
+}
+
+function normalizeHistoricalBalance(
+  value: HistoricalContractPaymentBalance | undefined
+): NormalizedHistoricalContractPaymentBalance {
+  const empty = {
+    paymentTermsVersionId: undefined,
+    balanceConfirmedAt: null,
+    settledCents: 0n,
+    approvalPendingPaymentCents: 0n,
+    approvedPendingPaymentCents: 0n,
+    paidCents: 0n,
+    proxyPaidCents: 0n,
+    advancePaidCents: 0n,
+    advanceDeductedCents: 0n,
+    otherConfirmedOccupancyCents: 0n
+  };
+
+  if (!value?.balanceConfirmedAt) {
+    return empty;
+  }
+
+  return {
+    paymentTermsVersionId: value.paymentTermsVersionId,
+    balanceConfirmedAt: value.balanceConfirmedAt,
+    settledCents: nonNegativeBigIntCents(value.settledCents ?? 0),
+    approvalPendingPaymentCents: nonNegativeBigIntCents(
+      value.approvalPendingPaymentCents ?? 0
+    ),
+    approvedPendingPaymentCents: nonNegativeBigIntCents(
+      value.approvedPendingPaymentCents ?? 0
+    ),
+    paidCents: nonNegativeBigIntCents(value.paidCents ?? 0),
+    proxyPaidCents: nonNegativeBigIntCents(value.proxyPaidCents ?? 0),
+    advancePaidCents: nonNegativeBigIntCents(value.advancePaidCents ?? 0),
+    advanceDeductedCents: nonNegativeBigIntCents(value.advanceDeductedCents ?? 0),
+    otherConfirmedOccupancyCents: nonNegativeBigIntCents(
+      value.otherConfirmedOccupancyCents ?? 0
+    )
+  };
+}
+
+function hasHistoricalBalance(balance: NormalizedHistoricalContractPaymentBalance): boolean {
+  return (
+    !!balance.balanceConfirmedAt &&
+    [
+      balance.settledCents,
+      balance.approvalPendingPaymentCents,
+      balance.approvedPendingPaymentCents,
+      balance.paidCents,
+      balance.proxyPaidCents,
+      balance.advancePaidCents,
+      balance.advanceDeductedCents,
+      balance.otherConfirmedOccupancyCents
+    ].some((amount) => amount > 0n)
+  );
+}
+
+function historicalBalanceReadModel(balance: NormalizedHistoricalContractPaymentBalance) {
+  return {
+    settledCents: centsToSafeNumber(balance.settledCents),
+    approvalPendingPaymentCents: centsToSafeNumber(balance.approvalPendingPaymentCents),
+    approvedPendingPaymentCents: centsToSafeNumber(balance.approvedPendingPaymentCents),
+    paidCents: centsToSafeNumber(balance.paidCents),
+    proxyPaidCents: centsToSafeNumber(balance.proxyPaidCents),
+    advancePaidCents: centsToSafeNumber(balance.advancePaidCents),
+    advanceDeductedCents: centsToSafeNumber(balance.advanceDeductedCents),
+    otherConfirmedOccupancyCents: centsToSafeNumber(balance.otherConfirmedOccupancyCents)
+  };
+}
+
+function historicalOccupiedCents(balance: NormalizedHistoricalContractPaymentBalance): bigint {
+  return (
+    balance.paidCents +
+    balance.approvalPendingPaymentCents +
+    balance.approvedPendingPaymentCents +
+    balance.proxyPaidCents +
+    balance.otherConfirmedOccupancyCents
+  );
+}
+
+function withHistoricalAdvancePaid(
+  paidAdvanceCentsByTermsValue: ReadonlyMap<string, bigint>,
+  balance: NormalizedHistoricalContractPaymentBalance
+): ReadonlyMap<string, bigint> {
+  const totals = new Map(paidAdvanceCentsByTermsValue);
+  if (balance.paymentTermsVersionId && balance.advancePaidCents > 0n) {
+    addMapBigInt(totals, balance.paymentTermsVersionId, balance.advancePaidCents);
+  }
+
+  return totals;
+}
+
+function historicalAdvanceDeductedCentsByTerms(
+  balance: NormalizedHistoricalContractPaymentBalance
+): ReadonlyMap<string, bigint> {
+  const totals = new Map<string, bigint>();
+  if (balance.paymentTermsVersionId && balance.advanceDeductedCents > 0n) {
+    totals.set(balance.paymentTermsVersionId, balance.advanceDeductedCents);
+  }
+
+  return totals;
 }
 
 function isStageApplicableToSettlement(
@@ -595,6 +795,7 @@ function isContractAdvanceStage(stage: ContractDuePaymentTermsStage): boolean {
 
 function calculateAdvanceDeductionCents(input: {
   paidAdvanceCentsByTerms: ReadonlyMap<string, bigint>;
+  historicalAdvanceDeductedCentsByTerms?: ReadonlyMap<string, bigint>;
   contractAmountCents: bigint;
   contractAmountCentsByTerms: ReadonlyMap<string, bigint>;
   dueSettlementBasisCentsByTerms: ReadonlyMap<string, bigint>;
@@ -649,12 +850,16 @@ function calculateAdvanceDeductionCents(input: {
   }, new Map<string, bigint>());
 
   return [...scheduledDeductionCentsByTerms.entries()].reduce<bigint>(
-    (total, [paymentTermsVersionId, scheduledCents]) =>
-      total +
-      minBigInt(
+    (total, [paymentTermsVersionId, scheduledCents]) => {
+      const cappedScheduledCents = minBigInt(
         scheduledCents,
         input.paidAdvanceCentsByTerms.get(paymentTermsVersionId) ?? 0n
-      ),
+      );
+      const alreadyDeductedCents =
+        input.historicalAdvanceDeductedCentsByTerms?.get(paymentTermsVersionId) ?? 0n;
+      const remainingDeductionCents = cappedScheduledCents - alreadyDeductedCents;
+      return total + (remainingDeductionCents > 0n ? remainingDeductionCents : 0n);
+    },
     0n
   );
 }
@@ -815,7 +1020,7 @@ function addDays(value: Date, days: number): Date {
 }
 
 function contractStageAmountCents(
-  settlementAmountCents: number,
+  settlementAmountCents: number | bigint,
   stage: ContractDuePaymentTermsStage
 ): bigint {
   if (stage.fixedAmountCents !== null) {

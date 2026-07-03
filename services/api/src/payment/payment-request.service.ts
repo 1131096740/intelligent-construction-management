@@ -19,6 +19,11 @@ import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
+import {
+  CONTRACT_TAKEOVER_BALANCE_SELECT,
+  type ContractTakeoverBalanceRow,
+  toHistoricalContractPaymentBalance
+} from "./contract-takeover-balance";
 import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service";
 import {
   allocateContractDuePaymentExecution,
@@ -256,6 +261,39 @@ export class PaymentRequestService {
         takeoverStatus: input.takeoverStatus ?? null
       }
     });
+  }
+
+  private async confirmedHistoricalBalanceForContract(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ) {
+    const takeoverClient = (tx as unknown as {
+      contractTakeover?: {
+        findFirst?: (args: {
+          where: {
+            contractId: string;
+            takeoverStatus: string;
+            historicalBalanceConfirmedAt: { not: null };
+          };
+          select: typeof CONTRACT_TAKEOVER_BALANCE_SELECT;
+        }) => Promise<ContractTakeoverBalanceRow | null>;
+      };
+    }).contractTakeover;
+
+    if (!takeoverClient?.findFirst) {
+      return undefined;
+    }
+
+    const takeover = await takeoverClient.findFirst({
+      where: {
+        contractId,
+        takeoverStatus: "confirmed",
+        historicalBalanceConfirmedAt: { not: null }
+      },
+      select: CONTRACT_TAKEOVER_BALANCE_SELECT
+    });
+
+    return toHistoricalContractPaymentBalance(takeover);
   }
 
   async create(input: CreatePaymentRequestDto, applicantUserId?: string) {
@@ -618,12 +656,17 @@ export class PaymentRequestService {
         paidAmountCents: true
       }
     });
+    const historicalBalance = await this.confirmedHistoricalBalanceForContract(
+      tx,
+      contractVersion.contractId
+    );
     const capacity = calculateContractAdvancePaymentCapacity({
       asOf: new Date(),
       contractAmountCents: sumSafeCents([contractVersion.amountCents]),
       contractEffectiveAt: contractVersion.effectiveAt,
       paymentTermsStages,
-      paymentRequests: existingAdvancePayments
+      paymentRequests: existingAdvancePayments,
+      historicalBalance
     });
 
     if (!Number.isInteger(input.requestedAmountCents) || input.requestedAmountCents <= 0) {
@@ -793,9 +836,16 @@ export class PaymentRequestService {
       }
     });
     const settlementIds = contractSettlements.map((row) => row.id);
-    const paymentTermsVersionIds = [...new Set(contractSettlements.map((row) => row.paymentTermsVersionId))];
+    const historicalBalance = await this.confirmedHistoricalBalanceForContract(tx, contractId);
+    const paymentTermsVersionIds = [
+      ...new Set([
+        ...contractSettlements.map((row) => row.paymentTermsVersionId),
+        ...(historicalBalance?.paymentTermsVersionId ? [historicalBalance.paymentTermsVersionId] : []),
+        ...(paymentTermsVersionId ? [paymentTermsVersionId] : [])
+      ])
+    ];
 
-    if (!settlementIds.length || !paymentTermsVersionIds.length) {
+    if (!paymentTermsVersionIds.length) {
       throw new Error("合同到期可付额度不足: 0");
     }
 
@@ -876,7 +926,8 @@ export class PaymentRequestService {
         ? contractAmountCentsByPaymentTermsVersionId[paymentTermsVersionId]
         : undefined,
       contractAmountCentsByPaymentTermsVersionId,
-      advancePaymentRequests
+      advancePaymentRequests,
+      historicalBalance
     });
 
     if (requestedAmountCents > capacity.remainingCents) {

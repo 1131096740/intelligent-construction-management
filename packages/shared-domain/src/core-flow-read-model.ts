@@ -161,19 +161,40 @@ export interface ContractPaymentApplicationPreviewReadModel {
   }>;
   capacity: {
     cumulativeEffectiveSettlementCents: number;
+    systemCumulativeEffectiveSettlementCents?: number;
+    historicalSettledCents?: number;
     duePayableCents: number;
     occupiedCents: number;
+    historicalOccupiedCents?: number;
     actualPaidCents: number;
     approvalPendingCents: number;
     approvedPendingCents: number;
     proxyPaidCents: number;
+    historicalPaidCents?: number;
+    historicalApprovalPendingCents?: number;
+    historicalApprovedPendingCents?: number;
+    historicalProxyPaidCents?: number;
+    historicalOtherConfirmedOccupancyCents?: number;
     advanceDeductionCents: number;
     maxRequestableCents: number;
   };
   advanceDeduction: {
     paidAdvanceCents: number;
+    systemPaidAdvanceCents?: number;
+    historicalAdvancePaidCents?: number;
+    historicalAdvanceDeductedCents?: number;
     currentDeductionCents: number;
     remainingAdvanceToDeductCents: number;
+  };
+  historicalBalance?: {
+    settledCents: number;
+    approvalPendingPaymentCents: number;
+    approvedPendingPaymentCents: number;
+    paidCents: number;
+    proxyPaidCents: number;
+    advancePaidCents: number;
+    advanceDeductedCents: number;
+    otherConfirmedOccupancyCents: number;
   };
   sections: Array<{
     type: ContractPaymentApplicationSectionType;
