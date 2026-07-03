@@ -1,3 +1,4 @@
+import type { ContractPaymentApplicationPreviewReadModel } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol } from "tdesign-vue-next";
 
 export type PaymentTone = "default" | "primary" | "warning" | "danger" | "success";
@@ -35,6 +36,23 @@ export interface PaymentLedgerRow {
   currentNode: string;
   ownerDepartment: string;
   updatedAt: string;
+}
+
+export type PaymentApplicationPreviewSection =
+  ContractPaymentApplicationPreviewReadModel["sections"][number];
+
+export interface PaymentApplicationPreviewRow {
+  id: string;
+  source: string;
+  currentSettlementAmount: string;
+  cumulativeBeforeAmount: string;
+  cumulativeAfterAmount: string;
+  effectiveAt: string;
+  expectedPayableAt: string;
+  paymentRule: string;
+  dueStatus: string;
+  includableAmount: string;
+  isDue: boolean;
 }
 
 export const paymentFilterFields: PaymentFilterField[] = [
@@ -97,6 +115,18 @@ export const paymentLedgerColumns: PrimaryTableCol<PaymentLedgerRow>[] = [
   { colKey: "operation", title: "操作", width: 64, fixed: "right" }
 ];
 
+export const paymentApplicationPreviewColumns: PrimaryTableCol<PaymentApplicationPreviewRow>[] = [
+  { colKey: "source", title: "来源", width: 120 },
+  { colKey: "currentSettlementAmount", title: "本期结算金额", width: 124, align: "right" },
+  { colKey: "cumulativeBeforeAmount", title: "期前累计结算金额", width: 140, align: "right" },
+  { colKey: "cumulativeAfterAmount", title: "期后累计结算金额", width: 140, align: "right" },
+  { colKey: "effectiveAt", title: "生效日期", width: 108 },
+  { colKey: "expectedPayableAt", title: "预计可付日", width: 108 },
+  { colKey: "paymentRule", title: "付款规则", minWidth: 168 },
+  { colKey: "dueStatus", title: "当前是否到账期", width: 124 },
+  { colKey: "includableAmount", title: "本行可计入金额", width: 132, align: "right" }
+];
+
 export const paymentLedgerRows: PaymentLedgerRow[] = [];
 
 export const paymentRules = [
@@ -105,3 +135,50 @@ export const paymentRules = [
   "审批通过后进入已批待付，不代表已付款",
   "出纳/财务登记实付并上传付款凭证"
 ];
+
+function formatPaymentCents(amountCents: number) {
+  return `¥${(amountCents / 100).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
+}
+
+function formatPaymentDate(value: string | null, fallback: string) {
+  return value ? value.slice(0, 10) : fallback;
+}
+
+export function toPaymentApplicationPreviewRows(
+  section: PaymentApplicationPreviewSection
+): PaymentApplicationPreviewRow[] {
+  return section.rows.map((row) => ({
+    id: row.id,
+    source: row.source,
+    currentSettlementAmount: formatPaymentCents(row.currentSettlementAmountCents),
+    cumulativeBeforeAmount: formatPaymentCents(row.cumulativeBeforeAmountCents),
+    cumulativeAfterAmount: formatPaymentCents(row.cumulativeAfterAmountCents),
+    effectiveAt: formatPaymentDate(row.effectiveAt, "未生效"),
+    expectedPayableAt: formatPaymentDate(row.expectedPayableAt, "待计算"),
+    paymentRule: row.paymentRule,
+    dueStatus: row.isDue ? "已到账期" : "未到账期",
+    includableAmount: formatPaymentCents(row.includableAmountCents),
+    isDue: row.isDue
+  }));
+}
+
+export function paymentApplicationPreviewRowClassName(row: Pick<PaymentApplicationPreviewRow, "isDue">) {
+  return row.isDue ? "" : "preview-row-not-due";
+}
+
+export function canShowContractPaymentApplicationPreview(
+  sourceType: PaymentCreateSourceType,
+  preview: ContractPaymentApplicationPreviewReadModel | null,
+  previewContractVersionId: string,
+  currentContractVersionId: string
+) {
+  return (
+    sourceType === "contract_due" &&
+    Boolean(preview) &&
+    previewContractVersionId.trim() !== "" &&
+    previewContractVersionId.trim() === currentContractVersionId.trim()
+  );
+}

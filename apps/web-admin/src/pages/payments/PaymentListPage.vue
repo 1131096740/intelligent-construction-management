@@ -67,14 +67,45 @@
           读取合同可申请额
         </t-button>
         <div
-          v-if="contractPaymentPreview"
+          v-if="visibleContractPaymentPreview"
           class="preview-strip"
         >
-          <span>{{ contractPaymentPreview.contract.contractNo }}</span>
-          <span>累计结算 {{ formatCents(contractPaymentPreview.capacity.cumulativeEffectiveSettlementCents) }}</span>
-          <span>最多可申请 {{ formatCents(contractPaymentPreview.capacity.maxRequestableCents) }}</span>
-          <span>纳入 {{ contractPaymentPreview.includedSettlements.length }} 张结算</span>
+          <span>{{ visibleContractPaymentPreview.contract.contractNo }}</span>
+          <span>累计结算 {{ formatCents(visibleContractPaymentPreview.capacity.cumulativeEffectiveSettlementCents) }}</span>
+          <span>最多可申请 {{ formatCents(visibleContractPaymentPreview.capacity.maxRequestableCents) }}</span>
+          <span>纳入 {{ visibleContractPaymentPreview.includedSettlements.length }} 张结算</span>
         </div>
+      </div>
+      <div
+        v-if="visibleContractPaymentPreview"
+        class="application-preview"
+      >
+        <div class="advance-deduction-strip">
+          <span>预付款已付 {{ formatCents(visibleContractPaymentPreview.advanceDeduction.paidAdvanceCents) }}</span>
+          <span>本次应扣回 {{ formatCents(visibleContractPaymentPreview.advanceDeduction.currentDeductionCents) }}</span>
+          <span>剩余待扣回 {{ formatCents(visibleContractPaymentPreview.advanceDeduction.remainingAdvanceToDeductCents) }}</span>
+          <span>扣回后可申请 {{ formatCents(visibleContractPaymentPreview.capacity.maxRequestableCents) }}</span>
+        </div>
+        <section
+          v-for="section in contractPaymentPreviewSections"
+          :key="section.type"
+          class="preview-section"
+        >
+          <div class="preview-section-head">
+            <strong>{{ section.title }}</strong>
+            <span>{{ section.rows.length }} 行</span>
+          </div>
+          <div class="preview-table-wrap">
+            <t-table
+              row-key="id"
+              size="small"
+              :columns="paymentApplicationPreviewColumns"
+              :data="section.rows"
+              :row-class-name="previewRowClassName"
+              empty="暂无可计算明细"
+            />
+          </div>
+        </section>
       </div>
       <div class="create-actions">
         <t-button
@@ -200,16 +231,21 @@ import {
   fetchPaymentLedger
 } from "../../api/core-flow-read.api";
 import type {
+  PaymentApplicationPreviewRow,
   PaymentCreateSourceType,
   PaymentLedgerRow,
   PaymentTone
 } from "./payment-list.config";
 import {
+  canShowContractPaymentApplicationPreview,
+  paymentApplicationPreviewColumns,
+  paymentApplicationPreviewRowClassName,
   paymentCreateSourceOptions,
   paymentFilterFields,
   paymentLedgerColumns,
   paymentRules,
-  paymentSummaryItems
+  paymentSummaryItems,
+  toPaymentApplicationPreviewRows
 } from "./payment-list.config";
 
 const router = useRouter();
@@ -221,12 +257,20 @@ const messageTone = ref<"success" | "danger" | "default">("default");
 const paymentLedgerRows = ref<PaymentLedgerRow[]>([]);
 const ledgerLoading = ref(false);
 const contractPaymentPreview = ref<Awaited<ReturnType<typeof fetchContractPaymentApplication>> | null>(null);
+const previewContractVersionId = ref("");
 const ledgerSummary = ref({
   total: 0,
   pendingApproval: 0,
   orSign: 0,
   pendingPayment: 0,
   paid: 0
+});
+const createForm = reactive({
+  sourceType: "contract_due" as PaymentCreateSourceType,
+  settlementId: "",
+  contractVersionId: "",
+  code: `FK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+  requestedAmountCents: ""
 });
 const summaryValues = computed(() => {
   const values = [
@@ -242,13 +286,26 @@ const summaryValues = computed(() => {
     value: String(values[index] ?? 0)
   }));
 });
-const createForm = reactive({
-  sourceType: "contract_due" as PaymentCreateSourceType,
-  settlementId: "",
-  contractVersionId: "",
-  code: `FK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
-  requestedAmountCents: ""
-});
+const showContractPaymentPreview = computed(() =>
+  canShowContractPaymentApplicationPreview(
+    createForm.sourceType,
+    contractPaymentPreview.value,
+    previewContractVersionId.value,
+    createForm.contractVersionId
+  )
+);
+const visibleContractPaymentPreview = computed(() =>
+  showContractPaymentPreview.value ? contractPaymentPreview.value : null
+);
+const contractPaymentPreviewSections = computed(() =>
+  visibleContractPaymentPreview.value
+    ? visibleContractPaymentPreview.value.sections.map((section) => ({
+        type: section.type,
+        title: section.title,
+        rows: toPaymentApplicationPreviewRows(section)
+      }))
+    : []
+);
 
 function openDetail(paymentId: string) {
   void router.push(`/payments/${paymentId}`);
@@ -294,16 +351,21 @@ function formatCents(amountCents: number) {
   })}`;
 }
 
+function previewRowClassName(params: { row: PaymentApplicationPreviewRow }) {
+  return paymentApplicationPreviewRowClassName(params.row);
+}
+
 async function loadContractPaymentPreview() {
   previewBusy.value = true;
   message.value = "";
 
   try {
-    contractPaymentPreview.value = await fetchContractPaymentApplication(
-      requiredText(createForm.contractVersionId, "合同版本ID")
-    );
+    const contractVersionId = requiredText(createForm.contractVersionId, "合同版本ID");
+    contractPaymentPreview.value = await fetchContractPaymentApplication(contractVersionId);
+    previewContractVersionId.value = contractVersionId;
   } catch (error) {
     contractPaymentPreview.value = null;
+    previewContractVersionId.value = "";
     message.value = error instanceof Error ? error.message : "读取合同可申请额失败";
     messageTone.value = "danger";
   } finally {
@@ -452,6 +514,69 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+.application-preview {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.advance-deduction-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid #dce1e8;
+  background: #f8fafc;
+}
+
+.advance-deduction-strip span {
+  min-width: 0;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-right: 1px solid #dce1e8;
+  color: #424955;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.advance-deduction-strip span:last-child {
+  border-right: 0;
+}
+
+.preview-section {
+  min-width: 0;
+  border: 1px solid #dce1e8;
+  background: #fff;
+}
+
+.preview-section-head {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid #dce1e8;
+  background: #f6f8fb;
+}
+
+.preview-section-head strong {
+  color: #151922;
+  font-size: 13px;
+}
+
+.preview-section-head span {
+  color: #767f8d;
+  font-size: 12px;
+}
+
+.preview-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+
 .create-actions {
   display: flex;
   gap: 8px;
@@ -582,8 +707,14 @@ onMounted(() => {
   font-size: 12px;
 }
 
+:deep(.preview-row-not-due td) {
+  background: #f8fafc;
+  color: #7a8391;
+}
+
 @media (max-width: 980px) {
   .create-grid,
+  .advance-deduction-strip,
   .rule-strip,
   .filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
