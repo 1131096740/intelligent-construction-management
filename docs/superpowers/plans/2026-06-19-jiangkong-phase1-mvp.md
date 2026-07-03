@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> 当前状态（2026-07-03）：本文是 Phase 1 初始历史实施计划，主要链路已经由后续任务完成或细化。后续上线试运行不要直接从本文未勾选项继续执行，应以 `obsidian-current/建工智管_项目状态报告_20260703.md`、`docs/superpowers/specs/2026-07-03-historical-contract-takeover-trial-run-design.md` 和 `PROGRESS.md` 为准。
+> 当前状态（2026-07-04）：本文是 Phase 1 初始历史实施计划，主要链路已经由后续任务完成或细化。后续上线试运行不要直接从本文未勾选项继续执行，应以 `obsidian-current/建工智管_项目状态报告_20260704.md`、`docs/superpowers/specs/2026-07-03-historical-contract-takeover-trial-run-design.md` 和 `PROGRESS.md` 为准。
 
 **Goal:** Build the enterprise Phase 1 core loop: contract versioning, payment terms, approval, seal, archive, settlement, payment request, actual payment, PDF archive, and audit across Web admin and WeChat mini program.
 

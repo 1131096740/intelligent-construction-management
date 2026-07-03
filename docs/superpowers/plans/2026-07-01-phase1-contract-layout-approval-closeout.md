@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> 当前状态（2026-07-03）：本文用于 Phase 1 合同版式和审批缺口收口，主要任务已完成。后续上线前仍需合同母版人工逐页验收，但产品执行重心已转为历史合同接管、真实首页、业务选择器和生产安全验收。
+> 当前状态（2026-07-04）：本文用于 Phase 1 合同版式和审批缺口收口，主要任务已完成。后续上线前仍需合同母版人工逐页验收，但产品执行重心已转为生产等价验收、真实数据初始化、Go-Live Gate 和小范围真实试运行。
 
 **Goal:** Finish Phase 1 for the Web admin + backend core loop by fixing the Word layout issues found in spot-check, extending live contract generation coverage to all four contract types, and closing the remaining approval-engine gaps.
 

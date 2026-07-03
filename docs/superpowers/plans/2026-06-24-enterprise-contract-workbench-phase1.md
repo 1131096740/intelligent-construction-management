@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> 当前状态（2026-07-03）：本文对应的合同工作台 Phase 1 已基本完成并记录在 `PROGRESS.md`。后续不要把“历史合同 import”理解为完整 OCR/反向建模任务；当前试运行只做已签合同接管、归档、余额初始化和业务确认。
+> 当前状态（2026-07-04）：本文对应的合同工作台 Phase 1 已基本完成并记录在 `PROGRESS.md`。后续不要把“历史合同 import”理解为完整 OCR/反向建模任务；当前试运行只做已签合同接管、归档、余额初始化和业务确认，且 P0-1 至 P0-7 最小实现已完成。
 
 **Goal:** Build the first delivery stage of the enterprise contract system: contract workbench, versioned template center, multi-sheet Excel bills, structured clauses, and generated DOCX/PDF previews.
 

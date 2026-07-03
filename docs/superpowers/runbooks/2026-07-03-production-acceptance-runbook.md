@@ -2,7 +2,7 @@
 
 日期：2026-07-03
 状态：真实试运行前安全验收清单
-范围：Web/API 生产或生产等价环境；不包含新部署平台、CI/CD 改造、云资源自动开通、真实密钥读取上传或生产数据库自动操作。
+范围：Web/API 生产或生产等价环境；覆盖历史接管、项目付款审批表、结算附件模板和综合费用最小闭环；不包含新部署平台、CI/CD 改造、云资源自动开通、真实密钥读取上传或生产数据库自动操作。
 
 ## 验收原则
 
@@ -115,7 +115,7 @@ pnpm --filter @jiangkong/api verify:production-readiness
 
 1. 从生产或生产等价库生成一份 `pg_dump --format=custom` 备份。
 2. 在隔离临时库恢复，禁止覆盖正式库。
-3. 验证关键表数量：`User`、`Project`、`Contract`、`ContractTakeover`、`Settlement`、`PaymentRequest`、`FileObject`、`AuditLog`。
+3. 验证关键表数量：`User`、`Project`、`Contract`、`ContractTakeover`、`Settlement`、`PaymentRequest`、`ProjectExpenseRequest`、`FileObject`、`AuditLog`。
 4. 删除临时库前保存演练记录。
 
 ## 6. 附件 / 文件备份
@@ -181,6 +181,7 @@ pnpm --filter @jiangkong/api verify:production-readiness
 | `finance_staff` | 业主收款、总包代付、出纳实付、付款凭证 | 合同接管确认、结算归档确认 | 待验收 |
 | `finance_director` | 财务审批、项目经营查看、资金风险复核 | 代替出纳上传业务外附件 | 待验收 |
 | `project_manager` | 查看本项目、确认项目归属、付款/费用相关节点 | 查看无授权项目数据 | 待验收 |
+| `comprehensive_director` | 综合费用审批节点、用章相关节点 | 合同接管确认、出纳实付、跨项目查看 | 待验收 |
 | `chairman` / `general_manager` | 合同和付款最终或签、项目经营查看 | 普通合同经办录入动作 | 待验收 |
 | `employee` | 仅普通员工入口和本人事项 | 合同、结算、付款、文件敏感数据 | 待验收 |
 | `super_admin` | 技术运维 | 业务审批、业务确认、代替负责人签认 | 待验收 |
@@ -192,6 +193,7 @@ pnpm --filter @jiangkong/api verify:production-readiness
 3. 无岗位下载敏感文件无法签票。
 4. 当前密码错误时，接管确认、业主主合同确认、实付、下载签票均失败。
 5. 付款审批通过不等于实际付款，只有出纳实付后才有付款执行记录。
+6. 项目付款审批表 PDF、结算附件模板下载和综合费用附件下载均需要登录、权限和审计。
 
 ## 最终放行
 
@@ -203,5 +205,6 @@ pnpm --filter @jiangkong/api verify:production-readiness
 | HTTPS、证书续期、时间同步、日志告警通过 | 运维 | 待签 | 待填 |
 | 合同母版逐页人工验收通过 | 合同部 / 法务 | 待签 | 待填 |
 | 权限矩阵验收通过 | 业务负责人 / 运维 | 待签 | 待填 |
+| 项目付款审批表、结算附件模板和综合费用真实单据验收通过 | 财务 / 合同部 / 综合部 / 管理层 | 待签 | 待填 |
 
 所有放行项签完后，才能让真实项目进入 P0 试运行。
