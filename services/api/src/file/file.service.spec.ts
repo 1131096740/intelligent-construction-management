@@ -1236,6 +1236,255 @@ describe("FileService", () => {
     expect(ticket.downloadUrl).toContain("actorUserId=applicant-1");
   });
 
+  it("allows the applicant to download the latest in-progress settlement approval PDF", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "JS-2026-019-结算审批最新.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "system-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          businessType: "settlement",
+          businessId: "settlement-1",
+          fileId: "file-1",
+          templateKey: "settlement_approval_latest"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "inst-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress"
+        })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "applicant-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=applicant-1");
+  });
+
+  it("denies latest settlement approval PDF download to roles outside the frozen approval route", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "JS-2026-019-结算审批最新.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "system-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          businessType: "settlement",
+          businessId: "settlement-1",
+          fileId: "file-1",
+          templateKey: "settlement_approval_latest"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "inst-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          frozenNodes: [
+            { name: "物资员", mode: "any", roleKeys: ["material_staff"] },
+            { name: "物资主管", mode: "any", roleKeys: ["material_director"] }
+          ]
+        })
+      },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({ id: "settlement-1", projectId: "project-1" })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "engineering_tech" }])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", { actorUserId: "engineering-user-1" })
+    ).rejects.toThrow("Actor cannot download private file");
+  });
+
+  it("allows latest settlement approval PDF download to roles in the frozen approval route", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "JS-2026-019-结算审批最新.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "system-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          businessType: "settlement",
+          businessId: "settlement-1",
+          fileId: "file-1",
+          templateKey: "settlement_approval_latest"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "inst-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          frozenNodes: [
+            { name: "物资员", mode: "any", roleKeys: ["material_staff"] },
+            { name: "物资主管", mode: "any", roleKeys: ["material_director"] }
+          ]
+        })
+      },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({ id: "settlement-1", projectId: "project-1" })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "material_staff" }])
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "material-user-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=material-user-1");
+  });
+
+  it("does not treat non-signature approval logs as latest settlement approval PDF signatures", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "JS-2026-019-结算审批最新.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "system-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          businessType: "settlement",
+          businessId: "settlement-1",
+          fileId: "file-1",
+          templateKey: "settlement_approval_latest"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "inst-1",
+          applicantUserId: "applicant-1",
+          status: "in_progress",
+          frozenNodes: [{ name: "物资员", mode: "any", roleKeys: ["material_staff"] }]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn(async (args: { where?: { action?: unknown } }) =>
+          args.where?.action ? null : { id: "remind-log-1", action: "remind" }
+        )
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({ id: "settlement-1", projectId: "project-1" })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "engineering_tech" }])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", { actorUserId: "reminder-user-1" })
+    ).rejects.toThrow("Actor cannot download private file");
+    expect(tx.approvalActionLog.findFirst).toHaveBeenCalledWith({
+      where: {
+        approvalInstanceId: "inst-1",
+        actorUserId: "reminder-user-1",
+        action: { in: ["approve", "reject_previous", "return_to_applicant"] }
+      }
+    });
+  });
+
   it("denies an unrelated user from downloading an approval-form PDF", async () => {
     const tx = {
       fileObject: {

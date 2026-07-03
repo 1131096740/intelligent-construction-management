@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Res, StreamableFile } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
@@ -10,6 +10,8 @@ import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dt
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 import { SettlementReadService } from "./settlement-read.service";
 import { SettlementService } from "./settlement.service";
+
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 @Controller("settlements")
 export class SettlementController {
@@ -126,5 +128,51 @@ export class SettlementController {
     @Body() body: { templateKey?: string; departmentScope?: string }
   ) {
     return this.settlements.generatePdfArchive(settlementId, user.id, body);
+  }
+
+  @Get(":settlementId/draft-excel")
+  @RequireProjectRole("settlement.archive.upload")
+  async downloadDraftExcel(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.settlements.exportDraftExcel(settlementId, user.id);
+    response.set({
+      "Content-Type": XLSX_MIME,
+      "Content-Length": String(result.buffer.length),
+      "Content-Disposition": [
+        "attachment",
+        `filename="${this.asciiFallback(result.fileName)}"`,
+        `filename*=UTF-8''${encodeURIComponent(result.fileName)}`
+      ].join("; ")
+    });
+
+    return new StreamableFile(result.buffer);
+  }
+
+  @Get(":settlementId/approval-pdf/latest")
+  async downloadLatestApprovalPdf(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.settlements.downloadLatestApprovalPdf(settlementId, user.id);
+    response.set({
+      "Content-Type": "application/pdf",
+      "Content-Length": String(result.buffer.length),
+      "Content-Disposition": [
+        "attachment",
+        `filename="${this.asciiFallback(result.fileName)}"`,
+        `filename*=UTF-8''${encodeURIComponent(result.fileName)}`
+      ].join("; ")
+    });
+
+    return new StreamableFile(result.buffer);
+  }
+
+  private asciiFallback(fileName: string): string {
+    const ascii = fileName.replace(/[^\x20-\x7E]+/g, "_").replace(/"/g, "'");
+    return ascii.trim() || "settlement-draft.xlsx";
   }
 }

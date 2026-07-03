@@ -100,7 +100,7 @@
               :loading="archiveActionBusy === 'approvalForm'"
               @click="downloadSettlementApprovalForm"
             >
-              下载审批单
+              下载最新审批PDF
             </t-button>
           </div>
         </div>
@@ -154,9 +154,17 @@
 
         <div class="action-group">
           <div class="action-title">
-            <strong>PDF归档</strong>
-            <span>后端生成归档PDF</span>
+            <strong>结算文件</strong>
+            <span>草稿Excel与归档PDF</span>
           </div>
+          <t-button
+            variant="outline"
+            :loading="archiveActionBusy === 'draftExcel'"
+            :disabled="!canRunSettlementAction"
+            @click="downloadSettlementDraft"
+          >
+            下载草稿Excel
+          </t-button>
           <t-button
             theme="primary"
             :loading="archiveActionBusy === 'pdf'"
@@ -332,9 +340,10 @@ import {
   confirmSettlementArchive,
   createPrivateFileDownloadTicket,
   delegateSettlementApproval,
+  downloadSettlementDraftExcel,
+  downloadSettlementLatestApprovalPdf,
   fetchSettlementDetail,
   generateSettlementPdfArchive,
-  downloadApprovalForm as requestApprovalFormDownload,
   remindSettlementApproval,
   reviewSettlementApproval,
   transferSettlementApproval,
@@ -509,7 +518,7 @@ async function downloadSettlementApprovalForm() {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
 
   await runArchiveAction("approvalForm", async () => {
-    await requestApprovalFormDownload("settlement", settlementId);
+    await downloadSettlementLatestApprovalPdf(settlementId);
   });
 }
 
@@ -540,6 +549,12 @@ async function submitSettlementPdfGeneration() {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
 
   await runArchiveAction("pdf", () => generateSettlementPdfArchive(settlementId));
+}
+
+async function downloadSettlementDraft() {
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+
+  await runArchiveAction("draftExcel", () => downloadSettlementDraftExcel(settlementId));
 }
 
 async function submitSettlementFileDownload() {

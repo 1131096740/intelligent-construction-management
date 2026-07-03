@@ -14,12 +14,16 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { renderSimplePdf } from "../pdf/simple-pdf";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
+import {
+  renderSettlementArchivePdf,
+  renderSettlementDraftExcel,
+  type SettlementDocumentInput
+} from "./settlement-document-renderer";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -68,6 +72,68 @@ const SETTLEMENT_QUOTA_OCCUPANCY_STATUSES = [
   "paid"
 ] as const;
 const SETTLEMENT_EXCEPTION_USAGE_ACTIVE_STATUSES = ["occupied", "used"] as const;
+const SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY = "settlement_approval_latest";
+const SETTLEMENT_PREVIOUS_EFFECTIVE_STATUSES = ["effective", "partially_paid", "paid"] as const;
+const SETTLEMENT_SIGNATURE_ACTIONS = ["approve", "reject_previous", "return_to_applicant"] as const;
+const SETTLEMENT_APPROVAL_PDF_ARCHIVE_READ_ROLES: readonly RoleKey[] = [
+  "contract_staff",
+  "contract_director",
+  "finance_staff",
+  "finance_director"
+];
+
+const ROLE_LABELS: Record<string, string> = {
+  chairman: "董事长",
+  general_manager: "总经理",
+  project_manager: "项目经理",
+  contract_director: "合同部主管",
+  contract_staff: "合同员",
+  budget_director: "预算部主管",
+  budget_staff: "预算员",
+  finance_director: "财务主管",
+  finance_staff: "财务员",
+  material_director: "物资主管",
+  material_staff: "物资员",
+  engineering_director: "工程部主管",
+  engineering_foreman: "施工队长",
+  engineering_tech: "技术员",
+  comprehensive_director: "综合部主管",
+  employee: "员工",
+  super_admin: "系统管理员"
+};
+
+const roleLabel = (key: string) => ROLE_LABELS[key] ?? key;
+
+function isEmbeddableImage(buffer: Buffer | null): boolean {
+  if (!buffer || buffer.length < 4) return false;
+  const isPng =
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  return isPng || isJpeg;
+}
+
+interface SettlementApprovalActionLogSnapshot {
+  action: string;
+  actorUserId: string;
+  comment: string | null;
+  createdAt: Date;
+  metadata?: unknown;
+}
+
+interface SettlementApprovalLogMetadataSnapshot {
+  nodeName?: string;
+  roleKey?: RoleKey;
+  roleName?: string;
+  approverName?: string;
+}
+
+interface UserLookupClient {
+  user?: {
+    findMany(args: {
+      where: { id: { in: string[] } };
+    }): Promise<Array<{ id: string; name: string; signatureFileId?: string | null }>>;
+  };
+}
 
 @Injectable()
 export class SettlementService {
@@ -95,7 +161,7 @@ export class SettlementService {
       throw new Error("Prisma service is required to create settlement");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const settlement = await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: input.contractVersionId }
       });
@@ -125,11 +191,20 @@ export class SettlementService {
         throw new Error("Effective payment terms version not found");
       }
 
+      const settlementAmountCents =
+        input.isFinal === true
+          ? await this.calculateFinalSettlementCurrentAmount(
+              tx,
+              version.contractId,
+              input.amountCents
+            )
+          : input.amountCents;
+
       const exceptionQuotaAllocations = await this.reserveSettlementQuota(
         tx,
         contract.projectId,
         version.contractId,
-        input.amountCents
+        settlementAmountCents
       );
 
       const currentSettlementStage = await tx.paymentTermsStage.findFirst({
@@ -140,7 +215,7 @@ export class SettlementService {
         orderBy: { createdAt: "asc" }
       });
       const payableAmountCents = this.calculatePayableAmount(
-        input.amountCents,
+        settlementAmountCents,
         currentSettlementStage?.ratioBps ?? null
       );
 
@@ -153,10 +228,12 @@ export class SettlementService {
           code: input.code,
           periodLabel: input.periodLabel,
           status: "approval_pending",
-          amountCents: input.amountCents,
+          amountCents: settlementAmountCents,
           payableAmountCents,
           paidAmountCents: 0,
-          ...(input.isFinal === true ? { isFinal: true } : {})
+          ...(input.isFinal === true
+            ? { isFinal: true, finalCumulativeAmountCents: input.amountCents }
+            : {})
         }
       });
 
@@ -206,6 +283,37 @@ export class SettlementService {
 
       return settlement;
     });
+
+    if (applicantUserId) {
+      await this.tryRefreshSettlementApprovalPdf(settlement.id, applicantUserId);
+    }
+
+    return settlement;
+  }
+
+  private async calculateFinalSettlementCurrentAmount(
+    tx: Prisma.TransactionClient,
+    contractId: string,
+    finalCumulativeAmountCents: number
+  ): Promise<number> {
+    const previousSettlements = await tx.settlement.findMany({
+      where: {
+        contractId,
+        status: { in: [...SETTLEMENT_PREVIOUS_EFFECTIVE_STATUSES] }
+      },
+      select: { amountCents: true }
+    });
+    const previousEffectiveCents = previousSettlements.reduce(
+      (total, settlement) => total + settlement.amountCents,
+      0
+    );
+    const currentAmountCents = finalCumulativeAmountCents - previousEffectiveCents;
+
+    if (currentAmountCents <= 0) {
+      throw new BadRequestException("最终审定累计结算总额必须大于前序已生效累计结算金额");
+    }
+
+    return currentAmountCents;
   }
 
   private async reserveSettlementQuota(
@@ -369,10 +477,6 @@ export class SettlementService {
     return Math.floor((amountCents * ratioBps) / 10000);
   }
 
-  private formatCents(value: number) {
-    return `${(value / 100).toFixed(2)} CNY`;
-  }
-
   async uploadArchiveFile(
     settlementId: string,
     actorUserId: string,
@@ -442,6 +546,7 @@ export class SettlementService {
     }
 
     let completedInstanceId: string | undefined;
+    let approvalPdfSettlementId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
       const settlement = await tx.settlement.findUnique({
         where: { id: settlementId }
@@ -524,7 +629,8 @@ export class SettlementService {
             approvalInstanceId: instance.id,
             action: "reject_previous",
             actorUserId,
-            comment: input.comment?.trim() || undefined
+            comment: input.comment?.trim() || undefined,
+            metadata: await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)
           }
         });
 
@@ -560,7 +666,8 @@ export class SettlementService {
             approvalInstanceId: instance.id,
             action: "return_to_applicant",
             actorUserId,
-            comment: input.comment?.trim() || undefined
+            comment: input.comment?.trim() || undefined,
+            metadata: await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)
           }
         });
 
@@ -659,13 +766,15 @@ export class SettlementService {
           approvalInstanceId: instance.id,
           action: "approve",
           actorUserId,
-          comment: input.comment?.trim() || undefined
+          comment: input.comment?.trim() || undefined,
+          metadata: await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)
         }
       });
 
       if (flowCompleted) {
         completedInstanceId = instance.id;
       }
+      approvalPdfSettlementId = settlement.id;
 
       await this.audit.record(tx, {
         actorUserId,
@@ -682,6 +791,10 @@ export class SettlementService {
 
       return updated;
     });
+
+    if (approvalPdfSettlementId) {
+      await this.tryRefreshSettlementApprovalPdf(approvalPdfSettlementId, actorUserId);
+    }
 
     if (completedInstanceId) {
       await this.approvalForms
@@ -967,7 +1080,11 @@ export class SettlementService {
         throw new Error("Settlement not found");
       }
 
-      if (!["effective", "partially_paid", "paid"].includes(settlement.status)) {
+      if (
+        !["approved_pending_archive", "pending_archive_confirm", "effective", "partially_paid", "paid"].includes(
+          settlement.status
+        )
+      ) {
         throw new Error(`Cannot generate settlement PDF from status ${settlement.status}`);
       }
 
@@ -983,20 +1100,11 @@ export class SettlementService {
         throw new Error("Settlement PDF archive already exists");
       }
 
-      return settlement;
+      return this.loadSettlementDocumentInput(tx, settlement.id);
     });
-    const buffer = renderSimplePdf([
-      "Settlement Archive",
-      `Settlement Code: ${source.code}`,
-      `Period: ${source.periodLabel}`,
-      `Amount: ${this.formatCents(source.amountCents)}`,
-      `Payable Amount: ${this.formatCents(source.payableAmountCents)}`,
-      `Paid Amount: ${this.formatCents(source.paidAmountCents)}`,
-      `Template: ${templateKey}`,
-      `Generated At: ${new Date().toISOString()}`
-    ]);
+    const buffer = await renderSettlementArchivePdf(source);
     const file = await this.files.uploadPrivateFile({
-      originalName: `${source.code}-${templateKey}.pdf`,
+      originalName: `${source.settlementCode}-${templateKey}.pdf`,
       mimeType: "application/pdf",
       sizeBytes: buffer.length,
       uploadedByUserId: actorUserId,
@@ -1007,7 +1115,7 @@ export class SettlementService {
       const pdfDocument = await tx.pdfDocument.create({
         data: {
           businessType: "settlement",
-          businessId: source.id,
+          businessId: source.settlementId,
           fileId: file.id,
           templateKey
         }
@@ -1015,7 +1123,7 @@ export class SettlementService {
       const archiveRecord = await tx.archiveRecord.create({
         data: {
           businessType: "settlement",
-          businessId: source.id,
+          businessId: source.settlementId,
           fileId: file.id,
           departmentScope
         }
@@ -1025,9 +1133,9 @@ export class SettlementService {
         actorUserId,
         action: "settlement.pdf_archive.generate",
         businessType: "settlement",
-        businessId: source.id,
+        businessId: source.settlementId,
         metadata: {
-          code: source.code,
+          code: source.settlementCode,
           pdfDocumentId: pdfDocument.id,
           archiveRecordId: archiveRecord.id,
           fileId: file.id,
@@ -1038,6 +1146,501 @@ export class SettlementService {
 
       return { pdfDocument, archiveRecord };
     });
+  }
+
+  async exportDraftExcel(settlementId: string, _actorUserId: string) {
+    void _actorUserId;
+
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to export settlement Excel");
+    }
+
+    const source = await this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      if (!["approval_pending", "approval_rejected"].includes(settlement.status)) {
+        throw new Error(`Cannot export draft settlement Excel from status ${settlement.status}`);
+      }
+
+      return this.loadSettlementDocumentInput(tx, settlement.id);
+    });
+
+    return {
+      buffer: await renderSettlementDraftExcel(source),
+      fileName: `${source.settlementCode}-结算单-草稿.xlsx`
+    };
+  }
+
+  async downloadLatestApprovalPdf(settlementId: string, actorUserId: string) {
+    if (!this.prisma || !this.files) {
+      throw new Error("Prisma and file services are required to download settlement approval PDF");
+    }
+
+    let source = await this.loadLatestApprovalPdfSource(settlementId);
+    if (!source.fileId) {
+      await this.assertCanReadLatestApprovalPdfBySettlementId(settlementId, actorUserId);
+      await this.refreshSettlementApprovalPdf(settlementId, actorUserId);
+      source = await this.loadLatestApprovalPdfSource(settlementId);
+    }
+
+    if (!source.fileId) {
+      throw new Error("Settlement approval PDF is not available yet");
+    }
+
+    await this.files.assertCanDownloadFileById(source.fileId, actorUserId);
+    const file = await this.files.getFileBuffer(source.fileId);
+
+    return {
+      buffer: file.buffer,
+      fileName: `${source.settlementCode}-结算审批最新.pdf`
+    };
+  }
+
+  private async loadLatestApprovalPdfSource(settlementId: string): Promise<{
+    settlementCode: string;
+    fileId: string | null;
+  }> {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to load settlement approval PDF");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      const pdfDocument = await tx.pdfDocument.findFirst({
+        where: {
+          businessType: "settlement",
+          businessId: settlement.id,
+          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
+        }
+      });
+
+      return {
+        settlementCode: settlement.code,
+        fileId: pdfDocument?.fileId ?? null
+      };
+    });
+  }
+
+  private async assertCanReadLatestApprovalPdfBySettlementId(
+    settlementId: string,
+    actorUserId: string
+  ): Promise<void> {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to authorize settlement approval PDF");
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const settlement = await tx.settlement.findUnique({
+        where: { id: settlementId },
+        select: { id: true, projectId: true }
+      });
+
+      if (!settlement) {
+        throw new Error("Settlement not found");
+      }
+
+      const instance = await tx.approvalInstance.findFirst({
+        where: {
+          businessType: "settlement",
+          businessId: settlement.id,
+          status: { in: ["in_progress", "approved"] }
+        },
+        orderBy: { updatedAt: "desc" }
+      });
+
+      if (instance?.applicantUserId === actorUserId) {
+        return;
+      }
+
+      if (instance) {
+        const signed = await tx.approvalActionLog.findFirst({
+          where: {
+            approvalInstanceId: instance.id,
+            actorUserId,
+            action: { in: [...SETTLEMENT_SIGNATURE_ACTIONS] }
+          }
+        });
+        if (signed) {
+          return;
+        }
+      }
+
+      const actorRoleKeys = await this.safeLoadActorRoleKeys(tx, actorUserId, settlement.projectId);
+      if (
+        actorRoleKeys.some((roleKey) =>
+          SETTLEMENT_APPROVAL_PDF_ARCHIVE_READ_ROLES.includes(roleKey)
+        )
+      ) {
+        return;
+      }
+
+      const routeRoleKeys = this.roleKeysFromSettlementApprovalNodes(
+        Array.isArray(instance?.frozenNodes)
+          ? (instance.frozenNodes as unknown as SettlementApprovalNode[])
+          : []
+      );
+      if (actorRoleKeys.some((roleKey) => routeRoleKeys.includes(roleKey))) {
+        return;
+      }
+
+      throw new Error("Actor cannot download settlement approval PDF");
+    });
+  }
+
+  private async tryRefreshSettlementApprovalPdf(
+    settlementId: string,
+    actorUserId: string
+  ): Promise<void> {
+    try {
+      await this.refreshSettlementApprovalPdf(settlementId, actorUserId);
+    } catch (error) {
+      await this.recordSettlementApprovalPdfRefreshFailure(settlementId, actorUserId, error).catch(
+        () => undefined
+      );
+    }
+  }
+
+  private async refreshSettlementApprovalPdf(
+    settlementId: string,
+    actorUserId: string
+  ): Promise<void> {
+    if (!this.prisma || !this.files) {
+      return;
+    }
+
+    const source = await this.prisma.$transaction((tx) =>
+      this.loadSettlementDocumentInput(tx, settlementId)
+    );
+    const buffer = await renderSettlementArchivePdf(source);
+    const file = await this.files.uploadPrivateFile({
+      originalName: `${source.settlementCode}-结算审批最新.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: buffer.length,
+      uploadedByUserId: actorUserId,
+      buffer
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.pdfDocument.findFirst({
+        where: {
+          businessType: "settlement",
+          businessId: source.settlementId,
+          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
+        }
+      });
+      const pdfDocument = existing
+        ? await tx.pdfDocument.update({
+            where: { id: existing.id },
+            data: { fileId: file.id }
+          })
+        : await tx.pdfDocument.create({
+            data: {
+              businessType: "settlement",
+              businessId: source.settlementId,
+              fileId: file.id,
+              templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
+            }
+          });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.approval_pdf.refresh",
+        businessType: "settlement",
+        businessId: source.settlementId,
+        metadata: {
+          pdfDocumentId: pdfDocument.id,
+          fileId: file.id,
+          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
+        }
+      });
+    });
+  }
+
+  private async recordSettlementApprovalPdfRefreshFailure(
+    settlementId: string,
+    actorUserId: string,
+    error: unknown
+  ): Promise<void> {
+    if (!this.prisma) {
+      return;
+    }
+
+    await this.prisma.$transaction((tx) =>
+      this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.approval_pdf.refresh_failed",
+        businessType: "settlement",
+        businessId: settlementId,
+        metadata: {
+          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY,
+          errorMessage: error instanceof Error ? error.message : String(error)
+        }
+      })
+    );
+  }
+
+  private async loadSettlementDocumentInput(
+    tx: Prisma.TransactionClient,
+    settlementId: string
+  ): Promise<SettlementDocumentInput> {
+    const settlement = await tx.settlement.findUnique({
+      where: { id: settlementId }
+    });
+
+    if (!settlement) {
+      throw new Error("Settlement not found");
+    }
+
+    const [contract, project, previousSettlements, approvalInstance] = await Promise.all([
+      tx.contract.findUnique({
+        where: { id: settlement.contractId },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          counterparty: true,
+          companyEntityName: true
+        }
+      }),
+      tx.project.findUnique({
+        where: { id: settlement.projectId },
+        select: { id: true, name: true }
+      }),
+      tx.settlement.findMany({
+        where: {
+          contractId: settlement.contractId,
+          id: { not: settlement.id },
+          status: { in: ["effective", "partially_paid", "paid"] }
+        },
+        select: { amountCents: true }
+      }),
+      tx.approvalInstance.findFirst({
+        where: {
+          businessType: "settlement",
+          businessId: settlement.id,
+          flowType: "settlement.approve"
+        }
+      })
+    ]);
+
+    if (!contract) {
+      throw new Error("Settlement contract not found");
+    }
+
+    if (!project) {
+      throw new Error("Settlement project not found");
+    }
+
+    const actionLogs = approvalInstance
+      ? await tx.approvalActionLog.findMany({
+          where: { approvalInstanceId: approvalInstance.id },
+          orderBy: { createdAt: "asc" }
+        })
+      : [];
+
+    return {
+      settlementId: settlement.id,
+      settlementCode: settlement.code,
+      periodLabel: settlement.periodLabel,
+      status: settlement.status,
+      projectName: project.name,
+      contractCode: contract.code ?? contract.id,
+      contractName: contract.name,
+      counterparty: contract.counterparty,
+      companyEntityName: contract.companyEntityName ?? "我方主体",
+      amountCents: settlement.amountCents,
+      finalCumulativeAmountCents: settlement.finalCumulativeAmountCents,
+      payableAmountCents: settlement.payableAmountCents,
+      previousEffectiveSettlementCents: previousSettlements.reduce(
+        (total, row) => total + row.amountCents,
+        0
+      ),
+      isFinal: settlement.isFinal,
+      generatedAt: new Date(),
+      approvalRows: await this.buildSettlementApprovalRows(
+        tx,
+        settlement.projectId,
+        Array.isArray(approvalInstance?.frozenNodes)
+          ? (approvalInstance.frozenNodes as unknown as SettlementApprovalNode[])
+          : [],
+        actionLogs
+      )
+    };
+  }
+
+  private async buildSettlementApprovalRows(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    frozenNodes: SettlementApprovalNode[],
+    actionLogs: SettlementApprovalActionLogSnapshot[]
+  ): Promise<SettlementDocumentInput["approvalRows"]> {
+    const signatureLogs = actionLogs.filter((log) =>
+      SETTLEMENT_SIGNATURE_ACTIONS.includes(
+        log.action as (typeof SETTLEMENT_SIGNATURE_ACTIONS)[number]
+      )
+    );
+    if (!signatureLogs.length) {
+      return [];
+    }
+
+    const actorIds = Array.from(new Set(signatureLogs.map((log) => log.actorUserId)));
+    const users = (tx as unknown as UserLookupClient).user
+      ? await (tx as unknown as UserLookupClient).user!.findMany({
+          where: { id: { in: actorIds } }
+        })
+      : [];
+    const userById = new Map(users.map((user) => [user.id, user]));
+
+    const roleKeysByActor = new Map<string, RoleKey[]>();
+    for (const actorId of actorIds) {
+      roleKeysByActor.set(actorId, await this.safeLoadActorRoleKeys(tx, actorId, projectId));
+    }
+
+    const signatureByActor = new Map<string, Buffer | null>();
+    if (this.files) {
+      for (const actorId of actorIds) {
+        const signatureFileId = userById.get(actorId)?.signatureFileId;
+        if (!signatureFileId) {
+          signatureByActor.set(actorId, null);
+          continue;
+        }
+        const buffer = await this.files
+          .getFileBuffer(signatureFileId)
+          .then((result) => result.buffer)
+          .catch(() => null);
+        signatureByActor.set(actorId, isEmbeddableImage(buffer) ? buffer : null);
+      }
+    }
+
+    const approvedRoleKeysByNode = frozenNodes.map(() => new Set<RoleKey>());
+    let nodeIndex = 0;
+
+    return signatureLogs.map((log) => {
+      const metadata = this.approvalLogMetadataSnapshot(log.metadata);
+      const node = frozenNodes[nodeIndex] ?? frozenNodes.at(-1);
+      const actorRoleKeys = roleKeysByActor.get(log.actorUserId) ?? [];
+      const roleKey = node
+        ? this.resolveApprovalLogRoleKey(node, log.actorUserId, actorRoleKeys)
+        : undefined;
+      const roleName = metadata.roleName ?? (roleKey
+        ? roleLabel(roleKey)
+        : node?.roleKeys.map(roleLabel).join("、") ?? "");
+
+      if (log.action === "approve" && node) {
+        const completedRoleKey = metadata.roleKey ?? roleKey;
+        if (completedRoleKey) {
+          approvedRoleKeysByNode[nodeIndex].add(completedRoleKey);
+        }
+        const nodeCompleted =
+          node.mode === "any" ||
+          node.roleKeys.every((requiredRole) =>
+            approvedRoleKeysByNode[nodeIndex].has(requiredRole)
+          );
+        if (nodeCompleted) {
+          nodeIndex += 1;
+        }
+      } else if (log.action === "reject_previous") {
+        nodeIndex = Math.max(nodeIndex - 1, 0);
+        approvedRoleKeysByNode[nodeIndex]?.clear();
+      }
+
+      const user = userById.get(log.actorUserId);
+      return {
+        nodeName: metadata.nodeName ?? node?.name ?? log.action,
+        roleName,
+        approverName: metadata.approverName ?? user?.name ?? log.actorUserId,
+        comment: log.comment ?? "",
+        approvedAt: log.createdAt,
+        signatureImage: signatureByActor.get(log.actorUserId) ?? null
+      };
+    });
+  }
+
+  private async approvalLogMetadata(
+    tx: Prisma.TransactionClient,
+    node: SettlementApprovalNode,
+    actorUserId: string,
+    roleKey: RoleKey
+  ): Promise<Prisma.InputJsonValue> {
+    const user = (tx as unknown as UserLookupClient).user
+      ? await (tx as unknown as UserLookupClient).user!.findMany({
+          where: { id: { in: [actorUserId] } }
+        })
+      : [];
+
+    return {
+      nodeName: node.name,
+      roleKey,
+      roleName: roleLabel(roleKey),
+      approverName: user[0]?.name ?? actorUserId
+    };
+  }
+
+  private approvalLogMetadataSnapshot(
+    raw: unknown
+  ): SettlementApprovalLogMetadataSnapshot {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return {};
+    }
+
+    const value = raw as Record<string, unknown>;
+    return {
+      nodeName: typeof value.nodeName === "string" ? value.nodeName : undefined,
+      roleKey: typeof value.roleKey === "string" ? (value.roleKey as RoleKey) : undefined,
+      roleName: typeof value.roleName === "string" ? value.roleName : undefined,
+      approverName: typeof value.approverName === "string" ? value.approverName : undefined
+    };
+  }
+
+  private async safeLoadActorRoleKeys(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ): Promise<RoleKey[]> {
+    const maybeTx = tx as unknown as Partial<
+      Pick<Prisma.TransactionClient, "userPosition" | "projectMember" | "position">
+    >;
+    if (!maybeTx.userPosition || !maybeTx.projectMember || !maybeTx.position) {
+      return [];
+    }
+
+    return this.loadActorRoleKeys(tx, actorUserId, projectId);
+  }
+
+  private resolveApprovalLogRoleKey(
+    node: SettlementApprovalNode,
+    actorUserId: string,
+    actorRoleKeys: RoleKey[]
+  ): RoleKey | undefined {
+    const assignmentRole = node.assignments?.find(
+      (assignment) => assignment.toUserId === actorUserId
+    )?.fromRoleKey;
+    return (
+      assignmentRole ??
+      node.roleKeys.find((role) => actorRoleKeys.includes(role)) ??
+      node.roleKeys[0]
+    );
+  }
+
+  private roleKeysFromSettlementApprovalNodes(nodes: SettlementApprovalNode[]): RoleKey[] {
+    return Array.from(
+      new Set(
+        nodes.flatMap((node) => (Array.isArray(node.roleKeys) ? node.roleKeys : []))
+      )
+    );
   }
 
   private settlementApprovalNodesFor(contract: {

@@ -16,14 +16,15 @@ describe("SettlementController authorization wiring", () => {
     ["delegateApproval", "settlement.approve"],
     ["uploadArchiveFile", "settlement.archive.upload"],
     ["confirmArchiveFile", "settlement.archive.confirm"],
-    ["generatePdfArchive", "settlement.archive.upload"]
+    ["generatePdfArchive", "settlement.archive.upload"],
+    ["downloadDraftExcel", "settlement.archive.upload"]
   ])("guards %s with the %s action", (method, action) => {
     const handler = (SettlementController.prototype as unknown as Record<string, object>)[method];
 
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(action);
   });
 
-  it.each([["withdrawApproval"], ["remindApproval"]])(
+  it.each([["withdrawApproval"], ["remindApproval"], ["downloadLatestApprovalPdf"]])(
     "allows the approval applicant to %s without project approval action metadata",
     (method) => {
       const handler = (SettlementController.prototype as unknown as Record<string, object>)[method];

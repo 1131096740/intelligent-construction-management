@@ -36,7 +36,6 @@ const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "finance_staff",
   "finance_director"
 ];
-
 const PAYMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["finance_staff", "finance_director"];
 const UPSTREAM_SETTLEMENT_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = ["budget_staff", "budget_director"];
 const SETTLEMENT_EXCEPTION_QUOTA_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
@@ -60,6 +59,30 @@ const PROJECT_EXPENSE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "general_manager"
 ];
 const ALLOWED_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf", ".png", ".jpg", ".jpeg"]);
+
+function roleKeysFromApprovalFrozenNodes(frozenNodes: unknown): RoleKey[] {
+  if (!Array.isArray(frozenNodes)) {
+    return [];
+  }
+
+  const roleKeys = new Set<RoleKey>();
+  frozenNodes.forEach((node) => {
+    if (!node || typeof node !== "object") {
+      return;
+    }
+    const nodeRoleKeys = (node as { roleKeys?: unknown }).roleKeys;
+    if (!Array.isArray(nodeRoleKeys)) {
+      return;
+    }
+    nodeRoleKeys.forEach((roleKey) => {
+      if (typeof roleKey === "string" && roleKey.trim()) {
+        roleKeys.add(roleKey as RoleKey);
+      }
+    });
+  });
+
+  return Array.from(roleKeys);
+}
 
 @Injectable()
 export class PrivateFileStorage {
@@ -626,16 +649,20 @@ export class FileService {
       return;
     }
 
-    // 审批单 PDF：申请人、任一签批人，或该项目的归档可读岗位均可下载。
+    // 审批 PDF：申请人、任一签批人，或该项目的归档可读岗位均可下载；
+    // 结算审批中的 latest PDF 还允许审批链相关岗位读取，供后续审批人审阅。
     const approvalForm = await tx.pdfDocument.findFirst({
-      where: { fileId: file.id, templateKey: "approval_form" }
+      where: { fileId: file.id, templateKey: { in: ["approval_form", "settlement_approval_latest"] } }
     });
     if (approvalForm) {
       const instance = await tx.approvalInstance.findFirst({
         where: {
           businessType: approvalForm.businessType,
           businessId: approvalForm.businessId,
-          status: "approved"
+          status:
+            approvalForm.templateKey === "approval_form"
+              ? "approved"
+              : { in: ["in_progress", "approved"] }
         },
         orderBy: { updatedAt: "desc" }
       });
@@ -646,7 +673,11 @@ export class FileService {
         }
 
         const signed = await tx.approvalActionLog.findFirst({
-          where: { approvalInstanceId: instance.id, actorUserId }
+          where: {
+            approvalInstanceId: instance.id,
+            actorUserId,
+            action: { in: ["approve", "reject_previous", "return_to_applicant"] }
+          }
         });
         if (signed) {
           return;
@@ -661,6 +692,19 @@ export class FileService {
       if (
         projectId &&
         (await this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))
+      ) {
+        return;
+      }
+      if (
+        projectId &&
+        approvalForm.templateKey === "settlement_approval_latest" &&
+        instance &&
+        (await this.hasProjectRole(
+          tx,
+          actorUserId,
+          projectId,
+          roleKeysFromApprovalFrozenNodes(instance.frozenNodes)
+        ))
       ) {
         return;
       }

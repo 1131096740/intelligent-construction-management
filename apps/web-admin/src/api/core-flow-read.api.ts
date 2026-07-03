@@ -879,6 +879,26 @@ export async function downloadApprovalForm(businessType: string, businessId: str
   saveBlob(blob, fileName);
 }
 
+export async function downloadSettlementDraftExcel(settlementId: string): Promise<void> {
+  const response = await apiFetch(`/settlements/${settlementId}/draft-excel`);
+  await ensureOk(response, "下载结算草稿Excel失败");
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : `${settlementId}-结算单-草稿.xlsx`;
+  saveBlob(blob, fileName);
+}
+
+export async function downloadSettlementLatestApprovalPdf(settlementId: string): Promise<void> {
+  const response = await apiFetch(`/settlements/${settlementId}/approval-pdf/latest`);
+  await ensureOk(response, "下载结算审批PDF失败");
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : `${settlementId}-结算审批最新.pdf`;
+  saveBlob(blob, fileName);
+}
+
 export interface CompanyEntityReadModel {
   id: string;
   name: string;

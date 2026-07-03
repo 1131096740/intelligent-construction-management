@@ -36,6 +36,8 @@ import {
   confirmSettlementArchive,
   delegateContractApproval,
   delegatePaymentApproval,
+  downloadSettlementLatestApprovalPdf,
+  downloadSettlementDraftExcel,
   fetchActiveContractNumberRules,
   generateContractPdfArchive,
   generatePaymentPdfArchive,
@@ -644,6 +646,90 @@ describe("core flow read API client", () => {
         fileId: "file-contract-archive"
       })
     );
+  });
+
+  it("downloads settlement draft Excel as a blob", async () => {
+    const click = vi.fn();
+    const anchor = {
+      href: "",
+      download: "",
+      click,
+      remove: vi.fn()
+    } as unknown as HTMLAnchorElement;
+    const appendChild = vi.fn().mockReturnValue(anchor);
+    const createElement = vi.fn().mockReturnValue(anchor);
+    const createObjectUrl = vi.fn().mockReturnValue("blob:download");
+    const revokeObjectUrl = vi.fn();
+    vi.stubGlobal("document", {
+      createElement,
+      body: { appendChild }
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: createObjectUrl,
+      revokeObjectURL: revokeObjectUrl
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["xlsx"]),
+      headers: new Headers({
+        "Content-Disposition":
+          "attachment; filename=\"draft.xlsx\"; filename*=UTF-8''JS-2026-019-%E7%BB%93%E7%AE%97%E5%8D%95-%E8%8D%89%E7%A8%BF.xlsx"
+      })
+    } as Response);
+
+    await downloadSettlementDraftExcel("settlement-1");
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/settlements/settlement-1/draft-excel");
+    expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
+    expect(anchor.download).toBe("JS-2026-019-结算单-草稿.xlsx");
+    expect(click).toHaveBeenCalled();
+    expect(createObjectUrl).toHaveBeenCalled();
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:download");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("downloads the latest settlement approval PDF as a blob", async () => {
+    const click = vi.fn();
+    const anchor = {
+      href: "",
+      download: "",
+      click,
+      remove: vi.fn()
+    } as unknown as HTMLAnchorElement;
+    const appendChild = vi.fn().mockReturnValue(anchor);
+    const createElement = vi.fn().mockReturnValue(anchor);
+    const createObjectUrl = vi.fn().mockReturnValue("blob:download");
+    const revokeObjectUrl = vi.fn();
+    vi.stubGlobal("document", {
+      createElement,
+      body: { appendChild }
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: createObjectUrl,
+      revokeObjectURL: revokeObjectUrl
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["pdf"]),
+      headers: new Headers({
+        "Content-Disposition":
+          "attachment; filename*=UTF-8''JS-2026-019-%E7%BB%93%E7%AE%97%E5%AE%A1%E6%89%B9%E6%9C%80%E6%96%B0.pdf"
+      })
+    } as Response);
+
+    await downloadSettlementLatestApprovalPdf("settlement-1");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/settlements/settlement-1/approval-pdf/latest"
+    );
+    expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
+    expect(anchor.download).toBe("JS-2026-019-结算审批最新.pdf");
+    expect(click).toHaveBeenCalled();
+    expect(createObjectUrl).toHaveBeenCalled();
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:download");
+
+    vi.unstubAllGlobals();
   });
 
   it("posts contract and settlement approval actions to the backend", async () => {

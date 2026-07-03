@@ -172,20 +172,21 @@ model ContractArchiveFile {
 }
 
 model Settlement {
-  id                    String   @id @default(uuid())
-  projectId             String
-  contractId            String
-  contractVersionId     String
-  paymentTermsVersionId String
-  code                  String   @unique
-  periodLabel           String
-  status                String
-  amountCents           Int
-  payableAmountCents    Int
-  paidAmountCents       Int      @default(0)
-  isFinal               Boolean  @default(false)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                         String   @id @default(uuid())
+  projectId                  String
+  contractId                 String
+  contractVersionId          String
+  paymentTermsVersionId      String
+  code                       String   @unique
+  periodLabel                String
+  status                     String
+  amountCents                Int
+  finalCumulativeAmountCents Int?
+  payableAmountCents         Int
+  paidAmountCents            Int      @default(0)
+  isFinal                    Boolean  @default(false)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 }
 
 model SettlementArchiveFile {
@@ -539,6 +540,7 @@ model ApprovalActionLog {
   action             String
   actorUserId        String
   comment            String?
+  metadata           Json?
   createdAt          DateTime @default(now())
 }
 
