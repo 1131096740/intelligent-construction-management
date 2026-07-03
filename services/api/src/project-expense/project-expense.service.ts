@@ -4,6 +4,7 @@ import type { RoleKey } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
 import { CreateProjectExpenseRequestDto } from "./dto/create-project-expense-request.dto";
 import { RecordProjectExpenseExecutionDto } from "./dto/record-project-expense-execution.dto";
 import { RecordProjectExpenseFinanceRecordDto } from "./dto/record-project-expense-finance-record.dto";
@@ -59,7 +60,7 @@ const CASH_POOL_STATUSES = [
   "paid"
 ] as const;
 const ACTIVE_FINANCING_USAGE_STATUSES = ["occupied", "used"] as const;
-const EXPENSE_TYPES = ["sporadic_payment", "loan_reserve"] as const;
+const EXPENSE_TYPES = ["sporadic_payment", "loan_reserve", "comprehensive_expense"] as const;
 const EXPENSE_SUBTYPES = [
   "sporadic_material",
   "sporadic_machinery",
@@ -68,7 +69,10 @@ const EXPENSE_SUBTYPES = [
   "other_sporadic",
   "employee_loan",
   "owner_loan",
-  "project_reserve"
+  "project_reserve",
+  "travel",
+  "entertainment",
+  "reimbursement"
 ] as const;
 const PAYMENT_METHODS = ["cash", "wechat", "alipay", "bank_transfer", "other"] as const;
 const SPORADIC_PAYMENT_SUBTYPES = [
@@ -79,6 +83,7 @@ const SPORADIC_PAYMENT_SUBTYPES = [
   "other_sporadic"
 ] as const;
 const LOAN_RESERVE_SUBTYPES = ["employee_loan", "owner_loan", "project_reserve"] as const;
+const COMPREHENSIVE_EXPENSE_SUBTYPES = ["travel", "entertainment", "reimbursement"] as const;
 const MAX_INT_CENTS = 2_147_483_647;
 
 @Injectable()
@@ -88,7 +93,9 @@ export class ProjectExpenseService {
     @Optional()
     private readonly audit: AuditService = new AuditService(),
     @Optional()
-    private readonly auth?: AuthService
+    private readonly auth?: AuthService,
+    @Optional()
+    private readonly files?: FileService
   ) {}
 
   async list(projectId: string) {
@@ -116,6 +123,7 @@ export class ProjectExpenseService {
         paidAmountCents: true,
         paymentMethod: true,
         counterpartyName: true,
+        attachmentFileId: true,
         status: true,
         createdAt: true,
         updatedAt: true
@@ -123,8 +131,9 @@ export class ProjectExpenseService {
     });
 
     return {
-      rows: rows.map((row) => ({
+      rows: rows.map(({ attachmentFileId, ...row }) => ({
         ...row,
+        hasAttachment: Boolean(attachmentFileId),
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString()
       })),
@@ -140,6 +149,37 @@ export class ProjectExpenseService {
         totalPaidCents: sumNumbers(rows.map((row) => row.paidAmountCents))
       }
     };
+  }
+
+  async createAttachmentDownloadTicket(
+    projectId: string,
+    expenseRequestId: string,
+    actorUserId: string,
+    confirmationPassword: string | undefined
+  ) {
+    if (!confirmationPassword?.trim()) {
+      throw new BadRequestException("附件下载密码必填");
+    }
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm project expense attachment download");
+    }
+    if (!this.files) {
+      throw new Error("File service is required to create project expense attachment download ticket");
+    }
+
+    const expense = await this.prisma.projectExpenseRequest.findFirst({
+      where: { id: expenseRequestId, projectId, voidedAt: null },
+      select: { attachmentFileId: true }
+    });
+    if (!expense) {
+      throw new NotFoundException("项目支出申请不存在");
+    }
+    if (!expense.attachmentFileId) {
+      throw new BadRequestException("项目支出申请未上传附件");
+    }
+
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+    return this.files.createDownloadTicket(expense.attachmentFileId, { actorUserId });
   }
 
   async create(projectId: string, actorUserId: string, input: CreateProjectExpenseRequestDto) {
@@ -479,6 +519,9 @@ export class ProjectExpenseService {
     const amountCents = positiveInteger(input.amountCents, "实付金额必须大于零");
     const voucherFileId = requiredTrimmed(input.voucherFileId, "实付凭证必填");
     const paidAt = parseDate(input.paidAt, "实付日期无效");
+    if (paidAt.getTime() > Date.now()) {
+      throw new BadRequestException("项目支出实付日期不能晚于当前时间");
+    }
     const confirmationPassword = requiredTrimmed(input.confirmationPassword, "实付登记需要当前登录密码确认");
     if (!this.auth) {
       throw new Error("Auth service is required to confirm project expense execution");
@@ -563,6 +606,12 @@ export class ProjectExpenseService {
   ) {
     const amountCents = positiveInteger(input.amountCents, "财务记录金额必须大于零");
     const occurredAt = parseDate(input.occurredAt, "财务记录日期无效");
+    const confirmationPassword = requiredTrimmed(input.confirmationPassword, "财务入账需要当前登录密码确认");
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm project expense finance record");
+    }
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+
     return this.prisma.$transaction(async (tx) => {
       const request = await this.lockExpenseRequest(tx, projectId, expenseRequestId);
       if (!request) {
@@ -1018,7 +1067,11 @@ function assertExpenseSubtypeMatchesType(
   expenseSubtype: (typeof EXPENSE_SUBTYPES)[number]
 ) {
   const allowedSubtypes =
-    expenseType === "sporadic_payment" ? SPORADIC_PAYMENT_SUBTYPES : LOAN_RESERVE_SUBTYPES;
+    expenseType === "sporadic_payment"
+      ? SPORADIC_PAYMENT_SUBTYPES
+      : expenseType === "loan_reserve"
+        ? LOAN_RESERVE_SUBTYPES
+        : COMPREHENSIVE_EXPENSE_SUBTYPES;
   if (!(allowedSubtypes as readonly string[]).includes(expenseSubtype)) {
     throw new BadRequestException("项目支出类型与明细类型不匹配");
   }

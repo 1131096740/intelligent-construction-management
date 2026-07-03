@@ -1004,6 +1004,131 @@ describe("FileService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("allows project expense approvers to create download tickets for request attachments", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "综合费用附件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "employee-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectExpenseExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          projectId: "project-1",
+          applicantUserId: "employee-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "budget_director" }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "budget-director-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=budget-director-1");
+    expect(tx.projectExpenseRequest.findFirst).toHaveBeenCalledWith({
+      where: { attachmentFileId: "file-1", voidedAt: null },
+      select: { projectId: true, applicantUserId: true }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "budget-director-1",
+      action: "file.download.ticket",
+      businessType: "file_object",
+      businessId: "file-1",
+      metadata: {
+        expiresAt: ticket.expiresAt
+      }
+    });
+  });
+
+  it("allows finance users to create download tickets for project expense execution vouchers", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "综合费用实付凭证.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "cashier-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectExpenseExecution: {
+        findFirst: jest.fn().mockResolvedValue({
+          projectId: "project-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
+    expect(tx.projectExpenseExecution.findFirst).toHaveBeenCalledWith({
+      where: { voucherFileId: "file-1" },
+      select: { projectId: true }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "finance-1",
+      action: "file.download.ticket",
+      businessType: "file_object",
+      businessId: "file-1",
+      metadata: {
+        expiresAt: ticket.expiresAt
+      }
+    });
+  });
+
   it("allows archive-readable contract roles to download active project owner contract files", async () => {
     const tx = {
       fileObject: {

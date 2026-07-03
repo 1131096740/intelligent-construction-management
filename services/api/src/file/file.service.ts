@@ -53,6 +53,10 @@ const PROJECT_FINANCING_QUOTA_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
 ];
 const PROJECT_EXPENSE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "project_manager",
+  "contract_director",
+  "budget_director",
+  "material_director",
+  "engineering_director",
   "comprehensive_director",
   "finance_director",
   "chairman",

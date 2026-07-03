@@ -390,7 +390,9 @@
                 <th>已实付</th>
                 <th>付款方式</th>
                 <th>状态</th>
+                <th>附件</th>
                 <th>提交时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody v-if="projectExpenseRows.length">
@@ -406,14 +408,24 @@
                 <td>{{ formatCents(row.paidAmountCents) }}</td>
                 <td>{{ expensePaymentMethodLabel(row.paymentMethod) }}</td>
                 <td>{{ expenseStatusLabel(row.status) }}</td>
+                <td>{{ row.hasAttachment ? "已上传" : "未上传" }}</td>
                 <td>{{ formatDateTime(row.createdAt) }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="table-action"
+                    @click="selectExpenseRow(row)"
+                  >
+                    处理
+                  </button>
+                </td>
               </tr>
             </tbody>
             <tbody v-else>
               <tr>
                 <td
                   class="empty-cell"
-                  colspan="9"
+                  colspan="11"
                 >
                   暂无支出明细
                 </td>
@@ -421,6 +433,157 @@
             </tbody>
           </table>
         </div>
+
+        <section
+          v-if="selectedExpenseRow"
+          class="expense-action-panel"
+        >
+          <div class="expense-action-head">
+            <div>
+              <h3>处理支出单：{{ selectedExpenseRow.code }}</h3>
+              <p>
+                {{ expenseTypeLabel(selectedExpenseRow.expenseType) }} ·
+                {{ expenseSubtypeLabel(selectedExpenseRow.expenseSubtype) }} ·
+                {{ expenseStatusLabel(selectedExpenseRow.status) }}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="secondary-button"
+              @click="clearSelectedExpenseRow"
+            >
+              取消选择
+            </button>
+          </div>
+          <div class="receipt-form">
+            <label>
+              <span>审批意见</span>
+              <input v-model.trim="expenseActionForm.approvalComment">
+            </label>
+            <label>
+              <span>终审批准金额(元)</span>
+              <input
+                v-model.trim="expenseActionForm.approvedAmountYuan"
+                inputmode="decimal"
+                placeholder="不填则按申请金额"
+              >
+            </label>
+            <label>
+              <span>附件下载密码</span>
+              <input
+                v-model="expenseActionForm.downloadPassword"
+                type="password"
+                autocomplete="current-password"
+              >
+            </label>
+            <label>
+              <span>实付日期</span>
+              <input
+                v-model="expenseActionForm.executionPaidAt"
+                type="date"
+              >
+            </label>
+            <label>
+              <span>实付金额(元)</span>
+              <input
+                v-model.trim="expenseActionForm.executionAmountYuan"
+                inputmode="decimal"
+                placeholder="0.00"
+              >
+            </label>
+            <label>
+              <span>实付凭证</span>
+              <input
+                ref="expenseExecutionVoucherInput"
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                @change="selectExpenseExecutionVoucher"
+              >
+            </label>
+            <label>
+              <span>实付确认密码</span>
+              <input
+                v-model="expenseActionForm.executionPassword"
+                type="password"
+                autocomplete="current-password"
+              >
+            </label>
+            <label>
+              <span>入账日期</span>
+              <input
+                v-model="expenseActionForm.financeOccurredAt"
+                type="date"
+              >
+            </label>
+            <label>
+              <span>入账金额(元)</span>
+              <input
+                v-model.trim="expenseActionForm.financeAmountYuan"
+                inputmode="decimal"
+                placeholder="0.00"
+              >
+            </label>
+            <label>
+              <span>入账确认密码</span>
+              <input
+                v-model="expenseActionForm.financePassword"
+                type="password"
+                autocomplete="current-password"
+              >
+            </label>
+          </div>
+          <div class="expense-action-buttons">
+            <button
+              v-if="canReviewExpense(selectedExpenseRow)"
+              type="button"
+              :disabled="expenseActionBusy !== ''"
+              @click="submitExpenseReview('approve')"
+            >
+              审批通过
+            </button>
+            <button
+              v-if="canReviewExpense(selectedExpenseRow)"
+              type="button"
+              class="danger-button"
+              :disabled="expenseActionBusy !== ''"
+              @click="submitExpenseReview('reject')"
+            >
+              审批驳回
+            </button>
+            <button
+              v-if="canRecordExpenseExecution(selectedExpenseRow)"
+              type="button"
+              :disabled="expenseActionBusy !== ''"
+              @click="submitExpenseExecution"
+            >
+              登记实付
+            </button>
+            <button
+              v-if="canRecordExpenseFinance(selectedExpenseRow)"
+              type="button"
+              :disabled="expenseActionBusy !== ''"
+              @click="submitExpenseFinance"
+            >
+              财务入账
+            </button>
+            <button
+              v-if="selectedExpenseRow.hasAttachment"
+              type="button"
+              class="secondary-button"
+              :disabled="expenseActionBusy !== ''"
+              @click="downloadExpenseAttachment"
+            >
+              下载申请附件
+            </button>
+          </div>
+          <div
+            v-if="expenseActionMessage"
+            class="receipt-message"
+            :class="expenseActionMessageTone"
+          >
+            {{ expenseActionMessage }}
+          </div>
+        </section>
       </section>
 
       <section class="gap-panel">
@@ -442,11 +605,15 @@
 import { computed, onMounted, ref } from "vue";
 import {
   createProjectExpenseRequest,
+  downloadProjectExpenseAttachment,
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
+  recordProjectExpenseExecution,
+  recordProjectExpenseFinance,
   recordProjectProxyPayment,
   recordProjectReceipt,
+  reviewProjectExpenseApproval,
   uploadPrivateFile,
   type ProjectExpensePaymentMethod,
   type ProjectExpenseRequestListReadModel,
@@ -455,6 +622,14 @@ import {
   type ProjectOperatingOverviewReadModel,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
+import {
+  expensePaymentMethodLabel,
+  expensePaymentMethodOptions,
+  expenseSubtypeLabel,
+  expenseTypeLabel,
+  expenseTypeOptions,
+  subtypeOptionsFor
+} from "./project-expense.config";
 
 type ReceiptSourceType = "general_contractor_payment" | "owner_direct_payment" | "other";
 type ProxyPaymentType = "material" | "equipment" | "labor" | "professional_subcontract" | "other";
@@ -498,6 +673,19 @@ interface ProjectExpenseFormState {
   attachmentFile: File | null;
 }
 
+interface ProjectExpenseActionFormState {
+  approvalComment: string;
+  approvedAmountYuan: string;
+  executionAmountYuan: string;
+  executionPaidAt: string;
+  executionVoucherFile: File | null;
+  executionPassword: string;
+  financeAmountYuan: string;
+  financeOccurredAt: string;
+  financePassword: string;
+  downloadPassword: string;
+}
+
 const projects = ref<ProjectOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
@@ -519,35 +707,13 @@ const expenseSubmitting = ref(false);
 const expenseMessage = ref("");
 const expenseMessageTone = ref<"success" | "danger">("success");
 const expenseAttachmentInput = ref<HTMLInputElement | null>(null);
-
-const expenseTypeOptions: Array<{ value: ProjectExpenseType; label: string }> = [
-  { value: "sporadic_payment", label: "零星付款" },
-  { value: "loan_reserve", label: "借款/备用金" }
-];
-
-const sporadicSubtypeOptions: Array<{ value: ProjectExpenseSubtype; label: string }> = [
-  { value: "sporadic_material", label: "零星材料" },
-  { value: "sporadic_machinery", label: "零星机械" },
-  { value: "sporadic_labor", label: "零星用工" },
-  { value: "temporary_service", label: "临时服务" },
-  { value: "other_sporadic", label: "其他零星" }
-];
-
-const loanReserveSubtypeOptions: Array<{ value: ProjectExpenseSubtype; label: string }> = [
-  { value: "employee_loan", label: "员工借款" },
-  { value: "owner_loan", label: "老板借款" },
-  { value: "project_reserve", label: "项目备用金" }
-];
-
-const expensePaymentMethodOptions: Array<{ value: ProjectExpensePaymentMethod; label: string }> = [
-  { value: "cash", label: "现金" },
-  { value: "wechat", label: "微信" },
-  { value: "alipay", label: "支付宝" },
-  { value: "bank_transfer", label: "网银转账" },
-  { value: "other", label: "其他" }
-];
-
 const expenseForm = ref<ProjectExpenseFormState>(createProjectExpenseForm());
+const selectedExpenseRow = ref<ProjectExpenseRow | null>(null);
+const expenseActionForm = ref<ProjectExpenseActionFormState>(createProjectExpenseActionForm());
+const expenseExecutionVoucherInput = ref<HTMLInputElement | null>(null);
+const expenseActionBusy = ref("");
+const expenseActionMessage = ref("");
+const expenseActionMessageTone = ref<"success" | "danger">("success");
 
 const summaryItems = computed(() => {
   const counts = overview.value?.counts ?? { contracts: 0, settlements: 0, payments: 0 };
@@ -619,13 +785,16 @@ async function loadProjects() {
 
 async function loadOverview() {
   const projectId = selectedProjectId.value;
+  const selectedExpenseId = selectedExpenseRow.value?.id ?? "";
   overview.value = null;
   projectExpenses.value = null;
   receiptMessage.value = "";
   proxyMessage.value = "";
   expenseMessage.value = "";
+  expenseActionMessage.value = "";
   if (!projectId) {
     overview.value = null;
+    selectedExpenseRow.value = null;
     return;
   }
 
@@ -639,10 +808,14 @@ async function loadOverview() {
     if (selectedProjectId.value === projectId) {
       overview.value = nextOverview;
       projectExpenses.value = nextExpenses;
+      selectedExpenseRow.value = selectedExpenseId
+        ? nextExpenses.rows.find((row) => row.id === selectedExpenseId) ?? null
+        : null;
     }
   } catch (error) {
     if (selectedProjectId.value === projectId) {
       overview.value = null;
+      selectedExpenseRow.value = null;
       message.value = error instanceof Error ? error.message : "加载项目经营数据失败";
     }
   } finally {
@@ -835,6 +1008,24 @@ function createProjectExpenseForm(
   };
 }
 
+function createProjectExpenseActionForm(row?: ProjectExpenseRow): ProjectExpenseActionFormState {
+  const remainingCents = row
+    ? Math.max((row.approvedAmountCents ?? row.requestedAmountCents) - row.paidAmountCents, 0)
+    : 0;
+  return {
+    approvalComment: "",
+    approvedAmountYuan: "",
+    executionAmountYuan: remainingCents > 0 ? centsToYuanInput(remainingCents) : "",
+    executionPaidAt: todayText(),
+    executionVoucherFile: null,
+    executionPassword: "",
+    financeAmountYuan: "",
+    financeOccurredAt: todayText(),
+    financePassword: "",
+    downloadPassword: ""
+  };
+}
+
 function selectReceiptVoucher(event: Event) {
   const input = event.target as HTMLInputElement;
   receiptForm.value.voucherFile = input.files?.[0] ?? null;
@@ -850,30 +1041,31 @@ function selectExpenseAttachment(event: Event) {
   expenseForm.value.attachmentFile = input.files?.[0] ?? null;
 }
 
+function selectExpenseExecutionVoucher(event: Event) {
+  const input = event.target as HTMLInputElement;
+  expenseActionForm.value.executionVoucherFile = input.files?.[0] ?? null;
+}
+
+function selectExpenseRow(row: ProjectExpenseRow) {
+  selectedExpenseRow.value = row;
+  expenseActionForm.value = createProjectExpenseActionForm(row);
+  expenseActionMessage.value = "";
+  if (expenseExecutionVoucherInput.value) {
+    expenseExecutionVoucherInput.value.value = "";
+  }
+}
+
+function clearSelectedExpenseRow() {
+  selectedExpenseRow.value = null;
+  expenseActionForm.value = createProjectExpenseActionForm();
+  expenseActionMessage.value = "";
+}
+
 function syncExpenseSubtype() {
   const options = subtypeOptionsFor(expenseForm.value.expenseType);
   if (!options.some((option) => option.value === expenseForm.value.expenseSubtype)) {
     expenseForm.value.expenseSubtype = options[0].value;
   }
-}
-
-function subtypeOptionsFor(expenseType: ProjectExpenseType) {
-  return expenseType === "sporadic_payment" ? sporadicSubtypeOptions : loanReserveSubtypeOptions;
-}
-
-function expenseTypeLabel(value: ProjectExpenseType) {
-  return expenseTypeOptions.find((option) => option.value === value)?.label ?? value;
-}
-
-function expenseSubtypeLabel(value: ProjectExpenseSubtype) {
-  return (
-    [...sporadicSubtypeOptions, ...loanReserveSubtypeOptions].find((option) => option.value === value)
-      ?.label ?? value
-  );
-}
-
-function expensePaymentMethodLabel(value: ProjectExpensePaymentMethod) {
-  return expensePaymentMethodOptions.find((option) => option.value === value)?.label ?? value;
 }
 
 function expenseStatusLabel(status: string) {
@@ -888,6 +1080,18 @@ function expenseStatusLabel(status: string) {
     payment_blocked: "付款阻断"
   };
   return labels[status] ?? status;
+}
+
+function canReviewExpense(row: ProjectExpenseRow) {
+  return row.status === "approval_pending";
+}
+
+function canRecordExpenseExecution(row: ProjectExpenseRow) {
+  return ["approved_pending_payment", "partially_paid"].includes(row.status);
+}
+
+function canRecordExpenseFinance(row: ProjectExpenseRow) {
+  return ["partially_paid", "paid", "payment_blocked"].includes(row.status);
 }
 
 function todayText(): string {
@@ -935,6 +1139,104 @@ function setExpenseError(messageText: string) {
   expenseMessage.value = messageText;
 }
 
+async function runExpenseAction(actionKey: string, action: (row: ProjectExpenseRow) => Promise<void>) {
+  const row = selectedExpenseRow.value;
+  if (!row) {
+    setExpenseActionError("请先选择支出单");
+    return;
+  }
+  expenseActionBusy.value = actionKey;
+  expenseActionMessage.value = "";
+  try {
+    await action(row);
+    await loadOverview();
+    if (selectedExpenseRow.value) {
+      expenseActionForm.value = createProjectExpenseActionForm(selectedExpenseRow.value);
+    }
+    if (expenseExecutionVoucherInput.value) {
+      expenseExecutionVoucherInput.value.value = "";
+    }
+    expenseActionMessageTone.value = "success";
+    expenseActionMessage.value = "支出单处理完成，项目经营数据已刷新。";
+  } catch (error) {
+    setExpenseActionError(error instanceof Error ? error.message : "支出单处理失败");
+  } finally {
+    expenseActionBusy.value = "";
+  }
+}
+
+async function submitExpenseReview(decision: "approve" | "reject") {
+  await runExpenseAction("review", async (row) => {
+    const approvedAmount = expenseActionForm.value.approvedAmountYuan.trim();
+    await reviewProjectExpenseApproval(selectedProjectId.value, row.id, {
+      decision,
+      approvedAmountCents:
+        decision === "approve" && approvedAmount
+          ? parseYuanToCents(approvedAmount, "终审批准金额")
+          : undefined,
+      comment: expenseActionForm.value.approvalComment.trim() || undefined
+    });
+  });
+}
+
+async function submitExpenseExecution() {
+  await runExpenseAction("execution", async (row) => {
+    const form = expenseActionForm.value;
+    if (!form.executionVoucherFile) {
+      throw new Error("请上传实付凭证");
+    }
+    const voucher = await uploadPrivateFile(form.executionVoucherFile, form.executionVoucherFile.name);
+    await recordProjectExpenseExecution(selectedProjectId.value, row.id, {
+      amountCents: parseYuanToCents(form.executionAmountYuan, "实付金额"),
+      paidAt: requiredText(form.executionPaidAt, "实付日期"),
+      voucherFileId: voucher.id,
+      confirmationPassword: requiredText(form.executionPassword, "实付确认密码")
+    });
+  });
+}
+
+async function submitExpenseFinance() {
+  await runExpenseAction("finance", async (row) => {
+    const form = expenseActionForm.value;
+    await recordProjectExpenseFinance(selectedProjectId.value, row.id, {
+      amountCents: parseYuanToCents(form.financeAmountYuan, "入账金额"),
+      occurredAt: requiredText(form.financeOccurredAt, "入账日期"),
+      confirmationPassword: requiredText(form.financePassword, "入账确认密码")
+    });
+  });
+}
+
+async function downloadExpenseAttachment() {
+  await runExpenseAction("download", async (row) => {
+    if (!row.hasAttachment) {
+      throw new Error("该支出单未上传申请附件");
+    }
+    const ticket = await downloadProjectExpenseAttachment(selectedProjectId.value, row.id, {
+      confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "附件下载密码")
+    });
+    triggerFileDownload(apiDownloadUrl(ticket.downloadUrl), ticket.fileName);
+  });
+}
+
+function setExpenseActionError(messageText: string) {
+  expenseActionMessageTone.value = "danger";
+  expenseActionMessage.value = messageText;
+}
+
+function apiDownloadUrl(url: string) {
+  return url.startsWith("/files/") ? `/api${url}` : url;
+}
+
+function triggerFileDownload(url: string, fileName: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
 function formatCents(value: number | null): string {
   if (value === null) {
     return "暂无数据";
@@ -943,6 +1245,10 @@ function formatCents(value: number | null): string {
     style: "currency",
     currency: "CNY"
   }).format(value / 100);
+}
+
+function centsToYuanInput(value: number): string {
+  return (value / 100).toFixed(2);
 }
 
 function formatDateTime(value: string): string {
@@ -1140,9 +1446,54 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
+.table-action {
+  height: 28px;
+  padding: 0 10px;
+}
+
 .empty-cell {
   color: #5f6673;
   text-align: center;
+}
+
+.secondary-button {
+  color: #1f2733;
+  background: #eef2f8;
+}
+
+.danger-button {
+  background: #d54941;
+}
+
+.expense-action-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dce1e8;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.expense-action-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.expense-action-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.expense-action-head p {
+  margin-top: 4px;
+}
+
+.expense-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .summary-item {
@@ -1187,6 +1538,7 @@ dd {
 
 @media (max-width: 900px) {
   .page-head,
+  .expense-action-head,
   dl div {
     display: grid;
   }

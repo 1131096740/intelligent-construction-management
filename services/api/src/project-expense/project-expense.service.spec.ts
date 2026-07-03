@@ -94,6 +94,7 @@ describe("ProjectExpenseService", () => {
             paidAmountCents: 10_000,
             paymentMethod: "bank_transfer",
             counterpartyName: "材料供应商",
+            attachmentFileId: "file-expense-1",
             status: "partially_paid",
             createdAt,
             updatedAt
@@ -110,6 +111,7 @@ describe("ProjectExpenseService", () => {
             paidAmountCents: 0,
             paymentMethod: "cash",
             counterpartyName: null,
+            attachmentFileId: null,
             status: "approval_pending",
             createdAt,
             updatedAt
@@ -124,12 +126,14 @@ describe("ProjectExpenseService", () => {
         expect.objectContaining({
           id: "expense-1",
           code: "ZC-2026-001",
+          hasAttachment: true,
           createdAt: createdAt.toISOString(),
           updatedAt: updatedAt.toISOString()
         }),
         expect.objectContaining({
           id: "expense-2",
           code: "ZC-2026-002",
+          hasAttachment: false,
           createdAt: createdAt.toISOString(),
           updatedAt: updatedAt.toISOString()
         })
@@ -165,6 +169,45 @@ describe("ProjectExpenseService", () => {
 
     await expect(service.list("project-1")).rejects.toThrow("项目不存在或已停用");
     expect(prisma.projectExpenseRequest.findMany).not.toHaveBeenCalled();
+  });
+
+  it("creates an attachment download ticket by expense request id after password confirmation", async () => {
+    const prisma = {
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          attachmentFileId: "file-expense-1"
+        })
+      }
+    };
+    const files = {
+      createDownloadTicket: jest.fn().mockResolvedValue({
+        fileId: "file-expense-1",
+        downloadUrl: "/files/file-expense-1/download"
+      })
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    const ticket = await service.createAttachmentDownloadTicket(
+      "project-1",
+      "expense-1",
+      "finance-1",
+      "current-password"
+    );
+
+    expect(ticket.downloadUrl).toBe("/files/file-expense-1/download");
+    expect(prisma.projectExpenseRequest.findFirst).toHaveBeenCalledWith({
+      where: { id: "expense-1", projectId: "project-1", voidedAt: null },
+      select: { attachmentFileId: true }
+    });
+    expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
+    expect(files.createDownloadTicket).toHaveBeenCalledWith("file-expense-1", {
+      actorUserId: "finance-1"
+    });
   });
 
   it("submits a sporadic payment request without settlement or payment terms", async () => {
@@ -220,6 +263,55 @@ describe("ProjectExpenseService", () => {
         businessId: "expense-1",
         status: "in_progress",
         applicantUserId: "handler-1"
+      })
+    });
+  });
+
+  it.each([
+    ["travel", "差旅费"],
+    ["entertainment", "业务招待费"],
+    ["reimbursement", "项目报销"]
+  ] as const)("submits a comprehensive expense request for %s", async (expenseSubtype, reason) => {
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
+    const tx = {
+      ...cashPool,
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
+      },
+      projectExpenseRequest: {
+        ...cashPool.projectExpenseRequest,
+        create: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          code: "ZH-2026-001",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await service.create("project-1", "handler-1", {
+      code: "ZH-2026-001",
+      expenseType: "comprehensive_expense",
+      expenseSubtype,
+      paymentSubject: "建工智管",
+      reason,
+      requestedAmountCents: 30_000,
+      paymentMethod: "bank_transfer",
+      counterpartyName: "经办人"
+    });
+
+    expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        expenseType: "comprehensive_expense",
+        expenseSubtype,
+        reason,
+        requestedAmountCents: 30_000,
+        status: "approval_pending"
       })
     });
   });
@@ -555,6 +647,20 @@ describe("ProjectExpenseService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
+  it("rejects project expense execution with a future paid date before confirming password", async () => {
+    const service = new ProjectExpenseService({} as never, audit as never, auth as never);
+
+    await expect(
+      service.recordExecution("project-1", "expense-1", "cashier-1", {
+        amountCents: 10_000,
+        paidAt: "2999-07-02T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("项目支出实付日期不能晚于当前时间");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
   it("blocks later execution attempts after occupied financing quota becomes invalid", async () => {
     const tx = {
       $queryRaw: jest
@@ -648,10 +754,12 @@ describe("ProjectExpenseService", () => {
 
     const record = await service.recordFinance("project-1", "expense-1", "finance-1", {
       amountCents: 30_000,
-      occurredAt: "2026-07-02T00:00:00.000Z"
+      occurredAt: "2026-07-02T00:00:00.000Z",
+      confirmationPassword: "current-password"
     });
 
     expect(record.id).toBe("finance-record-1");
+    expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
     expect(tx.financeRecord.create).toHaveBeenCalledWith({
       data: {
         projectId: "project-1",

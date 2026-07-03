@@ -16,6 +16,7 @@ import {
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
+  downloadProjectExpenseAttachment,
   confirmProjectOwnerContract,
   recordProjectReceipt,
   recordProjectOwnerContract,
@@ -423,10 +424,10 @@ describe("core flow read API client", () => {
 
     await createProjectExpenseRequest("project-1", {
       code: "ZC-2026-001",
-      expenseType: "sporadic_payment",
-      expenseSubtype: "sporadic_machinery",
-      paymentSubject: "零星吊车费",
-      reason: "现场临时吊装",
+      expenseType: "comprehensive_expense",
+      expenseSubtype: "travel",
+      paymentSubject: "差旅费",
+      reason: "项目现场协调差旅",
       requestedAmountCents: 80000,
       paymentMethod: "bank_transfer",
       counterpartyName: "张三",
@@ -453,7 +454,11 @@ describe("core flow read API client", () => {
     });
     await recordProjectExpenseFinance("project-1", "expense-1", {
       amountCents: 80000,
-      occurredAt: "2026-07-02T11:00:00.000Z"
+      occurredAt: "2026-07-02T11:00:00.000Z",
+      confirmationPassword: "current-password"
+    });
+    await downloadProjectExpenseAttachment("project-1", "expense-1", {
+      confirmationPassword: "current-password"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -462,16 +467,17 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/expense-requests/expense-1/approval-withdrawal",
       "/api/projects/project-1/expense-requests/expense-1/voiding",
       "/api/projects/project-1/expense-requests/expense-1/executions",
-      "/api/projects/project-1/expense-requests/expense-1/finance-records"
+      "/api/projects/project-1/expense-requests/expense-1/finance-records",
+      "/api/projects/project-1/expense-requests/expense-1/attachment-download-ticket"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         code: "ZC-2026-001",
-        expenseType: "sporadic_payment",
-        expenseSubtype: "sporadic_machinery",
-        paymentSubject: "零星吊车费",
-        reason: "现场临时吊装",
+        expenseType: "comprehensive_expense",
+        expenseSubtype: "travel",
+        paymentSubject: "差旅费",
+        reason: "项目现场协调差旅",
         requestedAmountCents: 80000,
         paymentMethod: "bank_transfer",
         counterpartyName: "张三",
@@ -501,7 +507,13 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
         amountCents: 80000,
-        occurredAt: "2026-07-02T11:00:00.000Z"
+        occurredAt: "2026-07-02T11:00:00.000Z",
+        confirmationPassword: "current-password"
+      })
+    );
+    expect(fetchMock.mock.calls[6][1]?.body).toBe(
+      JSON.stringify({
+        confirmationPassword: "current-password"
       })
     );
   });

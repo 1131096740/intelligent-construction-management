@@ -17,6 +17,10 @@ const FUNDS_OVERVIEW_POSITIONS = [
   "finance_staff"
 ] as const;
 
+interface CreateAttachmentDownloadTicketDto {
+  confirmationPassword?: string;
+}
+
 @Controller("projects/:projectId/expense-requests")
 export class ProjectExpenseController {
   constructor(private readonly expenses: ProjectExpenseService) {}
@@ -55,6 +59,21 @@ export class ProjectExpenseController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.expenses.withdrawApproval(projectId, expenseRequestId, user.id);
+  }
+
+  @Post(":expenseRequestId/attachment-download-ticket")
+  createAttachmentDownloadTicket(
+    @Param("projectId") projectId: string,
+    @Param("expenseRequestId") expenseRequestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body?: CreateAttachmentDownloadTicketDto
+  ) {
+    return this.expenses.createAttachmentDownloadTicket(
+      projectId,
+      expenseRequestId,
+      user.id,
+      body?.confirmationPassword
+    );
   }
 
   @Post(":expenseRequestId/voiding")

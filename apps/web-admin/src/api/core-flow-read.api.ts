@@ -550,7 +550,7 @@ export interface ReviewProjectFinancingQuotaPayload {
   comment?: string;
 }
 
-export type ProjectExpenseType = "sporadic_payment" | "loan_reserve";
+export type ProjectExpenseType = "sporadic_payment" | "loan_reserve" | "comprehensive_expense";
 
 export type ProjectExpenseSubtype =
   | "sporadic_material"
@@ -560,7 +560,10 @@ export type ProjectExpenseSubtype =
   | "other_sporadic"
   | "employee_loan"
   | "owner_loan"
-  | "project_reserve";
+  | "project_reserve"
+  | "travel"
+  | "entertainment"
+  | "reimbursement";
 
 export type ProjectExpensePaymentMethod =
   | "cash"
@@ -605,6 +608,7 @@ export interface RecordProjectExpenseExecutionPayload {
 export interface RecordProjectExpenseFinancePayload {
   amountCents: number;
   occurredAt: string;
+  confirmationPassword: string;
 }
 
 export interface ProjectExpenseRequestListReadModel {
@@ -620,6 +624,7 @@ export interface ProjectExpenseRequestListReadModel {
     paidAmountCents: number;
     paymentMethod: ProjectExpensePaymentMethod;
     counterpartyName: string | null;
+    hasAttachment: boolean;
     status: string;
     createdAt: string;
     updatedAt: string;
@@ -782,6 +787,17 @@ export function recordProjectExpenseFinance(
 ) {
   return postJson<unknown>(
     `/projects/${projectId}/expense-requests/${expenseRequestId}/finance-records`,
+    body
+  );
+}
+
+export function downloadProjectExpenseAttachment(
+  projectId: string,
+  expenseRequestId: string,
+  body: CreatePrivateFileDownloadTicketPayload
+) {
+  return postJson<PrivateFileDownloadTicketReadModel>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/attachment-download-ticket`,
     body
   );
 }

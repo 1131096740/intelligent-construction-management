@@ -36,6 +36,15 @@ describe("ProjectExpenseController authorization wiring", () => {
     ).toBeUndefined();
   });
 
+  it("keeps attachment ticket creation scoped by business file permission", () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ProjectExpenseController.prototype.createAttachmentDownloadTicket
+      )
+    ).toBeUndefined();
+  });
+
   it("forwards list requests to the service", async () => {
     const expenses = { list: jest.fn() };
     const controller = new ProjectExpenseController(expenses as never);
@@ -61,5 +70,24 @@ describe("ProjectExpenseController authorization wiring", () => {
     await controller.create("project-1", { id: "user-1" } as never, body);
 
     expect(expenses.create).toHaveBeenCalledWith("project-1", "user-1", body);
+  });
+
+  it("forwards attachment download ticket requests with the authenticated user id", async () => {
+    const expenses = { createAttachmentDownloadTicket: jest.fn() };
+    const controller = new ProjectExpenseController(expenses as never);
+
+    await controller.createAttachmentDownloadTicket(
+      "project-1",
+      "expense-1",
+      { id: "user-1" } as never,
+      { confirmationPassword: "current-password" }
+    );
+
+    expect(expenses.createAttachmentDownloadTicket).toHaveBeenCalledWith(
+      "project-1",
+      "expense-1",
+      "user-1",
+      "current-password"
+    );
   });
 });
