@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> 当前状态（2026-07-03）：本文是 Phase 1 初始历史实施计划，主要链路已经由后续任务完成或细化。后续上线试运行不要直接从本文未勾选项继续执行，应以 `obsidian-current/建工智管_项目状态报告_20260703.md`、`docs/superpowers/specs/2026-07-03-historical-contract-takeover-trial-run-design.md` 和 `PROGRESS.md` 为准。
+
 **Goal:** Build the enterprise Phase 1 core loop: contract versioning, payment terms, approval, seal, archive, settlement, payment request, actual payment, PDF archive, and audit across Web admin and WeChat mini program.
 
 **Architecture:** Use a monorepo with a NestJS + PostgreSQL backend as the business center, Vue 3 + TDesign Web as the primary admin system, and native WeChat mini program + TDesign mini program as the mobile work client. All business invariants live in backend services and database transactions; frontends never access database or object storage directly.

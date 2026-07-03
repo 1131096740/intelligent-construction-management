@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> 当前状态（2026-07-03）：本文对应的真实合同 Word 初稿能力已并入合同工作台第一阶段。历史已签合同试运行接管不要求重排历史原件；原件只作为归档证据和付款条款/余额补录依据。
+
 **Goal:** Generate downloadable Word first drafts that closely preserve the three real company contract templates, while keeping a simple generic Word fallback for contract types that do not yet have a dedicated template.
 
 **Architecture:** Keep the current enterprise contract workbench as the source of structured data, and use high-fidelity DOCX files as layout shells. The backend continues to render through the existing DOCX queue, but seed data points to real placeholderized templates; unsupported contract types use a published generic business template and generic DOCX layout until a dedicated template is uploaded later. Offline Word edits are stored as confirmed uploaded revision files without trying to reverse-parse Word back into structured fields.
