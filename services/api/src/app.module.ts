@@ -9,6 +9,7 @@ import { ContractBillModule } from "./contract-bill/contract-bill.module";
 import { ContractDocumentModule } from "./contract-document/contract-document.module";
 import { ContractModule } from "./contract/contract.module";
 import { ContractTemplateModule } from "./contract-template/contract-template.module";
+import { ContractTakeoverModule } from "./contract-takeover/contract-takeover.module";
 import { ContractWorkbenchModule } from "./contract-workbench/contract-workbench.module";
 import { DatabaseModule } from "./database/database.module";
 import { FileModule } from "./file/file.module";
@@ -31,6 +32,7 @@ import { SettlementModule } from "./settlement/settlement.module";
     ContractDocumentModule,
     ContractWorkbenchModule,
     ContractTemplateModule,
+    ContractTakeoverModule,
     BusinessPartyModule,
     CompanyEntityModule,
     SettlementModule,

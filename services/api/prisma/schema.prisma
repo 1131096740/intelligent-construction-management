@@ -87,6 +87,7 @@ model ProjectMember {
 model Contract {
   id                String    @id @default(uuid())
   projectId         String
+  source            String    @default("system")
   code              String?   @unique
   name              String
   counterparty      String
@@ -123,6 +124,43 @@ model ContractVersion {
   updatedAt                 DateTime  @updatedAt
 
   @@unique([contractId, versionNo])
+}
+
+model ContractTakeover {
+  id                                    String    @id @default(uuid())
+  projectId                             String
+  contractId                            String
+  contractVersionId                     String    @unique
+  paymentTermsVersionId                 String
+  takeoverLevel                         String
+  takeoverStatus                        String
+  lifecycleStatus                       String
+  signedAt                              DateTime
+  historicalSettledCents                BigInt    @default(0)
+  historicalApprovalPendingPaymentCents BigInt    @default(0)
+  historicalApprovedPendingPaymentCents BigInt    @default(0)
+  historicalPaidCents                   BigInt    @default(0)
+  historicalProxyPaidCents              BigInt    @default(0)
+  historicalAdvancePaidCents            BigInt    @default(0)
+  historicalAdvanceDeductedCents        BigInt    @default(0)
+  historicalRetentionWithheldCents      BigInt    @default(0)
+  historicalRetentionReleasedCents      BigInt    @default(0)
+  otherConfirmedOccupancyCents          BigInt    @default(0)
+  balanceSourceSummary                  String?
+  evidenceSummary                       String?
+  createdByUserId                       String
+  submittedByUserId                     String?
+  submittedAt                           DateTime?
+  confirmedByUserId                     String?
+  confirmedAt                           DateTime?
+  historicalBalanceConfirmedByUserId    String?
+  historicalBalanceConfirmedAt          DateTime?
+  createdAt                             DateTime  @default(now())
+  updatedAt                             DateTime  @updatedAt
+
+  @@index([projectId, takeoverStatus])
+  @@index([contractId])
+  @@index([contractVersionId])
 }
 
 model PaymentTermsVersion {

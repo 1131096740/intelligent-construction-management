@@ -132,6 +132,132 @@ export class PaymentRequestService {
     this.amount.assertCanRequest(capacity, requestedAmountCents);
   }
 
+  private async assertHistoricalTakeoverPaymentReady(
+    tx: Prisma.TransactionClient,
+    input: {
+      contractId: string;
+      contractVersionId: string;
+      sourceType: "settlement" | "contract_advance" | "contract_due";
+      actorUserId?: string;
+    }
+  ) {
+    const takeoverClient = (tx as unknown as {
+      contractTakeover?: {
+        findUnique(args: {
+          where: { contractVersionId: string };
+          select: {
+            id: true;
+            takeoverStatus: true;
+            historicalBalanceConfirmedAt: true;
+          };
+        }): Promise<{
+          id: string;
+          takeoverStatus: string;
+          historicalBalanceConfirmedAt: Date | null;
+        } | null>;
+      };
+    }).contractTakeover;
+    const takeover = takeoverClient
+      ? await takeoverClient.findUnique({
+          where: { contractVersionId: input.contractVersionId },
+          select: {
+            id: true,
+            takeoverStatus: true,
+            historicalBalanceConfirmedAt: true
+          }
+        })
+      : null;
+
+    if (takeover) {
+      if (takeover.takeoverStatus !== "confirmed") {
+        await this.recordHistoricalTakeoverPaymentBlock(tx, {
+          actorUserId: input.actorUserId,
+          businessType: "contract_takeover",
+          businessId: takeover.id,
+          contractId: input.contractId,
+          contractVersionId: input.contractVersionId,
+          sourceType: input.sourceType,
+          reason: "takeover_not_confirmed",
+          takeoverStatus: takeover.takeoverStatus
+        });
+        throw new Error("Historical contract takeover must be confirmed before creating payment request");
+      }
+      if (!takeover.historicalBalanceConfirmedAt) {
+        await this.recordHistoricalTakeoverPaymentBlock(tx, {
+          actorUserId: input.actorUserId,
+          businessType: "contract_takeover",
+          businessId: takeover.id,
+          contractId: input.contractId,
+          contractVersionId: input.contractVersionId,
+          sourceType: input.sourceType,
+          reason: "historical_balance_not_confirmed",
+          takeoverStatus: takeover.takeoverStatus
+        });
+        throw new Error("Historical balance must be confirmed before creating payment request");
+      }
+      return;
+    }
+
+    const contractClient = (tx as unknown as {
+      contract?: {
+        findUnique(args: {
+          where: { id: string };
+          select: { source: true };
+        }): Promise<{ source?: string | null } | null>;
+      };
+    }).contract;
+    const contract = contractClient
+      ? await contractClient.findUnique({
+          where: { id: input.contractId },
+          select: { source: true }
+        })
+      : null;
+    if (contract?.source === "historical_takeover") {
+      await this.recordHistoricalTakeoverPaymentBlock(tx, {
+        actorUserId: input.actorUserId,
+        businessType: "contract",
+        businessId: input.contractId,
+        contractId: input.contractId,
+        contractVersionId: input.contractVersionId,
+        sourceType: input.sourceType,
+        reason: "takeover_missing"
+      });
+      throw new Error("Historical contract takeover must be confirmed before creating payment request");
+    }
+  }
+
+  private async recordHistoricalTakeoverPaymentBlock(
+    tx: Prisma.TransactionClient,
+    input: {
+      actorUserId?: string;
+      businessType: "contract_takeover" | "contract";
+      businessId: string;
+      contractId: string;
+      contractVersionId: string;
+      sourceType: string;
+      reason: string;
+      takeoverStatus?: string;
+    }
+  ) {
+    if (!input.actorUserId) {
+      return;
+    }
+
+    await this.audit.record(tx, {
+      actorUserId: input.actorUserId,
+      action: "payment.contract_takeover.blocked",
+      businessType: input.businessType,
+      businessId: input.businessId,
+      metadata: {
+        contractId: input.contractId,
+        contractVersionId: input.contractVersionId,
+        sourceType: input.sourceType,
+        reason: input.reason,
+        takeoverStatus: input.takeoverStatus ?? null
+      }
+    });
+  }
+
   async create(input: CreatePaymentRequestDto, applicantUserId?: string) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to create payment request");
@@ -172,6 +298,12 @@ export class PaymentRequestService {
         throw new Error("Settlement not found");
       }
       this.assertSettlementEffective(settlement.status as SettlementStatus);
+      await this.assertHistoricalTakeoverPaymentReady(tx, {
+        contractId: settlement.contractId,
+        contractVersionId: settlement.contractVersionId,
+        sourceType: "settlement",
+        actorUserId: applicantUserId
+      });
 
       const existingApprovedOrPending = await tx.paymentRequest.findMany({
         where: {
@@ -295,6 +427,12 @@ export class PaymentRequestService {
     if (contractVersion.status !== "effective") {
       throw new Error("Cannot create contract due payment from a non-effective contract version");
     }
+    await this.assertHistoricalTakeoverPaymentReady(tx, {
+      contractId: contractVersion.contractId,
+      contractVersionId: contractVersion.id,
+      sourceType: "contract_due",
+      actorUserId: applicantUserId
+    });
 
     const contract = await tx.contract.findUnique({
       where: { id: contractVersion.contractId },
@@ -421,6 +559,12 @@ export class PaymentRequestService {
     if (!contractVersion.effectiveAt) {
       throw new Error("Contract effective date is required for contract advance payment request");
     }
+    await this.assertHistoricalTakeoverPaymentReady(tx, {
+      contractId: contractVersion.contractId,
+      contractVersionId: contractVersion.id,
+      sourceType: "contract_advance",
+      actorUserId: applicantUserId
+    });
 
     const contract = await tx.contract.findUnique({
       where: { id: contractVersion.contractId },
