@@ -69,6 +69,51 @@ export interface ContractDuePaymentCapacity {
   advanceDeductionCents?: number;
 }
 
+export type ContractPaymentApplicationSectionType =
+  | "advance"
+  | "progress"
+  | "final"
+  | "retention";
+
+export interface ContractPaymentApplicationRow {
+  id: string;
+  settlementId: string | null;
+  paymentTermsVersionId: string;
+  stageId?: string;
+  stageName?: string;
+  source: string;
+  currentSettlementAmountCents: number;
+  cumulativeBeforeAmountCents: number;
+  cumulativeAfterAmountCents: number;
+  effectiveAt: Date | null;
+  expectedPayableAt: Date | null;
+  paymentRule: string;
+  isDue: boolean;
+  includableAmountCents: number;
+}
+
+export interface ContractPaymentApplicationSection {
+  type: ContractPaymentApplicationSectionType;
+  title: string;
+  rows: ContractPaymentApplicationRow[];
+}
+
+export interface ContractPaymentApplicationPreview {
+  capacity: {
+    cumulativeEffectiveSettlementCents: number;
+    duePayableCents: number;
+    occupiedCents: number;
+    advanceDeductionCents: number;
+    maxRequestableCents: number;
+  };
+  advanceDeduction: {
+    paidAdvanceCents: number;
+    currentDeductionCents: number;
+    remainingAdvanceToDeductCents: number;
+  };
+  sections: ContractPaymentApplicationSection[];
+}
+
 export function calculateSettlementPaymentCapacity(input: {
   payableAmountCents: number;
   actualPaidAmountCents: number;
@@ -191,6 +236,181 @@ export function calculateContractDuePaymentCapacity(input: {
     ...(input.advancePaymentRequests
       ? { advanceDeductionCents: centsToSafeNumber(advanceDeductionCents) }
       : {})
+  };
+}
+
+export function buildContractPaymentApplicationPreview(input: {
+  asOf: Date;
+  contractEffectiveAt?: Date | null;
+  settlements: readonly (ContractDueSettlement & {
+    code?: string;
+    periodLabel?: string;
+  })[];
+  paymentTermsStages: readonly (ContractDuePaymentTermsStage & {
+    id?: string;
+    name?: string;
+  })[];
+  settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
+  paymentRequests: readonly ContractDuePaymentRequest[];
+  proxyPaidAmountCents?: number;
+  contractAmountCents?: number;
+  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number>>;
+  advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
+}): ContractPaymentApplicationPreview {
+  const confirmedAtBySettlement = earliestConfirmedAtBySettlement(input.settlementArchiveFiles);
+  const effectiveSettlements = input.settlements.filter((settlement) =>
+    CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES.includes(
+      settlement.status as (typeof CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES)[number]
+    )
+  );
+  const hasFinalEffectiveSettlement = effectiveSettlements.some((settlement) => settlement.isFinal === true);
+  const sectionsByType = new Map<
+    ContractPaymentApplicationSectionType,
+    ContractPaymentApplicationSection
+  >();
+  const stageIndexesByKey = new Map<string, number>();
+  let cumulativeEffectiveSettlementCents = 0n;
+  const dueSettlementBasisCentsByTerms = new Map<string, bigint>();
+  const cumulativeConfirmedSettlementCentsByTerms = new Map<string, bigint>();
+
+  for (const settlement of effectiveSettlements) {
+    const before = cumulativeEffectiveSettlementCents;
+    const settlementAmountCents = BigInt(settlement.amountCents);
+    cumulativeEffectiveSettlementCents += settlementAmountCents;
+
+    const confirmedAt = confirmedAtBySettlement.get(settlement.id) ?? null;
+    if (confirmedAt) {
+      addMapBigInt(
+        cumulativeConfirmedSettlementCentsByTerms,
+        settlement.paymentTermsVersionId,
+        settlementAmountCents
+      );
+    }
+
+    const currentSettlementStages = input.paymentTermsStages.filter(
+      (stage) =>
+        stage.paymentTermsVersionId === settlement.paymentTermsVersionId &&
+        stage.basis === "current_settlement"
+    );
+    const hasDueStage = currentSettlementStages.some(
+      (stage) =>
+        confirmedAt &&
+        isStageApplicableToSettlement(stage, settlement) &&
+        isStageDue(confirmedAt, stage.dueDays, input.asOf)
+    );
+    if (hasDueStage) {
+      addMapBigInt(
+        dueSettlementBasisCentsByTerms,
+        settlement.paymentTermsVersionId,
+        settlementAmountCents
+      );
+    }
+
+    for (const stage of currentSettlementStages) {
+      const sectionType = paymentApplicationSectionType(stage);
+      if (!sectionType) continue;
+      if ((sectionType === "final" || sectionType === "retention") && !hasFinalEffectiveSettlement) {
+        continue;
+      }
+      if (!isStageApplicableToSettlement(stage, settlement)) {
+        continue;
+      }
+
+      const isDue = !!confirmedAt && isStageDue(confirmedAt, stage.dueDays, input.asOf);
+      const expectedPayableAt = confirmedAt ? addDays(confirmedAt, stage.dueDays) : null;
+      const includableAmountCents = isDue
+        ? centsToSafeNumber(
+            minBigInt(contractStageAmountCents(settlement.amountCents, stage), settlementAmountCents)
+          )
+        : 0;
+      const stageIndex = stageIndexFor(stageIndexesByKey, settlement.paymentTermsVersionId, stage);
+      const section = getPaymentApplicationSection(sectionsByType, sectionType);
+      section.rows.push({
+        id: `${settlement.id}:${sectionType}:${stageIndex}`,
+        settlementId: settlement.id,
+        paymentTermsVersionId: settlement.paymentTermsVersionId,
+        stageId: stage.id,
+        stageName: stage.name,
+        source: settlement.code ?? settlement.id,
+        currentSettlementAmountCents: settlement.amountCents,
+        cumulativeBeforeAmountCents: centsToSafeNumber(before),
+        cumulativeAfterAmountCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
+        effectiveAt: confirmedAt,
+        expectedPayableAt,
+        paymentRule: paymentRuleLabel(stage),
+        isDue,
+        includableAmountCents
+      });
+    }
+  }
+
+  for (const stage of input.paymentTermsStages) {
+    if (!isContractAdvanceStage(stage)) continue;
+
+    const section = getPaymentApplicationSection(sectionsByType, "advance");
+    const effectiveAt = input.contractEffectiveAt ?? null;
+    const expectedPayableAt = effectiveAt ? addDays(effectiveAt, stage.dueDays) : null;
+    const isDue = !!effectiveAt && isStageDue(effectiveAt, stage.dueDays, input.asOf);
+    const contractAmountCents = centsToSafeNumber(
+      contractAmountCentsForTerms(
+        {
+          contractAmountCents: BigInt(input.contractAmountCents ?? 0),
+          contractAmountCentsByTerms: contractAmountCentsByTerms(
+            input.contractAmountCentsByPaymentTermsVersionId
+          )
+        },
+        stage.paymentTermsVersionId
+      )
+    );
+    const stageIndex = stageIndexFor(stageIndexesByKey, stage.paymentTermsVersionId, stage);
+    section.rows.push({
+      id: `contract:${stage.paymentTermsVersionId}:advance:${stageIndex}`,
+      settlementId: null,
+      paymentTermsVersionId: stage.paymentTermsVersionId,
+      stageId: stage.id,
+      stageName: stage.name,
+      source: "合同生效",
+      currentSettlementAmountCents: 0,
+      cumulativeBeforeAmountCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
+      cumulativeAfterAmountCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
+      effectiveAt,
+      expectedPayableAt,
+      paymentRule: paymentRuleLabel(stage),
+      isDue,
+      includableAmountCents: isDue
+        ? centsToSafeNumber(contractStageAmountCents(contractAmountCents, stage))
+        : 0
+    });
+  }
+
+  const capacity = calculateContractDuePaymentCapacity({
+    ...input,
+    advancePaymentRequests: input.advancePaymentRequests ?? []
+  });
+  const paidAdvanceCents = centsToSafeNumber(
+    [...paidAdvanceCentsByTerms(input.advancePaymentRequests ?? []).values()].reduce(
+      (total, amount) => total + amount,
+      0n
+    )
+  );
+  const currentDeductionCents = capacity.advanceDeductionCents ?? 0;
+
+  return {
+    capacity: {
+      cumulativeEffectiveSettlementCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
+      duePayableCents: capacity.duePayableCents,
+      occupiedCents: capacity.occupiedCents,
+      advanceDeductionCents: currentDeductionCents,
+      maxRequestableCents: Math.max(capacity.remainingCents, 0)
+    },
+    advanceDeduction: {
+      paidAdvanceCents,
+      currentDeductionCents,
+      remainingAdvanceToDeductCents: Math.max(paidAdvanceCents - currentDeductionCents, 0)
+    },
+    sections: paymentApplicationSectionOrder
+      .map((type) => sectionsByType.get(type))
+      .filter((section): section is ContractPaymentApplicationSection => !!section && section.rows.length > 0)
   };
 }
 
@@ -327,6 +547,98 @@ function calculateAdvanceDeductionCents(input: {
   );
 }
 
+const paymentApplicationSectionOrder = ["advance", "progress", "final", "retention"] as const;
+
+function earliestConfirmedAtBySettlement(
+  settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[]
+): ReadonlyMap<string, Date> {
+  const confirmedAtBySettlement = new Map<string, Date>();
+  for (const archiveFile of settlementArchiveFiles) {
+    if (!archiveFile.confirmedAt) continue;
+
+    const existing = confirmedAtBySettlement.get(archiveFile.settlementId);
+    if (!existing || archiveFile.confirmedAt < existing) {
+      confirmedAtBySettlement.set(archiveFile.settlementId, archiveFile.confirmedAt);
+    }
+  }
+
+  return confirmedAtBySettlement;
+}
+
+function paymentApplicationSectionType(
+  stage: ContractDuePaymentTermsStage
+): ContractPaymentApplicationSectionType | null {
+  if (stage.stageType === "advance") return "advance";
+  if (stage.stageType === "final") return "final";
+  if (stage.stageType === "retention") return "retention";
+  if (stage.stageType === "progress" || stage.stageType === undefined || stage.stageType === "other") {
+    return "progress";
+  }
+
+  return null;
+}
+
+function getPaymentApplicationSection(
+  sectionsByType: Map<ContractPaymentApplicationSectionType, ContractPaymentApplicationSection>,
+  type: ContractPaymentApplicationSectionType
+): ContractPaymentApplicationSection {
+  const existing = sectionsByType.get(type);
+  if (existing) return existing;
+
+  const section = {
+    type,
+    title: paymentApplicationSectionTitle(type),
+    rows: []
+  };
+  sectionsByType.set(type, section);
+  return section;
+}
+
+function paymentApplicationSectionTitle(type: ContractPaymentApplicationSectionType): string {
+  const titles: Record<ContractPaymentApplicationSectionType, string> = {
+    advance: "预付款",
+    progress: "进度款",
+    final: "竣工款",
+    retention: "质保金"
+  };
+
+  return titles[type];
+}
+
+function stageIndexFor(
+  stageIndexesByKey: Map<string, number>,
+  paymentTermsVersionId: string,
+  stage: ContractDuePaymentTermsStage & { id?: string }
+): number {
+  const key = `${paymentTermsVersionId}:${stage.stageType ?? "progress"}:${stage.id ?? stage.basis}:${stage.dueDays}`;
+  const existing = stageIndexesByKey.get(key);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const index = [...stageIndexesByKey.keys()].filter((item) =>
+    item.startsWith(`${paymentTermsVersionId}:${stage.stageType ?? "progress"}:`)
+  ).length;
+  stageIndexesByKey.set(key, index);
+  return index;
+}
+
+function paymentRuleLabel(stage: ContractDuePaymentTermsStage): string {
+  return `${stageAmountRuleLabel(stage)} · ${Math.max(stage.dueDays, 0)}天`;
+}
+
+function stageAmountRuleLabel(stage: ContractDuePaymentTermsStage): string {
+  if (stage.fixedAmountCents !== null) {
+    return `固定${stage.fixedAmountCents}分`;
+  }
+
+  if (stage.ratioBps === null) {
+    return "未配置比例";
+  }
+
+  return `${stage.ratioBps / 100}%`;
+}
+
 function paidAdvanceCentsByTerms(
   paymentRequests: readonly ContractAdvancePaymentRequest[]
 ): ReadonlyMap<string, bigint> {
@@ -376,9 +688,13 @@ function addMapBigInt(map: Map<string, bigint>, key: string, amount: bigint): vo
 }
 
 function isStageDue(confirmedAt: Date, dueDays: number, asOf: Date): boolean {
-  const nonNegativeDueDays = Math.max(dueDays, 0);
-  const dueAt = new Date(confirmedAt.getTime() + nonNegativeDueDays * 24 * 60 * 60 * 1000);
+  const dueAt = addDays(confirmedAt, dueDays);
   return dueAt <= asOf;
+}
+
+function addDays(value: Date, days: number): Date {
+  const nonNegativeDueDays = Math.max(days, 0);
+  return new Date(value.getTime() + nonNegativeDueDays * 24 * 60 * 60 * 1000);
 }
 
 function contractStageAmountCents(

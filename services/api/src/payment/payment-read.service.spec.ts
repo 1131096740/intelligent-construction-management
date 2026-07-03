@@ -487,4 +487,222 @@ describe("PaymentReadService", () => {
       tone: "success"
     });
   });
+
+  it("builds a contract-level payment application preview from all effective settlements", async () => {
+    const prisma = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          versionNo: 1,
+          status: "effective",
+          amountCents: 1_000_000,
+          effectiveAt: new Date("2026-06-01T00:00:00.000Z")
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-version-1",
+            amountCents: 1_000_000
+          }
+        ])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          code: "HT-2026-009",
+          name: "幕墙分包合同",
+          projectId: "project-1"
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-1",
+          name: "总部综合楼"
+        })
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "terms-version-1"
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-due",
+            code: "JS-2026-031",
+            periodLabel: "2026-06",
+            status: "effective",
+            amountCents: 100_000,
+            paidAmountCents: 10_000,
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1",
+            isFinal: false,
+            createdAt: new Date("2026-06-10T00:00:00.000Z"),
+            updatedAt: new Date("2026-06-10T00:00:00.000Z")
+          },
+          {
+            id: "settlement-not-due",
+            code: "JS-2026-032",
+            periodLabel: "2026-07",
+            status: "effective",
+            amountCents: 50_000,
+            paidAmountCents: 0,
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1",
+            isFinal: false,
+            createdAt: new Date("2026-07-10T00:00:00.000Z"),
+            updatedAt: new Date("2026-07-10T00:00:00.000Z")
+          }
+        ])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            settlementId: "settlement-due",
+            confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+          },
+          {
+            settlementId: "settlement-not-due",
+            confirmedAt: new Date("2026-07-10T00:00:00.000Z")
+          }
+        ])
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "stage-progress",
+            paymentTermsVersionId: "terms-version-1",
+            name: "进度款",
+            stageType: "progress",
+            basis: "current_settlement",
+            ratioBps: 8000,
+            fixedAmountCents: null,
+            triggerAnchor: "settlement_effective",
+            triggerEvent: "结算归档确认",
+            dueDays: 30,
+            advanceDeductionMode: "none",
+            advanceDeductionRatioBps: null,
+            advanceDeductionStartRatioBps: null
+          },
+          {
+            id: "stage-advance",
+            paymentTermsVersionId: "terms-version-1",
+            name: "预付款",
+            stageType: "advance",
+            basis: "contract_amount",
+            ratioBps: 1000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            triggerEvent: "合同生效",
+            dueDays: 0,
+            advanceDeductionMode: "per_settlement_ratio",
+            advanceDeductionRatioBps: 2000,
+            advanceDeductionStartRatioBps: null
+          }
+        ])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            settlementId: "settlement-due",
+            sourceType: "settlement",
+            paymentTermsVersionId: "terms-version-1",
+            status: "approved_pending_payment",
+            requestedAmountCents: 30_000,
+            approvedAmountCents: 30_000,
+            paidAmountCents: 0
+          },
+          {
+            settlementId: null,
+            sourceType: "contract_advance",
+            paymentTermsVersionId: "terms-version-1",
+            status: "paid",
+            requestedAmountCents: 50_000,
+            approvedAmountCents: 50_000,
+            paidAmountCents: 50_000
+          }
+        ])
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            amountCents: 5_000n
+          }
+        ])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const preview = await service.getContractApplication(
+      "contract-version-1",
+      "2026-07-20T00:00:00.000Z"
+    );
+
+    expect(prisma.settlement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ contractId: "contract-1" })
+      })
+    );
+    expect(preview.contract).toEqual({
+      contractId: "contract-1",
+      contractVersionId: "contract-version-1",
+      contractNo: "HT-2026-009",
+      contractName: "幕墙分包合同",
+      contractVersion: "合同 v1",
+      projectId: "project-1",
+      projectName: "总部综合楼"
+    });
+    expect(preview.capacity).toMatchObject({
+      cumulativeEffectiveSettlementCents: 150_000,
+      duePayableCents: 80_000,
+      occupiedCents: 45_000,
+      proxyPaidCents: 5_000,
+      advanceDeductionCents: 20_000,
+      maxRequestableCents: 15_000
+    });
+    expect(prisma.projectProxyPayment.findMany).toHaveBeenCalledWith({
+      where: {
+        voidedAt: null,
+        OR: [
+          { contractId: "contract-1" },
+          { settlementId: { in: ["settlement-due", "settlement-not-due"] } }
+        ]
+      },
+      select: { amountCents: true }
+    });
+    expect(preview.advanceDeduction).toMatchObject({
+      paidAdvanceCents: 50_000,
+      currentDeductionCents: 20_000,
+      remainingAdvanceToDeductCents: 30_000
+    });
+    expect(preview.sections.map((section) => section.type)).toEqual(["advance", "progress"]);
+    expect(preview.sections[1]).toMatchObject({
+      type: "progress",
+      title: "进度款"
+    });
+    expect(preview.sections[1].rows).toEqual([
+      expect.objectContaining({
+        source: "JS-2026-031 · 2026-06",
+        currentSettlementAmountCents: 100_000,
+        cumulativeBeforeAmountCents: 0,
+        cumulativeAfterAmountCents: 100_000,
+        expectedPayableAt: "2026-07-01",
+        isDue: true,
+        includableAmountCents: 80_000
+      }),
+      expect.objectContaining({
+        source: "JS-2026-032 · 2026-07",
+        cumulativeBeforeAmountCents: 100_000,
+        cumulativeAfterAmountCents: 150_000,
+        expectedPayableAt: "2026-08-09",
+        isDue: false,
+        includableAmountCents: 0
+      })
+    ]);
+    expect(preview.formula).toContain(
+      "当前累计可付款金额 - 已实际付款金额 - 审批中占用 - 已批待付款金额 - 总包代付金额 - 本次应扣回预付款金额"
+    );
+  });
 });

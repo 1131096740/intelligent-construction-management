@@ -6,7 +6,8 @@ describe("core flow read model contract", () => {
     expect(CORE_FLOW_READ_ENDPOINTS).toEqual({
       contractDetail: "/contracts/:contractId",
       settlementDetail: "/settlements/:settlementId",
-      paymentDetail: "/payments/:paymentId"
+      paymentDetail: "/payments/:paymentId",
+      contractPaymentApplication: "/payments/contract-application"
     });
   });
 });

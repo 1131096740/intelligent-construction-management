@@ -11,6 +11,7 @@ describe("PaymentController authorization wiring", () => {
 
   it.each([
     ["create", "payment.create"],
+    ["contractApplication", "payment.create"],
     ["reviewApproval", "payment.approve"],
     ["transferApproval", "payment.approve"],
     ["delegateApproval", "payment.approve"],
@@ -46,5 +47,17 @@ describe("PaymentController authorization wiring", () => {
       "finance_staff",
       "super_admin"
     ]);
+  });
+
+  it("forwards contract application preview requests to the payment read service", async () => {
+    const paymentRead = {
+      getContractApplication: jest.fn().mockResolvedValue({ contract: { contractVersionId: "contract-version-1" } })
+    };
+    const controller = new PaymentController(paymentRead as never, {} as never);
+
+    await expect(controller.contractApplication("contract-version-1")).resolves.toEqual({
+      contract: { contractVersionId: "contract-version-1" }
+    });
+    expect(paymentRead.getContractApplication).toHaveBeenCalledWith("contract-version-1");
   });
 });

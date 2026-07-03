@@ -142,6 +142,36 @@ export class PermissionGuard implements CanActivate {
       return payment?.projectId;
     }
 
+    const settlementIdFromParams = request.params?.settlementId;
+    if (settlementIdFromParams) {
+      const settlement = await this.prisma.settlement.findFirst({
+        where: { OR: [{ id: settlementIdFromParams }, { code: settlementIdFromParams }] },
+        select: { projectId: true }
+      });
+
+      return settlement?.projectId;
+    }
+
+    const contractVersionIdFromParams = request.params?.contractVersionId;
+    if (contractVersionIdFromParams) {
+      return this.extractProjectIdFromContractVersion(contractVersionIdFromParams);
+    }
+
+    const contractIdFromParams = request.params?.contractId;
+    if (contractIdFromParams) {
+      const contract = await this.prisma.contract.findFirst({
+        where: { OR: [{ id: contractIdFromParams }, { code: contractIdFromParams }] },
+        select: { projectId: true }
+      });
+
+      return contract?.projectId;
+    }
+
+    const projectIdFromParams = request.params?.projectId;
+    if (projectIdFromParams) {
+      return projectIdFromParams;
+    }
+
     const contractAdvanceVersionId =
       request.body?.sourceType === "contract_advance" &&
       typeof request.body?.contractVersionId === "string"
@@ -151,12 +181,11 @@ export class PermissionGuard implements CanActivate {
       return this.extractProjectIdFromContractVersion(contractAdvanceVersionId);
     }
 
-    const settlementId =
-      request.params?.settlementId ??
-      (typeof request.body?.settlementId === "string" ? request.body.settlementId : undefined);
-    if (settlementId) {
+    const settlementIdFromBody =
+      typeof request.body?.settlementId === "string" ? request.body.settlementId : undefined;
+    if (settlementIdFromBody) {
       const settlement = await this.prisma.settlement.findFirst({
-        where: { OR: [{ id: settlementId }, { code: settlementId }] },
+        where: { OR: [{ id: settlementIdFromBody }, { code: settlementIdFromBody }] },
         select: { projectId: true }
       });
 
@@ -164,31 +193,22 @@ export class PermissionGuard implements CanActivate {
     }
 
     const contractVersionId =
-      request.params?.contractVersionId ??
       (typeof request.body?.contractVersionId === "string"
         ? request.body.contractVersionId
+        : undefined) ??
+      (typeof request.query?.contractVersionId === "string"
+        ? request.query.contractVersionId
         : undefined);
     if (contractVersionId) {
       return this.extractProjectIdFromContractVersion(contractVersionId);
     }
 
-    const contractId = request.params?.contractId;
-    if (contractId) {
-      const contract = await this.prisma.contract.findFirst({
-        where: { OR: [{ id: contractId }, { code: contractId }] },
-        select: { projectId: true }
-      });
-
-      return contract?.projectId;
-    }
-
-    const fromParams = request.params?.projectId;
     const fromQuery = request.query?.projectId;
     const fromBody =
       typeof request.body?.projectId === "string" ? request.body.projectId : undefined;
 
-    if (fromParams ?? fromQuery ?? fromBody) {
-      return fromParams ?? fromQuery ?? fromBody;
+    if (fromQuery ?? fromBody) {
+      return fromQuery ?? fromBody;
     }
 
     return undefined;

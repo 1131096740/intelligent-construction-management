@@ -1,6 +1,16 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-domain";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import type {
+  ContractPaymentApplicationPreviewReadModel,
+  CoreFlowTone,
+  PaymentDetailReadModel
+} from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
+import {
+  buildContractPaymentApplicationPreview,
+  CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
+  SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
+  sumSafeCents
+} from "./settlement-payment-capacity";
 
 @Injectable()
 export class PaymentReadService {
@@ -207,6 +217,249 @@ export class PaymentReadService {
         { label: "付款凭证", to: "/archives" },
         { label: "审计日志", to: "/audit" }
       ]
+    };
+  }
+
+  async getContractApplication(
+    contractVersionId: string,
+    rawAsOf?: string
+  ): Promise<ContractPaymentApplicationPreviewReadModel> {
+    if (!contractVersionId) {
+      throw new BadRequestException("Contract version is required");
+    }
+
+    const asOf = rawAsOf ? new Date(rawAsOf) : new Date();
+    if (Number.isNaN(asOf.getTime())) {
+      throw new BadRequestException("Invalid asOf date");
+    }
+
+    const contractVersion = await this.prisma.contractVersion.findUnique({
+      where: { id: contractVersionId }
+    });
+    if (!contractVersion) {
+      throw new NotFoundException("Contract version not found");
+    }
+    if (contractVersion.status !== "effective") {
+      throw new BadRequestException("Cannot create payment from a non-effective contract version");
+    }
+
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractVersion.contractId }
+    });
+    if (!contract) {
+      throw new NotFoundException("Contract not found");
+    }
+
+    const project = await this.prisma.project.findUnique({
+      where: { id: contract.projectId }
+    });
+
+    const settlements = await this.prisma.settlement.findMany({
+      where: {
+        contractId: contract.id,
+        status: { in: [...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES] }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    const settlementIds = settlements.map((settlement) => settlement.id);
+    const settlementTermsVersionIds = settlements.map((settlement) => settlement.paymentTermsVersionId);
+    const paymentTermsVersions = await this.prisma.paymentTermsVersion.findMany({
+      where: {
+        contractVersionId: contractVersion.id,
+        status: "effective"
+      },
+      select: { id: true }
+    });
+    const paymentTermsVersionIds = [
+      ...new Set([
+        ...settlementTermsVersionIds,
+        ...paymentTermsVersions.map((terms) => terms.id)
+      ])
+    ];
+
+    const [
+      paymentTermsStages,
+      settlementArchiveFiles,
+      paymentRequests,
+      projectProxyPayments,
+      settlementContractVersions
+    ] = await Promise.all([
+      paymentTermsVersionIds.length
+        ? this.prisma.paymentTermsStage.findMany({
+            where: {
+              paymentTermsVersionId: { in: paymentTermsVersionIds },
+              OR: [{ basis: "current_settlement" }, { stageType: "advance" }]
+            },
+            select: {
+              id: true,
+              paymentTermsVersionId: true,
+              name: true,
+              stageType: true,
+              basis: true,
+              ratioBps: true,
+              fixedAmountCents: true,
+              triggerAnchor: true,
+              triggerEvent: true,
+              dueDays: true,
+              advanceDeductionMode: true,
+              advanceDeductionRatioBps: true,
+              advanceDeductionStartRatioBps: true
+            }
+          })
+        : Promise.resolve([]),
+      settlementIds.length
+        ? this.prisma.settlementArchiveFile.findMany({
+            where: {
+              settlementId: { in: settlementIds },
+              status: "confirmed",
+              confirmedAt: { not: null }
+            },
+            select: { settlementId: true, confirmedAt: true }
+          })
+        : Promise.resolve([]),
+      this.prisma.paymentRequest.findMany({
+        where: {
+          contractId: contract.id,
+          status: {
+            in: [
+              ...SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
+              "paid"
+            ]
+          }
+        },
+        select: {
+          settlementId: true,
+          sourceType: true,
+          paymentTermsVersionId: true,
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
+      this.prisma.projectProxyPayment.findMany({
+        where: {
+          voidedAt: null,
+          OR: [
+            { contractId: contract.id },
+            ...(settlementIds.length ? [{ settlementId: { in: settlementIds } }] : [])
+          ]
+        },
+        select: { amountCents: true }
+      }),
+      settlements.length
+        ? this.prisma.contractVersion.findMany({
+            where: {
+              id: {
+                in: [
+                  ...new Set(
+                    settlements.map((settlement) => settlement.contractVersionId)
+                  )
+                ]
+              }
+            },
+            select: { id: true, amountCents: true }
+          })
+        : Promise.resolve([])
+    ]);
+    const contractAmountCentsByVersionId = new Map(
+      settlementContractVersions.map((version) => [
+        version.id,
+        sumSafeCents([version.amountCents])
+      ])
+    );
+    const contractAmountCentsByPaymentTermsVersionId = settlements.reduce<Record<string, number>>(
+      (amounts, settlement) => ({
+        ...amounts,
+        [settlement.paymentTermsVersionId]:
+          contractAmountCentsByVersionId.get(settlement.contractVersionId) ??
+          sumSafeCents([contractVersion.amountCents])
+      }),
+      {}
+    );
+    for (const terms of paymentTermsVersions) {
+      contractAmountCentsByPaymentTermsVersionId[terms.id] =
+        contractAmountCentsByPaymentTermsVersionId[terms.id] ??
+        sumSafeCents([contractVersion.amountCents]);
+    }
+
+    const settlementPaymentRequests = paymentRequests.filter(
+      (payment) => payment.sourceType === "settlement" || payment.settlementId
+    );
+    const advancePaymentRequests = paymentRequests.filter(
+      (payment) =>
+        payment.sourceType === "contract_advance" &&
+        payment.paidAmountCents > 0 &&
+        payment.paymentTermsVersionId
+    );
+    const proxyPaidCents = sumSafeCents(projectProxyPayments.map((payment) => payment.amountCents));
+    const preview = buildContractPaymentApplicationPreview({
+      asOf,
+      contractEffectiveAt: contractVersion.effectiveAt,
+      settlements,
+      paymentTermsStages,
+      settlementArchiveFiles,
+      paymentRequests: settlementPaymentRequests,
+      proxyPaidAmountCents: proxyPaidCents,
+      contractAmountCents: sumSafeCents([contractVersion.amountCents]),
+      contractAmountCentsByPaymentTermsVersionId,
+      advancePaymentRequests
+    });
+    const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
+    const occupancy = this.paymentOccupancyBreakdown(settlementPaymentRequests);
+    const actualPaidCents = sumSafeCents(settlements.map((settlement) => settlement.paidAmountCents));
+
+    return {
+      contract: {
+        contractId: contract.id,
+        contractVersionId: contractVersion.id,
+        contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
+        contractName: contract.name,
+        contractVersion: `合同 v${contractVersion.versionNo}`,
+        projectId: contract.projectId,
+        projectName: project?.name ?? contract.projectId
+      },
+      asOf: asOf.toISOString(),
+      includedSettlements: settlements.map((settlement) => ({
+        settlementId: settlement.id,
+        settlementNo: settlement.code,
+        period: settlement.periodLabel,
+        amountCents: settlement.amountCents,
+        status: settlement.status,
+        isFinal: settlement.isFinal
+      })),
+      capacity: {
+        ...preview.capacity,
+        actualPaidCents,
+        approvalPendingCents: occupancy.approvalPendingCents,
+        approvedPendingCents: occupancy.approvedPendingCents,
+        proxyPaidCents
+      },
+      advanceDeduction: preview.advanceDeduction,
+      sections: preview.sections.map((section) => ({
+        type: section.type,
+        title: section.title,
+        rows: section.rows.map((row) => {
+          const settlement = row.settlementId ? settlementById.get(row.settlementId) : undefined;
+
+          return {
+            id: row.id,
+            source: settlement ? `${settlement.code} · ${settlement.periodLabel}` : row.source,
+            settlementId: row.settlementId,
+            settlementNo: settlement?.code ?? null,
+            currentSettlementAmountCents: row.currentSettlementAmountCents,
+            cumulativeBeforeAmountCents: row.cumulativeBeforeAmountCents,
+            cumulativeAfterAmountCents: row.cumulativeAfterAmountCents,
+            effectiveAt: this.dateOnly(row.effectiveAt),
+            expectedPayableAt: this.dateOnly(row.expectedPayableAt),
+            paymentRule: row.paymentRule,
+            isDue: row.isDue,
+            includableAmountCents: row.includableAmountCents
+          };
+        })
+      })),
+      formula:
+        "当前累计可付款金额 - 已实际付款金额 - 审批中占用 - 已批待付款金额 - 总包代付金额 - 本次应扣回预付款金额 = 本次最多可申请金额"
     };
   }
 
@@ -434,5 +687,50 @@ export class PaymentReadService {
 
   private date(value: Date) {
     return value.toLocaleString("zh-CN", { hour12: false });
+  }
+
+  private dateOnly(value: Date | null) {
+    return value ? value.toISOString().slice(0, 10) : null;
+  }
+
+  private paymentOccupancyBreakdown(
+    paymentRequests: Array<{
+      status: string;
+      requestedAmountCents: number;
+      approvedAmountCents: number | null;
+      paidAmountCents: number;
+    }>
+  ) {
+    return paymentRequests.reduce(
+      (totals, payment) => {
+        const paidAmountCents = Math.max(payment.paidAmountCents, 0);
+        if (["approval_pending", "in_approval"].includes(payment.status)) {
+          return {
+            ...totals,
+            approvalPendingCents:
+              totals.approvalPendingCents +
+              Math.max(payment.requestedAmountCents - paidAmountCents, 0)
+          };
+        }
+
+        if (["approved_pending_payment", "partially_paid"].includes(payment.status)) {
+          return {
+            ...totals,
+            approvedPendingCents:
+              totals.approvedPendingCents +
+              Math.max(
+                (payment.approvedAmountCents ?? payment.requestedAmountCents) - paidAmountCents,
+                0
+              )
+          };
+        }
+
+        return totals;
+      },
+      {
+        approvalPendingCents: 0,
+        approvedPendingCents: 0
+      }
+    );
   }
 }

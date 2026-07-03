@@ -24,6 +24,12 @@ export class PaymentController {
     return this.payments.create(body, user.id);
   }
 
+  @Get("contract-application")
+  @RequireProjectRole("payment.create")
+  contractApplication(@Query("contractVersionId") contractVersionId: string) {
+    return this.paymentRead.getContractApplication(contractVersionId);
+  }
+
   @Get()
   @RequirePositions(
     "chairman",

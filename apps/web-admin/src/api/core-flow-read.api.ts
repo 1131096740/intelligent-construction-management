@@ -1,5 +1,6 @@
 import type {
   ContractDetailReadModel,
+  ContractPaymentApplicationPreviewReadModel,
   PaymentDetailReadModel,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
@@ -63,6 +64,13 @@ export function fetchSettlementDetail(settlementId: string) {
 
 export function fetchPaymentDetail(paymentId: string) {
   return readJson<PaymentDetailReadModel>(`/payments/${paymentId}`);
+}
+
+export function fetchContractPaymentApplication(contractVersionId: string) {
+  const encodedContractVersionId = encodeURIComponent(contractVersionId);
+  return readJson<ContractPaymentApplicationPreviewReadModel>(
+    `/payments/contract-application?contractVersionId=${encodedContractVersionId}`
+  );
 }
 
 // 操作人统一来自登录态（access token），写入负载不再携带 *ByUserId。

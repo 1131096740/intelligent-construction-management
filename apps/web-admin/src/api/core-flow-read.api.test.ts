@@ -7,6 +7,7 @@ import {
   fetchPaymentLedger,
   fetchSettlementDetail,
   fetchSettlementLedger,
+  fetchContractPaymentApplication,
   fetchArchives,
   fetchAuditLogs,
   fetchProjectExpenseRequests,
@@ -88,6 +89,19 @@ describe("core flow read API client", () => {
       "/api/contracts/HT-2026-001",
       "/api/settlements/JS-2026-018",
       "/api/payments/FK-2026-006"
+    ]);
+  });
+
+  it("requests the contract payment application preview endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ contract: { contractVersionId: "contract-version/1" } })
+    } as Response);
+
+    await fetchContractPaymentApplication("contract-version/1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/payments/contract-application?contractVersionId=contract-version%2F1"
     ]);
   });
 

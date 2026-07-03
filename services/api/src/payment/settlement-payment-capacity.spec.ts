@@ -4,6 +4,7 @@ interface ContractDueSettlement {
   id: string;
   status: string;
   amountCents: number;
+  paidAmountCents?: number;
   paymentTermsVersionId: string;
   isFinal?: boolean;
 }
@@ -49,8 +50,40 @@ interface ContractAdvancePaymentRequest {
   paidAmountCents: number;
 }
 
+interface ContractPaymentApplicationPreview {
+  capacity: {
+    cumulativeEffectiveSettlementCents: number;
+    duePayableCents: number;
+    occupiedCents: number;
+    advanceDeductionCents: number;
+    maxRequestableCents: number;
+  };
+  advanceDeduction: {
+    paidAdvanceCents: number;
+    currentDeductionCents: number;
+    remainingAdvanceToDeductCents: number;
+  };
+  sections: Array<{
+    type: "advance" | "progress" | "final" | "retention";
+    title: string;
+    rows: Array<{
+      id: string;
+      source: string;
+      currentSettlementAmountCents: number;
+      cumulativeBeforeAmountCents: number;
+      cumulativeAfterAmountCents: number;
+      effectiveAt: Date | null;
+      expectedPayableAt: Date | null;
+      paymentRule: string;
+      isDue: boolean;
+      includableAmountCents: number;
+    }>;
+  }>;
+}
+
 type ContractDuePaymentCapacityCalculator = (input: {
   asOf: Date;
+  contractEffectiveAt?: Date | null;
   settlements: readonly ContractDueSettlement[];
   paymentTermsStages: readonly ContractDuePaymentTermsStage[];
   settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
@@ -60,6 +93,10 @@ type ContractDuePaymentCapacityCalculator = (input: {
   contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number>>;
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
 }) => ContractDuePaymentCapacity;
+
+type ContractPaymentApplicationPreviewBuilder = (
+  input: Parameters<ContractDuePaymentCapacityCalculator>[0]
+) => ContractPaymentApplicationPreview;
 
 type ContractAdvancePaymentCapacityCalculator = (input: {
   asOf: Date;
@@ -81,6 +118,12 @@ const calculateContractAdvancePaymentCapacity = (
   }
 ).calculateContractAdvancePaymentCapacity;
 
+const buildContractPaymentApplicationPreview = (
+  settlementPaymentCapacity as unknown as {
+    buildContractPaymentApplicationPreview?: ContractPaymentApplicationPreviewBuilder;
+  }
+).buildContractPaymentApplicationPreview;
+
 function calculateContractCapacity(
   input: Parameters<ContractDuePaymentCapacityCalculator>[0]
 ): ContractDuePaymentCapacity {
@@ -99,6 +142,16 @@ function calculateAdvanceCapacity(
   }
 
   return calculateContractAdvancePaymentCapacity(input);
+}
+
+function buildApplicationPreview(
+  input: Parameters<ContractPaymentApplicationPreviewBuilder>[0]
+): ContractPaymentApplicationPreview {
+  if (!buildContractPaymentApplicationPreview) {
+    throw new Error("buildContractPaymentApplicationPreview is not exported");
+  }
+
+  return buildContractPaymentApplicationPreview(input);
 }
 
 describe("calculateContractDuePaymentCapacity", () => {
@@ -975,6 +1028,268 @@ describe("calculateContractDuePaymentCapacity", () => {
         ]
       })
     ).toThrow("Unsupported advance deduction mode: unsupported_mode");
+  });
+});
+
+describe("buildContractPaymentApplicationPreview", () => {
+  const asOf = new Date("2026-07-20T00:00:00.000Z");
+
+  it("lists every effective settlement and marks rows before account period as not includable", () => {
+    const preview = buildApplicationPreview({
+      asOf,
+      settlements: [
+        {
+          id: "settlement-due",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-1"
+        },
+        {
+          id: "settlement-not-due",
+          status: "effective",
+          amountCents: 50_000,
+          paymentTermsVersionId: "terms-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 30
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-due",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        },
+        {
+          settlementId: "settlement-not-due",
+          confirmedAt: new Date("2026-07-10T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: []
+    });
+
+    expect(preview.capacity).toMatchObject({
+      cumulativeEffectiveSettlementCents: 150_000,
+      duePayableCents: 80_000,
+      occupiedCents: 0,
+      advanceDeductionCents: 0,
+      maxRequestableCents: 80_000
+    });
+    expect(preview.sections).toHaveLength(1);
+    expect(preview.sections[0]).toMatchObject({
+      type: "progress",
+      title: "进度款"
+    });
+    expect(preview.sections[0].rows).toEqual([
+      expect.objectContaining({
+        id: "settlement-due:progress:0",
+        source: "settlement-due",
+        currentSettlementAmountCents: 100_000,
+        cumulativeBeforeAmountCents: 0,
+        cumulativeAfterAmountCents: 100_000,
+        effectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+        expectedPayableAt: new Date("2026-07-01T00:00:00.000Z"),
+        paymentRule: "80% · 30天",
+        isDue: true,
+        includableAmountCents: 80_000
+      }),
+      expect.objectContaining({
+        id: "settlement-not-due:progress:0",
+        source: "settlement-not-due",
+        currentSettlementAmountCents: 50_000,
+        cumulativeBeforeAmountCents: 100_000,
+        cumulativeAfterAmountCents: 150_000,
+        effectiveAt: new Date("2026-07-10T00:00:00.000Z"),
+        expectedPayableAt: new Date("2026-08-09T00:00:00.000Z"),
+        paymentRule: "80% · 30天",
+        isDue: false,
+        includableAmountCents: 0
+      })
+    ]);
+  });
+
+  it("hides final and retention sections until a final settlement is effective", () => {
+    const preview = buildApplicationPreview({
+      asOf,
+      settlements: [
+        {
+          id: "settlement-progress",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-1",
+          isFinal: false
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "final",
+          basis: "current_settlement",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "final_settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "retention",
+          basis: "current_settlement",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "final_settlement_effective",
+          dueDays: 0
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-progress",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: []
+    });
+
+    expect(preview.sections.map((section) => section.type)).toEqual(["progress"]);
+  });
+
+  it("shows retention after a final settlement is effective and omits the section when no retention term exists", () => {
+    const preview = buildApplicationPreview({
+      asOf,
+      settlements: [
+        {
+          id: "settlement-final",
+          status: "effective",
+          amountCents: 100_000,
+          paymentTermsVersionId: "terms-1",
+          isFinal: true
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "retention",
+          basis: "current_settlement",
+          ratioBps: 2000,
+          fixedAmountCents: null,
+          triggerAnchor: "final_settlement_effective",
+          dueDays: 30
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-final",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: []
+    });
+
+    expect(preview.sections.map((section) => section.type)).toEqual(["progress", "retention"]);
+    expect(preview.sections.find((section) => section.type === "retention")?.rows[0]).toMatchObject({
+      source: "settlement-final",
+      isDue: true,
+      includableAmountCents: 20_000
+    });
+    expect(preview.sections.some((section) => section.type === "final")).toBe(false);
+  });
+
+  it("surfaces advance deduction details separately from occupied payment amounts", () => {
+    const preview = buildApplicationPreview({
+      asOf,
+      contractAmountCents: 1_000_000,
+      settlements: [
+        {
+          id: "settlement-1",
+          status: "effective",
+          amountCents: 100_000,
+          paidAmountCents: 10_000,
+          paymentTermsVersionId: "terms-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        },
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "advance",
+          basis: "contract_amount",
+          ratioBps: 1000,
+          fixedAmountCents: null,
+          triggerAnchor: "contract_effective",
+          dueDays: 0,
+          advanceDeductionMode: "per_settlement_ratio",
+          advanceDeductionRatioBps: 2000
+        }
+      ],
+      settlementArchiveFiles: [
+        {
+          settlementId: "settlement-1",
+          confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+        }
+      ],
+      paymentRequests: [
+        {
+          settlementId: "settlement-1",
+          status: "approved_pending_payment",
+          requestedAmountCents: 30_000,
+          approvedAmountCents: 30_000,
+          paidAmountCents: 0
+        }
+      ],
+      advancePaymentRequests: [
+        {
+          paymentTermsVersionId: "terms-1",
+          status: "paid",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 50_000
+        }
+      ]
+    });
+
+    expect(preview.capacity).toMatchObject({
+      duePayableCents: 80_000,
+      occupiedCents: 40_000,
+      advanceDeductionCents: 20_000,
+      maxRequestableCents: 20_000
+    });
+    expect(preview.advanceDeduction).toEqual({
+      paidAdvanceCents: 50_000,
+      currentDeductionCents: 20_000,
+      remainingAdvanceToDeductCents: 30_000
+    });
   });
 });
 

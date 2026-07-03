@@ -489,6 +489,160 @@ describe("PermissionGuard", () => {
     });
   });
 
+  it("resolves project roles from query contractVersionId for payment application preview", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(where.projectId === "project-a" ? [{ positionKey: "contract_staff" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("payment.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          query: { contractVersionId: "contract-version-1", projectId: "project-b" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.contractVersion.findUnique).toHaveBeenCalledWith({
+      where: { id: "contract-version-1" },
+      select: { contractId: true }
+    });
+    expect(prisma.contract.findUnique).toHaveBeenCalledWith({
+      where: { id: "contract-1" },
+      select: { projectId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-a" }
+    });
+  });
+
+  it("does not let query contractVersionId override an explicit project route id", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(where.projectId === "project-b" ? [{ positionKey: "finance_staff" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("payment.execution")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { projectId: "project-b" },
+          query: { contractVersionId: "contract-version-in-project-a" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.contractVersion.findUnique).not.toHaveBeenCalled();
+    expect(prisma.contract.findUnique).not.toHaveBeenCalled();
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-b" }
+    });
+  });
+
+  it("does not let query contractVersionId override body contractVersionId for creation payloads", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(where.projectId === "project-b" ? [{ positionKey: "contract_staff" }] : [])
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractVersion: {
+        findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve({
+            contractId:
+              where.id === "body-contract-version-in-project-b" ? "contract-b" : "contract-a"
+          })
+        )
+      },
+      contract: {
+        findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve({
+            projectId: where.id === "contract-b" ? "project-b" : "project-a"
+          })
+        )
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("settlement.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          body: { contractVersionId: "body-contract-version-in-project-b" },
+          query: { contractVersionId: "query-contract-version-in-project-a" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.contractVersion.findUnique).toHaveBeenCalledWith({
+      where: { id: "body-contract-version-in-project-b" },
+      select: { contractId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: "project-b" }
+    });
+  });
+
   it("does not let forged settlementId override contractVersionId for contract advance payment creation", async () => {
     const prisma = {
       userPosition: {
