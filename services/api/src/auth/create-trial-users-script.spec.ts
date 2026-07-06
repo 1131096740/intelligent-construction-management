@@ -9,11 +9,10 @@ const { buildUserUpdate } = jest.requireActual("../../scripts/create-trial-users
 describe("create-trial-users script", () => {
   const user = { name: "试运行合同员一", phone: "18800000000" };
 
-  it("preserves existing trial user password when no explicit reset password is provided", () => {
+  it("preserves existing trial user password and change-password flag when no explicit reset password is provided", () => {
     expect(buildUserUpdate(user, "new-hash", false)).toEqual({
       name: "试运行合同员一",
       phone: "18800000000",
-      mustChangePassword: true,
       isActive: true
     });
   });

@@ -68,8 +68,7 @@ function buildUserUpdate(user, passwordHash, resetExistingPassword) {
   return {
     name: user.name,
     phone: user.phone,
-    ...(resetExistingPassword ? { passwordHash } : {}),
-    mustChangePassword: true,
+    ...(resetExistingPassword ? { passwordHash, mustChangePassword: true } : {}),
     isActive: true
   };
 }
@@ -143,7 +142,11 @@ async function main() {
     if (!resetExistingPassword) {
       console.log("Existing trial user passwords were preserved. Set TRIAL_USER_TEMP_PASSWORD to reset them.");
     }
-    console.log("mustChangePassword: true");
+    console.log(
+      resetExistingPassword
+        ? "mustChangePassword: true"
+        : "mustChangePassword: true for newly-created users; existing user flags were preserved."
+    );
   } finally {
     await prisma.$disconnect();
   }
