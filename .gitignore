@@ -9,3 +9,13 @@ coverage/
 apps/miniprogram/miniprogram_npm/
 .pnpm-store/
 services/api/storage/
+
+# Teaching/demo artifacts are not product code.
+training-demos/
+teaching-demos/
+教学演示/
+培训演示/
+apps/web-admin/src/pages/training/
+apps/web-admin/public/training/
+obsidian-current/*培训方案*
+obsidian-current/*教学演示*
