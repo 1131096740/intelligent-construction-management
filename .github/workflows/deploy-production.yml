@@ -84,5 +84,14 @@ jobs:
           ssh -i ~/.ssh/jiangkong_deploy_key \
             -p "$DEPLOY_PORT" \
             -o IdentitiesOnly=yes \
-            "$DEPLOY_USER@$DEPLOY_HOST" \
-            'cd /opt/jiangkong && git pull --ff-only origin main && /opt/jiangkong/deploy.sh'
+            "$DEPLOY_USER@$DEPLOY_HOST" <<'REMOTE_DEPLOY'
+          set -euo pipefail
+
+          git config --global --add safe.directory /opt/jiangkong
+          cd /opt/jiangkong
+          git fetch origin main
+          git merge --ff-only origin/main
+          git rev-parse --short HEAD
+
+          /opt/jiangkong/deploy.sh
+          REMOTE_DEPLOY

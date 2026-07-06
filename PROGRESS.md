@@ -24,6 +24,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-07-06 (CodeX)：修复上一版生产自动部署 workflow 的远程 `git pull` 失败排障面。`Deploy to server` 现在通过 heredoc 明确执行远程步骤：先将 `/opt/jiangkong` 加入当前部署用户的 Git safe.directory，再 `git fetch origin main`、`git merge --ff-only origin/main`、打印短 commit，最后运行 `/opt/jiangkong/deploy.sh`；避免一行 SSH 命令只返回 exit 128 而看不到具体失败点。验证：workflow YAML 解析通过，`git diff --check` 通过。
 - 2026-07-06 (CodeX)：修正生产自动部署 workflow：GitHub Actions 远程 SSH 到服务器后会先进入 `/opt/jiangkong` 并执行 `git pull --ff-only origin main`，再运行现有 `/opt/jiangkong/deploy.sh`，避免服务器工作目录停留在旧 commit 时继续部署旧脚本和旧试运行账号手机号。验证：workflow YAML 解析通过，`git diff --check` 通过。
 - 2026-07-06 (CodeX)：排查试运行账号使用既有临时密码无法登录的问题，并将账号脚本手机号从旧占位号替换为真实试运行手机号。根因方向是 `create:trial-users` 脚本此前每次不带 `TRIAL_USER_TEMP_PASSWORD` 重跑都会生成新随机密码并覆盖已有试运行用户 `passwordHash`，导致已发出的临时密码整体失效；已改为只有显式传入 `TRIAL_USER_TEMP_PASSWORD` 时才重置已有用户密码，普通重跑只维护姓名、手机号、岗位、启用状态和强制改密标记，并新增脚本分支单测。当前本机 `services/api/.env` 指向的 PostgreSQL 未启动，且本机 3000/5173 无服务响应；仍需在实际试运行/生产等价 API 所连接的目标库中显式执行一次带临时密码的账号重置。
 - 2026-07-06 (CodeX)：修复 GitHub Actions `Deploy Production` 的 `Verify build` 失败。失败根因是后端读模型日期使用运行环境本地时区格式化，GitHub runner 使用 UTC 时导致合同详情付款日期断言从 `2026/6/26 16:00:00` 漂移为 `2026/6/26 08:00:00`。已将合同、结算、付款和归档读模型日期展示固定为 `Asia/Shanghai`，与当前业务/腾讯云生产时区一致。验证：`TZ=UTC pnpm test`、`TZ=UTC pnpm typecheck`、`TZ=UTC pnpm lint`、`TZ=UTC pnpm --filter @jiangkong/api build`、`TZ=UTC pnpm --filter @jiangkong/web-admin build` 均通过。
