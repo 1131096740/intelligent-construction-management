@@ -9,9 +9,10 @@ import { PrismaService } from "../database/prisma.service";
 export class SettlementReadService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listRecent(rawLimit?: string | number) {
+  async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
     const take = this.limit(rawLimit);
     const settlements = await this.prisma.settlement.findMany({
+      ...(visibleProjectIds ? { where: { projectId: { in: visibleProjectIds } } } : {}),
       take,
       orderBy: { updatedAt: "desc" }
     });

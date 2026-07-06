@@ -134,6 +134,33 @@ export const useAuthStore = defineStore("auth", {
         return false;
       }
     },
+    async changePassword(oldPassword: string, newPassword: string) {
+      if (!this.accessToken) {
+        throw new Error("请先登录");
+      }
+
+      const response = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.accessToken}`
+        },
+        body: JSON.stringify({ oldPassword, newPassword })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `修改密码失败：${response.status}`);
+      }
+
+      if (this.user) {
+        this.user = {
+          ...this.user,
+          mustChangePassword: false
+        };
+        this.persist();
+      }
+    },
     async logout() {
       const refreshToken = this.refreshToken;
       this.clearSession();

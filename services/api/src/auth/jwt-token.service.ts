@@ -2,8 +2,19 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { createHmac, createHash } from "node:crypto";
 import type { AuthenticatedUser, JwtPayload } from "./auth.types";
 
+const DEFAULT_SECRET_MARKERS = new Set([
+  "local-access-secret",
+  "local-refresh-secret",
+  "replace-with-long-random-secret"
+]);
+
 @Injectable()
 export class JwtTokenService {
+  constructor() {
+    this.assertProductionSecret("JWT_ACCESS_SECRET");
+    this.assertProductionSecret("JWT_REFRESH_SECRET");
+  }
+
   accessTokenTtlSeconds() {
     return Number(process.env.JWT_ACCESS_TTL_SECONDS ?? 15 * 60);
   }
@@ -100,6 +111,17 @@ export class JwtTokenService {
     }
 
     return process.env.JWT_ACCESS_SECRET ?? "local-access-secret";
+  }
+
+  private assertProductionSecret(key: "JWT_ACCESS_SECRET" | "JWT_REFRESH_SECRET") {
+    if (process.env.NODE_ENV !== "production") {
+      return;
+    }
+
+    const value = process.env[key]?.trim();
+    if (!value || DEFAULT_SECRET_MARKERS.has(value) || value.length < 32) {
+      throw new Error(`${key} must be set to a non-default production secret`);
+    }
   }
 
   private nowSeconds() {

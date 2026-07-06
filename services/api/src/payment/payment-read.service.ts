@@ -51,9 +51,10 @@ export class PaymentReadService {
     return toHistoricalContractPaymentBalance(takeover);
   }
 
-  async listRecent(rawLimit?: string | number) {
+  async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
     const take = this.limit(rawLimit);
     const payments = await this.prisma.paymentRequest.findMany({
+      ...(visibleProjectIds ? { where: { projectId: { in: visibleProjectIds } } } : {}),
       take,
       orderBy: { updatedAt: "desc" }
     });

@@ -14,7 +14,7 @@
 
 ## 自动辅助检查
 
-在生产等价服务器加载 API 环境变量后运行：
+在源码工作区、生产等价验收工作区，或包含 `services/api/scripts/verify-production-readiness.cjs` 的部署包中加载 API 环境变量后运行；生产最小运行目录若不包含源码脚本，应在发布前的验收工作区留存输出。
 
 ```bash
 set -a
@@ -95,6 +95,7 @@ pnpm --filter @jiangkong/api verify:production-readiness
 
 | 验收项 | 方法 | 通过标准 | 结果 |
 | --- | --- | --- | --- |
+| 迁移状态 | `prisma migrate deploy` / `prisma migrate status` 留痕 | 目标库已应用当前 commit 所需迁移，执行人、时间和输出已记录 | 待验收 |
 | 监听地址 | 服务器人工检查 | PostgreSQL 不监听公网地址，或仅在 VPC/本机可达 | 待验收 |
 | 安全组 / 防火墙 | 云控制台人工检查 | 5432 不对公网开放 | 待验收 |
 | 数据库账号 | 人工复核 | 应用账号最小权限，不使用演示账号 | 待验收 |

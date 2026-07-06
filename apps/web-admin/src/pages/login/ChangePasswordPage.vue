@@ -1,27 +1,35 @@
 <template>
-  <main class="login-page">
-    <section class="login-panel">
+  <main class="password-page">
+    <section class="password-panel">
       <div class="brand-block">
-        <h1>建工智管</h1>
-        <p>审批、合同、结算、付款闭环管理后台</p>
+        <h1>修改初始密码</h1>
+        <p>试运行账号首次登录后需设置个人密码</p>
       </div>
 
       <form
-        class="login-form"
-        @submit.prevent="submitLogin"
+        class="password-form"
+        @submit.prevent="submitChangePassword"
       >
         <t-input
-          v-model="form.phone"
-          label="手机号"
-          placeholder="请输入手机号"
-          autocomplete="username"
+          v-model="form.oldPassword"
+          label="当前密码"
+          type="password"
+          placeholder="请输入当前密码"
+          autocomplete="current-password"
         />
         <t-input
-          v-model="form.password"
-          label="密码"
+          v-model="form.newPassword"
+          label="新密码"
           type="password"
-          placeholder="请输入密码"
-          autocomplete="current-password"
+          placeholder="至少 8 位"
+          autocomplete="new-password"
+        />
+        <t-input
+          v-model="form.confirmPassword"
+          label="确认新密码"
+          type="password"
+          placeholder="请再次输入新密码"
+          autocomplete="new-password"
         />
         <t-alert
           v-if="errorMessage"
@@ -34,7 +42,7 @@
           block
           :loading="submitting"
         >
-          登录
+          保存新密码
         </t-button>
       </form>
     </section>
@@ -52,8 +60,9 @@ const auth = useAuthStore();
 const submitting = ref(false);
 const errorMessage = ref("");
 const form = reactive({
-  phone: "",
-  password: ""
+  oldPassword: "",
+  newPassword: "",
+  confirmPassword: ""
 });
 
 function redirectPath() {
@@ -61,20 +70,21 @@ function redirectPath() {
   return typeof redirect === "string" && redirect.startsWith("/") ? redirect : "/首页";
 }
 
-async function submitLogin() {
+async function submitChangePassword() {
   errorMessage.value = "";
+
+  if (form.newPassword !== form.confirmPassword) {
+    errorMessage.value = "两次输入的新密码不一致";
+    return;
+  }
+
   submitting.value = true;
 
   try {
-    const user = await auth.login(form.phone.trim(), form.password);
-    const target = redirectPath();
-    await router.replace(
-      user.mustChangePassword
-        ? { path: "/change-password", query: { redirect: target } }
-        : target
-    );
+    await auth.changePassword(form.oldPassword, form.newPassword);
+    await router.replace(redirectPath());
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "登录失败";
+    errorMessage.value = error instanceof Error ? error.message : "修改密码失败";
   } finally {
     submitting.value = false;
   }
@@ -82,7 +92,7 @@ async function submitLogin() {
 </script>
 
 <style scoped>
-.login-page {
+.password-page {
   min-height: 100vh;
   display: grid;
   place-items: center;
@@ -91,7 +101,7 @@ async function submitLogin() {
   color: #151922;
 }
 
-.login-panel {
+.password-panel {
   width: min(420px, 100%);
   padding: 32px;
   background: #fff;
@@ -116,7 +126,7 @@ async function submitLogin() {
   font-size: 14px;
 }
 
-.login-form {
+.password-form {
   display: grid;
   gap: 16px;
 }

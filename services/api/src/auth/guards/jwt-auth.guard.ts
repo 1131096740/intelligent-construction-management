@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException
 } from "@nestjs/common";
@@ -39,6 +40,10 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException("Invalid access token");
     }
 
+    if (user.mustChangePassword && !this.isPasswordChangeRequest(request)) {
+      throw new ForbiddenException("Password change required");
+    }
+
     request.user = {
       id: user.id,
       name: user.name,
@@ -57,5 +62,15 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     return authorization.slice("Bearer ".length);
+  }
+
+  private isPasswordChangeRequest(request: AuthenticatedRequest) {
+    const httpRequest = request as AuthenticatedRequest & {
+      path?: string;
+      route?: { path?: string };
+      url?: string;
+    };
+    const path = httpRequest.route?.path ?? httpRequest.path ?? httpRequest.url ?? "";
+    return path.includes("/auth/change-password") || path.includes("auth/change-password");
   }
 }

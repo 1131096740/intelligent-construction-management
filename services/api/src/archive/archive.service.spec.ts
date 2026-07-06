@@ -107,4 +107,69 @@ describe("ArchiveService", () => {
       paymentFiles: 2
     });
   });
+
+  it("filters archive ledger by visible projects", async () => {
+    const prisma = {
+      contractArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-archive-1",
+            contractVersionId: "version-1",
+            fileId: "file-contract",
+            uploadedByUserId: "user-contract",
+            confirmedByUserId: null,
+            confirmedAt: null,
+            status: "confirmed",
+            createdAt: new Date("2026-07-01T08:00:00.000Z")
+          }
+        ])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "version-1", contractId: "contract-1", versionNo: 1 }
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            projectId: "project-hidden",
+            code: "HT-001",
+            temporaryCode: null,
+            name: "材料采购合同"
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([{ id: "file-contract", originalName: "盖章合同.pdf" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-hidden", name: "隐藏项目" }])
+      }
+    };
+    const service = new ArchiveService(prisma as never);
+
+    const result = await service.listRecent(20, ["project-visible"]);
+
+    expect(result.rows).toEqual([]);
+    expect(result.summary.total).toBe(0);
+  });
 });

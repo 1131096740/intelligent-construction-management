@@ -73,6 +73,32 @@ describe("ContractReadService", () => {
     });
   });
 
+  it("filters contract ledger by visible projects", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractVersion: {
+        findMany: jest.fn()
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn()
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    await service.listRecent(20, ["project-1"]);
+
+    expect(prisma.contract.findMany).toHaveBeenCalledWith({
+      where: { projectId: { in: ["project-1"] } },
+      take: 20,
+      orderBy: { updatedAt: "desc" }
+    });
+  });
+
   it("lists business contract options for settlement and payment creation", async () => {
     const prisma = {
       contract: {

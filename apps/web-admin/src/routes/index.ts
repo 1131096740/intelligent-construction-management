@@ -12,12 +12,14 @@ interface RouteAccessTarget {
   fullPath: string;
   meta: {
     public?: unknown;
+    passwordChange?: unknown;
     requiredRoleKeys?: readonly RoleKey[];
   };
 }
 
 interface RouteAccessAuth {
   isAuthenticated: boolean;
+  mustChangePassword?: boolean;
   roleKeys: readonly RoleKey[] | undefined;
 }
 
@@ -28,6 +30,14 @@ export function resolveRouteAccess(to: RouteAccessTarget, auth: RouteAccessAuth)
 
   if (!auth.isAuthenticated) {
     return { path: "/login", query: { redirect: to.fullPath } };
+  }
+
+  if (auth.mustChangePassword && !to.meta.passwordChange) {
+    return { path: "/change-password", query: { redirect: to.fullPath } };
+  }
+
+  if (!auth.mustChangePassword && to.meta.passwordChange) {
+    return { path: "/首页" };
   }
 
   if (!hasAnyRole(auth.roleKeys, to.meta.requiredRoleKeys)) {
@@ -41,6 +51,7 @@ router.beforeEach((to) => {
   const auth = useAuthStore();
   return resolveRouteAccess(to, {
     isAuthenticated: auth.isAuthenticated,
+    mustChangePassword: Boolean(auth.user?.mustChangePassword),
     roleKeys: auth.user?.roleKeys
   });
 });

@@ -1534,7 +1534,7 @@ export class PaymentRequestService {
     return Math.max(payableAmountCents - payment.paidAmountCents, 0);
   }
 
-  private async lockPaymentRequestForExecution(
+  private async lockPaymentRequestForUpdate(
     tx: Prisma.TransactionClient,
     paymentId: string
   ): Promise<PaymentExecutionLockRow | null> {
@@ -1577,9 +1577,7 @@ export class PaymentRequestService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const payment = await tx.paymentRequest.findFirst({
-        where: { OR: [{ id: paymentId }, { code: paymentId }] }
-      });
+      const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
 
       if (!payment) {
         throw new Error("Payment request not found");
@@ -2413,7 +2411,7 @@ export class PaymentRequestService {
 
     let blockedReason: string | undefined;
     const execution = await this.prisma.$transaction(async (tx) => {
-      const payment = await this.lockPaymentRequestForExecution(tx, paymentId);
+      const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
 
       if (!payment) {
         throw new Error("Payment request not found");
@@ -2576,9 +2574,7 @@ export class PaymentRequestService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const payment = await tx.paymentRequest.findFirst({
-        where: { OR: [{ id: paymentId }, { code: paymentId }] }
-      });
+      const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
 
       if (!payment) {
         throw new Error("Payment request not found");

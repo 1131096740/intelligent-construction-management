@@ -53,7 +53,7 @@ describe("PaymentController authorization wiring", () => {
     const paymentRead = {
       getContractApplication: jest.fn().mockResolvedValue({ contract: { contractVersionId: "contract-version-1" } })
     };
-    const controller = new PaymentController(paymentRead as never, {} as never);
+    const controller = new PaymentController(paymentRead as never, {} as never, {} as never);
 
     await expect(controller.contractApplication("contract-version-1")).resolves.toEqual({
       contract: { contractVersionId: "contract-version-1" }

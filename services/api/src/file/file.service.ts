@@ -202,7 +202,9 @@ export class FileService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService = new AuditService(),
     private readonly storage: PrivateFileStorage = new PrivateFileStorage()
-  ) {}
+  ) {
+    this.assertProductionDownloadSecret();
+  }
 
   async uploadPrivateFile(input: UploadPrivateFileInput) {
     if (!input.uploadedByUserId.trim()) {
@@ -787,5 +789,22 @@ export class FileService {
 
   private downloadSecret() {
     return process.env.FILE_DOWNLOAD_SECRET ?? process.env.JWT_ACCESS_SECRET ?? "local-file-secret";
+  }
+
+  private assertProductionDownloadSecret() {
+    if (process.env.NODE_ENV !== "production") {
+      return;
+    }
+
+    const value = process.env.FILE_DOWNLOAD_SECRET?.trim();
+    const isDefault =
+      !value ||
+      value === "local-file-secret" ||
+      value === "local-access-secret" ||
+      value === "replace-with-long-random-file-download-secret";
+
+    if (isDefault || value.length < 32) {
+      throw new Error("FILE_DOWNLOAD_SECRET must be set to a non-default production secret");
+    }
   }
 }

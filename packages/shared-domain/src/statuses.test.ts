@@ -14,8 +14,10 @@ describe("domain statuses", () => {
   });
 
   it("keeps payment approval separate from actual payment", () => {
+    expect(PAYMENT_REQUEST_STATUSES).toContain("approval_pending");
     expect(PAYMENT_REQUEST_STATUSES).toContain("approved_pending_payment");
     expect(PAYMENT_REQUEST_STATUSES).toContain("paid");
+    expect(PAYMENT_REQUEST_STATUSES).toContain("withdrawn");
   });
 
   it("allows settlements only after the contract version is effective", () => {

@@ -13,11 +13,36 @@ describe("FileService", () => {
   };
 
   beforeEach(() => {
+    process.env.NODE_ENV = "test";
     audit.record.mockReset();
     storage.write.mockReset();
     storage.read.mockReset();
     storage.bucketName.mockReset();
     storage.bucketName.mockReturnValue("private-local");
+  });
+
+  it("fails closed when production file download secret is missing", () => {
+    const previous = {
+      nodeEnv: process.env.NODE_ENV,
+      secret: process.env.FILE_DOWNLOAD_SECRET
+    };
+    process.env.NODE_ENV = "production";
+    delete process.env.FILE_DOWNLOAD_SECRET;
+
+    try {
+      expect(
+        () =>
+          new FileService(
+            {} as PrismaService,
+            audit as unknown as AuditService,
+            storage as unknown as PrivateFileStorage
+          )
+      ).toThrow("FILE_DOWNLOAD_SECRET");
+    } finally {
+      process.env.NODE_ENV = previous.nodeEnv;
+      if (previous.secret === undefined) delete process.env.FILE_DOWNLOAD_SECRET;
+      else process.env.FILE_DOWNLOAD_SECRET = previous.secret;
+    }
   });
 
   it("rejects private storage object keys outside the configured root", async () => {

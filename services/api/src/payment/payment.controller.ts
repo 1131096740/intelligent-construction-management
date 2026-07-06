@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
@@ -15,7 +16,8 @@ import { PaymentRequestService } from "./payment-request.service";
 export class PaymentController {
   constructor(
     private readonly paymentRead: PaymentReadService,
-    private readonly payments: PaymentRequestService
+    private readonly payments: PaymentRequestService,
+    private readonly projectVisibility: ProjectVisibilityService
   ) {}
 
   @Post()
@@ -43,8 +45,8 @@ export class PaymentController {
     "finance_staff",
     "super_admin"
   )
-  list(@Query("limit") limit?: string) {
-    return this.paymentRead.listRecent(limit);
+  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
+    return this.paymentRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
   }
 
   @Post(":paymentId/approval")

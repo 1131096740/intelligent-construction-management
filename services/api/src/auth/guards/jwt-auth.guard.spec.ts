@@ -1,4 +1,4 @@
-import { UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import type { ExecutionContext } from "@nestjs/common";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 
@@ -38,7 +38,8 @@ describe("JwtAuthGuard", () => {
             id: "user-1",
             name: "合同部 李工",
             phone: "13800000001",
-            isActive: true
+            isActive: true,
+            mustChangePassword: false
           })
         }
       } as never
@@ -64,5 +65,59 @@ describe("JwtAuthGuard", () => {
     await expect(guard.canActivate(contextWithRequest({ headers: {} }))).rejects.toThrow(
       UnauthorizedException
     );
+  });
+
+  it("blocks business routes until temporary-password users change password", async () => {
+    const request = {
+      headers: {
+        authorization: "Bearer access-token"
+      },
+      route: { path: "/contracts" }
+    };
+    const guard = new JwtAuthGuard(
+      { getAllAndOverride: jest.fn().mockReturnValue(false) } as never,
+      { verifyAccessToken: jest.fn().mockReturnValue({ sub: "user-1" }) } as never,
+      {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "user-1",
+            name: "试运行账号",
+            phone: "13800000001",
+            isActive: true,
+            mustChangePassword: true
+          })
+        }
+      } as never
+    );
+
+    await expect(guard.canActivate(contextWithRequest(request))).rejects.toThrow(
+      ForbiddenException
+    );
+  });
+
+  it("allows temporary-password users to call change-password", async () => {
+    const request = {
+      headers: {
+        authorization: "Bearer access-token"
+      },
+      route: { path: "/auth/change-password" }
+    };
+    const guard = new JwtAuthGuard(
+      { getAllAndOverride: jest.fn().mockReturnValue(false) } as never,
+      { verifyAccessToken: jest.fn().mockReturnValue({ sub: "user-1" }) } as never,
+      {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "user-1",
+            name: "试运行账号",
+            phone: "13800000001",
+            isActive: true,
+            mustChangePassword: true
+          })
+        }
+      } as never
+    );
+
+    await expect(guard.canActivate(contextWithRequest(request))).resolves.toBe(true);
   });
 });

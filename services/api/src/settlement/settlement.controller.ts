@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query, Res, StreamableFile } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
@@ -22,7 +23,8 @@ export class SettlementController {
   constructor(
     private readonly settlementRead: SettlementReadService,
     private readonly attachmentTemplates: SettlementAttachmentTemplateService,
-    private readonly settlements: SettlementService
+    private readonly settlements: SettlementService,
+    private readonly projectVisibility: ProjectVisibilityService
   ) {}
 
   @Post()
@@ -44,8 +46,8 @@ export class SettlementController {
     "finance_staff",
     "super_admin"
   )
-  list(@Query("limit") limit?: string) {
-    return this.settlementRead.listRecent(limit);
+  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
+    return this.settlementRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
   }
 
   @Get(":settlementId/attachment-templates/:templateKey/download")

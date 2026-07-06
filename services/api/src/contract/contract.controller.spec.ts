@@ -66,6 +66,7 @@ describe("ContractController authorization wiring", () => {
     const controller = new ContractController(
       contracts as never,
       {} as never,
+      {} as never,
       {} as never
     );
 

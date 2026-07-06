@@ -91,6 +91,32 @@ describe("PaymentReadService", () => {
     });
   });
 
+  it("filters payment ledger by visible projects", async () => {
+    const prisma = {
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlement: {
+        findMany: jest.fn()
+      },
+      project: {
+        findMany: jest.fn()
+      },
+      paymentExecution: {
+        findMany: jest.fn()
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    await service.listRecent(20, ["project-1"]);
+
+    expect(prisma.paymentRequest.findMany).toHaveBeenCalledWith({
+      where: { projectId: { in: ["project-1"] } },
+      take: 20,
+      orderBy: { updatedAt: "desc" }
+    });
+  });
+
   it("builds payment ledger rows for contract advance requests without settlement", async () => {
     const prisma = {
       paymentRequest: {

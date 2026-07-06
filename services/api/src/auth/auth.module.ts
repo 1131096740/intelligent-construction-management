@@ -6,6 +6,7 @@ import { AuthService } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { PermissionGuard } from "./guards/permission.guard";
 import { JwtTokenService } from "./jwt-token.service";
+import { ProjectVisibilityService } from "./project-visibility.service";
 
 @Module({
   imports: [AuditModule],
@@ -13,9 +14,10 @@ import { JwtTokenService } from "./jwt-token.service";
   providers: [
     AuthService,
     JwtTokenService,
+    ProjectVisibilityService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionGuard }
   ],
-  exports: [AuthService, JwtTokenService]
+  exports: [AuthService, JwtTokenService, ProjectVisibilityService]
 })
 export class AuthModule {}

@@ -4012,7 +4012,7 @@ describe("PaymentRequestService", () => {
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 20_000,
-        paidAt: "2026-07-04T00:00:00.000Z",
+        paidAt: "2999-07-04T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       })
@@ -4272,15 +4272,15 @@ describe("PaymentRequestService", () => {
 
   it("records finance outflow after actual payment execution", async () => {
     const tx = {
-      paymentRequest: {
-        findFirst: jest.fn().mockResolvedValue({
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
           id: "payment-1",
           projectId: "project-1",
           settlementId: "settlement-1",
           status: "paid",
           paidAmountCents: 50_000
-        })
-      },
+        }
+      ]),
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
           { amountCents: 20_000 }
@@ -4306,6 +4306,7 @@ describe("PaymentRequestService", () => {
     });
 
     expect(record.id).toBe("finance-record-1");
+    expect(tx.$queryRaw).toHaveBeenCalled();
     expect(tx.financeRecord.create).toHaveBeenCalledWith({
       data: {
         projectId: "project-1",
@@ -4329,13 +4330,13 @@ describe("PaymentRequestService", () => {
 
   it("rejects finance record before actual payment execution", async () => {
     const tx = {
-      paymentRequest: {
-        findFirst: jest.fn().mockResolvedValue({
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
           id: "payment-1",
           status: "approved_pending_payment",
           paidAmountCents: 0
-        })
-      },
+        }
+      ]),
       financeRecord: {
         findMany: jest.fn(),
         create: jest.fn()
@@ -4357,15 +4358,15 @@ describe("PaymentRequestService", () => {
 
   it("rejects finance record above unrecorded paid amount", async () => {
     const tx = {
-      paymentRequest: {
-        findFirst: jest.fn().mockResolvedValue({
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
           id: "payment-1",
           projectId: "project-1",
           settlementId: "settlement-1",
           status: "partially_paid",
           paidAmountCents: 50_000
-        })
-      },
+        }
+      ]),
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
           { amountCents: 40_000 }
@@ -4819,12 +4820,14 @@ describe("PaymentRequestService", () => {
 
   it("lets the payment approval applicant withdraw before approval completes", async () => {
     const tx = {
-      paymentRequest: {
-        findFirst: jest.fn().mockResolvedValue({
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
           id: "payment-1",
           code: "FK-2026-012",
           status: "approval_pending"
-        }),
+        }
+      ]),
+      paymentRequest: {
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
@@ -4880,12 +4883,14 @@ describe("PaymentRequestService", () => {
 
   it("rejects payment approval withdrawal from a non-applicant", async () => {
     const tx = {
-      paymentRequest: {
-        findFirst: jest.fn().mockResolvedValue({
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
           id: "payment-1",
           code: "FK-2026-012",
           status: "approval_pending"
-        }),
+        }
+      ]),
+      paymentRequest: {
         update: jest.fn()
       },
       approvalInstance: {
@@ -4911,12 +4916,14 @@ describe("PaymentRequestService", () => {
 
   it("rejects payment approval withdrawal once it has left approval_pending", async () => {
     const tx = {
-      paymentRequest: {
-        findFirst: jest.fn().mockResolvedValue({
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
           id: "payment-1",
           code: "FK-2026-012",
           status: "approved_pending_payment"
-        }),
+        }
+      ]),
+      paymentRequest: {
         update: jest.fn()
       },
       approvalInstance: {

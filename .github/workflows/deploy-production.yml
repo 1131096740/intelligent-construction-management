@@ -11,9 +11,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify:
+    name: Verify build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+
+      - name: Install dependencies
+        run: CI=true pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @jiangkong/api exec prisma generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build API and Web
+        run: |
+          pnpm --filter @jiangkong/api build
+          pnpm --filter @jiangkong/web-admin build
+
   deploy:
     name: Deploy to server
     runs-on: ubuntu-latest
+    needs: verify
     timeout-minutes: 30
     steps:
       - name: Run remote deploy script
@@ -29,6 +68,7 @@ jobs:
           : "${DEPLOY_HOST:?DEPLOY_HOST is required}"
           : "${DEPLOY_USER:?DEPLOY_USER is required}"
           : "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY is required}"
+          : "${DEPLOY_KNOWN_HOSTS:?DEPLOY_KNOWN_HOSTS is required}"
 
           if [ -z "${DEPLOY_PORT:-}" ]; then
             DEPLOY_PORT=22
@@ -39,11 +79,7 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/jiangkong_deploy_key
           chmod 600 ~/.ssh/jiangkong_deploy_key
 
-          if [ -n "${DEPLOY_KNOWN_HOSTS:-}" ]; then
-            printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          else
-            ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
-          fi
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
           ssh -i ~/.ssh/jiangkong_deploy_key \
             -p "$DEPLOY_PORT" \

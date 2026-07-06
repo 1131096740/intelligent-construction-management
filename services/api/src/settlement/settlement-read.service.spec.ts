@@ -84,6 +84,32 @@ describe("SettlementReadService", () => {
     });
   });
 
+  it("filters settlement ledger by visible projects", async () => {
+    const prisma = {
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contract: {
+        findMany: jest.fn()
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn()
+      },
+      project: {
+        findMany: jest.fn()
+      }
+    };
+    const service = new SettlementReadService(prisma as never);
+
+    await service.listRecent(20, ["project-1"]);
+
+    expect(prisma.settlement.findMany).toHaveBeenCalledWith({
+      where: { projectId: { in: ["project-1"] } },
+      take: 20,
+      orderBy: { updatedAt: "desc" }
+    });
+  });
+
   it("builds settlement detail from persisted settlement and payment terms", async () => {
     const prisma = {
       settlement: {

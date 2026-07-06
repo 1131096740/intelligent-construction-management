@@ -117,6 +117,27 @@ describe("useAuthStore", () => {
     expect(store.refreshToken).toBe("refresh-2");
   });
 
+  it("changes password with the access token and clears the local must-change flag", async () => {
+    const store = await seedSession();
+    store.user = { ...store.user!, mustChangePassword: true };
+    store.persist();
+    globalThis.fetch = vi.fn(async () => new Response("{}", { status: 200 })) as never;
+
+    await store.changePassword("Jgzg@2026", "Personal@2026");
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/auth/change-password",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer access-1"
+        })
+      })
+    );
+    expect(store.user?.mustChangePassword).toBe(false);
+    expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain('"mustChangePassword":false');
+  });
+
   it("returns false and clears the session when refresh fails", async () => {
     const store = await seedSession();
     globalThis.fetch = vi.fn(async () => new Response("no", { status: 401 })) as never;

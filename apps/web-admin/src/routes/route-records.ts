@@ -63,6 +63,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
     meta: { public: true }
   },
   {
+    path: "/change-password",
+    component: () => import("../pages/login/ChangePasswordPage.vue"),
+    meta: { passwordChange: true }
+  },
+  {
     path: "/",
     component: () => import("../app/AdminLayout.vue"),
     redirect: "/首页",

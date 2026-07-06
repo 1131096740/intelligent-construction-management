@@ -25,6 +25,13 @@ describe("web admin routes", () => {
     expect(loginRoute?.meta?.public).toBe(true);
   });
 
+  it("defines a forced password change route", () => {
+    const changePasswordRoute = webAdminRoutes.find((route) => route.path === "/change-password");
+
+    expect(changePasswordRoute?.component).toBeDefined();
+    expect(changePasswordRoute?.meta?.passwordChange).toBe(true);
+  });
+
   it("redirects the root path to the contract ledger", () => {
     const rootRoute = webAdminRoutes.find((route) => route.path === "/");
 
@@ -135,6 +142,30 @@ describe("web admin routes", () => {
       path: "/首页"
     });
     expect(resolveRouteAccess(projectRoute, { isAuthenticated: true, roleKeys: ["finance_director"] })).toBe(true);
+  });
+
+  it("forces temporary-password users to change password before business routes", () => {
+    expect(
+      resolveRouteAccess(
+        {
+          meta: {},
+          fullPath: "/付款管理"
+        },
+        { isAuthenticated: true, mustChangePassword: true, roleKeys: ["finance_staff"] }
+      )
+    ).toEqual({
+      path: "/change-password",
+      query: { redirect: "/付款管理" }
+    });
+    expect(
+      resolveRouteAccess(
+        {
+          meta: { passwordChange: true },
+          fullPath: "/change-password"
+        },
+        { isAuthenticated: true, mustChangePassword: true, roleKeys: ["finance_staff"] }
+      )
+    ).toBe(true);
   });
 
   it("redirects authenticated users without contract department roles away from historical takeover", () => {

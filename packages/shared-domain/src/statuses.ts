@@ -37,8 +37,10 @@ export const PAYMENT_ELIGIBLE_SETTLEMENT_STATUSES = [
 
 export const PAYMENT_REQUEST_STATUSES = [
   "draft",
+  "approval_pending",
   "in_approval",
   "approval_rejected",
+  "withdrawn",
   "approved_pending_payment",
   "partially_paid",
   "paid",

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
@@ -17,7 +18,8 @@ export class ContractController {
   constructor(
     private readonly contracts: ContractService,
     private readonly contractRead: ContractReadService,
-    private readonly workbench: ContractWorkbenchService
+    private readonly workbench: ContractWorkbenchService,
+    private readonly projectVisibility: ProjectVisibilityService
   ) {}
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
@@ -43,8 +45,8 @@ export class ContractController {
     "finance_staff",
     "super_admin"
   )
-  list(@Query("limit") limit?: string) {
-    return this.contractRead.listRecent(limit);
+  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
+    return this.contractRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
   }
 
   @Get("settlement-create-options")

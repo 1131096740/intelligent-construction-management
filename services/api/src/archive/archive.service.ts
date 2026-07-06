@@ -7,8 +7,9 @@ type ArchiveTone = "default" | "primary" | "warning" | "success";
 export class ArchiveService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listRecent(rawLimit?: string | number) {
+  async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
     const take = this.limit(rawLimit);
+    const visibleProjectSet = visibleProjectIds ? new Set(visibleProjectIds) : null;
     const [contractArchives, settlementArchives, paymentVouchers, archiveRecords] =
       await Promise.all([
         this.prisma.contractArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
@@ -72,6 +73,7 @@ export class ArchiveService {
         const version = versionById.get(row.contractVersionId);
         const contract = version ? contractById.get(version.contractId) : null;
         return {
+          projectId: contract?.projectId,
           id: `contract-${row.id}`,
           documentNo: row.id,
           documentType: "合同归档件",
@@ -89,6 +91,7 @@ export class ArchiveService {
       ...settlementArchives.map((row) => {
         const settlement = settlementById.get(row.settlementId);
         return {
+          projectId: settlement?.projectId,
           id: `settlement-${row.id}`,
           documentNo: row.id,
           documentType: "结算归档件",
@@ -106,6 +109,7 @@ export class ArchiveService {
       ...paymentVouchers.map((row) => {
         const payment = paymentById.get(row.paymentRequestId);
         return {
+          projectId: payment?.projectId,
           id: `voucher-${row.id}`,
           documentNo: row.voucherFileId,
           documentType: "付款凭证",
@@ -128,6 +132,12 @@ export class ArchiveService {
           paymentById
         });
         return {
+          projectId: this.archiveProjectId(row.businessType, row.businessId, {
+            versionById,
+            contractById,
+            settlementById,
+            paymentById
+          }),
           id: `archive-${row.id}`,
           documentNo: row.id,
           documentType: this.archiveType(row.businessType),
@@ -149,6 +159,7 @@ export class ArchiveService {
         };
       })
     ]
+      .filter((row) => !visibleProjectSet || (row.projectId && visibleProjectSet.has(row.projectId)))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, take)
       .map((row) => ({
@@ -326,5 +337,29 @@ export class ArchiveService {
       return this.projectName(maps.projectById, maps.paymentById.get(businessId)?.projectId);
     }
     return "-";
+  }
+
+  private archiveProjectId(
+    type: string,
+    id: string,
+    maps: {
+      versionById: Map<string, { id: string; contractId: string }>;
+      contractById: Map<string, { id: string; projectId: string }>;
+      settlementById: Map<string, { id: string; projectId: string }>;
+      paymentById: Map<string, { id: string; projectId: string }>;
+    }
+  ) {
+    if (type === "contract_version") {
+      const version = maps.versionById.get(id);
+      const contract = version ? maps.contractById.get(version.contractId) : null;
+      return contract?.projectId;
+    }
+    if (type === "settlement") {
+      return maps.settlementById.get(id)?.projectId;
+    }
+    if (type === "payment_request") {
+      return maps.paymentById.get(id)?.projectId;
+    }
+    return undefined;
   }
 }
