@@ -85,4 +85,4 @@ jobs:
             -p "$DEPLOY_PORT" \
             -o IdentitiesOnly=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            '/opt/jiangkong/deploy.sh'
+            'cd /opt/jiangkong && git pull --ff-only origin main && /opt/jiangkong/deploy.sh'
