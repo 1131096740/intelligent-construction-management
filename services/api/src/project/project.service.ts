@@ -27,6 +27,7 @@ import type {
   ProjectProxyPaymentType
 } from "./dto/record-project-proxy-payment.dto";
 import type { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
+import type { CreateProjectDto } from "./dto/create-project.dto";
 import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import type { RecordProjectReceiptDto, ProjectReceiptSourceType } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
@@ -34,6 +35,7 @@ import type { RequestProjectFinancingQuotaDto } from "./dto/request-project-fina
 import type { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exception-quota.dto";
 import type { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financing-quota.dto";
 import type { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
+import type { UpdateProjectDto } from "./dto/update-project.dto";
 
 const UPSTREAM_SETTLEMENT_GAP =
   "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。";
@@ -92,6 +94,64 @@ export class ProjectService {
     @Optional()
     private readonly auth?: AuthService
   ) {}
+
+  async createProject(actorUserId: string, input: CreateProjectDto) {
+    const code = requiredTrimmed(input.code, "Project code is required");
+    const name = requiredTrimmed(input.name, "Project name is required");
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const project = await tx.project.create({
+          data: { code, name },
+          select: { id: true, code: true, name: true }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.create",
+          businessType: "project",
+          businessId: project.id,
+          metadata: { code, name }
+        });
+
+        return project;
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BadRequestException("Project code already exists");
+      }
+      throw error;
+    }
+  }
+
+  async updateProject(projectId: string, actorUserId: string, input: UpdateProjectDto) {
+    const name = requiredTrimmed(input.name, "Project name is required");
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const project = await tx.project.update({
+          where: { id: projectId },
+          data: { name },
+          select: { id: true, code: true, name: true }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.update",
+          businessType: "project",
+          businessId: project.id,
+          metadata: { name }
+        });
+
+        return project;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        throw new NotFoundException("Project not found");
+      }
+      throw error;
+    }
+  }
 
   async listActiveOptions(userId: string) {
     const [globalUserPositions, projectUserPositions, projectMemberPositions] = await Promise.all([

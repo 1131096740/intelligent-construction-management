@@ -43,6 +43,16 @@ async function postJson<TResponse>(path: string, body?: unknown): Promise<TRespo
   return response.json() as Promise<TResponse>;
 }
 
+async function patchJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
+  const response = await apiFetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {})
+  });
+  await ensureOk(response, "提交失败");
+  return response.json() as Promise<TResponse>;
+}
+
 async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
   const response = await apiFetch(path, { method: "POST", body });
   await ensureOk(response, "上传失败");
@@ -445,6 +455,15 @@ export interface ProjectOptionReadModel {
   name: string;
 }
 
+export interface CreateProjectPayload {
+  code: string;
+  name: string;
+}
+
+export interface UpdateProjectPayload {
+  name: string;
+}
+
 export interface ProjectOperatingOverviewReadModel {
   project: ProjectOptionReadModel;
   cash: {
@@ -664,6 +683,14 @@ export function fetchWorkbenchSummary() {
 
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
+}
+
+export function createProject(body: CreateProjectPayload) {
+  return postJson<ProjectOptionReadModel>("/projects", body);
+}
+
+export function updateProject(projectId: string, body: UpdateProjectPayload) {
+  return patchJson<ProjectOptionReadModel>(`/projects/${projectId}`, body);
 }
 
 export function fetchProjectOperatingOverview(projectId: string) {

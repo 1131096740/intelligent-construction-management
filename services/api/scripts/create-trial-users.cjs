@@ -4,6 +4,10 @@ const path = require("node:path");
 const bcrypt = require("bcryptjs");
 const { PrismaClient } = require("@prisma/client");
 
+const DEFAULT_TRIAL_PROJECT_ID = "seed-project-jgxm-001";
+const DEFAULT_TRIAL_PROJECT_NAME =
+  "昆明市2023年城市防洪排涝治理工程一-西山区新运粮河分洪工程设计施工总承包合同";
+
 const ROLE_NAMES = {
   chairman: "董事长",
   contract_director: "合同部主管",
@@ -73,6 +77,10 @@ function buildUserUpdate(user, passwordHash, resetExistingPassword) {
   };
 }
 
+function resolveTrialProjectName(env, projectId) {
+  return env.TRIAL_PROJECT_NAME || (projectId === DEFAULT_TRIAL_PROJECT_ID ? DEFAULT_TRIAL_PROJECT_NAME : "");
+}
+
 async function upsertTrialUser(prisma, user, projectId, passwordHash, resetExistingPassword) {
   const position = await ensurePosition(prisma, user.positionKey);
   await prisma.user.upsert({
@@ -118,14 +126,22 @@ async function main() {
     throw new Error("DATABASE_URL is required");
   }
 
-  const projectId = env.TRIAL_PROJECT_ID || "seed-project-jgxm-001";
+  const projectId = env.TRIAL_PROJECT_ID || DEFAULT_TRIAL_PROJECT_ID;
+  const projectName = resolveTrialProjectName(env, projectId);
   const resetExistingPassword = Boolean(env.TRIAL_USER_TEMP_PASSWORD);
   const password = env.TRIAL_USER_TEMP_PASSWORD || temporaryPassword();
   const prisma = new PrismaClient();
   try {
-    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } });
+    let project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true } });
     if (!project) {
       throw new Error(`Project not found: ${projectId}`);
+    }
+    if (projectName && project.name !== projectName) {
+      project = await prisma.project.update({
+        where: { id: project.id },
+        data: { name: projectName },
+        select: { id: true, name: true }
+      });
     }
     const passwordHash = await bcrypt.hash(password, 10);
     for (const user of TRIAL_USERS) {
@@ -159,4 +175,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildUserUpdate };
+module.exports = { buildUserUpdate, resolveTrialProjectName };

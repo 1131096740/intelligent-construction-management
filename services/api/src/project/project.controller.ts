@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import type { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
+import type { CreateProjectDto } from "./dto/create-project.dto";
 import type { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
@@ -12,6 +13,7 @@ import type { RequestProjectFinancingQuotaDto } from "./dto/request-project-fina
 import type { RequestSettlementExceptionQuotaDto } from "./dto/request-settlement-exception-quota.dto";
 import type { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financing-quota.dto";
 import type { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
+import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { ProjectService } from "./project.service";
 
 const FUNDS_OVERVIEW_POSITIONS = [
@@ -25,6 +27,22 @@ const FUNDS_OVERVIEW_POSITIONS = [
 @Controller("projects")
 export class ProjectController {
   constructor(private readonly projects: ProjectService) {}
+
+  @Post()
+  @RequirePositions("chairman", "general_manager")
+  create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateProjectDto) {
+    return this.projects.createProject(user.id, body);
+  }
+
+  @Patch(":projectId")
+  @RequirePositions("chairman", "general_manager")
+  update(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: UpdateProjectDto
+  ) {
+    return this.projects.updateProject(projectId, user.id, body);
+  }
 
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {

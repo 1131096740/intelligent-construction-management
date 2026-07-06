@@ -5,22 +5,77 @@
         <h1>项目经营</h1>
         <p>只汇总当前系统已有合同、结算、付款、实际收款和财务出账数据</p>
       </div>
-      <label class="project-picker">
-        <span>项目</span>
-        <select
-          v-model="selectedProjectId"
-          :disabled="loadingProjects || projects.length === 0"
-          @change="loadOverview"
-        >
-          <option
-            v-for="project in projects"
-            :key="project.id"
-            :value="project.id"
+      <div class="project-tools">
+        <label class="project-picker">
+          <span>项目</span>
+          <select
+            v-model="selectedProjectId"
+            :disabled="loadingProjects || projects.length === 0"
+            @change="handleProjectChange"
           >
-            {{ project.code }} · {{ project.name }}
-          </option>
-        </select>
-      </label>
+            <option
+              v-for="project in projects"
+              :key="project.id"
+              :value="project.id"
+            >
+              {{ project.code }} · {{ project.name }}
+            </option>
+          </select>
+        </label>
+        <form
+          v-if="canManageProjects"
+          class="project-create-form"
+          @submit.prevent="submitProject"
+        >
+          <label>
+            <span>项目编号</span>
+            <input
+              v-model.trim="projectForm.code"
+              required
+            >
+          </label>
+          <label>
+            <span>项目名称</span>
+            <input
+              v-model.trim="projectForm.name"
+              required
+            >
+          </label>
+          <button
+            type="submit"
+            :disabled="projectSubmitting"
+          >
+            {{ projectSubmitting ? "新增中" : "新增项目" }}
+          </button>
+        </form>
+        <form
+          v-if="canManageProjects && selectedProjectId"
+          class="project-name-form"
+          @submit.prevent="submitProjectName"
+        >
+          <label>
+            <span>当前项目名称</span>
+            <input
+              v-model.trim="selectedProjectName"
+              required
+            >
+          </label>
+          <button
+            type="submit"
+            :disabled="projectUpdating"
+          >
+            {{ projectUpdating ? "保存中" : "保存名称" }}
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div
+      v-if="projectMessage"
+      class="receipt-message"
+      :class="projectMessageTone"
+    >
+      {{ projectMessage }}
     </div>
 
     <div
@@ -604,6 +659,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import {
+  createProject,
   createProjectExpenseRequest,
   downloadProjectExpenseAttachment,
   fetchProjectExpenseRequests,
@@ -615,6 +671,7 @@ import {
   recordProjectReceipt,
   reviewProjectExpenseApproval,
   uploadPrivateFile,
+  updateProject,
   type ProjectExpensePaymentMethod,
   type ProjectExpenseRequestListReadModel,
   type ProjectExpenseSubtype,
@@ -622,6 +679,7 @@ import {
   type ProjectOperatingOverviewReadModel,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
+import { useAuthStore } from "../../auth/auth.store";
 import {
   expensePaymentMethodLabel,
   expensePaymentMethodOptions,
@@ -686,6 +744,12 @@ interface ProjectExpenseActionFormState {
   downloadPassword: string;
 }
 
+interface ProjectFormState {
+  code: string;
+  name: string;
+}
+
+const auth = useAuthStore();
 const projects = ref<ProjectOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
@@ -693,6 +757,12 @@ const selectedProjectId = ref("");
 const loadingProjects = ref(false);
 const loadingOverview = ref(false);
 const message = ref("");
+const projectSubmitting = ref(false);
+const projectUpdating = ref(false);
+const projectMessage = ref("");
+const projectMessageTone = ref<"success" | "danger">("success");
+const projectForm = ref<ProjectFormState>({ code: "", name: "" });
+const selectedProjectName = ref("");
 const receiptSubmitting = ref(false);
 const receiptMessage = ref("");
 const receiptMessageTone = ref<"success" | "danger">("success");
@@ -739,6 +809,10 @@ const projectExpenseSummaryItems = computed(() => {
 
 const currentExpenseSubtypeOptions = computed(() => subtypeOptionsFor(expenseForm.value.expenseType));
 
+const canManageProjects = computed(
+  () => auth.user?.roleKeys.some((role) => role === "chairman" || role === "general_manager") ?? false
+);
+
 const cashItems = computed(() => {
   const cash = overview.value?.cash;
   return [
@@ -771,6 +845,7 @@ async function loadProjects() {
   try {
     projects.value = await fetchProjects();
     selectedProjectId.value = projects.value[0]?.id ?? "";
+    syncSelectedProjectName();
     if (selectedProjectId.value) {
       await loadOverview();
     } else {
@@ -781,6 +856,69 @@ async function loadProjects() {
   } finally {
     loadingProjects.value = false;
   }
+}
+
+async function submitProject() {
+  if (!canManageProjects.value) {
+    return;
+  }
+
+  projectSubmitting.value = true;
+  projectMessage.value = "";
+  try {
+    const created = await createProject({
+      code: requiredText(projectForm.value.code, "项目编号"),
+      name: requiredText(projectForm.value.name, "项目名称")
+    });
+    const nextProjects = await fetchProjects();
+    projects.value = nextProjects.some((project) => project.id === created.id)
+      ? nextProjects
+      : [...nextProjects, created];
+    selectedProjectId.value = projects.value.find((project) => project.id === created.id)?.id ?? created.id;
+    projectForm.value = { code: "", name: "" };
+    syncSelectedProjectName();
+    projectMessageTone.value = "success";
+    projectMessage.value = "项目已新增";
+    await loadOverview();
+  } catch (error) {
+    projectMessageTone.value = "danger";
+    projectMessage.value = error instanceof Error ? error.message : "新增项目失败";
+  } finally {
+    projectSubmitting.value = false;
+  }
+}
+
+async function submitProjectName() {
+  if (!canManageProjects.value || !selectedProjectId.value) {
+    return;
+  }
+
+  projectUpdating.value = true;
+  projectMessage.value = "";
+  try {
+    const updated = await updateProject(selectedProjectId.value, {
+      name: requiredText(selectedProjectName.value, "项目名称")
+    });
+    projects.value = projects.value.map((project) => (project.id === updated.id ? updated : project));
+    selectedProjectName.value = updated.name;
+    projectMessageTone.value = "success";
+    projectMessage.value = "项目名称已保存";
+    await loadOverview();
+  } catch (error) {
+    projectMessageTone.value = "danger";
+    projectMessage.value = error instanceof Error ? error.message : "保存项目名称失败";
+  } finally {
+    projectUpdating.value = false;
+  }
+}
+
+function handleProjectChange() {
+  syncSelectedProjectName();
+  void loadOverview();
+}
+
+function syncSelectedProjectName() {
+  selectedProjectName.value = projects.value.find((project) => project.id === selectedProjectId.value)?.name ?? "";
 }
 
 async function loadOverview() {
@@ -1292,15 +1430,42 @@ h2 {
 p,
 dt,
 .project-picker span,
+.project-create-form span,
+.project-name-form span,
 .message,
 .gap-panel li {
   color: #5f6673;
 }
 
+.project-tools {
+  display: grid;
+  gap: 10px;
+  min-width: min(720px, 100%);
+}
+
 .project-picker {
   display: grid;
   gap: 6px;
-  min-width: 280px;
+}
+
+.project-create-form {
+  display: grid;
+  grid-template-columns: 120px minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.project-name-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.project-create-form label,
+.project-name-form label {
+  display: grid;
+  gap: 6px;
 }
 
 select {
@@ -1545,6 +1710,17 @@ dd {
 
   .project-picker {
     min-width: 0;
+  }
+
+  .project-tools,
+  .project-create-form,
+  .project-name-form {
+    min-width: 0;
+  }
+
+  .project-create-form,
+  .project-name-form {
+    grid-template-columns: 1fr;
   }
 
   .summary-strip,

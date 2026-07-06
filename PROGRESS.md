@@ -24,6 +24,7 @@
 
 ## 最近变更 / 下一步（滚动更新，最新在最上）
 
+- 2026-07-06 (CodeX)：补齐真实项目名称与最小多项目入口。Seed 默认项目名已改为“昆明市2023年城市防洪排涝治理工程一-西山区新运粮河分洪工程设计施工总承包合同”，试运行账号脚本会在重跑时同步默认项目名到现有生产项目；后端新增 `POST /projects` 和 `PATCH /projects/:projectId`，由董事长/总经理新增项目或修改项目名称并写审计；Web“项目经营”页顶部支持项目下拉切换、新增项目和保存当前项目名称。验证：项目/脚本/seed/API 客户端目标测试、API/Web typecheck、API/Web lint、API/Web build、`git diff --check` 通过。
 - 2026-07-06 (CodeX)：将试运行账号脚本按真实账号使用场景收窄：只有显式传入 `TRIAL_USER_TEMP_PASSWORD` 时才会重置已有账号密码并重新置为强制改密；日常不带临时密码重跑时只维护账号基础信息、手机号、岗位和启用状态，不再把已完成改密的真实人员账号重新打回 `mustChangePassword=true`。验证：脚本分支单测通过。
 - 2026-07-06 (CodeX)：修复上一版生产自动部署 workflow 的远程 `git pull` 失败排障面。`Deploy to server` 现在通过 heredoc 明确执行远程步骤：先将 `/opt/jiangkong` 加入当前部署用户的 Git safe.directory，再 `git fetch origin main`、`git merge --ff-only origin/main`、打印短 commit，最后运行 `/opt/jiangkong/deploy.sh`；避免一行 SSH 命令只返回 exit 128 而看不到具体失败点。验证：workflow YAML 解析通过，`git diff --check` 通过。
 - 2026-07-06 (CodeX)：修正生产自动部署 workflow：GitHub Actions 远程 SSH 到服务器后会先进入 `/opt/jiangkong` 并执行 `git pull --ff-only origin main`，再运行现有 `/opt/jiangkong/deploy.sh`，避免服务器工作目录停留在旧 commit 时继续部署旧脚本和旧试运行账号手机号。验证：workflow YAML 解析通过，`git diff --check` 通过。

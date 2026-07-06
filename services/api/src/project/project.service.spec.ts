@@ -5,6 +5,69 @@ import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-up
 import { ProjectService } from "./project.service";
 
 describe("ProjectService", () => {
+  it("creates a project and records an audit log", async () => {
+    const tx = {
+      project: {
+        create: jest.fn().mockResolvedValue({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const audit = { record: jest.fn().mockResolvedValue({}) };
+    const service = new ProjectService(prisma as never, audit as never);
+
+    await expect(
+      service.createProject("chairman-1", { code: " KM-2023-001 ", name: " 昆明项目 " })
+    ).resolves.toEqual({ id: "project-1", code: "KM-2023-001", name: "昆明项目" });
+    expect(tx.project.create).toHaveBeenCalledWith({
+      data: { code: "KM-2023-001", name: "昆明项目" },
+      select: { id: true, code: true, name: true }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: "chairman-1",
+        action: "project.create",
+        businessType: "project",
+        businessId: "project-1"
+      })
+    );
+  });
+
+  it("updates a project name and records an audit log", async () => {
+    const tx = {
+      project: {
+        update: jest.fn().mockResolvedValue({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const audit = { record: jest.fn().mockResolvedValue({}) };
+    const service = new ProjectService(prisma as never, audit as never);
+
+    await expect(service.updateProject("project-1", "chairman-1", { name: " 昆明项目 " })).resolves.toEqual({
+      id: "project-1",
+      code: "KM-2023-001",
+      name: "昆明项目"
+    });
+    expect(tx.project.update).toHaveBeenCalledWith({
+      where: { id: "project-1" },
+      data: { name: "昆明项目" },
+      select: { id: true, code: true, name: true }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: "chairman-1",
+        action: "project.update",
+        businessType: "project",
+        businessId: "project-1"
+      })
+    );
+  });
+
   it("lists all active project options for global funds overview positions", async () => {
     const prisma = {
       userPosition: {

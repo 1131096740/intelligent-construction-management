@@ -16,6 +16,8 @@ import {
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
+  createProject,
+  updateProject,
   downloadProjectExpenseAttachment,
   confirmProjectOwnerContract,
   recordProjectReceipt,
@@ -181,6 +183,34 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/operating-funds-overview",
       "/api/projects/project-1/expense-requests"
     ]);
+  });
+
+  it("creates projects through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
+    } as Response);
+
+    await createProject({ code: "KM-2023-001", name: "昆明项目" });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/projects"]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({ code: "KM-2023-001", name: "昆明项目" })
+    );
+  });
+
+  it("updates project names through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "project-1", code: "KM-2023-001", name: "昆明项目" })
+    } as Response);
+
+    await updateProject("project-1", { name: "昆明项目" });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/projects/project-1"]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("PATCH");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ name: "昆明项目" }));
   });
 
   it("records project actual receipts through the backend", async () => {

@@ -47,9 +47,22 @@ describe("ProjectController authorization wiring", () => {
     "finance_director",
     "finance_staff"
   ];
+  const projectCreatePositions = ["chairman", "general_manager"];
 
   it("lets project list rely on authentication plus service-level project visibility", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.list)).toBeUndefined();
+  });
+
+  it("guards project creation with company decision roles", () => {
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.create)).toEqual(
+      projectCreatePositions
+    );
+  });
+
+  it("guards project updates with company decision roles", () => {
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.update)).toEqual(
+      projectCreatePositions
+    );
   });
 
   it("guards project overview with funds overview positions so project-scoped roles see :projectId", () => {
@@ -132,6 +145,26 @@ describe("ProjectController authorization wiring", () => {
     await controller.list({ id: "user-1" } as never);
 
     expect(projects.listActiveOptions).toHaveBeenCalledWith("user-1");
+  });
+
+  it("forwards project creation payload with authenticated user id", async () => {
+    const projects = { createProject: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = { code: "KM-2023-001", name: "昆明项目" };
+
+    await controller.create({ id: "chairman-1" } as never, body);
+
+    expect(projects.createProject).toHaveBeenCalledWith("chairman-1", body);
+  });
+
+  it("forwards project update payload with authenticated user id", async () => {
+    const projects = { updateProject: jest.fn() };
+    const controller = new ProjectController(projects as never);
+    const body = { name: "昆明项目" };
+
+    await controller.update("project-1", { id: "chairman-1" } as never, body);
+
+    expect(projects.updateProject).toHaveBeenCalledWith("project-1", "chairman-1", body);
   });
 
   it("forwards overview project id to the service", async () => {

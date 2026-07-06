@@ -12,6 +12,9 @@ const CONTRACT_INVOICE_TYPE_OPTIONS = [
   { label: "增值税普通发票", value: "增值税普通发票" }
 ] as const;
 
+const TRIAL_PROJECT_NAME =
+  "昆明市2023年城市防洪排涝治理工程一-西山区新运粮河分洪工程设计施工总承包合同";
+
 const taxRateField = (order: number) =>
   ({
     key: "taxRatePercent",
@@ -50,7 +53,7 @@ export const coreFlowSeedData = {
   project: {
     id: "seed-project-jgxm-001",
     code: "JGXM-001",
-    name: "建设项目一期"
+    name: TRIAL_PROJECT_NAME
   },
   contract: {
     id: "seed-contract-ht-2026-001",
@@ -93,7 +96,7 @@ export const coreFlowSeedData = {
   ownerContract: {
     id: "seed-owner-contract-yz-2026-001",
     ownerName: "建设单位",
-    contractName: "建设项目一期施工总承包合同",
+    contractName: TRIAL_PROJECT_NAME,
     contractCode: "YZ-2026-001",
     signedAt: new Date("2026-04-20T00:00:00.000Z"),
     amountCents: 500000000,
@@ -328,7 +331,7 @@ export const coreFlowSeedData = {
             amountUppercase: "人民币壹拾贰万捌仟元整"
           },
           field: {
-            projectName: "建设项目一期",
+            projectName: TRIAL_PROJECT_NAME,
             deliveryLocation: "项目现场",
             taxRatePercent: "13",
             invoiceType: "增值税专用发票"
@@ -548,7 +551,7 @@ export const coreFlowSeedData = {
       changeSummary: "初始化劳务分包合同模板 v1"
     },
     fields: [
-      { key: "projectName", label: "项目名称", type: "text", required: true, defaultValue: "建设项目一期", group: "basic", order: 5 },
+      { key: "projectName", label: "项目名称", type: "text", required: true, defaultValue: TRIAL_PROJECT_NAME, group: "basic", order: 5 },
       { key: "workScope", label: "劳务分包作业范围及内容", type: "long_text", required: true, group: "scope", order: 10 },
       { key: "workLocation", label: "劳务分包作业地点", type: "text", required: true, group: "scope", order: 20 },
       { key: "plannedStartDate", label: "计划开工日期", type: "date", required: true, group: "period", order: 30 },
@@ -651,7 +654,7 @@ export const coreFlowSeedData = {
         sampleData: {
           contract: { name: "劳务分包合同样张", temporaryCode: "样张-劳务-001", amountUppercase: "人民币壹万元整" },
           field: {
-            projectName: "建设项目一期",
+            projectName: TRIAL_PROJECT_NAME,
             workScope: "主体结构劳务作业",
             workLocation: "项目现场",
             plannedStartDate: "2026-07-01",
@@ -808,7 +811,7 @@ export const coreFlowSeedData = {
         sampleData: {
           contract: { name: "通用合同样张", temporaryCode: "样张-通用-001", amountUppercase: "人民币壹万元整" },
           field: {
-            projectName: "建设项目一期",
+            projectName: TRIAL_PROJECT_NAME,
             counterpartyName: "通用合同相对方",
             businessSummary: "双方约定的业务内容",
             settlementCycle: "按月结算",
