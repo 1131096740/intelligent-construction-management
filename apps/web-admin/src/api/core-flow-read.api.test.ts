@@ -106,6 +106,20 @@ describe("core flow read API client", () => {
     ]);
   });
 
+  it("rejects detail reads with server error messages", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 403,
+      clone() {
+        return this;
+      },
+      json: async () => ({ message: "无权访问该项目详情" })
+    } as Response);
+
+    await expect(fetchSettlementDetail("JS-2026-018")).rejects.toThrow("无权访问该项目详情");
+    await expect(fetchPaymentDetail("FK-2026-006")).rejects.toThrow("无权访问该项目详情");
+  });
+
   it("requests the contract payment application preview endpoint", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,

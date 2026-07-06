@@ -68,13 +68,16 @@ export class SettlementReadService {
     };
   }
 
-  async getDetail(settlementId: string): Promise<SettlementDetailReadModel> {
+  async getDetail(settlementId: string, visibleProjectIds?: string[]): Promise<SettlementDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(settlementId);
     }
 
     const settlement = await this.prisma.settlement.findFirst({
-      where: { OR: [{ id: settlementId }, { code: settlementId }] }
+      where: {
+        OR: [{ id: settlementId }, { code: settlementId }],
+        ...(visibleProjectIds ? { projectId: { in: visibleProjectIds } } : {})
+      }
     });
 
     if (!settlement) {

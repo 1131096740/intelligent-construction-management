@@ -822,4 +822,21 @@ describe("ContractReadService", () => {
       voucherStatus: "已上传"
     });
   });
+
+  it("does not expose contract detail outside visible projects", async () => {
+    const prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    await expect(service.getDetail("HT-2026-009", ["project-1"])).rejects.toThrow("Contract not found");
+    expect(prisma.contract.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [{ id: "HT-2026-009" }, { code: "HT-2026-009" }],
+        projectId: { in: ["project-1"] }
+      }
+    });
+  });
 });

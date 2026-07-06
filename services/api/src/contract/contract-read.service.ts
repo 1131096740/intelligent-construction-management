@@ -253,13 +253,16 @@ export class ContractReadService {
     });
   }
 
-  async getDetail(contractId: string): Promise<ContractDetailReadModel> {
+  async getDetail(contractId: string, visibleProjectIds?: string[]): Promise<ContractDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(contractId);
     }
 
     const contract = await this.prisma.contract.findFirst({
-      where: { OR: [{ id: contractId }, { code: contractId }] }
+      where: {
+        OR: [{ id: contractId }, { code: contractId }],
+        ...(visibleProjectIds ? { projectId: { in: visibleProjectIds } } : {})
+      }
     });
 
     if (!contract) {

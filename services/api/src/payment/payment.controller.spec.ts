@@ -60,4 +60,15 @@ describe("PaymentController authorization wiring", () => {
     });
     expect(paymentRead.getContractApplication).toHaveBeenCalledWith("contract-version-1");
   });
+
+  it("forwards visible project ids to payment detail reads", async () => {
+    const paymentRead = { getDetail: jest.fn().mockResolvedValue({ id: "payment-1" }) };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new PaymentController(paymentRead as never, {} as never, projectVisibility as never);
+
+    await controller.detail("FK-2026-011", { id: "user-1" } as never);
+
+    expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
+    expect(paymentRead.getDetail).toHaveBeenCalledWith("FK-2026-011", ["project-1"]);
+  });
 });

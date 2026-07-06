@@ -12,6 +12,7 @@
     "typecheck": "vue-tsc --noEmit",
     "pretest": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "test": "vitest run",
+    "test:e2e:p0": "playwright test --config playwright.config.ts",
     "prelint": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "lint": "eslint src --ext .ts,.vue"
   },
@@ -23,6 +24,7 @@
     "vue-router": "^4.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^20.14.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",

@@ -124,13 +124,16 @@ export class PaymentReadService {
     };
   }
 
-  async getDetail(paymentId: string): Promise<PaymentDetailReadModel> {
+  async getDetail(paymentId: string, visibleProjectIds?: string[]): Promise<PaymentDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(paymentId);
     }
 
     const payment = await this.prisma.paymentRequest.findFirst({
-      where: { OR: [{ id: paymentId }, { code: paymentId }] }
+      where: {
+        OR: [{ id: paymentId }, { code: paymentId }],
+        ...(visibleProjectIds ? { projectId: { in: visibleProjectIds } } : {})
+      }
     });
 
     if (!payment) {

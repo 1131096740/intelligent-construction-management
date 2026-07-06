@@ -18,6 +18,14 @@
       </div>
     </div>
 
+    <div
+      v-if="paymentDetailLoadError"
+      class="detail-error"
+    >
+      <strong>付款详情读取失败</strong>
+      <span>{{ paymentDetailLoadError }}</span>
+    </div>
+
     <div class="meta-panel">
       <div
         v-for="item in paymentDetailMetaView"
@@ -86,6 +94,7 @@
               theme="default"
               variant="outline"
               :loading="actionBusy === 'approvalForm'"
+              :disabled="!hasPaymentDetail"
               @click="downloadApprovalForm"
             >
               下载审批单
@@ -184,6 +193,7 @@
             theme="primary"
             variant="outline"
             :loading="actionBusy === 'pdfGenerate'"
+            :disabled="!hasPaymentDetail"
             @click="submitGeneratedPdfArchive"
           >
             生成PDF归档
@@ -204,12 +214,14 @@
           <div class="action-buttons">
             <t-button
               :loading="actionBusy === 'withdrawApproval'"
+              :disabled="!hasPaymentDetail"
               @click="submitPaymentWithdrawal"
             >
               撤回
             </t-button>
             <t-button
               :loading="actionBusy === 'remindApproval'"
+              :disabled="!hasPaymentDetail"
               @click="submitPaymentReminder"
             >
               催办
@@ -218,6 +230,7 @@
               theme="primary"
               variant="outline"
               :loading="actionBusy === 'transferApproval'"
+              :disabled="!hasPaymentDetail"
               @click="submitPaymentAssignment('transfer')"
             >
               转审
@@ -226,6 +239,7 @@
               theme="primary"
               variant="outline"
               :loading="actionBusy === 'delegateApproval'"
+              :disabled="!hasPaymentDetail"
               @click="submitPaymentAssignment('delegate')"
             >
               委托
@@ -253,6 +267,7 @@
             theme="primary"
             variant="outline"
             :loading="actionBusy === 'download'"
+            :disabled="!hasPaymentDetail"
             @click="submitPaymentFileDownload"
           >
             下载文件
@@ -394,22 +409,15 @@ import {
   uploadPrivateFile,
   withdrawPaymentApproval
 } from "../../api/core-flow-read.api";
-import { paymentDetailChainLinks } from "../business-chain-links.config";
 import type { PaymentDetailTone, PaymentExecutionAllocationRow } from "./payment-detail.config";
 import {
-  paymentApprovalSteps,
-  paymentBaseInfo,
-  paymentDetailMeta,
-  paymentDetailTitle,
-  paymentExecutionAllocationColumns,
-  paymentExecutionBlockMessage,
-  paymentExecutionSteps,
-  paymentTraceRules
+  paymentExecutionAllocationColumns
 } from "./payment-detail.config";
 
 const route = useRoute();
 const router = useRouter();
 const paymentDetail = ref<PaymentDetailReadModel | null>(null);
+const paymentDetailLoadError = ref("");
 const actionBusy = ref("");
 const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
@@ -429,15 +437,18 @@ const paymentActionForm = reactive({
   downloadPassword: ""
 });
 
-const paymentDetailTitleView = computed(() => paymentDetail.value?.title ?? paymentDetailTitle);
-const paymentDetailMetaView = computed(() => paymentDetail.value?.meta ?? paymentDetailMeta);
-const paymentBaseInfoView = computed(() => paymentDetail.value?.baseInfo ?? paymentBaseInfo);
-const paymentTraceRulesView = computed(() => paymentDetail.value?.traceRules ?? paymentTraceRules);
+const hasPaymentDetail = computed(() => !!paymentDetail.value?.id);
+const paymentDetailTitleView = computed(() =>
+  paymentDetail.value?.title ?? (paymentDetailLoadError.value ? "付款详情读取失败" : "正在加载付款详情")
+);
+const paymentDetailMetaView = computed(() => paymentDetail.value?.meta ?? []);
+const paymentBaseInfoView = computed(() => paymentDetail.value?.baseInfo ?? []);
+const paymentTraceRulesView = computed(() => paymentDetail.value?.traceRules ?? []);
 const paymentApprovalStepsView = computed(
-  () => paymentDetail.value?.approvalSteps ?? paymentApprovalSteps
+  () => paymentDetail.value?.approvalSteps ?? []
 );
 const paymentExecutionStepsView = computed(
-  () => paymentDetail.value?.executionSteps ?? paymentExecutionSteps
+  () => paymentDetail.value?.executionSteps ?? []
 );
 const paymentExecutionAllocationRowsView = computed<PaymentExecutionAllocationRow[]>(() =>
   (paymentDetail.value?.executionAllocations ?? []).map((allocation) => ({
@@ -450,10 +461,10 @@ const paymentExecutionAllocationRowsView = computed<PaymentExecutionAllocationRo
   }))
 );
 const paymentExecutionBlockMessageView = computed(
-  () => paymentDetail.value?.executionBlockMessage ?? paymentExecutionBlockMessage
+  () => paymentDetail.value?.executionBlockMessage ?? "详情读取成功后显示付款执行规则。"
 );
 const paymentDetailChainLinksView = computed(
-  () => paymentDetail.value?.chainLinks ?? paymentDetailChainLinks
+  () => paymentDetail.value?.chainLinks ?? []
 );
 const approvalStatusValue = computed(
   () => paymentDetailMetaView.value.find((item) => item.label === "审批状态")?.value ?? ""
@@ -467,24 +478,32 @@ const nextActionValue = computed(
 const financeStepStatus = computed(
   () => paymentExecutionStepsView.value.find((step) => step.label === "财务入账")?.status ?? ""
 );
-const canReviewApproval = computed(() => approvalStatusValue.value === "审批中");
-const canRecordExecution = computed(() => nextActionValue.value.includes("出纳付款登记"));
+const canReviewApproval = computed(() => hasPaymentDetail.value && approvalStatusValue.value === "审批中");
+const canRecordExecution = computed(() => hasPaymentDetail.value && nextActionValue.value.includes("出纳付款登记"));
 const canRecordFinance = computed(
-  () => executionStatusValue.value === "已付款" && financeStepStatus.value === "待处理"
+  () => hasPaymentDetail.value && executionStatusValue.value === "已付款" && financeStepStatus.value === "待处理"
 );
-const canRecordPdfArchive = computed(() => financeStepStatus.value === "已入账");
+const canRecordPdfArchive = computed(() => hasPaymentDetail.value && financeStepStatus.value === "已入账");
 
 function openChainLink(to: string) {
   void router.push(to);
 }
 
 async function reloadPaymentDetail() {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = String(route.params.paymentId ?? "").trim();
+  if (!paymentId) {
+    paymentDetail.value = null;
+    paymentDetailLoadError.value = "缺少付款编号。";
+    return;
+  }
 
   try {
+    paymentDetailLoadError.value = "";
     paymentDetail.value = await fetchPaymentDetail(paymentId);
-  } catch {
+  } catch (error) {
     paymentDetail.value = null;
+    paymentDetailLoadError.value =
+      error instanceof Error ? error.message : "付款详情读取失败，请确认权限或稍后重试。";
   }
 }
 
@@ -552,6 +571,10 @@ function requiredText(raw: string, label: string) {
   return value;
 }
 
+function currentPaymentId() {
+  return requiredText(paymentDetail.value?.id ?? "", "付款编号");
+}
+
 function apiDownloadUrl(url: string) {
   return url.startsWith("/files/") ? `/api${url}` : url;
 }
@@ -579,7 +602,7 @@ async function runPaymentAction(key: string, action: () => Promise<unknown>) {
 }
 
 async function submitApproval(decision: "approve" | "reject") {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = currentPaymentId();
 
   await runPaymentAction("approval", () =>
     reviewPaymentApproval(paymentId, {
@@ -594,7 +617,7 @@ async function submitApproval(decision: "approve" | "reject") {
 }
 
 async function downloadApprovalForm() {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = currentPaymentId();
 
   await runPaymentAction("approvalForm", async () => {
     await requestApprovalFormDownload("payment_request", paymentId);
@@ -602,7 +625,7 @@ async function downloadApprovalForm() {
 }
 
 async function submitExecution() {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = currentPaymentId();
 
   await runPaymentAction("execution", async () => {
     const file = selectedPaymentVoucherFile.value;
@@ -624,7 +647,7 @@ async function submitExecution() {
 }
 
 async function submitFinance() {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = currentPaymentId();
 
   await runPaymentAction("finance", () =>
     recordPaymentFinance(paymentId, {
@@ -635,7 +658,7 @@ async function submitFinance() {
 }
 
 async function submitPdfArchive() {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = currentPaymentId();
 
   await runPaymentAction("pdfArchive", () =>
     recordPaymentPdfArchive(paymentId, {
@@ -645,25 +668,25 @@ async function submitPdfArchive() {
 }
 
 async function submitGeneratedPdfArchive() {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = currentPaymentId();
 
   await runPaymentAction("pdfGenerate", () => generatePaymentPdfArchive(paymentId));
 }
 
 async function submitPaymentWithdrawal() {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = currentPaymentId();
 
   await runPaymentAction("withdrawApproval", () => withdrawPaymentApproval(paymentId));
 }
 
 async function submitPaymentReminder() {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = currentPaymentId();
 
   await runPaymentAction("remindApproval", () => remindPaymentApproval(paymentId));
 }
 
 async function submitPaymentAssignment(kind: "transfer" | "delegate") {
-  const paymentId = String(route.params.paymentId ?? "FK-2026-006");
+  const paymentId = currentPaymentId();
   const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标人员编号");
 
   await runPaymentAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
@@ -729,6 +752,25 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
 .actions {
   display: flex;
   gap: 8px;
+}
+
+.detail-error {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  color: #a03a3a;
+  background: #fff4f2;
+  border: 1px solid #f2c8c2;
+  border-radius: 3px;
+}
+
+.detail-error strong {
+  font-size: 13px;
+}
+
+.detail-error span {
+  font-size: 12px;
 }
 
 .meta-panel {

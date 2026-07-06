@@ -258,6 +258,23 @@ describe("PaymentReadService", () => {
     ]);
   });
 
+  it("does not expose payment detail outside visible projects", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    await expect(service.getDetail("FK-2026-011", ["project-1"])).rejects.toThrow("Payment request not found");
+    expect(prisma.paymentRequest.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [{ id: "FK-2026-011" }, { code: "FK-2026-011" }],
+        projectId: { in: ["project-1"] }
+      }
+    });
+  });
+
   it("builds contract advance payment detail without requiring settlement", async () => {
     const prisma = {
       paymentRequest: {

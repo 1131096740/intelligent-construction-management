@@ -48,4 +48,20 @@ describe("SettlementController authorization wiring", () => {
       "super_admin"
     ]);
   });
+
+  it("forwards visible project ids to settlement detail reads", async () => {
+    const settlementRead = { getDetail: jest.fn().mockResolvedValue({ id: "settlement-1" }) };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new SettlementController(
+      settlementRead as never,
+      {} as never,
+      {} as never,
+      projectVisibility as never
+    );
+
+    await controller.detail("JS-2026-031", { id: "user-1" } as never);
+
+    expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
+    expect(settlementRead.getDetail).toHaveBeenCalledWith("JS-2026-031", ["project-1"]);
+  });
 });

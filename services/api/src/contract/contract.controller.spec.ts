@@ -83,6 +83,22 @@ describe("ContractController authorization wiring", () => {
     );
   });
 
+  it("forwards visible project ids to contract detail reads", async () => {
+    const contractRead = { getDetail: jest.fn().mockResolvedValue({ id: "contract-1" }) };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new ContractController(
+      {} as never,
+      contractRead as never,
+      {} as never,
+      projectVisibility as never
+    );
+
+    await controller.detail("HT-2026-009", { id: "user-1" } as never);
+
+    expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
+    expect(contractRead.getDetail).toHaveBeenCalledWith("HT-2026-009", ["project-1"]);
+  });
+
   it("forwards number-rule maintenance bodies to runtime-validating service methods", () => {
     const numbering = {
       create: jest.fn(),

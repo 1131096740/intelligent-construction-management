@@ -4,8 +4,10 @@ dist/
 .env
 .env.*
 !.env.example
+!.env.production.example
 .DS_Store
 coverage/
+apps/web-admin/test-results/
 *.log
 apps/miniprogram/miniprogram_npm/
 .pnpm-store/

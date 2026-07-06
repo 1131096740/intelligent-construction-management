@@ -148,7 +148,7 @@ export class PaymentController {
     "finance_director",
     "finance_staff"
   )
-  detail(@Param("paymentId") paymentId: string) {
-    return this.paymentRead.getDetail(paymentId);
+  async detail(@Param("paymentId") paymentId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.paymentRead.getDetail(paymentId, await this.projectVisibility.visibleProjectIds(user.id));
   }
 }

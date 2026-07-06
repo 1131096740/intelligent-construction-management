@@ -128,6 +128,49 @@ function checkSeedPassword(env, results) {
   }
 }
 
+function runPsqlScalar(databaseUrl, sql) {
+  return execFileSync("psql", [databaseUrl, "--tuples-only", "--no-align", "--command", sql], {
+    encoding: "utf8",
+    timeout: 10000
+  }).trim();
+}
+
+function checkDatabaseState(env, results) {
+  if (env.CHECK_DATABASE_STATE !== "true") {
+    add(results, "WARN", "database state", "skipped; set CHECK_DATABASE_STATE=true to verify seed users");
+    return;
+  }
+
+  try {
+    const activeSeedUsers = Number(
+      runPsqlScalar(
+        env.DATABASE_URL,
+        "select count(*) from \"User\" where \"id\" like 'seed-user-%' and \"isActive\" = true;"
+      )
+    );
+    const activeSeedRefreshTokens = Number(
+      runPsqlScalar(
+        env.DATABASE_URL,
+        "select count(*) from \"RefreshToken\" where \"userId\" like 'seed-user-%' and \"revokedAt\" is null;"
+      )
+    );
+
+    if (activeSeedUsers > 0) {
+      add(results, "FAIL", "seed users", `${activeSeedUsers} seed users are still active`);
+    } else {
+      add(results, "PASS", "seed users", "inactive");
+    }
+
+    if (activeSeedRefreshTokens > 0) {
+      add(results, "FAIL", "seed refresh tokens", `${activeSeedRefreshTokens} seed refresh tokens are active`);
+    } else {
+      add(results, "PASS", "seed refresh tokens", "revoked");
+    }
+  } catch (error) {
+    add(results, "FAIL", "database state", error.message);
+  }
+}
+
 function checkStorage(env, results) {
   if (env.FILE_STORAGE_DRIVER !== "cos") {
     add(results, "FAIL", "FILE_STORAGE_DRIVER", "production must use cos private storage");
@@ -191,6 +234,7 @@ function checkEnv(env, options = { checkCommands: true }) {
   checkDatabaseUrl(env, results);
   checkSecrets(env, results);
   checkSeedPassword(env, results);
+  checkDatabaseState(env, results);
   checkStorage(env, results);
   checkUploadLimit(env, results);
   checkConverter(env, results, options);

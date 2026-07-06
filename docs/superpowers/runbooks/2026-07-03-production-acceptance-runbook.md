@@ -7,7 +7,7 @@
 ## 验收原则
 
 - 先验收能不能安全试运行，再扩大功能。
-- 自动脚本只做只读辅助检查：环境变量形态、默认值风险、本机转换器可用性；不连接数据库、不读 COS、不输出密钥值。
+- 自动脚本只做只读辅助检查：环境变量形态、默认值风险、本机转换器可用性；仅在显式设置 `CHECK_DATABASE_STATE=true` 时做 seed 账号只读查询；不读 COS、不输出密钥值。
 - 人工验收必须留痕：负责人、日期、截图或日志路径、问题和整改结论。
 - 真实密钥、真实账号密码、COS Secret、数据库连接串完整值不得进入仓库、聊天、截图或共享文档。
 - seed 通用密码 `Jgzg@2026` 只允许开发演示使用，真实试运行前必须停用或改掉。
@@ -21,6 +21,8 @@ set -a
 . /etc/jiangkong/api.env
 set +a
 pnpm --filter @jiangkong/api verify:production-readiness
+# 可选：只读检查 seed 用户和 refresh token 是否停用。
+CHECK_DATABASE_STATE=true pnpm --filter @jiangkong/api verify:production-readiness
 ```
 
 脚本位置：`services/api/scripts/verify-production-readiness.cjs`。
@@ -78,6 +80,25 @@ pnpm --filter @jiangkong/api verify:production-readiness
 
 建议停用 SQL 已记录在 P0-4A Runbook。执行前必须确认连接的是生产等价或正式生产库；禁止在未确认库名时执行。
 
+## 2.1 Nginx 登录限流和安全响应头
+
+| 验收项 | 方法 | 通过标准 | 结果 |
+| --- | --- | --- | --- |
+| 登录限流 | Nginx `limit_req` | 连续错误登录出现 429 | 待验收 |
+| refresh 限流 | Nginx `limit_req` | 异常 refresh 高频请求出现 429 | 待验收 |
+| 安全响应头 | `curl -I` | HSTS、nosniff、frame、referrer、permissions policy 可见 | 待验收 |
+| 隐藏版本 | `curl -I` | `Server` 不暴露 `nginx/x.y.z` 版本 | 待验收 |
+
+仓库提供了最小配置片段：`deploy/nginx/jiangkong-security-snippets.conf.example`。落地后执行：
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+curl -sI https://jgzg.site/api/health | grep -Ei 'strict-transport|x-content-type|x-frame|referrer-policy|permissions-policy|server'
+```
+
+备案完成前可把域名替换为 `https://162.14.116.192` 或服务器本机可访问地址做内部验证。
+
 ## 3. COS 私有桶和短时效下载
 
 | 验收项 | 方法 | 通过标准 | 结果 |
@@ -90,6 +111,24 @@ pnpm --filter @jiangkong/api verify:production-readiness
 | 下载审计 | 人工查审计 | 签票和下载动作能查到人、文件、时间 | 待验收 |
 
 注意：脚本只检查配置项，不访问 COS，也不判断桶策略。
+
+最小留痕命令：
+
+```bash
+set -a
+. /etc/jiangkong/api.env
+set +a
+CHECK_DATABASE_STATE=true pnpm --filter @jiangkong/api verify:production-readiness
+```
+
+COS 抽样验收记录：
+
+| 步骤 | 命令 / 证据 | 结果 |
+| --- | --- | --- |
+| 后端上传 | Web 上传一份非敏感测试附件，记录 `FileObject.id` | 待验收 |
+| 存储位置 | `psql "$DATABASE_URL" -c 'select "id","bucket","objectKey" from "FileObject" order by "createdAt" desc limit 1;'` | 待验收 |
+| 签票下载 | Web 输入当前密码下载，确认 200 且写 `file.download.ticket` / `file.download` 审计 | 待验收 |
+| 匿名直链 | 腾讯云 COS 对象 URL 未签名访问返回 403 / AccessDenied | 待验收 |
 
 ## 4. PostgreSQL 不公网暴露
 
@@ -119,6 +158,25 @@ pnpm --filter @jiangkong/api verify:production-readiness
 3. 验证关键表数量：`User`、`Project`、`Contract`、`ContractTakeover`、`Settlement`、`PaymentRequest`、`ProjectExpenseRequest`、`FileObject`、`AuditLog`。
 4. 删除临时库前保存演练记录。
 
+仓库已提供最小脚本：
+
+```bash
+set -a
+. /etc/jiangkong/api.env
+set +a
+
+BACKUP_DIR=/srv/jiangkong-backups/db scripts/ops/db-backup.sh
+BACKUP_FILE=/srv/jiangkong-backups/db/<backup-file>.dump \
+RESTORE_DATABASE_URL=postgresql://restore_user:restore_password@127.0.0.1:5432/jiangkong_restore \
+scripts/ops/db-restore-drill.sh
+```
+
+恢复演练留痕：
+
+| 备份文件 | 恢复目标库 | 开始时间 | 结束时间 | 表数量校验 | 结论 |
+| --- | --- | --- | --- | --- | --- |
+| 待填写 | 待填写 | 待填写 | 待填写 | 待填写 | 待验收 |
+
 ## 6. 附件 / 文件备份
 
 | 验收项 | 方法 | 通过标准 | 结果 |
@@ -136,6 +194,18 @@ pnpm --filter @jiangkong/api verify:production-readiness
 | 进程日志 | 人工检查 | API、Web/Nginx 日志可查，且有轮转 | 待验收 |
 | 错误告警 | 人工触发低风险错误 | 5xx 或进程异常能通知负责人 | 待验收 |
 | 磁盘告警 | 人工检查 | 日志、备份、上传目录不会无声打满磁盘 | 待验收 |
+
+最小健康检查：
+
+```bash
+HEALTH_URL=http://127.0.0.1:3000/health \
+SERVICE_NAME=jiangkong-api \
+DISK_PATH=/ \
+DISK_MAX_USED_PERCENT=85 \
+scripts/ops/check-runtime-health.sh
+```
+
+如已配置企业微信或飞书机器人，可加 `ALERT_WEBHOOK_URL`；未配置 webhook 时脚本仍会失败退出并在终端/cron 日志留痕。
 
 ## 8. HTTPS / 域名 / 证书续期
 

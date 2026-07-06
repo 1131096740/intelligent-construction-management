@@ -188,4 +188,21 @@ describe("SettlementReadService", () => {
       "/audit"
     ]);
   });
+
+  it("does not expose settlement detail outside visible projects", async () => {
+    const prisma = {
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const service = new SettlementReadService(prisma as never);
+
+    await expect(service.getDetail("JS-2026-031", ["project-1"])).rejects.toThrow("Settlement not found");
+    expect(prisma.settlement.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [{ id: "JS-2026-031" }, { code: "JS-2026-031" }],
+        projectId: { in: ["project-1"] }
+      }
+    });
+  });
 });

@@ -18,6 +18,14 @@
       </div>
     </div>
 
+    <div
+      v-if="settlementDetailLoadError"
+      class="detail-error"
+    >
+      <strong>结算详情读取失败</strong>
+      <span>{{ settlementDetailLoadError }}</span>
+    </div>
+
     <div class="meta-panel">
       <div
         v-for="item in settlementDetailMetaView"
@@ -98,6 +106,7 @@
               theme="default"
               variant="outline"
               :loading="archiveActionBusy === 'approvalForm'"
+              :disabled="!canRunSettlementAction"
               @click="downloadSettlementApprovalForm"
             >
               下载最新审批PDF
@@ -256,6 +265,7 @@
             theme="primary"
             variant="outline"
             :loading="archiveActionBusy === 'download'"
+            :disabled="!canRunSettlementAction"
             @click="submitSettlementFileDownload"
           >
             下载文件
@@ -365,23 +375,16 @@ import {
   uploadSettlementArchiveFile,
   withdrawSettlementApproval
 } from "../../api/core-flow-read.api";
-import { settlementDetailChainLinks } from "../business-chain-links.config";
 import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
-  settlementArchiveResponsibilities,
   settlementAttachmentTemplates,
-  settlementBaseInfo,
-  settlementDetailMeta,
-  settlementDetailTitle,
-  settlementEffectivenessSteps,
-  settlementPaymentBlockMessage,
-  settlementPaymentRuleColumns,
-  settlementPaymentRules
+  settlementPaymentRuleColumns
 } from "./settlement-detail.config";
 
 const route = useRoute();
 const router = useRouter();
 const settlementDetail = ref<SettlementDetailReadModel | null>(null);
+const settlementDetailLoadError = ref("");
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
@@ -395,23 +398,25 @@ const settlementArchiveForm = reactive({
   approvalComment: ""
 });
 
-const settlementDetailTitleView = computed(() => settlementDetail.value?.title ?? settlementDetailTitle);
-const settlementDetailMetaView = computed(() => settlementDetail.value?.meta ?? settlementDetailMeta);
-const settlementBaseInfoView = computed(() => settlementDetail.value?.baseInfo ?? settlementBaseInfo);
+const settlementDetailTitleView = computed(() =>
+  settlementDetail.value?.title ?? (settlementDetailLoadError.value ? "结算详情读取失败" : "正在加载结算详情")
+);
+const settlementDetailMetaView = computed(() => settlementDetail.value?.meta ?? []);
+const settlementBaseInfoView = computed(() => settlementDetail.value?.baseInfo ?? []);
 const settlementEffectivenessStepsView = computed(
-  () => settlementDetail.value?.effectivenessSteps ?? settlementEffectivenessSteps
+  () => settlementDetail.value?.effectivenessSteps ?? []
 );
 const settlementArchiveResponsibilitiesView = computed(
-  () => settlementDetail.value?.archiveResponsibilities ?? settlementArchiveResponsibilities
+  () => settlementDetail.value?.archiveResponsibilities ?? []
 );
 const settlementPaymentRulesView = computed(
-  () => settlementDetail.value?.paymentRules ?? settlementPaymentRules
+  () => settlementDetail.value?.paymentRules ?? []
 );
 const settlementPaymentBlockMessageView = computed(
-  () => settlementDetail.value?.paymentBlockMessage ?? settlementPaymentBlockMessage
+  () => settlementDetail.value?.paymentBlockMessage ?? "详情读取成功后显示付款申请规则。"
 );
 const settlementDetailChainLinksView = computed(
-  () => settlementDetail.value?.chainLinks ?? settlementDetailChainLinks
+  () => settlementDetail.value?.chainLinks ?? []
 );
 const settlementNextActionValue = computed(
   () => settlementDetailMetaView.value.find((item) => item.label === "下一步动作")?.value ?? ""
@@ -429,12 +434,20 @@ function openChainLink(to: string) {
 }
 
 async function reloadSettlementDetail() {
-  const settlementId = String(route.params.settlementId ?? "JS-2026-018");
+  const settlementId = String(route.params.settlementId ?? "").trim();
+  if (!settlementId) {
+    settlementDetail.value = null;
+    settlementDetailLoadError.value = "缺少结算编号。";
+    return;
+  }
 
   try {
+    settlementDetailLoadError.value = "";
     settlementDetail.value = await fetchSettlementDetail(settlementId);
-  } catch {
+  } catch (error) {
     settlementDetail.value = null;
+    settlementDetailLoadError.value =
+      error instanceof Error ? error.message : "结算详情读取失败，请确认权限或稍后重试。";
   }
 }
 
@@ -636,6 +649,25 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
 .actions {
   display: flex;
   gap: 8px;
+}
+
+.detail-error {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  color: #a03a3a;
+  background: #fff4f2;
+  border: 1px solid #f2c8c2;
+  border-radius: 3px;
+}
+
+.detail-error strong {
+  font-size: 13px;
+}
+
+.detail-error span {
+  font-size: 12px;
 }
 
 .meta-panel {
