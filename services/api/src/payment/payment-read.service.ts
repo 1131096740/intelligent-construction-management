@@ -818,7 +818,7 @@ export class PaymentReadService {
   }
 
   private date(value: Date) {
-    return value.toLocaleString("zh-CN", { hour12: false });
+    return value.toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" });
   }
 
   private dateOnly(value: Date | null) {
