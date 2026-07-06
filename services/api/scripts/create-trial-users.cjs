@@ -16,21 +16,21 @@ const ROLE_NAMES = {
 };
 
 const TRIAL_USERS = [
-  { id: "trial-user-contract-staff-1", name: "试运行合同员一", phone: "13900002001", positionKey: "contract_staff" },
-  { id: "trial-user-contract-staff-2", name: "试运行合同员二", phone: "13900002002", positionKey: "contract_staff" },
-  { id: "trial-user-contract-director", name: "试运行合同主管", phone: "13900002003", positionKey: "contract_director" },
-  { id: "trial-user-chairman", name: "试运行老板", phone: "13900002004", positionKey: "chairman" },
-  { id: "trial-user-material-director", name: "试运行物资主管", phone: "13900002005", positionKey: "material_director" },
-  { id: "trial-user-finance-director", name: "试运行财务总监", phone: "13900002006", positionKey: "finance_director" },
-  { id: "trial-user-project-manager", name: "试运行项目经理", phone: "13900002007", positionKey: "project_manager" },
+  { id: "trial-user-contract-staff-1", name: "试运行合同员一", phone: "15125127264", positionKey: "contract_staff" },
+  { id: "trial-user-contract-staff-2", name: "试运行合同员二", phone: "13888254165", positionKey: "contract_staff" },
+  { id: "trial-user-contract-director", name: "试运行合同主管", phone: "17687008506", positionKey: "contract_director" },
+  { id: "trial-user-chairman", name: "试运行老板", phone: "13378716681", positionKey: "chairman" },
+  { id: "trial-user-material-director", name: "试运行物资主管", phone: "18184832343", positionKey: "material_director" },
+  { id: "trial-user-finance-director", name: "试运行财务总监", phone: "15987186028", positionKey: "finance_director" },
+  { id: "trial-user-project-manager", name: "试运行项目经理", phone: "18669060329", positionKey: "project_manager" },
   {
     id: "trial-user-comprehensive-director",
     name: "试运行综合部主管",
-    phone: "13900002008",
+    phone: "13708409797",
     positionKey: "comprehensive_director"
   },
-  { id: "trial-user-finance-staff-1", name: "试运行财务一", phone: "13900002009", positionKey: "finance_staff" },
-  { id: "trial-user-finance-staff-2", name: "试运行财务二", phone: "13900002010", positionKey: "finance_staff" }
+  { id: "trial-user-finance-staff-1", name: "试运行财务一", phone: "18295490698", positionKey: "finance_staff" },
+  { id: "trial-user-finance-staff-2", name: "试运行财务二", phone: "18287462309", positionKey: "finance_staff" }
 ];
 
 function readEnvFile(filePath) {
