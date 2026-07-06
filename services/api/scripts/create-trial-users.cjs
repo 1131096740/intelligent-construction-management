@@ -64,17 +64,21 @@ async function ensurePosition(prisma, positionKey) {
   });
 }
 
-async function upsertTrialUser(prisma, user, projectId, passwordHash) {
+function buildUserUpdate(user, passwordHash, resetExistingPassword) {
+  return {
+    name: user.name,
+    phone: user.phone,
+    ...(resetExistingPassword ? { passwordHash } : {}),
+    mustChangePassword: true,
+    isActive: true
+  };
+}
+
+async function upsertTrialUser(prisma, user, projectId, passwordHash, resetExistingPassword) {
   const position = await ensurePosition(prisma, user.positionKey);
   await prisma.user.upsert({
     where: { id: user.id },
-    update: {
-      name: user.name,
-      phone: user.phone,
-      passwordHash,
-      mustChangePassword: true,
-      isActive: true
-    },
+    update: buildUserUpdate(user, passwordHash, resetExistingPassword),
     create: {
       id: user.id,
       name: user.name,
@@ -116,6 +120,7 @@ async function main() {
   }
 
   const projectId = env.TRIAL_PROJECT_ID || "seed-project-jgxm-001";
+  const resetExistingPassword = Boolean(env.TRIAL_USER_TEMP_PASSWORD);
   const password = env.TRIAL_USER_TEMP_PASSWORD || temporaryPassword();
   const prisma = new PrismaClient();
   try {
@@ -125,19 +130,30 @@ async function main() {
     }
     const passwordHash = await bcrypt.hash(password, 10);
     for (const user of TRIAL_USERS) {
-      await upsertTrialUser(prisma, user, project.id, passwordHash);
+      await upsertTrialUser(prisma, user, project.id, passwordHash, resetExistingPassword);
     }
 
     console.log(`Created/updated ${TRIAL_USERS.length} trial users for project ${project.name} (${project.id}).`);
     console.table(TRIAL_USERS.map(({ name, phone, positionKey }) => ({ name, phone, positionKey })));
-    console.log(`Temporary password: ${password}`);
+    console.log(
+      resetExistingPassword
+        ? `Temporary password reset for all trial users: ${password}`
+        : `Temporary password for newly-created trial users: ${password}`
+    );
+    if (!resetExistingPassword) {
+      console.log("Existing trial user passwords were preserved. Set TRIAL_USER_TEMP_PASSWORD to reset them.");
+    }
     console.log("mustChangePassword: true");
   } finally {
     await prisma.$disconnect();
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+module.exports = { buildUserUpdate };
