@@ -15,5 +15,16 @@ export const apiFetch = createApiFetch({
     if (current.path !== "/login") {
       void router.push({ path: "/login", query: { redirect: current.fullPath } });
     }
+  },
+  onPasswordChangeRequired: () => {
+    const auth = useAuthStore();
+    if (auth.user && !auth.user.mustChangePassword) {
+      auth.user = { ...auth.user, mustChangePassword: true };
+      auth.persist();
+    }
+    const current = router.currentRoute.value;
+    if (current.path !== "/change-password") {
+      void router.push({ path: "/change-password", query: { redirect: current.fullPath } });
+    }
   }
 });

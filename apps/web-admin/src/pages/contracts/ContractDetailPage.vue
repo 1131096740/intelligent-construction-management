@@ -227,9 +227,10 @@
               <span>确认后合同版本生效</span>
             </div>
             <div class="action-fields">
-              <t-input
+              <t-select
                 v-model="contractArchiveForm.archiveFileId"
-                placeholder="归档记录ID"
+                :options="contractArchiveRecordOptions"
+                placeholder="选择待确认归档件"
               />
               <t-input
                 v-model="contractArchiveForm.confirmationPassword"
@@ -250,12 +251,13 @@
           <div class="action-group">
             <div class="action-title">
               <strong>敏感文件下载</strong>
-              <span>签发短时效票据</span>
+              <span>当前合同归档件</span>
             </div>
             <div class="action-fields">
-              <t-input
+              <t-select
                 v-model="contractArchiveForm.downloadFileId"
-                placeholder="文件编号"
+                :options="contractArchiveFileOptions"
+                placeholder="选择归档文件"
               />
               <t-input
                 v-model="contractArchiveForm.downloadPassword"
@@ -267,6 +269,7 @@
               theme="primary"
               variant="outline"
               :loading="archiveActionBusy === 'download'"
+              :disabled="!contractArchiveFileOptions.length"
               @click="submitContractFileDownload"
             >
               下载文件
@@ -280,6 +283,14 @@
         >
           {{ archiveActionMessage }}
         </div>
+      </t-card>
+
+      <t-card
+        class="section-card"
+        title="归档资料"
+        :bordered="true"
+      >
+        <EvidenceFileCards :files="contractEvidenceFilesView" />
       </t-card>
 
       <div class="detail-grid">
@@ -425,6 +436,7 @@
 import type { CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   approveContractSeal,
   confirmContractArchive,
@@ -501,6 +513,33 @@ const contractSettlementPaymentView = computed(
 const contractDetailChainLinksView = computed(
   () => contractDetail.value?.chainLinks ?? contractDetailChainLinks
 );
+const contractArchiveFileOptions = computed(() =>
+  (contractDetail.value?.archiveFiles ?? []).map((file) => ({
+    label: `${file.fileName}（${file.statusLabel}）`,
+    value: file.fileId
+  }))
+);
+const contractArchiveRecordOptions = computed(() =>
+  (contractDetail.value?.archiveFiles ?? []).map((file) => ({
+    label: `${file.fileName}（${file.statusLabel}）`,
+    value: file.archiveRecordId
+  }))
+);
+const contractEvidenceFilesView = computed(() =>
+  (contractDetail.value?.archiveFiles ?? []).map((file) => ({
+    recordId: file.archiveRecordId,
+    fileName: file.fileName,
+    purpose: "合同归档件",
+    sizeBytes: file.sizeBytes,
+    statusLabel: file.statusLabel,
+    uploadedByName: "合同部",
+    uploadedAt: file.createdAt,
+    confirmedByName: file.confirmedAt ? "合同部主管" : null,
+    confirmedAt: file.confirmedAt,
+    canDownload: true,
+    disabledReason: null
+  }))
+);
 const contractNextActionValue = computed(
   () => contractDetailMetaView.value.find((item) => item.label === "下一步动作")?.value ?? ""
 );
@@ -531,7 +570,16 @@ async function reloadContractDetail() {
   contractDetailError.value = "";
 
   try {
-    contractDetail.value = await fetchContractDetail(contractId);
+    const detail = await fetchContractDetail(contractId);
+    contractDetail.value = detail;
+    const archiveFileIds = detail.archiveFiles.map((file) => file.fileId);
+    const archiveRecordIds = detail.archiveFiles.map((file) => file.archiveRecordId);
+    if (!archiveRecordIds.includes(contractArchiveForm.archiveFileId)) {
+      contractArchiveForm.archiveFileId = archiveRecordIds[0] ?? "";
+    }
+    if (!archiveFileIds.includes(contractArchiveForm.downloadFileId)) {
+      contractArchiveForm.downloadFileId = archiveFileIds[0] ?? "";
+    }
   } catch {
     contractDetail.value = null;
     contractDetailError.value = "合同详情读取失败，请确认权限或稍后重试。";
@@ -618,7 +666,7 @@ async function submitContractArchiveConfirmation() {
 
   await runArchiveAction("confirm", () =>
     confirmContractArchive(contractVersionId, {
-      archiveFileId: requiredText(contractArchiveForm.archiveFileId, "归档记录ID"),
+      archiveFileId: requiredText(contractArchiveForm.archiveFileId, "归档文件"),
       confirmationPassword: requiredText(
         contractArchiveForm.confirmationPassword,
         "当前登录密码"
@@ -718,7 +766,7 @@ async function submitContractPdfGeneration() {
 async function submitContractFileDownload() {
   await runArchiveAction("download", async () => {
     const ticket = await createPrivateFileDownloadTicket(
-      requiredText(contractArchiveForm.downloadFileId, "文件编号"),
+      requiredText(contractArchiveForm.downloadFileId, "归档文件"),
       {
         confirmationPassword: requiredText(contractArchiveForm.downloadPassword, "当前登录密码")
       }

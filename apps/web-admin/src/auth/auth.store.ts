@@ -42,15 +42,15 @@ async function postAuth<T>(path: string, body: unknown): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(formatAuthError(text, response.status));
+    throw new Error(formatAuthError(text, response.status, "登录请求失败"));
   }
 
   return response.json() as Promise<T>;
 }
 
-function formatAuthError(text: string, status: number) {
+function formatAuthError(text: string, status: number, fallback: string) {
   if (!text) {
-    return `登录请求失败：${status}`;
+    return `${fallback}：${status}`;
   }
 
   try {
@@ -65,8 +65,30 @@ function formatAuthError(text: string, status: number) {
       return "手机号或密码错误";
     }
 
-    return message || `登录请求失败：${status}`;
+    if (/Password change required/i.test(message)) {
+      return "请先完成初始密码修改。";
+    }
+
+    if (/old password|current password|Invalid password/i.test(message)) {
+      return "当前密码不正确";
+    }
+
+    if (/new password/i.test(message) || /at least 8/i.test(message)) {
+      return "新密码至少 8 位";
+    }
+
+    if (/Internal server error/i.test(message)) {
+      return "系统暂时无法完成操作，请稍后重试或联系管理员。";
+    }
+
+    return message || `${fallback}：${status}`;
   } catch {
+    if (/Password change required/i.test(text)) {
+      return "请先完成初始密码修改。";
+    }
+    if (/Internal server error/i.test(text)) {
+      return "系统暂时无法完成操作，请稍后重试或联系管理员。";
+    }
     return text;
   }
 }
@@ -173,7 +195,7 @@ export const useAuthStore = defineStore("auth", {
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(text || `修改密码失败：${response.status}`);
+        throw new Error(formatAuthError(text, response.status, "修改密码失败"));
       }
 
       if (this.user) {

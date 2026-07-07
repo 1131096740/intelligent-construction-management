@@ -12,6 +12,8 @@ export interface AuthBridge {
   refresh(): Promise<boolean>;
   /** 登录态已失效（需清理并跳登录）。 */
   onUnauthorized(): void;
+  /** 后端发现当前用户仍需强制改密。 */
+  onPasswordChangeRequired?(): void;
 }
 
 export function withAuth(init: RequestInit, token: string | null): RequestInit {
@@ -46,6 +48,18 @@ export function createApiFetch(
       }
     }
 
+    if (response.status === 403 && (await isPasswordChangeRequired(response))) {
+      bridge.onPasswordChangeRequired?.();
+    }
+
     return response;
   };
+}
+
+async function isPasswordChangeRequired(response: Response) {
+  try {
+    return /Password change required/i.test(await response.clone().text());
+  } catch {
+    return false;
+  }
 }

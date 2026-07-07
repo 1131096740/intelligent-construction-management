@@ -106,4 +106,23 @@ describe("createApiFetch", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
+
+  it("notifies the app when the backend requires password change", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: "Password change required" }), { status: 403 })
+    );
+    const onUnauthorized = vi.fn();
+    const onPasswordChangeRequired = vi.fn();
+    const apiFetch = createApiFetch(
+      bridge({ onUnauthorized, onPasswordChangeRequired }),
+      fetchImpl
+    );
+
+    const response = await apiFetch("/contracts/1");
+
+    expect(response.status).toBe(403);
+    expect(onPasswordChangeRequired).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
 });

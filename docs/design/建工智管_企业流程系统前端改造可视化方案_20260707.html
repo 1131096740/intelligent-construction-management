@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>建工智管企业流程系统前端改造可视化方案</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --panel-soft: #f9fbff;
+      --text: #172033;
+      --muted: #667085;
+      --line: #d9e0ec;
+      --blue: #1d5fd7;
+      --blue-soft: #eaf1ff;
+      --green: #157f3b;
+      --green-soft: #e8f7ee;
+      --orange: #b75e00;
+      --orange-soft: #fff3df;
+      --red: #b42318;
+      --red-soft: #fff0ee;
+      --purple: #6941c6;
+      --purple-soft: #f3efff;
+      --shadow: 0 10px 30px rgba(23, 32, 51, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.6;
+    }
+
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .shell { max-width: 1280px; margin: 0 auto; padding: 32px 24px 56px; }
+    .hero {
+      background: linear-gradient(135deg, #ffffff 0%, #eef5ff 100%);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 32px;
+      box-shadow: var(--shadow);
+    }
+    .hero h1 { margin: 0 0 10px; font-size: 34px; letter-spacing: 0; }
+    .hero p { margin: 0; color: var(--muted); max-width: 900px; }
+
+    .badges { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 7px 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      color: #344054;
+    }
+    .badge strong { color: var(--text); }
+
+    .section { margin-top: 28px; }
+    .section h2 { margin: 0 0 14px; font-size: 24px; }
+    .section > p { color: var(--muted); margin-top: 0; }
+
+    .grid { display: grid; gap: 16px; }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 3px 12px rgba(23, 32, 51, 0.04);
+    }
+    .card h3 { margin: 0 0 10px; font-size: 18px; }
+    .card p { margin: 0; color: var(--muted); }
+    .card ul { margin: 10px 0 0; padding-left: 20px; color: #344054; }
+    .card li + li { margin-top: 6px; }
+
+    .source {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 184px;
+    }
+    .source .tag {
+      width: fit-content;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .tag.p0 { background: var(--green-soft); color: var(--green); }
+    .tag.p1 { background: var(--orange-soft); color: var(--orange); }
+    .tag.p2 { background: var(--purple-soft); color: var(--purple); }
+    .tag.no { background: var(--red-soft); color: var(--red); }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 3px 12px rgba(23, 32, 51, 0.04);
+    }
+    .matrix th,
+    .matrix td {
+      padding: 13px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      font-size: 14px;
+    }
+    .matrix th { background: #eef3fb; color: #344054; font-weight: 700; }
+    .matrix tr:last-child td { border-bottom: 0; }
+    .matrix td:nth-child(3) { width: 92px; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .step {
+      position: relative;
+      min-height: 156px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+    .step::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -15px;
+      width: 15px;
+      height: 2px;
+      background: var(--line);
+    }
+    .step:last-child::after { display: none; }
+    .step b {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--blue);
+      color: white;
+      margin-bottom: 10px;
+    }
+    .step h3 { margin: 0 0 8px; font-size: 17px; }
+    .step p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .wireframe {
+      background: #eef3fb;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    .browserbar {
+      height: 28px;
+      border-radius: 6px 6px 0 0;
+      background: #d8e2f0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #91a3ba; }
+    .screen {
+      background: white;
+      border: 1px solid #cdd6e4;
+      border-top: 0;
+      border-radius: 0 0 6px 6px;
+      padding: 14px;
+    }
+    .wire-grid { display: grid; grid-template-columns: 180px 1fr 280px; gap: 12px; min-height: 340px; }
+    .nav, .side, .main-panel {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-soft);
+      padding: 10px;
+    }
+    .main-panel { background: white; }
+    .line { height: 12px; border-radius: 4px; background: #dbe4f0; margin: 8px 0; }
+    .line.short { width: 55%; }
+    .line.mid { width: 75%; }
+    .line.blue { background: #b8cdfb; }
+    .mini-card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: white;
+      margin-top: 10px;
+    }
+    .tabs { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+    .tab {
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .file-row {
+      display: grid;
+      grid-template-columns: 1fr 92px 92px 76px;
+      gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      padding: 8px 0;
+      font-size: 13px;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      padding: 7px 10px;
+      background: var(--blue);
+      color: white;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .button.secondary { background: #eef3fb; color: #344054; border: 1px solid var(--line); }
+    .button.danger { background: var(--red); }
+
+    .priority-board {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .lane {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .lane h3 { margin: 0 0 12px; }
+    .ticket {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--blue);
+      border-radius: 6px;
+      padding: 10px;
+      background: var(--panel-soft);
+      margin-bottom: 10px;
+    }
+    .ticket strong { display: block; margin-bottom: 4px; }
+    .ticket span { color: var(--muted); font-size: 13px; }
+    .lane:nth-child(2) .ticket { border-left-color: var(--orange); }
+    .lane:nth-child(3) .ticket { border-left-color: var(--purple); }
+
+    .contract {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    pre {
+      margin: 0;
+      padding: 14px;
+      border-radius: 8px;
+      background: #101828;
+      color: #eef3fb;
+      overflow: auto;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .footer {
+      margin-top: 36px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 980px) {
+      .grid.cols-2, .grid.cols-3, .grid.cols-4, .flow, .priority-board, .contract, .wire-grid {
+        grid-template-columns: 1fr;
+      }
+      .step::after { display: none; }
+      .hero h1 { font-size: 28px; }
+      .file-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>建工智管企业流程系统前端改造可视化方案</h1>
+      <p>这一版不是换技术栈，也不是引入大平台。目标是把 Flowable / 若依 / Yudao / JeecgBoot / O2OA / Snowy 里成熟的企业流程产品能力，压缩成能在现有系统里稳稳落地的前端方案。</p>
+      <div class="badges">
+        <span class="badge"><strong>保留架构</strong> Vue 3 + TDesign + NestJS + PostgreSQL</span>
+        <span class="badge"><strong>优先解决</strong> 待办、动作、附件、审批、签名</span>
+        <span class="badge"><strong>不做</strong> BPMN 设计器、低代码运行时、换底座</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>一、这轮调研得到的结论</h2>
+      <div class="grid cols-4">
+        <article class="card source">
+          <span class="tag p0">BPM / 流程</span>
+          <h3>学 Flowable / Yudao</h3>
+          <p>借待办、已办、退回、撤回、或签、时间线。不引入 Java 流程引擎。</p>
+          <ul>
+            <li>P0：工作池</li>
+            <li>P0：动作元数据</li>
+            <li>P0：审批时间线</li>
+          </ul>
+        </article>
+        <article class="card source">
+          <span class="tag p0">表单 / 低代码</span>
+          <h3>学 JeecgBoot</h3>
+          <p>借分组表单、字典、附件控件、按钮权限、主子表。不要低代码运行时。</p>
+          <ul>
+            <li>P0：详情分区</li>
+            <li>P0：文件卡片</li>
+            <li>P1：导入预检</li>
+          </ul>
+        </article>
+        <article class="card source">
+          <span class="tag p0">OA / 签批</span>
+          <h3>学 O2OA</h3>
+          <p>借办公中心、待阅/已阅、附件分组、手写签批。不迁移 OA 底座。</p>
+          <ul>
+            <li>P0：待我处理</li>
+            <li>P0：Canvas 签名</li>
+            <li>P1：签批进 PDF</li>
+          </ul>
+        </article>
+        <article class="card source">
+          <span class="tag p1">后台治理</span>
+          <h3>学 Snowy / 若依类后台</h3>
+          <p>借菜单权限、按钮权限、操作日志、登录日志、字典和数据权限。</p>
+          <ul>
+            <li>P0：日志可查</li>
+            <li>P0：权限可看</li>
+            <li>P1：字典统一</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>二、落地总路线</h2>
+      <div class="flow">
+        <article class="step">
+          <b>1</b>
+          <h3>先修详情页</h3>
+          <p>合同详情先改成可用流程页：动作、附件、时间线都从后端读模型来。</p>
+        </article>
+        <article class="step">
+          <b>2</b>
+          <h3>复制到结算付款</h3>
+          <p>同一套动作区、资料区、审批时间线，复制到结算和付款详情。</p>
+        </article>
+        <article class="step">
+          <b>3</b>
+          <h3>首页变工作池</h3>
+          <p>从查表入口变成待办入口：待我处理、阻塞事项、我发起的进行中。</p>
+        </article>
+        <article class="step">
+          <b>4</b>
+          <h3>签批闭环</h3>
+          <p>审批、归档、付款实付接 Canvas 签名，后端保存并进入审计/PDF。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>三、P0 / P1 / P2 看板</h2>
+      <div class="priority-board">
+        <div class="lane">
+          <h3>P0：现在就做</h3>
+          <div class="ticket"><strong>无 ID 文件下载</strong><span>附件从当前单据上下文选择，不再手填 fileId。</span></div>
+          <div class="ticket"><strong>availableActions</strong><span>详情接口告诉前端能做什么、为什么不能做。</span></div>
+          <div class="ticket"><strong>附件证据区</strong><span>文件名、用途、版本、上传人、下载/禁用原因。</span></div>
+          <div class="ticket"><strong>审批时间线</strong><span>节点、处理人、意见、签名、耗时。</span></div>
+          <div class="ticket"><strong>Canvas 签批板</strong><span>先接审批通过、归档确认、付款实付。</span></div>
+          <div class="ticket"><strong>日志可查</strong><span>操作日志、登录日志、文件下载审计放进系统治理。</span></div>
+        </div>
+        <div class="lane">
+          <h3>P1：稳定后做</h3>
+          <div class="ticket"><strong>最近打开</strong><span>先做最近 5 个单据，不做完整多页签框架。</span></div>
+          <div class="ticket"><strong>转办 / 抄送</strong><span>先转办，不做复杂委派回流。</span></div>
+          <div class="ticket"><strong>导入预检</strong><span>历史合同和结算清单导入前先校验。</span></div>
+          <div class="ticket"><strong>签批固化 PDF</strong><span>签名进入审批单 PDF，不直接改原业务文件。</span></div>
+          <div class="ticket"><strong>字典页面</strong><span>P0 代码枚举，P1 再给后台维护入口。</span></div>
+        </div>
+        <div class="lane">
+          <h3>P2：先别碰</h3>
+          <div class="ticket"><strong>BPMN 设计器</strong><span>当前流程强业务约束，不让业务自由拖拽。</span></div>
+          <div class="ticket"><strong>低代码表单引擎</strong><span>字段强约束，运行时配置会削弱测试和类型。</span></div>
+          <div class="ticket"><strong>附件图标视图/版本对比</strong><span>可用性锦上添花，不是试运行阻断。</span></div>
+          <div class="ticket"><strong>复杂委派/加签/减签</strong><span>容易破坏状态一致性，等真实需求。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>四、工作台 UI 草图</h2>
+      <p>首页不再是统计面板，而是“今天我应该处理什么”。</p>
+      <div class="wireframe">
+        <div class="browserbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="screen">
+          <div class="wire-grid">
+            <aside class="nav">
+              <div class="line blue"></div>
+              <div class="line"></div>
+              <div class="line"></div>
+              <div class="line"></div>
+              <div class="line"></div>
+            </aside>
+            <section class="main-panel">
+              <div class="tabs">
+                <span class="tab">待我处理 8</span>
+                <span class="tab">阻塞事项 3</span>
+                <span class="tab">我发起的进行中 12</span>
+                <span class="tab">抄送我 5</span>
+              </div>
+              <div class="mini-card">
+                <strong>合同归档确认 · HT-2026-001</strong>
+                <div class="line mid"></div>
+                <div class="line short"></div>
+                <span class="button">去处理</span>
+                <span class="button secondary">查看流程</span>
+              </div>
+              <div class="mini-card">
+                <strong>付款终审 · FK-2026-006</strong>
+                <div class="line mid"></div>
+                <div class="line short"></div>
+                <span class="button">去审批</span>
+                <span class="button secondary">查看凭证</span>
+              </div>
+              <div class="mini-card">
+                <strong>结算被退回 · JS-2026-018</strong>
+                <div class="line mid"></div>
+                <div class="line short"></div>
+                <span class="button danger">补资料</span>
+              </div>
+            </section>
+            <aside class="side">
+              <strong>风险提醒</strong>
+              <div class="line"></div>
+              <div class="line"></div>
+              <strong>最近处理</strong>
+              <div class="line"></div>
+              <div class="line short"></div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>五、合同详情 UI 草图</h2>
+      <p>详情页要像正式单据，不像测试工具。顶部讲清状态，右上角只放当前最重要动作。</p>
+      <div class="wireframe">
+        <div class="browserbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="screen">
+          <div class="mini-card">
+            <div class="contract">
+              <div>
+                <strong>HT-2026-001 · 钢材采购合同</strong>
+                <div class="line mid"></div>
+                <div class="line short"></div>
+              </div>
+              <div style="text-align:right">
+                <span class="button">确认归档</span>
+                <span class="button secondary">下载文件</span>
+              </div>
+            </div>
+          </div>
+          <div class="tabs">
+            <span class="tab">业务信息</span>
+            <span class="tab">关联结算</span>
+            <span class="tab">付款记录</span>
+            <span class="tab">附件资料</span>
+            <span class="tab">流程历史</span>
+            <span class="tab">审计日志</span>
+          </div>
+          <div class="grid cols-2">
+            <div class="mini-card">
+              <strong>附件资料</strong>
+              <div class="file-row"><b>盖章合同.pdf</b><span>归档件</span><span>合同员</span><span class="button secondary">下载</span></div>
+              <div class="file-row"><b>审批单.pdf</b><span>审批单</span><span>系统</span><span class="button secondary">下载</span></div>
+              <div class="file-row"><b>付款凭证.pdf</b><span>凭证</span><span>财务</span><span class="button secondary">查看</span></div>
+            </div>
+            <div class="mini-card">
+              <strong>流程历史</strong>
+              <div class="line blue"></div>
+              <div class="line mid"></div>
+              <div class="line blue"></div>
+              <div class="line mid"></div>
+              <div class="line"></div>
+              <span class="button secondary">查看全部审批记录</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>六、动作弹窗 UI 草图</h2>
+      <p>所有高风险动作统一为：看清影响、写意见、签名、当前密码确认、提交。</p>
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>确认归档弹窗</h3>
+          <ul>
+            <li>本次动作：合同版本生效。</li>
+            <li>影响范围：允许发起结算。</li>
+            <li>签批意见：必填或选填按动作配置。</li>
+            <li>Canvas 签名：签名、清除、确认。</li>
+            <li>当前密码：二次确认。</li>
+          </ul>
+        </div>
+        <div class="wireframe">
+          <div class="screen">
+            <div class="mini-card">
+              <strong>本次将确认归档</strong>
+              <div class="line"></div>
+              <div class="line mid"></div>
+            </div>
+            <div class="mini-card" style="height:130px">
+              <strong>签批板</strong>
+              <div class="line short"></div>
+              <div class="line mid"></div>
+            </div>
+            <div class="line"></div>
+            <span class="button">确认提交</span>
+            <span class="button secondary">清除重签</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>七、最小数据契约</h2>
+      <div class="contract">
+        <pre>availableActions: [
+  {
+    key: "confirm_archive",
+    label: "确认归档",
+    kind: "primary",
+    requiresPassword: true,
+    requiresSignature: true,
+    requiresComment: true,
+    disabledReason: null
+  }
+]</pre>
+        <pre>evidenceFiles: [
+  {
+    fileId: "xxx",
+    name: "盖章合同.pdf",
+    purpose: "signed_contract",
+    uploadedByName: "合同员",
+    uploadedAt: "2026-07-07",
+    canDownload: true,
+    disabledReason: null
+  }
+]</pre>
+        <pre>approvalTimeline: [
+  {
+    nodeName: "合同主管确认",
+    actionLabel: "通过",
+    actorName: "张三",
+    comment: "同意",
+    signatureFileId: "sig_xxx",
+    actedAt: "2026-07-07",
+    durationMinutes: 82
+  }
+]</pre>
+        <pre>workItems: [
+  {
+    type: "contract",
+    businessCode: "HT-2026-001",
+    title: "钢材采购合同",
+    currentNodeName: "归档确认",
+    ageMinutes: 360,
+    primaryAction: "确认归档",
+    detailPath: "/contracts/..."
+  }
+]</pre>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>八、页面/组件拆分</h2>
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>组件</th>
+            <th>负责什么</th>
+            <th>优先级</th>
+            <th>不负责什么</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>BusinessActionPanel</strong></td>
+            <td>展示主动作、次动作、禁用原因，打开对应动作弹窗。</td>
+            <td><span class="tag p0">P0</span></td>
+            <td>不自己判断权限。</td>
+          </tr>
+          <tr>
+            <td><strong>EvidenceFileList</strong></td>
+            <td>按用途分组展示文件，下载走后端票据。</td>
+            <td><span class="tag p0">P0</span></td>
+            <td>不展示内部 ID，不直连 COS。</td>
+          </tr>
+          <tr>
+            <td><strong>ApprovalTimeline</strong></td>
+            <td>展示节点、处理人、意见、签名缩略图、耗时。</td>
+            <td><span class="tag p0">P0</span></td>
+            <td>不画 BPMN 流程图。</td>
+          </tr>
+          <tr>
+            <td><strong>SignaturePad</strong></td>
+            <td>Canvas 手写签名、清除、提交图片。</td>
+            <td><span class="tag p0">P0</span></td>
+            <td>不做复杂画笔、橡皮、历史回放。</td>
+          </tr>
+          <tr>
+            <td><strong>WorkItemQueue</strong></td>
+            <td>展示待我处理、阻塞事项、我发起的进行中。</td>
+            <td><span class="tag p0">P0</span></td>
+            <td>不做批量审批。</td>
+          </tr>
+          <tr>
+            <td><strong>GovernanceLogTable</strong></td>
+            <td>展示登录日志、操作日志、文件下载审计。</td>
+            <td><span class="tag p0">P0</span></td>
+            <td>不展示密码、token、密钥、完整请求体。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>九、系统治理 UI 草图</h2>
+      <p>系统治理和业务菜单分开。P0 只露真实需要的日志、权限和健康状态，不做大而全后台。</p>
+      <div class="wireframe">
+        <div class="browserbar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="screen">
+          <div class="wire-grid">
+            <aside class="nav">
+              <strong>业务菜单</strong>
+              <div class="line blue"></div>
+              <div class="line"></div>
+              <div class="line"></div>
+              <div class="line"></div>
+              <strong>系统治理</strong>
+              <div class="line blue"></div>
+              <div class="line"></div>
+              <div class="line"></div>
+            </aside>
+            <section class="main-panel">
+              <strong>操作日志</strong>
+              <div class="tabs">
+                <span class="tab">操作日志</span>
+                <span class="tab">登录日志</span>
+                <span class="tab">文件下载审计</span>
+                <span class="tab">权限查看</span>
+              </div>
+              <div class="file-row"><b>用户</b><span>动作</span><span>结果</span><span>时间</span></div>
+              <div class="file-row"><b>合同员一</b><span>下载归档件</span><span>成功</span><span>15:31</span></div>
+              <div class="file-row"><b>财务一</b><span>付款确认</span><span>成功</span><span>15:12</span></div>
+              <div class="file-row"><b>物资主管</b><span>登录</span><span>失败</span><span>14:50</span></div>
+            </section>
+            <aside class="side">
+              <strong>查询条件</strong>
+              <div class="line"></div>
+              <div class="line"></div>
+              <div class="line short"></div>
+              <span class="button">查询</span>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>十、UI/治理专项落地蓝图</h2>
+      <p>这一轮专项调研的共同结论：后台 UI 要稳定、克制、可查。业务菜单和治理菜单分开；列表、详情、弹窗、日志都用统一套路。</p>
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>治理面</th>
+            <th>借鉴做法</th>
+            <th>建工智管落地</th>
+            <th>优先级</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>导航</strong></td>
+            <td>若依/Yudao/Snowy 都把业务菜单和系统治理分区。</td>
+            <td>左侧固定为工作台、合同、结算、付款、资料库、基础档案、系统治理。日志、权限、字典只放系统治理。</td>
+            <td><span class="tag p0">P0</span></td>
+          </tr>
+          <tr>
+            <td><strong>工作台</strong></td>
+            <td>O2OA 用待办、已办、待阅、已阅；Flowable 用 assignee、candidate、dueDate 管任务。</td>
+            <td>首页做待我处理、我发起的进行中、阻塞/逾期；候选岗位任务显示“我来处理”。</td>
+            <td><span class="tag p0">P0</span></td>
+          </tr>
+          <tr>
+            <td><strong>列表</strong></td>
+            <td>JeecgBoot/若依稳定采用查询区 + 表格 + 分页 + 操作列。</td>
+            <td>合同/结算/付款列表统一 4-6 个筛选：项目、状态、负责人、时间、金额；危险动作不放列表。</td>
+            <td><span class="tag p0">P0</span></td>
+          </tr>
+          <tr>
+            <td><strong>详情</strong></td>
+            <td>企业后台详情按摘要、信息、明细、附件、流程、日志组织。</td>
+            <td>合同详情先改成顶部摘要 + 页签分区；结算/付款复用同一结构。</td>
+            <td><span class="tag p0">P0</span></td>
+          </tr>
+          <tr>
+            <td><strong>动作权限</strong></td>
+            <td>成熟后台按钮可见性和后端权限要同源。</td>
+            <td>后端返回 `availableActions`、`primaryAction`、`disabledReason`；前端只渲染。</td>
+            <td><span class="tag p0">P0</span></td>
+          </tr>
+          <tr>
+            <td><strong>数据权限</strong></td>
+            <td>Yudao/JeecgBoot 有数据范围；但通用引擎复杂。</td>
+            <td>先在服务层按项目参与关系、岗位、业务状态过滤；不做通用 SQL 权限引擎。</td>
+            <td><span class="tag p0">P0</span></td>
+          </tr>
+          <tr>
+            <td><strong>日志台账</strong></td>
+            <td>若依/Yudao/Snowy/O2OA 都把登录日志、操作日志作为治理入口。</td>
+            <td>系统治理加登录日志、操作日志、文件下载审计、审批动作日志。全部脱敏，生产 UI 不提供清空按钮。</td>
+            <td><span class="tag p0">P0</span></td>
+          </tr>
+          <tr>
+            <td><strong>字典</strong></td>
+            <td>JeecgBoot/Yudao 用字典统一标签。</td>
+            <td>P0 用代码枚举 + 前端统一标签；P1 再做字典维护页，且不开放业务状态语义。</td>
+            <td><span class="tag p1">P1</span></td>
+          </tr>
+          <tr>
+            <td><strong>导入导出</strong></td>
+            <td>若依/JeecgBoot 导入导出走按钮权限和预检。</td>
+            <td>合同台账导入保留预检；列表导出当前查询结果；导入不直接写库。</td>
+            <td><span class="tag p1">P1</span></td>
+          </tr>
+          <tr>
+            <td><strong>流程治理</strong></td>
+            <td>Flowable 有任务认领、候选组、到期、优先级、历史。</td>
+            <td>OR 签/岗位池任务增加“我来处理”；工作池显示停留时长、逾期、优先级。</td>
+            <td><span class="tag p0">P0</span></td>
+          </tr>
+          <tr>
+            <td><strong>配置治理</strong></td>
+            <td>Snowy 把系统、登录、密码、文件、短信、邮件等配置分组。</td>
+            <td>P1 只做安全登录、文件下载、上传限制、通知开关四组；COS 密钥不在前端展示。</td>
+            <td><span class="tag p1">P1</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="grid cols-3" style="margin-top:16px">
+        <article class="card">
+          <h3>P0 页面清单</h3>
+          <ul>
+            <li>工作台：待办、阻塞、进行中。</li>
+            <li>合同详情：摘要、附件、流程、审计。</li>
+            <li>系统治理：登录日志、操作日志、文件下载审计。</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>P0 交互规则</h3>
+          <ul>
+            <li>列表只查和进入详情，不做危险审批。</li>
+            <li>详情只显示后端允许的动作。</li>
+            <li>弹窗说明影响，再签名和确认。</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>暂不做</h3>
+          <ul>
+            <li>完整多页签缓存。</li>
+            <li>通用数据权限引擎。</li>
+            <li>全量接口日志和日志清空按钮。</li>
+            <li>流程设计器和低代码表单运行时。</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>十一、参考来源</h2>
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>BPM / 流程</h3>
+          <ul>
+            <li><a href="https://github.com/flowable/flowable-engine">Flowable Engine</a></li>
+            <li><a href="https://www.flowable.com/open-source/docs/bpmn/ch02-GettingStarted">Flowable BPMN 入门文档</a></li>
+            <li><a href="https://www.flowable.com/open-source/docs/bpmn/ch14-REST">Flowable REST / 任务查询</a></li>
+            <li><a href="https://doc.iocoder.cn/bpm/">Yudao 工作流手册</a></li>
+            <li><a href="https://github.com/YunaiV/ruoyi-vue-pro">RuoYi-Vue-Pro / Yudao</a></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>表单 / OA / 后台</h3>
+          <ul>
+            <li><a href="https://github.com/jeecgboot/JeecgBoot">JeecgBoot</a></li>
+            <li><a href="https://github.com/o2oa/o2oa">O2OA</a></li>
+            <li><a href="https://www.o2oa.net/handbook.html">O2OA 使用手册</a></li>
+            <li><a href="https://github.com/xiaonuobase/snowy">Snowy</a></li>
+            <li><a href="https://doc.ruoyi.vip/ruoyi-vue/document/qdsc.html">RuoYi 前端手册</a></li>
+            <li><a href="https://doc.iocoder.cn/system-log/">Yudao 系统日志</a></li>
+            <li><a href="https://help.jeecg.com/ui/">JeecgBoot Vue3 UI 文档</a></li>
+            <li><a href="https://www.o2oa.net/cms/builtinapplication/286.html">O2OA 办公中心</a></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="footer">
+      <p>生成时间：2026-07-07。调研方式：多子代理并行调研 + 本项目现有架构约束整合。原则：能用现有读模型解决的，不引入平台；能用固定业务组件解决的，不做低代码运行时。</p>
+    </section>
+  </main>
+</body>
+</html>

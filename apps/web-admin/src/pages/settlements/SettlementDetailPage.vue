@@ -225,9 +225,10 @@
             <span>确认后结算生效</span>
           </div>
           <div class="action-fields">
-            <t-input
+            <t-select
               v-model="settlementArchiveForm.archiveFileId"
-              placeholder="归档记录ID"
+              :options="settlementArchiveRecordOptions"
+              placeholder="选择待确认归档件"
             />
             <t-input
               v-model="settlementArchiveForm.confirmationPassword"
@@ -251,9 +252,10 @@
             <span>签发短时效票据</span>
           </div>
           <div class="action-fields">
-            <t-input
+            <t-select
               v-model="settlementArchiveForm.downloadFileId"
-              placeholder="文件编号"
+              :options="settlementArchiveFileOptions"
+              placeholder="选择结算归档文件"
             />
             <t-input
               v-model="settlementArchiveForm.downloadPassword"
@@ -265,7 +267,7 @@
             theme="primary"
             variant="outline"
             :loading="archiveActionBusy === 'download'"
-            :disabled="!canRunSettlementAction"
+            :disabled="!settlementArchiveFileOptions.length"
             @click="submitSettlementFileDownload"
           >
             下载文件
@@ -279,6 +281,14 @@
       >
         {{ archiveActionMessage }}
       </div>
+    </t-card>
+
+    <t-card
+      class="section-card"
+      title="归档资料"
+      :bordered="true"
+    >
+      <EvidenceFileCards :files="settlementArchiveFilesView" />
     </t-card>
 
     <div class="detail-grid">
@@ -359,6 +369,7 @@
 import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   confirmSettlementArchive,
   createPrivateFileDownloadTicket,
@@ -418,6 +429,21 @@ const settlementPaymentBlockMessageView = computed(
 const settlementDetailChainLinksView = computed(
   () => settlementDetail.value?.chainLinks ?? []
 );
+const settlementArchiveFilesView = computed(() => settlementDetail.value?.archiveFiles ?? []);
+const settlementArchiveFileOptions = computed(() =>
+  settlementArchiveFilesView.value
+    .filter((file) => file.canDownload)
+    .map((file) => ({
+      label: `${file.fileName}（${file.statusLabel}）`,
+      value: file.fileId
+    }))
+);
+const settlementArchiveRecordOptions = computed(() =>
+  settlementArchiveFilesView.value.map((file) => ({
+    label: `${file.fileName}（${file.statusLabel}）`,
+    value: file.recordId
+  }))
+);
 const settlementNextActionValue = computed(
   () => settlementDetailMetaView.value.find((item) => item.label === "下一步动作")?.value ?? ""
 );
@@ -444,6 +470,14 @@ async function reloadSettlementDetail() {
   try {
     settlementDetailLoadError.value = "";
     settlementDetail.value = await fetchSettlementDetail(settlementId);
+    const archiveRecordIds = settlementDetail.value.archiveFiles.map((file) => file.recordId);
+    const archiveFileIds = settlementDetail.value.archiveFiles.map((file) => file.fileId);
+    if (!archiveRecordIds.includes(settlementArchiveForm.archiveFileId)) {
+      settlementArchiveForm.archiveFileId = archiveRecordIds[0] ?? "";
+    }
+    if (!archiveFileIds.includes(settlementArchiveForm.downloadFileId)) {
+      settlementArchiveForm.downloadFileId = archiveFileIds[0] ?? "";
+    }
   } catch (error) {
     settlementDetail.value = null;
     settlementDetailLoadError.value =
@@ -520,7 +554,7 @@ async function submitSettlementArchiveConfirmation() {
 
   await runArchiveAction("confirm", () =>
     confirmSettlementArchive(settlementId, {
-      archiveFileId: requiredText(settlementArchiveForm.archiveFileId, "归档记录ID"),
+      archiveFileId: requiredText(settlementArchiveForm.archiveFileId, "归档文件"),
       confirmationPassword: requiredText(
         settlementArchiveForm.confirmationPassword,
         "当前登录密码"
@@ -596,7 +630,7 @@ async function downloadSettlementAttachment(templateKey: string) {
 async function submitSettlementFileDownload() {
   await runArchiveAction("download", async () => {
     const ticket = await createPrivateFileDownloadTicket(
-      requiredText(settlementArchiveForm.downloadFileId, "文件编号"),
+      requiredText(settlementArchiveForm.downloadFileId, "结算归档文件"),
       {
         confirmationPassword: requiredText(settlementArchiveForm.downloadPassword, "当前登录密码")
       }

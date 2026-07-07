@@ -16,15 +16,45 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   try {
     const data = (await response.clone().json()) as { message?: unknown };
     if (typeof data.message === "string") {
-      message = data.message;
+      message = formatBusinessErrorMessage(data.message, response.status, fallback);
     } else if (Array.isArray(data.message)) {
-      message = data.message.join("；");
+      message = formatBusinessErrorMessage(data.message.join("；"), response.status, fallback);
     }
   } catch {
     // 响应体非 JSON，沿用兜底文案。
+    message = formatBusinessErrorMessage(message, response.status, fallback);
   }
 
   throw new Error(message);
+}
+
+function formatBusinessErrorMessage(message: string, status: number, fallback: string) {
+  const text = message.trim();
+  if (!text) {
+    return `${fallback}：${status}`;
+  }
+
+  if (/Password change required/i.test(text)) {
+    return "请先完成初始密码修改，再继续办理业务。";
+  }
+
+  if (/Internal server error/i.test(text)) {
+    return "系统暂时无法完成操作，请稍后重试或联系管理员。";
+  }
+
+  if (/Forbidden/i.test(text) || (status === 403 && /^(提交失败|读取失败|上传失败|删除失败)/.test(text))) {
+    return "当前账号暂无该项目或当前节点的处理权限。";
+  }
+
+  if (/not found/i.test(text) || (status === 404 && /^(提交失败|读取失败|上传失败|删除失败)/.test(text))) {
+    return "未找到对应业务单据，请确认单据是否存在或你是否有权查看。";
+  }
+
+  if (/fileId|archiveFileId|voucherFileId/i.test(text)) {
+    return "请选择当前单据下可用的业务文件后再提交。";
+  }
+
+  return text;
 }
 
 async function readJson<T>(path: string): Promise<T> {

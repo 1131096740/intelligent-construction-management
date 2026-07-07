@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   hasOpenWorkbenchItems,
   hasWorkbenchPermissionData,
-  toWorkbenchCards
+  toWorkbenchCards,
+  toWorkbenchQueues
 } from "./home.config";
 import type { WorkbenchSummaryReadModel } from "../../api/core-flow-read.api";
 
@@ -64,5 +65,35 @@ describe("home workbench card helpers", () => {
 
     expect(toWorkbenchCards(emptySummary)).toEqual([]);
     expect(hasWorkbenchPermissionData(emptySummary)).toBe(false);
+  });
+
+  it("groups summary cards into pending, blocked and started queues", () => {
+    const queues = toWorkbenchQueues({
+      ...summary,
+      cards: [
+        ...summary.cards,
+        {
+          id: "payment_blocked",
+          title: "付款阻塞风险",
+          count: 2,
+          description: "付款容量不足或资料缺失。",
+          targetPath: "/付款管理",
+          actionText: "查看风险",
+          tone: "danger"
+        }
+      ]
+    });
+
+    expect(queues.map((queue) => queue.title)).toEqual([
+      "待我处理",
+      "阻塞事项",
+      "我发起的进行中"
+    ]);
+    expect(queues[0].cards.map((card) => card.id)).toEqual([
+      "contract_takeover_todo",
+      "approved_pending_payment"
+    ]);
+    expect(queues[1].cards.map((card) => card.id)).toEqual(["payment_blocked"]);
+    expect(queues[2].cards).toEqual([]);
   });
 });

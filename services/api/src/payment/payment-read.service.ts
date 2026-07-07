@@ -21,6 +21,143 @@ import {
 export class PaymentReadService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async paymentEvidenceFiles(
+    paymentId: string,
+    executions: Array<{
+      id: string;
+      voucherFileId?: string | null;
+      executedByUserId?: string | null;
+      createdAt?: Date;
+    }>
+  ): Promise<PaymentDetailReadModel["evidenceFiles"]> {
+    const client = this.prisma as unknown as {
+      pdfDocument?: {
+        findMany(args: {
+          where: { businessType: string; businessId: string };
+          orderBy: { createdAt: "desc" };
+        }): Promise<
+          Array<{
+            id: string;
+            fileId: string;
+            templateKey: string;
+            createdAt: Date;
+          }>
+        >;
+      };
+      fileObject?: {
+        findMany(args: { where: { id: { in: string[] } } }): Promise<
+          Array<{
+            id: string;
+            originalName: string;
+            mimeType: string;
+            sizeBytes: number;
+            uploadedByUserId: string;
+            createdAt: Date;
+          }>
+        >;
+      };
+      user?: {
+        findMany(args: { where: { id: { in: string[] } } }): Promise<
+          Array<{ id: string; name: string }>
+        >;
+      };
+    };
+
+    if (!client.fileObject) {
+      return [];
+    }
+
+    const pdfDocuments = client.pdfDocument
+      ? await client.pdfDocument.findMany({
+          where: { businessType: "payment_request", businessId: paymentId },
+          orderBy: { createdAt: "desc" }
+        })
+      : [];
+    const voucherRows = executions.filter((execution) => execution.voucherFileId);
+    const fileIds = Array.from(
+      new Set([
+        ...voucherRows.map((execution) => execution.voucherFileId as string),
+        ...pdfDocuments.map((document) => document.fileId)
+      ])
+    );
+    if (!fileIds.length) {
+      return [];
+    }
+
+    const files = await client.fileObject.findMany({ where: { id: { in: fileIds } } });
+    const fileById = new Map(files.map((file) => [file.id, file]));
+    const userIds = Array.from(
+      new Set([
+        ...files.map((file) => file.uploadedByUserId),
+        ...voucherRows
+          .map((execution) => execution.executedByUserId)
+          .filter((id): id is string => Boolean(id))
+      ])
+    );
+    const users = client.user && userIds.length
+      ? await client.user.findMany({ where: { id: { in: userIds } } })
+      : [];
+    const userById = new Map(users.map((user) => [user.id, user]));
+
+    return [
+      ...voucherRows.flatMap((execution) => {
+        const file = fileById.get(execution.voucherFileId as string);
+        if (!file) {
+          return [];
+        }
+
+        return [
+          {
+            recordId: execution.id,
+            fileId: file.id,
+            fileName: file.originalName,
+            purpose: "付款凭证",
+            mimeType: file.mimeType,
+            sizeBytes: file.sizeBytes,
+            status: "uploaded",
+            statusLabel: "已上传",
+            uploadedByName:
+              (execution.executedByUserId
+                ? userById.get(execution.executedByUserId)?.name
+                : undefined) ??
+              userById.get(file.uploadedByUserId)?.name ??
+              file.uploadedByUserId,
+            uploadedAt: execution.createdAt?.toISOString() ?? file.createdAt.toISOString(),
+            confirmedByName: null,
+            confirmedAt: null,
+            canDownload: true,
+            disabledReason: null
+          }
+        ];
+      }),
+      ...pdfDocuments.flatMap((document) => {
+        const file = fileById.get(document.fileId);
+        if (!file) {
+          return [];
+        }
+
+        return [
+          {
+            recordId: document.id,
+            fileId: file.id,
+            fileName: file.originalName,
+            purpose: this.paymentPdfPurposeLabel(document.templateKey),
+            mimeType: file.mimeType,
+            sizeBytes: file.sizeBytes,
+            status: "archived",
+            statusLabel: "已归档",
+            uploadedByName: userById.get(file.uploadedByUserId)?.name ?? file.uploadedByUserId,
+            uploadedAt: document.createdAt.toISOString(),
+            confirmedByName: null,
+            confirmedAt: null,
+            canDownload: true,
+            disabledReason: null
+          }
+        ];
+      })
+    ];
+  }
+
   private async confirmedHistoricalBalanceForContract(contractId: string) {
     const takeoverClient = (this.prisma as unknown as {
       contractTakeover?: {
@@ -221,6 +358,7 @@ export class PaymentReadService {
       (total, record) => total + record.amountCents,
       0
     );
+    const evidenceFiles = await this.paymentEvidenceFiles(payment.id, executions);
     const paidAmountCents = executions.length > 0 ? executionAmountCents : payment.paidAmountCents;
     const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
     const approval = this.approvalStatusView(payment.status);
@@ -287,6 +425,7 @@ export class PaymentReadService {
           amountCents: allocation.amountCents
         };
       }),
+      evidenceFiles,
       traceRules: [
         isContractAdvance
           ? "预付款按合同生效日和账期计算，不依赖结算单"
@@ -619,6 +758,7 @@ export class PaymentReadService {
         { label: "付款完成", status: "未完成", owner: "系统", tone: "danger" }
       ],
       executionAllocations: [],
+      evidenceFiles: [],
       traceRules: [
         "付款申请只能来自已生效结算",
         "审批通过进入已批待付",
@@ -645,6 +785,14 @@ export class PaymentReadService {
     }
 
     return "未关联结算";
+  }
+
+  private paymentPdfPurposeLabel(templateKey: string) {
+    if (templateKey === "payment_finance_archive") {
+      return "付款财务归档 PDF";
+    }
+
+    return `付款归档 PDF（${templateKey}）`;
   }
 
   private allocationTypeLabel(allocationType: string) {

@@ -159,6 +159,35 @@ describe("SettlementReadService", () => {
           code: "FK-2026-011",
           status: "approved_pending_payment"
         })
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-archive-1",
+            fileId: "file-settlement-1",
+            uploadedByUserId: "user-upload",
+            confirmedByUserId: "user-confirm",
+            confirmedAt: new Date("2026-07-01T10:00:00.000Z"),
+            status: "confirmed",
+            createdAt: new Date("2026-07-01T09:00:00.000Z")
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-settlement-1",
+            originalName: "JS-2026-031-签章结算单.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 2048
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "user-upload", name: "合同员" },
+          { id: "user-confirm", name: "合同主管" }
+        ])
       }
     };
     const service = new SettlementReadService(prisma as never);
@@ -181,6 +210,24 @@ describe("SettlementReadService", () => {
       triggerCondition: "结算归档确认生效",
       paymentRequestStatus: "approved_pending_payment"
     });
+    expect(detail.archiveFiles).toEqual([
+      {
+        recordId: "settlement-archive-1",
+        fileId: "file-settlement-1",
+        fileName: "JS-2026-031-签章结算单.pdf",
+        purpose: "结算签章归档件",
+        mimeType: "application/pdf",
+        sizeBytes: 2048,
+        status: "confirmed",
+        statusLabel: "已确认",
+        uploadedByName: "合同员",
+        uploadedAt: "2026-07-01T09:00:00.000Z",
+        confirmedByName: "合同主管",
+        confirmedAt: "2026-07-01T10:00:00.000Z",
+        canDownload: true,
+        disabledReason: null
+      }
+    ]);
     expect(detail.chainLinks.map((link) => link.to)).toEqual([
       "/contracts/HT-2026-009",
       "/payments/FK-2026-011",

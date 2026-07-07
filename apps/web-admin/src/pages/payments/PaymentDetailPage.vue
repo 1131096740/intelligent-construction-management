@@ -119,10 +119,6 @@
               aria-label="付款时间"
             >
             <t-input
-              v-model="paymentActionForm.voucherFileId"
-              placeholder="付款凭证编号（上传后自动带入）"
-            />
-            <t-input
               v-model="paymentActionForm.executionConfirmationPassword"
               type="password"
               placeholder="当前登录密码确认"
@@ -132,6 +128,9 @@
               type="file"
               @change="selectPaymentVoucherFile"
             >
+            <span class="file-hint">
+              {{ selectedPaymentVoucherFile?.name ?? "请选择付款凭证文件" }}
+            </span>
           </div>
           <t-button
             theme="primary"
@@ -176,10 +175,15 @@
             <span>生成或登记财务归档件</span>
           </div>
           <div class="action-fields">
-            <t-input
-              v-model="paymentActionForm.pdfFileId"
-              placeholder="归档 PDF 编号"
-            />
+            <input
+              class="file-input"
+              type="file"
+              accept="application/pdf"
+              @change="selectPaymentPdfArchiveFile"
+            >
+            <span class="file-hint">
+              {{ selectedPaymentPdfArchiveFile?.name ?? "选择已有财务归档 PDF" }}
+            </span>
           </div>
           <t-button
             theme="primary"
@@ -253,9 +257,10 @@
             <span>签发短时效票据</span>
           </div>
           <div class="action-fields">
-            <t-input
+            <t-select
               v-model="paymentActionForm.downloadFileId"
-              placeholder="文件编号"
+              :options="paymentEvidenceFileOptions"
+              placeholder="选择付款文件"
             />
             <t-input
               v-model="paymentActionForm.downloadPassword"
@@ -267,7 +272,7 @@
             theme="primary"
             variant="outline"
             :loading="actionBusy === 'download'"
-            :disabled="!hasPaymentDetail"
+            :disabled="!paymentEvidenceFileOptions.length"
             @click="submitPaymentFileDownload"
           >
             下载文件
@@ -281,6 +286,14 @@
       >
         {{ actionMessage }}
       </div>
+    </t-card>
+
+    <t-card
+      class="section-card evidence-section"
+      title="凭证与归档资料"
+      :bordered="true"
+    >
+      <EvidenceFileCards :files="paymentEvidenceFilesView" />
     </t-card>
 
     <div class="detail-grid">
@@ -394,6 +407,7 @@
 import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   createPrivateFileDownloadTicket,
   delegatePaymentApproval,
@@ -422,16 +436,15 @@ const actionBusy = ref("");
 const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
 const selectedPaymentVoucherFile = ref<File | null>(null);
+const selectedPaymentPdfArchiveFile = ref<File | null>(null);
 const paymentActionForm = reactive({
   approvedAmountYuan: "",
   approvalComment: "",
   executionAmountYuan: "",
   paidAt: toDatetimeLocalValue(new Date()),
-  voucherFileId: "",
   executionConfirmationPassword: "",
   financeAmountYuan: "",
   occurredAt: toDatetimeLocalValue(new Date()),
-  pdfFileId: "",
   assignmentUserId: "",
   downloadFileId: "",
   downloadPassword: ""
@@ -465,6 +478,15 @@ const paymentExecutionBlockMessageView = computed(
 );
 const paymentDetailChainLinksView = computed(
   () => paymentDetail.value?.chainLinks ?? []
+);
+const paymentEvidenceFilesView = computed(() => paymentDetail.value?.evidenceFiles ?? []);
+const paymentEvidenceFileOptions = computed(() =>
+  paymentEvidenceFilesView.value
+    .filter((file) => file.canDownload)
+    .map((file) => ({
+      label: `${file.fileName}（${file.purpose}）`,
+      value: file.fileId
+    }))
 );
 const approvalStatusValue = computed(
   () => paymentDetailMetaView.value.find((item) => item.label === "审批状态")?.value ?? ""
@@ -500,6 +522,10 @@ async function reloadPaymentDetail() {
   try {
     paymentDetailLoadError.value = "";
     paymentDetail.value = await fetchPaymentDetail(paymentId);
+    const evidenceFileIds = paymentDetail.value.evidenceFiles.map((file) => file.fileId);
+    if (!evidenceFileIds.includes(paymentActionForm.downloadFileId)) {
+      paymentActionForm.downloadFileId = evidenceFileIds[0] ?? "";
+    }
   } catch (error) {
     paymentDetail.value = null;
     paymentDetailLoadError.value =
@@ -584,6 +610,11 @@ function selectPaymentVoucherFile(event: Event) {
   selectedPaymentVoucherFile.value = input.files?.[0] ?? null;
 }
 
+function selectPaymentPdfArchiveFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  selectedPaymentPdfArchiveFile.value = input.files?.[0] ?? null;
+}
+
 async function runPaymentAction(key: string, action: () => Promise<unknown>) {
   actionBusy.value = key;
   actionMessage.value = "";
@@ -629,15 +660,15 @@ async function submitExecution() {
 
   await runPaymentAction("execution", async () => {
     const file = selectedPaymentVoucherFile.value;
-    const uploadedFileId = file ? (await uploadPrivateFile(file, file.name)).id : "";
+    if (!file) {
+      throw new Error("付款凭证文件不能为空");
+    }
+    const uploadedFileId = (await uploadPrivateFile(file, file.name)).id;
 
     return recordPaymentExecution(paymentId, {
       amountCents: parseYuanAmount(paymentActionForm.executionAmountYuan, "实付金额"),
       paidAt: toIsoDatetime(paymentActionForm.paidAt, "付款时间"),
-      voucherFileId: requiredText(
-        uploadedFileId || paymentActionForm.voucherFileId,
-        "付款凭证编号"
-      ),
+      voucherFileId: uploadedFileId,
       confirmationPassword: requiredText(
         paymentActionForm.executionConfirmationPassword,
         "当前登录密码"
@@ -660,11 +691,17 @@ async function submitFinance() {
 async function submitPdfArchive() {
   const paymentId = currentPaymentId();
 
-  await runPaymentAction("pdfArchive", () =>
-    recordPaymentPdfArchive(paymentId, {
-      fileId: requiredText(paymentActionForm.pdfFileId, "归档 PDF 编号")
-    })
-  );
+  await runPaymentAction("pdfArchive", async () => {
+    const file = selectedPaymentPdfArchiveFile.value;
+    if (!file) {
+      throw new Error("财务归档 PDF 不能为空");
+    }
+
+    const uploadedFile = await uploadPrivateFile(file, file.name);
+    return recordPaymentPdfArchive(paymentId, {
+      fileId: uploadedFile.id
+    });
+  });
 }
 
 async function submitGeneratedPdfArchive() {
@@ -699,7 +736,7 @@ async function submitPaymentAssignment(kind: "transfer" | "delegate") {
 async function submitPaymentFileDownload() {
   await runPaymentAction("download", async () => {
     const ticket = await createPrivateFileDownloadTicket(
-      requiredText(paymentActionForm.downloadFileId, "文件编号"),
+      requiredText(paymentActionForm.downloadFileId, "付款文件"),
       {
         confirmationPassword: requiredText(paymentActionForm.downloadPassword, "当前登录密码")
       }
@@ -918,6 +955,10 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
   border-radius: 3px;
 }
 
+.evidence-section {
+  margin-bottom: 20px;
+}
+
 .action-card {
   margin-bottom: 20px;
 }
@@ -983,6 +1024,14 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
   border-radius: 3px;
   background: #fff;
   color: #424955;
+  font-size: 12px;
+}
+
+.file-hint {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  color: #5f6673;
   font-size: 12px;
 }
 

@@ -50,6 +50,74 @@ export class ContractReadService {
     return toHistoricalContractPaymentBalance(takeover);
   }
 
+  private async contractArchiveFilesForVersion(
+    contractVersionId: string
+  ): Promise<ContractDetailReadModel["archiveFiles"]> {
+    const client = this.prisma as unknown as {
+      contractArchiveFile?: {
+        findMany(args: {
+          where: { contractVersionId: string };
+          orderBy: { createdAt: "desc" };
+        }): Promise<
+          Array<{
+            id: string;
+            fileId: string;
+            status: string;
+            createdAt: Date;
+            confirmedAt: Date | null;
+          }>
+        >;
+      };
+      fileObject?: {
+        findMany(args: { where: { id: { in: string[] } } }): Promise<
+          Array<{
+            id: string;
+            originalName: string;
+            mimeType: string;
+            sizeBytes: number;
+          }>
+        >;
+      };
+    };
+
+    if (!client.contractArchiveFile || !client.fileObject) {
+      return [];
+    }
+
+    const archiveFiles = await client.contractArchiveFile.findMany({
+      where: { contractVersionId },
+      orderBy: { createdAt: "desc" }
+    });
+    const fileIds = Array.from(new Set(archiveFiles.map((file) => file.fileId)));
+    if (!fileIds.length) {
+      return [];
+    }
+
+    const files = await client.fileObject.findMany({ where: { id: { in: fileIds } } });
+    const fileById = new Map(files.map((file) => [file.id, file]));
+
+    return archiveFiles.flatMap((archiveFile) => {
+      const file = fileById.get(archiveFile.fileId);
+      if (!file) {
+        return [];
+      }
+
+      return [
+        {
+          archiveRecordId: archiveFile.id,
+          fileId: file.id,
+          fileName: file.originalName,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+          status: archiveFile.status,
+          statusLabel: this.settlementArchiveFileStatusLabel(archiveFile),
+          createdAt: archiveFile.createdAt.toISOString(),
+          confirmedAt: archiveFile.confirmedAt?.toISOString() ?? null
+        }
+      ];
+    });
+  }
+
   async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
     const take = this.limit(rawLimit);
     const contracts = await this.prisma.contract.findMany({
@@ -290,7 +358,7 @@ export class ContractReadService {
       throw new NotFoundException("Payment terms version not found");
     }
 
-    const [stages, settlements, paymentRequests] = await Promise.all([
+    const [stages, settlements, paymentRequests, contractArchiveFiles] = await Promise.all([
       this.prisma.paymentTermsStage.findMany({
         where: { paymentTermsVersionId: terms.id },
         orderBy: { createdAt: "asc" }
@@ -302,7 +370,8 @@ export class ContractReadService {
       this.prisma.paymentRequest.findMany({
         where: { contractId: contract.id },
         orderBy: { updatedAt: "desc" }
-      })
+      }),
+      this.contractArchiveFilesForVersion(version.id)
     ]);
     const paymentIds = paymentRequests.map((payment) => payment.id);
     const settlementIds = settlements.map((settlement) => settlement.id);
@@ -371,6 +440,7 @@ export class ContractReadService {
         projectProxyPayments,
         historicalBalance
       ),
+      archiveFiles: contractArchiveFiles,
       chainLinks: [
         { label: "关联合同台账", to: "/contracts" },
         { label: "关联结算", to: latestSettlement ? `/settlements/${latestSettlement.code}` : "/settlements" },
@@ -448,6 +518,7 @@ export class ContractReadService {
         calculationNote:
           "当前可申请余额暂按已生效应付金额 - 已实付 - 审批中占用 - 已批待付计算，未纳入账期、质保金、预付款扣回和项目资金池；最新合同剩余额度以当前最新合同金额扣减合同维度累计生效结算，仅作台账提示。"
       },
+      archiveFiles: [],
       chainLinks: [
         { label: "关联合同台账", to: "/contracts" },
         { label: "关联结算", to: "/settlements/JS-2026-018" },

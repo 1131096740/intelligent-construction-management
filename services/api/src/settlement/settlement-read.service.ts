@@ -9,6 +9,102 @@ import { PrismaService } from "../database/prisma.service";
 export class SettlementReadService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async settlementArchiveFilesForSettlement(
+    settlementId: string
+  ): Promise<SettlementDetailReadModel["archiveFiles"]> {
+    const client = this.prisma as unknown as {
+      settlementArchiveFile?: {
+        findMany(args: {
+          where: { settlementId: string };
+          orderBy: { createdAt: "desc" };
+        }): Promise<
+          Array<{
+            id: string;
+            fileId: string;
+            uploadedByUserId: string;
+            confirmedByUserId: string | null;
+            confirmedAt: Date | null;
+            status: string;
+            createdAt: Date;
+          }>
+        >;
+      };
+      fileObject?: {
+        findMany(args: { where: { id: { in: string[] } } }): Promise<
+          Array<{
+            id: string;
+            originalName: string;
+            mimeType: string;
+            sizeBytes: number;
+          }>
+        >;
+      };
+      user?: {
+        findMany(args: { where: { id: { in: string[] } } }): Promise<
+          Array<{ id: string; name: string }>
+        >;
+      };
+    };
+
+    if (!client.settlementArchiveFile || !client.fileObject) {
+      return [];
+    }
+
+    const archiveFiles = await client.settlementArchiveFile.findMany({
+      where: { settlementId },
+      orderBy: { createdAt: "desc" }
+    });
+    const fileIds = Array.from(new Set(archiveFiles.map((file) => file.fileId)));
+    if (!fileIds.length) {
+      return [];
+    }
+
+    const userIds = Array.from(
+      new Set(
+        archiveFiles
+          .flatMap((file) => [file.uploadedByUserId, file.confirmedByUserId])
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+    const [files, users] = await Promise.all([
+      client.fileObject.findMany({ where: { id: { in: fileIds } } }),
+      client.user && userIds.length
+        ? client.user.findMany({ where: { id: { in: userIds } } })
+        : Promise.resolve([])
+    ]);
+    const fileById = new Map(files.map((file) => [file.id, file]));
+    const userById = new Map(users.map((user) => [user.id, user]));
+
+    return archiveFiles.flatMap((archiveFile) => {
+      const file = fileById.get(archiveFile.fileId);
+      if (!file) {
+        return [];
+      }
+
+      return [
+        {
+          recordId: archiveFile.id,
+          fileId: file.id,
+          fileName: file.originalName,
+          purpose: "结算签章归档件",
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+          status: archiveFile.status,
+          statusLabel: this.archiveFileStatusLabel(archiveFile.status),
+          uploadedByName:
+            userById.get(archiveFile.uploadedByUserId)?.name ?? archiveFile.uploadedByUserId,
+          uploadedAt: archiveFile.createdAt.toISOString(),
+          confirmedByName: archiveFile.confirmedByUserId
+            ? userById.get(archiveFile.confirmedByUserId)?.name ?? archiveFile.confirmedByUserId
+            : null,
+          confirmedAt: archiveFile.confirmedAt?.toISOString() ?? null,
+          canDownload: true,
+          disabledReason: null
+        }
+      ];
+    });
+  }
+
   async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
     const take = this.limit(rawLimit);
     const settlements = await this.prisma.settlement.findMany({
@@ -84,7 +180,7 @@ export class SettlementReadService {
       throw new NotFoundException("Settlement not found");
     }
 
-    const [contract, contractVersion, terms, paymentRequest] = await Promise.all([
+    const [contract, contractVersion, terms, paymentRequest, archiveFiles] = await Promise.all([
       this.prisma.contract.findUnique({ where: { id: settlement.contractId } }),
       this.prisma.contractVersion.findUnique({ where: { id: settlement.contractVersionId } }),
       this.prisma.paymentTermsVersion.findUnique({
@@ -93,7 +189,8 @@ export class SettlementReadService {
       this.prisma.paymentRequest.findFirst({
         where: { settlementId: settlement.id },
         orderBy: { createdAt: "desc" }
-      })
+      }),
+      this.settlementArchiveFilesForSettlement(settlement.id)
     ]);
 
     if (!contract) {
@@ -150,6 +247,7 @@ export class SettlementReadService {
         paymentRequestStatus: paymentRequest?.status ?? this.defaultPaymentRequestStatus(settlement.status)
       })),
       paymentBlockMessage: this.paymentBlockMessage(settlement.status),
+      archiveFiles,
       chainLinks: [
         { label: "关联合同", to: `/contracts/${contract.code}` },
         { label: "付款申请", to: paymentRequest ? `/payments/${paymentRequest.code}` : "/payments" },
@@ -212,6 +310,7 @@ export class SettlementReadService {
       ],
       paymentBlockMessage:
         "结算尚未生效，暂不可创建付款申请；付款比例和账期按绑定的付款条款版本执行。",
+      archiveFiles: [],
       chainLinks: [
         { label: "关联合同", to: "/contracts/HT-2026-001" },
         { label: "付款申请", to: "/payments/FK-2026-006" },
@@ -235,6 +334,12 @@ export class SettlementReadService {
     };
 
     return views[status] ?? { label: status, tone: "default" };
+  }
+
+  private archiveFileStatusLabel(status: string): string {
+    if (status === "confirmed") return "已确认";
+    if (status === "pending_confirm") return "待确认";
+    return status;
   }
 
   private nextActionLabel(status: string): string {

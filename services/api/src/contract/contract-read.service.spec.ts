@@ -404,6 +404,27 @@ describe("ContractReadService", () => {
           }
         ])
       },
+      contractArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "archive-file-1",
+            fileId: "file-signed-contract",
+            status: "confirmed",
+            createdAt: new Date("2026-07-01T08:00:00.000Z"),
+            confirmedAt: new Date("2026-07-01T09:00:00.000Z")
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-signed-contract",
+            originalName: "幕墙分包合同-盖章版.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 128000
+          }
+        ])
+      },
       settlement: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -450,6 +471,19 @@ describe("ContractReadService", () => {
       accountPeriod: "20天",
       triggerEvent: "结算归档确认生效"
     });
+    expect(detail.archiveFiles).toEqual([
+      {
+        archiveRecordId: "archive-file-1",
+        fileId: "file-signed-contract",
+        fileName: "幕墙分包合同-盖章版.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 128000,
+        status: "confirmed",
+        statusLabel: "已归档确认",
+        createdAt: "2026-07-01T08:00:00.000Z",
+        confirmedAt: "2026-07-01T09:00:00.000Z"
+      }
+    ]);
     expect(detail.chainLinks.map((link) => link.to)).toEqual([
       "/contracts",
       "/settlements/JS-2026-031",

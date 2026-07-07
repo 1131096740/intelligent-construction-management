@@ -43,19 +43,37 @@
         当前没有待处理事项。
       </div>
 
-      <div class="card-grid">
-        <button
-          v-for="card in cards"
-          :key="card.id"
-          type="button"
-          class="workbench-card"
-          @click="go(card.targetPath)"
+      <div class="queue-grid">
+        <section
+          v-for="queue in queues"
+          :key="queue.id"
+          class="workbench-queue"
         >
-          <span class="card-title">{{ card.title }}</span>
-          <strong :class="['card-count', card.toneClass]">{{ card.countText }}</strong>
-          <span class="card-description">{{ card.description }}</span>
-          <span class="card-action">{{ card.actionText }}</span>
-        </button>
+          <header>
+            <h2>{{ queue.title }}</h2>
+            <p>{{ queue.description }}</p>
+          </header>
+          <div
+            v-if="!queue.cards.length"
+            class="queue-empty"
+          >
+            暂无事项
+          </div>
+          <template v-else>
+            <button
+              v-for="card in queue.cards"
+              :key="card.id"
+              type="button"
+              class="workbench-card"
+              @click="go(card.targetPath)"
+            >
+              <span class="card-title">{{ card.title }}</span>
+              <strong :class="['card-count', card.toneClass]">{{ card.countText }}</strong>
+              <span class="card-description">{{ card.description }}</span>
+              <span class="card-action">{{ card.actionText }}</span>
+            </button>
+          </template>
+        </section>
       </div>
     </template>
   </section>
@@ -71,7 +89,8 @@ import {
 import {
   hasOpenWorkbenchItems,
   hasWorkbenchPermissionData,
-  toWorkbenchCards
+  toWorkbenchCards,
+  toWorkbenchQueues
 } from "./home.config";
 
 const router = useRouter();
@@ -80,6 +99,7 @@ const errorMessage = ref("");
 const summary = ref<WorkbenchSummaryReadModel | null>(null);
 
 const cards = computed(() => toWorkbenchCards(summary.value));
+const queues = computed(() => toWorkbenchQueues(summary.value));
 const hasCards = computed(() => hasWorkbenchPermissionData(summary.value));
 const hasOpenItems = computed(() => hasOpenWorkbenchItems(cards.value));
 
@@ -167,14 +187,48 @@ h1 {
   font-size: 18px;
 }
 
-.card-grid {
+.queue-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.workbench-queue {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #dce1e8;
+  border-radius: 8px;
+}
+
+.workbench-queue header {
+  display: grid;
+  gap: 6px;
+}
+
+.workbench-queue h2 {
+  font-size: 17px;
+}
+
+.workbench-queue header p,
+.queue-empty {
+  color: #5f6673;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.queue-empty {
+  padding: 14px;
+  border: 1px dashed #cbd3df;
+  border-radius: 8px;
+  background: #f8fafc;
 }
 
 .workbench-card {
-  min-height: 156px;
+  min-height: 142px;
   display: grid;
   grid-template-rows: auto auto 1fr auto;
   gap: 8px;
@@ -238,7 +292,7 @@ h1 {
     display: grid;
   }
 
-  .card-grid {
+  .queue-grid {
     grid-template-columns: 1fr;
   }
 

@@ -79,6 +79,35 @@ export interface ContractSettlementPaymentReadModel {
   calculationNote: string;
 }
 
+export interface ContractArchiveFileReadModel {
+  archiveRecordId: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: string;
+  statusLabel: string;
+  createdAt: string;
+  confirmedAt: string | null;
+}
+
+export interface EvidenceFileReadModel {
+  recordId: string;
+  fileId: string;
+  fileName: string;
+  purpose: string;
+  mimeType: string;
+  sizeBytes: number;
+  status: string;
+  statusLabel: string;
+  uploadedByName: string;
+  uploadedAt: string;
+  confirmedByName: string | null;
+  confirmedAt: string | null;
+  canDownload: boolean;
+  disabledReason: string | null;
+}
+
 export interface ContractDetailReadModel {
   id: string;
   contractVersionId: string;
@@ -89,6 +118,7 @@ export interface ContractDetailReadModel {
   paymentTermStages: ContractPaymentTermStageReadModel[];
   settlementBlockMessage: string;
   settlementPayment: ContractSettlementPaymentReadModel;
+  archiveFiles: ContractArchiveFileReadModel[];
   chainLinks: BusinessChainLink[];
 }
 
@@ -111,6 +141,7 @@ export interface SettlementDetailReadModel {
   archiveResponsibilities: string[];
   paymentRules: SettlementPaymentRuleReadModel[];
   paymentBlockMessage: string;
+  archiveFiles: EvidenceFileReadModel[];
   chainLinks: BusinessChainLink[];
 }
 
@@ -129,6 +160,7 @@ export interface PaymentDetailReadModel {
     allocationType: string;
     amountCents: number;
   }>;
+  evidenceFiles: EvidenceFileReadModel[];
   traceRules: string[];
   executionBlockMessage: string;
   chainLinks: BusinessChainLink[];

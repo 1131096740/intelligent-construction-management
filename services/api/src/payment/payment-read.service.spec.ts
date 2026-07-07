@@ -210,7 +210,13 @@ describe("PaymentReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "execution-1", amountCents: 12000000 }
+          {
+            id: "execution-1",
+            amountCents: 12000000,
+            voucherFileId: "file-voucher-1",
+            executedByUserId: "user-cashier",
+            createdAt: new Date("2026-07-01T09:00:00.000Z")
+          }
         ])
       },
       financeRecord: {
@@ -218,6 +224,42 @@ describe("PaymentReadService", () => {
       },
       paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([])
+      },
+      pdfDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "pdf-document-1",
+            fileId: "file-pdf-1",
+            templateKey: "payment_finance_archive",
+            createdAt: new Date("2026-07-01T10:00:00.000Z")
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-voucher-1",
+            originalName: "FK-2026-011-银行回单.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1024,
+            uploadedByUserId: "user-cashier",
+            createdAt: new Date("2026-07-01T08:55:00.000Z")
+          },
+          {
+            id: "file-pdf-1",
+            originalName: "FK-2026-011-财务归档.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 2048,
+            uploadedByUserId: "user-finance",
+            createdAt: new Date("2026-07-01T10:00:00.000Z")
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "user-cashier", name: "出纳" },
+          { id: "user-finance", name: "财务" }
+        ])
       }
     };
     const service = new PaymentReadService(prisma as never);
@@ -250,6 +292,40 @@ describe("PaymentReadService", () => {
       status: "未完成",
       tone: "danger"
     });
+    expect(detail.evidenceFiles).toEqual([
+      {
+        recordId: "execution-1",
+        fileId: "file-voucher-1",
+        fileName: "FK-2026-011-银行回单.pdf",
+        purpose: "付款凭证",
+        mimeType: "application/pdf",
+        sizeBytes: 1024,
+        status: "uploaded",
+        statusLabel: "已上传",
+        uploadedByName: "出纳",
+        uploadedAt: "2026-07-01T09:00:00.000Z",
+        confirmedByName: null,
+        confirmedAt: null,
+        canDownload: true,
+        disabledReason: null
+      },
+      {
+        recordId: "pdf-document-1",
+        fileId: "file-pdf-1",
+        fileName: "FK-2026-011-财务归档.pdf",
+        purpose: "付款财务归档 PDF",
+        mimeType: "application/pdf",
+        sizeBytes: 2048,
+        status: "archived",
+        statusLabel: "已归档",
+        uploadedByName: "财务",
+        uploadedAt: "2026-07-01T10:00:00.000Z",
+        confirmedByName: null,
+        confirmedAt: null,
+        canDownload: true,
+        disabledReason: null
+      }
+    ]);
     expect(detail.traceRules).toContain("审批通过不等于实际付款完成");
     expect(detail.chainLinks.map((link) => link.to)).toEqual([
       "/settlements/JS-2026-031",

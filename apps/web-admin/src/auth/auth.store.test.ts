@@ -156,6 +156,22 @@ describe("useAuthStore", () => {
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain('"mustChangePassword":false');
   });
 
+  it("shows a business message when password change fails", async () => {
+    const store = await seedSession();
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            message: "Invalid old password",
+            statusCode: 400
+          }),
+          { status: 400 }
+        )
+    ) as never;
+
+    await expect(store.changePassword("wrong", "Personal@2026")).rejects.toThrow("当前密码不正确");
+  });
+
   it("returns false and clears the session when refresh fails", async () => {
     const store = await seedSession();
     globalThis.fetch = vi.fn(async () => new Response("no", { status: 401 })) as never;

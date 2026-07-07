@@ -120,6 +120,36 @@ describe("core flow read API client", () => {
     await expect(fetchPaymentDetail("FK-2026-006")).rejects.toThrow("无权访问该项目详情");
   });
 
+  it("does not expose technical backend messages to business users", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 500,
+      clone() {
+        return this;
+      },
+      json: async () => ({ message: "Internal server error" })
+    } as Response);
+
+    await expect(fetchPaymentDetail("FK-2026-006")).rejects.toThrow(
+      "系统暂时无法完成操作，请稍后重试或联系管理员。"
+    );
+  });
+
+  it("maps forced password-change API errors to a business message", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 403,
+      clone() {
+        return this;
+      },
+      json: async () => ({ message: "Password change required" })
+    } as Response);
+
+    await expect(fetchSettlementDetail("JS-2026-018")).rejects.toThrow(
+      "请先完成初始密码修改，再继续办理业务。"
+    );
+  });
+
   it("requests the contract payment application preview endpoint", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
