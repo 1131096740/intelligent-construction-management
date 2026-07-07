@@ -445,7 +445,13 @@ const settlementPaymentBlockMessageView = computed(
 const settlementDetailChainLinksView = computed(
   () => settlementDetail.value?.chainLinks ?? []
 );
-const settlementArchiveFilesView = computed(() => settlementDetail.value?.archiveFiles ?? []);
+const settlementArchiveFilesView = computed(() =>
+  (settlementDetail.value?.archiveFiles ?? []).map((file) => ({
+    ...file,
+    businessRef: settlementDetail.value?.id ?? "当前结算",
+    auditHint: "下载需当前密码并记录审计"
+  }))
+);
 const settlementArchiveFileOptions = computed(() =>
   settlementArchiveFilesView.value
     .filter((file) => file.canDownload)

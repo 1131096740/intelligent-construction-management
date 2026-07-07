@@ -17,11 +17,13 @@
           <span>{{ file.purpose }} · {{ formatFileSize(file.sizeBytes) }}</span>
         </div>
         <div class="evidence-meta">
+          <span v-if="file.businessRef">业务归属：{{ file.businessRef }}</span>
           <span>状态：{{ file.statusLabel }}</span>
           <span>上传：{{ file.uploadedByName }} · {{ formatTime(file.uploadedAt) }}</span>
           <span v-if="file.confirmedAt">
             确认：{{ file.confirmedByName ?? "-" }} · {{ formatTime(file.confirmedAt) }}
           </span>
+          <span>{{ file.auditHint ?? "下载将记录审计" }}</span>
           <span v-if="!file.canDownload">{{ file.disabledReason ?? "暂不可下载" }}</span>
         </div>
       </article>
@@ -33,6 +35,7 @@
 interface EvidenceFileCardItem {
   recordId: string;
   fileName: string;
+  businessRef?: string;
   purpose: string;
   sizeBytes: number;
   statusLabel: string;
@@ -42,6 +45,7 @@ interface EvidenceFileCardItem {
   confirmedAt?: string | null;
   canDownload: boolean;
   disabledReason?: string | null;
+  auditHint?: string;
 }
 
 defineProps<{

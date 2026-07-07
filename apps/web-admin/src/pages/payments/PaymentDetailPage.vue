@@ -494,7 +494,13 @@ const paymentExecutionBlockMessageView = computed(
 const paymentDetailChainLinksView = computed(
   () => paymentDetail.value?.chainLinks ?? []
 );
-const paymentEvidenceFilesView = computed(() => paymentDetail.value?.evidenceFiles ?? []);
+const paymentEvidenceFilesView = computed(() =>
+  (paymentDetail.value?.evidenceFiles ?? []).map((file) => ({
+    ...file,
+    businessRef: paymentDetail.value?.id ?? "当前付款",
+    auditHint: "下载需当前密码并记录审计"
+  }))
+);
 const paymentEvidenceFileOptions = computed(() =>
   paymentEvidenceFilesView.value
     .filter((file) => file.canDownload)

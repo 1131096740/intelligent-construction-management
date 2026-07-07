@@ -548,6 +548,7 @@ const contractEvidenceFilesView = computed(() =>
   (contractDetail.value?.archiveFiles ?? []).map((file) => ({
     recordId: file.archiveRecordId,
     fileName: file.fileName,
+    businessRef: contractDetail.value?.id ?? "当前合同",
     purpose: "合同归档件",
     sizeBytes: file.sizeBytes,
     statusLabel: file.statusLabel,
@@ -556,7 +557,8 @@ const contractEvidenceFilesView = computed(() =>
     confirmedByName: file.confirmedByName,
     confirmedAt: file.confirmedAt,
     canDownload: file.canDownload,
-    disabledReason: file.disabledReason
+    disabledReason: file.disabledReason,
+    auditHint: "下载需当前密码并记录审计"
   }))
 );
 const contractActionByKey = computed(
