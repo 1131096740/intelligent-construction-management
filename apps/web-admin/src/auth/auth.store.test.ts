@@ -68,6 +68,24 @@ describe("useAuthStore", () => {
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
   });
 
+  it("shows a friendly message for backend credential errors", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            message: "Invalid phone or password",
+            error: "Unauthorized",
+            statusCode: 401
+          }),
+          { status: 401 }
+        )
+    ) as never;
+    const store = useAuthStore();
+
+    await expect(store.login("13800000001", "wrong")).rejects.toThrow("手机号或密码错误");
+    expect(store.isAuthenticated).toBe(false);
+  });
+
   it("clears the session and storage on logout", async () => {
     const store = await seedSession();
     globalThis.fetch = vi.fn(async () => new Response("{}", { status: 200 })) as never;

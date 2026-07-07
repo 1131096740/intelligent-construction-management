@@ -42,10 +42,33 @@ async function postAuth<T>(path: string, body: unknown): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `登录请求失败：${response.status}`);
+    throw new Error(formatAuthError(text, response.status));
   }
 
   return response.json() as Promise<T>;
+}
+
+function formatAuthError(text: string, status: number) {
+  if (!text) {
+    return `登录请求失败：${status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(text) as { message?: unknown };
+    const message = Array.isArray(parsed.message)
+      ? parsed.message.filter((item): item is string => typeof item === "string").join("；")
+      : typeof parsed.message === "string"
+        ? parsed.message
+        : "";
+
+    if (message === "Invalid phone or password") {
+      return "手机号或密码错误";
+    }
+
+    return message || `登录请求失败：${status}`;
+  } catch {
+    return text;
+  }
 }
 
 function normalizeUser(user: AuthUser): AuthUser {
