@@ -2,8 +2,18 @@ import type { PrimaryTableCol } from "tdesign-vue-next";
 
 export type ContractStatusTone = "default" | "primary" | "warning" | "danger" | "success";
 
+export interface ContractLedgerFilters {
+  project: string;
+  contractStatus: string;
+  archiveStatus: string;
+  paymentTermsVersion: string;
+  keyword: string;
+}
+
+export type ContractFilterKey = keyof ContractLedgerFilters;
+
 export interface ContractFilterField {
-  key: string;
+  key: ContractFilterKey;
   label: string;
   placeholder: string;
   type: "select" | "keyword";
@@ -31,6 +41,7 @@ export interface ContractLedgerRow {
   returnReason: string;
   nextAction: string;
   updatedAt: string;
+  paymentTermsVersion?: string;
 }
 
 export const contractFilterFields: ContractFilterField[] = [
@@ -91,3 +102,48 @@ export const contractLedgerColumns: PrimaryTableCol<ContractLedgerRow>[] = [
 ];
 
 export const contractLedgerRows: ContractLedgerRow[] = [];
+
+export function emptyContractLedgerFilters(): ContractLedgerFilters {
+  return {
+    project: "",
+    contractStatus: "",
+    archiveStatus: "",
+    paymentTermsVersion: "",
+    keyword: ""
+  };
+}
+
+export function filterContractLedgerRows(
+  rows: readonly ContractLedgerRow[],
+  filters: ContractLedgerFilters
+): ContractLedgerRow[] {
+  return rows.filter((row) => {
+    const statusText = `${row.currentNode} ${row.nextAction} ${row.returnReason}`;
+    const keywordText = [
+      row.contractNo,
+      row.name,
+      row.project,
+      row.counterparty,
+      row.currentNode,
+      row.pendingOwner,
+      row.nextAction
+    ].join(" ");
+
+    return (
+      includesText(row.project, filters.project) &&
+      includesText(statusText, filters.contractStatus) &&
+      includesText(statusText, filters.archiveStatus) &&
+      includesText(row.paymentTermsVersion ?? row.version, filters.paymentTermsVersion) &&
+      includesText(keywordText, filters.keyword)
+    );
+  });
+}
+
+function includesText(value: string, query: string) {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return value.toLocaleLowerCase().includes(normalized);
+}

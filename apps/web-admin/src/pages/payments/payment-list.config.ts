@@ -3,8 +3,18 @@ import type { PrimaryTableCol } from "tdesign-vue-next";
 
 export type PaymentTone = "default" | "primary" | "warning" | "danger" | "success";
 
+export interface PaymentLedgerFilters {
+  project: string;
+  settlementNo: string;
+  approvalStatus: string;
+  paymentStatus: string;
+  keyword: string;
+}
+
+export type PaymentFilterKey = keyof PaymentLedgerFilters;
+
 export interface PaymentFilterField {
-  key: string;
+  key: PaymentFilterKey;
   label: string;
   placeholder: string;
   type: "select" | "keyword";
@@ -142,6 +152,51 @@ export const paymentRules = [
   "审批通过后进入已批待付，不代表已付款",
   "出纳/财务登记实付并上传付款凭证"
 ];
+
+export function emptyPaymentLedgerFilters(): PaymentLedgerFilters {
+  return {
+    project: "",
+    settlementNo: "",
+    approvalStatus: "",
+    paymentStatus: "",
+    keyword: ""
+  };
+}
+
+export function filterPaymentLedgerRows(
+  rows: readonly PaymentLedgerRow[],
+  filters: PaymentLedgerFilters
+): PaymentLedgerRow[] {
+  return rows.filter((row) => {
+    const keywordText = [
+      row.paymentNo,
+      row.settlementNo,
+      row.project,
+      row.approvalStatus,
+      row.paymentStatus,
+      row.currentNode,
+      row.pendingOwner,
+      row.nextAction
+    ].join(" ");
+
+    return (
+      includesText(row.project, filters.project) &&
+      includesText(row.settlementNo, filters.settlementNo) &&
+      includesText(row.approvalStatus, filters.approvalStatus) &&
+      includesText(row.paymentStatus, filters.paymentStatus) &&
+      includesText(keywordText, filters.keyword)
+    );
+  });
+}
+
+function includesText(value: string, query: string) {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return value.toLocaleLowerCase().includes(normalized);
+}
 
 function formatPaymentCents(amountCents: number) {
   return `¥${(amountCents / 100).toLocaleString("zh-CN", {

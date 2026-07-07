@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   contractFilterFields,
   contractLedgerColumns,
-  contractSummaryItems
+  contractSummaryItems,
+  emptyContractLedgerFilters,
+  filterContractLedgerRows,
+  type ContractLedgerRow
 } from "./contract-list.config";
 
 describe("contract ledger page configuration", () => {
@@ -43,4 +46,57 @@ describe("contract ledger page configuration", () => {
       "操作"
     ]);
   });
+
+  it("filters ledger rows by project, status, archive text, payment terms, and keyword", () => {
+    const rows: ContractLedgerRow[] = [
+      contractRow({
+        id: "contract-1",
+        project: "E2E 项目",
+        currentNode: "待归档确认",
+        nextAction: "确认归档",
+        paymentTermsVersion: "条款 v2",
+        counterparty: "钢材供应商"
+      }),
+      contractRow({
+        id: "contract-2",
+        project: "其他项目",
+        currentNode: "已生效",
+        nextAction: "发起结算",
+        paymentTermsVersion: "条款 v1",
+        counterparty: "劳务班组"
+      })
+    ];
+
+    expect(
+      filterContractLedgerRows(rows, {
+        ...emptyContractLedgerFilters(),
+        project: "E2E",
+        contractStatus: "归档",
+        archiveStatus: "确认",
+        paymentTermsVersion: "v2",
+        keyword: "钢材"
+      }).map((row) => row.id)
+    ).toEqual(["contract-1"]);
+  });
 });
+
+function contractRow(overrides: Partial<ContractLedgerRow>): ContractLedgerRow {
+  return {
+    id: "contract",
+    contractNo: "HT-001",
+    name: "钢材采购合同",
+    project: "项目",
+    counterparty: "供应商",
+    amount: "¥1.00",
+    version: "v1",
+    currentNode: "审批中",
+    nodeTone: "primary",
+    ownerDepartment: "合同部",
+    pendingOwner: "合同部",
+    stalledFor: "1天",
+    returnReason: "-",
+    nextAction: "待处理",
+    updatedAt: "2026-07-08",
+    ...overrides
+  };
+}

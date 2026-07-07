@@ -2,6 +2,8 @@ import type { ContractPaymentApplicationPreviewReadModel } from "@jiangkong/shar
 import { describe, expect, it } from "vitest";
 import {
   canShowContractPaymentApplicationPreview,
+  emptyPaymentLedgerFilters,
+  filterPaymentLedgerRows,
   paymentApplicationPreviewColumns,
   paymentApplicationPreviewRowClassName,
   paymentFilterFields,
@@ -9,7 +11,8 @@ import {
   paymentLedgerColumns,
   paymentRules,
   paymentSummaryItems,
-  toPaymentApplicationPreviewRows
+  toPaymentApplicationPreviewRows,
+  type PaymentLedgerRow
 } from "./payment-list.config";
 
 describe("payment ledger page configuration", () => {
@@ -49,6 +52,38 @@ describe("payment ledger page configuration", () => {
       "更新时间",
       "操作"
     ]);
+  });
+
+  it("filters payment rows by project, source, approval, payment status, and keyword", () => {
+    const rows: PaymentLedgerRow[] = [
+      paymentRow({
+        id: "payment-1",
+        project: "E2E 项目",
+        settlementNo: "合同累计结算",
+        approvalStatus: "已批待付",
+        paymentStatus: "部分付款",
+        paymentNo: "FK-001"
+      }),
+      paymentRow({
+        id: "payment-2",
+        project: "其他项目",
+        settlementNo: "JS-002",
+        approvalStatus: "审批中",
+        paymentStatus: "未付款",
+        paymentNo: "FK-002"
+      })
+    ];
+
+    expect(
+      filterPaymentLedgerRows(rows, {
+        ...emptyPaymentLedgerFilters(),
+        project: "E2E",
+        settlementNo: "合同累计",
+        approvalStatus: "已批",
+        paymentStatus: "部分",
+        keyword: "FK-001"
+      }).map((row) => row.id)
+    ).toEqual(["payment-1"]);
   });
 
   it("states the core payment gate and execution rules", () => {
@@ -167,3 +202,25 @@ describe("payment ledger page configuration", () => {
     expect(canShowContractPaymentApplicationPreview("contract_advance", preview, "contract-version-1", "contract-version-1")).toBe(false);
   });
 });
+
+function paymentRow(overrides: Partial<PaymentLedgerRow>): PaymentLedgerRow {
+  return {
+    id: "payment",
+    paymentNo: "FK-001",
+    settlementNo: "JS-001",
+    project: "项目",
+    requestedAmount: "¥1.00",
+    approvalStatus: "审批中",
+    approvalTone: "primary",
+    paymentStatus: "未付款",
+    paymentTone: "default",
+    currentNode: "审批中",
+    ownerDepartment: "财务部",
+    pendingOwner: "财务部",
+    stalledFor: "1天",
+    returnReason: "-",
+    nextAction: "待处理",
+    updatedAt: "2026-07-08",
+    ...overrides
+  };
+}

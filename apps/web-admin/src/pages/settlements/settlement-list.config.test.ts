@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  emptySettlementLedgerFilters,
+  filterSettlementLedgerRows,
   settlementFilterFields,
   settlementLedgerColumns,
   settlementRules,
-  settlementSummaryItems
+  settlementSummaryItems,
+  type SettlementLedgerRow
 } from "./settlement-list.config";
 
 describe("settlement ledger page configuration", () => {
@@ -53,4 +56,57 @@ describe("settlement ledger page configuration", () => {
       "历史结算绑定当时的付款条款版本"
     ]);
   });
+
+  it("filters settlement rows by project, contract, status, archive text, and keyword", () => {
+    const rows: SettlementLedgerRow[] = [
+      settlementRow({
+        id: "settlement-1",
+        project: "E2E 项目",
+        contractNo: "HT-001",
+        currentNode: "待归档确认",
+        nextAction: "确认归档",
+        period: "2026-06"
+      }),
+      settlementRow({
+        id: "settlement-2",
+        project: "其他项目",
+        contractNo: "HT-002",
+        currentNode: "审批中",
+        nextAction: "等待预算审批",
+        period: "2026-05"
+      })
+    ];
+
+    expect(
+      filterSettlementLedgerRows(rows, {
+        ...emptySettlementLedgerFilters(),
+        project: "E2E",
+        contractNo: "001",
+        settlementStatus: "归档",
+        archiveStatus: "确认",
+        keyword: "2026-06"
+      }).map((row) => row.id)
+    ).toEqual(["settlement-1"]);
+  });
 });
+
+function settlementRow(overrides: Partial<SettlementLedgerRow>): SettlementLedgerRow {
+  return {
+    id: "settlement",
+    settlementNo: "JS-001",
+    contractNo: "HT-001",
+    project: "项目",
+    period: "2026-06",
+    amount: "¥1.00",
+    paymentTermsVersion: "v1",
+    currentNode: "审批中",
+    nodeTone: "primary",
+    ownerDepartment: "合同部",
+    pendingOwner: "预算部",
+    stalledFor: "1天",
+    returnReason: "-",
+    nextAction: "待处理",
+    updatedAt: "2026-07-08",
+    ...overrides
+  };
+}

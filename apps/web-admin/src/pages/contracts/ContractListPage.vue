@@ -60,9 +60,9 @@
         >
           <span>{{ field.label }}</span>
           <t-input
+            v-model="contractFilters[field.key]"
             :placeholder="field.placeholder"
             size="small"
-            readonly
           />
         </label>
 
@@ -75,7 +75,7 @@
         </t-button>
         <t-button
           class="filter-action"
-          @click="loadContractLedger"
+          @click="resetContractFilters"
         >
           重置
         </t-button>
@@ -96,7 +96,7 @@
           row-key="id"
           size="small"
           :columns="contractLedgerColumns"
-          :data="contractLedgerRows"
+          :data="filteredContractLedgerRows"
           :loading="ledgerLoading"
           empty="暂无合同数据"
         >
@@ -200,7 +200,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { fetchContractLedger } from "../../api/core-flow-read.api";
 import { listContractDrafts } from "../../api/contract-workbench.api";
@@ -208,7 +208,9 @@ import type { ContractLedgerRow, ContractStatusTone } from "./contract-list.conf
 import {
   contractFilterFields,
   contractLedgerColumns,
-  contractSummaryItems
+  contractSummaryItems,
+  emptyContractLedgerFilters,
+  filterContractLedgerRows
 } from "./contract-list.config";
 import { contractTypeLabel } from "./contract-labels";
 
@@ -216,6 +218,7 @@ const router = useRouter();
 const noticeMessage = ref("");
 const activeTab = ref<"ledger" | "my" | "voided">("my");
 const contractLedgerRows = ref<ContractLedgerRow[]>([]);
+const contractFilters = reactive(emptyContractLedgerFilters());
 const ledgerLoading = ref(false);
 const ledgerSummary = ref({
   total: 0,
@@ -238,6 +241,9 @@ const summaryValues = computed(() => {
     value: String(values[index] ?? 0)
   }));
 });
+const filteredContractLedgerRows = computed(() =>
+  filterContractLedgerRows(contractLedgerRows.value, contractFilters)
+);
 
 // Draft list rows mirror the backend Contract read model fields returned by
 // listDrafts (raw Contract rows): name may be empty for fresh drafts, so
@@ -343,6 +349,10 @@ function openDetail(contractId: string) {
 
 function openWorkbench(contractId: string) {
   void router.push(`/contracts/${contractId}/workbench`);
+}
+
+function resetContractFilters() {
+  Object.assign(contractFilters, emptyContractLedgerFilters());
 }
 
 function formatDraftUpdatedAt(value?: string | null) {

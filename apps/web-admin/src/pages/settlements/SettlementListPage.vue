@@ -119,9 +119,9 @@
       >
         <span>{{ field.label }}</span>
         <t-input
+          v-model="settlementFilters[field.key]"
           :placeholder="field.placeholder"
           size="small"
-          readonly
         />
       </label>
 
@@ -134,7 +134,7 @@
       </t-button>
       <t-button
         class="filter-action"
-        @click="loadSettlementLedger"
+        @click="resetSettlementFilters"
       >
         重置
       </t-button>
@@ -155,7 +155,7 @@
         row-key="id"
         size="small"
         :columns="settlementLedgerColumns"
-        :data="settlementLedgerRows"
+        :data="filteredSettlementLedgerRows"
         :loading="ledgerLoading"
         empty="暂无结算数据"
       >
@@ -202,7 +202,9 @@ import {
   settlementFilterFields,
   settlementLedgerColumns,
   settlementRules,
-  settlementSummaryItems
+  settlementSummaryItems,
+  emptySettlementLedgerFilters,
+  filterSettlementLedgerRows
 } from "./settlement-list.config";
 
 const router = useRouter();
@@ -211,6 +213,7 @@ const createBusy = ref(false);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const settlementLedgerRows = ref<SettlementLedgerRow[]>([]);
+const settlementFilters = reactive(emptySettlementLedgerFilters());
 const ledgerLoading = ref(false);
 const projects = ref<ProjectOptionReadModel[]>([]);
 const contracts = ref<ContractBusinessOptionReadModel[]>([]);
@@ -237,6 +240,9 @@ const summaryValues = computed(() => {
     value: String(values[index] ?? 0)
   }));
 });
+const filteredSettlementLedgerRows = computed(() =>
+  filterSettlementLedgerRows(settlementLedgerRows.value, settlementFilters)
+);
 const createForm = reactive({
   projectId: "",
   contractOptionValue: "",
@@ -259,6 +265,10 @@ const selectedContractHint = computed(() => {
 
 function openDetail(settlementId: string) {
   void router.push(`/settlements/${settlementId}`);
+}
+
+function resetSettlementFilters() {
+  Object.assign(settlementFilters, emptySettlementLedgerFilters());
 }
 
 async function loadSettlementLedger() {

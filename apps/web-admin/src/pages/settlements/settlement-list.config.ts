@@ -2,8 +2,18 @@ import type { PrimaryTableCol } from "tdesign-vue-next";
 
 export type SettlementTone = "default" | "primary" | "warning" | "danger" | "success";
 
+export interface SettlementLedgerFilters {
+  project: string;
+  contractNo: string;
+  settlementStatus: string;
+  archiveStatus: string;
+  keyword: string;
+}
+
+export type SettlementFilterKey = keyof SettlementLedgerFilters;
+
 export interface SettlementFilterField {
-  key: string;
+  key: SettlementFilterKey;
   label: string;
   placeholder: string;
   type: "select" | "keyword";
@@ -98,3 +108,48 @@ export const settlementRules = [
   "结算未生效前不可创建付款申请",
   "历史结算绑定当时的付款条款版本"
 ];
+
+export function emptySettlementLedgerFilters(): SettlementLedgerFilters {
+  return {
+    project: "",
+    contractNo: "",
+    settlementStatus: "",
+    archiveStatus: "",
+    keyword: ""
+  };
+}
+
+export function filterSettlementLedgerRows(
+  rows: readonly SettlementLedgerRow[],
+  filters: SettlementLedgerFilters
+): SettlementLedgerRow[] {
+  return rows.filter((row) => {
+    const statusText = `${row.currentNode} ${row.nextAction} ${row.returnReason}`;
+    const keywordText = [
+      row.settlementNo,
+      row.contractNo,
+      row.project,
+      row.period,
+      row.currentNode,
+      row.pendingOwner,
+      row.nextAction
+    ].join(" ");
+
+    return (
+      includesText(row.project, filters.project) &&
+      includesText(row.contractNo, filters.contractNo) &&
+      includesText(statusText, filters.settlementStatus) &&
+      includesText(statusText, filters.archiveStatus) &&
+      includesText(keywordText, filters.keyword)
+    );
+  });
+}
+
+function includesText(value: string, query: string) {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return value.toLocaleLowerCase().includes(normalized);
+}

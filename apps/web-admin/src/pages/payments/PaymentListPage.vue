@@ -202,9 +202,9 @@
       >
         <span>{{ field.label }}</span>
         <t-input
+          v-model="paymentFilters[field.key]"
           :placeholder="field.placeholder"
           size="small"
-          readonly
         />
       </label>
 
@@ -217,7 +217,7 @@
       </t-button>
       <t-button
         class="filter-action"
-        @click="loadPaymentLedger"
+        @click="resetPaymentFilters"
       >
         重置
       </t-button>
@@ -238,7 +238,7 @@
         row-key="id"
         size="small"
         :columns="paymentLedgerColumns"
-        :data="paymentLedgerRows"
+        :data="filteredPaymentLedgerRows"
         :loading="ledgerLoading"
         empty="暂无付款数据"
       >
@@ -307,7 +307,9 @@ import {
   paymentLedgerColumns,
   paymentRules,
   paymentSummaryItems,
-  toPaymentApplicationPreviewRows
+  toPaymentApplicationPreviewRows,
+  emptyPaymentLedgerFilters,
+  filterPaymentLedgerRows
 } from "./payment-list.config";
 
 const router = useRouter();
@@ -317,6 +319,7 @@ const previewBusy = ref(false);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const paymentLedgerRows = ref<PaymentLedgerRow[]>([]);
+const paymentFilters = reactive(emptyPaymentLedgerFilters());
 const ledgerLoading = ref(false);
 const projects = ref<ProjectOptionReadModel[]>([]);
 const contracts = ref<ContractBusinessOptionReadModel[]>([]);
@@ -377,6 +380,9 @@ const summaryValues = computed(() => {
     value: String(values[index] ?? 0)
   }));
 });
+const filteredPaymentLedgerRows = computed(() =>
+  filterPaymentLedgerRows(paymentLedgerRows.value, paymentFilters)
+);
 const showContractPaymentPreview = computed(() =>
   canShowContractPaymentApplicationPreview(
     createForm.sourceType,
@@ -400,6 +406,10 @@ const contractPaymentPreviewSections = computed(() =>
 
 function openDetail(paymentId: string) {
   void router.push(`/payments/${paymentId}`);
+}
+
+function resetPaymentFilters() {
+  Object.assign(paymentFilters, emptyPaymentLedgerFilters());
 }
 
 async function loadPaymentLedger() {
