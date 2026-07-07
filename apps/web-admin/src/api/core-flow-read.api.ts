@@ -180,7 +180,9 @@ export interface ContractTakeoverReadModel {
   contractNo: string;
   contractName: string;
   counterparty: string;
+  companyEntityName: string | null;
   amountCents: ContractTakeoverCentsValue;
+  paymentTermsOriginalText: string;
   takeoverLevel: ContractTakeoverLevel;
   takeoverStatus: ContractTakeoverStatus;
   lifecycleStatus: ContractLifecycleStatus;
@@ -977,6 +979,17 @@ export function createContractTakeover(
   body: CreateContractTakeoverPayload
 ) {
   return postJson<ContractTakeoverReadModel>(`/projects/${projectId}/contract-takeovers`, body);
+}
+
+export function updateContractTakeover(
+  projectId: string,
+  takeoverId: string,
+  body: CreateContractTakeoverPayload
+) {
+  return patchJson<ContractTakeoverReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}`,
+    body
+  );
 }
 
 export function submitContractTakeoverReview(projectId: string, takeoverId: string) {

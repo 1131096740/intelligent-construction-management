@@ -8,6 +8,7 @@ describe("ContractTakeoverController", () => {
 
   it("protects create and submit with contract staff project roles", () => {
     expectProjectAction(ContractTakeoverController.prototype.create, "contract.create");
+    expectProjectAction(ContractTakeoverController.prototype.updateDraft, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.submitReview, "contract.submit");
   });
 

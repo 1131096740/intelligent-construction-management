@@ -11,7 +11,7 @@
         </t-button>
         <t-button
           theme="primary"
-          @click="showCreateForm = !showCreateForm"
+          @click="startCreate"
         >
           新增接管合同
         </t-button>
@@ -55,7 +55,7 @@
     <t-card
       v-if="showCreateForm"
       class="panel"
-      title="新增历史合同接管"
+      :title="editingTakeoverId ? '编辑历史合同接管草稿' : '新增历史合同接管'"
       :bordered="true"
     >
       <div class="form-section">
@@ -178,9 +178,9 @@
           :loading="creating"
           @click="submitCreate"
         >
-          保存接管草稿
+          {{ editingTakeoverId ? "保存修改" : "保存接管草稿" }}
         </t-button>
-        <t-button @click="showCreateForm = false">
+        <t-button @click="cancelEdit">
           取消
         </t-button>
       </div>
@@ -215,6 +215,13 @@
                 @click="selectTakeover(row.takeover)"
               >
                 详情
+              </t-link>
+              <t-link
+                v-if="canEditTakeover(row.takeover)"
+                theme="primary"
+                @click="startEdit(row.takeover)"
+              >
+                编辑
               </t-link>
               <t-link
                 v-if="canSubmitTakeoverReview(row.takeover)"
@@ -339,6 +346,7 @@ import {
   getContractTakeover,
   listContractTakeovers,
   submitContractTakeoverReview,
+  updateContractTakeover,
   type ContractLifecycleStatus,
   type ContractTakeoverLevel,
   type ContractTakeoverReadModel,
@@ -346,6 +354,7 @@ import {
 } from "../../api/core-flow-read.api";
 import {
   canConfirmTakeover,
+  canEditTakeover,
   canSubmitTakeoverReview,
   centsToYuanText,
   contractTakeoverColumns,
@@ -407,6 +416,7 @@ const selectedTakeoverId = ref("");
 const loadingProjects = ref(false);
 const loadingTakeovers = ref(false);
 const creating = ref(false);
+const editingTakeoverId = ref("");
 const confirming = ref(false);
 const showCreateForm = ref(false);
 const confirmVisible = ref(false);
@@ -569,7 +579,7 @@ async function submitCreate() {
   creating.value = true;
   message.value = "";
   try {
-    const created = await createContractTakeover(projectId, {
+    const payload = {
       code: requiredText(createForm.code, "合同编号"),
       name: requiredText(createForm.name, "合同名称"),
       counterparty: requiredText(createForm.counterparty, "相对方"),
@@ -594,18 +604,47 @@ async function submitCreate() {
       otherConfirmedOccupancyCents: moneyCents("otherConfirmedOccupancyYuan"),
       balanceSourceSummary: requiredText(createForm.balanceSourceSummary, "余额来源说明"),
       evidenceSummary: requiredText(createForm.evidenceSummary, "证据说明")
-    });
+    };
+    const editingId = editingTakeoverId.value;
+    const saved = editingId
+      ? await updateContractTakeover(projectId, editingId, payload)
+      : await createContractTakeover(projectId, payload);
     resetCreateForm();
     showCreateForm.value = false;
-    selectedTakeoverId.value = created.id;
-    setMessage("历史合同接管草稿已保存", "success");
+    editingTakeoverId.value = "";
+    selectedTakeoverId.value = saved.id;
+    setMessage(editingId ? "历史合同接管草稿已更新" : "历史合同接管草稿已保存", "success");
     await loadTakeovers();
-    await selectTakeover(created);
+    await selectTakeover(saved);
   } catch (error) {
     setMessage(error instanceof Error ? error.message : "保存历史合同接管失败", "danger");
   } finally {
     creating.value = false;
   }
+}
+
+function startCreate() {
+  editingTakeoverId.value = "";
+  resetCreateForm();
+  showCreateForm.value = true;
+}
+
+function startEdit(takeover: ContractTakeoverReadModel) {
+  if (!canEditTakeover(takeover)) {
+    setMessage("只有草稿或待补充的接管记录可以编辑", "danger");
+    return;
+  }
+
+  editingTakeoverId.value = takeover.id;
+  Object.assign(createForm, formFromTakeover(takeover));
+  selectedTakeoverId.value = takeover.id;
+  showCreateForm.value = true;
+}
+
+function cancelEdit() {
+  editingTakeoverId.value = "";
+  resetCreateForm();
+  showCreateForm.value = false;
 }
 
 async function submitReview(takeover: ContractTakeoverReadModel) {
@@ -669,6 +708,39 @@ async function confirmSelectedTakeover() {
 
 function resetCreateForm() {
   Object.assign(createForm, createEmptyForm());
+}
+
+function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState {
+  return {
+    code: takeover.contractNo,
+    name: takeover.contractName,
+    counterparty: takeover.counterparty,
+    companyEntityName: takeover.companyEntityName ?? "",
+    amountYuan: centsToYuanInput(takeover.amountCents),
+    signedAt: takeover.signedAt.slice(0, 10),
+    takeoverLevel: takeover.takeoverLevel,
+    lifecycleStatus: takeover.lifecycleStatus,
+    paymentTermsOriginalText: takeover.paymentTermsOriginalText,
+    historicalSettledYuan: centsToYuanInput(takeover.historicalSettledCents),
+    historicalApprovalPendingPaymentYuan: centsToYuanInput(takeover.historicalApprovalPendingPaymentCents),
+    historicalApprovedPendingPaymentYuan: centsToYuanInput(takeover.historicalApprovedPendingPaymentCents),
+    historicalPaidYuan: centsToYuanInput(takeover.historicalPaidCents),
+    historicalProxyPaidYuan: centsToYuanInput(takeover.historicalProxyPaidCents),
+    historicalAdvancePaidYuan: centsToYuanInput(takeover.historicalAdvancePaidCents),
+    historicalAdvanceDeductedYuan: centsToYuanInput(takeover.historicalAdvanceDeductedCents),
+    historicalRetentionWithheldYuan: centsToYuanInput(takeover.historicalRetentionWithheldCents),
+    historicalRetentionReleasedYuan: centsToYuanInput(takeover.historicalRetentionReleasedCents),
+    otherConfirmedOccupancyYuan: centsToYuanInput(takeover.otherConfirmedOccupancyCents),
+    balanceSourceSummary: takeover.balanceSourceSummary ?? "",
+    evidenceSummary: takeover.evidenceSummary ?? ""
+  };
+}
+
+function centsToYuanInput(value: number | string) {
+  const cents = BigInt(value);
+  const yuan = cents / 100n;
+  const fraction = String(cents % 100n).padStart(2, "0");
+  return `${yuan}.${fraction}`;
 }
 
 function createEmptyForm(): CreateFormState {

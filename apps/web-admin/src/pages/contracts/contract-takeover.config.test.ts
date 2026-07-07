@@ -2,6 +2,7 @@ import type { ContractTakeoverReadModel } from "../../api/core-flow-read.api";
 import { describe, expect, it } from "vitest";
 import {
   canConfirmTakeover,
+  canEditTakeover,
   canSubmitTakeoverReview,
   centsToYuanText,
   contractTakeoverColumns,
@@ -64,6 +65,10 @@ describe("contract takeover page configuration", () => {
     expect(canConfirmTakeover({ takeoverStatus: "pending_review" })).toBe(true);
     expect(canConfirmTakeover({ takeoverStatus: "draft" })).toBe(false);
     expect(canConfirmTakeover({ takeoverStatus: "confirmed" })).toBe(false);
+
+    expect(canEditTakeover({ takeoverStatus: "draft" })).toBe(true);
+    expect(canEditTakeover({ takeoverStatus: "needs_supplement" })).toBe(true);
+    expect(canEditTakeover({ takeoverStatus: "pending_review" })).toBe(false);
   });
 
   it("keeps historical balances separated in table rows", () => {
@@ -89,7 +94,9 @@ function takeover(): ContractTakeoverReadModel {
     contractNo: "HT-LS-001",
     contractName: "历史材料采购合同",
     counterparty: "历史供应商",
+    companyEntityName: "建工智管公司",
     amountCents: "100000000",
+    paymentTermsOriginalText: "按月结算，归档后付款",
     takeoverLevel: "B",
     takeoverStatus: "pending_review",
     lifecycleStatus: "in_progress",

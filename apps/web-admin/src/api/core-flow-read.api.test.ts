@@ -79,7 +79,8 @@ import {
   createApprovalDelegation,
   fetchApprovalDelegationUserOptions,
   revokeApprovalDelegation,
-  submitContractTakeoverReview
+  submitContractTakeoverReview,
+  updateContractTakeover
 } from "./core-flow-read.api";
 
 describe("core flow read API client", () => {
@@ -644,18 +645,15 @@ describe("core flow read API client", () => {
       ok: true,
       json: async () => ({ id: "takeover-1" })
     } as Response);
-
-    await listContractTakeovers("project-1");
-    await getContractTakeover("project-1", "takeover-1");
-    await createContractTakeover("project-1", {
+    const takeoverPayload = {
       code: "HT-LS-2026-001",
       name: "历史材料采购合同",
       counterparty: "历史供应商",
       companyEntityName: "建工集团",
       amountCents: 100000000,
       signedAt: "2026-01-01",
-      takeoverLevel: "B",
-      lifecycleStatus: "in_progress",
+      takeoverLevel: "B" as const,
+      lifecycleStatus: "in_progress" as const,
       paymentTermsOriginalText: "按月结算付款。",
       historicalSettledCents: 60000000,
       historicalApprovalPendingPaymentCents: 1000000,
@@ -669,7 +667,12 @@ describe("core flow read API client", () => {
       otherConfirmedOccupancyCents: 800000,
       balanceSourceSummary: "财务台账核对",
       evidenceSummary: "合同与付款凭证已归档"
-    });
+    };
+
+    await listContractTakeovers("project-1");
+    await getContractTakeover("project-1", "takeover-1");
+    await createContractTakeover("project-1", takeoverPayload);
+    await updateContractTakeover("project-1", "takeover-1", takeoverPayload);
     await submitContractTakeoverReview("project-1", "takeover-1");
     await confirmContractTakeover("project-1", "takeover-1", {
       confirmationPassword: "current-password"
@@ -679,6 +682,7 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/contract-takeovers",
       "/api/projects/project-1/contract-takeovers/takeover-1",
       "/api/projects/project-1/contract-takeovers",
+      "/api/projects/project-1/contract-takeovers/takeover-1",
       "/api/projects/project-1/contract-takeovers/takeover-1/review-submission",
       "/api/projects/project-1/contract-takeovers/takeover-1/confirmation"
     ]);
@@ -686,35 +690,17 @@ describe("core flow read API client", () => {
       undefined,
       undefined,
       "POST",
+      "PATCH",
       "POST",
       "POST"
     ]);
     expect(fetchMock.mock.calls[2][1]?.body).toBe(
       JSON.stringify({
-        code: "HT-LS-2026-001",
-        name: "历史材料采购合同",
-        counterparty: "历史供应商",
-        companyEntityName: "建工集团",
-        amountCents: 100000000,
-        signedAt: "2026-01-01",
-        takeoverLevel: "B",
-        lifecycleStatus: "in_progress",
-        paymentTermsOriginalText: "按月结算付款。",
-        historicalSettledCents: 60000000,
-        historicalApprovalPendingPaymentCents: 1000000,
-        historicalApprovedPendingPaymentCents: 2000000,
-        historicalPaidCents: 30000000,
-        historicalProxyPaidCents: 4000000,
-        historicalAdvancePaidCents: 5000000,
-        historicalAdvanceDeductedCents: 1000000,
-        historicalRetentionWithheldCents: 3000000,
-        historicalRetentionReleasedCents: 1000000,
-        otherConfirmedOccupancyCents: 800000,
-        balanceSourceSummary: "财务台账核对",
-        evidenceSummary: "合同与付款凭证已归档"
+        ...takeoverPayload
       })
     );
-    expect(fetchMock.mock.calls[4][1]?.body).toBe(
+    expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify(takeoverPayload));
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
     );
   });

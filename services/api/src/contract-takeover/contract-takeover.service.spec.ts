@@ -206,6 +206,143 @@ describe("ContractTakeoverService", () => {
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
 
+  it("updates an editable takeover draft and keeps linked contract facts in sync", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" })),
+        update: jest.fn().mockResolvedValue(
+          takeoverRecord({
+            takeoverLevel: "C",
+            lifecycleStatus: "disputed",
+            historicalPaidCents: 350_000n
+          })
+        )
+      },
+      contract: { update: jest.fn() },
+      contractVersion: { update: jest.fn() },
+      paymentTermsVersion: { update: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.updateDraft(
+      "project-1",
+      "takeover-1",
+      {
+        code: "HT-HIS-EDIT",
+        name: "Edited historical contract",
+        counterparty: "Supplier B",
+        companyEntityName: "建工智管公司",
+        amountCents: 1_200_000,
+        signedAt: "2026-02-01",
+        takeoverLevel: "C",
+        lifecycleStatus: "disputed",
+        paymentTermsOriginalText: "Updated terms.",
+        historicalSettledCents: 700_000,
+        historicalApprovalPendingPaymentCents: 50_000,
+        historicalApprovedPendingPaymentCents: 100_000,
+        historicalPaidCents: 350_000,
+        historicalProxyPaidCents: 20_000,
+        historicalAdvancePaidCents: 50_000,
+        historicalAdvanceDeductedCents: 10_000,
+        historicalRetentionWithheldCents: 30_000,
+        historicalRetentionReleasedCents: 0,
+        otherConfirmedOccupancyCents: 5_000,
+        balanceSourceSummary: "Updated balance.",
+        evidenceSummary: "Updated evidence."
+      },
+      "contract-user"
+    );
+
+    expect(result).toMatchObject({
+      contractNo: "HT-HIS-EDIT",
+      contractName: "Edited historical contract",
+      companyEntityName: "建工智管公司",
+      paymentTermsOriginalText: "Updated terms.",
+      takeoverLevel: "C",
+      lifecycleStatus: "disputed",
+      historicalPaidCents: "350000"
+    });
+    expect(tx.contract.update).toHaveBeenCalledWith({
+      where: { id: "contract-1" },
+      data: expect.objectContaining({
+        code: "HT-HIS-EDIT",
+        name: "Edited historical contract",
+        counterparty: "Supplier B",
+        companyEntityName: "建工智管公司"
+      })
+    });
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "contract-version-1" },
+      data: { amountCents: BigInt(1_200_000) }
+    });
+    expect(tx.paymentTermsVersion.update).toHaveBeenCalledWith({
+      where: { id: "terms-version-1" },
+      data: { originalText: "Updated terms." }
+    });
+    expect(tx.contractTakeover.update).toHaveBeenCalledWith({
+      where: { id: "takeover-1" },
+      data: expect.objectContaining({
+        takeoverLevel: "C",
+        lifecycleStatus: "disputed",
+        historicalPaidCents: BigInt(350_000)
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "contract-user",
+      action: "contract_takeover.update_draft",
+      businessType: "contract_takeover",
+      businessId: "takeover-1",
+      metadata: expect.objectContaining({
+        projectId: "project-1",
+        fromStatus: "draft"
+      })
+    });
+  });
+
+  it("rejects editing takeover records after review submission", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "pending_review" }))
+      },
+      contract: { update: jest.fn() },
+      contractVersion: { update: jest.fn() },
+      paymentTermsVersion: { update: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.updateDraft(
+        "project-1",
+        "takeover-1",
+        {
+          code: "HT-HIS-EDIT",
+          name: "Edited historical contract",
+          counterparty: "Supplier B",
+          amountCents: 1_200_000,
+          signedAt: "2026-02-01",
+          takeoverLevel: "C",
+          lifecycleStatus: "disputed",
+          paymentTermsOriginalText: "Updated terms.",
+          balanceSourceSummary: "Updated balance.",
+          evidenceSummary: "Updated evidence."
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("Cannot update takeover draft from status pending_review");
+    expect(tx.contract.update).not.toHaveBeenCalled();
+  });
+
   it("rejects missing signed date before writing", async () => {
     const tx = {
       project: {

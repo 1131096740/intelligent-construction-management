@@ -7,7 +7,8 @@ import type { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover
 import type {
   ContractLifecycleStatus,
   ContractTakeoverLevel,
-  CreateContractTakeoverDto
+  CreateContractTakeoverDto,
+  UpdateContractTakeoverDto
 } from "./dto/create-contract-takeover.dto";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
@@ -35,13 +36,15 @@ const MONEY_FIELDS = [
 type TakeoverClient = Pick<Prisma.TransactionClient, "contractTakeover">;
 type TakeoverReadClient = Pick<
   Prisma.TransactionClient,
-  "contract" | "contractVersion"
+  "contract" | "contractVersion" | "paymentTermsVersion"
 >;
 
 type ContractTakeoverRecord = {
   id: string;
+  projectId: string;
   contractId: string;
   contractVersionId: string;
+  paymentTermsVersionId: string;
   takeoverLevel: string;
   takeoverStatus: string;
   lifecycleStatus: string;
@@ -70,7 +73,9 @@ export interface ContractTakeoverBusinessReadModel {
   contractNo: string;
   contractName: string;
   counterparty: string;
+  companyEntityName: string | null;
   amountCents: string;
+  paymentTermsOriginalText: string;
   takeoverLevel: string;
   takeoverStatus: string;
   lifecycleStatus: string;
@@ -195,7 +200,88 @@ export class ContractTakeoverService {
         contractNo: data.code,
         contractName: data.name,
         counterparty: data.counterparty,
-        amountCents: data.amountCents
+        companyEntityName: data.companyEntityName ?? null,
+        amountCents: data.amountCents,
+        paymentTermsOriginalText: data.paymentTermsOriginalText ?? ""
+      });
+    });
+  }
+
+  async updateDraft(
+    projectId: string,
+    takeoverId: string,
+    input: UpdateContractTakeoverDto,
+    actorUserId: string
+  ) {
+    const data = this.normalizeCreateInput(input);
+
+    return this.prisma.$transaction(async (tx) => {
+      const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
+      if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
+        throw new Error(`Cannot update takeover draft from status ${takeover.takeoverStatus}`);
+      }
+
+      await tx.contract.update({
+        where: { id: takeover.contractId },
+        data: {
+          code: data.code,
+          name: data.name,
+          counterparty: data.counterparty,
+          companyEntityId: data.companyEntityId ?? null,
+          companyEntityName: data.companyEntityName ?? null,
+          contractTypeKey: data.contractTypeKey ?? null
+        }
+      });
+      await tx.contractVersion.update({
+        where: { id: takeover.contractVersionId },
+        data: { amountCents: BigInt(data.amountCents) }
+      });
+      await tx.paymentTermsVersion.update({
+        where: { id: takeover.paymentTermsVersionId },
+        data: { originalText: data.paymentTermsOriginalText ?? "" }
+      });
+      const updated = await tx.contractTakeover.update({
+        where: { id: takeover.id },
+        data: {
+          takeoverLevel: data.takeoverLevel,
+          lifecycleStatus: data.lifecycleStatus,
+          signedAt: data.signedAt,
+          historicalSettledCents: BigInt(data.historicalSettledCents),
+          historicalApprovalPendingPaymentCents: BigInt(data.historicalApprovalPendingPaymentCents),
+          historicalApprovedPendingPaymentCents: BigInt(data.historicalApprovedPendingPaymentCents),
+          historicalPaidCents: BigInt(data.historicalPaidCents),
+          historicalProxyPaidCents: BigInt(data.historicalProxyPaidCents),
+          historicalAdvancePaidCents: BigInt(data.historicalAdvancePaidCents),
+          historicalAdvanceDeductedCents: BigInt(data.historicalAdvanceDeductedCents),
+          historicalRetentionWithheldCents: BigInt(data.historicalRetentionWithheldCents),
+          historicalRetentionReleasedCents: BigInt(data.historicalRetentionReleasedCents),
+          otherConfirmedOccupancyCents: BigInt(data.otherConfirmedOccupancyCents),
+          balanceSourceSummary: data.balanceSourceSummary ?? null,
+          evidenceSummary: data.evidenceSummary ?? null
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover.update_draft",
+        businessType: "contract_takeover",
+        businessId: takeover.id,
+        metadata: {
+          projectId,
+          contractId: takeover.contractId,
+          contractVersionId: takeover.contractVersionId,
+          fromStatus: takeover.takeoverStatus,
+          takeoverLevel: data.takeoverLevel
+        }
+      });
+
+      return this.toReadModel(updated, {
+        contractNo: data.code,
+        contractName: data.name,
+        counterparty: data.counterparty,
+        companyEntityName: data.companyEntityName ?? null,
+        amountCents: data.amountCents,
+        paymentTermsOriginalText: data.paymentTermsOriginalText ?? ""
       });
     });
   }
@@ -333,19 +419,37 @@ export class ContractTakeoverService {
 
     const contractIds = unique(takeovers.map((takeover) => takeover.contractId));
     const contractVersionIds = unique(takeovers.map((takeover) => takeover.contractVersionId));
-    const [contracts, versions] = await Promise.all([
+    const paymentTermsClient = (client as unknown as {
+      paymentTermsVersion?: TakeoverReadClient["paymentTermsVersion"];
+    }).paymentTermsVersion;
+    const paymentTermsVersionIds = unique(takeovers.map((takeover) => takeover.paymentTermsVersionId));
+    const [contracts, versions, terms] = await Promise.all([
       client.contract.findMany({
         where: { id: { in: contractIds } },
-        select: { id: true, code: true, temporaryCode: true, name: true, counterparty: true }
+        select: {
+          id: true,
+          code: true,
+          temporaryCode: true,
+          name: true,
+          counterparty: true,
+          companyEntityName: true
+        }
       }),
       client.contractVersion.findMany({
         where: { id: { in: contractVersionIds } },
         select: { id: true, amountCents: true }
-      })
+      }),
+      typeof paymentTermsClient?.findMany === "function"
+        ? paymentTermsClient.findMany({
+            where: { id: { in: paymentTermsVersionIds } },
+            select: { id: true, originalText: true }
+          })
+        : Promise.resolve([])
     ]);
 
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const versionById = new Map(versions.map((version) => [version.id, version]));
+    const termsById = new Map(terms.map((term) => [term.id, term]));
 
     return takeovers.map((takeover) =>
       this.toReadModel(takeover, {
@@ -355,7 +459,9 @@ export class ContractTakeoverService {
           takeover.id,
         contractName: contractById.get(takeover.contractId)?.name ?? "未读取合同名称",
         counterparty: contractById.get(takeover.contractId)?.counterparty ?? "未读取相对方",
-        amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0
+        companyEntityName: contractById.get(takeover.contractId)?.companyEntityName ?? null,
+        amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0,
+        paymentTermsOriginalText: termsById.get(takeover.paymentTermsVersionId)?.originalText ?? ""
       })
     );
   }
@@ -374,7 +480,9 @@ export class ContractTakeoverService {
       contractNo: string;
       contractName: string;
       counterparty: string;
+      companyEntityName: string | null;
       amountCents: bigint | number;
+      paymentTermsOriginalText: string;
     }
   ): ContractTakeoverBusinessReadModel {
     return {
@@ -382,7 +490,9 @@ export class ContractTakeoverService {
       contractNo: contract.contractNo,
       contractName: contract.contractName,
       counterparty: contract.counterparty,
+      companyEntityName: contract.companyEntityName,
       amountCents: moneyString(contract.amountCents),
+      paymentTermsOriginalText: contract.paymentTermsOriginalText,
       takeoverLevel: takeover.takeoverLevel,
       takeoverStatus: takeover.takeoverStatus,
       lifecycleStatus: takeover.lifecycleStatus,

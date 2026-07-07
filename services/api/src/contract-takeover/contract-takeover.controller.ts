@@ -1,10 +1,13 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractTakeoverService } from "./contract-takeover.service";
 import type { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
-import type { CreateContractTakeoverDto } from "./dto/create-contract-takeover.dto";
+import type {
+  CreateContractTakeoverDto,
+  UpdateContractTakeoverDto
+} from "./dto/create-contract-takeover.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
@@ -33,6 +36,17 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.create(projectId, body, user.id);
+  }
+
+  @Patch(":takeoverId")
+  @RequireProjectRole("contract.create")
+  updateDraft(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: UpdateContractTakeoverDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.updateDraft(projectId, takeoverId, body, user.id);
   }
 
   @Post(":takeoverId/review-submission")

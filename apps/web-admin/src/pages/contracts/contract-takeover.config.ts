@@ -105,6 +105,10 @@ export function canConfirmTakeover(takeover: Pick<ContractTakeoverReadModel, "ta
   return takeover.takeoverStatus === "pending_review";
 }
 
+export function canEditTakeover(takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">) {
+  return takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement";
+}
+
 export function yuanToCents(
   value: string,
   label: string,

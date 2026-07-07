@@ -33,3 +33,5 @@ export interface CreateContractTakeoverDto {
   balanceSourceSummary?: string;
   evidenceSummary?: string;
 }
+
+export type UpdateContractTakeoverDto = CreateContractTakeoverDto;
