@@ -155,6 +155,7 @@ import {
   fetchArchives,
   uploadPrivateFile
 } from "../../api/core-flow-read.api";
+import { confirmSensitiveAction } from "../confirm-sensitive-action";
 import type { ArchiveLedgerRow, ArchiveTone } from "./archive-list.config";
 import {
   archiveFilterFields,
@@ -261,6 +262,13 @@ async function confirmDownload() {
   if (!password) {
     message.value = "请输入当前登录密码。";
     messageTone.value = "danger";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认下载后，系统将校验当前密码并记录下载人、资料文件和业务单据审计。是否继续？"
+    )
+  ) {
     return;
   }
 

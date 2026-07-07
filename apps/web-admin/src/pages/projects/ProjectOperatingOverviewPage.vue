@@ -278,12 +278,39 @@
             >
           </label>
           <label>
-            <span>关联合同编号/ID</span>
-            <input v-model.trim="proxyForm.contractId">
+            <span>关联合同</span>
+            <select
+              v-model="proxyForm.contractOptionValue"
+              :disabled="proxySubmitting || proxyContractSelectOptions.length === 0"
+              @change="proxyForm.settlementId = ''"
+            >
+              <option value="">不关联合同</option>
+              <option
+                v-for="option in proxyContractSelectOptions"
+                :key="option.value"
+                :value="option.value"
+                :disabled="option.disabled"
+              >
+                {{ option.label }}（{{ option.hint }}）
+              </option>
+            </select>
           </label>
           <label>
-            <span>关联结算编号/ID</span>
-            <input v-model.trim="proxyForm.settlementId">
+            <span>关联结算</span>
+            <select
+              v-model="proxyForm.settlementId"
+              :disabled="proxySubmitting || !selectedProxyContract || proxySettlementSelectOptions.length === 0"
+            >
+              <option value="">不关联结算</option>
+              <option
+                v-for="option in proxySettlementSelectOptions"
+                :key="option.value"
+                :value="option.value"
+                :disabled="option.disabled"
+              >
+                {{ option.label }}（{{ option.hint }}）
+              </option>
+            </select>
           </label>
           <label>
             <span>当前登录密码</span>
@@ -662,6 +689,7 @@ import {
   createProject,
   createProjectExpenseRequest,
   downloadProjectExpenseAttachment,
+  fetchPaymentContractOptions,
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
@@ -679,7 +707,12 @@ import {
   type ProjectOperatingOverviewReadModel,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
+import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { useAuthStore } from "../../auth/auth.store";
+import {
+  toContractSelectOptions,
+  toSettlementSelectOptions
+} from "../contracts/contract-business-options.config";
 import {
   expensePaymentMethodLabel,
   expensePaymentMethodOptions,
@@ -688,6 +721,11 @@ import {
   expenseTypeOptions,
   subtypeOptionsFor
 } from "./project-expense.config";
+import {
+  buildProxyPaymentLinkPayload,
+  findProjectProxyContract,
+  findProjectProxySettlement
+} from "./project-operating.config";
 
 type ReceiptSourceType = "general_contractor_payment" | "owner_direct_payment" | "other";
 type ProxyPaymentType = "material" | "equipment" | "labor" | "professional_subcontract" | "other";
@@ -712,7 +750,7 @@ interface ProxyPaymentFormState {
   description: string;
   voucherFile: File | null;
   confirmationPassword: string;
-  contractId: string;
+  contractOptionValue: string;
   settlementId: string;
 }
 
@@ -751,6 +789,7 @@ interface ProjectFormState {
 
 const auth = useAuthStore();
 const projects = ref<ProjectOptionReadModel[]>([]);
+const proxyContractOptions = ref<ContractBusinessOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
 const selectedProjectId = ref("");
@@ -808,6 +847,15 @@ const projectExpenseSummaryItems = computed(() => {
 });
 
 const currentExpenseSubtypeOptions = computed(() => subtypeOptionsFor(expenseForm.value.expenseType));
+
+const proxyContractSelectOptions = computed(() => toContractSelectOptions(proxyContractOptions.value, "payment"));
+const selectedProxyContract = computed(() =>
+  findProjectProxyContract(proxyContractOptions.value, proxyForm.value.contractOptionValue)
+);
+const proxySettlementSelectOptions = computed(() => toSettlementSelectOptions(selectedProxyContract.value));
+const selectedProxySettlement = computed(() =>
+  findProjectProxySettlement(selectedProxyContract.value, proxyForm.value.settlementId)
+);
 
 const canManageProjects = computed(
   () => auth.user?.roleKeys.some((role) => role === "chairman" || role === "general_manager") ?? false
@@ -933,19 +981,22 @@ async function loadOverview() {
   if (!projectId) {
     overview.value = null;
     selectedExpenseRow.value = null;
+    proxyContractOptions.value = [];
     return;
   }
 
   loadingOverview.value = true;
   message.value = "";
   try {
-    const [nextOverview, nextExpenses] = await Promise.all([
+    const [nextOverview, nextExpenses, nextProxyContracts] = await Promise.all([
       fetchProjectOperatingOverview(projectId),
-      fetchProjectExpenseRequests(projectId)
+      fetchProjectExpenseRequests(projectId),
+      fetchPaymentContractOptions(projectId)
     ]);
     if (selectedProjectId.value === projectId) {
       overview.value = nextOverview;
       projectExpenses.value = nextExpenses;
+      proxyContractOptions.value = nextProxyContracts;
       selectedExpenseRow.value = selectedExpenseId
         ? nextExpenses.rows.find((row) => row.id === selectedExpenseId) ?? null
         : null;
@@ -953,6 +1004,7 @@ async function loadOverview() {
   } catch (error) {
     if (selectedProjectId.value === projectId) {
       overview.value = null;
+      proxyContractOptions.value = [];
       selectedExpenseRow.value = null;
       message.value = error instanceof Error ? error.message : "加载项目经营数据失败";
     }
@@ -1083,8 +1135,7 @@ async function submitProxyPayment() {
       description: form.description.trim() || undefined,
       voucherFileId: voucher.id,
       confirmationPassword,
-      contractId: form.contractId.trim() || undefined,
-      settlementId: form.settlementId.trim() || undefined
+      ...buildProxyPaymentLinkPayload(selectedProxyContract.value, selectedProxySettlement.value)
     });
     proxyForm.value = createProxyForm(form.paymentType);
     if (proxyVoucherInput.value) {
@@ -1122,7 +1173,7 @@ function createProxyForm(paymentType: ProxyPaymentType = "material"): ProxyPayme
     description: "",
     voucherFile: null,
     confirmationPassword: "",
-    contractId: "",
+    contractOptionValue: "",
     settlementId: ""
   };
 }

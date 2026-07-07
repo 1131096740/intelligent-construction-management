@@ -43,6 +43,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-08 (CodeX)：继续执行企业流程系统前端改造 P0 收口：项目经营代发付款改为业务合同/结算选择器；合同/结算/付款详情和合同工作台清除核心人员 ID 手填，统一使用同项目人员选择器；驳回/退回审批意见后端必填并落审批日志；流程动作展示后端禁用原因；归档确认、审批、实付、入账、敏感下载提交前先校验再复述业务后果二次确认；后台骨架补 skip link、主内容焦点和标题；合作单位附件不再展示 `fileId`。验证：Web typecheck/lint/全量 Vitest、API typecheck/lint/全量 Jest、`git diff --check` 通过。
 - 2026-07-08 (CodeX)：按业务确认将常驻审批委托候选人收窄到同项目：`user-options` 只返回当前用户可见项目内的活跃用户，创建委托时后端再次拒绝非同项目目标；不改委托表结构，保留“人到人”常驻委托。验证：API 全量 Jest、API typecheck、API lint、`git diff --check` 通过。
 - 2026-07-07 (CodeX)：继续企业流程系统前端改造 P0：codebase-memory full 索引已生成；新增逐单工作项 API/首页消费、审批中心五视图、合同/结算/付款 `availableActions`、资料库行内授权下载、委托人员选择器；按评审修复常驻委托待办/详情按钮、部分付款财务入账与 PDF 归档动作、待确认归档件前后端下载硬拦截、委托审批守卫一致性。验证：API/Web typecheck、API 全量 Jest、Web 全量 Vitest、`git diff --check` 通过。
 - 2026-07-07 (CodeX)：瘦身 `PROGRESS.md`，主文件改为驾驶舱；原 311 行详细记录已归档到 `docs/progress/full-history-through-2026-07-07.md`。

@@ -57,6 +57,17 @@
       title="流程动作"
       :bordered="true"
     >
+      <div
+        v-if="settlementActionBlockMessages.length"
+        class="action-blockers"
+      >
+        <span
+          v-for="message in settlementActionBlockMessages"
+          :key="message"
+        >
+          {{ message }}
+        </span>
+      </div>
       <div class="action-grid">
         <div class="action-group">
           <div class="action-title">
@@ -121,9 +132,10 @@
             <span>撤回、催办、转审、委托</span>
           </div>
           <div class="action-fields">
-            <t-input
+            <t-select
               v-model="settlementArchiveForm.assignmentUserId"
-              placeholder="目标人员编号"
+              :options="assignmentUserOptions"
+              placeholder="选择目标处理人"
             />
           </div>
           <div class="action-buttons">
@@ -378,6 +390,7 @@ import {
   downloadSettlementAttachmentTemplate,
   downloadSettlementDraftExcel,
   downloadSettlementLatestApprovalPdf,
+  fetchApprovalDelegationUserOptions,
   fetchSettlementDetail,
   generateSettlementPdfArchive,
   remindSettlementApproval,
@@ -387,6 +400,7 @@ import {
   uploadSettlementArchiveFile,
   withdrawSettlementApproval
 } from "../../api/core-flow-read.api";
+import { confirmSensitiveAction } from "../confirm-sensitive-action";
 import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
   settlementAttachmentTemplates,
@@ -397,6 +411,7 @@ const route = useRoute();
 const router = useRouter();
 const settlementDetail = ref<SettlementDetailReadModel | null>(null);
 const settlementDetailLoadError = ref("");
+const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
@@ -448,7 +463,17 @@ const settlementArchiveRecordOptions = computed(() =>
 const settlementActionByKey = computed(
   () => new Map((settlementDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
+const settlementActionBlockMessages = computed(() => [
+  ...new Set(
+    (settlementDetail.value?.availableActions ?? [])
+      .filter((action) => !action.enabled && action.disabledReason)
+      .map((action) => action.disabledReason as string)
+  )
+]);
 const canRunSettlementAction = computed(() => !!settlementDetail.value?.settlementId);
+const assignmentUserOptions = computed(() =>
+  assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
+);
 
 function isSettlementActionEnabled(key: string) {
   return settlementActionByKey.value.get(key)?.enabled ?? false;
@@ -485,7 +510,11 @@ async function reloadSettlementDetail() {
 }
 
 onMounted(async () => {
-  await reloadSettlementDetail();
+  const [, users] = await Promise.all([
+    reloadSettlementDetail(),
+    fetchApprovalDelegationUserOptions().catch(() => [])
+  ]);
+  assignmentUsers.value = users;
 });
 
 function requiredText(raw: string, label: string) {
@@ -550,14 +579,28 @@ async function submitSettlementArchiveUpload() {
 
 async function submitSettlementArchiveConfirmation() {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  let archiveFileId = "";
+  let confirmationPassword = "";
+  try {
+    archiveFileId = requiredText(settlementArchiveForm.archiveFileId, "归档文件");
+    confirmationPassword = requiredText(settlementArchiveForm.confirmationPassword, "当前登录密码");
+  } catch (error) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = error instanceof Error ? error.message : "确认归档失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认归档后，当前结算将生效，并允许基于该结算发起付款申请。是否继续？"
+    )
+  ) {
+    return;
+  }
 
   await runArchiveAction("confirm", () =>
     confirmSettlementArchive(settlementId, {
-      archiveFileId: requiredText(settlementArchiveForm.archiveFileId, "归档文件"),
-      confirmationPassword: requiredText(
-        settlementArchiveForm.confirmationPassword,
-        "当前登录密码"
-      )
+      archiveFileId,
+      confirmationPassword
     })
   );
 }
@@ -566,11 +609,26 @@ async function submitSettlementReview(
   decision: "approve" | "reject" | "reject_previous" | "return_to_applicant"
 ) {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const comment = settlementArchiveForm.approvalComment.trim() || undefined;
+  if (decision !== "approve" && !comment) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = "驳回或退回审批必须填写原因。";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      decision === "approve"
+        ? "确认同意后，本节点审批意见将写入审批历史，并推动结算进入下一节点或归档确认。是否继续？"
+        : "确认驳回或退回后，结算审批流将回到指定处理环节，原因会写入审批历史。是否继续？"
+    )
+  ) {
+    return;
+  }
 
   await runArchiveAction("reviewApproval", () =>
     reviewSettlementApproval(settlementId, {
       decision,
-      comment: settlementArchiveForm.approvalComment.trim() || undefined
+      comment
     })
   );
 }
@@ -597,7 +655,7 @@ async function submitSettlementReminder() {
 
 async function submitSettlementAssignment(kind: "transfer" | "delegate") {
   const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
-  const toUserId = requiredText(settlementArchiveForm.assignmentUserId, "目标人员编号");
+  const toUserId = requiredText(settlementArchiveForm.assignmentUserId, "目标处理人");
 
   await runArchiveAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
     kind === "transfer"
@@ -627,13 +685,26 @@ async function downloadSettlementAttachment(templateKey: string) {
 }
 
 async function submitSettlementFileDownload() {
+  let fileId = "";
+  let confirmationPassword = "";
+  try {
+    fileId = requiredText(settlementArchiveForm.downloadFileId, "结算归档文件");
+    confirmationPassword = requiredText(settlementArchiveForm.downloadPassword, "当前登录密码");
+  } catch (error) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = error instanceof Error ? error.message : "下载结算归档文件失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认下载后，系统将校验当前密码并记录下载人、结算文件和业务单据审计。是否继续？"
+    )
+  ) {
+    return;
+  }
+
   await runArchiveAction("download", async () => {
-    const ticket = await createPrivateFileDownloadTicket(
-      requiredText(settlementArchiveForm.downloadFileId, "结算归档文件"),
-      {
-        confirmationPassword: requiredText(settlementArchiveForm.downloadPassword, "当前登录密码")
-      }
-    );
+    const ticket = await createPrivateFileDownloadTicket(fileId, { confirmationPassword });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
   });
 }
@@ -934,6 +1005,18 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   padding: 18px 20px;
   color: #b51d2a;
   font-weight: 600;
+}
+
+.action-blockers {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  color: #7a4b00;
+  background: #fff7e6;
+  border: 1px solid #f2cf8f;
+  border-radius: 3px;
+  font-size: 12px;
 }
 
 @media (max-width: 980px) {

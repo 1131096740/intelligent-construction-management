@@ -57,6 +57,17 @@
       title="流程动作"
       :bordered="true"
     >
+      <div
+        v-if="paymentActionBlockMessages.length"
+        class="action-blockers"
+      >
+        <span
+          v-for="message in paymentActionBlockMessages"
+          :key="message"
+        >
+          {{ message }}
+        </span>
+      </div>
       <div class="action-grid">
         <div class="action-group">
           <div class="action-title">
@@ -211,9 +222,10 @@
             <span>撤回、催办、转审、委托</span>
           </div>
           <div class="action-fields">
-            <t-input
+            <t-select
               v-model="paymentActionForm.assignmentUserId"
-              placeholder="目标人员编号"
+              :options="assignmentUserOptions"
+              placeholder="选择目标处理人"
             />
           </div>
           <div class="action-buttons">
@@ -412,6 +424,7 @@ import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   createPrivateFileDownloadTicket,
   delegatePaymentApproval,
+  fetchApprovalDelegationUserOptions,
   fetchPaymentDetail,
   generatePaymentPdfArchive,
   downloadApprovalForm as requestApprovalFormDownload,
@@ -424,6 +437,7 @@ import {
   uploadPrivateFile,
   withdrawPaymentApproval
 } from "../../api/core-flow-read.api";
+import { confirmSensitiveAction } from "../confirm-sensitive-action";
 import type { PaymentDetailTone, PaymentExecutionAllocationRow } from "./payment-detail.config";
 import {
   paymentExecutionAllocationColumns
@@ -433,6 +447,7 @@ const route = useRoute();
 const router = useRouter();
 const paymentDetail = ref<PaymentDetailReadModel | null>(null);
 const paymentDetailLoadError = ref("");
+const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const actionBusy = ref("");
 const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
@@ -492,6 +507,16 @@ const paymentEvidenceFileOptions = computed(() =>
 const paymentActionByKey = computed(
   () => new Map((paymentDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
+const paymentActionBlockMessages = computed(() => [
+  ...new Set(
+    (paymentDetail.value?.availableActions ?? [])
+      .filter((action) => !action.enabled && action.disabledReason)
+      .map((action) => action.disabledReason as string)
+  )
+]);
+const assignmentUserOptions = computed(() =>
+  assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
+);
 
 function isPaymentActionEnabled(key: string) {
   return paymentActionByKey.value.get(key)?.enabled ?? false;
@@ -524,7 +549,11 @@ async function reloadPaymentDetail() {
 }
 
 onMounted(async () => {
-  await reloadPaymentDetail();
+  const [, users] = await Promise.all([
+    reloadPaymentDetail(),
+    fetchApprovalDelegationUserOptions().catch(() => [])
+  ]);
+  assignmentUsers.value = users;
 });
 
 function toDatetimeLocalValue(date: Date) {
@@ -624,15 +653,38 @@ async function runPaymentAction(key: string, action: () => Promise<unknown>) {
 
 async function submitApproval(decision: "approve" | "reject") {
   const paymentId = currentPaymentId();
+  const comment = paymentActionForm.approvalComment.trim() || undefined;
+  let approvedAmountCents: number | undefined;
+  try {
+    approvedAmountCents =
+      decision === "approve"
+        ? optionalYuanAmount(paymentActionForm.approvedAmountYuan, "审批金额")
+        : undefined;
+  } catch (error) {
+    actionMessageTone.value = "danger";
+    actionMessage.value = error instanceof Error ? error.message : "付款审批失败";
+    return;
+  }
+  if (decision === "reject" && !comment) {
+    actionMessageTone.value = "danger";
+    actionMessage.value = "驳回付款审批必须填写原因。";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      decision === "approve"
+        ? "确认同意后，付款申请只会进入已批待付款，仍需财务/出纳登记实付。是否继续？"
+        : "确认驳回后，本轮付款审批将终止，原因会写入审批历史。是否继续？"
+    )
+  ) {
+    return;
+  }
 
   await runPaymentAction("approval", () =>
     reviewPaymentApproval(paymentId, {
       decision,
-      approvedAmountCents:
-        decision === "approve"
-          ? optionalYuanAmount(paymentActionForm.approvedAmountYuan, "审批金额")
-          : undefined,
-      comment: paymentActionForm.approvalComment.trim() || undefined
+      approvedAmountCents,
+      comment
     })
   );
 }
@@ -647,33 +699,69 @@ async function downloadApprovalForm() {
 
 async function submitExecution() {
   const paymentId = currentPaymentId();
-
-  await runPaymentAction("execution", async () => {
-    const file = selectedPaymentVoucherFile.value;
+  const file = selectedPaymentVoucherFile.value;
+  let amountCents = 0;
+  let paidAt = "";
+  let confirmationPassword = "";
+  try {
     if (!file) {
       throw new Error("付款凭证文件不能为空");
     }
+    amountCents = parseYuanAmount(paymentActionForm.executionAmountYuan, "实付金额");
+    paidAt = toIsoDatetime(paymentActionForm.paidAt, "付款时间");
+    confirmationPassword = requiredText(
+      paymentActionForm.executionConfirmationPassword,
+      "当前登录密码"
+    );
+  } catch (error) {
+    actionMessageTone.value = "danger";
+    actionMessage.value = error instanceof Error ? error.message : "登记实付失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认登记实付后，系统将记录付款金额、时间、凭证和经办人，并影响该结算的已付金额。是否继续？"
+    )
+  ) {
+    return;
+  }
+
+  await runPaymentAction("execution", async () => {
     const uploadedFileId = (await uploadPrivateFile(file, file.name)).id;
 
     return recordPaymentExecution(paymentId, {
-      amountCents: parseYuanAmount(paymentActionForm.executionAmountYuan, "实付金额"),
-      paidAt: toIsoDatetime(paymentActionForm.paidAt, "付款时间"),
+      amountCents,
+      paidAt,
       voucherFileId: uploadedFileId,
-      confirmationPassword: requiredText(
-        paymentActionForm.executionConfirmationPassword,
-        "当前登录密码"
-      )
+      confirmationPassword
     });
   });
 }
 
 async function submitFinance() {
   const paymentId = currentPaymentId();
+  let amountCents = 0;
+  let occurredAt = "";
+  try {
+    amountCents = parseYuanAmount(paymentActionForm.financeAmountYuan, "入账金额");
+    occurredAt = toIsoDatetime(paymentActionForm.occurredAt, "入账时间");
+  } catch (error) {
+    actionMessageTone.value = "danger";
+    actionMessage.value = error instanceof Error ? error.message : "确认入账失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认入账后，系统将记录财务入账金额和发生时间，用于财务台账核对。是否继续？"
+    )
+  ) {
+    return;
+  }
 
   await runPaymentAction("finance", () =>
     recordPaymentFinance(paymentId, {
-      amountCents: parseYuanAmount(paymentActionForm.financeAmountYuan, "入账金额"),
-      occurredAt: toIsoDatetime(paymentActionForm.occurredAt, "入账时间")
+      amountCents,
+      occurredAt
     })
   );
 }
@@ -714,7 +802,7 @@ async function submitPaymentReminder() {
 
 async function submitPaymentAssignment(kind: "transfer" | "delegate") {
   const paymentId = currentPaymentId();
-  const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标人员编号");
+  const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标处理人");
 
   await runPaymentAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
     kind === "transfer"
@@ -724,13 +812,26 @@ async function submitPaymentAssignment(kind: "transfer" | "delegate") {
 }
 
 async function submitPaymentFileDownload() {
+  let fileId = "";
+  let confirmationPassword = "";
+  try {
+    fileId = requiredText(paymentActionForm.downloadFileId, "付款文件");
+    confirmationPassword = requiredText(paymentActionForm.downloadPassword, "当前登录密码");
+  } catch (error) {
+    actionMessageTone.value = "danger";
+    actionMessage.value = error instanceof Error ? error.message : "下载付款文件失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认下载后，系统将校验当前密码并记录下载人、付款文件和业务单据审计。是否继续？"
+    )
+  ) {
+    return;
+  }
+
   await runPaymentAction("download", async () => {
-    const ticket = await createPrivateFileDownloadTicket(
-      requiredText(paymentActionForm.downloadFileId, "付款文件"),
-      {
-        confirmationPassword: requiredText(paymentActionForm.downloadPassword, "当前登录密码")
-      }
-    );
+    const ticket = await createPrivateFileDownloadTicket(fileId, { confirmationPassword });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
   });
 }
@@ -1048,6 +1149,18 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
   padding: 18px 20px;
   color: #9f4f06;
   font-weight: 600;
+}
+
+.action-blockers {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  color: #7a4b00;
+  background: #fff7e6;
+  border: 1px solid #f2cf8f;
+  border-radius: 3px;
+  font-size: 12px;
 }
 
 @media (max-width: 980px) {

@@ -1741,6 +1741,7 @@ export class PaymentRequestService {
     ) {
       throw new Error("Unsupported payment approval decision");
     }
+    requireApprovalCommentForReturn(input.decision, input.comment);
 
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
@@ -2953,6 +2954,12 @@ export class PaymentRequestService {
 
       return updated;
     });
+  }
+}
+
+function requireApprovalCommentForReturn(decision: ReviewPaymentApprovalDto["decision"], comment?: string) {
+  if (decision !== "approve" && !comment?.trim()) {
+    throw new Error("Payment approval comment is required for reject or return decisions");
   }
 }
 

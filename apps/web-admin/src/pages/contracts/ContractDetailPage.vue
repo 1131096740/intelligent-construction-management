@@ -72,6 +72,17 @@
         title="流程动作"
         :bordered="true"
       >
+        <div
+          v-if="contractActionBlockMessages.length"
+          class="action-blockers"
+        >
+          <span
+            v-for="message in contractActionBlockMessages"
+            :key="message"
+          >
+            {{ message }}
+          </span>
+        </div>
         <div class="action-grid">
           <div class="action-group">
             <div class="action-title">
@@ -133,9 +144,10 @@
               <span>撤回、催办、转审、委托</span>
             </div>
             <div class="action-fields">
-              <t-input
+              <t-select
                 v-model="contractArchiveForm.assignmentUserId"
-                placeholder="目标人员编号"
+                :options="assignmentUserOptions"
+                placeholder="选择目标处理人"
               />
             </div>
             <div class="action-buttons">
@@ -444,6 +456,7 @@ import {
   createPrivateFileDownloadTicket,
   delegateContractApproval,
   fetchActiveContractNumberRules,
+  fetchApprovalDelegationUserOptions,
   fetchContractDetail,
   generateContractPdfArchive,
   downloadApprovalForm as requestApprovalFormDownload,
@@ -456,6 +469,7 @@ import {
   withdrawContractApproval
 } from "../../api/core-flow-read.api";
 import { contractDetailChainLinks } from "../business-chain-links.config";
+import { confirmSensitiveAction } from "../confirm-sensitive-action";
 import type { DetailTone } from "./contract-detail.config";
 import {
   contractBaseInfo,
@@ -473,6 +487,7 @@ const router = useRouter();
 const contractDetail = ref<ContractDetailReadModel | null>(null);
 const contractDetailError = ref("");
 const contractNumberRules = ref<Array<{ id: string; name: string; pattern: string }>>([]);
+const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
@@ -546,12 +561,22 @@ const contractEvidenceFilesView = computed(() =>
 const contractActionByKey = computed(
   () => new Map((contractDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
+const contractActionBlockMessages = computed(() => [
+  ...new Set(
+    (contractDetail.value?.availableActions ?? [])
+      .filter((action) => !action.enabled && action.disabledReason)
+      .map((action) => action.disabledReason as string)
+  )
+]);
 const canRunContractVersionAction = computed(() => !!contractDetail.value?.contractVersionId);
 const contractNumberRuleOptions = computed(() =>
   contractNumberRules.value.map((rule) => ({
     label: `${rule.name}（${rule.pattern}）`,
     value: rule.id
   }))
+);
+const assignmentUserOptions = computed(() =>
+  assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
 
 function isContractActionEnabled(key: string) {
@@ -590,11 +615,13 @@ async function reloadContractDetail() {
 }
 
 onMounted(async () => {
-  const [, rules] = await Promise.all([
+  const [, rules, users] = await Promise.all([
     reloadContractDetail(),
-    fetchActiveContractNumberRules().catch(() => [])
+    fetchActiveContractNumberRules().catch(() => []),
+    fetchApprovalDelegationUserOptions().catch(() => [])
   ]);
   contractNumberRules.value = rules;
+  assignmentUsers.value = users;
   contractArchiveForm.numberRuleId ||= rules[0]?.id ?? "";
 });
 
@@ -666,14 +693,28 @@ async function submitContractArchiveConfirmation() {
     contractDetail.value?.contractVersionId ?? "",
     "合同版本ID"
   );
+  let archiveFileId = "";
+  let confirmationPassword = "";
+  try {
+    archiveFileId = requiredText(contractArchiveForm.archiveFileId, "归档文件");
+    confirmationPassword = requiredText(contractArchiveForm.confirmationPassword, "当前登录密码");
+  } catch (error) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = error instanceof Error ? error.message : "确认归档失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认归档后，当前合同版本将生效，付款条款锁定，后续结算和付款会以该版本为准。是否继续？"
+    )
+  ) {
+    return;
+  }
 
   await runArchiveAction("confirm", () =>
     confirmContractArchive(contractVersionId, {
-      archiveFileId: requiredText(contractArchiveForm.archiveFileId, "归档文件"),
-      confirmationPassword: requiredText(
-        contractArchiveForm.confirmationPassword,
-        "当前登录密码"
-      )
+      archiveFileId,
+      confirmationPassword
     })
   );
 }
@@ -696,11 +737,26 @@ async function submitContractReview(decision: "approve" | "reject") {
     contractDetail.value?.contractVersionId ?? "",
     "合同版本ID"
   );
+  const comment = contractArchiveForm.approvalComment.trim() || undefined;
+  if (decision === "reject" && !comment) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = "驳回审批必须填写原因。";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      decision === "approve"
+        ? "确认同意后，本节点审批意见将写入审批历史，并推动合同进入下一审批节点或后续用章/归档。是否继续？"
+        : "确认驳回后，本轮合同审批将终止，申请人需重新调整后再发起。是否继续？"
+    )
+  ) {
+    return;
+  }
 
   await runArchiveAction("reviewApproval", () =>
     reviewContractApproval(contractVersionId, {
       decision,
-      comment: contractArchiveForm.approvalComment.trim() || undefined
+      comment
     })
   );
 }
@@ -739,7 +795,7 @@ async function submitContractAssignment(kind: "transfer" | "delegate") {
     contractDetail.value?.contractVersionId ?? "",
     "合同版本ID"
   );
-  const toUserId = requiredText(contractArchiveForm.assignmentUserId, "目标人员编号");
+  const toUserId = requiredText(contractArchiveForm.assignmentUserId, "目标处理人");
 
   await runArchiveAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
     kind === "transfer"
@@ -767,13 +823,26 @@ async function submitContractPdfGeneration() {
 }
 
 async function submitContractFileDownload() {
+  let fileId = "";
+  let confirmationPassword = "";
+  try {
+    fileId = requiredText(contractArchiveForm.downloadFileId, "归档文件");
+    confirmationPassword = requiredText(contractArchiveForm.downloadPassword, "当前登录密码");
+  } catch (error) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = error instanceof Error ? error.message : "下载文件失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认下载后，系统将校验当前密码并记录下载人、文件和业务单据审计。是否继续？"
+    )
+  ) {
+    return;
+  }
+
   await runArchiveAction("download", async () => {
-    const ticket = await createPrivateFileDownloadTicket(
-      requiredText(contractArchiveForm.downloadFileId, "归档文件"),
-      {
-        confirmationPassword: requiredText(contractArchiveForm.downloadPassword, "当前登录密码")
-      }
-    );
+    const ticket = await createPrivateFileDownloadTicket(fileId, { confirmationPassword });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
   });
 }
@@ -1038,6 +1107,18 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   padding: 12px 0 0;
   color: #b51d2a;
   font-weight: 600;
+}
+
+.action-blockers {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  color: #7a4b00;
+  background: #fff7e6;
+  border: 1px solid #f2cf8f;
+  border-radius: 3px;
+  font-size: 12px;
 }
 
 .settlement-payment-panel {

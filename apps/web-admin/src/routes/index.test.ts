@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { resolveRouteAccess } from "./index";
+import { describe, expect, it, vi } from "vitest";
+import { buildRouteDocumentTitle, focusMainContent, resolveRouteAccess } from "./index";
 import {
   adminNavigationItems,
   fundsOverviewRoleKeys,
@@ -30,6 +30,23 @@ describe("web admin routes", () => {
 
     expect(changePasswordRoute?.component).toBeDefined();
     expect(changePasswordRoute?.meta?.passwordChange).toBe(true);
+  });
+
+  it("derives document titles from route metadata or the Chinese path", () => {
+    expect(buildRouteDocumentTitle({ path: "/项目经营", meta: { title: "项目经营" } })).toBe("项目经营 - 建工智管");
+    expect(buildRouteDocumentTitle({ path: "/付款管理/FK-2026-012", meta: {} })).toBe("FK-2026-012 - 建工智管");
+  });
+
+  it("focuses the main content landmark after route changes", () => {
+    const focus = vi.fn();
+    const documentRef = {
+      getElementById: vi.fn(() => ({ focus }))
+    };
+
+    focusMainContent(documentRef as never);
+
+    expect(documentRef.getElementById).toHaveBeenCalledWith("main-content");
+    expect(focus).toHaveBeenCalled();
   });
 
   it("redirects the root path to the contract ledger", () => {

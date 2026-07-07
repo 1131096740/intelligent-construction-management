@@ -529,6 +529,7 @@ export class ContractService {
     ) {
       throw new Error("Unsupported contract approval decision");
     }
+    requireApprovalCommentForReturn(input.decision, input.comment);
 
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
@@ -1287,6 +1288,12 @@ export class ContractService {
 
       return updated;
     });
+  }
+}
+
+function requireApprovalCommentForReturn(decision: ReviewContractApprovalDto["decision"], comment?: string) {
+  if (decision !== "approve" && !comment?.trim()) {
+    throw new Error("Contract approval comment is required for reject or return decisions");
   }
 }
 

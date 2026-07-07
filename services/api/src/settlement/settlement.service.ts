@@ -544,6 +544,14 @@ export class SettlementService {
     if (!this.prisma) {
       throw new Error("Prisma service is required to review settlement approval");
     }
+    if (
+      !["approve", "reject", "reject_previous", "return_to_applicant"].includes(
+        input.decision
+      )
+    ) {
+      throw new Error("Unsupported settlement approval decision");
+    }
+    requireApprovalCommentForReturn(input.decision, input.comment);
 
     let completedInstanceId: string | undefined;
     let approvalPdfSettlementId: string | undefined;
@@ -1845,6 +1853,12 @@ export class SettlementService {
 
       return updated;
     });
+  }
+}
+
+function requireApprovalCommentForReturn(decision: ReviewSettlementApprovalDto["decision"], comment?: string) {
+  if (decision !== "approve" && !comment?.trim()) {
+    throw new Error("Settlement approval comment is required for reject or return decisions");
   }
 }
 

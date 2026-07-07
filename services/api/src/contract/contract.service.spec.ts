@@ -1276,7 +1276,8 @@ describe("ContractService", () => {
     const service = new ContractService(prisma, audit as never);
 
     const result = await service.reviewApproval("contract-version-1", "general-manager-1", {
-      decision: "reject"
+      decision: "reject",
+      comment: "合同条款需调整"
     });
 
     expect(result.status).toBe("approval_rejected");
@@ -1291,7 +1292,8 @@ describe("ContractService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "reject",
-        actorUserId: "general-manager-1"
+        actorUserId: "general-manager-1",
+        comment: "合同条款需调整"
       }
     });
   });
@@ -1307,6 +1309,21 @@ describe("ContractService", () => {
         decision: "invalid"
       } as never)
     ).rejects.toThrow("Unsupported contract approval decision");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("requires a comment when rejecting or returning contract approval", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.reviewApproval("contract-version-1", "chairman-1", {
+        decision: "reject",
+        comment: "   "
+      })
+    ).rejects.toThrow("approval comment is required");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -1358,7 +1375,8 @@ describe("ContractService", () => {
     const service = new ContractService(prisma, audit as never);
 
     const result = await service.reviewApproval("contract-version-1", "chairman-1", {
-      decision: "reject_previous"
+      decision: "reject_previous",
+      comment: "请上一节点补充说明"
     });
 
     expect(result.status).toBe("in_approval");
@@ -1387,7 +1405,8 @@ describe("ContractService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "reject_previous",
-        actorUserId: "chairman-1"
+        actorUserId: "chairman-1",
+        comment: "请上一节点补充说明"
       }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
@@ -1443,7 +1462,8 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-1", "chairman-1", {
-        decision: "reject_previous"
+        decision: "reject_previous",
+        comment: "无法退回上一节点"
       })
     ).rejects.toThrow("Cannot reject contract approval to previous node from first node");
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
@@ -1490,7 +1510,8 @@ describe("ContractService", () => {
     const service = new ContractService(prisma, audit as never);
 
     const result = await service.reviewApproval("contract-version-1", "general-manager-1", {
-      decision: "return_to_applicant"
+      decision: "return_to_applicant",
+      comment: "退回申请人补充资料"
     });
 
     expect(result.status).toBe("draft");
@@ -1506,7 +1527,8 @@ describe("ContractService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "return_to_applicant",
-        actorUserId: "general-manager-1"
+        actorUserId: "general-manager-1",
+        comment: "退回申请人补充资料"
       }
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {

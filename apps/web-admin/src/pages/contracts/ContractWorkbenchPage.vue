@@ -252,10 +252,11 @@
       :on-confirm="onConfirmTransfer"
     >
       <label class="field">
-        <span class="field-label">目标人员编号</span>
-        <t-input
+        <span class="field-label">目标负责人</span>
+        <t-select
           v-model="transferUserId"
-          placeholder="输入接收人用户ID"
+          :options="transferUserOptions"
+          placeholder="选择接收人"
         />
       </label>
     </t-dialog>
@@ -272,6 +273,7 @@ import {
   previewContractTypeChange,
   transferContractDraft
 } from "../../api/contract-workbench.api";
+import { fetchApprovalDelegationUserOptions } from "../../api/core-flow-read.api";
 import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
@@ -344,6 +346,7 @@ const creating = ref(false);
 const errorMessage = ref("");
 const transferVisible = ref(false);
 const transferUserId = ref("");
+const transferUsers = ref<Array<{ id: string; name: string }>>([]);
 
 // Contract-type migration (existing loaded draft): preview -> confirm -> apply.
 const migrationVisible = ref(false);
@@ -375,6 +378,9 @@ const editable = computed(() => {
 // A contract director may view + transfer even when they cannot edit. We allow
 // transfer whenever a contract is loaded; backend enforces the actual role.
 const canTransfer = computed(() => Boolean(workbench.value));
+const transferUserOptions = computed(() =>
+  transferUsers.value.map((user) => ({ label: user.name, value: user.id }))
+);
 
 const autosaveLabel = computed(() => {
   switch (saveState.value) {
@@ -609,6 +615,13 @@ async function loadExisting() {
 onMounted(() => {
   void loadContractTypeOptions();
   void loadExisting();
+  void fetchApprovalDelegationUserOptions()
+    .then((users) => {
+      transferUsers.value = users;
+    })
+    .catch(() => {
+      transferUsers.value = [];
+    });
 });
 
 // Loading a different contract (or arriving from the create flow) reloads.

@@ -1,5 +1,11 @@
 <template>
   <t-layout class="admin-shell">
+    <a
+      class="skip-link"
+      href="#main-content"
+    >
+      跳到主内容
+    </a>
     <t-aside
       class="aside"
       width="208px"
@@ -28,7 +34,11 @@
         <span>合同付款闭环管理</span>
         <span class="header-user">建设企业 · 合同部主管</span>
       </t-header>
-      <t-content class="content">
+      <t-content
+        id="main-content"
+        class="content"
+        tabindex="-1"
+      >
         <router-view />
       </t-content>
     </t-layout>
@@ -57,6 +67,22 @@ function go(path: string) {
 .admin-shell {
   min-height: 100vh;
   color: #151922;
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 20;
+  padding: 8px 12px;
+  background: #151922;
+  color: #fff;
+  border-radius: 4px;
+  transform: translateY(-160%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
 }
 
 .aside {

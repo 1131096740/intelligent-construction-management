@@ -239,6 +239,7 @@ describe("ContractWorkbenchService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
+          projectId: "project-1",
           ownerUserId: "owner-1",
           voidedAt: null
         }),
@@ -248,13 +249,17 @@ describe("ContractWorkbenchService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       userPosition: {
-        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }]),
+        findFirst: jest.fn().mockResolvedValue(null)
       },
       position: {
         findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
       },
       user: {
         findUnique: jest.fn().mockResolvedValue({ id: "owner-2", isActive: true })
+      },
+      projectMember: {
+        findFirst: jest.fn().mockResolvedValue({ userId: "owner-2" })
       },
       auditLog: { create: jest.fn() }
     };
@@ -789,6 +794,7 @@ describe("ContractWorkbenchService", () => {
         contract: {
           findUnique: jest.fn().mockResolvedValue({
             id: "contract-1",
+            projectId: "project-1",
             ownerUserId: "owner-1",
             voidedAt: null
           }),
@@ -796,13 +802,17 @@ describe("ContractWorkbenchService", () => {
         },
         contractVersion: editableVersion,
         userPosition: {
-          findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
+          findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }]),
+          findFirst: jest.fn().mockResolvedValue({ userId: "owner-2" })
         },
         position: {
           findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
         },
         user: {
           findUnique: jest.fn().mockResolvedValue({ id: "owner-2", isActive: true })
+        },
+        projectMember: {
+          findFirst: jest.fn().mockResolvedValue(null)
         }
       }).transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
     ).rejects.toThrow("Contract draft state conflict");
@@ -908,6 +918,38 @@ describe("ContractWorkbenchService", () => {
     await expect(
       service.transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
     ).rejects.toThrow("Transfer target user must exist and be active");
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects transfer to a user outside the contract project", async () => {
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        }),
+        updateMany: jest.fn()
+      },
+      contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }]),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "owner-2", isActive: true }) },
+      projectMember: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const service = makeService(tx);
+
+    await expect(
+      service.transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
+    ).rejects.toThrow("Transfer target user is not in the contract project");
     expect(tx.contract.updateMany).not.toHaveBeenCalled();
   });
 

@@ -904,6 +904,21 @@ describe("SettlementService", () => {
     });
   });
 
+  it("requires a comment when rejecting or returning settlement approval", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "budget-director-1", {
+        decision: "return_to_applicant",
+        comment: "   "
+      })
+    ).rejects.toThrow("approval comment is required");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("keeps a countersign settlement node pending until all required roles approve", async () => {
     const frozenNodes = [
       {
@@ -1297,7 +1312,8 @@ describe("SettlementService", () => {
     const settlementService = new SettlementService(prisma as never, audit as never);
 
     const result = await settlementService.reviewApproval("settlement-1", "project-manager-1", {
-      decision: "reject_previous"
+      decision: "reject_previous",
+      comment: "请上一节点复核结算依据"
     });
 
     expect(result.status).toBe("approval_pending");
@@ -1324,6 +1340,7 @@ describe("SettlementService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "reject_previous",
         actorUserId: "project-manager-1",
+        comment: "请上一节点复核结算依据",
         metadata: {
           nodeName: "项目经理",
           roleKey: "project_manager",
@@ -1376,7 +1393,8 @@ describe("SettlementService", () => {
 
     await expect(
       settlementService.reviewApproval("settlement-1", "material-staff-1", {
-        decision: "reject_previous"
+        decision: "reject_previous",
+        comment: "无法退回上一节点"
       })
     ).rejects.toThrow("Cannot reject settlement approval to previous node from first node");
     expect(tx.settlement.update).not.toHaveBeenCalled();
@@ -1422,7 +1440,8 @@ describe("SettlementService", () => {
     const settlementService = new SettlementService(prisma as never, audit as never);
 
     const result = await settlementService.reviewApproval("settlement-1", "material-director-1", {
-      decision: "return_to_applicant"
+      decision: "return_to_applicant",
+      comment: "退回申请人补充资料"
     });
 
     expect(result.status).toBe("approval_rejected");
@@ -1435,6 +1454,7 @@ describe("SettlementService", () => {
         approvalInstanceId: "approval-instance-1",
         action: "return_to_applicant",
         actorUserId: "material-director-1",
+        comment: "退回申请人补充资料",
         metadata: {
           nodeName: "物资主管",
           roleKey: "material_director",

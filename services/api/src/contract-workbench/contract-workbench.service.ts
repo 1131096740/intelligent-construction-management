@@ -438,6 +438,7 @@ export class ContractWorkbenchService {
       if (!targetUser?.isActive) {
         throw new BadRequestException("Transfer target user must exist and be active");
       }
+      await this.assertTargetInContractProject(tx, contract.projectId, input.toUserId);
       const updated = await tx.contract.updateMany({
         where: {
           id: contractId,
@@ -718,6 +719,27 @@ export class ContractWorkbenchService {
     });
     if (editableVersions.count === 0) {
       throw new BadRequestException("Contract has no editable draft version");
+    }
+  }
+
+  private async assertTargetInContractProject(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    targetUserId: string
+  ) {
+    const [projectPosition, projectMember] = await Promise.all([
+      tx.userPosition.findFirst({
+        where: { userId: targetUserId, projectId },
+        select: { userId: true }
+      }),
+      tx.projectMember.findFirst({
+        where: { userId: targetUserId, projectId },
+        select: { userId: true }
+      })
+    ]);
+
+    if (!projectPosition && !projectMember) {
+      throw new BadRequestException("Transfer target user is not in the contract project");
     }
   }
 

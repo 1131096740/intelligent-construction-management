@@ -58,7 +58,7 @@
           type="file"
           @change="(event) => onAttachmentFile(index, event)"
         >
-        <span class="file-id">{{ attachment.fileId || "未上传" }}</span>
+        <span class="file-id">{{ attachment.fileId ? `已上传：${attachment.name || "附件"}` : "未上传" }}</span>
       </div>
       <p class="attachment-hint">
         上传法人身份证时请分两条附件记录，并在名称中明确标注“人像面”或“国徽面”；合同生成时两面按同一 A4 页面上下居中处理。

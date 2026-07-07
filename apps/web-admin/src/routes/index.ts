@@ -14,6 +14,7 @@ interface RouteAccessTarget {
     public?: unknown;
     passwordChange?: unknown;
     requiredRoleKeys?: readonly RoleKey[];
+    title?: unknown;
   };
 }
 
@@ -47,6 +48,17 @@ export function resolveRouteAccess(to: RouteAccessTarget, auth: RouteAccessAuth)
   return true;
 }
 
+export function buildRouteDocumentTitle(to: { path?: string; meta: { title?: unknown } }) {
+  const titleFromMeta = typeof to.meta.title === "string" ? to.meta.title.trim() : "";
+  const titleFromPath = decodeURIComponent(to.path?.split("/").filter(Boolean).at(-1) ?? "首页");
+  const title = titleFromMeta || titleFromPath || "首页";
+  return `${title} - 建工智管`;
+}
+
+export function focusMainContent(documentRef: Pick<Document, "getElementById">) {
+  documentRef.getElementById("main-content")?.focus();
+}
+
 router.beforeEach((to) => {
   const auth = useAuthStore();
   return resolveRouteAccess(to, {
@@ -54,4 +66,13 @@ router.beforeEach((to) => {
     mustChangePassword: Boolean(auth.user?.mustChangePassword),
     roleKeys: auth.user?.roleKeys
   });
+});
+
+router.afterEach((to) => {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return;
+  }
+
+  document.title = buildRouteDocumentTitle(to);
+  window.setTimeout(() => focusMainContent(document), 0);
 });

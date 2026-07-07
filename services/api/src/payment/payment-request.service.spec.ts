@@ -2328,7 +2328,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const rejected = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
-      decision: "reject"
+      decision: "reject",
+      comment: "付款条件尚未满足"
     });
 
     expect(rejected.status).toBe("rejected");
@@ -2351,7 +2352,8 @@ describe("PaymentRequestService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "reject",
-        actorUserId: "general-manager-1"
+        actorUserId: "general-manager-1",
+        comment: "付款条件尚未满足"
       }
     });
   });
@@ -2367,6 +2369,21 @@ describe("PaymentRequestService", () => {
         decision: "invalid"
       } as never)
     ).rejects.toThrow("Unsupported payment approval decision");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("requires a comment when rejecting or returning payment approval", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        decision: "reject_previous",
+        comment: "   "
+      })
+    ).rejects.toThrow("approval comment is required");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -2422,7 +2439,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const result = await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
-      decision: "reject_previous"
+      decision: "reject_previous",
+      comment: "请上一节点复核付款金额"
     });
 
     expect(result.status).toBe("approval_pending");
@@ -2451,7 +2469,8 @@ describe("PaymentRequestService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "reject_previous",
-        actorUserId: "chairman-1"
+        actorUserId: "chairman-1",
+        comment: "请上一节点复核付款金额"
       }
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
@@ -2502,7 +2521,8 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
-        decision: "reject_previous"
+        decision: "reject_previous",
+        comment: "无法退回上一节点"
       })
     ).rejects.toThrow("Cannot reject payment approval to previous node from first node");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
@@ -2554,7 +2574,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const result = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
-      decision: "return_to_applicant"
+      decision: "return_to_applicant",
+      comment: "退回申请人补充付款依据"
     });
 
     expect(result.status).toBe("draft");
@@ -2570,7 +2591,8 @@ describe("PaymentRequestService", () => {
       data: {
         approvalInstanceId: "approval-instance-1",
         action: "return_to_applicant",
-        actorUserId: "general-manager-1"
+        actorUserId: "general-manager-1",
+        comment: "退回申请人补充付款依据"
       }
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
