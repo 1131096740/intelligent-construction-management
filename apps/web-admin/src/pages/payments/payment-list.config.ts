@@ -35,6 +35,10 @@ export interface PaymentLedgerRow {
   paymentTone: PaymentTone;
   currentNode: string;
   ownerDepartment: string;
+  pendingOwner: string;
+  stalledFor: string;
+  returnReason: string;
+  nextAction: string;
   updatedAt: string;
 }
 
@@ -110,9 +114,12 @@ export const paymentLedgerColumns: PrimaryTableCol<PaymentLedgerRow>[] = [
   { colKey: "approvalStatus", title: "审批状态", width: 96 },
   { colKey: "paymentStatus", title: "实付状态", width: 96 },
   { colKey: "currentNode", title: "当前节点", width: 112 },
-  { colKey: "ownerDepartment", title: "责任部门", width: 88 },
+  { colKey: "pendingOwner", title: "当前处理人", width: 104 },
+  { colKey: "stalledFor", title: "停留时长", width: 88 },
+  { colKey: "returnReason", title: "退回原因", minWidth: 136 },
+  { colKey: "nextAction", title: "下一步动作", width: 112 },
   { colKey: "updatedAt", title: "更新时间", width: 96 },
-  { colKey: "operation", title: "操作", width: 64, fixed: "right" }
+  { colKey: "operation", title: "操作", width: 128, fixed: "right" }
 ];
 
 export const paymentApplicationPreviewColumns: PrimaryTableCol<PaymentApplicationPreviewRow>[] = [

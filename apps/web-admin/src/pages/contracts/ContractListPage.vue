@@ -114,7 +114,7 @@
               theme="primary"
               @click="openDetail(row.id)"
             >
-              详情
+              查看合同 {{ row.contractNo }}
             </t-link>
           </template>
         </t-table>

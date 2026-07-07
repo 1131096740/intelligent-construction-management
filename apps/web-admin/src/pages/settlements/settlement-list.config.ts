@@ -26,6 +26,10 @@ export interface SettlementLedgerRow {
   currentNode: string;
   nodeTone: SettlementTone;
   ownerDepartment: string;
+  pendingOwner: string;
+  stalledFor: string;
+  returnReason: string;
+  nextAction: string;
   updatedAt: string;
 }
 
@@ -78,9 +82,12 @@ export const settlementLedgerColumns: PrimaryTableCol<SettlementLedgerRow>[] = [
   { colKey: "amount", title: "结算金额", width: 112, align: "right" },
   { colKey: "paymentTermsVersion", title: "付款条款版本", width: 126 },
   { colKey: "currentNode", title: "当前节点", width: 116 },
-  { colKey: "ownerDepartment", title: "责任部门", width: 96 },
+  { colKey: "pendingOwner", title: "当前处理人", width: 104 },
+  { colKey: "stalledFor", title: "停留时长", width: 88 },
+  { colKey: "returnReason", title: "退回原因", minWidth: 136 },
+  { colKey: "nextAction", title: "下一步动作", width: 112 },
   { colKey: "updatedAt", title: "更新时间", width: 112 },
-  { colKey: "operation", title: "操作", width: 72, fixed: "right" }
+  { colKey: "operation", title: "操作", width: 128, fixed: "right" }
 ];
 
 export const settlementLedgerRows: SettlementLedgerRow[] = [];

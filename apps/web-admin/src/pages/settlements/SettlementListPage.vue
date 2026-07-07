@@ -173,7 +173,7 @@
             theme="primary"
             @click="openDetail(row.id)"
           >
-            详情
+            查看结算 {{ row.settlementNo }}
           </t-link>
         </template>
       </t-table>

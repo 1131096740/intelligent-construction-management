@@ -151,6 +151,8 @@ export class SettlementReadService {
       const contract = contractById.get(settlement.contractId);
       const termsVersion = termsById.get(settlement.paymentTermsVersionId);
       const status = this.statusView(settlement.status);
+      const nextAction = this.nextActionLabel(settlement.status);
+      const pendingOwner = this.currentOwnerLabel(settlement.status);
 
       return {
         id: settlement.code,
@@ -160,9 +162,13 @@ export class SettlementReadService {
         period: settlement.periodLabel,
         amount: this.formatMoney(settlement.amountCents),
         paymentTermsVersion: termsVersion ? `v${termsVersion.versionNo}` : "-",
-        currentNode: this.nextActionLabel(settlement.status),
+        currentNode: nextAction,
         nodeTone: status.tone,
-        ownerDepartment: this.currentOwnerLabel(settlement.status),
+        ownerDepartment: pendingOwner,
+        pendingOwner,
+        stalledFor: this.stalledFor(settlement.updatedAt),
+        returnReason: this.returnReason(settlement.status),
+        nextAction,
         updatedAt: this.date(settlement.updatedAt)
       };
     });
@@ -597,6 +603,15 @@ export class SettlementReadService {
     };
 
     return labels[status] ?? "合同部";
+  }
+
+  private returnReason(status: string): string {
+    return ["approval_rejected", "rejected"].includes(status) ? "审批退回，查看审批历史" : "-";
+  }
+
+  private stalledFor(value: Date): string {
+    const days = Math.max(0, Math.floor((Date.now() - value.getTime()) / 86_400_000));
+    return days === 0 ? "今天" : `${days}天`;
   }
 
   private effectivenessSteps(status: string): SettlementDetailReadModel["effectivenessSteps"] {

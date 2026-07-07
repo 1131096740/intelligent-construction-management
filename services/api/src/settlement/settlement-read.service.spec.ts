@@ -1,6 +1,14 @@
 import { SettlementReadService } from "./settlement-read.service";
 
 describe("SettlementReadService", () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-07-08T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it("builds settlement ledger rows and summary from persisted settlements", async () => {
     const prisma = {
       settlement: {
@@ -73,7 +81,11 @@ describe("SettlementReadService", () => {
       paymentTermsVersion: "v2",
       currentNode: "主管确认归档",
       nodeTone: "primary",
-      ownerDepartment: "合同部主管"
+      ownerDepartment: "合同部主管",
+      pendingOwner: "合同部主管",
+      stalledFor: "7天",
+      returnReason: "-",
+      nextAction: "主管确认归档"
     });
     expect(ledger.summary).toEqual({
       total: 2,

@@ -1,6 +1,14 @@
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-07-08T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it("builds contract ledger rows and summary from persisted contracts", async () => {
     const prisma = {
       contract: {
@@ -62,6 +70,10 @@ describe("ContractReadService", () => {
       version: "v2",
       currentNode: "可发起结算",
       ownerDepartment: "系统归档",
+      pendingOwner: "系统归档",
+      stalledFor: "7天",
+      returnReason: "-",
+      nextAction: "可发起结算",
       paymentTermsVersion: "v2"
     });
     expect(ledger.summary).toEqual({

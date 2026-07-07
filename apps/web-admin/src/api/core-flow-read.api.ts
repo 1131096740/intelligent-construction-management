@@ -374,6 +374,10 @@ export interface ContractLedgerListReadModel {
     currentNode: string;
     nodeTone: LedgerTone;
     ownerDepartment: string;
+    pendingOwner: string;
+    stalledFor: string;
+    returnReason: string;
+    nextAction: string;
     updatedAt: string;
     paymentTermsVersion?: string;
   }>;
@@ -398,6 +402,10 @@ export interface SettlementLedgerListReadModel {
     currentNode: string;
     nodeTone: LedgerTone;
     ownerDepartment: string;
+    pendingOwner: string;
+    stalledFor: string;
+    returnReason: string;
+    nextAction: string;
     updatedAt: string;
   }>;
   summary: {
@@ -422,6 +430,10 @@ export interface PaymentLedgerListReadModel {
     paymentTone: LedgerTone;
     currentNode: string;
     ownerDepartment: string;
+    pendingOwner: string;
+    stalledFor: string;
+    returnReason: string;
+    nextAction: string;
     updatedAt: string;
   }>;
   summary: {

@@ -246,6 +246,8 @@ export class PaymentReadService {
       const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
       const approval = this.approvalStatusView(payment.status);
       const execution = this.executionStatusView(payment.status, paidAmountCents, payableAmountCents);
+      const nextAction = this.nextActionLabel(payment.status, execution.complete);
+      const pendingOwner = this.currentOwnerLabel(payment.status, execution.complete);
 
       return {
         id: payment.code,
@@ -259,8 +261,12 @@ export class PaymentReadService {
         approvalTone: approval.tone,
         paymentStatus: execution.label,
         paymentTone: execution.tone,
-        currentNode: this.nextActionLabel(payment.status, execution.complete),
-        ownerDepartment: this.currentOwnerLabel(payment.status, execution.complete),
+        currentNode: nextAction,
+        ownerDepartment: pendingOwner,
+        pendingOwner,
+        stalledFor: this.stalledFor(payment.updatedAt),
+        returnReason: this.returnReason(payment.status),
+        nextAction,
         updatedAt: this.date(payment.updatedAt)
       };
     });
@@ -1115,6 +1121,15 @@ export class PaymentReadService {
     };
 
     return labels[status] ?? "财务部";
+  }
+
+  private returnReason(status: string): string {
+    return status === "rejected" ? "审批退回，查看审批历史" : "-";
+  }
+
+  private stalledFor(value: Date): string {
+    const days = Math.max(0, Math.floor((Date.now() - value.getTime()) / 86_400_000));
+    return days === 0 ? "今天" : `${days}天`;
   }
 
   private settlementStatusLabel(status: string): string {

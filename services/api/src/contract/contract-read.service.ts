@@ -176,6 +176,8 @@ export class ContractReadService {
       const version = versionByContractId.get(contract.id);
       const termsVersion = termsByContractId.get(contract.id);
       const status = this.statusView(version?.status ?? "draft");
+      const nextAction = this.nextActionLabel(version?.status ?? "draft");
+      const pendingOwner = this.currentOwnerLabel(version?.status ?? "draft");
       return {
         id: contract.code ?? contract.id,
         contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
@@ -184,9 +186,13 @@ export class ContractReadService {
         counterparty: contract.counterparty,
         amount: version ? this.formatMoney(version.amountCents) : "-",
         version: version ? `v${version.versionNo}` : "-",
-        currentNode: this.nextActionLabel(version?.status ?? "draft"),
+        currentNode: nextAction,
         nodeTone: status.tone,
-        ownerDepartment: this.currentOwnerLabel(version?.status ?? "draft"),
+        ownerDepartment: pendingOwner,
+        pendingOwner,
+        stalledFor: this.stalledFor(contract.updatedAt),
+        returnReason: this.returnReason(version?.status ?? "draft"),
+        nextAction,
         updatedAt: this.date(contract.updatedAt),
         paymentTermsVersion: termsVersion ? `v${termsVersion.versionNo}` : "-"
       };
@@ -1190,6 +1196,15 @@ export class ContractReadService {
     };
 
     return labels[status] ?? "待处理";
+  }
+
+  private returnReason(status: string): string {
+    return status === "approval_rejected" ? "审批退回，查看审批历史" : "-";
+  }
+
+  private stalledFor(value: Date): string {
+    const days = Math.max(0, Math.floor((Date.now() - value.getTime()) / 86_400_000));
+    return days === 0 ? "今天" : `${days}天`;
   }
 
   private effectivenessSteps(status: string): ContractDetailReadModel["effectivenessSteps"] {

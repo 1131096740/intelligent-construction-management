@@ -265,7 +265,7 @@
             theme="primary"
             @click="openDetail(row.id)"
           >
-            详情
+            查看付款 {{ row.paymentNo }}
           </t-link>
         </template>
       </t-table>

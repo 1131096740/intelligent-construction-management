@@ -1,6 +1,14 @@
 import { PaymentReadService } from "./payment-read.service";
 
 describe("PaymentReadService", () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-07-08T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it("builds payment ledger rows and summary from persisted requests and executions", async () => {
     const prisma = {
       paymentRequest: {
@@ -75,7 +83,11 @@ describe("PaymentReadService", () => {
       approvalStatus: "已通过",
       paymentStatus: "已批待付",
       currentNode: "出纳付款登记",
-      ownerDepartment: "出纳/财务"
+      ownerDepartment: "出纳/财务",
+      pendingOwner: "出纳/财务",
+      stalledFor: "7天",
+      returnReason: "-",
+      nextAction: "出纳付款登记"
     });
     expect(ledger.rows[1]).toMatchObject({
       paymentNo: "FK-2026-012",
