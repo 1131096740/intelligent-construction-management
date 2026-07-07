@@ -8,16 +8,24 @@
       <div class="actions">
         <t-button
           theme="primary"
-          @click="uploadInput?.click()"
+          @click="openBusinessArchive('/合同管理')"
         >
-          上传资料
+          去合同归档
         </t-button>
-        <input
-          ref="uploadInput"
-          class="hidden-file"
-          type="file"
-          @change="submitUpload"
+        <t-button
+          theme="primary"
+          variant="outline"
+          @click="openBusinessArchive('/结算管理')"
         >
+          去结算归档
+        </t-button>
+        <t-button
+          theme="primary"
+          variant="outline"
+          @click="openBusinessArchive('/付款管理')"
+        >
+          去付款凭证
+        </t-button>
         <t-button @click="showNotice('下载审计请在审计日志页查看；当前资料库先支持最近归档资料查询。')">
           下载审计
         </t-button>
@@ -150,10 +158,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import {
   createPrivateFileDownloadTicket,
-  fetchArchives,
-  uploadPrivateFile
+  fetchArchives
 } from "../../api/core-flow-read.api";
 import { confirmSensitiveAction } from "../confirm-sensitive-action";
 import type { ArchiveLedgerRow, ArchiveTone } from "./archive-list.config";
@@ -164,7 +172,7 @@ import {
   archiveSummaryItems
 } from "./archive-list.config";
 
-const uploadInput = ref<HTMLInputElement | null>(null);
+const router = useRouter();
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const loading = ref(false);
@@ -201,6 +209,10 @@ function showNotice(text: string) {
   messageTone.value = "default";
 }
 
+function openBusinessArchive(path: string) {
+  void router.push(path);
+}
+
 async function loadArchives() {
   loading.value = true;
   try {
@@ -214,26 +226,6 @@ async function loadArchives() {
     messageTone.value = "danger";
   } finally {
     loading.value = false;
-  }
-}
-
-async function submitUpload(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) {
-    return;
-  }
-
-  try {
-    await uploadPrivateFile(file, file.name);
-    message.value = "文件已上传，请在对应合同/结算/付款详情中完成业务归档绑定。";
-    messageTone.value = "success";
-    await loadArchives();
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "上传资料失败";
-    messageTone.value = "danger";
-  } finally {
-    input.value = "";
   }
 }
 
@@ -336,10 +328,6 @@ function statusTagTheme(tone: ArchiveTone) {
 .actions {
   display: flex;
   gap: 8px;
-}
-
-.hidden-file {
-  display: none;
 }
 
 .summary-strip,
