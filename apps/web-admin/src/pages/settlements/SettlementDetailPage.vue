@@ -52,6 +52,7 @@
     </div>
 
     <t-card
+      id="approval"
       class="section-card action-card"
       title="流程动作"
       :bordered="true"
@@ -72,7 +73,7 @@
             <t-button
               theme="primary"
               :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!canRunSettlementAction"
+              :disabled="!isSettlementActionEnabled('review_approval')"
               @click="submitSettlementReview('approve')"
             >
               通过
@@ -81,7 +82,7 @@
               theme="danger"
               variant="outline"
               :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!canRunSettlementAction"
+              :disabled="!isSettlementActionEnabled('review_approval')"
               @click="submitSettlementReview('reject')"
             >
               驳回
@@ -89,7 +90,7 @@
             <t-button
               variant="outline"
               :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!canRunSettlementAction"
+              :disabled="!isSettlementActionEnabled('review_approval')"
               @click="submitSettlementReview('reject_previous')"
             >
               退回上级
@@ -97,7 +98,7 @@
             <t-button
               variant="outline"
               :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!canRunSettlementAction"
+              :disabled="!isSettlementActionEnabled('review_approval')"
               @click="submitSettlementReview('return_to_applicant')"
             >
               打回发起人
@@ -212,7 +213,7 @@
           <t-button
             theme="primary"
             :loading="archiveActionBusy === 'upload'"
-            :disabled="!canUploadSettlementArchive"
+            :disabled="!isSettlementActionEnabled('upload_archive')"
             @click="submitSettlementArchiveUpload"
           >
             提交归档件
@@ -239,7 +240,7 @@
           <t-button
             theme="primary"
             :loading="archiveActionBusy === 'confirm'"
-            :disabled="!canConfirmSettlementArchive"
+            :disabled="!isSettlementActionEnabled('confirm_archive')"
             @click="submitSettlementArchiveConfirmation"
           >
             确认生效
@@ -267,7 +268,7 @@
             theme="primary"
             variant="outline"
             :loading="archiveActionBusy === 'download'"
-            :disabled="!settlementArchiveFileOptions.length"
+            :disabled="!isSettlementActionEnabled('download_archive')"
             @click="submitSettlementFileDownload"
           >
             下载文件
@@ -444,16 +445,14 @@ const settlementArchiveRecordOptions = computed(() =>
     value: file.recordId
   }))
 );
-const settlementNextActionValue = computed(
-  () => settlementDetailMetaView.value.find((item) => item.label === "下一步动作")?.value ?? ""
-);
-const canUploadSettlementArchive = computed(
-  () => !!settlementDetail.value?.settlementId && settlementNextActionValue.value.includes("上传签章归档件")
-);
-const canConfirmSettlementArchive = computed(
-  () => !!settlementDetail.value?.settlementId && settlementNextActionValue.value.includes("主管确认归档")
+const settlementActionByKey = computed(
+  () => new Map((settlementDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
 const canRunSettlementAction = computed(() => !!settlementDetail.value?.settlementId);
+
+function isSettlementActionEnabled(key: string) {
+  return settlementActionByKey.value.get(key)?.enabled ?? false;
+}
 
 function openChainLink(to: string) {
   void router.push(to);

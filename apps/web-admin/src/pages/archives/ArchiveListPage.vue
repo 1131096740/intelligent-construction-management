@@ -113,7 +113,8 @@
             </t-link>
             <t-link
               theme="primary"
-              @click="showNotice('请在对应合同/结算/付款详情页输入文件编号和当前密码签发下载票据。')"
+              :disabled="!row.canDownload"
+              @click="openDownloadDialog(row)"
             >
               授权下载
             </t-link>
@@ -121,12 +122,39 @@
         </template>
       </t-table>
     </t-card>
+
+    <t-dialog
+      v-model:visible="downloadDialogVisible"
+      header="授权下载资料"
+      :confirm-btn="{ content: '生成下载链接', loading: downloadBusy }"
+      cancel-btn="取消"
+      :close-on-overlay-click="false"
+      @confirm="confirmDownload"
+      @close="closeDownloadDialog"
+    >
+      <div class="download-dialog-body">
+        <p>{{ downloadTarget ? `${downloadTarget.fileSource} · ${downloadTarget.businessRef}` : "" }}</p>
+        <label>
+          <span>当前登录密码</span>
+          <t-input
+            v-model="downloadPassword"
+            type="password"
+            autocomplete="current-password"
+            placeholder="请输入当前登录密码"
+          />
+        </label>
+      </div>
+    </t-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { fetchArchives, uploadPrivateFile } from "../../api/core-flow-read.api";
+import {
+  createPrivateFileDownloadTicket,
+  fetchArchives,
+  uploadPrivateFile
+} from "../../api/core-flow-read.api";
 import type { ArchiveLedgerRow, ArchiveTone } from "./archive-list.config";
 import {
   archiveFilterFields,
@@ -140,6 +168,10 @@ const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const loading = ref(false);
 const archiveRows = ref<ArchiveLedgerRow[]>([]);
+const downloadDialogVisible = ref(false);
+const downloadBusy = ref(false);
+const downloadTarget = ref<ArchiveLedgerRow | null>(null);
+const downloadPassword = ref("");
 const summary = ref({
   total: 0,
   contractArchives: 0,
@@ -192,8 +224,8 @@ async function submitUpload(event: Event) {
   }
 
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    message.value = `文件已上传，文件编号：${uploaded.id}`;
+    await uploadPrivateFile(file, file.name);
+    message.value = "文件已上传，请在对应合同/结算/付款详情中完成业务归档绑定。";
     messageTone.value = "success";
     await loadArchives();
   } catch (error) {
@@ -202,6 +234,55 @@ async function submitUpload(event: Event) {
   } finally {
     input.value = "";
   }
+}
+
+function openDownloadDialog(row: ArchiveLedgerRow) {
+  if (!row.canDownload) {
+    showNotice(row.disabledReason ?? "当前资料暂不可下载。");
+    return;
+  }
+  downloadTarget.value = row;
+  downloadPassword.value = "";
+  downloadDialogVisible.value = true;
+}
+
+function closeDownloadDialog() {
+  downloadDialogVisible.value = false;
+  downloadTarget.value = null;
+  downloadPassword.value = "";
+}
+
+async function confirmDownload() {
+  const target = downloadTarget.value;
+  if (!target) {
+    return;
+  }
+  const password = downloadPassword.value.trim();
+  if (!password) {
+    message.value = "请输入当前登录密码。";
+    messageTone.value = "danger";
+    return;
+  }
+
+  downloadBusy.value = true;
+  try {
+    const ticket = await createPrivateFileDownloadTicket(target.fileId, {
+      confirmationPassword: password
+    });
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+    message.value = "下载链接已生成，后台已记录下载审计。";
+    messageTone.value = "success";
+    closeDownloadDialog();
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "生成下载链接失败";
+    messageTone.value = "danger";
+  } finally {
+    downloadBusy.value = false;
+  }
+}
+
+function apiDownloadUrl(url: string) {
+  return url.startsWith("/api") ? url : `/api${url}`;
 }
 
 function statusTagTheme(tone: ArchiveTone) {
@@ -389,6 +470,21 @@ function statusTagTheme(tone: ArchiveTone) {
   display: flex;
   gap: 10px;
   white-space: nowrap;
+}
+
+.download-dialog-body {
+  display: grid;
+  gap: 12px;
+}
+
+.download-dialog-body p {
+  margin: 0;
+  color: #424955;
+}
+
+.download-dialog-body label {
+  display: grid;
+  gap: 6px;
 }
 
 @media (max-width: 980px) {

@@ -14,10 +14,12 @@
     >
       <div class="form-fields">
         <label>
-          <span>受托人用户 ID</span>
-          <t-input
+          <span>受托人</span>
+          <t-select
             v-model="form.toUserId"
-            placeholder="受托人用户 ID"
+            :options="userOptions"
+            filterable
+            placeholder="选择受托人"
           />
         </label>
         <label>
@@ -90,14 +92,15 @@
 import { onMounted, reactive, ref } from "vue";
 import {
   createApprovalDelegation,
+  fetchApprovalDelegationUserOptions,
   listApprovalDelegations,
   revokeApprovalDelegation,
   type ApprovalDelegationReadModel
 } from "../../api/core-flow-read.api";
 
 const columns = [
-  { colKey: "fromUserId", title: "委托人" },
-  { colKey: "toUserId", title: "受托人" },
+  { colKey: "fromUserName", title: "委托人" },
+  { colKey: "toUserName", title: "受托人" },
   { colKey: "startsAt", title: "生效时间" },
   { colKey: "endsAt", title: "失效时间" },
   { colKey: "enabled", title: "状态" },
@@ -105,6 +108,7 @@ const columns = [
 ];
 
 const rows = ref<ApprovalDelegationReadModel[]>([]);
+const userOptions = ref<Array<{ label: string; value: string }>>([]);
 const loading = ref(false);
 const creating = ref(false);
 const message = ref("");
@@ -124,6 +128,19 @@ async function loadDelegations() {
     messageTone.value = "danger";
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadUserOptions() {
+  try {
+    const users = await fetchApprovalDelegationUserOptions();
+    userOptions.value = users.map((user) => ({
+      label: user.name,
+      value: user.id
+    }));
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "加载人员列表失败";
+    messageTone.value = "danger";
   }
 }
 
@@ -161,7 +178,9 @@ async function submitRevoke(delegationId: string) {
   }
 }
 
-onMounted(loadDelegations);
+onMounted(() => {
+  void Promise.all([loadDelegations(), loadUserOptions()]);
+});
 </script>
 
 <style scoped>

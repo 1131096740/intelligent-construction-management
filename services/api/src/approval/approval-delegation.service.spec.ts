@@ -17,6 +17,9 @@ describe("ApprovalDelegationService", () => {
           fromUserId: "user-a",
           toUserId: "user-b"
         })
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({ id: "user-b" })
       }
     };
     const service = new ApprovalDelegationService(prisma as never, audit as never);
@@ -35,6 +38,10 @@ describe("ApprovalDelegationService", () => {
         startsAt: new Date("2026-06-23T00:00:00.000Z"),
         endsAt: new Date("2026-07-23T00:00:00.000Z")
       }
+    });
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
+      where: { id: "user-b", isActive: true },
+      select: { id: true }
     });
     expect(audit.record).toHaveBeenCalledWith(prisma, {
       actorUserId: "user-a",
@@ -67,7 +74,8 @@ describe("ApprovalDelegationService", () => {
 
   it("rejects a delegation window that does not end after it starts", async () => {
     const prisma = {
-      approvalDelegation: { create: jest.fn() }
+      approvalDelegation: { create: jest.fn() },
+      user: { findFirst: jest.fn().mockResolvedValue({ id: "user-b" }) }
     };
     const service = new ApprovalDelegationService(prisma as never, audit as never);
 
@@ -81,20 +89,75 @@ describe("ApprovalDelegationService", () => {
     expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a delegation target that is not an active user", async () => {
+    const prisma = {
+      approvalDelegation: { create: jest.fn() },
+      user: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const service = new ApprovalDelegationService(prisma as never, audit as never);
+
+    await expect(
+      service.create("user-a", {
+        toUserId: "user-b",
+        startsAt: "2026-06-23T00:00:00.000Z",
+        endsAt: "2026-07-23T00:00:00.000Z"
+      })
+    ).rejects.toThrow("target user");
+    expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
+  });
+
   it("lists delegations where the user is delegator or delegate", async () => {
     const prisma = {
       approvalDelegation: {
-        findMany: jest.fn().mockResolvedValue([{ id: "delegation-1" }])
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegation-1", fromUserId: "user-a", toUserId: "user-b" }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "user-a", name: "委托人" },
+          { id: "user-b", name: "受托人" }
+        ])
       }
     };
     const service = new ApprovalDelegationService(prisma as never, audit as never);
 
     const result = await service.listForUser("user-a");
 
-    expect(result).toEqual([{ id: "delegation-1" }]);
+    expect(result).toEqual([
+      {
+        id: "delegation-1",
+        fromUserId: "user-a",
+        toUserId: "user-b",
+        fromUserName: "委托人",
+        toUserName: "受托人"
+      }
+    ]);
     expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
       where: { OR: [{ fromUserId: "user-a" }, { toUserId: "user-a" }] },
       orderBy: { createdAt: "desc" }
+    });
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["user-a", "user-b"] } },
+      select: { id: true, name: true }
+    });
+  });
+
+  it("lists active users as delegation targets", async () => {
+    const prisma = {
+      user: {
+        findMany: jest.fn().mockResolvedValue([{ id: "user-b", name: "受托人" }])
+      }
+    };
+    const service = new ApprovalDelegationService(prisma as never, audit as never);
+
+    await expect(service.listActiveUserOptions()).resolves.toEqual([
+      { id: "user-b", name: "受托人" }
+    ]);
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true }
     });
   });
 

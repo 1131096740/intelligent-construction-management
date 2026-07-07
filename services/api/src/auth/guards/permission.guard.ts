@@ -61,7 +61,13 @@ export class PermissionGuard implements CanActivate {
 
     if (requiredAction) {
       if (!canPerform(requiredAction, effectiveRoleKeys)) {
-        throw new ForbiddenException("Missing required project role");
+        const delegatedApprovalAllowed =
+          projectId &&
+          this.isDelegatedApprovalAction(requiredAction) &&
+          (await this.hasDelegatedProjectActionRole(request.user.id, projectId, requiredAction));
+        if (!delegatedApprovalAllowed) {
+          throw new ForbiddenException("Missing required project role");
+        }
       }
 
       if (
@@ -129,6 +135,54 @@ export class PermissionGuard implements CanActivate {
       roleScopes.projectRoleKeys.some((role) => requiredRoles.includes(role)) ||
       roleScopes.globalRoleKeys.some((role) => role !== "employee" && requiredRoles.includes(role))
     );
+  }
+
+  private isDelegatedApprovalAction(action: BusinessAction) {
+    return action === "contract.approve" || action === "settlement.approve" || action === "payment.approve";
+  }
+
+  private async hasDelegatedProjectActionRole(
+    userId: string,
+    projectId: string,
+    action: BusinessAction
+  ) {
+    const delegationClient = (this.prisma as unknown as {
+      approvalDelegation?: {
+        findMany(args: {
+          where: {
+            toUserId: string;
+            enabled: true;
+            startsAt: { lte: Date };
+            endsAt: { gte: Date };
+          };
+          select: { fromUserId: true };
+        }): Promise<Array<{ fromUserId: string }>>;
+      };
+    }).approvalDelegation;
+    if (!delegationClient) {
+      return false;
+    }
+
+    const now = new Date();
+    const delegations = await delegationClient.findMany({
+      where: {
+        toUserId: userId,
+        enabled: true,
+        startsAt: { lte: now },
+        endsAt: { gte: now }
+      },
+      select: { fromUserId: true }
+    });
+
+    for (const delegation of delegations) {
+      const scopes = await this.loadRoleScopes(delegation.fromUserId, projectId);
+      const roleKeys = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
+      if (canPerform(action, roleKeys)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private async extractProjectId(request: AuthenticatedRequest) {

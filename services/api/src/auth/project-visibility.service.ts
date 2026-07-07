@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 
 @Injectable()
@@ -38,5 +38,31 @@ export class ProjectVisibilityService {
     ]);
 
     return activeProjectIds.filter((projectId) => scopedProjectIds.has(projectId));
+  }
+
+  async effectiveRoleKeys(userId: string, projectId: string): Promise<RoleKey[]> {
+    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
+      this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
+      this.prisma.userPosition.findMany({ where: { userId, projectId } }),
+      this.prisma.projectMember.findMany({ where: { userId, projectId } })
+    ]);
+    const positionIds = Array.from(
+      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
+    );
+    const positions = positionIds.length
+      ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    const positionKeyById = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
+    const globalRoleKeys = globalPositions
+      .map((position) => positionKeyById.get(position.positionId))
+      .filter((role): role is RoleKey => Boolean(role));
+    const projectRoleKeys = [
+      ...projectPositions
+        .map((position) => positionKeyById.get(position.positionId))
+        .filter((role): role is RoleKey => Boolean(role)),
+      ...projectMembers.map((member) => member.positionKey as RoleKey)
+    ];
+
+    return resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys);
   }
 }

@@ -14,6 +14,11 @@ export class ApprovalDelegationController {
     return this.delegations.create(user.id, body);
   }
 
+  @Get("user-options")
+  userOptions() {
+    return this.delegations.listActiveUserOptions();
+  }
+
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.delegations.listForUser(user.id);

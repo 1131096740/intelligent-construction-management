@@ -21,7 +21,7 @@
     </div>
 
     <div
-      v-if="loading && !summary"
+      v-if="loading && !workItems"
       class="message"
     >
       正在读取你的工作台...
@@ -54,23 +54,24 @@
             <p>{{ queue.description }}</p>
           </header>
           <div
-            v-if="!queue.cards.length"
+            v-if="!queue.items.length"
             class="queue-empty"
           >
             暂无事项
           </div>
           <template v-else>
             <button
-              v-for="card in queue.cards"
-              :key="card.id"
+              v-for="item in queue.items"
+              :key="item.id"
               type="button"
               class="workbench-card"
-              @click="go(card.targetPath)"
+              @click="go(item.targetPath)"
             >
-              <span class="card-title">{{ card.title }}</span>
-              <strong :class="['card-count', card.toneClass]">{{ card.countText }}</strong>
-              <span class="card-description">{{ card.description }}</span>
-              <span class="card-action">{{ card.actionText }}</span>
+              <span class="card-title">{{ item.title }}</span>
+              <strong :class="['card-count', item.toneClass]">{{ item.amountText }}</strong>
+              <span class="card-description">{{ item.projectName }} · {{ item.businessCode }}</span>
+              <span class="card-description">{{ item.currentNode }} · {{ item.stayedText }}</span>
+              <span class="card-action">{{ item.nextAction }}</span>
             </button>
           </template>
         </section>
@@ -83,31 +84,29 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
-  fetchWorkbenchSummary,
-  type WorkbenchSummaryReadModel
+  fetchWorkItems,
+  type WorkItemsReadModel
 } from "../../api/core-flow-read.api";
 import {
-  hasOpenWorkbenchItems,
-  hasWorkbenchPermissionData,
-  toWorkbenchCards,
-  toWorkbenchQueues
+  hasOpenWorkItems,
+  hasWorkItemPermissionData,
+  toWorkItemQueues
 } from "./home.config";
 
 const router = useRouter();
 const loading = ref(false);
 const errorMessage = ref("");
-const summary = ref<WorkbenchSummaryReadModel | null>(null);
+const workItems = ref<WorkItemsReadModel | null>(null);
 
-const cards = computed(() => toWorkbenchCards(summary.value));
-const queues = computed(() => toWorkbenchQueues(summary.value));
-const hasCards = computed(() => hasWorkbenchPermissionData(summary.value));
-const hasOpenItems = computed(() => hasOpenWorkbenchItems(cards.value));
+const queues = computed(() => toWorkItemQueues(workItems.value));
+const hasCards = computed(() => hasWorkItemPermissionData(workItems.value));
+const hasOpenItems = computed(() => hasOpenWorkItems(queues.value));
 
 async function loadSummary() {
   loading.value = true;
   errorMessage.value = "";
   try {
-    summary.value = await fetchWorkbenchSummary();
+    workItems.value = await fetchWorkItems();
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "读取工作台失败";
   } finally {
@@ -230,7 +229,7 @@ h1 {
 .workbench-card {
   min-height: 142px;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto auto 1fr;
   gap: 8px;
   padding: 16px;
   text-align: left;
@@ -252,8 +251,9 @@ h1 {
 }
 
 .card-count {
-  font-size: 34px;
-  line-height: 1;
+  font-size: 20px;
+  line-height: 1.2;
+  word-break: break-word;
 }
 
 .card-description {

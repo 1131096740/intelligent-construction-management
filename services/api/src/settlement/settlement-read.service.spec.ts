@@ -236,6 +236,139 @@ describe("SettlementReadService", () => {
     ]);
   });
 
+  it("keeps pending settlement archive files unavailable for download", async () => {
+    const prisma = {
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-2",
+          paymentTermsVersionId: "terms-version-2",
+          code: "JS-2026-031",
+          periodLabel: "2026-06",
+          status: "archive_pending",
+          amountCents: 58000000
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          code: "HT-2026-009",
+          name: "幕墙分包合同"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-version-2", versionNo: 2 })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "terms-version-2", versionNo: 2 })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-archive-1",
+            fileId: "file-settlement-1",
+            uploadedByUserId: "user-upload",
+            confirmedByUserId: null,
+            confirmedAt: null,
+            status: "pending_confirm",
+            createdAt: new Date("2026-07-01T09:00:00.000Z")
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-settlement-1",
+            originalName: "JS-2026-031-签章结算单.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 2048
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([{ id: "user-upload", name: "合同员" }])
+      }
+    };
+    const service = new SettlementReadService(prisma as never);
+
+    const detail = await service.getDetail("JS-2026-031");
+
+    expect(detail.archiveFiles).toContainEqual(
+      expect.objectContaining({
+        fileId: "file-settlement-1",
+        status: "pending_confirm",
+        statusLabel: "待确认",
+        canDownload: false,
+        disabledReason: "归档确认后开放下载"
+      })
+    );
+  });
+
+  it("exposes enabled payment creation action for effective settlements", async () => {
+    const prisma = {
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-2",
+          paymentTermsVersionId: "terms-version-2",
+          code: "JS-2026-031",
+          periodLabel: "2026-06",
+          status: "effective",
+          amountCents: 58000000
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          code: "HT-2026-009",
+          name: "幕墙分包合同"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-version-2", versionNo: 2 })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "terms-version-2", versionNo: 2 })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["project_manager"])
+    };
+    const service = new SettlementReadService(prisma as never, projectVisibility as never);
+
+    const detail = await service.getDetail("JS-2026-031", undefined, "user-pm");
+
+    expect(projectVisibility.effectiveRoleKeys).toHaveBeenCalledWith("user-pm", "project-1");
+    expect(detail.primaryAction).toBe("create_payment");
+    expect(detail.availableActions).toContainEqual({
+      key: "create_payment",
+      label: "发起付款申请",
+      kind: "primary",
+      enabled: true,
+      disabledReason: null,
+      requiredAction: "payment.create"
+    });
+    expect(detail.disabledReasons).toEqual([]);
+  });
+
   it("does not expose settlement detail outside visible projects", async () => {
     const prisma = {
       settlement: {

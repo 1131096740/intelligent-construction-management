@@ -62,6 +62,6 @@ describe("SettlementController authorization wiring", () => {
     await controller.detail("JS-2026-031", { id: "user-1" } as never);
 
     expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
-    expect(settlementRead.getDetail).toHaveBeenCalledWith("JS-2026-031", ["project-1"]);
+    expect(settlementRead.getDetail).toHaveBeenCalledWith("JS-2026-031", ["project-1"], "user-1");
   });
 });

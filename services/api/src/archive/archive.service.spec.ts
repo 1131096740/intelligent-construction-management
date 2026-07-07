@@ -67,9 +67,9 @@ describe("ArchiveService", () => {
       },
       fileObject: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "file-contract", originalName: "盖章合同.pdf" },
-          { id: "file-voucher", originalName: "银行回单.pdf" },
-          { id: "file-pdf", originalName: "付款留档.pdf" }
+          { id: "file-contract", originalName: "盖章合同.pdf", sizeBytes: 1024 },
+          { id: "file-voucher", originalName: "银行回单.pdf", sizeBytes: 2048 },
+          { id: "file-pdf", originalName: "付款留档.pdf", sizeBytes: 4096 }
         ])
       },
       user: {
@@ -98,6 +98,10 @@ describe("ArchiveService", () => {
     expect(result.rows[2]).toMatchObject({
       businessRef: "HT-001 / v1",
       project: "一号项目",
+      fileId: "file-contract",
+      fileSizeBytes: 1024,
+      canDownload: true,
+      disabledReason: null,
       archiveStatus: "已确认",
       confirmedBy: "合同主管"
     });
@@ -156,7 +160,9 @@ describe("ArchiveService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       fileObject: {
-        findMany: jest.fn().mockResolvedValue([{ id: "file-contract", originalName: "盖章合同.pdf" }])
+        findMany: jest.fn().mockResolvedValue([
+          { id: "file-contract", originalName: "盖章合同.pdf", sizeBytes: 1024 }
+        ])
       },
       user: {
         findMany: jest.fn().mockResolvedValue([])
@@ -171,5 +177,104 @@ describe("ArchiveService", () => {
 
     expect(result.rows).toEqual([]);
     expect(result.summary.total).toBe(0);
+  });
+
+  it("does not mark pending business archive files as downloadable", async () => {
+    const prisma = {
+      contractArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-archive-1",
+            contractVersionId: "version-1",
+            fileId: "file-contract",
+            uploadedByUserId: "user-contract",
+            confirmedByUserId: null,
+            confirmedAt: null,
+            status: "pending_confirm",
+            createdAt: new Date("2026-07-01T08:00:00.000Z")
+          }
+        ])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-archive-1",
+            settlementId: "settlement-1",
+            fileId: "file-settlement",
+            uploadedByUserId: "user-contract",
+            confirmedByUserId: null,
+            confirmedAt: null,
+            status: "pending_confirm",
+            createdAt: new Date("2026-07-01T09:00:00.000Z")
+          }
+        ])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "version-1", contractId: "contract-1", versionNo: 1 }
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            projectId: "project-1",
+            code: "HT-001",
+            temporaryCode: null,
+            name: "材料采购合同"
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-1",
+            projectId: "project-1",
+            code: "JS-001",
+            periodLabel: "2026-07"
+          }
+        ])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "file-contract", originalName: "盖章合同.pdf", sizeBytes: 1024 },
+          { id: "file-settlement", originalName: "签章结算单.pdf", sizeBytes: 2048 }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "一号项目" }])
+      }
+    };
+    const service = new ArchiveService(prisma as never);
+
+    const result = await service.listRecent(20);
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        documentType: "结算归档件",
+        archiveStatus: "待确认",
+        canDownload: false,
+        disabledReason: "归档确认后开放下载"
+      }),
+      expect.objectContaining({
+        documentType: "合同归档件",
+        archiveStatus: "待确认",
+        canDownload: false,
+        disabledReason: "归档确认后开放下载"
+      })
+    ]);
+    expect(result.summary.pending).toBe(2);
   });
 });

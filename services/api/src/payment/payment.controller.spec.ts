@@ -69,6 +69,6 @@ describe("PaymentController authorization wiring", () => {
     await controller.detail("FK-2026-011", { id: "user-1" } as never);
 
     expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
-    expect(paymentRead.getDetail).toHaveBeenCalledWith("FK-2026-011", ["project-1"]);
+    expect(paymentRead.getDetail).toHaveBeenCalledWith("FK-2026-011", ["project-1"], "user-1");
   });
 });

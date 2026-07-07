@@ -18,10 +18,14 @@ export interface ArchiveSummaryItem {
 export interface ArchiveLedgerRow {
   id: string;
   documentNo: string;
+  fileId: string;
   documentType: string;
   businessRef: string;
   project: string;
   fileSource: string;
+  fileSizeBytes: number;
+  canDownload: boolean;
+  disabledReason: string | null;
   archiveStatus: string;
   statusTone: ArchiveTone;
   uploadDepartment: string;

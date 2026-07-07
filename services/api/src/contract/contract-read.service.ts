@@ -1,12 +1,24 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import {
   canCreatePaymentFromSettlementStatus,
   type SettlementStatus,
   ContractBusinessOptionReadModel,
   ContractDetailReadModel,
   ContractSettlementPaymentReadModel,
-  CoreFlowTone
+  CoreFlowTone,
+  type DetailActionReadModel,
+  type RoleKey
 } from "@jiangkong/shared-domain";
+import {
+  canActOnFrozenApprovalNode,
+  pendingRoleKeysForFrozenApprovalNode
+} from "../approval/approval-node-access";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import {
+  detailAction,
+  disabledActionReasons,
+  primaryActionKey
+} from "../core-flow/detail-actions";
 import { PrismaService } from "../database/prisma.service";
 import { centsToSafeNumber } from "../money/decimal-money";
 import {
@@ -18,7 +30,11 @@ import type { HistoricalContractPaymentBalance } from "../payment/settlement-pay
 
 @Injectable()
 export class ContractReadService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly projectVisibility?: ProjectVisibilityService
+  ) {}
 
   private async confirmedHistoricalBalanceForContract(contractId: string) {
     const takeoverClient = (this.prisma as unknown as {
@@ -101,6 +117,7 @@ export class ContractReadService {
       if (!file) {
         return [];
       }
+      const canDownload = archiveFile.status === "confirmed" || Boolean(archiveFile.confirmedAt);
 
       return [
         {
@@ -112,7 +129,9 @@ export class ContractReadService {
           status: archiveFile.status,
           statusLabel: this.settlementArchiveFileStatusLabel(archiveFile),
           createdAt: archiveFile.createdAt.toISOString(),
-          confirmedAt: archiveFile.confirmedAt?.toISOString() ?? null
+          confirmedAt: archiveFile.confirmedAt?.toISOString() ?? null,
+          canDownload,
+          disabledReason: canDownload ? null : "归档确认后开放下载"
         }
       ];
     });
@@ -321,7 +340,11 @@ export class ContractReadService {
     });
   }
 
-  async getDetail(contractId: string, visibleProjectIds?: string[]): Promise<ContractDetailReadModel> {
+  async getDetail(
+    contractId: string,
+    visibleProjectIds?: string[],
+    actorUserId?: string
+  ): Promise<ContractDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(contractId);
     }
@@ -389,9 +412,25 @@ export class ContractReadService {
         : Promise.resolve([]),
       settlementIds.length ? this.findProjectProxyPayments(settlementIds) : Promise.resolve([])
     ]);
-    const historicalBalance = await this.confirmedHistoricalBalanceForContract(contract.id);
+    const [historicalBalance, roleKeys] = await Promise.all([
+      this.confirmedHistoricalBalanceForContract(contract.id),
+      this.actorRoleKeys(actorUserId, contract.projectId)
+    ]);
+    const canReviewApproval = await this.canReviewCurrentApproval(
+      "contract_version",
+      version.id,
+      contract.projectId,
+      roleKeys,
+      actorUserId
+    );
 
     const status = this.statusView(version.status);
+    const availableActions = this.contractActions(
+      version.status,
+      roleKeys,
+      canReviewApproval,
+      contractArchiveFiles
+    );
 
     const contractCode = contract.code ?? contract.temporaryCode ?? contract.id;
     const latestSettlement = settlements.at(-1);
@@ -441,6 +480,9 @@ export class ContractReadService {
         historicalBalance
       ),
       archiveFiles: contractArchiveFiles,
+      availableActions,
+      primaryAction: primaryActionKey(availableActions),
+      disabledReasons: disabledActionReasons(availableActions),
       chainLinks: [
         { label: "关联合同台账", to: "/contracts" },
         { label: "关联结算", to: latestSettlement ? `/settlements/${latestSettlement.code}` : "/settlements" },
@@ -519,6 +561,9 @@ export class ContractReadService {
           "当前可申请余额暂按已生效应付金额 - 已实付 - 审批中占用 - 已批待付计算，未纳入账期、质保金、预付款扣回和项目资金池；最新合同剩余额度以当前最新合同金额扣减合同维度累计生效结算，仅作台账提示。"
       },
       archiveFiles: [],
+      availableActions: [],
+      primaryAction: null,
+      disabledReasons: [],
       chainLinks: [
         { label: "关联合同台账", to: "/contracts" },
         { label: "关联结算", to: "/settlements/JS-2026-018" },
@@ -825,6 +870,217 @@ export class ContractReadService {
       calculationNote:
         "合同详情为金额摘要，系统内金额与历史接管余额分列；精确可申请额以付款申请预览的到账期、预付款扣回、总包代付和历史余额硬扣减口径为准。"
     };
+  }
+
+  private async actorRoleKeys(actorUserId: string | undefined, projectId: string): Promise<RoleKey[]> {
+    if (!actorUserId || !this.projectVisibility) {
+      return [];
+    }
+
+    return this.projectVisibility.effectiveRoleKeys(actorUserId, projectId);
+  }
+
+  private async canReviewCurrentApproval(
+    businessType: string,
+    businessId: string,
+    projectId: string,
+    roleKeys: RoleKey[],
+    actorUserId?: string
+  ): Promise<boolean> {
+    if (!actorUserId) {
+      return false;
+    }
+
+    const approvalClient = (this.prisma as unknown as {
+      approvalInstance?: {
+        findFirst(args: {
+          where: { businessType: string; businessId: string; status: string };
+          orderBy: { createdAt: "desc" };
+          select: { frozenNodes: true; currentNodeIndex: true };
+        }): Promise<{ frozenNodes: unknown; currentNodeIndex: number } | null>;
+      };
+    }).approvalInstance;
+    if (!approvalClient) {
+      return false;
+    }
+
+    const instance = await approvalClient.findFirst({
+      where: { businessType, businessId, status: "in_progress" },
+      orderBy: { createdAt: "desc" },
+      select: { frozenNodes: true, currentNodeIndex: true }
+    });
+
+    if (!instance) {
+      return false;
+    }
+
+    if (
+      canActOnFrozenApprovalNode(
+        instance.frozenNodes,
+        instance.currentNodeIndex,
+        roleKeys,
+        actorUserId
+      )
+    ) {
+      return true;
+    }
+
+    return this.hasDelegatedApprovalRole(
+      actorUserId,
+      projectId,
+      pendingRoleKeysForFrozenApprovalNode(instance.frozenNodes, instance.currentNodeIndex)
+    );
+  }
+
+  private async hasDelegatedApprovalRole(
+    actorUserId: string,
+    projectId: string,
+    nodeRoleKeys: RoleKey[]
+  ): Promise<boolean> {
+    if (!nodeRoleKeys.length || !this.projectVisibility) {
+      return false;
+    }
+
+    const delegationClient = (this.prisma as unknown as {
+      approvalDelegation?: {
+        findMany(args: {
+          where: {
+            toUserId: string;
+            enabled: true;
+            startsAt: { lte: Date };
+            endsAt: { gte: Date };
+          };
+          select: { fromUserId: true };
+        }): Promise<Array<{ fromUserId: string }>>;
+      };
+    }).approvalDelegation;
+    if (!delegationClient) {
+      return false;
+    }
+
+    const now = new Date();
+    const delegations = await delegationClient.findMany({
+      where: {
+        toUserId: actorUserId,
+        enabled: true,
+        startsAt: { lte: now },
+        endsAt: { gte: now }
+      },
+      select: { fromUserId: true }
+    });
+
+    for (const delegation of delegations) {
+      const delegatorRoleKeys = await this.projectVisibility.effectiveRoleKeys(
+        delegation.fromUserId,
+        projectId
+      );
+      if (nodeRoleKeys.some((role) => delegatorRoleKeys.includes(role))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private contractActions(
+    status: string,
+    roleKeys: RoleKey[],
+    canReviewApproval: boolean,
+    archiveFiles: ContractDetailReadModel["archiveFiles"]
+  ): DetailActionReadModel[] {
+    if (status === "draft") {
+      return [
+        detailAction({
+          key: "submit_approval",
+          label: "提交合同审批",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "contract.submit",
+          enabled: true
+        })
+      ];
+    }
+
+    if (status === "in_approval" || status === "approval_pending") {
+      return [
+        detailAction({
+          key: "review_approval",
+          label: "处理合同审批",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "contract.approve",
+          skipRoleCheck: true,
+          enabled: canReviewApproval,
+          disabledReason: "当前用户不是当前审批节点处理人"
+        })
+      ];
+    }
+
+    if (status === "approved_pending_seal" || status === "approved") {
+      return [
+        detailAction({
+          key: "approve_seal",
+          label: "确认用章通过",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "contract.seal",
+          enabled: true,
+          requiresPassword: true
+        })
+      ];
+    }
+
+    if (status === "seal_approved_pending_archive") {
+      return [
+        detailAction({
+          key: "upload_archive",
+          label: "上传盖章合同",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "contract.archive.upload",
+          enabled: true,
+          requiresFile: true
+        })
+      ];
+    }
+
+    if (status === "pending_archive_confirm" || status === "sealed_pending_archive") {
+      return [
+        detailAction({
+          key: "confirm_archive",
+          label: "确认合同归档",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "contract.archive.confirm",
+          enabled: true,
+          requiresPassword: true
+        })
+      ];
+    }
+
+    if (status === "effective") {
+      return [
+        detailAction({
+          key: "create_settlement",
+          label: "发起结算",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "settlement.create",
+          enabled: true
+        }),
+        detailAction({
+          key: "download_archive",
+          label: "下载合同归档件",
+          kind: "normal",
+          roleKeys,
+          enabled: archiveFiles.some((file) => file.status === "confirmed"),
+          disabledReason: "暂无已确认归档件",
+          requiresPassword: true
+        })
+      ];
+    }
+
+    return [];
   }
 
   private statusView(status: string): { label: string; tone: CoreFlowTone } {

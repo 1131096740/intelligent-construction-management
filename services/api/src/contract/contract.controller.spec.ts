@@ -96,7 +96,7 @@ describe("ContractController authorization wiring", () => {
     await controller.detail("HT-2026-009", { id: "user-1" } as never);
 
     expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
-    expect(contractRead.getDetail).toHaveBeenCalledWith("HT-2026-009", ["project-1"]);
+    expect(contractRead.getDetail).toHaveBeenCalledWith("HT-2026-009", ["project-1"], "user-1");
   });
 
   it("forwards number-rule maintenance bodies to runtime-validating service methods", () => {

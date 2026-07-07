@@ -1,4 +1,6 @@
 import type {
+  WorkItemReadModel,
+  WorkItemsReadModel,
   WorkbenchSummaryCardReadModel,
   WorkbenchSummaryReadModel
 } from "../../api/core-flow-read.api";
@@ -13,6 +15,17 @@ export interface WorkbenchQueueViewModel {
   title: string;
   description: string;
   cards: WorkbenchCardViewModel[];
+}
+
+export interface WorkItemQueueViewModel {
+  id: "pending" | "blocked" | "started";
+  title: string;
+  description: string;
+  items: WorkItemViewModel[];
+}
+
+export interface WorkItemViewModel extends WorkItemReadModel {
+  toneClass: string;
 }
 
 export function toWorkbenchCards(
@@ -66,6 +79,28 @@ export function hasOpenWorkbenchItems(cards: readonly WorkbenchCardViewModel[]):
   return cards.some((card) => card.count > 0);
 }
 
+export function toWorkItemQueues(
+  workItems: WorkItemsReadModel | null | undefined
+): WorkItemQueueViewModel[] {
+  return queueDefs.map((queue) => ({
+    ...queue,
+    items: (workItems?.queues[queue.id] ?? []).map((item) => ({
+      ...item,
+      toneClass: `tone-${item.tone}`
+    }))
+  }));
+}
+
+export function hasWorkItemPermissionData(
+  workItems: WorkItemsReadModel | null | undefined
+): boolean {
+  return (workItems?.visibleProjectCount ?? 0) > 0;
+}
+
+export function hasOpenWorkItems(queues: readonly WorkItemQueueViewModel[]): boolean {
+  return queues.some((queue) => queue.items.length > 0);
+}
+
 function queueIndexForCard(card: WorkbenchCardViewModel): number {
   if (
     card.tone === "danger" ||
@@ -80,3 +115,21 @@ function queueIndexForCard(card: WorkbenchCardViewModel): number {
 
   return 0;
 }
+
+const queueDefs: Array<Omit<WorkItemQueueViewModel, "items">> = [
+  {
+    id: "pending",
+    title: "待我处理",
+    description: "需要你当前岗位继续处理的接管、审批、归档和付款事项。"
+  },
+  {
+    id: "blocked",
+    title: "阻塞事项",
+    description: "会影响付款、归档或试运行事实链的风险项。"
+  },
+  {
+    id: "started",
+    title: "我发起的进行中",
+    description: "由你发起、还在审批或办理中的单据。"
+  }
+];

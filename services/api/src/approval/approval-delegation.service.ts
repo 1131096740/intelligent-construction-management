@@ -24,6 +24,14 @@ export class ApprovalDelegationService {
       throw new Error("Approval delegation target is invalid");
     }
 
+    const targetUser = await this.prisma.user.findFirst({
+      where: { id: input.toUserId, isActive: true },
+      select: { id: true }
+    });
+    if (!targetUser) {
+      throw new Error("Approval delegation target user is inactive or not found");
+    }
+
     const startsAt = new Date(input.startsAt);
     const endsAt = new Date(input.endsAt);
 
@@ -59,9 +67,37 @@ export class ApprovalDelegationService {
       throw new Error("Prisma service is required to list approval delegations");
     }
 
-    return this.prisma.approvalDelegation.findMany({
+    const delegations = await this.prisma.approvalDelegation.findMany({
       where: { OR: [{ fromUserId: userId }, { toUserId: userId }] },
       orderBy: { createdAt: "desc" }
+    });
+    const userIds = [
+      ...new Set(delegations.flatMap((delegation) => [delegation.fromUserId, delegation.toUserId]))
+    ];
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, name: true }
+        })
+      : [];
+    const nameById = new Map(users.map((user) => [user.id, user.name]));
+
+    return delegations.map((delegation) => ({
+      ...delegation,
+      fromUserName: nameById.get(delegation.fromUserId) ?? delegation.fromUserId,
+      toUserName: nameById.get(delegation.toUserId) ?? delegation.toUserId
+    }));
+  }
+
+  async listActiveUserOptions() {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to list active users");
+    }
+
+    return this.prisma.user.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true }
     });
   }
 

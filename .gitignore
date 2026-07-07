@@ -1,5 +1,6 @@
 node_modules/
 .codex/
+.codebase-memory/
 dist/
 .env
 .env.*

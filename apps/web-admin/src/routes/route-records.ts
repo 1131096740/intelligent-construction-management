@@ -29,6 +29,7 @@ export const adminNavigationItems: AdminNavigationItem[] = [
   { label: "结算管理", path: "/结算管理" },
   { label: "付款管理", path: "/付款管理" },
   { label: "资料库", path: "/资料库" },
+  { label: "审批中心", path: "/审批中心" },
   { label: "合同模板库", path: "/合同模板库" },
   { label: "合作单位档案", path: "/合作单位档案" },
   { label: "委托台账", path: "/委托台账" },
@@ -153,6 +154,10 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/archives/ArchiveListPage.vue")
       },
       {
+        path: "审批中心",
+        component: () => import("../pages/approval-center/ApprovalCenterPage.vue")
+      },
+      {
         path: "委托台账",
         component: () => import("../pages/delegations/DelegationListPage.vue")
       },
@@ -181,6 +186,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "payments", redirect: "/付款管理" },
       { path: "payments/:paymentId", redirect: paymentRedirect },
       { path: "archives", redirect: "/资料库" },
+      { path: "approval-center", redirect: "/审批中心" },
       { path: "delegations", redirect: "/委托台账" },
       { path: "audit", redirect: "/审计日志" },
       { path: "settings", redirect: "/系统配置" }

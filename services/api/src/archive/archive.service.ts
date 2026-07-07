@@ -72,10 +72,13 @@ export class ArchiveService {
       ...contractArchives.map((row) => {
         const version = versionById.get(row.contractVersionId);
         const contract = version ? contractById.get(version.contractId) : null;
+        const canDownload = row.status === "confirmed" || Boolean(row.confirmedAt);
         return {
           projectId: contract?.projectId,
           id: `contract-${row.id}`,
           documentNo: row.id,
+          fileId: row.fileId,
+          fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
           documentType: "合同归档件",
           businessRef: this.contractRef(contract, version),
           project: this.projectName(projectById, contract?.projectId),
@@ -85,15 +88,20 @@ export class ArchiveService {
           uploadDepartment: "合同部",
           confirmedBy: row.confirmedByUserId ? userById.get(row.confirmedByUserId)?.name ?? row.confirmedByUserId : "-",
           lastAction: this.date(row.confirmedAt ?? row.createdAt),
+          canDownload,
+          disabledReason: canDownload ? null : "归档确认后开放下载",
           createdAt: row.createdAt
         };
       }),
       ...settlementArchives.map((row) => {
         const settlement = settlementById.get(row.settlementId);
+        const canDownload = row.status === "confirmed" || Boolean(row.confirmedAt);
         return {
           projectId: settlement?.projectId,
           id: `settlement-${row.id}`,
           documentNo: row.id,
+          fileId: row.fileId,
+          fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
           documentType: "结算归档件",
           businessRef: settlement ? `${settlement.code} / ${settlement.periodLabel}` : row.settlementId,
           project: this.projectName(projectById, settlement?.projectId),
@@ -103,6 +111,8 @@ export class ArchiveService {
           uploadDepartment: "合同部",
           confirmedBy: row.confirmedByUserId ? userById.get(row.confirmedByUserId)?.name ?? row.confirmedByUserId : "-",
           lastAction: this.date(row.confirmedAt ?? row.createdAt),
+          canDownload,
+          disabledReason: canDownload ? null : "归档确认后开放下载",
           createdAt: row.createdAt
         };
       }),
@@ -112,6 +122,8 @@ export class ArchiveService {
           projectId: payment?.projectId,
           id: `voucher-${row.id}`,
           documentNo: row.voucherFileId,
+          fileId: row.voucherFileId,
+          fileSizeBytes: fileById.get(row.voucherFileId)?.sizeBytes ?? 0,
           documentType: "付款凭证",
           businessRef: payment?.code ?? row.paymentRequestId,
           project: this.projectName(projectById, payment?.projectId),
@@ -121,6 +133,8 @@ export class ArchiveService {
           uploadDepartment: "财务部",
           confirmedBy: userById.get(row.executedByUserId)?.name ?? row.executedByUserId,
           lastAction: this.date(row.createdAt),
+          canDownload: true,
+          disabledReason: null,
           createdAt: row.createdAt
         };
       }),
@@ -140,6 +154,8 @@ export class ArchiveService {
           }),
           id: `archive-${row.id}`,
           documentNo: row.id,
+          fileId: row.fileId,
+          fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
           documentType: this.archiveType(row.businessType),
           businessRef: ref,
           project: this.archiveProject(row.businessType, row.businessId, {
@@ -155,6 +171,8 @@ export class ArchiveService {
           uploadDepartment: this.departmentLabel(row.departmentScope),
           confirmedBy: "-",
           lastAction: this.date(row.createdAt),
+          canDownload: true,
+          disabledReason: null,
           createdAt: row.createdAt
         };
       })
@@ -165,10 +183,14 @@ export class ArchiveService {
       .map((row) => ({
         id: row.id,
         documentNo: row.documentNo,
+        fileId: row.fileId,
         documentType: row.documentType,
         businessRef: row.businessRef,
         project: row.project,
         fileSource: row.fileSource,
+        fileSizeBytes: row.fileSizeBytes,
+        canDownload: row.canDownload,
+        disabledReason: row.disabledReason,
         archiveStatus: row.archiveStatus,
         statusTone: row.statusTone,
         uploadDepartment: row.uploadDepartment,

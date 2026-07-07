@@ -55,6 +55,7 @@ describe("web admin routes", () => {
       "结算管理",
       "付款管理",
       "资料库",
+      "审批中心",
       "审计日志",
       "合同模板库",
       "合作单位档案",
@@ -77,6 +78,7 @@ describe("web admin routes", () => {
     expect(redirectOf("settlements")).toBe("/结算管理");
     expect(redirectOf("payments")).toBe("/付款管理");
     expect(redirectOf("archives")).toBe("/资料库");
+    expect(redirectOf("approval-center")).toBe("/审批中心");
     expect(redirectOf("audit")).toBe("/审计日志");
     expect(redirectOf("contract-templates")).toBe("/合同模板库");
     expect(redirectOf("business-parties")).toBe("/合作单位档案");
@@ -108,6 +110,7 @@ describe("web admin routes", () => {
       { label: "结算管理", path: "/结算管理" },
       { label: "付款管理", path: "/付款管理" },
       { label: "资料库", path: "/资料库" },
+      { label: "审批中心", path: "/审批中心" },
       { label: "合同模板库", path: "/合同模板库" },
       { label: "合作单位档案", path: "/合作单位档案" },
       { label: "委托台账", path: "/委托台账" },

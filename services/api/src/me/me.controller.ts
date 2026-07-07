@@ -42,4 +42,9 @@ export class MeController {
   workbenchSummary(@CurrentUser() user: AuthenticatedUser) {
     return this.me.getWorkbenchSummary(user.id);
   }
+
+  @Get("work-items")
+  workItems(@CurrentUser() user: AuthenticatedUser) {
+    return this.me.getWorkItems(user.id);
+  }
 }

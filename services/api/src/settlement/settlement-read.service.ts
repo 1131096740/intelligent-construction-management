@@ -1,13 +1,29 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, Optional } from "@nestjs/common";
 import type {
   CoreFlowTone,
+  DetailActionReadModel,
+  RoleKey,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
+import {
+  canActOnFrozenApprovalNode,
+  pendingRoleKeysForFrozenApprovalNode
+} from "../approval/approval-node-access";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import {
+  detailAction,
+  disabledActionReasons,
+  primaryActionKey
+} from "../core-flow/detail-actions";
 import { PrismaService } from "../database/prisma.service";
 
 @Injectable()
 export class SettlementReadService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly projectVisibility?: ProjectVisibilityService
+  ) {}
 
   private async settlementArchiveFilesForSettlement(
     settlementId: string
@@ -80,6 +96,7 @@ export class SettlementReadService {
       if (!file) {
         return [];
       }
+      const canDownload = archiveFile.status === "confirmed" || Boolean(archiveFile.confirmedAt);
 
       return [
         {
@@ -98,8 +115,8 @@ export class SettlementReadService {
             ? userById.get(archiveFile.confirmedByUserId)?.name ?? archiveFile.confirmedByUserId
             : null,
           confirmedAt: archiveFile.confirmedAt?.toISOString() ?? null,
-          canDownload: true,
-          disabledReason: null
+          canDownload,
+          disabledReason: canDownload ? null : "归档确认后开放下载"
         }
       ];
     });
@@ -164,7 +181,11 @@ export class SettlementReadService {
     };
   }
 
-  async getDetail(settlementId: string, visibleProjectIds?: string[]): Promise<SettlementDetailReadModel> {
+  async getDetail(
+    settlementId: string,
+    visibleProjectIds?: string[],
+    actorUserId?: string
+  ): Promise<SettlementDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(settlementId);
     }
@@ -210,6 +231,20 @@ export class SettlementReadService {
       orderBy: { createdAt: "asc" }
     });
     const status = this.statusView(settlement.status);
+    const roleKeys = await this.actorRoleKeys(actorUserId, settlement.projectId);
+    const canReviewApproval = await this.canReviewCurrentApproval(
+      "settlement",
+      settlement.id,
+      settlement.projectId,
+      roleKeys,
+      actorUserId
+    );
+    const availableActions = this.settlementActions(
+      settlement.status,
+      roleKeys,
+      canReviewApproval,
+      archiveFiles
+    );
 
     return {
       id: settlement.code,
@@ -248,6 +283,9 @@ export class SettlementReadService {
       })),
       paymentBlockMessage: this.paymentBlockMessage(settlement.status),
       archiveFiles,
+      availableActions,
+      primaryAction: primaryActionKey(availableActions),
+      disabledReasons: disabledActionReasons(availableActions),
       chainLinks: [
         { label: "关联合同", to: `/contracts/${contract.code}` },
         { label: "付款申请", to: paymentRequest ? `/payments/${paymentRequest.code}` : "/payments" },
@@ -311,6 +349,9 @@ export class SettlementReadService {
       paymentBlockMessage:
         "结算尚未生效，暂不可创建付款申请；付款比例和账期按绑定的付款条款版本执行。",
       archiveFiles: [],
+      availableActions: [],
+      primaryAction: null,
+      disabledReasons: [],
       chainLinks: [
         { label: "关联合同", to: "/contracts/HT-2026-001" },
         { label: "付款申请", to: "/payments/FK-2026-006" },
@@ -318,6 +359,190 @@ export class SettlementReadService {
         { label: "审计日志", to: "/audit" }
       ]
     };
+  }
+
+  private async actorRoleKeys(actorUserId: string | undefined, projectId: string): Promise<RoleKey[]> {
+    if (!actorUserId || !this.projectVisibility) {
+      return [];
+    }
+
+    return this.projectVisibility.effectiveRoleKeys(actorUserId, projectId);
+  }
+
+  private async canReviewCurrentApproval(
+    businessType: string,
+    businessId: string,
+    projectId: string,
+    roleKeys: RoleKey[],
+    actorUserId?: string
+  ): Promise<boolean> {
+    if (!actorUserId) {
+      return false;
+    }
+
+    const approvalClient = (this.prisma as unknown as {
+      approvalInstance?: {
+        findFirst(args: {
+          where: { businessType: string; businessId: string; status: string };
+          orderBy: { createdAt: "desc" };
+          select: { frozenNodes: true; currentNodeIndex: true };
+        }): Promise<{ frozenNodes: unknown; currentNodeIndex: number } | null>;
+      };
+    }).approvalInstance;
+    if (!approvalClient) {
+      return false;
+    }
+
+    const instance = await approvalClient.findFirst({
+      where: { businessType, businessId, status: "in_progress" },
+      orderBy: { createdAt: "desc" },
+      select: { frozenNodes: true, currentNodeIndex: true }
+    });
+
+    if (!instance) {
+      return false;
+    }
+
+    if (
+      canActOnFrozenApprovalNode(
+        instance.frozenNodes,
+        instance.currentNodeIndex,
+        roleKeys,
+        actorUserId
+      )
+    ) {
+      return true;
+    }
+
+    return this.hasDelegatedApprovalRole(
+      actorUserId,
+      projectId,
+      pendingRoleKeysForFrozenApprovalNode(instance.frozenNodes, instance.currentNodeIndex)
+    );
+  }
+
+  private async hasDelegatedApprovalRole(
+    actorUserId: string,
+    projectId: string,
+    nodeRoleKeys: RoleKey[]
+  ): Promise<boolean> {
+    if (!nodeRoleKeys.length || !this.projectVisibility) {
+      return false;
+    }
+
+    const delegationClient = (this.prisma as unknown as {
+      approvalDelegation?: {
+        findMany(args: {
+          where: {
+            toUserId: string;
+            enabled: true;
+            startsAt: { lte: Date };
+            endsAt: { gte: Date };
+          };
+          select: { fromUserId: true };
+        }): Promise<Array<{ fromUserId: string }>>;
+      };
+    }).approvalDelegation;
+    if (!delegationClient) {
+      return false;
+    }
+
+    const now = new Date();
+    const delegations = await delegationClient.findMany({
+      where: {
+        toUserId: actorUserId,
+        enabled: true,
+        startsAt: { lte: now },
+        endsAt: { gte: now }
+      },
+      select: { fromUserId: true }
+    });
+
+    for (const delegation of delegations) {
+      const delegatorRoleKeys = await this.projectVisibility.effectiveRoleKeys(
+        delegation.fromUserId,
+        projectId
+      );
+      if (nodeRoleKeys.some((role) => delegatorRoleKeys.includes(role))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private settlementActions(
+    status: string,
+    roleKeys: RoleKey[],
+    canReviewApproval: boolean,
+    archiveFiles: SettlementDetailReadModel["archiveFiles"]
+  ): DetailActionReadModel[] {
+    if (status === "approval_pending") {
+      return [
+        detailAction({
+          key: "review_approval",
+          label: "处理结算审批",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "settlement.approve",
+          skipRoleCheck: true,
+          enabled: canReviewApproval,
+          disabledReason: "当前用户不是当前审批节点处理人"
+        })
+      ];
+    }
+
+    if (status === "approved_pending_archive") {
+      return [
+        detailAction({
+          key: "upload_archive",
+          label: "上传结算归档件",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "settlement.archive.upload",
+          enabled: true,
+          requiresFile: true
+        })
+      ];
+    }
+
+    if (status === "archive_pending" || status === "pending_archive_confirm") {
+      return [
+        detailAction({
+          key: "confirm_archive",
+          label: "确认结算归档",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "settlement.archive.confirm",
+          enabled: true,
+          requiresPassword: true
+        })
+      ];
+    }
+
+    if (status === "effective") {
+      return [
+        detailAction({
+          key: "create_payment",
+          label: "发起付款申请",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "payment.create",
+          enabled: true
+        }),
+        detailAction({
+          key: "download_archive",
+          label: "下载结算归档件",
+          kind: "normal",
+          roleKeys,
+          enabled: archiveFiles.some((file) => file.canDownload),
+          disabledReason: "暂无可下载归档件",
+          requiresPassword: true
+        })
+      ];
+    }
+
+    return [];
   }
 
   private statusView(status: string): { label: string; tone: CoreFlowTone } {

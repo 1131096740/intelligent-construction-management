@@ -471,7 +471,8 @@ describe("FileService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "archive-file-1",
           contractVersionId: "contract-version-1",
-          fileId: "file-1"
+          fileId: "file-1",
+          status: "confirmed"
         })
       },
       contractVersion: {
@@ -519,6 +520,116 @@ describe("FileService", () => {
         expiresAt: ticket.expiresAt
       }
     });
+  });
+
+  it("rejects download tickets for pending contract archive files", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "待确认盖章合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1"
+        })
+      },
+      contractArchiveFile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "archive-file-1",
+          contractVersionId: "contract-version-1",
+          fileId: "file-1",
+          status: "pending_confirm"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
+      },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
+    ).rejects.toThrow("Archive file is not confirmed");
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects download tickets for pending settlement archive files", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "待确认签章结算单.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "settlement-archive-file-1",
+          settlementId: "settlement-1",
+          fileId: "file-1",
+          status: "pending_confirm"
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
+      },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
+    ).rejects.toThrow("Archive file is not confirmed");
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("allows finance users to create download tickets for project receipt vouchers", async () => {

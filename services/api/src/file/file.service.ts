@@ -430,6 +430,9 @@ export class FileService {
       where: { fileId: file.id }
     });
     if (contractArchiveFile) {
+      if (contractArchiveFile.status !== "confirmed") {
+        throw new Error("Archive file is not confirmed");
+      }
       const version = await tx.contractVersion.findUnique({
         where: { id: contractArchiveFile.contractVersionId }
       });
@@ -449,6 +452,9 @@ export class FileService {
       where: { fileId: file.id }
     });
     if (settlementArchiveFile) {
+      if (settlementArchiveFile.status !== "confirmed") {
+        throw new Error("Archive file is not confirmed");
+      }
       const settlement = await tx.settlement.findUnique({
         where: { id: settlementArchiveFile.settlementId }
       });

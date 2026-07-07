@@ -334,6 +334,72 @@ describe("PaymentReadService", () => {
     ]);
   });
 
+  it("exposes enabled payment execution action for cashier after approval", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          projectId: "project-1",
+          settlementId: "settlement-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-2",
+          paymentTermsVersionId: "terms-version-2",
+          code: "FK-2026-011",
+          status: "approved_pending_payment",
+          requestedAmountCents: 49300000,
+          approvedAmountCents: 49300000,
+          paidAmountCents: 0
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-031",
+          periodLabel: "2026-06",
+          status: "effective"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-version-2", versionNo: 2 })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "terms-version-2", versionNo: 2 })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecutionAllocation: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
+    };
+    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+
+    const detail = await service.getDetail("FK-2026-011", undefined, "user-cashier");
+
+    expect(projectVisibility.effectiveRoleKeys).toHaveBeenCalledWith("user-cashier", "project-1");
+    expect(detail.primaryAction).toBe("record_execution");
+    expect(detail.availableActions).toContainEqual({
+      key: "record_execution",
+      label: "登记实际付款",
+      kind: "primary",
+      enabled: true,
+      disabledReason: null,
+      requiredAction: "payment.execution",
+      requiresPassword: true,
+      requiresFile: true
+    });
+    expect(detail.disabledReasons).toEqual([]);
+  });
+
   it("does not expose payment detail outside visible projects", async () => {
     const prisma = {
       paymentRequest: {
@@ -700,6 +766,220 @@ describe("PaymentReadService", () => {
       tone: "warning"
     });
     expect(detail.executionBlockMessage).toContain("已登记部分实际付款");
+  });
+
+  it("exposes finance entry for partially paid requests", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          projectId: "project-1",
+          settlementId: "settlement-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-2026-013",
+          status: "partially_paid",
+          requestedAmountCents: 5000000,
+          approvedAmountCents: 5000000,
+          paidAmountCents: 2000000
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-033",
+          periodLabel: "2026-06",
+          status: "partially_paid"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "terms-version-1",
+          versionNo: 1
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "execution-1", amountCents: 2000000 }
+        ])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecutionAllocation: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
+    };
+    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+
+    const detail = await service.getDetail("FK-2026-013", undefined, "user-finance");
+
+    expect(detail.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "record_finance",
+        label: "财务入账",
+        enabled: true,
+        disabledReason: null,
+        requiredAction: "payment.finance_record"
+      })
+    );
+  });
+
+  it("keeps payment pdf archive disabled until finance records cover paid amount", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          projectId: "project-1",
+          settlementId: "settlement-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-2026-014",
+          status: "paid",
+          requestedAmountCents: 5000000,
+          approvedAmountCents: 5000000,
+          paidAmountCents: 5000000
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-034",
+          periodLabel: "2026-06",
+          status: "partially_paid"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-version-1", versionNo: 1 })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "terms-version-1", versionNo: 1 })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "execution-1", amountCents: 5000000 }
+        ])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecutionAllocation: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
+    };
+    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+
+    const detail = await service.getDetail("FK-2026-014", undefined, "user-finance");
+
+    expect(detail.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "record_finance",
+        enabled: true,
+        disabledReason: null
+      })
+    );
+    expect(detail.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "archive_pdf",
+        enabled: false,
+        disabledReason: "财务入账未完成"
+      })
+    );
+  });
+
+  it("enables approval review for a standing delegation recipient", async () => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          projectId: "project-1",
+          settlementId: "settlement-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          code: "FK-2026-015",
+          status: "approval_pending",
+          requestedAmountCents: 5000000,
+          approvedAmountCents: null,
+          paidAmountCents: 0
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-035",
+          periodLabel: "2026-06",
+          status: "effective"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-version-1", versionNo: 1 })
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "terms-version-1", versionNo: 1 })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecutionAllocation: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          frozenNodes: [{ roleKeys: ["finance_director"] }],
+          currentNodeIndex: 0
+        })
+      },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockImplementation((userId: string) => {
+        if (userId === "finance-director-1") return ["finance_director"];
+        return [];
+      })
+    };
+    const service = new PaymentReadService(prisma as never, projectVisibility as never);
+
+    const detail = await service.getDetail("FK-2026-015", undefined, "delegatee-1");
+
+    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({
+      where: { businessType: "payment_request", businessId: "payment-1", status: "in_progress" },
+      orderBy: { createdAt: "desc" },
+      select: { frozenNodes: true, currentNodeIndex: true }
+    });
+    expect(detail.primaryAction).toBe("review_approval");
+    expect(detail.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "review_approval",
+        enabled: true,
+        disabledReason: null
+      })
+    );
   });
 
   it("shows finance entry as recorded after finance records cover paid amount", async () => {

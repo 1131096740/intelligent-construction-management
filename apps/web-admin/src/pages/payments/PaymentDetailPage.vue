@@ -52,6 +52,7 @@
     </div>
 
     <t-card
+      id="approval"
       class="section-card action-card"
       title="流程动作"
       :bordered="true"
@@ -76,7 +77,7 @@
             <t-button
               theme="primary"
               :loading="actionBusy === 'approval'"
-              :disabled="!canReviewApproval"
+              :disabled="!isPaymentActionEnabled('review_approval')"
               @click="submitApproval('approve')"
             >
               通过
@@ -85,7 +86,7 @@
               theme="danger"
               variant="outline"
               :loading="actionBusy === 'approval'"
-              :disabled="!canReviewApproval"
+              :disabled="!isPaymentActionEnabled('review_approval')"
               @click="submitApproval('reject')"
             >
               驳回
@@ -135,7 +136,7 @@
           <t-button
             theme="primary"
             :loading="actionBusy === 'execution'"
-            :disabled="!canRecordExecution"
+            :disabled="!isPaymentActionEnabled('record_execution')"
             @click="submitExecution"
           >
             登记实付
@@ -162,7 +163,7 @@
           <t-button
             theme="primary"
             :loading="actionBusy === 'finance'"
-            :disabled="!canRecordFinance"
+            :disabled="!isPaymentActionEnabled('record_finance')"
             @click="submitFinance"
           >
             确认入账
@@ -188,7 +189,7 @@
           <t-button
             theme="primary"
             :loading="actionBusy === 'pdfArchive'"
-            :disabled="!canRecordPdfArchive"
+            :disabled="!isPaymentActionEnabled('archive_pdf')"
             @click="submitPdfArchive"
           >
             登记归档
@@ -197,7 +198,7 @@
             theme="primary"
             variant="outline"
             :loading="actionBusy === 'pdfGenerate'"
-            :disabled="!hasPaymentDetail"
+            :disabled="!isPaymentActionEnabled('archive_pdf')"
             @click="submitGeneratedPdfArchive"
           >
             生成PDF归档
@@ -272,7 +273,7 @@
             theme="primary"
             variant="outline"
             :loading="actionBusy === 'download'"
-            :disabled="!paymentEvidenceFileOptions.length"
+            :disabled="!isPaymentActionEnabled('download_file')"
             @click="submitPaymentFileDownload"
           >
             下载文件
@@ -488,24 +489,13 @@ const paymentEvidenceFileOptions = computed(() =>
       value: file.fileId
     }))
 );
-const approvalStatusValue = computed(
-  () => paymentDetailMetaView.value.find((item) => item.label === "审批状态")?.value ?? ""
+const paymentActionByKey = computed(
+  () => new Map((paymentDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
-const executionStatusValue = computed(
-  () => paymentDetailMetaView.value.find((item) => item.label === "实付状态")?.value ?? ""
-);
-const nextActionValue = computed(
-  () => paymentDetailMetaView.value.find((item) => item.label === "下一步动作")?.value ?? ""
-);
-const financeStepStatus = computed(
-  () => paymentExecutionStepsView.value.find((step) => step.label === "财务入账")?.status ?? ""
-);
-const canReviewApproval = computed(() => hasPaymentDetail.value && approvalStatusValue.value === "审批中");
-const canRecordExecution = computed(() => hasPaymentDetail.value && nextActionValue.value.includes("出纳付款登记"));
-const canRecordFinance = computed(
-  () => hasPaymentDetail.value && executionStatusValue.value === "已付款" && financeStepStatus.value === "待处理"
-);
-const canRecordPdfArchive = computed(() => hasPaymentDetail.value && financeStepStatus.value === "已入账");
+
+function isPaymentActionEnabled(key: string) {
+  return paymentActionByKey.value.get(key)?.enabled ?? false;
+}
 
 function openChainLink(to: string) {
   void router.push(to);

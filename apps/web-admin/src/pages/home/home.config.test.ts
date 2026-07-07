@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   hasOpenWorkbenchItems,
+  hasOpenWorkItems,
   hasWorkbenchPermissionData,
+  hasWorkItemPermissionData,
   toWorkbenchCards,
-  toWorkbenchQueues
+  toWorkbenchQueues,
+  toWorkItemQueues
 } from "./home.config";
-import type { WorkbenchSummaryReadModel } from "../../api/core-flow-read.api";
+import type { WorkbenchSummaryReadModel, WorkItemsReadModel } from "../../api/core-flow-read.api";
 
 describe("home workbench card helpers", () => {
   const summary: WorkbenchSummaryReadModel = {
@@ -95,5 +98,48 @@ describe("home workbench card helpers", () => {
     ]);
     expect(queues[1].cards.map((card) => card.id)).toEqual(["payment_blocked"]);
     expect(queues[2].cards).toEqual([]);
+  });
+
+  it("maps real work items into the three workbench queues", () => {
+    const workItems: WorkItemsReadModel = {
+      generatedAt: "2026-07-07T10:00:00.000Z",
+      visibleProjectCount: 1,
+      queues: {
+        pending: [
+          {
+            id: "approval:1",
+            type: "approval",
+            title: "付款审批：测试合同",
+            projectName: "测试项目",
+            businessCode: "FK-001",
+            amountText: "¥1,000.00",
+            currentNode: "董事长/总经理或签",
+            stayedText: "已停留 2 小时",
+            nextAction: "处理当前审批",
+            targetPath: "/付款管理/FK-001",
+            tone: "warning"
+          }
+        ],
+        blocked: [],
+        started: []
+      },
+      approvalCenter: {
+        pendingApproval: [],
+        startedByMe: [],
+        handledByMe: [],
+        delegatedToMe: [],
+        overdueReminder: []
+      }
+    };
+
+    const queues = toWorkItemQueues(workItems);
+
+    expect(hasWorkItemPermissionData(workItems)).toBe(true);
+    expect(hasOpenWorkItems(queues)).toBe(true);
+    expect(queues[0].items[0]).toMatchObject({
+      id: "approval:1",
+      toneClass: "tone-warning",
+      targetPath: "/付款管理/FK-001"
+    });
   });
 });

@@ -84,7 +84,11 @@ export class SettlementController {
     "finance_staff"
   )
   async detail(@Param("settlementId") settlementId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.settlementRead.getDetail(settlementId, await this.projectVisibility.visibleProjectIds(user.id));
+    return this.settlementRead.getDetail(
+      settlementId,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
   }
 
   @Post(":settlementId/approval")

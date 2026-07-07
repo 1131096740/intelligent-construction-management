@@ -16,6 +16,7 @@ import {
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
+  fetchWorkItems,
   createProject,
   updateProject,
   downloadProjectExpenseAttachment,
@@ -76,6 +77,7 @@ import {
   listContractTakeovers,
   listApprovalDelegations,
   createApprovalDelegation,
+  fetchApprovalDelegationUserOptions,
   revokeApprovalDelegation,
   submitContractTakeoverReview
 } from "./core-flow-read.api";
@@ -210,6 +212,17 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/me/workbench-summary"
     ]);
+  });
+
+  it("requests the personal work items endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ queues: {}, approvalCenter: {} })
+    } as Response);
+
+    await fetchWorkItems();
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/me/work-items"]);
   });
 
   it("requests project operating overview endpoints", async () => {
@@ -1083,6 +1096,7 @@ describe("core flow read API client", () => {
     } as Response);
 
     await listApprovalDelegations();
+    await fetchApprovalDelegationUserOptions();
     await createApprovalDelegation({
       toUserId: "user-b",
       startsAt: "2026-06-23T00:00:00.000Z",
@@ -1092,15 +1106,17 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/approval-delegations",
+      "/api/approval-delegations/user-options",
       "/api/approval-delegations",
       "/api/approval-delegations/delegation-1"
     ]);
     expect(fetchMock.mock.calls.map((call) => call[1]?.method)).toEqual([
       undefined,
+      undefined,
       "POST",
       "DELETE"
     ]);
-    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+    expect(fetchMock.mock.calls[2][1]?.body).toBe(
       JSON.stringify({
         toUserId: "user-b",
         startsAt: "2026-06-23T00:00:00.000Z",

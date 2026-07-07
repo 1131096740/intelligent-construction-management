@@ -72,6 +72,59 @@ describe("PermissionGuard", () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
+  it("allows delegated approval actions through the project-role guard", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { userId: string; projectId: string } }) =>
+          Promise.resolve(
+            where.userId === "finance-director-1" && where.projectId === "project-1"
+              ? [{ positionKey: "finance_director" }]
+              : []
+          )
+        )
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" })
+      },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("payment.approve")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "delegatee-1" },
+          params: { paymentId: "payment-1" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledWith({
+      where: {
+        toUserId: "delegatee-1",
+        enabled: true,
+        startsAt: { lte: expect.any(Date) },
+        endsAt: { gte: expect.any(Date) }
+      },
+      select: { fromUserId: true }
+    });
+  });
+
   it("rejects global-only employees from creating project expense requests", async () => {
     const prisma = {
       userPosition: {

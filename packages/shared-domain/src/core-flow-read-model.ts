@@ -1,3 +1,5 @@
+import type { BusinessAction } from "./permissions";
+
 export const CORE_FLOW_READ_ENDPOINTS = {
   contractDetail: "/contracts/:contractId",
   settlementDetail: "/settlements/:settlementId",
@@ -89,6 +91,8 @@ export interface ContractArchiveFileReadModel {
   statusLabel: string;
   createdAt: string;
   confirmedAt: string | null;
+  canDownload: boolean;
+  disabledReason: string | null;
 }
 
 export interface EvidenceFileReadModel {
@@ -108,6 +112,18 @@ export interface EvidenceFileReadModel {
   disabledReason: string | null;
 }
 
+export interface DetailActionReadModel {
+  key: string;
+  label: string;
+  kind: "primary" | "normal" | "danger";
+  enabled: boolean;
+  disabledReason: string | null;
+  requiredAction?: BusinessAction;
+  requiresPassword?: boolean;
+  requiresComment?: boolean;
+  requiresFile?: boolean;
+}
+
 export interface ContractDetailReadModel {
   id: string;
   contractVersionId: string;
@@ -119,6 +135,9 @@ export interface ContractDetailReadModel {
   settlementBlockMessage: string;
   settlementPayment: ContractSettlementPaymentReadModel;
   archiveFiles: ContractArchiveFileReadModel[];
+  availableActions: DetailActionReadModel[];
+  primaryAction: string | null;
+  disabledReasons: string[];
   chainLinks: BusinessChainLink[];
 }
 
@@ -142,6 +161,9 @@ export interface SettlementDetailReadModel {
   paymentRules: SettlementPaymentRuleReadModel[];
   paymentBlockMessage: string;
   archiveFiles: EvidenceFileReadModel[];
+  availableActions: DetailActionReadModel[];
+  primaryAction: string | null;
+  disabledReasons: string[];
   chainLinks: BusinessChainLink[];
 }
 
@@ -161,6 +183,9 @@ export interface PaymentDetailReadModel {
     amountCents: number;
   }>;
   evidenceFiles: EvidenceFileReadModel[];
+  availableActions: DetailActionReadModel[];
+  primaryAction: string | null;
+  disabledReasons: string[];
   traceRules: string[];
   executionBlockMessage: string;
   chainLinks: BusinessChainLink[];

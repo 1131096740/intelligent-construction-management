@@ -407,6 +407,13 @@ describe("ContractReadService", () => {
       contractArchiveFile: {
         findMany: jest.fn().mockResolvedValue([
           {
+            id: "archive-file-pending",
+            fileId: "file-pending-contract",
+            status: "pending_confirm",
+            createdAt: new Date("2026-07-02T08:00:00.000Z"),
+            confirmedAt: null
+          },
+          {
             id: "archive-file-1",
             fileId: "file-signed-contract",
             status: "confirmed",
@@ -422,6 +429,12 @@ describe("ContractReadService", () => {
             originalName: "幕墙分包合同-盖章版.pdf",
             mimeType: "application/pdf",
             sizeBytes: 128000
+          },
+          {
+            id: "file-pending-contract",
+            originalName: "幕墙分包合同-待确认盖章版.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 129000
           }
         ])
       },
@@ -473,6 +486,19 @@ describe("ContractReadService", () => {
     });
     expect(detail.archiveFiles).toEqual([
       {
+        archiveRecordId: "archive-file-pending",
+        fileId: "file-pending-contract",
+        fileName: "幕墙分包合同-待确认盖章版.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 129000,
+        status: "pending_confirm",
+        statusLabel: "待确认归档",
+        createdAt: "2026-07-02T08:00:00.000Z",
+        confirmedAt: null,
+        canDownload: false,
+        disabledReason: "归档确认后开放下载"
+      },
+      {
         archiveRecordId: "archive-file-1",
         fileId: "file-signed-contract",
         fileName: "幕墙分包合同-盖章版.pdf",
@@ -481,7 +507,9 @@ describe("ContractReadService", () => {
         status: "confirmed",
         statusLabel: "已归档确认",
         createdAt: "2026-07-01T08:00:00.000Z",
-        confirmedAt: "2026-07-01T09:00:00.000Z"
+        confirmedAt: "2026-07-01T09:00:00.000Z",
+        canDownload: true,
+        disabledReason: null
       }
     ]);
     expect(detail.chainLinks.map((link) => link.to)).toEqual([
@@ -490,6 +518,76 @@ describe("ContractReadService", () => {
       "/archives",
       "/audit"
     ]);
+  });
+
+  it("exposes enabled archive confirmation action for contract directors", async () => {
+    const prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          code: "HT-2026-009",
+          name: "幕墙分包合同",
+          counterparty: "幕墙分包单位"
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "总部综合楼" })
+      },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-version-2",
+          contractId: "contract-1",
+          versionNo: 2,
+          status: "pending_archive_confirm",
+          amountCents: 98650000
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-2",
+          versionNo: 2,
+          status: "effective"
+        })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["contract_director"])
+    };
+    const service = new ContractReadService(prisma as never, projectVisibility as never);
+
+    const detail = await service.getDetail("HT-2026-009", undefined, "user-director");
+
+    expect(projectVisibility.effectiveRoleKeys).toHaveBeenCalledWith("user-director", "project-1");
+    expect(detail.primaryAction).toBe("confirm_archive");
+    expect(detail.availableActions).toContainEqual({
+      key: "confirm_archive",
+      label: "确认合同归档",
+      kind: "primary",
+      enabled: true,
+      disabledReason: null,
+      requiredAction: "contract.archive.confirm",
+      requiresPassword: true
+    });
+    expect(detail.disabledReasons).toEqual([]);
   });
 
   it("summarizes contract settlement and payment ledger without inventing payment term availability", async () => {

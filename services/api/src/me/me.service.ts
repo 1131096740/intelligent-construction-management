@@ -8,6 +8,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { centsToSafeNumber } from "../money/decimal-money";
 
 export interface UploadSignatureInput {
   originalName: string;
@@ -40,12 +41,48 @@ export interface WorkbenchSummary {
   cards: WorkbenchCard[];
 }
 
+export type WorkItemQueueKey = "pending" | "blocked" | "started";
+export type ApprovalCenterViewKey =
+  | "pendingApproval"
+  | "startedByMe"
+  | "handledByMe"
+  | "delegatedToMe"
+  | "overdueReminder";
+export type WorkItemKind =
+  | "contract_takeover"
+  | "archive"
+  | "approval"
+  | "payment_execution"
+  | "blocker";
+
+export interface WorkItem {
+  id: string;
+  type: WorkItemKind;
+  title: string;
+  projectName: string;
+  businessCode: string;
+  amountText: string;
+  currentNode: string;
+  stayedText: string;
+  nextAction: string;
+  targetPath: string;
+  tone: WorkbenchCardTone;
+}
+
+export interface WorkItemsReadModel {
+  generatedAt: string;
+  visibleProjectCount: number;
+  queues: Record<WorkItemQueueKey, WorkItem[]>;
+  approvalCenter: Record<ApprovalCenterViewKey, WorkItem[]>;
+}
+
 interface ProjectRoleScope {
   projectId: string;
   roleKeys: RoleKey[];
 }
 
 interface ApprovalNode {
+  name?: unknown;
   roleKeys?: unknown;
   approvedRoleKeys?: unknown;
   assignments?: unknown;
@@ -63,6 +100,27 @@ const RELEVANT_APPROVAL_TYPES = [
 ] as const;
 
 const activeTakeoverStatuses = ["draft", "pending_review", "confirmed", "needs_supplement"];
+
+type ApprovalInstanceForWorkItem = {
+  id: string;
+  businessType: string;
+  businessId: string;
+  status: string;
+  currentNodeIndex: number;
+  frozenNodes: unknown;
+  applicantUserId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+interface ApprovalBusinessDetail {
+  projectId: string;
+  projectName: string;
+  businessCode: string;
+  title: string;
+  amountCents: number | bigint;
+  targetPath: string;
+}
 
 @Injectable()
 export class MeService {
@@ -221,6 +279,106 @@ export class MeService {
     };
   }
 
+  async getWorkItems(userId: string): Promise<WorkItemsReadModel> {
+    const scopes = await this.loadProjectRoleScopes(userId);
+    const projectIds = scopes.map((scope) => scope.projectId);
+    const projectNameById = await this.projectNames(projectIds);
+
+    const pending = [
+      ...(await this.contractTakeoverWorkItems(
+        this.projectIdsFor(scopes, ["contract.create", "contract.submit"]),
+        ["draft", "needs_supplement"],
+        projectNameById,
+        "补录历史合同",
+        "补齐资料后提交复核",
+        "primary"
+      )),
+      ...(await this.contractTakeoverWorkItems(
+        this.projectIdsFor(scopes, ["contract.archive.confirm"]),
+        ["pending_review"],
+        projectNameById,
+        "复核历史合同接管",
+        "确认后作为系统事实起点",
+        "warning"
+      )),
+      ...(await this.paymentExecutionWorkItems(
+        this.projectIdsFor(scopes, ["payment.execution"]),
+        projectNameById
+      )),
+      ...(await this.contractArchiveWorkItems(
+        this.projectIdsFor(scopes, ["contract.archive.upload"]),
+        ["seal_approved_pending_archive"],
+        projectNameById,
+        "上传盖章合同",
+        "上传后等待合同部主管确认归档",
+        "primary"
+      )),
+      ...(await this.contractArchiveWorkItems(
+        this.projectIdsFor(scopes, ["contract.archive.confirm"]),
+        ["pending_archive_confirm"],
+        projectNameById,
+        "确认合同归档",
+        "确认后合同版本生效",
+        "warning"
+      )),
+      ...(await this.settlementArchiveWorkItems(
+        this.projectIdsFor(scopes, ["settlement.archive.upload"]),
+        ["approved_pending_archive"],
+        projectNameById,
+        "上传结算签认件",
+        "上传后等待合同部主管确认归档",
+        "primary"
+      )),
+      ...(await this.settlementArchiveWorkItems(
+        this.projectIdsFor(scopes, ["settlement.archive.confirm"]),
+        ["archive_pending", "pending_archive_confirm"],
+        projectNameById,
+        "确认结算归档",
+        "确认后结算生效，可申请付款",
+        "warning"
+      )),
+      ...(await this.approvalWorkItems(scopes, userId, "pending"))
+    ];
+
+    const blocked = await this.contractTakeoverWorkItems(
+      this.projectIdsFor(scopes, ["contract.create", "contract.archive.confirm", "payment.create"]),
+      activeTakeoverStatuses,
+      projectNameById,
+      "历史余额未确认",
+      "确认余额后付款容量才可信",
+      "danger",
+      {
+        OR: [
+          { takeoverStatus: { not: "confirmed" } },
+          { historicalBalanceConfirmedAt: null }
+        ]
+      }
+    );
+
+    const started = await this.approvalWorkItems(scopes, userId, "started");
+    const handledByMe = await this.handledApprovalWorkItems(scopes, userId);
+    const delegatedToMe = (await this.approvalWorkItems(scopes, userId, "delegated")).filter(
+      (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index
+    );
+
+    return {
+      generatedAt: new Date().toISOString(),
+      visibleProjectCount: scopes.length,
+      queues: {
+        pending: pending.slice(0, 30),
+        blocked: blocked.slice(0, 30),
+        started: started.slice(0, 30)
+      },
+      approvalCenter: {
+        pendingApproval: pending.filter((item) => item.type === "approval").slice(0, 30),
+        startedByMe: started.slice(0, 30),
+        handledByMe,
+        delegatedToMe,
+        overdueReminder: []
+      }
+    };
+  }
+
   private async loadProjectRoleScopes(userId: string): Promise<ProjectRoleScope[]> {
     const [globalPositions, projectPositions, projectMembers, activeProjects] = await Promise.all([
       this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
@@ -271,6 +429,431 @@ export class MeService {
       .map((scope) => scope.projectId);
   }
 
+  private async projectNames(projectIds: string[]) {
+    if (!projectIds.length) {
+      return new Map<string, string>();
+    }
+
+    const projects = await this.prisma.project.findMany({
+      where: { id: { in: [...new Set(projectIds)] } },
+      select: { id: true, name: true }
+    });
+    return new Map(projects.map((project) => [project.id, project.name]));
+  }
+
+  private async contractTakeoverWorkItems(
+    projectIds: string[],
+    statuses: string[],
+    projectNameById: ReadonlyMap<string, string>,
+    currentNode: string,
+    nextAction: string,
+    tone: WorkbenchCardTone,
+    extraWhere: Prisma.ContractTakeoverWhereInput = {}
+  ): Promise<WorkItem[]> {
+    if (!projectIds.length) {
+      return [];
+    }
+
+    const takeovers = await this.prisma.contractTakeover.findMany({
+      where: {
+        projectId: { in: projectIds },
+        takeoverStatus: { in: statuses },
+        ...extraWhere
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 30,
+      select: {
+        id: true,
+        projectId: true,
+        contractId: true,
+        contractVersionId: true,
+        updatedAt: true
+      }
+    });
+    const [contracts, versions] = await Promise.all([
+      takeovers.length
+        ? this.prisma.contract.findMany({
+            where: { id: { in: [...new Set(takeovers.map((item) => item.contractId))] } },
+            select: { id: true, code: true, temporaryCode: true, name: true, counterparty: true }
+          })
+        : Promise.resolve([]),
+      takeovers.length
+        ? this.prisma.contractVersion.findMany({
+            where: { id: { in: [...new Set(takeovers.map((item) => item.contractVersionId))] } },
+            select: { id: true, amountCents: true }
+          })
+        : Promise.resolve([])
+    ]);
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const versionById = new Map(versions.map((version) => [version.id, version]));
+
+    return takeovers.map((takeover) => {
+      const contract = contractById.get(takeover.contractId);
+      const code = contract?.code ?? contract?.temporaryCode ?? takeover.contractId;
+      return {
+        id: `takeover:${takeover.id}`,
+        type: tone === "danger" ? "blocker" : "contract_takeover",
+        title: contract?.name ?? "历史合同接管",
+        projectName: projectNameById.get(takeover.projectId) ?? takeover.projectId,
+        businessCode: code,
+        amountText: this.amountText(versionById.get(takeover.contractVersionId)?.amountCents ?? 0),
+        currentNode,
+        stayedText: this.stayedText(takeover.updatedAt),
+        nextAction,
+        targetPath: "/历史合同接管",
+        tone
+      };
+    });
+  }
+
+  private async paymentExecutionWorkItems(
+    projectIds: string[],
+    projectNameById: ReadonlyMap<string, string>
+  ): Promise<WorkItem[]> {
+    if (!projectIds.length) {
+      return [];
+    }
+
+    const payments = await this.prisma.paymentRequest.findMany({
+      where: {
+        projectId: { in: projectIds },
+        status: { in: ["approved_pending_payment", "partially_paid"] }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 30,
+      select: {
+        id: true,
+        projectId: true,
+        code: true,
+        requestedAmountCents: true,
+        approvedAmountCents: true,
+        paidAmountCents: true,
+        updatedAt: true
+      }
+    });
+
+    return payments.map((payment) => {
+      const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
+      const remainingAmountCents = Math.max(payableAmountCents - payment.paidAmountCents, 0);
+
+      return {
+        id: `payment-execution:${payment.id}`,
+        type: "payment_execution",
+        title: "登记实付与凭证",
+        projectName: projectNameById.get(payment.projectId) ?? payment.projectId,
+        businessCode: payment.code,
+        amountText: this.amountText(remainingAmountCents || payableAmountCents),
+        currentNode: "财务/出纳实付",
+        stayedText: this.stayedText(payment.updatedAt),
+        nextAction: "登记实付并上传凭证",
+        targetPath: `/付款管理/${payment.code}`,
+        tone: "warning"
+      };
+    });
+  }
+
+  private async contractArchiveWorkItems(
+    projectIds: string[],
+    statuses: string[],
+    projectNameById: ReadonlyMap<string, string>,
+    currentNode: string,
+    nextAction: string,
+    tone: WorkbenchCardTone
+  ): Promise<WorkItem[]> {
+    if (!projectIds.length) {
+      return [];
+    }
+
+    const contracts = await this.prisma.contract.findMany({
+      where: { projectId: { in: projectIds } },
+      select: { id: true, projectId: true, code: true, temporaryCode: true, name: true }
+    });
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const versions = contracts.length
+      ? await this.prisma.contractVersion.findMany({
+          where: {
+            contractId: { in: contracts.map((contract) => contract.id) },
+            status: { in: statuses }
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 30,
+          select: { id: true, contractId: true, amountCents: true, updatedAt: true }
+        })
+      : [];
+
+    return versions.flatMap((version) => {
+      const contract = contractById.get(version.contractId);
+      if (!contract) {
+        return [];
+      }
+      const code = contract.code ?? contract.temporaryCode ?? contract.id;
+      return [
+        {
+          id: `contract-archive:${version.id}`,
+          type: "archive",
+          title: contract.name,
+          projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
+          businessCode: code,
+          amountText: this.amountText(version.amountCents),
+          currentNode,
+          stayedText: this.stayedText(version.updatedAt),
+          nextAction,
+          targetPath: `/合同管理/${code}`,
+          tone
+        }
+      ];
+    });
+  }
+
+  private async settlementArchiveWorkItems(
+    projectIds: string[],
+    statuses: string[],
+    projectNameById: ReadonlyMap<string, string>,
+    currentNode: string,
+    nextAction: string,
+    tone: WorkbenchCardTone
+  ): Promise<WorkItem[]> {
+    if (!projectIds.length) {
+      return [];
+    }
+
+    const settlements = await this.prisma.settlement.findMany({
+      where: { projectId: { in: projectIds }, status: { in: statuses } },
+      orderBy: { updatedAt: "desc" },
+      take: 30,
+      select: {
+        id: true,
+        projectId: true,
+        contractId: true,
+        code: true,
+        periodLabel: true,
+        amountCents: true,
+        updatedAt: true
+      }
+    });
+    const contracts = settlements.length
+      ? await this.prisma.contract.findMany({
+          where: { id: { in: [...new Set(settlements.map((settlement) => settlement.contractId))] } },
+          select: { id: true, name: true }
+        })
+      : [];
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+
+    return settlements.map((settlement) => ({
+      id: `settlement-archive:${settlement.id}`,
+      type: "archive",
+      title: contractById.get(settlement.contractId)?.name ?? `结算 ${settlement.periodLabel}`,
+      projectName: projectNameById.get(settlement.projectId) ?? settlement.projectId,
+      businessCode: settlement.code,
+      amountText: this.amountText(settlement.amountCents),
+      currentNode,
+      stayedText: this.stayedText(settlement.updatedAt),
+      nextAction,
+      targetPath: `/结算管理/${settlement.code}`,
+      tone
+    }));
+  }
+
+  private async approvalWorkItems(
+    scopes: ProjectRoleScope[],
+    userId: string,
+    mode: "pending" | "started" | "delegated"
+  ): Promise<WorkItem[]> {
+    const instances = (await this.prisma.approvalInstance.findMany({
+      where: {
+        status: "in_progress",
+        businessType: { in: [...RELEVANT_APPROVAL_TYPES] },
+        ...(mode === "started" ? { applicantUserId: userId } : {})
+      },
+      orderBy: { updatedAt: "desc" },
+    })) as ApprovalInstanceForWorkItem[];
+    const roleKeysByProject = new Map(scopes.map((scope) => [scope.projectId, scope.roleKeys]));
+    const details = await this.approvalBusinessDetails(instances);
+    const items: WorkItem[] = [];
+
+    for (const instance of instances) {
+      const detail = details.get(`${instance.businessType}:${instance.businessId}`);
+      const node = this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex);
+      if (!detail || !node) {
+        continue;
+      }
+      const roleKeys = roleKeysByProject.get(detail.projectId) ?? [];
+      const hasDirectTodo = this.canActOnApprovalNode(node, roleKeys, userId);
+      const hasDelegatedTodo = await this.hasDelegatedApprovalTodo(userId, detail.projectId, node);
+      if (mode === "pending" && !hasDirectTodo && !hasDelegatedTodo) {
+        continue;
+      }
+      if (mode === "delegated" && !this.hasAssignmentTodo(node, userId) && !hasDelegatedTodo) {
+        continue;
+      }
+
+      items.push({
+        id: `approval:${instance.id}`,
+        type: "approval",
+        title: detail.title,
+        projectName: detail.projectName,
+        businessCode: detail.businessCode,
+        amountText: this.amountText(detail.amountCents),
+        currentNode: this.approvalNodeName(node),
+        stayedText: this.stayedText(instance.updatedAt),
+        nextAction: mode === "started" ? "查看审批进度" : "处理当前审批",
+        targetPath: detail.targetPath,
+        tone: mode === "started" ? "primary" : "warning"
+      });
+    }
+
+    return items;
+  }
+
+  private async handledApprovalWorkItems(
+    scopes: ProjectRoleScope[],
+    userId: string
+  ): Promise<WorkItem[]> {
+    const logs = await this.prisma.approvalActionLog.findMany({
+      where: { actorUserId: userId },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: { id: true, approvalInstanceId: true, action: true, createdAt: true }
+    });
+    const approvalInstanceIds = [...new Set(logs.map((log) => log.approvalInstanceId))];
+    if (!approvalInstanceIds.length) {
+      return [];
+    }
+
+    const instances = (await this.prisma.approvalInstance.findMany({
+      where: {
+        id: { in: approvalInstanceIds },
+        businessType: { in: [...RELEVANT_APPROVAL_TYPES] }
+      }
+    })) as ApprovalInstanceForWorkItem[];
+    const instanceById = new Map(instances.map((instance) => [instance.id, instance]));
+    const visibleProjectIds = new Set(scopes.map((scope) => scope.projectId));
+    const details = await this.approvalBusinessDetails(instances);
+    const seen = new Set<string>();
+    const items: WorkItem[] = [];
+
+    for (const log of logs) {
+      if (seen.has(log.approvalInstanceId)) {
+        continue;
+      }
+      const instance = instanceById.get(log.approvalInstanceId);
+      const detail = instance
+        ? details.get(`${instance.businessType}:${instance.businessId}`)
+        : undefined;
+      if (!instance || !detail || !visibleProjectIds.has(detail.projectId)) {
+        continue;
+      }
+      seen.add(log.approvalInstanceId);
+      items.push({
+        id: `handled-approval:${log.id}`,
+        type: "approval",
+        title: detail.title,
+        projectName: detail.projectName,
+        businessCode: detail.businessCode,
+        amountText: this.amountText(detail.amountCents),
+        currentNode: `已处理：${this.approvalActionLabel(log.action)}`,
+        stayedText: this.stayedText(log.createdAt),
+        nextAction: "查看业务详情",
+        targetPath: detail.targetPath,
+        tone: "success"
+      });
+      if (items.length >= 30) {
+        break;
+      }
+    }
+
+    return items;
+  }
+
+  private async approvalBusinessDetails(instances: ApprovalInstanceForWorkItem[]) {
+    const result = new Map<string, ApprovalBusinessDetail>();
+    const contractVersionIds = instances
+      .filter((instance) => instance.businessType === "contract_version")
+      .map((instance) => instance.businessId);
+    const settlementIds = instances
+      .filter((instance) => instance.businessType === "settlement")
+      .map((instance) => instance.businessId);
+    const paymentIds = instances
+      .filter((instance) => instance.businessType === "payment_request")
+      .map((instance) => instance.businessId);
+
+    const [versions, settlements, payments] = await Promise.all([
+      contractVersionIds.length
+        ? this.prisma.contractVersion.findMany({
+            where: { id: { in: contractVersionIds } },
+            select: { id: true, contractId: true, amountCents: true }
+          })
+        : Promise.resolve([]),
+      settlementIds.length
+        ? this.prisma.settlement.findMany({
+            where: { id: { in: settlementIds } },
+            select: { id: true, projectId: true, contractId: true, code: true, periodLabel: true, amountCents: true }
+          })
+        : Promise.resolve([]),
+      paymentIds.length
+        ? this.prisma.paymentRequest.findMany({
+            where: { id: { in: paymentIds } },
+            select: { id: true, projectId: true, contractId: true, code: true, requestedAmountCents: true }
+          })
+        : Promise.resolve([])
+    ]);
+    const contractIds = [
+      ...versions.map((version) => version.contractId),
+      ...settlements.map((settlement) => settlement.contractId),
+      ...payments.map((payment) => payment.contractId)
+    ];
+    const contracts = contractIds.length
+      ? await this.prisma.contract.findMany({
+          where: { id: { in: [...new Set(contractIds)] } },
+          select: { id: true, projectId: true, code: true, temporaryCode: true, name: true, counterparty: true }
+        })
+      : [];
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const projectNames = await this.projectNames([
+      ...contracts.map((contract) => contract.projectId),
+      ...settlements.map((settlement) => settlement.projectId),
+      ...payments.map((payment) => payment.projectId)
+    ]);
+
+    for (const version of versions) {
+      const contract = contractById.get(version.contractId);
+      if (!contract) continue;
+      const code = contract.code ?? contract.temporaryCode ?? contract.id;
+      result.set(`contract_version:${version.id}`, {
+        projectId: contract.projectId,
+        projectName: projectNames.get(contract.projectId) ?? contract.projectId,
+        businessCode: code,
+        title: `合同审批：${contract.name}`,
+        amountCents: version.amountCents,
+        targetPath: `/合同管理/${code}`
+      });
+    }
+    for (const settlement of settlements) {
+      const contract = contractById.get(settlement.contractId);
+      result.set(`settlement:${settlement.id}`, {
+        projectId: settlement.projectId,
+        projectName: projectNames.get(settlement.projectId) ?? settlement.projectId,
+        businessCode: settlement.code,
+        title: `结算审批：${contract?.name ?? settlement.periodLabel}`,
+        amountCents: settlement.amountCents,
+        targetPath: `/结算管理/${settlement.code}`
+      });
+    }
+    for (const payment of payments) {
+      const contract = contractById.get(payment.contractId);
+      result.set(`payment_request:${payment.id}`, {
+        projectId: payment.projectId,
+        projectName: projectNames.get(payment.projectId) ?? payment.projectId,
+        businessCode: payment.code,
+        title: `付款审批：${contract?.name ?? payment.code}`,
+        amountCents: payment.requestedAmountCents,
+        targetPath: `/付款管理/${payment.code}`
+      });
+    }
+
+    return result;
+  }
+
   private countTakeovers(projectIds: string[], where: Prisma.ContractTakeoverWhereInput) {
     return this.prisma.contractTakeover.count({
       where: {
@@ -293,16 +876,20 @@ export class MeService {
 
     for (const instance of instances) {
       const projectId = businessProjectIds.get(`${instance.businessType}:${instance.businessId}`);
-      const roleKeys = projectId ? roleKeysByProject.get(projectId) : undefined;
-      if (!roleKeys) {
+      if (!projectId) {
         continue;
       }
+      const roleKeys = roleKeysByProject.get(projectId) ?? [];
 
       const currentNode = this.currentApprovalNode(
         instance.frozenNodes,
         instance.currentNodeIndex
       );
-      if (!currentNode || !this.canActOnApprovalNode(currentNode, roleKeys, userId)) {
+      if (
+        !currentNode ||
+        (!this.canActOnApprovalNode(currentNode, roleKeys, userId) &&
+          !(await this.hasDelegatedApprovalTodo(userId, projectId, currentNode)))
+      ) {
         continue;
       }
 
@@ -395,8 +982,143 @@ export class MeService {
     return hasRoleTodo || hasAssignmentTodo;
   }
 
+  private hasAssignmentTodo(node: ApprovalNode, userId: string) {
+    const approvedRoleKeys = new Set(this.stringArray(node.approvedRoleKeys));
+    const assignments = Array.isArray(node.assignments)
+      ? (node.assignments as ApprovalAssignment[])
+      : [];
+    return assignments.some(
+      (assignment) =>
+        assignment.toUserId === userId &&
+        typeof assignment.fromRoleKey === "string" &&
+        !approvedRoleKeys.has(assignment.fromRoleKey)
+    );
+  }
+
+  private pendingRoleKeys(node: ApprovalNode): RoleKey[] {
+    const approvedRoleKeys = new Set(this.stringArray(node.approvedRoleKeys));
+    return this.stringArray(node.roleKeys)
+      .filter((role) => !approvedRoleKeys.has(role))
+      .map((role) => role as RoleKey);
+  }
+
+  private async hasDelegatedApprovalTodo(
+    userId: string,
+    projectId: string,
+    node: ApprovalNode
+  ): Promise<boolean> {
+    const nodeRoleKeys = this.pendingRoleKeys(node);
+    if (!nodeRoleKeys.length) {
+      return false;
+    }
+
+    const delegationClient = (this.prisma as unknown as {
+      approvalDelegation?: {
+        findMany(args: {
+          where: {
+            toUserId: string;
+            enabled: true;
+            startsAt: { lte: Date };
+            endsAt: { gte: Date };
+          };
+          select: { fromUserId: true };
+        }): Promise<Array<{ fromUserId: string }>>;
+      };
+    }).approvalDelegation;
+    if (!delegationClient) {
+      return false;
+    }
+
+    const now = new Date();
+    const delegations = await delegationClient.findMany({
+      where: {
+        toUserId: userId,
+        enabled: true,
+        startsAt: { lte: now },
+        endsAt: { gte: now }
+      },
+      select: { fromUserId: true }
+    });
+
+    for (const delegation of delegations) {
+      const delegatorRoleKeys = await this.roleKeysForUserProject(delegation.fromUserId, projectId);
+      if (nodeRoleKeys.some((role) => delegatorRoleKeys.includes(role))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async roleKeysForUserProject(userId: string, projectId: string): Promise<RoleKey[]> {
+    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
+      this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
+      this.prisma.userPosition.findMany({ where: { userId, projectId } }),
+      this.prisma.projectMember.findMany({ where: { userId, projectId } })
+    ]);
+    const positionIds = Array.from(
+      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
+    );
+    const positions = positionIds.length
+      ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    const positionKeyById = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
+    const globalRoleKeys = globalPositions
+      .map((position) => positionKeyById.get(position.positionId))
+      .filter((role): role is RoleKey => Boolean(role));
+    const projectRoleKeys = [
+      ...projectPositions
+        .map((position) => positionKeyById.get(position.positionId))
+        .filter((role): role is RoleKey => Boolean(role)),
+      ...projectMembers.map((member) => member.positionKey as RoleKey)
+    ];
+
+    return resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys);
+  }
+
   private stringArray(value: unknown): string[] {
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  }
+
+  private approvalNodeName(node: ApprovalNode) {
+    if (typeof node.name === "string" && node.name.trim()) {
+      return node.name;
+    }
+    const roles = this.stringArray(node.roleKeys);
+    return roles.length ? roles.join(" / ") : "当前审批节点";
+  }
+
+  private approvalActionLabel(action: string) {
+    const labels: Record<string, string> = {
+      approve: "同意",
+      reject: "驳回",
+      reject_previous: "退回上一步",
+      return_to_applicant: "退回申请人",
+      transfer: "转审",
+      delegate: "委托",
+      withdraw: "撤回",
+      remind: "催办"
+    };
+    return labels[action] ?? action;
+  }
+
+  private amountText(amountCents: number | bigint) {
+    const safeCents =
+      typeof amountCents === "bigint" ? centsToSafeNumber(amountCents) : amountCents;
+    return `¥${(safeCents / 100).toLocaleString("zh-CN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`;
+  }
+
+  private stayedText(value: Date) {
+    const elapsedMs = Math.max(Date.now() - value.getTime(), 0);
+    const days = Math.floor(elapsedMs / 86_400_000);
+    if (days >= 1) {
+      return `已停留 ${days} 天`;
+    }
+    const hours = Math.max(Math.floor(elapsedMs / 3_600_000), 1);
+    return `已停留 ${hours} 小时`;
   }
 
   private approvalTargetPath(counts: { contract: number; settlement: number; payment: number }) {

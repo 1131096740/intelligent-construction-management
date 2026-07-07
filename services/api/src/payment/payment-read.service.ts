@@ -1,9 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import type {
   ContractPaymentApplicationPreviewReadModel,
   CoreFlowTone,
-  PaymentDetailReadModel
+  DetailActionReadModel,
+  PaymentDetailReadModel,
+  RoleKey
 } from "@jiangkong/shared-domain";
+import {
+  canActOnFrozenApprovalNode,
+  pendingRoleKeysForFrozenApprovalNode
+} from "../approval/approval-node-access";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import {
+  detailAction,
+  disabledActionReasons,
+  primaryActionKey
+} from "../core-flow/detail-actions";
 import { PrismaService } from "../database/prisma.service";
 import {
   CONTRACT_TAKEOVER_BALANCE_SELECT,
@@ -19,7 +31,11 @@ import {
 
 @Injectable()
 export class PaymentReadService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly projectVisibility?: ProjectVisibilityService
+  ) {}
 
   private async paymentEvidenceFiles(
     paymentId: string,
@@ -261,7 +277,11 @@ export class PaymentReadService {
     };
   }
 
-  async getDetail(paymentId: string, visibleProjectIds?: string[]): Promise<PaymentDetailReadModel> {
+  async getDetail(
+    paymentId: string,
+    visibleProjectIds?: string[],
+    actorUserId?: string
+  ): Promise<PaymentDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(paymentId);
     }
@@ -363,6 +383,23 @@ export class PaymentReadService {
     const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
     const approval = this.approvalStatusView(payment.status);
     const execution = this.executionStatusView(payment.status, paidAmountCents, payableAmountCents);
+    const roleKeys = await this.actorRoleKeys(actorUserId, payment.projectId);
+    const canReviewApproval = await this.canReviewCurrentApproval(
+      "payment_request",
+      payment.id,
+      payment.projectId,
+      roleKeys,
+      actorUserId
+    );
+    const availableActions = this.paymentActions(
+      payment.status,
+      roleKeys,
+      canReviewApproval,
+      execution.complete,
+      financeRecordedAmountCents,
+      paidAmountCents,
+      evidenceFiles
+    );
 
     return {
       id: payment.code,
@@ -426,6 +463,9 @@ export class PaymentReadService {
         };
       }),
       evidenceFiles,
+      availableActions,
+      primaryAction: primaryActionKey(availableActions),
+      disabledReasons: disabledActionReasons(availableActions),
       traceRules: [
         isContractAdvance
           ? "预付款按合同生效日和账期计算，不依赖结算单"
@@ -759,6 +799,9 @@ export class PaymentReadService {
       ],
       executionAllocations: [],
       evidenceFiles: [],
+      availableActions: [],
+      primaryAction: null,
+      disabledReasons: [],
       traceRules: [
         "付款申请只能来自已生效结算",
         "审批通过进入已批待付",
@@ -773,6 +816,205 @@ export class PaymentReadService {
         { label: "审计日志", to: "/audit" }
       ]
     };
+  }
+
+  private async actorRoleKeys(actorUserId: string | undefined, projectId: string): Promise<RoleKey[]> {
+    if (!actorUserId || !this.projectVisibility) {
+      return [];
+    }
+
+    return this.projectVisibility.effectiveRoleKeys(actorUserId, projectId);
+  }
+
+  private async canReviewCurrentApproval(
+    businessType: string,
+    businessId: string,
+    projectId: string,
+    roleKeys: RoleKey[],
+    actorUserId?: string
+  ): Promise<boolean> {
+    if (!actorUserId) {
+      return false;
+    }
+
+    const approvalClient = (this.prisma as unknown as {
+      approvalInstance?: {
+        findFirst(args: {
+          where: { businessType: string; businessId: string; status: string };
+          orderBy: { createdAt: "desc" };
+          select: { frozenNodes: true; currentNodeIndex: true };
+        }): Promise<{ frozenNodes: unknown; currentNodeIndex: number } | null>;
+      };
+    }).approvalInstance;
+    if (!approvalClient) {
+      return false;
+    }
+
+    const instance = await approvalClient.findFirst({
+      where: { businessType, businessId, status: "in_progress" },
+      orderBy: { createdAt: "desc" },
+      select: { frozenNodes: true, currentNodeIndex: true }
+    });
+
+    if (!instance) {
+      return false;
+    }
+
+    if (
+      canActOnFrozenApprovalNode(
+        instance.frozenNodes,
+        instance.currentNodeIndex,
+        roleKeys,
+        actorUserId
+      )
+    ) {
+      return true;
+    }
+
+    return this.hasDelegatedApprovalRole(
+      actorUserId,
+      projectId,
+      pendingRoleKeysForFrozenApprovalNode(instance.frozenNodes, instance.currentNodeIndex)
+    );
+  }
+
+  private async hasDelegatedApprovalRole(
+    actorUserId: string,
+    projectId: string,
+    nodeRoleKeys: RoleKey[]
+  ): Promise<boolean> {
+    if (!nodeRoleKeys.length || !this.projectVisibility) {
+      return false;
+    }
+
+    const delegationClient = (this.prisma as unknown as {
+      approvalDelegation?: {
+        findMany(args: {
+          where: {
+            toUserId: string;
+            enabled: true;
+            startsAt: { lte: Date };
+            endsAt: { gte: Date };
+          };
+          select: { fromUserId: true };
+        }): Promise<Array<{ fromUserId: string }>>;
+      };
+    }).approvalDelegation;
+    if (!delegationClient) {
+      return false;
+    }
+
+    const now = new Date();
+    const delegations = await delegationClient.findMany({
+      where: {
+        toUserId: actorUserId,
+        enabled: true,
+        startsAt: { lte: now },
+        endsAt: { gte: now }
+      },
+      select: { fromUserId: true }
+    });
+
+    for (const delegation of delegations) {
+      const delegatorRoleKeys = await this.projectVisibility.effectiveRoleKeys(
+        delegation.fromUserId,
+        projectId
+      );
+      if (nodeRoleKeys.some((role) => delegatorRoleKeys.includes(role))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private paymentActions(
+    status: string,
+    roleKeys: RoleKey[],
+    canReviewApproval: boolean,
+    executionComplete: boolean,
+    financeRecordedAmountCents: number,
+    paidAmountCents: number,
+    evidenceFiles: PaymentDetailReadModel["evidenceFiles"]
+  ): DetailActionReadModel[] {
+    if (status === "approval_pending") {
+      return [
+        detailAction({
+          key: "review_approval",
+          label: "处理付款审批",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "payment.approve",
+          skipRoleCheck: true,
+          enabled: canReviewApproval,
+          disabledReason: "当前用户不是当前审批节点处理人"
+        })
+      ];
+    }
+
+    const actions: DetailActionReadModel[] = [];
+
+    if ((status === "approved_pending_payment" || status === "partially_paid") && !executionComplete) {
+      actions.push(
+        detailAction({
+          key: "record_execution",
+          label: "登记实际付款",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "payment.execution",
+          enabled: !executionComplete,
+          disabledReason: "付款已完成",
+          requiresPassword: true,
+          requiresFile: true
+        })
+      );
+    }
+
+    if (paidAmountCents > 0 || status === "paid" || status === "completed") {
+      actions.push(
+        detailAction({
+          key: "record_finance",
+          label: "财务入账",
+          kind: "primary",
+          roleKeys,
+          requiredAction: "payment.finance_record",
+          enabled: financeRecordedAmountCents < paidAmountCents,
+          disabledReason: "财务已完成入账",
+          requiresPassword: true
+        })
+      );
+    }
+
+    if (status === "paid" || status === "completed" || executionComplete) {
+      actions.push(
+        detailAction({
+          key: "archive_pdf",
+          label: "生成归档 PDF",
+          kind: "normal",
+          roleKeys,
+          requiredAction: "payment.pdf_archive",
+          enabled: paidAmountCents > 0 && financeRecordedAmountCents >= paidAmountCents,
+          disabledReason: "财务入账未完成",
+          requiresPassword: true
+        })
+      );
+    }
+
+    if (evidenceFiles.length) {
+      actions.push(
+        detailAction({
+          key: "download_file",
+          label: "下载付款凭证",
+          kind: "normal",
+          roleKeys,
+          enabled: evidenceFiles.some((file) => file.canDownload),
+          disabledReason: "暂无可下载付款凭证",
+          requiresPassword: true
+        })
+      );
+    }
+
+    return actions;
   }
 
   private paymentSourceLabel(sourceType?: string | null) {

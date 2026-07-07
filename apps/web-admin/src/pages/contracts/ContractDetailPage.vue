@@ -67,6 +67,7 @@
       </div>
 
       <t-card
+        id="approval"
         class="section-card action-card"
         title="流程动作"
         :bordered="true"
@@ -92,7 +93,7 @@
               <t-button
                 theme="primary"
                 :loading="archiveActionBusy === 'submitApproval'"
-                :disabled="!canRunContractVersionAction"
+                :disabled="!isContractActionEnabled('submit_approval')"
                 @click="submitContractApprovalAction"
               >
                 提交审批
@@ -101,7 +102,7 @@
                 theme="primary"
                 variant="outline"
                 :loading="archiveActionBusy === 'reviewApproval'"
-                :disabled="!canRunContractVersionAction"
+                :disabled="!isContractActionEnabled('review_approval')"
                 @click="submitContractReview('approve')"
               >
                 通过
@@ -110,7 +111,7 @@
                 theme="danger"
                 variant="outline"
                 :loading="archiveActionBusy === 'reviewApproval'"
-                :disabled="!canRunContractVersionAction"
+                :disabled="!isContractActionEnabled('review_approval')"
                 @click="submitContractReview('reject')"
               >
                 驳回
@@ -182,7 +183,7 @@
               <t-button
                 theme="primary"
                 :loading="archiveActionBusy === 'seal'"
-                :disabled="!canRunContractVersionAction"
+                :disabled="!isContractActionEnabled('approve_seal')"
                 @click="submitContractSeal"
               >
                 用章通过
@@ -214,7 +215,7 @@
             <t-button
               theme="primary"
               :loading="archiveActionBusy === 'upload'"
-              :disabled="!canUploadContractArchive"
+              :disabled="!isContractActionEnabled('upload_archive')"
               @click="submitContractArchiveUpload"
             >
               提交归档件
@@ -241,7 +242,7 @@
             <t-button
               theme="primary"
               :loading="archiveActionBusy === 'confirm'"
-              :disabled="!canConfirmContractArchive"
+              :disabled="!isContractActionEnabled('confirm_archive')"
               @click="submitContractArchiveConfirmation"
             >
               确认生效
@@ -269,7 +270,7 @@
               theme="primary"
               variant="outline"
               :loading="archiveActionBusy === 'download'"
-              :disabled="!contractArchiveFileOptions.length"
+              :disabled="!isContractActionEnabled('download_archive')"
               @click="submitContractFileDownload"
             >
               下载文件
@@ -514,10 +515,12 @@ const contractDetailChainLinksView = computed(
   () => contractDetail.value?.chainLinks ?? contractDetailChainLinks
 );
 const contractArchiveFileOptions = computed(() =>
-  (contractDetail.value?.archiveFiles ?? []).map((file) => ({
-    label: `${file.fileName}（${file.statusLabel}）`,
-    value: file.fileId
-  }))
+  (contractDetail.value?.archiveFiles ?? [])
+    .filter((file) => file.canDownload)
+    .map((file) => ({
+      label: `${file.fileName}（${file.statusLabel}）`,
+      value: file.fileId
+    }))
 );
 const contractArchiveRecordOptions = computed(() =>
   (contractDetail.value?.archiveFiles ?? []).map((file) => ({
@@ -536,18 +539,12 @@ const contractEvidenceFilesView = computed(() =>
     uploadedAt: file.createdAt,
     confirmedByName: file.confirmedAt ? "合同部主管" : null,
     confirmedAt: file.confirmedAt,
-    canDownload: true,
-    disabledReason: null
+    canDownload: file.canDownload,
+    disabledReason: file.disabledReason
   }))
 );
-const contractNextActionValue = computed(
-  () => contractDetailMetaView.value.find((item) => item.label === "下一步动作")?.value ?? ""
-);
-const canUploadContractArchive = computed(
-  () => !!contractDetail.value?.contractVersionId && contractNextActionValue.value.includes("上传盖章合同")
-);
-const canConfirmContractArchive = computed(
-  () => !!contractDetail.value?.contractVersionId && contractNextActionValue.value.includes("主管确认归档")
+const contractActionByKey = computed(
+  () => new Map((contractDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
 const canRunContractVersionAction = computed(() => !!contractDetail.value?.contractVersionId);
 const contractNumberRuleOptions = computed(() =>
@@ -556,6 +553,10 @@ const contractNumberRuleOptions = computed(() =>
     value: rule.id
   }))
 );
+
+function isContractActionEnabled(key: string) {
+  return contractActionByKey.value.get(key)?.enabled ?? false;
+}
 
 function openChainLink(to: string) {
   void router.push(to);
@@ -572,7 +573,9 @@ async function reloadContractDetail() {
   try {
     const detail = await fetchContractDetail(contractId);
     contractDetail.value = detail;
-    const archiveFileIds = detail.archiveFiles.map((file) => file.fileId);
+    const archiveFileIds = detail.archiveFiles
+      .filter((file) => file.canDownload)
+      .map((file) => file.fileId);
     const archiveRecordIds = detail.archiveFiles.map((file) => file.archiveRecordId);
     if (!archiveRecordIds.includes(contractArchiveForm.archiveFileId)) {
       contractArchiveForm.archiveFileId = archiveRecordIds[0] ?? "";

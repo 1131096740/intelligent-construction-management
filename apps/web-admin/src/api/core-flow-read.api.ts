@@ -460,10 +460,14 @@ export interface ArchiveListReadModel {
   rows: Array<{
     id: string;
     documentNo: string;
+    fileId: string;
     documentType: string;
     businessRef: string;
     project: string;
     fileSource: string;
+    fileSizeBytes: number;
+    canDownload: boolean;
+    disabledReason: string | null;
     archiveStatus: string;
     statusTone: Exclude<LedgerTone, "danger">;
     uploadDepartment: string;
@@ -707,8 +711,41 @@ export interface WorkbenchSummaryReadModel {
   cards: WorkbenchSummaryCardReadModel[];
 }
 
+export type WorkItemQueueKey = "pending" | "blocked" | "started";
+export type ApprovalCenterViewKey =
+  | "pendingApproval"
+  | "startedByMe"
+  | "handledByMe"
+  | "delegatedToMe"
+  | "overdueReminder";
+
+export interface WorkItemReadModel {
+  id: string;
+  type: "contract_takeover" | "archive" | "approval" | "payment_execution" | "blocker";
+  title: string;
+  projectName: string;
+  businessCode: string;
+  amountText: string;
+  currentNode: string;
+  stayedText: string;
+  nextAction: string;
+  targetPath: string;
+  tone: WorkbenchCardTone;
+}
+
+export interface WorkItemsReadModel {
+  generatedAt: string;
+  visibleProjectCount: number;
+  queues: Record<WorkItemQueueKey, WorkItemReadModel[]>;
+  approvalCenter: Record<ApprovalCenterViewKey, WorkItemReadModel[]>;
+}
+
 export function fetchWorkbenchSummary() {
   return readJson<WorkbenchSummaryReadModel>("/me/workbench-summary");
+}
+
+export function fetchWorkItems() {
+  return readJson<WorkItemsReadModel>("/me/work-items");
 }
 
 export function fetchProjects() {
@@ -1195,11 +1232,18 @@ export function generateSettlementPdfArchive(
 export interface ApprovalDelegationReadModel {
   id: string;
   fromUserId: string;
+  fromUserName?: string;
   toUserId: string;
+  toUserName?: string;
   startsAt: string;
   endsAt: string;
   enabled: boolean;
   createdAt: string;
+}
+
+export interface UserOptionReadModel {
+  id: string;
+  name: string;
 }
 
 export interface CreateApprovalDelegationPayload {
@@ -1210,6 +1254,10 @@ export interface CreateApprovalDelegationPayload {
 
 export function listApprovalDelegations() {
   return readJson<ApprovalDelegationReadModel[]>("/approval-delegations");
+}
+
+export function fetchApprovalDelegationUserOptions() {
+  return readJson<UserOptionReadModel[]>("/approval-delegations/user-options");
 }
 
 export function createApprovalDelegation(body: CreateApprovalDelegationPayload) {

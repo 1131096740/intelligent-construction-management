@@ -74,7 +74,11 @@ export class ContractController {
     "finance_staff"
   )
   async detail(@Param("contractId") contractId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.contractRead.getDetail(contractId, await this.projectVisibility.visibleProjectIds(user.id));
+    return this.contractRead.getDetail(
+      contractId,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
   }
 
   @Post(":contractVersionId/approval-submission")
