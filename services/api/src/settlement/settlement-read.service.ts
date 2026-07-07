@@ -483,6 +483,57 @@ export class SettlementReadService {
     canReviewApproval: boolean,
     archiveFiles: SettlementDetailReadModel["archiveFiles"]
   ): DetailActionReadModel[] {
+    const workflowActions = [
+      detailAction({
+        key: "download_approval_form",
+        label: "下载最新审批 PDF",
+        kind: "normal",
+        roleKeys,
+        enabled: true
+      }),
+      detailAction({
+        key: "withdraw_approval",
+        label: "撤回审批",
+        kind: "normal",
+        roleKeys,
+        requiredAction: "settlement.create",
+        enabled: status === "approval_pending"
+      }),
+      detailAction({
+        key: "remind_approval",
+        label: "催办审批",
+        kind: "normal",
+        roleKeys,
+        requiredAction: "settlement.create",
+        enabled: status === "approval_pending"
+      }),
+      detailAction({
+        key: "transfer_approval",
+        label: "转审",
+        kind: "normal",
+        roleKeys,
+        skipRoleCheck: true,
+        enabled: canReviewApproval,
+        disabledReason: "当前用户不是当前审批节点处理人"
+      }),
+      detailAction({
+        key: "delegate_approval",
+        label: "委托",
+        kind: "normal",
+        roleKeys,
+        skipRoleCheck: true,
+        enabled: canReviewApproval,
+        disabledReason: "当前用户不是当前审批节点处理人"
+      }),
+      detailAction({
+        key: "generate_pdf_archive",
+        label: "生成 PDF 归档",
+        kind: "normal",
+        roleKeys,
+        enabled: Boolean(status)
+      })
+    ];
+
     if (status === "approval_pending") {
       return [
         detailAction({
@@ -494,7 +545,8 @@ export class SettlementReadService {
           skipRoleCheck: true,
           enabled: canReviewApproval,
           disabledReason: "当前用户不是当前审批节点处理人"
-        })
+        }),
+        ...workflowActions
       ];
     }
 
@@ -508,7 +560,8 @@ export class SettlementReadService {
           requiredAction: "settlement.archive.upload",
           enabled: true,
           requiresFile: true
-        })
+        }),
+        ...workflowActions
       ];
     }
 
@@ -522,7 +575,8 @@ export class SettlementReadService {
           requiredAction: "settlement.archive.confirm",
           enabled: true,
           requiresPassword: true
-        })
+        }),
+        ...workflowActions
       ];
     }
 
@@ -544,11 +598,12 @@ export class SettlementReadService {
           enabled: archiveFiles.some((file) => file.canDownload),
           disabledReason: "暂无可下载归档件",
           requiresPassword: true
-        })
+        }),
+        ...workflowActions
       ];
     }
 
-    return [];
+    return workflowActions;
   }
 
   private statusView(status: string): { label: string; tone: CoreFlowTone } {

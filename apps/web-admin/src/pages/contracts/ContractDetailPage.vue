@@ -131,6 +131,7 @@
                 theme="default"
                 variant="outline"
                 :loading="archiveActionBusy === 'approvalForm'"
+                :disabled="!isContractActionEnabled('download_approval_form')"
                 @click="downloadContractApprovalForm"
               >
                 下载审批单
@@ -153,14 +154,14 @@
             <div class="action-buttons">
               <t-button
                 :loading="archiveActionBusy === 'withdrawApproval'"
-                :disabled="!canRunContractVersionAction"
+                :disabled="!isContractActionEnabled('withdraw_approval')"
                 @click="submitContractWithdrawal"
               >
                 撤回
               </t-button>
               <t-button
                 :loading="archiveActionBusy === 'remindApproval'"
-                :disabled="!canRunContractVersionAction"
+                :disabled="!isContractActionEnabled('remind_approval')"
                 @click="submitContractReminder"
               >
                 催办
@@ -169,7 +170,7 @@
                 theme="primary"
                 variant="outline"
                 :loading="archiveActionBusy === 'transferApproval'"
-                :disabled="!canRunContractVersionAction"
+                :disabled="!isContractActionEnabled('transfer_approval')"
                 @click="submitContractAssignment('transfer')"
               >
                 转审
@@ -178,7 +179,7 @@
                 theme="primary"
                 variant="outline"
                 :loading="archiveActionBusy === 'delegateApproval'"
-                :disabled="!canRunContractVersionAction"
+                :disabled="!isContractActionEnabled('delegate_approval')"
                 @click="submitContractAssignment('delegate')"
               >
                 委托
@@ -204,7 +205,7 @@
                 theme="primary"
                 variant="outline"
                 :loading="archiveActionBusy === 'pdf'"
-                :disabled="!canRunContractVersionAction"
+                :disabled="!isContractActionEnabled('generate_pdf_archive')"
                 @click="submitContractPdfGeneration"
               >
                 生成PDF归档
@@ -568,7 +569,6 @@ const contractActionBlockMessages = computed(() => [
       .map((action) => action.disabledReason as string)
   )
 ]);
-const canRunContractVersionAction = computed(() => !!contractDetail.value?.contractVersionId);
 const contractNumberRuleOptions = computed(() =>
   contractNumberRules.value.map((rule) => ({
     label: `${rule.name}（${rule.pattern}）`,

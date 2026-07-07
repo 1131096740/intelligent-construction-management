@@ -106,7 +106,7 @@
               theme="default"
               variant="outline"
               :loading="actionBusy === 'approvalForm'"
-              :disabled="!hasPaymentDetail"
+              :disabled="!isPaymentActionEnabled('download_approval_form')"
               @click="downloadApprovalForm"
             >
               下载审批单
@@ -231,14 +231,14 @@
           <div class="action-buttons">
             <t-button
               :loading="actionBusy === 'withdrawApproval'"
-              :disabled="!hasPaymentDetail"
+              :disabled="!isPaymentActionEnabled('withdraw_approval')"
               @click="submitPaymentWithdrawal"
             >
               撤回
             </t-button>
             <t-button
               :loading="actionBusy === 'remindApproval'"
-              :disabled="!hasPaymentDetail"
+              :disabled="!isPaymentActionEnabled('remind_approval')"
               @click="submitPaymentReminder"
             >
               催办
@@ -247,7 +247,7 @@
               theme="primary"
               variant="outline"
               :loading="actionBusy === 'transferApproval'"
-              :disabled="!hasPaymentDetail"
+              :disabled="!isPaymentActionEnabled('transfer_approval')"
               @click="submitPaymentAssignment('transfer')"
             >
               转审
@@ -256,7 +256,7 @@
               theme="primary"
               variant="outline"
               :loading="actionBusy === 'delegateApproval'"
-              :disabled="!hasPaymentDetail"
+              :disabled="!isPaymentActionEnabled('delegate_approval')"
               @click="submitPaymentAssignment('delegate')"
             >
               委托
@@ -466,7 +466,6 @@ const paymentActionForm = reactive({
   downloadPassword: ""
 });
 
-const hasPaymentDetail = computed(() => !!paymentDetail.value?.id);
 const paymentDetailTitleView = computed(() =>
   paymentDetail.value?.title ?? (paymentDetailLoadError.value ? "付款详情读取失败" : "正在加载付款详情")
 );

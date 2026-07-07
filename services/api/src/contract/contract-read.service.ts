@@ -994,6 +994,57 @@ export class ContractReadService {
     canReviewApproval: boolean,
     archiveFiles: ContractDetailReadModel["archiveFiles"]
   ): DetailActionReadModel[] {
+    const workflowActions = [
+      detailAction({
+        key: "download_approval_form",
+        label: "下载审批单",
+        kind: "normal",
+        roleKeys,
+        enabled: true
+      }),
+      detailAction({
+        key: "withdraw_approval",
+        label: "撤回审批",
+        kind: "normal",
+        roleKeys,
+        requiredAction: "contract.submit",
+        enabled: ["in_approval", "approval_pending"].includes(status)
+      }),
+      detailAction({
+        key: "remind_approval",
+        label: "催办审批",
+        kind: "normal",
+        roleKeys,
+        requiredAction: "contract.submit",
+        enabled: ["in_approval", "approval_pending"].includes(status)
+      }),
+      detailAction({
+        key: "transfer_approval",
+        label: "转审",
+        kind: "normal",
+        roleKeys,
+        skipRoleCheck: true,
+        enabled: canReviewApproval,
+        disabledReason: "当前用户不是当前审批节点处理人"
+      }),
+      detailAction({
+        key: "delegate_approval",
+        label: "委托",
+        kind: "normal",
+        roleKeys,
+        skipRoleCheck: true,
+        enabled: canReviewApproval,
+        disabledReason: "当前用户不是当前审批节点处理人"
+      }),
+      detailAction({
+        key: "generate_pdf_archive",
+        label: "生成 PDF 归档",
+        kind: "normal",
+        roleKeys,
+        enabled: Boolean(status)
+      })
+    ];
+
     if (status === "draft") {
       return [
         detailAction({
@@ -1003,7 +1054,8 @@ export class ContractReadService {
           roleKeys,
           requiredAction: "contract.submit",
           enabled: true
-        })
+        }),
+        ...workflowActions
       ];
     }
 
@@ -1018,7 +1070,8 @@ export class ContractReadService {
           skipRoleCheck: true,
           enabled: canReviewApproval,
           disabledReason: "当前用户不是当前审批节点处理人"
-        })
+        }),
+        ...workflowActions
       ];
     }
 
@@ -1032,7 +1085,8 @@ export class ContractReadService {
           requiredAction: "contract.seal",
           enabled: true,
           requiresPassword: true
-        })
+        }),
+        ...workflowActions
       ];
     }
 
@@ -1046,7 +1100,8 @@ export class ContractReadService {
           requiredAction: "contract.archive.upload",
           enabled: true,
           requiresFile: true
-        })
+        }),
+        ...workflowActions
       ];
     }
 
@@ -1060,7 +1115,8 @@ export class ContractReadService {
           requiredAction: "contract.archive.confirm",
           enabled: true,
           requiresPassword: true
-        })
+        }),
+        ...workflowActions
       ];
     }
 
@@ -1082,11 +1138,12 @@ export class ContractReadService {
           enabled: archiveFiles.some((file) => file.status === "confirmed"),
           disabledReason: "暂无已确认归档件",
           requiresPassword: true
-        })
+        }),
+        ...workflowActions
       ];
     }
 
-    return [];
+    return workflowActions;
   }
 
   private statusView(status: string): { label: string; tone: CoreFlowTone } {

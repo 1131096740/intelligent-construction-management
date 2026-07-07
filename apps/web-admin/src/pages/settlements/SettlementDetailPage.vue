@@ -118,7 +118,7 @@
               theme="default"
               variant="outline"
               :loading="archiveActionBusy === 'approvalForm'"
-              :disabled="!canRunSettlementAction"
+              :disabled="!isSettlementActionEnabled('download_approval_form')"
               @click="downloadSettlementApprovalForm"
             >
               下载最新审批PDF
@@ -141,14 +141,14 @@
           <div class="action-buttons">
             <t-button
               :loading="archiveActionBusy === 'withdrawApproval'"
-              :disabled="!canRunSettlementAction"
+              :disabled="!isSettlementActionEnabled('withdraw_approval')"
               @click="submitSettlementWithdrawal"
             >
               撤回
             </t-button>
             <t-button
               :loading="archiveActionBusy === 'remindApproval'"
-              :disabled="!canRunSettlementAction"
+              :disabled="!isSettlementActionEnabled('remind_approval')"
               @click="submitSettlementReminder"
             >
               催办
@@ -157,7 +157,7 @@
               theme="primary"
               variant="outline"
               :loading="archiveActionBusy === 'transferApproval'"
-              :disabled="!canRunSettlementAction"
+              :disabled="!isSettlementActionEnabled('transfer_approval')"
               @click="submitSettlementAssignment('transfer')"
             >
               转审
@@ -166,7 +166,7 @@
               theme="primary"
               variant="outline"
               :loading="archiveActionBusy === 'delegateApproval'"
-              :disabled="!canRunSettlementAction"
+              :disabled="!isSettlementActionEnabled('delegate_approval')"
               @click="submitSettlementAssignment('delegate')"
             >
               委托
@@ -190,7 +190,7 @@
           <t-button
             theme="primary"
             :loading="archiveActionBusy === 'pdf'"
-            :disabled="!canRunSettlementAction"
+            :disabled="!isSettlementActionEnabled('generate_pdf_archive')"
             @click="submitSettlementPdfGeneration"
           >
             生成PDF归档

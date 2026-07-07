@@ -943,6 +943,50 @@ export class PaymentReadService {
     paidAmountCents: number,
     evidenceFiles: PaymentDetailReadModel["evidenceFiles"]
   ): DetailActionReadModel[] {
+    const workflowActions = [
+      detailAction({
+        key: "download_approval_form",
+        label: "下载审批单",
+        kind: "normal",
+        roleKeys,
+        enabled: true
+      }),
+      detailAction({
+        key: "withdraw_approval",
+        label: "撤回审批",
+        kind: "normal",
+        roleKeys,
+        requiredAction: "payment.create",
+        enabled: status === "approval_pending"
+      }),
+      detailAction({
+        key: "remind_approval",
+        label: "催办审批",
+        kind: "normal",
+        roleKeys,
+        requiredAction: "payment.create",
+        enabled: status === "approval_pending"
+      }),
+      detailAction({
+        key: "transfer_approval",
+        label: "转审",
+        kind: "normal",
+        roleKeys,
+        skipRoleCheck: true,
+        enabled: canReviewApproval,
+        disabledReason: "当前用户不是当前审批节点处理人"
+      }),
+      detailAction({
+        key: "delegate_approval",
+        label: "委托",
+        kind: "normal",
+        roleKeys,
+        skipRoleCheck: true,
+        enabled: canReviewApproval,
+        disabledReason: "当前用户不是当前审批节点处理人"
+      })
+    ];
+
     if (status === "approval_pending") {
       return [
         detailAction({
@@ -954,11 +998,12 @@ export class PaymentReadService {
           skipRoleCheck: true,
           enabled: canReviewApproval,
           disabledReason: "当前用户不是当前审批节点处理人"
-        })
+        }),
+        ...workflowActions
       ];
     }
 
-    const actions: DetailActionReadModel[] = [];
+    const actions: DetailActionReadModel[] = [...workflowActions];
 
     if ((status === "approved_pending_payment" || status === "partially_paid") && !executionComplete) {
       actions.push(
