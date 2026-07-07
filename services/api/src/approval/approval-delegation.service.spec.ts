@@ -20,9 +20,18 @@ describe("ApprovalDelegationService", () => {
       },
       user: {
         findFirst: jest.fn().mockResolvedValue({ id: "user-b" })
-      }
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ userId: "user-b" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new ApprovalDelegationService(prisma as never, audit as never);
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const service = new ApprovalDelegationService(
+      prisma as never,
+      audit as never,
+      projectVisibility as never
+    );
 
     const result = await service.create("user-a", {
       toUserId: "user-b",
@@ -56,6 +65,32 @@ describe("ApprovalDelegationService", () => {
     });
   });
 
+  it("rejects a delegation target outside the delegator visible projects", async () => {
+    const prisma = {
+      approvalDelegation: { create: jest.fn() },
+      user: { findFirst: jest.fn().mockResolvedValue(null) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const service = new ApprovalDelegationService(
+      prisma as never,
+      audit as never,
+      projectVisibility as never
+    );
+
+    await expect(
+      service.create("user-a", {
+        toUserId: "user-b",
+        startsAt: "2026-06-23T00:00:00.000Z",
+        endsAt: "2026-07-23T00:00:00.000Z"
+      })
+    ).rejects.toThrow("same project");
+    expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
+  });
+
   it("rejects a delegation that targets the delegator", async () => {
     const prisma = {
       approvalDelegation: { create: jest.fn() }
@@ -75,9 +110,18 @@ describe("ApprovalDelegationService", () => {
   it("rejects a delegation window that does not end after it starts", async () => {
     const prisma = {
       approvalDelegation: { create: jest.fn() },
-      user: { findFirst: jest.fn().mockResolvedValue({ id: "user-b" }) }
+      user: { findFirst: jest.fn().mockResolvedValue({ id: "user-b" }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ userId: "user-b" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new ApprovalDelegationService(prisma as never, audit as never);
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const service = new ApprovalDelegationService(
+      prisma as never,
+      audit as never,
+      projectVisibility as never
+    );
 
     await expect(
       service.create("user-a", {
@@ -92,9 +136,18 @@ describe("ApprovalDelegationService", () => {
   it("rejects a delegation target that is not an active user", async () => {
     const prisma = {
       approvalDelegation: { create: jest.fn() },
-      user: { findFirst: jest.fn().mockResolvedValue(null) }
+      user: { findFirst: jest.fn().mockResolvedValue(null) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ userId: "user-b" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
     };
-    const service = new ApprovalDelegationService(prisma as never, audit as never);
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const service = new ApprovalDelegationService(
+      prisma as never,
+      audit as never,
+      projectVisibility as never
+    );
 
     await expect(
       service.create("user-a", {
@@ -143,19 +196,31 @@ describe("ApprovalDelegationService", () => {
     });
   });
 
-  it("lists active users as delegation targets", async () => {
+  it("lists same-project active users as delegation targets", async () => {
     const prisma = {
       user: {
         findMany: jest.fn().mockResolvedValue([{ id: "user-b", name: "受托人" }])
-      }
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ userId: "user-b" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ userId: "user-c" }]) }
     };
-    const service = new ApprovalDelegationService(prisma as never, audit as never);
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const service = new ApprovalDelegationService(
+      prisma as never,
+      audit as never,
+      projectVisibility as never
+    );
 
-    await expect(service.listActiveUserOptions()).resolves.toEqual([
+    await expect(service.listActiveUserOptions("user-a")).resolves.toEqual([
       { id: "user-b", name: "受托人" }
     ]);
     expect(prisma.user.findMany).toHaveBeenCalledWith({
-      where: { isActive: true },
+      where: {
+        id: { in: ["user-b", "user-c"], not: "user-a" },
+        isActive: true
+      },
       orderBy: { name: "asc" },
       select: { id: true, name: true }
     });

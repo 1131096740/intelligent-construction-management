@@ -1,18 +1,20 @@
 import { Injectable, Optional } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
 import { CreateApprovalDelegationDto } from "./dto/create-approval-delegation.dto";
 
 type ApprovalDelegationClient = Pick<Prisma.TransactionClient, "approvalDelegation">;
-
 @Injectable()
 export class ApprovalDelegationService {
   constructor(
     @Optional()
     private readonly prisma?: PrismaService,
     @Optional()
-    private readonly audit: AuditService = new AuditService()
+    private readonly audit: AuditService = new AuditService(),
+    @Optional()
+    private readonly projectVisibility?: ProjectVisibilityService
   ) {}
 
   async create(fromUserId: string, input: CreateApprovalDelegationDto) {
@@ -22,6 +24,11 @@ export class ApprovalDelegationService {
 
     if (!input.toUserId || input.toUserId === fromUserId) {
       throw new Error("Approval delegation target is invalid");
+    }
+
+    const sameProjectUserIds = await this.sameProjectUserIds(fromUserId);
+    if (!sameProjectUserIds.includes(input.toUserId)) {
+      throw new Error("Approval delegation target user is not in the same project");
     }
 
     const targetUser = await this.prisma.user.findFirst({
@@ -89,13 +96,14 @@ export class ApprovalDelegationService {
     }));
   }
 
-  async listActiveUserOptions() {
+  async listActiveUserOptions(userId: string) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to list active users");
     }
 
+    const sameProjectUserIds = await this.sameProjectUserIds(userId);
     return this.prisma.user.findMany({
-      where: { isActive: true },
+      where: { id: { in: sameProjectUserIds, not: userId }, isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true }
     });
@@ -152,5 +160,31 @@ export class ApprovalDelegationService {
     });
 
     return Array.from(new Set(rows.map((row) => row.fromUserId)));
+  }
+
+  private async sameProjectUserIds(userId: string): Promise<string[]> {
+    if (!this.prisma) return [];
+    const projectIds = await this.visibleProjectIds(userId);
+    if (!projectIds.length) return [];
+
+    const [positionRows, memberRows] = await Promise.all([
+      this.prisma.userPosition.findMany({
+        where: { projectId: { in: projectIds } },
+        select: { userId: true }
+      }),
+      this.prisma.projectMember.findMany({
+        where: { projectId: { in: projectIds } },
+        select: { userId: true }
+      })
+    ]);
+
+    return Array.from(new Set([...positionRows, ...memberRows].map((row) => row.userId)));
+  }
+
+  private visibleProjectIds(userId: string): Promise<string[]> {
+    if (!this.projectVisibility) {
+      throw new Error("Project visibility service is required to scope approval delegation");
+    }
+    return this.projectVisibility.visibleProjectIds(userId);
   }
 }
