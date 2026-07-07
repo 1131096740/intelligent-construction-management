@@ -551,9 +551,9 @@ const contractEvidenceFilesView = computed(() =>
     purpose: "合同归档件",
     sizeBytes: file.sizeBytes,
     statusLabel: file.statusLabel,
-    uploadedByName: "合同部",
+    uploadedByName: file.uploadedByName,
     uploadedAt: file.createdAt,
-    confirmedByName: file.confirmedAt ? "合同部主管" : null,
+    confirmedByName: file.confirmedByName,
     confirmedAt: file.confirmedAt,
     canDownload: file.canDownload,
     disabledReason: file.disabledReason

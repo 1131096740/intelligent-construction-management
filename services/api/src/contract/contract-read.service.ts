@@ -79,6 +79,8 @@ export class ContractReadService {
             id: string;
             fileId: string;
             status: string;
+            uploadedByUserId: string;
+            confirmedByUserId: string | null;
             createdAt: Date;
             confirmedAt: Date | null;
           }>
@@ -91,6 +93,14 @@ export class ContractReadService {
             originalName: string;
             mimeType: string;
             sizeBytes: number;
+          }>
+        >;
+      };
+      user?: {
+        findMany(args: { where: { id: { in: string[] } }; select: { id: true; name: true } }): Promise<
+          Array<{
+            id: string;
+            name: string;
           }>
         >;
       };
@@ -109,8 +119,22 @@ export class ContractReadService {
       return [];
     }
 
-    const files = await client.fileObject.findMany({ where: { id: { in: fileIds } } });
+    const userIds = Array.from(
+      new Set(
+        archiveFiles.flatMap((file) => [
+          file.uploadedByUserId,
+          ...(file.confirmedByUserId ? [file.confirmedByUserId] : [])
+        ])
+      )
+    );
+    const [files, users] = await Promise.all([
+      client.fileObject.findMany({ where: { id: { in: fileIds } } }),
+      client.user && userIds.length
+        ? client.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+        : Promise.resolve([])
+    ]);
     const fileById = new Map(files.map((file) => [file.id, file]));
+    const userNameById = new Map(users.map((user) => [user.id, user.name]));
 
     return archiveFiles.flatMap((archiveFile) => {
       const file = fileById.get(archiveFile.fileId);
@@ -128,7 +152,11 @@ export class ContractReadService {
           sizeBytes: file.sizeBytes,
           status: archiveFile.status,
           statusLabel: this.settlementArchiveFileStatusLabel(archiveFile),
+          uploadedByName: userNameById.get(archiveFile.uploadedByUserId) ?? archiveFile.uploadedByUserId,
           createdAt: archiveFile.createdAt.toISOString(),
+          confirmedByName: archiveFile.confirmedByUserId
+            ? (userNameById.get(archiveFile.confirmedByUserId) ?? archiveFile.confirmedByUserId)
+            : null,
           confirmedAt: archiveFile.confirmedAt?.toISOString() ?? null,
           canDownload,
           disabledReason: canDownload ? null : "归档确认后开放下载"

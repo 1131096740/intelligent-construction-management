@@ -89,7 +89,9 @@ export interface ContractArchiveFileReadModel {
   sizeBytes: number;
   status: string;
   statusLabel: string;
+  uploadedByName: string;
   createdAt: string;
+  confirmedByName: string | null;
   confirmedAt: string | null;
   canDownload: boolean;
   disabledReason: string | null;

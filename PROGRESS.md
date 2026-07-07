@@ -43,6 +43,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-08 (CodeX)：合同详情归档文件卡片去除上传/确认人硬编码：后端合同详情归档文件返回真实上传人、确认人，前端证据卡直接展示读模型字段。验证：合同读服务 Jest、API/Web typecheck、Web lint 通过。
 - 2026-07-08 (CodeX)：详情页辅助动作继续收敛到后端 `availableActions`：合同/结算/付款补审批单、撤回、催办、转审、委托、PDF 生成等 action key，前端按钮不再用本地“有详情即可操作”的布尔值放行。验证：API 读服务定向 Jest、API typecheck、Web typecheck/lint 通过。
 - 2026-07-08 (CodeX)：收敛资料库裸上传入口：资料库不再直接 `uploadPrivateFile`，改为跳转到合同归档、结算归档、付款凭证的业务上下文入口，资料库保留查询和授权下载。验证：Web typecheck、Web lint、Web Vitest 通过。
 - 2026-07-08 (CodeX)：补齐合同/结算/付款台账 P0 过程字段：读模型返回当前处理人、停留时长、退回原因、下一步动作，Web 列表展示这些字段，并把“详情”链接改成带单据编号的可访问文案。验证：API 读服务定向 Jest、Web 列表配置 Vitest、API/Web typecheck、API/Web lint 通过。

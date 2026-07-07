@@ -422,6 +422,8 @@ describe("ContractReadService", () => {
             id: "archive-file-pending",
             fileId: "file-pending-contract",
             status: "pending_confirm",
+            uploadedByUserId: "contract-staff-1",
+            confirmedByUserId: null,
             createdAt: new Date("2026-07-02T08:00:00.000Z"),
             confirmedAt: null
           },
@@ -429,6 +431,8 @@ describe("ContractReadService", () => {
             id: "archive-file-1",
             fileId: "file-signed-contract",
             status: "confirmed",
+            uploadedByUserId: "contract-staff-1",
+            confirmedByUserId: "contract-director-1",
             createdAt: new Date("2026-07-01T08:00:00.000Z"),
             confirmedAt: new Date("2026-07-01T09:00:00.000Z")
           }
@@ -448,6 +452,12 @@ describe("ContractReadService", () => {
             mimeType: "application/pdf",
             sizeBytes: 129000
           }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-staff-1", name: "王合同员" },
+          { id: "contract-director-1", name: "李合同主管" }
         ])
       },
       settlement: {
@@ -505,7 +515,9 @@ describe("ContractReadService", () => {
         sizeBytes: 129000,
         status: "pending_confirm",
         statusLabel: "待确认归档",
+        uploadedByName: "王合同员",
         createdAt: "2026-07-02T08:00:00.000Z",
+        confirmedByName: null,
         confirmedAt: null,
         canDownload: false,
         disabledReason: "归档确认后开放下载"
@@ -518,7 +530,9 @@ describe("ContractReadService", () => {
         sizeBytes: 128000,
         status: "confirmed",
         statusLabel: "已归档确认",
+        uploadedByName: "王合同员",
         createdAt: "2026-07-01T08:00:00.000Z",
+        confirmedByName: "李合同主管",
         confirmedAt: "2026-07-01T09:00:00.000Z",
         canDownload: true,
         disabledReason: null
