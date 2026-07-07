@@ -16,6 +16,7 @@ import {
   disabledActionReasons,
   primaryActionKey
 } from "../core-flow/detail-actions";
+import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
 import { PrismaService } from "../database/prisma.service";
 import {
   CONTRACT_TAKEOVER_BALANCE_SELECT,
@@ -384,7 +385,10 @@ export class PaymentReadService {
       (total, record) => total + record.amountCents,
       0
     );
-    const evidenceFiles = await this.paymentEvidenceFiles(payment.id, executions);
+    const [evidenceFiles, approvalTimeline] = await Promise.all([
+      this.paymentEvidenceFiles(payment.id, executions),
+      approvalTimelineForBusiness(this.prisma, "payment_request", payment.id)
+    ]);
     const paidAmountCents = executions.length > 0 ? executionAmountCents : payment.paidAmountCents;
     const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
     const approval = this.approvalStatusView(payment.status);
@@ -469,6 +473,7 @@ export class PaymentReadService {
         };
       }),
       evidenceFiles,
+      approvalTimeline,
       availableActions,
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
@@ -805,6 +810,7 @@ export class PaymentReadService {
       ],
       executionAllocations: [],
       evidenceFiles: [],
+      approvalTimeline: [],
       availableActions: [],
       primaryAction: null,
       disabledReasons: [],

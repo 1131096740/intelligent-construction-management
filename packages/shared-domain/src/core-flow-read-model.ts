@@ -126,6 +126,18 @@ export interface DetailActionReadModel {
   requiresFile?: boolean;
 }
 
+export interface ApprovalTimelineItemReadModel {
+  id: string;
+  action: string;
+  actionLabel: string;
+  actorUserId: string;
+  actorName: string;
+  comment: string | null;
+  nodeName: string | null;
+  roleName: string | null;
+  createdAt: string;
+}
+
 export interface ContractDetailReadModel {
   id: string;
   contractVersionId: string;
@@ -137,6 +149,7 @@ export interface ContractDetailReadModel {
   settlementBlockMessage: string;
   settlementPayment: ContractSettlementPaymentReadModel;
   archiveFiles: ContractArchiveFileReadModel[];
+  approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
   primaryAction: string | null;
   disabledReasons: string[];
@@ -163,6 +176,7 @@ export interface SettlementDetailReadModel {
   paymentRules: SettlementPaymentRuleReadModel[];
   paymentBlockMessage: string;
   archiveFiles: EvidenceFileReadModel[];
+  approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
   primaryAction: string | null;
   disabledReasons: string[];
@@ -185,6 +199,7 @@ export interface PaymentDetailReadModel {
     amountCents: number;
   }>;
   evidenceFiles: EvidenceFileReadModel[];
+  approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
   primaryAction: string | null;
   disabledReasons: string[];

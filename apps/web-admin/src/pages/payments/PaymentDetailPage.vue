@@ -309,6 +309,14 @@
       <EvidenceFileCards :files="paymentEvidenceFilesView" />
     </t-card>
 
+    <t-card
+      class="section-card"
+      title="审批历史时间线"
+      :bordered="true"
+    >
+      <ApprovalTimeline :items="paymentApprovalTimelineView" />
+    </t-card>
+
     <div class="detail-grid">
       <t-card
         title="基础信息"
@@ -420,6 +428,7 @@
 import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   createPrivateFileDownloadTicket,
@@ -501,6 +510,7 @@ const paymentEvidenceFilesView = computed(() =>
     auditHint: "下载需当前密码并记录审计"
   }))
 );
+const paymentApprovalTimelineView = computed(() => paymentDetail.value?.approvalTimeline ?? []);
 const paymentEvidenceFileOptions = computed(() =>
   paymentEvidenceFilesView.value
     .filter((file) => file.canDownload)

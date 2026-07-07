@@ -15,6 +15,7 @@ import {
   disabledActionReasons,
   primaryActionKey
 } from "../core-flow/detail-actions";
+import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
 import { PrismaService } from "../database/prisma.service";
 
 @Injectable()
@@ -207,7 +208,7 @@ export class SettlementReadService {
       throw new NotFoundException("Settlement not found");
     }
 
-    const [contract, contractVersion, terms, paymentRequest, archiveFiles] = await Promise.all([
+    const [contract, contractVersion, terms, paymentRequest, archiveFiles, approvalTimeline] = await Promise.all([
       this.prisma.contract.findUnique({ where: { id: settlement.contractId } }),
       this.prisma.contractVersion.findUnique({ where: { id: settlement.contractVersionId } }),
       this.prisma.paymentTermsVersion.findUnique({
@@ -217,7 +218,8 @@ export class SettlementReadService {
         where: { settlementId: settlement.id },
         orderBy: { createdAt: "desc" }
       }),
-      this.settlementArchiveFilesForSettlement(settlement.id)
+      this.settlementArchiveFilesForSettlement(settlement.id),
+      approvalTimelineForBusiness(this.prisma, "settlement", settlement.id)
     ]);
 
     if (!contract) {
@@ -289,6 +291,7 @@ export class SettlementReadService {
       })),
       paymentBlockMessage: this.paymentBlockMessage(settlement.status),
       archiveFiles,
+      approvalTimeline,
       availableActions,
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
@@ -355,6 +358,7 @@ export class SettlementReadService {
       paymentBlockMessage:
         "结算尚未生效，暂不可创建付款申请；付款比例和账期按绑定的付款条款版本执行。",
       archiveFiles: [],
+      approvalTimeline: [],
       availableActions: [],
       primaryAction: null,
       disabledReasons: [],

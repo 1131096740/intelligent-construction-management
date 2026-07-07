@@ -307,6 +307,14 @@
         <EvidenceFileCards :files="contractEvidenceFilesView" />
       </t-card>
 
+      <t-card
+        class="section-card"
+        title="审批历史时间线"
+        :bordered="true"
+      >
+        <ApprovalTimeline :items="contractApprovalTimelineView" />
+      </t-card>
+
       <div class="detail-grid">
         <t-card
           title="基础信息"
@@ -450,6 +458,7 @@
 import type { CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   approveContractSeal,
@@ -561,6 +570,7 @@ const contractEvidenceFilesView = computed(() =>
     auditHint: "下载需当前密码并记录审计"
   }))
 );
+const contractApprovalTimelineView = computed(() => contractDetail.value?.approvalTimeline ?? []);
 const contractActionByKey = computed(
   () => new Map((contractDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );

@@ -304,6 +304,14 @@
       <EvidenceFileCards :files="settlementArchiveFilesView" />
     </t-card>
 
+    <t-card
+      class="section-card"
+      title="审批历史时间线"
+      :bordered="true"
+    >
+      <ApprovalTimeline :items="settlementApprovalTimelineView" />
+    </t-card>
+
     <div class="detail-grid">
       <t-card
         title="基础信息"
@@ -382,6 +390,7 @@
 import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   confirmSettlementArchive,
@@ -452,6 +461,7 @@ const settlementArchiveFilesView = computed(() =>
     auditHint: "下载需当前密码并记录审计"
   }))
 );
+const settlementApprovalTimelineView = computed(() => settlementDetail.value?.approvalTimeline ?? []);
 const settlementArchiveFileOptions = computed(() =>
   settlementArchiveFilesView.value
     .filter((file) => file.canDownload)

@@ -19,6 +19,7 @@ import {
   disabledActionReasons,
   primaryActionKey
 } from "../core-flow/detail-actions";
+import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
 import { PrismaService } from "../database/prisma.service";
 import { centsToSafeNumber } from "../money/decimal-money";
 import {
@@ -415,7 +416,7 @@ export class ContractReadService {
       throw new NotFoundException("Payment terms version not found");
     }
 
-    const [stages, settlements, paymentRequests, contractArchiveFiles] = await Promise.all([
+    const [stages, settlements, paymentRequests, contractArchiveFiles, approvalTimeline] = await Promise.all([
       this.prisma.paymentTermsStage.findMany({
         where: { paymentTermsVersionId: terms.id },
         orderBy: { createdAt: "asc" }
@@ -428,7 +429,8 @@ export class ContractReadService {
         where: { contractId: contract.id },
         orderBy: { updatedAt: "desc" }
       }),
-      this.contractArchiveFilesForVersion(version.id)
+      this.contractArchiveFilesForVersion(version.id),
+      approvalTimelineForBusiness(this.prisma, "contract_version", version.id)
     ]);
     const paymentIds = paymentRequests.map((payment) => payment.id);
     const settlementIds = settlements.map((settlement) => settlement.id);
@@ -514,6 +516,7 @@ export class ContractReadService {
         historicalBalance
       ),
       archiveFiles: contractArchiveFiles,
+      approvalTimeline,
       availableActions,
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
@@ -595,6 +598,7 @@ export class ContractReadService {
           "当前可申请余额暂按已生效应付金额 - 已实付 - 审批中占用 - 已批待付计算，未纳入账期、质保金、预付款扣回和项目资金池；最新合同剩余额度以当前最新合同金额扣减合同维度累计生效结算，仅作台账提示。"
       },
       archiveFiles: [],
+      approvalTimeline: [],
       availableActions: [],
       primaryAction: null,
       disabledReasons: [],
