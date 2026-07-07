@@ -24,10 +24,39 @@ async function loginWithMockedAuth(page: Page, roleKeys: string[]) {
 }
 
 test("opens the workbench shell and historical takeover entry", async ({ page }) => {
-  await page.route("**/api/me/workbench-summary", (route) =>
+  await page.route("**/api/me/work-items", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ generatedAt: new Date().toISOString(), visibleProjectCount: 1, cards: [] })
+      body: JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        visibleProjectCount: 1,
+        queues: {
+          pending: [
+            {
+              id: "work-item-1",
+              type: "contract_takeover",
+              title: "待复核历史合同",
+              projectName: "E2E 项目",
+              businessCode: "HT-TAKEOVER-001",
+              amountText: "20 份",
+              currentNode: "合同接管复核",
+              stayedText: "已停留 1 天",
+              nextAction: "进入接管台账",
+              targetPath: "/合同管理/历史接管",
+              tone: "warning"
+            }
+          ],
+          blocked: [],
+          started: []
+        },
+        approvalCenter: {
+          pendingApproval: [],
+          startedByMe: [],
+          handledByMe: [],
+          delegatedToMe: [],
+          overdueReminder: []
+        }
+      })
     })
   );
   await page.route("**/api/projects", (route) =>
@@ -42,6 +71,8 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
   await loginWithMockedAuth(page, ["contract_staff"]);
 
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+  await expect(page.getByText("待复核历史合同")).toBeVisible();
+  await expect(page.getByText("合同接管复核 · 已停留 1 天")).toBeVisible();
 
   await page.getByText("历史合同接管").click();
   await expect(page.getByRole("heading", { name: "历史合同接管" })).toBeVisible();
