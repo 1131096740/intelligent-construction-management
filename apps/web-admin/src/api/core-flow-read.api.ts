@@ -174,6 +174,25 @@ export type ContractTakeoverStatus =
   | "voided";
 
 export type ContractTakeoverCentsValue = number | string;
+export type ContractTakeoverEvidencePurpose =
+  | "historical_contract_scan"
+  | "historical_settlement_ledger"
+  | "historical_payment_voucher"
+  | "other";
+
+export interface ContractTakeoverEvidenceFileReadModel {
+  recordId: string;
+  fileId: string;
+  fileName: string;
+  purpose: ContractTakeoverEvidencePurpose;
+  purposeLabel: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedByName: string;
+  uploadedAt: string;
+  canDownload: boolean;
+  disabledReason: string | null;
+}
 
 export interface ContractTakeoverReadModel {
   id: string;
@@ -202,6 +221,7 @@ export interface ContractTakeoverReadModel {
   submittedAt: string | null;
   confirmedAt: string | null;
   historicalBalanceConfirmedAt: string | null;
+  evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   createdAt: string;
   updatedAt: string;
 }
@@ -234,6 +254,11 @@ export interface CreateContractTakeoverPayload {
 
 export interface ConfirmContractTakeoverPayload {
   confirmationPassword: string;
+}
+
+export interface AttachContractTakeoverEvidencePayload {
+  fileId: string;
+  purpose: ContractTakeoverEvidencePurpose;
 }
 
 export interface CreateSettlementPayload {
@@ -988,6 +1013,17 @@ export function updateContractTakeover(
 ) {
   return patchJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}`,
+    body
+  );
+}
+
+export function attachContractTakeoverEvidenceFile(
+  projectId: string,
+  takeoverId: string,
+  body: AttachContractTakeoverEvidencePayload
+) {
+  return postJson<ContractTakeoverReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/evidence-files`,
     body
   );
 }

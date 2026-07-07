@@ -266,6 +266,41 @@
             </div>
           </dl>
 
+          <h3>接管资料</h3>
+          <div class="evidence-uploader">
+            <label>
+              <span>资料类型</span>
+              <select v-model="evidencePurpose">
+                <option
+                  v-for="option in evidencePurposeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+            <label>
+              <span>资料文件</span>
+              <input
+                ref="evidenceInputRef"
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                @change="onEvidenceFileChange"
+              >
+            </label>
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="evidenceUploading"
+              :disabled="!canEditTakeover(selectedRow.takeover) || !evidenceFile"
+              @click="submitEvidenceFile"
+            >
+              上传接管资料
+            </t-button>
+          </div>
+          <EvidenceFileCards :files="selectedEvidenceFiles" />
+
           <h3>历史余额</h3>
           <dl class="detail-list money">
             <div
@@ -340,6 +375,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import {
+  attachContractTakeoverEvidenceFile,
   confirmContractTakeover,
   createContractTakeover,
   fetchProjects,
@@ -347,11 +383,14 @@ import {
   listContractTakeovers,
   submitContractTakeoverReview,
   updateContractTakeover,
+  uploadPrivateFile,
+  type ContractTakeoverEvidencePurpose,
   type ContractLifecycleStatus,
   type ContractTakeoverLevel,
   type ContractTakeoverReadModel,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
+import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   canConfirmTakeover,
   canEditTakeover,
@@ -418,10 +457,14 @@ const loadingTakeovers = ref(false);
 const creating = ref(false);
 const editingTakeoverId = ref("");
 const confirming = ref(false);
+const evidenceUploading = ref(false);
 const showCreateForm = ref(false);
 const confirmVisible = ref(false);
 const confirmTarget = ref<ContractTakeoverReadModel | null>(null);
 const confirmationPassword = ref("");
+const evidencePurpose = ref<ContractTakeoverEvidencePurpose>("historical_contract_scan");
+const evidenceFile = ref<File | null>(null);
+const evidenceInputRef = ref<HTMLInputElement | null>(null);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const createForm = reactive<CreateFormState>(createEmptyForm());
@@ -456,6 +499,29 @@ const summaryValues = computed(() => {
     { label: "待补充", value: String(counts.needs_supplement), tone: "primary" as const }
   ];
 });
+const evidencePurposeOptions: Array<{ value: ContractTakeoverEvidencePurpose; label: string }> = [
+  { value: "historical_contract_scan", label: "历史合同扫描件" },
+  { value: "historical_settlement_ledger", label: "历史结算台账" },
+  { value: "historical_payment_voucher", label: "历史付款凭证" },
+  { value: "other", label: "其他接管资料" }
+];
+const selectedEvidenceFiles = computed(() =>
+  (selectedRow.value?.takeover.evidenceFiles ?? []).map((file) => ({
+    recordId: file.recordId,
+    fileName: file.fileName,
+    businessRef: selectedRow.value?.contractNo ?? "当前接管合同",
+    purpose: file.purposeLabel,
+    sizeBytes: file.sizeBytes,
+    statusLabel: "已上传",
+    uploadedByName: file.uploadedByName,
+    uploadedAt: file.uploadedAt,
+    confirmedByName: null,
+    confirmedAt: null,
+    canDownload: file.canDownload,
+    disabledReason: file.disabledReason,
+    auditHint: "下载需当前密码并记录审计"
+  }))
+);
 
 const selectedBaseInfo = computed(() => {
   const row = selectedRow.value;
@@ -661,6 +727,46 @@ async function submitReview(takeover: ContractTakeoverReadModel) {
     setMessage("已提交业务复核", "success");
   } catch (error) {
     setMessage(error instanceof Error ? error.message : "提交复核失败", "danger");
+  }
+}
+
+function onEvidenceFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  evidenceFile.value = input.files?.[0] ?? null;
+}
+
+async function submitEvidenceFile() {
+  const projectId = selectedProjectId.value;
+  const takeover = selectedRow.value?.takeover;
+  const file = evidenceFile.value;
+  if (!projectId || !takeover || !file) {
+    setMessage("请先选择接管记录和资料文件", "danger");
+    return;
+  }
+  if (!canEditTakeover(takeover)) {
+    setMessage("只有草稿或待补充的接管记录可以上传资料", "danger");
+    return;
+  }
+
+  evidenceUploading.value = true;
+  message.value = "";
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    const updated = await attachContractTakeoverEvidenceFile(projectId, takeover.id, {
+      fileId: uploaded.id,
+      purpose: evidencePurpose.value
+    });
+    takeovers.value = takeovers.value.map((item) => (item.id === updated.id ? updated : item));
+    selectedTakeoverId.value = updated.id;
+    evidenceFile.value = null;
+    if (evidenceInputRef.value) {
+      evidenceInputRef.value.value = "";
+    }
+    setMessage("接管资料已上传并绑定到当前合同", "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "上传接管资料失败", "danger");
+  } finally {
+    evidenceUploading.value = false;
   }
 }
 
@@ -1049,6 +1155,30 @@ input[type="date"] {
   overflow-wrap: anywhere;
 }
 
+.evidence-uploader {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.evidence-uploader label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.evidence-uploader label span {
+  color: #565f6d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.evidence-uploader input[type="file"] {
+  min-width: 0;
+  font-size: 12px;
+}
+
 .empty-detail {
   min-height: 120px;
   display: grid;
@@ -1086,7 +1216,8 @@ input[type="date"] {
   .form-grid,
   .form-grid.two,
   .detail-list div,
-  .detail-list.money div {
+  .detail-list.money div,
+  .evidence-uploader {
     grid-template-columns: 1fr;
   }
 

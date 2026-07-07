@@ -3,6 +3,10 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import type {
+  AttachContractTakeoverEvidenceDto,
+  ContractTakeoverEvidencePurpose
+} from "./dto/attach-contract-takeover-evidence.dto";
 import type { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
 import type {
   ContractLifecycleStatus,
@@ -20,6 +24,12 @@ const LIFECYCLE_STATUSES = [
   "terminated",
   "disputed"
 ] as const;
+const EVIDENCE_PURPOSES = [
+  "historical_contract_scan",
+  "historical_settlement_ledger",
+  "historical_payment_voucher",
+  "other"
+] as const satisfies readonly ContractTakeoverEvidencePurpose[];
 const MONEY_FIELDS = [
   "historicalSettledCents",
   "historicalApprovalPendingPaymentCents",
@@ -36,7 +46,7 @@ const MONEY_FIELDS = [
 type TakeoverClient = Pick<Prisma.TransactionClient, "contractTakeover">;
 type TakeoverReadClient = Pick<
   Prisma.TransactionClient,
-  "contract" | "contractVersion" | "paymentTermsVersion"
+  "contract" | "contractVersion" | "paymentTermsVersion" | "archiveRecord" | "fileObject" | "user"
 >;
 
 type ContractTakeoverRecord = {
@@ -95,8 +105,23 @@ export interface ContractTakeoverBusinessReadModel {
   submittedAt: Date | null;
   confirmedAt: Date | null;
   historicalBalanceConfirmedAt: Date | null;
+  evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ContractTakeoverEvidenceFileReadModel {
+  recordId: string;
+  fileId: string;
+  fileName: string;
+  purpose: ContractTakeoverEvidencePurpose;
+  purposeLabel: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedByName: string;
+  uploadedAt: Date;
+  canDownload: boolean;
+  disabledReason: string | null;
 }
 
 @Injectable()
@@ -202,7 +227,8 @@ export class ContractTakeoverService {
         counterparty: data.counterparty,
         companyEntityName: data.companyEntityName ?? null,
         amountCents: data.amountCents,
-        paymentTermsOriginalText: data.paymentTermsOriginalText ?? ""
+        paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
+        evidenceFiles: []
       });
     });
   }
@@ -281,8 +307,62 @@ export class ContractTakeoverService {
         counterparty: data.counterparty,
         companyEntityName: data.companyEntityName ?? null,
         amountCents: data.amountCents,
-        paymentTermsOriginalText: data.paymentTermsOriginalText ?? ""
+        paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
+        evidenceFiles: []
       });
+    });
+  }
+
+  async attachEvidenceFile(
+    projectId: string,
+    takeoverId: string,
+    input: AttachContractTakeoverEvidenceDto,
+    actorUserId: string
+  ) {
+    const fileId = input.fileId?.trim();
+    if (!fileId) {
+      throw new Error("Evidence file is required");
+    }
+    if (!EVIDENCE_PURPOSES.includes(input.purpose)) {
+      throw new Error("Invalid evidence purpose");
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
+      if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
+        throw new Error(`Cannot attach takeover evidence from status ${takeover.takeoverStatus}`);
+      }
+      const file = await tx.fileObject.findUnique({
+        where: { id: fileId },
+        select: { id: true }
+      });
+      if (!file) {
+        throw new Error("Evidence file not found");
+      }
+
+      const archiveRecord = await tx.archiveRecord.create({
+        data: {
+          businessType: "contract_takeover",
+          businessId: takeover.id,
+          fileId,
+          departmentScope: input.purpose
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover.evidence.attach",
+        businessType: "contract_takeover",
+        businessId: takeover.id,
+        metadata: {
+          projectId,
+          fileId,
+          archiveRecordId: archiveRecord.id,
+          purpose: input.purpose
+        }
+      });
+
+      return this.toReadModelFromDatabase(tx, takeover);
     });
   }
 
@@ -418,12 +498,18 @@ export class ContractTakeoverService {
     }
 
     const contractIds = unique(takeovers.map((takeover) => takeover.contractId));
+    const takeoverIds = unique(takeovers.map((takeover) => takeover.id));
     const contractVersionIds = unique(takeovers.map((takeover) => takeover.contractVersionId));
     const paymentTermsClient = (client as unknown as {
       paymentTermsVersion?: TakeoverReadClient["paymentTermsVersion"];
     }).paymentTermsVersion;
+    const archiveClient = (client as unknown as {
+      archiveRecord?: TakeoverReadClient["archiveRecord"];
+      fileObject?: TakeoverReadClient["fileObject"];
+      user?: TakeoverReadClient["user"];
+    });
     const paymentTermsVersionIds = unique(takeovers.map((takeover) => takeover.paymentTermsVersionId));
-    const [contracts, versions, terms] = await Promise.all([
+    const [contracts, versions, terms, archiveRecords] = await Promise.all([
       client.contract.findMany({
         where: { id: { in: contractIds } },
         select: {
@@ -444,12 +530,38 @@ export class ContractTakeoverService {
             where: { id: { in: paymentTermsVersionIds } },
             select: { id: true, originalText: true }
           })
+        : Promise.resolve([]),
+      typeof archiveClient.archiveRecord?.findMany === "function"
+        ? archiveClient.archiveRecord.findMany({
+            where: { businessType: "contract_takeover", businessId: { in: takeoverIds } },
+            orderBy: { createdAt: "desc" }
+          })
         : Promise.resolve([])
     ]);
+    const evidenceFileIds = unique(archiveRecords.map((record) => record.fileId));
+    const files = typeof archiveClient.fileObject?.findMany === "function" && evidenceFileIds.length
+      ? await archiveClient.fileObject.findMany({ where: { id: { in: evidenceFileIds } } })
+      : [];
+    const uploaderIds = unique(files.map((file) => file.uploadedByUserId));
+    const users = typeof archiveClient.user?.findMany === "function" && uploaderIds.length
+      ? await archiveClient.user.findMany({
+          where: { id: { in: uploaderIds } },
+          select: { id: true, name: true }
+        })
+      : [];
 
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const versionById = new Map(versions.map((version) => [version.id, version]));
     const termsById = new Map(terms.map((term) => [term.id, term]));
+    const fileById = new Map(files.map((file) => [file.id, file]));
+    const userNameById = new Map(users.map((user) => [user.id, user.name]));
+    const recordsByTakeoverId = new Map<string, typeof archiveRecords>();
+    for (const record of archiveRecords) {
+      recordsByTakeoverId.set(record.businessId, [
+        ...(recordsByTakeoverId.get(record.businessId) ?? []),
+        record
+      ]);
+    }
 
     return takeovers.map((takeover) =>
       this.toReadModel(takeover, {
@@ -461,7 +573,29 @@ export class ContractTakeoverService {
         counterparty: contractById.get(takeover.contractId)?.counterparty ?? "未读取相对方",
         companyEntityName: contractById.get(takeover.contractId)?.companyEntityName ?? null,
         amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0,
-        paymentTermsOriginalText: termsById.get(takeover.paymentTermsVersionId)?.originalText ?? ""
+        paymentTermsOriginalText: termsById.get(takeover.paymentTermsVersionId)?.originalText ?? "",
+        evidenceFiles: (recordsByTakeoverId.get(takeover.id) ?? []).flatMap((record) => {
+          const file = fileById.get(record.fileId);
+          if (!file) {
+            return [];
+          }
+
+          return [
+            {
+              recordId: record.id,
+              fileId: file.id,
+              fileName: file.originalName,
+              purpose: evidencePurpose(record.departmentScope),
+              purposeLabel: evidencePurposeLabel(evidencePurpose(record.departmentScope)),
+              mimeType: file.mimeType,
+              sizeBytes: file.sizeBytes,
+              uploadedByName: userNameById.get(file.uploadedByUserId) ?? file.uploadedByUserId,
+              uploadedAt: file.createdAt,
+              canDownload: true,
+              disabledReason: null
+            }
+          ];
+        })
       })
     );
   }
@@ -483,6 +617,7 @@ export class ContractTakeoverService {
       companyEntityName: string | null;
       amountCents: bigint | number;
       paymentTermsOriginalText: string;
+      evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
     }
   ): ContractTakeoverBusinessReadModel {
     return {
@@ -516,6 +651,7 @@ export class ContractTakeoverService {
       submittedAt: takeover.submittedAt,
       confirmedAt: takeover.confirmedAt,
       historicalBalanceConfirmedAt: takeover.historicalBalanceConfirmedAt,
+      evidenceFiles: contract.evidenceFiles,
       createdAt: takeover.createdAt,
       updatedAt: takeover.updatedAt
     };
@@ -571,4 +707,21 @@ function unique<T>(values: T[]): T[] {
 
 function moneyString(value: bigint | number): string {
   return (typeof value === "bigint" ? value : BigInt(value)).toString();
+}
+
+function evidencePurpose(value: string): ContractTakeoverEvidencePurpose {
+  return EVIDENCE_PURPOSES.includes(value as ContractTakeoverEvidencePurpose)
+    ? (value as ContractTakeoverEvidencePurpose)
+    : "other";
+}
+
+function evidencePurposeLabel(value: ContractTakeoverEvidencePurpose) {
+  const labels: Record<ContractTakeoverEvidencePurpose, string> = {
+    historical_contract_scan: "历史合同扫描件",
+    historical_settlement_ledger: "历史结算台账",
+    historical_payment_voucher: "历史付款凭证",
+    other: "其他接管资料"
+  };
+
+  return labels[value];
 }

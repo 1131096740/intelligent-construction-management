@@ -3,6 +3,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractTakeoverService } from "./contract-takeover.service";
+import type { AttachContractTakeoverEvidenceDto } from "./dto/attach-contract-takeover-evidence.dto";
 import type { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
 import type {
   CreateContractTakeoverDto,
@@ -47,6 +48,17 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.updateDraft(projectId, takeoverId, body, user.id);
+  }
+
+  @Post(":takeoverId/evidence-files")
+  @RequireProjectRole("contract.create")
+  attachEvidence(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: AttachContractTakeoverEvidenceDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.attachEvidenceFile(projectId, takeoverId, body, user.id);
   }
 
   @Post(":takeoverId/review-submission")

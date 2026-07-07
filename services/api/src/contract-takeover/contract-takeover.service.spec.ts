@@ -343,6 +343,72 @@ describe("ContractTakeoverService", () => {
     expect(tx.contract.update).not.toHaveBeenCalled();
   });
 
+  it("attaches evidence files to editable takeover drafts", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-1" })
+      },
+      archiveRecord: {
+        create: jest.fn().mockResolvedValue({ id: "archive-record-1" })
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A",
+            companyEntityName: "建工智管公司"
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-version-1", amountCents: 1_000_000n }])
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "terms-version-1", originalText: "Monthly terms" }])
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await service.attachEvidenceFile(
+      "project-1",
+      "takeover-1",
+      { fileId: "file-1", purpose: "historical_contract_scan" },
+      "contract-user"
+    );
+
+    expect(tx.archiveRecord.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "contract_takeover",
+        businessId: "takeover-1",
+        fileId: "file-1",
+        departmentScope: "historical_contract_scan"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "contract-user",
+      action: "contract_takeover.evidence.attach",
+      businessType: "contract_takeover",
+      businessId: "takeover-1",
+      metadata: expect.objectContaining({
+        archiveRecordId: "archive-record-1",
+        fileId: "file-1",
+        purpose: "historical_contract_scan"
+      })
+    });
+  });
+
   it("rejects missing signed date before writing", async () => {
     const tx = {
       project: {
