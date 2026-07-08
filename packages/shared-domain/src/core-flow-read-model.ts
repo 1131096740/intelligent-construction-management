@@ -165,6 +165,17 @@ export interface SettlementPaymentRuleReadModel {
   paymentRequestStatus: string;
 }
 
+export interface SettlementPayableCalculationItemReadModel {
+  label: string;
+  value: string;
+  tone?: CoreFlowTone;
+}
+
+export interface SettlementPayableCalculationReadModel {
+  items: SettlementPayableCalculationItemReadModel[];
+  note: string;
+}
+
 export interface SettlementDetailReadModel {
   id: string;
   settlementId: string;
@@ -174,6 +185,7 @@ export interface SettlementDetailReadModel {
   effectivenessSteps: DetailStep[];
   archiveResponsibilities: string[];
   paymentRules: SettlementPaymentRuleReadModel[];
+  payableCalculation: SettlementPayableCalculationReadModel;
   paymentBlockMessage: string;
   archiveFiles: EvidenceFileReadModel[];
   approvalTimeline: ApprovalTimelineItemReadModel[];

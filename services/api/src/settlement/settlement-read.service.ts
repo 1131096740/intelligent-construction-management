@@ -123,6 +123,69 @@ export class SettlementReadService {
     });
   }
 
+  private async paymentActivityForSettlement(settlementId: string): Promise<{
+    requestedAmountCents: number;
+    paidAmountCents: number;
+    activeRequestCount: number;
+  }> {
+    const client = this.prisma as unknown as {
+      paymentRequest?: {
+        findMany(args: {
+          where: { settlementId: string };
+          select: { id: true; status: true; requestedAmountCents: true; paidAmountCents: true };
+        }): Promise<
+          Array<{
+            id: string;
+            status: string;
+            requestedAmountCents: number;
+            paidAmountCents: number;
+          }>
+        >;
+      };
+      paymentExecution?: {
+        findMany(args: {
+          where: { paymentRequestId: { in: string[] } };
+          select: { amountCents: true };
+        }): Promise<Array<{ amountCents: number }>>;
+      };
+    };
+
+    if (!client.paymentRequest?.findMany) {
+      return { requestedAmountCents: 0, paidAmountCents: 0, activeRequestCount: 0 };
+    }
+
+    const requests = await client.paymentRequest.findMany({
+      where: { settlementId },
+      select: { id: true, status: true, requestedAmountCents: true, paidAmountCents: true }
+    });
+    const activeRequests = requests.filter((request) => !["rejected", "withdrawn", "voided"].includes(request.status));
+    const requestedAmountCents = activeRequests.reduce(
+      (total, request) => total + request.requestedAmountCents,
+      0
+    );
+    if (!activeRequests.length) {
+      return { requestedAmountCents, paidAmountCents: 0, activeRequestCount: 0 };
+    }
+
+    if (!client.paymentExecution?.findMany) {
+      return {
+        requestedAmountCents,
+        paidAmountCents: activeRequests.reduce((total, request) => total + request.paidAmountCents, 0),
+        activeRequestCount: activeRequests.length
+      };
+    }
+
+    const executions = await client.paymentExecution.findMany({
+      where: { paymentRequestId: { in: activeRequests.map((request) => request.id) } },
+      select: { amountCents: true }
+    });
+    return {
+      requestedAmountCents,
+      paidAmountCents: executions.reduce((total, execution) => total + execution.amountCents, 0),
+      activeRequestCount: activeRequests.length
+    };
+  }
+
   async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
     const take = this.limit(rawLimit);
     const settlements = await this.prisma.settlement.findMany({
@@ -208,7 +271,15 @@ export class SettlementReadService {
       throw new NotFoundException("Settlement not found");
     }
 
-    const [contract, contractVersion, terms, paymentRequest, archiveFiles, approvalTimeline] = await Promise.all([
+    const [
+      contract,
+      contractVersion,
+      terms,
+      paymentRequest,
+      archiveFiles,
+      approvalTimeline,
+      paymentActivity
+    ] = await Promise.all([
       this.prisma.contract.findUnique({ where: { id: settlement.contractId } }),
       this.prisma.contractVersion.findUnique({ where: { id: settlement.contractVersionId } }),
       this.prisma.paymentTermsVersion.findUnique({
@@ -219,7 +290,8 @@ export class SettlementReadService {
         orderBy: { createdAt: "desc" }
       }),
       this.settlementArchiveFilesForSettlement(settlement.id),
-      approvalTimelineForBusiness(this.prisma, "settlement", settlement.id)
+      approvalTimelineForBusiness(this.prisma, "settlement", settlement.id),
+      this.paymentActivityForSettlement(settlement.id)
     ]);
 
     if (!contract) {
@@ -289,6 +361,7 @@ export class SettlementReadService {
         triggerCondition: stage.triggerEvent,
         paymentRequestStatus: paymentRequest?.status ?? this.defaultPaymentRequestStatus(settlement.status)
       })),
+      payableCalculation: this.payableCalculation(settlement, paymentActivity),
       paymentBlockMessage: this.paymentBlockMessage(settlement.status),
       archiveFiles,
       approvalTimeline,
@@ -355,6 +428,16 @@ export class SettlementReadService {
           paymentRequestStatus: "未开放"
         }
       ],
+      payableCalculation: {
+        items: [
+          { label: "本期结算金额", value: "¥320,000.00" },
+          { label: "本期可付金额", value: "¥256,000.00", tone: "success" },
+          { label: "已申请付款", value: "¥0.00", tone: "default" },
+          { label: "已实付金额", value: "¥0.00" },
+          { label: "剩余可申请", value: "¥256,000.00", tone: "primary" }
+        ],
+        note: "剩余可申请按本结算可付金额扣减未作废/未驳回/未撤回的付款申请，最终以后端创建付款校验为准。"
+      },
       paymentBlockMessage:
         "结算尚未生效，暂不可创建付款申请；付款比例和账期按绑定的付款条款版本执行。",
       archiveFiles: [],
@@ -368,6 +451,29 @@ export class SettlementReadService {
         { label: "归档资料", to: "/archives" },
         { label: "审计日志", to: "/audit" }
       ]
+    };
+  }
+
+  private payableCalculation(
+    settlement: { amountCents: number; payableAmountCents?: number | null },
+    paymentActivity: { requestedAmountCents: number; paidAmountCents: number; activeRequestCount: number }
+  ): SettlementDetailReadModel["payableCalculation"] {
+    const payableAmountCents = settlement.payableAmountCents ?? 0;
+    const remainingRequestableCents = Math.max(payableAmountCents - paymentActivity.requestedAmountCents, 0);
+
+    return {
+      items: [
+        { label: "本期结算金额", value: this.formatMoney(settlement.amountCents) },
+        { label: "本期可付金额", value: this.formatMoney(payableAmountCents), tone: "success" },
+        {
+          label: "已申请付款",
+          value: this.formatMoney(paymentActivity.requestedAmountCents),
+          tone: paymentActivity.activeRequestCount > 0 ? "warning" : "default"
+        },
+        { label: "已实付金额", value: this.formatMoney(paymentActivity.paidAmountCents) },
+        { label: "剩余可申请", value: this.formatMoney(remainingRequestableCents), tone: "primary" }
+      ],
+      note: "剩余可申请按本结算可付金额扣减未作废/未驳回/未撤回的付款申请，最终以后端创建付款校验为准。"
     };
   }
 

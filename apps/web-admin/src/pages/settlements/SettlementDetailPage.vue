@@ -353,6 +353,28 @@
 
     <t-card
       class="section-card"
+      title="可付金额计算"
+      :bordered="true"
+    >
+      <div class="payable-calculation">
+        <div
+          v-for="item in settlementPayableCalculationView.items"
+          :key="item.label"
+          class="payable-item"
+        >
+          <span>{{ item.label }}</span>
+          <strong :class="item.tone ? `tone-${item.tone}` : undefined">
+            {{ item.value }}
+          </strong>
+        </div>
+      </div>
+      <p class="calculation-note">
+        {{ settlementPayableCalculationView.note }}
+      </p>
+    </t-card>
+
+    <t-card
+      class="section-card"
       title="付款执行规则"
       :bordered="true"
     >
@@ -438,6 +460,13 @@ const settlementArchiveResponsibilitiesView = computed(
 );
 const settlementPaymentRulesView = computed(
   () => settlementDetail.value?.paymentRules ?? []
+);
+const settlementPayableCalculationView = computed(
+  () =>
+    settlementDetail.value?.payableCalculation ?? {
+      items: [],
+      note: "详情读取成功后显示本期可付金额、已申请付款、已实付和剩余可申请金额。"
+    }
 );
 const settlementPaymentBlockMessageView = computed(
   () => settlementDetail.value?.paymentBlockMessage ?? "详情读取成功后显示付款申请规则。"
@@ -921,6 +950,45 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   padding: 16px;
 }
 
+.payable-calculation {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin: 16px;
+  overflow: hidden;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #dce1e8;
+}
+
+.payable-item {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  background: #fff;
+}
+
+.payable-item span {
+  color: #767f8d;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.payable-item strong {
+  font-size: 15px;
+}
+
+.calculation-note {
+  margin: 0 16px 16px;
+  padding: 10px 12px;
+  border-left: 3px solid #0052cc;
+  background: #f3f7ff;
+  color: #315287;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .action-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -1011,6 +1079,7 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   .meta-panel,
   .detail-grid,
   .responsibility-strip,
+  .payable-calculation,
   .action-grid,
   .action-fields {
     grid-template-columns: 1fr;

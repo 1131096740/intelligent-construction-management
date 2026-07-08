@@ -133,7 +133,8 @@ describe("SettlementReadService", () => {
           code: "JS-2026-031",
           periodLabel: "2026-06",
           status: "effective",
-          amountCents: 58000000
+          amountCents: 58000000,
+          payableAmountCents: 46400000
         })
       },
       contract: {
@@ -170,7 +171,24 @@ describe("SettlementReadService", () => {
         findFirst: jest.fn().mockResolvedValue({
           code: "FK-2026-011",
           status: "approved_pending_payment"
-        })
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "payment-1",
+            status: "approved_pending_payment",
+            requestedAmountCents: 20000000,
+            paidAmountCents: 5000000
+          },
+          {
+            id: "payment-void",
+            status: "rejected",
+            requestedAmountCents: 1000000,
+            paidAmountCents: 0
+          }
+        ])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 5000000 }])
       },
       settlementArchiveFile: {
         findMany: jest.fn().mockResolvedValue([
@@ -222,6 +240,13 @@ describe("SettlementReadService", () => {
       triggerCondition: "结算归档确认生效",
       paymentRequestStatus: "approved_pending_payment"
     });
+    expect(detail.payableCalculation.items).toEqual([
+      { label: "本期结算金额", value: "¥580,000.00" },
+      { label: "本期可付金额", value: "¥464,000.00", tone: "success" },
+      { label: "已申请付款", value: "¥200,000.00", tone: "warning" },
+      { label: "已实付金额", value: "¥50,000.00" },
+      { label: "剩余可申请", value: "¥264,000.00", tone: "primary" }
+    ]);
     expect(detail.archiveFiles).toEqual([
       {
         recordId: "settlement-archive-1",
