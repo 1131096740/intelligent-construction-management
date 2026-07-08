@@ -14,28 +14,60 @@ export const historicalTakeoverRoleKeys = [
   "contract_director"
 ] as const satisfies readonly RoleKey[];
 
-interface AdminNavigationItem {
+export interface AdminNavigationItem {
   label: string;
   path: string;
   requiredRoleKeys?: readonly RoleKey[];
 }
 
-export const adminNavigationItems: AdminNavigationItem[] = [
-  { label: "首页", path: "/首页" },
-  { label: "合同管理", path: "/合同管理" },
-  { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
-  { label: "合同工作台", path: "/合同工作台" },
-  { label: "项目经营", path: "/项目经营", requiredRoleKeys: fundsOverviewRoleKeys },
-  { label: "结算管理", path: "/结算管理" },
-  { label: "付款管理", path: "/付款管理" },
-  { label: "资料库", path: "/资料库" },
-  { label: "审批中心", path: "/审批中心" },
-  { label: "合同模板库", path: "/合同模板库" },
-  { label: "合作单位档案", path: "/合作单位档案" },
-  { label: "委托台账", path: "/委托台账" },
-  { label: "审计日志", path: "/审计日志" },
-  { label: "系统配置", path: "/系统配置" }
+export interface AdminNavigationGroup {
+  label: string;
+  items: AdminNavigationItem[];
+}
+
+export const adminNavigationGroups: AdminNavigationGroup[] = [
+  {
+    label: "工作入口",
+    items: [
+      { label: "首页", path: "/首页" },
+      { label: "审批中心", path: "/审批中心" }
+    ]
+  },
+  {
+    label: "项目资金链",
+    items: [{ label: "项目经营", path: "/项目经营", requiredRoleKeys: fundsOverviewRoleKeys }]
+  },
+  {
+    label: "合同过程",
+    items: [
+      { label: "合同工作台", path: "/合同工作台" },
+      { label: "合同管理", path: "/合同管理" },
+      { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
+      { label: "合同模板库", path: "/合同模板库" },
+      { label: "合作单位档案", path: "/合作单位档案" }
+    ]
+  },
+  {
+    label: "结算付款",
+    items: [
+      { label: "结算管理", path: "/结算管理" },
+      { label: "付款管理", path: "/付款管理" }
+    ]
+  },
+  {
+    label: "资料与治理",
+    items: [
+      { label: "资料库", path: "/资料库" },
+      { label: "委托台账", path: "/委托台账" },
+      { label: "审计日志", path: "/审计日志" },
+      { label: "系统配置", path: "/系统配置" }
+    ]
+  }
 ] as const;
+
+export const adminNavigationItems: AdminNavigationItem[] = adminNavigationGroups.flatMap(
+  (group) => group.items
+);
 
 export function hasAnyRole(userRoleKeys: readonly RoleKey[] | undefined, requiredRoleKeys?: readonly RoleKey[]) {
   return !requiredRoleKeys?.length || requiredRoleKeys.some((role) => userRoleKeys?.includes(role));
@@ -43,6 +75,15 @@ export function hasAnyRole(userRoleKeys: readonly RoleKey[] | undefined, require
 
 export function visibleAdminNavigationItems(userRoleKeys: readonly RoleKey[] | undefined) {
   return adminNavigationItems.filter((item) => hasAnyRole(userRoleKeys, item.requiredRoleKeys));
+}
+
+export function visibleAdminNavigationGroups(userRoleKeys: readonly RoleKey[] | undefined) {
+  return adminNavigationGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => hasAnyRole(userRoleKeys, item.requiredRoleKeys))
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
 interface RedirectTarget {

@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { buildRouteDocumentTitle, focusMainContent, resolveRouteAccess } from "./index";
 import {
   adminNavigationItems,
+  adminNavigationGroups,
   fundsOverviewRoleKeys,
   historicalTakeoverRoleKeys,
+  visibleAdminNavigationGroups,
   visibleAdminNavigationItems,
   webAdminRoutes
 } from "./route-records";
@@ -120,20 +122,41 @@ describe("web admin routes", () => {
   it("uses Chinese top-level navigation labels and paths", () => {
     expect(adminNavigationItems.map((item) => ({ label: item.label, path: item.path }))).toEqual([
       { label: "首页", path: "/首页" },
+      { label: "审批中心", path: "/审批中心" },
+      { label: "项目经营", path: "/项目经营" },
+      { label: "合同工作台", path: "/合同工作台" },
       { label: "合同管理", path: "/合同管理" },
       { label: "历史合同接管", path: "/历史合同接管" },
-      { label: "合同工作台", path: "/合同工作台" },
-      { label: "项目经营", path: "/项目经营" },
+      { label: "合同模板库", path: "/合同模板库" },
+      { label: "合作单位档案", path: "/合作单位档案" },
       { label: "结算管理", path: "/结算管理" },
       { label: "付款管理", path: "/付款管理" },
       { label: "资料库", path: "/资料库" },
-      { label: "审批中心", path: "/审批中心" },
-      { label: "合同模板库", path: "/合同模板库" },
-      { label: "合作单位档案", path: "/合作单位档案" },
       { label: "委托台账", path: "/委托台账" },
       { label: "审计日志", path: "/审计日志" },
       { label: "系统配置", path: "/系统配置" }
     ]);
+  });
+
+  it("groups navigation by business process instead of a flat module list", () => {
+    expect(adminNavigationGroups.map((group) => group.label)).toEqual([
+      "工作入口",
+      "项目资金链",
+      "合同过程",
+      "结算付款",
+      "资料与治理"
+    ]);
+    expect(adminNavigationGroups.flatMap((group) => group.items.map((item) => item.label))).toEqual(
+      adminNavigationItems.map((item) => item.label)
+    );
+  });
+
+  it("hides empty navigation groups after role filtering", () => {
+    const groupLabels = visibleAdminNavigationGroups(undefined).map((group) => group.label);
+
+    expect(groupLabels).not.toContain("项目资金链");
+    expect(groupLabels).toContain("合同过程");
+    expect(visibleAdminNavigationGroups(["finance_staff"]).map((group) => group.label)).toContain("项目资金链");
   });
 
   it("hides project operations from nav when the user lacks funds overview roles", () => {

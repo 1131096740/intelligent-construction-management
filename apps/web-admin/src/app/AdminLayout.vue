@@ -18,14 +18,22 @@
         theme="light"
         :value="activePath"
       >
-        <t-menu-item
-          v-for="item in adminNavigationItems"
-          :key="item.path"
-          :value="item.path"
-          @click="go(item.path)"
+        <template
+          v-for="group in adminNavigationGroups"
+          :key="group.label"
         >
-          {{ item.label }}
-        </t-menu-item>
+          <div class="menu-group-label">
+            {{ group.label }}
+          </div>
+          <t-menu-item
+            v-for="item in group.items"
+            :key="item.path"
+            :value="item.path"
+            @click="go(item.path)"
+          >
+            {{ item.label }}
+          </t-menu-item>
+        </template>
       </t-menu>
     </t-aside>
 
@@ -64,7 +72,7 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../auth/auth.store";
-import { visibleAdminNavigationItems } from "../routes/route-records";
+import { visibleAdminNavigationGroups } from "../routes/route-records";
 import {
   parseRecentBusinessRoutes,
   recentBusinessRouteFromPath,
@@ -78,8 +86,18 @@ const router = useRouter();
 const auth = useAuthStore();
 const recentBusinessRoutes = ref<RecentBusinessRoute[]>([]);
 
-const activePath = computed(() => route.path);
-const adminNavigationItems = computed(() => visibleAdminNavigationItems(auth.user?.roleKeys));
+const adminNavigationGroups = computed(() => visibleAdminNavigationGroups(auth.user?.roleKeys));
+const activePath = computed(() => {
+  const items = adminNavigationGroups.value.flatMap((group) => group.items);
+  const exact = items.find((item) => item.path === route.path);
+  if (exact) {
+    return exact.path;
+  }
+  const parent = items
+    .filter((item) => route.path.startsWith(`${item.path}/`))
+    .sort((left, right) => right.path.length - left.path.length)[0];
+  return parent?.path ?? route.path;
+});
 const currentRecentStorageKey = computed(() => (auth.user?.id ? recentBusinessStorageKey(auth.user.id) : ""));
 
 watch(
@@ -173,6 +191,16 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
 .menu {
   padding: 14px 8px;
   background: transparent;
+}
+
+.menu-group-label {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px 4px;
+  color: #767f8d;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .header {
@@ -269,6 +297,12 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
     grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     gap: 4px;
     padding: 8px 6px;
+  }
+
+  .menu-group-label {
+    grid-column: 1 / -1;
+    min-height: 20px;
+    padding: 8px 6px 0;
   }
 
   .header {
