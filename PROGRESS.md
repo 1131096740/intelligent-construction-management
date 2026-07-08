@@ -25,7 +25,7 @@
 - [~] 真实账号收口：seed 通用密码未出现在生产环境，seed 用户和 refresh token 已停用；真实试运行用户清单、临时密码重置和首次改密留痕待执行。
 - [ ] 历史合同接管：完成 A/B/C 分级、资料补录、复核、当前密码二次确认接管。
 - [ ] 活跃合同链路：选 3-5 个合同跑通结算、生效、付款申请、审批、实付、凭证、审计。
-- [~] 运维验收：数据库备份恢复演练、Nginx 安全片段、运行健康检查、COS 私有桶策略和版本控制在服务器/控制台实测并留证；服务器健康检查已同步为支持 `ALERT_WEBHOOK_URL` 的版本，真实告警接收通道和触达测试待现场确认。
+- [~] 运维验收：数据库备份恢复演练、Nginx 安全片段、运行健康检查、COS 私有桶策略和版本控制在服务器/控制台实测并留证；服务器健康检查已支持 `ALERT_WEBHOOK_URL` 和 SMTP 邮箱告警，已选 QQ 邮箱方案，授权码配置和触达测试待现场确认。
 - [ ] 合同母版人工签认：生产库当前无成功合同草稿生成记录，需先用真实合同员账号完成一次四类母版生成，再由合同部/法务逐页验收 DOCX 版式、字体、分页、签章页、附件页。
 - [ ] 业务 Go-Live 签字：老板、财务、合同部、项目经理、技术/运维完成最终闸门签认。
 
@@ -43,7 +43,8 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
-- 2026-07-08 (CodeX)：生产服务器 `jiangkong-healthcheck.timer` 已启用并每 5 分钟运行；`/usr/local/bin/jiangkong-healthcheck` 已同步为仓库版本，覆盖 health/API 服务状态、磁盘阈值、API warning/error 日志，并通过 systemd drop-in 支持 `/etc/jiangkong/healthcheck.env` 中的 `ALERT_WEBHOOK_URL`。当前健康检查实测 `runtime health ok`；尚未配置真实 webhook，错误告警触达仍待现场确认。
+- 2026-07-08 (CodeX)：错误告警接收通道改为 QQ 邮箱方案；`scripts/ops/check-runtime-health.sh` 已补 SMTP 邮件告警分支，配置项为 `SMTP_URL`、`SMTP_USER`、`SMTP_PASSWORD`、`ALERT_EMAIL_FROM`、`ALERT_EMAIL_TO`，授权码不入仓库；待用户提供 QQ 邮箱 SMTP 授权码后配置服务器并做触达测试。
+- 2026-07-08 (CodeX)：生产服务器 `jiangkong-healthcheck.timer` 已启用并每 5 分钟运行；`/usr/local/bin/jiangkong-healthcheck` 已同步为仓库版本，覆盖 health/API 服务状态、磁盘阈值、API warning/error 日志，并通过 systemd drop-in 支持 `/etc/jiangkong/healthcheck.env` 告警配置。当前健康检查实测 `runtime health ok`；尚未配置真实告警接收通道，错误告警触达仍待现场确认。
 - 2026-07-08 (CodeX)：用户确认 COS 生产桶版本控制已开启；结合私有读写、空 Policy、无 Everyone 授权、无生命周期删除规则，P0 附件基础备份/误删恢复口径通过。
 - 2026-07-08 (CodeX)：人工复核 COS 生产桶 `jiangkong-prod-files-1438687719`（`ap-chengdu`）：存储桶访问权限为私有读写，Policy 权限设置为空，用户权限仅见主账号完全控制，生命周期规则为空；版本控制后续已开启。
 - 2026-07-08 (CodeX)：复核 DNSPod 截图，`jgzg.site` 与 `www.jgzg.site` A 记录均已指向 `162.14.116.192`；用户浏览器访问 `https://jgzg.site/api/health` 已返回 `{"status":"ok","service":"jiangkong-api"}`。备案仍在管局审核中，本项改为等待备案终审，不再按 DNS 配置错误处理。

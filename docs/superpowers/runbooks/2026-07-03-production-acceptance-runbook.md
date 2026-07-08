@@ -205,7 +205,18 @@ DISK_MAX_USED_PERCENT=85 \
 scripts/ops/check-runtime-health.sh
 ```
 
-如已配置企业微信或飞书机器人，可加 `ALERT_WEBHOOK_URL`；未配置 webhook 时脚本仍会失败退出并在终端/cron 日志留痕。
+如已配置企业微信/飞书机器人，可加 `ALERT_WEBHOOK_URL`；也可用 SMTP 邮箱告警：
+
+```bash
+SMTP_URL=smtps://smtp.qq.com:465 \
+SMTP_USER=1131096740@qq.com \
+SMTP_PASSWORD=<QQ邮箱SMTP授权码> \
+ALERT_EMAIL_FROM=1131096740@qq.com \
+ALERT_EMAIL_TO=1131096740@qq.com \
+scripts/ops/check-runtime-health.sh
+```
+
+未配置 webhook 或 SMTP 时，脚本仍会失败退出并在 systemd/cron 日志留痕。
 
 ## 8. HTTPS / 域名 / 证书续期
 

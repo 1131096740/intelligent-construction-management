@@ -43,4 +43,21 @@ if [[ -n "${ALERT_WEBHOOK_URL:-}" ]]; then
     -d "{\"msgtype\":\"text\",\"text\":{\"content\":\"$message\"}}" >/dev/null || true
 fi
 
+if [[ -n "${ALERT_EMAIL_TO:-}" && -n "${SMTP_USER:-}" && -n "${SMTP_PASSWORD:-}" ]]; then
+  email_from="${ALERT_EMAIL_FROM:-$SMTP_USER}"
+  email_subject="${ALERT_EMAIL_SUBJECT:-JiangKong runtime health failed}"
+  smtp_url="${SMTP_URL:-smtps://smtp.qq.com:465}"
+
+  printf "From: %s\nTo: %s\nSubject: %s\nContent-Type: text/plain; charset=UTF-8\n\n%s\n" \
+    "$email_from" \
+    "$ALERT_EMAIL_TO" \
+    "$email_subject" \
+    "$message" \
+    | curl -fsS --ssl-reqd --url "$smtp_url" \
+      --user "$SMTP_USER:$SMTP_PASSWORD" \
+      --mail-from "$email_from" \
+      --mail-rcpt "$ALERT_EMAIL_TO" \
+      --upload-file - >/dev/null || true
+fi
+
 exit 1
