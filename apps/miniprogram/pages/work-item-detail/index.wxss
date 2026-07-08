@@ -31,3 +31,38 @@
 .upload-message {
   margin-top: 20rpx;
 }
+
+.approval-card {
+  display: grid;
+  gap: 18rpx;
+  margin-bottom: 24rpx;
+}
+
+.section-title {
+  font-weight: 700;
+}
+
+.approval-comment {
+  width: 100%;
+  min-height: 140rpx;
+  padding: 18rpx;
+  box-sizing: border-box;
+  border: 1rpx solid #dce1e8;
+  border-radius: 6rpx;
+  background: #fff;
+}
+
+.approval-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+}
+
+.danger-button {
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 6rpx;
+  color: #fff;
+  background: #d92d20;
+  font-size: 28rpx;
+}

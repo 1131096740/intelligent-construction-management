@@ -142,7 +142,7 @@ describe("MeService", () => {
     const approvalCard = summary.cards.find((card) => card.id === "approval_todo");
     expect(approvalCard).toMatchObject({
       count: 1,
-      description: "合同 0 · 结算 1 · 付款 0",
+      description: "合同 0 · 结算 1 · 付款 0 · 支出 0",
       targetPath: "/结算管理"
     });
   });
@@ -218,7 +218,10 @@ describe("MeService", () => {
       id: "approval:approval-1",
       type: "approval",
       projectName: "测试项目",
+      projectId: "project-1",
       businessCode: "JS-001",
+      businessType: "settlement",
+      businessId: "settlement-1",
       title: "结算审批：测试合同",
       amountText: "¥1,000.00",
       currentNode: "项目经理审批",

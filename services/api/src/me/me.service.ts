@@ -60,7 +60,10 @@ export interface WorkItem {
   type: WorkItemKind;
   title: string;
   projectName: string;
+  projectId?: string;
   businessCode: string;
+  businessType?: string;
+  businessId?: string;
   amountText: string;
   currentNode: string;
   stayedText: string;
@@ -96,7 +99,8 @@ interface ApprovalAssignment {
 const RELEVANT_APPROVAL_TYPES = [
   "contract_version",
   "settlement",
-  "payment_request"
+  "payment_request",
+  "project_expense_request"
 ] as const;
 
 const activeTakeoverStatuses = ["draft", "pending_review", "confirmed", "needs_supplement"];
@@ -204,7 +208,8 @@ export class MeService {
     const approvalProjects = this.projectIdsFor(scopes, [
       "contract.approve",
       "settlement.approve",
-      "payment.approve"
+      "payment.approve",
+      "project_expense.approve"
     ]);
     if (approvalProjects.length) {
       const approvalCounts = await this.countApprovalTodos(scopes, userId);
@@ -212,7 +217,7 @@ export class MeService {
         id: "approval_todo",
         title: "待审批",
         count: approvalCounts.total,
-        description: `合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment}`,
+        description: `合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}`,
         targetPath: this.approvalTargetPath(approvalCounts),
         actionText: "去处理",
         tone: "primary"
@@ -692,7 +697,10 @@ export class MeService {
         type: "approval",
         title: detail.title,
         projectName: detail.projectName,
+        projectId: detail.projectId,
         businessCode: detail.businessCode,
+        businessType: instance.businessType,
+        businessId: instance.businessId,
         amountText: this.amountText(detail.amountCents),
         currentNode: this.approvalNodeName(node),
         stayedText: this.stayedText(instance.updatedAt),
@@ -776,8 +784,11 @@ export class MeService {
     const paymentIds = instances
       .filter((instance) => instance.businessType === "payment_request")
       .map((instance) => instance.businessId);
+    const expenseIds = instances
+      .filter((instance) => instance.businessType === "project_expense_request")
+      .map((instance) => instance.businessId);
 
-    const [versions, settlements, payments] = await Promise.all([
+    const [versions, settlements, payments, expenses] = await Promise.all([
       contractVersionIds.length
         ? this.prisma.contractVersion.findMany({
             where: { id: { in: contractVersionIds } },
@@ -794,6 +805,19 @@ export class MeService {
         ? this.prisma.paymentRequest.findMany({
             where: { id: { in: paymentIds } },
             select: { id: true, projectId: true, contractId: true, code: true, requestedAmountCents: true }
+          })
+        : Promise.resolve([]),
+      expenseIds.length
+        ? this.prisma.projectExpenseRequest.findMany({
+            where: { id: { in: expenseIds } },
+            select: {
+              id: true,
+              projectId: true,
+              code: true,
+              expenseType: true,
+              paymentSubject: true,
+              requestedAmountCents: true
+            }
           })
         : Promise.resolve([])
     ]);
@@ -812,7 +836,8 @@ export class MeService {
     const projectNames = await this.projectNames([
       ...contracts.map((contract) => contract.projectId),
       ...settlements.map((settlement) => settlement.projectId),
-      ...payments.map((payment) => payment.projectId)
+      ...payments.map((payment) => payment.projectId),
+      ...expenses.map((expense) => expense.projectId)
     ]);
 
     for (const version of versions) {
@@ -850,6 +875,16 @@ export class MeService {
         targetPath: `/付款管理/${payment.code}`
       });
     }
+    for (const expense of expenses) {
+      result.set(`project_expense_request:${expense.id}`, {
+        projectId: expense.projectId,
+        projectName: projectNames.get(expense.projectId) ?? expense.projectId,
+        businessCode: expense.code,
+        title: `${projectExpenseApprovalTitle(expense.expenseType)}：${expense.paymentSubject}`,
+        amountCents: expense.requestedAmountCents,
+        targetPath: `/项目经营?project=${expense.projectId}`
+      });
+    }
 
     return result;
   }
@@ -872,7 +907,7 @@ export class MeService {
       }
     });
     const businessProjectIds = await this.approvalBusinessProjectIds(instances);
-    const counts = { contract: 0, settlement: 0, payment: 0, total: 0 };
+    const counts = { contract: 0, settlement: 0, payment: 0, expense: 0, total: 0 };
 
     for (const instance of instances) {
       const projectId = businessProjectIds.get(`${instance.businessType}:${instance.businessId}`);
@@ -896,6 +931,7 @@ export class MeService {
       if (instance.businessType === "contract_version") counts.contract += 1;
       if (instance.businessType === "settlement") counts.settlement += 1;
       if (instance.businessType === "payment_request") counts.payment += 1;
+      if (instance.businessType === "project_expense_request") counts.expense += 1;
       counts.total += 1;
     }
 
@@ -915,8 +951,11 @@ export class MeService {
     const paymentIds = instances
       .filter((instance) => instance.businessType === "payment_request")
       .map((instance) => instance.businessId);
+    const expenseIds = instances
+      .filter((instance) => instance.businessType === "project_expense_request")
+      .map((instance) => instance.businessId);
 
-    const [versions, settlements, payments] = await Promise.all([
+    const [versions, settlements, payments, expenses] = await Promise.all([
       contractVersionIds.length
         ? this.prisma.contractVersion.findMany({
             where: { id: { in: contractVersionIds } },
@@ -932,6 +971,12 @@ export class MeService {
       paymentIds.length
         ? this.prisma.paymentRequest.findMany({
             where: { id: { in: paymentIds } },
+            select: { id: true, projectId: true }
+          })
+        : Promise.resolve([]),
+      expenseIds.length
+        ? this.prisma.projectExpenseRequest.findMany({
+            where: { id: { in: expenseIds } },
             select: { id: true, projectId: true }
           })
         : Promise.resolve([])
@@ -950,6 +995,9 @@ export class MeService {
     }
     for (const settlement of settlements) ids.set(`settlement:${settlement.id}`, settlement.projectId);
     for (const payment of payments) ids.set(`payment_request:${payment.id}`, payment.projectId);
+    for (const expense of expenses) {
+      ids.set(`project_expense_request:${expense.id}`, expense.projectId);
+    }
 
     return ids;
   }
@@ -1121,9 +1169,21 @@ export class MeService {
     return `已停留 ${hours} 小时`;
   }
 
-  private approvalTargetPath(counts: { contract: number; settlement: number; payment: number }) {
+  private approvalTargetPath(counts: {
+    contract: number;
+    settlement: number;
+    payment: number;
+    expense: number;
+  }) {
     if (counts.payment > 0) return "/付款管理";
     if (counts.settlement > 0) return "/结算管理";
+    if (counts.expense > 0) return "/项目经营";
     return "/合同管理";
   }
+}
+
+function projectExpenseApprovalTitle(expenseType: string) {
+  if (expenseType === "reimbursement") return "报销审批";
+  if (expenseType === "spot_purchase") return "零星采购审批";
+  return "项目支出审批";
 }

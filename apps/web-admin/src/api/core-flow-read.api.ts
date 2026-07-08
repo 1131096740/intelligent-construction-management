@@ -788,7 +788,10 @@ export interface WorkItemReadModel {
   type: "contract_takeover" | "archive" | "approval" | "payment_execution" | "blocker";
   title: string;
   projectName: string;
+  projectId?: string;
   businessCode: string;
+  businessType?: string;
+  businessId?: string;
   amountText: string;
   currentNode: string;
   stayedText: string;

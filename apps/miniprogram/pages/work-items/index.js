@@ -7,6 +7,10 @@ Page({
     groups: []
   },
   onShow: function() {
+    if (!getApp().globalData.accessToken) {
+      wx.redirectTo({ url: "/pages/login/index" });
+      return;
+    }
     this.loadWorkItems();
   },
   loadWorkItems: function() {

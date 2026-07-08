@@ -20,6 +20,26 @@
     <view class="next-action">{{item.nextAction || item.actionLabel || "请回到 Web 端处理完整业务动作"}}</view>
   </view>
 
+  <view wx:if="{{canApprove}}" class="card approval-card">
+    <view class="section-title">移动审批</view>
+    <textarea
+      class="approval-comment"
+      value="{{approvalComment}}"
+      placeholder="审批意见"
+      bindinput="onApprovalCommentInput"
+    />
+    <view class="approval-actions">
+      <button class="primary-button" loading="{{actionBusy === 'approve'}}" bindtap="approveItem">
+        通过
+      </button>
+      <button class="danger-button" loading="{{actionBusy === 'reject'}}" bindtap="rejectItem">
+        驳回
+      </button>
+    </view>
+  </view>
+  <view wx:elif="{{item.type === 'approval'}}" class="card muted">当前审批需回到 Web 端处理</view>
+  <view wx:if="{{actionMessage}}" class="card upload-message">{{actionMessage}}</view>
+
   <button class="primary-button" bindtap="chooseAndUpload" loading="{{uploading}}">
     拍照上传附件
   </button>

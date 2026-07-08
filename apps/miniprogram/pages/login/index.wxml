@@ -1,0 +1,26 @@
+<view class="page login-page">
+  <view class="card login-card">
+    <view class="login-title">建工智管</view>
+    <view class="login-subtitle">手机号和当前密码登录</view>
+    <label class="field">
+      <text>手机号</text>
+      <input
+        value="{{phone}}"
+        type="number"
+        placeholder="请输入手机号"
+        bindinput="onPhoneInput"
+      />
+    </label>
+    <label class="field">
+      <text>当前密码</text>
+      <input
+        value="{{password}}"
+        password
+        placeholder="请输入当前密码"
+        bindinput="onPasswordInput"
+      />
+    </label>
+    <button class="primary-button" loading="{{loading}}" bindtap="submitLogin">登录</button>
+    <view wx:if="{{error}}" class="error-text">{{error}}</view>
+  </view>
+</view>

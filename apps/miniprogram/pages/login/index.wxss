@@ -1,0 +1,41 @@
+.login-page {
+  display: flex;
+  align-items: center;
+}
+
+.login-card {
+  display: grid;
+  gap: 24rpx;
+  width: 100%;
+}
+
+.login-title {
+  font-size: 42rpx;
+  font-weight: 700;
+}
+
+.login-subtitle {
+  color: #667085;
+}
+
+.field {
+  display: grid;
+  gap: 10rpx;
+}
+
+.field text {
+  color: #5f6673;
+  font-size: 24rpx;
+}
+
+.field input {
+  height: 76rpx;
+  padding: 0 20rpx;
+  border: 1rpx solid #dce1e8;
+  border-radius: 6rpx;
+  background: #fff;
+}
+
+.error-text {
+  color: #b42318;
+}
