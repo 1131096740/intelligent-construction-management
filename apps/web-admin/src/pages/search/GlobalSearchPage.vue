@@ -35,6 +35,21 @@
       </t-button>
     </div>
 
+    <div class="column-strip">
+      <span>列设置</span>
+      <label
+        v-for="option in columnOptions"
+        :key="option.key"
+      >
+        <input
+          type="checkbox"
+          :checked="visibleColumnKeys.includes(option.key)"
+          @change="toggleColumn(option.key)"
+        >
+        {{ option.title }}
+      </label>
+    </div>
+
     <div class="summary-strip">
       <span>全部 {{ allItems.length }} 条</span>
       <span>合同 {{ typeCount("合同") }} 条</span>
@@ -58,7 +73,7 @@
       <t-table
         row-key="id"
         size="small"
-        :columns="globalSearchColumns"
+        :columns="visibleGlobalSearchColumns"
         :data="filteredItems"
         :loading="loading"
         empty="暂无搜索结果"
@@ -86,14 +101,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import { useAuthStore } from "../../auth/auth.store";
 import {
   fetchArchives,
   fetchContractLedger,
   fetchPaymentLedger,
   fetchSettlementLedger
 } from "../../api/core-flow-read.api";
+import {
+  normalizeVisibleColumnKeys,
+  readPersonalTablePreferences,
+  writePersonalTablePreferences
+} from "../../app/personal-table-preferences";
 import {
   buildGlobalSearchItems,
   filterGlobalSearchItems,
@@ -103,16 +124,49 @@ import {
 } from "./global-search.config";
 
 const router = useRouter();
+const auth = useAuthStore();
 const query = ref("");
 const loading = ref(false);
 const message = ref("");
 const allItems = ref<GlobalSearchItem[]>([]);
+const configurableColumnKeys = globalSearchColumns
+  .map((column) => String(column.colKey))
+  .filter((key) => key !== "operation");
+const visibleColumnKeys = ref<string[]>([...configurableColumnKeys]);
 
 const filteredItems = computed(() => filterGlobalSearchItems(allItems.value, query.value));
+const preferenceStorageKey = computed(() =>
+  auth.user?.id ? `jiangkong:web-admin:global-search:${auth.user.id}` : ""
+);
+const columnOptions = computed(() =>
+  globalSearchColumns
+    .filter((column) => column.colKey !== "operation")
+    .map((column) => ({ key: String(column.colKey), title: String(column.title) }))
+);
+const visibleGlobalSearchColumns = computed(() => {
+  const visible = new Set(visibleColumnKeys.value);
+  return globalSearchColumns.filter((column) => column.colKey === "operation" || visible.has(String(column.colKey)));
+});
 
 onMounted(() => {
   void loadSearchIndex();
 });
+
+watch(
+  preferenceStorageKey,
+  () => {
+    loadPersonalPreferences();
+  },
+  { immediate: true }
+);
+
+watch(
+  [query, visibleColumnKeys],
+  () => {
+    savePersonalPreferences();
+  },
+  { deep: true }
+);
 
 async function loadSearchIndex() {
   loading.value = true;
@@ -146,6 +200,13 @@ function resetSearch() {
   message.value = "";
 }
 
+function toggleColumn(key: string) {
+  const next = visibleColumnKeys.value.includes(key)
+    ? visibleColumnKeys.value.filter((item) => item !== key)
+    : [...visibleColumnKeys.value, key];
+  visibleColumnKeys.value = normalizeVisibleColumnKeys(next, configurableColumnKeys);
+}
+
 function typeCount(type: GlobalSearchType) {
   return allItems.value.filter((item) => item.type === type).length;
 }
@@ -162,6 +223,37 @@ function typeTheme(type: GlobalSearchType) {
     资料: "default"
   } as const;
   return themes[type];
+}
+
+function loadPersonalPreferences() {
+  const storageKey = preferenceStorageKey.value;
+  if (!storageKey) {
+    query.value = "";
+    visibleColumnKeys.value = [...configurableColumnKeys];
+    return;
+  }
+  const preferences = readPersonalTablePreferences(getPreferenceStorage(), storageKey, configurableColumnKeys);
+  query.value = preferences.query;
+  visibleColumnKeys.value = preferences.visibleColumnKeys;
+}
+
+function savePersonalPreferences() {
+  const storageKey = preferenceStorageKey.value;
+  if (!storageKey) {
+    return;
+  }
+  writePersonalTablePreferences(getPreferenceStorage(), storageKey, {
+    query: query.value,
+    visibleColumnKeys: visibleColumnKeys.value
+  });
+}
+
+function getPreferenceStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
 }
 </script>
 
@@ -222,7 +314,8 @@ function typeTheme(type: GlobalSearchType) {
   font-weight: 600;
 }
 
-.summary-strip {
+.summary-strip,
+.column-strip {
   min-height: 38px;
   display: flex;
   flex-wrap: wrap;
@@ -232,6 +325,23 @@ function typeTheme(type: GlobalSearchType) {
   margin-bottom: 12px;
   color: #424955;
   font-size: 12px;
+}
+
+.column-strip {
+  margin-bottom: 12px;
+}
+
+.column-strip span {
+  color: #767f8d;
+  font-weight: 700;
+}
+
+.column-strip label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  color: #424955;
 }
 
 .summary-strip strong {
