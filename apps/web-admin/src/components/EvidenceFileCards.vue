@@ -18,13 +18,35 @@
         </div>
         <div class="evidence-meta">
           <span v-if="file.businessRef">业务归属：{{ file.businessRef }}</span>
-          <span>状态：{{ file.statusLabel }}</span>
+          <span class="evidence-tag-item">
+            状态：
+            <t-tag
+              size="small"
+              :theme="toEvidenceFileCardView(file).statusTheme"
+            >
+              {{ file.statusLabel }}
+            </t-tag>
+          </span>
           <span>上传：{{ file.uploadedByName }} · {{ formatTime(file.uploadedAt) }}</span>
           <span v-if="file.confirmedAt">
             确认：{{ file.confirmedByName ?? "-" }} · {{ formatTime(file.confirmedAt) }}
           </span>
-          <span>{{ file.auditHint ?? "下载将记录审计" }}</span>
-          <span v-if="!file.canDownload">{{ file.disabledReason ?? "暂不可下载" }}</span>
+          <span class="evidence-tag-item">
+            下载：
+            <t-tag
+              size="small"
+              :theme="toEvidenceFileCardView(file).downloadTheme"
+            >
+              {{ toEvidenceFileCardView(file).downloadText }}
+            </t-tag>
+          </span>
+          <span>{{ toEvidenceFileCardView(file).auditHint }}</span>
+          <span
+            v-if="toEvidenceFileCardView(file).disabledReason"
+            class="evidence-blocked-reason"
+          >
+            {{ toEvidenceFileCardView(file).disabledReason }}
+          </span>
         </div>
       </article>
     </template>
@@ -32,6 +54,8 @@
 </template>
 
 <script setup lang="ts">
+import { toEvidenceFileCardView } from "./evidence-file-cards.config";
+
 interface EvidenceFileCardItem {
   recordId: string;
   fileName: string;
@@ -106,5 +130,15 @@ function formatTime(value: string) {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 14px;
+}
+
+.evidence-tag-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.evidence-blocked-reason {
+  color: var(--td-warning-color, #e37318);
 }
 </style>

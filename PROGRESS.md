@@ -44,6 +44,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-08 (CodeX)：继续推进改造方案 P1「证据文件卡状态收口」：`EvidenceFileCards` 新增统一证据文件状态视图，已确认/已上传/已入库以成功 tag 展示，待确认或暂不可下载以提示 tag 和不可下载原因展示，并保留“下载需当前密码并记录审计”的审计提示；只改公共 UI 组件，不改后端读模型和下载权限。验证：Web 定向 Vitest 35 套 / 251 例、Web typecheck、Web lint、`git diff --check` 通过。
 - 2026-07-08 (CodeX)：继续推进改造方案 P1「核心上传限制口径统一」：新增 `file-upload-policy` 上传策略配置，将合同/结算归档、付款凭证和付款 PDF 归档的 accept 属性、支持类型文案、100 MB 大小限制文案收口到统一常量；页面只引用策略，不改后端上传接口、不新增前端替代校验。验证：Web Vitest 34 套 / 249 例、Web typecheck、Web lint、`git diff --check` 通过。
 - 2026-07-08 (CodeX)：继续推进改造方案 P1「上传成功后清空文件选择」：新增 `file-input-reset` 纯函数，合同/结算归档上传、付款实付凭证和付款 PDF 归档在业务接口成功后同时清空已选文件状态与原生 file input，避免用户误以为旧文件仍待上传；不改后端、不改业务状态流转。验证：Web 定向 Vitest 33 套 / 247 例、Web typecheck、Web lint、`git diff --check` 通过；代码审查无阻断问题。
 - 2026-07-08 (CodeX)：继续推进改造方案 P1「付款详情上传状态提示复用」：付款详情的实付凭证和财务归档 PDF 上传区复用 `file-upload-summary`，显示选中文件名、格式化大小、支持类型、大小限制和上传中状态；不改后端、不改实付/归档业务流转。验证：Web 定向 Vitest 32 套 / 245 例、Web typecheck、Web lint、`git diff --check` 通过。
