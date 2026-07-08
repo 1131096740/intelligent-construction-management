@@ -624,7 +624,7 @@ async function runArchiveAction(key: string, action: () => Promise<unknown>) {
 }
 
 async function submitSettlementArchiveUpload() {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
 
   await runArchiveAction("upload", async () => {
     const file = selectedSettlementArchiveFile.value;
@@ -642,7 +642,7 @@ async function submitSettlementArchiveUpload() {
 }
 
 async function submitSettlementArchiveConfirmation() {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
   let archiveFileId = "";
   let confirmationPassword = "";
   try {
@@ -672,7 +672,7 @@ async function submitSettlementArchiveConfirmation() {
 async function submitSettlementReview(
   decision: "approve" | "reject" | "reject_previous" | "return_to_applicant"
 ) {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
   const comment = settlementArchiveForm.approvalComment.trim() || undefined;
   if (decision !== "approve" && !comment) {
     archiveActionMessageTone.value = "danger";
@@ -698,7 +698,7 @@ async function submitSettlementReview(
 }
 
 async function downloadSettlementApprovalForm() {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
 
   await runArchiveAction("approvalForm", async () => {
     await downloadSettlementLatestApprovalPdf(settlementId);
@@ -706,19 +706,19 @@ async function downloadSettlementApprovalForm() {
 }
 
 async function submitSettlementWithdrawal() {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
 
   await runArchiveAction("withdrawApproval", () => withdrawSettlementApproval(settlementId));
 }
 
 async function submitSettlementReminder() {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
 
   await runArchiveAction("remindApproval", () => remindSettlementApproval(settlementId));
 }
 
 async function submitSettlementAssignment(kind: "transfer" | "delegate") {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
   const toUserId = requiredText(settlementArchiveForm.assignmentUserId, "目标处理人");
 
   await runArchiveAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
@@ -729,19 +729,19 @@ async function submitSettlementAssignment(kind: "transfer" | "delegate") {
 }
 
 async function submitSettlementPdfGeneration() {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
 
   await runArchiveAction("pdf", () => generateSettlementPdfArchive(settlementId));
 }
 
 async function downloadSettlementDraft() {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
 
   await runArchiveAction("draftExcel", () => downloadSettlementDraftExcel(settlementId));
 }
 
 async function downloadSettlementAttachment(templateKey: string) {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算ID");
+  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
 
   await runArchiveAction(`attachmentTemplate:${templateKey}`, () =>
     downloadSettlementAttachmentTemplate(settlementId, templateKey)
