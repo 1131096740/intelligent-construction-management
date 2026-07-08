@@ -30,6 +30,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     label: "工作入口",
     items: [
       { label: "首页", path: "/首页" },
+      { label: "全局搜索", path: "/全局搜索" },
       { label: "审批中心", path: "/审批中心" }
     ]
   },
@@ -119,6 +120,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "首页",
         component: () => import("../pages/home/HomePage.vue"),
         meta: { title: "首页" }
+      },
+      {
+        path: "全局搜索",
+        component: () => import("../pages/search/GlobalSearchPage.vue"),
+        meta: { title: "全局搜索" }
       },
       {
         path: "合同管理",
@@ -227,6 +233,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "payments", redirect: "/付款管理" },
       { path: "payments/:paymentId", redirect: paymentRedirect },
       { path: "archives", redirect: "/资料库" },
+      { path: "search", redirect: "/全局搜索" },
       { path: "approval-center", redirect: "/审批中心" },
       { path: "delegations", redirect: "/委托台账" },
       { path: "audit", redirect: "/审计日志" },

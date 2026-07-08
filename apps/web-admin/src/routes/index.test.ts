@@ -66,6 +66,7 @@ describe("web admin routes", () => {
     expect(shellRoute?.component).toBeDefined();
     expect(childPaths).toEqual(expect.arrayContaining([
       "首页",
+      "全局搜索",
       "合同管理",
       "历史合同接管",
       "合同工作台",
@@ -97,6 +98,7 @@ describe("web admin routes", () => {
     expect(redirectOf("settlements")).toBe("/结算管理");
     expect(redirectOf("payments")).toBe("/付款管理");
     expect(redirectOf("archives")).toBe("/资料库");
+    expect(redirectOf("search")).toBe("/全局搜索");
     expect(redirectOf("approval-center")).toBe("/审批中心");
     expect(redirectOf("audit")).toBe("/审计日志");
     expect(redirectOf("contract-templates")).toBe("/合同模板库");
@@ -122,6 +124,7 @@ describe("web admin routes", () => {
   it("uses Chinese top-level navigation labels and paths", () => {
     expect(adminNavigationItems.map((item) => ({ label: item.label, path: item.path }))).toEqual([
       { label: "首页", path: "/首页" },
+      { label: "全局搜索", path: "/全局搜索" },
       { label: "审批中心", path: "/审批中心" },
       { label: "项目经营", path: "/项目经营" },
       { label: "合同工作台", path: "/合同工作台" },
