@@ -91,6 +91,85 @@
       正在加载项目经营数据
     </div>
 
+    <section
+      v-if="canManageProjects"
+      class="panel executive-panel"
+    >
+      <div class="panel-head">
+        <div>
+          <h2>跨项目经营总览</h2>
+          <p>按当前可见项目汇总合同、结算、付款、实收和数据缺口</p>
+        </div>
+        <span
+          v-if="loadingExecutiveOverview"
+          class="executive-loading"
+        >
+          正在汇总
+        </span>
+      </div>
+      <div
+        v-if="executiveMessage"
+        class="receipt-message danger"
+      >
+        {{ executiveMessage }}
+      </div>
+      <template v-else-if="executiveOverview">
+        <div class="executive-summary-grid">
+          <div
+            v-for="item in executiveSummaryItems"
+            :key="item.label"
+            class="summary-item"
+          >
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+          </div>
+        </div>
+        <div class="expense-table-wrap">
+          <table class="executive-table">
+            <thead>
+              <tr>
+                <th>项目</th>
+                <th>生效合同额</th>
+                <th>生效结算额</th>
+                <th>结算可付额</th>
+                <th>实际收款</th>
+                <th>已实付</th>
+                <th>已批待付</th>
+                <th>可用资金</th>
+                <th>数据缺口</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in executiveOverview.rows"
+                :key="row.id"
+              >
+                <td>{{ row.code }} · {{ row.name }}</td>
+                <td>{{ formatCents(row.contractAmountCents) }}</td>
+                <td>{{ formatCents(row.settlementAmountCents) }}</td>
+                <td>{{ formatCents(row.payableAmountCents) }}</td>
+                <td>{{ formatCents(row.actualReceiptsCents) }}</td>
+                <td>{{ formatCents(row.actualPaidCents) }}</td>
+                <td>{{ formatCents(row.approvedPendingPaymentCents) }}</td>
+                <td>{{ formatCents(row.availableFundsCents) }}</td>
+                <td>{{ row.dataGapCount ? `${row.dataGapCount} 项` : "无" }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="table-action"
+                    @click="selectExecutiveProject(row.id)"
+                  >
+                    查看
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </section>
+
     <template v-if="overview">
       <div class="summary-strip">
         <div
@@ -745,10 +824,12 @@ import {
   subtypeOptionsFor
 } from "./project-expense.config";
 import {
+  buildExecutiveProjectOverview,
   buildProjectBusinessEntries,
   buildProxyPaymentLinkPayload,
   findProjectProxyContract,
-  findProjectProxySettlement
+  findProjectProxySettlement,
+  type ExecutiveProjectOverview
 } from "./project-operating.config";
 
 type ReceiptSourceType = "general_contractor_payment" | "owner_direct_payment" | "other";
@@ -816,11 +897,14 @@ const router = useRouter();
 const projects = ref<ProjectOptionReadModel[]>([]);
 const proxyContractOptions = ref<ContractBusinessOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
+const executiveOverview = ref<ExecutiveProjectOverview | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
 const selectedProjectId = ref("");
 const loadingProjects = ref(false);
 const loadingOverview = ref(false);
+const loadingExecutiveOverview = ref(false);
 const message = ref("");
+const executiveMessage = ref("");
 const projectSubmitting = ref(false);
 const projectUpdating = ref(false);
 const projectMessage = ref("");
@@ -918,6 +1002,21 @@ const businessItems = computed(() => {
   ];
 });
 
+const executiveSummaryItems = computed(() => {
+  const summary = executiveOverview.value?.summary;
+  return [
+    { label: "项目数", value: String(summary?.projectCount ?? 0) },
+    { label: "生效合同额", value: formatCents(summary?.contractAmountCents ?? 0) },
+    { label: "生效结算额", value: formatCents(summary?.settlementAmountCents ?? 0) },
+    { label: "结算可付额", value: formatCents(summary?.payableAmountCents ?? 0) },
+    { label: "实际收款", value: formatCents(summary?.actualReceiptsCents ?? null) },
+    { label: "已实付", value: formatCents(summary?.actualPaidCents ?? 0) },
+    { label: "已批待付", value: formatCents(summary?.approvedPendingPaymentCents ?? 0) },
+    { label: "可用资金", value: formatCents(summary?.availableFundsCents ?? null) },
+    { label: "数据缺口", value: `${summary?.dataGapCount ?? 0} 项` }
+  ];
+});
+
 onMounted(loadProjects);
 
 async function loadProjects() {
@@ -927,6 +1026,7 @@ async function loadProjects() {
     projects.value = await fetchProjects();
     selectedProjectId.value = projects.value[0]?.id ?? "";
     syncSelectedProjectName();
+    await loadExecutiveOverview();
     if (selectedProjectId.value) {
       await loadOverview();
     } else {
@@ -960,6 +1060,7 @@ async function submitProject() {
     syncSelectedProjectName();
     projectMessageTone.value = "success";
     projectMessage.value = "项目已新增";
+    await loadExecutiveOverview();
     await loadOverview();
   } catch (error) {
     projectMessageTone.value = "danger";
@@ -984,6 +1085,7 @@ async function submitProjectName() {
     selectedProjectName.value = updated.name;
     projectMessageTone.value = "success";
     projectMessage.value = "项目名称已保存";
+    await loadExecutiveOverview();
     await loadOverview();
   } catch (error) {
     projectMessageTone.value = "danger";
@@ -998,12 +1100,40 @@ function handleProjectChange() {
   void loadOverview();
 }
 
+function selectExecutiveProject(projectId: string) {
+  selectedProjectId.value = projectId;
+  syncSelectedProjectName();
+  void loadOverview();
+}
+
 function go(path: string) {
   void router.push(path);
 }
 
 function syncSelectedProjectName() {
   selectedProjectName.value = projects.value.find((project) => project.id === selectedProjectId.value)?.name ?? "";
+}
+
+async function loadExecutiveOverview() {
+  if (!canManageProjects.value || !projects.value.length) {
+    executiveOverview.value = null;
+    executiveMessage.value = "";
+    return;
+  }
+
+  loadingExecutiveOverview.value = true;
+  executiveMessage.value = "";
+  try {
+    const overviews = await Promise.all(
+      projects.value.map((project) => fetchProjectOperatingOverview(project.id))
+    );
+    executiveOverview.value = buildExecutiveProjectOverview(overviews);
+  } catch (error) {
+    executiveOverview.value = null;
+    executiveMessage.value = error instanceof Error ? error.message : "加载跨项目经营总览失败";
+  } finally {
+    loadingExecutiveOverview.value = false;
+  }
 }
 
 async function loadOverview() {
@@ -1589,10 +1719,15 @@ button:disabled {
 }
 
 .summary-strip,
+.executive-summary-grid,
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+
+.executive-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .overview-grid {
@@ -1618,6 +1753,20 @@ button:disabled {
 .receipt-panel {
   display: grid;
   gap: 12px;
+}
+
+.executive-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.executive-loading {
+  color: #5f6673;
+  font-size: 13px;
+}
+
+.executive-table {
+  min-width: 1180px;
 }
 
 .project-entry-panel {
@@ -1873,6 +2022,7 @@ dd {
   }
 
   .summary-strip,
+  .executive-summary-grid,
   .overview-grid,
   .project-entry-grid {
     grid-template-columns: 1fr;

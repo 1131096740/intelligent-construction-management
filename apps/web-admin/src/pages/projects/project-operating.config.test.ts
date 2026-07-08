@@ -1,6 +1,7 @@
 import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { describe, expect, it } from "vitest";
 import {
+  buildExecutiveProjectOverview,
   buildProjectBusinessEntries,
   buildProxyPaymentLinkPayload,
   findProjectProxyContract,
@@ -41,6 +42,50 @@ describe("project-operating proxy payment helpers", () => {
       { label: "审计", path: `/审计日志?project=${encodedProject}`, count: undefined }
     ]);
   });
+
+  it("aggregates visible projects into an executive overview", () => {
+    const overview = buildExecutiveProjectOverview([
+      projectOverview({
+        id: "project-a",
+        code: "P-A",
+        name: "一号项目",
+        contractAmountCents: 10_000_000,
+        settlementAmountCents: 6_000_000,
+        payableAmountCents: 4_000_000,
+        actualReceiptsCents: 5_000_000,
+        actualPaidCents: 2_000_000,
+        approvedPendingPaymentCents: 1_000_000,
+        availableFundsCents: 3_000_000,
+        dataGaps: ["缺收款依据"]
+      }),
+      projectOverview({
+        id: "project-b",
+        code: "P-B",
+        name: "二号项目",
+        contractAmountCents: 20_000_000,
+        settlementAmountCents: 8_000_000,
+        payableAmountCents: 5_000_000,
+        actualReceiptsCents: null,
+        actualPaidCents: 3_000_000,
+        approvedPendingPaymentCents: 2_000_000,
+        availableFundsCents: null,
+        dataGaps: []
+      })
+    ]);
+
+    expect(overview.rows.map((row) => row.id)).toEqual(["project-b", "project-a"]);
+    expect(overview.summary).toEqual({
+      projectCount: 2,
+      contractAmountCents: 30_000_000,
+      settlementAmountCents: 14_000_000,
+      payableAmountCents: 9_000_000,
+      actualReceiptsCents: 5_000_000,
+      actualPaidCents: 5_000_000,
+      approvedPendingPaymentCents: 3_000_000,
+      availableFundsCents: 3_000_000,
+      dataGapCount: 1
+    });
+  });
 });
 
 function contractOption(): ContractBusinessOptionReadModel {
@@ -78,5 +123,49 @@ function contractOption(): ContractBusinessOptionReadModel {
         unavailableReason: null
       }
     ]
+  };
+}
+
+function projectOverview(overrides: {
+  id: string;
+  code: string;
+  name: string;
+  contractAmountCents: number;
+  settlementAmountCents: number;
+  payableAmountCents: number;
+  actualReceiptsCents: number | null;
+  actualPaidCents: number;
+  approvedPendingPaymentCents: number;
+  availableFundsCents: number | null;
+  dataGaps: string[];
+}) {
+  return {
+    project: {
+      id: overrides.id,
+      code: overrides.code,
+      name: overrides.name
+    },
+    cash: {
+      actualReceiptsCents: overrides.actualReceiptsCents,
+      availableFundsCents: overrides.availableFundsCents,
+      actualPaidCents: overrides.actualPaidCents,
+      approvalPendingOccupancyCents: 0,
+      approvedPendingPaymentCents: overrides.approvedPendingPaymentCents,
+      financeRecordedOutflowCents: 0
+    },
+    business: {
+      effectiveContractAmountCents: overrides.contractAmountCents,
+      effectiveSettlementAmountCents: overrides.settlementAmountCents,
+      payableSettlementAmountCents: overrides.payableAmountCents,
+      operatingIncomeCents: null,
+      operatingCostCents: null,
+      grossProfitCents: null
+    },
+    counts: {
+      contracts: 0,
+      settlements: 0,
+      payments: 0
+    },
+    dataGaps: overrides.dataGaps
   };
 }

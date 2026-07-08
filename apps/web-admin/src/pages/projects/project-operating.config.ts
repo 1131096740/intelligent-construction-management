@@ -1,4 +1,5 @@
 import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
+import type { ProjectOperatingOverviewReadModel } from "../../api/core-flow-read.api";
 
 export type ProjectProxySettlementOption = ContractBusinessOptionReadModel["settlements"][number];
 
@@ -13,6 +14,37 @@ export interface ProjectBusinessEntryCounts {
   contracts: number;
   settlements: number;
   payments: number;
+}
+
+export interface ExecutiveProjectOverviewRow {
+  id: string;
+  code: string;
+  name: string;
+  contractAmountCents: number;
+  settlementAmountCents: number;
+  payableAmountCents: number;
+  actualReceiptsCents: number | null;
+  actualPaidCents: number;
+  approvedPendingPaymentCents: number;
+  availableFundsCents: number | null;
+  dataGapCount: number;
+}
+
+export interface ExecutiveProjectOverviewSummary {
+  projectCount: number;
+  contractAmountCents: number;
+  settlementAmountCents: number;
+  payableAmountCents: number;
+  actualReceiptsCents: number | null;
+  actualPaidCents: number;
+  approvedPendingPaymentCents: number;
+  availableFundsCents: number | null;
+  dataGapCount: number;
+}
+
+export interface ExecutiveProjectOverview {
+  summary: ExecutiveProjectOverviewSummary;
+  rows: ExecutiveProjectOverviewRow[];
 }
 
 export function findProjectProxyContract(
@@ -79,4 +111,48 @@ export function buildProjectBusinessEntries(
       path: `/审计日志?${projectQuery}`
     }
   ];
+}
+
+export function buildExecutiveProjectOverview(
+  overviews: ProjectOperatingOverviewReadModel[]
+): ExecutiveProjectOverview {
+  const rows = overviews
+    .map((overview) => ({
+      id: overview.project.id,
+      code: overview.project.code,
+      name: overview.project.name,
+      contractAmountCents: overview.business.effectiveContractAmountCents,
+      settlementAmountCents: overview.business.effectiveSettlementAmountCents,
+      payableAmountCents: overview.business.payableSettlementAmountCents,
+      actualReceiptsCents: overview.cash.actualReceiptsCents,
+      actualPaidCents: overview.cash.actualPaidCents,
+      approvedPendingPaymentCents: overview.cash.approvedPendingPaymentCents,
+      availableFundsCents: overview.cash.availableFundsCents,
+      dataGapCount: overview.dataGaps.length
+    }))
+    .sort((left, right) => right.payableAmountCents - left.payableAmountCents);
+
+  return {
+    rows,
+    summary: {
+      projectCount: rows.length,
+      contractAmountCents: sumNumbers(rows.map((row) => row.contractAmountCents)),
+      settlementAmountCents: sumNumbers(rows.map((row) => row.settlementAmountCents)),
+      payableAmountCents: sumNumbers(rows.map((row) => row.payableAmountCents)),
+      actualReceiptsCents: sumNullableCents(rows.map((row) => row.actualReceiptsCents)),
+      actualPaidCents: sumNumbers(rows.map((row) => row.actualPaidCents)),
+      approvedPendingPaymentCents: sumNumbers(rows.map((row) => row.approvedPendingPaymentCents)),
+      availableFundsCents: sumNullableCents(rows.map((row) => row.availableFundsCents)),
+      dataGapCount: sumNumbers(rows.map((row) => row.dataGapCount))
+    }
+  };
+}
+
+function sumNumbers(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function sumNullableCents(values: Array<number | null>): number | null {
+  const knownValues = values.filter((value): value is number => value !== null);
+  return knownValues.length ? sumNumbers(knownValues) : null;
 }
