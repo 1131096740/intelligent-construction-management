@@ -54,6 +54,16 @@ export interface ContractPaymentLedgerRow {
   voucherStatus: string;
 }
 
+export interface ContractFundTimelineItem {
+  id: string;
+  type: "settlement" | "payment";
+  title: string;
+  date: string;
+  amount: string;
+  description: string;
+  tone: DetailTone;
+}
+
 export const contractDetailTitle = "HT-2026-001 · 钢材采购合同";
 
 export const contractDetailMeta: DetailMetaItem[] = [
@@ -144,3 +154,48 @@ export const contractPaymentLedgerColumns: PrimaryTableCol<ContractPaymentLedger
   { colKey: "voucherStatus", title: "凭证状态", width: 112 },
   { colKey: "operation", title: "操作", width: 72, fixed: "right" }
 ];
+
+export function buildContractFundTimeline(
+  settlementRows: readonly ContractSettlementLedgerRow[],
+  paymentRows: readonly ContractPaymentLedgerRow[]
+): ContractFundTimelineItem[] {
+  const settlementItems = settlementRows.map((row) => ({
+    id: `settlement:${row.id}`,
+    type: "settlement" as const,
+    title: `结算 ${row.settlementNo}`,
+    date: row.settlementDate,
+    amount: row.currentAmount,
+    description: `${row.period} · 累计 ${row.cumulativeAfterAmount} · ${row.archiveStatus}`,
+    tone: toneFromStatus(`${row.approvalStatus} ${row.archiveStatus}`)
+  }));
+  const paymentItems = paymentRows.map((row) => ({
+    id: `payment:${row.id}`,
+    type: "payment" as const,
+    title: `付款 ${row.paymentNo}`,
+    date: row.paymentDate,
+    amount: row.paidAmount,
+    description: `申请 ${row.requestedAmount} · 已批 ${row.approvedAmount} · ${row.paymentStatus}`,
+    tone: toneFromStatus(`${row.approvalStatus} ${row.paymentStatus} ${row.voucherStatus}`)
+  }));
+
+  return [...settlementItems, ...paymentItems].sort((left, right) => {
+    const rightTime = sortableDateTime(right.date);
+    const leftTime = sortableDateTime(left.date);
+    if (rightTime !== leftTime) {
+      return rightTime - leftTime;
+    }
+    return left.title.localeCompare(right.title, "zh-CN");
+  });
+}
+
+function toneFromStatus(statusText: string): DetailTone {
+  if (/驳回|阻断|作废|失败/.test(statusText)) return "danger";
+  if (/待|审批中|未/.test(statusText)) return "warning";
+  if (/生效|已批|已付|完成|已上传|已归档/.test(statusText)) return "success";
+  return "default";
+}
+
+function sortableDateTime(value: string): number {
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}

@@ -397,6 +397,30 @@
             {{ contractSettlementPaymentView.calculationNote }}
           </div>
 
+          <section class="fund-timeline">
+            <header>资金链时间轴</header>
+            <div
+              v-if="contractFundTimelineView.length"
+              class="fund-timeline-list"
+            >
+              <div
+                v-for="item in contractFundTimelineView"
+                :key="item.id"
+                class="fund-timeline-item"
+              >
+                <span :class="['fund-dot', `dot-${item.tone}`]" />
+                <div>
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ item.date }} · {{ item.description }}</small>
+                </div>
+                <b>{{ item.amount }}</b>
+              </div>
+            </div>
+            <p v-else>
+              暂无结算或付款记录。
+            </p>
+          </section>
+
           <section class="ledger-section">
             <header>结算台账</header>
             <t-table
@@ -480,7 +504,8 @@ import {
   contractPaymentTermColumns,
   contractPaymentTermStages,
   contractSettlementLedgerColumns,
-  contractSettlementBlockMessage
+  contractSettlementBlockMessage,
+  buildContractFundTimeline
 } from "./contract-detail.config";
 
 const route = useRoute();
@@ -526,6 +551,12 @@ const contractSettlementPaymentView = computed(
       paymentRows: [],
       calculationNote: contractSettlementBlockMessage
     }
+);
+const contractFundTimelineView = computed(() =>
+  buildContractFundTimeline(
+    contractSettlementPaymentView.value.settlementRows,
+    contractSettlementPaymentView.value.paymentRows
+  )
 );
 const contractDetailChainLinksView = computed(
   () => contractDetail.value?.chainLinks ?? contractDetailChainLinks
@@ -1149,15 +1180,69 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   font-weight: 600;
 }
 
+.fund-timeline {
+  display: grid;
+  gap: 10px;
+}
+
 .ledger-section {
   display: grid;
   gap: 10px;
 }
 
+.fund-timeline header,
 .ledger-section header {
   color: #151922;
   font-size: 14px;
   font-weight: 700;
+}
+
+.fund-timeline p {
+  margin: 0;
+  color: #767f8d;
+}
+
+.fund-timeline-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fund-timeline-item {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #edf0f5;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.fund-timeline-item div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.fund-timeline-item strong,
+.fund-timeline-item small {
+  overflow-wrap: anywhere;
+}
+
+.fund-timeline-item small {
+  color: #767f8d;
+}
+
+.fund-timeline-item b {
+  white-space: nowrap;
+}
+
+.fund-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #a8b1c2;
 }
 
 @media (max-width: 980px) {

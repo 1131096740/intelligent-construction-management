@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildContractFundTimeline,
   contractDetailMeta,
   contractEffectivenessSteps,
   contractPaymentLedgerColumns,
@@ -73,6 +74,49 @@ describe("contract detail page configuration", () => {
       "付款状态",
       "凭证状态",
       "操作"
+    ]);
+  });
+
+  it("builds a reverse chronological fund timeline from settlement and payment rows", () => {
+    expect(
+      buildContractFundTimeline(
+        [
+          {
+            id: "settlement-1",
+            settlementNo: "JS-001",
+            period: "2026-06",
+            settlementDate: "2026-06-30",
+            settlementMethod: "过程结算",
+            currentAmount: "¥100.00",
+            cumulativeBeforeAmount: "¥0.00",
+            cumulativeAfterAmount: "¥100.00",
+            approvalStatus: "已通过",
+            archiveStatus: "已生效"
+          }
+        ],
+        [
+          {
+            id: "payment-1",
+            paymentNo: "FK-001",
+            settlementNo: "JS-001",
+            requestedAmount: "¥80.00",
+            approvedAmount: "¥80.00",
+            paidAmount: "¥50.00",
+            paymentDate: "2026-07-02",
+            approvalStatus: "已批待付",
+            paymentStatus: "部分付款",
+            voucherStatus: "已上传"
+          }
+        ]
+      ).map((item) => ({
+        id: item.id,
+        title: item.title,
+        amount: item.amount,
+        tone: item.tone
+      }))
+    ).toEqual([
+      { id: "payment:payment-1", title: "付款 FK-001", amount: "¥50.00", tone: "warning" },
+      { id: "settlement:settlement-1", title: "结算 JS-001", amount: "¥100.00", tone: "success" }
     ]);
   });
 });
