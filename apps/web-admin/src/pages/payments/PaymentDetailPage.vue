@@ -39,6 +39,19 @@
       </div>
     </div>
 
+    <div class="flow-summary-strip">
+      <div
+        v-for="item in paymentFlowSummaryView"
+        :key="item.label"
+        class="flow-summary-item"
+      >
+        <span>{{ item.label }}</span>
+        <strong :class="item.tone ? `tone-${item.tone}` : undefined">
+          {{ item.value }}
+        </strong>
+      </div>
+    </div>
+
     <div class="chain-strip">
       <span>业务链路</span>
       <t-link
@@ -467,6 +480,7 @@ import type {
   PaymentExecutionCoverageRow
 } from "./payment-detail.config";
 import {
+  buildPaymentFlowSummary,
   paymentExecutionAllocationColumns,
   paymentExecutionCoverageColumns
 } from "./payment-detail.config";
@@ -501,6 +515,9 @@ const paymentDetailTitleView = computed(() =>
 );
 const paymentDetailMetaView = computed(() => paymentDetail.value?.meta ?? []);
 const paymentBaseInfoView = computed(() => paymentDetail.value?.baseInfo ?? []);
+const paymentFlowSummaryView = computed(() =>
+  buildPaymentFlowSummary(paymentDetailMetaView.value, paymentBaseInfoView.value)
+);
 const paymentTraceRulesView = computed(() => paymentDetail.value?.traceRules ?? []);
 const paymentApprovalStepsView = computed(
   () => paymentDetail.value?.approvalSteps ?? []
@@ -988,6 +1005,38 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
   font-size: 13px;
 }
 
+.flow-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #dce1e8;
+}
+
+.flow-summary-item {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px;
+  background: #fff;
+}
+
+.flow-summary-item span {
+  color: #767f8d;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.flow-summary-item strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chain-strip {
   min-height: 40px;
   display: flex;
@@ -1214,6 +1263,7 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
 
 @media (max-width: 980px) {
   .meta-panel,
+  .flow-summary-strip,
   .detail-grid,
   .timeline-grid,
   .action-grid,

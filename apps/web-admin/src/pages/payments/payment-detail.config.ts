@@ -15,6 +15,12 @@ export interface PaymentDetailStep {
   tone: PaymentDetailTone;
 }
 
+export interface PaymentFlowSummaryItem {
+  label: string;
+  value: string;
+  tone?: PaymentDetailTone;
+}
+
 export interface PaymentExecutionAllocationRow {
   id: string;
   executionCode: string;
@@ -74,6 +80,19 @@ export const paymentExecutionSteps: PaymentDetailStep[] = [
   { label: "付款完成", status: "未完成", owner: "系统", tone: "danger" }
 ];
 
+export function buildPaymentFlowSummary(
+  meta: readonly PaymentDetailMetaItem[],
+  baseInfo: readonly PaymentDetailMetaItem[]
+): PaymentFlowSummaryItem[] {
+  return [
+    pickSummaryItem(meta, "审批状态"),
+    pickSummaryItem(meta, "实付状态"),
+    pickSummaryItem(baseInfo, "申请金额"),
+    pickSummaryItem(meta, "责任部门"),
+    pickSummaryItem(meta, "下一步动作")
+  ];
+}
+
 export const paymentExecutionAllocationColumns: PrimaryTableCol<PaymentExecutionAllocationRow>[] = [
   { colKey: "executionCode", title: "实付记录", width: 128 },
   { colKey: "settlementNo", title: "结算单", width: 128 },
@@ -102,3 +121,11 @@ export const paymentTraceRules = [
 
 export const paymentExecutionBlockMessage =
   "付款审批已通过，但尚未登记实际付款；必须由出纳/财务登记实付金额并上传付款凭证后，才能进入财务入账与付款完成。";
+
+function pickSummaryItem(
+  items: readonly PaymentDetailMetaItem[],
+  label: string
+): PaymentFlowSummaryItem {
+  const item = items.find((candidate) => candidate.label === label);
+  return { label, value: item?.value ?? "-", tone: item?.tone };
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPaymentFlowSummary,
   paymentApprovalSteps,
   paymentBaseInfo,
   paymentDetailMeta,
@@ -84,6 +85,26 @@ describe("payment detail page configuration", () => {
       "审批通过进入已批待付",
       "审批通过不等于实际付款完成",
       "实付登记必须上传付款凭证并写入审计日志"
+    ]);
+  });
+
+  it("builds the payment flow summary from existing detail fields", () => {
+    expect(buildPaymentFlowSummary(paymentDetailMeta, paymentBaseInfo)).toEqual([
+      { label: "审批状态", value: "已通过", tone: "success" },
+      { label: "实付状态", value: "已批待付", tone: "warning" },
+      { label: "申请金额", value: "¥256,000.00" },
+      { label: "责任部门", value: "财务部" },
+      { label: "下一步动作", value: "出纳付款登记", tone: "primary" }
+    ]);
+  });
+
+  it("falls back when a payment flow summary source field is missing", () => {
+    expect(buildPaymentFlowSummary([], [])).toEqual([
+      { label: "审批状态", value: "-" },
+      { label: "实付状态", value: "-" },
+      { label: "申请金额", value: "-" },
+      { label: "责任部门", value: "-" },
+      { label: "下一步动作", value: "-" }
     ]);
   });
 });
