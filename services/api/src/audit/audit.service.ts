@@ -71,6 +71,63 @@ export class AuditService {
     };
   }
 
+  async listFileDownloads(rawLimit?: string | number) {
+    if (!this.prisma) {
+      throw new Error("Prisma service is required to list file download audit logs");
+    }
+    const take = this.limit(rawLimit);
+    const logs = await this.prisma.auditLog.findMany({
+      take,
+      orderBy: { createdAt: "desc" },
+      where: { action: { in: ["file.download.ticket", "file.download"] } }
+    });
+    const actorIds = [...new Set(logs.map((log) => log.actorUserId).filter(Boolean))] as string[];
+    const fileIds = [...new Set(logs.map((log) => log.businessId).filter(Boolean))] as string[];
+    const [users, files] = await Promise.all([
+      actorIds.length ? this.prisma.user.findMany({ where: { id: { in: actorIds } } }) : [],
+      fileIds.length
+        ? this.prisma.fileObject.findMany({
+            where: { id: { in: fileIds } },
+            select: { id: true, originalName: true }
+          })
+        : []
+    ]);
+    const userById = new Map(users.map((user) => [user.id, user]));
+    const fileById = new Map(files.map((file) => [file.id, file]));
+    const rows = logs.map((log) => {
+      const actor = log.actorUserId ? userById.get(log.actorUserId) : null;
+      const file = log.businessId ? fileById.get(log.businessId) : null;
+      const metadata = jsonObject(log.metadata);
+      const downloadReason = stringFromMetadata(metadata, "downloadReason") || "未记录原因";
+      const metadataFileName = stringFromMetadata(metadata, "originalName");
+      return {
+        id: log.id,
+        occurredAt: log.createdAt.toISOString(),
+        actor: actor?.name ?? log.actorUserId ?? "系统",
+        action: log.action === "file.download.ticket" ? "生成下载票据" : "实际下载",
+        actionKey: log.action,
+        fileId: log.businessId ?? "-",
+        fileName: file?.originalName ?? metadataFileName ?? log.businessId ?? "-",
+        businessType: log.businessType ?? "file_object",
+        businessTarget: log.businessId ?? "-",
+        downloadReason,
+        ipAddress: log.ipAddress ?? "-",
+        traceId: log.id,
+        sensitive: "未返回短链/token/COS地址"
+      };
+    });
+
+    return {
+      rows,
+      summary: {
+        total: rows.length,
+        ticket: rows.filter((row) => row.actionKey === "file.download.ticket").length,
+        downloaded: rows.filter((row) => row.actionKey === "file.download").length,
+        missingReason: rows.filter((row) => row.downloadReason === "未记录原因").length
+      }
+    };
+  }
+
   private limit(rawLimit?: string | number) {
     const parsed = typeof rawLimit === "number" ? rawLimit : Number(rawLimit ?? 100);
     if (!Number.isFinite(parsed)) return 100;
@@ -98,8 +155,35 @@ export class AuditService {
       return `${log.businessType}:${log.businessId}`;
     }
     if (log.metadata) {
-      return JSON.stringify(log.metadata).slice(0, 80);
+      return JSON.stringify(sanitizeMetadataForTrace(log.metadata)).slice(0, 80);
     }
     return "-";
   }
+}
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
+function stringFromMetadata(metadata: Record<string, unknown>, key: string): string | undefined {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function sanitizeMetadataForTrace(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const safe: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (/password|token|secret|downloadUrl|cosUrl|url/i.test(key)) {
+      safe[key] = "[redacted]";
+    } else {
+      safe[key] = item;
+    }
+  }
+  return safe;
 }

@@ -7,6 +7,11 @@ import { AuditService } from "./audit.service";
 export class AuditController {
   constructor(private readonly audit: AuditService) {}
 
+  @Get("file-downloads")
+  listFileDownloads(@Query("limit") limit?: string) {
+    return this.audit.listFileDownloads(limit);
+  }
+
   @Get()
   list(@Query("limit") limit?: string) {
     return this.audit.listRecent(limit);

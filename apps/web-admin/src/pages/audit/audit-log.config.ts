@@ -29,6 +29,29 @@ export interface AuditLogRow {
   trace: string;
 }
 
+export interface FileDownloadAuditRow {
+  id: string;
+  occurredAt: string;
+  actor: string;
+  action: string;
+  actionKey: "file.download.ticket" | "file.download";
+  fileId: string;
+  fileName: string;
+  businessType: string;
+  businessTarget: string;
+  downloadReason: string;
+  ipAddress: string;
+  traceId: string;
+  sensitive: string;
+}
+
+export interface FileDownloadAuditFilters {
+  actor: string;
+  fileName: string;
+  downloadReason: string;
+  keyword: string;
+}
+
 export const auditFilterFields: AuditFilterField[] = [
   {
     key: "actor",
@@ -82,6 +105,18 @@ export const auditLedgerColumns: PrimaryTableCol<AuditLogRow>[] = [
   { colKey: "operation", title: "操作", width: 64, fixed: "right" }
 ];
 
+export const fileDownloadAuditColumns: PrimaryTableCol<FileDownloadAuditRow>[] = [
+  { colKey: "occurredAt", title: "发生时间", width: 150 },
+  { colKey: "actor", title: "操作人", width: 100 },
+  { colKey: "action", title: "动作", width: 108 },
+  { colKey: "fileName", title: "文件名", minWidth: 180 },
+  { colKey: "downloadReason", title: "下载原因", minWidth: 180 },
+  { colKey: "businessTarget", title: "业务对象", minWidth: 128 },
+  { colKey: "ipAddress", title: "IP地址", width: 112 },
+  { colKey: "traceId", title: "追溯ID", minWidth: 128 },
+  { colKey: "sensitive", title: "脱敏说明", minWidth: 150 }
+];
+
 export const auditLogRows: AuditLogRow[] = [];
 
 export const auditRequiredActions = [
@@ -90,3 +125,45 @@ export const auditRequiredActions = [
   "付款执行、付款凭证上传必须写入审计日志",
   "敏感文件下载、权限变更、单据作废必须写入审计日志"
 ];
+
+export function emptyFileDownloadAuditFilters(): FileDownloadAuditFilters {
+  return {
+    actor: "",
+    fileName: "",
+    downloadReason: "",
+    keyword: ""
+  };
+}
+
+export function filterFileDownloadAuditRows(
+  rows: FileDownloadAuditRow[],
+  filters: FileDownloadAuditFilters
+): FileDownloadAuditRow[] {
+  return rows.filter(
+    (row) =>
+      includesText(row.actor, filters.actor) &&
+      includesText(row.fileName, filters.fileName) &&
+      includesText(row.downloadReason, filters.downloadReason) &&
+      includesAny(
+        [
+          row.action,
+          row.actionKey,
+          row.businessType,
+          row.businessTarget,
+          row.fileId,
+          row.ipAddress,
+          row.traceId
+        ],
+        filters.keyword
+      )
+  );
+}
+
+function includesText(value: string, keyword: string): boolean {
+  const query = keyword.trim().toLowerCase();
+  return !query || value.toLowerCase().includes(query);
+}
+
+function includesAny(values: string[], keyword: string): boolean {
+  return values.some((value) => includesText(value, keyword));
+}

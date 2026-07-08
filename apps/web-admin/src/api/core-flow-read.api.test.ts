@@ -13,6 +13,7 @@ import {
   fetchContractPaymentApplication,
   fetchArchives,
   fetchAuditLogs,
+  fetchFileDownloadAudits,
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
@@ -196,6 +197,7 @@ describe("core flow read API client", () => {
     await fetchSettlementLedger();
     await fetchPaymentLedger();
     await fetchAuditLogs();
+    await fetchFileDownloadAudits();
     await fetchArchives();
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -203,6 +205,7 @@ describe("core flow read API client", () => {
       "/api/settlements",
       "/api/payments",
       "/api/audit-logs",
+      "/api/audit-logs/file-downloads",
       "/api/archives"
     ]);
   });

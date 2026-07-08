@@ -3,7 +3,11 @@ import {
   auditFilterFields,
   auditLedgerColumns,
   auditRequiredActions,
-  auditSummaryItems
+  auditSummaryItems,
+  emptyFileDownloadAuditFilters,
+  fileDownloadAuditColumns,
+  filterFileDownloadAuditRows,
+  type FileDownloadAuditRow
 } from "./audit-log.config";
 
 describe("audit log page configuration", () => {
@@ -49,4 +53,66 @@ describe("audit log page configuration", () => {
       "敏感文件下载、权限变更、单据作废必须写入审计日志"
     ]);
   });
+
+  it("shows file download audit columns with reason and sanitized trace fields", () => {
+    expect(fileDownloadAuditColumns.map((column) => column.title)).toEqual([
+      "发生时间",
+      "操作人",
+      "动作",
+      "文件名",
+      "下载原因",
+      "业务对象",
+      "IP地址",
+      "追溯ID",
+      "脱敏说明"
+    ]);
+  });
+
+  it("filters file download audits by actor, file, reason, and keyword", () => {
+    const rows: FileDownloadAuditRow[] = [
+      downloadRow({
+        id: "audit-1",
+        actor: "张三",
+        fileName: "合同归档.pdf",
+        downloadReason: "合同归档复核",
+        businessTarget: "file-1"
+      }),
+      downloadRow({
+        id: "audit-2",
+        actor: "李四",
+        fileName: "付款凭证.png",
+        downloadReason: "付款入账",
+        businessTarget: "file-2"
+      })
+    ];
+
+    expect(
+      filterFileDownloadAuditRows(rows, {
+        ...emptyFileDownloadAuditFilters(),
+        actor: "张",
+        fileName: "合同",
+        downloadReason: "复核",
+        keyword: "file-1"
+      }).map((row) => row.id)
+    ).toEqual(["audit-1"]);
+  });
 });
+
+function downloadRow(overrides: Partial<FileDownloadAuditRow>): FileDownloadAuditRow {
+  return {
+    id: "audit-row",
+    occurredAt: "2026-07-08T08:00:00.000Z",
+    actor: "操作人",
+    action: "实际下载",
+    actionKey: "file.download",
+    fileId: "file-row",
+    fileName: "文件.pdf",
+    businessType: "file_object",
+    businessTarget: "file-row",
+    downloadReason: "业务复核",
+    ipAddress: "127.0.0.1",
+    traceId: "audit-row",
+    sensitive: "未返回短链/token/COS地址",
+    ...overrides
+  };
+}

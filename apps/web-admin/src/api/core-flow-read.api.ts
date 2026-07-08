@@ -533,6 +533,30 @@ export interface AuditLogListReadModel {
   };
 }
 
+export interface FileDownloadAuditListReadModel {
+  rows: Array<{
+    id: string;
+    occurredAt: string;
+    actor: string;
+    action: string;
+    actionKey: "file.download.ticket" | "file.download";
+    fileId: string;
+    fileName: string;
+    businessType: string;
+    businessTarget: string;
+    downloadReason: string;
+    ipAddress: string;
+    traceId: string;
+    sensitive: string;
+  }>;
+  summary: {
+    total: number;
+    ticket: number;
+    downloaded: number;
+    missingReason: number;
+  };
+}
+
 export interface ArchiveListReadModel {
   rows: Array<{
     id: string;
@@ -1060,6 +1084,10 @@ export function fetchPaymentLedger() {
 
 export function fetchAuditLogs() {
   return readJson<AuditLogListReadModel>("/audit-logs");
+}
+
+export function fetchFileDownloadAudits() {
+  return readJson<FileDownloadAuditListReadModel>("/audit-logs/file-downloads");
 }
 
 export function fetchArchives() {

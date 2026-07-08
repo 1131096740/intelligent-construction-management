@@ -77,6 +77,84 @@
     </div>
 
     <t-card
+      title="文件下载审计"
+      class="download-panel"
+      :bordered="true"
+    >
+      <div class="download-stat-strip">
+        <span>下载相关 {{ fileDownloadSummary.total }} 条</span>
+        <span>生成票据 {{ fileDownloadSummary.ticket }} 条</span>
+        <span>实际下载 {{ fileDownloadSummary.downloaded }} 条</span>
+        <span>缺少原因 {{ fileDownloadSummary.missingReason }} 条</span>
+      </div>
+      <div class="download-filter-bar">
+        <label class="filter-field">
+          <span>操作人</span>
+          <t-input
+            v-model="fileDownloadFilters.actor"
+            size="small"
+            placeholder="输入姓名"
+          />
+        </label>
+        <label class="filter-field">
+          <span>文件名</span>
+          <t-input
+            v-model="fileDownloadFilters.fileName"
+            size="small"
+            placeholder="输入文件名"
+          />
+        </label>
+        <label class="filter-field">
+          <span>下载原因</span>
+          <t-input
+            v-model="fileDownloadFilters.downloadReason"
+            size="small"
+            placeholder="输入原因"
+          />
+        </label>
+        <label class="filter-field keyword">
+          <span>关键词</span>
+          <t-input
+            v-model="fileDownloadFilters.keyword"
+            size="small"
+            placeholder="业务对象/IP/追溯ID"
+          />
+        </label>
+        <t-button
+          class="filter-action"
+          theme="primary"
+          @click="applyFileDownloadFilters"
+        >
+          查询
+        </t-button>
+        <t-button
+          class="filter-action"
+          @click="resetFileDownloadFilters"
+        >
+          重置
+        </t-button>
+      </div>
+      <t-table
+        row-key="id"
+        size="small"
+        :columns="fileDownloadAuditColumns"
+        :data="filteredFileDownloadRows"
+        empty="暂无文件下载审计"
+        :loading="fileDownloadLoading"
+      >
+        <template #action="{ row }">
+          <t-tag
+            size="small"
+            :theme="row.actionKey === 'file.download' ? 'warning' : 'primary'"
+            variant="light"
+          >
+            {{ row.action }}
+          </t-tag>
+        </template>
+      </t-table>
+    </t-card>
+
+    <t-card
       class="ledger-panel"
       :bordered="true"
     >
@@ -120,25 +198,42 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { fetchAuditLogs } from "../../api/core-flow-read.api";
-import type { AuditLogRow, AuditTone } from "./audit-log.config";
+import { computed, onMounted, reactive, ref } from "vue";
+import { fetchAuditLogs, fetchFileDownloadAudits } from "../../api/core-flow-read.api";
+import type {
+  AuditLogRow,
+  AuditTone,
+  FileDownloadAuditFilters,
+  FileDownloadAuditRow
+} from "./audit-log.config";
 import {
   auditFilterFields,
   auditLedgerColumns,
   auditRequiredActions,
-  auditSummaryItems
+  auditSummaryItems,
+  emptyFileDownloadAuditFilters,
+  fileDownloadAuditColumns,
+  filterFileDownloadAuditRows
 } from "./audit-log.config";
 
 const message = ref("");
 const loading = ref(false);
+const fileDownloadLoading = ref(false);
 const auditRows = ref<AuditLogRow[]>([]);
+const fileDownloadRows = ref<FileDownloadAuditRow[]>([]);
+const fileDownloadFilters = reactive<FileDownloadAuditFilters>(emptyFileDownloadAuditFilters());
 const summary = ref({
   total: 0,
   login: 0,
   approval: 0,
   file: 0,
   security: 0
+});
+const fileDownloadSummary = ref({
+  total: 0,
+  ticket: 0,
+  downloaded: 0,
+  missingReason: 0
 });
 
 const summaryValues = computed(() => {
@@ -152,8 +247,12 @@ const summaryValues = computed(() => {
   return auditSummaryItems.map((item, index) => ({ ...item, value: String(values[index] ?? 0) }));
 });
 
+const filteredFileDownloadRows = computed(() =>
+  filterFileDownloadAuditRows(fileDownloadRows.value, fileDownloadFilters)
+);
+
 onMounted(() => {
-  void loadAuditLogs();
+  void Promise.all([loadAuditLogs(), loadFileDownloadAudits()]);
 });
 
 async function loadAuditLogs() {
@@ -168,6 +267,29 @@ async function loadAuditLogs() {
   } finally {
     loading.value = false;
   }
+}
+
+async function loadFileDownloadAudits() {
+  fileDownloadLoading.value = true;
+  try {
+    const result = await fetchFileDownloadAudits();
+    fileDownloadRows.value = result.rows;
+    fileDownloadSummary.value = result.summary;
+    message.value = "";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "读取文件下载审计失败";
+  } finally {
+    fileDownloadLoading.value = false;
+  }
+}
+
+function applyFileDownloadFilters() {
+  message.value = `已筛选出 ${filteredFileDownloadRows.value.length} 条文件下载审计。`;
+}
+
+function resetFileDownloadFilters() {
+  Object.assign(fileDownloadFilters, emptyFileDownloadAuditFilters());
+  message.value = "";
 }
 
 function showNotice(text: string) {
@@ -222,7 +344,9 @@ function statusTagTheme(tone: AuditTone) {
 
 .summary-strip,
 .rule-strip,
-.filter-bar {
+.filter-bar,
+.download-filter-bar,
+.download-stat-strip {
   background: #fff;
   border: 1px solid #dce1e8;
   border-radius: 3px;
@@ -302,6 +426,33 @@ function statusTagTheme(tone: AuditTone) {
   margin-bottom: 16px;
 }
 
+.download-panel {
+  margin-bottom: 16px;
+  border-radius: 3px;
+}
+
+.download-stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 12px;
+  margin-bottom: 12px;
+  color: #424955;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.download-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 150px)) minmax(180px, 1fr) 76px 76px;
+  gap: 8px 10px;
+  align-items: end;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
 .filter-field {
   min-width: 0;
   display: grid;
@@ -337,8 +488,12 @@ function statusTagTheme(tone: AuditTone) {
 }
 
 :deep(.t-card__body) {
-  padding: 0;
+  padding: 12px;
   overflow-x: auto;
+}
+
+.ledger-panel :deep(.t-card__body) {
+  padding: 0;
 }
 
 :deep(.t-table th) {
@@ -348,7 +503,8 @@ function statusTagTheme(tone: AuditTone) {
 
 @media (max-width: 980px) {
   .rule-strip,
-  .filter-bar {
+  .filter-bar,
+  .download-filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
