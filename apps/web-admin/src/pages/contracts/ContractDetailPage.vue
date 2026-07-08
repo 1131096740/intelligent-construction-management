@@ -54,6 +54,19 @@
         </div>
       </div>
 
+      <div class="flow-summary-strip">
+        <div
+          v-for="item in contractFlowSummaryView"
+          :key="item.label"
+          class="flow-summary-item"
+        >
+          <span>{{ item.label }}</span>
+          <strong :class="item.tone ? `tone-${item.tone}` : undefined">
+            {{ item.value }}
+          </strong>
+        </div>
+      </div>
+
       <div class="chain-strip">
         <span>业务链路</span>
         <t-link
@@ -513,6 +526,7 @@ import {
   contractPaymentTermStages,
   contractSettlementLedgerColumns,
   contractSettlementBlockMessage,
+  buildContractFlowSummary,
   buildContractFundTimeline
 } from "./contract-detail.config";
 
@@ -543,6 +557,9 @@ const contractDetailTitleView = computed(() =>
 );
 const contractDetailMetaView = computed(() => contractDetail.value?.meta ?? contractDetailMeta);
 const contractBaseInfoView = computed(() => contractDetail.value?.baseInfo ?? contractBaseInfo);
+const contractFlowSummaryView = computed(() =>
+  buildContractFlowSummary(contractDetailMetaView.value, contractBaseInfoView.value)
+);
 const contractEffectivenessStepsView = computed(
   () => contractDetail.value?.effectivenessSteps ?? contractEffectivenessSteps
 );
@@ -973,6 +990,38 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   font-size: 13px;
 }
 
+.flow-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #dce1e8;
+}
+
+.flow-summary-item {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px;
+  background: #fff;
+}
+
+.flow-summary-item span {
+  color: #767f8d;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.flow-summary-item strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chain-strip {
   min-height: 40px;
   display: flex;
@@ -1283,6 +1332,7 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
 
 @media (max-width: 980px) {
   .meta-panel,
+  .flow-summary-strip,
   .detail-grid,
   .action-grid,
   .action-fields {

@@ -64,6 +64,12 @@ export interface ContractFundTimelineItem {
   tone: DetailTone;
 }
 
+export interface ContractFlowSummaryItem {
+  label: string;
+  value: string;
+  tone?: DetailTone;
+}
+
 export const contractDetailTitle = "HT-2026-001 · 钢材采购合同";
 
 export const contractDetailMeta: DetailMetaItem[] = [
@@ -128,6 +134,19 @@ export const contractPaymentTermStages: PaymentTermStage[] = [
 
 export const contractSettlementBlockMessage =
   "合同尚未生效，暂不可发起结算；结算未生效前不可创建付款申请。";
+
+export function buildContractFlowSummary(
+  meta: readonly DetailMetaItem[],
+  baseInfo: readonly DetailMetaItem[]
+): ContractFlowSummaryItem[] {
+  return [
+    pickSummaryItem(meta, "当前状态"),
+    pickSummaryItem(meta, "当前版本"),
+    pickSummaryItem(baseInfo, "合同金额"),
+    pickSummaryItem(meta, "当前处理人"),
+    pickSummaryItem(meta, "下一步动作")
+  ];
+}
 
 export const contractSettlementLedgerColumns: PrimaryTableCol<ContractSettlementLedgerRow>[] = [
   { colKey: "settlementNo", title: "结算编号", width: 150 },
@@ -198,4 +217,9 @@ function toneFromStatus(statusText: string): DetailTone {
 function sortableDateTime(value: string): number {
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? 0 : time;
+}
+
+function pickSummaryItem(items: readonly DetailMetaItem[], label: string): ContractFlowSummaryItem {
+  const item = items.find((candidate) => candidate.label === label);
+  return { label, value: item?.value ?? "-", tone: item?.tone };
 }

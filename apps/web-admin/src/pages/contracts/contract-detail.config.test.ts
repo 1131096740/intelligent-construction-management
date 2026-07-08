@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildContractFlowSummary,
   buildContractFundTimeline,
   contractDetailMeta,
   contractEffectivenessSteps,
@@ -19,6 +20,28 @@ describe("contract detail page configuration", () => {
       "当前处理人",
       "下一步动作"
     ]);
+  });
+
+  it("builds a compact flow summary from existing contract detail fields", () => {
+    expect(
+      buildContractFlowSummary(contractDetailMeta, [
+        { label: "合同金额", value: "¥1,200,000.00" }
+      ])
+    ).toEqual([
+      { label: "当前状态", value: "待用章", tone: "warning" },
+      { label: "当前版本", value: "原合同 v1" },
+      { label: "合同金额", value: "¥1,200,000.00" },
+      { label: "当前处理人", value: "王工" },
+      { label: "下一步动作", value: "办理用章", tone: "warning" }
+    ]);
+  });
+
+  it("uses a dash when flow summary source fields are missing", () => {
+    expect(buildContractFlowSummary([], [])[2]).toEqual({
+      label: "合同金额",
+      value: "-",
+      tone: undefined
+    });
   });
 
   it("keeps the strict effectiveness sequence visible", () => {
