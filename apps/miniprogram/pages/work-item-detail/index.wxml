@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="card detail-card">
+    <view class="detail-title">{{item.businessCode || item.code || "待办单据"}}</view>
+    <view class="detail-row">
+      <text>项目</text>
+      <text>{{item.projectName || "未关联项目"}}</text>
+    </view>
+    <view class="detail-row">
+      <text>当前节点</text>
+      <text>{{item.currentNode || item.statusLabel || "待处理"}}</text>
+    </view>
+    <view class="detail-row">
+      <text>金额</text>
+      <text>{{item.amountLabel || item.amount || "暂无数据"}}</text>
+    </view>
+    <view class="detail-row">
+      <text>停留时间</text>
+      <text>{{item.elapsedLabel || item.stayDuration || "暂无数据"}}</text>
+    </view>
+    <view class="next-action">{{item.nextAction || item.actionLabel || "请回到 Web 端处理完整业务动作"}}</view>
+  </view>
+
+  <button class="primary-button" bindtap="chooseAndUpload" loading="{{uploading}}">
+    拍照上传附件
+  </button>
+  <view wx:if="{{uploadMessage}}" class="card upload-message">{{uploadMessage}}</view>
+</view>

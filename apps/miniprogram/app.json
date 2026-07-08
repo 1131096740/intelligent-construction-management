@@ -1,0 +1,14 @@
+{
+  "pages": [
+    "pages/work-items/index",
+    "pages/work-item-detail/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "建工智管",
+    "navigationBarBackgroundColor": "#165DFF",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F5F7FA"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

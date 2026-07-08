@@ -1,0 +1,33 @@
+.detail-card {
+  display: grid;
+  gap: 18rpx;
+  margin-bottom: 24rpx;
+}
+
+.detail-title {
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  color: #5f6673;
+}
+
+.detail-row text:last-child {
+  color: #1f2733;
+  font-weight: 600;
+}
+
+.next-action {
+  padding-top: 16rpx;
+  border-top: 1rpx solid #dce1e8;
+  color: #165dff;
+  font-weight: 600;
+}
+
+.upload-message {
+  margin-top: 20rpx;
+}

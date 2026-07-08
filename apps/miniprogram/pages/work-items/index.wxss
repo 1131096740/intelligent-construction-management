@@ -1,0 +1,55 @@
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.title {
+  font-size: 36rpx;
+  font-weight: 700;
+}
+
+.refresh {
+  width: 160rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  border-radius: 6rpx;
+  color: #165dff;
+  background: #eef4ff;
+  font-size: 26rpx;
+}
+
+.group {
+  display: grid;
+  gap: 16rpx;
+  margin-bottom: 28rpx;
+}
+
+.group-title {
+  color: #5f6673;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.work-item {
+  display: grid;
+  gap: 10rpx;
+}
+
+.work-item-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  font-weight: 700;
+}
+
+.status {
+  color: #165dff;
+}
+
+.error {
+  color: #b42318;
+  background: #fff1f0;
+}

@@ -1,0 +1,31 @@
+<view class="page">
+  <view class="page-head">
+    <text class="title">我的移动待办</text>
+    <button class="refresh" bindtap="loadWorkItems" loading="{{loading}}">刷新</button>
+  </view>
+
+  <view wx:if="{{error}}" class="card error">{{error}}</view>
+  <view wx:elif="{{loading}}" class="card muted">正在加载待办</view>
+  <view wx:elif="{{groups.length === 0}}" class="card muted">暂无移动待办</view>
+
+  <view wx:for="{{groups}}" wx:key="title" wx:for-index="groupIndex" class="group">
+    <view class="group-title">{{item.title}}</view>
+    <view
+      wx:for="{{item.items}}"
+      wx:key="id"
+      wx:for-item="workItem"
+      wx:for-index="itemIndex"
+      class="card work-item"
+      data-group-index="{{groupIndex}}"
+      data-item-index="{{itemIndex}}"
+      bindtap="openItem"
+    >
+      <view class="work-item-main">
+        <text>{{workItem.businessCode || workItem.code || "待办单据"}}</text>
+        <text class="status">{{workItem.currentNode || workItem.statusLabel || "待处理"}}</text>
+      </view>
+      <view class="muted">{{workItem.projectName || "未关联项目"}}</view>
+      <view class="muted">{{workItem.nextAction || workItem.actionLabel || "查看详情"}}</view>
+    </view>
+  </view>
+</view>
