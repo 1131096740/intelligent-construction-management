@@ -25,7 +25,7 @@
 - [~] 真实账号收口：seed 通用密码未出现在生产环境，seed 用户和 refresh token 已停用；真实试运行用户清单、临时密码重置和首次改密留痕待执行。
 - [ ] 历史合同接管：完成 A/B/C 分级、资料补录、复核、当前密码二次确认接管。
 - [ ] 活跃合同链路：选 3-5 个合同跑通结算、生效、付款申请、审批、实付、凭证、审计。
-- [~] 运维验收：数据库备份恢复演练、Nginx 安全片段、运行健康检查、COS 私有桶策略和版本控制在服务器/控制台实测并留证；服务器健康检查已部署支持 `ALERT_WEBHOOK_URL` 和 SMTP 邮箱告警的脚本，已选 QQ 邮箱方案，授权码配置和触达测试待现场确认。
+- [~] 运维验收：数据库备份恢复演练、Nginx 安全片段、运行健康检查、COS 私有桶策略和版本控制在服务器/控制台实测并留证；服务器健康检查已部署支持 `ALERT_WEBHOOK_URL` 和 SMTP 邮箱告警的脚本，QQ 邮箱 SMTP 配置已写入服务器但认证返回 `Login denied`，需重新确认 SMTP 服务和授权码后复测。
 - [ ] 合同母版人工签认：生产库当前无成功合同草稿生成记录，需先用真实合同员账号完成一次四类母版生成，再由合同部/法务逐页验收 DOCX 版式、字体、分页、签章页、附件页。
 - [ ] 业务 Go-Live 签字：老板、财务、合同部、项目经理、技术/运维完成最终闸门签认。
 
@@ -44,6 +44,7 @@
 ## 最近变更（保留摘要，最新在最上）
 
 - 2026-07-08 (CodeX)：已将支持 SMTP 邮件告警的健康检查脚本部署到生产服务器 `/usr/local/bin/jiangkong-healthcheck`，`jiangkong-healthcheck.service` 重启实测 `runtime health ok`，timer 下次运行时间正常。
+- 2026-07-08 (CodeX)：已将 QQ 邮箱 SMTP 告警配置写入生产服务器 `/etc/jiangkong/healthcheck.env`（root:root 600，授权码未入仓）；低风险失败测试能触发健康检查失败，但 `smtp.qq.com` 返回 `Login denied`，需用户重新确认 QQ 邮箱 SMTP 服务开启状态并生成新授权码后复测。
 - 2026-07-08 (CodeX)：错误告警接收通道改为 QQ 邮箱方案；`scripts/ops/check-runtime-health.sh` 已补 SMTP 邮件告警分支，配置项为 `SMTP_URL`、`SMTP_USER`、`SMTP_PASSWORD`、`ALERT_EMAIL_FROM`、`ALERT_EMAIL_TO`，授权码不入仓库；待用户提供 QQ 邮箱 SMTP 授权码后配置服务器并做触达测试。
 - 2026-07-08 (CodeX)：生产服务器 `jiangkong-healthcheck.timer` 已启用并每 5 分钟运行；`/usr/local/bin/jiangkong-healthcheck` 已同步为仓库版本，覆盖 health/API 服务状态、磁盘阈值、API warning/error 日志，并通过 systemd drop-in 支持 `/etc/jiangkong/healthcheck.env` 告警配置。当前健康检查实测 `runtime health ok`；尚未配置真实告警接收通道，错误告警触达仍待现场确认。
 - 2026-07-08 (CodeX)：用户确认 COS 生产桶版本控制已开启；结合私有读写、空 Policy、无 Everyone 授权、无生命周期删除规则，P0 附件基础备份/误删恢复口径通过。
