@@ -183,8 +183,8 @@
 
 <script setup lang="ts">
 import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   createSettlementDraft,
   fetchProjects,
@@ -208,6 +208,7 @@ import {
 } from "./settlement-list.config";
 
 const router = useRouter();
+const route = useRoute();
 const showCreateForm = ref(false);
 const createBusy = ref(false);
 const message = ref("");
@@ -269,6 +270,14 @@ function openDetail(settlementId: string) {
 
 function resetSettlementFilters() {
   Object.assign(settlementFilters, emptySettlementLedgerFilters());
+}
+
+function applyRouteProjectFilter(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return;
+  }
+
+  settlementFilters.project = value.trim();
 }
 
 async function loadSettlementLedger() {
@@ -350,6 +359,12 @@ function statusTagTheme(tone: SettlementTone) {
 
   return themeByTone[tone];
 }
+
+watch(
+  () => route.query.project,
+  applyRouteProjectFilter,
+  { immediate: true }
+);
 
 onMounted(() => {
   void loadSettlementLedger();

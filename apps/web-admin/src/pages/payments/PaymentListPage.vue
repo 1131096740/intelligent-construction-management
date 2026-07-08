@@ -275,8 +275,8 @@
 
 <script setup lang="ts">
 import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   createPaymentRequest,
   fetchContractPaymentApplication,
@@ -313,6 +313,7 @@ import {
 } from "./payment-list.config";
 
 const router = useRouter();
+const route = useRoute();
 const showCreateForm = ref(false);
 const createBusy = ref(false);
 const previewBusy = ref(false);
@@ -410,6 +411,14 @@ function openDetail(paymentId: string) {
 
 function resetPaymentFilters() {
   Object.assign(paymentFilters, emptyPaymentLedgerFilters());
+}
+
+function applyRouteProjectFilter(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return;
+  }
+
+  paymentFilters.project = value.trim();
 }
 
 async function loadPaymentLedger() {
@@ -542,6 +551,12 @@ function statusTagTheme(tone: PaymentTone) {
 
   return themeByTone[tone];
 }
+
+watch(
+  () => route.query.project,
+  applyRouteProjectFilter,
+  { immediate: true }
+);
 
 onMounted(() => {
   void loadPaymentLedger();

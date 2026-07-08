@@ -103,6 +103,28 @@
         </div>
       </div>
 
+      <section class="panel project-entry-panel">
+        <div class="panel-head">
+          <h2>项目业务入口</h2>
+          <p>从当前项目进入合同、结算、付款、资料、审批和审计</p>
+        </div>
+        <div class="project-entry-grid">
+          <button
+            v-for="entry in projectBusinessEntries"
+            :key="entry.label"
+            type="button"
+            class="project-entry"
+            @click="go(entry.path)"
+          >
+            <span>
+              {{ entry.label }}
+              <strong v-if="entry.count !== undefined">{{ entry.count }}</strong>
+            </span>
+            <small>{{ entry.description }}</small>
+          </button>
+        </div>
+      </section>
+
       <div class="overview-grid">
         <section class="panel">
           <h2>现金口径</h2>
@@ -685,6 +707,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import {
   createProject,
   createProjectExpenseRequest,
@@ -722,6 +745,7 @@ import {
   subtypeOptionsFor
 } from "./project-expense.config";
 import {
+  buildProjectBusinessEntries,
   buildProxyPaymentLinkPayload,
   findProjectProxyContract,
   findProjectProxySettlement
@@ -788,6 +812,7 @@ interface ProjectFormState {
 }
 
 const auth = useAuthStore();
+const router = useRouter();
 const projects = ref<ProjectOptionReadModel[]>([]);
 const proxyContractOptions = ref<ContractBusinessOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
@@ -833,6 +858,14 @@ const summaryItems = computed(() => {
     { label: "可用资金", value: formatCents(overview.value?.cash.availableFundsCents ?? null) }
   ];
 });
+
+const projectBusinessEntries = computed(() =>
+  buildProjectBusinessEntries(overview.value?.project.name ?? selectedProjectName.value, {
+    contracts: overview.value?.counts.contracts ?? 0,
+    settlements: overview.value?.counts.settlements ?? 0,
+    payments: overview.value?.counts.payments ?? 0
+  })
+);
 
 const projectExpenseRows = computed<ProjectExpenseRow[]>(() => projectExpenses.value?.rows ?? []);
 
@@ -963,6 +996,10 @@ async function submitProjectName() {
 function handleProjectChange() {
   syncSelectedProjectName();
   void loadOverview();
+}
+
+function go(path: string) {
+  void router.push(path);
 }
 
 function syncSelectedProjectName() {
@@ -1583,6 +1620,67 @@ button:disabled {
   gap: 12px;
 }
 
+.project-entry-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.project-entry-panel .panel-head {
+  align-items: flex-start;
+}
+
+.project-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.project-entry {
+  height: auto;
+  min-height: 86px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 6px;
+  background: #f8fbff;
+  color: #1f2733;
+  text-align: left;
+}
+
+.project-entry:hover,
+.project-entry:focus-visible {
+  border-color: #165dff;
+  outline: 2px solid rgb(22 93 255 / 20%);
+  outline-offset: 1px;
+}
+
+.project-entry span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.project-entry strong {
+  min-width: 28px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #165dff;
+  color: #fff;
+  font-size: 12px;
+}
+
+.project-entry small {
+  color: #5f6673;
+  line-height: 1.5;
+}
+
 .receipt-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1775,7 +1873,8 @@ dd {
   }
 
   .summary-strip,
-  .overview-grid {
+  .overview-grid,
+  .project-entry-grid {
     grid-template-columns: 1fr;
   }
 

@@ -164,9 +164,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { reactive } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   createPrivateFileDownloadTicket,
   fetchArchives
@@ -184,6 +184,7 @@ import {
 } from "./archive-list.config";
 
 const router = useRouter();
+const route = useRoute();
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const loading = ref(false);
@@ -217,13 +218,20 @@ onMounted(() => {
   void loadArchives();
 });
 
+watch(
+  () => route.query.project,
+  applyRouteProjectFilter,
+  { immediate: true }
+);
+
 function showNotice(text: string) {
   message.value = text;
   messageTone.value = "default";
 }
 
 function openBusinessArchive(path: string) {
-  void router.push(path);
+  const project = archiveFilters.project.trim();
+  void router.push(project ? `${path}?project=${encodeURIComponent(project)}` : path);
 }
 
 function applyArchiveFilters() {
@@ -235,6 +243,14 @@ function resetArchiveFilters() {
   Object.assign(archiveFilters, emptyArchiveLedgerFilters());
   message.value = "";
   messageTone.value = "default";
+}
+
+function applyRouteProjectFilter(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return;
+  }
+
+  archiveFilters.project = value.trim();
 }
 
 async function loadArchives() {

@@ -201,7 +201,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { fetchContractLedger } from "../../api/core-flow-read.api";
 import { listContractDrafts } from "../../api/contract-workbench.api";
 import type { ContractLedgerRow, ContractStatusTone } from "./contract-list.config";
@@ -215,6 +215,7 @@ import {
 import { contractTypeLabel } from "./contract-labels";
 
 const router = useRouter();
+const route = useRoute();
 const noticeMessage = ref("");
 const activeTab = ref<"ledger" | "my" | "voided">("my");
 const contractLedgerRows = ref<ContractLedgerRow[]>([]);
@@ -321,6 +322,12 @@ async function loadContractLedger() {
 }
 
 watch(
+  () => route.query.project,
+  applyRouteProjectFilter,
+  { immediate: true }
+);
+
+watch(
   activeTab,
   (tab) => {
     if (tab === "ledger") void loadContractLedger();
@@ -334,6 +341,15 @@ onMounted(() => {
   void loadContractLedger();
   void loadMyDrafts();
 });
+
+function applyRouteProjectFilter(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return;
+  }
+
+  contractFilters.project = value.trim();
+  activeTab.value = "ledger";
+}
 
 function goNewWorkbench() {
   void router.push("/contracts/new");
