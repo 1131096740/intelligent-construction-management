@@ -34,6 +34,21 @@
         <span>合同付款闭环管理</span>
         <span class="header-user">建设企业 · 合同部主管</span>
       </t-header>
+      <div
+        v-if="recentBusinessRoutes.length"
+        class="recent-strip"
+        aria-label="最近打开的业务单据"
+      >
+        <span>最近打开</span>
+        <button
+          v-for="item in recentBusinessRoutes"
+          :key="item.path"
+          type="button"
+          @click="go(item.path)"
+        >
+          {{ item.label }}
+        </button>
+      </div>
       <t-content
         id="main-content"
         class="content"
@@ -46,20 +61,48 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../auth/auth.store";
 import { visibleAdminNavigationItems } from "../routes/route-records";
+import {
+  parseRecentBusinessRoutes,
+  recentBusinessRouteFromPath,
+  upsertRecentBusinessRoute,
+  type RecentBusinessRoute
+} from "./recent-business-routes";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const recentStorageKey = "jiangkong:recent-business-routes";
+const recentBusinessRoutes = ref<RecentBusinessRoute[]>(loadRecentBusinessRoutes());
 
 const activePath = computed(() => route.path);
 const adminNavigationItems = computed(() => visibleAdminNavigationItems(auth.user?.roleKeys));
 
+watch(
+  () => route.path,
+  (path) => {
+    const item = recentBusinessRouteFromPath(path);
+    if (!item) return;
+
+    recentBusinessRoutes.value = upsertRecentBusinessRoute(recentBusinessRoutes.value, item);
+    getRecentStorage()?.setItem(recentStorageKey, JSON.stringify(recentBusinessRoutes.value));
+  },
+  { immediate: true }
+);
+
 function go(path: string) {
   void router.push(path);
+}
+
+function getRecentStorage(): Storage | null {
+  return typeof window === "undefined" ? null : window.localStorage;
+}
+
+function loadRecentBusinessRoutes(): RecentBusinessRoute[] {
+  return parseRecentBusinessRoutes(getRecentStorage()?.getItem(recentStorageKey) ?? null);
 }
 </script>
 
@@ -125,6 +168,45 @@ function go(path: string) {
   margin-left: auto;
 }
 
+.recent-strip {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px;
+  background: #fff;
+  border-bottom: 1px solid #dce1e8;
+}
+
+.recent-strip span {
+  color: #767f8d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.recent-strip button {
+  max-width: 190px;
+  min-height: 26px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #f7f9fc;
+  color: #424955;
+  font: inherit;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.recent-strip button:hover,
+.recent-strip button:focus {
+  border-color: #0052cc;
+  color: #0052cc;
+  outline: none;
+}
+
 .content {
   box-sizing: border-box;
   width: 100%;
@@ -173,6 +255,11 @@ function go(path: string) {
 
   .header-user {
     margin-left: 0;
+  }
+
+  .recent-strip {
+    flex-wrap: wrap;
+    padding: 8px 12px;
   }
 
   .content {
