@@ -48,6 +48,14 @@ describe("ArchiveService", () => {
             fileId: "file-expense-pdf",
             departmentScope: "finance",
             createdAt: new Date("2026-07-01T11:30:00.000Z")
+          },
+          {
+            id: "archive-record-spot-purchase-1",
+            businessType: "project_expense_request",
+            businessId: "expense-2",
+            fileId: "file-spot-purchase-pdf",
+            departmentScope: "finance",
+            createdAt: new Date("2026-07-01T11:45:00.000Z")
           }
         ])
       },
@@ -74,14 +82,18 @@ describe("ArchiveService", () => {
         findMany: jest.fn().mockResolvedValue([{ id: "payment-1", projectId: "project-1", code: "FK-001" }])
       },
       projectExpenseRequest: {
-        findMany: jest.fn().mockResolvedValue([{ id: "expense-1", projectId: "project-1", code: "BX-001" }])
+        findMany: jest.fn().mockResolvedValue([
+          { id: "expense-1", projectId: "project-1", code: "BX-001", expenseType: "reimbursement" },
+          { id: "expense-2", projectId: "project-1", code: "CG-001", expenseType: "spot_purchase" }
+        ])
       },
       fileObject: {
         findMany: jest.fn().mockResolvedValue([
           { id: "file-contract", originalName: "盖章合同.pdf", sizeBytes: 1024 },
           { id: "file-voucher", originalName: "银行回单.pdf", sizeBytes: 2048 },
           { id: "file-pdf", originalName: "付款留档.pdf", sizeBytes: 4096 },
-          { id: "file-expense-pdf", originalName: "报销留档.pdf", sizeBytes: 1024 }
+          { id: "file-expense-pdf", originalName: "报销留档.pdf", sizeBytes: 1024 },
+          { id: "file-spot-purchase-pdf", originalName: "零星采购留档.pdf", sizeBytes: 1024 }
         ])
       },
       user: {
@@ -103,12 +115,21 @@ describe("ArchiveService", () => {
       orderBy: { createdAt: "desc" }
     });
     expect(result.rows.map((row) => row.documentType)).toEqual([
+      "零星采购PDF留档",
       "报销PDF留档",
       "付款PDF留档",
       "付款凭证",
       "合同归档件"
     ]);
     expect(result.rows[0]).toMatchObject({
+      businessRef: "CG-001",
+      project: "一号项目",
+      fileId: "file-spot-purchase-pdf",
+      fileSizeBytes: 1024,
+      canDownload: true,
+      archiveStatus: "已入库"
+    });
+    expect(result.rows[1]).toMatchObject({
       businessRef: "BX-001",
       project: "一号项目",
       fileId: "file-expense-pdf",
@@ -116,7 +137,7 @@ describe("ArchiveService", () => {
       canDownload: true,
       archiveStatus: "已入库"
     });
-    expect(result.rows[3]).toMatchObject({
+    expect(result.rows[4]).toMatchObject({
       businessRef: "HT-001 / v1",
       project: "一号项目",
       fileId: "file-contract",
@@ -127,7 +148,7 @@ describe("ArchiveService", () => {
       confirmedBy: "合同主管"
     });
     expect(result.summary).toMatchObject({
-      total: 4,
+      total: 5,
       contractArchives: 1,
       paymentFiles: 2
     });

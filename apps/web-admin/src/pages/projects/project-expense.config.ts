@@ -8,7 +8,8 @@ export const expenseTypeOptions: Array<{ value: ProjectExpenseType; label: strin
   { value: "sporadic_payment", label: "零星付款" },
   { value: "loan_reserve", label: "借款/备用金" },
   { value: "comprehensive_expense", label: "综合费用" },
-  { value: "reimbursement", label: "报销申请" }
+  { value: "reimbursement", label: "报销申请" },
+  { value: "spot_purchase", label: "零星采购" }
 ];
 
 export const sporadicSubtypeOptions: Array<{ value: ProjectExpenseSubtype; label: string }> = [
@@ -37,6 +38,13 @@ export const reimbursementSubtypeOptions: Array<{ value: ProjectExpenseSubtype; 
   { value: "reimbursement", label: "报销" }
 ];
 
+export const spotPurchaseSubtypeOptions: Array<{ value: ProjectExpenseSubtype; label: string }> = [
+  { value: "spot_material_purchase", label: "零星材料采购" },
+  { value: "spot_tool_purchase", label: "工具/辅材采购" },
+  { value: "spot_service_purchase", label: "临时服务采购" },
+  { value: "spot_other_purchase", label: "其他零星采购" }
+];
+
 export const expensePaymentMethodOptions: Array<{
   value: ProjectExpensePaymentMethod;
   label: string;
@@ -58,6 +66,9 @@ export function subtypeOptionsFor(expenseType: ProjectExpenseType) {
   if (expenseType === "reimbursement") {
     return reimbursementSubtypeOptions;
   }
+  if (expenseType === "spot_purchase") {
+    return spotPurchaseSubtypeOptions;
+  }
   return comprehensiveExpenseSubtypeOptions;
 }
 
@@ -71,7 +82,8 @@ export function expenseSubtypeLabel(value: ProjectExpenseSubtype) {
       ...sporadicSubtypeOptions,
       ...loanReserveSubtypeOptions,
       ...comprehensiveExpenseSubtypeOptions,
-      ...reimbursementSubtypeOptions
+      ...reimbursementSubtypeOptions,
+      ...spotPurchaseSubtypeOptions
     ].find((option) => option.value === value)?.label ?? value
   );
 }

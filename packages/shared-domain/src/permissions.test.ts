@@ -189,15 +189,21 @@ describe("role-specific gates", () => {
   it("routes project expense actions through applicant, approval, cashier, finance, and void roles", () => {
     expect(canPerform("project_expense.create", ["employee"])).toBe(true);
     expect(canPerform("project_expense.create", ["project_manager"])).toBe(true);
+    expect(canPerform("project_expense.create", ["material_staff"])).toBe(true);
     expect(canPerform("project_expense.create", ["finance_staff"])).toBe(false);
     expect(canPerform("project_expense.approve", ["project_manager"])).toBe(true);
     expect(canPerform("project_expense.approve", ["comprehensive_director"])).toBe(true);
     expect(canPerform("project_expense.approve", ["finance_director"])).toBe(true);
     expect(canPerform("project_expense.approve", ["chairman"])).toBe(true);
     expect(canPerform("project_expense.approve", ["finance_staff"])).toBe(false);
+    expect(canPerform("project_expense.purchase_execute", ["material_staff"])).toBe(true);
+    expect(canPerform("project_expense.purchase_execute", ["material_director"])).toBe(true);
+    expect(canPerform("project_expense.purchase_execute", ["finance_staff"])).toBe(false);
     expect(canPerform("project_expense.execution", ["finance_staff"])).toBe(true);
     expect(canPerform("project_expense.execution", ["finance_director"])).toBe(false);
     expect(canPerform("project_expense.finance_record", ["finance_director"])).toBe(true);
+    expect(canPerform("project_expense.receipt_confirm", ["material_staff"])).toBe(true);
+    expect(canPerform("project_expense.receipt_confirm", ["finance_staff"])).toBe(false);
     expect(canPerform("project_expense.void", ["project_manager"])).toBe(true);
     expect(canPerform("project_expense.void", ["employee"])).toBe(false);
   });

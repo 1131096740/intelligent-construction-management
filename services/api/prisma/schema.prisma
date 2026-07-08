@@ -336,6 +336,12 @@ model ProjectExpenseRequest {
   handlerUserId           String
   applicantUserId         String
   attachmentFileId        String?
+  purchaseExecutedByUserId String?
+  purchaseExecutedAt      DateTime?
+  purchaseExecutionNote   String?
+  receiptConfirmedByUserId String?
+  receiptConfirmedAt      DateTime?
+  receiptConfirmationNote String?
   status                  String
   voidedAt                DateTime?
   voidedByUserId          String?

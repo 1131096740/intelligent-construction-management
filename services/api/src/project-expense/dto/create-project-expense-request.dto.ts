@@ -1,6 +1,11 @@
 export interface CreateProjectExpenseRequestDto {
   code: string;
-  expenseType: "sporadic_payment" | "loan_reserve" | "comprehensive_expense" | "reimbursement";
+  expenseType:
+    | "sporadic_payment"
+    | "loan_reserve"
+    | "comprehensive_expense"
+    | "reimbursement"
+    | "spot_purchase";
   expenseSubtype:
     | "sporadic_material"
     | "sporadic_machinery"
@@ -12,7 +17,11 @@ export interface CreateProjectExpenseRequestDto {
     | "project_reserve"
     | "travel"
     | "entertainment"
-    | "reimbursement";
+    | "reimbursement"
+    | "spot_material_purchase"
+    | "spot_tool_purchase"
+    | "spot_service_purchase"
+    | "spot_other_purchase";
   paymentSubject: string;
   reason: string;
   requestedAmountCents: number;

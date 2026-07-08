@@ -646,7 +646,8 @@ export type ProjectExpenseType =
   | "sporadic_payment"
   | "loan_reserve"
   | "comprehensive_expense"
-  | "reimbursement";
+  | "reimbursement"
+  | "spot_purchase";
 
 export type ProjectExpenseSubtype =
   | "sporadic_material"
@@ -659,7 +660,11 @@ export type ProjectExpenseSubtype =
   | "project_reserve"
   | "travel"
   | "entertainment"
-  | "reimbursement";
+  | "reimbursement"
+  | "spot_material_purchase"
+  | "spot_tool_purchase"
+  | "spot_service_purchase"
+  | "spot_other_purchase";
 
 export type ProjectExpensePaymentMethod =
   | "cash"
@@ -701,10 +706,21 @@ export interface RecordProjectExpenseExecutionPayload {
   confirmationPassword: string;
 }
 
+export interface RecordProjectExpensePurchaseExecutionPayload {
+  executedAt: string;
+  note?: string;
+  confirmationPassword: string;
+}
+
 export interface RecordProjectExpenseFinancePayload {
   amountCents: number;
   occurredAt: string;
   confirmationPassword: string;
+}
+
+export interface ConfirmProjectExpenseReceiptPayload {
+  confirmationPassword: string;
+  note?: string;
 }
 
 export interface ProjectExpenseRequestListReadModel {
@@ -722,6 +738,10 @@ export interface ProjectExpenseRequestListReadModel {
     counterpartyName: string | null;
     hasAttachment: boolean;
     hasApprovalPdf: boolean;
+    isPurchaseExecuted: boolean;
+    isReceiptConfirmed: boolean;
+    purchaseExecutedAt: string | null;
+    receiptConfirmedAt: string | null;
     status: string;
     createdAt: string;
     updatedAt: string;
@@ -918,6 +938,17 @@ export function recordProjectExpenseExecution(
   );
 }
 
+export function recordProjectExpensePurchaseExecution(
+  projectId: string,
+  expenseRequestId: string,
+  body: RecordProjectExpensePurchaseExecutionPayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/purchase-execution`,
+    body
+  );
+}
+
 export function recordProjectExpenseFinance(
   projectId: string,
   expenseRequestId: string,
@@ -925,6 +956,17 @@ export function recordProjectExpenseFinance(
 ) {
   return postJson<unknown>(
     `/projects/${projectId}/expense-requests/${expenseRequestId}/finance-records`,
+    body
+  );
+}
+
+export function confirmProjectExpenseReceipt(
+  projectId: string,
+  expenseRequestId: string,
+  body: ConfirmProjectExpenseReceiptPayload
+) {
+  return postJson<unknown>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/receipt-confirmation`,
     body
   );
 }

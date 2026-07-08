@@ -3,9 +3,11 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { ConfirmProjectExpenseReceiptDto } from "./dto/confirm-project-expense-receipt.dto";
 import { CreateProjectExpenseRequestDto } from "./dto/create-project-expense-request.dto";
 import { RecordProjectExpenseExecutionDto } from "./dto/record-project-expense-execution.dto";
 import { RecordProjectExpenseFinanceRecordDto } from "./dto/record-project-expense-finance-record.dto";
+import { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-project-expense-purchase-execution.dto";
 import { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
 import { ProjectExpenseService } from "./project-expense.service";
 
@@ -14,7 +16,9 @@ const FUNDS_OVERVIEW_POSITIONS = [
   "general_manager",
   "project_manager",
   "finance_director",
-  "finance_staff"
+  "finance_staff",
+  "material_director",
+  "material_staff"
 ] as const;
 
 interface CreateAttachmentDownloadTicketDto {
@@ -27,8 +31,8 @@ export class ProjectExpenseController {
 
   @Get()
   @RequirePositions(...FUNDS_OVERVIEW_POSITIONS)
-  list(@Param("projectId") projectId: string) {
-    return this.expenses.list(projectId);
+  list(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.expenses.list(projectId, user.id);
   }
 
   @Post()
@@ -113,6 +117,17 @@ export class ProjectExpenseController {
     return this.expenses.recordExecution(projectId, expenseRequestId, user.id, body);
   }
 
+  @Post(":expenseRequestId/purchase-execution")
+  @RequireProjectRole("project_expense.purchase_execute")
+  recordPurchaseExecution(
+    @Param("projectId") projectId: string,
+    @Param("expenseRequestId") expenseRequestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectExpensePurchaseExecutionDto
+  ) {
+    return this.expenses.recordPurchaseExecution(projectId, expenseRequestId, user.id, body);
+  }
+
   @Post(":expenseRequestId/finance-records")
   @RequireProjectRole("project_expense.finance_record")
   recordFinance(
@@ -122,5 +137,16 @@ export class ProjectExpenseController {
     @Body() body: RecordProjectExpenseFinanceRecordDto
   ) {
     return this.expenses.recordFinance(projectId, expenseRequestId, user.id, body);
+  }
+
+  @Post(":expenseRequestId/receipt-confirmation")
+  @RequireProjectRole("project_expense.receipt_confirm")
+  confirmPurchaseReceipt(
+    @Param("projectId") projectId: string,
+    @Param("expenseRequestId") expenseRequestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmProjectExpenseReceiptDto
+  ) {
+    return this.expenses.confirmPurchaseReceipt(projectId, expenseRequestId, user.id, body);
   }
 }

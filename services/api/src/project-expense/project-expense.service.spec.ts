@@ -120,11 +120,12 @@ describe("ProjectExpenseService", () => {
       },
       pdfDocument: {
         findMany: jest.fn().mockResolvedValue([{ businessId: "expense-1" }])
-      }
+      },
+      ...roleTables("project_manager")
     };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    await expect(service.list("project-1")).resolves.toEqual({
+    await expect(service.list("project-1", "manager-1")).resolves.toEqual({
       rows: [
         expect.objectContaining({
           id: "expense-1",
@@ -183,8 +184,36 @@ describe("ProjectExpenseService", () => {
     };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    await expect(service.list("project-1")).rejects.toThrow("项目不存在或已停用");
+    await expect(service.list("project-1", "manager-1")).rejects.toThrow("项目不存在或已停用");
     expect(prisma.projectExpenseRequest.findMany).not.toHaveBeenCalled();
+  });
+
+  it("scopes project expense list for material staff to own rows and spot purchases", async () => {
+    const prisma = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      pdfDocument: {
+        findMany: jest.fn()
+      },
+      ...roleTables("material_staff")
+    };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await service.list("project-1", "material-staff-1");
+
+    expect(prisma.projectExpenseRequest.findMany).toHaveBeenCalledWith({
+      where: {
+        projectId: "project-1",
+        OR: [{ applicantUserId: "material-staff-1" }, { expenseType: "spot_purchase" }]
+      },
+      orderBy: [{ createdAt: "desc" }, { code: "asc" }],
+      take: 100,
+      select: expect.any(Object)
+    });
   });
 
   it("creates an attachment download ticket by expense request id after password confirmation", async () => {
@@ -469,6 +498,105 @@ describe("ProjectExpenseService", () => {
         ]
       })
     });
+  });
+
+  it("submits a spot purchase request with the confirmed material approval route", async () => {
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
+    const tx = {
+      ...cashPool,
+      ...roleTables("material_staff"),
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-purchase-1", uploadedByUserId: "material-1" })
+      },
+      projectExpenseRequest: {
+        ...cashPool.projectExpenseRequest,
+        create: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          code: "CG-2026-001",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await service.create("project-1", "material-1", {
+      code: "CG-2026-001",
+      expenseType: "spot_purchase",
+      expenseSubtype: "spot_material_purchase",
+      paymentSubject: "现场临时钢筋采购",
+      reason: "抢修临时用料",
+      requestedAmountCents: 30_000,
+      paymentMethod: "bank_transfer",
+      counterpartyName: "临采供应商",
+      attachmentFileId: "file-purchase-1"
+    });
+
+    expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        expenseType: "spot_purchase",
+        expenseSubtype: "spot_material_purchase",
+        paymentSubject: "现场临时钢筋采购",
+        reason: "抢修临时用料",
+        requestedAmountCents: 30_000,
+        counterpartyName: "临采供应商",
+        attachmentFileId: "file-purchase-1",
+        status: "approval_pending"
+      })
+    });
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        frozenNodes: [
+          { name: "物资部主管", mode: "any", roleKeys: ["material_director"] },
+          { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+          { name: "财务总监", mode: "any", roleKeys: ["finance_director"] },
+          { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+        ]
+      })
+    });
+  });
+
+  it("rejects spot purchase creation by non-material staff", async () => {
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
+    const tx = {
+      ...cashPool,
+      ...roleTables("employee"),
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ id: "file-purchase-1", uploadedByUserId: "employee-1" })
+      },
+      projectExpenseRequest: {
+        ...cashPool.projectExpenseRequest,
+        create: jest.fn()
+      },
+      approvalInstance: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.create("project-1", "employee-1", {
+        code: "CG-2026-002",
+        expenseType: "spot_purchase",
+        expenseSubtype: "spot_material_purchase",
+        paymentSubject: "现场临采",
+        reason: "抢修临时用料",
+        requestedAmountCents: 30_000,
+        paymentMethod: "bank_transfer",
+        counterpartyName: "临采供应商",
+        attachmentFileId: "file-purchase-1"
+      })
+    ).rejects.toThrow("只有物资员可以发起零星采购申请");
+    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
   });
 
   it("blocks project expense submission when the project cash pool is insufficient", async () => {
@@ -912,6 +1040,87 @@ describe("ProjectExpenseService", () => {
     });
   });
 
+  it("records spot purchase execution before payment", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "expense-1",
+          projectId: "project-1",
+          code: "CG-2026-003",
+          expenseType: "spot_purchase",
+          status: "approved_pending_payment",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 0,
+          applicantUserId: "material-1",
+          purchaseExecutedAt: null,
+          receiptConfirmedAt: null
+        }
+      ]),
+      projectExpenseRequest: {
+        update: jest.fn().mockResolvedValue({ id: "expense-1", purchaseExecutedAt: new Date() })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await service.recordPurchaseExecution("project-1", "expense-1", "material-1", {
+      executedAt: "2026-07-02T00:00:00.000Z",
+      note: "供应商已送货",
+      confirmationPassword: "current-password"
+    });
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith("material-1", "current-password");
+    expect(tx.projectExpenseRequest.update).toHaveBeenCalledWith({
+      where: { id: "expense-1" },
+      data: {
+        purchaseExecutedByUserId: "material-1",
+        purchaseExecutedAt: new Date("2026-07-02T00:00:00.000Z"),
+        purchaseExecutionNote: "供应商已送货"
+      }
+    });
+  });
+
+  it("blocks spot purchase payment before purchase execution", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "expense-1",
+          projectId: "project-1",
+          code: "CG-2026-004",
+          expenseType: "spot_purchase",
+          status: "approved_pending_payment",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 0,
+          applicantUserId: "material-1",
+          purchaseExecutedAt: null,
+          receiptConfirmedAt: null
+        }
+      ]),
+      fileObject: {
+        findUnique: jest.fn()
+      },
+      projectExpenseExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.recordExecution("project-1", "expense-1", "cashier-1", {
+        amountCents: 10_000,
+        paidAt: "2026-07-02T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("零星采购执行后才能登记实付");
+    expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
+    expect(tx.projectExpenseExecution.create).not.toHaveBeenCalled();
+  });
+
   it("records actual project expense execution with second confirmation", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
@@ -1133,6 +1342,90 @@ describe("ProjectExpenseService", () => {
         createdByUserId: "finance-1"
       }
     });
+  });
+
+  it("confirms spot purchase receipt by the applicant after finance record", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "expense-1",
+          projectId: "project-1",
+          code: "CG-2026-005",
+          expenseType: "spot_purchase",
+          status: "paid",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 50_000,
+          applicantUserId: "material-1",
+          purchaseExecutedAt: new Date("2026-07-02T00:00:00.000Z"),
+          receiptConfirmedAt: null
+        }
+      ]),
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 50_000 }])
+      },
+      projectExpenseRequest: {
+        update: jest.fn().mockResolvedValue({ id: "expense-1", receiptConfirmedAt: new Date() })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await service.confirmPurchaseReceipt("project-1", "expense-1", "material-1", {
+      confirmationPassword: "current-password",
+      note: "数量无误"
+    });
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith("material-1", "current-password");
+    expect(tx.financeRecord.findMany).toHaveBeenCalledWith({
+      where: { projectExpenseRequestId: "expense-1", direction: "outflow" },
+      select: { amountCents: true }
+    });
+    expect(tx.projectExpenseRequest.update).toHaveBeenCalledWith({
+      where: { id: "expense-1" },
+      data: {
+        receiptConfirmedByUserId: "material-1",
+        receiptConfirmedAt: expect.any(Date),
+        receiptConfirmationNote: "数量无误"
+      }
+    });
+  });
+
+  it("rejects spot purchase receipt confirmation by non-applicant", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "expense-1",
+          projectId: "project-1",
+          code: "CG-2026-006",
+          expenseType: "spot_purchase",
+          status: "paid",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 50_000,
+          applicantUserId: "material-1",
+          purchaseExecutedAt: new Date("2026-07-02T00:00:00.000Z"),
+          receiptConfirmedAt: null
+        }
+      ]),
+      financeRecord: {
+        findMany: jest.fn()
+      },
+      projectExpenseRequest: {
+        update: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.confirmPurchaseReceipt("project-1", "expense-1", "other-user", {
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("只有零星采购发起人可以确认收货");
+    expect(tx.financeRecord.findMany).not.toHaveBeenCalled();
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
   });
 
   it("generates a finance archive PDF when finance records cover paid reimbursement", async () => {

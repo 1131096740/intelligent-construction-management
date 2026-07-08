@@ -164,7 +164,7 @@ export class ArchiveService {
           documentNo: row.id,
           fileId: row.fileId,
           fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
-          documentType: this.archiveType(row.businessType),
+          documentType: this.archiveType(row.businessType, expenseById.get(row.businessId)),
           businessRef: ref,
           project: this.archiveProject(row.businessType, row.businessId, {
             versionById,
@@ -313,11 +313,15 @@ export class ArchiveService {
     return value.toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" });
   }
 
-  private archiveType(businessType: string) {
+  private archiveType(businessType: string, expense?: { expenseType: string } | null) {
     if (businessType === "contract_version") return "合同PDF留档";
     if (businessType === "settlement") return "结算PDF留档";
     if (businessType === "payment_request") return "付款PDF留档";
-    if (businessType === "project_expense_request") return "报销PDF留档";
+    if (businessType === "project_expense_request") {
+      if (expense?.expenseType === "reimbursement") return "报销PDF留档";
+      if (expense?.expenseType === "spot_purchase") return "零星采购PDF留档";
+      return "项目支出PDF留档";
+    }
     return "PDF留档";
   }
 

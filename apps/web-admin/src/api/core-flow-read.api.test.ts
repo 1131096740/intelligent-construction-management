@@ -34,8 +34,10 @@ import {
   reviewProjectExpenseApproval,
   withdrawProjectExpenseApproval,
   voidProjectExpenseRequest,
+  confirmProjectExpenseReceipt,
   recordProjectExpenseExecution,
   recordProjectExpenseFinance,
+  recordProjectExpensePurchaseExecution,
   createContractDraft,
   createContractTakeover,
   createPaymentRequest,
@@ -542,10 +544,19 @@ describe("core flow read API client", () => {
       voucherFileId: "file-voucher-1",
       confirmationPassword: "current-password"
     });
+    await recordProjectExpensePurchaseExecution("project-1", "expense-1", {
+      executedAt: "2026-07-02T09:00:00.000Z",
+      note: "已采购",
+      confirmationPassword: "current-password"
+    });
     await recordProjectExpenseFinance("project-1", "expense-1", {
       amountCents: 80000,
       occurredAt: "2026-07-02T11:00:00.000Z",
       confirmationPassword: "current-password"
+    });
+    await confirmProjectExpenseReceipt("project-1", "expense-1", {
+      confirmationPassword: "current-password",
+      note: "数量无误"
     });
     await downloadProjectExpenseAttachment("project-1", "expense-1", {
       confirmationPassword: "current-password"
@@ -560,7 +571,9 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/expense-requests/expense-1/approval-withdrawal",
       "/api/projects/project-1/expense-requests/expense-1/voiding",
       "/api/projects/project-1/expense-requests/expense-1/executions",
+      "/api/projects/project-1/expense-requests/expense-1/purchase-execution",
       "/api/projects/project-1/expense-requests/expense-1/finance-records",
+      "/api/projects/project-1/expense-requests/expense-1/receipt-confirmation",
       "/api/projects/project-1/expense-requests/expense-1/attachment-download-ticket",
       "/api/projects/project-1/expense-requests/expense-1/approval-pdf-download-ticket"
     ]);
@@ -600,17 +613,30 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
-        amountCents: 80000,
-        occurredAt: "2026-07-02T11:00:00.000Z",
+        executedAt: "2026-07-02T09:00:00.000Z",
+        note: "已采购",
         confirmationPassword: "current-password"
       })
     );
     expect(fetchMock.mock.calls[6][1]?.body).toBe(
       JSON.stringify({
+        amountCents: 80000,
+        occurredAt: "2026-07-02T11:00:00.000Z",
         confirmationPassword: "current-password"
       })
     );
     expect(fetchMock.mock.calls[7][1]?.body).toBe(
+      JSON.stringify({
+        confirmationPassword: "current-password",
+        note: "数量无误"
+      })
+    );
+    expect(fetchMock.mock.calls[8][1]?.body).toBe(
+      JSON.stringify({
+        confirmationPassword: "current-password"
+      })
+    );
+    expect(fetchMock.mock.calls[9][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password"
       })

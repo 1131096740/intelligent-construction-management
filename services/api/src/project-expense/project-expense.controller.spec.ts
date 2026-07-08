@@ -9,7 +9,9 @@ describe("ProjectExpenseController authorization wiring", () => {
     "general_manager",
     "project_manager",
     "finance_director",
-    "finance_staff"
+    "finance_staff",
+    "material_director",
+    "material_staff"
   ];
 
   it("guards the expense request list with funds overview positions", () => {
@@ -22,8 +24,10 @@ describe("ProjectExpenseController authorization wiring", () => {
     ["create", "project_expense.create"],
     ["reviewApproval", "project_expense.approve"],
     ["voidRequest", "project_expense.void"],
+    ["recordPurchaseExecution", "project_expense.purchase_execute"],
     ["recordExecution", "project_expense.execution"],
-    ["recordFinance", "project_expense.finance_record"]
+    ["recordFinance", "project_expense.finance_record"],
+    ["confirmPurchaseReceipt", "project_expense.receipt_confirm"]
   ])("guards %s with the %s action", (method, action) => {
     const handler = (ProjectExpenseController.prototype as unknown as Record<string, object>)[method];
 
@@ -55,9 +59,9 @@ describe("ProjectExpenseController authorization wiring", () => {
     const expenses = { list: jest.fn() };
     const controller = new ProjectExpenseController(expenses as never);
 
-    await controller.list("project-1");
+    await controller.list("project-1", { id: "user-1" } as never);
 
-    expect(expenses.list).toHaveBeenCalledWith("project-1");
+    expect(expenses.list).toHaveBeenCalledWith("project-1", "user-1");
   });
 
   it("forwards create requests with the authenticated user id", async () => {
@@ -113,6 +117,50 @@ describe("ProjectExpenseController authorization wiring", () => {
       "expense-1",
       "user-1",
       "current-password"
+    );
+  });
+
+  it("forwards purchase execution requests with the authenticated user id", async () => {
+    const expenses = { recordPurchaseExecution: jest.fn() };
+    const controller = new ProjectExpenseController(expenses as never);
+    const body = {
+      executedAt: "2026-07-02T10:00:00.000Z",
+      note: "已采购",
+      confirmationPassword: "current-password"
+    };
+
+    await controller.recordPurchaseExecution(
+      "project-1",
+      "expense-1",
+      { id: "user-1" } as never,
+      body
+    );
+
+    expect(expenses.recordPurchaseExecution).toHaveBeenCalledWith(
+      "project-1",
+      "expense-1",
+      "user-1",
+      body
+    );
+  });
+
+  it("forwards receipt confirmation requests with the authenticated user id", async () => {
+    const expenses = { confirmPurchaseReceipt: jest.fn() };
+    const controller = new ProjectExpenseController(expenses as never);
+    const body = { confirmationPassword: "current-password", note: "数量无误" };
+
+    await controller.confirmPurchaseReceipt(
+      "project-1",
+      "expense-1",
+      { id: "user-1" } as never,
+      body
+    );
+
+    expect(expenses.confirmPurchaseReceipt).toHaveBeenCalledWith(
+      "project-1",
+      "expense-1",
+      "user-1",
+      body
     );
   });
 });

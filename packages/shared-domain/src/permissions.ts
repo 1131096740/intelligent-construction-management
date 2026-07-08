@@ -33,8 +33,10 @@ export const BUSINESS_ACTIONS = [
   "payment.pdf_archive",
   "project_expense.create",
   "project_expense.approve",
+  "project_expense.purchase_execute",
   "project_expense.execution",
   "project_expense.finance_record",
+  "project_expense.receipt_confirm",
   "project_expense.void"
 ] as const;
 
@@ -117,7 +119,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "payment.execution": ["finance_staff"],
   "payment.finance_record": ["finance_staff", "finance_director"],
   "payment.pdf_archive": ["finance_staff", "finance_director", "contract_staff"],
-  "project_expense.create": ["employee", "project_manager"],
+  "project_expense.create": ["employee", "project_manager", "material_staff"],
   "project_expense.approve": [
     "project_manager",
     "contract_director",
@@ -129,8 +131,10 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
     "chairman",
     "general_manager"
   ],
+  "project_expense.purchase_execute": ["material_staff", "material_director"],
   "project_expense.execution": ["finance_staff"],
   "project_expense.finance_record": ["finance_staff", "finance_director"],
+  "project_expense.receipt_confirm": ["employee", "material_staff", "project_manager"],
   "project_expense.void": ["finance_director", "project_manager"]
 };
 

@@ -6,9 +6,11 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { renderSimplePdf } from "../pdf/simple-pdf";
+import { ConfirmProjectExpenseReceiptDto } from "./dto/confirm-project-expense-receipt.dto";
 import { CreateProjectExpenseRequestDto } from "./dto/create-project-expense-request.dto";
 import { RecordProjectExpenseExecutionDto } from "./dto/record-project-expense-execution.dto";
 import { RecordProjectExpenseFinanceRecordDto } from "./dto/record-project-expense-finance-record.dto";
+import { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-project-expense-purchase-execution.dto";
 import { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
 
 interface ProjectExpenseApprovalNode {
@@ -22,10 +24,14 @@ interface ExpenseLockRow {
   id: string;
   projectId: string;
   code: string;
+  expenseType: string;
   status: string;
   requestedAmountCents: number;
   approvedAmountCents: number | null;
   paidAmountCents: number;
+  applicantUserId: string;
+  purchaseExecutedAt: Date | null;
+  receiptConfirmedAt: Date | null;
 }
 
 interface ApprovalInstanceLockRow {
@@ -61,6 +67,13 @@ const REIMBURSEMENT_APPROVAL_NODES = [
   { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
 ] satisfies ProjectExpenseApprovalNode[];
 
+const SPOT_PURCHASE_APPROVAL_NODES = [
+  { name: "物资部主管", mode: "any", roleKeys: ["material_director"] },
+  { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+  { name: "财务总监", mode: "any", roleKeys: ["finance_director"] },
+  { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+] satisfies ProjectExpenseApprovalNode[];
+
 const PROJECT_EXPENSE_READ_ROLES: readonly RoleKey[] = [
   "project_manager",
   "contract_director",
@@ -87,7 +100,8 @@ const EXPENSE_TYPES = [
   "sporadic_payment",
   "loan_reserve",
   "comprehensive_expense",
-  "reimbursement"
+  "reimbursement",
+  "spot_purchase"
 ] as const;
 const EXPENSE_SUBTYPES = [
   "sporadic_material",
@@ -100,7 +114,11 @@ const EXPENSE_SUBTYPES = [
   "project_reserve",
   "travel",
   "entertainment",
-  "reimbursement"
+  "reimbursement",
+  "spot_material_purchase",
+  "spot_tool_purchase",
+  "spot_service_purchase",
+  "spot_other_purchase"
 ] as const;
 const PAYMENT_METHODS = ["cash", "wechat", "alipay", "bank_transfer", "other"] as const;
 const SPORADIC_PAYMENT_SUBTYPES = [
@@ -113,6 +131,12 @@ const SPORADIC_PAYMENT_SUBTYPES = [
 const LOAN_RESERVE_SUBTYPES = ["employee_loan", "owner_loan", "project_reserve"] as const;
 const COMPREHENSIVE_EXPENSE_SUBTYPES = ["travel", "entertainment"] as const;
 const REIMBURSEMENT_SUBTYPES = ["reimbursement"] as const;
+const SPOT_PURCHASE_SUBTYPES = [
+  "spot_material_purchase",
+  "spot_tool_purchase",
+  "spot_service_purchase",
+  "spot_other_purchase"
+] as const;
 const MAX_INT_CENTS = 2_147_483_647;
 
 @Injectable()
@@ -127,7 +151,7 @@ export class ProjectExpenseService {
     private readonly files?: FileService
   ) {}
 
-  async list(projectId: string) {
+  async list(projectId: string, actorUserId: string) {
     const project = await this.prisma.project.findFirst({
       where: { id: projectId, isActive: true },
       select: { id: true }
@@ -136,8 +160,15 @@ export class ProjectExpenseService {
       throw new NotFoundException("项目不存在或已停用");
     }
 
+    const roleKeys = await this.loadActorRoleKeys(this.prisma, actorUserId, projectId);
+    const canReadAll = roleKeys.some((role) => PROJECT_EXPENSE_READ_ROLES.includes(role));
+    const scopedOr: Prisma.ProjectExpenseRequestWhereInput[] = [{ applicantUserId: actorUserId }];
+    if (roleKeys.includes("material_staff")) {
+      scopedOr.push({ expenseType: "spot_purchase" });
+    }
+
     const rows = await this.prisma.projectExpenseRequest.findMany({
-      where: { projectId },
+      where: canReadAll ? { projectId } : { projectId, OR: scopedOr },
       orderBy: [{ createdAt: "desc" }, { code: "asc" }],
       take: 100,
       select: {
@@ -153,6 +184,8 @@ export class ProjectExpenseService {
         paymentMethod: true,
         counterpartyName: true,
         attachmentFileId: true,
+        purchaseExecutedAt: true,
+        receiptConfirmedAt: true,
         status: true,
         createdAt: true,
         updatedAt: true
@@ -179,6 +212,10 @@ export class ProjectExpenseService {
         ...row,
         hasAttachment: Boolean(attachmentFileId),
         hasApprovalPdf: pdfBusinessIds.has(row.id),
+        isPurchaseExecuted: Boolean(row.purchaseExecutedAt),
+        isReceiptConfirmed: Boolean(row.receiptConfirmedAt),
+        purchaseExecutedAt: row.purchaseExecutedAt?.toISOString() ?? null,
+        receiptConfirmedAt: row.receiptConfirmedAt?.toISOString() ?? null,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString()
       })),
@@ -284,6 +321,12 @@ export class ProjectExpenseService {
     const reason = requiredTrimmed(input.reason, "付款事由必填");
     const requestedAmountCents = positiveInteger(input.requestedAmountCents, "申请金额必须大于零");
     const attachmentFileId = input.attachmentFileId?.trim() || undefined;
+    if (expenseType === "spot_purchase") {
+      requiredTrimmed(input.counterpartyName, "零星采购供应商必填");
+      if (!attachmentFileId) {
+        throw new BadRequestException("零星采购附件必填");
+      }
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const [project, attachmentFile] = await Promise.all([
@@ -303,6 +346,12 @@ export class ProjectExpenseService {
       }
       if (attachmentFile && attachmentFile.uploadedByUserId !== actorUserId) {
         throw new BadRequestException("项目支出附件必须由申请人本人上传");
+      }
+      if (expenseType === "spot_purchase") {
+        const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, project.id);
+        if (!actorRoleKeys.includes("material_staff")) {
+          throw new BadRequestException("只有物资员可以发起零星采购申请");
+        }
       }
 
       const allocations = await this.reserveProjectCashPool(tx, project.id, requestedAmountCents);
@@ -634,6 +683,9 @@ export class ProjectExpenseService {
       if (!["approved_pending_payment", "partially_paid"].includes(request.status)) {
         throw new BadRequestException("当前项目支出状态不可实付");
       }
+      if (request.expenseType === "spot_purchase" && !request.purchaseExecutedAt) {
+        throw new BadRequestException("零星采购执行后才能登记实付");
+      }
       const approvedAmountCents = request.approvedAmountCents ?? request.requestedAmountCents;
       const remaining = approvedAmountCents - request.paidAmountCents;
       if (amountCents > remaining) {
@@ -693,6 +745,58 @@ export class ProjectExpenseService {
       throw new BadRequestException(blockedReason ?? "项目支出实付登记被阻断");
     }
     return execution;
+  }
+
+  async recordPurchaseExecution(
+    projectId: string,
+    expenseRequestId: string,
+    actorUserId: string,
+    input: RecordProjectExpensePurchaseExecutionDto
+  ) {
+    const executedAt = parseDate(input.executedAt, "采购执行日期无效");
+    if (executedAt.getTime() > Date.now()) {
+      throw new BadRequestException("采购执行日期不能晚于当前时间");
+    }
+    const confirmationPassword = requiredTrimmed(
+      input.confirmationPassword,
+      "采购执行需要当前登录密码确认"
+    );
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm project expense purchase execution");
+    }
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      const request = await this.lockExpenseRequest(tx, projectId, expenseRequestId);
+      if (!request) {
+        throw new NotFoundException("项目支出申请不存在");
+      }
+      if (request.expenseType !== "spot_purchase") {
+        throw new BadRequestException("只有零星采购申请可以登记采购执行");
+      }
+      if (request.status !== "approved_pending_payment") {
+        throw new BadRequestException("零星采购审批通过后才能登记采购执行");
+      }
+      if (request.purchaseExecutedAt) {
+        throw new BadRequestException("零星采购已登记采购执行");
+      }
+      const updated = await tx.projectExpenseRequest.update({
+        where: { id: request.id },
+        data: {
+          purchaseExecutedByUserId: actorUserId,
+          purchaseExecutedAt: executedAt,
+          purchaseExecutionNote: trimmedOrNull(input.note)
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project_expense.purchase.execute",
+        businessType: "project_expense_request",
+        businessId: request.id,
+        metadata: { projectId, executedAt: executedAt.toISOString() }
+      });
+      return updated;
+    });
   }
 
   async recordFinance(
@@ -756,6 +860,76 @@ export class ProjectExpenseService {
     return result.record;
   }
 
+  async confirmPurchaseReceipt(
+    projectId: string,
+    expenseRequestId: string,
+    actorUserId: string,
+    input: ConfirmProjectExpenseReceiptDto
+  ) {
+    const confirmationPassword = requiredTrimmed(
+      input.confirmationPassword,
+      "收货确认需要当前登录密码确认"
+    );
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm project expense purchase receipt");
+    }
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
+
+    return this.prisma.$transaction(async (tx) => {
+      const request = await this.lockExpenseRequest(tx, projectId, expenseRequestId);
+      if (!request) {
+        throw new NotFoundException("项目支出申请不存在");
+      }
+      if (request.expenseType !== "spot_purchase") {
+        throw new BadRequestException("只有零星采购申请可以确认收货");
+      }
+      if (request.applicantUserId !== actorUserId) {
+        throw new BadRequestException("只有零星采购发起人可以确认收货");
+      }
+      if (!request.purchaseExecutedAt) {
+        throw new BadRequestException("零星采购执行后才能确认收货");
+      }
+      if (request.receiptConfirmedAt) {
+        throw new BadRequestException("零星采购已确认收货");
+      }
+      if (request.status !== "paid") {
+        throw new BadRequestException("零星采购实付完成后才能确认收货");
+      }
+      const financeRecords = await tx.financeRecord.findMany({
+        where: { projectExpenseRequestId: request.id, direction: "outflow" },
+        select: { amountCents: true }
+      });
+      const financeRecordedAmountCents = sumNumbers(
+        financeRecords.map((record) => record.amountCents)
+      );
+      if (request.paidAmountCents <= 0 || financeRecordedAmountCents < request.paidAmountCents) {
+        throw new BadRequestException("零星采购财务入账完成后才能确认收货");
+      }
+
+      const confirmedAt = new Date();
+      const updated = await tx.projectExpenseRequest.update({
+        where: { id: request.id },
+        data: {
+          receiptConfirmedByUserId: actorUserId,
+          receiptConfirmedAt: confirmedAt,
+          receiptConfirmationNote: trimmedOrNull(input.note)
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "project_expense.receipt.confirm",
+        businessType: "project_expense_request",
+        businessId: request.id,
+        metadata: {
+          projectId,
+          confirmedAt: confirmedAt.toISOString(),
+          financeRecordedAmountCents
+        }
+      });
+      return updated;
+    });
+  }
+
   private async ensureApprovalPdfArchive(expenseRequestId: string, actorUserId: string) {
     if (!this.files) {
       throw new Error("File service is required to generate project expense approval PDF");
@@ -783,12 +957,14 @@ export class ProjectExpenseService {
     }
 
     const buffer = renderSimplePdf([
-      "Project Expense Approval Form",
+      projectExpenseApprovalPdfTitle(expense.expenseType),
       `Code: ${expense.code}`,
       `Type: ${expense.expenseType}`,
-      `Subtype: ${expense.expenseSubtype}`,
-      `Payment Subject: ${expense.paymentSubject}`,
-      `Reason: ${expense.reason}`,
+      `Category: ${expense.expenseSubtype}`,
+      `Subject: ${expense.paymentSubject}`,
+      `Purpose: ${expense.reason}`,
+      `Supplier: ${expense.counterpartyName ?? "-"}`,
+      `Attachment: ${expense.attachmentFileId ? "uploaded" : "not uploaded"}`,
       `Requested Amount: ${formatCents(expense.requestedAmountCents)}`,
       `Approved Amount: ${formatCents(expense.approvedAmountCents ?? expense.requestedAmountCents)}`,
       `Applicant User ID: ${expense.applicantUserId}`,
@@ -868,7 +1044,7 @@ export class ProjectExpenseService {
     }
 
     const buffer = renderSimplePdf([
-      "Project Expense Finance Archive",
+      projectExpenseFinancePdfTitle(expense.expenseType),
       `Code: ${expense.code}`,
       `Type: ${expense.expenseType}`,
       `Subtype: ${expense.expenseSubtype}`,
@@ -1233,10 +1409,14 @@ export class ProjectExpenseService {
         "id",
         "projectId",
         "code",
+        "expenseType",
         "status",
         "requestedAmountCents",
         "approvedAmountCents",
-        "paidAmountCents"
+        "paidAmountCents",
+        "applicantUserId",
+        "purchaseExecutedAt",
+        "receiptConfirmedAt"
       FROM "ProjectExpenseRequest"
       WHERE "projectId" = ${projectId} AND ("id" = ${expenseRequestId} OR "code" = ${expenseRequestId})
       LIMIT 1
@@ -1344,16 +1524,22 @@ function assertExpenseSubtypeMatchesType(
         ? LOAN_RESERVE_SUBTYPES
         : expenseType === "reimbursement"
           ? REIMBURSEMENT_SUBTYPES
-          : COMPREHENSIVE_EXPENSE_SUBTYPES;
+          : expenseType === "spot_purchase"
+            ? SPOT_PURCHASE_SUBTYPES
+            : COMPREHENSIVE_EXPENSE_SUBTYPES;
   if (!(allowedSubtypes as readonly string[]).includes(expenseSubtype)) {
     throw new BadRequestException("项目支出类型与明细类型不匹配");
   }
 }
 
 function getProjectExpenseApprovalNodes(expenseType: (typeof EXPENSE_TYPES)[number]) {
-  return expenseType === "reimbursement"
-    ? REIMBURSEMENT_APPROVAL_NODES
-    : PROJECT_EXPENSE_APPROVAL_NODES;
+  if (expenseType === "reimbursement") {
+    return REIMBURSEMENT_APPROVAL_NODES;
+  }
+  if (expenseType === "spot_purchase") {
+    return SPOT_PURCHASE_APPROVAL_NODES;
+  }
+  return PROJECT_EXPENSE_APPROVAL_NODES;
 }
 
 function outstandingCents(request: {
@@ -1385,4 +1571,16 @@ function sumCents(values: Array<bigint | number>) {
 
 function formatCents(amountCents: number) {
   return (amountCents / 100).toFixed(2);
+}
+
+function projectExpenseApprovalPdfTitle(expenseType: string) {
+  if (expenseType === "reimbursement") return "Reimbursement Approval Form";
+  if (expenseType === "spot_purchase") return "Spot Purchase Approval Form";
+  return "Project Expense Approval Form";
+}
+
+function projectExpenseFinancePdfTitle(expenseType: string) {
+  if (expenseType === "reimbursement") return "Reimbursement Finance Archive";
+  if (expenseType === "spot_purchase") return "Spot Purchase Finance Archive";
+  return "Project Expense Finance Archive";
 }
