@@ -4,12 +4,18 @@ export interface RecentBusinessRoute {
   openedAt: string;
 }
 
+const recentBusinessStoragePrefix = "jiangkong:recent-business-routes";
+
 const businessRouteLabels = new Map([
   ["合同管理", "合同"],
   ["合同工作台", "合同工作台"],
   ["结算管理", "结算"],
   ["付款管理", "付款"]
 ]);
+
+export function recentBusinessStorageKey(userId: string): string {
+  return `${recentBusinessStoragePrefix}:${encodeURIComponent(userId)}`;
+}
 
 export function recentBusinessRouteFromPath(
   path: string,
@@ -44,10 +50,16 @@ export function parseRecentBusinessRoutes(raw: string | null): RecentBusinessRou
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.filter(isRecentBusinessRoute).slice(0, 5);
+    return parsed.flatMap(toStoredRecentBusinessRoute).slice(0, 5);
   } catch {
     return [];
   }
+}
+
+function toStoredRecentBusinessRoute(value: unknown): RecentBusinessRoute[] {
+  if (!isRecentBusinessRoute(value)) return [];
+  const route = recentBusinessRouteFromPath(value.path, value.openedAt);
+  return route ? [route] : [];
 }
 
 function isRecentBusinessRoute(value: unknown): value is RecentBusinessRoute {

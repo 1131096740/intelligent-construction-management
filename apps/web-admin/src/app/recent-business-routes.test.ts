@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseRecentBusinessRoutes,
   recentBusinessRouteFromPath,
+  recentBusinessStorageKey,
   upsertRecentBusinessRoute
 } from "./recent-business-routes";
 
@@ -14,6 +15,25 @@ describe("recent business routes", () => {
     });
     expect(recentBusinessRouteFromPath("/合同管理")).toBeNull();
     expect(recentBusinessRouteFromPath("/资料库")).toBeNull();
+  });
+
+  it("tracks the four supported business detail route types only", () => {
+    expect(recentBusinessRouteFromPath("/合同工作台/HT-001", "2026-07-08T08:00:00.000Z")?.label).toBe(
+      "合同工作台 HT-001"
+    );
+    expect(recentBusinessRouteFromPath("/结算管理/JS-001", "2026-07-08T08:00:00.000Z")?.label).toBe(
+      "结算 JS-001"
+    );
+    expect(recentBusinessRouteFromPath("/付款管理/FK-001", "2026-07-08T08:00:00.000Z")?.label).toBe(
+      "付款 FK-001"
+    );
+    expect(recentBusinessRouteFromPath("/合同模板库/TPL-1", "2026-07-08T08:00:00.000Z")).toBeNull();
+    expect(recentBusinessRouteFromPath("/合作单位档案/P-1", "2026-07-08T08:00:00.000Z")).toBeNull();
+  });
+
+  it("scopes storage keys by user id", () => {
+    expect(recentBusinessStorageKey("user-1")).toBe("jiangkong:recent-business-routes:user-1");
+    expect(recentBusinessStorageKey("user/2")).toBe("jiangkong:recent-business-routes:user%2F2");
   });
 
   it("keeps malformed encoded ids readable instead of throwing", () => {
@@ -58,5 +78,13 @@ describe("recent business routes", () => {
         ])
       )
     ).toHaveLength(1);
+    expect(
+      parseRecentBusinessRoutes(
+        JSON.stringify([
+          { path: "/合同模板库/TPL-1", label: "模板 TPL-1", openedAt: "2026-07-08T08:00:00.000Z" },
+          { path: "/合同管理/HT-001", label: "旧标签", openedAt: "2026-07-08T08:00:00.000Z" }
+        ])
+      )
+    ).toEqual([{ path: "/合同管理/HT-001", label: "合同 HT-001", openedAt: "2026-07-08T08:00:00.000Z" }]);
   });
 });

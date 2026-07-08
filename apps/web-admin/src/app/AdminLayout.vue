@@ -68,6 +68,7 @@ import { visibleAdminNavigationItems } from "../routes/route-records";
 import {
   parseRecentBusinessRoutes,
   recentBusinessRouteFromPath,
+  recentBusinessStorageKey,
   upsertRecentBusinessRoute,
   type RecentBusinessRoute
 } from "./recent-business-routes";
@@ -75,20 +76,29 @@ import {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-const recentStorageKey = "jiangkong:recent-business-routes";
-const recentBusinessRoutes = ref<RecentBusinessRoute[]>(loadRecentBusinessRoutes());
+const recentBusinessRoutes = ref<RecentBusinessRoute[]>([]);
 
 const activePath = computed(() => route.path);
 const adminNavigationItems = computed(() => visibleAdminNavigationItems(auth.user?.roleKeys));
+const currentRecentStorageKey = computed(() => (auth.user?.id ? recentBusinessStorageKey(auth.user.id) : ""));
 
 watch(
-  () => route.path,
-  (path) => {
-    const item = recentBusinessRouteFromPath(path);
-    if (!item) return;
+  () => [route.path, currentRecentStorageKey.value] as const,
+  ([path, storageKey]) => {
+    if (!storageKey) {
+      recentBusinessRoutes.value = [];
+      return;
+    }
 
-    recentBusinessRoutes.value = upsertRecentBusinessRoute(recentBusinessRoutes.value, item);
-    getRecentStorage()?.setItem(recentStorageKey, JSON.stringify(recentBusinessRoutes.value));
+    const storedRoutes = loadRecentBusinessRoutes(storageKey);
+    const item = recentBusinessRouteFromPath(path);
+    if (!item) {
+      recentBusinessRoutes.value = storedRoutes;
+      return;
+    }
+
+    recentBusinessRoutes.value = upsertRecentBusinessRoute(storedRoutes, item);
+    saveRecentBusinessRoutes(storageKey, recentBusinessRoutes.value);
   },
   { immediate: true }
 );
@@ -98,11 +108,27 @@ function go(path: string) {
 }
 
 function getRecentStorage(): Storage | null {
-  return typeof window === "undefined" ? null : window.localStorage;
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
-function loadRecentBusinessRoutes(): RecentBusinessRoute[] {
-  return parseRecentBusinessRoutes(getRecentStorage()?.getItem(recentStorageKey) ?? null);
+function loadRecentBusinessRoutes(storageKey: string): RecentBusinessRoute[] {
+  try {
+    return parseRecentBusinessRoutes(getRecentStorage()?.getItem(storageKey) ?? null);
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRoute[]) {
+  try {
+    getRecentStorage()?.setItem(storageKey, JSON.stringify(routes));
+  } catch {
+    return;
+  }
 }
 </script>
 
