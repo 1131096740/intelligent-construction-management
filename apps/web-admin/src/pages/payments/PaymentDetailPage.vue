@@ -340,6 +340,20 @@
 
     <t-card
       class="section-card"
+      title="实付与入账覆盖"
+      :bordered="true"
+    >
+      <t-table
+        row-key="id"
+        size="small"
+        :columns="paymentExecutionCoverageColumns"
+        :data="paymentExecutionCoverageRowsView"
+        empty="暂无实付或入账记录"
+      />
+    </t-card>
+
+    <t-card
+      class="section-card"
       title="实付分摊台账"
       :bordered="true"
     >
@@ -438,9 +452,14 @@ import {
   withdrawPaymentApproval
 } from "../../api/core-flow-read.api";
 import { confirmSensitiveAction } from "../confirm-sensitive-action";
-import type { PaymentDetailTone, PaymentExecutionAllocationRow } from "./payment-detail.config";
+import type {
+  PaymentDetailTone,
+  PaymentExecutionAllocationRow,
+  PaymentExecutionCoverageRow
+} from "./payment-detail.config";
 import {
-  paymentExecutionAllocationColumns
+  paymentExecutionAllocationColumns,
+  paymentExecutionCoverageColumns
 } from "./payment-detail.config";
 
 const route = useRoute();
@@ -487,6 +506,9 @@ const paymentExecutionAllocationRowsView = computed<PaymentExecutionAllocationRo
     allocationType: allocation.allocationType,
     amount: formatCents(allocation.amountCents)
   }))
+);
+const paymentExecutionCoverageRowsView = computed<PaymentExecutionCoverageRow[]>(() =>
+  paymentDetail.value?.executionCoverages ?? []
 );
 const paymentExecutionBlockMessageView = computed(
   () => paymentDetail.value?.executionBlockMessage ?? "详情读取成功后显示付款执行规则。"

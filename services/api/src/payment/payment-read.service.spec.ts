@@ -232,7 +232,7 @@ describe("PaymentReadService", () => {
         ])
       },
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([])
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 5000000 }])
       },
       paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([])
@@ -336,6 +336,18 @@ describe("PaymentReadService", () => {
         confirmedAt: null,
         canDownload: true,
         disabledReason: null
+      }
+    ]);
+    expect(detail.executionCoverages).toEqual([
+      {
+        id: "execution-1",
+        executionCode: "FK-2026-011 · 第1笔",
+        paidAt: "2026-07-01T09:00:00.000Z",
+        paidAmount: "¥120,000.00",
+        voucherName: "FK-2026-011-银行回单.pdf",
+        financeRecordedAmount: "¥50,000.00",
+        unrecordedAmount: "¥70,000.00",
+        coverageStatus: "部分入账"
       }
     ]);
     expect(detail.traceRules).toContain("审批通过不等于实际付款完成");

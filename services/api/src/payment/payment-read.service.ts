@@ -175,6 +175,53 @@ export class PaymentReadService {
     ];
   }
 
+  private executionCoverages(
+    paymentCode: string,
+    executions: Array<{
+      id: string;
+      amountCents: number;
+      paidAt?: Date | null;
+      createdAt?: Date;
+    }>,
+    financeRecords: Array<{ amountCents: number }>,
+    evidenceFiles: PaymentDetailReadModel["evidenceFiles"]
+  ): PaymentDetailReadModel["executionCoverages"] {
+    let remainingFinanceCents = financeRecords.reduce((total, record) => total + record.amountCents, 0);
+    const voucherNameByExecutionId = new Map(
+      evidenceFiles
+        .filter((file) => file.purpose === "付款凭证")
+        .map((file) => [file.recordId, file.fileName])
+    );
+
+    return [...executions]
+      .sort((left, right) => this.executionTime(left) - this.executionTime(right))
+      .map((execution, index) => {
+        const financeRecordedAmountCents = Math.min(execution.amountCents, remainingFinanceCents);
+        remainingFinanceCents -= financeRecordedAmountCents;
+        const unrecordedAmountCents = execution.amountCents - financeRecordedAmountCents;
+        return {
+          id: execution.id,
+          executionCode: `${paymentCode} · 第${index + 1}笔`,
+          paidAt: (execution.paidAt ?? execution.createdAt)?.toISOString() ?? "-",
+          paidAmount: this.formatMoney(execution.amountCents),
+          voucherName: voucherNameByExecutionId.get(execution.id) ?? "未上传付款凭证",
+          financeRecordedAmount: this.formatMoney(financeRecordedAmountCents),
+          unrecordedAmount: this.formatMoney(unrecordedAmountCents),
+          coverageStatus:
+            unrecordedAmountCents === 0
+              ? "已全部入账"
+              : financeRecordedAmountCents > 0
+                ? "部分入账"
+                : "待入账"
+        };
+      })
+      .reverse();
+  }
+
+  private executionTime(execution: { paidAt?: Date | null; createdAt?: Date }) {
+    return (execution.paidAt ?? execution.createdAt ?? new Date(0)).getTime();
+  }
+
   private async confirmedHistoricalBalanceForContract(contractId: string) {
     const takeoverClient = (this.prisma as unknown as {
       contractTakeover?: {
@@ -477,6 +524,7 @@ export class PaymentReadService {
       availableActions,
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
+      executionCoverages: this.executionCoverages(payment.code, executions, financeRecords, evidenceFiles),
       traceRules: [
         isContractAdvance
           ? "预付款按合同生效日和账期计算，不依赖结算单"
@@ -809,6 +857,7 @@ export class PaymentReadService {
         { label: "付款完成", status: "未完成", owner: "系统", tone: "danger" }
       ],
       executionAllocations: [],
+      executionCoverages: [],
       evidenceFiles: [],
       approvalTimeline: [],
       availableActions: [],

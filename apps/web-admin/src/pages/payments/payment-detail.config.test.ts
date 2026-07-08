@@ -4,6 +4,7 @@ import {
   paymentBaseInfo,
   paymentDetailMeta,
   paymentExecutionAllocationColumns,
+  paymentExecutionCoverageColumns,
   paymentExecutionSteps,
   paymentTraceRules
 } from "./payment-detail.config";
@@ -61,6 +62,18 @@ describe("payment detail page configuration", () => {
       "付款阶段",
       "分摊/抵扣类型",
       "分摊金额"
+    ]);
+  });
+
+  it("shows payment execution and finance coverage columns", () => {
+    expect(paymentExecutionCoverageColumns.map((column) => column.title)).toEqual([
+      "实付记录",
+      "实付时间",
+      "实付金额",
+      "付款凭证",
+      "已入账",
+      "未入账",
+      "覆盖状态"
     ]);
   });
 

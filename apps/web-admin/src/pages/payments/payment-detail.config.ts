@@ -24,6 +24,17 @@ export interface PaymentExecutionAllocationRow {
   amount: string;
 }
 
+export interface PaymentExecutionCoverageRow {
+  id: string;
+  executionCode: string;
+  paidAt: string;
+  paidAmount: string;
+  voucherName: string;
+  financeRecordedAmount: string;
+  unrecordedAmount: string;
+  coverageStatus: string;
+}
+
 export const paymentDetailTitle = "FK-2026-006 · 5月材料结算付款申请";
 
 export const paymentDetailMeta: PaymentDetailMetaItem[] = [
@@ -69,6 +80,16 @@ export const paymentExecutionAllocationColumns: PrimaryTableCol<PaymentExecution
   { colKey: "stageName", title: "付款阶段", minWidth: 128 },
   { colKey: "allocationType", title: "分摊/抵扣类型", width: 128 },
   { colKey: "amount", title: "分摊金额", width: 112, align: "right" }
+];
+
+export const paymentExecutionCoverageColumns: PrimaryTableCol<PaymentExecutionCoverageRow>[] = [
+  { colKey: "executionCode", title: "实付记录", width: 128 },
+  { colKey: "paidAt", title: "实付时间", width: 156 },
+  { colKey: "paidAmount", title: "实付金额", width: 112, align: "right" },
+  { colKey: "voucherName", title: "付款凭证", minWidth: 180 },
+  { colKey: "financeRecordedAmount", title: "已入账", width: 112, align: "right" },
+  { colKey: "unrecordedAmount", title: "未入账", width: 112, align: "right" },
+  { colKey: "coverageStatus", title: "覆盖状态", width: 112 }
 ];
 
 export const paymentTraceRules = [

@@ -210,6 +210,16 @@ export interface PaymentDetailReadModel {
     allocationType: string;
     amountCents: number;
   }>;
+  executionCoverages: Array<{
+    id: string;
+    executionCode: string;
+    paidAt: string;
+    paidAmount: string;
+    voucherName: string;
+    financeRecordedAmount: string;
+    unrecordedAmount: string;
+    coverageStatus: string;
+  }>;
   evidenceFiles: EvidenceFileReadModel[];
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
