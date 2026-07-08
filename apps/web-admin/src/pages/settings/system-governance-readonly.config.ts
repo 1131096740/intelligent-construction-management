@@ -1,12 +1,8 @@
-import {
-  CONTRACT_VERSION_STATUSES,
-  PAYMENT_REQUEST_STATUSES,
-  ROLE_KEYS,
-  SETTLEMENT_STATUSES,
-  type ContractVersionStatus,
-  type PaymentRequestStatus,
-  type RoleKey,
-  type SettlementStatus
+import type {
+  ContractVersionStatus,
+  PaymentRequestStatus,
+  RoleKey,
+  SettlementStatus
 } from "@jiangkong/shared-domain";
 import {
   comprehensiveExpenseSubtypeOptions,
@@ -83,6 +79,10 @@ const paymentStatusLabels = {
   voided: "已作废"
 } satisfies Record<PaymentRequestStatus, string>;
 
+const contractVersionStatuses = Object.keys(contractStatusLabels) as ContractVersionStatus[];
+const settlementStatuses = Object.keys(settlementStatusLabels) as SettlementStatus[];
+const paymentRequestStatuses = Object.keys(paymentStatusLabels) as PaymentRequestStatus[];
+
 const filePurposeEntries: ReadonlyDictionaryEntry[] = [
   {
     key: "contract_archive",
@@ -158,12 +158,14 @@ function entriesFromLabels<T extends string>(
   }));
 }
 
+const roleKeys = Object.keys(roleLabels) as RoleKey[];
+
 export const readonlyDictionaryGroups: ReadonlyDictionaryGroup[] = [
   {
     id: "roles",
     title: "岗位字典",
     description: "系统岗位用于项目授权、审批候选人和审计展示；super_admin 仅用于技术管理。",
-    entries: ROLE_KEYS.map((key: RoleKey) => ({
+    entries: roleKeys.map((key) => ({
       key,
       label: roleLabels[key],
       description: key === "super_admin" ? "技术管理角色，不参与业务审批。" : "可按项目授权参与业务查看或处理。"
@@ -174,7 +176,7 @@ export const readonlyDictionaryGroups: ReadonlyDictionaryGroup[] = [
     title: "合同状态",
     description: "合同版本必须归档确认后才可生效，生效后才能创建结算。",
     entries: entriesFromLabels(
-      CONTRACT_VERSION_STATUSES,
+      contractVersionStatuses,
       contractStatusLabels,
       (key) => (key === "effective" ? "允许作为结算来源。" : "不可作为新结算的有效合同版本。")
     )
@@ -183,7 +185,7 @@ export const readonlyDictionaryGroups: ReadonlyDictionaryGroup[] = [
     id: "settlement_status",
     title: "结算状态",
     description: "结算必须审批并归档确认后才可成为付款申请依据。",
-    entries: entriesFromLabels(SETTLEMENT_STATUSES, settlementStatusLabels, (key) =>
+    entries: entriesFromLabels(settlementStatuses, settlementStatusLabels, (key) =>
       ["effective", "partially_paid"].includes(key) ? "允许作为付款申请来源。" : "不可作为新付款申请依据。"
     )
   },
@@ -191,7 +193,7 @@ export const readonlyDictionaryGroups: ReadonlyDictionaryGroup[] = [
     id: "payment_status",
     title: "付款状态",
     description: "付款审批通过只进入已批待付，实际付款由出纳实付和财务入账分别记录。",
-    entries: entriesFromLabels(PAYMENT_REQUEST_STATUSES, paymentStatusLabels, (key) =>
+    entries: entriesFromLabels(paymentRequestStatuses, paymentStatusLabels, (key) =>
       key === "approved_pending_payment" ? "等待出纳执行实付。" : "按付款链路继续流转或终止。"
     )
   },

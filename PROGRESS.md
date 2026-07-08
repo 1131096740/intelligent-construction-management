@@ -44,6 +44,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：继续推进到前端改造可验收口径「Web 生产构建闸门修复与总复验」：修复系统治理只读配置页从 CommonJS shared-domain 包入口导入运行时字典常量导致 Vite 生产构建失败的问题，改为从本页类型覆盖的 label map 派生岗位和状态字典，并显式导出 shared-domain 角色常量；不改业务字典语义、不改页面展示。验证：Web 全量 Vitest 35 套 / 257 例、Web typecheck、Web lint、Web build、Web E2E lint、Web Playwright P0 冒烟 2 例通过 / 2 例按真实账号环境变量跳过、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：继续推进改造方案 P0「结算详情错误文案去内部字段化」：结算详情所有动作前置校验从“结算ID不能为空”改为“结算编号不能为空”，避免操作失败时向业务用户暴露内部字段语言；不改接口参数、不改业务状态。验证：合同/结算/付款详情定向搜索无 `结算ID`、`Internal server error`、`Forbidden` 残留，Web typecheck、Web lint、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：继续推进到前端改造可验收口径「核心详情页浏览器验收冒烟」：扩展 Web P0 Playwright 冒烟，mock 合同、结算、付款三类详情读模型并逐页验证流程摘要条、后端动作禁用原因、证据文件和关键流程/规则文案可见；使用英文兼容路由进入中文详情页，避免浏览器首屏加载中文路径编码导致路由不匹配。验证：Web Playwright P0 冒烟 2 例通过 / 2 例按真实账号环境变量跳过、Web typecheck、Web lint、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：继续推进改造方案 P1「付款详情顶部流程摘要条」：付款详情页在原有 meta 面板下新增流程摘要条，复用既有审批状态、实付状态、申请金额、责任部门和下一步动作字段，帮助项目、财务和出纳快速判断付款是否仍在审批、已批待付、待实付或待入账；不改后端读模型、不改业务动作。验证：Web 付款详情定向 Vitest 35 套 / 257 例、Web typecheck、Web lint、`git diff --check` 通过。
