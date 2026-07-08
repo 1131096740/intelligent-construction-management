@@ -3,10 +3,10 @@ import type { PrimaryTableCol } from "tdesign-vue-next";
 export type ArchiveTone = "default" | "primary" | "warning" | "success";
 
 export interface ArchiveFilterField {
-  key: string;
+  key: keyof ArchiveLedgerFilters;
   label: string;
   placeholder: string;
-  type: "select" | "keyword";
+  type: "select" | "keyword" | "accessStatus";
 }
 
 export interface ArchiveSummaryItem {
@@ -33,6 +33,15 @@ export interface ArchiveLedgerRow {
   lastAction: string;
 }
 
+export interface ArchiveLedgerFilters {
+  project: string;
+  documentType: string;
+  archiveStatus: string;
+  uploadDepartment: string;
+  accessStatus: "" | "pending_confirmation" | "downloadable" | "download_blocked";
+  keyword: string;
+}
+
 export const archiveFilterFields: ArchiveFilterField[] = [
   {
     key: "project",
@@ -57,6 +66,12 @@ export const archiveFilterFields: ArchiveFilterField[] = [
     label: "上传部门",
     placeholder: "全部",
     type: "select"
+  },
+  {
+    key: "accessStatus",
+    label: "治理筛选",
+    placeholder: "全部",
+    type: "accessStatus"
   },
   {
     key: "keyword",
@@ -89,9 +104,72 @@ export const archiveLedgerColumns: PrimaryTableCol<ArchiveLedgerRow>[] = [
 
 export const archiveLedgerRows: ArchiveLedgerRow[] = [];
 
+export const archiveAccessStatusOptions = [
+  { label: "全部", value: "" },
+  { label: "待确认", value: "pending_confirmation" },
+  { label: "可授权下载", value: "downloadable" },
+  { label: "不可下载/待补资料", value: "download_blocked" }
+];
+
+export function emptyArchiveLedgerFilters(): ArchiveLedgerFilters {
+  return {
+    project: "",
+    documentType: "",
+    archiveStatus: "",
+    uploadDepartment: "",
+    accessStatus: "",
+    keyword: ""
+  };
+}
+
+export function filterArchiveLedgerRows(
+  rows: ArchiveLedgerRow[],
+  filters: ArchiveLedgerFilters
+): ArchiveLedgerRow[] {
+  return rows.filter((row) => {
+    const keyword = normalize(filters.keyword);
+    const matchesKeyword =
+      !keyword ||
+      [
+        row.documentNo,
+        row.documentType,
+        row.businessRef,
+        row.project,
+        row.fileSource,
+        row.archiveStatus,
+        row.uploadDepartment
+      ].some((value) => normalize(value).includes(keyword));
+
+    return (
+      includesText(row.project, filters.project) &&
+      includesText(row.documentType, filters.documentType) &&
+      includesText(row.archiveStatus, filters.archiveStatus) &&
+      includesText(row.uploadDepartment, filters.uploadDepartment) &&
+      matchesAccessStatus(row, filters.accessStatus) &&
+      matchesKeyword
+    );
+  });
+}
+
 export const archiveRules = [
   "合同/结算归档件由合同部上传并由合同部主管确认",
   "付款凭证由出纳/财务上传并关联实际付款记录",
   "敏感文件必须经后台权限校验后生成短期下载链接",
   "归档上传、确认、下载、作废必须写入审计日志"
 ];
+
+function includesText(value: string, query: string) {
+  const normalizedQuery = normalize(query);
+  return !normalizedQuery || normalize(value).includes(normalizedQuery);
+}
+
+function matchesAccessStatus(row: ArchiveLedgerRow, accessStatus: ArchiveLedgerFilters["accessStatus"]) {
+  if (!accessStatus) return true;
+  if (accessStatus === "downloadable") return row.canDownload;
+  if (accessStatus === "download_blocked") return !row.canDownload;
+  return row.archiveStatus.includes("待") || row.disabledReason !== null;
+}
+
+function normalize(value: string) {
+  return value.trim().toLowerCase();
+}

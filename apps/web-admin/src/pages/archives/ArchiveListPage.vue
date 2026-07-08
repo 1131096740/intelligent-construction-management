@@ -61,23 +61,30 @@
         :class="['filter-field', { keyword: field.type === 'keyword' }]"
       >
         <span>{{ field.label }}</span>
+        <t-select
+          v-if="field.type === 'accessStatus'"
+          v-model="archiveFilters[field.key]"
+          :options="archiveAccessStatusOptions"
+          size="small"
+        />
         <t-input
+          v-else
+          v-model="archiveFilters[field.key]"
           :placeholder="field.placeholder"
           size="small"
-          readonly
         />
       </label>
 
       <t-button
         class="filter-action"
         theme="primary"
-        @click="loadArchives"
+        @click="applyArchiveFilters"
       >
         查询
       </t-button>
       <t-button
         class="filter-action"
-        @click="loadArchives"
+        @click="resetArchiveFilters"
       >
         重置
       </t-button>
@@ -98,8 +105,8 @@
         row-key="id"
         size="small"
         :columns="archiveLedgerColumns"
-        :data="archiveRows"
-        empty="暂无归档资料"
+        :data="filteredArchiveRows"
+        empty="没有符合条件的资料，请调整筛选条件或回到业务单据补齐附件。"
         :loading="loading"
       >
         <template #archiveStatus="{ row }">
@@ -158,6 +165,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { reactive } from "vue";
 import { useRouter } from "vue-router";
 import {
   createPrivateFileDownloadTicket,
@@ -166,10 +174,13 @@ import {
 import { confirmSensitiveAction } from "../confirm-sensitive-action";
 import type { ArchiveLedgerRow, ArchiveTone } from "./archive-list.config";
 import {
+  archiveAccessStatusOptions,
   archiveFilterFields,
   archiveLedgerColumns,
   archiveRules,
-  archiveSummaryItems
+  archiveSummaryItems,
+  emptyArchiveLedgerFilters,
+  filterArchiveLedgerRows
 } from "./archive-list.config";
 
 const router = useRouter();
@@ -181,6 +192,7 @@ const downloadDialogVisible = ref(false);
 const downloadBusy = ref(false);
 const downloadTarget = ref<ArchiveLedgerRow | null>(null);
 const downloadPassword = ref("");
+const archiveFilters = reactive(emptyArchiveLedgerFilters());
 const summary = ref({
   total: 0,
   contractArchives: 0,
@@ -199,6 +211,7 @@ const summaryValues = computed(() => {
   ];
   return archiveSummaryItems.map((item, index) => ({ ...item, value: String(values[index] ?? 0) }));
 });
+const filteredArchiveRows = computed(() => filterArchiveLedgerRows(archiveRows.value, archiveFilters));
 
 onMounted(() => {
   void loadArchives();
@@ -211,6 +224,17 @@ function showNotice(text: string) {
 
 function openBusinessArchive(path: string) {
   void router.push(path);
+}
+
+function applyArchiveFilters() {
+  message.value = `已按当前条件筛选出 ${filteredArchiveRows.value.length} 条资料。`;
+  messageTone.value = "default";
+}
+
+function resetArchiveFilters() {
+  Object.assign(archiveFilters, emptyArchiveLedgerFilters());
+  message.value = "";
+  messageTone.value = "default";
 }
 
 async function loadArchives() {
