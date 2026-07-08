@@ -9,6 +9,7 @@ import type {
   CreateContractTakeoverDto,
   UpdateContractTakeoverDto
 } from "./dto/create-contract-takeover.dto";
+import type { PrecheckContractTakeoverImportDto } from "./dto/precheck-contract-takeover-import.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
@@ -37,6 +38,15 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.create(projectId, body, user.id);
+  }
+
+  @Post("import-precheck")
+  @RequireProjectRole("contract.create")
+  precheckImport(
+    @Param("projectId") projectId: string,
+    @Body() body: PrecheckContractTakeoverImportDto
+  ) {
+    return this.takeovers.precheckImport(projectId, body);
   }
 
   @Patch(":takeoverId")

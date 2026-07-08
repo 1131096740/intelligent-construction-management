@@ -206,6 +206,114 @@ describe("ContractTakeoverService", () => {
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
 
+  it("prechecks historical takeover import rows without writing business records", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { code: "HT-HIS-EXISTING", temporaryCode: null },
+          { code: null, temporaryCode: "TMP-EXISTING" }
+        ])
+      },
+      contractTakeover: {
+        create: jest.fn()
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.precheckImport("project-1", {
+      rows: [
+        {
+          rowNo: 8,
+          code: "HT-HIS-EXISTING",
+          name: "Existing contract",
+          counterparty: "Supplier A",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "A",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "Pay after archive.",
+          balanceSourceSummary: "Finance ledger",
+          evidenceSummary: "Signed scan"
+        },
+        {
+          code: "HT-HIS-DUP",
+          name: "Duplicate 1",
+          counterparty: "Supplier B",
+          amountCents: 2_000_000,
+          signedAt: "2026-01-11",
+          takeoverLevel: "B",
+          lifecycleStatus: "in_progress"
+        },
+        {
+          code: "HT-HIS-READY",
+          name: "Ready contract",
+          counterparty: "Supplier D",
+          amountCents: 3_000_000,
+          signedAt: "2026-01-12",
+          takeoverLevel: "C",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "Monthly payment.",
+          balanceSourceSummary: "Finance ledger",
+          evidenceSummary: "Signed scan"
+        },
+        {
+          code: "HT-HIS-DUP",
+          name: "",
+          counterparty: "Supplier C",
+          amountCents: -1,
+          signedAt: "2026-02-31",
+          takeoverLevel: "D",
+          lifecycleStatus: "bad-status",
+          historicalPaidCents: null
+        }
+      ]
+    });
+
+    expect(result).toMatchObject({
+      projectId: "project-1",
+      totalRows: 4,
+      readyRows: 1,
+      blockedRows: 3,
+      warningRows: 2,
+      existingCodes: ["HT-HIS-EXISTING"],
+      duplicatedCodes: ["HT-HIS-DUP"]
+    });
+    expect(result.rows[0]).toMatchObject({
+      rowNo: 8,
+      code: "HT-HIS-EXISTING",
+      status: "blocked"
+    });
+    expect(result.rows[1]).toMatchObject({
+      rowNo: 2,
+      status: "blocked"
+    });
+    expect(result.rows[2]).toMatchObject({
+      rowNo: 3,
+      status: "ready"
+    });
+    expect(result.rows[3].issues.map((issue) => issue.field)).toEqual(
+      expect.arrayContaining([
+        "code",
+        "name",
+        "amountCents",
+        "signedAt",
+        "takeoverLevel",
+        "lifecycleStatus",
+        "historicalPaidCents"
+      ])
+    );
+    expect(prisma.contract.findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { code: { in: ["HT-HIS-EXISTING", "HT-HIS-DUP", "HT-HIS-READY"] } },
+          { temporaryCode: { in: ["HT-HIS-EXISTING", "HT-HIS-DUP", "HT-HIS-READY"] } }
+        ]
+      },
+      select: { code: true, temporaryCode: true }
+    });
+    expect(prisma.contractTakeover.create).not.toHaveBeenCalled();
+  });
+
   it("updates an editable takeover draft and keeps linked contract facts in sync", async () => {
     const tx = {
       contractTakeover: {
@@ -434,6 +542,41 @@ describe("ContractTakeoverService", () => {
           counterparty: "Supplier C",
           amountCents: 1_000_000,
           signedAt: null as never,
+          takeoverLevel: "B",
+          lifecycleStatus: "in_progress"
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("signedAt must be a valid date string");
+
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects normalized impossible signed dates before writing", async () => {
+    const tx = {
+      project: {
+        findUnique: jest.fn()
+      },
+      contract: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.create(
+        "project-1",
+        {
+          code: "HT-HIS-004",
+          name: "Bad date",
+          counterparty: "Supplier C",
+          amountCents: 1_000_000,
+          signedAt: "2026-02-31",
           takeoverLevel: "B",
           lifecycleStatus: "in_progress"
         },

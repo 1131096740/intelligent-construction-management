@@ -4,7 +4,8 @@ import type {
   ContractTakeoverCentsValue,
   ContractTakeoverLevel,
   ContractTakeoverReadModel,
-  ContractTakeoverStatus
+  ContractTakeoverStatus,
+  PrecheckContractTakeoverImportRowPayload
 } from "../../api/core-flow-read.api";
 
 export type ContractTakeoverTone = "default" | "primary" | "warning" | "danger" | "success";
@@ -186,6 +187,50 @@ export function toContractTakeoverTableRow(
   };
 }
 
+export function parseContractTakeoverImportPrecheckRows(
+  text: string
+): PrecheckContractTakeoverImportRowPayload[] {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
+  if (!lines.length) {
+    throw new Error("请粘贴需要预检的历史合同导入行");
+  }
+
+  const hasHeader = looksLikeImportHeader(lines[0]);
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+  if (!dataLines.length) {
+    throw new Error("请至少保留一行导入数据");
+  }
+
+  const startRowNo = hasHeader ? 2 : 1;
+  return dataLines.map((line, index) => {
+    const cells = splitImportLine(line);
+    return {
+      rowNo: startRowNo + index,
+      code: textCell(cells, 0),
+      name: textCell(cells, 1),
+      counterparty: textCell(cells, 2),
+      companyEntityName: textCell(cells, 3) || undefined,
+      amountCents: yuanCell(cells, 4),
+      signedAt: textCell(cells, 5),
+      takeoverLevel: textCell(cells, 6),
+      lifecycleStatus: textCell(cells, 7),
+      paymentTermsOriginalText: textCell(cells, 8),
+      historicalSettledCents: optionalYuanCell(cells, 9),
+      historicalApprovalPendingPaymentCents: optionalYuanCell(cells, 10),
+      historicalApprovedPendingPaymentCents: optionalYuanCell(cells, 11),
+      historicalPaidCents: optionalYuanCell(cells, 12),
+      historicalProxyPaidCents: optionalYuanCell(cells, 13),
+      historicalAdvancePaidCents: optionalYuanCell(cells, 14),
+      historicalAdvanceDeductedCents: optionalYuanCell(cells, 15),
+      historicalRetentionWithheldCents: optionalYuanCell(cells, 16),
+      historicalRetentionReleasedCents: optionalYuanCell(cells, 17),
+      otherConfirmedOccupancyCents: optionalYuanCell(cells, 18),
+      balanceSourceSummary: textCell(cells, 19),
+      evidenceSummary: textCell(cells, 20)
+    };
+  });
+}
+
 function centsValueToBigInt(value: ContractTakeoverCentsValue | bigint): bigint {
   if (typeof value === "bigint") {
     return value;
@@ -200,4 +245,68 @@ function centsValueToBigInt(value: ContractTakeoverCentsValue | bigint): bigint 
     throw new Error("金额分值必须是整数字符串");
   }
   return BigInt(value);
+}
+
+function splitImportLine(line: string): string[] {
+  return line.includes("\t") ? line.split("\t") : splitCsvLine(line);
+}
+
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === "\"" && quoted && next === "\"") {
+      current += "\"";
+      index += 1;
+    } else if (char === "\"") {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current);
+
+  return cells;
+}
+
+function looksLikeImportHeader(line: string): boolean {
+  const firstCell = splitImportLine(line)[0]?.trim().toLowerCase() ?? "";
+  return firstCell === "code" || firstCell.includes("合同编号");
+}
+
+function textCell(cells: string[], index: number): string {
+  return cells[index]?.trim() ?? "";
+}
+
+function yuanCell(cells: string[], index: number): number | null {
+  const value = parseYuanText(textCell(cells, index));
+  return value ?? null;
+}
+
+function optionalYuanCell(cells: string[], index: number): number | null | undefined {
+  const raw = textCell(cells, index);
+  if (!raw) {
+    return undefined;
+  }
+  return parseYuanText(raw) ?? null;
+}
+
+function parseYuanText(raw: string): number | null {
+  const value = raw.replace(/,/g, "").trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(value)) {
+    return null;
+  }
+  const [yuan, cents = ""] = value.split(".");
+  const amount = BigInt(yuan) * 100n + BigInt(cents.padEnd(2, "0"));
+  if (amount > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return null;
+  }
+  return Number(amount);
 }

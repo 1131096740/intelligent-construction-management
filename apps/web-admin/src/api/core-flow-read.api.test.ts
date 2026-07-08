@@ -41,6 +41,7 @@ import {
   createContractDraft,
   createContractTakeover,
   createPaymentRequest,
+  precheckContractTakeoverImport,
   createPrivateFileDownloadTicket,
   createSettlementDraft,
   confirmContractTakeover,
@@ -710,6 +711,9 @@ describe("core flow read API client", () => {
     await getContractTakeover("project-1", "takeover-1");
     await createContractTakeover("project-1", takeoverPayload);
     await updateContractTakeover("project-1", "takeover-1", takeoverPayload);
+    await precheckContractTakeoverImport("project-1", {
+      rows: [takeoverPayload]
+    });
     await attachContractTakeoverEvidenceFile("project-1", "takeover-1", {
       fileId: "file-1",
       purpose: "historical_contract_scan"
@@ -724,6 +728,7 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/contract-takeovers/takeover-1",
       "/api/projects/project-1/contract-takeovers",
       "/api/projects/project-1/contract-takeovers/takeover-1",
+      "/api/projects/project-1/contract-takeovers/import-precheck",
       "/api/projects/project-1/contract-takeovers/takeover-1/evidence-files",
       "/api/projects/project-1/contract-takeovers/takeover-1/review-submission",
       "/api/projects/project-1/contract-takeovers/takeover-1/confirmation"
@@ -735,6 +740,7 @@ describe("core flow read API client", () => {
       "PATCH",
       "POST",
       "POST",
+      "POST",
       "POST"
     ]);
     expect(fetchMock.mock.calls[2][1]?.body).toBe(
@@ -744,9 +750,12 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify(takeoverPayload));
     expect(fetchMock.mock.calls[4][1]?.body).toBe(
+      JSON.stringify({ rows: [takeoverPayload] })
+    );
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({ fileId: "file-1", purpose: "historical_contract_scan" })
     );
-    expect(fetchMock.mock.calls[6][1]?.body).toBe(
+    expect(fetchMock.mock.calls[7][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
     );
   });

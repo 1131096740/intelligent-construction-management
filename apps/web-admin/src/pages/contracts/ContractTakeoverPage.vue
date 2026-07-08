@@ -9,6 +9,9 @@
         <t-button @click="loadTakeovers">
           刷新
         </t-button>
+        <t-button @click="showPrecheckPanel = !showPrecheckPanel">
+          导入预检
+        </t-button>
         <t-button
           theme="primary"
           @click="startCreate"
@@ -51,6 +54,72 @@
     >
       {{ message }}
     </div>
+
+    <t-card
+      v-if="showPrecheckPanel"
+      class="panel import-panel"
+      title="历史合同导入预检"
+      :bordered="true"
+    >
+      <div class="form-section">
+        <label class="wide-field">
+          <span>导入行</span>
+          <t-textarea
+            v-model="importPrecheckText"
+            :placeholder="importPrecheckPlaceholder"
+            :autosize="{ minRows: 5, maxRows: 10 }"
+          />
+        </label>
+      </div>
+      <div class="form-actions">
+        <t-button
+          theme="primary"
+          :loading="prechecking"
+          @click="submitImportPrecheck"
+        >
+          预检
+        </t-button>
+        <t-button @click="clearImportPrecheck">
+          清空
+        </t-button>
+      </div>
+      <div
+        v-if="importPrecheckResult"
+        class="precheck-summary"
+      >
+        <div
+          v-for="item in precheckSummaryValues"
+          :key="item.label"
+          class="summary-item"
+        >
+          <span>{{ item.label }}</span>
+          <strong :class="`tone-${item.tone}`">{{ item.value }}</strong>
+        </div>
+      </div>
+      <t-table
+        v-if="importPrecheckResult"
+        row-key="rowNo"
+        size="small"
+        class="precheck-table"
+        :columns="importPrecheckColumns"
+        :data="importPrecheckRows"
+      >
+        <template #statusLabel="{ row }">
+          <t-tag
+            size="small"
+            :theme="statusTagTheme(row.statusTone)"
+            variant="light"
+          >
+            {{ row.statusLabel }}
+          </t-tag>
+        </template>
+        <template #issuesText="{ row }">
+          <span :class="row.hasErrors ? 'issue-danger' : 'issue-muted'">
+            {{ row.issuesText }}
+          </span>
+        </template>
+      </t-table>
+    </t-card>
 
     <t-card
       v-if="showCreateForm"
@@ -381,9 +450,11 @@ import {
   fetchProjects,
   getContractTakeover,
   listContractTakeovers,
+  precheckContractTakeoverImport,
   submitContractTakeoverReview,
   updateContractTakeover,
   uploadPrivateFile,
+  type ContractTakeoverImportPrecheckReadModel,
   type ContractTakeoverEvidencePurpose,
   type ContractLifecycleStatus,
   type ContractTakeoverLevel,
@@ -400,6 +471,7 @@ import {
   formatTakeoverDate,
   lifecycleStatusLabel,
   lifecycleStatusOptions,
+  parseContractTakeoverImportPrecheckRows,
   takeoverLevelLabel,
   takeoverLevelOptions,
   toContractTakeoverTableRow,
@@ -455,10 +527,12 @@ const selectedTakeoverId = ref("");
 const loadingProjects = ref(false);
 const loadingTakeovers = ref(false);
 const creating = ref(false);
+const prechecking = ref(false);
 const editingTakeoverId = ref("");
 const confirming = ref(false);
 const evidenceUploading = ref(false);
 const showCreateForm = ref(false);
+const showPrecheckPanel = ref(false);
 const confirmVisible = ref(false);
 const confirmTarget = ref<ContractTakeoverReadModel | null>(null);
 const confirmationPassword = ref("");
@@ -468,6 +542,23 @@ const evidenceInputRef = ref<HTMLInputElement | null>(null);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const createForm = reactive<CreateFormState>(createEmptyForm());
+const importPrecheckText = ref("");
+const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>(null);
+
+const importPrecheckPlaceholder = [
+  "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t接管等级\t履约状态\t付款条款\t历史累计结算(元)\t历史审批中付款(元)\t历史已批待付(元)\t历史累计已付(元)\t历史总包代付(元)\t历史预付款已付(元)\t历史预付款已扣回(元)\t历史质保金扣留(元)\t历史质保金释放(元)\t其他确认占用(元)\t余额来源\t证据说明",
+  "HT-LS-2026-001\t材料采购历史合同\t历史供应商\t建工集团\t1000000.00\t2026-01-01\tB\tin_progress\t按月结算付款\t600000.00\t0\t20000.00\t300000.00\t0\t0\t0\t0\t0\t0\t财务台账核对\t合同扫描件已归档"
+].join("\n");
+
+const importPrecheckColumns = [
+  { colKey: "rowNo", title: "行号", width: 72 },
+  { colKey: "code", title: "合同编号", width: 140 },
+  { colKey: "name", title: "合同名称", minWidth: 180 },
+  { colKey: "counterparty", title: "相对方", minWidth: 140 },
+  { colKey: "amount", title: "合同金额", width: 116, align: "right" },
+  { colKey: "statusLabel", title: "状态", width: 96 },
+  { colKey: "issuesText", title: "预检结果", minWidth: 260 }
+];
 
 const tableRows = computed(() =>
   takeovers.value.map((takeover) => toContractTakeoverTableRow(takeover))
@@ -499,6 +590,34 @@ const summaryValues = computed(() => {
     { label: "待补充", value: String(counts.needs_supplement), tone: "primary" as const }
   ];
 });
+const precheckSummaryValues = computed(() => {
+  const result = importPrecheckResult.value;
+  if (!result) {
+    return [];
+  }
+
+  return [
+    { label: "预检行", value: String(result.totalRows), tone: "default" as const },
+    { label: "可导入", value: String(result.readyRows), tone: "success" as const },
+    { label: "需修正", value: String(result.blockedRows), tone: "danger" as const },
+    { label: "有提醒", value: String(result.warningRows), tone: "warning" as const }
+  ];
+});
+const importPrecheckRows = computed(() =>
+  (importPrecheckResult.value?.rows ?? []).map((row) => {
+    const hasErrors = row.issues.some((issue) => issue.level === "error");
+    return {
+      ...row,
+      amount: row.amountCents === null ? "-" : centsToYuanText(row.amountCents),
+      statusLabel: row.status === "ready" ? "可导入" : "需修正",
+      statusTone: row.status === "ready" ? ("success" as const) : ("danger" as const),
+      hasErrors,
+      issuesText: row.issues.length
+        ? row.issues.map((issue) => issue.message).join("；")
+        : "通过"
+    };
+  })
+);
 const evidencePurposeOptions: Array<{ value: ContractTakeoverEvidencePurpose; label: string }> = [
   { value: "historical_contract_scan", label: "历史合同扫描件" },
   { value: "historical_settlement_ledger", label: "历史结算台账" },
@@ -617,6 +736,36 @@ async function loadTakeovers() {
   } finally {
     loadingTakeovers.value = false;
   }
+}
+
+async function submitImportPrecheck() {
+  const projectId = selectedProjectId.value;
+  if (!projectId) {
+    setMessage("请先选择项目", "danger");
+    return;
+  }
+
+  prechecking.value = true;
+  message.value = "";
+  try {
+    const rows = parseContractTakeoverImportPrecheckRows(importPrecheckText.value);
+    importPrecheckResult.value = await precheckContractTakeoverImport(projectId, { rows });
+    const result = importPrecheckResult.value;
+    setMessage(
+      `预检完成：${result.readyRows} 行可导入，${result.blockedRows} 行需修正`,
+      result.blockedRows > 0 ? "default" : "success"
+    );
+  } catch (error) {
+    importPrecheckResult.value = null;
+    setMessage(error instanceof Error ? error.message : "导入预检失败", "danger");
+  } finally {
+    prechecking.value = false;
+  }
+}
+
+function clearImportPrecheck() {
+  importPrecheckText.value = "";
+  importPrecheckResult.value = null;
 }
 
 async function selectTakeover(takeover: ContractTakeoverReadModel) {
@@ -1085,6 +1234,32 @@ input[type="date"] {
 .form-actions {
   display: flex;
   gap: 10px;
+}
+
+.import-panel {
+  min-width: 0;
+}
+
+.precheck-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(86px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid #e2e7ee;
+  background: #f8fafc;
+}
+
+.precheck-table {
+  margin-top: 12px;
+}
+
+.issue-danger {
+  color: #b51d2a;
+}
+
+.issue-muted {
+  color: #4f5b6b;
 }
 
 .content-grid {

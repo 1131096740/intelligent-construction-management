@@ -7,6 +7,7 @@ import {
   centsToYuanText,
   contractTakeoverColumns,
   lifecycleStatusLabel,
+  parseContractTakeoverImportPrecheckRows,
   takeoverLevelLabel,
   takeoverStatusLabel,
   takeoverStatusTone,
@@ -41,6 +42,38 @@ describe("contract takeover page configuration", () => {
     expect(() => yuanToCents("-1", "历史已付")).toThrow("历史已付必须是非负数字");
     expect(() => yuanToCents("1.234", "历史已付")).toThrow("历史已付必须是非负数字");
     expect(() => yuanToCents("abc", "历史已付")).toThrow("历史已付必须是非负数字");
+  });
+
+  it("parses pasted takeover import rows without shifting blank leading TSV cells", () => {
+    const rows = parseContractTakeoverImportPrecheckRows(
+      [
+        "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t接管等级\t履约状态",
+        "\t缺编号合同\t历史供应商\t建工集团\t100.00\t2026-01-01\tB\tin_progress"
+      ].join("\n")
+    );
+
+    expect(rows[0]).toMatchObject({
+      rowNo: 2,
+      code: "",
+      name: "缺编号合同",
+      counterparty: "历史供应商",
+      amountCents: 10000
+    });
+  });
+
+  it("keeps invalid historical amount cells visible to backend precheck", () => {
+    const rows = parseContractTakeoverImportPrecheckRows(
+      [
+        "code,name,counterparty,company,amount,signedAt,level,status,terms,settled",
+        "HT-LS-001,历史合同,历史供应商,建工集团,100.00,2026-01-01,B,in_progress,按月付款,abc"
+      ].join("\n")
+    );
+
+    expect(rows[0]).toMatchObject({
+      code: "HT-LS-001",
+      amountCents: 10000,
+      historicalSettledCents: null
+    });
   });
 
   it("formats cents from API string or number values for display", () => {

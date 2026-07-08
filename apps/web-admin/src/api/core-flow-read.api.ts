@@ -252,6 +252,44 @@ export interface CreateContractTakeoverPayload {
   evidenceSummary?: string;
 }
 
+export interface PrecheckContractTakeoverImportRowPayload extends Record<string, unknown> {
+  rowNo?: number;
+}
+
+export interface PrecheckContractTakeoverImportPayload {
+  rows: PrecheckContractTakeoverImportRowPayload[];
+}
+
+export interface ContractTakeoverImportPrecheckIssueReadModel {
+  rowNo: number;
+  field: string;
+  level: "error" | "warning";
+  message: string;
+}
+
+export interface ContractTakeoverImportPrecheckRowReadModel {
+  rowNo: number;
+  code: string;
+  name: string;
+  counterparty: string;
+  amountCents: number | null;
+  takeoverLevel: string;
+  lifecycleStatus: string;
+  status: "ready" | "blocked";
+  issues: ContractTakeoverImportPrecheckIssueReadModel[];
+}
+
+export interface ContractTakeoverImportPrecheckReadModel {
+  projectId: string;
+  totalRows: number;
+  readyRows: number;
+  blockedRows: number;
+  warningRows: number;
+  existingCodes: string[];
+  duplicatedCodes: string[];
+  rows: ContractTakeoverImportPrecheckRowReadModel[];
+}
+
 export interface ConfirmContractTakeoverPayload {
   confirmationPassword: string;
 }
@@ -1074,6 +1112,16 @@ export function updateContractTakeover(
 ) {
   return patchJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}`,
+    body
+  );
+}
+
+export function precheckContractTakeoverImport(
+  projectId: string,
+  body: PrecheckContractTakeoverImportPayload
+) {
+  return postJson<ContractTakeoverImportPrecheckReadModel>(
+    `/projects/${projectId}/contract-takeovers/import-precheck`,
     body
   );
 }

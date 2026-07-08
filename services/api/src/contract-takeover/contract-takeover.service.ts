@@ -14,6 +14,7 @@ import type {
   CreateContractTakeoverDto,
   UpdateContractTakeoverDto
 } from "./dto/create-contract-takeover.dto";
+import type { PrecheckContractTakeoverImportDto } from "./dto/precheck-contract-takeover-import.dto";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
 const LIFECYCLE_STATUSES = [
@@ -42,6 +43,7 @@ const MONEY_FIELDS = [
   "historicalRetentionReleasedCents",
   "otherConfirmedOccupancyCents"
 ] as const satisfies readonly (keyof CreateContractTakeoverDto)[];
+const IMPORT_PRECHECK_MAX_ROWS = 200;
 
 type TakeoverClient = Pick<Prisma.TransactionClient, "contractTakeover">;
 type TakeoverReadClient = Pick<
@@ -122,6 +124,39 @@ export interface ContractTakeoverEvidenceFileReadModel {
   uploadedAt: Date;
   canDownload: boolean;
   disabledReason: string | null;
+}
+
+export type ContractTakeoverImportPrecheckIssueLevel = "error" | "warning";
+export type ContractTakeoverImportPrecheckStatus = "ready" | "blocked";
+
+export interface ContractTakeoverImportPrecheckIssue {
+  rowNo: number;
+  field: string;
+  level: ContractTakeoverImportPrecheckIssueLevel;
+  message: string;
+}
+
+export interface ContractTakeoverImportPrecheckRow {
+  rowNo: number;
+  code: string;
+  name: string;
+  counterparty: string;
+  amountCents: number | null;
+  takeoverLevel: string;
+  lifecycleStatus: string;
+  status: ContractTakeoverImportPrecheckStatus;
+  issues: ContractTakeoverImportPrecheckIssue[];
+}
+
+export interface ContractTakeoverImportPrecheckResult {
+  projectId: string;
+  totalRows: number;
+  readyRows: number;
+  blockedRows: number;
+  warningRows: number;
+  existingCodes: string[];
+  duplicatedCodes: string[];
+  rows: ContractTakeoverImportPrecheckRow[];
 }
 
 @Injectable()
@@ -378,6 +413,55 @@ export class ContractTakeoverService {
   async detail(projectId: string, takeoverId: string) {
     const takeover = await this.getProjectTakeover(this.prisma, projectId, takeoverId);
     return this.toReadModelFromDatabase(this.prisma, takeover);
+  }
+
+  async precheckImport(
+    projectId: string,
+    input: PrecheckContractTakeoverImportDto
+  ): Promise<ContractTakeoverImportPrecheckResult> {
+    const rows = this.parsePrecheckRows(input);
+    const normalizedCodes = unique(
+      rows
+        .map((row) => stringValue(row["code"]))
+        .filter((code): code is string => Boolean(code))
+    );
+    const existingContracts = normalizedCodes.length
+      ? await this.prisma.contract.findMany({
+          where: {
+            OR: [{ code: { in: normalizedCodes } }, { temporaryCode: { in: normalizedCodes } }]
+          },
+          select: { code: true, temporaryCode: true }
+        })
+      : [];
+    const existingCodes = new Set(
+      existingContracts.flatMap((contract) =>
+        [contract.code, contract.temporaryCode].filter(
+          (code): code is string => typeof code === "string" && normalizedCodes.includes(code)
+        )
+      )
+    );
+    const duplicatedCodes = new Set(
+      normalizedCodes.filter(
+        (code) => rows.filter((row) => stringValue(row["code"]) === code).length > 1
+      )
+    );
+
+    const checkedRows = rows.map((row, index) =>
+      this.precheckImportRow(row, index + 1, existingCodes, duplicatedCodes)
+    );
+
+    return {
+      projectId,
+      totalRows: checkedRows.length,
+      readyRows: checkedRows.filter((row) => row.status === "ready").length,
+      blockedRows: checkedRows.filter((row) => row.status === "blocked").length,
+      warningRows: checkedRows.filter((row) =>
+        row.issues.some((issue) => issue.level === "warning")
+      ).length,
+      existingCodes: [...existingCodes].sort(),
+      duplicatedCodes: [...duplicatedCodes].sort(),
+      rows: checkedRows
+    };
   }
 
   async submitReview(projectId: string, takeoverId: string, actorUserId: string) {
@@ -657,6 +741,100 @@ export class ContractTakeoverService {
     };
   }
 
+  private parsePrecheckRows(input: PrecheckContractTakeoverImportDto) {
+    if (!isPlainObject(input) || !Array.isArray(input.rows)) {
+      throw new Error("Import precheck rows must be an array");
+    }
+    if (input.rows.length === 0) {
+      throw new Error("Import precheck rows cannot be empty");
+    }
+    if (input.rows.length > IMPORT_PRECHECK_MAX_ROWS) {
+      throw new Error(`Import precheck supports at most ${IMPORT_PRECHECK_MAX_ROWS} rows`);
+    }
+
+    return input.rows.map((row, index) => {
+      if (!isPlainObject(row)) {
+        throw new Error(`Import precheck row ${index + 1} must be an object`);
+      }
+      return row;
+    });
+  }
+
+  private precheckImportRow(
+    row: Record<string, unknown>,
+    fallbackRowNo: number,
+    existingCodes: ReadonlySet<string>,
+    duplicatedCodes: ReadonlySet<string>
+  ): ContractTakeoverImportPrecheckRow {
+    const rowNo = integerOrFallback(row["rowNo"], fallbackRowNo);
+    const issues: ContractTakeoverImportPrecheckIssue[] = [];
+    const code = stringValue(row["code"]);
+    const name = stringValue(row["name"]);
+    const counterparty = stringValue(row["counterparty"]);
+    const amountCents = integerValue(row["amountCents"]);
+    const signedAt = stringValue(row["signedAt"]);
+    const takeoverLevel = stringValue(row["takeoverLevel"]);
+    const lifecycleStatus = stringValue(row["lifecycleStatus"]);
+
+    if (!code) {
+      issues.push(issue(rowNo, "code", "error", "合同编号不能为空"));
+    } else {
+      if (existingCodes.has(code)) {
+        issues.push(issue(rowNo, "code", "error", "合同编号已存在于系统"));
+      }
+      if (duplicatedCodes.has(code)) {
+        issues.push(issue(rowNo, "code", "error", "合同编号在本次导入中重复"));
+      }
+    }
+    if (!name) {
+      issues.push(issue(rowNo, "name", "error", "合同名称不能为空"));
+    }
+    if (!counterparty) {
+      issues.push(issue(rowNo, "counterparty", "error", "相对方不能为空"));
+    }
+    if (amountCents === null || amountCents <= 0) {
+      issues.push(issue(rowNo, "amountCents", "error", "合同金额分值必须是正整数"));
+    }
+    if (!isStrictDateText(signedAt)) {
+      issues.push(issue(rowNo, "signedAt", "error", "签订日期必须是有效日期 YYYY-MM-DD"));
+    }
+    if (!TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel)) {
+      issues.push(issue(rowNo, "takeoverLevel", "error", "接管等级必须是 A、B 或 C"));
+    }
+    if (!LIFECYCLE_STATUSES.includes(lifecycleStatus as ContractLifecycleStatus)) {
+      issues.push(issue(rowNo, "lifecycleStatus", "error", "履约状态不在系统支持范围内"));
+    }
+
+    for (const field of MONEY_FIELDS) {
+      const value = isBlankInput(row[field]) ? 0 : integerValue(row[field]);
+      if (value === null || value < 0) {
+        issues.push(issue(rowNo, field, "error", `${field} 必须是非负整数分值`));
+      }
+    }
+
+    if (!stringValue(row["paymentTermsOriginalText"])) {
+      issues.push(issue(rowNo, "paymentTermsOriginalText", "warning", "未填写付款条款摘要"));
+    }
+    if (!stringValue(row["balanceSourceSummary"])) {
+      issues.push(issue(rowNo, "balanceSourceSummary", "warning", "未填写余额来源说明"));
+    }
+    if (!stringValue(row["evidenceSummary"])) {
+      issues.push(issue(rowNo, "evidenceSummary", "warning", "未填写证据说明"));
+    }
+
+    return {
+      rowNo,
+      code,
+      name,
+      counterparty,
+      amountCents,
+      takeoverLevel,
+      lifecycleStatus,
+      status: issues.some((item) => item.level === "error") ? "blocked" : "ready",
+      issues
+    };
+  }
+
   private normalizeCreateInput(input: CreateContractTakeoverDto) {
     if (!input.code?.trim()) throw new Error("Contract code is required");
     if (!input.name?.trim()) throw new Error("Contract name is required");
@@ -675,10 +853,10 @@ export class ContractTakeoverService {
       throw new Error("signedAt must be a valid date string");
     }
 
-    const signedAt = new Date(input.signedAt);
-    if (Number.isNaN(signedAt.getTime())) {
+    if (!isStrictDateText(input.signedAt)) {
       throw new Error("signedAt must be a valid date string");
     }
+    const signedAt = new Date(input.signedAt);
 
     const money = Object.fromEntries(
       MONEY_FIELDS.map((field) => {
@@ -724,4 +902,63 @@ function evidencePurposeLabel(value: ContractTakeoverEvidencePurpose) {
   };
 
   return labels[value];
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function integerValue(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value : null;
+  }
+  if (typeof value === "bigint") {
+    if (value < BigInt(Number.MIN_SAFE_INTEGER) || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+      return null;
+    }
+    return Number(value);
+  }
+  if (typeof value === "string" && /^-?\d+$/.test(value.trim())) {
+    const parsed = Number(value.trim());
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function integerOrFallback(value: unknown, fallback: number): number {
+  const parsed = integerValue(value);
+  return parsed !== null && parsed > 0 ? parsed : fallback;
+}
+
+function isBlankInput(value: unknown): boolean {
+  return value === undefined || value === "";
+}
+
+function isStrictDateText(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const [yearText, monthText, dayText] = value.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function issue(
+  rowNo: number,
+  field: string,
+  level: ContractTakeoverImportPrecheckIssueLevel,
+  message: string
+): ContractTakeoverImportPrecheckIssue {
+  return { rowNo, field, level, message };
 }
