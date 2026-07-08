@@ -23,7 +23,7 @@ if [[ "$used_percent" =~ ^[0-9]+$ ]] && (( used_percent >= DISK_MAX_USED_PERCENT
 fi
 
 if command -v journalctl >/dev/null 2>&1; then
-  warning_count="$(journalctl -u "$SERVICE_NAME" --since "$LOG_SINCE" -p warning --no-pager 2>/dev/null | wc -l | tr -d ' ')"
+  warning_count="$(journalctl -u "$SERVICE_NAME" --since "$LOG_SINCE" -p warning --no-pager 2>/dev/null | awk '$0 != "-- No entries --" { count++ } END { print count + 0 }')"
   if [[ "$warning_count" =~ ^[0-9]+$ ]] && (( warning_count > 0 )); then
     failures+=("$warning_count warning/error log lines for $SERVICE_NAME since $LOG_SINCE")
   fi
