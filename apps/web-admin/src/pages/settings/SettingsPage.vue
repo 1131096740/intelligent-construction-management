@@ -96,6 +96,51 @@
         {{ entityMessage }}
       </div>
     </t-card>
+
+    <t-card
+      title="审批规则只读配置"
+      :bordered="true"
+      class="settings-card approval-settings-card"
+    >
+      <p class="hint">
+        当前生产审批路线由后端冻结到审批实例。此处展示核心流程，不开放在线编辑。
+      </p>
+      <div class="approval-flow-grid">
+        <article
+          v-for="rule in approvalFlowRules"
+          :key="rule.id"
+          class="approval-flow"
+        >
+          <header>
+            <div>
+              <strong>{{ rule.title }}</strong>
+              <span>{{ rule.businessType }}</span>
+            </div>
+            <small>只读</small>
+          </header>
+          <ol>
+            <li
+              v-for="node in rule.nodes"
+              :key="`${rule.id}-${node.name}`"
+            >
+              <span class="node-index">{{ rule.nodes.indexOf(node) + 1 }}</span>
+              <div>
+                <strong>{{ node.name }}</strong>
+                <p>{{ modeLabel(node.mode) }} · {{ roleNames(node.roleKeys) }}</p>
+              </div>
+            </li>
+          </ol>
+          <ul class="guardrail-list">
+            <li
+              v-for="item in rule.guardrails"
+              :key="item"
+            >
+              {{ item }}
+            </li>
+          </ul>
+        </article>
+      </div>
+    </t-card>
   </div>
 </template>
 
@@ -108,6 +153,11 @@ import {
   uploadSignature,
   type CompanyEntityReadModel
 } from "../../api/core-flow-read.api";
+import {
+  approvalFlowRules,
+  modeLabel,
+  roleNames
+} from "./approval-flow-readonly.config";
 
 const companyEntities = ref<CompanyEntityReadModel[]>([]);
 const signatureInput = ref<HTMLInputElement | null>(null);
@@ -216,6 +266,10 @@ async function submitEntity() {
   max-width: 720px;
 }
 
+.approval-settings-card {
+  max-width: 1120px;
+}
+
 .hint {
   color: var(--td-text-color-secondary, #666);
   margin-bottom: 12px;
@@ -263,5 +317,83 @@ async function submitEntity() {
 
 .msg.danger {
   color: var(--td-error-color, #d54941);
+}
+
+.approval-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.approval-flow {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--td-border-level-1-color, #ddd);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.approval-flow header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.approval-flow header div {
+  display: grid;
+  gap: 4px;
+}
+
+.approval-flow header span,
+.approval-flow header small {
+  color: var(--td-text-color-secondary, #666);
+}
+
+.approval-flow ol,
+.guardrail-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.approval-flow ol li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.node-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  color: #fff;
+  background: #165dff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.approval-flow ol p {
+  margin: 4px 0 0;
+  color: var(--td-text-color-secondary, #666);
+}
+
+.guardrail-list {
+  padding-top: 8px;
+  border-top: 1px solid var(--td-border-level-1-color, #ddd);
+  color: var(--td-text-color-secondary, #666);
+}
+
+@media (max-width: 900px) {
+  .approval-flow-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
