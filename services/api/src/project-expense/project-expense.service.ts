@@ -243,6 +243,9 @@ export class ProjectExpenseService {
     if (!confirmationPassword?.trim()) {
       throw new BadRequestException("附件下载密码必填");
     }
+    if (!downloadReason?.trim()) {
+      throw new BadRequestException("附件下载原因必填");
+    }
     if (!this.auth) {
       throw new Error("Auth service is required to confirm project expense attachment download");
     }
@@ -277,6 +280,9 @@ export class ProjectExpenseService {
   ) {
     if (!confirmationPassword?.trim()) {
       throw new BadRequestException("审批单下载密码必填");
+    }
+    if (!downloadReason?.trim()) {
+      throw new BadRequestException("审批单下载原因必填");
     }
     if (!this.auth) {
       throw new Error("Auth service is required to confirm project expense approval PDF download");

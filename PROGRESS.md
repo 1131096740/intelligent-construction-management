@@ -44,7 +44,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
-- 2026-07-08 (CodeX)：继续推进改造方案 P1「敏感文件下载原因」：通用私有文件下载票据新增必填下载原因，原因进入短时效 URL 签名并写入 `file.download.ticket` 与 `file.download` 审计；合同详情、结算详情、付款详情、资料库、合同工作台文档下载和项目支出附件/审批单下载均要求填写原因，空原因不发票据；报销/零星采购专用下载接口同步透传原因。验证：API 文件 Jest 50 例、API 项目支出 Jest 47 例、Web API/敏感动作 Vitest 224 例、API/Web typecheck、API/Web lint 通过。
+- 2026-07-08 (CodeX)：继续推进改造方案 P1「敏感文件下载原因」：通用私有文件下载票据新增必填下载原因，原因进入短时效 URL 签名并写入 `file.download.ticket` 与 `file.download` 审计；合同详情、结算详情、付款详情、资料库、合同工作台文档下载和项目支出附件/审批单下载均要求填写原因，空原因在控制器和服务层均不发票据；报销/零星采购专用下载接口同步透传原因。验证：API 文件 Jest 50 例、API 项目支出 Jest 49 例、Web API/敏感动作 Vitest 224 例、API/Web typecheck、API/Web lint 通过。
 - 2026-07-08 (CodeX)：按用户确认收窄“先不接 AI，只做导入预检”：历史合同接管新增只读导入预检 API 和 Web 面板，支持粘贴 Excel/CSV 行后校验必填、金额、日期、接管等级、履约状态、系统既有合同编号和批内重复编号；预检结果返回可导入/需修正/warning 明细，不创建合同、不写接管记录、不调用 AI/OCR，并收紧不存在日期和非法历史金额校验。验证：API 合同接管 Jest 13 例、Web API/配置 Vitest 223 例、API/Web typecheck、API/Web lint 通过。
 - 2026-07-08 (CodeX)：按用户确认推进 P2「小程序手机号密码登录与移动端直接审批」：小程序新增登录页，使用手机号 + 当前密码调用 `/api/auth/login`，本地保存访问令牌；移动待办未登录自动回登录页；后端 `/me/work-items` 审批待办补 `projectId/businessType/businessId`，并纳入项目支出审批，支持合同、结算、付款、报销/零星采购等项目支出在移动详情页直接通过或驳回；README 更新现场操作口径。验证：API MeService Jest 8 例、API typecheck、API lint、Web typecheck、小程序 JS 语法检查和 JSON 解析通过。
 - 2026-07-08 (CodeX)：按用户确认推进外围模块「零星采购完整闭环」：新增 `spot_purchase` 一等项目支出类型、采购类别、采购执行和收货确认字段/迁移；物资员发起、物资部主管 -> 项目经理 -> 财务总监 -> 董事长/总经理审批，审批通过后进入已批待付并生成零星采购审批单 PDF；出纳实付、凭证、财务入账、最终 PDF 归档沿用项目支出安全链路，入账完成后发起人可确认收货；资料库区分报销与零星采购 PDF 留档，Web 项目经营页支持零星采购提交、执行、付款、入账、收货确认状态展示与操作。验证：API 项目支出/控制器/资料库 Jest 50 例、shared-domain 权限 Vitest 56 例、Web API/配置 Vitest 221 例、API/Web typecheck、API/Web lint、Prisma validate 通过。

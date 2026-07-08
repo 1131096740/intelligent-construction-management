@@ -257,6 +257,34 @@ describe("ProjectExpenseService", () => {
     });
   });
 
+  it("rejects attachment download ticket creation without a download reason", async () => {
+    const prisma = {
+      projectExpenseRequest: {
+        findFirst: jest.fn()
+      }
+    };
+    const files = { createDownloadTicket: jest.fn() };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.createAttachmentDownloadTicket(
+        "project-1",
+        "expense-1",
+        "finance-1",
+        "current-password",
+        " "
+      )
+    ).rejects.toThrow("附件下载原因必填");
+    expect(prisma.projectExpenseRequest.findFirst).not.toHaveBeenCalled();
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(files.createDownloadTicket).not.toHaveBeenCalled();
+  });
+
   it("creates an approval PDF download ticket after password confirmation", async () => {
     const prisma = {
       projectExpenseRequest: {
@@ -312,6 +340,39 @@ describe("ProjectExpenseService", () => {
     });
   });
 
+  it("rejects approval PDF download ticket creation without a download reason", async () => {
+    const prisma = {
+      projectExpenseRequest: {
+        findFirst: jest.fn()
+      },
+      pdfDocument: {
+        findFirst: jest.fn()
+      },
+      ...roleTables("finance_staff")
+    };
+    const files = { createDownloadTicket: jest.fn() };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.createApprovalPdfDownloadTicket(
+        "project-1",
+        "expense-1",
+        "finance-1",
+        "current-password",
+        undefined
+      )
+    ).rejects.toThrow("审批单下载原因必填");
+    expect(prisma.projectExpenseRequest.findFirst).not.toHaveBeenCalled();
+    expect(prisma.pdfDocument.findFirst).not.toHaveBeenCalled();
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(files.createDownloadTicket).not.toHaveBeenCalled();
+  });
+
   it("uses a generic error when an actor cannot read the approval PDF", async () => {
     const prisma = {
       projectExpenseRequest: {
@@ -338,7 +399,7 @@ describe("ProjectExpenseService", () => {
         "expense-1",
         "stranger-1",
         "current-password",
-        undefined
+        "审批单复核"
       )
     ).rejects.toThrow("项目支出审批单不可下载");
     expect(prisma.pdfDocument.findFirst).not.toHaveBeenCalled();
