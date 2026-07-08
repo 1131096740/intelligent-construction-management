@@ -210,7 +210,7 @@
               ref="settlementArchiveFileInput"
               class="file-input"
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg"
+              :accept="CORE_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
               @change="selectSettlementArchiveFile"
             >
             <span class="file-hint">
@@ -411,6 +411,7 @@ import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { clearSelectedFileInput } from "../../components/file-input-reset.config";
+import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   confirmSettlementArchive,
@@ -446,8 +447,6 @@ const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const settlementArchiveFileInput = ref<HTMLInputElement | null>(null);
 const selectedSettlementArchiveFile = ref<File | null>(null);
-const settlementArchiveUploadAcceptText = "PDF、PNG、JPG、JPEG";
-const settlementArchiveUploadLimitText = "不超过 100 MB";
 const settlementArchiveForm = reactive({
   archiveFileId: "",
   confirmationPassword: "",
@@ -517,8 +516,8 @@ const settlementArchiveFileSummary = computed(() =>
   buildFileUploadSummary(
     selectedSettlementArchiveFile.value,
     archiveActionBusy.value === "upload",
-    settlementArchiveUploadAcceptText,
-    settlementArchiveUploadLimitText
+    CORE_ARCHIVE_UPLOAD_POLICY.acceptText,
+    CORE_ARCHIVE_UPLOAD_POLICY.limitText
   )
 );
 

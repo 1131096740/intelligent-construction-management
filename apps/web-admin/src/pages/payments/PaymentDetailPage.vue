@@ -129,7 +129,7 @@
               ref="paymentVoucherFileInput"
               class="file-input"
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg"
+              :accept="CORE_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
               @change="selectPaymentVoucherFile"
             >
             <span class="file-hint">
@@ -183,7 +183,7 @@
               ref="paymentPdfArchiveFileInput"
               class="file-input"
               type="file"
-              accept="application/pdf"
+              :accept="PDF_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
               @change="selectPaymentPdfArchiveFile"
             >
             <span class="file-hint">
@@ -439,6 +439,10 @@ import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { clearSelectedFileInput } from "../../components/file-input-reset.config";
+import {
+  CORE_ARCHIVE_UPLOAD_POLICY,
+  PDF_ARCHIVE_UPLOAD_POLICY
+} from "../../components/file-upload-policy.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   createPrivateFileDownloadTicket,
@@ -479,10 +483,6 @@ const paymentVoucherFileInput = ref<HTMLInputElement | null>(null);
 const selectedPaymentVoucherFile = ref<File | null>(null);
 const paymentPdfArchiveFileInput = ref<HTMLInputElement | null>(null);
 const selectedPaymentPdfArchiveFile = ref<File | null>(null);
-const paymentVoucherUploadAcceptText = "PDF、PNG、JPG、JPEG";
-const paymentVoucherUploadLimitText = "不超过 100 MB";
-const paymentPdfArchiveUploadAcceptText = "PDF";
-const paymentPdfArchiveUploadLimitText = "不超过 100 MB";
 const paymentActionForm = reactive({
   approvedAmountYuan: "",
   approvalComment: "",
@@ -547,16 +547,16 @@ const paymentVoucherFileSummary = computed(() =>
   buildFileUploadSummary(
     selectedPaymentVoucherFile.value,
     actionBusy.value === "execution",
-    paymentVoucherUploadAcceptText,
-    paymentVoucherUploadLimitText
+    CORE_ARCHIVE_UPLOAD_POLICY.acceptText,
+    CORE_ARCHIVE_UPLOAD_POLICY.limitText
   )
 );
 const paymentPdfArchiveFileSummary = computed(() =>
   buildFileUploadSummary(
     selectedPaymentPdfArchiveFile.value,
     actionBusy.value === "pdfArchive",
-    paymentPdfArchiveUploadAcceptText,
-    paymentPdfArchiveUploadLimitText
+    PDF_ARCHIVE_UPLOAD_POLICY.acceptText,
+    PDF_ARCHIVE_UPLOAD_POLICY.limitText
   )
 );
 const paymentActionByKey = computed(
