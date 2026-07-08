@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { confirmSensitiveAction } from "./confirm-sensitive-action";
+import { confirmSensitiveAction, promptSensitiveActionReason } from "./confirm-sensitive-action";
 
 describe("confirmSensitiveAction", () => {
   it("passes the business consequence message to the confirmation UI", () => {
@@ -11,5 +11,11 @@ describe("confirmSensitiveAction", () => {
 
   it("cancels the sensitive action when the user rejects the confirmation", () => {
     expect(confirmSensitiveAction("确认登记实付", () => false)).toBe(false);
+  });
+
+  it("requires a non-empty sensitive action reason", () => {
+    expect(promptSensitiveActionReason("请输入下载原因", () => " 合同复核 ")).toBe("合同复核");
+    expect(promptSensitiveActionReason("请输入下载原因", () => "   ")).toBeNull();
+    expect(promptSensitiveActionReason("请输入下载原因", () => null)).toBeNull();
   });
 });

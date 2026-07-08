@@ -422,7 +422,7 @@ import {
   uploadSettlementArchiveFile,
   withdrawSettlementApproval
 } from "../../api/core-flow-read.api";
-import { confirmSensitiveAction } from "../confirm-sensitive-action";
+import { confirmSensitiveAction, promptSensitiveActionReason } from "../confirm-sensitive-action";
 import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
   settlementAttachmentTemplates,
@@ -726,14 +726,23 @@ async function submitSettlementFileDownload() {
   }
   if (
     !confirmSensitiveAction(
-      "确认下载后，系统将校验当前密码并记录下载人、结算文件和业务单据审计。是否继续？"
+      "确认下载后，系统将校验当前密码并记录下载人、结算文件、业务单据和下载原因审计。是否继续？"
     )
   ) {
     return;
   }
+  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
+  if (!downloadReason) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = "请填写下载原因";
+    return;
+  }
 
   await runArchiveAction("download", async () => {
-    const ticket = await createPrivateFileDownloadTicket(fileId, { confirmationPassword });
+    const ticket = await createPrivateFileDownloadTicket(fileId, {
+      confirmationPassword,
+      downloadReason
+    });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
   });
 }

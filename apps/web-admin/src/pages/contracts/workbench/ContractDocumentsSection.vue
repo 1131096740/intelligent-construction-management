@@ -303,6 +303,7 @@ import {
   type OfflineRevisionFormState,
   type WorkbenchDocument
 } from "./contract-bill-editor";
+import { promptSensitiveActionReason } from "../../confirm-sensitive-action";
 
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
@@ -610,8 +611,14 @@ async function openFile(fileId: string) {
   busy.value = true;
   message.value = "";
   try {
+    const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
+    if (!downloadReason) {
+      message.value = "请填写下载原因";
+      return;
+    }
     const ticket = await createPrivateFileDownloadTicket(fileId, {
-      confirmationPassword: confirmationPassword.value
+      confirmationPassword: confirmationPassword.value,
+      downloadReason
     });
     window.open(ticket.downloadUrl, "_blank", "noopener,noreferrer");
   } catch (error) {

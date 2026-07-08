@@ -896,6 +896,7 @@ import {
   findProjectProxySettlement,
   type ExecutiveProjectOverview
 } from "./project-operating.config";
+import { promptSensitiveActionReason } from "../confirm-sensitive-action";
 
 type ReceiptSourceType = "general_contractor_payment" | "owner_direct_payment" | "other";
 type ProxyPaymentType = "material" | "equipment" | "labor" | "professional_subcontract" | "other";
@@ -1686,8 +1687,13 @@ async function downloadExpenseAttachment() {
     if (!row.hasAttachment) {
       throw new Error("该支出单未上传申请附件");
     }
+    const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
+    if (!downloadReason) {
+      throw new Error("请填写下载原因");
+    }
     const ticket = await downloadProjectExpenseAttachment(selectedProjectId.value, row.id, {
-      confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "附件下载密码")
+      confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "附件下载密码"),
+      downloadReason
     });
     triggerFileDownload(apiDownloadUrl(ticket.downloadUrl), ticket.fileName);
   });
@@ -1698,8 +1704,13 @@ async function downloadExpenseApprovalPdf() {
     if (!row.hasApprovalPdf) {
       throw new Error("该支出单审批单 PDF 尚未生成");
     }
+    const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
+    if (!downloadReason) {
+      throw new Error("请填写下载原因");
+    }
     const ticket = await downloadProjectExpenseApprovalPdf(selectedProjectId.value, row.id, {
-      confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "审批单下载密码")
+      confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "审批单下载密码"),
+      downloadReason
     });
     triggerFileDownload(apiDownloadUrl(ticket.downloadUrl), ticket.fileName);
   });

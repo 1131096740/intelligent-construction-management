@@ -23,6 +23,7 @@ const FUNDS_OVERVIEW_POSITIONS = [
 
 interface CreateAttachmentDownloadTicketDto {
   confirmationPassword?: string;
+  downloadReason?: string;
 }
 
 @Controller("projects/:projectId/expense-requests")
@@ -76,7 +77,8 @@ export class ProjectExpenseController {
       projectId,
       expenseRequestId,
       user.id,
-      body?.confirmationPassword
+      body?.confirmationPassword,
+      body?.downloadReason
     );
   }
 
@@ -91,7 +93,8 @@ export class ProjectExpenseController {
       projectId,
       expenseRequestId,
       user.id,
-      body?.confirmationPassword
+      body?.confirmationPassword,
+      body?.downloadReason
     );
   }
 

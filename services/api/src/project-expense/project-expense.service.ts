@@ -237,7 +237,8 @@ export class ProjectExpenseService {
     projectId: string,
     expenseRequestId: string,
     actorUserId: string,
-    confirmationPassword: string | undefined
+    confirmationPassword: string | undefined,
+    downloadReason: string | undefined
   ) {
     if (!confirmationPassword?.trim()) {
       throw new BadRequestException("附件下载密码必填");
@@ -261,14 +262,18 @@ export class ProjectExpenseService {
     }
 
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
-    return this.files.createDownloadTicket(expense.attachmentFileId, { actorUserId });
+    return this.files.createDownloadTicket(expense.attachmentFileId, {
+      actorUserId,
+      downloadReason
+    });
   }
 
   async createApprovalPdfDownloadTicket(
     projectId: string,
     expenseRequestId: string,
     actorUserId: string,
-    confirmationPassword: string | undefined
+    confirmationPassword: string | undefined,
+    downloadReason: string | undefined
   ) {
     if (!confirmationPassword?.trim()) {
       throw new BadRequestException("审批单下载密码必填");
@@ -308,7 +313,7 @@ export class ProjectExpenseService {
     }
 
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
-    return this.files.createDownloadTicket(pdf.fileId, { actorUserId });
+    return this.files.createDownloadTicket(pdf.fileId, { actorUserId, downloadReason });
   }
 
   async create(projectId: string, actorUserId: string, input: CreateProjectExpenseRequestDto) {

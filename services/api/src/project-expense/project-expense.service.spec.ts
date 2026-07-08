@@ -241,7 +241,8 @@ describe("ProjectExpenseService", () => {
       "project-1",
       "expense-1",
       "finance-1",
-      "current-password"
+      "current-password",
+      "报销附件复核"
     );
 
     expect(ticket.downloadUrl).toBe("/files/file-expense-1/download");
@@ -251,7 +252,8 @@ describe("ProjectExpenseService", () => {
     });
     expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
     expect(files.createDownloadTicket).toHaveBeenCalledWith("file-expense-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "报销附件复核"
     });
   });
 
@@ -286,7 +288,8 @@ describe("ProjectExpenseService", () => {
       "project-1",
       "expense-1",
       "finance-1",
-      "current-password"
+      "current-password",
+      "审批单复核"
     );
 
     expect(ticket.downloadUrl).toBe("/files/file-pdf-1/download");
@@ -304,7 +307,8 @@ describe("ProjectExpenseService", () => {
     });
     expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
     expect(files.createDownloadTicket).toHaveBeenCalledWith("file-pdf-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "审批单复核"
     });
   });
 
@@ -333,7 +337,8 @@ describe("ProjectExpenseService", () => {
         "project-1",
         "expense-1",
         "stranger-1",
-        "current-password"
+        "current-password",
+        undefined
       )
     ).rejects.toThrow("项目支出审批单不可下载");
     expect(prisma.pdfDocument.findFirst).not.toHaveBeenCalled();

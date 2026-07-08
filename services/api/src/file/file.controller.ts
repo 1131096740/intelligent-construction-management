@@ -26,6 +26,7 @@ interface MemoryUploadedFile {
 
 interface CreateDownloadTicketDto {
   confirmationPassword?: string;
+  downloadReason?: string;
 }
 
 function normalizeUploadedOriginalName(originalName: string) {
@@ -78,9 +79,15 @@ export class FileController {
     if (!input?.confirmationPassword?.trim()) {
       throw new Error("Confirmation password is required");
     }
+    if (!input.downloadReason?.trim()) {
+      throw new Error("Download reason is required");
+    }
 
     await this.auth.confirmPassword(user.id, input.confirmationPassword);
-    return this.files.createDownloadTicket(fileId, { actorUserId: user.id });
+    return this.files.createDownloadTicket(fileId, {
+      actorUserId: user.id,
+      downloadReason: input.downloadReason
+    });
   }
 
   // 下载走短时效票据（expiresAt + token），用于可直接打开的链接，因此不强制 Bearer。
@@ -90,10 +97,16 @@ export class FileController {
     @Param("fileId") fileId: string,
     @Query("actorUserId") actorUserId: string,
     @Query("expiresAt") expiresAt: string,
+    @Query("downloadReason") downloadReason: string,
     @Query("token") token: string,
     @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
   ) {
-    const result = await this.files.readPrivateFile(fileId, { actorUserId, expiresAt, token });
+    const result = await this.files.readPrivateFile(fileId, {
+      actorUserId,
+      expiresAt,
+      downloadReason,
+      token
+    });
 
     response.set({
       "Content-Type": result.file.mimeType,

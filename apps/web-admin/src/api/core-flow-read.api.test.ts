@@ -560,10 +560,12 @@ describe("core flow read API client", () => {
       note: "数量无误"
     });
     await downloadProjectExpenseAttachment("project-1", "expense-1", {
-      confirmationPassword: "current-password"
+      confirmationPassword: "current-password",
+      downloadReason: "报销附件复核"
     });
     await downloadProjectExpenseApprovalPdf("project-1", "expense-1", {
-      confirmationPassword: "current-password"
+      confirmationPassword: "current-password",
+      downloadReason: "审批单复核"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -634,12 +636,14 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[8][1]?.body).toBe(
       JSON.stringify({
-        confirmationPassword: "current-password"
+        confirmationPassword: "current-password",
+        downloadReason: "报销附件复核"
       })
     );
     expect(fetchMock.mock.calls[9][1]?.body).toBe(
       JSON.stringify({
-        confirmationPassword: "current-password"
+        confirmationPassword: "current-password",
+        downloadReason: "审批单复核"
       })
     );
   });
@@ -1072,7 +1076,8 @@ describe("core flow read API client", () => {
     } as Response);
 
     await createPrivateFileDownloadTicket("file-1", {
-      confirmationPassword: "current-password"
+      confirmationPassword: "current-password",
+      downloadReason: "合同归档复核"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -1080,7 +1085,7 @@ describe("core flow read API client", () => {
     ]);
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
-      JSON.stringify({ confirmationPassword: "current-password" })
+      JSON.stringify({ confirmationPassword: "current-password", downloadReason: "合同归档复核" })
     );
   });
 

@@ -86,11 +86,14 @@ describe("FileController authorization wiring", () => {
     await controller.createDownloadTicket(
       "file-1",
       { id: "user-1", name: "张三", phone: "13800000000" },
-      { confirmationPassword: "current-password" }
+      { confirmationPassword: "current-password", downloadReason: "合同归档复核" }
     );
 
     expect(auth.confirmPassword).toHaveBeenCalledWith("user-1", "current-password");
-    expect(files.createDownloadTicket).toHaveBeenCalledWith("file-1", { actorUserId: "user-1" });
+    expect(files.createDownloadTicket).toHaveBeenCalledWith("file-1", {
+      actorUserId: "user-1",
+      downloadReason: "合同归档复核"
+    });
   });
 
   it("does not issue a private file download ticket without confirmation password", async () => {
@@ -109,6 +112,27 @@ describe("FileController authorization wiring", () => {
         { confirmationPassword: "" }
       )
     ).rejects.toThrow("Confirmation password is required");
+
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(files.createDownloadTicket).not.toHaveBeenCalled();
+  });
+
+  it("does not issue a private file download ticket without a download reason", async () => {
+    const files = {
+      createDownloadTicket: jest.fn()
+    };
+    const auth = {
+      confirmPassword: jest.fn()
+    };
+    const controller = new FileController(files as never, auth as never);
+
+    await expect(
+      controller.createDownloadTicket(
+        "file-1",
+        { id: "user-1", name: "张三", phone: "13800000000" },
+        { confirmationPassword: "current-password", downloadReason: "" }
+      )
+    ).rejects.toThrow("Download reason is required");
 
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(files.createDownloadTicket).not.toHaveBeenCalled();

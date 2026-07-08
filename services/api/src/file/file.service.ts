@@ -19,10 +19,12 @@ export interface ReadPrivateFileInput {
   actorUserId: string;
   expiresAt: string;
   token: string;
+  downloadReason?: string;
 }
 
 export interface CreateFileDownloadTicketInput {
   actorUserId: string;
+  downloadReason?: string;
 }
 
 export interface InternalFileBuffer {
@@ -196,6 +198,14 @@ export class PrivateFileStorage {
   }
 }
 
+function normalizeDownloadReason(value: string | undefined): string {
+  const reason = value?.trim() || "业务系统下载";
+  if (reason.length > 200) {
+    throw new Error("Download reason must be at most 200 characters");
+  }
+  return reason;
+}
+
 @Injectable()
 export class FileService {
   constructor(
@@ -259,6 +269,7 @@ export class FileService {
     if (!input.actorUserId.trim()) {
       throw new Error("Actor user id is required");
     }
+    const downloadReason = normalizeDownloadReason(input.downloadReason);
 
     return this.prisma.$transaction(async (tx) => {
       const file = await tx.fileObject.findUnique({
@@ -273,14 +284,15 @@ export class FileService {
 
       const expiresAtMs = Date.now() + 5 * 60 * 1000;
       const expiresAt = new Date(expiresAtMs).toISOString();
-      const token = this.signDownloadToken(file.id, input.actorUserId, expiresAt);
+      const token = this.signDownloadToken(file.id, input.actorUserId, expiresAt, downloadReason);
       await this.audit.record(tx, {
         actorUserId: input.actorUserId,
         action: "file.download.ticket",
         businessType: "file_object",
         businessId: file.id,
         metadata: {
-          expiresAt
+          expiresAt,
+          downloadReason
         }
       });
 
@@ -294,6 +306,8 @@ export class FileService {
           input.actorUserId
         )}&expiresAt=${encodeURIComponent(
           expiresAt
+        )}&downloadReason=${encodeURIComponent(
+          downloadReason
         )}&token=${encodeURIComponent(token)}`
       };
     });
@@ -307,8 +321,17 @@ export class FileService {
     if (Number.isNaN(Date.parse(input.expiresAt)) || Date.parse(input.expiresAt) < Date.now()) {
       throw new Error("Private file download ticket expired");
     }
+    const downloadReason = normalizeDownloadReason(input.downloadReason);
 
-    if (!this.verifyDownloadToken(fileId, input.actorUserId, input.expiresAt, input.token)) {
+    if (
+      !this.verifyDownloadToken(
+        fileId,
+        input.actorUserId,
+        input.expiresAt,
+        downloadReason,
+        input.token
+      )
+    ) {
       throw new Error("Invalid private file download token");
     }
 
@@ -334,7 +357,8 @@ export class FileService {
         businessId: file.id,
         metadata: {
           originalName: file.originalName,
-          sizeBytes: file.sizeBytes
+          sizeBytes: file.sizeBytes,
+          downloadReason
         }
       })
     );
@@ -812,14 +836,27 @@ export class FileService {
     return Array.from(new Set([...positionKeys, ...memberKeys]));
   }
 
-  private signDownloadToken(fileId: string, actorUserId: string, expiresAt: string) {
+  private signDownloadToken(
+    fileId: string,
+    actorUserId: string,
+    expiresAt: string,
+    downloadReason: string
+  ) {
     return createHmac("sha256", this.downloadSecret())
-      .update(`${fileId}.${actorUserId}.${expiresAt}`)
+      .update(`${fileId}.${actorUserId}.${expiresAt}.${downloadReason}`)
       .digest("base64url");
   }
 
-  private verifyDownloadToken(fileId: string, actorUserId: string, expiresAt: string, token: string) {
-    const expected = Buffer.from(this.signDownloadToken(fileId, actorUserId, expiresAt));
+  private verifyDownloadToken(
+    fileId: string,
+    actorUserId: string,
+    expiresAt: string,
+    downloadReason: string,
+    token: string
+  ) {
+    const expected = Buffer.from(
+      this.signDownloadToken(fileId, actorUserId, expiresAt, downloadReason)
+    );
     const actual = Buffer.from(token);
 
     return expected.length === actual.length && timingSafeEqual(expected, actual);

@@ -171,7 +171,7 @@ import {
   createPrivateFileDownloadTicket,
   fetchArchives
 } from "../../api/core-flow-read.api";
-import { confirmSensitiveAction } from "../confirm-sensitive-action";
+import { confirmSensitiveAction, promptSensitiveActionReason } from "../confirm-sensitive-action";
 import type { ArchiveLedgerRow, ArchiveTone } from "./archive-list.config";
 import {
   archiveAccessStatusOptions,
@@ -298,16 +298,23 @@ async function confirmDownload() {
   }
   if (
     !confirmSensitiveAction(
-      "确认下载后，系统将校验当前密码并记录下载人、资料文件和业务单据审计。是否继续？"
+      "确认下载后，系统将校验当前密码并记录下载人、资料文件、业务单据和下载原因审计。是否继续？"
     )
   ) {
+    return;
+  }
+  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
+  if (!downloadReason) {
+    message.value = "请填写下载原因。";
+    messageTone.value = "danger";
     return;
   }
 
   downloadBusy.value = true;
   try {
     const ticket = await createPrivateFileDownloadTicket(target.fileId, {
-      confirmationPassword: password
+      confirmationPassword: password,
+      downloadReason
     });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
     message.value = "下载链接已生成，后台已记录下载审计。";

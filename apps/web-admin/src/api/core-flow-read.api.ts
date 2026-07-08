@@ -1075,6 +1075,7 @@ export function uploadPrivateFile(file: Blob, fileName: string) {
 
 export interface CreatePrivateFileDownloadTicketPayload {
   confirmationPassword: string;
+  downloadReason: string;
 }
 
 export function createPrivateFileDownloadTicket(

@@ -90,14 +90,15 @@ describe("ProjectExpenseController authorization wiring", () => {
       "project-1",
       "expense-1",
       { id: "user-1" } as never,
-      { confirmationPassword: "current-password" }
+      { confirmationPassword: "current-password", downloadReason: "报销附件复核" }
     );
 
     expect(expenses.createAttachmentDownloadTicket).toHaveBeenCalledWith(
       "project-1",
       "expense-1",
       "user-1",
-      "current-password"
+      "current-password",
+      "报销附件复核"
     );
   });
 
@@ -109,14 +110,15 @@ describe("ProjectExpenseController authorization wiring", () => {
       "project-1",
       "expense-1",
       { id: "user-1" } as never,
-      { confirmationPassword: "current-password" }
+      { confirmationPassword: "current-password", downloadReason: "审批单复核" }
     );
 
     expect(expenses.createApprovalPdfDownloadTicket).toHaveBeenCalledWith(
       "project-1",
       "expense-1",
       "user-1",
-      "current-password"
+      "current-password",
+      "审批单复核"
     );
   });
 

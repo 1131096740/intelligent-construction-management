@@ -399,12 +399,16 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "合同归档复核"
     });
 
     expect(ticket.fileId).toBe("file-1");
     expect(ticket.downloadUrl).toContain("/files/file-1/download?");
     expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
+    expect(ticket.downloadUrl).toContain(
+      `downloadReason=${encodeURIComponent("合同归档复核")}`
+    );
     expect(ticket.expiresAt).toMatch(/T/);
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "finance-1",
@@ -412,7 +416,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "合同归档复核"
       }
     });
   });
@@ -517,7 +522,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "业务系统下载"
       }
     });
   });
@@ -686,7 +692,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "业务系统下载"
       }
     });
   });
@@ -746,7 +753,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "业务系统下载"
       }
     });
   });
@@ -807,7 +815,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "业务系统下载"
       }
     });
   });
@@ -969,7 +978,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "业务系统下载"
       }
     });
   });
@@ -1085,7 +1095,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "业务系统下载"
       }
     });
   });
@@ -1199,7 +1210,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "业务系统下载"
       }
     });
   });
@@ -1260,7 +1272,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "业务系统下载"
       }
     });
   });
@@ -1339,7 +1352,8 @@ describe("FileService", () => {
       businessType: "file_object",
       businessId: "file-1",
       metadata: {
-        expiresAt: ticket.expiresAt
+        expiresAt: ticket.expiresAt,
+        downloadReason: "业务系统下载"
       }
     });
   });
@@ -1968,7 +1982,8 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         originalName: "盖章合同.pdf",
-        sizeBytes: 12
+        sizeBytes: 12,
+        downloadReason: "业务系统下载"
       }
     });
   });
