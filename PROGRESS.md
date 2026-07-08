@@ -44,6 +44,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：恢复生产自动部署：GitHub Actions `Deploy to server` 失败根因是生产服务器 `/opt/jiangkong/scripts/ops/check-runtime-health.sh` 存在已入仓的本地热修补丁，阻塞 `git merge --ff-only origin/main`。已登录 `ubuntu@162.14.116.192` 备份服务器文件到 `/opt/jiangkong/.deploy-backups/20260709010447`，还原阻塞文件并快进到 `7c06949`；补齐服务器本地 `/opt/jiangkong/deploy.sh` 的 API 重启与 Nginx reload 步骤，手动部署成功后重跑失败的 GitHub Actions job，流水线已转绿。验证：生产 Prisma 两条新迁移应用成功，API `active`，`/api/health` 返回 OK，前端 HTTPS 首页返回 200。
 - 2026-07-09 (CodeX)：继续推进到前端改造可验收口径「Web 生产构建闸门修复与总复验」：修复系统治理只读配置页从 CommonJS shared-domain 包入口导入运行时字典常量导致 Vite 生产构建失败的问题，改为从本页类型覆盖的 label map 派生岗位和状态字典，并显式导出 shared-domain 角色常量；不改业务字典语义、不改页面展示。验证：Web 全量 Vitest 35 套 / 257 例、Web typecheck、Web lint、Web build、Web E2E lint、Web Playwright P0 冒烟 2 例通过 / 2 例按真实账号环境变量跳过、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：继续推进改造方案 P0「结算详情错误文案去内部字段化」：结算详情所有动作前置校验从“结算ID不能为空”改为“结算编号不能为空”，避免操作失败时向业务用户暴露内部字段语言；不改接口参数、不改业务状态。验证：合同/结算/付款详情定向搜索无 `结算ID`、`Internal server error`、`Forbidden` 残留，Web typecheck、Web lint、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：继续推进到前端改造可验收口径「核心详情页浏览器验收冒烟」：扩展 Web P0 Playwright 冒烟，mock 合同、结算、付款三类详情读模型并逐页验证流程摘要条、后端动作禁用原因、证据文件和关键流程/规则文案可见；使用英文兼容路由进入中文详情页，避免浏览器首屏加载中文路径编码导致路由不匹配。验证：Web Playwright P0 冒烟 2 例通过 / 2 例按真实账号环境变量跳过、Web typecheck、Web lint、`git diff --check` 通过。
