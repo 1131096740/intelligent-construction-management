@@ -23,6 +23,12 @@ export interface SettlementPaymentRule {
   paymentRequestStatus: string;
 }
 
+export interface SettlementFlowSummaryItem {
+  label: string;
+  value: string;
+  tone?: SettlementDetailTone;
+}
+
 export interface SettlementAttachmentTemplateAction {
   key: string;
   label: string;
@@ -98,3 +104,24 @@ export const settlementPaymentRules: SettlementPaymentRule[] = [
 
 export const settlementPaymentBlockMessage =
   "结算尚未生效，暂不可创建付款申请；付款比例和账期按绑定的付款条款版本执行。";
+
+export function buildSettlementFlowSummary(
+  meta: readonly SettlementDetailMetaItem[],
+  baseInfo: readonly SettlementDetailMetaItem[]
+): SettlementFlowSummaryItem[] {
+  return [
+    pickSummaryItem(meta, "当前状态"),
+    pickSummaryItem(meta, "关联合同版本"),
+    pickSummaryItem(baseInfo, "结算金额"),
+    pickSummaryItem(meta, "责任部门"),
+    pickSummaryItem(meta, "下一步动作")
+  ];
+}
+
+function pickSummaryItem(
+  items: readonly SettlementDetailMetaItem[],
+  label: string
+): SettlementFlowSummaryItem {
+  const item = items.find((candidate) => candidate.label === label);
+  return { label, value: item?.value ?? "-", tone: item?.tone };
+}

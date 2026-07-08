@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSettlementFlowSummary,
+  settlementBaseInfo,
   settlementArchiveResponsibilities,
   settlementAttachmentTemplates,
   settlementDetailMeta,
@@ -18,6 +20,24 @@ describe("settlement detail page configuration", () => {
       "责任部门",
       "下一步动作"
     ]);
+  });
+
+  it("builds a compact flow summary from existing settlement detail fields", () => {
+    expect(buildSettlementFlowSummary(settlementDetailMeta, settlementBaseInfo)).toEqual([
+      { label: "当前状态", value: "待归档确认", tone: "primary" },
+      { label: "关联合同版本", value: "合同 v1" },
+      { label: "结算金额", value: "¥320,000.00" },
+      { label: "责任部门", value: "合同部" },
+      { label: "下一步动作", value: "主管确认归档", tone: "primary" }
+    ]);
+  });
+
+  it("uses a dash when settlement flow summary source fields are missing", () => {
+    expect(buildSettlementFlowSummary([], [])[2]).toEqual({
+      label: "结算金额",
+      value: "-",
+      tone: undefined
+    });
   });
 
   it("keeps the approved settlement effectiveness sequence visible", () => {

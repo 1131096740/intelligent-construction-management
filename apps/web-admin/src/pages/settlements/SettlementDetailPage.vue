@@ -39,6 +39,19 @@
       </div>
     </div>
 
+    <div class="flow-summary-strip">
+      <div
+        v-for="item in settlementFlowSummaryView"
+        :key="item.label"
+        class="flow-summary-item"
+      >
+        <span>{{ item.label }}</span>
+        <strong :class="item.tone ? `tone-${item.tone}` : undefined">
+          {{ item.value }}
+        </strong>
+      </div>
+    </div>
+
     <div class="chain-strip">
       <span>业务链路</span>
       <t-link
@@ -433,6 +446,7 @@ import {
 import { confirmSensitiveAction, promptSensitiveActionReason } from "../confirm-sensitive-action";
 import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
+  buildSettlementFlowSummary,
   settlementAttachmentTemplates,
   settlementPaymentRuleColumns
 } from "./settlement-detail.config";
@@ -461,6 +475,9 @@ const settlementDetailTitleView = computed(() =>
 );
 const settlementDetailMetaView = computed(() => settlementDetail.value?.meta ?? []);
 const settlementBaseInfoView = computed(() => settlementDetail.value?.baseInfo ?? []);
+const settlementFlowSummaryView = computed(() =>
+  buildSettlementFlowSummary(settlementDetailMetaView.value, settlementBaseInfoView.value)
+);
 const settlementEffectivenessStepsView = computed(
   () => settlementDetail.value?.effectivenessSteps ?? []
 );
@@ -856,6 +873,38 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   font-size: 13px;
 }
 
+.flow-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #dce1e8;
+}
+
+.flow-summary-item {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px;
+  background: #fff;
+}
+
+.flow-summary-item span {
+  color: #767f8d;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.flow-summary-item strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chain-strip {
   min-height: 40px;
   display: flex;
@@ -1113,6 +1162,7 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
 
 @media (max-width: 980px) {
   .meta-panel,
+  .flow-summary-strip,
   .detail-grid,
   .responsibility-strip,
   .payable-calculation,
