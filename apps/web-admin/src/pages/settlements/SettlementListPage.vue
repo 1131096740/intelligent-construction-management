@@ -147,6 +147,21 @@
       {{ message }}
     </div>
 
+    <div class="column-strip">
+      <span>列设置</span>
+      <label
+        v-for="option in settlementColumnOptions"
+        :key="option.key"
+      >
+        <input
+          type="checkbox"
+          :checked="visibleSettlementColumnKeys.includes(option.key)"
+          @change="toggleSettlementColumn(option.key)"
+        >
+        {{ option.title }}
+      </label>
+    </div>
+
     <t-card
       class="ledger-panel"
       :bordered="true"
@@ -154,7 +169,7 @@
       <t-table
         row-key="id"
         size="small"
-        :columns="settlementLedgerColumns"
+        :columns="visibleSettlementLedgerColumns"
         :data="filteredSettlementLedgerRows"
         :loading="ledgerLoading"
         empty="暂无结算数据"
@@ -185,6 +200,7 @@
 import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "../../auth/auth.store";
 import {
   createSettlementDraft,
   fetchProjects,
@@ -192,6 +208,11 @@ import {
   fetchSettlementLedger,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
+import {
+  normalizeVisibleColumnKeys,
+  readPersonalTablePreferences,
+  writePersonalTablePreferences
+} from "../../app/personal-table-preferences";
 import {
   buildSettlementCreatePayload,
   findContractOption,
@@ -209,6 +230,7 @@ import {
 
 const router = useRouter();
 const route = useRoute();
+const auth = useAuthStore();
 const showCreateForm = ref(false);
 const createBusy = ref(false);
 const message = ref("");
@@ -216,6 +238,10 @@ const messageTone = ref<"success" | "danger" | "default">("default");
 const settlementLedgerRows = ref<SettlementLedgerRow[]>([]);
 const settlementFilters = reactive(emptySettlementLedgerFilters());
 const ledgerLoading = ref(false);
+const configurableSettlementColumnKeys = settlementLedgerColumns
+  .map((column) => String(column.colKey))
+  .filter((key) => key !== "operation");
+const visibleSettlementColumnKeys = ref<string[]>([...configurableSettlementColumnKeys]);
 const projects = ref<ProjectOptionReadModel[]>([]);
 const contracts = ref<ContractBusinessOptionReadModel[]>([]);
 const loadingProjects = ref(false);
@@ -244,6 +270,18 @@ const summaryValues = computed(() => {
 const filteredSettlementLedgerRows = computed(() =>
   filterSettlementLedgerRows(settlementLedgerRows.value, settlementFilters)
 );
+const settlementPreferenceStorageKey = computed(() =>
+  auth.user?.id ? `jiangkong:web-admin:settlement-ledger:${auth.user.id}` : ""
+);
+const settlementColumnOptions = computed(() =>
+  settlementLedgerColumns
+    .filter((column) => column.colKey !== "operation")
+    .map((column) => ({ key: String(column.colKey), title: String(column.title) }))
+);
+const visibleSettlementLedgerColumns = computed(() => {
+  const visible = new Set(visibleSettlementColumnKeys.value);
+  return settlementLedgerColumns.filter((column) => column.colKey === "operation" || visible.has(String(column.colKey)));
+});
 const createForm = reactive({
   projectId: "",
   contractOptionValue: "",
@@ -270,6 +308,46 @@ function openDetail(settlementId: string) {
 
 function resetSettlementFilters() {
   Object.assign(settlementFilters, emptySettlementLedgerFilters());
+}
+
+function toggleSettlementColumn(key: string) {
+  const next = visibleSettlementColumnKeys.value.includes(key)
+    ? visibleSettlementColumnKeys.value.filter((item) => item !== key)
+    : [...visibleSettlementColumnKeys.value, key];
+  visibleSettlementColumnKeys.value = normalizeVisibleColumnKeys(next, configurableSettlementColumnKeys);
+  saveSettlementColumnPreferences();
+}
+
+function loadSettlementColumnPreferences() {
+  const storageKey = settlementPreferenceStorageKey.value;
+  if (!storageKey) {
+    visibleSettlementColumnKeys.value = [...configurableSettlementColumnKeys];
+    return;
+  }
+  visibleSettlementColumnKeys.value = readPersonalTablePreferences(
+    getPreferenceStorage(),
+    storageKey,
+    configurableSettlementColumnKeys
+  ).visibleColumnKeys;
+}
+
+function saveSettlementColumnPreferences() {
+  const storageKey = settlementPreferenceStorageKey.value;
+  if (!storageKey) {
+    return;
+  }
+  writePersonalTablePreferences(getPreferenceStorage(), storageKey, {
+    query: "",
+    visibleColumnKeys: visibleSettlementColumnKeys.value
+  });
+}
+
+function getPreferenceStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function applyRouteProjectFilter(value: unknown) {
@@ -363,6 +441,12 @@ function statusTagTheme(tone: SettlementTone) {
 watch(
   () => route.query.project,
   applyRouteProjectFilter,
+  { immediate: true }
+);
+
+watch(
+  settlementPreferenceStorageKey,
+  loadSettlementColumnPreferences,
   { immediate: true }
 );
 
@@ -570,6 +654,31 @@ onMounted(() => {
 .list-message.danger {
   color: #b51d2a;
   background: #fff5f5;
+}
+
+.column-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm) var(--jg-space-md);
+  align-items: center;
+  margin-bottom: var(--jg-space-lg);
+  padding: 10px var(--jg-space-md);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
+  background: var(--jg-bg-panel);
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
+}
+
+.column-strip > span {
+  color: var(--jg-text-strong);
+  font-weight: 700;
+}
+
+.column-strip label {
+  display: inline-flex;
+  gap: var(--jg-space-xs);
+  align-items: center;
 }
 
 :deep(.t-card__body) {

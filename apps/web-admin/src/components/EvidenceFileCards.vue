@@ -69,37 +69,37 @@ function formatTime(value: string) {
 .evidence-list {
   display: grid;
   gap: 10px;
-  padding: 16px;
+  padding: var(--jg-space-lg);
 }
 
 .evidence-empty {
-  color: #767f8d;
-  font-size: 13px;
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-body);
 }
 
 .evidence-card {
   display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  background: #fff;
+  gap: var(--jg-space-sm);
+  padding: var(--jg-space-md);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
+  background: var(--jg-bg-panel);
 }
 
 .evidence-main {
   display: grid;
-  gap: 4px;
+  gap: var(--jg-space-xs);
 }
 
 .evidence-main strong {
-  color: #151922;
-  font-size: 13px;
+  color: var(--jg-text-strong);
+  font-size: var(--jg-font-body);
 }
 
 .evidence-main span,
 .evidence-meta {
-  color: #5f6673;
-  font-size: 12px;
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
 }
 
 .evidence-meta {

@@ -44,6 +44,11 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-08 (CodeX)：继续推进改造方案 P1「付款详情上传状态提示复用」：付款详情的实付凭证和财务归档 PDF 上传区复用 `file-upload-summary`，显示选中文件名、格式化大小、支持类型、大小限制和上传中状态；不改后端、不改实付/归档业务流转。验证：Web 定向 Vitest 32 套 / 245 例、Web typecheck、Web lint、`git diff --check` 通过。
+- 2026-07-08 (CodeX)：继续推进改造方案 P1「核心详情页上传文件状态提示」：新增 `file-upload-summary` 纯函数，合同/结算详情页在归档上传区显示选中文件名、格式化大小、支持类型、大小限制以及上传中状态；不改后端、不暴露 fileId/COS 地址/对象 key。验证：Web 定向 Vitest、Web typecheck 通过。
+- 2026-07-08 (CodeX)：继续推进改造方案 P1「个人列设置扩展到核心台账」：合同、结算、付款三大台账复用个人表格偏好，支持按登录用户保存可见列，自动过滤非法列 key，并强制保留操作列，避免隐藏业务入口；不改变后端数据源、权限或筛选语义。验证：Web Vitest 31 套 / 242 例、Web typecheck、`git diff --check` 通过。
+- 2026-07-08 (CodeX)：继续推进改造方案 P1「薄 token 层」首个切片：新增 Web 管理端项目级设计 token，并接入 `BusinessActionPanel`、`EvidenceFileCards`、`ApprovalTimeline` 三个公共业务组件，收口动作区、证据文件卡和审批时间线的高频颜色、字号、间距、圆角；不引入第二 UI 库、不改业务状态流转。验证：Web Vitest 31 套 / 242 例、Web typecheck、Web lint、`git diff --check` 通过。
+- 2026-07-08 (CodeX)：按用户要求派出多个智能体深度研究 Gitee 参考仓库（RuoYi-Vue、RuoYi-Vue-Plus、RuoYi-Flowable-Plus、JeecgBoot、Soybean Admin）并复核当前 Web UI：确认 Web 管理端依赖层面已统一为 TDesign，未引入第二套 UI 组件库；设计语言已有企业后台倾向但尚无项目级设计 token，颜色/字号/间距仍散落在页面 scoped CSS 中。已将“只借鉴权限/日志治理、任务办理 UX、密集表单和工程纪律；不换底座、不引入 Flowable/低代码运行时、不引入第二 UI 库”的结论融合到前端改造方案、Web Admin V2 UI 设计方案、HTML 可视化方案、README、MVP 源文档、开发规格、页面清单和 Obsidian 当前技术文档。验证：`git diff --check` 通过；文档更新，无业务代码变更。
 - 2026-07-08 (CodeX)：继续推进改造方案 P1「个人筛选和列设置」首个可复用切片：新增个人表格偏好工具，支持按用户保存查询词和可见列，自动过滤损坏缓存和非法列 key；全局搜索页已接入个人查询词与列设置保存。验证：Web Vitest 31 套 / 242 例、Web typecheck、Web lint 通过。
 - 2026-07-08 (CodeX)：继续推进改造方案 P1「全局搜索」：新增全局搜索页和工作入口菜单，聚合合同、结算、付款和资料库现有只读台账，支持多关键词检索项目、编号、相对方、状态、文件名和业务关联，结果点击回到原业务页面；不新增写操作或跨权限数据源。验证：Web Vitest 30 套 / 237 例、Web typecheck 通过。
 - 2026-07-08 (CodeX)：继续推进改造方案 P1「模块菜单升级为业务过程菜单」：后台侧边栏从平铺模块列表升级为“工作入口、项目资金链、合同过程、结算付款、资料与治理”五组业务过程导航，保留原中文路由与权限过滤；详情页路径会高亮父级菜单，减少台账/详情间迷路。验证：Web Vitest 29 套 / 234 例、Web typecheck 通过。

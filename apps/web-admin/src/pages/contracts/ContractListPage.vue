@@ -88,6 +88,21 @@
         {{ noticeMessage }}
       </div>
 
+      <div class="column-strip">
+        <span>列设置</span>
+        <label
+          v-for="option in contractColumnOptions"
+          :key="option.key"
+        >
+          <input
+            type="checkbox"
+            :checked="visibleContractColumnKeys.includes(option.key)"
+            @change="toggleContractColumn(option.key)"
+          >
+          {{ option.title }}
+        </label>
+      </div>
+
       <t-card
         class="ledger-panel"
         :bordered="true"
@@ -95,7 +110,7 @@
         <t-table
           row-key="id"
           size="small"
-          :columns="contractLedgerColumns"
+          :columns="visibleContractLedgerColumns"
           :data="filteredContractLedgerRows"
           :loading="ledgerLoading"
           empty="暂无合同数据"
@@ -202,8 +217,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "../../auth/auth.store";
 import { fetchContractLedger } from "../../api/core-flow-read.api";
 import { listContractDrafts } from "../../api/contract-workbench.api";
+import {
+  normalizeVisibleColumnKeys,
+  readPersonalTablePreferences,
+  writePersonalTablePreferences
+} from "../../app/personal-table-preferences";
 import type { ContractLedgerRow, ContractStatusTone } from "./contract-list.config";
 import {
   contractFilterFields,
@@ -216,11 +237,16 @@ import { contractTypeLabel } from "./contract-labels";
 
 const router = useRouter();
 const route = useRoute();
+const auth = useAuthStore();
 const noticeMessage = ref("");
 const activeTab = ref<"ledger" | "my" | "voided">("my");
 const contractLedgerRows = ref<ContractLedgerRow[]>([]);
 const contractFilters = reactive(emptyContractLedgerFilters());
 const ledgerLoading = ref(false);
+const configurableContractColumnKeys = contractLedgerColumns
+  .map((column) => String(column.colKey))
+  .filter((key) => key !== "operation");
+const visibleContractColumnKeys = ref<string[]>([...configurableContractColumnKeys]);
 const ledgerSummary = ref({
   total: 0,
   inApproval: 0,
@@ -245,6 +271,18 @@ const summaryValues = computed(() => {
 const filteredContractLedgerRows = computed(() =>
   filterContractLedgerRows(contractLedgerRows.value, contractFilters)
 );
+const contractPreferenceStorageKey = computed(() =>
+  auth.user?.id ? `jiangkong:web-admin:contract-ledger:${auth.user.id}` : ""
+);
+const contractColumnOptions = computed(() =>
+  contractLedgerColumns
+    .filter((column) => column.colKey !== "operation")
+    .map((column) => ({ key: String(column.colKey), title: String(column.title) }))
+);
+const visibleContractLedgerColumns = computed(() => {
+  const visible = new Set(visibleContractColumnKeys.value);
+  return contractLedgerColumns.filter((column) => column.colKey === "operation" || visible.has(String(column.colKey)));
+});
 
 // Draft list rows mirror the backend Contract read model fields returned by
 // listDrafts (raw Contract rows): name may be empty for fresh drafts, so
@@ -328,6 +366,12 @@ watch(
 );
 
 watch(
+  contractPreferenceStorageKey,
+  loadContractColumnPreferences,
+  { immediate: true }
+);
+
+watch(
   activeTab,
   (tab) => {
     if (tab === "ledger") void loadContractLedger();
@@ -369,6 +413,46 @@ function openWorkbench(contractId: string) {
 
 function resetContractFilters() {
   Object.assign(contractFilters, emptyContractLedgerFilters());
+}
+
+function toggleContractColumn(key: string) {
+  const next = visibleContractColumnKeys.value.includes(key)
+    ? visibleContractColumnKeys.value.filter((item) => item !== key)
+    : [...visibleContractColumnKeys.value, key];
+  visibleContractColumnKeys.value = normalizeVisibleColumnKeys(next, configurableContractColumnKeys);
+  saveContractColumnPreferences();
+}
+
+function loadContractColumnPreferences() {
+  const storageKey = contractPreferenceStorageKey.value;
+  if (!storageKey) {
+    visibleContractColumnKeys.value = [...configurableContractColumnKeys];
+    return;
+  }
+  visibleContractColumnKeys.value = readPersonalTablePreferences(
+    getPreferenceStorage(),
+    storageKey,
+    configurableContractColumnKeys
+  ).visibleColumnKeys;
+}
+
+function saveContractColumnPreferences() {
+  const storageKey = contractPreferenceStorageKey.value;
+  if (!storageKey) {
+    return;
+  }
+  writePersonalTablePreferences(getPreferenceStorage(), storageKey, {
+    query: "",
+    visibleColumnKeys: visibleContractColumnKeys.value
+  });
+}
+
+function getPreferenceStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function formatDraftUpdatedAt(value?: string | null) {
@@ -448,6 +532,31 @@ function statusTagTheme(tone: ContractStatusTone) {
 .list-message.danger {
   color: #b51d2a;
   background: #fff5f5;
+}
+
+.column-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm) var(--jg-space-md);
+  align-items: center;
+  margin-bottom: var(--jg-space-lg);
+  padding: 10px var(--jg-space-md);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
+  background: var(--jg-bg-panel);
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
+}
+
+.column-strip > span {
+  color: var(--jg-text-strong);
+  font-weight: 700;
+}
+
+.column-strip label {
+  display: inline-flex;
+  gap: var(--jg-space-xs);
+  align-items: center;
 }
 
 .summary-item {

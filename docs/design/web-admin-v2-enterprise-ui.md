@@ -187,3 +187,147 @@ CSS 方向：
 - 圆角：3-4px
 - 表格行高：44-48px
 - 页面字号：12-14px 为主
+
+## 当前 UI 审计结论
+
+截至 2026-07-08，Web 管理端依赖层面已经统一为一套组件库：`tdesign-vue-next`。`apps/web-admin/src/main.ts` 全局注册 TDesign，未发现 Element Plus、Ant Design Vue、Naive UI、Vant、Arco 等第二套 UI 库。
+
+但设计语言还没有完全收口：
+
+- 页面已经有企业后台倾向：白底面板、浅灰边框、低饱和状态色、12px 辅助文字和高密度表格。
+- 这些规则主要靠各页面 `<style scoped>` 手写，没有项目级设计 token。
+- 项目经营页、合同模板编辑页等仍有原生 `button`、`select`、`input` 和手写 tab；这不是第二组件库，但会造成交互语言不一致。
+- 状态色散落较多，例如蓝色系同时出现 `#0052cc`、`#0052d9`、`#165dff`、`#2f6fed`，危险色同时出现 `#b51d2a`、`#b42318`、`#c9352b`、`#d54941`。
+
+结论：组件库已统一，设计语言需要用薄 token 层收口。
+
+## 设计 Token
+
+P1 新增一个最小 token 文件即可，不做完整设计系统，也不新建自研组件库。
+
+建议路径：
+
+```text
+apps/web-admin/src/app/design-tokens.css
+```
+
+建议内容：
+
+```css
+:root {
+  --jg-bg-page: #f4f6f9;
+  --jg-bg-panel: #ffffff;
+  --jg-bg-muted: #f7f9fc;
+
+  --jg-text-strong: #151922;
+  --jg-text-main: #424955;
+  --jg-text-subtle: #5f6673;
+  --jg-text-muted: #767f8d;
+
+  --jg-border: #dce1e8;
+  --jg-brand: #0052cc;
+
+  --jg-success: #2ba471;
+  --jg-warning: #d9822b;
+  --jg-danger: #c9353f;
+  --jg-info: #0052cc;
+
+  --jg-font-page-title: 24px;
+  --jg-font-section-title: 16px;
+  --jg-font-body: 13px;
+  --jg-font-meta: 12px;
+  --jg-font-mini: 11px;
+
+  --jg-space-xs: 4px;
+  --jg-space-sm: 8px;
+  --jg-space-md: 12px;
+  --jg-space-lg: 16px;
+  --jg-space-xl: 24px;
+
+  --jg-radius-sm: 3px;
+  --jg-radius-md: 6px;
+  --jg-radius-lg: 8px;
+}
+```
+
+引入规则：
+
+```typescript
+import "tdesign-vue-next/es/style/index.css";
+import "./app/design-tokens.css";
+```
+
+先替换公共组件和新增页面中的高频硬编码值，不做大规模机械改色。
+
+## 组件库规则
+
+- TDesign 是唯一 UI 组件库。
+- 表单、按钮、表格、弹窗、标签、抽屉、分页、空态优先用 TDesign。
+- 原生控件只用于文件选择、Canvas 签名等平台原生能力更合适的场景。
+- `BusinessActionPanel`、`EvidenceFileCards`、`ApprovalTimeline` 是业务组件，不是第二套视觉组件库。
+- 新增页面不得引入其他 UI 库，也不得复制 Gitee 模板中的 Element Plus、Ant Design Vue 或 Naive UI 组件。
+
+## 状态语言
+
+状态 tag 只保留 5 类语义：
+
+| 语义 | 使用场景 |
+| --- | --- |
+| `default` | 草稿、已撤回、暂无、普通资料。 |
+| `primary` | 审批中、处理中、当前节点、可执行主动作。 |
+| `success` | 已生效、已归档、已完成、已付款、已确认。 |
+| `warning` | 待归档、待付款、待补充、暂不可操作、付款容量紧张。 |
+| `danger` | 已驳回、付款阻断、作废、权限/校验失败、高风险动作。 |
+
+优先使用：
+
+```vue
+<t-tag theme="primary" variant="light" size="small">审批中</t-tag>
+```
+
+不要为每个模块重新发明状态颜色。
+
+## 核心组件融合
+
+### BusinessActionPanel
+
+作为合同、结算、付款详情页唯一动作状态入口：
+
+- 可操作动作显示 `primary` 或 `success`。
+- 暂不可操作统一显示 `warning`，必须展示原因。
+- 高风险动作显示 `danger`，例如作废、撤回、敏感下载。
+- “需当前密码 / 需填写意见 / 需选择文件”保留文字说明，不改成图形谜语。
+
+### EvidenceFileCards
+
+作为证据文件面板，不做网盘卡片：
+
+- 保留 13px 文件名、12px 元信息。
+- 增加统一状态 tag。
+- 始终展示业务归属、文件用途、上传人、确认人、下载审计提示。
+- 不可下载时展示禁用原因。
+
+### ApprovalTimeline
+
+作为轻量流转记录，不做复杂 BPMN 图：
+
+- 展示节点、动作、处理人、意见、时间和停留时长。
+- 驳回、退回、撤回类节点可用 `danger`。
+- 当前节点可用 `primary`。
+
+## Gitee 参考融合边界
+
+本轮参考 RuoYi-Vue、RuoYi-Vue-Plus、RuoYi-Flowable-Plus、JeecgBoot 和 Soybean Admin。UI 方案只吸收三类东西：
+
+- Soybean Admin 的 Vue 3 / Vite / TypeScript / Pinia 工程纪律。
+- RuoYi 类后台的权限、日志、字典、菜单治理清单。
+- Flowable 类系统的待办、办理、流转记录和流程跟踪 UX。
+
+明确不吸收：
+
+- 第二套 UI 组件库。
+- Java 后端、Flowable 引擎、低代码运行时。
+- 通用 CRUD 菜单优先的信息架构。
+- 前端状态机决定合同、结算、付款和实付状态。
+
+这套 UI 的核心不是好看，而是让施工企业用户少犯三类错：钱错付、章错盖、资料缺证据。

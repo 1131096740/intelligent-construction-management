@@ -61,30 +61,30 @@ const enabledCount = computed(() => countEnabledActions(props.actions));
 <style scoped>
 .business-action-panel {
   display: grid;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 12px;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  background: #f7f9fc;
+  gap: var(--jg-space-md);
+  margin-bottom: var(--jg-space-lg);
+  padding: var(--jg-space-md);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
+  background: var(--jg-bg-muted);
 }
 
 .business-action-panel__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--jg-space-md);
 }
 
 .business-action-panel__head div {
   display: grid;
-  gap: 4px;
+  gap: var(--jg-space-xs);
 }
 
 .business-action-panel__head strong,
 .business-action-panel__item strong {
-  color: #151922;
-  font-size: 13px;
+  color: var(--jg-text-strong);
+  font-size: var(--jg-font-body);
 }
 
 .business-action-panel__head span,
@@ -92,8 +92,8 @@ const enabledCount = computed(() => countEnabledActions(props.actions));
 .business-action-panel__item p,
 .business-action-panel__item span,
 .business-action-panel__empty {
-  color: #5f6673;
-  font-size: 12px;
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
   font-style: normal;
 }
 
@@ -108,16 +108,16 @@ const enabledCount = computed(() => countEnabledActions(props.actions));
   gap: 6px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  background: #fff;
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
+  background: var(--jg-bg-panel);
 }
 
 .business-action-panel__main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--jg-space-sm);
 }
 
 .business-action-panel__item p {

@@ -209,8 +209,12 @@
             <input
               class="file-input"
               type="file"
+              accept=".pdf,.png,.jpg,.jpeg"
               @change="selectSettlementArchiveFile"
             >
+            <span class="file-hint">
+              {{ settlementArchiveFileSummary }}
+            </span>
           </div>
           <t-button
             theme="primary"
@@ -405,6 +409,7 @@ import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   confirmSettlementArchive,
   createPrivateFileDownloadTicket,
@@ -438,6 +443,8 @@ const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const selectedSettlementArchiveFile = ref<File | null>(null);
+const settlementArchiveUploadAcceptText = "PDF、PNG、JPG、JPEG";
+const settlementArchiveUploadLimitText = "不超过 100 MB";
 const settlementArchiveForm = reactive({
   archiveFileId: "",
   confirmationPassword: "",
@@ -502,6 +509,14 @@ const settlementActionByKey = computed(
 const canRunSettlementAction = computed(() => !!settlementDetail.value?.settlementId);
 const assignmentUserOptions = computed(() =>
   assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
+);
+const settlementArchiveFileSummary = computed(() =>
+  buildFileUploadSummary(
+    selectedSettlementArchiveFile.value,
+    archiveActionBusy.value === "upload",
+    settlementArchiveUploadAcceptText,
+    settlementArchiveUploadLimitText
+  )
 );
 
 function isSettlementActionEnabled(key: string) {
@@ -1057,6 +1072,15 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   background: #fff;
   color: #424955;
   font-size: 12px;
+}
+
+.file-hint {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
+  word-break: break-word;
 }
 
 .action-message {

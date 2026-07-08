@@ -128,10 +128,11 @@
             <input
               class="file-input"
               type="file"
+              accept=".pdf,.png,.jpg,.jpeg"
               @change="selectPaymentVoucherFile"
             >
             <span class="file-hint">
-              {{ selectedPaymentVoucherFile?.name ?? "请选择付款凭证文件" }}
+              {{ paymentVoucherFileSummary }}
             </span>
           </div>
           <t-button
@@ -184,7 +185,7 @@
               @change="selectPaymentPdfArchiveFile"
             >
             <span class="file-hint">
-              {{ selectedPaymentPdfArchiveFile?.name ?? "选择已有财务归档 PDF" }}
+              {{ paymentPdfArchiveFileSummary }}
             </span>
           </div>
           <t-button
@@ -435,6 +436,7 @@ import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   createPrivateFileDownloadTicket,
   delegatePaymentApproval,
@@ -472,6 +474,10 @@ const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
 const selectedPaymentVoucherFile = ref<File | null>(null);
 const selectedPaymentPdfArchiveFile = ref<File | null>(null);
+const paymentVoucherUploadAcceptText = "PDF、PNG、JPG、JPEG";
+const paymentVoucherUploadLimitText = "不超过 100 MB";
+const paymentPdfArchiveUploadAcceptText = "PDF";
+const paymentPdfArchiveUploadLimitText = "不超过 100 MB";
 const paymentActionForm = reactive({
   approvedAmountYuan: "",
   approvalComment: "",
@@ -531,6 +537,22 @@ const paymentEvidenceFileOptions = computed(() =>
       label: `${file.fileName}（${file.purpose}）`,
       value: file.fileId
     }))
+);
+const paymentVoucherFileSummary = computed(() =>
+  buildFileUploadSummary(
+    selectedPaymentVoucherFile.value,
+    actionBusy.value === "execution",
+    paymentVoucherUploadAcceptText,
+    paymentVoucherUploadLimitText
+  )
+);
+const paymentPdfArchiveFileSummary = computed(() =>
+  buildFileUploadSummary(
+    selectedPaymentPdfArchiveFile.value,
+    actionBusy.value === "pdfArchive",
+    paymentPdfArchiveUploadAcceptText,
+    paymentPdfArchiveUploadLimitText
+  )
 );
 const paymentActionByKey = computed(
   () => new Map((paymentDetail.value?.availableActions ?? []).map((action) => [action.key, action]))

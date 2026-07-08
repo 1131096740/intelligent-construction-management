@@ -54,7 +54,7 @@ function formatTime(value: string) {
 <style scoped>
 .approval-timeline {
   display: grid;
-  gap: 16px;
+  gap: var(--jg-space-lg);
 }
 
 .approval-timeline__item {
@@ -68,7 +68,7 @@ function formatTime(value: string) {
   height: 10px;
   margin-top: 6px;
   border-radius: 50%;
-  background: var(--td-brand-color);
+  background: var(--jg-brand);
 }
 
 .approval-timeline__body {
@@ -81,24 +81,26 @@ function formatTime(value: string) {
 .approval-timeline__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--jg-space-sm);
   align-items: center;
 }
 
 .approval-timeline__main strong {
-  color: var(--td-text-color-primary);
+  color: var(--jg-text-strong);
+  font-size: var(--jg-font-body);
 }
 
 .approval-timeline__main span,
 .approval-timeline__main em,
 .approval-timeline__meta {
-  color: var(--td-text-color-secondary);
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
   font-style: normal;
 }
 
 .approval-timeline__body p {
   margin: 0;
-  color: var(--td-text-color-primary);
+  color: var(--jg-text-main);
   line-height: 1.6;
 }
 </style>

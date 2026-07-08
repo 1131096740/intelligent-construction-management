@@ -212,8 +212,12 @@
               <input
                 class="file-input"
                 type="file"
+                accept=".pdf,.png,.jpg,.jpeg"
                 @change="selectContractArchiveFile"
               >
+              <span class="file-hint">
+                {{ contractArchiveFileSummary }}
+              </span>
             </div>
             <t-button
               theme="primary"
@@ -475,6 +479,7 @@ import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   approveContractSeal,
   confirmContractArchive,
@@ -519,6 +524,8 @@ const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const contractNotice = ref("");
 const selectedContractArchiveFile = ref<File | null>(null);
+const contractArchiveUploadAcceptText = "PDF、PNG、JPG、JPEG";
+const contractArchiveUploadLimitText = "不超过 100 MB";
 const contractArchiveForm = reactive({
   archiveFileId: "",
   confirmationPassword: "",
@@ -604,6 +611,14 @@ const contractNumberRuleOptions = computed(() =>
 );
 const assignmentUserOptions = computed(() =>
   assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
+);
+const contractArchiveFileSummary = computed(() =>
+  buildFileUploadSummary(
+    selectedContractArchiveFile.value,
+    archiveActionBusy.value === "upload",
+    contractArchiveUploadAcceptText,
+    contractArchiveUploadLimitText
+  )
 );
 
 function isContractActionEnabled(key: string) {
@@ -1106,6 +1121,15 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   background: #fff;
   color: #424955;
   font-size: 12px;
+}
+
+.file-hint {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
+  word-break: break-word;
 }
 
 .action-message {
