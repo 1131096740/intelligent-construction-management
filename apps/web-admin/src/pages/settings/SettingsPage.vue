@@ -141,6 +141,74 @@
         </article>
       </div>
     </t-card>
+
+    <t-card
+      title="业务字典只读页"
+      :bordered="true"
+      class="settings-card governance-settings-card"
+    >
+      <p class="hint">
+        业务状态、岗位、支出类型和文件用途由代码与后端校验共同保护。此处只用于试运行查阅，不开放在线编辑。
+      </p>
+      <div class="dictionary-grid">
+        <section
+          v-for="group in readonlyDictionaryGroups"
+          :key="group.id"
+          class="dictionary-group"
+        >
+          <header>
+            <strong>{{ group.title }}</strong>
+            <span>{{ group.description }}</span>
+          </header>
+          <dl>
+            <template
+              v-for="entry in group.entries"
+              :key="`${group.id}-${entry.key}`"
+            >
+              <dt>
+                {{ entry.label }}
+                <code>{{ entry.key }}</code>
+              </dt>
+              <dd>{{ entry.description }}</dd>
+            </template>
+          </dl>
+        </section>
+      </div>
+    </t-card>
+
+    <t-card
+      title="系统治理配置只读页"
+      :bordered="true"
+      class="settings-card governance-settings-card"
+    >
+      <p class="hint">
+        登录、下载、上传和通知配置遵循生产内控口径。普通管理员暂不在页面内修改这些开关。
+      </p>
+      <div class="config-grid">
+        <section
+          v-for="group in readonlyConfigGroups"
+          :key="group.id"
+          class="config-group"
+        >
+          <header>
+            <strong>{{ group.title }}</strong>
+            <span>{{ group.summary }}</span>
+          </header>
+          <ul>
+            <li
+              v-for="item in group.items"
+              :key="`${group.id}-${item.name}`"
+            >
+              <div>
+                <strong>{{ item.name }}</strong>
+                <span>{{ item.description }}</span>
+              </div>
+              <em>{{ item.value }}</em>
+            </li>
+          </ul>
+        </section>
+      </div>
+    </t-card>
   </div>
 </template>
 
@@ -158,6 +226,10 @@ import {
   modeLabel,
   roleNames
 } from "./approval-flow-readonly.config";
+import {
+  readonlyConfigGroups,
+  readonlyDictionaryGroups
+} from "./system-governance-readonly.config";
 
 const companyEntities = ref<CompanyEntityReadModel[]>([]);
 const signatureInput = ref<HTMLInputElement | null>(null);
@@ -267,6 +339,10 @@ async function submitEntity() {
 }
 
 .approval-settings-card {
+  max-width: 1120px;
+}
+
+.governance-settings-card {
   max-width: 1120px;
 }
 
@@ -391,9 +467,108 @@ async function submitEntity() {
   color: var(--td-text-color-secondary, #666);
 }
 
+.dictionary-grid,
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dictionary-group,
+.config-group {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--td-border-level-1-color, #ddd);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.dictionary-group header,
+.config-group header {
+  display: grid;
+  gap: 4px;
+}
+
+.dictionary-group header span,
+.config-group header span,
+.config-group li span {
+  color: var(--td-text-color-secondary, #666);
+}
+
+.dictionary-group dl {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.42fr) 1fr;
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.dictionary-group dt {
+  min-width: 0;
+  font-weight: 600;
+}
+
+.dictionary-group dt code {
+  display: block;
+  margin-top: 2px;
+  color: var(--td-text-color-placeholder, #999);
+  font-size: 12px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.dictionary-group dd {
+  margin: 0;
+  color: var(--td-text-color-secondary, #666);
+}
+
+.config-group ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.config-group li {
+  display: grid;
+  grid-template-columns: 1fr minmax(120px, 0.34fr);
+  gap: 12px;
+  align-items: start;
+  padding-top: 10px;
+  border-top: 1px solid var(--td-border-level-1-color, #ddd);
+}
+
+.config-group li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.config-group li div {
+  display: grid;
+  gap: 4px;
+}
+
+.config-group li em {
+  font-style: normal;
+  font-weight: 700;
+  text-align: right;
+}
+
 @media (max-width: 900px) {
-  .approval-flow-grid {
+  .approval-flow-grid,
+  .dictionary-grid,
+  .config-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dictionary-group dl,
+  .config-group li {
+    grid-template-columns: 1fr;
+  }
+
+  .config-group li em {
+    text-align: left;
   }
 }
 </style>
