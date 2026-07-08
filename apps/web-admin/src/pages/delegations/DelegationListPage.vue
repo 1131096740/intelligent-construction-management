@@ -73,6 +73,15 @@
             {{ row.enabled ? "生效中" : "已撤销" }}
           </t-tag>
         </template>
+        <template #deadlineLabel="{ row }">
+          <t-tag
+            size="small"
+            :theme="row.deadlineTone"
+            variant="light"
+          >
+            {{ row.deadlineLabel }}
+          </t-tag>
+        </template>
         <template #operation="{ row }">
           <t-link
             v-if="row.enabled"
@@ -89,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import {
   createApprovalDelegation,
   fetchApprovalDelegationUserOptions,
@@ -97,17 +106,16 @@ import {
   revokeApprovalDelegation,
   type ApprovalDelegationReadModel
 } from "../../api/core-flow-read.api";
+import { useAuthStore } from "../../auth/auth.store";
+import {
+  delegationLedgerColumns,
+  mapDelegationLedgerRows
+} from "./delegation-list.config";
 
-const columns = [
-  { colKey: "fromUserName", title: "委托人" },
-  { colKey: "toUserName", title: "受托人" },
-  { colKey: "startsAt", title: "生效时间" },
-  { colKey: "endsAt", title: "失效时间" },
-  { colKey: "enabled", title: "状态" },
-  { colKey: "operation", title: "操作" }
-];
-
-const rows = ref<ApprovalDelegationReadModel[]>([]);
+const auth = useAuthStore();
+const columns = delegationLedgerColumns;
+const rawRows = ref<ApprovalDelegationReadModel[]>([]);
+const rows = computed(() => mapDelegationLedgerRows(rawRows.value, auth.user?.id));
 const userOptions = ref<Array<{ label: string; value: string }>>([]);
 const loading = ref(false);
 const creating = ref(false);
@@ -122,7 +130,7 @@ const form = reactive({
 async function loadDelegations() {
   loading.value = true;
   try {
-    rows.value = await listApprovalDelegations();
+    rawRows.value = await listApprovalDelegations();
   } catch (error) {
     message.value = error instanceof Error ? error.message : "加载委托失败";
     messageTone.value = "danger";
