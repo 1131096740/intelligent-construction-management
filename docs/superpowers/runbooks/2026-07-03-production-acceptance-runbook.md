@@ -209,6 +209,7 @@ scripts/ops/check-runtime-health.sh
 
 ```bash
 SMTP_URL=smtps://smtp.qq.com:465 \
+SMTP_LOGIN_OPTIONS=AUTH=LOGIN \
 SMTP_USER=1131096740@qq.com \
 SMTP_PASSWORD=<QQ邮箱SMTP授权码> \
 ALERT_EMAIL_FROM=1131096740@qq.com \
