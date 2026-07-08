@@ -76,6 +76,21 @@ export class ProjectExpenseController {
     );
   }
 
+  @Post(":expenseRequestId/approval-pdf-download-ticket")
+  createApprovalPdfDownloadTicket(
+    @Param("projectId") projectId: string,
+    @Param("expenseRequestId") expenseRequestId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body?: CreateAttachmentDownloadTicketDto
+  ) {
+    return this.expenses.createApprovalPdfDownloadTicket(
+      projectId,
+      expenseRequestId,
+      user.id,
+      body?.confirmationPassword
+    );
+  }
+
   @Post(":expenseRequestId/voiding")
   @RequireProjectRole("project_expense.void")
   voidRequest(

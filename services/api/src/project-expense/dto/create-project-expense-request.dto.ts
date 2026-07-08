@@ -1,6 +1,6 @@
 export interface CreateProjectExpenseRequestDto {
   code: string;
-  expenseType: "sporadic_payment" | "loan_reserve" | "comprehensive_expense";
+  expenseType: "sporadic_payment" | "loan_reserve" | "comprehensive_expense" | "reimbursement";
   expenseSubtype:
     | "sporadic_material"
     | "sporadic_machinery"

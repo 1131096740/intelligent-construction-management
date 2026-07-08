@@ -117,6 +117,9 @@ describe("ProjectExpenseService", () => {
             updatedAt
           }
         ])
+      },
+      pdfDocument: {
+        findMany: jest.fn().mockResolvedValue([{ businessId: "expense-1" }])
       }
     };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
@@ -127,6 +130,7 @@ describe("ProjectExpenseService", () => {
           id: "expense-1",
           code: "ZC-2026-001",
           hasAttachment: true,
+          hasApprovalPdf: true,
           createdAt: createdAt.toISOString(),
           updatedAt: updatedAt.toISOString()
         }),
@@ -134,6 +138,7 @@ describe("ProjectExpenseService", () => {
           id: "expense-2",
           code: "ZC-2026-002",
           hasAttachment: false,
+          hasApprovalPdf: false,
           createdAt: createdAt.toISOString(),
           updatedAt: updatedAt.toISOString()
         })
@@ -154,6 +159,14 @@ describe("ProjectExpenseService", () => {
       take: 100,
       select: expect.any(Object)
     });
+    expect(prisma.pdfDocument.findMany).toHaveBeenCalledWith({
+      where: {
+        businessType: "project_expense_request",
+        businessId: { in: ["expense-1", "expense-2"] },
+        templateKey: "approval_form"
+      },
+      select: { businessId: true }
+    });
   });
 
   it("throws NotFound when listing project expenses for an inactive project", async () => {
@@ -162,6 +175,9 @@ describe("ProjectExpenseService", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       },
       projectExpenseRequest: {
+        findMany: jest.fn()
+      },
+      pdfDocument: {
         findMany: jest.fn()
       }
     };
@@ -208,6 +224,91 @@ describe("ProjectExpenseService", () => {
     expect(files.createDownloadTicket).toHaveBeenCalledWith("file-expense-1", {
       actorUserId: "finance-1"
     });
+  });
+
+  it("creates an approval PDF download ticket after password confirmation", async () => {
+    const prisma = {
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          projectId: "project-1",
+          applicantUserId: "handler-1"
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ fileId: "file-pdf-1" })
+      },
+      ...roleTables("finance_staff")
+    };
+    const files = {
+      createDownloadTicket: jest.fn().mockResolvedValue({
+        fileId: "file-pdf-1",
+        downloadUrl: "/files/file-pdf-1/download"
+      })
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    const ticket = await service.createApprovalPdfDownloadTicket(
+      "project-1",
+      "expense-1",
+      "finance-1",
+      "current-password"
+    );
+
+    expect(ticket.downloadUrl).toBe("/files/file-pdf-1/download");
+    expect(prisma.projectExpenseRequest.findFirst).toHaveBeenCalledWith({
+      where: { projectId: "project-1", voidedAt: null, OR: [{ id: "expense-1" }, { code: "expense-1" }] },
+      select: { id: true, projectId: true, applicantUserId: true }
+    });
+    expect(prisma.pdfDocument.findFirst).toHaveBeenCalledWith({
+      where: {
+        businessType: "project_expense_request",
+        businessId: "expense-1",
+        templateKey: "approval_form"
+      },
+      select: { fileId: true }
+    });
+    expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
+    expect(files.createDownloadTicket).toHaveBeenCalledWith("file-pdf-1", {
+      actorUserId: "finance-1"
+    });
+  });
+
+  it("uses a generic error when an actor cannot read the approval PDF", async () => {
+    const prisma = {
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          projectId: "project-1",
+          applicantUserId: "handler-1"
+        })
+      },
+      pdfDocument: { findFirst: jest.fn() },
+      ...roleTables("employee")
+    };
+    const files = { createDownloadTicket: jest.fn() };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.createApprovalPdfDownloadTicket(
+        "project-1",
+        "expense-1",
+        "stranger-1",
+        "current-password"
+      )
+    ).rejects.toThrow("项目支出审批单不可下载");
+    expect(prisma.pdfDocument.findFirst).not.toHaveBeenCalled();
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
   it("submits a sporadic payment request without settlement or payment terms", async () => {
@@ -269,8 +370,7 @@ describe("ProjectExpenseService", () => {
 
   it.each([
     ["travel", "差旅费"],
-    ["entertainment", "业务招待费"],
-    ["reimbursement", "项目报销"]
+    ["entertainment", "业务招待费"]
   ] as const)("submits a comprehensive expense request for %s", async (expenseSubtype, reason) => {
     const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
     const tx = {
@@ -312,6 +412,61 @@ describe("ProjectExpenseService", () => {
         reason,
         requestedAmountCents: 30_000,
         status: "approval_pending"
+      })
+    });
+  });
+
+  it("submits a reimbursement request with the confirmed four-step approval route", async () => {
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
+    const tx = {
+      ...cashPool,
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
+      },
+      projectExpenseRequest: {
+        ...cashPool.projectExpenseRequest,
+        create: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          code: "BX-2026-001",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await service.create("project-1", "handler-1", {
+      code: "BX-2026-001",
+      expenseType: "reimbursement",
+      expenseSubtype: "reimbursement",
+      paymentSubject: "日常报销",
+      reason: "办公用品发票报销",
+      requestedAmountCents: 30_000,
+      paymentMethod: "bank_transfer",
+      counterpartyName: "经办人"
+    });
+
+    expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        expenseType: "reimbursement",
+        expenseSubtype: "reimbursement",
+        reason: "办公用品发票报销",
+        requestedAmountCents: 30_000,
+        status: "approval_pending"
+      })
+    });
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        frozenNodes: [
+          { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"] },
+          { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+          { name: "财务总监", mode: "any", roleKeys: ["finance_director"] },
+          { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+        ]
       })
     });
   });
@@ -488,6 +643,214 @@ describe("ProjectExpenseService", () => {
       where: { id: "expense-1" },
       data: { status: "approved_pending_payment", approvedAmountCents: 45_000 }
     });
+  });
+
+  it("generates and archives a reimbursement approval PDF after final approval", async () => {
+    const reviewTx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: "expense-1",
+            projectId: "project-1",
+            code: "BX-2026-002",
+            status: "approval_pending",
+            requestedAmountCents: 50_000,
+            approvedAmountCents: null,
+            paidAmountCents: 0
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-instance-1",
+            status: "in_progress",
+            currentNodeIndex: 3,
+            frozenNodes: [
+              { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], approvedRoleKeys: ["comprehensive_director"] },
+              { name: "项目经理", mode: "any", roleKeys: ["project_manager"], approvedRoleKeys: ["project_manager"] },
+              { name: "财务总监", mode: "any", roleKeys: ["finance_director"], approvedRoleKeys: ["finance_director"] },
+              { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+            ],
+            applicantUserId: "handler-1"
+          }
+        ]),
+      projectExpenseRequest: {
+        update: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          status: "approved_pending_payment",
+          approvedAmountCents: 45_000
+        })
+      },
+      approvalInstance: { update: jest.fn() },
+      approvalActionLog: { create: jest.fn() },
+      projectExpenseFinancingQuotaUsage: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() },
+      ...roleTables("chairman")
+    };
+    const archiveTx = {
+      pdfDocument: {
+        create: jest.fn().mockResolvedValue({ id: "pdf-1" })
+      },
+      archiveRecord: {
+        create: jest.fn().mockResolvedValue({ id: "archive-1" })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce(async (callback) => callback(reviewTx))
+        .mockImplementationOnce(async (callback) => callback(archiveTx)),
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          projectId: "project-1",
+          code: "BX-2026-002",
+          expenseType: "reimbursement",
+          expenseSubtype: "reimbursement",
+          paymentSubject: "日常报销",
+          reason: "办公用品发票报销",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 45_000,
+          paidAmountCents: 0,
+          paymentMethod: "bank_transfer",
+          counterpartyName: "经办人",
+          counterpartyAccountName: null,
+          counterpartyBankName: null,
+          counterpartyBankAccount: null,
+          handlerUserId: "handler-1",
+          applicantUserId: "handler-1",
+          attachmentFileId: "file-attachment-1",
+          status: "approved_pending_payment",
+          voidedAt: null,
+          voidedByUserId: null,
+          voidReason: null,
+          createdAt: new Date("2026-07-02T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-02T01:00:00.000Z")
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-pdf-1" })
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await service.reviewApproval("project-1", "expense-1", "chairman-1", {
+      decision: "approve",
+      approvedAmountCents: 45_000
+    });
+
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      originalName: "BX-2026-002-approval_form.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: expect.any(Number),
+      uploadedByUserId: "chairman-1",
+      buffer: expect.any(Buffer)
+    });
+    expect(archiveTx.pdfDocument.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "project_expense_request",
+        businessId: "expense-1",
+        fileId: "file-pdf-1",
+        templateKey: "approval_form"
+      }
+    });
+    expect(archiveTx.archiveRecord.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "project_expense_request",
+        businessId: "expense-1",
+        fileId: "file-pdf-1",
+        departmentScope: "finance"
+      }
+    });
+  });
+
+  it("keeps final approval successful when approval PDF generation fails", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: "expense-1",
+            projectId: "project-1",
+            code: "BX-2026-003",
+            status: "approval_pending",
+            requestedAmountCents: 50_000,
+            approvedAmountCents: null,
+            paidAmountCents: 0
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-instance-1",
+            status: "in_progress",
+            currentNodeIndex: 3,
+            frozenNodes: [
+              { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], approvedRoleKeys: ["comprehensive_director"] },
+              { name: "项目经理", mode: "any", roleKeys: ["project_manager"], approvedRoleKeys: ["project_manager"] },
+              { name: "财务总监", mode: "any", roleKeys: ["finance_director"], approvedRoleKeys: ["finance_director"] },
+              { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+            ],
+            applicantUserId: "handler-1"
+          }
+        ]),
+      projectExpenseRequest: {
+        update: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          status: "approved_pending_payment",
+          approvedAmountCents: 45_000
+        })
+      },
+      approvalInstance: { update: jest.fn() },
+      approvalActionLog: { create: jest.fn() },
+      projectExpenseFinancingQuotaUsage: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() },
+      ...roleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx)),
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          code: "BX-2026-003",
+          expenseType: "reimbursement",
+          expenseSubtype: "reimbursement",
+          paymentSubject: "日常报销",
+          reason: "办公用品发票报销",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 45_000,
+          paidAmountCents: 0,
+          applicantUserId: "handler-1",
+          status: "approved_pending_payment"
+        })
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockRejectedValue(new Error("storage unavailable"))
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    const approved = await service.reviewApproval("project-1", "expense-1", "chairman-1", {
+      decision: "approve",
+      approvedAmountCents: 45_000
+    });
+
+    expect(approved.status).toBe("approved_pending_payment");
+    expect(files.uploadPrivateFile).toHaveBeenCalled();
   });
 
   it("voids a pending project expense and closes the approval instance", async () => {
@@ -768,6 +1131,101 @@ describe("ProjectExpenseService", () => {
         amountCents: 30_000,
         occurredAt: new Date("2026-07-02T00:00:00.000Z"),
         createdByUserId: "finance-1"
+      }
+    });
+  });
+
+  it("generates a finance archive PDF when finance records cover paid reimbursement", async () => {
+    const financeTx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "expense-1",
+          projectId: "project-1",
+          status: "paid",
+          code: "BX-2026-009",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 50_000
+        }
+      ]),
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000 }]),
+        create: jest.fn().mockResolvedValue({ id: "finance-record-1", amountCents: 30_000 })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const archiveTx = {
+      pdfDocument: {
+        create: jest.fn().mockResolvedValue({ id: "pdf-1" })
+      },
+      archiveRecord: {
+        create: jest.fn().mockResolvedValue({ id: "archive-1" })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce(async (callback) => callback(financeTx))
+        .mockImplementationOnce(async (callback) => callback(archiveTx)),
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          projectId: "project-1",
+          code: "BX-2026-009",
+          expenseType: "reimbursement",
+          expenseSubtype: "reimbursement",
+          paymentSubject: "日常报销",
+          reason: "办公用品发票报销",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 50_000,
+          applicantUserId: "handler-1",
+          status: "paid"
+        })
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000 }, { amountCents: 30_000 }])
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-pdf-1" })
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await service.recordFinance("project-1", "expense-1", "finance-1", {
+      amountCents: 30_000,
+      occurredAt: "2026-07-02T00:00:00.000Z",
+      confirmationPassword: "current-password"
+    });
+
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      originalName: "BX-2026-009-project_expense_finance_archive.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: expect.any(Number),
+      uploadedByUserId: "finance-1",
+      buffer: expect.any(Buffer)
+    });
+    expect(archiveTx.pdfDocument.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "project_expense_request",
+        businessId: "expense-1",
+        fileId: "file-pdf-1",
+        templateKey: "project_expense_finance_archive"
+      }
+    });
+    expect(archiveTx.archiveRecord.create).toHaveBeenCalledWith({
+      data: {
+        businessType: "project_expense_request",
+        businessId: "expense-1",
+        fileId: "file-pdf-1",
+        departmentScope: "finance"
       }
     });
   });

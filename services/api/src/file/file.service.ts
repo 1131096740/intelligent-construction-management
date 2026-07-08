@@ -203,7 +203,7 @@ export class FileService {
     private readonly audit: AuditService = new AuditService(),
     private readonly storage: PrivateFileStorage = new PrivateFileStorage()
   ) {
-    this.assertProductionDownloadSecret();
+    this.assertDownloadSecret();
   }
 
   async uploadPrivateFile(input: UploadPrivateFileInput) {
@@ -722,6 +722,34 @@ export class FileService {
       }
     }
 
+    const archiveRecordClient = (tx as unknown as {
+      archiveRecord?: {
+        findFirst: (args: {
+          where: { fileId: string };
+          select: { businessType: true; businessId: true };
+        }) => Promise<{ businessType: string; businessId: string } | null>;
+      };
+    }).archiveRecord;
+    const archiveRecord = archiveRecordClient
+      ? await archiveRecordClient.findFirst({
+          where: { fileId: file.id },
+          select: { businessType: true, businessId: true }
+        })
+      : null;
+    if (archiveRecord) {
+      const projectId = await this.resolveApprovalProjectId(
+        tx,
+        archiveRecord.businessType,
+        archiveRecord.businessId
+      );
+      if (
+        projectId &&
+        (await this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES))
+      ) {
+        return;
+      }
+    }
+
     throw new Error("Actor cannot download private file");
   }
 
@@ -737,6 +765,10 @@ export class FileService {
     if (businessType === "payment_request") {
       const payment = await tx.paymentRequest.findUnique({ where: { id: businessId } });
       return payment?.projectId ?? null;
+    }
+    if (businessType === "project_expense_request") {
+      const expense = await tx.projectExpenseRequest.findUnique({ where: { id: businessId } });
+      return expense?.projectId ?? null;
     }
     if (businessType === "contract_version") {
       const version = await tx.contractVersion.findUnique({ where: { id: businessId } });
@@ -794,14 +826,18 @@ export class FileService {
   }
 
   private downloadSecret() {
-    return process.env.FILE_DOWNLOAD_SECRET ?? process.env.JWT_ACCESS_SECRET ?? "local-file-secret";
+    if (process.env.NODE_ENV === "test") {
+      return process.env.FILE_DOWNLOAD_SECRET ?? "test-file-download-secret";
+    }
+    return this.validatedDownloadSecret();
   }
 
-  private assertProductionDownloadSecret() {
-    if (process.env.NODE_ENV !== "production") {
-      return;
-    }
+  private assertDownloadSecret() {
+    if (process.env.NODE_ENV === "test") return;
+    this.validatedDownloadSecret();
+  }
 
+  private validatedDownloadSecret() {
     const value = process.env.FILE_DOWNLOAD_SECRET?.trim();
     const isDefault =
       !value ||
@@ -810,7 +846,8 @@ export class FileService {
       value === "replace-with-long-random-file-download-secret";
 
     if (isDefault || value.length < 32) {
-      throw new Error("FILE_DOWNLOAD_SECRET must be set to a non-default production secret");
+      throw new Error("FILE_DOWNLOAD_SECRET must be set to a non-default secret");
     }
+    return value;
   }
 }

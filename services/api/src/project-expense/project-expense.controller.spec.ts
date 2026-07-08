@@ -43,6 +43,12 @@ describe("ProjectExpenseController authorization wiring", () => {
         ProjectExpenseController.prototype.createAttachmentDownloadTicket
       )
     ).toBeUndefined();
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ProjectExpenseController.prototype.createApprovalPdfDownloadTicket
+      )
+    ).toBeUndefined();
   });
 
   it("forwards list requests to the service", async () => {
@@ -84,6 +90,25 @@ describe("ProjectExpenseController authorization wiring", () => {
     );
 
     expect(expenses.createAttachmentDownloadTicket).toHaveBeenCalledWith(
+      "project-1",
+      "expense-1",
+      "user-1",
+      "current-password"
+    );
+  });
+
+  it("forwards approval PDF download ticket requests with the authenticated user id", async () => {
+    const expenses = { createApprovalPdfDownloadTicket: jest.fn() };
+    const controller = new ProjectExpenseController(expenses as never);
+
+    await controller.createApprovalPdfDownloadTicket(
+      "project-1",
+      "expense-1",
+      { id: "user-1" } as never,
+      { confirmationPassword: "current-password" }
+    );
+
+    expect(expenses.createApprovalPdfDownloadTicket).toHaveBeenCalledWith(
       "project-1",
       "expense-1",
       "user-1",

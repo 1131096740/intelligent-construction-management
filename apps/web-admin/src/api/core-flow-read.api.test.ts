@@ -19,6 +19,7 @@ import {
   fetchWorkItems,
   createProject,
   updateProject,
+  downloadProjectExpenseApprovalPdf,
   downloadProjectExpenseAttachment,
   confirmProjectOwnerContract,
   recordProjectReceipt,
@@ -549,6 +550,9 @@ describe("core flow read API client", () => {
     await downloadProjectExpenseAttachment("project-1", "expense-1", {
       confirmationPassword: "current-password"
     });
+    await downloadProjectExpenseApprovalPdf("project-1", "expense-1", {
+      confirmationPassword: "current-password"
+    });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects/project-1/expense-requests",
@@ -557,7 +561,8 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/expense-requests/expense-1/voiding",
       "/api/projects/project-1/expense-requests/expense-1/executions",
       "/api/projects/project-1/expense-requests/expense-1/finance-records",
-      "/api/projects/project-1/expense-requests/expense-1/attachment-download-ticket"
+      "/api/projects/project-1/expense-requests/expense-1/attachment-download-ticket",
+      "/api/projects/project-1/expense-requests/expense-1/approval-pdf-download-ticket"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
@@ -601,6 +606,11 @@ describe("core flow read API client", () => {
       })
     );
     expect(fetchMock.mock.calls[6][1]?.body).toBe(
+      JSON.stringify({
+        confirmationPassword: "current-password"
+      })
+    );
+    expect(fetchMock.mock.calls[7][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password"
       })

@@ -642,7 +642,11 @@ export interface ReviewProjectFinancingQuotaPayload {
   comment?: string;
 }
 
-export type ProjectExpenseType = "sporadic_payment" | "loan_reserve" | "comprehensive_expense";
+export type ProjectExpenseType =
+  | "sporadic_payment"
+  | "loan_reserve"
+  | "comprehensive_expense"
+  | "reimbursement";
 
 export type ProjectExpenseSubtype =
   | "sporadic_material"
@@ -717,6 +721,7 @@ export interface ProjectExpenseRequestListReadModel {
     paymentMethod: ProjectExpensePaymentMethod;
     counterpartyName: string | null;
     hasAttachment: boolean;
+    hasApprovalPdf: boolean;
     status: string;
     createdAt: string;
     updatedAt: string;
@@ -931,6 +936,17 @@ export function downloadProjectExpenseAttachment(
 ) {
   return postJson<PrivateFileDownloadTicketReadModel>(
     `/projects/${projectId}/expense-requests/${expenseRequestId}/attachment-download-ticket`,
+    body
+  );
+}
+
+export function downloadProjectExpenseApprovalPdf(
+  projectId: string,
+  expenseRequestId: string,
+  body: CreatePrivateFileDownloadTicketPayload
+) {
+  return postJson<PrivateFileDownloadTicketReadModel>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/approval-pdf-download-ticket`,
     body
   );
 }

@@ -34,6 +34,9 @@ export class ArchiveService {
         .filter((row) => row.businessType === "payment_request")
         .map((row) => row.businessId)
     ];
+    const expenseIds = archiveRecords
+      .filter((row) => row.businessType === "project_expense_request")
+      .map((row) => row.businessId);
     const fileIds = [
       ...contractArchives.map((row) => row.fileId),
       ...settlementArchives.map((row) => row.fileId),
@@ -46,10 +49,11 @@ export class ArchiveService {
       ...paymentVouchers.map((row) => row.executedByUserId)
     ].filter(Boolean) as string[];
 
-    const [contractVersions, settlements, payments, files, users] = await Promise.all([
+    const [contractVersions, settlements, payments, expenses, files, users] = await Promise.all([
       this.findContractVersions(contractVersionIds),
       this.findSettlements(settlementIds),
       this.findPayments(paymentIds),
+      this.findProjectExpenses(expenseIds),
       this.findFiles(fileIds),
       this.findUsers(userIds)
     ]);
@@ -57,13 +61,15 @@ export class ArchiveService {
     const projects = await this.findProjects([
       ...contracts.map((row) => row.projectId),
       ...settlements.map((row) => row.projectId),
-      ...payments.map((row) => row.projectId)
+      ...payments.map((row) => row.projectId),
+      ...expenses.map((row) => row.projectId)
     ]);
 
     const versionById = new Map(contractVersions.map((row) => [row.id, row]));
     const contractById = new Map(contracts.map((row) => [row.id, row]));
     const settlementById = new Map(settlements.map((row) => [row.id, row]));
     const paymentById = new Map(payments.map((row) => [row.id, row]));
+    const expenseById = new Map(expenses.map((row) => [row.id, row]));
     const projectById = new Map(projects.map((row) => [row.id, row]));
     const fileById = new Map(files.map((row) => [row.id, row]));
     const userById = new Map(users.map((row) => [row.id, row]));
@@ -143,14 +149,16 @@ export class ArchiveService {
           versionById,
           contractById,
           settlementById,
-          paymentById
+          paymentById,
+          expenseById
         });
         return {
           projectId: this.archiveProjectId(row.businessType, row.businessId, {
             versionById,
             contractById,
             settlementById,
-            paymentById
+            paymentById,
+            expenseById
           }),
           id: `archive-${row.id}`,
           documentNo: row.id,
@@ -163,6 +171,7 @@ export class ArchiveService {
             contractById,
             settlementById,
             paymentById,
+            expenseById,
             projectById
           }),
           fileSource: this.fileName(fileById, row.fileId),
@@ -244,6 +253,13 @@ export class ArchiveService {
       : Promise.resolve([]);
   }
 
+  private findProjectExpenses(ids: string[]) {
+    const uniqueIds = [...new Set(ids)];
+    return uniqueIds.length
+      ? this.prisma.projectExpenseRequest.findMany({ where: { id: { in: uniqueIds } } })
+      : Promise.resolve([]);
+  }
+
   private findFiles(ids: string[]) {
     const uniqueIds = [...new Set(ids)];
     return uniqueIds.length
@@ -301,6 +317,7 @@ export class ArchiveService {
     if (businessType === "contract_version") return "合同PDF留档";
     if (businessType === "settlement") return "结算PDF留档";
     if (businessType === "payment_request") return "付款PDF留档";
+    if (businessType === "project_expense_request") return "报销PDF留档";
     return "PDF留档";
   }
 
@@ -318,6 +335,7 @@ export class ArchiveService {
       contractById: Map<string, { code: string | null; temporaryCode: string | null; name: string }>;
       settlementById: Map<string, { code: string; periodLabel: string }>;
       paymentById: Map<string, { code: string }>;
+      expenseById: Map<string, { code: string }>;
     }
   ) {
     if (businessType === "contract_version") {
@@ -331,6 +349,9 @@ export class ArchiveService {
     if (businessType === "payment_request") {
       return maps.paymentById.get(businessId)?.code ?? businessId;
     }
+    if (businessType === "project_expense_request") {
+      return maps.expenseById.get(businessId)?.code ?? businessId;
+    }
     return businessId;
   }
 
@@ -342,6 +363,7 @@ export class ArchiveService {
       contractById: Map<string, { projectId: string }>;
       settlementById: Map<string, { projectId: string }>;
       paymentById: Map<string, { projectId: string }>;
+      expenseById: Map<string, { projectId: string }>;
       projectById: Map<string, { name: string }>;
     }
   ) {
@@ -358,6 +380,9 @@ export class ArchiveService {
     if (businessType === "payment_request") {
       return this.projectName(maps.projectById, maps.paymentById.get(businessId)?.projectId);
     }
+    if (businessType === "project_expense_request") {
+      return this.projectName(maps.projectById, maps.expenseById.get(businessId)?.projectId);
+    }
     return "-";
   }
 
@@ -369,6 +394,7 @@ export class ArchiveService {
       contractById: Map<string, { id: string; projectId: string }>;
       settlementById: Map<string, { id: string; projectId: string }>;
       paymentById: Map<string, { id: string; projectId: string }>;
+      expenseById: Map<string, { id: string; projectId: string }>;
     }
   ) {
     if (type === "contract_version") {
@@ -381,6 +407,9 @@ export class ArchiveService {
     }
     if (type === "payment_request") {
       return maps.paymentById.get(id)?.projectId;
+    }
+    if (type === "project_expense_request") {
+      return maps.expenseById.get(id)?.projectId;
     }
     return undefined;
   }

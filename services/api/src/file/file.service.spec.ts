@@ -21,12 +21,12 @@ describe("FileService", () => {
     storage.bucketName.mockReturnValue("private-local");
   });
 
-  it("fails closed when production file download secret is missing", () => {
+  it("fails closed outside test when file download secret is missing", () => {
     const previous = {
       nodeEnv: process.env.NODE_ENV,
       secret: process.env.FILE_DOWNLOAD_SECRET
     };
-    process.env.NODE_ENV = "production";
+    process.env.NODE_ENV = "development";
     delete process.env.FILE_DOWNLOAD_SECRET;
 
     try {
@@ -1495,6 +1495,123 @@ describe("FileService", () => {
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=applicant-1");
+  });
+
+  it("allows finance staff to download a project expense approval-form PDF by project role", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "审批单-BX-2026-001.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "chairman-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue({ id: "expense-1", projectId: "project-1" })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          businessType: "project_expense_request",
+          businessId: "expense-1",
+          fileId: "file-1",
+          templateKey: "approval_form"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "inst-1",
+          applicantUserId: "applicant-1",
+          status: "approved"
+        })
+      },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
+      position: { findMany: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
+    expect(tx.projectExpenseRequest.findUnique).toHaveBeenCalledWith({
+      where: { id: "expense-1" }
+    });
+  });
+
+  it("allows finance staff to download a project expense archived PDF by project role", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "报销归档-BX-2026-001.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-director-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue({ id: "expense-1", projectId: "project-1" })
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      archiveRecord: {
+        findFirst: jest.fn().mockResolvedValue({
+          businessType: "project_expense_request",
+          businessId: "expense-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }]) },
+      position: { findMany: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
+    expect(tx.archiveRecord.findFirst).toHaveBeenCalledWith({
+      where: { fileId: "file-1" },
+      select: { businessType: true, businessId: true }
+    });
   });
 
   it("allows the applicant to download the latest in-progress settlement approval PDF", async () => {

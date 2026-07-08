@@ -538,7 +538,7 @@
             <input v-model.trim="expenseForm.counterpartyBankAccount">
           </label>
           <label>
-            <span>支出附件</span>
+            <span>附件/发票</span>
             <input
               ref="expenseAttachmentInput"
               type="file"
@@ -574,6 +574,7 @@
                 <th>付款方式</th>
                 <th>状态</th>
                 <th>附件</th>
+                <th>审批单</th>
                 <th>提交时间</th>
                 <th>操作</th>
               </tr>
@@ -592,6 +593,7 @@
                 <td>{{ expensePaymentMethodLabel(row.paymentMethod) }}</td>
                 <td>{{ expenseStatusLabel(row.status) }}</td>
                 <td>{{ row.hasAttachment ? "已上传" : "未上传" }}</td>
+                <td>{{ row.hasApprovalPdf ? "已生成" : "未生成" }}</td>
                 <td>{{ formatDateTime(row.createdAt) }}</td>
                 <td>
                   <button
@@ -608,7 +610,7 @@
               <tr>
                 <td
                   class="empty-cell"
-                  colspan="11"
+                  colspan="12"
                 >
                   暂无支出明细
                 </td>
@@ -758,6 +760,15 @@
             >
               下载申请附件
             </button>
+            <button
+              v-if="selectedExpenseRow.hasApprovalPdf"
+              type="button"
+              class="secondary-button"
+              :disabled="expenseActionBusy !== ''"
+              @click="downloadExpenseApprovalPdf"
+            >
+              下载审批单 PDF
+            </button>
           </div>
           <div
             v-if="expenseActionMessage"
@@ -790,6 +801,7 @@ import { useRouter } from "vue-router";
 import {
   createProject,
   createProjectExpenseRequest,
+  downloadProjectExpenseApprovalPdf,
   downloadProjectExpenseAttachment,
   fetchPaymentContractOptions,
   fetchProjectExpenseRequests,
@@ -1569,6 +1581,18 @@ async function downloadExpenseAttachment() {
     }
     const ticket = await downloadProjectExpenseAttachment(selectedProjectId.value, row.id, {
       confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "附件下载密码")
+    });
+    triggerFileDownload(apiDownloadUrl(ticket.downloadUrl), ticket.fileName);
+  });
+}
+
+async function downloadExpenseApprovalPdf() {
+  await runExpenseAction("approval-pdf", async (row) => {
+    if (!row.hasApprovalPdf) {
+      throw new Error("该支出单审批单 PDF 尚未生成");
+    }
+    const ticket = await downloadProjectExpenseApprovalPdf(selectedProjectId.value, row.id, {
+      confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "审批单下载密码")
     });
     triggerFileDownload(apiDownloadUrl(ticket.downloadUrl), ticket.fileName);
   });
