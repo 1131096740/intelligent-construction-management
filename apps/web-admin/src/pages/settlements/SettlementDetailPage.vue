@@ -57,17 +57,7 @@
       title="流程动作"
       :bordered="true"
     >
-      <div
-        v-if="settlementActionBlockMessages.length"
-        class="action-blockers"
-      >
-        <span
-          v-for="message in settlementActionBlockMessages"
-          :key="message"
-        >
-          {{ message }}
-        </span>
-      </div>
+      <BusinessActionPanel :actions="settlementDetail?.availableActions ?? []" />
       <div class="action-grid">
         <div class="action-group">
           <div class="action-title">
@@ -391,6 +381,7 @@ import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
+import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   confirmSettlementArchive,
@@ -479,13 +470,6 @@ const settlementArchiveRecordOptions = computed(() =>
 const settlementActionByKey = computed(
   () => new Map((settlementDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
-const settlementActionBlockMessages = computed(() => [
-  ...new Set(
-    (settlementDetail.value?.availableActions ?? [])
-      .filter((action) => !action.enabled && action.disabledReason)
-      .map((action) => action.disabledReason as string)
-  )
-]);
 const canRunSettlementAction = computed(() => !!settlementDetail.value?.settlementId);
 const assignmentUserOptions = computed(() =>
   assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
@@ -1021,18 +1005,6 @@ function tagTheme(tone: SettlementDetailTone | CoreFlowTone) {
   padding: 18px 20px;
   color: #b51d2a;
   font-weight: 600;
-}
-
-.action-blockers {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  color: #7a4b00;
-  background: #fff7e6;
-  border: 1px solid #f2cf8f;
-  border-radius: 3px;
-  font-size: 12px;
 }
 
 @media (max-width: 980px) {

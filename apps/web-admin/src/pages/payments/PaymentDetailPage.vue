@@ -57,17 +57,7 @@
       title="流程动作"
       :bordered="true"
     >
-      <div
-        v-if="paymentActionBlockMessages.length"
-        class="action-blockers"
-      >
-        <span
-          v-for="message in paymentActionBlockMessages"
-          :key="message"
-        >
-          {{ message }}
-        </span>
-      </div>
+      <BusinessActionPanel :actions="paymentDetail?.availableActions ?? []" />
       <div class="action-grid">
         <div class="action-group">
           <div class="action-title">
@@ -429,6 +419,7 @@ import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-dom
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
+import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   createPrivateFileDownloadTicket,
@@ -522,13 +513,6 @@ const paymentEvidenceFileOptions = computed(() =>
 const paymentActionByKey = computed(
   () => new Map((paymentDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
-const paymentActionBlockMessages = computed(() => [
-  ...new Set(
-    (paymentDetail.value?.availableActions ?? [])
-      .filter((action) => !action.enabled && action.disabledReason)
-      .map((action) => action.disabledReason as string)
-  )
-]);
 const assignmentUserOptions = computed(() =>
   assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
@@ -1164,18 +1148,6 @@ function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
   padding: 18px 20px;
   color: #9f4f06;
   font-weight: 600;
-}
-
-.action-blockers {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  color: #7a4b00;
-  background: #fff7e6;
-  border: 1px solid #f2cf8f;
-  border-radius: 3px;
-  font-size: 12px;
 }
 
 @media (max-width: 980px) {

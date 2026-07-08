@@ -72,17 +72,7 @@
         title="流程动作"
         :bordered="true"
       >
-        <div
-          v-if="contractActionBlockMessages.length"
-          class="action-blockers"
-        >
-          <span
-            v-for="message in contractActionBlockMessages"
-            :key="message"
-          >
-            {{ message }}
-          </span>
-        </div>
+        <BusinessActionPanel :actions="contractDetail.availableActions" />
         <div class="action-grid">
           <div class="action-group">
             <div class="action-title">
@@ -459,6 +449,7 @@ import type { CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-do
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
+import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   approveContractSeal,
@@ -574,13 +565,6 @@ const contractApprovalTimelineView = computed(() => contractDetail.value?.approv
 const contractActionByKey = computed(
   () => new Map((contractDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
-const contractActionBlockMessages = computed(() => [
-  ...new Set(
-    (contractDetail.value?.availableActions ?? [])
-      .filter((action) => !action.enabled && action.disabledReason)
-      .map((action) => action.disabledReason as string)
-  )
-]);
 const contractNumberRuleOptions = computed(() =>
   contractNumberRules.value.map((rule) => ({
     label: `${rule.name}（${rule.pattern}）`,
@@ -1119,18 +1103,6 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   padding: 12px 0 0;
   color: #b51d2a;
   font-weight: 600;
-}
-
-.action-blockers {
-  display: grid;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  color: #7a4b00;
-  background: #fff7e6;
-  border: 1px solid #f2cf8f;
-  border-radius: 3px;
-  font-size: 12px;
 }
 
 .settlement-payment-panel {
