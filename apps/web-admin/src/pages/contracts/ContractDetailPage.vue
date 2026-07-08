@@ -210,6 +210,7 @@
             </div>
             <div class="action-fields">
               <input
+                ref="contractArchiveFileInput"
                 class="file-input"
                 type="file"
                 accept=".pdf,.png,.jpg,.jpeg"
@@ -479,6 +480,7 @@ import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import { clearSelectedFileInput } from "../../components/file-input-reset.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   approveContractSeal,
@@ -523,6 +525,7 @@ const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const contractNotice = ref("");
+const contractArchiveFileInput = ref<HTMLInputElement | null>(null);
 const selectedContractArchiveFile = ref<File | null>(null);
 const contractArchiveUploadAcceptText = "PDF、PNG、JPG、JPEG";
 const contractArchiveUploadLimitText = "不超过 100 MB";
@@ -727,6 +730,7 @@ async function submitContractArchiveUpload() {
       fileId: uploadedFile.id
     });
     contractArchiveForm.archiveFileId = returnedId(result);
+    clearSelectedFileInput(selectedContractArchiveFile, contractArchiveFileInput.value);
   });
 }
 

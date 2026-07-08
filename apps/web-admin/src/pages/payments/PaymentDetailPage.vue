@@ -126,6 +126,7 @@
               placeholder="当前登录密码确认"
             />
             <input
+              ref="paymentVoucherFileInput"
               class="file-input"
               type="file"
               accept=".pdf,.png,.jpg,.jpeg"
@@ -179,6 +180,7 @@
           </div>
           <div class="action-fields">
             <input
+              ref="paymentPdfArchiveFileInput"
               class="file-input"
               type="file"
               accept="application/pdf"
@@ -436,6 +438,7 @@ import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import { clearSelectedFileInput } from "../../components/file-input-reset.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   createPrivateFileDownloadTicket,
@@ -472,7 +475,9 @@ const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const actionBusy = ref("");
 const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
+const paymentVoucherFileInput = ref<HTMLInputElement | null>(null);
 const selectedPaymentVoucherFile = ref<File | null>(null);
+const paymentPdfArchiveFileInput = ref<HTMLInputElement | null>(null);
 const selectedPaymentPdfArchiveFile = ref<File | null>(null);
 const paymentVoucherUploadAcceptText = "PDF、PNG、JPG、JPEG";
 const paymentVoucherUploadLimitText = "不超过 100 MB";
@@ -772,12 +777,14 @@ async function submitExecution() {
   await runPaymentAction("execution", async () => {
     const uploadedFileId = (await uploadPrivateFile(file, file.name)).id;
 
-    return recordPaymentExecution(paymentId, {
+    const result = await recordPaymentExecution(paymentId, {
       amountCents,
       paidAt,
       voucherFileId: uploadedFileId,
       confirmationPassword
     });
+    clearSelectedFileInput(selectedPaymentVoucherFile, paymentVoucherFileInput.value);
+    return result;
   });
 }
 
@@ -819,9 +826,11 @@ async function submitPdfArchive() {
     }
 
     const uploadedFile = await uploadPrivateFile(file, file.name);
-    return recordPaymentPdfArchive(paymentId, {
+    const result = await recordPaymentPdfArchive(paymentId, {
       fileId: uploadedFile.id
     });
+    clearSelectedFileInput(selectedPaymentPdfArchiveFile, paymentPdfArchiveFileInput.value);
+    return result;
   });
 }
 

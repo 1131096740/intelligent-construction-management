@@ -207,6 +207,7 @@
           </div>
           <div class="action-fields">
             <input
+              ref="settlementArchiveFileInput"
               class="file-input"
               type="file"
               accept=".pdf,.png,.jpg,.jpeg"
@@ -409,6 +410,7 @@ import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import { clearSelectedFileInput } from "../../components/file-input-reset.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   confirmSettlementArchive,
@@ -442,6 +444,7 @@ const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
+const settlementArchiveFileInput = ref<HTMLInputElement | null>(null);
 const selectedSettlementArchiveFile = ref<File | null>(null);
 const settlementArchiveUploadAcceptText = "PDF、PNG、JPG、JPEG";
 const settlementArchiveUploadLimitText = "不超过 100 MB";
@@ -618,6 +621,7 @@ async function submitSettlementArchiveUpload() {
       fileId: uploadedFile.id
     });
     settlementArchiveForm.archiveFileId = returnedId(result);
+    clearSelectedFileInput(selectedSettlementArchiveFile, settlementArchiveFileInput.value);
   });
 }
 
