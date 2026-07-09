@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：新增办公化合同/结算工作台与效率提升方案文档，按“前台像办公工具，后台像业务账本”梳理合同 Word 化、结算 Excel 化、审批稿冻结、付款额度约束、历史接管唯一真相边界和新会话执行提示；ONLYOFFICE、Tabulator、Univer、PDF.js 等外部工具仅作为研究候选或窄边界 POC 方向，任何工程落地必须另行提交技术、安全、授权、部署、回滚和验收方案，不构成生产接入授权。验证：文档空白检查和 `git diff --check` 通过。
 - 2026-07-09 (CodeX)：确认并落地 Web Admin UI 治理基线：TDesign 作为唯一基础组件库，新增项目级 `--jg-*` token 命名、`check:ui` 自动检查、合同台账/合同详情/合同模板库三类样板和“同类 UI 第三次出现前必须抽象”的 agent 宪法；本轮保持 `.superpowers/` 工作流 scratch 未入库。验证：Web 组件与样板 Vitest、Web typecheck、Web lint、Web build、`check:ui`、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：推送上一轮前端改造与项目花名册提交后，继续推进「建工智管 Web Admin V2 UI 设计方案」落地切片：按 superpowers 既有规格和旁路智能体复核意见，不换 UI 库、不引入低代码运行时；合同工作台新增首屏四问摘要（这是什么合同、卡在哪、缺什么、能做什么）、步骤导航副标题和 query 预填模板入口，概览去除业务首屏版本号；新建合同项目下拉改为读取当前账号具备 `contract.create` 的项目范围；合同模板库拆出“使用模式/配置模式”，一线用户可用已发布模板卡片直接进入新建合同，配置模式仅合同主管和超级管理员可见，模板治理写接口同步加岗位守卫，配置表补模板名称/发布状态列；编号规则页占位符按钮改用 TDesign，并将新增样式收口到 `--jg-*` token。验证：API 项目/模板控制器 Jest 3 套 / 89 例、Web Vitest 36 套 / 264 例、Web/API typecheck、Web/API lint、Web build、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：修复 Web 顶栏用户身份显示写死为“合同部主管”的问题，改为显示当前登录账号姓名和真实岗位；新增项目花名册只读模块，后端 `GET /projects/roster` 按当前账号范围返回项目成员姓名、电话和岗位，领导岗位可看全部项目，普通项目成员只看自己参与项目；Web 新增“项目花名册”页面和导航入口。验证：API 项目 Jest 2 套 / 66 例、Web 路由 Vitest 36 套 / 264 例、Web/API typecheck、Web/API lint 通过。
