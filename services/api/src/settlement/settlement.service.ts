@@ -269,7 +269,7 @@ export class SettlementService {
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
     if (!canCreateSettlementFromContractStatus(status)) {
-      throw new Error("Cannot create settlement from a non-effective contract version");
+      throw new Error("合同尚未归档生效，不能创建结算。请先完成合同归档确认。");
     }
   }
 
@@ -550,7 +550,7 @@ export class SettlementService {
 
   async create(input: CreateSettlementDto, applicantUserId?: string) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to create settlement");
+      throw new Error("结算创建服务暂不可用，请稍后重试或联系管理员");
     }
 
     const settlement = await this.prisma.$transaction(async (tx) => {
@@ -559,7 +559,7 @@ export class SettlementService {
       });
 
       if (!version) {
-        throw new Error("Contract version not found");
+        throw new Error("未找到可结算的合同版本，请刷新合同后重试");
       }
 
       this.assertContractVersionEffective(version.status as ContractVersionStatus);
@@ -583,11 +583,11 @@ export class SettlementService {
       ]);
 
       if (!contract) {
-        throw new Error("Contract not found");
+        throw new Error("未找到结算关联合同，请刷新合同台账后重试");
       }
 
       if (!terms) {
-        throw new Error("Effective payment terms version not found");
+        throw new Error("合同缺少已生效的结构化付款条款，不能创建结算。请先补齐并确认合同付款条款。");
       }
 
       const calculatedSettlementAmountCents =

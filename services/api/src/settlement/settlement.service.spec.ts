@@ -50,7 +50,7 @@ describe("SettlementService", () => {
 
   it("rejects settlement creation before contract version is effective", () => {
     expect(() => service.assertContractVersionEffective("pending_archive_confirm")).toThrow(
-      "Cannot create settlement"
+      "合同尚未归档生效，不能创建结算。请先完成合同归档确认。"
     );
   });
 
@@ -119,6 +119,121 @@ describe("SettlementService", () => {
         paidAmountCents: 0
       }
     });
+  });
+
+  it("rejects settlement creation when the service is unavailable", async () => {
+    await expect(
+      service.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-019",
+        periodLabel: "2026-06",
+        amountCents: 10000000
+      })
+    ).rejects.toThrow("结算创建服务暂不可用，请稍后重试或联系管理员");
+  });
+
+  it("rejects settlement creation when the contract version is missing", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      settlement: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "missing-version",
+        code: "JS-2026-019",
+        periodLabel: "2026-06",
+        amountCents: 10000000
+      })
+    ).rejects.toThrow("未找到可结算的合同版本，请刷新合同后重试");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects settlement creation when the linked contract is missing", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-019",
+        periodLabel: "2026-06",
+        amountCents: 10000000
+      })
+    ).rejects.toThrow("未找到结算关联合同，请刷新合同台账后重试");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects settlement creation when effective payment terms are missing", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-019",
+        periodLabel: "2026-06",
+        amountCents: 10000000
+      })
+    ).rejects.toThrow("合同缺少已生效的结构化付款条款，不能创建结算。请先补齐并确认合同付款条款。");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
   it("stores settlement lines and refuses to trust a mismatched frontend total", async () => {
@@ -1263,7 +1378,7 @@ describe("SettlementService", () => {
         periodLabel: "2026-06",
         amountCents: 10000000
       })
-    ).rejects.toThrow("Cannot create settlement from a non-effective contract version");
+    ).rejects.toThrow("合同尚未归档生效，不能创建结算。请先完成合同归档确认。");
     expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
