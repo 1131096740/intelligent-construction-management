@@ -1438,6 +1438,103 @@ describe("SettlementService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("结算审批不支持的处理方式直接拒绝", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "budget-director-1", {
+        decision: "invalid" as never
+      })
+    ).rejects.toThrow("不支持的结算审批处理方式，请刷新页面后重试");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("结算单不在审批中时不能处理审批", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "effective"
+        }),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "budget-director-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("当前结算单暂不能处理审批，请确认仍在审批中");
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("缺少进行中的结算审批流程时不能处理审批", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "budget-director-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("未找到进行中的结算审批流程，请刷新后重试");
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("当前结算审批节点异常时不能处理审批", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: []
+        }),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "budget-director-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("当前结算审批节点异常，请联系管理员核对审批流程");
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
   it("keeps a countersign settlement node pending until all required roles approve", async () => {
     const frozenNodes = [
       {
@@ -1915,7 +2012,7 @@ describe("SettlementService", () => {
         decision: "reject_previous",
         comment: "无法退回上一节点"
       })
-    ).rejects.toThrow("Cannot reject settlement approval to previous node from first node");
+    ).rejects.toThrow("当前已是第一个审批节点，不能退回上一节点");
     expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 
@@ -2392,7 +2489,7 @@ describe("SettlementService", () => {
 
     await expect(
       settlementService.reviewApproval("settlement-1", "intruder-1", { decision: "approve" })
-    ).rejects.toThrow("Actor cannot approve settlement node 物资主管");
+    ).rejects.toThrow("当前账号不能处理“物资主管”节点，请确认是否为该节点审批人");
     expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 

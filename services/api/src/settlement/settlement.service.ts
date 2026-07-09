@@ -941,7 +941,7 @@ export class SettlementService {
         input.decision
       )
     ) {
-      throw new Error("Unsupported settlement approval decision");
+      throw new Error("不支持的结算审批处理方式，请刷新页面后重试");
     }
     requireApprovalCommentForReturn(input.decision, input.comment);
 
@@ -953,11 +953,11 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到结算单，请刷新结算台账后重试");
       }
 
       if (settlement.status !== "approval_pending") {
-        throw new Error(`Cannot review settlement approval from status ${settlement.status}`);
+        throw new Error("当前结算单暂不能处理审批，请确认仍在审批中");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -970,14 +970,14 @@ export class SettlementService {
       });
 
       if (!instance) {
-        throw new Error("Settlement approval instance not found");
+        throw new Error("未找到进行中的结算审批流程，请刷新后重试");
       }
 
       const nodes = instance.frozenNodes as unknown as SettlementApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
 
       if (!currentNode) {
-        throw new Error("Settlement approval current node not found");
+        throw new Error("当前结算审批节点异常，请联系管理员核对审批流程");
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId);
@@ -996,12 +996,12 @@ export class SettlementService {
       }
 
       if (!approvedRoleKey) {
-        throw new Error(`Actor cannot approve settlement node ${currentNode.name}`);
+        throw new Error(`当前账号不能处理“${currentNode.name}”节点，请确认是否为该节点审批人`);
       }
 
       if (input.decision === "reject_previous") {
         if (instance.currentNodeIndex === 0) {
-          throw new Error("Cannot reject settlement approval to previous node from first node");
+          throw new Error("当前已是第一个审批节点，不能退回上一节点");
         }
 
         const previousNodeIndex = instance.currentNodeIndex - 1;

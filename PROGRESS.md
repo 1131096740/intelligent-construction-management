@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进结算审批处理中文业务体验治理切片：结算审批处理在审批方式不支持、结算单已不在审批中、进行中的审批流程缺失、当前审批节点异常、当前账号无权处理节点或首节点退回上一节点时，不再抛出 `Unsupported settlement approval decision`、`Cannot review settlement approval from status`、`Actor cannot approve settlement node` 等英文技术错误，统一改为中文业务原因；不改变结算审批会签、退回上一节点、退回申请人、审批通过、审批动作日志和审计口径。验证：TDD 覆盖 API 结算服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算审批意见中文业务体验治理切片：结算审批在驳回、退回上一节点或退回申请人时若未填写审批意见，不再抛出 `Settlement approval comment is required for reject or return decisions` 英文技术错误，统一提示“请填写审批意见，说明驳回或退回原因”；不改变结算审批节点流转、会签、转交委托、审批动作日志和审计口径。验证：TDD 覆盖 API 结算服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：修复并复验 `codebase-memory-mcp` 调用链：通过工具发现重新暴露完整工具集，实测 `list_projects`、`index_status`、`search_graph`、`search_code`、`get_architecture`、`query_graph`、`trace_path`、`get_code_snippet` 均可正常调用，项目 `Users-leoyang-Projects` 索引状态为 `ready`；本轮未改变业务代码和 MCP 高风险工具授权边界。
 - 2026-07-10 (CodeX)：继续推进合同应付款实付分摊中文业务体验治理切片：合同应付款登记实付时若没有可分摊的有效结算来源，不再抛出 `Contract due payment execution has no effective settlements to allocate` 英文技术错误，统一提示先核对合同结算和历史期初结算；不改变实付登记、合同应付款分摊、预付款扣回、历史期初结算和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
