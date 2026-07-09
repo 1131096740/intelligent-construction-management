@@ -54,7 +54,10 @@
         </div>
       </div>
 
-      <BusinessStatusSummary :items="contractFlowSummaryView" />
+      <BusinessStatusSummary
+        class="contract-detail-summary"
+        :items="contractFlowSummaryView"
+      />
 
       <div class="chain-strip">
         <span>业务链路</span>
@@ -1030,6 +1033,10 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   background: #fff;
   border: 1px solid #dce1e8;
   border-radius: 3px;
+}
+
+.contract-detail-summary {
+  margin-bottom: var(--jg-space-lg);
 }
 
 .chain-strip span {
