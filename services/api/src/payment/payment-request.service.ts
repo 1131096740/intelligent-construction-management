@@ -724,7 +724,11 @@ export class PaymentRequestService {
       throw new Error("付款申请金额必须为大于 0 的整数分");
     }
     if (input.requestedAmountCents > capacity.remainingCents) {
-      throw new Error(`合同预付款到期可付额度不足: ${Math.max(capacity.remainingCents, 0)}`);
+      throw new Error(
+        `合同预付款当前可申请金额不足，当前最多可申请 ${this.formatYuan(
+          Math.max(capacity.remainingCents, 0)
+        )} 元`
+      );
     }
 
     const financingQuotaAllocations = await this.reserveProjectCashPool(
@@ -900,7 +904,7 @@ export class PaymentRequestService {
     ];
 
     if (!paymentTermsVersionIds.length) {
-      throw new Error("合同到期可付额度不足: 0");
+      throw new Error("合同应付款当前可申请金额不足，当前最多可申请 0.00 元");
     }
 
     const [paymentTermsStages, settlementArchiveFiles, contractPaymentRequests, proxyPaidAmountCents] =
@@ -985,7 +989,11 @@ export class PaymentRequestService {
     });
 
     if (requestedAmountCents > capacity.remainingCents) {
-      throw new Error(`合同到期可付额度不足: ${Math.max(capacity.remainingCents, 0)}`);
+      throw new Error(
+        `合同应付款当前可申请金额不足，当前最多可申请 ${this.formatYuan(
+          Math.max(capacity.remainingCents, 0)
+        )} 元`
+      );
     }
   }
 

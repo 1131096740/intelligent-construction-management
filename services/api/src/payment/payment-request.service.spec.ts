@@ -1028,7 +1028,7 @@ describe("PaymentRequestService", () => {
         code: "FK-HT-HIS-CAP-001",
         requestedAmountCents: 1
       } as never)
-    ).rejects.toThrow("合同到期可付额度不足: 0");
+    ).rejects.toThrow("合同应付款当前可申请金额不足，当前最多可申请 0.00 元");
 
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
@@ -1464,7 +1464,7 @@ describe("PaymentRequestService", () => {
           code: "FK-YF-2026-002",
           requestedAmountCents: 100_000
         } as never)
-      ).rejects.toThrow("合同预付款到期可付额度不足: 0");
+      ).rejects.toThrow("合同预付款当前可申请金额不足，当前最多可申请 0.00 元");
       expect(tx.paymentRequest.create).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
@@ -1552,7 +1552,7 @@ describe("PaymentRequestService", () => {
         code: "FK-YF-HIS-CAP-001",
         requestedAmountCents: 1
       } as never)
-    ).rejects.toThrow("合同预付款到期可付额度不足: 0");
+    ).rejects.toThrow("合同预付款当前可申请金额不足，当前最多可申请 0.00 元");
 
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
@@ -1876,7 +1876,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-014",
           requestedAmountCents: 60_000
         })
-      ).rejects.toThrow("合同到期可付额度不足: 50000");
+      ).rejects.toThrow("合同应付款当前可申请金额不足，当前最多可申请 500.00 元");
       expect(tx.settlement.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
@@ -2023,7 +2023,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-ADV-DED",
           requestedAmountCents: 61_000
         })
-      ).rejects.toThrow("合同到期可付额度不足: 60000");
+      ).rejects.toThrow("合同应付款当前可申请金额不足，当前最多可申请 600.00 元");
       expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
