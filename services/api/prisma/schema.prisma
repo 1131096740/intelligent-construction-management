@@ -129,6 +129,8 @@ model ContractVersion {
 model ContractTakeover {
   id                                    String    @id @default(uuid())
   projectId                             String
+  takeoverBatchId                       String?
+  importRowNo                           Int?
   contractId                            String
   contractVersionId                     String    @unique
   paymentTermsVersionId                 String
@@ -161,10 +163,39 @@ model ContractTakeover {
   historicalBalanceConfirmedAt          DateTime?
   createdAt                             DateTime  @default(now())
   updatedAt                             DateTime  @updatedAt
+  takeoverBatch                         ContractTakeoverBatch? @relation(fields: [takeoverBatchId], references: [id])
 
   @@index([projectId, takeoverStatus])
+  @@index([takeoverBatchId])
   @@index([contractId])
   @@index([contractVersionId])
+  @@unique([takeoverBatchId, importRowNo])
+}
+
+model ContractTakeoverBatch {
+  id                   String   @id @default(uuid())
+  projectId            String
+  batchNo              String
+  status               String
+  takeoverCutoffDate   DateTime
+  responsibleUserId    String
+  reviewComment        String
+  acceptanceConclusion String
+  importFingerprint    String
+  totalRows            Int      @default(0)
+  readyRows            Int      @default(0)
+  blockedRows          Int      @default(0)
+  warningRows          Int      @default(0)
+  createdCount         Int      @default(0)
+  skippedCount         Int      @default(0)
+  createdByUserId      String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  takeovers            ContractTakeover[]
+
+  @@unique([projectId, batchNo])
+  @@unique([projectId, importFingerprint])
+  @@index([projectId, status])
 }
 
 model PaymentTermsVersion {

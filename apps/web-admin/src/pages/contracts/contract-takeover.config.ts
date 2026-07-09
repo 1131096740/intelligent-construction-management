@@ -19,6 +19,8 @@ export interface ContractTakeoverTableRow {
   id: string;
   contractNo: string;
   contractName: string;
+  batchNo: string;
+  importRowNo: string;
   counterparty: string;
   amount: string;
   takeoverLevel: ContractTakeoverLevel;
@@ -70,6 +72,7 @@ export const lifecycleStatusOptions: Array<ContractTakeoverOption<ContractLifecy
 export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[] = [
   { colKey: "contractNo", title: "合同编号", width: 132 },
   { colKey: "contractName", title: "合同名称", minWidth: 180 },
+  { colKey: "batchNo", title: "接管批次", width: 168 },
   { colKey: "counterparty", title: "相对方", minWidth: 140 },
   { colKey: "amount", title: "合同金额", width: 116, align: "right" },
   { colKey: "takeoverLevelLabel", title: "接管等级", width: 104 },
@@ -263,6 +266,8 @@ export function toContractTakeoverTableRow(
     id: takeover.id,
     contractNo: takeover.contractNo,
     contractName: takeover.contractName,
+    batchNo: takeover.batchNo ?? "手工补录",
+    importRowNo: takeover.importRowNo ? `第 ${takeover.importRowNo} 行` : "未记录",
     counterparty: takeover.counterparty,
     amount: centsToYuanText(takeover.amountCents),
     takeoverLevel: takeover.takeoverLevel,

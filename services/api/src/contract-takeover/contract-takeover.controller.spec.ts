@@ -10,6 +10,7 @@ describe("ContractTakeoverController", () => {
     expectProjectAction(ContractTakeoverController.prototype.create, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.updateDraft, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.precheckImport, "contract.create");
+    expectProjectAction(ContractTakeoverController.prototype.createDraftsFromImport, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.attachEvidence, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.submitReview, "contract.submit");
   });

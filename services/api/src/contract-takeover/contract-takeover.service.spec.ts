@@ -452,6 +452,29 @@ describe("ContractTakeoverService", () => {
       contractTakeover: {
         create: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
       },
+      contractTakeoverBatch: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "batch-1",
+          projectId: "project-1",
+          batchNo: "接管批次-20260710-TEST0001",
+          status: "drafts_generated",
+          takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
+          responsibleUserId: "contract-user",
+          reviewComment: "导入预检通过后生成接管草稿，待多部门复核。",
+          acceptanceConclusion: "待主管确认后形成接管结论。",
+          importFingerprint: "fingerprint",
+          totalRows: 1,
+          readyRows: 1,
+          blockedRows: 0,
+          warningRows: 0,
+          createdCount: 1,
+          skippedCount: 0,
+          createdByUserId: "contract-user",
+          createdAt: new Date("2026-07-10T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-10T00:00:00.000Z")
+        })
+      },
       auditLog: {
         create: jest.fn()
       }
@@ -492,7 +515,25 @@ describe("ContractTakeoverService", () => {
     );
 
     expect(result.createdCount).toBe(1);
+    expect(result.skippedCount).toBe(0);
+    expect(result.batch).toMatchObject({
+      batchNo: "接管批次-20260710-TEST0001",
+      status: "drafts_generated",
+      responsibleUserId: "contract-user",
+      createdCount: 1
+    });
     expect(result.createdRows).toEqual([2]);
+    expect(tx.contractTakeoverBatch.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        batchNo: expect.stringMatching(/^接管批次-/),
+        status: "drafts_generated",
+        totalRows: 1,
+        readyRows: 1,
+        createdCount: 1,
+        createdByUserId: "contract-user"
+      })
+    });
     expect(tx.contract.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         projectId: "project-1",
@@ -507,9 +548,101 @@ describe("ContractTakeoverService", () => {
         historicalSettledCents: BigInt(600_000),
         historicalPaidCents: BigInt(300_000),
         balanceSourceSummary: "财务台账核对。",
-        evidenceSummary: "合同扫描件和付款台账齐全。"
+        evidenceSummary: "合同扫描件和付款台账齐全。",
+        takeoverBatchId: "batch-1",
+        importRowNo: 2
       })
     });
+  });
+
+  it("reuses an existing import batch instead of creating duplicate takeover drafts", async () => {
+    const existingBatch = {
+      id: "batch-1",
+      projectId: "project-1",
+      batchNo: "接管批次-20260710-TEST0001",
+      status: "drafts_generated",
+      takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
+      responsibleUserId: "contract-user",
+      reviewComment: "导入预检通过后生成接管草稿，待多部门复核。",
+      acceptanceConclusion: "待主管确认后形成接管结论。",
+      importFingerprint: "fingerprint",
+      totalRows: 1,
+      readyRows: 1,
+      blockedRows: 0,
+      warningRows: 0,
+      createdCount: 1,
+      skippedCount: 0,
+      createdByUserId: "contract-user",
+      createdAt: new Date("2026-07-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-10T00:00:00.000Z")
+    };
+    const tx = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-version-1", amountCents: 1_000_000n }])
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "terms-version-1", originalText: "按月结算" }])
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          takeoverRecord({
+            takeoverBatchId: "batch-1",
+            importRowNo: 2,
+            contractId: "contract-1",
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1"
+          })
+        ])
+      },
+      contractTakeoverBatch: {
+        findUnique: jest.fn().mockResolvedValue(existingBatch),
+        create: jest.fn()
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const prisma = {
+      contract: tx.contract,
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.createDraftsFromImport(
+      "project-1",
+      {
+        rows: [
+          {
+            rowNo: 2,
+            code: "HT-HIS-001",
+            name: "历史材料合同",
+            counterparty: "供应商A",
+            amountCents: 1_000_000,
+            signedAt: "2026-01-10",
+            takeoverLevel: "A",
+            lifecycleStatus: "in_progress",
+            paymentTermsOriginalText: "按月结算",
+            balanceSourceSummary: "财务台账核对。",
+            evidenceSummary: "合同扫描件齐全。",
+            evidenceChecklist: "合同扫描件"
+          }
+        ]
+      },
+      "contract-user"
+    );
+
+    expect(result.createdCount).toBe(0);
+    expect(result.skippedCount).toBe(1);
+    expect(result.batch.batchNo).toBe("接管批次-20260710-TEST0001");
+    expect(result.createdRows).toEqual([2]);
+    expect(tx.contract.create).not.toHaveBeenCalled();
+    expect(tx.contractTakeoverBatch.create).not.toHaveBeenCalled();
   });
 
   it("does not create import drafts while precheck still has error rows", async () => {

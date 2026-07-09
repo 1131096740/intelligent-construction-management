@@ -22,6 +22,7 @@ describe("contract takeover page configuration", () => {
     expect(contractTakeoverColumns.map((column) => column.title)).toEqual([
       "合同编号",
       "合同名称",
+      "接管批次",
       "相对方",
       "合同金额",
       "接管等级",
@@ -174,6 +175,8 @@ describe("contract takeover page configuration", () => {
     expect(row).toMatchObject({
       contractNo: "HT-LS-001",
       contractName: "历史材料采购合同",
+      batchNo: "接管批次-20260710-TEST0001",
+      importRowNo: "第 2 行",
       amount: "¥1,000,000.00",
       takeoverStatusLabel: "待复核",
       lifecycleStatusLabel: "履约中",
@@ -189,6 +192,8 @@ describe("contract takeover page configuration", () => {
 function takeover(): ContractTakeoverReadModel {
   return {
     id: "takeover-1",
+    batchNo: "接管批次-20260710-TEST0001",
+    importRowNo: 2,
     contractNo: "HT-LS-001",
     contractName: "历史材料采购合同",
     counterparty: "历史供应商",

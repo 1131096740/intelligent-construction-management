@@ -1,5 +1,6 @@
 import { Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -49,12 +50,20 @@ const IMPORT_PRECHECK_MAX_ROWS = 200;
 type TakeoverClient = Pick<Prisma.TransactionClient, "contractTakeover">;
 type TakeoverReadClient = Pick<
   Prisma.TransactionClient,
-  "contract" | "contractVersion" | "paymentTermsVersion" | "archiveRecord" | "fileObject" | "user"
+  | "contract"
+  | "contractVersion"
+  | "paymentTermsVersion"
+  | "contractTakeoverBatch"
+  | "archiveRecord"
+  | "fileObject"
+  | "user"
 >;
 
 type ContractTakeoverRecord = {
   id: string;
   projectId: string;
+  takeoverBatchId?: string | null;
+  importRowNo?: number | null;
   contractId: string;
   contractVersionId: string;
   paymentTermsVersionId: string;
@@ -87,6 +96,8 @@ type ContractTakeoverRecord = {
 
 export interface ContractTakeoverBusinessReadModel {
   id: string;
+  batchNo: string | null;
+  importRowNo: number | null;
   contractNo: string;
   contractName: string;
   counterparty: string;
@@ -172,9 +183,32 @@ export interface ContractTakeoverImportPrecheckResult {
 
 export interface ContractTakeoverImportDraftResult {
   projectId: string;
+  batch: ContractTakeoverImportBatchReadModel;
   createdCount: number;
+  skippedCount: number;
   createdRows: number[];
   created: ContractTakeoverBusinessReadModel[];
+}
+
+export interface ContractTakeoverImportBatchReadModel {
+  id: string;
+  batchNo: string;
+  status: string;
+  takeoverCutoffDate: Date;
+  responsibleUserId: string;
+  reviewComment: string;
+  acceptanceConclusion: string;
+  totalRows: number;
+  readyRows: number;
+  blockedRows: number;
+  warningRows: number;
+  createdCount: number;
+  skippedCount: number;
+}
+
+interface CreateDraftRecordOptions {
+  takeoverBatchId?: string;
+  importRowNo?: number;
 }
 
 @Injectable()
@@ -191,14 +225,25 @@ export class ContractTakeoverService {
   async create(projectId: string, input: CreateContractTakeoverDto, actorUserId: string) {
     const data = this.normalizeCreateInput(input);
 
-    return this.prisma.$transaction(async (tx) => {
-      const project = await tx.project.findUnique({
-        where: { id: projectId },
-        select: { id: true, isActive: true }
-      });
-      if (!project?.isActive) {
-        throw new Error("Project not found or inactive");
-      }
+    return this.prisma.$transaction((tx) =>
+      this.createDraftRecord(tx, projectId, data, actorUserId)
+    );
+  }
+
+  private async createDraftRecord(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    data: ReturnType<ContractTakeoverService["normalizeCreateInput"]>,
+    actorUserId: string,
+    options: CreateDraftRecordOptions = {}
+  ) {
+    const project = await tx.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, isActive: true }
+    });
+    if (!project?.isActive) {
+      throw new Error("Project not found or inactive");
+    }
 
       const contract = await tx.contract.create({
         data: {
@@ -248,6 +293,8 @@ export class ContractTakeoverService {
           paymentTermsVersionId: terms.id,
           takeoverLevel: data.takeoverLevel,
           takeoverStatus: "draft",
+          takeoverBatchId: options.takeoverBatchId,
+          importRowNo: options.importRowNo,
           lifecycleStatus: data.lifecycleStatus,
           signedAt: data.signedAt,
           historicalSettledCents: BigInt(data.historicalSettledCents),
@@ -279,7 +326,9 @@ export class ContractTakeoverService {
           projectId,
           contractId: contract.id,
           contractVersionId: version.id,
-          takeoverLevel: data.takeoverLevel
+          takeoverLevel: data.takeoverLevel,
+          takeoverBatchId: options.takeoverBatchId ?? null,
+          importRowNo: options.importRowNo ?? null
         }
       });
 
@@ -292,7 +341,6 @@ export class ContractTakeoverService {
         paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
         evidenceFiles: []
       });
-    });
   }
 
   async updateDraft(
@@ -521,17 +569,97 @@ export class ContractTakeoverService {
       throw new Error("没有可生成接管草稿的导入行");
     }
 
-    const created: ContractTakeoverBusinessReadModel[] = [];
-    for (const row of readyRows) {
-      created.push(await this.create(projectId, this.importRowToCreateInput(row), actorUserId));
-    }
+    const readyRowsWithRowNo = readyRows.map((row, index) => ({
+      row,
+      rowNo: integerOrFallback(row["rowNo"], index + 1)
+    }));
+    const importFingerprint = this.importFingerprint(readyRowsWithRowNo.map(({ row }) => row));
+    const batchInput = this.normalizeImportBatchInput(input, importFingerprint, actorUserId);
 
-    return {
-      projectId,
-      createdCount: created.length,
-      createdRows: readyRows.map((row, index) => integerOrFallback(row["rowNo"], index + 1)),
-      created
-    };
+    return this.prisma.$transaction(async (tx) => {
+      const existingBatch = await tx.contractTakeoverBatch.findUnique({
+        where: { projectId_importFingerprint: { projectId, importFingerprint } }
+      });
+      if (existingBatch) {
+        const existingTakeovers = await tx.contractTakeover.findMany({
+          where: { takeoverBatchId: existingBatch.id },
+          orderBy: { importRowNo: "asc" }
+        });
+        const created = await this.toReadModels(tx, existingTakeovers);
+        return {
+          projectId,
+          batch: this.toImportBatchReadModel(existingBatch),
+          createdCount: 0,
+          skippedCount: existingTakeovers.length,
+          createdRows: existingTakeovers
+            .map((takeover) => takeover.importRowNo)
+            .filter((rowNo): rowNo is number => typeof rowNo === "number"),
+          created
+        };
+      }
+
+      const batch = await tx.contractTakeoverBatch.create({
+        data: {
+          projectId,
+          batchNo: batchInput.batchNo,
+          status: "drafts_generated",
+          takeoverCutoffDate: batchInput.takeoverCutoffDate,
+          responsibleUserId: batchInput.responsibleUserId,
+          reviewComment: batchInput.reviewComment,
+          acceptanceConclusion: batchInput.acceptanceConclusion,
+          importFingerprint,
+          totalRows: precheck.totalRows,
+          readyRows: precheck.readyRows,
+          blockedRows: precheck.blockedRows,
+          warningRows: precheck.warningRows,
+          createdCount: readyRowsWithRowNo.length,
+          skippedCount: 0,
+          createdByUserId: actorUserId
+        }
+      });
+
+      const created: ContractTakeoverBusinessReadModel[] = [];
+      for (const { row, rowNo } of readyRowsWithRowNo) {
+        const draft = await this.createDraftRecord(
+          tx,
+          projectId,
+          this.normalizeCreateInput({
+            ...this.importRowToCreateInput(row),
+            takeoverCutoffDate: stringValue(row["takeoverCutoffDate"]) || input.takeoverCutoffDate,
+            responsibleUserId: stringValue(row["responsibleUserId"]) || batch.responsibleUserId,
+            reviewComment: stringValue(row["reviewComment"]) || batch.reviewComment,
+            acceptanceConclusion:
+              stringValue(row["acceptanceConclusion"]) || batch.acceptanceConclusion
+          }),
+          actorUserId,
+          { takeoverBatchId: batch.id, importRowNo: rowNo }
+        );
+        created.push({ ...draft, batchNo: batch.batchNo, importRowNo: rowNo });
+      }
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover.import_drafts",
+        businessType: "contract_takeover_batch",
+        businessId: batch.id,
+        metadata: {
+          projectId,
+          batchNo: batch.batchNo,
+          createdCount: created.length,
+          readyRows: precheck.readyRows,
+          warningRows: precheck.warningRows
+        }
+      });
+
+      return {
+        projectId,
+        batch: this.toImportBatchReadModel(batch),
+        createdCount: created.length,
+        skippedCount: 0,
+        createdRows: readyRowsWithRowNo.map(({ rowNo }) => rowNo),
+        created
+      };
+    });
   }
 
   async submitReview(projectId: string, takeoverId: string, actorUserId: string) {
@@ -663,8 +791,16 @@ export class ContractTakeoverService {
       fileObject?: TakeoverReadClient["fileObject"];
       user?: TakeoverReadClient["user"];
     });
+    const batchClient = (client as unknown as {
+      contractTakeoverBatch?: TakeoverReadClient["contractTakeoverBatch"];
+    }).contractTakeoverBatch;
     const paymentTermsVersionIds = unique(takeovers.map((takeover) => takeover.paymentTermsVersionId));
-    const [contracts, versions, terms, archiveRecords] = await Promise.all([
+    const batchIds = unique(
+      takeovers
+        .map((takeover) => takeover.takeoverBatchId)
+        .filter((id): id is string => typeof id === "string" && Boolean(id))
+    );
+    const [contracts, versions, terms, batches, archiveRecords] = await Promise.all([
       client.contract.findMany({
         where: { id: { in: contractIds } },
         select: {
@@ -684,6 +820,12 @@ export class ContractTakeoverService {
         ? paymentTermsClient.findMany({
             where: { id: { in: paymentTermsVersionIds } },
             select: { id: true, originalText: true }
+          })
+        : Promise.resolve([]),
+      typeof batchClient?.findMany === "function" && batchIds.length
+        ? batchClient.findMany({
+            where: { id: { in: batchIds } },
+            select: { id: true, batchNo: true }
           })
         : Promise.resolve([]),
       typeof archiveClient.archiveRecord?.findMany === "function"
@@ -708,6 +850,7 @@ export class ContractTakeoverService {
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const versionById = new Map(versions.map((version) => [version.id, version]));
     const termsById = new Map(terms.map((term) => [term.id, term]));
+    const batchById = new Map(batches.map((batch) => [batch.id, batch]));
     const fileById = new Map(files.map((file) => [file.id, file]));
     const userNameById = new Map(users.map((user) => [user.id, user.name]));
     const recordsByTakeoverId = new Map<string, typeof archiveRecords>();
@@ -729,6 +872,9 @@ export class ContractTakeoverService {
         companyEntityName: contractById.get(takeover.contractId)?.companyEntityName ?? null,
         amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0,
         paymentTermsOriginalText: termsById.get(takeover.paymentTermsVersionId)?.originalText ?? "",
+        batchNo: takeover.takeoverBatchId
+          ? batchById.get(takeover.takeoverBatchId)?.batchNo ?? null
+          : null,
         evidenceFiles: (recordsByTakeoverId.get(takeover.id) ?? []).flatMap((record) => {
           const file = fileById.get(record.fileId);
           if (!file) {
@@ -772,11 +918,14 @@ export class ContractTakeoverService {
       companyEntityName: string | null;
       amountCents: bigint | number;
       paymentTermsOriginalText: string;
+      batchNo?: string | null;
       evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
     }
   ): ContractTakeoverBusinessReadModel {
     return {
       id: takeover.id,
+      batchNo: contract.batchNo ?? null,
+      importRowNo: takeover.importRowNo ?? null,
       contractNo: contract.contractNo,
       contractName: contract.contractName,
       counterparty: contract.counterparty,
@@ -814,6 +963,69 @@ export class ContractTakeoverService {
       createdAt: takeover.createdAt,
       updatedAt: takeover.updatedAt
     };
+  }
+
+  private toImportBatchReadModel(batch: {
+    id: string;
+    batchNo: string;
+    status: string;
+    takeoverCutoffDate: Date;
+    responsibleUserId: string;
+    reviewComment: string;
+    acceptanceConclusion: string;
+    totalRows: number;
+    readyRows: number;
+    blockedRows: number;
+    warningRows: number;
+    createdCount: number;
+    skippedCount: number;
+  }): ContractTakeoverImportBatchReadModel {
+    return {
+      id: batch.id,
+      batchNo: batch.batchNo,
+      status: batch.status,
+      takeoverCutoffDate: batch.takeoverCutoffDate,
+      responsibleUserId: batch.responsibleUserId,
+      reviewComment: batch.reviewComment,
+      acceptanceConclusion: batch.acceptanceConclusion,
+      totalRows: batch.totalRows,
+      readyRows: batch.readyRows,
+      blockedRows: batch.blockedRows,
+      warningRows: batch.warningRows,
+      createdCount: batch.createdCount,
+      skippedCount: batch.skippedCount
+    };
+  }
+
+  private normalizeImportBatchInput(
+    input: PrecheckContractTakeoverImportDto,
+    importFingerprint: string,
+    actorUserId: string
+  ) {
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    const cutoffDate = input.takeoverCutoffDate?.trim()
+      ? this.normalizeOptionalDate(input.takeoverCutoffDate, "takeoverCutoffDate")
+      : today;
+    const batchNo = input.batchNo?.trim() || this.defaultImportBatchNo(importFingerprint);
+
+    return {
+      batchNo,
+      takeoverCutoffDate: cutoffDate,
+      responsibleUserId: input.responsibleUserId?.trim() || actorUserId,
+      reviewComment: input.reviewComment?.trim() || "导入预检通过后生成接管草稿，待多部门复核。",
+      acceptanceConclusion: input.acceptanceConclusion?.trim() || "待主管确认后形成接管结论。"
+    };
+  }
+
+  private defaultImportBatchNo(importFingerprint: string) {
+    const dateText = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    return `接管批次-${dateText}-${importFingerprint.slice(0, 8).toUpperCase()}`;
+  }
+
+  private importFingerprint(rows: Record<string, unknown>[]) {
+    return createHash("sha256")
+      .update(JSON.stringify(rows.map((row) => stableObject(row))))
+      .digest("hex");
   }
 
   private parsePrecheckRows(input: PrecheckContractTakeoverImportDto) {
@@ -1165,6 +1377,22 @@ function isStrictDateText(value: string): boolean {
     date.getUTCMonth() === month - 1 &&
     date.getUTCDate() === day
   );
+}
+
+function stableObject(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stableObject(item));
+  }
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  return Object.keys(value)
+    .sort()
+    .reduce<Record<string, unknown>>((result, key) => {
+      result[key] = stableObject(value[key]);
+      return result;
+    }, {});
 }
 
 function issue(

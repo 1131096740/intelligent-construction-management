@@ -168,6 +168,8 @@ export interface ContractTakeoverEvidenceFileReadModel {
 
 export interface ContractTakeoverReadModel {
   id: string;
+  batchNo: string | null;
+  importRowNo: number | null;
   contractNo: string;
   contractName: string;
   counterparty: string;
@@ -240,6 +242,27 @@ export interface PrecheckContractTakeoverImportRowPayload extends Record<string,
 
 export interface PrecheckContractTakeoverImportPayload {
   rows: PrecheckContractTakeoverImportRowPayload[];
+  batchNo?: string;
+  takeoverCutoffDate?: string;
+  responsibleUserId?: string;
+  reviewComment?: string;
+  acceptanceConclusion?: string;
+}
+
+export interface ContractTakeoverImportBatchReadModel {
+  id: string;
+  batchNo: string;
+  status: string;
+  takeoverCutoffDate: string;
+  responsibleUserId: string;
+  reviewComment: string;
+  acceptanceConclusion: string;
+  totalRows: number;
+  readyRows: number;
+  blockedRows: number;
+  warningRows: number;
+  createdCount: number;
+  skippedCount: number;
 }
 
 export interface ContractTakeoverImportPrecheckIssueReadModel {
@@ -276,7 +299,9 @@ export interface ContractTakeoverImportPrecheckReadModel {
 
 export interface ContractTakeoverImportDraftReadModel {
   projectId: string;
+  batch: ContractTakeoverImportBatchReadModel;
   createdCount: number;
+  skippedCount: number;
   createdRows: number[];
   created: ContractTakeoverReadModel[];
 }

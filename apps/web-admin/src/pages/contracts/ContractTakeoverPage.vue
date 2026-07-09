@@ -808,6 +808,8 @@ const selectedBaseInfo = computed(() => {
   return [
     { label: "合同编号", value: row.contractNo },
     { label: "合同名称", value: row.contractName },
+    { label: "接管批次", value: row.batchNo },
+    { label: "导入行号", value: row.importRowNo },
     { label: "相对方", value: row.counterparty },
     { label: "合同金额", value: row.amount },
     { label: "签订日期", value: row.signedAt },
@@ -937,7 +939,11 @@ async function generateImportDrafts() {
   try {
     const rows = parseContractTakeoverImportPrecheckRows(importPrecheckText.value);
     const result = await createContractTakeoverDraftsFromImport(projectId, { rows });
-    setMessage(`已生成 ${result.createdCount} 份历史合同接管草稿`, "success");
+    const skippedText = result.skippedCount > 0 ? `，重复跳过 ${result.skippedCount} 份` : "";
+    setMessage(
+      `${result.batch.batchNo} 已生成 ${result.createdCount} 份历史合同接管草稿${skippedText}`,
+      "success"
+    );
     importPrecheckResult.value = null;
     importPrecheckText.value = "";
     showPrecheckPanel.value = false;
