@@ -192,6 +192,7 @@ import {
   archiveRules,
   archiveSummaryItems,
   archiveDownloadActionDisabledReason,
+  archiveDownloadConfirmMessage,
   archiveDownloadDisabledReason,
   emptyArchiveLedgerFilters,
   filterArchiveLedgerRows
@@ -316,11 +317,7 @@ async function confirmDownload() {
     messageTone.value = "danger";
     return;
   }
-  if (
-    !confirmSensitiveAction(
-      "确认下载后，系统将校验当前密码并记录下载人、资料文件、业务单据和下载原因审计。是否继续？"
-    )
-  ) {
+  if (!confirmSensitiveAction(archiveDownloadConfirmMessage())) {
     return;
   }
   const downloadReason = promptSensitiveActionReason("请输入本次下载原因");

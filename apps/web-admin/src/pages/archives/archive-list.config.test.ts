@@ -5,6 +5,7 @@ import {
   archiveRules,
   archiveSummaryItems,
   archiveDownloadActionDisabledReason,
+  archiveDownloadConfirmMessage,
   archiveDownloadDisabledReason,
   emptyArchiveLedgerFilters,
   filterArchiveLedgerRows,
@@ -72,6 +73,12 @@ describe("archive ledger page configuration", () => {
     ).toBe("归档确认后开放下载");
     expect(archiveDownloadActionDisabledReason(archiveRow({ canDownload: false }))).toBe(
       "当前资料暂不可下载"
+    );
+  });
+
+  it("explains password, reason, short-lived link, and audit before download", () => {
+    expect(archiveDownloadConfirmMessage()).toBe(
+      "确认下载后，系统将校验当前密码、要求填写下载原因，并生成短时效下载链接；后台会记录下载人、资料文件、业务单据和下载原因审计。是否继续？"
     );
   });
 

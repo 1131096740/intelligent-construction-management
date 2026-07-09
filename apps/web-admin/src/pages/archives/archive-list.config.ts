@@ -168,6 +168,10 @@ export function archiveDownloadActionDisabledReason(row: Pick<ArchiveLedgerRow, 
   return row.disabledReason ?? "当前资料暂不可下载";
 }
 
+export function archiveDownloadConfirmMessage(): string {
+  return "确认下载后，系统将校验当前密码、要求填写下载原因，并生成短时效下载链接；后台会记录下载人、资料文件、业务单据和下载原因审计。是否继续？";
+}
+
 function includesText(value: string, query: string) {
   const normalizedQuery = normalize(query);
   return !normalizedQuery || normalize(value).includes(normalizedQuery);
