@@ -161,6 +161,7 @@ export interface SettlementPaymentRuleReadModel {
   stage: string;
   ratio: string;
   accountPeriod: string;
+  invoiceRequirement: string;
   triggerCondition: string;
   paymentRequestStatus: string;
 }

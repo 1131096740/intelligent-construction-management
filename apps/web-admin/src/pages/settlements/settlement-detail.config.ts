@@ -19,6 +19,7 @@ export interface SettlementPaymentRule {
   stage: string;
   ratio: string;
   accountPeriod: string;
+  invoiceRequirement: string;
   triggerCondition: string;
   paymentRequestStatus: string;
 }
@@ -91,6 +92,7 @@ export const settlementPaymentRuleColumns: PrimaryTableCol<SettlementPaymentRule
   { colKey: "stage", title: "规则阶段", minWidth: 160 },
   { colKey: "ratio", title: "付款比例", width: 110 },
   { colKey: "accountPeriod", title: "付款账期", width: 110 },
+  { colKey: "invoiceRequirement", title: "发票要求", width: 120 },
   { colKey: "triggerCondition", title: "触发条件", minWidth: 180 },
   { colKey: "paymentRequestStatus", title: "付款申请状态", width: 132 }
 ];
@@ -112,6 +114,7 @@ export const settlementPaymentRules: SettlementPaymentRule[] = [
     stage: "当期结算款",
     ratio: "80%",
     accountPeriod: "30天",
+    invoiceRequirement: "需提供发票",
     triggerCondition: "结算归档确认生效",
     paymentRequestStatus: "未开放"
   },
@@ -120,6 +123,7 @@ export const settlementPaymentRules: SettlementPaymentRule[] = [
     stage: "质保金",
     ratio: "20%",
     accountPeriod: "365天",
+    invoiceRequirement: "不要求发票",
     triggerCondition: "质保期满",
     paymentRequestStatus: "未开放"
   }

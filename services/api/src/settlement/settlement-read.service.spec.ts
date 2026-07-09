@@ -172,6 +172,7 @@ describe("SettlementReadService", () => {
             name: "进度款",
             ratioBps: 8500,
             dueDays: 20,
+            requiresInvoice: true,
             triggerEvent: "结算归档确认生效"
           }
         ])
@@ -273,6 +274,7 @@ describe("SettlementReadService", () => {
       stage: "进度款",
       ratio: "85%",
       accountPeriod: "20天",
+      invoiceRequirement: "需提供发票",
       triggerCondition: "结算归档确认生效",
       paymentRequestStatus: "approved_pending_payment"
     });

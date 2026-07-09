@@ -409,6 +409,7 @@ export class SettlementReadService {
         stage: stage.name,
         ratio: this.ratioLabel(stage.ratioBps),
         accountPeriod: `${stage.dueDays}天`,
+        invoiceRequirement: stage.requiresInvoice ? "需提供发票" : "不要求发票",
         triggerCondition: stage.triggerEvent,
         paymentRequestStatus: paymentRequest?.status ?? this.defaultPaymentRequestStatus(settlement.status)
       })),
@@ -468,6 +469,7 @@ export class SettlementReadService {
           stage: "当期结算款",
           ratio: "80%",
           accountPeriod: "30天",
+          invoiceRequirement: "需提供发票",
           triggerCondition: "结算归档确认生效",
           paymentRequestStatus: "未开放"
         },
@@ -476,6 +478,7 @@ export class SettlementReadService {
           stage: "质保金",
           ratio: "20%",
           accountPeriod: "365天",
+          invoiceRequirement: "不要求发票",
           triggerCondition: "质保期满",
           paymentRequestStatus: "未开放"
         }

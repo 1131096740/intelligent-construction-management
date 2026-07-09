@@ -72,6 +72,7 @@ describe("settlement detail page configuration", () => {
       "规则阶段",
       "付款比例",
       "付款账期",
+      "发票要求",
       "触发条件",
       "付款申请状态"
     ]);
