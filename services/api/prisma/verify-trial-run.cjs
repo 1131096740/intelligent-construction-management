@@ -50,6 +50,7 @@ const CODES = {
   payment: `FK-UAT-${RUN_ID}`,
   overLimitPayment: `FK-UAT-OVER-${RUN_ID}`
 };
+const IS_PREFLIGHT = process.argv.includes("--preflight");
 
 const HISTORICAL_BALANCE = {
   historicalSettledCents: 1200000,
@@ -173,6 +174,25 @@ async function login(role, phone) {
   }
 
   return data.tokens.accessToken;
+}
+
+async function assertApiHealthReady() {
+  const candidates = ["/health", "/api/health"];
+  const errors = [];
+
+  for (const path of candidates) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`);
+      if (response.ok) {
+        return;
+      }
+      errors.push(`${path}: HTTP ${response.status}`);
+    } catch (error) {
+      errors.push(`${path}: ${String(error?.message ?? error)}`);
+    }
+  }
+
+  throw new Error(`本地 API 健康检查未通过：${errors.join("；")}`);
 }
 
 async function loginAll() {
@@ -727,6 +747,12 @@ function userFacingErrorMessage(error) {
 async function main() {
   assertLocalRuntimeGuard();
   await assertSeedDataReady();
+  await assertApiHealthReady();
+  if (IS_PREFLIGHT) {
+    console.log("P0-5B UAT 预检通过：本地安全边界、seed 数据和 API health 已确认；未写入业务数据。");
+    return;
+  }
+
   const tokens = await loginAll();
   console.log(`开始 P0-5B 真实试运行 UAT 验证，编号 ${RUN_ID}`);
 

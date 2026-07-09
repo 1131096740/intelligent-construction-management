@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进真实试运行 UAT 预检入口切片：`verify-trial-run.cjs` 新增只读 `--preflight` 模式，先复用本地安全边界检查，再读取 seed 数据并探测本地 API health；预检通过后直接退出，不登录、不生成 token、不创建历史接管、结算、付款或文件数据。完整 UAT 主流程也会先做 API health 检查，避免环境未就绪时跑到中途才失败。验证：`node --check services/api/prisma/verify-trial-run.cjs` 通过；`node services/api/prisma/verify-trial-run.cjs --preflight` 已执行且在写入前被本地 PostgreSQL 未启动拦截，提示先启动 `services/api/docker-compose.yml` 中的 postgres、完成 migrate/seed 后重试。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 长链路验收脚本切片：`verify-trial-run.cjs` 在付款审批通过后继续上传脱敏付款凭证、登记实付、登记财务入账并归档付款 PDF，随后校验付款申请已变为已实付、累计实付金额正确、接管后核验摘要进入“已形成闭环”，并把 `payment.execution.record`、`payment.finance.record`、`payment.pdf_archive.record` 纳入关键审计断言。脚本仍使用唯一 UAT 编号写入本地 seed/test 数据，不连接生产库、不导入真实业务数据。不改变运行时代码、结算/付款账本、私有文件权限和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs` 通过；未实际运行完整 UAT，避免本轮自动写入本地测试数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行验收脚本切片：`verify-trial-run.cjs` 不再只验证历史接管确认、付款阻断、新结算和付款审批，而是同步通过业务 API 读取历史接管读模型，校验主管确认后接管后核验摘要为“待核验”，新结算和付款申请形成后进入“核验中”，且至少能看到接管后新结算和付款申请计数。脚本仍不宣称完成实付、凭证和财务入账闭环，只把新增读模型纳入 UAT 证据链。不改变运行时代码、真实数据导入、结算/付款账本和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs` 通过。
 - 2026-07-10 (CodeX)：继续推进接管后核验事实摘要切片：接管读模型新增接管后核验摘要，排除 `historical_takeover` 和带 `sourceTakeoverId` 的期初结算后，统计同一合同版本接管后的新结算、付款申请、实付凭证和财务入账，并按“未到核验/待核验/核验中/已形成闭环”给出中文业务说明；历史合同接管详情页在“接管后核验”区展示当前核验状态和四类事实计数，让主管确认后的验证不再只是清单提示。不改变结算/付款/实付/财务入账账本规则、接管确认状态机、资料硬拦和付款容量口径。验证：API 接管服务 Jest 51 项、Web 接管配置 Vitest 25 项、API/Web typecheck、API/Web lint、Web `check:ui` 通过。
