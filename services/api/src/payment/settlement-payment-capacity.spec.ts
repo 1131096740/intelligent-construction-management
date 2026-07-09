@@ -1783,6 +1783,15 @@ describe("buildContractPaymentApplicationPreview", () => {
 });
 
 describe("allocateContractDuePaymentExecution", () => {
+  it("rejects zero amount contract-level execution with a Chinese business reason", () => {
+    expect(() =>
+      allocateContractDuePaymentExecution?.({
+        amountCents: 0,
+        sections: []
+      })
+    ).toThrow("登记实付金额必须大于 0，不能分摊零金额或负数付款。");
+  });
+
   it("allocates actual contract-level payments to due settlement rows in order", () => {
     expect(allocateContractDuePaymentExecution?.({
       amountCents: 70_000,
@@ -1987,7 +1996,7 @@ describe("allocateContractDuePaymentExecution", () => {
           }
         ]
       })
-    ).toThrow("Contract due payment execution exceeds allocatable due rows: 60000");
+    ).toThrow("登记实付金额超过当前可分摊的到期应付款，当前最多可分摊 600.00 元。");
   });
 });
 

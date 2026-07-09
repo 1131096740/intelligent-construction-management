@@ -566,7 +566,7 @@ export function allocateContractDuePaymentExecution(input: {
   }[];
 }): ContractDuePaymentExecutionAllocation[] {
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
-    throw new Error("Contract due payment execution amount must be greater than zero");
+    throw new Error("登记实付金额必须大于 0，不能分摊零金额或负数付款。");
   }
 
   const allocatedCentsByRow = new Map<string, bigint>();
@@ -619,10 +619,9 @@ export function allocateContractDuePaymentExecution(input: {
   }
 
   if (remainingToAllocate > 0n) {
+    const availableYuan = (centsToSafeNumber(totalAvailable) / 100).toFixed(2);
     throw new Error(
-      `Contract due payment execution exceeds allocatable due rows: ${centsToSafeNumber(
-        totalAvailable
-      )}`
+      `登记实付金额超过当前可分摊的到期应付款，当前最多可分摊 ${availableYuan} 元。`
     );
   }
 
