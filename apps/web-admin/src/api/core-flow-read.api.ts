@@ -253,6 +253,8 @@ export interface ContractTakeoverImportBatchReadModel {
   id: string;
   batchNo: string;
   status: string;
+  statusLabel: string;
+  riskText: string;
   takeoverCutoffDate: string;
   responsibleUserId: string;
   reviewComment: string;

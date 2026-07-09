@@ -194,6 +194,8 @@ export interface ContractTakeoverImportBatchReadModel {
   id: string;
   batchNo: string;
   status: string;
+  statusLabel: string;
+  riskText: string;
   takeoverCutoffDate: Date;
   responsibleUserId: string;
   reviewComment: string;
@@ -993,6 +995,8 @@ export class ContractTakeoverService {
       id: batch.id,
       batchNo: batch.batchNo,
       status: batch.status,
+      statusLabel: importBatchStatusLabel(batch.status),
+      riskText: importBatchRiskText(batch),
       takeoverCutoffDate: batch.takeoverCutoffDate,
       responsibleUserId: batch.responsibleUserId,
       reviewComment: batch.reviewComment,
@@ -1336,6 +1340,29 @@ function evidencePurposeLabel(value: ContractTakeoverEvidencePurpose) {
   };
 
   return labels[value];
+}
+
+function importBatchStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    drafts_generated: "已生成草稿",
+    under_review: "复核中",
+    accepted: "已验收",
+    limited_accepted: "受限验收",
+    disputed: "存在争议"
+  };
+
+  return labels[status] ?? "待核对";
+}
+
+function importBatchRiskText(batch: {
+  blockedRows: number;
+  warningRows: number;
+  skippedCount: number;
+}): string {
+  if (batch.blockedRows > 0) return "仍有错误行，先修正后再接管。";
+  if (batch.warningRows > 0) return "存在资料或风险提醒，复核时重点核对。";
+  if (batch.skippedCount > 0) return "有重复导入记录，已跳过未重复建账。";
+  return "预检通过，等待资料核验和复核确认。";
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

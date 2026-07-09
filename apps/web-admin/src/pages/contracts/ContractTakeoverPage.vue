@@ -719,11 +719,12 @@ const importPrecheckColumns = [
 
 const importBatchColumns = [
   { colKey: "batchNo", title: "批次号", minWidth: 188 },
+  { colKey: "statusLabel", title: "批次状态", width: 112 },
   { colKey: "takeoverCutoffDate", title: "接管截止日", width: 112 },
   { colKey: "createdCountText", title: "生成草稿", width: 104, align: "right" },
   { colKey: "warningRowsText", title: "提醒", width: 84, align: "right" },
   { colKey: "skippedCountText", title: "重复跳过", width: 104, align: "right" },
-  { colKey: "acceptanceConclusion", title: "验收结论", minWidth: 180 }
+  { colKey: "riskText", title: "复核提示", minWidth: 200 }
 ];
 
 const tableRows = computed(() =>
@@ -735,8 +736,7 @@ const importBatchRows = computed(() =>
     takeoverCutoffDate: formatTakeoverDate(batch.takeoverCutoffDate),
     createdCountText: `${batch.createdCount} 份`,
     warningRowsText: `${batch.warningRows} 条`,
-    skippedCountText: `${batch.skippedCount} 份`,
-    acceptanceConclusion: batch.acceptanceConclusion || "待主管确认"
+    skippedCountText: `${batch.skippedCount} 份`
   }))
 );
 

@@ -519,6 +519,8 @@ describe("ContractTakeoverService", () => {
     expect(result.batch).toMatchObject({
       batchNo: "接管批次-20260710-TEST0001",
       status: "drafts_generated",
+      statusLabel: "已生成草稿",
+      riskText: "预检通过，等待资料核验和复核确认。",
       responsibleUserId: "contract-user",
       createdCount: 1
     });
@@ -685,6 +687,8 @@ describe("ContractTakeoverService", () => {
         id: "batch-1",
         batchNo: "接管批次-20260710-TEST0001",
         status: "drafts_generated",
+        statusLabel: "已生成草稿",
+        riskText: "存在资料或风险提醒，复核时重点核对。",
         takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
         responsibleUserId: "contract-user",
         reviewComment: "合同、预算和财务待复核。",
