@@ -2607,7 +2607,7 @@ export class PaymentRequestService {
       }
 
       if (payment.paidAmountCents <= 0) {
-        throw new Error("Cannot record finance entry before actual payment execution");
+        throw new Error("付款尚未登记实付，不能做财务入账");
       }
 
       const existingRecords = await tx.financeRecord.findMany({
@@ -2620,7 +2620,7 @@ export class PaymentRequestService {
       const unrecordedPaidAmountCents = payment.paidAmountCents - recordedAmountCents;
       if (input.amountCents > unrecordedPaidAmountCents) {
         throw new Error(
-          `Finance record exceeds unrecorded paid amount: ${unrecordedPaidAmountCents}`
+          `财务入账金额超过未入账实付金额，当前最多可入账 ${this.formatYuan(unrecordedPaidAmountCents)} 元`
         );
       }
 

@@ -4877,7 +4877,7 @@ describe("PaymentRequestService", () => {
         occurredAt: "2026-06-22T00:00:00.000Z",
         confirmationPassword: "Current@123"
       })
-    ).rejects.toThrow("Cannot record finance entry before actual payment execution");
+    ).rejects.toThrow("付款尚未登记实付，不能做财务入账");
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
   });
 
@@ -4916,7 +4916,7 @@ describe("PaymentRequestService", () => {
         occurredAt: "2026-06-22T00:00:00.000Z",
         confirmationPassword: "Current@123"
       })
-    ).rejects.toThrow("Finance record exceeds unrecorded paid amount: 10000");
+    ).rejects.toThrow("财务入账金额超过未入账实付金额，当前最多可入账 100.00 元");
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
   });
 
