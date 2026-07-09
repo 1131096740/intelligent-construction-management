@@ -5757,6 +5757,32 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
   });
 
+  it("rejects actual payment execution when confirmation service is unavailable", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 10_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("登记实付确认服务暂不可用，请稍后重试或联系管理员");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+  });
+
   it("rejects actual payment execution when second confirmation fails", async () => {
     const tx = {
       paymentRequest: {
@@ -5882,6 +5908,30 @@ describe("PaymentRequestService", () => {
       })
     ).rejects.toThrow("财务入账需要当前登录密码确认");
     expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.financeRecord.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects finance record when confirmation service is unavailable", async () => {
+    const tx = {
+      $queryRaw: jest.fn(),
+      financeRecord: {
+        findMany: jest.fn(),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordFinance("FK-2026-012", "finance-1", {
+        amountCents: 10_000,
+        occurredAt: "2026-06-22T00:00:00.000Z",
+        confirmationPassword: "Current@123"
+      })
+    ).rejects.toThrow("财务入账确认服务暂不可用，请稍后重试或联系管理员");
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
   });

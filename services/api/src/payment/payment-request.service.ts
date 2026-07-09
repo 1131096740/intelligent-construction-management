@@ -2450,7 +2450,7 @@ export class PaymentRequestService {
     }
 
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm payment execution");
+      throw new Error("登记实付确认服务暂不可用，请稍后重试或联系管理员");
     }
 
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
@@ -2671,7 +2671,7 @@ export class PaymentRequestService {
     }
 
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm finance record");
+      throw new Error("财务入账确认服务暂不可用，请稍后重试或联系管理员");
     }
 
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
