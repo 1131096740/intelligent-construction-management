@@ -194,6 +194,7 @@ import {
   archiveDownloadActionDisabledReason,
   archiveDownloadConfirmMessage,
   archiveDownloadDisabledReason,
+  archiveDownloadSuccessMessage,
   emptyArchiveLedgerFilters,
   filterArchiveLedgerRows
 } from "./archive-list.config";
@@ -334,7 +335,7 @@ async function confirmDownload() {
       downloadReason
     });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
-    message.value = "下载链接已生成，后台已记录下载审计。";
+    message.value = archiveDownloadSuccessMessage();
     messageTone.value = "success";
     closeDownloadDialog();
   } catch (error) {

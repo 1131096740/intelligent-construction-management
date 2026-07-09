@@ -7,6 +7,7 @@ import {
   archiveDownloadActionDisabledReason,
   archiveDownloadConfirmMessage,
   archiveDownloadDisabledReason,
+  archiveDownloadSuccessMessage,
   emptyArchiveLedgerFilters,
   filterArchiveLedgerRows,
   type ArchiveLedgerRow
@@ -79,6 +80,12 @@ describe("archive ledger page configuration", () => {
   it("explains password, reason, short-lived link, and audit before download", () => {
     expect(archiveDownloadConfirmMessage()).toBe(
       "确认下载后，系统将校验当前密码、要求填写下载原因，并生成短时效下载链接；后台会记录下载人、资料文件、业务单据和下载原因审计。是否继续？"
+    );
+  });
+
+  it("explains generated download links are short-lived", () => {
+    expect(archiveDownloadSuccessMessage()).toBe(
+      "短时效下载链接已生成，后台已记录下载审计；链接过期后请重新授权下载。"
     );
   });
 
