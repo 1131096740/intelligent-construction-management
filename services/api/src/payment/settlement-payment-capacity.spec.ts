@@ -7,6 +7,8 @@ interface ContractDueSettlement {
   paidAmountCents?: number;
   paymentTermsVersionId: string;
   isFinal?: boolean;
+  sourceType?: string | null;
+  sourceTakeoverId?: string | null;
 }
 
 interface ContractDuePaymentTermsStage {
@@ -470,6 +472,50 @@ describe("calculateContractDuePaymentCapacity", () => {
       occupiedCents: 195_000,
       remainingCents: -115_000,
       advanceDeductionCents: 0
+    });
+  });
+
+  it("uses historical initial settlements as the payable source without deducting historical paid twice", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      settlements: [
+        {
+          id: "settlement-takeover-initial",
+          status: "effective",
+          amountCents: 100_000,
+          paidAmountCents: 40_000,
+          paymentTermsVersionId: "terms-1",
+          sourceType: "historical_takeover",
+          sourceTakeoverId: "takeover-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 10000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        }
+      ],
+      settlementArchiveFiles: [],
+      paymentRequests: [],
+      historicalBalance: {
+        paymentTermsVersionId: "terms-1",
+        balanceConfirmedAt: new Date("2026-06-01T00:00:00.000Z"),
+        settledCents: 100_000,
+        paidCents: 40_000,
+        approvedPendingPaymentCents: 10_000,
+        otherConfirmedOccupancyCents: 5_000
+      }
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 100_000,
+      occupiedCents: 55_000,
+      remainingCents: 45_000
     });
   });
 

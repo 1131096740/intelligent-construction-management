@@ -760,7 +760,13 @@ export class PaymentReadService {
       proxyPaidCents,
       ...(preview.historicalBalance
         ? {
-            historicalPaidCents: preview.historicalBalance.paidCents,
+            historicalPaidCents: settlements.some(
+              (settlement) =>
+                settlement.sourceType === "historical_takeover" ||
+                !!settlement.sourceTakeoverId
+            )
+              ? 0
+              : preview.historicalBalance.paidCents,
             historicalApprovalPendingCents:
               preview.historicalBalance.approvalPendingPaymentCents,
             historicalApprovedPendingCents:

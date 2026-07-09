@@ -34,6 +34,8 @@ export interface ContractDueSettlement {
   contractVersionId?: string;
   paymentTermsVersionId: string;
   isFinal?: boolean;
+  sourceType?: string | null;
+  sourceTakeoverId?: string | null;
 }
 
 export interface ContractDuePaymentTermsStage {
@@ -203,6 +205,10 @@ export function calculateContractDuePaymentCapacity(input: {
   historicalBalance?: HistoricalContractPaymentBalance;
 }): ContractDuePaymentCapacity {
   const historicalBalance = normalizeHistoricalBalance(input.historicalBalance);
+  const capacityHistoricalBalance = historicalBalanceRepresentedBySettlements(
+    input.settlements,
+    historicalBalance
+  );
   const confirmedAtBySettlement = new Map<string, Date>();
   for (const archiveFile of input.settlementArchiveFiles) {
     if (!archiveFile.confirmedAt) continue;
@@ -232,7 +238,9 @@ export function calculateContractDuePaymentCapacity(input: {
       return total;
     }
 
-    const confirmedAt = confirmedAtBySettlement.get(settlement.id);
+    const confirmedAt =
+      confirmedAtBySettlement.get(settlement.id) ??
+      historicalInitialSettlementConfirmedAt(settlement, historicalBalance);
     if (!confirmedAt) return total;
     addMapBigInt(
       cumulativeConfirmedSettlementCentsByTerms,
@@ -276,11 +284,13 @@ export function calculateContractDuePaymentCapacity(input: {
   const paidAdvanceCentsForCapacity = paidAdvanceCentsByTerms(input.advancePaymentRequests ?? []);
   const paidAdvanceCentsForCapacityWithHistory = withHistoricalAdvancePaid(
     paidAdvanceCentsForCapacity,
-    historicalBalance
+    capacityHistoricalBalance
   );
   const advanceDeductionCents = calculateAdvanceDeductionCents({
     paidAdvanceCentsByTerms: paidAdvanceCentsForCapacityWithHistory,
-    historicalAdvanceDeductedCentsByTerms: historicalAdvanceDeductedCentsByTerms(historicalBalance),
+    historicalAdvanceDeductedCentsByTerms: historicalAdvanceDeductedCentsByTerms(
+      capacityHistoricalBalance
+    ),
     contractAmountCents: BigInt(input.contractAmountCents ?? 0),
     contractAmountCentsByTerms: contractAmountCentsByTerms(
       input.contractAmountCentsByPaymentTermsVersionId
@@ -293,7 +303,7 @@ export function calculateContractDuePaymentCapacity(input: {
     actualPaidAmountCents +
     BigInt(input.proxyPaidAmountCents ?? 0) +
     outstandingPaymentCents +
-    historicalOccupiedCents(historicalBalance);
+    historicalOccupiedCents(capacityHistoricalBalance);
   const remainingCents = duePayableCents - occupiedCents - advanceDeductionCents;
 
   return {
@@ -326,6 +336,10 @@ export function buildContractPaymentApplicationPreview(input: {
   historicalBalance?: HistoricalContractPaymentBalance;
 }): ContractPaymentApplicationPreview {
   const historicalBalance = normalizeHistoricalBalance(input.historicalBalance);
+  const capacityHistoricalBalance = historicalBalanceRepresentedBySettlements(
+    input.settlements,
+    historicalBalance
+  );
   const confirmedAtBySettlement = earliestConfirmedAtBySettlement(input.settlementArchiveFiles);
   const effectiveSettlements = input.settlements.filter((settlement) =>
     CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES.includes(
@@ -347,7 +361,9 @@ export function buildContractPaymentApplicationPreview(input: {
     const settlementAmountCents = BigInt(settlement.amountCents);
     cumulativeEffectiveSettlementCents += settlementAmountCents;
 
-    const confirmedAt = confirmedAtBySettlement.get(settlement.id) ?? null;
+    const confirmedAt =
+      confirmedAtBySettlement.get(settlement.id) ??
+      historicalInitialSettlementConfirmedAt(settlement, historicalBalance);
     if (confirmedAt) {
       addMapBigInt(
         cumulativeConfirmedSettlementCentsByTerms,
@@ -481,12 +497,14 @@ export function buildContractPaymentApplicationPreview(input: {
     cumulativeEffectiveSettlementCents
   );
   const totalCumulativeEffectiveSettlementCents = centsToSafeNumber(
-    cumulativeEffectiveSettlementCents + historicalBalance.settledCents
+    cumulativeEffectiveSettlementCents + capacityHistoricalBalance.settledCents
   );
-  const historicalSettledCents = centsToSafeNumber(historicalBalance.settledCents);
-  const historicalOccupiedAmountCents = centsToSafeNumber(historicalOccupiedCents(historicalBalance));
+  const historicalSettledCents = centsToSafeNumber(capacityHistoricalBalance.settledCents);
+  const historicalOccupiedAmountCents = centsToSafeNumber(
+    historicalOccupiedCents(capacityHistoricalBalance)
+  );
   const historicalAdvanceDeductedCents = centsToSafeNumber(
-    historicalBalance.advanceDeductedCents
+    capacityHistoricalBalance.advanceDeductedCents
   );
   const remainingAdvanceToDeductCents = Math.max(
     paidAdvanceCents - historicalAdvanceDeductedCents - currentDeductionCents,
@@ -652,6 +670,34 @@ export function sumSafeCents(values: Array<bigint | number>): number {
   return centsToSafeNumber(
     values.reduce<bigint>((total, value) => total + BigInt(value), 0n)
   );
+}
+
+function isHistoricalInitialSettlement(settlement: ContractDueSettlement): boolean {
+  return settlement.sourceType === "historical_takeover" || !!settlement.sourceTakeoverId;
+}
+
+function historicalInitialSettlementConfirmedAt(
+  settlement: ContractDueSettlement,
+  balance: NormalizedHistoricalContractPaymentBalance
+): Date | null {
+  if (!isHistoricalInitialSettlement(settlement)) return null;
+
+  return balance.balanceConfirmedAt;
+}
+
+function historicalBalanceRepresentedBySettlements(
+  settlements: readonly ContractDueSettlement[],
+  balance: NormalizedHistoricalContractPaymentBalance
+): NormalizedHistoricalContractPaymentBalance {
+  if (!settlements.some(isHistoricalInitialSettlement)) {
+    return balance;
+  }
+
+  return {
+    ...balance,
+    settledCents: 0n,
+    paidCents: 0n
+  };
 }
 
 interface NormalizedHistoricalContractPaymentBalance {

@@ -1520,4 +1520,144 @@ describe("PaymentReadService", () => {
       ])
     );
   });
+
+  it("does not double count historical paid in capacity explanation when initial settlement exists", async () => {
+    const confirmedAt = new Date("2026-07-01T00:00:00.000Z");
+    const prisma = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          versionNo: 1,
+          status: "effective",
+          amountCents: BigInt(100_000),
+          effectiveAt: new Date("2026-06-01T00:00:00.000Z")
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-version-1",
+            amountCents: BigInt(100_000)
+          }
+        ])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          code: "HT-HIS-002",
+          temporaryCode: null,
+          name: "历史期初付款合同"
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-1",
+          name: "总部综合楼"
+        })
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "terms-version-1" }])
+      },
+      contractTakeover: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          takeoverStatus: "confirmed",
+          historicalBalanceConfirmedAt: confirmedAt,
+          historicalSettledCents: BigInt(100_000),
+          historicalApprovalPendingPaymentCents: BigInt(0),
+          historicalApprovedPendingPaymentCents: BigInt(10_000),
+          historicalPaidCents: BigInt(40_000),
+          historicalProxyPaidCents: BigInt(0),
+          historicalAdvancePaidCents: BigInt(0),
+          historicalAdvanceDeductedCents: BigInt(0),
+          otherConfirmedOccupancyCents: BigInt(5_000)
+        })
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-takeover-initial",
+            code: "HT-HIS-002-期初结算",
+            periodLabel: "历史期初",
+            status: "effective",
+            amountCents: 100_000,
+            paidAmountCents: 40_000,
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1",
+            isFinal: false,
+            sourceType: "historical_takeover",
+            sourceTakeoverId: "takeover-1",
+            createdAt: new Date("2026-07-01T00:00:00.000Z")
+          }
+        ])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "stage-progress",
+            paymentTermsVersionId: "terms-version-1",
+            name: "结算款",
+            stageType: "progress",
+            basis: "current_settlement",
+            ratioBps: 10000,
+            fixedAmountCents: null,
+            triggerAnchor: "settlement_effective",
+            triggerEvent: "结算归档确认",
+            dueDays: 0,
+            advanceDeductionMode: "none",
+            advanceDeductionRatioBps: null,
+            advanceDeductionStartRatioBps: null
+          }
+        ])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    const preview = await service.getContractApplication(
+      "contract-version-1",
+      "2026-07-20T00:00:00.000Z"
+    );
+
+    expect(preview.capacity).toMatchObject({
+      duePayableCents: 100_000,
+      actualPaidCents: 40_000,
+      approvedPendingCents: 0,
+      historicalApprovedPendingCents: 10_000,
+      historicalOtherConfirmedOccupancyCents: 5_000,
+      maxRequestableCents: 45_000
+    });
+    expect(preview.capacityExplanation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "扣已实际付款",
+          amountCents: 40_000
+        }),
+        expect.objectContaining({
+          label: "扣已批待付款占用",
+          amountCents: 10_000
+        }),
+        expect.objectContaining({
+          label: "扣历史其他确认占用",
+          amountCents: 5_000
+        }),
+        expect.objectContaining({
+          label: "本次最多可申请",
+          amountCents: 45_000,
+          tone: "success"
+        })
+      ])
+    );
+  });
 });
