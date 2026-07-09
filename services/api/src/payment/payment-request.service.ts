@@ -65,6 +65,7 @@ interface PaymentExecutionLockRow {
   code: string;
   projectId: string;
   contractId: string;
+  contractVersionId: string;
   settlementId: string | null;
   sourceType?: string;
   status: string;
@@ -146,34 +147,37 @@ export class PaymentRequestService {
       contractVersionId: string;
       sourceType: "settlement" | "contract_advance" | "contract_due";
       actorUserId?: string;
+      actionLabel?: string;
     }
   ) {
+    const actionLabel = input.actionLabel ?? "发起付款申请";
     const takeoverClient = (tx as unknown as {
       contractTakeover?: {
-        findUnique(args: {
+        findUnique?: (args: {
           where: { contractVersionId: string };
           select: {
             id: true;
             takeoverStatus: true;
             historicalBalanceConfirmedAt: true;
           };
-        }): Promise<{
+        }) => Promise<{
           id: string;
           takeoverStatus: string;
           historicalBalanceConfirmedAt: Date | null;
         } | null>;
       };
     }).contractTakeover;
-    const takeover = takeoverClient
-      ? await takeoverClient.findUnique({
-          where: { contractVersionId: input.contractVersionId },
-          select: {
-            id: true,
-            takeoverStatus: true,
-            historicalBalanceConfirmedAt: true
-          }
-        })
-      : null;
+    const takeover =
+      typeof takeoverClient?.findUnique === "function"
+        ? await takeoverClient.findUnique({
+            where: { contractVersionId: input.contractVersionId },
+            select: {
+              id: true,
+              takeoverStatus: true,
+              historicalBalanceConfirmedAt: true
+            }
+          })
+        : null;
 
     if (takeover) {
       if (takeover.takeoverStatus !== "confirmed") {
@@ -187,7 +191,7 @@ export class PaymentRequestService {
           reason: "takeover_not_confirmed",
           takeoverStatus: takeover.takeoverStatus
         });
-        throw new Error("历史合同接管尚未主管确认，不能发起付款申请");
+        throw new Error(`历史合同接管尚未主管确认，不能${actionLabel}`);
       }
       if (!takeover.historicalBalanceConfirmedAt) {
         await this.recordHistoricalTakeoverPaymentBlock(tx, {
@@ -200,7 +204,7 @@ export class PaymentRequestService {
           reason: "historical_balance_not_confirmed",
           takeoverStatus: takeover.takeoverStatus
         });
-        throw new Error("历史余额尚未确认，不能发起付款申请");
+        throw new Error(`历史余额尚未确认，不能${actionLabel}`);
       }
       return;
     }
@@ -229,7 +233,7 @@ export class PaymentRequestService {
         sourceType: input.sourceType,
         reason: "takeover_missing"
       });
-      throw new Error("历史合同接管尚未主管确认，不能发起付款申请");
+      throw new Error(`历史合同接管尚未主管确认，不能${actionLabel}`);
     }
   }
 
@@ -1554,6 +1558,7 @@ export class PaymentRequestService {
         "code",
         "projectId",
         "contractId",
+        "contractVersionId",
         "settlementId",
         "sourceType",
         "status",
@@ -2448,8 +2453,22 @@ export class PaymentRequestService {
 
       if (payment.sourceType === "contract_due" && !payment.settlementId) {
         await this.lockContractPaymentCapacityRows(tx, payment.contractId);
+        await this.assertHistoricalTakeoverPaymentReady(tx, {
+          contractId: payment.contractId,
+          contractVersionId: payment.contractVersionId,
+          sourceType: "contract_due",
+          actorUserId,
+          actionLabel: "登记实付"
+        });
       } else if (payment.sourceType === "contract_advance") {
         await this.lockContractAdvancePaymentRows(tx, payment.contractId);
+        await this.assertHistoricalTakeoverPaymentReady(tx, {
+          contractId: payment.contractId,
+          contractVersionId: payment.contractVersionId,
+          sourceType: "contract_advance",
+          actorUserId,
+          actionLabel: "登记实付"
+        });
       }
 
       const approvedAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
@@ -2469,7 +2488,14 @@ export class PaymentRequestService {
       const newPaymentStatus =
         newPaymentPaidAmountCents >= approvedAmountCents ? "paid" : "partially_paid";
       let settlement:
-        | { id: string; payableAmountCents: number; paidAmountCents: number }
+        | {
+            id: string;
+            contractId: string;
+            contractVersionId: string;
+            status: string;
+            payableAmountCents: number;
+            paidAmountCents: number;
+          }
         | null = null;
       let newSettlementPaidAmountCents: number | null = null;
       let newSettlementStatus: "paid" | "partially_paid" | null = null;
@@ -2483,6 +2509,18 @@ export class PaymentRequestService {
         if (!settlement) {
           throw new Error("未找到关联结算，请先核对结算归档记录");
         }
+        if (!canCreatePaymentFromSettlementStatus(settlement.status as SettlementStatus)) {
+          throw new Error(
+            "当前结算不是已归档可付款状态，不能登记实付；请先核对结算归档或更正记录"
+          );
+        }
+        await this.assertHistoricalTakeoverPaymentReady(tx, {
+          contractId: settlement.contractId,
+          contractVersionId: settlement.contractVersionId,
+          sourceType: "settlement",
+          actorUserId,
+          actionLabel: "登记实付"
+        });
 
         const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
         const contractDueAllocatedCents = await this.sumContractDueAllocatedCentsForSettlement(

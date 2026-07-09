@@ -3881,6 +3881,141 @@ describe("PaymentRequestService", () => {
     expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 
+  it("rejects historical takeover settlement execution when takeover is no longer confirmed", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          paymentExecutionRow({
+            requestedAmountCents: 80_000,
+            approvedAmountCents: 80_000,
+            paidAmountCents: 0
+          })
+        ])
+        .mockResolvedValueOnce([{ id: "settlement-1" }]),
+      paymentRequest: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          status: "effective",
+          payableAmountCents: 100_000,
+          paidAmountCents: 0,
+          sourceType: "historical_takeover",
+          sourceTakeoverId: "takeover-1"
+        }),
+        update: jest.fn()
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          takeoverStatus: "reviewing",
+          historicalBalanceConfirmedAt: new Date("2026-07-01T00:00:00.000Z")
+        })
+      },
+      paymentExecution: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...financingUsageUpdates()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 80_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("历史合同接管尚未主管确认，不能登记实付");
+
+    expect(tx.contractTakeover.findUnique).toHaveBeenCalledWith({
+      where: { contractVersionId: "contract-version-1" },
+      select: {
+        id: true,
+        takeoverStatus: true,
+        historicalBalanceConfirmedAt: true
+      }
+    });
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment execution when linked settlement is no longer payable", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          paymentExecutionRow({
+            requestedAmountCents: 80_000,
+            approvedAmountCents: 80_000,
+            paidAmountCents: 0
+          })
+        ])
+        .mockResolvedValueOnce([{ id: "settlement-1" }]),
+      paymentRequest: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          status: "draft",
+          payableAmountCents: 100_000,
+          paidAmountCents: 0
+        }),
+        update: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn()
+      },
+      ...financingUsageUpdates()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 80_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow(
+      "当前结算不是已归档可付款状态，不能登记实付；请先核对结算归档或更正记录"
+    );
+
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
   it("records contract advance execution without touching settlement ledger", async () => {
     const tx = {
       $queryRaw: jest
