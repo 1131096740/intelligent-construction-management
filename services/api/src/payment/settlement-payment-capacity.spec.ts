@@ -1308,7 +1308,62 @@ describe("calculateContractDuePaymentCapacity", () => {
           }
         ]
       })
-    ).toThrow("Advance deduction ratio is required for active deduction mode");
+    ).toThrow("预付款扣回比例未填写，不能计算本次可付款金额。请先补齐合同付款条款。");
+  });
+
+  it("rejects active advance deduction with a zero deduction ratio", () => {
+    expect(() =>
+      calculateContractCapacity({
+        asOf,
+        contractAmountCents: 1_000_000,
+        settlements: [
+          {
+            id: "settlement-1",
+            status: "effective",
+            amountCents: 100_000,
+            paymentTermsVersionId: "terms-1"
+          }
+        ],
+        paymentTermsStages: [
+          {
+            paymentTermsVersionId: "terms-1",
+            stageType: "progress",
+            basis: "current_settlement",
+            ratioBps: 8000,
+            fixedAmountCents: null,
+            triggerAnchor: "settlement_effective",
+            dueDays: 0
+          },
+          {
+            paymentTermsVersionId: "terms-1",
+            stageType: "advance",
+            basis: "contract_amount",
+            ratioBps: 1000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            dueDays: 0,
+            advanceDeductionMode: "per_settlement_ratio",
+            advanceDeductionRatioBps: 0
+          }
+        ],
+        settlementArchiveFiles: [
+          {
+            settlementId: "settlement-1",
+            confirmedAt: new Date("2026-06-01T00:00:00.000Z")
+          }
+        ],
+        paymentRequests: [],
+        advancePaymentRequests: [
+          {
+            paymentTermsVersionId: "terms-1",
+            status: "paid",
+            requestedAmountCents: 100_000,
+            approvedAmountCents: 100_000,
+            paidAmountCents: 100_000
+          }
+        ]
+      })
+    ).toThrow("预付款扣回比例必须大于 0，不能计算本次可付款金额。");
   });
 
   it("rejects conditional advance deduction without a start ratio", () => {
@@ -1364,7 +1419,7 @@ describe("calculateContractDuePaymentCapacity", () => {
           }
         ]
       })
-    ).toThrow("Advance deduction start ratio is required for conditional deduction mode");
+    ).toThrow("预付款条件扣回缺少起扣比例，不能计算本次可付款金额。请先补齐合同付款条款。");
   });
 
   it("rejects unsupported advance deduction modes instead of ignoring them", () => {
@@ -1419,7 +1474,7 @@ describe("calculateContractDuePaymentCapacity", () => {
           }
         ]
       })
-    ).toThrow("Unsupported advance deduction mode: unsupported_mode");
+    ).toThrow("预付款扣回方式不受支持：unsupported_mode。请检查合同付款条款后再发起付款。");
   });
 });
 

@@ -873,15 +873,15 @@ function calculateAdvanceDeductionCents(input: {
     const mode = stage.advanceDeductionMode ?? "none";
     if (mode === "none") return totals;
     if (mode !== "per_settlement_ratio" && mode !== "after_cumulative_settlement_ratio") {
-      throw new Error(`Unsupported advance deduction mode: ${mode}`);
+      throw new Error(`预付款扣回方式不受支持：${mode}。请检查合同付款条款后再发起付款。`);
     }
 
     if (stage.advanceDeductionRatioBps === null || stage.advanceDeductionRatioBps === undefined) {
-      throw new Error("Advance deduction ratio is required for active deduction mode");
+      throw new Error("预付款扣回比例未填写，不能计算本次可付款金额。请先补齐合同付款条款。");
     }
     const ratioBps = stage.advanceDeductionRatioBps;
     if (ratioBps <= 0) {
-      throw new Error("Advance deduction ratio must be greater than zero");
+      throw new Error("预付款扣回比例必须大于 0，不能计算本次可付款金额。");
     }
 
     const paidAdvanceCents = input.paidAdvanceCentsByTerms.get(stage.paymentTermsVersionId) ?? 0n;
@@ -896,7 +896,7 @@ function calculateAdvanceDeductionCents(input: {
         stage.advanceDeductionStartRatioBps === null ||
         stage.advanceDeductionStartRatioBps === undefined
       ) {
-        throw new Error("Advance deduction start ratio is required for conditional deduction mode");
+        throw new Error("预付款条件扣回缺少起扣比例，不能计算本次可付款金额。请先补齐合同付款条款。");
       }
       const startRatioBps = stage.advanceDeductionStartRatioBps;
       const startAmountCents =
