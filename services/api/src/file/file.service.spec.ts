@@ -2165,6 +2165,52 @@ describe("FileService", () => {
     });
   });
 
+  it("returns a business message when private storage cannot read a ticket file", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "盖章合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    storage.read.mockRejectedValueOnce(new Error("ENOENT: object missing"));
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1"
+    });
+    const url = new URL(`http://local${ticket.downloadUrl}`);
+    audit.record.mockClear();
+
+    await expect(
+      service.readPrivateFile("file-1", {
+        actorUserId: url.searchParams.get("actorUserId") ?? "",
+        expiresAt: url.searchParams.get("expiresAt") ?? "",
+        token: url.searchParams.get("token") ?? ""
+      })
+    ).rejects.toThrow("资料文件暂时无法读取，请稍后重试或联系管理员核对私有存储");
+    expect(storage.read).toHaveBeenCalledWith("uploads/file-1.pdf");
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("rejects overly long download reasons before reading a ticket", async () => {
     const prisma = {
       $transaction: jest.fn()

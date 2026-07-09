@@ -348,7 +348,12 @@ export class FileService {
       return found;
     });
 
-    const buffer = await this.storage.read(file.objectKey);
+    let buffer: Buffer;
+    try {
+      buffer = await this.storage.read(file.objectKey);
+    } catch {
+      throw new Error("资料文件暂时无法读取，请稍后重试或联系管理员核对私有存储");
+    }
     await this.prisma.$transaction((tx) =>
       this.audit.record(tx, {
         actorUserId: input.actorUserId,
