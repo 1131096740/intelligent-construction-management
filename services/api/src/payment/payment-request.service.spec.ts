@@ -2591,7 +2591,7 @@ describe("PaymentRequestService", () => {
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
         decision: "invalid"
       } as never)
-    ).rejects.toThrow("Unsupported payment approval decision");
+    ).rejects.toThrow("不支持的付款审批处理方式");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -2747,7 +2747,7 @@ describe("PaymentRequestService", () => {
         decision: "reject_previous",
         comment: "无法退回上一节点"
       })
-    ).rejects.toThrow("Cannot reject payment approval to previous node from first node");
+    ).rejects.toThrow("当前已经是第一个审批节点，不能退回上一节点");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
   });
@@ -3057,7 +3057,58 @@ describe("PaymentRequestService", () => {
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
         decision: "approve"
       })
-    ).rejects.toThrow("Cannot review payment approval from status approved_pending_payment");
+    ).rejects.toThrow("当前付款申请已离开审批中，不能处理审批");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects approval review when payment request cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects approval review when approval instance cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("未找到进行中的付款审批，请刷新后重试");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 

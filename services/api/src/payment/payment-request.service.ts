@@ -1741,7 +1741,7 @@ export class PaymentRequestService {
         input.decision
       )
     ) {
-      throw new Error("Unsupported payment approval decision");
+      throw new Error("不支持的付款审批处理方式");
     }
     requireApprovalCommentForReturn(input.decision, input.comment);
 
@@ -1752,11 +1752,11 @@ export class PaymentRequestService {
       });
 
       if (!payment) {
-        throw new Error("Payment request not found");
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
 
       if (payment.status !== "approval_pending") {
-        throw new Error(`Cannot review payment approval from status ${payment.status}`);
+        throw new Error("当前付款申请已离开审批中，不能处理审批");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -1769,7 +1769,7 @@ export class PaymentRequestService {
       });
 
       if (!instance) {
-        throw new Error("Payment approval instance not found");
+        throw new Error("未找到进行中的付款审批，请刷新后重试");
       }
 
       const nodes = instance.frozenNodes as unknown as PaymentApprovalNode[];
@@ -1800,7 +1800,7 @@ export class PaymentRequestService {
 
       if (input.decision === "reject_previous") {
         if (instance.currentNodeIndex === 0) {
-          throw new Error("Cannot reject payment approval to previous node from first node");
+          throw new Error("当前已经是第一个审批节点，不能退回上一节点");
         }
 
         const previousNodeIndex = instance.currentNodeIndex - 1;

@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进付款审批处理中文业务体验治理切片：付款审批处理在不支持的审批方式、付款申请不存在、付款已离开审批中、进行中的付款审批缺失或首节点退回上一节点时，不再抛出 `Unsupported payment approval decision`、`Cannot review payment approval from status`、`Cannot reject payment approval to previous node from first node` 等英文技术错误，统一改为中文业务原因；不改变审批流转、退回上一节点、退回申请人、驳回、审批通过、垫资额度释放和审批单生成口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款审批催办中文业务体验治理切片：付款审批催办在付款申请不存在、付款已离开审批中、进行中的付款审批缺失、非申请人催办或未到催办时间时，不再抛出 `Cannot remind payment approval from status`、`Only payment approval applicant can remind`、`Payment approval is not due for a reminder yet` 等英文技术错误，统一改为中文业务原因；不改变催办节流、审批动作日志和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款审批撤回中文业务体验治理切片：付款审批撤回在付款申请不存在、付款已离开审批中、进行中的付款审批缺失或非申请人撤回时，不再抛出 `Payment request not found`、`Cannot withdraw payment approval from status`、`Only payment approval applicant can withdraw` 等英文技术错误，统一改为中文业务原因；不改变撤回终态、审批实例关闭、垫资额度释放和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款 PDF 归档证据链中文业务体验治理切片：付款 PDF 生成/归档在付款申请不存在、财务入账未覆盖全部实付、付款归档文件缺失或 PDF 已归档时，不再抛出 `Cannot archive payment PDF before finance entry is complete`、`Payment archive file not found`、`Payment PDF archive already exists` 等英文技术错误，统一改为中文业务原因；不改变 PDF 生成、私有文件入库、归档记录和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
