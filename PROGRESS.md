@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进结算金额错误中文化切片：创建结算在占用项目结算额度前，如果本期结算金额为 0 或负数，不再返回 `Settlement amount must be greater than zero` 英文技术错误，统一提示“结算金额必须大于 0，不能创建零金额或负数结算”，并确认不会写入结算单。本轮不改变结算额度、例外额度、付款条款、审批和归档口径。验证：API 结算服务 Jest 96 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款资金池错误中文化切片：结算付款、合同到期应付和预付款在占用项目资金池时，如果项目已停用，不再返回 `Project is inactive` 英文技术错误，统一提示“当前项目已停用，不能继续占用项目资金池发起付款”；新增创建付款测试确认不会写入付款申请。本轮不改变资金池容量计算、融资额度占用、审批、实付和财务入账口径。验证：API 付款请求 Jest 128 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算 PDF/审批单错误中文化切片：结算归档 PDF 和结算审批单下载共用的结算文档加载器不再返回 `Settlement not found`、`Settlement contract not found`、`Settlement project not found` 等英文技术错误，统一提示刷新结算台账、核对关联合同或所属项目后重试；审批单下载找不到结算单也同步中文化。本轮不改变 PDF 生成、审批单刷新、下载当前密码、下载原因和审计口径。验证：API 结算服务 Jest 95 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算附件模板下载错误中文化切片：下载线下结算附件模板时，模板 key 不存在或结算单不存在不再返回 `Unknown settlement attachment template`、`Settlement not found` 等英文技术错误，统一改为中文业务提示，引导业务人员重新选择模板或刷新结算台账后重试。不改变附件模板内容、Excel 导出、下载审计和结算归档口径。验证：API 结算附件模板 Jest 7 项、API typecheck、API lint 通过。

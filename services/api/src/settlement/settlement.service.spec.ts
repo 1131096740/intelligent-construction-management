@@ -236,6 +236,48 @@ describe("SettlementService", () => {
     expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
+  it("rejects zero amount settlement creation with a Chinese business reason", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-ZERO",
+        periodLabel: "2026-06",
+        amountCents: 0
+      })
+    ).rejects.toThrow("结算金额必须大于 0，不能创建零金额或负数结算。");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+  });
+
   it("stores settlement lines and refuses to trust a mismatched frontend total", async () => {
     const tx = {
       contractVersion: {

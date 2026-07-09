@@ -769,7 +769,7 @@ export class SettlementService {
   ): Promise<Array<{ quotaId: string; amountCents: bigint }>> {
     const requestedAmountCents = BigInt(amountCents);
     if (requestedAmountCents <= 0n) {
-      throw new Error("Settlement amount must be greater than zero");
+      throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
     }
 
     await tx.$queryRaw(Prisma.sql`
