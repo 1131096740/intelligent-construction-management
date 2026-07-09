@@ -109,6 +109,22 @@
         <t-button @click="clearImportPrecheck">
           清空
         </t-button>
+        <t-tooltip
+          v-if="!canGenerateImportDrafts"
+          :content="generateImportDraftsDisabledReason"
+        >
+          <t-button disabled>
+            生成接管草稿
+          </t-button>
+        </t-tooltip>
+        <t-button
+          v-else
+          theme="primary"
+          :loading="generatingImportDrafts"
+          @click="generateImportDrafts"
+        >
+          生成接管草稿
+        </t-button>
       </div>
       <div
         v-if="importPrecheckResult"
@@ -555,6 +571,7 @@ import {
   attachContractTakeoverEvidenceFile,
   confirmContractTakeover,
   createContractTakeover,
+  createContractTakeoverDraftsFromImport,
   fetchProjects,
   getContractTakeover,
   listContractTakeovers,
@@ -642,6 +659,7 @@ const loadingProjects = ref(false);
 const loadingTakeovers = ref(false);
 const creating = ref(false);
 const prechecking = ref(false);
+const generatingImportDrafts = ref(false);
 const editingTakeoverId = ref("");
 const confirming = ref(false);
 const evidenceUploading = ref(false);
@@ -745,6 +763,19 @@ const importPrecheckRows = computed(() =>
     };
   })
 );
+const canGenerateImportDrafts = computed(
+  () =>
+    Boolean(importPrecheckResult.value) &&
+    (importPrecheckResult.value?.readyRows ?? 0) > 0 &&
+    (importPrecheckResult.value?.blockedRows ?? 0) === 0
+);
+const generateImportDraftsDisabledReason = computed(() => {
+  const result = importPrecheckResult.value;
+  if (!result) return "请先完成导入预检";
+  if (result.blockedRows > 0) return "仍有错误行，修正后才能生成草稿";
+  if (result.readyRows <= 0) return "没有可生成草稿的导入行";
+  return "";
+});
 const evidencePurposeOptions: Array<{ value: ContractTakeoverEvidencePurpose; label: string }> = [
   { value: "historical_contract_scan", label: "历史合同扫描件" },
   { value: "historical_settlement_ledger", label: "历史结算台账" },
@@ -887,6 +918,35 @@ async function submitImportPrecheck() {
     setMessage(error instanceof Error ? error.message : "导入预检失败", "danger");
   } finally {
     prechecking.value = false;
+  }
+}
+
+async function generateImportDrafts() {
+  const projectId = selectedProjectId.value;
+  if (!projectId) {
+    setMessage("请先选择项目", "danger");
+    return;
+  }
+  if (!canGenerateImportDrafts.value) {
+    setMessage(generateImportDraftsDisabledReason.value, "danger");
+    return;
+  }
+
+  generatingImportDrafts.value = true;
+  message.value = "";
+  try {
+    const rows = parseContractTakeoverImportPrecheckRows(importPrecheckText.value);
+    const result = await createContractTakeoverDraftsFromImport(projectId, { rows });
+    setMessage(`已生成 ${result.createdCount} 份历史合同接管草稿`, "success");
+    importPrecheckResult.value = null;
+    importPrecheckText.value = "";
+    showPrecheckPanel.value = false;
+    await loadTakeovers();
+    selectedTakeoverId.value = result.created[0]?.id ?? selectedTakeoverId.value;
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "生成接管草稿失败", "danger");
+  } finally {
+    generatingImportDrafts.value = false;
   }
 }
 

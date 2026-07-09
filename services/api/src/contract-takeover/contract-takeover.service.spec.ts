@@ -431,6 +431,125 @@ describe("ContractTakeoverService", () => {
     );
   });
 
+  it("creates takeover drafts from ready import rows after precheck", async () => {
+    const tx = {
+      project: {
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: "contract-1" })
+      },
+      contractVersion: {
+        create: jest.fn().mockResolvedValue({ id: "contract-version-1" })
+      },
+      paymentTermsVersion: {
+        create: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractTakeover: {
+        create: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      contract: tx.contract,
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.createDraftsFromImport(
+      "project-1",
+      {
+        rows: [
+          {
+            rowNo: 2,
+            code: "HT-HIS-001",
+            name: "历史材料合同",
+            counterparty: "供应商A",
+            companyEntityName: "建工智管公司",
+            amountCents: 1_000_000,
+            signedAt: "2026-01-10",
+            takeoverLevel: "A",
+            lifecycleStatus: "in_progress",
+            paymentTermsOriginalText: "按月结算，归档后付款。",
+            historicalSettledCents: 600_000,
+            historicalPaidCents: 300_000,
+            balanceSourceSummary: "财务台账核对。",
+            evidenceSummary: "合同扫描件和付款台账齐全。",
+            evidenceChecklist: "合同扫描件、结算台账、付款凭证",
+            issueSummary: ""
+          }
+        ]
+      },
+      "contract-user"
+    );
+
+    expect(result.createdCount).toBe(1);
+    expect(result.createdRows).toEqual([2]);
+    expect(tx.contract.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        source: "historical_takeover",
+        code: "HT-HIS-001",
+        name: "历史材料合同",
+        ownerUserId: "contract-user"
+      })
+    });
+    expect(tx.contractTakeover.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        historicalSettledCents: BigInt(600_000),
+        historicalPaidCents: BigInt(300_000),
+        balanceSourceSummary: "财务台账核对。",
+        evidenceSummary: "合同扫描件和付款台账齐全。"
+      })
+    });
+  });
+
+  it("does not create import drafts while precheck still has error rows", async () => {
+    const tx = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      contract: tx.contract,
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.createDraftsFromImport(
+        "project-1",
+        {
+          rows: [
+            {
+              rowNo: 2,
+              code: "",
+              name: "历史材料合同",
+              counterparty: "供应商A",
+              amountCents: 1_000_000,
+              signedAt: "2026-01-10",
+              takeoverLevel: "A",
+              lifecycleStatus: "in_progress"
+            }
+          ]
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("导入预检仍有错误行");
+
+    expect(tx.contract.create).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("updates an editable takeover draft and keeps linked contract facts in sync", async () => {
     const tx = {
       contractTakeover: {

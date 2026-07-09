@@ -170,6 +170,13 @@ export interface ContractTakeoverImportPrecheckResult {
   rows: ContractTakeoverImportPrecheckRow[];
 }
 
+export interface ContractTakeoverImportDraftResult {
+  projectId: string;
+  createdCount: number;
+  createdRows: number[];
+  created: ContractTakeoverBusinessReadModel[];
+}
+
 @Injectable()
 export class ContractTakeoverService {
   constructor(
@@ -493,6 +500,37 @@ export class ContractTakeoverService {
       existingCodes: [...existingCodes].sort(),
       duplicatedCodes: [...duplicatedCodes].sort(),
       rows: checkedRows
+    };
+  }
+
+  async createDraftsFromImport(
+    projectId: string,
+    input: PrecheckContractTakeoverImportDto,
+    actorUserId: string
+  ): Promise<ContractTakeoverImportDraftResult> {
+    const precheck = await this.precheckImport(projectId, input);
+    if (precheck.blockedRows > 0) {
+      throw new Error("导入预检仍有错误行，请先修正后再生成接管草稿");
+    }
+    const rows = this.parsePrecheckRows(input);
+    const readyRowNos = new Set(precheck.rows.map((row) => row.rowNo));
+    const readyRows = rows.filter((row, index) =>
+      readyRowNos.has(integerOrFallback(row["rowNo"], index + 1))
+    );
+    if (!readyRows.length) {
+      throw new Error("没有可生成接管草稿的导入行");
+    }
+
+    const created: ContractTakeoverBusinessReadModel[] = [];
+    for (const row of readyRows) {
+      created.push(await this.create(projectId, this.importRowToCreateInput(row), actorUserId));
+    }
+
+    return {
+      projectId,
+      createdCount: created.length,
+      createdRows: readyRows.map((row, index) => integerOrFallback(row["rowNo"], index + 1)),
+      created
     };
   }
 
@@ -953,6 +991,35 @@ export class ContractTakeoverService {
       responsibleUserId: input.responsibleUserId?.trim() || null,
       reviewComment: input.reviewComment?.trim() || null,
       acceptanceConclusion: input.acceptanceConclusion?.trim() || null
+    };
+  }
+
+  private importRowToCreateInput(row: Record<string, unknown>): CreateContractTakeoverDto {
+    return {
+      code: stringValue(row["code"]),
+      name: stringValue(row["name"]),
+      counterparty: stringValue(row["counterparty"]),
+      contractTypeKey: stringValue(row["contractTypeKey"]) || undefined,
+      companyEntityName: stringValue(row["companyEntityName"]) || undefined,
+      amountCents: integerValue(row["amountCents"]) ?? 0,
+      signedAt: stringValue(row["signedAt"]),
+      takeoverLevel: stringValue(row["takeoverLevel"]) as ContractTakeoverLevel,
+      lifecycleStatus: stringValue(row["lifecycleStatus"]) as ContractLifecycleStatus,
+      paymentTermsOriginalText: stringValue(row["paymentTermsOriginalText"]),
+      historicalSettledCents: integerValue(row["historicalSettledCents"]) ?? 0,
+      historicalApprovalPendingPaymentCents:
+        integerValue(row["historicalApprovalPendingPaymentCents"]) ?? 0,
+      historicalApprovedPendingPaymentCents:
+        integerValue(row["historicalApprovedPendingPaymentCents"]) ?? 0,
+      historicalPaidCents: integerValue(row["historicalPaidCents"]) ?? 0,
+      historicalProxyPaidCents: integerValue(row["historicalProxyPaidCents"]) ?? 0,
+      historicalAdvancePaidCents: integerValue(row["historicalAdvancePaidCents"]) ?? 0,
+      historicalAdvanceDeductedCents: integerValue(row["historicalAdvanceDeductedCents"]) ?? 0,
+      historicalRetentionWithheldCents: integerValue(row["historicalRetentionWithheldCents"]) ?? 0,
+      historicalRetentionReleasedCents: integerValue(row["historicalRetentionReleasedCents"]) ?? 0,
+      otherConfirmedOccupancyCents: integerValue(row["otherConfirmedOccupancyCents"]) ?? 0,
+      balanceSourceSummary: stringValue(row["balanceSourceSummary"]) || undefined,
+      evidenceSummary: stringValue(row["evidenceSummary"]) || undefined
     };
   }
 

@@ -42,6 +42,7 @@ import {
   recordProjectExpensePurchaseExecution,
   createContractDraft,
   createContractTakeover,
+  createContractTakeoverDraftsFromImport,
   createPaymentRequest,
   precheckContractTakeoverImport,
   createPrivateFileDownloadTicket,
@@ -739,6 +740,9 @@ describe("core flow read API client", () => {
     await precheckContractTakeoverImport("project-1", {
       rows: [takeoverPayload]
     });
+    await createContractTakeoverDraftsFromImport("project-1", {
+      rows: [takeoverPayload]
+    });
     await attachContractTakeoverEvidenceFile("project-1", "takeover-1", {
       fileId: "file-1",
       purpose: "historical_contract_scan"
@@ -754,6 +758,7 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/contract-takeovers",
       "/api/projects/project-1/contract-takeovers/takeover-1",
       "/api/projects/project-1/contract-takeovers/import-precheck",
+      "/api/projects/project-1/contract-takeovers/import-drafts",
       "/api/projects/project-1/contract-takeovers/takeover-1/evidence-files",
       "/api/projects/project-1/contract-takeovers/takeover-1/review-submission",
       "/api/projects/project-1/contract-takeovers/takeover-1/confirmation"
@@ -763,6 +768,7 @@ describe("core flow read API client", () => {
       undefined,
       "POST",
       "PATCH",
+      "POST",
       "POST",
       "POST",
       "POST",
@@ -778,9 +784,12 @@ describe("core flow read API client", () => {
       JSON.stringify({ rows: [takeoverPayload] })
     );
     expect(fetchMock.mock.calls[5][1]?.body).toBe(
+      JSON.stringify({ rows: [takeoverPayload] })
+    );
+    expect(fetchMock.mock.calls[6][1]?.body).toBe(
       JSON.stringify({ fileId: "file-1", purpose: "historical_contract_scan" })
     );
-    expect(fetchMock.mock.calls[7][1]?.body).toBe(
+    expect(fetchMock.mock.calls[8][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
     );
   });

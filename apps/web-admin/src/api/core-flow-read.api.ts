@@ -274,6 +274,13 @@ export interface ContractTakeoverImportPrecheckReadModel {
   rows: ContractTakeoverImportPrecheckRowReadModel[];
 }
 
+export interface ContractTakeoverImportDraftReadModel {
+  projectId: string;
+  createdCount: number;
+  createdRows: number[];
+  created: ContractTakeoverReadModel[];
+}
+
 export interface ConfirmContractTakeoverPayload {
   confirmationPassword: string;
 }
@@ -1154,6 +1161,16 @@ export function precheckContractTakeoverImport(
 ) {
   return postJson<ContractTakeoverImportPrecheckReadModel>(
     `/projects/${projectId}/contract-takeovers/import-precheck`,
+    body
+  );
+}
+
+export function createContractTakeoverDraftsFromImport(
+  projectId: string,
+  body: PrecheckContractTakeoverImportPayload
+) {
+  return postJson<ContractTakeoverImportDraftReadModel>(
+    `/projects/${projectId}/contract-takeovers/import-drafts`,
     body
   );
 }

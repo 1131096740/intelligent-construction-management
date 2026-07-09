@@ -49,6 +49,16 @@ export class ContractTakeoverController {
     return this.takeovers.precheckImport(projectId, body);
   }
 
+  @Post("import-drafts")
+  @RequireProjectRole("contract.create")
+  createDraftsFromImport(
+    @Param("projectId") projectId: string,
+    @Body() body: PrecheckContractTakeoverImportDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.createDraftsFromImport(projectId, body, user.id);
+  }
+
   @Patch(":takeoverId")
   @RequireProjectRole("contract.create")
   updateDraft(
