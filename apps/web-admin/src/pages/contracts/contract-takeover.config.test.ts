@@ -300,6 +300,8 @@ describe("contract takeover page configuration", () => {
       { label: "历史质保金扣留/释放", value: "¥30,000.00 / ¥10,000.00" }
     ]);
     expect(summary.consequence).toContain("确认后会形成系统期初事实");
+    expect(summary.consequence).toContain("接管截止日后的新结算、付款和资料补正必须从系统办理");
+    expect(summary.consequence).toContain("已确认的金额和资料不能静默覆盖");
     expect(summary.levelReviewText).toContain("申报接管等级与系统建议一致：B级");
     expect(summary.riskText).toBe("B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。");
     expect(summary.paymentBlockingText).toBe("尚未完成主管确认，后续付款申请会被系统阻断。");

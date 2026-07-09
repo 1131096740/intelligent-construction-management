@@ -391,7 +391,7 @@ export function buildTakeoverConfirmationSummary(
       }
     ],
     consequence:
-      "确认后会形成系统期初事实，后续结算、付款申请、实付和审计都会以这些历史金额和资料作为约束依据。",
+      "确认后会形成系统期初事实，后续结算、付款申请、实付和审计都会以这些历史金额和资料作为约束依据；接管截止日后的新结算、付款和资料补正必须从系统办理，已确认的金额和资料不能静默覆盖。",
     levelReviewText: takeoverLevelReviewText(takeover),
     riskText: takeover.levelRiskText || takeoverLevelRiskText(takeover.takeoverLevel),
     paymentBlockingText: takeover.paymentBlockingHint,
