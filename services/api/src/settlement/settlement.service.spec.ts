@@ -3488,6 +3488,48 @@ describe("SettlementService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
+  it("结算审批单下载服务不可用时给出中文业务提示", async () => {
+    const settlementService = new SettlementService(undefined as never, audit as never, auth as never);
+
+    await expect(
+      settlementService.downloadLatestApprovalPdf(
+        "settlement-1",
+        "approver-1",
+        "current-password",
+        "结算审批复核"
+      )
+    ).rejects.toThrow("结算审批单下载服务暂不可用，请稍后重试或联系管理员");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
+  it("结算审批单下载密码服务不可用时给出中文业务提示", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const files = {
+      assertCanDownloadFileById: jest.fn(),
+      getFileBuffer: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.downloadLatestApprovalPdf(
+        "settlement-1",
+        "approver-1",
+        "current-password",
+        "结算审批复核"
+      )
+    ).rejects.toThrow("当前密码校验服务暂不可用，请稍后重试或联系管理员");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
+  });
+
   it("regenerates the latest settlement approval PDF during download when it is missing", async () => {
     const firstSourceTx = {
       settlement: {

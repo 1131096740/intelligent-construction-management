@@ -1599,7 +1599,7 @@ export class SettlementService {
     downloadReason: string | undefined
   ) {
     if (!this.prisma || !this.files) {
-      throw new Error("Prisma and file services are required to download settlement approval PDF");
+      throw new Error("结算审批单下载服务暂不可用，请稍后重试或联系管理员");
     }
     if (!confirmationPassword?.trim()) {
       throw new BadRequestException("结算审批单下载密码必填");
@@ -1608,7 +1608,7 @@ export class SettlementService {
       throw new BadRequestException("结算审批单下载原因必填");
     }
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm settlement approval PDF download");
+      throw new Error("当前密码校验服务暂不可用，请稍后重试或联系管理员");
     }
 
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
