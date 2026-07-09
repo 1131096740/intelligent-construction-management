@@ -459,6 +459,76 @@ describe("FileService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("allows project archive roles to create download tickets for takeover evidence", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "历史合同扫描件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      archiveRecord: {
+        findFirst: jest.fn().mockResolvedValue({
+          businessType: "contract_takeover",
+          businessId: "takeover-1"
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          projectId: "project-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1",
+      downloadReason: "复核历史接管资料"
+    });
+
+    expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
+    expect(tx.contractTakeover.findUnique).toHaveBeenCalledWith({
+      where: { id: "takeover-1" },
+      select: { projectId: true }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "finance-1",
+      action: "file.download.ticket",
+      businessType: "file_object",
+      businessId: "file-1",
+      metadata: {
+        expiresAt: ticket.expiresAt,
+        downloadReason: "复核历史接管资料"
+      }
+    });
+  });
+
   it("allows finance users to create download tickets for linked contract archives", async () => {
     const tx = {
       fileObject: {

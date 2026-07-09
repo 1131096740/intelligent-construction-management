@@ -794,6 +794,13 @@ export class FileService {
       const expense = await tx.projectExpenseRequest.findUnique({ where: { id: businessId } });
       return expense?.projectId ?? null;
     }
+    if (businessType === "contract_takeover") {
+      const takeover = await tx.contractTakeover.findUnique({
+        where: { id: businessId },
+        select: { projectId: true }
+      });
+      return takeover?.projectId ?? null;
+    }
     if (businessType === "contract_version") {
       const version = await tx.contractVersion.findUnique({ where: { id: businessId } });
       const contract = version

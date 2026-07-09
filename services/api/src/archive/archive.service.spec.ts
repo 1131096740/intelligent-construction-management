@@ -221,6 +221,90 @@ describe("ArchiveService", () => {
     expect(result.summary.total).toBe(0);
   });
 
+  it("lists historical takeover evidence by project visibility", async () => {
+    const prisma = {
+      contractArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "archive-record-takeover-1",
+            businessType: "contract_takeover",
+            businessId: "takeover-1",
+            fileId: "file-takeover",
+            departmentScope: "contract",
+            createdAt: new Date("2026-07-01T11:00:00.000Z")
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            projectId: "project-1",
+            code: "HT-OLD-001",
+            temporaryCode: null,
+            name: "历史幕墙合同"
+          }
+        ])
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "takeover-1",
+            projectId: "project-1",
+            contractId: "contract-1"
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "file-takeover", originalName: "历史合同扫描件.pdf", sizeBytes: 1024 }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "一号项目" }])
+      }
+    };
+    const service = new ArchiveService(prisma as never);
+
+    const result = await service.listRecent(20, ["project-1"]);
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        documentType: "历史接管资料",
+        businessRef: "HT-OLD-001 / 历史接管",
+        project: "一号项目",
+        fileId: "file-takeover",
+        canDownload: true,
+        archiveStatus: "已入库"
+      })
+    ]);
+    expect(result.summary.total).toBe(1);
+  });
+
   it("does not mark pending business archive files as downloadable", async () => {
     const prisma = {
       contractArchiveFile: {
