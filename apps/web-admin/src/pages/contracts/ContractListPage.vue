@@ -43,7 +43,7 @@
             <t-button @click="goContractTakeover">
               历史合同接管
             </t-button>
-            <router-link to="/contracts/workbench">
+            <router-link to="/contracts/new">
               <t-button theme="primary">
                 新建合同
               </t-button>
@@ -140,7 +140,7 @@
             <EmptyBusinessState
               title="暂无合同"
               description="当前筛选条件下没有合同记录。可以调整筛选，或由合同人员新建合同。"
-              :actions="[{ label: '新建合同', to: '/contracts/workbench' }]"
+              :actions="[{ label: '新建合同', to: '/contracts/new' }]"
             />
           </template>
         </t-table>
@@ -494,8 +494,9 @@ function statusTagTheme(tone: ContractStatusTone) {
 }
 
 .summary-strip {
-  min-height: 42px;
+  min-height: var(--jg-layout-business-summary-strip-min-height);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--jg-space-xs);
   padding: 0 var(--jg-space-md);
@@ -551,6 +552,7 @@ function statusTagTheme(tone: ContractStatusTone) {
 
 .summary-item {
   display: flex;
+  min-width: var(--jg-layout-summary-item-min-width);
   gap: var(--jg-space-sm);
   padding-right: var(--jg-space-lg);
   margin-right: var(--jg-space-lg);
@@ -583,7 +585,16 @@ function statusTagTheme(tone: ContractStatusTone) {
 
 .ledger-filter-form {
   display: grid;
-  grid-template-columns: repeat(4, minmax(96px, 120px)) minmax(150px, 1fr) 76px 76px;
+  grid-template-columns:
+    repeat(
+      4,
+      minmax(
+        var(--jg-layout-list-filter-field-min-width),
+        var(--jg-layout-list-filter-field-max-width)
+      )
+    )
+    minmax(var(--jg-layout-list-filter-keyword-min-width), 1fr)
+    repeat(2, max-content);
   gap: var(--jg-space-xs) var(--jg-space-md);
   align-items: end;
   width: 100%;
@@ -625,7 +636,7 @@ function statusTagTheme(tone: ContractStatusTone) {
 
 @media (max-width: 900px) {
   .ledger-filter-form {
-    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    grid-template-columns: repeat(4, minmax(var(--jg-layout-list-filter-field-max-width), 1fr));
   }
 
   .filter-field.keyword {
