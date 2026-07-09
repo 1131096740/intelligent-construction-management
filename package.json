@@ -7,7 +7,8 @@
     "dev:web": "node scripts/pnpm-workspace.mjs --filter @jiangkong/web-admin dev",
     "lint": "node scripts/pnpm-workspace.mjs -r lint",
     "test": "node scripts/pnpm-workspace.mjs -r test",
-    "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck"
+    "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck",
+    "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight"
   },
   "engines": {
     "node": ">=20.0.0",
