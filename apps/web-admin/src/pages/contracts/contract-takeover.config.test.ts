@@ -19,6 +19,7 @@ import {
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
+  takeoverLevelSelectionHint,
   takeoverLevelReviewText,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
@@ -252,6 +253,12 @@ describe("contract takeover page configuration", () => {
     );
     expect(takeoverLevelAdjustmentDisabledReason("B", suggestion, "合同部确认按 B级跟踪")).toBe(
       ""
+    );
+    expect(takeoverLevelSelectionHint("A", suggestion)).toBe(
+      "当前按系统建议申报A级，复核时仍需核对资料清单、缺口说明和付款阻断提示。"
+    );
+    expect(takeoverLevelSelectionHint("B", suggestion)).toBe(
+      "当前申报B级，与系统建议A级不一致；调整原因会进入复核记录和主管确认依据。"
     );
   });
 

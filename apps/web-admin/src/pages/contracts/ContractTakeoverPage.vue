@@ -257,6 +257,7 @@
           <div class="level-suggestion">
             <strong>系统建议等级：{{ takeoverLevelLabel(takeoverLevelSuggestionView.level) }}</strong>
             <span>{{ takeoverLevelSuggestionView.reason }}</span>
+            <span>{{ takeoverLevelSelectionHintView }}</span>
             <span v-if="createFormLevelDisabledReason">
               如需调整为其他等级，请在等级调整说明中写明业务原因，复核确认后才形成最终等级。
             </span>
@@ -743,6 +744,7 @@ import {
   takeoverConfirmDisabledReason,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
+  takeoverLevelSelectionHint,
   takeoverResponsibleUserText,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
@@ -891,6 +893,9 @@ const selectedEvidenceUploadDisabledReason = computed(() => {
   return takeoverEvidenceUploadDisabledReason(takeover, Boolean(evidenceFile.value));
 });
 const takeoverLevelSuggestionView = computed(() => suggestTakeoverLevel(createForm));
+const takeoverLevelSelectionHintView = computed(() =>
+  takeoverLevelSelectionHint(createForm.takeoverLevel, takeoverLevelSuggestionView.value)
+);
 const createFormLevelDisabledReason = computed(() =>
   takeoverLevelAdjustmentDisabledReason(
     createForm.takeoverLevel,
