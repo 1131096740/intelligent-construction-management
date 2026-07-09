@@ -1338,7 +1338,6 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
 
 @media (max-width: 980px) {
   .meta-panel,
-  .flow-summary-strip,
   .detail-grid,
   .action-grid,
   .action-fields {
