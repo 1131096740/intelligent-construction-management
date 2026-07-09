@@ -297,6 +297,13 @@ export interface ContractPaymentApplicationPreviewReadModel {
     currentDeductionCents: number;
     remainingAdvanceToDeductCents: number;
   };
+  capacityExplanation: Array<{
+    label: string;
+    amountCents: number;
+    operator: "add" | "subtract" | "result";
+    note?: string;
+    tone?: CoreFlowTone;
+  }>;
   historicalBalance?: {
     settledCents: number;
     approvalPendingPaymentCents: number;

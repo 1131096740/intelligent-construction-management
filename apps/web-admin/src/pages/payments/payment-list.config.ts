@@ -69,6 +69,17 @@ export interface PaymentApplicationPreviewRow {
   isDue: boolean;
 }
 
+export type PaymentCapacityExplanationOperator =
+  ContractPaymentApplicationPreviewReadModel["capacityExplanation"][number]["operator"];
+
+export interface PaymentCapacityExplanationItem {
+  label: string;
+  value: string;
+  operator: PaymentCapacityExplanationOperator;
+  note: string;
+  tone: PaymentTone;
+}
+
 export const paymentFilterFields: PaymentFilterField[] = [
   {
     key: "project",
@@ -227,8 +238,35 @@ export function toPaymentApplicationPreviewRows(
   }));
 }
 
+export function toPaymentCapacityExplanationItems(
+  preview: ContractPaymentApplicationPreviewReadModel
+): PaymentCapacityExplanationItem[] {
+  return preview.capacityExplanation.map((item) => ({
+    label: item.label,
+    value: formatCapacityExplanationAmount(item.amountCents, item.operator),
+    operator: item.operator,
+    note: item.note ?? "",
+    tone: item.tone ?? "default"
+  }));
+}
+
 export function paymentApplicationPreviewRowClassName(row: Pick<PaymentApplicationPreviewRow, "isDue">) {
   return row.isDue ? "" : "preview-row-not-due";
+}
+
+function formatCapacityExplanationAmount(
+  amountCents: number,
+  operator: PaymentCapacityExplanationOperator
+) {
+  const amount = formatPaymentCents(amountCents);
+  if (operator === "subtract") {
+    return `-${amount}`;
+  }
+  if (operator === "result") {
+    return `=${amount}`;
+  }
+
+  return `+${amount}`;
 }
 
 export function canShowContractPaymentApplicationPreview(

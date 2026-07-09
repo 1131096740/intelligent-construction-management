@@ -137,6 +137,20 @@
           <span>剩余待扣回 {{ formatCents(visibleContractPaymentPreview.advanceDeduction.remainingAdvanceToDeductCents) }}</span>
           <span>扣回后可申请 {{ formatCents(visibleContractPaymentPreview.capacity.maxRequestableCents) }}</span>
         </div>
+        <div class="capacity-explanation">
+          <div
+            v-for="item in contractPaymentCapacityExplanation"
+            :key="item.label"
+            class="capacity-explanation-item"
+            :class="`capacity-${item.tone}`"
+          >
+            <div>
+              <strong>{{ item.label }}</strong>
+              <span v-if="item.note">{{ item.note }}</span>
+            </div>
+            <b>{{ item.value }}</b>
+          </div>
+        </div>
         <section
           v-for="section in contractPaymentPreviewSections"
           :key="section.type"
@@ -329,6 +343,7 @@ import {
   paymentRules,
   paymentSummaryItems,
   toPaymentApplicationPreviewRows,
+  toPaymentCapacityExplanationItems,
   emptyPaymentLedgerFilters,
   filterPaymentLedgerRows
 } from "./payment-list.config";
@@ -440,6 +455,11 @@ const contractPaymentPreviewSections = computed(() =>
         title: section.title,
         rows: toPaymentApplicationPreviewRows(section)
       }))
+    : []
+);
+const contractPaymentCapacityExplanation = computed(() =>
+  visibleContractPaymentPreview.value
+    ? toPaymentCapacityExplanationItems(visibleContractPaymentPreview.value)
     : []
 );
 
@@ -780,6 +800,60 @@ onMounted(() => {
   border-right: 0;
 }
 
+.capacity-explanation {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.capacity-explanation-item {
+  min-width: 0;
+  min-height: 68px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.capacity-explanation-item div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.capacity-explanation-item strong {
+  color: #151922;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.capacity-explanation-item span {
+  color: #767f8d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.capacity-explanation-item b {
+  flex: 0 0 auto;
+  color: #424955;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.capacity-primary b,
+.capacity-success b {
+  color: #006c45;
+}
+
+.capacity-warning b {
+  color: #b87400;
+}
+
 .preview-section {
   min-width: 0;
   border: 1px solid #dce1e8;
@@ -975,6 +1049,7 @@ onMounted(() => {
 @media (max-width: 980px) {
   .create-grid,
   .advance-deduction-strip,
+  .capacity-explanation,
   .rule-strip,
   .filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));

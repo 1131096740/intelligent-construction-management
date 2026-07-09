@@ -1244,6 +1244,43 @@ describe("PaymentReadService", () => {
       advanceDeductionCents: 20_000,
       maxRequestableCents: 15_000
     });
+    expect(preview.capacityExplanation).toEqual([
+      expect.objectContaining({
+        label: "当前累计可付款金额",
+        amountCents: 80_000,
+        operator: "add"
+      }),
+      expect.objectContaining({
+        label: "扣已实际付款",
+        amountCents: 10_000,
+        operator: "subtract"
+      }),
+      expect.objectContaining({
+        label: "扣审批中占用",
+        amountCents: 0,
+        operator: "subtract"
+      }),
+      expect.objectContaining({
+        label: "扣已批待付款占用",
+        amountCents: 30_000,
+        operator: "subtract"
+      }),
+      expect.objectContaining({
+        label: "扣总包代付",
+        amountCents: 5_000,
+        operator: "subtract"
+      }),
+      expect.objectContaining({
+        label: "扣本次应扣回预付款",
+        amountCents: 20_000,
+        operator: "subtract"
+      }),
+      expect.objectContaining({
+        label: "本次最多可申请",
+        amountCents: 15_000,
+        operator: "result"
+      })
+    ]);
     expect(prisma.projectProxyPayment.findMany).toHaveBeenCalledWith({
       where: {
         voidedAt: null,
@@ -1458,5 +1495,29 @@ describe("PaymentReadService", () => {
       currentDeductionCents: 10_000,
       remainingAdvanceToDeductCents: 20_000
     });
+    expect(preview.capacityExplanation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "扣已实际付款",
+          amountCents: 60_000,
+          note: "含历史接管已付款"
+        }),
+        expect.objectContaining({
+          label: "扣已批待付款占用",
+          amountCents: 30_000,
+          note: "含历史接管已批待付款"
+        }),
+        expect.objectContaining({
+          label: "扣总包代付",
+          amountCents: 10_000,
+          note: "含历史接管总包代付"
+        }),
+        expect.objectContaining({
+          label: "本次最多可申请",
+          amountCents: 0,
+          tone: "warning"
+        })
+      ])
+    );
   });
 });

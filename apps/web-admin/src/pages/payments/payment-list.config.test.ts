@@ -12,6 +12,7 @@ import {
   paymentRules,
   paymentSummaryItems,
   toPaymentApplicationPreviewRows,
+  toPaymentCapacityExplanationItems,
   type PaymentLedgerRow
 } from "./payment-list.config";
 
@@ -161,38 +162,57 @@ describe("payment ledger page configuration", () => {
     expect(paymentApplicationPreviewRowClassName({ isDue: false })).toBe("preview-row-not-due");
   });
 
+  it("formats contract payment capacity explanation as a business formula", () => {
+    const preview = contractPaymentApplicationPreview({
+      capacityExplanation: [
+        {
+          label: "当前累计可付款金额",
+          amountCents: 80_000,
+          operator: "add",
+          note: "按合同付款条款计算",
+          tone: "primary"
+        },
+        {
+          label: "扣已实际付款",
+          amountCents: 10_000,
+          operator: "subtract"
+        },
+        {
+          label: "本次最多可申请",
+          amountCents: 70_000,
+          operator: "result",
+          tone: "success"
+        }
+      ]
+    });
+
+    expect(toPaymentCapacityExplanationItems(preview)).toEqual([
+      {
+        label: "当前累计可付款金额",
+        value: "+¥800.00",
+        operator: "add",
+        note: "按合同付款条款计算",
+        tone: "primary"
+      },
+      {
+        label: "扣已实际付款",
+        value: "-¥100.00",
+        operator: "subtract",
+        note: "",
+        tone: "default"
+      },
+      {
+        label: "本次最多可申请",
+        value: "=¥700.00",
+        operator: "result",
+        note: "",
+        tone: "success"
+      }
+    ]);
+  });
+
   it("only shows contract payment application preview for contract-level due payments", () => {
-    const preview: ContractPaymentApplicationPreviewReadModel = {
-      contract: {
-        contractId: "contract-1",
-        contractVersionId: "contract-version-1",
-        contractNo: "HT-001",
-        contractName: "材料采购合同",
-        contractVersion: "v1",
-        projectId: "project-1",
-        projectName: "示例项目"
-      },
-      asOf: "2026-07-03T00:00:00.000Z",
-      includedSettlements: [],
-      capacity: {
-        cumulativeEffectiveSettlementCents: 0,
-        duePayableCents: 0,
-        occupiedCents: 0,
-        actualPaidCents: 0,
-        approvalPendingCents: 0,
-        approvedPendingCents: 0,
-        proxyPaidCents: 0,
-        advanceDeductionCents: 0,
-        maxRequestableCents: 0
-      },
-      advanceDeduction: {
-        paidAdvanceCents: 0,
-        currentDeductionCents: 0,
-        remainingAdvanceToDeductCents: 0
-      },
-      sections: [],
-      formula: ""
-    };
+    const preview = contractPaymentApplicationPreview();
 
     expect(canShowContractPaymentApplicationPreview("contract_due", preview, "contract-version-1", "contract-version-1")).toBe(true);
     expect(canShowContractPaymentApplicationPreview("contract_due", preview, " contract-version-1 ", "contract-version-1")).toBe(true);
@@ -202,6 +222,44 @@ describe("payment ledger page configuration", () => {
     expect(canShowContractPaymentApplicationPreview("contract_advance", preview, "contract-version-1", "contract-version-1")).toBe(false);
   });
 });
+
+function contractPaymentApplicationPreview(
+  overrides: Partial<ContractPaymentApplicationPreviewReadModel> = {}
+): ContractPaymentApplicationPreviewReadModel {
+  return {
+    contract: {
+      contractId: "contract-1",
+      contractVersionId: "contract-version-1",
+      contractNo: "HT-001",
+      contractName: "材料采购合同",
+      contractVersion: "v1",
+      projectId: "project-1",
+      projectName: "示例项目"
+    },
+    asOf: "2026-07-03T00:00:00.000Z",
+    includedSettlements: [],
+    capacity: {
+      cumulativeEffectiveSettlementCents: 0,
+      duePayableCents: 0,
+      occupiedCents: 0,
+      actualPaidCents: 0,
+      approvalPendingCents: 0,
+      approvedPendingCents: 0,
+      proxyPaidCents: 0,
+      advanceDeductionCents: 0,
+      maxRequestableCents: 0
+    },
+    advanceDeduction: {
+      paidAdvanceCents: 0,
+      currentDeductionCents: 0,
+      remainingAdvanceToDeductCents: 0
+    },
+    capacityExplanation: [],
+    sections: [],
+    formula: "",
+    ...overrides
+  };
+}
 
 function paymentRow(overrides: Partial<PaymentLedgerRow>): PaymentLedgerRow {
   return {

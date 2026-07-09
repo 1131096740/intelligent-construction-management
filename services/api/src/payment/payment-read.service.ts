@@ -752,6 +752,26 @@ export class PaymentReadService {
           .map((payment) => payment.paidAmountCents)
       );
 
+    const capacity = {
+      ...preview.capacity,
+      actualPaidCents,
+      approvalPendingCents: occupancy.approvalPendingCents,
+      approvedPendingCents: occupancy.approvedPendingCents,
+      proxyPaidCents,
+      ...(preview.historicalBalance
+        ? {
+            historicalPaidCents: preview.historicalBalance.paidCents,
+            historicalApprovalPendingCents:
+              preview.historicalBalance.approvalPendingPaymentCents,
+            historicalApprovedPendingCents:
+              preview.historicalBalance.approvedPendingPaymentCents,
+            historicalProxyPaidCents: preview.historicalBalance.proxyPaidCents,
+            historicalOtherConfirmedOccupancyCents:
+              preview.historicalBalance.otherConfirmedOccupancyCents
+          }
+        : {})
+    };
+
     return {
       contract: {
         contractId: contract.id,
@@ -771,26 +791,9 @@ export class PaymentReadService {
         status: settlement.status,
         isFinal: settlement.isFinal
       })),
-      capacity: {
-        ...preview.capacity,
-        actualPaidCents,
-        approvalPendingCents: occupancy.approvalPendingCents,
-        approvedPendingCents: occupancy.approvedPendingCents,
-        proxyPaidCents,
-        ...(preview.historicalBalance
-          ? {
-              historicalPaidCents: preview.historicalBalance.paidCents,
-              historicalApprovalPendingCents:
-                preview.historicalBalance.approvalPendingPaymentCents,
-              historicalApprovedPendingCents:
-                preview.historicalBalance.approvedPendingPaymentCents,
-              historicalProxyPaidCents: preview.historicalBalance.proxyPaidCents,
-              historicalOtherConfirmedOccupancyCents:
-                preview.historicalBalance.otherConfirmedOccupancyCents
-            }
-          : {})
-      },
+      capacity,
       advanceDeduction: preview.advanceDeduction,
+      capacityExplanation: this.contractPaymentCapacityExplanation(capacity),
       ...(preview.historicalBalance ? { historicalBalance: preview.historicalBalance } : {}),
       sections: preview.sections.map((section) => ({
         type: section.type,
@@ -817,6 +820,87 @@ export class PaymentReadService {
       formula:
         "当前累计可付款金额（系统内 + 历史接管） - 已实际付款金额（系统内 + 历史） - 审批中占用（系统内 + 历史） - 已批待付款金额（系统内 + 历史） - 总包代付金额（系统内 + 历史） - 本次应扣回预付款金额 = 本次最多可申请金额"
     };
+  }
+
+  private contractPaymentCapacityExplanation(
+    capacity: ContractPaymentApplicationPreviewReadModel["capacity"]
+  ): ContractPaymentApplicationPreviewReadModel["capacityExplanation"] {
+    const actualPaidCents =
+      capacity.actualPaidCents + (capacity.historicalPaidCents ?? 0);
+    const approvalPendingCents =
+      capacity.approvalPendingCents + (capacity.historicalApprovalPendingCents ?? 0);
+    const approvedPendingCents =
+      capacity.approvedPendingCents + (capacity.historicalApprovedPendingCents ?? 0);
+    const proxyPaidCents =
+      capacity.proxyPaidCents + (capacity.historicalProxyPaidCents ?? 0);
+    const historicalOtherConfirmedOccupancyCents =
+      capacity.historicalOtherConfirmedOccupancyCents ?? 0;
+
+    return [
+      {
+        label: "当前累计可付款金额",
+        amountCents: capacity.duePayableCents,
+        operator: "add",
+        note: "按合同付款条款、已生效结算和到账期计算",
+        tone: "primary"
+      },
+      {
+        label: "扣已实际付款",
+        amountCents: actualPaidCents,
+        operator: "subtract",
+        note: capacity.historicalPaidCents ? "含历史接管已付款" : "系统内已登记实付",
+        tone: "default"
+      },
+      {
+        label: "扣审批中占用",
+        amountCents: approvalPendingCents,
+        operator: "subtract",
+        note: capacity.historicalApprovalPendingCents ? "含历史接管审批中付款" : "已发起但未审批通过",
+        tone: "warning"
+      },
+      {
+        label: "扣已批待付款占用",
+        amountCents: approvedPendingCents,
+        operator: "subtract",
+        note: capacity.historicalApprovedPendingCents ? "含历史接管已批待付款" : "审批通过但尚未实付",
+        tone: "warning"
+      },
+      {
+        label: "扣总包代付",
+        amountCents: proxyPaidCents,
+        operator: "subtract",
+        note: capacity.historicalProxyPaidCents ? "含历史接管总包代付" : "系统内已确认代付",
+        tone: "default"
+      },
+      ...(historicalOtherConfirmedOccupancyCents > 0
+        ? [
+            {
+              label: "扣历史其他确认占用",
+              amountCents: historicalOtherConfirmedOccupancyCents,
+              operator: "subtract" as const,
+              note: "历史接管时确认的其他付款占用",
+              tone: "warning" as const
+            }
+          ]
+        : []),
+      {
+        label: "扣本次应扣回预付款",
+        amountCents: capacity.advanceDeductionCents,
+        operator: "subtract",
+        note: "按预付款扣回规则和已扣回金额计算",
+        tone: "default"
+      },
+      {
+        label: "本次最多可申请",
+        amountCents: capacity.maxRequestableCents,
+        operator: "result",
+        note:
+          capacity.maxRequestableCents > 0
+            ? "提交金额不得超过该额度"
+            : "当前没有可发起的合同累计结算付款额度",
+        tone: capacity.maxRequestableCents > 0 ? "success" : "warning"
+      }
+    ];
   }
 
   private sampleDetail(paymentId: string): PaymentDetailReadModel {
