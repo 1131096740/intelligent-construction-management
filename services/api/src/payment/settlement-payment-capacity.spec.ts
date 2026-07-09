@@ -568,6 +568,59 @@ describe("calculateContractDuePaymentCapacity", () => {
     });
   });
 
+  it("uses takeover balance confirmation date for historical initial settlement due dates", () => {
+    const input = {
+      settlements: [
+        {
+          id: "settlement-takeover-initial",
+          status: "effective",
+          amountCents: 100_000,
+          paidAmountCents: 0,
+          paymentTermsVersionId: "terms-1",
+          sourceType: "historical_takeover",
+          sourceTakeoverId: "takeover-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 10000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 30
+        }
+      ],
+      settlementArchiveFiles: [],
+      paymentRequests: [],
+      historicalBalance: {
+        paymentTermsVersionId: "terms-1",
+        balanceConfirmedAt: new Date("2026-06-01T00:00:00.000Z"),
+        settledCents: 100_000
+      }
+    };
+
+    expect(
+      calculateContractCapacity({
+        asOf: new Date("2026-06-20T00:00:00.000Z"),
+        ...input
+      })
+    ).toMatchObject({
+      duePayableCents: 0,
+      remainingCents: 0
+    });
+    expect(
+      calculateContractCapacity({
+        asOf: new Date("2026-07-02T00:00:00.000Z"),
+        ...input
+      })
+    ).toMatchObject({
+      duePayableCents: 100_000,
+      remainingCents: 100_000
+    });
+  });
+
   it("counts partially paid and paid settlements as effective contract capacity rows", () => {
     const capacity = calculateContractCapacity({
       asOf,
