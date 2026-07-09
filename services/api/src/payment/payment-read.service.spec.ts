@@ -1132,6 +1132,76 @@ describe("PaymentReadService", () => {
     });
   });
 
+  it.each([
+    {
+      name: "without a contract version",
+      prisma: {},
+      contractVersionId: "",
+      rawAsOf: undefined,
+      message: "请选择要申请付款的合同版本"
+    },
+    {
+      name: "with an invalid as-of date",
+      prisma: {},
+      contractVersionId: "contract-version-1",
+      rawAsOf: "not-a-date",
+      message: "付款申请基准日期格式不正确，请重新选择日期"
+    },
+    {
+      name: "when the contract version cannot be found",
+      prisma: {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue(null)
+        }
+      },
+      contractVersionId: "contract-version-1",
+      rawAsOf: "2026-07-20T00:00:00.000Z",
+      message: "未找到合同版本，请刷新合同台账后重试"
+    },
+    {
+      name: "when the contract version is not effective",
+      prisma: {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "approval_pending"
+          })
+        }
+      },
+      contractVersionId: "contract-version-1",
+      rawAsOf: "2026-07-20T00:00:00.000Z",
+      message: "当前合同版本尚未归档生效，不能发起付款申请"
+    },
+    {
+      name: "when the linked contract cannot be found",
+      prisma: {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "effective"
+          })
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue(null)
+        }
+      },
+      contractVersionId: "contract-version-1",
+      rawAsOf: "2026-07-20T00:00:00.000Z",
+      message: "未找到关联合同，请先核对合同台账"
+    }
+  ])(
+    "rejects contract payment application preview $name",
+    async ({ prisma, contractVersionId, rawAsOf, message }) => {
+      const service = new PaymentReadService(prisma as never);
+
+      await expect(service.getContractApplication(contractVersionId, rawAsOf)).rejects.toThrow(
+        message
+      );
+    }
+  );
+
   it("builds a contract-level payment application preview from all effective settlements", async () => {
     const prisma = {
       contractVersion: {

@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：继续推进合同级付款申请预览中文业务体验治理切片：按合同发起付款申请预览在未选择合同版本、基准日期格式错误、合同版本不存在、合同版本未归档生效或关联合同缺失时，不再抛出 `Contract version is required`、`Invalid asOf date`、`Cannot create payment from a non-effective contract version` 等英文技术错误，统一改为中文业务原因；不改变历史期初结算、付款条款到账期、预付款扣回和付款容量计算口径。验证：TDD 红绿覆盖 API 付款读模型 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进付款详情读模型中文业务体验治理切片：付款详情在付款申请不存在、关联结算缺失、关联合同版本缺失或付款条款版本缺失时，不再抛出 `Payment request not found`、`Payment settlement not found` 等英文技术错误，统一改为提示刷新付款台账、核对结算归档或合同归档的中文业务原因；不改变付款详情查询、项目可见范围、付款容量和动作权限口径。验证：TDD 红绿覆盖 API 付款读模型 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进付款实付登记中文业务体验治理切片：付款登记实付进入账本事务后，付款申请不存在、付款审批未完成、实付金额超过付款申请剩余额、关联结算缺失、结算剩余可付额不足等场景不再抛出 `Cannot record payment execution from status`、`Payment execution exceeds approved remaining amount`、`Payment settlement not found` 等英文技术错误，统一改为中文业务原因并按元展示当前最多可实付金额；不改变实付分摊、合同级付款分配、结算付款容量和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进付款实付登记中文业务体验治理切片：付款登记实付的金额、付款凭证、当前登录密码和实付日期前置校验不再抛出 `Payment execution amount must be greater than zero`、`Payment voucher file is required` 等英文技术错误，统一改为中文业务原因，并补充实付日期格式错误测试；不改变实付分摊、付款状态、凭证权限和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。

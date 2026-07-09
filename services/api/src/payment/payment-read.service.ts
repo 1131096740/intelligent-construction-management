@@ -551,29 +551,29 @@ export class PaymentReadService {
     rawAsOf?: string
   ): Promise<ContractPaymentApplicationPreviewReadModel> {
     if (!contractVersionId) {
-      throw new BadRequestException("Contract version is required");
+      throw new BadRequestException("请选择要申请付款的合同版本");
     }
 
     const asOf = rawAsOf ? new Date(rawAsOf) : new Date();
     if (Number.isNaN(asOf.getTime())) {
-      throw new BadRequestException("Invalid asOf date");
+      throw new BadRequestException("付款申请基准日期格式不正确，请重新选择日期");
     }
 
     const contractVersion = await this.prisma.contractVersion.findUnique({
       where: { id: contractVersionId }
     });
     if (!contractVersion) {
-      throw new NotFoundException("Contract version not found");
+      throw new NotFoundException("未找到合同版本，请刷新合同台账后重试");
     }
     if (contractVersion.status !== "effective") {
-      throw new BadRequestException("Cannot create payment from a non-effective contract version");
+      throw new BadRequestException("当前合同版本尚未归档生效，不能发起付款申请");
     }
 
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractVersion.contractId }
     });
     if (!contract) {
-      throw new NotFoundException("Contract not found");
+      throw new NotFoundException("未找到关联合同，请先核对合同台账");
     }
 
     const project = await this.prisma.project.findUnique({
