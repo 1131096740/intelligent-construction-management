@@ -322,6 +322,53 @@ describe("ApprovalFormService", () => {
     );
   });
 
+  it("does not expose internal user accounts in approval form names or watermark", async () => {
+    const prisma = buildPrisma({
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: "pdf-1", fileId: "file-1" }),
+        create: jest.fn()
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(null)
+      }
+    });
+    const files = {
+      uploadPrivateFile: jest.fn(),
+      assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined)
+    };
+    const audit = { record: jest.fn() };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      audit as never,
+      auth as never
+    );
+    const renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-test"));
+    (service as unknown as { renderPdf: typeof renderPdf }).renderPdf = renderPdf;
+
+    await service.renderForDownload(
+      "payment_request",
+      "pay-1",
+      "downloader-internal-id",
+      "current-password",
+      "付款审批复核"
+    );
+
+    expect(renderPdf).toHaveBeenCalledWith(
+      expect.objectContaining({
+        applicantName: "申请人未读取",
+        watermark: expect.arrayContaining(["下载人：下载人未读取"]),
+        logs: [
+          expect.objectContaining({
+            name: "处理人未读取"
+          })
+        ]
+      })
+    );
+  });
+
   it("rejects approval-form downloads without current password confirmation", async () => {
     const service = new ApprovalFormService(
       buildPrisma() as never,

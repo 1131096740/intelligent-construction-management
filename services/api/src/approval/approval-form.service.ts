@@ -426,7 +426,7 @@ export class ApprovalFormService {
     const input = await this.buildRenderInput(instance);
     const watermark = [
       input.companyName || "建工智管",
-      `下载人：${downloader?.name ?? downloaderUserId}`,
+      `下载人：${downloader?.name ?? "下载人未读取"}`,
       formatDateTime(new Date())
     ];
     const buffer = await this.renderPdf({ ...input, watermark });
@@ -491,7 +491,7 @@ export class ApprovalFormService {
       signatureBufferById.set(log.actorUserId, isEmbeddableImage(buffer) ? buffer : null);
     }
 
-    const applicantName = nameById.get(instance.applicantUserId) ?? instance.applicantUserId;
+    const applicantName = nameById.get(instance.applicantUserId) ?? "申请人未读取";
     const summary = await this.resolveBusinessSummary(
       prisma,
       instance.businessType,
@@ -510,7 +510,7 @@ export class ApprovalFormService {
       summary,
       nodes: instance.frozenNodes as unknown as FrozenNode[],
       logs: logs.map((log) => ({
-        name: nameById.get(log.actorUserId) ?? log.actorUserId,
+        name: nameById.get(log.actorUserId) ?? "处理人未读取",
         position: positionById.get(log.actorUserId) ?? "",
         action: actionLabel(log.action),
         signedAt: formatDateTime(log.createdAt),

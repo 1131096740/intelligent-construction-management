@@ -196,6 +196,32 @@ describe("ApprovalDelegationService", () => {
     });
   });
 
+  it("does not expose internal accounts when delegation user names are unavailable", async () => {
+    const prisma = {
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegation-1", fromUserId: "from-internal-id", toUserId: "to-internal-id" }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ApprovalDelegationService(prisma as never, audit as never);
+
+    const result = await service.listForUser("from-internal-id");
+
+    expect(result).toEqual([
+      {
+        id: "delegation-1",
+        fromUserId: "from-internal-id",
+        toUserId: "to-internal-id",
+        fromUserName: "委托人未读取",
+        toUserName: "受托人未读取"
+      }
+    ]);
+  });
+
   it("lists same-project active users as delegation targets", async () => {
     const prisma = {
       user: {

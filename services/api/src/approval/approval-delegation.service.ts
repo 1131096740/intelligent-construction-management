@@ -91,8 +91,8 @@ export class ApprovalDelegationService {
 
     return delegations.map((delegation) => ({
       ...delegation,
-      fromUserName: nameById.get(delegation.fromUserId) ?? delegation.fromUserId,
-      toUserName: nameById.get(delegation.toUserId) ?? delegation.toUserId
+      fromUserName: nameById.get(delegation.fromUserId) ?? "委托人未读取",
+      toUserName: nameById.get(delegation.toUserId) ?? "受托人未读取"
     }));
   }
 
