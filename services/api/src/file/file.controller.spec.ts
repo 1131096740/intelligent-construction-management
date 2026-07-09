@@ -137,4 +137,25 @@ describe("FileController authorization wiring", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(files.createDownloadTicket).not.toHaveBeenCalled();
   });
+
+  it("does not issue a private file download ticket when password confirmation fails", async () => {
+    const files = {
+      createDownloadTicket: jest.fn()
+    };
+    const auth = {
+      confirmPassword: jest.fn().mockRejectedValue(new Error("当前密码不正确，请重新输入"))
+    };
+    const controller = new FileController(files as never, auth as never);
+
+    await expect(
+      controller.createDownloadTicket(
+        "file-1",
+        { id: "user-1", name: "张三", phone: "13800000000" },
+        { confirmationPassword: "wrong-password", downloadReason: "历史接管资料复核" }
+      )
+    ).rejects.toThrow("当前密码不正确，请重新输入");
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith("user-1", "wrong-password");
+    expect(files.createDownloadTicket).not.toHaveBeenCalled();
+  });
 });

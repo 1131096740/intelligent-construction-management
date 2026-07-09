@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续加固私有资料短时效下载当前密码前置测试：资料库、接管资料和归档资料生成短时效下载链接前，如果当前密码校验失败，控制器会直接拒绝并且不会调用文件服务生成下载票据，确保“当前密码、下载原因、短时效链接和审计”链条里当前密码是前置条件。不改变文件下载权限解析、接管资料项目归属、下载原因、短时效链接签名和审计口径。验证：API 文件控制器 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续加固历史期初结算付款容量回归测试：当期初结算已经进入 `Settlement`，即使只有 `sourceTakeoverId`、没有同步写入 `sourceType = historical_takeover`，容量算法仍按接管余额确认日作为付款条款到账期依据，并且不再把同一笔历史已付重复扣减；用“期初结算 100、历史已付 40、已批待付 10、其他占用 5、最多可申请 45”的测试口径守住内部容量输入 `sourceTakeoverId` 的公共承诺。不改变付款容量算法、付款申请创建、合同详情读模型和接管入账口径。验证：API 付款容量 Jest 通过。
 - 2026-07-10 (CodeX)：继续推进结算明细表导出中文业务错误治理切片：下载结算明细 Excel 草稿时，如果导出服务暂不可用、结算单不存在或结算单已不处于待审批/已退回草稿阶段，不再抛出 `Prisma service is required to export settlement Excel`、`Settlement not found` 或内部状态值，统一改为中文业务原因并提示稍后重试、刷新台账或在结算发起/退回后再导出。不改变结算明细表内容、审批签字行、归档 PDF、结算状态机和金额账本口径。验证：API 结算服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算创建入口中文业务错误治理切片：创建结算时，如果结算服务暂不可用、合同版本不存在、合同尚未归档生效、关联合同缺失或合同缺少已生效结构化付款条款，不再抛出 `Prisma service is required to create settlement`、`Contract version not found`、`Cannot create settlement from a non-effective contract version`、`Contract not found`、`Effective payment terms version not found` 等英文技术提示，统一改为中文业务原因并说明刷新合同、完成归档确认或补齐付款条款后再办理；失败时不会创建结算单。不改变结算明细重算、防重复、清单项累计占用、付款阶段计算、异常额度占用和审批 PDF 口径。验证：API 结算服务 Jest、API typecheck、API lint 通过。
