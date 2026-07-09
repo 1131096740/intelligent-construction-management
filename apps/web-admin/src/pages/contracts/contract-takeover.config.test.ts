@@ -287,6 +287,7 @@ describe("contract takeover page configuration", () => {
     expect(summary.evidenceText).toBe("合同与凭证");
     expect(summary.reviewText).toBe("预算已复核结算口径");
     expect(summary.acceptanceText).toBe("作为 A 级活跃合同继续办理");
+    expect(summary.responsibleText).toBe("合同负责人");
   });
 
   it("shows post-confirmation checks only after takeover confirmation", () => {

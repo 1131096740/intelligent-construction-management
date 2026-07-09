@@ -501,6 +501,7 @@
             <p>资料依据：{{ selectedConfirmationSummary.evidenceText }}</p>
             <p>复核意见：{{ selectedConfirmationSummary.reviewText }}</p>
             <p>验收结论：{{ selectedConfirmationSummary.acceptanceText }}</p>
+            <p>接管责任人：{{ selectedConfirmationSummary.responsibleText }}</p>
           </div>
           <div
             v-if="selectedPostConfirmationChecklist"
@@ -679,6 +680,7 @@
           <p>资料依据：{{ confirmSummary.evidenceText }}</p>
           <p>复核意见：{{ confirmSummary.reviewText }}</p>
           <p>验收结论：{{ confirmSummary.acceptanceText }}</p>
+          <p>接管责任人：{{ confirmSummary.responsibleText }}</p>
         </template>
         <label>
           <span>当前登录密码</span>

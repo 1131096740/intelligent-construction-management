@@ -56,6 +56,7 @@ export interface TakeoverConfirmationSummary {
   evidenceText: string;
   reviewText: string;
   acceptanceText: string;
+  responsibleText: string;
 }
 
 export interface TakeoverPostConfirmationChecklist {
@@ -366,7 +367,8 @@ export function buildTakeoverConfirmationSummary(
     evidenceGapText: takeover.evidenceGapSummary,
     evidenceText: takeover.evidenceSummary?.trim() || "未填写",
     reviewText: takeover.reviewComment?.trim() || "未填写",
-    acceptanceText: takeover.acceptanceConclusion?.trim() || "未填写"
+    acceptanceText: takeover.acceptanceConclusion?.trim() || "未填写",
+    responsibleText: takeoverResponsibleUserText(takeover)
   };
 }
 
