@@ -525,6 +525,49 @@ describe("calculateContractDuePaymentCapacity", () => {
     });
   });
 
+  it("recognizes takeover initial settlements by takeover id when source type is not populated", () => {
+    const capacity = calculateContractCapacity({
+      asOf,
+      settlements: [
+        {
+          id: "settlement-takeover-initial",
+          status: "effective",
+          amountCents: 100_000,
+          paidAmountCents: 40_000,
+          paymentTermsVersionId: "terms-1",
+          sourceTakeoverId: "takeover-1"
+        }
+      ],
+      paymentTermsStages: [
+        {
+          paymentTermsVersionId: "terms-1",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 10000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          dueDays: 0
+        }
+      ],
+      settlementArchiveFiles: [],
+      paymentRequests: [],
+      historicalBalance: {
+        paymentTermsVersionId: "terms-1",
+        balanceConfirmedAt: new Date("2026-06-01T00:00:00.000Z"),
+        settledCents: 100_000,
+        paidCents: 40_000,
+        approvedPendingPaymentCents: 10_000,
+        otherConfirmedOccupancyCents: 5_000
+      }
+    });
+
+    expect(capacity).toEqual({
+      duePayableCents: 100_000,
+      occupiedCents: 55_000,
+      remainingCents: 45_000
+    });
+  });
+
   it("counts partially paid and paid settlements as effective contract capacity rows", () => {
     const capacity = calculateContractCapacity({
       asOf,
