@@ -54,6 +54,8 @@ export interface TakeoverConfirmationSummary {
   paymentBlockingText: string;
   evidenceGapText: string;
   evidenceText: string;
+  reviewText: string;
+  acceptanceText: string;
 }
 
 export interface TakeoverPostConfirmationChecklist {
@@ -362,7 +364,9 @@ export function buildTakeoverConfirmationSummary(
     riskText: takeover.levelRiskText || takeoverLevelRiskText(takeover.takeoverLevel),
     paymentBlockingText: takeover.paymentBlockingHint,
     evidenceGapText: takeover.evidenceGapSummary,
-    evidenceText: takeover.evidenceSummary?.trim() || "未填写"
+    evidenceText: takeover.evidenceSummary?.trim() || "未填写",
+    reviewText: takeover.reviewComment?.trim() || "未填写",
+    acceptanceText: takeover.acceptanceConclusion?.trim() || "未填写"
   };
 }
 

@@ -285,6 +285,8 @@ describe("contract takeover page configuration", () => {
     expect(summary.paymentBlockingText).toBe("尚未完成主管确认，后续付款申请会被系统阻断。");
     expect(summary.evidenceGapText).toBe("缺少：历史付款凭证。补齐前会影响主管确认和后续付款核验。");
     expect(summary.evidenceText).toBe("合同与凭证");
+    expect(summary.reviewText).toBe("预算已复核结算口径");
+    expect(summary.acceptanceText).toBe("作为 A 级活跃合同继续办理");
   });
 
   it("shows post-confirmation checks only after takeover confirmation", () => {

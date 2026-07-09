@@ -499,6 +499,8 @@
             <p>付款办理提示：{{ selectedConfirmationSummary.paymentBlockingText }}</p>
             <p>资料缺口说明：{{ selectedConfirmationSummary.evidenceGapText }}</p>
             <p>资料依据：{{ selectedConfirmationSummary.evidenceText }}</p>
+            <p>复核意见：{{ selectedConfirmationSummary.reviewText }}</p>
+            <p>验收结论：{{ selectedConfirmationSummary.acceptanceText }}</p>
           </div>
           <div
             v-if="selectedPostConfirmationChecklist"
@@ -675,6 +677,8 @@
           <p>付款办理提示：{{ confirmSummary.paymentBlockingText }}</p>
           <p>资料缺口说明：{{ confirmSummary.evidenceGapText }}</p>
           <p>资料依据：{{ confirmSummary.evidenceText }}</p>
+          <p>复核意见：{{ confirmSummary.reviewText }}</p>
+          <p>验收结论：{{ confirmSummary.acceptanceText }}</p>
         </template>
         <label>
           <span>当前登录密码</span>
