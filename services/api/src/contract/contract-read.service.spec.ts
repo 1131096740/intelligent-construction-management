@@ -9,6 +9,36 @@ describe("ContractReadService", () => {
     jest.useRealTimers();
   });
 
+  it("does not expose internal status values in contract detail labels", () => {
+    const service = new ContractReadService({} as never) as unknown as {
+      statusView(status: string): { label: string };
+      takeoverStatusLabel(status: string): string;
+      termsStatusLabel(status: string): string;
+      settlementApprovalStatusLabel(status: string): string;
+      settlementArchiveFileStatusLabel(archiveFile: {
+        status: string;
+        confirmedAt: Date | null;
+      }): string;
+      paymentApprovalStatusLabel(status: string): string;
+    };
+
+    expect(service.statusView("internal_contract_status").label).toBe("合同状态未读取");
+    expect(service.takeoverStatusLabel("internal_takeover_status")).toBe("接管状态未读取");
+    expect(service.termsStatusLabel("internal_terms_status")).toBe("付款条款状态未读取");
+    expect(service.settlementApprovalStatusLabel("internal_settlement_status")).toBe(
+      "结算审批状态未读取"
+    );
+    expect(
+      service.settlementArchiveFileStatusLabel({
+        status: "internal_archive_status",
+        confirmedAt: null
+      })
+    ).toBe("结算归档状态未读取");
+    expect(service.paymentApprovalStatusLabel("internal_payment_status")).toBe(
+      "付款审批状态未读取"
+    );
+  });
+
   it("builds contract ledger rows and summary from persisted contracts", async () => {
     const prisma = {
       contract: {

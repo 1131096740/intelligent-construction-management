@@ -1194,7 +1194,7 @@ export class ContractReadService {
       voided: { label: "已作废", tone: "danger" }
     };
 
-    return views[status] ?? { label: status, tone: "default" };
+    return views[status] ?? { label: "合同状态未读取", tone: "default" };
   }
 
   private takeoverStatusLabel(status: string): string {
@@ -1206,7 +1206,7 @@ export class ContractReadService {
       voided: "已作废"
     };
 
-    return labels[status] ?? status;
+    return labels[status] ?? "接管状态未读取";
   }
 
   private contractPaymentUnavailableReason(
@@ -1246,7 +1246,7 @@ export class ContractReadService {
       archived: "已归档"
     };
 
-    return labels[status] ?? status;
+    return labels[status] ?? "付款条款状态未读取";
   }
 
   private currentOwnerLabel(status: string): string {
@@ -1373,7 +1373,7 @@ export class ContractReadService {
       voided: "已作废"
     };
 
-    return labels[status] ?? status;
+    return labels[status] ?? "结算审批状态未读取";
   }
 
   private settlementArchiveStatusLabel(status: string): string {
@@ -1406,7 +1406,7 @@ export class ContractReadService {
   }): string {
     if (archiveFile.confirmedAt || archiveFile.status === "confirmed") return "已归档确认";
     if (archiveFile.status === "pending_confirm") return "待确认归档";
-    return archiveFile.status;
+    return "结算归档状态未读取";
   }
 
   private paymentApprovalStatusLabel(status: string): string {
@@ -1423,7 +1423,7 @@ export class ContractReadService {
       voided: "已作废"
     };
 
-    return labels[status] ?? status;
+    return labels[status] ?? "付款审批状态未读取";
   }
 
   private paymentExecutionStatusLabel(
