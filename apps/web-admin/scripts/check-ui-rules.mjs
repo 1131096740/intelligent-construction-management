@@ -77,17 +77,36 @@ function relativePath(filePath) {
   return path.relative(ROOT, filePath).split(path.sep).join("/");
 }
 
-function shouldSkipFile(filePath, source) {
-  const relative = relativePath(filePath);
-  return allowlistedFiles.has(relative) || source.includes("ui-rules-ignore");
+function hasNativeFileInputIgnore(source) {
+  const lines = source.split(/\r?\n/);
+  return lines.some((line, index) => {
+    if (!/<input\b/i.test(line) || !/type\s*=\s*["']file["']/i.test(line)) {
+      return false;
+    }
+
+    const start = Math.max(0, index - 1);
+    const end = Math.min(lines.length - 1, index + 1);
+    for (let cursor = start; cursor <= end; cursor += 1) {
+      if (lines[cursor].includes("ui-rules-ignore: native-file-input")) {
+        return true;
+      }
+    }
+
+    return false;
+  });
 }
 
 export function findUiRuleViolations(filePath, source) {
-  if (shouldSkipFile(filePath, source)) return [];
+  const relative = relativePath(filePath);
+  if (allowlistedFiles.has(relative)) return [];
 
-  return [...nativeControlPatterns, ...visualPatterns].flatMap((rule) =>
-    rule.pattern.test(source) ? [{ file: relativePath(filePath), message: rule.message }] : []
-  );
+  return [...nativeControlPatterns, ...visualPatterns].flatMap((rule) => {
+    if (rule.pattern === nativeControlPatterns[1].pattern && hasNativeFileInputIgnore(source)) {
+      return [];
+    }
+
+    return rule.pattern.test(source) ? [{ file: relative, message: rule.message }] : [];
+  });
 }
 
 function listSourceFiles(dir) {
@@ -100,14 +119,34 @@ function listSourceFiles(dir) {
 
 function runSelfTest() {
   const badFile = path.join(ROOT, "src/pages/contracts/Bad.vue");
+  const annotatedFile = path.join(ROOT, "src/pages/contracts/Annotated.vue");
   const okFile = path.join(ROOT, "src/app/design-tokens.css");
   const bad = findUiRuleViolations(
     badFile,
     "<template><button>保存</button></template><style>.x{color:#fff}</style>"
   );
+  const annotated = findUiRuleViolations(
+    annotatedFile,
+    [
+      "<template>",
+      '  <input type=\"file\"> <!-- ui-rules-ignore: native-file-input -->',
+      "  <button>保存</button>",
+      "</template>",
+      "<style>",
+      "  .x { color: #fff; box-shadow: 0 8px 24px rgba(21, 25, 34, 0.14); }",
+      "</style>"
+    ].join("\n")
+  );
   const ok = findUiRuleViolations(okFile, ":root { --jg-color-bg-panel: #ffffff; }");
 
-  if (bad.length < 2 || ok.length !== 0) {
+  if (
+    bad.length < 2 ||
+    ok.length !== 0 ||
+    !annotated.some((violation) => violation.message === "使用 t-button，不要手写 button") ||
+    !annotated.some((violation) => violation.message === "颜色必须来自设计 token") ||
+    !annotated.some((violation) => violation.message === "阴影必须来自设计 token") ||
+    annotated.some((violation) => violation.message.includes("input"))
+  ) {
     console.error("UI 规则自检失败");
     process.exit(1);
   }
