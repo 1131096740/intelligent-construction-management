@@ -4496,7 +4496,31 @@ describe("PaymentRequestService", () => {
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Payment execution date cannot be in the future");
+    ).rejects.toThrow("实付日期不能晚于当前时间");
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution with an invalid paid date", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 20_000,
+        paidAt: "not-a-date",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("实付日期格式不正确，请重新选择实付日期");
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -4632,7 +4656,7 @@ describe("PaymentRequestService", () => {
         voucherFileId: "",
         confirmationPassword: ""
       })
-    ).rejects.toThrow("Payment execution amount must be greater than zero");
+    ).rejects.toThrow("实付金额必须大于 0");
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
   });
 
@@ -4661,7 +4685,7 @@ describe("PaymentRequestService", () => {
         voucherFileId: "",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Payment voucher file is required");
+    ).rejects.toThrow("登记实付必须上传付款凭证");
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
   });
 
@@ -4683,7 +4707,7 @@ describe("PaymentRequestService", () => {
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Payment execution amount must be greater than zero");
+    ).rejects.toThrow("实付金额必须大于 0");
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
         amountCents: 10_000,
@@ -4691,7 +4715,7 @@ describe("PaymentRequestService", () => {
         voucherFileId: undefined as never,
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Payment voucher file is required");
+    ).rejects.toThrow("登记实付必须上传付款凭证");
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
   });
 
@@ -4713,7 +4737,7 @@ describe("PaymentRequestService", () => {
         voucherFileId: "file-1",
         confirmationPassword: ""
       })
-    ).rejects.toThrow("Payment execution confirmation password is required");
+    ).rejects.toThrow("登记实付需要当前登录密码确认");
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
   });
 

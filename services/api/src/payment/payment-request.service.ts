@@ -2397,23 +2397,23 @@ export class PaymentRequestService {
     }
 
     if (typeof input.amountCents !== "number" || input.amountCents <= 0) {
-      throw new Error("Payment execution amount must be greater than zero");
+      throw new Error("实付金额必须大于 0");
     }
 
     if (!input.voucherFileId?.trim()) {
-      throw new Error("Payment voucher file is required");
+      throw new Error("登记实付必须上传付款凭证");
     }
 
     if (!input.confirmationPassword?.trim()) {
-      throw new Error("Payment execution confirmation password is required");
+      throw new Error("登记实付需要当前登录密码确认");
     }
 
     const paidAt = new Date(input.paidAt);
     if (Number.isNaN(paidAt.getTime())) {
-      throw new Error("Payment execution date is invalid");
+      throw new Error("实付日期格式不正确，请重新选择实付日期");
     }
     if (paidAt.getTime() > Date.now()) {
-      throw new Error("Payment execution date cannot be in the future");
+      throw new Error("实付日期不能晚于当前时间");
     }
 
     if (!this.auth) {
