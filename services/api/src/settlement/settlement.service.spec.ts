@@ -490,6 +490,81 @@ describe("SettlementService", () => {
     expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
+  it("allows a new settlement period when previous same-period settlements are inactive", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          ratioBps: 8000
+        })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({
+          id: "settlement-recreated",
+          code: "JS-2026-022"
+        })
+      },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await settlementService.create({
+      contractVersionId: "contract-version-1",
+      code: "JS-2026-022",
+      periodLabel: "2026-06",
+      amountCents: 100000
+    });
+
+    expect(tx.settlement.findFirst).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "contract-version-1",
+        periodLabel: "2026-06",
+        status: {
+          in: [
+            "draft",
+            "in_approval",
+            "approval_pending",
+            "approved_pending_archive",
+            "pending_archive_confirm",
+            "effective",
+            "partially_paid",
+            "paid"
+          ]
+        }
+      },
+      select: { id: true, code: true }
+    });
+    expect(tx.settlement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractVersionId: "contract-version-1",
+        periodLabel: "2026-06",
+        amountCents: 100000
+      })
+    });
+  });
+
   it("maps database duplicate settlement period guard to Chinese business error", async () => {
     const tx = {
       contractVersion: {
