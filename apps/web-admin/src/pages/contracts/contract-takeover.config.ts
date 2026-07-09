@@ -54,6 +54,12 @@ export interface TakeoverConfirmationSummary {
   evidenceText: string;
 }
 
+export interface TakeoverPostConfirmationChecklist {
+  title: string;
+  description: string;
+  items: string[];
+}
+
 export type TakeoverAction = "edit" | "submit_review" | "confirm";
 
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
@@ -253,6 +259,23 @@ export function buildTakeoverConfirmationSummary(
       "确认后会形成系统期初事实，后续结算、付款申请、实付和审计都会以这些历史金额和资料作为约束依据。",
     riskText: takeover.levelRiskText || takeoverLevelRiskText(takeover.takeoverLevel),
     evidenceText: takeover.evidenceSummary?.trim() || "未填写"
+  };
+}
+
+export function buildTakeoverPostConfirmationChecklist(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">
+): TakeoverPostConfirmationChecklist | null {
+  if (takeover.takeoverStatus !== "confirmed") return null;
+
+  return {
+    title: "接管后核验",
+    description: "主管确认只代表期初事实已进入系统，仍需用接管后的真实业务单据验证账本。",
+    items: [
+      "发起一笔新结算，并确认结算金额由系统账本重算。",
+      "从有效结算和合同付款条款发起付款申请，核对历史已付、已批待付和其他占用是否扣减。",
+      "完成实付登记和凭证上传，确认资料下载仍要求当前密码、下载原因和审计留痕。",
+      "财务入账后查看付款、凭证、PDF 归档和审计记录是否能串回这份接管合同。"
+    ]
   };
 }
 

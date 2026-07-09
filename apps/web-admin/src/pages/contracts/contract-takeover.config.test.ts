@@ -2,6 +2,7 @@ import type { ContractTakeoverReadModel } from "../../api/core-flow-read.api";
 import { describe, expect, it } from "vitest";
 import {
   buildTakeoverConfirmationSummary,
+  buildTakeoverPostConfirmationChecklist,
   canConfirmTakeover,
   canEditTakeover,
   canSubmitTakeoverReview,
@@ -199,6 +200,26 @@ describe("contract takeover page configuration", () => {
     expect(summary.consequence).toContain("确认后会形成系统期初事实");
     expect(summary.riskText).toBe("B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。");
     expect(summary.evidenceText).toBe("合同与凭证");
+  });
+
+  it("shows post-confirmation checks only after takeover confirmation", () => {
+    expect(buildTakeoverPostConfirmationChecklist(takeover())).toBeNull();
+
+    const checklist = buildTakeoverPostConfirmationChecklist({
+      ...takeover(),
+      takeoverStatus: "confirmed"
+    });
+
+    expect(checklist).toMatchObject({
+      title: "接管后核验",
+      description: expect.stringContaining("期初事实已进入系统")
+    });
+    expect(checklist?.items).toEqual([
+      "发起一笔新结算，并确认结算金额由系统账本重算。",
+      "从有效结算和合同付款条款发起付款申请，核对历史已付、已批待付和其他占用是否扣减。",
+      "完成实付登记和凭证上传，确认资料下载仍要求当前密码、下载原因和审计留痕。",
+      "财务入账后查看付款、凭证、PDF 归档和审计记录是否能串回这份接管合同。"
+    ]);
   });
 
   it("keeps historical balances separated in table rows", () => {

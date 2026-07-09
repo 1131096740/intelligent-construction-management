@@ -479,6 +479,21 @@
             <p>{{ selectedConfirmationSummary.riskText }}</p>
             <p>资料依据：{{ selectedConfirmationSummary.evidenceText }}</p>
           </div>
+          <div
+            v-if="selectedPostConfirmationChecklist"
+            class="confirmation-summary"
+          >
+            <strong>{{ selectedPostConfirmationChecklist.title }}</strong>
+            <p>{{ selectedPostConfirmationChecklist.description }}</p>
+            <ol class="post-confirmation-list">
+              <li
+                v-for="item in selectedPostConfirmationChecklist.items"
+                :key="item"
+              >
+                {{ item }}
+              </li>
+            </ol>
+          </div>
 
           <h3>接管资料</h3>
           <div class="evidence-gap-summary">
@@ -678,6 +693,7 @@ import {
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
   buildTakeoverConfirmationSummary,
+  buildTakeoverPostConfirmationChecklist,
   canConfirmTakeover,
   canEditTakeover,
   canSubmitTakeoverReview,
@@ -817,6 +833,9 @@ const takeoverWorkbenchStepsView = computed(() =>
 );
 const selectedConfirmationSummary = computed(() =>
   selectedRow.value ? buildTakeoverConfirmationSummary(selectedRow.value.takeover) : null
+);
+const selectedPostConfirmationChecklist = computed(() =>
+  selectedRow.value ? buildTakeoverPostConfirmationChecklist(selectedRow.value.takeover) : null
 );
 const confirmSummary = computed(() =>
   confirmTarget.value ? buildTakeoverConfirmationSummary(confirmTarget.value) : null
@@ -1764,6 +1783,14 @@ input[type="date"] {
   color: #424955;
   font-size: 12px;
   line-height: 1.6;
+}
+
+.post-confirmation-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #424955;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .confirm-summary-list {
