@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进结算审批转交/委托中文业务体验治理切片：结算审批转交和委托在接收人无效、结算单不存在、结算单已不在审批中、进行中的审批流程缺失、当前审批节点异常或当前账号无权转交/委托节点时，不再抛出 `Settlement approval assignment target is invalid`、`Cannot assign settlement approval from status`、`Actor cannot assign settlement node` 等英文技术错误，统一改为中文业务原因；不改变转交指派、委托台账有效期、审批动作日志和审计口径。验证：TDD 覆盖 API 结算服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算审批撤回/催办中文业务体验治理切片：结算审批撤回和催办在结算单不存在、结算单已不在审批中、进行中的审批流程缺失、非申请人操作或未到催办时间时，不再抛出 `Cannot withdraw settlement approval from status`、`Only settlement approval applicant can remind`、`Settlement approval is not due for a reminder yet` 等英文技术错误，统一改为中文业务原因；不改变撤回终态、催办节流、审批动作日志和审计口径。验证：TDD 覆盖 API 结算服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算审批处理中文业务体验治理切片：结算审批处理在审批方式不支持、结算单已不在审批中、进行中的审批流程缺失、当前审批节点异常、当前账号无权处理节点或首节点退回上一节点时，不再抛出 `Unsupported settlement approval decision`、`Cannot review settlement approval from status`、`Actor cannot approve settlement node` 等英文技术错误，统一改为中文业务原因；不改变结算审批会签、退回上一节点、退回申请人、审批通过、审批动作日志和审计口径。验证：TDD 覆盖 API 结算服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算审批意见中文业务体验治理切片：结算审批在驳回、退回上一节点或退回申请人时若未填写审批意见，不再抛出 `Settlement approval comment is required for reject or return decisions` 英文技术错误，统一提示“请填写审批意见，说明驳回或退回原因”；不改变结算审批节点流转、会签、转交委托、审批动作日志和审计口径。验证：TDD 覆盖 API 结算服务 Jest、API typecheck、API lint 通过。

@@ -2361,6 +2361,159 @@ describe("SettlementService", () => {
     });
   });
 
+  it("结算审批转交接收人无效时直接拒绝", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.transferApproval("settlement-1", "material-director-1", {
+        toUserId: "material-director-1"
+      })
+    ).rejects.toThrow("请选择有效的接收人，且不能选择当前操作人自己");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("结算单不存在时不能转交审批", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.transferApproval("settlement-missing", "material-director-1", {
+        toUserId: "delegate-user-1"
+      })
+    ).rejects.toThrow("未找到结算单，请刷新结算台账后重试");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("结算单不在审批中时不能转交审批", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "effective"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.transferApproval("settlement-1", "material-director-1", {
+        toUserId: "delegate-user-1"
+      })
+    ).rejects.toThrow("当前结算单已不在审批中，不能转交或委托审批");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("缺少进行中的结算审批流程时不能转交审批", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.transferApproval("settlement-1", "material-director-1", {
+        toUserId: "delegate-user-1"
+      })
+    ).rejects.toThrow("未找到进行中的结算审批流程，请刷新后重试");
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it("当前结算审批节点异常时不能转交审批", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: []
+        }),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.transferApproval("settlement-1", "material-director-1", {
+        toUserId: "delegate-user-1"
+      })
+    ).rejects.toThrow("当前结算审批节点异常，请联系管理员核对审批流程");
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it("当前账号无权处理结算审批节点时不能转交审批", async () => {
+    const frozenNodes = [{ name: "物资主管", mode: "any", roleKeys: ["material_director"] }];
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes
+        }),
+        update: jest.fn()
+      },
+      ...approvalRoleTables("employee")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.transferApproval("settlement-1", "intruder-1", {
+        toUserId: "delegate-user-1"
+      })
+    ).rejects.toThrow("当前账号不能转交或委托“物资主管”节点，请确认是否为该节点审批人");
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
   it("lets the transferred user approve as the source role", async () => {
     const frozenNodes = [
       {

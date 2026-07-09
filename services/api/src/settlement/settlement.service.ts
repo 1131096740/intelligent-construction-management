@@ -2170,7 +2170,7 @@ export class SettlementService {
     }
 
     if (!input.toUserId || input.toUserId === actorUserId) {
-      throw new Error("Settlement approval assignment target is invalid");
+      throw new Error("请选择有效的接收人，且不能选择当前操作人自己");
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -2179,11 +2179,11 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到结算单，请刷新结算台账后重试");
       }
 
       if (settlement.status !== "approval_pending") {
-        throw new Error(`Cannot assign settlement approval from status ${settlement.status}`);
+        throw new Error("当前结算单已不在审批中，不能转交或委托审批");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -2196,21 +2196,21 @@ export class SettlementService {
       });
 
       if (!instance) {
-        throw new Error("Settlement approval instance not found");
+        throw new Error("未找到进行中的结算审批流程，请刷新后重试");
       }
 
       const nodes = instance.frozenNodes as unknown as SettlementApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
 
       if (!currentNode) {
-        throw new Error("Settlement approval current node not found");
+        throw new Error("当前结算审批节点异常，请联系管理员核对审批流程");
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, settlement.projectId);
       const fromRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
 
       if (!fromRoleKey) {
-        throw new Error(`Actor cannot assign settlement node ${currentNode.name}`);
+        throw new Error(`当前账号不能转交或委托“${currentNode.name}”节点，请确认是否为该节点审批人`);
       }
 
       const nextNodes = [...nodes];
