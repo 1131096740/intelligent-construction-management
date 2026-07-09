@@ -98,9 +98,9 @@ export interface ImportDraftsMessageInput {
 }
 
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
-  { value: "A", label: "A级：资料完整，可直接接管" },
-  { value: "B", label: "B级：资料基本完整，需补少量说明" },
-  { value: "C", label: "C级：资料缺口明显，接管后重点跟踪" }
+  { value: "A", label: "A级：申报资料完整，可申请直接接管" },
+  { value: "B", label: "B级：申报资料基本完整，需补少量说明" },
+  { value: "C", label: "C级：申报资料缺口明显，接管后重点跟踪" }
 ];
 
 export const lifecycleStatusOptions: Array<ContractTakeoverOption<ContractLifecycleStatus>> = [
@@ -118,7 +118,7 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
   { colKey: "batchNo", title: "接管批次", width: 168 },
   { colKey: "counterparty", title: "相对方", minWidth: 140 },
   { colKey: "amount", title: "合同金额", width: 116, align: "right" },
-  { colKey: "takeoverLevelLabel", title: "接管等级", width: 104 },
+  { colKey: "takeoverLevelLabel", title: "申报等级", width: 104 },
   { colKey: "takeoverStatusLabel", title: "接管状态", width: 112 },
   { colKey: "lifecycleStatusLabel", title: "履约状态", width: 112 },
   { colKey: "takeoverCutoffDate", title: "接管截止日", width: 112 },
@@ -290,7 +290,7 @@ export function takeoverLevelAdjustmentDisabledReason(
   reviewComment: string
 ): string {
   if (selectedLevel === suggestion.level || reviewComment.trim()) return "";
-  return "接管等级与系统建议不一致，请在复核意见说明调整原因";
+  return "申报等级与系统建议不一致，请在等级调整说明中说明调整原因";
 }
 
 export function takeoverLevelReviewText(takeover: ContractTakeoverReadModel): string {
@@ -308,10 +308,10 @@ export function takeoverLevelReviewText(takeover: ContractTakeoverReadModel): st
   const selectedLevel = takeoverLevelLabel(takeover.takeoverLevel);
 
   if (takeover.takeoverLevel === suggestion.level) {
-    return `接管等级与系统建议一致：${selectedLevel}。${suggestion.reason}`;
+    return `申报接管等级与系统建议一致：${selectedLevel}。${suggestion.reason}`;
   }
 
-  return `接管等级由系统建议${suggestedLevel}调整为${selectedLevel}，调整原因：${
+  return `申报接管等级由系统建议${suggestedLevel}调整为${selectedLevel}，调整原因：${
     takeover.reviewComment?.trim() || "未填写"
   }`;
 }
@@ -372,7 +372,7 @@ export function buildTakeoverConfirmationSummary(
   return {
     items: [
       { label: "接管截止日", value: formatTakeoverDate(takeover.takeoverCutoffDate) },
-      { label: "接管等级", value: takeoverLevelLabel(takeover.takeoverLevel) },
+      { label: "确认接管等级", value: takeoverLevelLabel(takeover.takeoverLevel) },
       { label: "历史累计结算", value: centsToYuanText(takeover.historicalSettledCents) },
       { label: "历史累计已付", value: centsToYuanText(takeover.historicalPaidCents) },
       { label: "历史在途/待付", value: centsToYuanText(historicalPendingCents) },

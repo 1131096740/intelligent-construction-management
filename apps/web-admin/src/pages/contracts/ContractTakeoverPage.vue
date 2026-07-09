@@ -243,7 +243,7 @@
             >
           </label>
           <label>
-            <span>接管等级</span>
+            <span>申报接管等级</span>
             <select v-model="createForm.takeoverLevel">
               <option
                 v-for="option in takeoverLevelOptions"
@@ -255,10 +255,10 @@
             </select>
           </label>
           <div class="level-suggestion">
-            <strong>系统建议：{{ takeoverLevelLabel(takeoverLevelSuggestionView.level) }}</strong>
+            <strong>系统建议等级：{{ takeoverLevelLabel(takeoverLevelSuggestionView.level) }}</strong>
             <span>{{ takeoverLevelSuggestionView.reason }}</span>
             <span v-if="createFormLevelDisabledReason">
-              如需按其他等级接管，请在复核意见写明调整原因。
+              如需调整为其他等级，请在等级调整说明中写明业务原因，复核确认后才形成最终等级。
             </span>
           </div>
           <label>
@@ -323,10 +323,10 @@
             />
           </label>
           <label>
-            <span>复核意见</span>
+            <span>等级调整说明/复核意见</span>
             <t-textarea
               v-model="createForm.reviewComment"
-              placeholder="记录合同部、预算、项目、财务复核意见"
+              placeholder="如申报等级与系统建议不一致，说明调整原因；同时记录合同部、预算、项目、财务复核意见"
               :autosize="{ minRows: 2, maxRows: 4 }"
             />
           </label>
@@ -824,7 +824,7 @@ const importPrecheckText = ref("");
 const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>(null);
 
 const importPrecheckPlaceholder = [
-  "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t接管等级\t履约状态\t付款条款\t历史累计结算(元)\t历史审批中付款(元)\t历史已批待付(元)\t历史累计已付(元)\t历史总包代付(元)\t历史预付款已付(元)\t历史预付款已扣回(元)\t历史质保金扣留(元)\t历史质保金释放(元)\t其他确认占用(元)\t余额来源\t证据说明\t资料清单\t问题清单",
+  "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t申报接管等级\t履约状态\t付款条款\t历史累计结算(元)\t历史审批中付款(元)\t历史已批待付(元)\t历史累计已付(元)\t历史总包代付(元)\t历史预付款已付(元)\t历史预付款已扣回(元)\t历史质保金扣留(元)\t历史质保金释放(元)\t其他确认占用(元)\t余额来源\t证据说明\t资料清单\t问题清单",
   "HT-LS-2026-001\t材料采购历史合同\t历史供应商\t建工集团\t1000000.00\t2026-01-01\tB级\t履约中\t按月结算付款\t600000.00\t0\t20000.00\t300000.00\t0\t0\t0\t0\t0\t0\t财务台账核对\t合同扫描件已归档\t合同扫描件、历史结算台账、付款凭证\t发票待补，财务负责"
 ].join("\n");
 
@@ -1000,7 +1000,7 @@ const selectedBaseInfo = computed(() => {
     { label: "相对方", value: row.counterparty },
     { label: "合同金额", value: row.amount },
     { label: "签订日期", value: row.signedAt },
-    { label: "接管等级", value: takeoverLevelLabel(row.takeoverLevel) },
+    { label: "申报接管等级", value: takeoverLevelLabel(row.takeoverLevel) },
     { label: "等级风险", value: row.takeover.levelRiskText },
     { label: "付款提示", value: row.takeover.paymentBlockingHint },
     { label: "接管状态", value: takeoverStatusLabel(row.takeoverStatus) },

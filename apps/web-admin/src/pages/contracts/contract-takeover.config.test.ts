@@ -35,7 +35,7 @@ describe("contract takeover page configuration", () => {
       "接管批次",
       "相对方",
       "合同金额",
-      "接管等级",
+      "申报等级",
       "接管状态",
       "履约状态",
       "接管截止日",
@@ -239,7 +239,7 @@ describe("contract takeover page configuration", () => {
 
     const suggestion = suggestTakeoverLevel(baseDraft);
     expect(takeoverLevelAdjustmentDisabledReason("B", suggestion, "")).toBe(
-      "接管等级与系统建议不一致，请在复核意见说明调整原因"
+      "申报等级与系统建议不一致，请在等级调整说明中说明调整原因"
     );
     expect(takeoverLevelAdjustmentDisabledReason("B", suggestion, "合同部确认按 B级跟踪")).toBe(
       ""
@@ -281,7 +281,7 @@ describe("contract takeover page configuration", () => {
 
     expect(summary.items).toEqual([
       { label: "接管截止日", value: "2026-06-30" },
-      { label: "接管等级", value: "B级" },
+      { label: "确认接管等级", value: "B级" },
       { label: "历史累计结算", value: "¥600,000.00" },
       { label: "历史累计已付", value: "¥300,000.00" },
       { label: "历史在途/待付", value: "¥30,000.00" },
@@ -289,7 +289,7 @@ describe("contract takeover page configuration", () => {
       { label: "历史质保金扣留/释放", value: "¥30,000.00 / ¥10,000.00" }
     ]);
     expect(summary.consequence).toContain("确认后会形成系统期初事实");
-    expect(summary.levelReviewText).toContain("接管等级与系统建议一致：B级");
+    expect(summary.levelReviewText).toContain("申报接管等级与系统建议一致：B级");
     expect(summary.riskText).toBe("B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。");
     expect(summary.paymentBlockingText).toBe("尚未完成主管确认，后续付款申请会被系统阻断。");
     expect(summary.evidenceGapText).toBe("缺少：历史付款凭证。补齐前会影响主管确认和后续付款核验。");
@@ -311,7 +311,9 @@ describe("contract takeover page configuration", () => {
         otherConfirmedOccupancyCents: "0",
         reviewComment: "合同部按现场资料完整度降为 B级跟踪"
       })
-    ).toBe("接管等级由系统建议A级调整为B级，调整原因：合同部按现场资料完整度降为 B级跟踪");
+    ).toBe(
+      "申报接管等级由系统建议A级调整为B级，调整原因：合同部按现场资料完整度降为 B级跟踪"
+    );
   });
 
   it("keeps takeover level review readable when summaries are missing", () => {
@@ -326,7 +328,7 @@ describe("contract takeover page configuration", () => {
         historicalRetentionWithheldCents: "0",
         otherConfirmedOccupancyCents: "0"
       })
-    ).toContain("接管等级与系统建议一致：B级");
+    ).toContain("申报接管等级与系统建议一致：B级");
   });
 
   it("shows post-confirmation checks only after takeover confirmation", () => {
