@@ -2633,6 +2633,16 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
+  it("付款审批服务不可用时给出中文业务提示", async () => {
+    const paymentService = new PaymentRequestService(new PaymentAmountService());
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "pm-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("付款审批服务暂不可用，请稍后重试或联系管理员");
+  });
+
   it("approves the final OR node into approved pending payment", async () => {
     const frozenNodes = [
       { ...paymentApprovalNodes[0], approvedRoleKeys: ["project_manager"] },
@@ -3437,6 +3447,16 @@ describe("PaymentRequestService", () => {
       })
     ).rejects.toThrow("请选择有效的审批接收人，不能选择当前操作人");
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("付款审批转交服务不可用时给出中文业务提示", async () => {
+    const paymentService = new PaymentRequestService(new PaymentAmountService());
+
+    await expect(
+      paymentService.transferApproval("FK-2026-012", "chairman-1", {
+        toUserId: "transfer-user-1"
+      })
+    ).rejects.toThrow("付款审批转交服务暂不可用，请稍后重试或联系管理员");
   });
 
   it("rejects payment approval assignment when payment request cannot be found", async () => {
@@ -6545,6 +6565,14 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("付款审批催办服务不可用时给出中文业务提示", async () => {
+    const paymentService = new PaymentRequestService(new PaymentAmountService());
+
+    await expect(
+      paymentService.remindApproval("FK-2026-012", "applicant-1", new Date("2026-06-25T01:00:00.000Z"))
+    ).rejects.toThrow("付款审批催办服务暂不可用，请稍后重试或联系管理员");
+  });
+
   it("rejects a payment approval reminder before the SLA has elapsed", async () => {
     const lastActivityAt = new Date("2026-06-23T00:00:00.000Z");
     const now = new Date("2026-06-24T00:00:00.000Z"); // +24h, under the default 48h SLA
@@ -6765,6 +6793,14 @@ describe("PaymentRequestService", () => {
         businessId: "payment-1"
       })
     });
+  });
+
+  it("付款审批撤回服务不可用时给出中文业务提示", async () => {
+    const paymentService = new PaymentRequestService(new PaymentAmountService());
+
+    await expect(
+      paymentService.withdrawApproval("FK-2026-012", "applicant-1")
+    ).rejects.toThrow("付款审批撤回服务暂不可用，请稍后重试或联系管理员");
   });
 
   it("rejects payment approval withdrawal from a non-applicant", async () => {

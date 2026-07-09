@@ -1604,7 +1604,7 @@ export class PaymentRequestService {
   // 申请人撤回进行中的付款审批：付款请求无草稿态，撤回为终态 withdrawn（重试须新建付款申请）。
   async withdrawApproval(paymentId: string, actorUserId: string) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to withdraw payment approval");
+      throw new Error("付款审批撤回服务暂不可用，请稍后重试或联系管理员");
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -1679,7 +1679,7 @@ export class PaymentRequestService {
   // 超时催办：申请人督促当前冻结节点（董事长/总经理）处理；超时/重复节流由 shared-domain 判定。
   async remindApproval(paymentId: string, actorUserId: string, now: Date = new Date()) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to remind payment approval");
+      throw new Error("付款审批催办服务暂不可用，请稍后重试或联系管理员");
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -1763,7 +1763,7 @@ export class PaymentRequestService {
     input: ReviewPaymentApprovalDto
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to review payment approval");
+      throw new Error("付款审批服务暂不可用，请稍后重试或联系管理员");
     }
     if (
       !["approve", "reject", "reject_previous", "return_to_applicant"].includes(
@@ -2959,7 +2959,7 @@ export class PaymentRequestService {
     input: AssignApprovalDto
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to assign payment approval");
+      throw new Error("付款审批转交服务暂不可用，请稍后重试或联系管理员");
     }
 
     if (!input.toUserId || input.toUserId === actorUserId) {
