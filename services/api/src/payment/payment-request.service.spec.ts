@@ -5246,7 +5246,64 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.generatePdfArchive("FK-2026-012", "finance-1")
-    ).rejects.toThrow("Payment PDF archive already exists");
+    ).rejects.toThrow("付款 PDF 已归档，不能重复归档");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment PDF generation when payment request cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      paymentService.generatePdfArchive("FK-2026-012", "finance-1")
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment PDF generation before finance entry covers paid amount", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          paidAmountCents: 50_000
+        })
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000 }])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      paymentService.generatePdfArchive("FK-2026-012", "finance-1")
+    ).rejects.toThrow("财务入账尚未覆盖全部实付金额，不能生成付款 PDF");
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
@@ -5283,7 +5340,33 @@ describe("PaymentRequestService", () => {
       paymentService.recordPdfArchive("FK-2026-012", "finance-1", {
         fileId: "file-1"
       })
-    ).rejects.toThrow("Cannot archive payment PDF before finance entry is complete");
+    ).rejects.toThrow("财务入账尚未覆盖全部实付金额，不能归档付款 PDF");
+    expect(tx.pdfDocument.create).not.toHaveBeenCalled();
+    expect(tx.archiveRecord.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment pdf archive when payment request cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      pdfDocument: {
+        create: jest.fn()
+      },
+      archiveRecord: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.recordPdfArchive("FK-2026-012", "finance-1", {
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
     expect(tx.pdfDocument.create).not.toHaveBeenCalled();
     expect(tx.archiveRecord.create).not.toHaveBeenCalled();
   });
@@ -5321,7 +5404,7 @@ describe("PaymentRequestService", () => {
       paymentService.recordPdfArchive("FK-2026-012", "finance-1", {
         fileId: "missing-file"
       })
-    ).rejects.toThrow("Payment archive file not found");
+    ).rejects.toThrow("未找到付款归档文件，请重新上传后再归档");
     expect(tx.pdfDocument.create).not.toHaveBeenCalled();
     expect(tx.archiveRecord.create).not.toHaveBeenCalled();
   });
@@ -5364,7 +5447,7 @@ describe("PaymentRequestService", () => {
       paymentService.recordPdfArchive("FK-2026-012", "finance-1", {
         fileId: "file-1"
       })
-    ).rejects.toThrow("Payment PDF archive already exists");
+    ).rejects.toThrow("付款 PDF 已归档，不能重复归档");
     expect(tx.pdfDocument.create).not.toHaveBeenCalled();
     expect(tx.archiveRecord.create).not.toHaveBeenCalled();
   });

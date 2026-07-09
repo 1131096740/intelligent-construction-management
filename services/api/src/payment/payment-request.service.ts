@@ -2679,7 +2679,7 @@ export class PaymentRequestService {
       });
 
       if (!payment) {
-        throw new Error("Payment request not found");
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
 
       const financeRecords = await tx.financeRecord.findMany({
@@ -2691,7 +2691,7 @@ export class PaymentRequestService {
       );
 
       if (payment.paidAmountCents <= 0 || financeRecordedAmountCents < payment.paidAmountCents) {
-        throw new Error("Cannot archive payment PDF before finance entry is complete");
+        throw new Error("财务入账尚未覆盖全部实付金额，不能归档付款 PDF");
       }
 
       const file = await tx.fileObject.findUnique({
@@ -2699,7 +2699,7 @@ export class PaymentRequestService {
       });
 
       if (!file) {
-        throw new Error("Payment archive file not found");
+        throw new Error("未找到付款归档文件，请重新上传后再归档");
       }
 
       const existingPdf = await tx.pdfDocument.findFirst({
@@ -2711,7 +2711,7 @@ export class PaymentRequestService {
       });
 
       if (existingPdf) {
-        throw new Error("Payment PDF archive already exists");
+        throw new Error("付款 PDF 已归档，不能重复归档");
       }
 
       const pdfDocument = await tx.pdfDocument.create({
@@ -2771,7 +2771,7 @@ export class PaymentRequestService {
       });
 
       if (!payment) {
-        throw new Error("Payment request not found");
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
 
       const financeRecords = await tx.financeRecord.findMany({
@@ -2783,7 +2783,7 @@ export class PaymentRequestService {
       );
 
       if (payment.paidAmountCents <= 0 || financeRecordedAmountCents < payment.paidAmountCents) {
-        throw new Error("Cannot generate payment PDF before finance entry is complete");
+        throw new Error("财务入账尚未覆盖全部实付金额，不能生成付款 PDF");
       }
 
       const existingPdf = await tx.pdfDocument.findFirst({
@@ -2795,7 +2795,7 @@ export class PaymentRequestService {
       });
 
       if (existingPdf) {
-        throw new Error("Payment PDF archive already exists");
+        throw new Error("付款 PDF 已归档，不能重复归档");
       }
 
       return { payment, financeRecordedAmountCents };

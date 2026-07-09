@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进付款 PDF 归档证据链中文业务体验治理切片：付款 PDF 生成/归档在付款申请不存在、财务入账未覆盖全部实付、付款归档文件缺失或 PDF 已归档时，不再抛出 `Cannot archive payment PDF before finance entry is complete`、`Payment archive file not found`、`Payment PDF archive already exists` 等英文技术错误，统一改为中文业务原因；不改变 PDF 生成、私有文件入库、归档记录和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进付款财务入账中文业务体验治理切片：付款财务入账在入账金额为 0/空值或付款申请不存在时，不再抛出 `Finance record amount must be greater than zero`、`Payment request not found` 英文技术错误，统一改为中文业务原因；不改变实付覆盖、未入账余额、财务入账记录和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进合同级付款申请预览中文业务体验治理切片：按合同发起付款申请预览在未选择合同版本、基准日期格式错误、合同版本不存在、合同版本未归档生效或关联合同缺失时，不再抛出 `Contract version is required`、`Invalid asOf date`、`Cannot create payment from a non-effective contract version` 等英文技术错误，统一改为中文业务原因；不改变历史期初结算、付款条款到账期、预付款扣回和付款容量计算口径。验证：TDD 红绿覆盖 API 付款读模型 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进付款详情读模型中文业务体验治理切片：付款详情在付款申请不存在、关联结算缺失、关联合同版本缺失或付款条款版本缺失时，不再抛出 `Payment request not found`、`Payment settlement not found` 等英文技术错误，统一改为提示刷新付款台账、核对结算归档或合同归档的中文业务原因；不改变付款详情查询、项目可见范围、付款容量和动作权限口径。验证：TDD 红绿覆盖 API 付款读模型 Jest、API typecheck、API lint 通过。
