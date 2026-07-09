@@ -2822,7 +2822,7 @@ export class PaymentRequestService {
     input: GeneratePaymentPdfArchiveDto = {}
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to generate payment PDF archive");
+      throw new Error("付款 PDF 生成服务暂不可用，请稍后重试或联系管理员");
     }
 
     if (!this.files) {

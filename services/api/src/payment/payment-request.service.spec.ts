@@ -6244,6 +6244,14 @@ describe("PaymentRequestService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("rejects payment PDF generation when archive generation service is unavailable", async () => {
+    const paymentService = new PaymentRequestService(new PaymentAmountService());
+
+    await expect(
+      paymentService.generatePdfArchive("FK-2026-012", "finance-1")
+    ).rejects.toThrow("付款 PDF 生成服务暂不可用，请稍后重试或联系管理员");
+  });
+
   it("rejects payment PDF generation when the PDF archive already exists", async () => {
     const tx = {
       paymentRequest: {

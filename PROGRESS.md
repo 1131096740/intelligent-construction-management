@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进付款 PDF 生成服务错误中文化切片：生成付款财务归档 PDF 时，如果后端生成服务暂不可用，不再返回 `Prisma service is required to generate payment PDF archive` 英文技术错误，统一提示稍后重试或联系管理员。本轮不改变付款 PDF 内容、私有文件上传、财务入账覆盖校验、PDF 归档记录和审计口径。验证：API 付款请求 Jest 134 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款申请创建服务错误中文化切片：发起付款申请时，如果后端付款创建服务暂不可用，不再返回 `Prisma service is required to create payment request` 英文技术错误，统一提示稍后重试或联系管理员。本轮不改变付款申请来源校验、付款容量、项目资金池占用、审批路由和审计口径。验证：API 付款请求 Jest 133 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款 PDF 归档记录服务错误中文化切片：手工记录付款 PDF 归档时，如果归档服务暂不可用，不再返回 `Prisma service is required to record payment PDF archive` 英文技术错误，统一提示稍后重试或联系管理员。本轮不改变付款 PDF 生成、财务入账覆盖校验、归档资料库归属、短时效下载和审计口径。验证：API 付款请求 Jest 132 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款 PDF 归档文件服务错误中文化切片：生成付款财务归档 PDF 时，如果私有文件服务暂不可用，不再返回 `File service is required to generate payment PDF archive` 英文技术错误，统一提示稍后重试或联系管理员，并确认不会进入付款查询和归档事务。本轮不改变付款 PDF 内容、财务入账覆盖校验、PDF 归档记录、资料库归属和审计口径。验证：API 付款请求 Jest 131 项、API typecheck、API lint 通过。
