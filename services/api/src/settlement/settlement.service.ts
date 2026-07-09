@@ -310,6 +310,11 @@ export class SettlementService {
       }
 
       const contractBillRowId = this.requiredText(line.contractBillRowId, "合同清单项");
+      if (amountCents < 0) {
+        throw new BadRequestException(
+          "合同清单项结算金额必须大于 0，扣款或冲减请作为手工调整项填写原因。"
+        );
+      }
       const billRow = contractBillRows.get(contractBillRowId);
       if (!billRow) {
         throw new BadRequestException("结算明细引用的合同清单项不属于当前有效合同版本。");

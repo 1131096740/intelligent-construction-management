@@ -238,6 +238,89 @@ describe("SettlementService", () => {
     });
   });
 
+  it("rejects negative contract bill row settlement lines", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([{ id: "bill-1" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "bill-row-1",
+            contractBillId: "bill-1",
+            itemName: "钢筋材料",
+            unit: "吨",
+            unitPrice: new Decimal("3200"),
+            taxInclusiveAmountCents: BigInt(1000000)
+          }
+        ])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          ratioBps: 8000
+        })
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({
+          id: "settlement-negative-bill-row",
+          code: "JS-2026-NEG"
+        })
+      },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([]),
+        createMany: jest.fn()
+      },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-NEG",
+        periodLabel: "2026-06",
+        amountCents: 100000,
+        settlementLines: [
+          {
+            sourceType: "contract_bill_row",
+            contractBillRowId: "bill-row-1",
+            amountCents: -10000
+          },
+          {
+            sourceType: "manual_adjustment",
+            name: "本期补差",
+            amountCents: 110000,
+            reason: "补差确认"
+          }
+        ]
+      })
+    ).rejects.toThrow("合同清单项结算金额必须大于 0");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
+  });
+
   it("rejects duplicate active settlement for the same contract version and period", async () => {
     const tx = {
       contractVersion: {
