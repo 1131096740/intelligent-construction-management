@@ -111,6 +111,13 @@ export interface TakeoverCorrectionDraft {
   currentPassword: string;
 }
 
+export interface TakeoverEvidenceDownloadDraft {
+  fileId: string;
+  password: string;
+  availableFileIds: string[];
+  hasFiles: boolean;
+}
+
 export interface TakeoverCorrectionRow {
   id: string;
   title: string;
@@ -267,6 +274,17 @@ export function takeoverEvidenceUploadDisabledReason(
     if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能上传资料";
   }
   if (!hasFile) return "请先选择要上传的接管资料文件";
+  return "";
+}
+
+export function takeoverEvidenceDownloadDisabledReason(
+  draft: TakeoverEvidenceDownloadDraft
+): string {
+  if (!draft.hasFiles) return "暂无接管资料可下载";
+  if (draft.availableFileIds.length === 0) return "当前接管资料暂不可下载，请确认资料状态或权限";
+  if (!draft.fileId.trim()) return "请选择需要下载的接管资料";
+  if (!draft.availableFileIds.includes(draft.fileId)) return "所选接管资料暂不可下载，请重新选择";
+  if (!draft.password.trim()) return "请填写当前登录密码后再下载资料";
   return "";
 }
 

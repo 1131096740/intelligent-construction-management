@@ -18,6 +18,7 @@ import {
   takeoverConfirmDisabledReason,
   takeoverCorrectionDisabledReason,
   takeoverCorrectionRows,
+  takeoverEvidenceDownloadDisabledReason,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
@@ -217,6 +218,57 @@ describe("contract takeover page configuration", () => {
     expect(
       takeoverEvidenceUploadDisabledReason({ ...takeover(), takeoverStatus: "voided" }, true)
     ).toBe("接管记录已作废，不能上传资料");
+  });
+
+  it("explains why takeover evidence download is disabled", () => {
+    expect(
+      takeoverEvidenceDownloadDisabledReason({
+        fileId: "",
+        password: "",
+        availableFileIds: [],
+        hasFiles: false
+      })
+    ).toBe("暂无接管资料可下载");
+    expect(
+      takeoverEvidenceDownloadDisabledReason({
+        fileId: "",
+        password: "",
+        availableFileIds: [],
+        hasFiles: true
+      })
+    ).toBe("当前接管资料暂不可下载，请确认资料状态或权限");
+    expect(
+      takeoverEvidenceDownloadDisabledReason({
+        fileId: "",
+        password: "current-password",
+        availableFileIds: ["file-1"],
+        hasFiles: true
+      })
+    ).toBe("请选择需要下载的接管资料");
+    expect(
+      takeoverEvidenceDownloadDisabledReason({
+        fileId: "file-2",
+        password: "current-password",
+        availableFileIds: ["file-1"],
+        hasFiles: true
+      })
+    ).toBe("所选接管资料暂不可下载，请重新选择");
+    expect(
+      takeoverEvidenceDownloadDisabledReason({
+        fileId: "file-1",
+        password: "   ",
+        availableFileIds: ["file-1"],
+        hasFiles: true
+      })
+    ).toBe("请填写当前登录密码后再下载资料");
+    expect(
+      takeoverEvidenceDownloadDisabledReason({
+        fileId: "file-1",
+        password: "current-password",
+        availableFileIds: ["file-1"],
+        hasFiles: true
+      })
+    ).toBe("");
   });
 
   it("requires current password before confirming takeover", () => {

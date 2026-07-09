@@ -702,6 +702,57 @@
             </t-button>
           </div>
           <EvidenceFileCards :files="selectedEvidenceFiles" />
+          <div
+            v-if="selectedEvidenceFiles.length"
+            class="evidence-download-panel"
+          >
+            <label>
+              <span>下载资料</span>
+              <select
+                v-model="evidenceDownloadFileId"
+                :disabled="selectedEvidenceDownloadOptions.length === 0"
+              >
+                <option value="">
+                  请选择接管资料
+                </option>
+                <option
+                  v-for="option in selectedEvidenceDownloadOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+            <label>
+              <span>当前登录密码</span>
+              <t-input
+                v-model="evidenceDownloadPassword"
+                type="password"
+                autocomplete="current-password"
+                placeholder="下载前需校验当前登录密码"
+              />
+            </label>
+            <t-tooltip
+              v-if="selectedEvidenceDownloadDisabledReason"
+              :content="selectedEvidenceDownloadDisabledReason"
+            >
+              <t-button
+                variant="outline"
+                disabled
+              >
+                安全下载资料
+              </t-button>
+            </t-tooltip>
+            <t-button
+              v-else
+              variant="outline"
+              :loading="evidenceDownloading"
+              @click="submitEvidenceFileDownload"
+            >
+              安全下载资料
+            </t-button>
+          </div>
 
           <h3>接管更正记录</h3>
           <div class="correction-form">
@@ -931,6 +982,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import {
   attachContractTakeoverEvidenceFile,
   confirmContractTakeover,
+  createPrivateFileDownloadTicket,
   createContractTakeover,
   createContractTakeoverDraftsFromImport,
   fetchProjects,
@@ -954,6 +1006,7 @@ import {
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import { confirmSensitiveAction, promptSensitiveActionReason } from "../confirm-sensitive-action";
 import {
   buildImportDraftsMessage,
   buildImportPrecheckMessage,
@@ -974,6 +1027,7 @@ import {
   takeoverConfirmDisabledReason,
   takeoverCorrectionDisabledReason,
   takeoverCorrectionRows,
+  takeoverEvidenceDownloadDisabledReason,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverLevelSelectionHint,
@@ -1062,6 +1116,7 @@ const reviewingImportBatchAction = ref("");
 const editingTakeoverId = ref("");
 const confirming = ref(false);
 const evidenceUploading = ref(false);
+const evidenceDownloading = ref(false);
 const correctionSubmitting = ref(false);
 const showCreateForm = ref(false);
 const showPrecheckPanel = ref(false);
@@ -1071,6 +1126,8 @@ const confirmationPassword = ref("");
 const evidencePurpose = ref<ContractTakeoverEvidencePurpose>("historical_contract_scan");
 const evidenceFile = ref<File | null>(null);
 const evidenceInputRef = ref<HTMLInputElement | null>(null);
+const evidenceDownloadFileId = ref("");
+const evidenceDownloadPassword = ref("");
 const correctionFile = ref<File | null>(null);
 const correctionInputRef = ref<HTMLInputElement | null>(null);
 const message = ref("");
@@ -1254,6 +1311,7 @@ const correctionTypeOptions: Array<{ value: ContractTakeoverCorrectionType; labe
 const selectedEvidenceFiles = computed(() =>
   (selectedRow.value?.takeover.evidenceFiles ?? []).map((file) => ({
     recordId: file.recordId,
+    fileId: file.fileId,
     fileName: file.fileName,
     businessRef: selectedRow.value?.contractNo ?? "当前接管合同",
     purpose: file.purposeLabel,
@@ -1267,6 +1325,22 @@ const selectedEvidenceFiles = computed(() =>
     disabledReason: file.disabledReason,
     auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计"
   }))
+);
+const selectedEvidenceDownloadOptions = computed(() =>
+  selectedEvidenceFiles.value
+    .filter((file) => file.canDownload)
+    .map((file) => ({
+      label: `${file.fileName}（${file.purpose}）`,
+      value: file.fileId
+    }))
+);
+const selectedEvidenceDownloadDisabledReason = computed(() =>
+  takeoverEvidenceDownloadDisabledReason({
+    fileId: evidenceDownloadFileId.value,
+    password: evidenceDownloadPassword.value,
+    availableFileIds: selectedEvidenceDownloadOptions.value.map((option) => option.value),
+    hasFiles: selectedEvidenceFiles.value.length > 0
+  })
 );
 const selectedCorrectionDisabledReason = computed(() => {
   const takeover = selectedRow.value?.takeover;
@@ -1364,6 +1438,7 @@ async function loadTakeovers() {
     takeovers.value = [];
     importBatches.value = [];
     selectedTakeoverId.value = "";
+    resetEvidenceDownloadForm(null);
     return;
   }
 
@@ -1378,11 +1453,13 @@ async function loadTakeovers() {
     importBatches.value = nextImportBatches;
     if (!nextTakeovers.some((takeover) => takeover.id === selectedTakeoverId.value)) {
       selectedTakeoverId.value = "";
+      resetEvidenceDownloadForm(null);
     }
   } catch (error) {
     takeovers.value = [];
     importBatches.value = [];
     selectedTakeoverId.value = "";
+    resetEvidenceDownloadForm(null);
     setMessage(error instanceof Error ? error.message : "加载历史合同接管台账失败", "danger");
   } finally {
     loadingTakeovers.value = false;
@@ -1505,10 +1582,12 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
   selectedTakeoverId.value = takeover.id;
   if (previousId !== takeover.id) {
     resetCorrectionForm();
+    resetEvidenceDownloadForm(takeover);
   }
   try {
     const detail = await getContractTakeover(projectId, takeover.id);
     takeovers.value = takeovers.value.map((item) => (item.id === detail.id ? detail : item));
+    resetEvidenceDownloadForm(detail);
   } catch (error) {
     setMessage(error instanceof Error ? error.message : "加载接管详情失败", "danger");
   }
@@ -1654,6 +1733,7 @@ async function submitEvidenceFile() {
     });
     takeovers.value = takeovers.value.map((item) => (item.id === updated.id ? updated : item));
     selectedTakeoverId.value = updated.id;
+    resetEvidenceDownloadForm(updated);
     evidenceFile.value = null;
     if (evidenceInputRef.value) {
       evidenceInputRef.value.value = "";
@@ -1663,6 +1743,41 @@ async function submitEvidenceFile() {
     setMessage(error instanceof Error ? error.message : "上传接管资料失败", "danger");
   } finally {
     evidenceUploading.value = false;
+  }
+}
+
+async function submitEvidenceFileDownload() {
+  const disabledReason = selectedEvidenceDownloadDisabledReason.value;
+  if (disabledReason) {
+    setMessage(disabledReason, "danger");
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认下载后，系统将校验当前密码并记录下载人、接管资料、接管合同和下载原因审计。是否继续？"
+    )
+  ) {
+    return;
+  }
+  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
+  if (!downloadReason) {
+    setMessage("请填写下载原因", "danger");
+    return;
+  }
+
+  evidenceDownloading.value = true;
+  try {
+    const ticket = await createPrivateFileDownloadTicket(evidenceDownloadFileId.value, {
+      confirmationPassword: requiredText(evidenceDownloadPassword.value, "当前登录密码"),
+      downloadReason
+    });
+    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+    evidenceDownloadPassword.value = "";
+    setMessage("已生成短时效下载链接，请在新窗口完成下载。", "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "生成接管资料下载链接失败", "danger");
+  } finally {
+    evidenceDownloading.value = false;
   }
 }
 
@@ -1760,6 +1875,12 @@ function resetCorrectionForm() {
   if (correctionInputRef.value) {
     correctionInputRef.value.value = "";
   }
+}
+
+function resetEvidenceDownloadForm(takeover: ContractTakeoverReadModel | null) {
+  evidenceDownloadFileId.value =
+    takeover?.evidenceFiles.find((file) => file.canDownload)?.fileId ?? "";
+  evidenceDownloadPassword.value = "";
 }
 
 function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState {
@@ -1892,6 +2013,10 @@ function statusTagTheme(tone: ContractTakeoverTone) {
 function setMessage(text: string, tone: "success" | "danger" | "default") {
   message.value = text;
   messageTone.value = tone;
+}
+
+function apiDownloadUrl(url: string) {
+  return url.startsWith("/api") ? url : `/api${url}`;
 }
 
 function todayText(): string {
@@ -2384,6 +2509,16 @@ input[type="date"] {
   align-items: end;
 }
 
+.evidence-download-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px 12px;
+  border: 1px solid #e2e7ee;
+  background: #f8fafc;
+}
+
 .evidence-gap-summary {
   padding: 10px 12px;
   border: 1px solid #e2e7ee;
@@ -2425,13 +2560,15 @@ input[type="date"] {
   overflow-wrap: anywhere;
 }
 
-.evidence-uploader label {
+.evidence-uploader label,
+.evidence-download-panel label {
   min-width: 0;
   display: grid;
   gap: 6px;
 }
 
-.evidence-uploader label span {
+.evidence-uploader label span,
+.evidence-download-panel label span {
   color: #565f6d;
   font-size: 12px;
   font-weight: 600;
@@ -2543,7 +2680,8 @@ input[type="date"] {
   .detail-list div,
   .detail-list.money div,
   .evidence-checklist-row,
-  .evidence-uploader {
+  .evidence-uploader,
+  .evidence-download-panel {
     grid-template-columns: 1fr;
   }
 
