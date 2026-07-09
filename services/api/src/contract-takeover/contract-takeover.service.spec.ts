@@ -994,6 +994,83 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("接管资料文件必填", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.attachEvidenceFile(
+        "project-1",
+        "takeover-1",
+        { fileId: "   ", purpose: "historical_contract_scan" },
+        "contract-user"
+      )
+    ).rejects.toThrow("请先选择要挂接的接管资料文件");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("接管资料类型不正确时直接拒绝", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.attachEvidenceFile(
+        "project-1",
+        "takeover-1",
+        { fileId: "file-1", purpose: "invalid" as never },
+        "contract-user"
+      )
+    ).rejects.toThrow("接管资料类型不正确，请重新选择资料类型");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("接管记录状态不允许时不能挂接资料", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "pending_review" }))
+      },
+      archiveRecord: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.attachEvidenceFile(
+        "project-1",
+        "takeover-1",
+        { fileId: "file-1", purpose: "historical_contract_scan" },
+        "contract-user"
+      )
+    ).rejects.toThrow("当前接管记录不能继续挂接资料，请确认仍处于草稿或待补充状态");
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+    expect(tx.archiveRecord.create).not.toHaveBeenCalled();
+  });
+
   it("rejects takeover evidence when the actor cannot read the file", async () => {
     const tx = {
       contractTakeover: {
@@ -1008,7 +1085,7 @@ describe("ContractTakeoverService", () => {
         callback(tx)
       )
     };
-    files.assertCanDownloadFile.mockRejectedValueOnce(new Error("Actor cannot download private file"));
+    files.assertCanDownloadFile.mockRejectedValueOnce(new Error("当前账号无权下载该文件"));
     const service = new ContractTakeoverService(
       prisma as never,
       audit as never,
@@ -1023,7 +1100,7 @@ describe("ContractTakeoverService", () => {
         { fileId: "file-other", purpose: "historical_contract_scan" },
         "contract-user"
       )
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权读取该接管资料文件");
     expect(tx.archiveRecord.create).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });

@@ -461,21 +461,25 @@ export class ContractTakeoverService {
   ) {
     const fileId = input.fileId?.trim();
     if (!fileId) {
-      throw new Error("Evidence file is required");
+      throw new Error("请先选择要挂接的接管资料文件");
     }
     if (!EVIDENCE_PURPOSES.includes(input.purpose)) {
-      throw new Error("Invalid evidence purpose");
+      throw new Error("接管资料类型不正确，请重新选择资料类型");
     }
 
     return this.prisma.$transaction(async (tx) => {
       const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
       if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
-        throw new Error(`Cannot attach takeover evidence from status ${takeover.takeoverStatus}`);
+        throw new Error("当前接管记录不能继续挂接资料，请确认仍处于草稿或待补充状态");
       }
       if (!this.files) {
         throw new Error("File service is required to attach takeover evidence");
       }
-      await this.files.assertCanDownloadFile(tx, fileId, actorUserId);
+      try {
+        await this.files.assertCanDownloadFile(tx, fileId, actorUserId);
+      } catch {
+        throw new Error("当前账号无权读取该接管资料文件");
+      }
 
       const archiveRecord = await tx.archiveRecord.create({
         data: {
