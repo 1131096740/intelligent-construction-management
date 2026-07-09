@@ -324,7 +324,7 @@ describe("PaymentRequestService", () => {
         },
         "applicant-1"
       )
-    ).rejects.toThrow("Historical contract takeover must be confirmed before creating payment request");
+    ).rejects.toThrow("历史合同接管尚未主管确认，不能发起付款申请");
 
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "applicant-1",
@@ -584,7 +584,7 @@ describe("PaymentRequestService", () => {
         } as never,
         "applicant-1"
       )
-    ).rejects.toThrow("Historical contract takeover must be confirmed before creating payment request");
+    ).rejects.toThrow("历史合同接管尚未主管确认，不能发起付款申请");
 
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "applicant-1",
@@ -885,7 +885,7 @@ describe("PaymentRequestService", () => {
         } as never,
         "applicant-1"
       )
-    ).rejects.toThrow("Historical balance must be confirmed before creating payment request");
+    ).rejects.toThrow("历史余额尚未确认，不能发起付款申请");
 
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "applicant-1",
@@ -1193,8 +1193,204 @@ describe("PaymentRequestService", () => {
         code: "FK-HT-2026-002",
         requestedAmountCents: 80_000
       } as never)
-    ).rejects.toThrow("Settlement must not be provided for contract due payment request");
+    ).rejects.toThrow("按合同应付款发起付款时不能选择结算，请从合同付款入口办理");
     expect(tx.contractVersion.findUnique).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["contract_due", "FK-HT-2026-MISS"],
+    ["contract_advance", "FK-YF-2026-MISS"]
+  ])("rejects %s payment request without selecting contract", async (sourceType, code) => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        sourceType,
+        code,
+        requestedAmountCents: 80_000
+      } as never)
+    ).rejects.toThrow("请选择已归档生效的合同后再发起付款申请");
+    expect(tx.contractVersion.findUnique).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["contract_due", "FK-HT-2026-NOTFOUND"],
+    ["contract_advance", "FK-YF-2026-NOTFOUND"]
+  ])("rejects %s payment request when contract version cannot be found", async (sourceType, code) => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      paymentRequest: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        sourceType,
+        contractVersionId: "contract-version-missing",
+        code,
+        requestedAmountCents: 80_000
+      } as never)
+    ).rejects.toThrow("未找到合同版本，请刷新合同台账后重试");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["contract_due", "FK-HT-2026-DRAFT"],
+    ["contract_advance", "FK-YF-2026-DRAFT"]
+  ])("rejects %s payment request from a non-effective contract", async (sourceType, code) => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "draft",
+          amountCents: BigInt(1_000_000),
+          effectiveAt: new Date("2026-06-01T00:00:00.000Z")
+        })
+      },
+      paymentRequest: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        sourceType,
+        contractVersionId: "contract-version-1",
+        code,
+        requestedAmountCents: 80_000
+      } as never)
+    ).rejects.toThrow("当前合同尚未归档生效，不能发起付款申请");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract advance payment when contract effective date is missing", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective",
+          amountCents: BigInt(1_000_000),
+          effectiveAt: null
+        })
+      },
+      paymentRequest: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        sourceType: "contract_advance",
+        contractVersionId: "contract-version-1",
+        code: "FK-YF-2026-NO-DATE",
+        requestedAmountCents: 80_000
+      } as never)
+    ).rejects.toThrow("合同生效日期缺失，不能发起预付款申请");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract due payment when contract cannot be found", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      paymentRequest: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        sourceType: "contract_due",
+        contractVersionId: "contract-version-1",
+        code: "FK-HT-2026-NO-CONTRACT",
+        requestedAmountCents: 80_000
+      } as never)
+    ).rejects.toThrow("未找到关联合同，请刷新合同台账后重试");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract advance payment when effective payment terms are missing", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "contract-1" }]),
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective",
+          amountCents: BigInt(1_000_000),
+          effectiveAt: new Date("2026-06-01T00:00:00.000Z")
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      paymentRequest: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        sourceType: "contract_advance",
+        contractVersionId: "contract-version-1",
+        code: "FK-YF-2026-NO-TERMS",
+        requestedAmountCents: 80_000
+      } as never)
+    ).rejects.toThrow("未找到已生效的付款条款，请先补齐合同付款条款");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
   it("rejects a contract advance payment request before the contract-effective due date", async () => {

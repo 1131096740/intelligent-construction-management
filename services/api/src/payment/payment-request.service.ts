@@ -187,7 +187,7 @@ export class PaymentRequestService {
           reason: "takeover_not_confirmed",
           takeoverStatus: takeover.takeoverStatus
         });
-        throw new Error("Historical contract takeover must be confirmed before creating payment request");
+        throw new Error("历史合同接管尚未主管确认，不能发起付款申请");
       }
       if (!takeover.historicalBalanceConfirmedAt) {
         await this.recordHistoricalTakeoverPaymentBlock(tx, {
@@ -200,7 +200,7 @@ export class PaymentRequestService {
           reason: "historical_balance_not_confirmed",
           takeoverStatus: takeover.takeoverStatus
         });
-        throw new Error("Historical balance must be confirmed before creating payment request");
+        throw new Error("历史余额尚未确认，不能发起付款申请");
       }
       return;
     }
@@ -229,7 +229,7 @@ export class PaymentRequestService {
         sourceType: input.sourceType,
         reason: "takeover_missing"
       });
-      throw new Error("Historical contract takeover must be confirmed before creating payment request");
+      throw new Error("历史合同接管尚未主管确认，不能发起付款申请");
     }
   }
 
@@ -494,11 +494,11 @@ export class PaymentRequestService {
     applicantUserId?: string
   ) {
     if (input.settlementId) {
-      throw new Error("Settlement must not be provided for contract due payment request");
+      throw new Error("按合同应付款发起付款时不能选择结算，请从合同付款入口办理");
     }
 
     if (!input.contractVersionId) {
-      throw new Error("Contract version is required for contract due payment request");
+      throw new Error("请选择已归档生效的合同后再发起付款申请");
     }
 
     const contractVersion = await tx.contractVersion.findUnique({
@@ -510,10 +510,10 @@ export class PaymentRequestService {
       }
     });
     if (!contractVersion) {
-      throw new Error("Contract version not found");
+      throw new Error("未找到合同版本，请刷新合同台账后重试");
     }
     if (contractVersion.status !== "effective") {
-      throw new Error("Cannot create contract due payment from a non-effective contract version");
+      throw new Error("当前合同尚未归档生效，不能发起付款申请");
     }
     await this.assertHistoricalTakeoverPaymentReady(tx, {
       contractId: contractVersion.contractId,
@@ -527,7 +527,7 @@ export class PaymentRequestService {
       select: { projectId: true }
     });
     if (!contract) {
-      throw new Error("Contract not found");
+      throw new Error("未找到关联合同，请刷新合同台账后重试");
     }
 
     const paymentTermsVersion = await tx.paymentTermsVersion.findFirst({
@@ -539,7 +539,7 @@ export class PaymentRequestService {
       orderBy: { versionNo: "desc" }
     });
     if (!paymentTermsVersion) {
-      throw new Error("Effective payment terms version not found");
+      throw new Error("未找到已生效的付款条款，请先补齐合同付款条款");
     }
 
     if (!Number.isInteger(input.requestedAmountCents) || input.requestedAmountCents <= 0) {
@@ -626,7 +626,7 @@ export class PaymentRequestService {
     applicantUserId?: string
   ) {
     if (!input.contractVersionId) {
-      throw new Error("Contract version is required for contract advance payment request");
+      throw new Error("请选择已归档生效的合同后再发起付款申请");
     }
 
     const contractVersion = await tx.contractVersion.findUnique({
@@ -640,13 +640,13 @@ export class PaymentRequestService {
       }
     });
     if (!contractVersion) {
-      throw new Error("Contract version not found");
+      throw new Error("未找到合同版本，请刷新合同台账后重试");
     }
     if (contractVersion.status !== "effective") {
-      throw new Error("Cannot create contract advance payment from a non-effective contract version");
+      throw new Error("当前合同尚未归档生效，不能发起付款申请");
     }
     if (!contractVersion.effectiveAt) {
-      throw new Error("Contract effective date is required for contract advance payment request");
+      throw new Error("合同生效日期缺失，不能发起预付款申请");
     }
     await this.assertHistoricalTakeoverPaymentReady(tx, {
       contractId: contractVersion.contractId,
@@ -660,7 +660,7 @@ export class PaymentRequestService {
       select: { projectId: true }
     });
     if (!contract) {
-      throw new Error("Contract not found");
+      throw new Error("未找到关联合同，请刷新合同台账后重试");
     }
 
     await this.lockContractAdvancePaymentRows(tx, contractVersion.contractId);
@@ -674,7 +674,7 @@ export class PaymentRequestService {
       orderBy: { versionNo: "desc" }
     });
     if (!paymentTermsVersion) {
-      throw new Error("Effective payment terms version not found");
+      throw new Error("未找到已生效的付款条款，请先补齐合同付款条款");
     }
 
     const paymentTermsStages = await tx.paymentTermsStage.findMany({
