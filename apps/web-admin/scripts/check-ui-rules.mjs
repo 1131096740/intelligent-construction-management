@@ -77,36 +77,62 @@ function relativePath(filePath) {
   return path.relative(ROOT, filePath).split(path.sep).join("/");
 }
 
-function hasNativeFileInputIgnore(source) {
+function hasNearbyNativeFileInputIgnore(source, inputStart) {
   const lines = source.split(/\r?\n/);
-  return lines.some((line, index) => {
-    if (!/<input\b/i.test(line) || !/type\s*=\s*["']file["']/i.test(line)) {
+  let cursor = 0;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const nextCursor = cursor + lines[index].length + 1;
+    if (inputStart < nextCursor) {
+      const start = Math.max(0, index - 1);
+      const end = Math.min(lines.length - 1, index + 1);
+      for (let lineIndex = start; lineIndex <= end; lineIndex += 1) {
+        if (lines[lineIndex].includes("ui-rules-ignore: native-file-input")) {
+          return true;
+        }
+      }
       return false;
     }
+    cursor = nextCursor;
+  }
 
-    const start = Math.max(0, index - 1);
-    const end = Math.min(lines.length - 1, index + 1);
-    for (let cursor = start; cursor <= end; cursor += 1) {
-      if (lines[cursor].includes("ui-rules-ignore: native-file-input")) {
-        return true;
-      }
+  return false;
+}
+
+function hasDisallowedNativeInput(source) {
+  const inputPattern = /<input\b[^>]*>/gi;
+  let match;
+
+  while ((match = inputPattern.exec(source)) !== null) {
+    const inputTag = match[0];
+    const isFileInput = /type\s*=\s*["']file["']/i.test(inputTag);
+    if (isFileInput && hasNearbyNativeFileInputIgnore(source, match.index)) {
+      continue;
     }
 
-    return false;
-  });
+    return true;
+  }
+
+  return false;
 }
 
 export function findUiRuleViolations(filePath, source) {
   const relative = relativePath(filePath);
   if (allowlistedFiles.has(relative)) return [];
 
-  return [...nativeControlPatterns, ...visualPatterns].flatMap((rule) => {
-    if (rule.pattern === nativeControlPatterns[1].pattern && hasNativeFileInputIgnore(source)) {
-      return [];
-    }
+  const violations = [];
 
-    return rule.pattern.test(source) ? [{ file: relative, message: rule.message }] : [];
-  });
+  if (hasDisallowedNativeInput(source)) {
+    violations.push({ file: relative, message: nativeControlPatterns[1].message });
+  }
+
+  for (const rule of [...nativeControlPatterns.slice(0, 1), ...nativeControlPatterns.slice(2), ...visualPatterns]) {
+    if (rule.pattern.test(source)) {
+      violations.push({ file: relative, message: rule.message });
+    }
+  }
+
+  return violations;
 }
 
 function listSourceFiles(dir) {
@@ -130,6 +156,7 @@ function runSelfTest() {
     [
       "<template>",
       '  <input type=\"file\"> <!-- ui-rules-ignore: native-file-input -->',
+      "  <input type=\"text\">",
       "  <button>保存</button>",
       "</template>",
       "<style>",
@@ -143,9 +170,9 @@ function runSelfTest() {
     bad.length < 2 ||
     ok.length !== 0 ||
     !annotated.some((violation) => violation.message === "使用 t-button，不要手写 button") ||
+    annotated.filter((violation) => violation.message === "使用 TDesign 输入组件；原生文件输入必须加 ui-rules-ignore").length !== 1 ||
     !annotated.some((violation) => violation.message === "颜色必须来自设计 token") ||
-    !annotated.some((violation) => violation.message === "阴影必须来自设计 token") ||
-    annotated.some((violation) => violation.message.includes("input"))
+    !annotated.some((violation) => violation.message === "阴影必须来自设计 token")
   ) {
     console.error("UI 规则自检失败");
     process.exit(1);
