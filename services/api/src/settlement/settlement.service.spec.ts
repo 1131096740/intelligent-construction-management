@@ -700,6 +700,90 @@ describe("SettlementService", () => {
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
   });
 
+  it("rejects duplicate contract bill row lines when their current total exceeds the bill row amount", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([{ id: "bill-1" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "bill-row-1",
+            contractBillId: "bill-1",
+            itemName: "钢筋采购",
+            unit: "吨",
+            unitPrice: new Decimal("3200"),
+            taxInclusiveAmountCents: BigInt(100000)
+          }
+        ])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          ratioBps: 8000
+        })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([]),
+        createMany: jest.fn()
+      },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-024",
+        periodLabel: "2026-06",
+        amountCents: 110000,
+        settlementLines: [
+          {
+            sourceType: "contract_bill_row",
+            contractBillRowId: "bill-row-1",
+            quantity: "1",
+            amountCents: 60000
+          },
+          {
+            sourceType: "contract_bill_row",
+            contractBillRowId: "bill-row-1",
+            quantity: "1",
+            amountCents: 50000
+          }
+        ]
+      })
+    ).rejects.toThrow(
+      "合同清单项“钢筋采购”累计结算金额不能超过合同清单金额。本次结算 1,100.00"
+    );
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
+  });
+
   it("rejects settlement creation when payment terms have no current settlement stage", async () => {
     const tx = {
       contractVersion: {
