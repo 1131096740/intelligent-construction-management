@@ -54,18 +54,7 @@
         </div>
       </div>
 
-      <div class="flow-summary-strip">
-        <div
-          v-for="item in contractFlowSummaryView"
-          :key="item.label"
-          class="flow-summary-item"
-        >
-          <span>{{ item.label }}</span>
-          <strong :class="item.tone ? `tone-${item.tone}` : undefined">
-            {{ item.value }}
-          </strong>
-        </div>
-      </div>
+      <BusinessStatusSummary :items="contractFlowSummaryView" />
 
       <div class="chain-strip">
         <span>业务链路</span>
@@ -515,6 +504,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
+import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { clearSelectedFileInput } from "../../components/file-input-reset.config";
 import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
@@ -975,7 +965,8 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  color: #151922;
+  color: var(--jg-color-text-primary);
+  background: var(--jg-color-bg-page);
 }
 
 .page-head {
@@ -1027,38 +1018,6 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
 
 .meta-item strong {
   font-size: 13px;
-}
-
-.flow-summary-strip {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 1px;
-  margin-bottom: 20px;
-  overflow: hidden;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  background: #dce1e8;
-}
-
-.flow-summary-item {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  padding: 14px 16px;
-  background: #fff;
-}
-
-.flow-summary-item span {
-  color: #767f8d;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.flow-summary-item strong {
-  overflow: hidden;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .chain-strip {

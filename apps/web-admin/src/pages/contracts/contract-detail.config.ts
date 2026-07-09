@@ -1,4 +1,5 @@
 import type { PrimaryTableCol } from "tdesign-vue-next";
+import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
 
 export type DetailTone = "default" | "primary" | "warning" | "danger" | "success";
 
@@ -62,12 +63,6 @@ export interface ContractFundTimelineItem {
   amount: string;
   description: string;
   tone: DetailTone;
-}
-
-export interface ContractFlowSummaryItem {
-  label: string;
-  value: string;
-  tone?: DetailTone;
 }
 
 export const contractDetailTitle = "HT-2026-001 · 钢材采购合同";
@@ -138,7 +133,7 @@ export const contractSettlementBlockMessage =
 export function buildContractFlowSummary(
   meta: readonly DetailMetaItem[],
   baseInfo: readonly DetailMetaItem[]
-): ContractFlowSummaryItem[] {
+): BusinessStatusSummaryItem[] {
   return [
     pickSummaryItem(meta, "当前状态"),
     pickSummaryItem(meta, "当前版本"),
@@ -219,7 +214,7 @@ function sortableDateTime(value: string): number {
   return Number.isNaN(time) ? 0 : time;
 }
 
-function pickSummaryItem(items: readonly DetailMetaItem[], label: string): ContractFlowSummaryItem {
+function pickSummaryItem(items: readonly DetailMetaItem[], label: string): BusinessStatusSummaryItem {
   const item = items.find((candidate) => candidate.label === label);
   return { label, value: item?.value ?? "-", tone: item?.tone };
 }

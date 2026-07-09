@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { normalizeBusinessStatusSummaryItems } from "../../components/business-status-summary.config";
 import {
   buildContractFlowSummary,
   buildContractFundTimeline,
+  contractBaseInfo,
   contractDetailMeta,
   contractEffectivenessSteps,
   contractPaymentLedgerColumns,
@@ -23,16 +25,22 @@ describe("contract detail page configuration", () => {
   });
 
   it("builds a compact flow summary from existing contract detail fields", () => {
-    expect(
-      buildContractFlowSummary(contractDetailMeta, [
-        { label: "合同金额", value: "¥1,200,000.00" }
-      ])
-    ).toEqual([
+    expect(buildContractFlowSummary(contractDetailMeta, contractBaseInfo)).toEqual([
       { label: "当前状态", value: "待用章", tone: "warning" },
       { label: "当前版本", value: "原合同 v1" },
       { label: "合同金额", value: "¥1,200,000.00" },
       { label: "当前处理人", value: "王工" },
       { label: "下一步动作", value: "办理用章", tone: "warning" }
+    ]);
+  });
+
+  it("stays compatible with the shared business status summary component", () => {
+    expect(normalizeBusinessStatusSummaryItems(buildContractFlowSummary([], []))).toEqual([
+      { label: "当前状态", value: "-", tone: "default" },
+      { label: "当前版本", value: "-", tone: "default" },
+      { label: "合同金额", value: "-", tone: "default" },
+      { label: "当前处理人", value: "-", tone: "default" },
+      { label: "下一步动作", value: "-", tone: "default" }
     ]);
   });
 
