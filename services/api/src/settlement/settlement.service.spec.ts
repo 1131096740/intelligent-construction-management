@@ -521,7 +521,9 @@ describe("SettlementService", () => {
           }
         ]
       })
-    ).rejects.toThrow("合同清单项“钢筋材料”累计结算金额不能超过合同清单金额");
+    ).rejects.toThrow(
+      "合同清单项“钢筋材料”累计结算金额不能超过合同清单金额。本次结算 300.00 元，前序已结算 800.00 元，合同清单金额 1,000.00 元，超出 100.00 元。"
+    );
     expect(tx.settlement.create).not.toHaveBeenCalled();
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
   });

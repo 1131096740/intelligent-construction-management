@@ -122,6 +122,14 @@ const ROLE_LABELS: Record<string, string> = {
 
 const roleLabel = (key: string) => ROLE_LABELS[key] ?? key;
 
+function formatSettlementAmount(cents: bigint): string {
+  const sign = cents < 0n ? "-" : "";
+  const abs = cents < 0n ? -cents : cents;
+  const yuan = (abs / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const fen = (abs % 100n).toString().padStart(2, "0");
+  return `${sign}${yuan}.${fen} 元`;
+}
+
 function isEmbeddableImage(buffer: Buffer | null): boolean {
   if (!buffer || buffer.length < 4) return false;
   const isPng =
@@ -414,18 +422,19 @@ export class SettlementService {
     const client = tx as SettlementLineClient;
     const currentByRowId = new Map<
       string,
-      { amountCents: bigint; limitCents: bigint; name: string }
+      { currentAmountCents: bigint; previousAmountCents: bigint; limitCents: bigint; name: string }
     >();
 
     for (const line of billRowLines) {
       const rowId = line.contractBillRowId;
       if (!rowId || line.contractBillRowLimitCents === null) continue;
       const current = currentByRowId.get(rowId) ?? {
-        amountCents: 0n,
+        currentAmountCents: 0n,
+        previousAmountCents: 0n,
         limitCents: line.contractBillRowLimitCents,
         name: line.name
       };
-      current.amountCents += BigInt(line.amountCents);
+      current.currentAmountCents += BigInt(line.amountCents);
       currentByRowId.set(rowId, current);
     }
 
@@ -457,13 +466,19 @@ export class SettlementService {
       if (!line.contractBillRowId || !activeSettlementIds.has(line.settlementId)) continue;
       const current = currentByRowId.get(line.contractBillRowId);
       if (!current) continue;
-      current.amountCents += BigInt(line.amountCents);
+      current.previousAmountCents += BigInt(line.amountCents);
     }
 
-    for (const { amountCents, limitCents, name } of currentByRowId.values()) {
-      if (amountCents > limitCents) {
+    for (const { currentAmountCents, previousAmountCents, limitCents, name } of currentByRowId.values()) {
+      const totalAmountCents = currentAmountCents + previousAmountCents;
+      if (totalAmountCents > limitCents) {
+        const exceededAmountCents = totalAmountCents - limitCents;
         throw new BadRequestException(
-          `合同清单项“${name}”累计结算金额不能超过合同清单金额。请核对历史结算或调整本次明细。`
+          `合同清单项“${name}”累计结算金额不能超过合同清单金额。本次结算 ${formatSettlementAmount(
+            currentAmountCents
+          )}，前序已结算 ${formatSettlementAmount(previousAmountCents)}，合同清单金额 ${formatSettlementAmount(
+            limitCents
+          )}，超出 ${formatSettlementAmount(exceededAmountCents)}。`
         );
       }
     }
