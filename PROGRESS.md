@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进结算归档上传服务错误中文化切片：上传签字版结算归档文件时，如果后端归档上传服务暂不可用，不再返回 `Prisma service is required to upload settlement archive file` 英文技术错误，统一提示稍后重试或联系管理员，并确认不会进入结算归档事务。本轮不改变结算归档上传状态机、私有文件权限、归档确认、付款容量和审计口径。验证：API 结算服务 Jest 98 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进历史接管等级用户确认体验切片：接管页保留业务人员直接选择 A/B/C 接管等级，但文案从“申报等级”调整为“确认等级”，系统建议只作为参照；当确认等级与系统建议不一致时，必须在等级调整说明中写明资料核验、风险责任和付款限制，调整依据进入复核记录和主管确认依据。本轮不改变后端接管等级存储、系统建议兜底、主管确认、C级付款阻断、资料硬拦和付款容量口径。验证：Web 接管配置 Vitest 39 套 297 项、Web typecheck、Web lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款 PDF 生成服务错误中文化切片：生成付款财务归档 PDF 时，如果后端生成服务暂不可用，不再返回 `Prisma service is required to generate payment PDF archive` 英文技术错误，统一提示稍后重试或联系管理员。本轮不改变付款 PDF 内容、私有文件上传、财务入账覆盖校验、PDF 归档记录和审计口径。验证：API 付款请求 Jest 134 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款申请创建服务错误中文化切片：发起付款申请时，如果后端付款创建服务暂不可用，不再返回 `Prisma service is required to create payment request` 英文技术错误，统一提示稍后重试或联系管理员。本轮不改变付款申请来源校验、付款容量、项目资金池占用、审批路由和审计口径。验证：API 付款请求 Jest 133 项、API typecheck、API lint 通过。

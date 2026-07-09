@@ -928,7 +928,7 @@ export class SettlementService {
     input: UploadSettlementArchiveFileDto
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to upload settlement archive file");
+      throw new Error("结算归档上传服务暂不可用，请稍后重试或联系管理员");
     }
 
     return this.prisma.$transaction(async (tx) => {

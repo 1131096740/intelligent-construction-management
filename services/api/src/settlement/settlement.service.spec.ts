@@ -1780,6 +1780,16 @@ describe("SettlementService", () => {
     expect(tx.settlementArchiveFile.create).not.toHaveBeenCalled();
   });
 
+  it("结算归档上传服务不可用时给出中文业务提示", async () => {
+    const settlementService = new SettlementService(undefined as never, audit as never);
+
+    await expect(
+      settlementService.uploadArchiveFile("settlement-1", "user-contract-staff", {
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("结算归档上传服务暂不可用，请稍后重试或联系管理员");
+  });
+
   it("结算归档文件服务不可用时不能上传归档文件", async () => {
     const tx = {
       settlement: {
