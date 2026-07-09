@@ -179,8 +179,8 @@ describe("contract takeover page configuration", () => {
 
     expect(takeoverWorkbenchSteps({ ...takeover(), takeoverStatus: "confirmed" }).at(-1)).toMatchObject({
       label: "接管后核验",
-      status: "已完成",
-      tone: "success"
+      status: "待核验",
+      tone: "warning"
     });
   });
 

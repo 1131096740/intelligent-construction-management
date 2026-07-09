@@ -199,6 +199,14 @@ export function takeoverWorkbenchSteps(
     ["主管确认", "当前密码确认期初事实"],
     ["接管后核验", "用新结算和付款验证账本"]
   ].map(([label, description], index) => {
+    if (isConfirmed && index === 7) {
+      return {
+        label,
+        description,
+        status: "待核验",
+        tone: "warning"
+      };
+    }
     if (isConfirmed || index < activeIndex) {
       return { label, description, status: "已完成", tone: "success" };
     }
