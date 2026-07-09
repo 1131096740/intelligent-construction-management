@@ -1282,6 +1282,28 @@ describe("ContractTakeoverService", () => {
         amountCents: "1000000",
         levelRiskText: "A级资料较完整，可作为首批活跃合同接管，仍需保留原始资料备查。",
         paymentBlockingHint: "尚未完成主管确认，后续付款申请会被系统阻断。",
+        evidenceGapSummary:
+          "缺少：历史合同扫描件、历史结算台账、历史付款凭证。补齐前会影响主管确认和后续付款核验。",
+        evidenceChecklist: [
+          expect.objectContaining({
+            purpose: "historical_contract_scan",
+            purposeLabel: "历史合同扫描件",
+            uploaded: false,
+            statusLabel: "待补齐"
+          }),
+          expect.objectContaining({
+            purpose: "historical_settlement_ledger",
+            purposeLabel: "历史结算台账",
+            uploaded: false,
+            statusLabel: "待补齐"
+          }),
+          expect.objectContaining({
+            purpose: "historical_payment_voucher",
+            purposeLabel: "历史付款凭证",
+            uploaded: false,
+            statusLabel: "待补齐"
+          })
+        ],
         takeoverStatus: "pending_review",
         historicalSettledCents: "600000"
       })

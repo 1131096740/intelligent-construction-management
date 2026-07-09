@@ -203,6 +203,7 @@ function takeover(): ContractTakeoverReadModel {
     takeoverLevel: "B",
     levelRiskText: "B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。",
     paymentBlockingHint: "尚未完成主管确认，后续付款申请会被系统阻断。",
+    evidenceGapSummary: "缺少：历史付款凭证。补齐前会影响主管确认和后续付款核验。",
     takeoverStatus: "pending_review",
     lifecycleStatus: "in_progress",
     signedAt: "2026-01-01T00:00:00.000Z",
@@ -225,6 +226,24 @@ function takeover(): ContractTakeoverReadModel {
     submittedAt: "2026-07-03T10:00:00.000Z",
     confirmedAt: null,
     historicalBalanceConfirmedAt: null,
+    evidenceChecklist: [
+      {
+        purpose: "historical_contract_scan",
+        purposeLabel: "历史合同扫描件",
+        required: true,
+        uploaded: true,
+        statusLabel: "已上传",
+        riskText: "已上传，可作为接管复核依据。"
+      },
+      {
+        purpose: "historical_payment_voucher",
+        purposeLabel: "历史付款凭证",
+        required: true,
+        uploaded: false,
+        statusLabel: "待补齐",
+        riskText: "缺少历史付款凭证，后续付款容量核对会受影响。"
+      }
+    ],
     evidenceFiles: [],
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T10:00:00.000Z"

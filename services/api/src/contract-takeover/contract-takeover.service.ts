@@ -107,6 +107,7 @@ export interface ContractTakeoverBusinessReadModel {
   takeoverLevel: string;
   levelRiskText: string;
   paymentBlockingHint: string;
+  evidenceGapSummary: string;
   takeoverStatus: string;
   lifecycleStatus: string;
   signedAt: Date;
@@ -129,9 +130,19 @@ export interface ContractTakeoverBusinessReadModel {
   submittedAt: Date | null;
   confirmedAt: Date | null;
   historicalBalanceConfirmedAt: Date | null;
+  evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ContractTakeoverEvidenceChecklistItemReadModel {
+  purpose: ContractTakeoverEvidencePurpose;
+  purposeLabel: string;
+  required: boolean;
+  uploaded: boolean;
+  statusLabel: string;
+  riskText: string;
 }
 
 export interface ContractTakeoverEvidenceFileReadModel {
@@ -935,6 +946,8 @@ export class ContractTakeoverService {
       evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
     }
   ): ContractTakeoverBusinessReadModel {
+    const evidenceChecklist = takeoverEvidenceChecklist(takeover, contract.evidenceFiles);
+
     return {
       id: takeover.id,
       batchNo: contract.batchNo ?? null,
@@ -947,10 +960,8 @@ export class ContractTakeoverService {
       paymentTermsOriginalText: contract.paymentTermsOriginalText,
       takeoverLevel: takeover.takeoverLevel,
       levelRiskText: takeoverLevelRiskText(takeover.takeoverLevel),
-      paymentBlockingHint: takeoverPaymentBlockingHint(
-        takeover,
-        contract.evidenceFiles.length
-      ),
+      paymentBlockingHint: takeoverPaymentBlockingHint(takeover, evidenceChecklist),
+      evidenceGapSummary: evidenceGapSummary(evidenceChecklist),
       takeoverStatus: takeover.takeoverStatus,
       lifecycleStatus: takeover.lifecycleStatus,
       signedAt: takeover.signedAt,
@@ -977,6 +988,7 @@ export class ContractTakeoverService {
       submittedAt: takeover.submittedAt,
       confirmedAt: takeover.confirmedAt,
       historicalBalanceConfirmedAt: takeover.historicalBalanceConfirmedAt,
+      evidenceChecklist,
       evidenceFiles: contract.evidenceFiles,
       createdAt: takeover.createdAt,
       updatedAt: takeover.updatedAt
@@ -1349,6 +1361,80 @@ function evidencePurposeLabel(value: ContractTakeoverEvidencePurpose) {
   return labels[value];
 }
 
+function takeoverEvidenceChecklist(
+  takeover: Pick<
+    ContractTakeoverRecord,
+    | "historicalSettledCents"
+    | "historicalApprovalPendingPaymentCents"
+    | "historicalApprovedPendingPaymentCents"
+    | "historicalPaidCents"
+    | "historicalProxyPaidCents"
+    | "historicalAdvancePaidCents"
+    | "historicalRetentionWithheldCents"
+    | "otherConfirmedOccupancyCents"
+  >,
+  evidenceFiles: ContractTakeoverEvidenceFileReadModel[]
+): ContractTakeoverEvidenceChecklistItemReadModel[] {
+  const uploadedPurposes = new Set(evidenceFiles.map((file) => file.purpose));
+  const requiredPurposes: ContractTakeoverEvidencePurpose[] = ["historical_contract_scan"];
+  if (positiveCents(takeover.historicalSettledCents)) {
+    requiredPurposes.push("historical_settlement_ledger");
+  }
+  if (
+    [
+      takeover.historicalApprovalPendingPaymentCents,
+      takeover.historicalApprovedPendingPaymentCents,
+      takeover.historicalPaidCents,
+      takeover.historicalProxyPaidCents,
+      takeover.historicalAdvancePaidCents,
+      takeover.historicalRetentionWithheldCents,
+      takeover.otherConfirmedOccupancyCents
+    ].some(positiveCents)
+  ) {
+    requiredPurposes.push("historical_payment_voucher");
+  }
+
+  return unique(requiredPurposes).map((purpose) => {
+    const uploaded = uploadedPurposes.has(purpose);
+    return {
+      purpose,
+      purposeLabel: evidencePurposeLabel(purpose),
+      required: true,
+      uploaded,
+      statusLabel: uploaded ? "已上传" : "待补齐",
+      riskText: uploaded ? "已上传，可作为接管复核依据。" : missingEvidenceRiskText(purpose)
+    };
+  });
+}
+
+function positiveCents(value: bigint | number): boolean {
+  return typeof value === "bigint" ? value > 0n : value > 0;
+}
+
+function missingEvidenceRiskText(purpose: ContractTakeoverEvidencePurpose): string {
+  const texts: Record<ContractTakeoverEvidencePurpose, string> = {
+    historical_contract_scan: "缺少历史合同扫描件，接管事实无法完整核验。",
+    historical_settlement_ledger: "缺少历史结算台账，期初结算来源需要补证。",
+    historical_payment_voucher: "缺少历史付款凭证，后续付款容量核对会受影响。",
+    other: "缺少其他接管资料，请补充说明后再复核。"
+  };
+
+  return texts[purpose];
+}
+
+function evidenceGapSummary(
+  checklist: ContractTakeoverEvidenceChecklistItemReadModel[]
+): string {
+  const missingLabels = checklist
+    .filter((item) => item.required && !item.uploaded)
+    .map((item) => item.purposeLabel);
+  if (!missingLabels.length) {
+    return "关键接管资料已上传，复核时仍需核对金额口径。";
+  }
+
+  return `缺少：${missingLabels.join("、")}。补齐前会影响主管确认和后续付款核验。`;
+}
+
 function importBatchStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     drafts_generated: "已生成草稿",
@@ -1384,7 +1470,7 @@ function takeoverLevelRiskText(level: string): string {
 
 function takeoverPaymentBlockingHint(
   takeover: Pick<ContractTakeoverRecord, "takeoverLevel" | "takeoverStatus">,
-  evidenceFileCount: number
+  evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[]
 ): string {
   if (takeover.takeoverStatus !== "confirmed") {
     return "尚未完成主管确认，后续付款申请会被系统阻断。";
@@ -1392,8 +1478,11 @@ function takeoverPaymentBlockingHint(
   if (takeover.takeoverLevel === "C") {
     return "C级资料缺口明显，付款前必须补齐影响金额的资料和争议说明。";
   }
-  if (evidenceFileCount === 0) {
-    return "尚未上传接管资料，付款前应补齐合同、结算依据和付款凭证。";
+  const missingLabels = evidenceChecklist
+    .filter((item) => item.required && !item.uploaded)
+    .map((item) => item.purposeLabel);
+  if (missingLabels.length) {
+    return `仍缺少${missingLabels.join("、")}，付款前必须补齐或形成受限确认说明。`;
   }
   if (takeover.takeoverLevel === "B") {
     return "B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。";

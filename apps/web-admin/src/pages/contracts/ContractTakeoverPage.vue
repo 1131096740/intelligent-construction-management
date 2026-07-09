@@ -448,6 +448,28 @@
           </div>
 
           <h3>接管资料</h3>
+          <div class="evidence-gap-summary">
+            {{ selectedRow.takeover.evidenceGapSummary }}
+          </div>
+          <div class="evidence-checklist">
+            <div
+              v-for="item in selectedRow.takeover.evidenceChecklist"
+              :key="item.purpose"
+              class="evidence-checklist-row"
+            >
+              <span>
+                <strong>{{ item.purposeLabel }}</strong>
+                <small>{{ item.riskText }}</small>
+              </span>
+              <t-tag
+                size="small"
+                :theme="item.uploaded ? 'success' : 'warning'"
+                variant="light"
+              >
+                {{ item.statusLabel }}
+              </t-tag>
+            </div>
+          </div>
           <div class="evidence-uploader">
             <label>
               <span>资料类型</span>
@@ -1725,6 +1747,47 @@ input[type="date"] {
   align-items: end;
 }
 
+.evidence-gap-summary {
+  padding: 10px 12px;
+  border: 1px solid #e2e7ee;
+  background: #f8fafc;
+  color: #424955;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.evidence-checklist {
+  display: grid;
+  gap: 8px;
+}
+
+.evidence-checklist-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #e2e7ee;
+  background: #fff;
+}
+
+.evidence-checklist-row span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.evidence-checklist-row strong {
+  color: #151922;
+  font-size: 13px;
+}
+
+.evidence-checklist-row small {
+  color: #5f6673;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .evidence-uploader label {
   min-width: 0;
   display: grid;
@@ -1784,6 +1847,7 @@ input[type="date"] {
   .form-grid.two,
   .detail-list div,
   .detail-list.money div,
+  .evidence-checklist-row,
   .evidence-uploader {
     grid-template-columns: 1fr;
   }

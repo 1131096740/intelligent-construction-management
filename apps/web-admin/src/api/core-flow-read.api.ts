@@ -166,6 +166,15 @@ export interface ContractTakeoverEvidenceFileReadModel {
   disabledReason: string | null;
 }
 
+export interface ContractTakeoverEvidenceChecklistItemReadModel {
+  purpose: ContractTakeoverEvidencePurpose;
+  purposeLabel: string;
+  required: boolean;
+  uploaded: boolean;
+  statusLabel: string;
+  riskText: string;
+}
+
 export interface ContractTakeoverReadModel {
   id: string;
   batchNo: string | null;
@@ -179,6 +188,7 @@ export interface ContractTakeoverReadModel {
   takeoverLevel: ContractTakeoverLevel;
   levelRiskText: string;
   paymentBlockingHint: string;
+  evidenceGapSummary: string;
   takeoverStatus: ContractTakeoverStatus;
   lifecycleStatus: ContractLifecycleStatus;
   signedAt: string;
@@ -201,6 +211,7 @@ export interface ContractTakeoverReadModel {
   submittedAt: string | null;
   confirmedAt: string | null;
   historicalBalanceConfirmedAt: string | null;
+  evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   createdAt: string;
   updatedAt: string;
