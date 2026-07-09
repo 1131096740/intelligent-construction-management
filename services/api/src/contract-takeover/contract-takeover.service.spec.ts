@@ -268,7 +268,42 @@ describe("ContractTakeoverService", () => {
         },
         "contract-user"
       )
-    ).rejects.toThrow("historicalSettledCents must be a non-negative integer");
+    ).rejects.toThrow("历史累计结算必须是非负整数分值");
+
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
+
+  it("uses a business message when the takeover project cannot be used", async () => {
+    const tx = {
+      project: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      contract: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.create(
+        "project-missing",
+        {
+          code: "HT-HIS-005",
+          name: "历史合同",
+          counterparty: "历史供应商",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "B",
+          lifecycleStatus: "in_progress"
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("项目不存在或已停用，请重新选择项目");
 
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
@@ -914,7 +949,7 @@ describe("ContractTakeoverService", () => {
         },
         "contract-user"
       )
-    ).rejects.toThrow("Cannot update takeover draft from status pending_review");
+    ).rejects.toThrow("当前接管记录不能编辑，请确认仍处于草稿或待补充状态");
     expect(tx.contract.update).not.toHaveBeenCalled();
   });
 
@@ -1135,7 +1170,7 @@ describe("ContractTakeoverService", () => {
         },
         "contract-user"
       )
-    ).rejects.toThrow("signedAt must be a valid date string");
+    ).rejects.toThrow("签订日期不正确，请按 YYYY-MM-DD 填写");
 
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
@@ -1170,7 +1205,7 @@ describe("ContractTakeoverService", () => {
         },
         "contract-user"
       )
-    ).rejects.toThrow("signedAt must be a valid date string");
+    ).rejects.toThrow("签订日期不正确，请按 YYYY-MM-DD 填写");
 
     expect(tx.contract.create).not.toHaveBeenCalled();
   });

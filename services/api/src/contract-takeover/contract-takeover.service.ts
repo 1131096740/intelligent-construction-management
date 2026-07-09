@@ -45,6 +45,18 @@ const MONEY_FIELDS = [
   "historicalRetentionReleasedCents",
   "otherConfirmedOccupancyCents"
 ] as const satisfies readonly (keyof CreateContractTakeoverDto)[];
+const MONEY_FIELD_LABELS: Record<(typeof MONEY_FIELDS)[number], string> = {
+  historicalSettledCents: "历史累计结算",
+  historicalApprovalPendingPaymentCents: "历史审批中付款",
+  historicalApprovedPendingPaymentCents: "历史已批待付",
+  historicalPaidCents: "历史累计已付",
+  historicalProxyPaidCents: "历史总包代付",
+  historicalAdvancePaidCents: "历史预付款已付",
+  historicalAdvanceDeductedCents: "历史预付款已扣回",
+  historicalRetentionWithheldCents: "历史质保金扣留",
+  historicalRetentionReleasedCents: "历史质保金释放",
+  otherConfirmedOccupancyCents: "其他确认占用"
+};
 const IMPORT_PRECHECK_MAX_ROWS = 200;
 
 type TakeoverClient = Pick<Prisma.TransactionClient, "contractTakeover">;
@@ -257,7 +269,7 @@ export class ContractTakeoverService {
       select: { id: true, isActive: true }
     });
     if (!project?.isActive) {
-      throw new Error("Project not found or inactive");
+      throw new Error("项目不存在或已停用，请重新选择项目");
     }
 
       const contract = await tx.contract.create({
@@ -369,7 +381,7 @@ export class ContractTakeoverService {
     return this.prisma.$transaction(async (tx) => {
       const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
       if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
-        throw new Error(`Cannot update takeover draft from status ${takeover.takeoverStatus}`);
+        throw new Error("当前接管记录不能编辑，请确认仍处于草稿或待补充状态");
       }
 
       await tx.contract.update({
@@ -473,7 +485,7 @@ export class ContractTakeoverService {
         throw new Error("当前接管记录不能继续挂接资料，请确认仍处于草稿或待补充状态");
       }
       if (!this.files) {
-        throw new Error("File service is required to attach takeover evidence");
+        throw new Error("系统暂不能读取接管资料文件，请稍后重试");
       }
       try {
         await this.files.assertCanDownloadFile(tx, fileId, actorUserId);
@@ -735,7 +747,7 @@ export class ContractTakeoverService {
       throw new Error("确认历史合同接管需要当前登录密码");
     }
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm contract takeover");
+      throw new Error("系统暂不能确认当前密码，请稍后重试");
     }
 
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
@@ -1202,25 +1214,25 @@ export class ContractTakeoverService {
   }
 
   private normalizeCreateInput(input: CreateContractTakeoverDto) {
-    if (!input.code?.trim()) throw new Error("Contract code is required");
-    if (!input.name?.trim()) throw new Error("Contract name is required");
-    if (!input.counterparty?.trim()) throw new Error("Contract counterparty is required");
+    if (!input.code?.trim()) throw new Error("请填写合同编号");
+    if (!input.name?.trim()) throw new Error("请填写合同名称");
+    if (!input.counterparty?.trim()) throw new Error("请填写相对方");
     if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
-      throw new Error("amountCents must be a positive integer");
+      throw new Error("合同金额必须大于 0");
     }
     if (!TAKEOVER_LEVELS.includes(input.takeoverLevel as ContractTakeoverLevel)) {
-      throw new Error("Invalid takeover level");
+      throw new Error("接管等级不正确，请重新选择");
     }
     if (!LIFECYCLE_STATUSES.includes(input.lifecycleStatus as ContractLifecycleStatus)) {
-      throw new Error("Invalid lifecycle status");
+      throw new Error("履约状态不正确，请重新选择");
     }
 
     if (typeof input.signedAt !== "string" || !input.signedAt.trim()) {
-      throw new Error("signedAt must be a valid date string");
+      throw new Error("签订日期不正确，请按 YYYY-MM-DD 填写");
     }
 
     if (!isStrictDateText(input.signedAt)) {
-      throw new Error("signedAt must be a valid date string");
+      throw new Error("签订日期不正确，请按 YYYY-MM-DD 填写");
     }
     const signedAt = new Date(input.signedAt);
     const takeoverCutoffDate = input.takeoverCutoffDate?.trim()
@@ -1231,7 +1243,7 @@ export class ContractTakeoverService {
       MONEY_FIELDS.map((field) => {
         const value = input[field] ?? 0;
         if (!Number.isInteger(value) || value < 0) {
-          throw new Error(`${field} must be a non-negative integer`);
+          throw new Error(`${MONEY_FIELD_LABELS[field]}必须是非负整数分值`);
         }
         return [field, value];
       })
@@ -1282,7 +1294,7 @@ export class ContractTakeoverService {
 
   private normalizeOptionalDate(value: string, field: string) {
     if (!isStrictDateText(value)) {
-      throw new Error(`${field} must be a valid date string`);
+      throw new Error(`${dateFieldLabel(field)}不正确，请按 YYYY-MM-DD 填写`);
     }
     return new Date(value);
   }
@@ -1345,6 +1357,11 @@ function unique<T>(values: T[]): T[] {
   return Array.from(new Set(values));
 }
 
+function dateFieldLabel(field: string): string {
+  if (field === "takeoverCutoffDate") return "接管截止日";
+  return "日期";
+}
+
 function moneyString(value: bigint | number): string {
   return (typeof value === "bigint" ? value : BigInt(value)).toString();
 }
@@ -1352,7 +1369,7 @@ function moneyString(value: bigint | number): string {
 function safeNumberCents(value: bigint | number): number {
   const numberValue = typeof value === "bigint" ? Number(value) : value;
   if (!Number.isSafeInteger(numberValue)) {
-    throw new Error("historical takeover amount exceeds settlement amount limit");
+    throw new Error("历史接管金额超过系统支持范围，请拆分或核对后再确认");
   }
   return numberValue;
 }
