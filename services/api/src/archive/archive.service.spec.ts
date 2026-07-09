@@ -243,6 +243,17 @@ describe("ArchiveService", () => {
     );
   });
 
+  it("does not expose internal archive status or department values", () => {
+    const service = new ArchiveService({} as never);
+    const privateMethods = service as unknown as {
+      statusLabel(status: string): string;
+      departmentLabel(scope: string): string;
+    };
+
+    expect(privateMethods.statusLabel("internal_status")).toBe("归档状态未读取");
+    expect(privateMethods.departmentLabel("internal_department")).toBe("部门未读取");
+  });
+
   it("filters archive ledger by visible projects", async () => {
     const prisma = {
       contractArchiveFile: {

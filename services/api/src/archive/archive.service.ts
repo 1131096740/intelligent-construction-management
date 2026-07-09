@@ -368,7 +368,7 @@ export class ArchiveService {
   private statusLabel(status: string) {
     if (status === "confirmed") return "已确认";
     if (status === "pending_confirm") return "待确认";
-    return status;
+    return "归档状态未读取";
   }
 
   private statusTone(status: string): ArchiveTone {
@@ -397,7 +397,7 @@ export class ArchiveService {
   private departmentLabel(scope: string) {
     if (scope === "contract") return "合同部";
     if (scope === "finance") return "财务部";
-    return scope;
+    return "部门未读取";
   }
 
   private businessRef(
