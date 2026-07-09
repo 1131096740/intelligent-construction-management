@@ -772,6 +772,8 @@ export class PaymentReadService {
             historicalApprovedPendingCents:
               preview.historicalBalance.approvedPendingPaymentCents,
             historicalProxyPaidCents: preview.historicalBalance.proxyPaidCents,
+            historicalRetentionWithheldCents: preview.historicalBalance.retentionWithheldCents,
+            historicalRetentionReleasedCents: preview.historicalBalance.retentionReleasedCents,
             historicalOtherConfirmedOccupancyCents:
               preview.historicalBalance.otherConfirmedOccupancyCents
           }
@@ -839,6 +841,11 @@ export class PaymentReadService {
       capacity.approvedPendingCents + (capacity.historicalApprovedPendingCents ?? 0);
     const proxyPaidCents =
       capacity.proxyPaidCents + (capacity.historicalProxyPaidCents ?? 0);
+    const historicalRetentionUnreleasedCents = Math.max(
+      (capacity.historicalRetentionWithheldCents ?? 0) -
+        (capacity.historicalRetentionReleasedCents ?? 0),
+      0
+    );
     const historicalOtherConfirmedOccupancyCents =
       capacity.historicalOtherConfirmedOccupancyCents ?? 0;
 
@@ -878,6 +885,17 @@ export class PaymentReadService {
         note: capacity.historicalProxyPaidCents ? "含历史接管总包代付" : "系统内已确认代付",
         tone: "default"
       },
+      ...(historicalRetentionUnreleasedCents > 0
+        ? [
+            {
+              label: "扣历史未释放质保金",
+              amountCents: historicalRetentionUnreleasedCents,
+              operator: "subtract" as const,
+              note: "历史接管质保金扣留扣除已释放金额",
+              tone: "warning" as const
+            }
+          ]
+        : []),
       ...(historicalOtherConfirmedOccupancyCents > 0
         ? [
             {

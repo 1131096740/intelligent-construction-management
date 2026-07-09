@@ -1377,8 +1377,8 @@ describe("PaymentReadService", () => {
           historicalProxyPaidCents: BigInt(10_000),
           historicalAdvancePaidCents: BigInt(40_000),
           historicalAdvanceDeductedCents: BigInt(10_000),
-          historicalRetentionWithheldCents: BigInt(0),
-          historicalRetentionReleasedCents: BigInt(0),
+          historicalRetentionWithheldCents: BigInt(12_000),
+          historicalRetentionReleasedCents: BigInt(5_000),
           otherConfirmedOccupancyCents: BigInt(0)
         })
       },
@@ -1475,7 +1475,7 @@ describe("PaymentReadService", () => {
       historicalPaidCents: 50_000,
       historicalApprovedPendingCents: 20_000,
       historicalProxyPaidCents: 10_000,
-      historicalOccupiedCents: 80_000,
+      historicalOccupiedCents: 87_000,
       advanceDeductionCents: 10_000,
       maxRequestableCents: 0
     });
@@ -1487,8 +1487,8 @@ describe("PaymentReadService", () => {
       proxyPaidCents: 10_000,
       advancePaidCents: 40_000,
       advanceDeductedCents: 10_000,
-      retentionWithheldCents: 0,
-      retentionReleasedCents: 0,
+      retentionWithheldCents: 12_000,
+      retentionReleasedCents: 5_000,
       otherConfirmedOccupancyCents: 0
     });
     expect(preview.advanceDeduction).toMatchObject({
@@ -1515,6 +1515,11 @@ describe("PaymentReadService", () => {
           label: "扣总包代付",
           amountCents: 10_000,
           note: "含历史接管总包代付"
+        }),
+        expect.objectContaining({
+          label: "扣历史未释放质保金",
+          amountCents: 7_000,
+          note: "历史接管质保金扣留扣除已释放金额"
         }),
         expect.objectContaining({
           label: "本次最多可申请",

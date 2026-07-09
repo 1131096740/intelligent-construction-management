@@ -148,6 +148,8 @@ export interface ContractPaymentApplicationPreview {
     proxyPaidCents: number;
     advancePaidCents: number;
     advanceDeductedCents: number;
+    retentionWithheldCents: number;
+    retentionReleasedCents: number;
     otherConfirmedOccupancyCents: number;
   };
   sections: ContractPaymentApplicationSection[];

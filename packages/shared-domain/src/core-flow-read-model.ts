@@ -285,6 +285,8 @@ export interface ContractPaymentApplicationPreviewReadModel {
     historicalApprovalPendingCents?: number;
     historicalApprovedPendingCents?: number;
     historicalProxyPaidCents?: number;
+    historicalRetentionWithheldCents?: number;
+    historicalRetentionReleasedCents?: number;
     historicalOtherConfirmedOccupancyCents?: number;
     advanceDeductionCents: number;
     maxRequestableCents: number;
@@ -312,6 +314,8 @@ export interface ContractPaymentApplicationPreviewReadModel {
     proxyPaidCents: number;
     advancePaidCents: number;
     advanceDeductedCents: number;
+    retentionWithheldCents: number;
+    retentionReleasedCents: number;
     otherConfirmedOccupancyCents: number;
   };
   sections: Array<{
