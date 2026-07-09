@@ -63,7 +63,7 @@ describe("audit log page configuration", () => {
       "下载原因",
       "业务对象",
       "IP地址",
-      "追溯ID",
+      "追溯编号",
       "脱敏说明"
     ]);
   });

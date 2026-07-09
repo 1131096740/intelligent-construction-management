@@ -113,7 +113,7 @@ export const fileDownloadAuditColumns: PrimaryTableCol<FileDownloadAuditRow>[] =
   { colKey: "downloadReason", title: "下载原因", minWidth: 180 },
   { colKey: "businessTarget", title: "业务对象", minWidth: 128 },
   { colKey: "ipAddress", title: "IP地址", width: 112 },
-  { colKey: "traceId", title: "追溯ID", minWidth: 128 },
+  { colKey: "traceId", title: "追溯编号", minWidth: 128 },
   { colKey: "sensitive", title: "脱敏说明", minWidth: 150 }
 ];
 

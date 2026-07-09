@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：继续推进审计页中文业务体验治理切片：文件下载审计表头和筛选提示不再显示“追溯ID”，统一改为“追溯编号”，字段名和筛选逻辑保持不变，避免审计页向业务管理员暴露内部字段表达。验证：codebase-memory 搜索确认 Web/API 无“追溯ID”残留，Web 审计配置 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。
 - 2026-07-09 (CodeX)：继续推进全局中文业务体验治理切片：合同详情页动作前置校验不再向业务人员显示“合同版本ID”，统一改为“合同”业务对象提示，避免归档、审批、用章、催办、转交等操作缺少详情数据时暴露内部字段。本轮不改接口参数、不改合同状态流转。验证：codebase-memory 搜索确认 Web/API 无“合同版本ID”残留，Web 合同详情 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。
 - 2026-07-09 (CodeX)：继续推进敏感文件下载审计切片：合同、结算、付款详情页的审批单 PDF 下载不再直连下载，必须填写当前登录密码和下载原因；后端通用审批单下载和结算最新审批 PDF 下载同步硬校验当前密码、拒绝空原因，并把下载原因写入审计。本轮不改归档文件短时效票据链路、不新增审批单票据模型。验证：API 审批单 Jest、API 结算 Jest、API typecheck、API lint、Web API Vitest、Web typecheck、Web lint、Web `check:ui` 通过。
 - 2026-07-09 (CodeX)：继续推进付款容量说明口径切片：合同累计付款预览在历史接管存在未释放质保金时，容量说明新增“扣历史未释放质保金”，金额按历史质保金扣留减已释放计算，避免财务只看到最多可申请金额减少却看不到原因。本轮不新增发票硬控、不改变付款容量硬计算。验证：API 付款读服务 Jest、API typecheck、API lint、Web 付款配置 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。
