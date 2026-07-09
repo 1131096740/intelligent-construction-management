@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
 import type {
   AttachContractTakeoverEvidenceDto,
   ContractTakeoverEvidencePurpose
@@ -175,7 +176,9 @@ export class ContractTakeoverService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService = new AuditService(),
     @Optional()
-    private readonly auth?: AuthService
+    private readonly auth?: AuthService,
+    @Optional()
+    private readonly files?: FileService
   ) {}
 
   async create(projectId: string, input: CreateContractTakeoverDto, actorUserId: string) {
@@ -385,13 +388,10 @@ export class ContractTakeoverService {
       if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
         throw new Error(`Cannot attach takeover evidence from status ${takeover.takeoverStatus}`);
       }
-      const file = await tx.fileObject.findUnique({
-        where: { id: fileId },
-        select: { id: true }
-      });
-      if (!file) {
-        throw new Error("Evidence file not found");
+      if (!this.files) {
+        throw new Error("File service is required to attach takeover evidence");
       }
+      await this.files.assertCanDownloadFile(tx, fileId, actorUserId);
 
       const archiveRecord = await tx.archiveRecord.create({
         data: {

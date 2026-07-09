@@ -2447,6 +2447,9 @@ export class PaymentRequestService {
           `Payment execution exceeds approved remaining amount: ${remainingAmountCents}`
         );
       }
+      if (this.files) {
+        await this.files.assertCanDownloadFile(tx, input.voucherFileId, actorUserId);
+      }
 
       const newPaymentPaidAmountCents = payment.paidAmountCents + input.amountCents;
       const newPaymentStatus =

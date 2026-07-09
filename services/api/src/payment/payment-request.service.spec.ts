@@ -9,6 +9,9 @@ describe("PaymentRequestService", () => {
   const audit = {
     record: jest.fn()
   };
+  const fileAccess = {
+    assertCanDownloadFile: jest.fn()
+  };
   const paymentApprovalNodes = [
     { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
     {
@@ -24,6 +27,8 @@ describe("PaymentRequestService", () => {
     auth.confirmPassword.mockReset();
     auth.confirmPassword.mockResolvedValue({ ok: true });
     audit.record.mockReset();
+    fileAccess.assertCanDownloadFile.mockReset();
+    fileAccess.assertCanDownloadFile.mockResolvedValue({ id: "file-1" });
   });
 
   function approvalRoleTables(roleKey: string) {
@@ -3125,6 +3130,65 @@ describe("PaymentRequestService", () => {
         businessId: "payment-1"
       })
     });
+  });
+
+  it("rejects payment execution when the actor cannot read the voucher file", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          contractId: "contract-1",
+          settlementId: "settlement-1",
+          sourceType: "settlement",
+          status: "approved_pending_payment",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 20_000
+        }
+      ]),
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          payableAmountCents: 100_000,
+          paidAmountCents: 70_000
+        }),
+        update: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn()
+      },
+      ...financingUsageUpdates()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    fileAccess.assertCanDownloadFile.mockRejectedValueOnce(
+      new Error("Actor cannot download private file")
+    );
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      fileAccess as never,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 30_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-other",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("Actor cannot download private file");
+    expect(fileAccess.assertCanDownloadFile).toHaveBeenCalledWith(
+      tx,
+      "file-other",
+      "cashier-1"
+    );
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
 
   it("rejects settlement execution when contract-level allocations consumed the settlement capacity", async () => {

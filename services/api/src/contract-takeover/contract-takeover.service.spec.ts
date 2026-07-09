@@ -7,11 +7,16 @@ describe("ContractTakeoverService", () => {
   const auth = {
     confirmPassword: jest.fn()
   };
+  const files = {
+    assertCanDownloadFile: jest.fn()
+  };
 
   beforeEach(() => {
     audit.record.mockReset();
     auth.confirmPassword.mockReset();
     auth.confirmPassword.mockResolvedValue({ ok: true });
+    files.assertCanDownloadFile.mockReset();
+    files.assertCanDownloadFile.mockResolvedValue({ id: "file-1" });
   });
 
   function takeoverRecord(overrides: Record<string, unknown> = {}) {
@@ -587,7 +592,12 @@ describe("ContractTakeoverService", () => {
         callback(tx)
       )
     };
-    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
 
     await service.attachEvidenceFile(
       "project-1",
@@ -596,6 +606,7 @@ describe("ContractTakeoverService", () => {
       "contract-user"
     );
 
+    expect(files.assertCanDownloadFile).toHaveBeenCalledWith(tx, "file-1", "contract-user");
     expect(tx.archiveRecord.create).toHaveBeenCalledWith({
       data: {
         businessType: "contract_takeover",
@@ -615,6 +626,40 @@ describe("ContractTakeoverService", () => {
         purpose: "historical_contract_scan"
       })
     });
+  });
+
+  it("rejects takeover evidence when the actor cannot read the file", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
+      },
+      archiveRecord: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    files.assertCanDownloadFile.mockRejectedValueOnce(new Error("Actor cannot download private file"));
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.attachEvidenceFile(
+        "project-1",
+        "takeover-1",
+        { fileId: "file-other", purpose: "historical_contract_scan" },
+        "contract-user"
+      )
+    ).rejects.toThrow("Actor cannot download private file");
+    expect(tx.archiveRecord.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects missing signed date before writing", async () => {
