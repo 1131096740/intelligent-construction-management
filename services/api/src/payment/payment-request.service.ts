@@ -2826,7 +2826,7 @@ export class PaymentRequestService {
     }
 
     if (!this.files) {
-      throw new Error("File service is required to generate payment PDF archive");
+      throw new Error("付款 PDF 归档文件服务暂不可用，请稍后重试或联系管理员");
     }
 
     const templateKey = input.templateKey ?? "payment_finance_archive";
