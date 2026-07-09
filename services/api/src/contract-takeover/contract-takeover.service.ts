@@ -2091,8 +2091,8 @@ function importBatchRiskText(batch: {
   skippedCount: number;
 }): string {
   if (batch.status === "accepted") return "批次已验收，可按单合同确认结果继续办理。";
-  if (batch.status === "limited_accepted") return "批次为受限验收，付款前需重点核对缺口和限制说明。";
-  if (batch.status === "disputed") return "批次存在争议，争议解决前不宜作为付款放行依据。";
+  if (batch.status === "limited_accepted") return "批次为受限验收，缺口未补齐前系统仍会限制或阻断付款。";
+  if (batch.status === "disputed") return "批次存在争议，争议解决前不能作为付款放行依据。";
   if (batch.status === "under_review") return "批次正在复核，请合同、预算和财务核对资料与金额口径。";
   if (batch.blockedRows > 0) return "仍有错误行，先修正后再接管。";
   if (batch.warningRows > 0) return "存在资料或风险提醒，复核时重点核对。";

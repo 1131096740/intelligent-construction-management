@@ -1329,8 +1329,69 @@ describe("ContractTakeoverService", () => {
     expect(result).toMatchObject({
       status: "limited_accepted",
       statusLabel: "受限验收",
-      riskText: "批次为受限验收，付款前需重点核对缺口和限制说明。",
+      riskText: "批次为受限验收，缺口未补齐前系统仍会限制或阻断付款。",
       acceptanceConclusion: "付款前需补齐发票和付款凭证。"
+    });
+  });
+
+  it("explains that disputed takeover import batches cannot release payment", async () => {
+    const batch = {
+      id: "batch-1",
+      projectId: "project-1",
+      batchNo: "接管批次-20260710-TEST0001",
+      status: "under_review",
+      takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
+      responsibleUserId: "contract-director-1",
+      reviewComment: "预算和财务发现历史付款凭证存在争议。",
+      acceptanceConclusion: "待补充双方确认材料。",
+      importFingerprint: "fingerprint",
+      totalRows: 20,
+      readyRows: 18,
+      blockedRows: 0,
+      warningRows: 4,
+      createdCount: 18,
+      skippedCount: 0,
+      createdByUserId: "contract-user",
+      createdAt: new Date("2026-07-10T01:00:00.000Z"),
+      updatedAt: new Date("2026-07-10T01:00:00.000Z")
+    };
+    const tx = {
+      contractTakeoverBatch: {
+        findFirst: jest.fn().mockResolvedValue(batch),
+        update: jest.fn().mockResolvedValue({
+          ...batch,
+          status: "disputed",
+          reviewComment: "预算和财务发现历史付款凭证存在争议。",
+          acceptanceConclusion: "待补充双方确认材料。"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.reviewImportBatch(
+      "project-1",
+      "batch-1",
+      {
+        status: "disputed",
+        reviewComment: "预算和财务发现历史付款凭证存在争议。",
+        acceptanceConclusion: "待补充双方确认材料。"
+      },
+      "contract-director-1"
+    );
+
+    expect(result).toMatchObject({
+      status: "disputed",
+      statusLabel: "存在争议",
+      riskText: "批次存在争议，争议解决前不能作为付款放行依据。",
+      acceptanceConclusion: "待补充双方确认材料。"
     });
   });
 
