@@ -741,6 +741,15 @@ export class ContractTakeoverService {
       if (takeover.takeoverStatus !== "pending_review") {
         throw new Error(`Cannot confirm takeover from status ${takeover.takeoverStatus}`);
       }
+      const [takeoverReadModel] = await this.toReadModels(tx, [takeover]);
+      const missingEvidenceLabels = takeoverReadModel.evidenceChecklist
+        .filter((item) => item.required && !item.uploaded)
+        .map((item) => item.purposeLabel);
+      if (missingEvidenceLabels.length) {
+        throw new Error(
+          `接管资料未补齐：${missingEvidenceLabels.join("、")}。请先补齐资料后再确认接管。`
+        );
+      }
 
       const confirmedAt = new Date();
       await tx.contractVersion.update({

@@ -59,6 +59,28 @@ describe("ContractTakeoverService", () => {
     };
   }
 
+  function takeoverEvidenceRecords(purposes: string[]) {
+    return purposes.map((purpose, index) => ({
+      id: `archive-record-${index + 1}`,
+      businessId: "takeover-1",
+      businessType: "contract_takeover",
+      fileId: `file-${index + 1}`,
+      departmentScope: purpose,
+      createdAt: new Date(`2026-07-03T00:0${index}:00.000Z`)
+    }));
+  }
+
+  function takeoverEvidenceFiles(count: number) {
+    return Array.from({ length: count }, (_, index) => ({
+      id: `file-${index + 1}`,
+      originalName: `接管资料-${index + 1}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: 1024,
+      uploadedByUserId: "contract-user",
+      createdAt: new Date(`2026-07-03T00:0${index}:00.000Z`)
+    }));
+  }
+
   it("creates a historical contract takeover draft on existing contract tables", async () => {
     const tx = {
       project: {
@@ -1181,6 +1203,21 @@ describe("ContractTakeoverService", () => {
           }
         ])
       },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue(
+          takeoverEvidenceRecords([
+            "historical_contract_scan",
+            "historical_settlement_ledger",
+            "historical_payment_voucher"
+          ])
+        )
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue(takeoverEvidenceFiles(3))
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-user", name: "合同员" }])
+      },
       auditLog: {
         create: jest.fn()
       }
@@ -1245,6 +1282,75 @@ describe("ContractTakeoverService", () => {
         contractVersionId: "contract-version-1"
       })
     });
+  });
+
+  it("rejects takeover confirmation when required evidence is missing", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(
+          takeoverRecord({ takeoverStatus: "pending_review" })
+        ),
+        update: jest.fn().mockResolvedValue(
+          takeoverRecord({
+            takeoverStatus: "confirmed",
+            confirmedAt: new Date("2026-07-03T02:00:00.000Z"),
+            historicalBalanceConfirmedAt: new Date("2026-07-03T02:00:00.000Z")
+          })
+        )
+      },
+      contractVersion: {
+        update: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      },
+      paymentTermsVersion: {
+        update: jest.fn()
+      },
+      settlement: {
+        create: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ code: "HT-HIS-001", temporaryCode: null }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A"
+          }
+        ])
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue(takeoverEvidenceRecords(["historical_contract_scan"]))
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue(takeoverEvidenceFiles(1))
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-user", name: "合同员" }])
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.confirm("project-1", "takeover-1", "director-1", {
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("接管资料未补齐");
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.paymentTermsVersion.update).not.toHaveBeenCalled();
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.contractTakeover.update).not.toHaveBeenCalled();
   });
 
   it("lists historical takeover rows as business read models without internal IDs", async () => {
