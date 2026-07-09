@@ -1399,7 +1399,7 @@ export class SettlementService {
     input: ConfirmSettlementArchiveDto
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to confirm settlement archive file");
+      throw new Error("结算归档确认服务暂不可用，请稍后重试或联系管理员");
     }
 
     if (!input.confirmationPassword?.trim()) {
@@ -1407,7 +1407,7 @@ export class SettlementService {
     }
 
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm settlement archive");
+      throw new Error("当前密码校验服务暂不可用，请稍后重试或联系管理员");
     }
 
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);

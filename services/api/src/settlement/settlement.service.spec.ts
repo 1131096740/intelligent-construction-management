@@ -3014,6 +3014,33 @@ describe("SettlementService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
+  it("结算归档确认服务不可用时给出中文业务提示", async () => {
+    const settlementService = new SettlementService(undefined as never, audit as never, auth as never);
+
+    await expect(
+      settlementService.confirmArchiveFile("settlement-1", "user-contract-director", {
+        archiveFileId: "settlement-archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("结算归档确认服务暂不可用，请稍后重试或联系管理员");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
+  it("结算归档确认密码服务不可用时给出中文业务提示", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.confirmArchiveFile("settlement-1", "user-contract-director", {
+        archiveFileId: "settlement-archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("当前密码校验服务暂不可用，请稍后重试或联系管理员");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("结算单不存在时不能确认归档", async () => {
     const tx = {
       settlement: {
