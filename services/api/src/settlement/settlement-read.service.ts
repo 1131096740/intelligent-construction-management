@@ -317,7 +317,7 @@ export class SettlementReadService {
     });
 
     if (!settlement) {
-      throw new NotFoundException("Settlement not found");
+      throw new NotFoundException("未找到该结算单，请刷新结算台账后重试");
     }
 
     const [
@@ -346,15 +346,15 @@ export class SettlementReadService {
     ]);
 
     if (!contract) {
-      throw new NotFoundException("Settlement contract not found");
+      throw new NotFoundException("未找到结算关联合同，请刷新结算台账后重试");
     }
 
     if (!contractVersion) {
-      throw new NotFoundException("Settlement contract version not found");
+      throw new NotFoundException("未找到结算关联合同版本，请刷新结算台账后重试");
     }
 
     if (!terms) {
-      throw new NotFoundException("Settlement payment terms version not found");
+      throw new NotFoundException("未找到结算绑定的付款条款版本，请刷新结算台账后重试");
     }
 
     const stages = await this.prisma.paymentTermsStage.findMany({

@@ -522,12 +522,81 @@ describe("SettlementReadService", () => {
     };
     const service = new SettlementReadService(prisma as never);
 
-    await expect(service.getDetail("JS-2026-031", ["project-1"])).rejects.toThrow("Settlement not found");
+    await expect(service.getDetail("JS-2026-031", ["project-1"])).rejects.toThrow(
+      "未找到该结算单，请刷新结算台账后重试"
+    );
     expect(prisma.settlement.findFirst).toHaveBeenCalledWith({
       where: {
         OR: [{ id: "JS-2026-031" }, { code: "JS-2026-031" }],
         projectId: { in: ["project-1"] }
       }
     });
+  });
+
+  it("uses Chinese business errors when settlement detail related records are missing", async () => {
+    function prismaWithMissingRelated(overrides: {
+      contract?: unknown;
+      contractVersion?: unknown;
+      terms?: unknown;
+    }) {
+      return {
+        settlement: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "settlement-1",
+            contractId: "contract-1",
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1",
+            code: "JS-2026-031",
+            periodLabel: "2026-06",
+            status: "effective",
+            sourceType: "settlement",
+            amountCents: 1000000,
+            payableAmountCents: 800000
+          })
+        },
+        contract: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue("contract" in overrides ? overrides.contract : { id: "contract-1" })
+        },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue(
+            "contractVersion" in overrides
+              ? overrides.contractVersion
+              : { id: "contract-version-1" }
+          )
+        },
+        paymentTermsVersion: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue("terms" in overrides ? overrides.terms : { id: "terms-version-1" })
+        },
+        paymentRequest: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        paymentExecution: {
+          findMany: jest.fn().mockResolvedValue([])
+        }
+      };
+    }
+
+    await expect(
+      new SettlementReadService(
+        prismaWithMissingRelated({ contract: null }) as never
+      ).getDetail("JS-2026-031")
+    ).rejects.toThrow("未找到结算关联合同，请刷新结算台账后重试");
+
+    await expect(
+      new SettlementReadService(
+        prismaWithMissingRelated({ contractVersion: null }) as never
+      ).getDetail("JS-2026-031")
+    ).rejects.toThrow("未找到结算关联合同版本，请刷新结算台账后重试");
+
+    await expect(
+      new SettlementReadService(prismaWithMissingRelated({ terms: null }) as never).getDetail(
+        "JS-2026-031"
+      )
+    ).rejects.toThrow("未找到结算绑定的付款条款版本，请刷新结算台账后重试");
   });
 });
