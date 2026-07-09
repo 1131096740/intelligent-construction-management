@@ -2089,6 +2089,26 @@ describe("FileService", () => {
     ).rejects.toThrow("当前账号无权下载该资料");
   });
 
+  it("rejects overly long download reasons before creating a ticket", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", {
+        actorUserId: "finance-1",
+        downloadReason: "下载".repeat(101)
+      })
+    ).rejects.toThrow("下载原因不能超过 200 个字，请精简后重新提交");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("reads a private file through a short-lived ticket and records download audit", async () => {
     const tx = {
       fileObject: {
@@ -2143,5 +2163,28 @@ describe("FileService", () => {
         downloadReason: "业务系统下载"
       }
     });
+  });
+
+  it("rejects overly long download reasons before reading a ticket", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.readPrivateFile("file-1", {
+        actorUserId: "finance-1",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        token: "signed-ticket",
+        downloadReason: "下载".repeat(101)
+      })
+    ).rejects.toThrow("下载原因不能超过 200 个字，请精简后重新提交");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 });

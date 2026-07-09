@@ -201,7 +201,7 @@ export class PrivateFileStorage {
 function normalizeDownloadReason(value: string | undefined): string {
   const reason = value?.trim() || "业务系统下载";
   if (reason.length > 200) {
-    throw new Error("Download reason must be at most 200 characters");
+    throw new Error("下载原因不能超过 200 个字，请精简后重新提交");
   }
   return reason;
 }
