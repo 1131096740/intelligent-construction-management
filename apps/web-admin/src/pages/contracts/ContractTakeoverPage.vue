@@ -55,6 +55,33 @@
       {{ message }}
     </div>
 
+    <div class="workflow-panel panel">
+      <div class="workflow-title">
+        <strong>接管步骤</strong>
+        <span>{{ selectedRow ? `${selectedRow.contractNo} · ${selectedRow.takeoverStatusLabel}` : "选择合同后查看当前步骤" }}</span>
+      </div>
+      <div class="flow-list takeover-flow">
+        <div
+          v-for="step in takeoverWorkbenchStepsView"
+          :key="step.label"
+          class="flow-row"
+        >
+          <span :class="['flow-dot', `dot-${step.tone}`]" />
+          <span class="flow-main">
+            <strong>{{ step.label }}</strong>
+            <small>{{ step.description }}</small>
+          </span>
+          <t-tag
+            size="small"
+            :theme="statusTagTheme(step.tone)"
+            variant="light"
+          >
+            {{ step.status }}
+          </t-tag>
+        </div>
+      </div>
+    </div>
+
     <t-card
       v-if="showPrecheckPanel"
       class="panel import-panel"
@@ -365,6 +392,25 @@
             </div>
           </dl>
 
+          <h3>确认前核验摘要</h3>
+          <div
+            v-if="selectedConfirmationSummary"
+            class="confirmation-summary"
+          >
+            <dl class="detail-list compact">
+              <div
+                v-for="item in selectedConfirmationSummary.items"
+                :key="item.label"
+              >
+                <dt>{{ item.label }}</dt>
+                <dd>{{ item.value }}</dd>
+              </div>
+            </dl>
+            <p>{{ selectedConfirmationSummary.consequence }}</p>
+            <p>{{ selectedConfirmationSummary.riskText }}</p>
+            <p>资料依据：{{ selectedConfirmationSummary.evidenceText }}</p>
+          </div>
+
           <h3>接管资料</h3>
           <div class="evidence-uploader">
             <label>
@@ -473,6 +519,22 @@
         <p>
           {{ confirmTarget ? `${confirmTarget.contractNo} 将进入已接管状态。` : "" }}
         </p>
+        <template v-if="confirmSummary">
+          <p class="confirm-warning">
+            {{ confirmSummary.consequence }}
+          </p>
+          <dl class="confirm-summary-list">
+            <div
+              v-for="item in confirmSummary.items"
+              :key="item.label"
+            >
+              <dt>{{ item.label }}</dt>
+              <dd>{{ item.value }}</dd>
+            </div>
+          </dl>
+          <p>{{ confirmSummary.riskText }}</p>
+          <p>资料依据：{{ confirmSummary.evidenceText }}</p>
+        </template>
         <label>
           <span>当前登录密码</span>
           <t-input
@@ -509,6 +571,7 @@ import {
 } from "../../api/core-flow-read.api";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
+  buildTakeoverConfirmationSummary,
   canConfirmTakeover,
   canEditTakeover,
   canSubmitTakeoverReview,
@@ -518,6 +581,7 @@ import {
   lifecycleStatusLabel,
   lifecycleStatusOptions,
   parseContractTakeoverImportPrecheckRows,
+  takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverLevelOptions,
   toContractTakeoverTableRow,
@@ -618,6 +682,15 @@ const tableRows = computed(() =>
 
 const selectedRow = computed<ContractTakeoverTableRow | null>(
   () => tableRows.value.find((row) => row.id === selectedTakeoverId.value) ?? null
+);
+const takeoverWorkbenchStepsView = computed(() =>
+  takeoverWorkbenchSteps(selectedRow.value?.takeover ?? null)
+);
+const selectedConfirmationSummary = computed(() =>
+  selectedRow.value ? buildTakeoverConfirmationSummary(selectedRow.value.takeover) : null
+);
+const confirmSummary = computed(() =>
+  confirmTarget.value ? buildTakeoverConfirmationSummary(confirmTarget.value) : null
 );
 
 const summaryValues = computed(() => {
@@ -1265,6 +1338,89 @@ input[type="date"] {
   overflow: hidden;
 }
 
+.workflow-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.workflow-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workflow-title strong {
+  font-size: 14px;
+}
+
+.workflow-title span {
+  color: #767f8d;
+  font-size: 12px;
+}
+
+.flow-list {
+  display: grid;
+  gap: 8px;
+}
+
+.takeover-flow {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.flow-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid #e2e7ee;
+  background: #f8fafc;
+}
+
+.flow-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.flow-main strong {
+  color: #151922;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.flow-main small {
+  color: #767f8d;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.flow-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9aa4b2;
+}
+
+.dot-primary {
+  background: #0052cc;
+}
+
+.dot-warning {
+  background: #d97706;
+}
+
+.dot-success {
+  background: #1b6b3a;
+}
+
+.dot-danger {
+  background: #b51d2a;
+}
+
 :deep(.t-card__body) {
   overflow-x: auto;
 }
@@ -1384,6 +1540,14 @@ input[type="date"] {
   grid-template-columns: minmax(116px, 1fr) minmax(0, 1fr);
 }
 
+.detail-list.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detail-list.compact div {
+  grid-template-columns: minmax(112px, 0.9fr) minmax(0, 1fr);
+}
+
 .detail-list dt {
   color: #767f8d;
   font-size: 12px;
@@ -1393,6 +1557,48 @@ input[type="date"] {
   min-width: 0;
   margin: 0;
   color: #151922;
+  overflow-wrap: anywhere;
+}
+
+.confirmation-summary {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e7ee;
+  background: #f8fafc;
+}
+
+.confirmation-summary p,
+.confirm-warning {
+  margin: 0;
+  color: #424955;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.confirm-summary-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #e2e7ee;
+  background: #f8fafc;
+}
+
+.confirm-summary-list div {
+  min-width: 0;
+}
+
+.confirm-summary-list dt {
+  color: #767f8d;
+  font-size: 12px;
+}
+
+.confirm-summary-list dd {
+  margin: 2px 0 0;
+  color: #151922;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -1449,6 +1655,10 @@ input[type="date"] {
   .content-grid {
     grid-template-columns: 1fr;
   }
+
+  .takeover-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -1459,6 +1669,12 @@ input[type="date"] {
   .detail-list div,
   .detail-list.money div,
   .evidence-uploader {
+    grid-template-columns: 1fr;
+  }
+
+  .takeover-flow,
+  .detail-list.compact,
+  .confirm-summary-list {
     grid-template-columns: 1fr;
   }
 

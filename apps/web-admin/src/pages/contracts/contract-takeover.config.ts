@@ -38,6 +38,20 @@ export interface ContractTakeoverTableRow {
   takeover: ContractTakeoverReadModel;
 }
 
+export interface TakeoverWorkbenchStep {
+  label: string;
+  status: string;
+  tone: ContractTakeoverTone;
+  description: string;
+}
+
+export interface TakeoverConfirmationSummary {
+  items: Array<{ label: string; value: string }>;
+  consequence: string;
+  riskText: string;
+  evidenceText: string;
+}
+
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
   { value: "A", label: "A级：资料完整，可直接接管" },
   { value: "B", label: "B级：资料基本完整，需补少量说明" },
@@ -110,6 +124,88 @@ export function canConfirmTakeover(takeover: Pick<ContractTakeoverReadModel, "ta
 
 export function canEditTakeover(takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">) {
   return takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement";
+}
+
+export function takeoverWorkbenchSteps(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus"> | null
+): TakeoverWorkbenchStep[] {
+  const activeIndexByStatus: Record<ContractTakeoverStatus, number> = {
+    draft: 3,
+    needs_supplement: 3,
+    pending_review: 5,
+    confirmed: 7,
+    voided: 3
+  };
+  const activeIndex = takeover ? activeIndexByStatus[takeover.takeoverStatus] : 0;
+  const isConfirmed = takeover?.takeoverStatus === "confirmed";
+
+  return [
+    ["接管准备", "明确项目、接管日和责任人"],
+    ["导入预检", "先查重复、金额、资料缺口"],
+    ["生成草稿", "通过预检后形成合同草稿"],
+    ["单合同补录", "补齐余额、条款和责任说明"],
+    ["资料核验", "核对合同、结算、付款凭证"],
+    ["多部门复核", "合同、预算、项目、财务复核"],
+    ["主管确认", "当前密码确认期初事实"],
+    ["接管后核验", "用新结算和付款验证账本"]
+  ].map(([label, description], index) => {
+    if (isConfirmed || index < activeIndex) {
+      return { label, description, status: "已完成", tone: "success" };
+    }
+    if (index === activeIndex) {
+      return {
+        label,
+        description,
+        status: takeover?.takeoverStatus === "voided" ? "已终止" : "处理中",
+        tone: takeover?.takeoverStatus === "voided" ? "danger" : "warning"
+      };
+    }
+    return { label, description, status: "未开始", tone: "default" };
+  });
+}
+
+export function buildTakeoverConfirmationSummary(
+  takeover: ContractTakeoverReadModel
+): TakeoverConfirmationSummary {
+  const historicalPendingCents =
+    centsValueToBigInt(takeover.historicalApprovalPendingPaymentCents) +
+    centsValueToBigInt(takeover.historicalApprovedPendingPaymentCents);
+
+  return {
+    items: [
+      { label: "接管截止日", value: formatTakeoverDate(takeover.takeoverCutoffDate) },
+      { label: "接管等级", value: takeoverLevelLabel(takeover.takeoverLevel) },
+      { label: "历史累计结算", value: centsToYuanText(takeover.historicalSettledCents) },
+      { label: "历史累计已付", value: centsToYuanText(takeover.historicalPaidCents) },
+      { label: "历史在途/待付", value: centsToYuanText(historicalPendingCents) },
+      {
+        label: "历史预付款已付/已扣回",
+        value: `${centsToYuanText(takeover.historicalAdvancePaidCents)} / ${centsToYuanText(
+          takeover.historicalAdvanceDeductedCents
+        )}`
+      },
+      {
+        label: "历史质保金扣留/释放",
+        value: `${centsToYuanText(takeover.historicalRetentionWithheldCents)} / ${centsToYuanText(
+          takeover.historicalRetentionReleasedCents
+        )}`
+      }
+    ],
+    consequence:
+      "确认后会形成系统期初事实，后续结算、付款申请、实付和审计都会以这些历史金额和资料作为约束依据。",
+    riskText: takeoverLevelRiskText(takeover.takeoverLevel),
+    evidenceText: takeover.evidenceSummary?.trim() || "未填写"
+  };
+}
+
+function takeoverLevelRiskText(level: ContractTakeoverLevel): string {
+  const texts: Record<ContractTakeoverLevel, string> = {
+    A: "A级资料较完整，确认后可作为后续结算付款依据，仍需保留原始资料备查。",
+    B: "B级仍有少量资料或说明需要跟踪，确认后付款容量会受历史金额约束，缺口事项要继续补齐。",
+    C: "C级资料缺口明显，确认后只能作为受限期初事实，后续付款前应重点核验缺资料和争议说明。"
+  };
+
+  return texts[level] ?? "请按接管等级复核资料完整性和后续付款风险。";
 }
 
 export function yuanToCents(

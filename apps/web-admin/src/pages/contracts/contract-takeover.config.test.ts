@@ -1,6 +1,7 @@
 import type { ContractTakeoverReadModel } from "../../api/core-flow-read.api";
 import { describe, expect, it } from "vitest";
 import {
+  buildTakeoverConfirmationSummary,
   canConfirmTakeover,
   canEditTakeover,
   canSubmitTakeoverReview,
@@ -8,6 +9,7 @@ import {
   contractTakeoverColumns,
   lifecycleStatusLabel,
   parseContractTakeoverImportPrecheckRows,
+  takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverStatusLabel,
   takeoverStatusTone,
@@ -117,6 +119,53 @@ describe("contract takeover page configuration", () => {
     expect(canEditTakeover({ takeoverStatus: "draft" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "needs_supplement" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "pending_review" })).toBe(false);
+  });
+
+  it("describes the takeover workbench as an eight-step office workflow", () => {
+    expect(takeoverWorkbenchSteps(null).map((step) => step.label)).toEqual([
+      "接管准备",
+      "导入预检",
+      "生成草稿",
+      "单合同补录",
+      "资料核验",
+      "多部门复核",
+      "主管确认",
+      "接管后核验"
+    ]);
+
+    expect(takeoverWorkbenchSteps(takeover()).map((step) => step.status)).toEqual([
+      "已完成",
+      "已完成",
+      "已完成",
+      "已完成",
+      "已完成",
+      "处理中",
+      "未开始",
+      "未开始"
+    ]);
+
+    expect(takeoverWorkbenchSteps({ ...takeover(), takeoverStatus: "confirmed" }).at(-1)).toMatchObject({
+      label: "接管后核验",
+      status: "已完成",
+      tone: "success"
+    });
+  });
+
+  it("builds a confirmation summary with historical money and business consequence", () => {
+    const summary = buildTakeoverConfirmationSummary(takeover());
+
+    expect(summary.items).toEqual([
+      { label: "接管截止日", value: "2026-06-30" },
+      { label: "接管等级", value: "B级" },
+      { label: "历史累计结算", value: "¥600,000.00" },
+      { label: "历史累计已付", value: "¥300,000.00" },
+      { label: "历史在途/待付", value: "¥30,000.00" },
+      { label: "历史预付款已付/已扣回", value: "¥50,000.00 / ¥10,000.00" },
+      { label: "历史质保金扣留/释放", value: "¥30,000.00 / ¥10,000.00" }
+    ]);
+    expect(summary.consequence).toContain("确认后会形成系统期初事实");
+    expect(summary.riskText).toContain("B级");
+    expect(summary.evidenceText).toBe("合同与凭证");
   });
 
   it("keeps historical balances separated in table rows", () => {

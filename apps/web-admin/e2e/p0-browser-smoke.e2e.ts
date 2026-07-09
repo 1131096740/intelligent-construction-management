@@ -251,6 +251,42 @@ async function routeCoreDetailMocks(page: Page) {
 }
 
 test("opens the workbench shell and historical takeover entry", async ({ page }) => {
+  const takeover = {
+    id: "takeover-1",
+    contractNo: "HT-TAKEOVER-001",
+    contractName: "E2E 历史材料合同",
+    counterparty: "历史供应商",
+    companyEntityName: "建工智管公司",
+    amountCents: "100000000",
+    paymentTermsOriginalText: "按月结算付款",
+    takeoverLevel: "B",
+    takeoverStatus: "pending_review",
+    lifecycleStatus: "in_progress",
+    signedAt: "2026-01-01T00:00:00.000Z",
+    historicalSettledCents: "60000000",
+    historicalApprovalPendingPaymentCents: "1000000",
+    historicalApprovedPendingPaymentCents: "2000000",
+    historicalPaidCents: "30000000",
+    historicalProxyPaidCents: "0",
+    historicalAdvancePaidCents: "5000000",
+    historicalAdvanceDeductedCents: "1000000",
+    historicalRetentionWithheldCents: "3000000",
+    historicalRetentionReleasedCents: "1000000",
+    otherConfirmedOccupancyCents: "0",
+    balanceSourceSummary: "财务台账",
+    evidenceSummary: "合同扫描件、历史结算台账、付款凭证",
+    takeoverCutoffDate: "2026-06-30T00:00:00.000Z",
+    responsibleUserId: "合同部张工",
+    reviewComment: "预算和财务已复核历史余额",
+    acceptanceConclusion: "可作为 B 级合同接管依据",
+    submittedAt: "2026-07-03T10:00:00.000Z",
+    confirmedAt: null,
+    historicalBalanceConfirmedAt: null,
+    evidenceFiles: [],
+    createdAt: "2026-07-03T09:00:00.000Z",
+    updatedAt: "2026-07-03T10:00:00.000Z"
+  };
+
   await page.route("**/api/me/work-items", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -292,8 +328,11 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
       body: JSON.stringify([{ id: "project-1", code: "P-001", name: "E2E 项目" }])
     })
   );
+  await page.route("**/api/projects/project-1/contract-takeovers/takeover-1", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(takeover) })
+  );
   await page.route("**/api/projects/project-1/contract-takeovers", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify([]) })
+    route.fulfill({ contentType: "application/json", body: JSON.stringify([takeover]) })
   );
   await loginWithMockedAuth(page, ["contract_staff"]);
 
@@ -304,6 +343,22 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
   await page.getByText("历史合同接管").click();
   await expect(page.getByRole("heading", { name: "历史合同接管" })).toBeVisible();
   await expect(page.getByRole("button", { name: "新增接管合同" })).toBeVisible();
+  await expect(page.getByText("接管步骤")).toBeVisible();
+  await expect(page.getByText("主管确认")).toBeVisible();
+  await expect(page.getByText("多部门复核")).toBeVisible();
+
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  await expect(page.getByText("确认前核验摘要")).toBeVisible();
+  const confirmationSummary = page.locator(".detail-panel .confirmation-summary");
+  await expect(confirmationSummary.getByText("历史累计结算")).toBeVisible();
+  await expect(confirmationSummary.getByText("¥600,000.00")).toBeVisible();
+  await expect(confirmationSummary.getByText("确认后会形成系统期初事实")).toBeVisible();
+
+  await page.locator(".ledger-panel").getByText("确认接管", { exact: true }).click();
+  const confirmDialog = page.locator(".t-dialog").filter({ hasText: "确认历史合同接管" });
+  await expect(confirmDialog).toBeVisible();
+  await expect(confirmDialog.getByText("后续结算、付款申请、实付和审计")).toBeVisible();
+  await expect(confirmDialog.getByText("历史预付款已付/已扣回")).toBeVisible();
 });
 
 test("core detail pages expose flow summaries, actions, files, and timelines", async ({ page }) => {
