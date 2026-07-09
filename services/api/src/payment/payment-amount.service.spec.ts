@@ -26,7 +26,7 @@ describe("PaymentAmountService", () => {
         },
         50_001
       )
-    ).toThrow("exceeds remaining settlement capacity");
+    ).toThrow("付款申请金额超过当前可申请余额，当前最多可申请 500.00 元");
   });
 
   it("rejects non-positive or decimal request amounts", () => {
@@ -37,10 +37,10 @@ describe("PaymentAmountService", () => {
     };
 
     expect(() => service.assertCanRequest(capacity, 0)).toThrow(
-      "Payment request amount must be positive cents"
+      "付款申请金额必须为大于 0 的整数分"
     );
     expect(() => service.assertCanRequest(capacity, 1.5)).toThrow(
-      "Payment request amount must be positive cents"
+      "付款申请金额必须为大于 0 的整数分"
     );
   });
 });

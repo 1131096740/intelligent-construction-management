@@ -543,7 +543,7 @@ export class PaymentRequestService {
     }
 
     if (!Number.isInteger(input.requestedAmountCents) || input.requestedAmountCents <= 0) {
-      throw new Error("Payment request amount must be positive cents");
+      throw new Error("付款申请金额必须为大于 0 的整数分");
     }
 
     await this.assertContractDuePaymentCapacityForContract(
@@ -721,7 +721,7 @@ export class PaymentRequestService {
     });
 
     if (!Number.isInteger(input.requestedAmountCents) || input.requestedAmountCents <= 0) {
-      throw new Error("Payment request amount must be positive cents");
+      throw new Error("付款申请金额必须为大于 0 的整数分");
     }
     if (input.requestedAmountCents > capacity.remainingCents) {
       throw new Error(`合同预付款到期可付额度不足: ${Math.max(capacity.remainingCents, 0)}`);

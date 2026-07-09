@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：继续推进付款账本中文业务体验治理切片：付款金额共享闸口、按合同预付款申请和按合同应付款申请的金额校验不再抛出 `Payment request amount must be positive cents`、`Payment request exceeds remaining settlement capacity` 等英文技术错误，统一改为中文业务提示并按元展示当前最多可申请金额；不改变付款容量、历史接管、项目资金池和审批流转口径。验证：TDD 红绿覆盖 API 付款金额/付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进全局中文业务体验治理切片：修复简易 PDF 渲染器只能输出 ASCII 的根因，改为中文 CID 字体和 UTF-16 文本，水印统一为“建工智管内部文件”；合同归档 PDF、付款财务归档 PDF、项目支出审批/财务归档 PDF 的标题、金额和字段说明改为中文业务表达，不再显示 `Contract Archive`、`Payment Finance Archive`、`Applicant User ID`、`CNY` 等英文/内部表达。本轮不改变归档流程、审批状态和账本口径。验证：API PDF/合同/付款/项目支出 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进审计页中文业务体验治理切片：文件下载审计表头和筛选提示不再显示“追溯ID”，统一改为“追溯编号”，字段名和筛选逻辑保持不变，避免审计页向业务管理员暴露内部字段表达。验证：codebase-memory 搜索确认 Web/API 无“追溯ID”残留，Web 审计配置 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。
 - 2026-07-09 (CodeX)：继续推进全局中文业务体验治理切片：合同详情页动作前置校验不再向业务人员显示“合同版本ID”，统一改为“合同”业务对象提示，避免归档、审批、用章、催办、转交等操作缺少详情数据时暴露内部字段。本轮不改接口参数、不改合同状态流转。验证：codebase-memory 搜索确认 Web/API 无“合同版本ID”残留，Web 合同详情 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。

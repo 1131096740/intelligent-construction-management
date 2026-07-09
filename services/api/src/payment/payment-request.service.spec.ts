@@ -383,7 +383,7 @@ describe("PaymentRequestService", () => {
         code: "FK-2026-099",
         requestedAmountCents: 30_000
       })
-    ).rejects.toThrow("remaining settlement capacity: 20000");
+    ).rejects.toThrow("付款申请金额超过当前可申请余额，当前最多可申请 200.00 元");
 
     expect(tx.paymentExecutionAllocation.findMany).toHaveBeenCalledWith({
       where: {
@@ -503,6 +503,43 @@ describe("PaymentRequestService", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("rejects non-positive contract advance payment amount with a Chinese business reason", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective",
+          amountCents: BigInt(1_000_000),
+          effectiveAt: new Date("2026-06-01T00:00:00.000Z")
+        })
+      },
+      contractTakeover: { findUnique: jest.fn().mockResolvedValue(null) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ source: "system", projectId: "project-1" }) },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1", status: "effective" })
+      },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "contract-1" }])
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        sourceType: "contract_advance",
+        contractVersionId: "contract-version-1",
+        code: "FK-YF-2026-000",
+        requestedAmountCents: 0
+      } as never)
+    ).rejects.toThrow("付款申请金额必须为大于 0 的整数分");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
   it("rejects contract advance payment for historical contracts without takeover row", async () => {
@@ -701,6 +738,36 @@ describe("PaymentRequestService", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("rejects non-positive contract due payment amount with a Chinese business reason", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contractTakeover: { findUnique: jest.fn().mockResolvedValue(null) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ source: "system", projectId: "project-1" }) },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1", status: "effective" })
+      },
+      paymentRequest: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        sourceType: "contract_due",
+        contractVersionId: "contract-version-1",
+        code: "FK-HT-2026-000",
+        requestedAmountCents: 0
+      } as never)
+    ).rejects.toThrow("付款申请金额必须为大于 0 的整数分");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
   it("rejects contract due payment when historical balance is not confirmed", async () => {
@@ -1452,7 +1519,7 @@ describe("PaymentRequestService", () => {
         code: "FK-2026-012",
         requestedAmountCents: 51_000
       })
-    ).rejects.toThrow("Payment request exceeds remaining settlement capacity: 50000");
+    ).rejects.toThrow("付款申请金额超过当前可申请余额，当前最多可申请 500.00 元");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
@@ -2001,7 +2068,7 @@ describe("PaymentRequestService", () => {
         code: "FK-2026-012",
         requestedAmountCents: 26_000
       })
-    ).rejects.toThrow("Payment request exceeds remaining settlement capacity: 25000");
+    ).rejects.toThrow("付款申请金额超过当前可申请余额，当前最多可申请 250.00 元");
     expect(tx.projectProxyPayment.findMany).toHaveBeenCalledWith({
       where: { settlementId: "settlement-1", voidedAt: null },
       select: { amountCents: true }
