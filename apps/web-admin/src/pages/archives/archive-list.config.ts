@@ -163,6 +163,11 @@ export function archiveDownloadDisabledReason(password: string): string {
   return "";
 }
 
+export function archiveDownloadActionDisabledReason(row: Pick<ArchiveLedgerRow, "canDownload" | "disabledReason">): string {
+  if (row.canDownload) return "";
+  return row.disabledReason ?? "当前资料暂不可下载";
+}
+
 function includesText(value: string, query: string) {
   const normalizedQuery = normalize(query);
   return !normalizedQuery || normalize(value).includes(normalizedQuery);

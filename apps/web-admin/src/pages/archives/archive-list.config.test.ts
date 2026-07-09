@@ -4,6 +4,7 @@ import {
   archiveLedgerColumns,
   archiveRules,
   archiveSummaryItems,
+  archiveDownloadActionDisabledReason,
   archiveDownloadDisabledReason,
   emptyArchiveLedgerFilters,
   filterArchiveLedgerRows,
@@ -60,6 +61,18 @@ describe("archive ledger page configuration", () => {
     expect(archiveDownloadDisabledReason("")).toBe("请填写当前登录密码后再生成下载链接");
     expect(archiveDownloadDisabledReason("   ")).toBe("请填写当前登录密码后再生成下载链接");
     expect(archiveDownloadDisabledReason("current-password")).toBe("");
+  });
+
+  it("explains why archive files cannot be downloaded", () => {
+    expect(archiveDownloadActionDisabledReason(archiveRow({ canDownload: true }))).toBe("");
+    expect(
+      archiveDownloadActionDisabledReason(
+        archiveRow({ canDownload: false, disabledReason: "归档确认后开放下载" })
+      )
+    ).toBe("归档确认后开放下载");
+    expect(archiveDownloadActionDisabledReason(archiveRow({ canDownload: false }))).toBe(
+      "当前资料暂不可下载"
+    );
   });
 
   it("filters archive rows by business fields and governance status", () => {

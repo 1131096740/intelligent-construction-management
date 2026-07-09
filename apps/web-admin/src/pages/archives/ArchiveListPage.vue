@@ -127,12 +127,23 @@
               查看
             </t-link>
             <t-link
+              v-if="row.canDownload"
               theme="primary"
-              :disabled="!row.canDownload"
               @click="openDownloadDialog(row)"
             >
               授权下载
             </t-link>
+            <t-tooltip
+              v-else
+              :content="archiveDownloadActionDisabledReason(row)"
+            >
+              <t-link
+                disabled
+                theme="primary"
+              >
+                授权下载
+              </t-link>
+            </t-tooltip>
           </div>
         </template>
       </t-table>
@@ -180,6 +191,7 @@ import {
   archiveLedgerColumns,
   archiveRules,
   archiveSummaryItems,
+  archiveDownloadActionDisabledReason,
   archiveDownloadDisabledReason,
   emptyArchiveLedgerFilters,
   filterArchiveLedgerRows
