@@ -89,6 +89,36 @@
       :bordered="true"
     >
       <div class="form-section">
+        <div class="form-grid">
+          <label>
+            <span>接管截止日</span>
+            <input
+              v-model="importBatchForm.takeoverCutoffDate"
+              type="date"
+            >
+          </label>
+          <label>
+            <span>接管责任人</span>
+            <t-input
+              v-model="importBatchForm.responsibleUserId"
+              placeholder="填写负责复核跟进的人员"
+            />
+          </label>
+          <label>
+            <span>批次复核意见</span>
+            <t-input
+              v-model="importBatchForm.reviewComment"
+              placeholder="说明本批次已核对范围"
+            />
+          </label>
+          <label>
+            <span>批次验收结论</span>
+            <t-input
+              v-model="importBatchForm.acceptanceConclusion"
+              placeholder="说明生成草稿后的验收口径"
+            />
+          </label>
+        </div>
         <label class="wide-field">
           <span>导入行</span>
           <t-textarea
@@ -786,6 +816,13 @@ interface CreateFormState extends Record<MoneyFieldKey, string> {
   acceptanceConclusion: string;
 }
 
+interface ImportBatchFormState {
+  takeoverCutoffDate: string;
+  responsibleUserId: string;
+  reviewComment: string;
+  acceptanceConclusion: string;
+}
+
 const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
   { key: "historicalSettledYuan", label: "历史累计结算" },
   { key: "historicalApprovalPendingPaymentYuan", label: "历史审批中付款" },
@@ -823,6 +860,7 @@ const evidenceInputRef = ref<HTMLInputElement | null>(null);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const createForm = reactive<CreateFormState>(createEmptyForm());
+const importBatchForm = reactive<ImportBatchFormState>(createEmptyImportBatchForm());
 const importPrecheckText = ref("");
 const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>(null);
 
@@ -960,13 +998,21 @@ const canGenerateImportDrafts = computed(
   () =>
     Boolean(importPrecheckResult.value) &&
     (importPrecheckResult.value?.readyRows ?? 0) > 0 &&
-    (importPrecheckResult.value?.blockedRows ?? 0) === 0
+    (importPrecheckResult.value?.blockedRows ?? 0) === 0 &&
+    Boolean(importBatchForm.takeoverCutoffDate.trim()) &&
+    Boolean(importBatchForm.responsibleUserId.trim()) &&
+    Boolean(importBatchForm.reviewComment.trim()) &&
+    Boolean(importBatchForm.acceptanceConclusion.trim())
 );
 const generateImportDraftsDisabledReason = computed(() => {
   const result = importPrecheckResult.value;
   if (!result) return "请先完成导入预检";
   if (result.blockedRows > 0) return "仍有错误行，修正后才能生成草稿";
   if (result.readyRows <= 0) return "没有可生成草稿的导入行";
+  if (!importBatchForm.takeoverCutoffDate.trim()) return "请填写接管截止日";
+  if (!importBatchForm.responsibleUserId.trim()) return "请填写接管责任人";
+  if (!importBatchForm.reviewComment.trim()) return "请填写批次复核意见";
+  if (!importBatchForm.acceptanceConclusion.trim()) return "请填写批次验收结论";
   return "";
 });
 const evidencePurposeOptions: Array<{ value: ContractTakeoverEvidencePurpose; label: string }> = [
@@ -1137,7 +1183,13 @@ async function generateImportDrafts() {
   message.value = "";
   try {
     const rows = parseContractTakeoverImportPrecheckRows(importPrecheckText.value);
-    const result = await createContractTakeoverDraftsFromImport(projectId, { rows });
+    const result = await createContractTakeoverDraftsFromImport(projectId, {
+      rows,
+      takeoverCutoffDate: requiredText(importBatchForm.takeoverCutoffDate, "接管截止日"),
+      responsibleUserId: requiredText(importBatchForm.responsibleUserId, "接管责任人"),
+      reviewComment: requiredText(importBatchForm.reviewComment, "批次复核意见"),
+      acceptanceConclusion: requiredText(importBatchForm.acceptanceConclusion, "批次验收结论")
+    });
     setMessage(
       buildImportDraftsMessage({
         batchNo: result.batch.batchNo,
@@ -1149,6 +1201,7 @@ async function generateImportDrafts() {
     );
     importPrecheckResult.value = null;
     importPrecheckText.value = "";
+    Object.assign(importBatchForm, createEmptyImportBatchForm());
     showPrecheckPanel.value = false;
     await loadTakeovers();
     selectedTakeoverId.value = result.created[0]?.id ?? selectedTakeoverId.value;
@@ -1162,6 +1215,7 @@ async function generateImportDrafts() {
 function clearImportPrecheck() {
   importPrecheckText.value = "";
   importPrecheckResult.value = null;
+  Object.assign(importBatchForm, createEmptyImportBatchForm());
 }
 
 async function selectTakeover(takeover: ContractTakeoverReadModel) {
@@ -1434,6 +1488,15 @@ function createEmptyForm(): CreateFormState {
     otherConfirmedOccupancyYuan: "",
     balanceSourceSummary: "",
     evidenceSummary: "",
+    responsibleUserId: "",
+    reviewComment: "",
+    acceptanceConclusion: ""
+  };
+}
+
+function createEmptyImportBatchForm(): ImportBatchFormState {
+  return {
+    takeoverCutoffDate: todayText(),
     responsibleUserId: "",
     reviewComment: "",
     acceptanceConclusion: ""

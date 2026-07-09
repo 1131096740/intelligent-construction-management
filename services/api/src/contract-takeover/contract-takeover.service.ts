@@ -615,7 +615,7 @@ export class ContractTakeoverService {
       rowNo: integerOrFallback(row["rowNo"], index + 1)
     }));
     const importFingerprint = this.importFingerprint(readyRowsWithRowNo.map(({ row }) => row));
-    const batchInput = this.normalizeImportBatchInput(input, importFingerprint, actorUserId);
+    const batchInput = this.normalizeImportBatchInput(input, importFingerprint);
 
     return this.prisma.$transaction(async (tx) => {
       const existingBatch = await tx.contractTakeoverBatch.findUnique({
@@ -1068,21 +1068,26 @@ export class ContractTakeoverService {
 
   private normalizeImportBatchInput(
     input: PrecheckContractTakeoverImportDto,
-    importFingerprint: string,
-    actorUserId: string
+    importFingerprint: string
   ) {
-    const today = new Date(new Date().toISOString().slice(0, 10));
-    const cutoffDate = input.takeoverCutoffDate?.trim()
-      ? this.normalizeOptionalDate(input.takeoverCutoffDate, "takeoverCutoffDate")
-      : today;
+    const takeoverCutoffDate = input.takeoverCutoffDate?.trim();
+    if (!takeoverCutoffDate) throw new Error("请填写接管截止日后再生成接管草稿");
+    const responsibleUserId = input.responsibleUserId?.trim();
+    if (!responsibleUserId) throw new Error("请填写接管责任人后再生成接管草稿");
+    const reviewComment = input.reviewComment?.trim();
+    if (!reviewComment) throw new Error("请填写批次复核意见后再生成接管草稿");
+    const acceptanceConclusion = input.acceptanceConclusion?.trim();
+    if (!acceptanceConclusion) throw new Error("请填写批次验收结论后再生成接管草稿");
+
+    const cutoffDate = this.normalizeOptionalDate(takeoverCutoffDate, "takeoverCutoffDate");
     const batchNo = input.batchNo?.trim() || this.defaultImportBatchNo(importFingerprint);
 
     return {
       batchNo,
       takeoverCutoffDate: cutoffDate,
-      responsibleUserId: input.responsibleUserId?.trim() || actorUserId,
-      reviewComment: input.reviewComment?.trim() || "导入预检通过后生成接管草稿，待多部门复核。",
-      acceptanceConclusion: input.acceptanceConclusion?.trim() || "待主管确认后形成接管结论。"
+      responsibleUserId,
+      reviewComment,
+      acceptanceConclusion
     };
   }
 

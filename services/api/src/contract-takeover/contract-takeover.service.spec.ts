@@ -710,6 +710,9 @@ describe("ContractTakeoverService", () => {
         "project-1",
         {
           takeoverCutoffDate: "2026-02-31",
+          responsibleUserId: "contract-director-1",
+          reviewComment: "合同部已完成预检，提交预算和财务复核。",
+          acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
           rows: [
             {
               code: "HT-HIS-CUTOFF",
@@ -729,6 +732,48 @@ describe("ContractTakeoverService", () => {
         "contract-user"
       )
     ).rejects.toThrow("接管截止日不正确，请按“年-月-日”填写，例如 2026-01-10");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["takeoverCutoffDate", "请填写接管截止日后再生成接管草稿"],
+    ["responsibleUserId", "请填写接管责任人后再生成接管草稿"],
+    ["reviewComment", "请填写批次复核意见后再生成接管草稿"],
+    ["acceptanceConclusion", "请填写批次验收结论后再生成接管草稿"]
+  ] as const)("requires import batch %s before creating drafts", async (field, message) => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+    const body = {
+      takeoverCutoffDate: "2026-07-10",
+      responsibleUserId: "contract-director-1",
+      reviewComment: "合同部已完成预检，提交预算和财务复核。",
+      acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
+      rows: [
+        {
+          code: "HT-HIS-BATCH",
+          name: "接管批次必填合同",
+          counterparty: "历史供应商",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "B",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "按月结算付款",
+          balanceSourceSummary: "财务台账",
+          evidenceSummary: "合同扫描件",
+          evidenceChecklist: "合同扫描件、历史结算台账、付款凭证"
+        }
+      ]
+    };
+    delete body[field];
+
+    await expect(service.createDraftsFromImport("project-1", body, "contract-user")).rejects.toThrow(
+      message
+    );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -761,9 +806,9 @@ describe("ContractTakeoverService", () => {
           batchNo: "接管批次-20260710-TEST0001",
           status: "drafts_generated",
           takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
-          responsibleUserId: "contract-user",
-          reviewComment: "导入预检通过后生成接管草稿，待多部门复核。",
-          acceptanceConclusion: "待主管确认后形成接管结论。",
+          responsibleUserId: "contract-director-1",
+          reviewComment: "合同部已完成预检，提交预算和财务复核。",
+          acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
           importFingerprint: "fingerprint",
           totalRows: 1,
           readyRows: 1,
@@ -791,6 +836,10 @@ describe("ContractTakeoverService", () => {
     const result = await service.createDraftsFromImport(
       "project-1",
       {
+        takeoverCutoffDate: "2026-07-10",
+        responsibleUserId: "contract-director-1",
+        reviewComment: "合同部已完成预检，提交预算和财务复核。",
+        acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
         rows: [
           {
             rowNo: 2,
@@ -822,7 +871,9 @@ describe("ContractTakeoverService", () => {
       status: "drafts_generated",
       statusLabel: "已生成草稿",
       riskText: "预检通过，等待资料核验和复核确认。",
-      responsibleUserId: "contract-user",
+      responsibleUserId: "contract-director-1",
+      reviewComment: "合同部已完成预检，提交预算和财务复核。",
+      acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
       createdCount: 1
     });
     expect(result.createdRows).toEqual([2]);
@@ -831,6 +882,10 @@ describe("ContractTakeoverService", () => {
         projectId: "project-1",
         batchNo: expect.stringMatching(/^接管批次-/),
         status: "drafts_generated",
+        takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
+        responsibleUserId: "contract-director-1",
+        reviewComment: "合同部已完成预检，提交预算和财务复核。",
+        acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
         totalRows: 1,
         readyRows: 1,
         createdCount: 1,
@@ -921,6 +976,10 @@ describe("ContractTakeoverService", () => {
     const result = await service.createDraftsFromImport(
       "project-1",
       {
+        takeoverCutoffDate: "2026-07-10",
+        responsibleUserId: "contract-director-1",
+        reviewComment: "合同部已完成预检，提交预算和财务复核。",
+        acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
         rows: [
           {
             rowNo: 2,

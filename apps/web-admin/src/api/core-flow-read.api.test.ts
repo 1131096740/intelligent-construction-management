@@ -743,7 +743,11 @@ describe("core flow read API client", () => {
       rows: [takeoverPayload]
     });
     await createContractTakeoverDraftsFromImport("project-1", {
-      rows: [takeoverPayload]
+      rows: [takeoverPayload],
+      takeoverCutoffDate: "2026-07-10",
+      responsibleUserId: "contract-director-1",
+      reviewComment: "合同部已完成预检，提交预算和财务复核。",
+      acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。"
     });
     await attachContractTakeoverEvidenceFile("project-1", "takeover-1", {
       fileId: "file-1",
@@ -788,7 +792,13 @@ describe("core flow read API client", () => {
       JSON.stringify({ rows: [takeoverPayload] })
     );
     expect(fetchMock.mock.calls[6][1]?.body).toBe(
-      JSON.stringify({ rows: [takeoverPayload] })
+      JSON.stringify({
+        rows: [takeoverPayload],
+        takeoverCutoffDate: "2026-07-10",
+        responsibleUserId: "contract-director-1",
+        reviewComment: "合同部已完成预检，提交预算和财务复核。",
+        acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。"
+      })
     );
     expect(fetchMock.mock.calls[7][1]?.body).toBe(
       JSON.stringify({ fileId: "file-1", purpose: "historical_contract_scan" })
