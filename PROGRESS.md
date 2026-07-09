@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进审批中心委托中文业务体验治理切片：创建和撤销审批委托时，接收人为空/为本人、接收人不在同项目、接收人停用、委托有效期错误、结束时间早于开始时间、非委托人撤销、委托记录不存在或已撤销等场景，不再抛出 `Approval delegation target is invalid`、`Approval delegation must end after it starts`、`Only the delegator can revoke an approval delegation` 等英文技术错误，统一改为中文业务原因；不改变同项目可选人员范围、委托有效期、审批代理识别和审计口径。验证：API 审批委托 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进通用审批单下载中文业务体验治理切片：审批单下载或补生成时，如果业务尚未完成审批、审批单暂未生成或审批实例已不可用，不再抛出 `No completed approval found for this business object`、`Approval form is not available yet` 等英文技术错误，统一提示“当前业务尚未完成审批，暂不能生成/下载审批单”或“审批单暂未生成，请先确认审批已完成后再下载”；不改变审批单生成、归档文件权限、当前密码、下载原因、水印和审计口径。验证：API 审批单 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进通用审批单与委托人员展示业务化切片：审批单下载水印、审批单 PDF 里的申请人/处理人，以及审批委托列表里的委托人/受托人姓名读取不到时，不再回退展示内部账号/ID，统一显示“下载人未读取”“申请人未读取”“处理人未读取”“委托人未读取”“受托人未读取”；不改变审批单生成、下载当前密码、下载原因、委托有效期、权限和审计口径。验证：API 审批单/审批委托 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算审批时间线人员展示业务化切片：结算审批日志和审批单 PDF 行里的审批人姓名读取不到时，不再回退写入或展示内部账号/ID，统一显示“审批人未读取”，避免审批时间线和归档 PDF 向业务人员暴露内部标识；不改变结算审批状态机、签名图片读取、审批单 PDF 刷新、当前密码下载和审计口径。验证：API 结算服务 Jest、API typecheck、API lint 通过。

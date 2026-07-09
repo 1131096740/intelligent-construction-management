@@ -87,7 +87,7 @@ describe("ApprovalDelegationService", () => {
         startsAt: "2026-06-23T00:00:00.000Z",
         endsAt: "2026-07-23T00:00:00.000Z"
       })
-    ).rejects.toThrow("same project");
+    ).rejects.toThrow("只能委托给同项目可协作人员，请重新选择接收人");
     expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
   });
 
@@ -103,7 +103,7 @@ describe("ApprovalDelegationService", () => {
         startsAt: "2026-06-23T00:00:00.000Z",
         endsAt: "2026-07-23T00:00:00.000Z"
       })
-    ).rejects.toThrow("Approval delegation target is invalid");
+    ).rejects.toThrow("请选择需要委托的审批接收人，不能委托给自己");
     expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
   });
 
@@ -129,7 +129,33 @@ describe("ApprovalDelegationService", () => {
         startsAt: "2026-07-23T00:00:00.000Z",
         endsAt: "2026-06-23T00:00:00.000Z"
       })
-    ).rejects.toThrow("Approval delegation must end after it starts");
+    ).rejects.toThrow("委托结束时间必须晚于开始时间");
+    expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
+  });
+
+  it("uses a business message when delegation dates are invalid", async () => {
+    const prisma = {
+      approvalDelegation: { create: jest.fn() },
+      user: { findFirst: jest.fn().mockResolvedValue({ id: "user-b" }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ userId: "user-b" }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const service = new ApprovalDelegationService(
+      prisma as never,
+      audit as never,
+      projectVisibility as never
+    );
+
+    await expect(
+      service.create("user-a", {
+        toUserId: "user-b",
+        startsAt: "not-a-date",
+        endsAt: "2026-07-23T00:00:00.000Z"
+      })
+    ).rejects.toThrow("委托有效期不正确，请重新选择开始和结束时间");
     expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
   });
 
@@ -155,7 +181,7 @@ describe("ApprovalDelegationService", () => {
         startsAt: "2026-06-23T00:00:00.000Z",
         endsAt: "2026-07-23T00:00:00.000Z"
       })
-    ).rejects.toThrow("target user");
+    ).rejects.toThrow("委托接收人不存在或已停用，请重新选择");
     expect(prisma.approvalDelegation.create).not.toHaveBeenCalled();
   });
 
@@ -267,7 +293,42 @@ describe("ApprovalDelegationService", () => {
     const service = new ApprovalDelegationService(prisma as never, audit as never);
 
     await expect(service.revoke("delegation-1", "user-b")).rejects.toThrow(
-      "Only the delegator can revoke an approval delegation"
+      "只有委托发起人可以撤销这条审批委托"
+    );
+    expect(prisma.approvalDelegation.update).not.toHaveBeenCalled();
+  });
+
+  it("uses a business message when the delegation to revoke is missing", async () => {
+    const prisma = {
+      approvalDelegation: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      }
+    };
+    const service = new ApprovalDelegationService(prisma as never, audit as never);
+
+    await expect(service.revoke("delegation-missing", "user-a")).rejects.toThrow(
+      "审批委托记录不存在或已被删除"
+    );
+    expect(prisma.approvalDelegation.update).not.toHaveBeenCalled();
+  });
+
+  it("uses a business message when the delegation is already revoked", async () => {
+    const prisma = {
+      approvalDelegation: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "delegation-1",
+          fromUserId: "user-a",
+          toUserId: "user-b",
+          enabled: false
+        }),
+        update: jest.fn()
+      }
+    };
+    const service = new ApprovalDelegationService(prisma as never, audit as never);
+
+    await expect(service.revoke("delegation-1", "user-a")).rejects.toThrow(
+      "这条审批委托已撤销，无需重复操作"
     );
     expect(prisma.approvalDelegation.update).not.toHaveBeenCalled();
   });

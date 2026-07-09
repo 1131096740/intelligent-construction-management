@@ -23,12 +23,12 @@ export class ApprovalDelegationService {
     }
 
     if (!input.toUserId || input.toUserId === fromUserId) {
-      throw new Error("Approval delegation target is invalid");
+      throw new Error("请选择需要委托的审批接收人，不能委托给自己");
     }
 
     const sameProjectUserIds = await this.sameProjectUserIds(fromUserId);
     if (!sameProjectUserIds.includes(input.toUserId)) {
-      throw new Error("Approval delegation target user is not in the same project");
+      throw new Error("只能委托给同项目可协作人员，请重新选择接收人");
     }
 
     const targetUser = await this.prisma.user.findFirst({
@@ -36,18 +36,18 @@ export class ApprovalDelegationService {
       select: { id: true }
     });
     if (!targetUser) {
-      throw new Error("Approval delegation target user is inactive or not found");
+      throw new Error("委托接收人不存在或已停用，请重新选择");
     }
 
     const startsAt = new Date(input.startsAt);
     const endsAt = new Date(input.endsAt);
 
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
-      throw new Error("Approval delegation window is invalid");
+      throw new Error("委托有效期不正确，请重新选择开始和结束时间");
     }
 
     if (endsAt <= startsAt) {
-      throw new Error("Approval delegation must end after it starts");
+      throw new Error("委托结束时间必须晚于开始时间");
     }
 
     const delegation = await this.prisma.approvalDelegation.create({
@@ -117,15 +117,15 @@ export class ApprovalDelegationService {
     const delegation = await this.prisma.approvalDelegation.findUnique({ where: { id } });
 
     if (!delegation) {
-      throw new Error("Approval delegation not found");
+      throw new Error("审批委托记录不存在或已被删除");
     }
 
     if (delegation.fromUserId !== actorUserId) {
-      throw new Error("Only the delegator can revoke an approval delegation");
+      throw new Error("只有委托发起人可以撤销这条审批委托");
     }
 
     if (!delegation.enabled) {
-      throw new Error("Approval delegation is already revoked");
+      throw new Error("这条审批委托已撤销，无需重复操作");
     }
 
     const updated = await this.prisma.approvalDelegation.update({
