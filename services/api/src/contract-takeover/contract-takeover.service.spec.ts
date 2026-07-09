@@ -273,6 +273,42 @@ describe("ContractTakeoverService", () => {
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
 
+  it("requires review comment when takeover level differs from system suggestion", async () => {
+    const tx = {
+      contract: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.create(
+        "project-1",
+        {
+          code: "HT-HIS-LEVEL-001",
+          name: "Level mismatch",
+          counterparty: "Supplier B",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "A",
+          lifecycleStatus: "in_progress",
+          historicalApprovedPendingPaymentCents: 20_000,
+          balanceSourceSummary: "Finance ledger checked.",
+          evidenceSummary: "Signed scan and finance ledger."
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("接管等级与系统建议不一致，请在复核意见说明调整原因");
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
+
   it("uses a business message when the takeover project cannot be used", async () => {
     const tx = {
       project: {

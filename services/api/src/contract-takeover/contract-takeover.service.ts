@@ -1260,6 +1260,20 @@ export class ContractTakeoverService {
         return [field, value];
       })
     ) as Record<(typeof MONEY_FIELDS)[number], number>;
+    const reviewComment = input.reviewComment?.trim() || null;
+    const suggestedLevel = suggestedTakeoverLevel({
+      lifecycleStatus: input.lifecycleStatus,
+      balanceSourceSummary: input.balanceSourceSummary,
+      evidenceSummary: input.evidenceSummary,
+      historicalApprovalPendingPaymentCents: money.historicalApprovalPendingPaymentCents,
+      historicalApprovedPendingPaymentCents: money.historicalApprovedPendingPaymentCents,
+      historicalProxyPaidCents: money.historicalProxyPaidCents,
+      historicalRetentionWithheldCents: money.historicalRetentionWithheldCents,
+      otherConfirmedOccupancyCents: money.otherConfirmedOccupancyCents
+    });
+    if (takeoverLevel !== suggestedLevel && !reviewComment) {
+      throw new Error("接管等级与系统建议不一致，请在复核意见说明调整原因");
+    }
 
     return {
       ...input,
@@ -1271,7 +1285,7 @@ export class ContractTakeoverService {
       signedAt,
       takeoverCutoffDate,
       responsibleUserId: input.responsibleUserId?.trim() || null,
-      reviewComment: input.reviewComment?.trim() || null,
+      reviewComment,
       acceptanceConclusion: input.acceptanceConclusion?.trim() || null
     };
   }
@@ -1535,6 +1549,38 @@ function takeoverPaymentBlockingHint(
     return "B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。";
   }
   return "接管资料等级满足继续办理要求，后续付款仍按有效结算和付款条款校验。";
+}
+
+function suggestedTakeoverLevel(input: {
+  lifecycleStatus: string;
+  balanceSourceSummary?: string | null;
+  evidenceSummary?: string | null;
+  historicalApprovalPendingPaymentCents: number;
+  historicalApprovedPendingPaymentCents: number;
+  historicalProxyPaidCents: number;
+  historicalRetentionWithheldCents: number;
+  otherConfirmedOccupancyCents: number;
+}): ContractTakeoverLevel {
+  const evidenceText = `${input.balanceSourceSummary ?? ""} ${input.evidenceSummary ?? ""}`;
+  if (input.lifecycleStatus === "disputed" || /争议|缺|待补|受限|无法|不一致/.test(evidenceText)) {
+    return "C";
+  }
+
+  if (
+    input.historicalApprovalPendingPaymentCents > 0 ||
+    input.historicalApprovedPendingPaymentCents > 0 ||
+    input.historicalProxyPaidCents > 0 ||
+    input.historicalRetentionWithheldCents > 0 ||
+    input.otherConfirmedOccupancyCents > 0
+  ) {
+    return "B";
+  }
+
+  if (!input.balanceSourceSummary?.trim() || !input.evidenceSummary?.trim()) {
+    return "B";
+  }
+
+  return "A";
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
