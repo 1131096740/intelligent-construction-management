@@ -64,6 +64,11 @@ const HISTORICAL_BALANCE = {
   historicalRetentionReleasedCents: 0,
   otherConfirmedOccupancyCents: 100000
 };
+const TAKEOVER_EVIDENCE_PURPOSES = [
+  "historical_contract_scan",
+  "historical_settlement_ledger",
+  "historical_payment_voucher"
+];
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -410,6 +415,54 @@ async function assertTakeoverVerification(takeoverId, token, expected) {
   return verification;
 }
 
+async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
+  for (const purpose of TAKEOVER_EVIDENCE_PURPOSES) {
+    const uploaded = await uploadPrivateFile(`UAT-${CODES.contract}-${purpose}.pdf`, token);
+    await postJson(
+      `/projects/${PROJECT_ID}/contract-takeovers/${takeoverId}/evidence-files`,
+      { fileId: uploaded.id, purpose },
+      token,
+      `上传接管资料 ${purpose}`
+    );
+  }
+
+  const takeover = await loadTakeoverReadModel(takeoverId, token);
+  const uploadedPurposes = new Set(
+    takeover.evidenceChecklist
+      .filter((item) => item.uploaded)
+      .map((item) => item.purpose)
+  );
+  for (const purpose of TAKEOVER_EVIDENCE_PURPOSES) {
+    assert(uploadedPurposes.has(purpose), `接管资料清单未显示已上传：${purpose}`);
+  }
+
+  const downloadable = takeover.evidenceFiles.find((file) => file.canDownload);
+  assert(downloadable?.fileId, "接管资料读模型未返回可下载资料");
+  const ticket = await postJson(
+    `/files/${downloadable.fileId}/download-ticket`,
+    {
+      confirmationPassword: PASSWORD,
+      downloadReason: "UAT 接管资料下载验收"
+    },
+    token,
+    "生成接管资料短时效下载链接"
+  );
+  assertEqual(ticket.fileId, downloadable.fileId, "接管资料下载票据文件");
+  assert(
+    typeof ticket.downloadUrl === "string" && ticket.downloadUrl.includes("downloadReason="),
+    "接管资料下载票据未包含下载原因"
+  );
+
+  const response = await fetch(`${baseUrl}${ticket.downloadUrl}`);
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`接管资料短时效链接下载失败：HTTP ${response.status} ${body}`);
+  }
+  const content = await response.arrayBuffer();
+  assert(content.byteLength > 0, "接管资料短时效链接下载内容为空");
+  return downloadable.fileId;
+}
+
 async function ensureProgressPaymentStage(paymentTermsVersionId) {
   await prisma.paymentTermsStage.create({
     data: {
@@ -697,7 +750,8 @@ async function assertAuditActions(input) {
       OR: [
         { businessType: "contract_takeover", businessId: input.takeoverId },
         { businessType: "settlement", businessId: input.settlementId },
-        { businessType: "payment_request", businessId: input.paymentId }
+        { businessType: "payment_request", businessId: input.paymentId },
+        { businessType: "file_object", businessId: input.evidenceFileId }
       ]
     },
     select: { action: true, actorUserId: true }
@@ -705,8 +759,11 @@ async function assertAuditActions(input) {
   const actionSet = new Set(auditActions.map((row) => row.action));
   const requiredActions = [
     "contract_takeover.create",
+    "contract_takeover.evidence.attach",
     "contract_takeover.submit_review",
     "contract_takeover.confirm",
+    "file.download.ticket",
+    "file.download",
     "payment.contract_takeover.blocked",
     "payment.request.create",
     "settlement.approval.approve",
@@ -765,6 +822,10 @@ async function main() {
   const takeover = await createHistoricalTakeover(tokens.contractStaff);
   let takeoverRecord = await loadTakeoverRecord(takeover.id);
   await ensureProgressPaymentStage(takeoverRecord.paymentTermsVersionId);
+  const evidenceFileId = await attachAndDownloadTakeoverEvidence(
+    takeover.id,
+    tokens.contractStaff
+  );
 
   const staffAfterDraft = await loadWorkbenchSummary("合同员", tokens.contractStaff);
   assertCardCountAtLeast(staffAfterDraft, "contract_takeover_todo", 1, "创建历史接管后");
@@ -857,7 +918,8 @@ async function main() {
   await assertAuditActions({
     takeoverId: takeover.id,
     settlementId: settlement.id,
-    paymentId: payment.id
+    paymentId: payment.id,
+    evidenceFileId
   });
 
   console.log(
