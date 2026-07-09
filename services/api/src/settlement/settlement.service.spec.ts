@@ -3857,6 +3857,26 @@ describe("SettlementService", () => {
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
+  it("结算归档 PDF 服务不可用时给出中文业务提示", async () => {
+    const settlementService = new SettlementService(undefined as never, audit as never);
+
+    await expect(
+      settlementService.generatePdfArchive("settlement-1", "contract-staff-1")
+    ).rejects.toThrow("结算归档 PDF 服务暂不可用，请稍后重试或联系管理员");
+  });
+
+  it("结算归档 PDF 文件服务不可用时给出中文业务提示", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.generatePdfArchive("settlement-1", "contract-staff-1")
+    ).rejects.toThrow("结算归档 PDF 文件服务暂不可用，请稍后重试或联系管理员");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("结算单不存在时不能生成归档 PDF", async () => {
     const tx = {
       settlement: {

@@ -1477,11 +1477,11 @@ export class SettlementService {
     input: GenerateSettlementPdfArchiveDto = {}
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to generate settlement PDF archive");
+      throw new Error("结算归档 PDF 服务暂不可用，请稍后重试或联系管理员");
     }
 
     if (!this.files) {
-      throw new Error("File service is required to generate settlement PDF archive");
+      throw new Error("结算归档 PDF 文件服务暂不可用，请稍后重试或联系管理员");
     }
 
     const templateKey = input.templateKey ?? "settlement_archive";
