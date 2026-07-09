@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进私有资料上传中文业务错误治理切片：私有文件上传在上传人缺失、文件为空、超过系统大小限制或格式不支持时，不再抛出 `Uploaded user id is required`、`Private file is empty`、`Private file exceeds upload size limit`、`Private file extension is not allowed` 等英文技术提示，统一改为中文业务原因并提示重新登录、重新选择文件、压缩后重传或上传 PDF/Word/Excel/图片资料；失败时不会写入私有存储，也不会创建文件对象或审计记录。不改变私有存储、允许格式、大小限制、短时效下载和审计口径。验证：API 文件服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进接管等级申报体验治理切片：接管工作台不再把 A/B/C 展示成用户可直接拍板的“接管等级”，录入态统一改为“申报接管等级”，列表显示“申报等级”，主管确认摘要显示“确认接管等级”；系统建议区明确“系统建议等级”，当申报等级与建议不一致时，要求填写“等级调整说明/复核意见”，并提示复核确认后才形成最终等级。导入示例同步改为“申报接管等级”，但继续兼容旧表头位置，不改变后端入库字段、系统建议规则、主管确认、资料硬拦、付款阻断和审计口径。验证：Web 接管配置 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。
 - 2026-07-10 (CodeX)：继续推进结算审批单下载中文业务错误治理切片：下载最新结算审批单时，如果下载服务或当前密码校验服务暂不可用，不再抛出 `Prisma and file services are required to download settlement approval PDF`、`Auth service is required to confirm settlement approval PDF download` 等英文技术提示，统一改为中文业务原因并提示稍后重试或联系管理员；失败时不会继续校验文件下载权限或读取私有文件。不改变当前密码、下载原因、短时效下载审计和审批单 PDF 生成口径。验证：API 结算服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算归档 PDF 生成中文业务错误治理切片：合同部生成结算归档 PDF 时，如果结算归档 PDF 服务或私有文件服务暂不可用，不再抛出 `Prisma service is required to generate settlement PDF archive`、`File service is required to generate settlement PDF archive` 等英文技术提示，统一改为中文业务原因并提示稍后重试或联系管理员；失败时不会继续生成文件或写入 PDF 归档记录。不改变结算归档 PDF 内容、私有文件上传、资料库入库和审计口径。验证：API 结算服务 Jest、API typecheck、API lint 通过。

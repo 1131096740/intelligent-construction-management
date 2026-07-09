@@ -218,19 +218,19 @@ export class FileService {
 
   async uploadPrivateFile(input: UploadPrivateFileInput) {
     if (!input.uploadedByUserId.trim()) {
-      throw new Error("Uploaded user id is required");
+      throw new Error("上传人信息缺失，请重新登录后再上传资料");
     }
 
     if (!input.buffer.length || input.sizeBytes <= 0) {
-      throw new Error("Private file is empty");
+      throw new Error("上传文件为空，请重新选择资料文件");
     }
 
     if (input.sizeBytes > Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)) {
-      throw new Error("Private file exceeds upload size limit");
+      throw new Error("上传文件超过系统限制，请压缩后重新上传或联系管理员");
     }
 
     if (!ALLOWED_EXTENSIONS.has(extname(input.originalName).toLowerCase())) {
-      throw new Error("Private file extension is not allowed");
+      throw new Error("文件格式不支持，请上传 PDF、Word、Excel 或图片资料");
     }
 
     const objectKey = `uploads/${randomUUID()}-${this.safeFileName(input.originalName)}`;

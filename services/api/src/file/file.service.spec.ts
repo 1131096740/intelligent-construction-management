@@ -236,6 +236,36 @@ describe("FileService", () => {
     expect(tx.fileObject.findUnique).toHaveBeenCalledWith({ where: { id: "file-1" } });
   });
 
+  it("rejects private uploads without an uploader in business Chinese", async () => {
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "盖章合同.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: " ",
+        buffer: Buffer.from("private-file")
+      })
+    ).rejects.toThrow("上传人信息缺失，请重新登录后再上传资料");
+    expect(storage.write).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty private uploads in business Chinese", async () => {
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "盖章合同.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 0,
+        uploadedByUserId: "contract-staff-1",
+        buffer: Buffer.alloc(0)
+      })
+    ).rejects.toThrow("上传文件为空，请重新选择资料文件");
+    expect(storage.write).not.toHaveBeenCalled();
+  });
+
   it("rejects files over FILE_UPLOAD_MAX_BYTES", async () => {
     const previous = process.env.FILE_UPLOAD_MAX_BYTES;
     process.env.FILE_UPLOAD_MAX_BYTES = "4";
@@ -250,7 +280,7 @@ describe("FileService", () => {
           uploadedByUserId: "contract-staff-1",
           buffer: Buffer.from("12345")
         })
-      ).rejects.toThrow("Private file exceeds upload size limit");
+      ).rejects.toThrow("上传文件超过系统限制，请压缩后重新上传或联系管理员");
       expect(storage.write).not.toHaveBeenCalled();
     } finally {
       if (previous === undefined) delete process.env.FILE_UPLOAD_MAX_BYTES;
@@ -269,7 +299,7 @@ describe("FileService", () => {
         uploadedByUserId: "contract-staff-1",
         buffer: Buffer.from("text")
       })
-    ).rejects.toThrow("Private file extension is not allowed");
+    ).rejects.toThrow("文件格式不支持，请上传 PDF、Word、Excel 或图片资料");
     expect(storage.write).not.toHaveBeenCalled();
   });
 
@@ -285,7 +315,7 @@ describe("FileService", () => {
           uploadedByUserId: "contract-staff-1",
           buffer: Buffer.from("data")
         })
-      ).rejects.toThrow("Private file extension is not allowed");
+      ).rejects.toThrow("文件格式不支持，请上传 PDF、Word、Excel 或图片资料");
     }
     expect(storage.write).not.toHaveBeenCalled();
   });
