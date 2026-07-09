@@ -60,6 +60,22 @@ export interface TakeoverPostConfirmationChecklist {
   items: string[];
 }
 
+export interface TakeoverLevelSuggestionDraft {
+  lifecycleStatus: ContractLifecycleStatus;
+  balanceSourceSummary: string;
+  evidenceSummary: string;
+  historicalApprovalPendingPaymentYuan: string;
+  historicalApprovedPendingPaymentYuan: string;
+  historicalProxyPaidYuan: string;
+  historicalRetentionWithheldYuan: string;
+  otherConfirmedOccupancyYuan: string;
+}
+
+export interface TakeoverLevelSuggestion {
+  level: ContractTakeoverLevel;
+  reason: string;
+}
+
 export type TakeoverAction = "edit" | "submit_review" | "confirm";
 
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
@@ -186,6 +202,53 @@ export function takeoverEvidenceUploadDisabledReason(
   }
   if (!hasFile) return "请先选择要上传的接管资料文件";
   return "";
+}
+
+export function suggestTakeoverLevel(draft: TakeoverLevelSuggestionDraft): TakeoverLevelSuggestion {
+  const text = `${draft.balanceSourceSummary} ${draft.evidenceSummary}`;
+
+  if (draft.lifecycleStatus === "disputed" || /争议|缺|待补|受限|无法|不一致/.test(text)) {
+    return {
+      level: "C",
+      reason: "存在争议、资料缺口或受限说明，建议按 C级受限接管并重点跟踪。"
+    };
+  }
+
+  const hasHistoricalOccupancy = [
+    draft.historicalApprovalPendingPaymentYuan,
+    draft.historicalApprovedPendingPaymentYuan,
+    draft.historicalProxyPaidYuan,
+    draft.historicalRetentionWithheldYuan,
+    draft.otherConfirmedOccupancyYuan
+  ].some(hasPositiveYuan);
+
+  if (hasHistoricalOccupancy) {
+    return {
+      level: "B",
+      reason: "存在历史在途、待付、代付、质保金或其他占用，建议按 B级接管并持续核对。"
+    };
+  }
+
+  if (!draft.balanceSourceSummary.trim() || !draft.evidenceSummary.trim()) {
+    return {
+      level: "B",
+      reason: "余额来源或证据说明尚未补齐，建议先按 B级复核。"
+    };
+  }
+
+  return {
+    level: "A",
+    reason: "资料和余额说明较完整，且暂无明显历史占用，建议按 A级接管。"
+  };
+}
+
+export function takeoverLevelAdjustmentDisabledReason(
+  selectedLevel: ContractTakeoverLevel,
+  suggestion: TakeoverLevelSuggestion,
+  reviewComment: string
+): string {
+  if (selectedLevel === suggestion.level || reviewComment.trim()) return "";
+  return "接管等级与系统建议不一致，请在复核意见说明调整原因";
 }
 
 export function takeoverWorkbenchSteps(
@@ -513,4 +576,9 @@ function parseYuanText(raw: string): number | null {
     return null;
   }
   return Number(amount);
+}
+
+function hasPositiveYuan(value: string): boolean {
+  const amount = parseYuanText(value);
+  return amount !== null && amount > 0;
 }

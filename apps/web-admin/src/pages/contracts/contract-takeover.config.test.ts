@@ -10,8 +10,10 @@ import {
   contractTakeoverColumns,
   lifecycleStatusLabel,
   parseContractTakeoverImportPrecheckRows,
+  suggestTakeoverLevel,
   takeoverActionDisabledReason,
   takeoverEvidenceUploadDisabledReason,
+  takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
@@ -171,6 +173,41 @@ describe("contract takeover page configuration", () => {
     expect(
       takeoverEvidenceUploadDisabledReason({ ...takeover(), takeoverStatus: "voided" }, true)
     ).toBe("接管记录已作废，不能上传资料");
+  });
+
+  it("recommends takeover level and requires a reason when manually adjusted", () => {
+    const baseDraft = {
+      lifecycleStatus: "in_progress" as const,
+      balanceSourceSummary: "财务台账已核对",
+      evidenceSummary: "合同、结算、付款凭证齐全",
+      historicalApprovalPendingPaymentYuan: "",
+      historicalApprovedPendingPaymentYuan: "",
+      historicalProxyPaidYuan: "",
+      historicalRetentionWithheldYuan: "",
+      otherConfirmedOccupancyYuan: ""
+    };
+
+    expect(suggestTakeoverLevel(baseDraft)).toMatchObject({ level: "A" });
+    expect(
+      suggestTakeoverLevel({
+        ...baseDraft,
+        historicalApprovedPendingPaymentYuan: "20000.00"
+      })
+    ).toMatchObject({ level: "B" });
+    expect(
+      suggestTakeoverLevel({
+        ...baseDraft,
+        evidenceSummary: "缺少付款凭证，存在争议说明"
+      })
+    ).toMatchObject({ level: "C" });
+
+    const suggestion = suggestTakeoverLevel(baseDraft);
+    expect(takeoverLevelAdjustmentDisabledReason("B", suggestion, "")).toBe(
+      "接管等级与系统建议不一致，请在复核意见说明调整原因"
+    );
+    expect(takeoverLevelAdjustmentDisabledReason("B", suggestion, "合同部确认按 B级跟踪")).toBe(
+      ""
+    );
   });
 
   it("describes the takeover workbench as an eight-step office workflow", () => {

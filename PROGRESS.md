@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进历史接管等级复核体验切片：单合同补录/编辑时，接管工作台会根据履约状态、余额来源、证据说明和历史在途/待付/代付/质保金/其他占用给出 A/B/C 系统建议等级；业务人员仍可调整等级，但若与系统建议不一致，必须在复核意见写明调整原因后才能保存草稿，避免接管等级变成随手选择。不新增字段、不改变后端接管等级、付款阻断、主管确认和审计口径。验证：Web 接管配置 Vitest、Web typecheck、Web lint、Web `check:ui`、`git diff --check` 通过。
 - 2026-07-10 (CodeX)：继续推进审批委托台账前端禁用原因切片：新增委托时未选择受托人、未填写正确生效/失效时间或失效时间不晚于生效时间，创建按钮直接禁用并显示中文业务原因，不再让业务人员点击后等待后端报错；生效/失效时间改为页面原生时间输入，提交前仍转换为后端既有时间格式。不改变同项目可选人员范围、委托有效期、审批代理识别和审计口径。验证：Web 审批委托配置 Vitest、Web typecheck、Web lint、Web `check:ui`、`git diff --check` 通过。
 - 2026-07-10 (CodeX)：继续推进审批中心委托中文业务体验治理切片：创建和撤销审批委托时，接收人为空/为本人、接收人不在同项目、接收人停用、委托有效期错误、结束时间早于开始时间、非委托人撤销、委托记录不存在或已撤销等场景，不再抛出 `Approval delegation target is invalid`、`Approval delegation must end after it starts`、`Only the delegator can revoke an approval delegation` 等英文技术错误，统一改为中文业务原因；不改变同项目可选人员范围、委托有效期、审批代理识别和审计口径。验证：API 审批委托 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进通用审批单下载中文业务体验治理切片：审批单下载或补生成时，如果业务尚未完成审批、审批单暂未生成或审批实例已不可用，不再抛出 `No completed approval found for this business object`、`Approval form is not available yet` 等英文技术错误，统一提示“当前业务尚未完成审批，暂不能生成/下载审批单”或“审批单暂未生成，请先确认审批已完成后再下载”；不改变审批单生成、归档文件权限、当前密码、下载原因、水印和审计口径。验证：API 审批单 Jest、API typecheck、API lint 通过。

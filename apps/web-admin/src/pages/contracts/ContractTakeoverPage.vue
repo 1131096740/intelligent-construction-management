@@ -254,6 +254,13 @@
               </option>
             </select>
           </label>
+          <div class="level-suggestion">
+            <strong>系统建议：{{ takeoverLevelLabel(takeoverLevelSuggestionView.level) }}</strong>
+            <span>{{ takeoverLevelSuggestionView.reason }}</span>
+            <span v-if="createFormLevelDisabledReason">
+              如需按其他等级接管，请在复核意见写明调整原因。
+            </span>
+          </div>
           <label>
             <span>履约状态</span>
             <select v-model="createForm.lifecycleStatus">
@@ -335,7 +342,19 @@
       </div>
 
       <div class="form-actions">
+        <t-tooltip
+          v-if="createFormLevelDisabledReason"
+          :content="createFormLevelDisabledReason"
+        >
+          <t-button
+            theme="primary"
+            disabled
+          >
+            {{ editingTakeoverId ? "保存修改" : "保存接管草稿" }}
+          </t-button>
+        </t-tooltip>
         <t-button
+          v-else
           theme="primary"
           :loading="creating"
           @click="submitCreate"
@@ -703,8 +722,10 @@ import {
   lifecycleStatusLabel,
   lifecycleStatusOptions,
   parseContractTakeoverImportPrecheckRows,
+  suggestTakeoverLevel,
   takeoverActionDisabledReason,
   takeoverEvidenceUploadDisabledReason,
+  takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
@@ -846,6 +867,14 @@ const selectedEvidenceUploadDisabledReason = computed(() => {
   if (!takeover) return "请先选择需要补充资料的接管合同";
   return takeoverEvidenceUploadDisabledReason(takeover, Boolean(evidenceFile.value));
 });
+const takeoverLevelSuggestionView = computed(() => suggestTakeoverLevel(createForm));
+const createFormLevelDisabledReason = computed(() =>
+  takeoverLevelAdjustmentDisabledReason(
+    createForm.takeoverLevel,
+    takeoverLevelSuggestionView.value,
+    createForm.reviewComment
+  )
+);
 
 const summaryValues = computed(() => {
   const counts = {
@@ -1125,6 +1154,10 @@ async function submitCreate() {
   const projectId = selectedProjectId.value;
   if (!projectId) {
     setMessage("请先选择项目", "danger");
+    return;
+  }
+  if (createFormLevelDisabledReason.value) {
+    setMessage(createFormLevelDisabledReason.value, "danger");
     return;
   }
 
@@ -1656,6 +1689,27 @@ input[type="date"] {
 
 .form-grid.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.level-suggestion {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid #e2e7ee;
+  border-radius: 3px;
+  background: #f8fafc;
+}
+
+.level-suggestion strong {
+  color: #151922;
+  font-size: 13px;
+}
+
+.level-suggestion span {
+  color: #5f6673;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .wide-field {
