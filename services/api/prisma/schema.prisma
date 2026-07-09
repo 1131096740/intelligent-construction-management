@@ -148,6 +148,10 @@ model ContractTakeover {
   otherConfirmedOccupancyCents          BigInt    @default(0)
   balanceSourceSummary                  String?
   evidenceSummary                       String?
+  takeoverCutoffDate                    DateTime?
+  responsibleUserId                     String?
+  reviewComment                         String?
+  acceptanceConclusion                  String?
   createdByUserId                       String
   submittedByUserId                     String?
   submittedAt                           DateTime?

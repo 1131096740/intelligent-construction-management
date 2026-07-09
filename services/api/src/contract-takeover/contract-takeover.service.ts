@@ -73,6 +73,10 @@ type ContractTakeoverRecord = {
   otherConfirmedOccupancyCents: bigint | number;
   balanceSourceSummary: string | null;
   evidenceSummary: string | null;
+  takeoverCutoffDate: Date | null;
+  responsibleUserId: string | null;
+  reviewComment: string | null;
+  acceptanceConclusion: string | null;
   submittedAt: Date | null;
   confirmedAt: Date | null;
   historicalBalanceConfirmedAt: Date | null;
@@ -104,6 +108,10 @@ export interface ContractTakeoverBusinessReadModel {
   otherConfirmedOccupancyCents: string;
   balanceSourceSummary: string | null;
   evidenceSummary: string | null;
+  takeoverCutoffDate: Date | null;
+  responsibleUserId: string | null;
+  reviewComment: string | null;
+  acceptanceConclusion: string | null;
   submittedAt: Date | null;
   confirmedAt: Date | null;
   historicalBalanceConfirmedAt: Date | null;
@@ -241,6 +249,10 @@ export class ContractTakeoverService {
           otherConfirmedOccupancyCents: BigInt(data.otherConfirmedOccupancyCents),
           balanceSourceSummary: data.balanceSourceSummary ?? null,
           evidenceSummary: data.evidenceSummary ?? null,
+          takeoverCutoffDate: data.takeoverCutoffDate,
+          responsibleUserId: data.responsibleUserId,
+          reviewComment: data.reviewComment,
+          acceptanceConclusion: data.acceptanceConclusion,
           createdByUserId: actorUserId
         }
       });
@@ -320,7 +332,11 @@ export class ContractTakeoverService {
           historicalRetentionReleasedCents: BigInt(data.historicalRetentionReleasedCents),
           otherConfirmedOccupancyCents: BigInt(data.otherConfirmedOccupancyCents),
           balanceSourceSummary: data.balanceSourceSummary ?? null,
-          evidenceSummary: data.evidenceSummary ?? null
+          evidenceSummary: data.evidenceSummary ?? null,
+          takeoverCutoffDate: data.takeoverCutoffDate,
+          responsibleUserId: data.responsibleUserId,
+          reviewComment: data.reviewComment,
+          acceptanceConclusion: data.acceptanceConclusion
         }
       });
 
@@ -734,6 +750,10 @@ export class ContractTakeoverService {
       otherConfirmedOccupancyCents: moneyString(takeover.otherConfirmedOccupancyCents),
       balanceSourceSummary: takeover.balanceSourceSummary,
       evidenceSummary: takeover.evidenceSummary,
+      takeoverCutoffDate: takeover.takeoverCutoffDate,
+      responsibleUserId: takeover.responsibleUserId,
+      reviewComment: takeover.reviewComment,
+      acceptanceConclusion: takeover.acceptanceConclusion,
       submittedAt: takeover.submittedAt,
       confirmedAt: takeover.confirmedAt,
       historicalBalanceConfirmedAt: takeover.historicalBalanceConfirmedAt,
@@ -893,6 +913,9 @@ export class ContractTakeoverService {
       throw new Error("signedAt must be a valid date string");
     }
     const signedAt = new Date(input.signedAt);
+    const takeoverCutoffDate = input.takeoverCutoffDate?.trim()
+      ? this.normalizeOptionalDate(input.takeoverCutoffDate, "takeoverCutoffDate")
+      : null;
 
     const money = Object.fromEntries(
       MONEY_FIELDS.map((field) => {
@@ -910,8 +933,19 @@ export class ContractTakeoverService {
       code: input.code.trim(),
       name: input.name.trim(),
       counterparty: input.counterparty.trim(),
-      signedAt
+      signedAt,
+      takeoverCutoffDate,
+      responsibleUserId: input.responsibleUserId?.trim() || null,
+      reviewComment: input.reviewComment?.trim() || null,
+      acceptanceConclusion: input.acceptanceConclusion?.trim() || null
     };
+  }
+
+  private normalizeOptionalDate(value: string, field: string) {
+    if (!isStrictDateText(value)) {
+      throw new Error(`${field} must be a valid date string`);
+    }
+    return new Date(value);
   }
 }
 

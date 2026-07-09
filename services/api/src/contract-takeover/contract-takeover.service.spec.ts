@@ -37,6 +37,10 @@ describe("ContractTakeoverService", () => {
       otherConfirmedOccupancyCents: 5_000n,
       balanceSourceSummary: "Finance ledger checked.",
       evidenceSummary: "Signed scan and finance ledger.",
+      takeoverCutoffDate: null,
+      responsibleUserId: null,
+      reviewComment: null,
+      acceptanceConclusion: null,
       createdByUserId: "contract-user",
       submittedByUserId: null,
       submittedAt: null,
@@ -65,7 +69,15 @@ describe("ContractTakeoverService", () => {
         create: jest.fn().mockResolvedValue({ id: "terms-version-1" })
       },
       contractTakeover: {
-        create: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
+        create: jest.fn().mockResolvedValue(
+          takeoverRecord({
+            takeoverStatus: "draft",
+            takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
+            responsibleUserId: "contract-director-1",
+            reviewComment: "预算和财务已完成期初复核。",
+            acceptanceConclusion: "作为第一批 A 级活跃合同继续办理后续结算付款。"
+          })
+        )
       },
       auditLog: {
         create: jest.fn()
@@ -101,7 +113,11 @@ describe("ContractTakeoverService", () => {
         historicalRetentionReleasedCents: 0,
         otherConfirmedOccupancyCents: 5_000,
         balanceSourceSummary: "Finance ledger checked.",
-        evidenceSummary: "Signed scan and finance ledger."
+        evidenceSummary: "Signed scan and finance ledger.",
+        takeoverCutoffDate: "2026-06-30",
+        responsibleUserId: "contract-director-1",
+        reviewComment: "预算和财务已完成期初复核。",
+        acceptanceConclusion: "作为第一批 A 级活跃合同继续办理后续结算付款。"
       },
       "contract-user"
     );
@@ -113,7 +129,11 @@ describe("ContractTakeoverService", () => {
       contractName: "Historical material contract",
       counterparty: "Supplier A",
       amountCents: "1000000",
-      historicalPaidCents: "300000"
+      historicalPaidCents: "300000",
+      takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
+      responsibleUserId: "contract-director-1",
+      reviewComment: "预算和财务已完成期初复核。",
+      acceptanceConclusion: "作为第一批 A 级活跃合同继续办理后续结算付款。"
     });
     expect(result).not.toHaveProperty("contractVersionId");
     expect(result).not.toHaveProperty("paymentTermsVersionId");
@@ -151,6 +171,10 @@ describe("ContractTakeoverService", () => {
         takeoverLevel: "A",
         takeoverStatus: "draft",
         lifecycleStatus: "in_progress",
+        takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
+        responsibleUserId: "contract-director-1",
+        reviewComment: "预算和财务已完成期初复核。",
+        acceptanceConclusion: "作为第一批 A 级活跃合同继续办理后续结算付款。",
         historicalApprovalPendingPaymentCents: BigInt(40_000),
         historicalPaidCents: BigInt(300_000),
         createdByUserId: "contract-user"

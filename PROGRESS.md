@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：按 superpowers loop-engineering 继续推进办公化合同结算工作台方案第 11 项：历史合同接管新增项目级接管批次元数据，`ContractTakeover` 增加接管截止日、接管责任人、复核意见和验收结论；创建/编辑草稿、读模型和 Web 接管表单同步支持，台账新增“接管截止日”列，详情展示来源、复核和验收信息。本轮不新增独立批次表，先用单合同接管记录承载真实试运行所需最小闭环。验证：Prisma generate/validate、API 接管 Jest、Web 接管配置 Vitest、API/Web typecheck、API/Web lint、Web `check:ui`、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：继续执行办公化合同结算工作台方案历史接管主线：历史合同导入预检模板新增“资料清单”和“问题清单”两列，前端粘贴解析和预检结果表同步展示；后端预检对未填写资料清单、A级合同仍有问题清单、C级合同缺少问题清单给出中文业务提醒，帮助真实接管时把合同扫描件、结算依据、付款凭证、缺口责任人和是否影响付款提前暴露。本轮仍保持预检只读不写正式业务事实。验证：API 接管 Jest、Web 接管配置 Vitest、API/Web typecheck、API/Web lint、Web `check:ui`、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：继续执行办公化合同结算工作台方案付款主线：合同累计结算付款预览新增后端 `capacityExplanation` 中文额度分解，按“当前累计可付款金额 - 已实际付款 - 审批中占用 - 已批待付款占用 - 总包代付 - 历史其他确认占用 - 本次应扣回预付款 = 本次最多可申请”返回业务说明；Web 付款新建面板展示该分解清单，帮助合同部/财务确认为什么当前最多只能申请该金额。付款规则、申请提交和金额硬校验不变。验证：API 付款读服务 Jest、Web 付款配置 Vitest、API/Web typecheck、API/Web lint、Web `check:ui`、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：继续执行办公化合同结算工作台方案账本主线：新增 `SettlementLine` 结算明细行模型和迁移，结算创建支持合同清单项与手工调整项两类明细，后端校验明细合计必须等于本次结算金额，合同清单项必须属于当前有效合同版本，手工调整项必须填写原因；结算详情读模型和 Web 详情页新增“结算明细账本”只读表。本轮不做在线 Excel、导入记录和变更签证正式模块。验证：Prisma generate/validate、API 结算 Jest 2 套 50 例、API typecheck/lint、Web typecheck、`check:ui`、`git diff --check` 通过。

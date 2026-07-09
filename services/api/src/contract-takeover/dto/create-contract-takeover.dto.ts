@@ -32,6 +32,10 @@ export interface CreateContractTakeoverDto {
   otherConfirmedOccupancyCents?: number;
   balanceSourceSummary?: string;
   evidenceSummary?: string;
+  takeoverCutoffDate?: string;
+  responsibleUserId?: string;
+  reviewComment?: string;
+  acceptanceConclusion?: string;
 }
 
 export type UpdateContractTakeoverDto = CreateContractTakeoverDto;

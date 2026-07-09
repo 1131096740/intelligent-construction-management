@@ -173,6 +173,13 @@
             >
           </label>
           <label>
+            <span>接管截止日</span>
+            <input
+              v-model="createForm.takeoverCutoffDate"
+              type="date"
+            >
+          </label>
+          <label>
             <span>接管等级</span>
             <select v-model="createForm.takeoverLevel">
               <option
@@ -223,6 +230,13 @@
         </div>
         <div class="form-grid two">
           <label>
+            <span>接管责任人</span>
+            <t-input
+              v-model="createForm.responsibleUserId"
+              placeholder="填写责任人姓名或账号备注"
+            />
+          </label>
+          <label>
             <span>余额来源说明</span>
             <t-textarea
               v-model="createForm.balanceSourceSummary"
@@ -235,6 +249,22 @@
             <t-textarea
               v-model="createForm.evidenceSummary"
               placeholder="如已归档合同、对账单、付款凭证清单"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+            />
+          </label>
+          <label>
+            <span>复核意见</span>
+            <t-textarea
+              v-model="createForm.reviewComment"
+              placeholder="记录合同部、预算、项目、财务复核意见"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+            />
+          </label>
+          <label>
+            <span>验收结论</span>
+            <t-textarea
+              v-model="createForm.acceptanceConclusion"
+              placeholder="记录是否可作为后续结算付款依据"
               :autosize="{ minRows: 2, maxRows: 4 }"
             />
           </label>
@@ -392,6 +422,14 @@
               <dd>{{ selectedRow.takeover.evidenceSummary || "未填写" }}</dd>
             </div>
             <div>
+              <dt>接管截止日</dt>
+              <dd>{{ formatTakeoverDate(selectedRow.takeover.takeoverCutoffDate) }}</dd>
+            </div>
+            <div>
+              <dt>接管责任人</dt>
+              <dd>{{ selectedRow.takeover.responsibleUserId || "未填写" }}</dd>
+            </div>
+            <div>
               <dt>提交时间</dt>
               <dd>{{ formatTakeoverDate(selectedRow.takeover.submittedAt) }}</dd>
             </div>
@@ -402,6 +440,14 @@
             <div>
               <dt>余额确认时间</dt>
               <dd>{{ formatTakeoverDate(selectedRow.takeover.historicalBalanceConfirmedAt) }}</dd>
+            </div>
+            <div>
+              <dt>复核意见</dt>
+              <dd>{{ selectedRow.takeover.reviewComment || "未填写" }}</dd>
+            </div>
+            <div>
+              <dt>验收结论</dt>
+              <dd>{{ selectedRow.takeover.acceptanceConclusion || "未填写" }}</dd>
             </div>
           </dl>
         </div>
@@ -500,11 +546,15 @@ interface CreateFormState extends Record<MoneyFieldKey, string> {
   companyEntityName: string;
   amountYuan: string;
   signedAt: string;
+  takeoverCutoffDate: string;
   takeoverLevel: ContractTakeoverLevel;
   lifecycleStatus: ContractLifecycleStatus;
   paymentTermsOriginalText: string;
   balanceSourceSummary: string;
   evidenceSummary: string;
+  responsibleUserId: string;
+  reviewComment: string;
+  acceptanceConclusion: string;
 }
 
 const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
@@ -805,6 +855,7 @@ async function submitCreate() {
       companyEntityName: createForm.companyEntityName.trim() || undefined,
       amountCents: yuanToCents(createForm.amountYuan, "合同金额"),
       signedAt: requiredText(createForm.signedAt, "签订日期"),
+      takeoverCutoffDate: createForm.takeoverCutoffDate || undefined,
       takeoverLevel: createForm.takeoverLevel,
       lifecycleStatus: createForm.lifecycleStatus,
       paymentTermsOriginalText: requiredText(
@@ -822,7 +873,10 @@ async function submitCreate() {
       historicalRetentionReleasedCents: moneyCents("historicalRetentionReleasedYuan"),
       otherConfirmedOccupancyCents: moneyCents("otherConfirmedOccupancyYuan"),
       balanceSourceSummary: requiredText(createForm.balanceSourceSummary, "余额来源说明"),
-      evidenceSummary: requiredText(createForm.evidenceSummary, "证据说明")
+      evidenceSummary: requiredText(createForm.evidenceSummary, "证据说明"),
+      responsibleUserId: createForm.responsibleUserId.trim() || undefined,
+      reviewComment: createForm.reviewComment.trim() || undefined,
+      acceptanceConclusion: createForm.acceptanceConclusion.trim() || undefined
     };
     const editingId = editingTakeoverId.value;
     const saved = editingId
@@ -977,6 +1031,7 @@ function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState 
     companyEntityName: takeover.companyEntityName ?? "",
     amountYuan: centsToYuanInput(takeover.amountCents),
     signedAt: takeover.signedAt.slice(0, 10),
+    takeoverCutoffDate: takeover.takeoverCutoffDate?.slice(0, 10) ?? "",
     takeoverLevel: takeover.takeoverLevel,
     lifecycleStatus: takeover.lifecycleStatus,
     paymentTermsOriginalText: takeover.paymentTermsOriginalText,
@@ -991,7 +1046,10 @@ function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState 
     historicalRetentionReleasedYuan: centsToYuanInput(takeover.historicalRetentionReleasedCents),
     otherConfirmedOccupancyYuan: centsToYuanInput(takeover.otherConfirmedOccupancyCents),
     balanceSourceSummary: takeover.balanceSourceSummary ?? "",
-    evidenceSummary: takeover.evidenceSummary ?? ""
+    evidenceSummary: takeover.evidenceSummary ?? "",
+    responsibleUserId: takeover.responsibleUserId ?? "",
+    reviewComment: takeover.reviewComment ?? "",
+    acceptanceConclusion: takeover.acceptanceConclusion ?? ""
   };
 }
 
@@ -1010,6 +1068,7 @@ function createEmptyForm(): CreateFormState {
     companyEntityName: "",
     amountYuan: "",
     signedAt: todayText(),
+    takeoverCutoffDate: "",
     takeoverLevel: "B",
     lifecycleStatus: "in_progress",
     paymentTermsOriginalText: "",
@@ -1024,7 +1083,10 @@ function createEmptyForm(): CreateFormState {
     historicalRetentionReleasedYuan: "",
     otherConfirmedOccupancyYuan: "",
     balanceSourceSummary: "",
-    evidenceSummary: ""
+    evidenceSummary: "",
+    responsibleUserId: "",
+    reviewComment: "",
+    acceptanceConclusion: ""
   };
 }
 

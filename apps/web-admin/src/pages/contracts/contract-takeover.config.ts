@@ -29,6 +29,7 @@ export interface ContractTakeoverTableRow {
   lifecycleStatus: ContractLifecycleStatus;
   lifecycleStatusLabel: string;
   signedAt: string;
+  takeoverCutoffDate: string;
   historicalSettled: string;
   historicalPaid: string;
   historicalPending: string;
@@ -60,6 +61,7 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
   { colKey: "takeoverLevelLabel", title: "接管等级", width: 104 },
   { colKey: "takeoverStatusLabel", title: "接管状态", width: 112 },
   { colKey: "lifecycleStatusLabel", title: "履约状态", width: 112 },
+  { colKey: "takeoverCutoffDate", title: "接管截止日", width: 112 },
   { colKey: "historicalPaid", title: "历史已付", width: 116, align: "right" },
   { colKey: "historicalPending", title: "在途/待付", width: 116, align: "right" },
   { colKey: "updatedAt", title: "更新时间", width: 112 },
@@ -175,6 +177,7 @@ export function toContractTakeoverTableRow(
     lifecycleStatus: takeover.lifecycleStatus,
     lifecycleStatusLabel: lifecycleStatusLabel(takeover.lifecycleStatus),
     signedAt: formatTakeoverDate(takeover.signedAt),
+    takeoverCutoffDate: formatTakeoverDate(takeover.takeoverCutoffDate),
     historicalSettled: centsToYuanText(takeover.historicalSettledCents),
     historicalPaid: centsToYuanText(takeover.historicalPaidCents),
     historicalPending: centsToYuanText(

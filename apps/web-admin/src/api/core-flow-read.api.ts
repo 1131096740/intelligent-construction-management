@@ -190,6 +190,10 @@ export interface ContractTakeoverReadModel {
   otherConfirmedOccupancyCents: ContractTakeoverCentsValue;
   balanceSourceSummary: string | null;
   evidenceSummary: string | null;
+  takeoverCutoffDate: string | null;
+  responsibleUserId: string | null;
+  reviewComment: string | null;
+  acceptanceConclusion: string | null;
   submittedAt: string | null;
   confirmedAt: string | null;
   historicalBalanceConfirmedAt: string | null;
@@ -222,6 +226,10 @@ export interface CreateContractTakeoverPayload {
   otherConfirmedOccupancyCents?: number;
   balanceSourceSummary?: string;
   evidenceSummary?: string;
+  takeoverCutoffDate?: string;
+  responsibleUserId?: string;
+  reviewComment?: string;
+  acceptanceConclusion?: string;
   evidenceChecklist?: string;
   issueSummary?: string;
 }
