@@ -209,7 +209,7 @@ describe("contract takeover page configuration", () => {
     );
     expect(
       takeoverEvidenceUploadDisabledReason({ ...takeover(), takeoverStatus: "confirmed" }, true)
-    ).toBe("已完成主管确认，接管资料不能静默补充，请走更正记录");
+    ).toBe("已完成主管确认，接管资料不能静默补充，请发起更正记录并保留原因、责任人和附件");
     expect(
       takeoverEvidenceUploadDisabledReason({ ...takeover(), takeoverStatus: "voided" }, true)
     ).toBe("接管记录已作废，不能上传资料");

@@ -1606,6 +1606,41 @@ describe("ContractTakeoverService", () => {
     expect(tx.archiveRecord.create).not.toHaveBeenCalled();
   });
 
+  it("已确认接管资料不能静默补充，必须走更正记录", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" }))
+      },
+      archiveRecord: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.attachEvidenceFile(
+        "project-1",
+        "takeover-1",
+        { fileId: "file-1", purpose: "historical_contract_scan" },
+        "contract-user"
+      )
+    ).rejects.toThrow(
+      "已完成主管确认，接管资料不能静默补充，请发起更正记录并保留原因、责任人和附件"
+    );
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+    expect(tx.archiveRecord.create).not.toHaveBeenCalled();
+  });
+
   it("rejects takeover evidence when the actor cannot read the file", async () => {
     const tx = {
       contractTakeover: {

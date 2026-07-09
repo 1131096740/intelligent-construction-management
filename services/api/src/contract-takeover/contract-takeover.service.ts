@@ -498,6 +498,11 @@ export class ContractTakeoverService {
     return this.prisma.$transaction(async (tx) => {
       const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
       if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
+        if (takeover.takeoverStatus === "confirmed") {
+          throw new Error(
+            "已完成主管确认，接管资料不能静默补充，请发起更正记录并保留原因、责任人和附件"
+          );
+        }
         throw new Error("当前接管记录不能继续挂接资料，请确认仍处于草稿或待补充状态");
       }
       if (!this.files) {

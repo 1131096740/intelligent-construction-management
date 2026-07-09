@@ -237,7 +237,7 @@ export function takeoverEvidenceUploadDisabledReason(
       return "已提交复核，需退回补充后才能继续上传资料";
     }
     if (takeover.takeoverStatus === "confirmed") {
-      return "已完成主管确认，接管资料不能静默补充，请走更正记录";
+      return "已完成主管确认，接管资料不能静默补充，请发起更正记录并保留原因、责任人和附件";
     }
     if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能上传资料";
   }
