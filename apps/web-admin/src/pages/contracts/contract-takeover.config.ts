@@ -50,6 +50,7 @@ export interface TakeoverWorkbenchStep {
 export interface TakeoverConfirmationSummary {
   items: Array<{ label: string; value: string }>;
   consequence: string;
+  levelReviewText: string;
   riskText: string;
   paymentBlockingText: string;
   evidenceGapText: string;
@@ -292,6 +293,29 @@ export function takeoverLevelAdjustmentDisabledReason(
   return "接管等级与系统建议不一致，请在复核意见说明调整原因";
 }
 
+export function takeoverLevelReviewText(takeover: ContractTakeoverReadModel): string {
+  const suggestion = suggestTakeoverLevel({
+    lifecycleStatus: takeover.lifecycleStatus,
+    balanceSourceSummary: takeover.balanceSourceSummary ?? "",
+    evidenceSummary: takeover.evidenceSummary ?? "",
+    historicalApprovalPendingPaymentYuan: centsToPlainYuan(takeover.historicalApprovalPendingPaymentCents),
+    historicalApprovedPendingPaymentYuan: centsToPlainYuan(takeover.historicalApprovedPendingPaymentCents),
+    historicalProxyPaidYuan: centsToPlainYuan(takeover.historicalProxyPaidCents),
+    historicalRetentionWithheldYuan: centsToPlainYuan(takeover.historicalRetentionWithheldCents),
+    otherConfirmedOccupancyYuan: centsToPlainYuan(takeover.otherConfirmedOccupancyCents)
+  });
+  const suggestedLevel = takeoverLevelLabel(suggestion.level);
+  const selectedLevel = takeoverLevelLabel(takeover.takeoverLevel);
+
+  if (takeover.takeoverLevel === suggestion.level) {
+    return `接管等级与系统建议一致：${selectedLevel}。${suggestion.reason}`;
+  }
+
+  return `接管等级由系统建议${suggestedLevel}调整为${selectedLevel}，调整原因：${
+    takeover.reviewComment?.trim() || "未填写"
+  }`;
+}
+
 export function takeoverWorkbenchSteps(
   takeover: Pick<ContractTakeoverReadModel, "takeoverStatus"> | null
 ): TakeoverWorkbenchStep[] {
@@ -367,6 +391,7 @@ export function buildTakeoverConfirmationSummary(
     ],
     consequence:
       "确认后会形成系统期初事实，后续结算、付款申请、实付和审计都会以这些历史金额和资料作为约束依据。",
+    levelReviewText: takeoverLevelReviewText(takeover),
     riskText: takeover.levelRiskText || takeoverLevelRiskText(takeover.takeoverLevel),
     paymentBlockingText: takeover.paymentBlockingHint,
     evidenceGapText: takeover.evidenceGapSummary,
@@ -558,6 +583,15 @@ function centsValueToBigInt(value: ContractTakeoverCentsValue | bigint): bigint 
     throw new Error("金额数据格式不正确，请刷新后重试");
   }
   return BigInt(value);
+}
+
+function centsToPlainYuan(value: ContractTakeoverCentsValue | bigint): string {
+  const amountCents = centsValueToBigInt(value);
+  const sign = amountCents < 0n ? "-" : "";
+  const absolute = amountCents < 0n ? -amountCents : amountCents;
+  const yuan = absolute / 100n;
+  const cents = absolute % 100n;
+  return `${sign}${yuan}.${String(cents).padStart(2, "0")}`;
 }
 
 function splitImportLine(line: string): string[] {

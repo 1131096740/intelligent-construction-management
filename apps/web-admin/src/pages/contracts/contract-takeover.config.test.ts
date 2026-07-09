@@ -18,6 +18,7 @@ import {
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
+  takeoverLevelReviewText,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverStatusLabel,
@@ -288,6 +289,7 @@ describe("contract takeover page configuration", () => {
       { label: "历史质保金扣留/释放", value: "¥30,000.00 / ¥10,000.00" }
     ]);
     expect(summary.consequence).toContain("确认后会形成系统期初事实");
+    expect(summary.levelReviewText).toContain("接管等级与系统建议一致：B级");
     expect(summary.riskText).toBe("B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。");
     expect(summary.paymentBlockingText).toBe("尚未完成主管确认，后续付款申请会被系统阻断。");
     expect(summary.evidenceGapText).toBe("缺少：历史付款凭证。补齐前会影响主管确认和后续付款核验。");
@@ -295,6 +297,36 @@ describe("contract takeover page configuration", () => {
     expect(summary.reviewText).toBe("预算已复核结算口径");
     expect(summary.acceptanceText).toBe("作为 A 级活跃合同继续办理");
     expect(summary.responsibleText).toBe("合同负责人");
+  });
+
+  it("explains takeover level adjustments with review comment", () => {
+    expect(
+      takeoverLevelReviewText({
+        ...takeover(),
+        takeoverLevel: "B",
+        historicalApprovalPendingPaymentCents: "0",
+        historicalApprovedPendingPaymentCents: "0",
+        historicalProxyPaidCents: "0",
+        historicalRetentionWithheldCents: "0",
+        otherConfirmedOccupancyCents: "0",
+        reviewComment: "合同部按现场资料完整度降为 B级跟踪"
+      })
+    ).toBe("接管等级由系统建议A级调整为B级，调整原因：合同部按现场资料完整度降为 B级跟踪");
+  });
+
+  it("keeps takeover level review readable when summaries are missing", () => {
+    expect(
+      takeoverLevelReviewText({
+        ...takeover(),
+        balanceSourceSummary: null,
+        evidenceSummary: null,
+        historicalApprovalPendingPaymentCents: "0",
+        historicalApprovedPendingPaymentCents: "0",
+        historicalProxyPaidCents: "0",
+        historicalRetentionWithheldCents: "0",
+        otherConfirmedOccupancyCents: "0"
+      })
+    ).toContain("接管等级与系统建议一致：B级");
   });
 
   it("shows post-confirmation checks only after takeover confirmation", () => {

@@ -495,6 +495,7 @@
               </div>
             </dl>
             <p>{{ selectedConfirmationSummary.consequence }}</p>
+            <p>{{ selectedConfirmationSummary.levelReviewText }}</p>
             <p>{{ selectedConfirmationSummary.riskText }}</p>
             <p>付款办理提示：{{ selectedConfirmationSummary.paymentBlockingText }}</p>
             <p>资料缺口说明：{{ selectedConfirmationSummary.evidenceGapText }}</p>
@@ -674,6 +675,7 @@
               <dd>{{ item.value }}</dd>
             </div>
           </dl>
+          <p>{{ confirmSummary.levelReviewText }}</p>
           <p>{{ confirmSummary.riskText }}</p>
           <p>付款办理提示：{{ confirmSummary.paymentBlockingText }}</p>
           <p>资料缺口说明：{{ confirmSummary.evidenceGapText }}</p>
