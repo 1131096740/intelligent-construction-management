@@ -270,13 +270,28 @@ onMounted(loadRules);
 
 <style scoped>
 .page { color: var(--jg-text-strong); }
-.page-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.page-head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--jg-space-lg);
+  margin-bottom: var(--jg-space-lg);
+}
+.page-head h1 { margin: 0 0 var(--jg-space-sm); font-size: 24px; line-height: 1.2; }
 .page-head p, label span { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
-.panel { margin-bottom: 16px; border-radius: var(--jg-radius-sm); }
-.form-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
-label { display: grid; gap: 4px; }
-.token-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.panel { margin-bottom: var(--jg-space-lg); border-radius: var(--jg-radius-sm); }
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: var(--jg-space-md);
+  margin-bottom: var(--jg-space-md);
+}
+label { display: grid; gap: var(--jg-space-xs); }
+.token-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm);
+  margin-bottom: var(--jg-space-md);
+}
 .preview, .message { font-size: 12px; }
 .success { color: var(--jg-success); }
 .danger { color: var(--jg-danger); }

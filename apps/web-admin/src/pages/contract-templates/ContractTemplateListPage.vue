@@ -18,21 +18,20 @@
       </t-space>
     </div>
 
-    <div class="mode-switch">
-      <t-button
-        :theme="mode === 'use' ? 'primary' : 'default'"
-        @click="mode = 'use'"
-      >
-        使用模式
-      </t-button>
-      <t-button
+    <t-tabs
+      v-model="mode"
+      class="mode-switch"
+    >
+      <t-tab-panel
+        value="use"
+        label="使用模式"
+      />
+      <t-tab-panel
         v-if="canConfigureTemplates"
-        :theme="mode === 'config' ? 'primary' : 'default'"
-        @click="mode = 'config'"
-      >
-        配置模式
-      </t-button>
-    </div>
+        value="config"
+        label="配置模式"
+      />
+    </t-tabs>
 
     <section
       v-if="mode === 'use'"
@@ -47,17 +46,19 @@
         v-if="templates.length"
         class="template-grid"
       >
-        <article
+        <t-card
           v-for="template in templates"
           :key="template.id"
           class="template-card"
+          :bordered="true"
         >
-          <div>
-            <h2>{{ templateName(template) }}</h2>
-            <p>{{ contractTypeLabel(template.contractTypeKey) }}</p>
-          </div>
-          <div class="template-meta">
-            <span>{{ versionLabel(template) }}</span>
+          <template #title>
+            {{ templateName(template) }}
+          </template>
+          <t-space
+            size="small"
+            class="template-meta"
+          >
             <t-tag
               size="small"
               theme="success"
@@ -65,14 +66,25 @@
             >
               已发布
             </t-tag>
+            <t-tag
+              size="small"
+              variant="light"
+            >
+              {{ contractTypeLabel(template.contractTypeKey) }}
+            </t-tag>
+          </t-space>
+          <div class="template-card-body">
+            <p>{{ versionLabel(template) }}</p>
           </div>
-          <t-button
-            theme="primary"
-            @click="useTemplate(template)"
-          >
-            用此模板建合同
-          </t-button>
-        </article>
+          <template #actions>
+            <t-button
+              theme="primary"
+              @click="useTemplate(template)"
+            >
+              用此模板建合同
+            </t-button>
+          </template>
+        </t-card>
       </div>
 
       <t-empty
@@ -272,15 +284,20 @@ onMounted(loadTemplates);
 
 <style scoped>
 .page { color: var(--jg-text-strong); }
-.page-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.page-head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--jg-space-lg);
+  margin-bottom: var(--jg-space-lg);
+}
+.page-head h1 { margin: 0 0 var(--jg-space-sm); font-size: 24px; line-height: 1.2; }
 .page-head p { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
-.mode-switch { display: flex; gap: 8px; margin-bottom: 16px; }
-.use-mode { display: grid; gap: 16px; }
+.mode-switch { margin-bottom: var(--jg-space-lg); }
+.use-mode { display: grid; gap: var(--jg-space-lg); }
 .mode-note {
   display: grid;
-  gap: 4px;
-  padding: 12px;
+  gap: var(--jg-space-xs);
+  padding: var(--jg-space-md);
   color: var(--jg-text-main);
   background: var(--jg-bg-muted);
   border: 1px solid var(--jg-border);
@@ -291,22 +308,34 @@ onMounted(loadTemplates);
 .template-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
+  gap: var(--jg-space-md);
 }
 .template-card {
   display: grid;
-  gap: 12px;
-  padding: 16px;
-  background: var(--jg-bg-panel);
-  border: 1px solid var(--jg-border);
-  border-radius: var(--jg-radius-sm);
+  background: var(--jg-color-bg-panel);
+  border-color: var(--jg-color-border);
+  border-radius: var(--jg-radius-md);
 }
-.template-card h2 { margin: 0 0 6px; font-size: 16px; }
-.template-card p { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
-.template-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--jg-text-main); font-size: 12px; }
-.panel { margin-bottom: 16px; border-radius: var(--jg-radius-sm); }
-.form-grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 12px; align-items: end; }
-label { display: grid; gap: 4px; }
+.template-card :deep(.t-card__header) { padding-bottom: var(--jg-space-sm); }
+.template-card :deep(.t-card__body) {
+  display: grid;
+  gap: var(--jg-space-md);
+  padding-top: 0;
+}
+.template-card :deep(.t-card__actions) {
+  padding-top: 0;
+  border-top: 0;
+}
+.template-card-body p { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
+.template-meta { color: var(--jg-text-main); }
+.panel { margin-bottom: var(--jg-space-lg); border-radius: var(--jg-radius-sm); }
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: var(--jg-space-md);
+  align-items: end;
+}
+label { display: grid; gap: var(--jg-space-xs); }
 label span { color: var(--jg-text-muted); font-size: 12px; font-weight: 600; }
 .message { font-size: 12px; }
 .success { color: var(--jg-success); }
