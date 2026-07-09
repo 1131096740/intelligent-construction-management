@@ -18,6 +18,11 @@ import { SettlementService } from "./settlement.service";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+interface DownloadApprovalPdfDto {
+  confirmationPassword?: string;
+  downloadReason?: string;
+}
+
 @Controller("settlements")
 export class SettlementController {
   constructor(
@@ -183,13 +188,19 @@ export class SettlementController {
     return new StreamableFile(result.buffer);
   }
 
-  @Get(":settlementId/approval-pdf/latest")
+  @Post(":settlementId/approval-pdf/latest")
   async downloadLatestApprovalPdf(
     @Param("settlementId") settlementId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Body() body: DownloadApprovalPdfDto | undefined,
     @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
   ) {
-    const result = await this.settlements.downloadLatestApprovalPdf(settlementId, user.id);
+    const result = await this.settlements.downloadLatestApprovalPdf(
+      settlementId,
+      user.id,
+      body?.confirmationPassword,
+      body?.downloadReason
+    );
     response.set({
       "Content-Type": "application/pdf",
       "Content-Length": String(result.buffer.length),

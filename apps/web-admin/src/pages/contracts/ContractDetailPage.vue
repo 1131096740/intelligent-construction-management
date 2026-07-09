@@ -857,13 +857,35 @@ async function submitContractReview(decision: "approve" | "reject") {
 }
 
 async function downloadContractApprovalForm() {
-  const contractVersionId = requiredText(
-    contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
-  );
+  let contractVersionId = "";
+  let confirmationPassword = "";
+  try {
+    contractVersionId = requiredText(contractDetail.value?.contractVersionId ?? "", "合同");
+    confirmationPassword = requiredText(contractArchiveForm.downloadPassword, "当前登录密码");
+  } catch (error) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = error instanceof Error ? error.message : "下载审批单失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认下载后，系统将校验当前密码并记录下载人、审批单和下载原因审计。是否继续？"
+    )
+  ) {
+    return;
+  }
+  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
+  if (!downloadReason) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = "请填写下载原因";
+    return;
+  }
 
   await runArchiveAction("approvalForm", async () => {
-    await requestApprovalFormDownload("contract_version", contractVersionId);
+    await requestApprovalFormDownload("contract_version", contractVersionId, {
+      confirmationPassword,
+      downloadReason
+    });
   });
 }
 

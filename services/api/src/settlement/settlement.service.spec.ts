@@ -2844,16 +2844,19 @@ describe("SettlementService", () => {
     const settlementService = new SettlementService(
       prisma as never,
       audit as never,
-      undefined,
+      auth as never,
       undefined,
       files as never
     );
 
     const result = await settlementService.downloadLatestApprovalPdf(
       "settlement-1",
-      "approver-1"
+      "approver-1",
+      "current-password",
+      "结算审批复核"
     );
 
+    expect(auth.confirmPassword).toHaveBeenCalledWith("approver-1", "current-password");
     expect(tx.pdfDocument.findFirst).toHaveBeenCalledWith({
       where: {
         businessType: "settlement",
@@ -2862,8 +2865,36 @@ describe("SettlementService", () => {
       }
     });
     expect(files.assertCanDownloadFileById).toHaveBeenCalledWith("file-latest", "approver-1");
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        action: "settlement.approval_pdf.download",
+        actorUserId: "approver-1",
+        metadata: expect.objectContaining({ downloadReason: "结算审批复核" })
+      })
+    );
     expect(result.fileName).toBe("JS-2026-019-结算审批最新.pdf");
     expect(result.buffer).toEqual(Buffer.from("%PDF-latest"));
+  });
+
+  it("rejects settlement approval PDF download without a download reason", async () => {
+    const settlementService = new SettlementService(
+      {} as never,
+      audit as never,
+      auth as never,
+      undefined,
+      {} as never
+    );
+
+    await expect(
+      settlementService.downloadLatestApprovalPdf(
+        "settlement-1",
+        "approver-1",
+        "current-password",
+        ""
+      )
+    ).rejects.toThrow("结算审批单下载原因必填");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
   it("regenerates the latest settlement approval PDF during download when it is missing", async () => {
@@ -2981,14 +3012,16 @@ describe("SettlementService", () => {
     const settlementService = new SettlementService(
       prisma as never,
       audit as never,
-      undefined,
+      auth as never,
       undefined,
       files as never
     );
 
     const result = await settlementService.downloadLatestApprovalPdf(
       "settlement-1",
-      "approver-1"
+      "approver-1",
+      "current-password",
+      "结算审批复核"
     );
 
     expect(files.uploadPrivateFile).toHaveBeenCalledWith(
@@ -3050,13 +3083,18 @@ describe("SettlementService", () => {
     const settlementService = new SettlementService(
       prisma as never,
       audit as never,
-      undefined,
+      auth as never,
       undefined,
       files as never
     );
 
     await expect(
-      settlementService.downloadLatestApprovalPdf("settlement-1", "engineering-user-1")
+      settlementService.downloadLatestApprovalPdf(
+        "settlement-1",
+        "engineering-user-1",
+        "current-password",
+        "结算审批复核"
+      )
     ).rejects.toThrow("Actor cannot download settlement approval PDF");
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
     expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();

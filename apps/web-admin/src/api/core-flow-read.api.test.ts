@@ -1021,12 +1021,21 @@ describe("core flow read API client", () => {
       })
     } as Response);
 
-    await downloadSettlementLatestApprovalPdf("settlement-1");
+    await downloadSettlementLatestApprovalPdf("settlement-1", {
+      confirmationPassword: "current-password",
+      downloadReason: "结算审批复核"
+    });
 
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/api/settlements/settlement-1/approval-pdf/latest"
     );
-    expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get("Content-Type")).toBe(
+      "application/json"
+    );
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({ confirmationPassword: "current-password", downloadReason: "结算审批复核" })
+    );
     expect(anchor.download).toBe("JS-2026-019-结算审批最新.pdf");
     expect(click).toHaveBeenCalled();
     expect(createObjectUrl).toHaveBeenCalled();

@@ -292,17 +292,47 @@ describe("ApprovalFormService", () => {
       assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined)
     };
     const audit = { record: jest.fn() };
-    const service = new ApprovalFormService(prisma as never, files as never, audit as never);
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      audit as never,
+      auth as never
+    );
 
-    const result = await service.renderForDownload("payment_request", "pay-1", "user-chair");
+    const result = await service.renderForDownload(
+      "payment_request",
+      "pay-1",
+      "user-chair",
+      "current-password",
+      "付款审批复核"
+    );
 
+    expect(auth.confirmPassword).toHaveBeenCalledWith("user-chair", "current-password");
     expect(files.assertCanDownloadFileById).toHaveBeenCalledWith("file-1", "user-chair");
     expect(result.buffer.subarray(0, 5).toString()).toBe("%PDF-");
     expect(result.fileName).toBe("项目付款审批表-PAY-2026-001.pdf");
     expect(audit.record).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ action: "approval.form.download", actorUserId: "user-chair" })
+      expect.objectContaining({
+        action: "approval.form.download",
+        actorUserId: "user-chair",
+        metadata: expect.objectContaining({ downloadReason: "付款审批复核" })
+      })
     );
+  });
+
+  it("rejects approval-form downloads without current password confirmation", async () => {
+    const service = new ApprovalFormService(
+      buildPrisma() as never,
+      { assertCanDownloadFileById: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      { confirmPassword: jest.fn() } as never
+    );
+
+    await expect(
+      service.renderForDownload("payment_request", "pay-1", "user-chair", "", "付款审批复核")
+    ).rejects.toThrow("审批单下载密码必填");
   });
 
   it("skips generation when the approval is not completed", async () => {

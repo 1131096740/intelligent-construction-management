@@ -1577,11 +1577,26 @@ export class SettlementService {
     };
   }
 
-  async downloadLatestApprovalPdf(settlementId: string, actorUserId: string) {
+  async downloadLatestApprovalPdf(
+    settlementId: string,
+    actorUserId: string,
+    confirmationPassword: string | undefined,
+    downloadReason: string | undefined
+  ) {
     if (!this.prisma || !this.files) {
       throw new Error("Prisma and file services are required to download settlement approval PDF");
     }
+    if (!confirmationPassword?.trim()) {
+      throw new BadRequestException("结算审批单下载密码必填");
+    }
+    if (!downloadReason?.trim()) {
+      throw new BadRequestException("结算审批单下载原因必填");
+    }
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm settlement approval PDF download");
+    }
 
+    await this.auth.confirmPassword(actorUserId, confirmationPassword);
     let source = await this.loadLatestApprovalPdfSource(settlementId);
     if (!source.fileId) {
       await this.assertCanReadLatestApprovalPdfBySettlementId(settlementId, actorUserId);
@@ -1595,6 +1610,13 @@ export class SettlementService {
 
     await this.files.assertCanDownloadFileById(source.fileId, actorUserId);
     const file = await this.files.getFileBuffer(source.fileId);
+    await this.audit.record(this.prisma, {
+      actorUserId,
+      action: "settlement.approval_pdf.download",
+      businessType: "settlement",
+      businessId: settlementId,
+      metadata: { fileId: source.fileId, settlementCode: source.settlementCode, downloadReason }
+    });
 
     return {
       buffer: file.buffer,

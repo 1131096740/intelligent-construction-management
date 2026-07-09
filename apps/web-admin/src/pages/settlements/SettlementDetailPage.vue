@@ -752,10 +752,35 @@ async function submitSettlementReview(
 }
 
 async function downloadSettlementApprovalForm() {
-  const settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算编号");
+  let settlementId = "";
+  let confirmationPassword = "";
+  try {
+    settlementId = requiredText(settlementDetail.value?.settlementId ?? "", "结算");
+    confirmationPassword = requiredText(settlementArchiveForm.downloadPassword, "当前登录密码");
+  } catch (error) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = error instanceof Error ? error.message : "下载结算审批单失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认下载后，系统将校验当前密码并记录下载人、结算审批单和下载原因审计。是否继续？"
+    )
+  ) {
+    return;
+  }
+  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
+  if (!downloadReason) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = "请填写下载原因";
+    return;
+  }
 
   await runArchiveAction("approvalForm", async () => {
-    await downloadSettlementLatestApprovalPdf(settlementId);
+    await downloadSettlementLatestApprovalPdf(settlementId, {
+      confirmationPassword,
+      downloadReason
+    });
   });
 }
 

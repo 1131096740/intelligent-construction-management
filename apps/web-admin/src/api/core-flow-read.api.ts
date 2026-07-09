@@ -1391,8 +1391,16 @@ function saveBlob(blob: Blob, fileName: string): void {
 
 // 审批单文件下载：审批通过后后端按下载人动态生成带水印文件，直接以 blob 触发浏览器下载。
 // businessType：合同 contract_version + contractVersionId、结算 settlement + settlementId、付款 payment_request + paymentId。
-export async function downloadApprovalForm(businessType: string, businessId: string): Promise<void> {
-  const response = await apiFetch(`/approval-forms/${businessType}/${businessId}/download`);
+export async function downloadApprovalForm(
+  businessType: string,
+  businessId: string,
+  body: CreatePrivateFileDownloadTicketPayload
+): Promise<void> {
+  const response = await apiFetch(`/approval-forms/${businessType}/${businessId}/download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
   await ensureOk(response, "下载审批单失败");
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
@@ -1426,8 +1434,15 @@ export async function downloadSettlementAttachmentTemplate(
   saveBlob(blob, fileName);
 }
 
-export async function downloadSettlementLatestApprovalPdf(settlementId: string): Promise<void> {
-  const response = await apiFetch(`/settlements/${settlementId}/approval-pdf/latest`);
+export async function downloadSettlementLatestApprovalPdf(
+  settlementId: string,
+  body: CreatePrivateFileDownloadTicketPayload
+): Promise<void> {
+  const response = await apiFetch(`/settlements/${settlementId}/approval-pdf/latest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
   await ensureOk(response, "下载结算审批PDF失败");
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";

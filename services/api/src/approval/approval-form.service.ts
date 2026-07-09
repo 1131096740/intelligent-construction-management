@@ -1,8 +1,9 @@
-import { Injectable, Optional } from "@nestjs/common";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { resolve } from "node:path";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import PDFDocument = require("pdfkit");
 import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { centsToSafeNumber } from "../money/decimal-money";
@@ -322,7 +323,9 @@ export class ApprovalFormService {
     @Optional()
     private readonly files?: FileService,
     @Optional()
-    private readonly audit: AuditService = new AuditService()
+    private readonly audit: AuditService = new AuditService(),
+    @Optional()
+    private readonly auth?: AuthService
   ) {}
 
   // 审批通过后由各业务流程事务外调用，best-effort 生成审批单 PDF 并归档。幂等。
@@ -382,10 +385,27 @@ export class ApprovalFormService {
   }
 
   // 下载时按下载人动态生成带水印审批单（谁下的+时间+公司名，可追溯防泄露）。
-  async renderForDownload(businessType: string, businessId: string, downloaderUserId: string) {
+  async renderForDownload(
+    businessType: string,
+    businessId: string,
+    downloaderUserId: string,
+    confirmationPassword: string | undefined,
+    downloadReason: string | undefined
+  ) {
     if (!this.prisma || !this.files) {
       throw new Error("Prisma and file services are required to download approval form");
     }
+    if (!confirmationPassword?.trim()) {
+      throw new BadRequestException("审批单下载密码必填");
+    }
+    if (!downloadReason?.trim()) {
+      throw new BadRequestException("审批单下载原因必填");
+    }
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm approval form download");
+    }
+
+    await this.auth.confirmPassword(downloaderUserId, confirmationPassword);
 
     // 复用归档 PdfDocument 做权限锚点与幂等；其字节为无水印存档件，下载件按下载人重渲染。
     const pdfDocument = await this.getOrCreateByBusiness(businessType, businessId, downloaderUserId);
@@ -416,7 +436,7 @@ export class ApprovalFormService {
       action: "approval.form.download",
       businessType,
       businessId,
-      metadata: { fileId: pdfDocument.fileId, businessCode: input.businessCode }
+      metadata: { fileId: pdfDocument.fileId, businessCode: input.businessCode, downloadReason }
     });
 
     return { buffer, fileName: approvalFileName(input) };

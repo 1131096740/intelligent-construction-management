@@ -790,10 +790,35 @@ async function submitApproval(decision: "approve" | "reject") {
 }
 
 async function downloadApprovalForm() {
-  const paymentId = currentPaymentId();
+  let paymentId = "";
+  let confirmationPassword = "";
+  try {
+    paymentId = currentPaymentId();
+    confirmationPassword = requiredText(paymentActionForm.downloadPassword, "当前登录密码");
+  } catch (error) {
+    actionMessageTone.value = "danger";
+    actionMessage.value = error instanceof Error ? error.message : "下载审批单失败";
+    return;
+  }
+  if (
+    !confirmSensitiveAction(
+      "确认下载后，系统将校验当前密码并记录下载人、审批单和下载原因审计。是否继续？"
+    )
+  ) {
+    return;
+  }
+  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
+  if (!downloadReason) {
+    actionMessageTone.value = "danger";
+    actionMessage.value = "请填写下载原因";
+    return;
+  }
 
   await runPaymentAction("approvalForm", async () => {
-    await requestApprovalFormDownload("payment_request", paymentId);
+    await requestApprovalFormDownload("payment_request", paymentId, {
+      confirmationPassword,
+      downloadReason
+    });
   });
 }
 
