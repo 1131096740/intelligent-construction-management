@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：按 superpowers loop-engineering 继续推进历史期初结算可见性：结算详情读模型按 `sourceType` 展示结算性质，历史接管自动生成的期初结算显示为“历史接管期初结算”，避免业务人员在详情页误认为它是普通月度结算。验证：API 结算读服务 Jest、API typecheck、API lint、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：按 superpowers loop-engineering 继续推进办公化合同结算工作台方案第 13 项：历史接管确认时，若存在历史累计结算金额，系统自动生成一张来源为 `historical_takeover` 的“历史期初”有效结算，金额取历史累计结算、已付取历史累计已付，并通过 `sourceTakeoverId` 与接管记录唯一关联，让接管日前已结算未付款金额继续作为有效结算来源进入后续付款容量，而不是只停留在备注或附件。验证：Prisma generate/validate、API 接管 Jest、API typecheck、API lint、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：按 superpowers loop-engineering 继续推进办公化合同结算工作台方案第 11 项：历史合同接管新增项目级接管批次元数据，`ContractTakeover` 增加接管截止日、接管责任人、复核意见和验收结论；创建/编辑草稿、读模型和 Web 接管表单同步支持，台账新增“接管截止日”列，详情展示来源、复核和验收信息。本轮不新增独立批次表，先用单合同接管记录承载真实试运行所需最小闭环。验证：Prisma generate/validate、API 接管 Jest、Web 接管配置 Vitest、API/Web typecheck、API/Web lint、Web `check:ui`、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：继续执行办公化合同结算工作台方案历史接管主线：历史合同导入预检模板新增“资料清单”和“问题清单”两列，前端粘贴解析和预检结果表同步展示；后端预检对未填写资料清单、A级合同仍有问题清单、C级合同缺少问题清单给出中文业务提醒，帮助真实接管时把合同扫描件、结算依据、付款凭证、缺口责任人和是否影响付款提前暴露。本轮仍保持预检只读不写正式业务事实。验证：API 接管 Jest、Web 接管配置 Vitest、API/Web typecheck、API/Web lint、Web `check:ui`、`git diff --check` 通过。

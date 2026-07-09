@@ -393,7 +393,7 @@ export class SettlementReadService {
       baseInfo: [
         { label: "结算编号", value: settlement.code },
         { label: "关联合同", value: `${contract.code} · ${contract.name}` },
-        { label: "结算性质", value: "月度结算" },
+        { label: "结算性质", value: this.settlementSourceLabel(settlement.sourceType) },
         { label: "是否最终结算", value: "否" },
         { label: "结算金额", value: this.formatMoney(settlement.amountCents) },
         { label: "创建人", value: "项目经理" }
@@ -897,6 +897,10 @@ export class SettlementReadService {
     }
 
     return "结算尚未生效，暂不可创建付款申请；付款比例和账期按绑定的付款条款版本执行。";
+  }
+
+  private settlementSourceLabel(sourceType?: string | null): string {
+    return sourceType === "historical_takeover" ? "历史接管期初结算" : "月度结算";
   }
 
   private ratioLabel(ratioBps: number | null): string {

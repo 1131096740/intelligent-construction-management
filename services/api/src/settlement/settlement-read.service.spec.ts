@@ -133,6 +133,7 @@ describe("SettlementReadService", () => {
           code: "JS-2026-031",
           periodLabel: "2026-06",
           status: "effective",
+          sourceType: "historical_takeover",
           amountCents: 58000000,
           payableAmountCents: 46400000
         })
@@ -257,6 +258,7 @@ describe("SettlementReadService", () => {
     expect(detail.settlementId).toBe("settlement-1");
     expect(detail.title).toBe("JS-2026-031 · 2026-06结算单");
     expect(detail.baseInfo).toContainEqual({ label: "关联合同", value: "HT-2026-009 · 幕墙分包合同" });
+    expect(detail.baseInfo).toContainEqual({ label: "结算性质", value: "历史接管期初结算" });
     expect(detail.baseInfo).toContainEqual({ label: "结算金额", value: "¥580,000.00" });
     expect(detail.paymentRules[0]).toMatchObject({
       id: "stage-progress",
