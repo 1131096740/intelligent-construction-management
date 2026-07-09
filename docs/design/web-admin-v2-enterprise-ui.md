@@ -201,54 +201,33 @@ CSS 方向：
 
 结论：组件库已统一，设计语言需要用薄 token 层收口。
 
+## 2026-07-09 UI 治理基线
+
+Web Admin V2 已统一采用 TDesign Vue Next、项目级 `--jg-*` 设计 token、可复用业务组件和 `check:ui` 自动检查。第一批样板为合同台账、合同详情和合同模板库。
+
+本轮落地内容：
+
+- `apps/web-admin/src/app/design-tokens.css` 成为颜色、字号、行高、间距、圆角、阴影和关键布局尺寸的项目级来源。
+- `pnpm --filter @jiangkong/web-admin check:ui` 作为新增治理闸门，检查新增/触达页面是否继续引入原生基础控件、硬编码颜色、阴影和高风险内联样式。
+- `BusinessTableToolbar`、`EmptyBusinessState`、`BusinessStatusSummary` 成为台账页、空态和详情流程摘要的第一批跨域业务组件。
+- 合同台账完成“查询工具条 + 表格 + 业务空态”样板；合同详情完成共享流程摘要样板；合同模板库完成“使用模式/配置模式 + TDesign 卡片/按钮/标签 + token 样式”样板。
+- 同类 UI 结构第三次出现前必须抽象为可复用组件；业务组件只能组合 TDesign 和 `--jg-*` token，不能形成第二套视觉系统。
+
 ## 设计 Token
 
-P1 新增一个最小 token 文件即可，不做完整设计系统，也不新建自研组件库。
-
-建议路径：
+已落地路径：
 
 ```text
 apps/web-admin/src/app/design-tokens.css
 ```
 
-建议内容：
+当前 token 分层：
 
-```css
-:root {
-  --jg-bg-page: #f4f6f9;
-  --jg-bg-panel: #ffffff;
-  --jg-bg-muted: #f7f9fc;
-
-  --jg-text-strong: #151922;
-  --jg-text-main: #424955;
-  --jg-text-subtle: #5f6673;
-  --jg-text-muted: #767f8d;
-
-  --jg-border: #dce1e8;
-  --jg-brand: #0052cc;
-
-  --jg-success: #2ba471;
-  --jg-warning: #d9822b;
-  --jg-danger: #c9353f;
-  --jg-info: #0052cc;
-
-  --jg-font-page-title: 24px;
-  --jg-font-section-title: 16px;
-  --jg-font-body: 13px;
-  --jg-font-meta: 12px;
-  --jg-font-mini: 11px;
-
-  --jg-space-xs: 4px;
-  --jg-space-sm: 8px;
-  --jg-space-md: 12px;
-  --jg-space-lg: 16px;
-  --jg-space-xl: 24px;
-
-  --jg-radius-sm: 3px;
-  --jg-radius-md: 6px;
-  --jg-radius-lg: 8px;
-}
-```
+- `--jg-color-*`：页面背景、面板、边框、正文、品牌色和状态色。
+- `--jg-font-size-*` / `--jg-line-height-*`：页面标题、区块标题、正文、辅助信息和紧凑行高。
+- `--jg-space-*` / `--jg-radius-*` / `--jg-shadow-*`：间距、圆角和阴影。
+- `--jg-layout-*`：侧栏、表格行高、业务摘要条、列表筛选和模板配置页等稳定布局尺寸。
+- 旧的 `--jg-bg-*`、`--jg-text-*`、`--jg-font-*` 等别名保留，用于渐进迁移。
 
 引入规则：
 
@@ -257,7 +236,7 @@ import "tdesign-vue-next/es/style/index.css";
 import "./app/design-tokens.css";
 ```
 
-先替换公共组件和新增页面中的高频硬编码值，不做大规模机械改色。
+落地规则：新增或触达页面必须使用 `--jg-*` token 或 TDesign 变量；历史页面按模块改造时逐步替换，不做无业务收益的大规模机械改色。
 
 ## 组件库规则
 

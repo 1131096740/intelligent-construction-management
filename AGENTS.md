@@ -32,6 +32,13 @@ contract draft
 
 Do not dilute Phase 1 with full material issuing, attendance, HR onboarding/offboarding, safety workflow, full cost dashboard, or saving-bonus features. Leave extension points only.
 
+## Current Phase
+
+- The project is now in production-equivalent validation, real trial-run preparation, and Web Admin UI governance rollout.
+- Do not expand new major modules unless `PROGRESS.md` says the real trial run is blocked by them.
+- Current priority: real data initialization, historical contract takeover, 3-5 active contract flows, contract master sign-off, permission matrix validation, and Go-Live approval.
+- Mini program, OCR, full OA, invoicing, attendance, HR, safety, and large dashboards stay out of current P0 unless explicitly re-scoped.
+
 ## Architecture Decisions
 
 - Web admin is the primary system: `Vue 3 + TypeScript + TDesign Web + Vite`.
@@ -94,6 +101,21 @@ Use real business positions, not old generic roles:
 - Sensitive actions require second confirmation.
 - Secrets must not be committed or exposed to Web/mini program clients.
 
+## Frontend UI Governance
+
+- Web Admin uses Vue 3 + TypeScript + TDesign Vue Next.
+- TDesign is the only base UI component library.
+- Base UI controls must use TDesign first: buttons, inputs, selects, tables, dialogs, drawers, tags, tabs, cards, alerts, messages, upload controls, and forms.
+- If similar UI structure appears more than twice, extract a reusable component before adding a third copy.
+- Business components must compose TDesign and `--jg-*` design tokens; they must not create a second visual system.
+- Colors, font sizes, spacing, radii, shadows, and layout dimensions must come from project design tokens or TDesign variables.
+- Pages live in `apps/web-admin/src/pages/<domain>/`.
+- Domain-only components live in `apps/web-admin/src/pages/<domain>/components/`.
+- Cross-domain reusable components live in `apps/web-admin/src/components/`.
+- API calls live in `apps/web-admin/src/api/<domain>.api.ts`; pages must not call `fetch` directly.
+- Pure helpers live in `apps/web-admin/src/lib/` or the nearest existing helper module.
+- Do not introduce a second UI library, low-code runtime, generic workflow engine, or full-site rewrite.
+
 ## Engineering Discipline
 
 - Keep changes surgical and aligned with the current MVP.
@@ -101,6 +123,13 @@ Use real business positions, not old generic roles:
 - Prefer domain models and backend invariants over front-end-only validation.
 - Add tests around money, status transitions, permission checks, and version traceability.
 - When uncertain about business rules, stop and ask; do not silently choose a shortcut.
+
+## Verification
+
+- Web UI changes: run the narrowest relevant Vitest, then `typecheck`, `lint`, and `check:ui`.
+- API business changes: run targeted Jest plus `typecheck` and `lint`.
+- Money, permission, status transition, archive, PDF, and audit changes require backend tests.
+- Production/trial-run work must follow the relevant runbook or verify script and update `PROGRESS.md`.
 
 ## 进度跟踪
 
