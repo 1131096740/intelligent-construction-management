@@ -1567,7 +1567,7 @@ export class SettlementService {
     void _actorUserId;
 
     if (!this.prisma) {
-      throw new Error("Prisma service is required to export settlement Excel");
+      throw new Error("结算明细表导出服务暂不可用，请稍后重试或联系管理员");
     }
 
     const source = await this.prisma.$transaction(async (tx) => {
@@ -1576,11 +1576,11 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("结算单不存在，无法导出结算明细表。请刷新结算台账后重试");
       }
 
       if (!["approval_pending", "approval_rejected"].includes(settlement.status)) {
-        throw new Error(`Cannot export draft settlement Excel from status ${settlement.status}`);
+        throw new Error("当前结算单不是待审批或已退回状态，不能导出草稿明细表。请在结算发起或退回后再导出");
       }
 
       return this.loadSettlementDocumentInput(tx, settlement.id);

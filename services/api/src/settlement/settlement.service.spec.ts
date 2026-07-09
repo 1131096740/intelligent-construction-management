@@ -3325,6 +3325,47 @@ describe("SettlementService", () => {
     expect(workbook.getWorksheet("结算单")?.pageSetup.orientation).toBe("landscape");
   });
 
+  it("rejects draft settlement Excel export when the export service is unavailable", async () => {
+    await expect(service.exportDraftExcel("settlement-1", "contract-staff-1")).rejects.toThrow(
+      "结算明细表导出服务暂不可用，请稍后重试或联系管理员"
+    );
+  });
+
+  it("rejects draft settlement Excel export when the settlement is missing", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(settlementService.exportDraftExcel("settlement-missing", "contract-staff-1")).rejects.toThrow(
+      "结算单不存在，无法导出结算明细表。请刷新结算台账后重试"
+    );
+  });
+
+  it("rejects draft settlement Excel export after the draft stage", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "effective"
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(settlementService.exportDraftExcel("settlement-1", "contract-staff-1")).rejects.toThrow(
+      "当前结算单不是待审批或已退回状态，不能导出草稿明细表。请在结算发起或退回后再导出"
+    );
+  });
+
   it("exports approval signature rows with frozen node names, role labels, and approver names", async () => {
     const tx = {
       settlement: {

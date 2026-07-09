@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进结算明细表导出中文业务错误治理切片：下载结算明细 Excel 草稿时，如果导出服务暂不可用、结算单不存在或结算单已不处于待审批/已退回草稿阶段，不再抛出 `Prisma service is required to export settlement Excel`、`Settlement not found` 或内部状态值，统一改为中文业务原因并提示稍后重试、刷新台账或在结算发起/退回后再导出。不改变结算明细表内容、审批签字行、归档 PDF、结算状态机和金额账本口径。验证：API 结算服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算创建入口中文业务错误治理切片：创建结算时，如果结算服务暂不可用、合同版本不存在、合同尚未归档生效、关联合同缺失或合同缺少已生效结构化付款条款，不再抛出 `Prisma service is required to create settlement`、`Contract version not found`、`Cannot create settlement from a non-effective contract version`、`Contract not found`、`Effective payment terms version not found` 等英文技术提示，统一改为中文业务原因并说明刷新合同、完成归档确认或补齐付款条款后再办理；失败时不会创建结算单。不改变结算明细重算、防重复、清单项累计占用、付款阶段计算、异常额度占用和审批 PDF 口径。验证：API 结算服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进私有资料读取失败中文业务错误治理切片：短时效下载链接通过权限与签名校验后，如果底层私有存储读取失败，不再把文件系统或对象存储错误直接透出，统一提示“资料文件暂时无法读取，请稍后重试或联系管理员核对私有存储”；失败时不会写入下载审计，避免把未成功读取的资料误记为已下载。不改变当前密码、下载原因、短时效链接、权限判定、文件存储和成功下载审计口径。验证：API 文件服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进私有资料下载原因中文业务错误治理切片：生成短时效下载链接或读取短时效链接时，如果下载原因超过 200 个字，不再抛出 `Download reason must be at most 200 characters` 英文技术提示，统一提示“下载原因不能超过 200 个字，请精简后重新提交”；失败会在权限查询、短时效链接签名、私有文件读取和审计写入之前拦截。不改变当前密码校验、下载原因必填、短时效链接、权限判定和审计口径。验证：API 文件服务 Jest、API typecheck、API lint 通过。
