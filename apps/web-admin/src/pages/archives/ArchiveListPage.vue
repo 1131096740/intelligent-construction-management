@@ -141,7 +141,7 @@
     <t-dialog
       v-model:visible="downloadDialogVisible"
       header="授权下载资料"
-      :confirm-btn="{ content: '生成下载链接', loading: downloadBusy }"
+      :confirm-btn="downloadConfirmButtonProps"
       cancel-btn="取消"
       :close-on-overlay-click="false"
       @confirm="confirmDownload"
@@ -157,6 +157,7 @@
             autocomplete="current-password"
             placeholder="请输入当前登录密码"
           />
+          <small v-if="downloadDisabledReason">{{ downloadDisabledReason }}</small>
         </label>
       </div>
     </t-dialog>
@@ -179,6 +180,7 @@ import {
   archiveLedgerColumns,
   archiveRules,
   archiveSummaryItems,
+  archiveDownloadDisabledReason,
   emptyArchiveLedgerFilters,
   filterArchiveLedgerRows
 } from "./archive-list.config";
@@ -213,6 +215,12 @@ const summaryValues = computed(() => {
   return archiveSummaryItems.map((item, index) => ({ ...item, value: String(values[index] ?? 0) }));
 });
 const filteredArchiveRows = computed(() => filterArchiveLedgerRows(archiveRows.value, archiveFilters));
+const downloadDisabledReason = computed(() => archiveDownloadDisabledReason(downloadPassword.value));
+const downloadConfirmButtonProps = computed(() => ({
+  content: "生成下载链接",
+  loading: downloadBusy.value,
+  disabled: Boolean(downloadDisabledReason.value)
+}));
 
 onMounted(() => {
   void loadArchives();
@@ -291,8 +299,8 @@ async function confirmDownload() {
     return;
   }
   const password = downloadPassword.value.trim();
-  if (!password) {
-    message.value = "请输入当前登录密码。";
+  if (downloadDisabledReason.value) {
+    message.value = downloadDisabledReason.value;
     messageTone.value = "danger";
     return;
   }

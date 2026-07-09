@@ -158,6 +158,11 @@ export const archiveRules = [
   "归档上传、确认、下载、作废必须写入审计日志"
 ];
 
+export function archiveDownloadDisabledReason(password: string): string {
+  if (!password.trim()) return "请填写当前登录密码后再生成下载链接";
+  return "";
+}
+
 function includesText(value: string, query: string) {
   const normalizedQuery = normalize(query);
   return !normalizedQuery || normalize(value).includes(normalizedQuery);
