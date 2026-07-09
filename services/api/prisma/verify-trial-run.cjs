@@ -627,6 +627,50 @@ async function createAndApprovePayment(contractVersionId, tokens) {
   return payment;
 }
 
+async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
+  const voucherFile = await uploadPrivateFile(`${CODES.payment}-voucher.pdf`, tokens.cashier);
+  const execution = await postJson(
+    `/payments/${payment.id}/executions`,
+    {
+      amountCents: 1000000,
+      paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: voucherFile.id,
+      confirmationPassword: PASSWORD
+    },
+    tokens.cashier,
+    "登记 UAT 付款实付"
+  );
+  assert(execution.id, "付款实付登记未返回实付记录编号");
+
+  const financeRecord = await postJson(
+    `/payments/${payment.id}/finance-records`,
+    {
+      amountCents: 1000000,
+      occurredAt: "2026-06-22T01:00:00.000Z",
+      confirmationPassword: PASSWORD
+    },
+    tokens.cashier,
+    "登记 UAT 财务入账"
+  );
+  assert(financeRecord.id, "付款财务入账未返回入账记录编号");
+
+  const archiveFile = await uploadPrivateFile(`${CODES.payment}-finance-archive.pdf`, tokens.cashier);
+  const pdfArchive = await postJson(
+    `/payments/${payment.id}/pdf-archive`,
+    { fileId: archiveFile.id },
+    tokens.cashier,
+    "归档 UAT 付款 PDF"
+  );
+  assert(pdfArchive.pdfDocument?.id, "付款 PDF 归档未返回归档文件记录");
+
+  const persisted = await prisma.paymentRequest.findUnique({ where: { id: payment.id } });
+  assert(persisted, "数据库中未找到刚登记实付的付款申请");
+  assertEqual(persisted.status, "paid", "付款实付后状态");
+  assertEqual(persisted.paidAmountCents, 1000000, "付款实付后累计实付金额");
+
+  return { execution, financeRecord, pdfArchive };
+}
+
 async function assertAuditActions(input) {
   const auditActions = await prisma.auditLog.findMany({
     where: {
@@ -648,7 +692,10 @@ async function assertAuditActions(input) {
     "settlement.approval.approve",
     "settlement.archive.upload",
     "settlement.archive.confirm",
-    "payment.approval.approve"
+    "payment.approval.approve",
+    "payment.execution.record",
+    "payment.finance.record",
+    "payment.pdf_archive.record"
   ];
   const missingActions = requiredActions.filter((action) => !actionSet.has(action));
 
@@ -768,6 +815,18 @@ async function main() {
   });
   const cashierSummary = await loadWorkbenchSummary("出纳/财务", tokens.cashier);
   assertCardCountAtLeast(cashierSummary, "approved_pending_payment", 1, "付款审批通过后");
+
+  await recordPaymentExecutionFinanceAndArchive(payment, tokens);
+  await assertTakeoverVerification(takeover.id, tokens.contractStaff, {
+    label: "实付入账后的核验摘要状态",
+    statusLabel: "已形成闭环",
+    minimumCounts: {
+      newSettlementCount: 1,
+      paymentRequestCount: 1,
+      paymentExecutionCount: 1,
+      financeRecordCount: 1
+    }
+  });
 
   await assertAuditActions({
     takeoverId: takeover.id,
