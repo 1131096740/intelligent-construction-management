@@ -53,7 +53,7 @@ describe("FileService", () => {
       const privateStorage = new PrivateFileStorage();
 
       await expect(privateStorage.read("../private-root-evil/file.pdf")).rejects.toThrow(
-        "Invalid private file object key"
+        "私有文件路径无效，系统已阻止本次文件读取。"
       );
     } finally {
       if (previousRoot === undefined) {

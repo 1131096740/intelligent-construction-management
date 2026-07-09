@@ -123,7 +123,7 @@ export class PrivateFileStorage {
     const target = resolve(this.root, objectKey);
     const rootPrefix = this.root.endsWith(sep) ? this.root : `${this.root}${sep}`;
     if (target !== this.root && !target.startsWith(rootPrefix)) {
-      throw new Error("Invalid private file object key");
+      throw new Error("私有文件路径无效，系统已阻止本次文件读取。");
     }
 
     return target;
