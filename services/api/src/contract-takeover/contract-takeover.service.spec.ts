@@ -473,6 +473,38 @@ describe("ContractTakeoverService", () => {
     );
   });
 
+  it("accepts Chinese takeover level labels in import precheck", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.precheckImport("project-1", {
+      rows: [
+        {
+          code: "HT-HIS-LEVEL",
+          name: "中文等级历史合同",
+          counterparty: "历史供应商",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "B级",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "按月结算付款",
+          balanceSourceSummary: "财务台账",
+          evidenceSummary: "合同扫描件",
+          evidenceChecklist: "合同扫描件、历史结算台账、付款凭证"
+        }
+      ]
+    });
+
+    expect(result.rows[0]).toMatchObject({
+      status: "ready",
+      takeoverLevel: "B"
+    });
+  });
+
   it("warns when takeover import precheck lacks evidence checklist or issue summary", async () => {
     const prisma = {
       contract: {

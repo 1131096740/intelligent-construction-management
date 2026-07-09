@@ -394,7 +394,7 @@ export function parseContractTakeoverImportPrecheckRows(
       companyEntityName: textCell(cells, 3) || undefined,
       amountCents: yuanCell(cells, 4),
       signedAt: textCell(cells, 5),
-      takeoverLevel: textCell(cells, 6),
+      takeoverLevel: takeoverLevelInputValue(textCell(cells, 6)),
       lifecycleStatus: lifecycleStatusInputValue(textCell(cells, 7)),
       paymentTermsOriginalText: textCell(cells, 8),
       historicalSettledCents: optionalYuanCell(cells, 9),
@@ -413,6 +413,12 @@ export function parseContractTakeoverImportPrecheckRows(
       issueSummary: textCell(cells, 22)
     };
   });
+}
+
+function takeoverLevelInputValue(value: string): string {
+  const trimmed = value.trim().toUpperCase();
+  const matched = trimmed.match(/^([ABC])(?:级)?/u);
+  return matched?.[1] ?? trimmed;
 }
 
 function lifecycleStatusInputValue(value: string): string {

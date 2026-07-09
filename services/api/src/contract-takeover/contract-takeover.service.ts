@@ -1117,7 +1117,7 @@ export class ContractTakeoverService {
     const counterparty = stringValue(row["counterparty"]);
     const amountCents = integerValue(row["amountCents"]);
     const signedAt = stringValue(row["signedAt"]);
-    const takeoverLevel = stringValue(row["takeoverLevel"]);
+    const takeoverLevel = takeoverLevelInputValue(row["takeoverLevel"]);
     const lifecycleStatus = stringValue(row["lifecycleStatus"]);
     const evidenceChecklist = stringValue(row["evidenceChecklist"]);
     const issueSummary = stringValue(row["issueSummary"]);
@@ -1214,13 +1214,14 @@ export class ContractTakeoverService {
   }
 
   private normalizeCreateInput(input: CreateContractTakeoverDto) {
+    const takeoverLevel = takeoverLevelInputValue(input.takeoverLevel);
     if (!input.code?.trim()) throw new Error("请填写合同编号");
     if (!input.name?.trim()) throw new Error("请填写合同名称");
     if (!input.counterparty?.trim()) throw new Error("请填写相对方");
     if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
       throw new Error("合同金额必须大于 0");
     }
-    if (!TAKEOVER_LEVELS.includes(input.takeoverLevel as ContractTakeoverLevel)) {
+    if (!TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel)) {
       throw new Error("接管等级不正确，请重新选择");
     }
     if (!LIFECYCLE_STATUSES.includes(input.lifecycleStatus as ContractLifecycleStatus)) {
@@ -1255,6 +1256,7 @@ export class ContractTakeoverService {
       code: input.code.trim(),
       name: input.name.trim(),
       counterparty: input.counterparty.trim(),
+      takeoverLevel: takeoverLevel as ContractTakeoverLevel,
       signedAt,
       takeoverCutoffDate,
       responsibleUserId: input.responsibleUserId?.trim() || null,
@@ -1272,7 +1274,7 @@ export class ContractTakeoverService {
       companyEntityName: stringValue(row["companyEntityName"]) || undefined,
       amountCents: integerValue(row["amountCents"]) ?? 0,
       signedAt: stringValue(row["signedAt"]),
-      takeoverLevel: stringValue(row["takeoverLevel"]) as ContractTakeoverLevel,
+      takeoverLevel: takeoverLevelInputValue(row["takeoverLevel"]) as ContractTakeoverLevel,
       lifecycleStatus: stringValue(row["lifecycleStatus"]) as ContractLifecycleStatus,
       paymentTermsOriginalText: stringValue(row["paymentTermsOriginalText"]),
       historicalSettledCents: integerValue(row["historicalSettledCents"]) ?? 0,
@@ -1526,6 +1528,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function takeoverLevelInputValue(value: unknown): string {
+  const text = stringValue(value).toUpperCase();
+  const matched = text.match(/^([ABC])(?:级)?/u);
+  return matched?.[1] ?? text;
 }
 
 function integerValue(value: unknown): number | null {
