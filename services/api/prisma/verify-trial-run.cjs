@@ -362,6 +362,34 @@ async function loadTakeoverRecord(takeoverId) {
   return takeover;
 }
 
+async function loadTakeoverReadModel(takeoverId, token) {
+  const rows = await readJson(
+    `/projects/${PROJECT_ID}/contract-takeovers`,
+    token,
+    "历史接管读模型"
+  );
+  assert(Array.isArray(rows), "历史接管读模型不是列表");
+  const takeover = rows.find((row) => row.id === takeoverId);
+  assert(takeover, "历史接管读模型未返回刚创建的接管记录");
+  return takeover;
+}
+
+async function assertTakeoverVerification(takeoverId, token, expected) {
+  const takeover = await loadTakeoverReadModel(takeoverId, token);
+  const verification = takeover.postConfirmationVerification;
+  assert(verification, "历史接管读模型缺少接管后核验摘要");
+  assertEqual(verification.statusLabel, expected.statusLabel, expected.label);
+
+  for (const [field, minimum] of Object.entries(expected.minimumCounts ?? {})) {
+    assert(
+      Number(verification[field] ?? 0) >= minimum,
+      `${expected.label}${field} 数量不足：预期至少 ${minimum}，实际 ${verification[field]}`
+    );
+  }
+
+  return verification;
+}
+
 async function ensureProgressPaymentStage(paymentTermsVersionId) {
   await prisma.paymentTermsStage.create({
     data: {
@@ -701,6 +729,10 @@ async function main() {
   assert(confirmed.historicalBalanceConfirmedAt, "历史接管确认后未写入历史余额确认时间");
   takeoverRecord = await loadTakeoverRecord(takeover.id);
   assert(takeoverRecord.historicalBalanceConfirmedAt, "数据库历史余额确认时间为空");
+  await assertTakeoverVerification(takeover.id, tokens.contractStaff, {
+    label: "确认接管后的核验摘要状态",
+    statusLabel: "待核验"
+  });
 
   const confirmedOption = await findPaymentCreateOption(CODES.contract, tokens.contractStaff);
   assertEqual(confirmedOption.canCreatePayment, true, "确认接管后付款候选状态");
@@ -726,6 +758,14 @@ async function main() {
   );
 
   const payment = await createAndApprovePayment(takeoverRecord.contractVersionId, tokens);
+  await assertTakeoverVerification(takeover.id, tokens.contractStaff, {
+    label: "新结算和付款后的核验摘要状态",
+    statusLabel: "核验中",
+    minimumCounts: {
+      newSettlementCount: 1,
+      paymentRequestCount: 1
+    }
+  });
   const cashierSummary = await loadWorkbenchSummary("出纳/财务", tokens.cashier);
   assertCardCountAtLeast(cashierSummary, "approved_pending_payment", 1, "付款审批通过后");
 
