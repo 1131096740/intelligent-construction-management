@@ -165,7 +165,7 @@ describe("contract takeover page configuration", () => {
       { label: "历史质保金扣留/释放", value: "¥30,000.00 / ¥10,000.00" }
     ]);
     expect(summary.consequence).toContain("确认后会形成系统期初事实");
-    expect(summary.riskText).toContain("B级");
+    expect(summary.riskText).toBe("B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。");
     expect(summary.evidenceText).toBe("合同与凭证");
   });
 
@@ -201,6 +201,8 @@ function takeover(): ContractTakeoverReadModel {
     amountCents: "100000000",
     paymentTermsOriginalText: "按月结算，归档后付款",
     takeoverLevel: "B",
+    levelRiskText: "B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。",
+    paymentBlockingHint: "尚未完成主管确认，后续付款申请会被系统阻断。",
     takeoverStatus: "pending_review",
     lifecycleStatus: "in_progress",
     signedAt: "2026-01-01T00:00:00.000Z",

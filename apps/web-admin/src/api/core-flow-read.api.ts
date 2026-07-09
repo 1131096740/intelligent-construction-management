@@ -177,6 +177,8 @@ export interface ContractTakeoverReadModel {
   amountCents: ContractTakeoverCentsValue;
   paymentTermsOriginalText: string;
   takeoverLevel: ContractTakeoverLevel;
+  levelRiskText: string;
+  paymentBlockingHint: string;
   takeoverStatus: ContractTakeoverStatus;
   lifecycleStatus: ContractLifecycleStatus;
   signedAt: string;

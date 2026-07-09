@@ -105,6 +105,8 @@ export interface ContractTakeoverBusinessReadModel {
   amountCents: string;
   paymentTermsOriginalText: string;
   takeoverLevel: string;
+  levelRiskText: string;
+  paymentBlockingHint: string;
   takeoverStatus: string;
   lifecycleStatus: string;
   signedAt: Date;
@@ -944,6 +946,11 @@ export class ContractTakeoverService {
       amountCents: moneyString(contract.amountCents),
       paymentTermsOriginalText: contract.paymentTermsOriginalText,
       takeoverLevel: takeover.takeoverLevel,
+      levelRiskText: takeoverLevelRiskText(takeover.takeoverLevel),
+      paymentBlockingHint: takeoverPaymentBlockingHint(
+        takeover,
+        contract.evidenceFiles.length
+      ),
       takeoverStatus: takeover.takeoverStatus,
       lifecycleStatus: takeover.lifecycleStatus,
       signedAt: takeover.signedAt,
@@ -1363,6 +1370,35 @@ function importBatchRiskText(batch: {
   if (batch.warningRows > 0) return "存在资料或风险提醒，复核时重点核对。";
   if (batch.skippedCount > 0) return "有重复导入记录，已跳过未重复建账。";
   return "预检通过，等待资料核验和复核确认。";
+}
+
+function takeoverLevelRiskText(level: string): string {
+  const texts: Record<string, string> = {
+    A: "A级资料较完整，可作为首批活跃合同接管，仍需保留原始资料备查。",
+    B: "B级存在少量资料或说明缺口，接管后需继续跟踪，影响金额的资料补齐前不宜付款。",
+    C: "C级资料缺口明显或存在争议，只能作为受限期初事实，付款前必须重点核验。"
+  };
+
+  return texts[level] ?? "请按接管等级复核资料完整性和后续付款风险。";
+}
+
+function takeoverPaymentBlockingHint(
+  takeover: Pick<ContractTakeoverRecord, "takeoverLevel" | "takeoverStatus">,
+  evidenceFileCount: number
+): string {
+  if (takeover.takeoverStatus !== "confirmed") {
+    return "尚未完成主管确认，后续付款申请会被系统阻断。";
+  }
+  if (takeover.takeoverLevel === "C") {
+    return "C级资料缺口明显，付款前必须补齐影响金额的资料和争议说明。";
+  }
+  if (evidenceFileCount === 0) {
+    return "尚未上传接管资料，付款前应补齐合同、结算依据和付款凭证。";
+  }
+  if (takeover.takeoverLevel === "B") {
+    return "B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。";
+  }
+  return "接管资料等级满足继续办理要求，后续付款仍按有效结算和付款条款校验。";
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

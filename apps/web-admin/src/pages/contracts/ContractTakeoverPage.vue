@@ -856,6 +856,8 @@ const selectedBaseInfo = computed(() => {
     { label: "合同金额", value: row.amount },
     { label: "签订日期", value: row.signedAt },
     { label: "接管等级", value: takeoverLevelLabel(row.takeoverLevel) },
+    { label: "等级风险", value: row.takeover.levelRiskText },
+    { label: "付款提示", value: row.takeover.paymentBlockingHint },
     { label: "接管状态", value: takeoverStatusLabel(row.takeoverStatus) },
     { label: "履约状态", value: lifecycleStatusLabel(row.lifecycleStatus) }
   ];

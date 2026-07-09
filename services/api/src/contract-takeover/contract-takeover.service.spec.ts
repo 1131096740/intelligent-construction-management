@@ -1280,6 +1280,8 @@ describe("ContractTakeoverService", () => {
         contractName: "Historical material contract",
         counterparty: "Supplier A",
         amountCents: "1000000",
+        levelRiskText: "A级资料较完整，可作为首批活跃合同接管，仍需保留原始资料备查。",
+        paymentBlockingHint: "尚未完成主管确认，后续付款申请会被系统阻断。",
         takeoverStatus: "pending_review",
         historicalSettledCents: "600000"
       })
@@ -1291,5 +1293,39 @@ describe("ContractTakeoverService", () => {
     expect(row).not.toHaveProperty("submittedByUserId");
     expect(row).not.toHaveProperty("confirmedByUserId");
     expect(row).not.toHaveProperty("historicalBalanceConfirmedByUserId");
+  });
+
+  it("explains C level takeover payment risk after confirmation", async () => {
+    const prisma = {
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          takeoverRecord({ takeoverLevel: "C", takeoverStatus: "confirmed" })
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-C",
+            temporaryCode: null,
+            name: "C level historical contract",
+            counterparty: "Supplier C"
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const [row] = await service.list("project-1");
+
+    expect(row).toMatchObject({
+      levelRiskText: "C级资料缺口明显或存在争议，只能作为受限期初事实，付款前必须重点核验。",
+      paymentBlockingHint: "C级资料缺口明显，付款前必须补齐影响金额的资料和争议说明。"
+    });
   });
 });
