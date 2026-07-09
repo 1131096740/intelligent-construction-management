@@ -4161,6 +4161,78 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("登记合同应付款实付时没有可分摊有效结算来源则拒绝", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          paymentExecutionRow({
+            id: "payment-due-1",
+            code: "FK-HT-2026-NO-SOURCE",
+            settlementId: null,
+            sourceType: "contract_due",
+            requestedAmountCents: 50_000,
+            approvedAmountCents: 50_000,
+            paidAmountCents: 0
+          })
+        ])
+        .mockResolvedValueOnce([{ id: "contract-1" }]),
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-due-1",
+          code: "FK-HT-2026-NO-SOURCE",
+          settlementId: null,
+          sourceType: "contract_due",
+          status: "approved_pending_payment",
+          requestedAmountCents: 50_000,
+          approvedAmountCents: 50_000,
+          paidAmountCents: 0
+        }),
+        update: jest.fn(),
+        findUnique: jest.fn()
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn(),
+        update: jest.fn()
+      },
+      paymentExecution: {
+        create: jest.fn().mockResolvedValue({
+          id: "execution-due-1",
+          paymentRequestId: "payment-due-1",
+          amountCents: 50_000,
+          voucherFileId: "file-1"
+        })
+      },
+      paymentExecutionAllocation: {
+        createMany: jest.fn()
+      },
+      projectFinancingQuotaUsage: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-HT-2026-NO-SOURCE", "cashier-1", {
+        amountCents: 50_000,
+        paidAt: "2026-07-03T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("未找到可分摊的有效结算来源，请先核对合同结算和历史期初结算");
+    expect(tx.paymentExecutionAllocation.createMany).not.toHaveBeenCalled();
+  });
+
   it("allocates contract-level due execution to a historical initial settlement", async () => {
     const confirmedAt = new Date("2026-07-01T00:00:00.000Z");
     const historicalSettlement = {

@@ -2091,7 +2091,7 @@ export class PaymentRequestService {
     ];
 
     if (!settlementIds.length || !paymentTermsVersionIds.length) {
-      throw new Error("Contract due payment execution has no effective settlements to allocate");
+      throw new Error("未找到可分摊的有效结算来源，请先核对合同结算和历史期初结算");
     }
 
     const paymentRequestClient = tx.paymentRequest as unknown as {
