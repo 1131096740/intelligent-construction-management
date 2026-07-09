@@ -1776,7 +1776,7 @@ export class PaymentRequestService {
       const currentNode = nodes[instance.currentNodeIndex];
 
       if (!currentNode) {
-        throw new Error("Payment approval current node not found");
+        throw new Error("当前付款审批节点异常，请刷新后重试");
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
@@ -1795,7 +1795,7 @@ export class PaymentRequestService {
       }
 
       if (!approvedRoleKey) {
-        throw new Error(`Actor cannot approve payment node ${currentNode.name}`);
+        throw new Error(`当前账号不能处理“${currentNode.name}”付款审批节点`);
       }
 
       if (input.decision === "reject_previous") {
@@ -1942,14 +1942,18 @@ export class PaymentRequestService {
           !Number.isInteger(input.approvedAmountCents) ||
           input.approvedAmountCents <= 0)
       ) {
-        throw new Error("Approved amount must be a positive integer");
+        throw new Error("批准付款金额必须大于 0，请按元填写有效金额");
       }
 
       if (
         input.approvedAmountCents !== undefined &&
         input.approvedAmountCents > payment.requestedAmountCents
       ) {
-        throw new Error("Approved amount cannot exceed requested amount");
+        throw new Error(
+          `批准付款金额不能超过申请金额，当前最多可批准 ${this.formatYuan(
+            payment.requestedAmountCents
+          )} 元`
+        );
       }
 
       const nextNodes = [...nodes];
@@ -1966,7 +1970,7 @@ export class PaymentRequestService {
       const approvedAmountCents = input.approvedAmountCents ?? payment.requestedAmountCents;
 
       if (!flowCompleted && input.approvedAmountCents !== undefined) {
-        throw new Error("Approved amount can only be set on final payment approval node");
+        throw new Error("只有最后一个付款审批节点才能调整批准金额");
       }
 
       const approved = await tx.paymentRequest.update({

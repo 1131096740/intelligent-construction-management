@@ -2240,7 +2240,7 @@ describe("PaymentRequestService", () => {
         decision: "approve",
         approvedAmountCents: 45_000
       })
-    ).rejects.toThrow("Approved amount can only be set on final payment approval node");
+    ).rejects.toThrow("只有最后一个付款审批节点才能调整批准金额");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
@@ -2369,7 +2369,7 @@ describe("PaymentRequestService", () => {
         decision: "approve",
         approvedAmountCents
       })
-    ).rejects.toThrow("Approved amount must be a positive integer");
+    ).rejects.toThrow("批准付款金额必须大于 0，请按元填写有效金额");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
@@ -3112,6 +3112,83 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
+  it("rejects approval review when the current approval node cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 3,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("当前付款审批节点异常，请刷新后重试");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects approval review when the actor cannot approve the current node", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        })
+      },
+      ...approvalRoleTables("employee")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "employee-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("当前账号不能处理“董事长/总经理”付款审批节点");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+  });
+
   it("rejects approved amount above requested amount", async () => {
     const tx = {
       paymentRequest: {
@@ -3149,7 +3226,7 @@ describe("PaymentRequestService", () => {
         decision: "approve",
         approvedAmountCents: 50_001
       })
-    ).rejects.toThrow("Approved amount cannot exceed requested amount");
+    ).rejects.toThrow("批准付款金额不能超过申请金额，当前最多可批准 500.00 元");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
