@@ -1,6 +1,7 @@
 node_modules/
 .codex/
 .codebase-memory/
+.superpowers/
 dist/
 .env
 .env.*
