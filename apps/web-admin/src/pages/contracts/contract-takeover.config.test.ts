@@ -23,6 +23,7 @@ import {
   takeoverResponsibleUserText,
   takeoverLevelSelectionHint,
   takeoverLevelReviewText,
+  takeoverSuggestionApplyDisabledReason,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverStatusLabel,
@@ -341,6 +342,10 @@ describe("contract takeover page configuration", () => {
     expect(takeoverLevelSelectionHint("B", suggestion)).toBe(
       "当前申报B级，与系统建议A级不一致；调整原因会进入复核记录和主管确认依据。"
     );
+    expect(takeoverSuggestionApplyDisabledReason("A", suggestion)).toBe(
+      "当前申报等级已采用系统建议"
+    );
+    expect(takeoverSuggestionApplyDisabledReason("B", suggestion)).toBe("");
   });
 
   it("describes the takeover workbench as a five-step office workflow", () => {

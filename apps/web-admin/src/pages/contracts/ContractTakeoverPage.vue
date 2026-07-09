@@ -327,7 +327,29 @@
             </select>
           </label>
           <div class="level-suggestion">
-            <strong>系统建议等级：{{ takeoverLevelLabel(takeoverLevelSuggestionView.level) }}</strong>
+            <div class="level-suggestion-head">
+              <strong>系统建议等级：{{ takeoverLevelLabel(takeoverLevelSuggestionView.level) }}</strong>
+              <t-tooltip
+                v-if="applySuggestionDisabledReason"
+                :content="applySuggestionDisabledReason"
+              >
+                <t-button
+                  size="small"
+                  variant="outline"
+                  disabled
+                >
+                  采用系统建议
+                </t-button>
+              </t-tooltip>
+              <t-button
+                v-else
+                size="small"
+                variant="outline"
+                @click="applyTakeoverLevelSuggestion"
+              >
+                采用系统建议
+              </t-button>
+            </div>
             <span>{{ takeoverLevelSuggestionView.reason }}</span>
             <span>{{ takeoverLevelSelectionHintView }}</span>
             <span v-if="createFormLevelDisabledReason">
@@ -928,6 +950,7 @@ import {
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverLevelSelectionHint,
+  takeoverSuggestionApplyDisabledReason,
   takeoverResponsibleUserText,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
@@ -1106,6 +1129,9 @@ const createFormLevelDisabledReason = computed(() =>
     takeoverLevelSuggestionView.value,
     createForm.reviewComment
   )
+);
+const applySuggestionDisabledReason = computed(() =>
+  takeoverSuggestionApplyDisabledReason(createForm.takeoverLevel, takeoverLevelSuggestionView.value)
 );
 
 const summaryValues = computed(() => {
@@ -1533,6 +1559,10 @@ function startEdit(takeover: ContractTakeoverReadModel) {
   Object.assign(createForm, formFromTakeover(takeover));
   selectedTakeoverId.value = takeover.id;
   showCreateForm.value = true;
+}
+
+function applyTakeoverLevelSuggestion() {
+  createForm.takeoverLevel = takeoverLevelSuggestionView.value.level;
 }
 
 function cancelEdit() {
@@ -1980,6 +2010,7 @@ input[type="date"] {
 
 .workflow-title {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -2095,6 +2126,14 @@ input[type="date"] {
 .level-suggestion strong {
   color: #151922;
   font-size: 13px;
+}
+
+.level-suggestion-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .level-suggestion span {

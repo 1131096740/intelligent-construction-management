@@ -362,6 +362,14 @@ export function takeoverLevelSelectionHint(
   return `当前申报${selected}，与系统建议${suggested}不一致；调整原因会进入复核记录和主管确认依据。`;
 }
 
+export function takeoverSuggestionApplyDisabledReason(
+  selectedLevel: ContractTakeoverLevel,
+  suggestion: TakeoverLevelSuggestion
+): string {
+  if (selectedLevel !== suggestion.level) return "";
+  return "当前申报等级已采用系统建议";
+}
+
 export function takeoverLevelReviewText(takeover: ContractTakeoverReadModel): string {
   const suggestion = suggestTakeoverLevel({
     lifecycleStatus: takeover.lifecycleStatus,
