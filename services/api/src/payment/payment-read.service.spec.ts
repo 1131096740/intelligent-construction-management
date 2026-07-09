@@ -1852,6 +1852,7 @@ describe("PaymentReadService", () => {
       duePayableCents: 100_000,
       actualPaidCents: 40_000,
       approvedPendingCents: 0,
+      historicalPaidCents: 0,
       historicalApprovedPendingCents: 10_000,
       historicalOtherConfirmedOccupancyCents: 5_000,
       maxRequestableCents: 45_000
@@ -1874,6 +1875,13 @@ describe("PaymentReadService", () => {
           label: "本次最多可申请",
           amountCents: 45_000,
           tone: "success"
+        })
+      ])
+    );
+    expect(preview.capacityExplanation).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          note: "含历史接管已付款"
         })
       ])
     );
