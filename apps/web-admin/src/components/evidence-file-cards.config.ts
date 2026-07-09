@@ -20,7 +20,7 @@ export function toEvidenceFileCardView(file: EvidenceFileCardState): EvidenceFil
     statusTheme: evidenceStatusTheme(file.statusLabel),
     downloadText: file.canDownload ? "可授权下载" : "暂不可下载",
     downloadTheme: file.canDownload ? "success" : "warning",
-    auditHint: file.auditHint ?? "下载将记录审计",
+    auditHint: file.auditHint ?? "下载需当前密码、下载原因和短时效链接，并记录审计",
     disabledReason: file.canDownload ? "" : file.disabledReason ?? "暂不可下载"
   };
 }

@@ -33,7 +33,7 @@ describe("evidence file card view helpers", () => {
       statusTheme: "warning",
       downloadText: "暂不可下载",
       downloadTheme: "warning",
-      auditHint: "下载将记录审计",
+      auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计",
       disabledReason: "归档确认后开放下载"
     });
   });
