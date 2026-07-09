@@ -1098,7 +1098,7 @@ export class PaymentRequestService {
       FOR UPDATE
     `);
     if (!lockedProjects[0]?.isActive) {
-      throw new BadRequestException("Project is inactive");
+      throw new BadRequestException("当前项目已停用，不能继续占用项目资金池发起付款");
     }
 
     const projectExpenseRequestClient = (tx as unknown as {

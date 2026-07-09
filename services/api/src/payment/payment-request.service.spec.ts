@@ -268,6 +268,50 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("rejects payment request when the project cash pool is inactive", async () => {
+    const cashPool = projectCashPoolTables();
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 100_000,
+          paidAmountCents: 20_000
+        })
+      },
+      paymentRequest: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce(cashPool.projectPayments),
+        create: jest.fn()
+      },
+      ...cashPool.tables,
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
+        .mockResolvedValueOnce([{ id: "project-1", isActive: false }])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        code: "FK-2026-012",
+        requestedAmountCents: 50_000
+      })
+    ).rejects.toThrow("当前项目已停用，不能继续占用项目资金池发起付款");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
   it("rejects settlement payment when historical takeover is not confirmed", async () => {
     const cashPool = projectCashPoolTables();
     const tx = {
