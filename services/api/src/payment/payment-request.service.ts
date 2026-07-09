@@ -2427,11 +2427,11 @@ export class PaymentRequestService {
       const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
 
       if (!payment) {
-        throw new Error("Payment request not found");
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
 
       if (!["approved_pending_payment", "partially_paid"].includes(payment.status)) {
-        throw new Error(`Cannot record payment execution from status ${payment.status}`);
+        throw new Error(this.paymentExecutionBlockedMessage(payment.status));
       }
 
       if (payment.sourceType === "contract_due" && !payment.settlementId) {
@@ -2444,7 +2444,9 @@ export class PaymentRequestService {
       const remainingAmountCents = approvedAmountCents - payment.paidAmountCents;
       if (input.amountCents > remainingAmountCents) {
         throw new Error(
-          `Payment execution exceeds approved remaining amount: ${remainingAmountCents}`
+          `实付金额超过付款申请剩余可实付金额，当前最多可实付 ${this.formatYuan(
+            Math.max(remainingAmountCents, 0)
+          )} 元`
         );
       }
       if (this.files) {
@@ -2467,7 +2469,7 @@ export class PaymentRequestService {
         });
 
         if (!settlement) {
-          throw new Error("Payment settlement not found");
+          throw new Error("未找到关联结算，请先核对结算归档记录");
         }
 
         const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
@@ -2482,10 +2484,9 @@ export class PaymentRequestService {
           contractDueAllocatedCents;
         if (input.amountCents > settlementExecutionRemainingCents) {
           throw new Error(
-            `Payment execution exceeds settlement remaining payable amount: ${Math.max(
-              settlementExecutionRemainingCents,
-              0
-            )}`
+            `实付金额超过结算剩余可付金额，当前最多可实付 ${this.formatYuan(
+              Math.max(settlementExecutionRemainingCents, 0)
+            )} 元`
           );
         }
 
@@ -2578,6 +2579,16 @@ export class PaymentRequestService {
     }
 
     return execution;
+  }
+
+  private paymentExecutionBlockedMessage(status: string) {
+    if (status === "approval_pending") {
+      return "当前付款申请还未批准，不能登记实付；请先完成付款审批";
+    }
+    if (status === "paid") {
+      return "当前付款申请已全部实付，不能重复登记实付";
+    }
+    return "当前付款申请不能登记实付，请刷新付款台账后重试";
   }
 
   async recordFinance(paymentId: string, actorUserId: string, input: RecordFinanceRecordDto) {

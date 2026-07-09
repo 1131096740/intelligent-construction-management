@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：继续推进付款实付登记中文业务体验治理切片：付款登记实付进入账本事务后，付款申请不存在、付款审批未完成、实付金额超过付款申请剩余额、关联结算缺失、结算剩余可付额不足等场景不再抛出 `Cannot record payment execution from status`、`Payment execution exceeds approved remaining amount`、`Payment settlement not found` 等英文技术错误，统一改为中文业务原因并按元展示当前最多可实付金额；不改变实付分摊、合同级付款分配、结算付款容量和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进付款实付登记中文业务体验治理切片：付款登记实付的金额、付款凭证、当前登录密码和实付日期前置校验不再抛出 `Payment execution amount must be greater than zero`、`Payment voucher file is required` 等英文技术错误，统一改为中文业务原因，并补充实付日期格式错误测试；不改变实付分摊、付款状态、凭证权限和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进财务入账中文业务体验治理切片：付款财务入账在尚未登记实付、或入账金额超过未入账实付额时，不再抛出 `Cannot record finance entry before actual payment execution`、`Finance record exceeds unrecorded paid amount` 英文错误，统一改为中文业务原因并按元展示当前最多可入账金额；不改变实付、入账、凭证、审计和付款容量账本口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-09 (CodeX)：继续推进付款账本中文业务体验治理切片：付款金额共享闸口、按合同预付款申请和按合同应付款申请的金额校验不再抛出 `Payment request amount must be positive cents`、`Payment request exceeds remaining settlement capacity` 等英文技术错误，统一改为中文业务提示并按元展示当前最多可申请金额；不改变付款容量、历史接管、项目资金池和审批流转口径。验证：TDD 红绿覆盖 API 付款金额/付款请求 Jest、API typecheck、API lint 通过。

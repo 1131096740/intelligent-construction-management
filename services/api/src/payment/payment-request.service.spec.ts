@@ -3320,7 +3320,7 @@ describe("PaymentRequestService", () => {
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("settlement remaining payable amount: 20000");
+    ).rejects.toThrow("实付金额超过结算剩余可付金额，当前最多可实付 200.00 元");
 
     expect(tx.paymentExecutionAllocation.findMany).toHaveBeenCalledWith({
       where: {
@@ -4473,7 +4473,36 @@ describe("PaymentRequestService", () => {
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Cannot record payment execution from status approval_pending");
+    ).rejects.toThrow("当前付款申请还未批准，不能登记实付；请先完成付款审批");
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution when payment request cannot be found", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      paymentExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-MISSING", "cashier-1", {
+        amountCents: 20_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
 
@@ -4569,7 +4598,7 @@ describe("PaymentRequestService", () => {
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Payment execution exceeds approved remaining amount: 30000");
+    ).rejects.toThrow("实付金额超过付款申请剩余可实付金额，当前最多可实付 300.00 元");
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
 
@@ -4627,7 +4656,48 @@ describe("PaymentRequestService", () => {
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Payment execution exceeds settlement remaining payable amount: 20000");
+    ).rejects.toThrow("实付金额超过结算剩余可付金额，当前最多可实付 200.00 元");
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects actual payment execution when linked settlement cannot be found", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        paymentExecutionRow({
+          requestedAmountCents: 80_000,
+          approvedAmountCents: 80_000,
+          paidAmountCents: 0
+        })
+      ]),
+      paymentRequest: {
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      paymentExecution: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 80_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("未找到关联结算，请先核对结算归档记录");
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
 
