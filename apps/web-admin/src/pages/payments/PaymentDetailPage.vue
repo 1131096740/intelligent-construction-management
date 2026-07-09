@@ -186,6 +186,11 @@
               type="datetime-local"
               aria-label="入账时间"
             >
+            <t-input
+              v-model="paymentActionForm.financeConfirmationPassword"
+              type="password"
+              placeholder="当前登录密码确认"
+            />
           </div>
           <t-button
             theme="primary"
@@ -524,6 +529,7 @@ const paymentActionForm = reactive({
   executionConfirmationPassword: "",
   financeAmountYuan: "",
   occurredAt: toDatetimeLocalValue(new Date()),
+  financeConfirmationPassword: "",
   assignmentUserId: "",
   downloadFileId: "",
   downloadPassword: ""
@@ -838,9 +844,14 @@ async function submitFinance() {
   const paymentId = currentPaymentId();
   let amountCents = 0;
   let occurredAt = "";
+  let confirmationPassword = "";
   try {
     amountCents = parseYuanAmount(paymentActionForm.financeAmountYuan, "入账金额");
     occurredAt = toIsoDatetime(paymentActionForm.occurredAt, "入账时间");
+    confirmationPassword = requiredText(
+      paymentActionForm.financeConfirmationPassword,
+      "当前登录密码"
+    );
   } catch (error) {
     actionMessageTone.value = "danger";
     actionMessage.value = error instanceof Error ? error.message : "确认入账失败";
@@ -848,7 +859,7 @@ async function submitFinance() {
   }
   if (
     !confirmSensitiveAction(
-      "确认入账后，系统将记录财务入账金额和发生时间，用于财务台账核对。是否继续？"
+      "确认入账后，系统将记录财务入账金额、发生时间、经办人和审计日志，用于财务台账核对。是否继续？"
     )
   ) {
     return;
@@ -857,7 +868,8 @@ async function submitFinance() {
   await runPaymentAction("finance", () =>
     recordPaymentFinance(paymentId, {
       amountCents,
-      occurredAt
+      occurredAt,
+      confirmationPassword
     })
   );
 }

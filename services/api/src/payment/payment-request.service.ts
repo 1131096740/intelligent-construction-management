@@ -2586,6 +2586,16 @@ export class PaymentRequestService {
       throw new Error("Finance record amount must be greater than zero");
     }
 
+    if (!input.confirmationPassword?.trim()) {
+      throw new Error("财务入账需要当前登录密码确认");
+    }
+
+    if (!this.auth) {
+      throw new Error("Auth service is required to confirm finance record");
+    }
+
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
+
     return this.prisma.$transaction(async (tx) => {
       const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
 

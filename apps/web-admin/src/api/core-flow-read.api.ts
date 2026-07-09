@@ -358,6 +358,7 @@ export interface RecordPaymentExecutionPayload {
 export interface RecordPaymentFinancePayload {
   amountCents: number;
   occurredAt: string;
+  confirmationPassword: string;
 }
 
 export interface RecordPaymentPdfArchivePayload {

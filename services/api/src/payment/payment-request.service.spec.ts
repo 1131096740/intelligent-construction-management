@@ -4637,14 +4637,22 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
 
     const record = await paymentService.recordFinance("FK-2026-012", "finance-1", {
       amountCents: 30_000,
-      occurredAt: "2026-06-22T00:00:00.000Z"
+      occurredAt: "2026-06-22T00:00:00.000Z",
+      confirmationPassword: "Current@123"
     });
 
     expect(record.id).toBe("finance-record-1");
+    expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "Current@123");
     expect(tx.$queryRaw).toHaveBeenCalled();
     expect(tx.financeRecord.create).toHaveBeenCalledWith({
       data: {
@@ -4667,6 +4675,36 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("rejects finance record without current password confirmation", async () => {
+    const tx = {
+      $queryRaw: jest.fn(),
+      financeRecord: {
+        findMany: jest.fn(),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordFinance("FK-2026-012", "finance-1", {
+        amountCents: 10_000,
+        occurredAt: "2026-06-22T00:00:00.000Z"
+      })
+    ).rejects.toThrow("财务入账需要当前登录密码确认");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.financeRecord.create).not.toHaveBeenCalled();
+  });
+
   it("rejects finance record before actual payment execution", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
@@ -4684,12 +4722,19 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
 
     await expect(
       paymentService.recordFinance("FK-2026-012", "finance-1", {
         amountCents: 10_000,
-        occurredAt: "2026-06-22T00:00:00.000Z"
+        occurredAt: "2026-06-22T00:00:00.000Z",
+        confirmationPassword: "Current@123"
       })
     ).rejects.toThrow("Cannot record finance entry before actual payment execution");
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
@@ -4716,12 +4761,19 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
 
     await expect(
       paymentService.recordFinance("FK-2026-012", "finance-1", {
         amountCents: 10_001,
-        occurredAt: "2026-06-22T00:00:00.000Z"
+        occurredAt: "2026-06-22T00:00:00.000Z",
+        confirmationPassword: "Current@123"
       })
     ).rejects.toThrow("Finance record exceeds unrecorded paid amount: 10000");
     expect(tx.financeRecord.create).not.toHaveBeenCalled();

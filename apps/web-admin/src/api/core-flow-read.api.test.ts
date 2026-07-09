@@ -864,7 +864,8 @@ describe("core flow read API client", () => {
     });
     await recordPaymentFinance("FK-2026-006", {
       amountCents: 5000000,
-      occurredAt: "2026-06-22T01:00:00.000Z"
+      occurredAt: "2026-06-22T01:00:00.000Z",
+      confirmationPassword: "current-password"
     });
     await recordPaymentPdfArchive("FK-2026-006", {
       fileId: "file-2"
@@ -887,6 +888,13 @@ describe("core flow read API client", () => {
       JSON.stringify({
         decision: "approve",
         approvedAmountCents: 5000000
+      })
+    );
+    expect(fetchMock.mock.calls[6][1]?.body).toBe(
+      JSON.stringify({
+        amountCents: 5000000,
+        occurredAt: "2026-06-22T01:00:00.000Z",
+        confirmationPassword: "current-password"
       })
     );
   });
