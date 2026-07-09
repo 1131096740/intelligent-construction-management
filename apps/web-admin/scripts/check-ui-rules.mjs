@@ -69,6 +69,32 @@ const visualPatterns = [
   { pattern: /style="[^"]*border-radius\s*:/i, message: "禁止高风险内联圆角样式" }
 ];
 
+const businessLanguageAllowlistedFiles = new Set(["src/api/error-message.ts"]);
+
+const businessLanguagePatterns = [
+  { pattern: /\bForbidden\b/, message: "用户可见文案不得出现 Forbidden，请改成中文业务原因和下一步" },
+  {
+    pattern: /Invalid status transition/i,
+    message: "用户可见文案不得出现 Invalid status transition，请说明当前单据为什么不能办理"
+  },
+  {
+    pattern: /contractVersionId required/i,
+    message: "用户可见文案不得出现 contractVersionId required，请改为合同版本等中文业务名称"
+  },
+  {
+    pattern: /Missing required project role/i,
+    message: "用户可见文案不得出现 Missing required project role，请说明缺少哪个项目岗位权限"
+  },
+  {
+    pattern: /Failed to fetch/i,
+    message: "用户可见文案不得出现 Failed to fetch，请改为网络连接失败和下一步建议"
+  },
+  { pattern: /\bsnapshot\b/i, message: "用户可见文案不得出现 snapshot，请改为审批稿" },
+  { pattern: /\bworkflow\b/i, message: "用户可见文案不得出现 workflow，请改为审批进度" },
+  { pattern: /\bforceSave\b/i, message: "用户可见文案不得出现 forceSave，请改为保存当前正文" },
+  { pattern: /\bbillItem\b/i, message: "用户可见文案不得出现 billItem，请改为合同清单项" }
+];
+
 function relativePath(filePath) {
   return path.relative(ROOT, filePath).split(path.sep).join("/");
 }
@@ -131,11 +157,68 @@ export function findUiRuleViolations(filePath, source) {
   return violations;
 }
 
-function listSourceFiles(dir) {
+function visibleTemplateText(source) {
+  const match = source.match(/<template[^>]*>([\s\S]*?)<\/template>/i);
+  if (!match) return "";
+
+  return match[1]
+    .replace(/{{[\s\S]*?}}/g, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ");
+}
+
+function selectedTemplateAttributes(source) {
+  const match = source.match(/<template[^>]*>([\s\S]*?)<\/template>/i);
+  if (!match) return [];
+
+  const values = [];
+  const attrPattern =
+    /\b(?:aria-label|content|description|label|message|placeholder|title)\s*=\s*"([^"]*)"/gi;
+  let attr;
+  while ((attr = attrPattern.exec(match[1])) !== null) {
+    values.push(attr[1]);
+  }
+  return values;
+}
+
+function scriptUserFacingStrings(relative, source) {
+  if (!/(\.config\.ts|\.vue)$/.test(relative)) return [];
+
+  const script = relative.endsWith(".vue")
+    ? source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? ""
+    : source;
+  const values = [];
+  const stringPattern = /(["'`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
+  let stringLiteral;
+
+  while ((stringLiteral = stringPattern.exec(script)) !== null) {
+    values.push(stringLiteral[2]);
+  }
+
+  return values;
+}
+
+export function findBusinessLanguageViolations(filePath, source) {
+  const relative = relativePath(filePath);
+  if (businessLanguageAllowlistedFiles.has(relative) || /\.test\.ts$/.test(relative)) return [];
+
+  const candidates = relative.endsWith(".vue")
+    ? [visibleTemplateText(source), ...selectedTemplateAttributes(source), ...scriptUserFacingStrings(relative, source)]
+    : scriptUserFacingStrings(relative, source);
+
+  return candidates.flatMap((candidate) =>
+    businessLanguagePatterns.flatMap((rule) =>
+      rule.pattern.test(candidate) ? [{ file: relative, message: rule.message }] : []
+    )
+  );
+}
+
+function listSourceFiles(dir, pattern = /\.(vue|css)$/) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) return listSourceFiles(fullPath);
-    return /\.(vue|css)$/.test(entry.name) ? [fullPath] : [];
+    if (entry.isDirectory()) return listSourceFiles(fullPath, pattern);
+    return pattern.test(entry.name) ? [fullPath] : [];
   });
 }
 
@@ -161,6 +244,27 @@ function runSelfTest() {
     ].join("\n")
   );
   const ok = findUiRuleViolations(okFile, ":root { --jg-color-bg-panel: #ffffff; }");
+  const languageBad = findBusinessLanguageViolations(
+    path.join(ROOT, "src/pages/contracts/LanguageBad.vue"),
+    [
+      "<template>",
+      '  <t-alert title="Failed to fetch" />',
+      "  <span>snapshot</span>",
+      "</template>"
+    ].join("\n")
+  );
+  const languageInternal = findBusinessLanguageViolations(
+    path.join(ROOT, "src/pages/contracts/LanguageInternal.vue"),
+    [
+      "<template>",
+      "  {{ snapshot(row).name }}",
+      '  <div class="snapshot-attachments">审批附件</div>',
+      "</template>",
+      "<script setup lang=\"ts\">",
+      "const workflowActions = [];",
+      "</script>"
+    ].join("\n")
+  );
 
   if (
     bad.length < 2 ||
@@ -168,13 +272,16 @@ function runSelfTest() {
     !annotated.some((violation) => violation.message === "使用 t-button，不要手写 button") ||
     annotated.filter((violation) => violation.message === "使用 TDesign 输入组件；原生文件输入必须加 ui-rules-ignore").length !== 1 ||
     !annotated.some((violation) => violation.message === "颜色必须来自设计 token") ||
-    !annotated.some((violation) => violation.message === "阴影必须来自设计 token")
+    !annotated.some((violation) => violation.message === "阴影必须来自设计 token") ||
+    !languageBad.some((violation) => violation.message.includes("Failed to fetch")) ||
+    !languageBad.some((violation) => violation.message.includes("snapshot")) ||
+    languageInternal.length !== 0
   ) {
-    console.error("UI 规则自检失败");
+    console.error("UI 和业务语言规则自检失败");
     process.exit(1);
   }
 
-  console.log("UI 规则自检通过");
+  console.log("UI 和业务语言规则自检通过");
 }
 
 function main() {
@@ -187,16 +294,20 @@ function main() {
 
   const rootArgIndex = process.argv.indexOf("--root");
   const sourceDir = rootArgIndex >= 0 ? path.resolve(process.argv[rootArgIndex + 1]) : DEFAULT_SOURCE_DIR;
-  const violations = listSourceFiles(sourceDir).flatMap((filePath) =>
+  const uiViolations = listSourceFiles(sourceDir).flatMap((filePath) =>
     findUiRuleViolations(filePath, fs.readFileSync(filePath, "utf8"))
   );
+  const businessLanguageViolations = listSourceFiles(sourceDir, /\.(vue|ts)$/).flatMap((filePath) =>
+    findBusinessLanguageViolations(filePath, fs.readFileSync(filePath, "utf8"))
+  );
+  const violations = [...uiViolations, ...businessLanguageViolations];
 
   if (violations.length > 0) {
     violations.forEach((violation) => console.error(`${violation.file}: ${violation.message}`));
     process.exit(1);
   }
 
-  console.log("UI 规则检查通过");
+  console.log("UI 和业务语言规则检查通过");
 }
 
 main();
