@@ -55,7 +55,7 @@ describe("contract takeover page configuration", () => {
     const rows = parseContractTakeoverImportPrecheckRows(
       [
         "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t接管等级\t履约状态",
-        "\t缺编号合同\t历史供应商\t建工集团\t100.00\t2026-01-01\tB\tin_progress"
+        "\t缺编号合同\t历史供应商\t建工集团\t100.00\t2026-01-01\tB\t履约中"
       ].join("\n")
     );
 
@@ -64,7 +64,8 @@ describe("contract takeover page configuration", () => {
       code: "",
       name: "缺编号合同",
       counterparty: "历史供应商",
-      amountCents: 10000
+      amountCents: 10000,
+      lifecycleStatus: "in_progress"
     });
   });
 

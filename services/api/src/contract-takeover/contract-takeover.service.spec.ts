@@ -440,6 +440,39 @@ describe("ContractTakeoverService", () => {
     expect(prisma.contractTakeover.create).not.toHaveBeenCalled();
   });
 
+  it("uses business labels for invalid historical amount cells in import precheck", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.precheckImport("project-1", {
+      rows: [
+        {
+          code: "HT-HIS-AMOUNT",
+          name: "历史金额异常合同",
+          counterparty: "历史供应商",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "B",
+          lifecycleStatus: "in_progress",
+          historicalSettledCents: -1
+        }
+      ]
+    });
+
+    expect(result.rows[0].issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "historicalSettledCents",
+          message: "历史累计结算必须是非负整数分值"
+        })
+      ])
+    );
+  });
+
   it("warns when takeover import precheck lacks evidence checklist or issue summary", async () => {
     const prisma = {
       contract: {

@@ -1154,7 +1154,7 @@ export class ContractTakeoverService {
     for (const field of MONEY_FIELDS) {
       const value = isBlankInput(row[field]) ? 0 : integerValue(row[field]);
       if (value === null || value < 0) {
-        issues.push(issue(rowNo, field, "error", `${field} 必须是非负整数分值`));
+        issues.push(issue(rowNo, field, "error", `${MONEY_FIELD_LABELS[field]}必须是非负整数分值`));
       }
     }
 
