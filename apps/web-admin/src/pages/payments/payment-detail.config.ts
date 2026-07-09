@@ -59,6 +59,7 @@ export const paymentBaseInfo: PaymentDetailMetaItem[] = [
   { label: "付款阶段", value: "当期结算款" },
   { label: "付款比例", value: "80%" },
   { label: "付款账期", value: "30天" },
+  { label: "发票要求", value: "需提供发票" },
   { label: "申请金额", value: "¥256,000.00" },
   { label: "申请人", value: "项目经理 张工" }
 ];

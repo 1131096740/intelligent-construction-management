@@ -493,6 +493,7 @@ export class PaymentReadService {
         { label: "付款阶段", value: stage?.name ?? "按付款条款执行" },
         { label: "付款比例", value: this.ratioLabel(stage?.ratioBps ?? null) },
         { label: "付款账期", value: stage ? `${stage.dueDays}天` : "-" },
+        { label: "发票要求", value: stage?.requiresInvoice ? "需提供发票" : "不要求发票" },
         { label: "申请金额", value: this.formatMoney(payment.requestedAmountCents) },
         { label: "已付金额", value: this.formatMoney(paidAmountCents) }
       ],

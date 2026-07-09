@@ -228,7 +228,8 @@ describe("PaymentReadService", () => {
           id: "stage-progress",
           name: "进度款",
           ratioBps: 8500,
-          dueDays: 20
+          dueDays: 20,
+          requiresInvoice: true
         })
       },
       paymentExecution: {
@@ -296,6 +297,7 @@ describe("PaymentReadService", () => {
     expect(detail.title).toBe("FK-2026-011 · 2026-06付款申请");
     expect(detail.baseInfo).toContainEqual({ label: "申请金额", value: "¥493,000.00" });
     expect(detail.baseInfo).toContainEqual({ label: "已付金额", value: "¥120,000.00" });
+    expect(detail.baseInfo).toContainEqual({ label: "发票要求", value: "需提供发票" });
     expect(detail.approvalSteps.map((step) => step.label)).toEqual([
       "付款申请",
       "项目经理审批",

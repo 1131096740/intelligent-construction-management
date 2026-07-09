@@ -30,6 +30,7 @@ describe("payment detail page configuration", () => {
       "付款阶段",
       "付款比例",
       "付款账期",
+      "发票要求",
       "申请金额",
       "申请人"
     ]);
