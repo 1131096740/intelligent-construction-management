@@ -948,7 +948,7 @@ export class ContractTakeoverService {
               purposeLabel: evidencePurposeLabel(evidencePurpose(record.departmentScope)),
               mimeType: file.mimeType,
               sizeBytes: file.sizeBytes,
-              uploadedByName: userNameById.get(file.uploadedByUserId) ?? file.uploadedByUserId,
+              uploadedByName: userNameById.get(file.uploadedByUserId) ?? "上传人未读取",
               uploadedAt: file.createdAt,
               canDownload: true,
               disabledReason: null

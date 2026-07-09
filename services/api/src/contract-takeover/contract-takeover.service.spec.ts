@@ -1803,6 +1803,55 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("does not expose uploader internal account when takeover evidence uploader name is unavailable", async () => {
+    const prisma = {
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([takeoverRecord()])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A"
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue(takeoverEvidenceRecords(["historical_contract_scan"]))
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            ...takeoverEvidenceFiles(1)[0],
+            uploadedByUserId: "uploader-internal-id"
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const [row] = await service.list("project-1");
+
+    expect(row.evidenceFiles).toEqual([
+      expect.objectContaining({
+        fileName: "接管资料-1.pdf",
+        uploadedByName: "上传人未读取"
+      })
+    ]);
+    expect(row.evidenceFiles[0]?.uploadedByName).not.toBe("uploader-internal-id");
+  });
+
   it("explains C level takeover payment risk after confirmation", async () => {
     const prisma = {
       contractTakeover: {
