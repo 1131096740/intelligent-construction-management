@@ -18,6 +18,27 @@ import {
 import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
 import { PrismaService } from "../database/prisma.service";
 
+interface SettlementLineStore {
+  settlementLine?: {
+    findMany(args: {
+      where: { settlementId: string };
+      orderBy: { sortOrder: "asc" };
+    }): Promise<
+      Array<{
+        id: string;
+        sourceType: string;
+        name: string;
+        unit: string | null;
+        quantity: { toString(): string } | string | number | null;
+        unitPriceCents: number | null;
+        amountCents: number;
+        reason: string | null;
+        remark: string | null;
+      }>
+    >;
+  };
+}
+
 @Injectable()
 export class SettlementReadService {
   constructor(
@@ -25,6 +46,35 @@ export class SettlementReadService {
     @Optional()
     private readonly projectVisibility?: ProjectVisibilityService
   ) {}
+
+  private async settlementLinesForSettlement(
+    settlementId: string
+  ): Promise<SettlementDetailReadModel["settlementLines"]> {
+    const client = this.prisma as unknown as SettlementLineStore;
+    if (!client.settlementLine) {
+      return [];
+    }
+
+    const lines = await client.settlementLine.findMany({
+      where: { settlementId },
+      orderBy: { sortOrder: "asc" }
+    });
+
+    return lines.map((line) => ({
+      id: line.id,
+      sourceType:
+        line.sourceType === "manual_adjustment" ? "manual_adjustment" : "contract_bill_row",
+      sourceLabel: line.sourceType === "manual_adjustment" ? "手工调整项" : "合同清单项",
+      name: line.name,
+      unit: line.unit ?? "-",
+      quantity: this.formatQuantity(line.quantity),
+      unitPrice: line.unitPriceCents === null ? "-" : this.formatMoney(line.unitPriceCents),
+      amount: this.formatMoney(line.amountCents),
+      amountCents: line.amountCents,
+      reason: line.reason ?? "-",
+      remark: line.remark ?? "-"
+    }));
+  }
 
   private async settlementArchiveFilesForSettlement(
     settlementId: string
@@ -278,7 +328,8 @@ export class SettlementReadService {
       paymentRequest,
       archiveFiles,
       approvalTimeline,
-      paymentActivity
+      paymentActivity,
+      settlementLines
     ] = await Promise.all([
       this.prisma.contract.findUnique({ where: { id: settlement.contractId } }),
       this.prisma.contractVersion.findUnique({ where: { id: settlement.contractVersionId } }),
@@ -291,7 +342,8 @@ export class SettlementReadService {
       }),
       this.settlementArchiveFilesForSettlement(settlement.id),
       approvalTimelineForBusiness(this.prisma, "settlement", settlement.id),
-      this.paymentActivityForSettlement(settlement.id)
+      this.paymentActivityForSettlement(settlement.id),
+      this.settlementLinesForSettlement(settlement.id)
     ]);
 
     if (!contract) {
@@ -361,6 +413,7 @@ export class SettlementReadService {
         triggerCondition: stage.triggerEvent,
         paymentRequestStatus: paymentRequest?.status ?? this.defaultPaymentRequestStatus(settlement.status)
       })),
+      settlementLines,
       payableCalculation: this.payableCalculation(settlement, paymentActivity),
       paymentBlockMessage: this.paymentBlockMessage(settlement.status),
       archiveFiles,
@@ -426,6 +479,21 @@ export class SettlementReadService {
           accountPeriod: "365天",
           triggerCondition: "质保期满",
           paymentRequestStatus: "未开放"
+        }
+      ],
+      settlementLines: [
+        {
+          id: "sample-line-1",
+          sourceType: "contract_bill_row",
+          sourceLabel: "合同清单项",
+          name: "钢筋材料",
+          unit: "吨",
+          quantity: "10",
+          unitPrice: "¥3,200.00",
+          amount: "¥320,000.00",
+          amountCents: 32000000,
+          reason: "-",
+          remark: "-"
         }
       ],
       payableCalculation: {
@@ -844,6 +912,14 @@ export class SettlementReadService {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`;
+  }
+
+  private formatQuantity(value: { toString(): string } | string | number | null): string {
+    if (value === null) return "-";
+    return value
+      .toString()
+      .replace(/(\.\d*?)0+$/, "$1")
+      .replace(/\.$/, "");
   }
 
   private limit(rawLimit?: string | number) {

@@ -23,6 +23,18 @@ export interface SettlementPaymentRule {
   paymentRequestStatus: string;
 }
 
+export interface SettlementLineRow {
+  id: string;
+  sourceLabel: string;
+  name: string;
+  unit: string;
+  quantity: string;
+  unitPrice: string;
+  amount: string;
+  reason: string;
+  remark: string;
+}
+
 export interface SettlementFlowSummaryItem {
   label: string;
   value: string;
@@ -81,6 +93,17 @@ export const settlementPaymentRuleColumns: PrimaryTableCol<SettlementPaymentRule
   { colKey: "accountPeriod", title: "付款账期", width: 110 },
   { colKey: "triggerCondition", title: "触发条件", minWidth: 180 },
   { colKey: "paymentRequestStatus", title: "付款申请状态", width: 132 }
+];
+
+export const settlementLineColumns: PrimaryTableCol<SettlementLineRow>[] = [
+  { colKey: "sourceLabel", title: "来源", width: 120 },
+  { colKey: "name", title: "结算内容", minWidth: 180 },
+  { colKey: "unit", title: "单位", width: 80 },
+  { colKey: "quantity", title: "本期工程量", width: 120 },
+  { colKey: "unitPrice", title: "单价", width: 120 },
+  { colKey: "amount", title: "本期金额", width: 132 },
+  { colKey: "reason", title: "依据/原因", minWidth: 160 },
+  { colKey: "remark", title: "备注", minWidth: 160 }
 ];
 
 export const settlementPaymentRules: SettlementPaymentRule[] = [

@@ -16,7 +16,11 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
-import { CreateSettlementDto } from "./dto/create-settlement.dto";
+import {
+  CreateSettlementDto,
+  type CreateSettlementLineDto,
+  type SettlementLineSourceType
+} from "./dto/create-settlement.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 import {
@@ -135,6 +139,65 @@ interface UserLookupClient {
   };
 }
 
+interface SettlementLineContractBillRow {
+  id: string;
+  contractBillId: string;
+  itemName: string;
+  unit: string;
+  unitPrice: Prisma.Decimal | string | number;
+}
+
+interface SettlementLineClient {
+  contractBill: {
+    findMany(args: {
+      where: { contractVersionId: string };
+      select: { id: true };
+    }): Promise<Array<{ id: string }>>;
+  };
+  contractBillRow: {
+    findMany(args: {
+      where: { id: { in: string[] }; contractBillId: { in: string[] } };
+      select: {
+        id: true;
+        contractBillId: true;
+        itemName: true;
+        unit: true;
+        unitPrice: true;
+      };
+    }): Promise<SettlementLineContractBillRow[]>;
+  };
+  settlementLine: {
+    createMany(args: {
+      data: Array<{
+        settlementId: string;
+        contractBillRowId: string | null;
+        sourceType: SettlementLineSourceType;
+        name: string;
+        unit: string | null;
+        quantity: Prisma.Decimal | null;
+        unitPriceCents: number | null;
+        amountCents: number;
+        reason: string | null;
+        remark: string | null;
+        sortOrder: number;
+      }>;
+    }): Promise<unknown>;
+  };
+}
+
+interface NormalizedSettlementLine {
+  sourceType: SettlementLineSourceType;
+  contractBillRowId: string | null;
+  name: string;
+  unit: string | null;
+  quantity: Prisma.Decimal | null;
+  unitPriceCents: number | null;
+  amountCents: number;
+  reason: string | null;
+  remark: string | null;
+  sortOrder: number;
+}
+
 @Injectable()
 export class SettlementService {
   constructor(
@@ -156,6 +219,165 @@ export class SettlementService {
     }
   }
 
+  private async normalizeSettlementLines(
+    tx: unknown,
+    contractVersionId: string,
+    lines: CreateSettlementLineDto[] | undefined
+  ): Promise<NormalizedSettlementLine[]> {
+    if (!lines?.length) return [];
+
+    const client = tx as SettlementLineClient;
+    const contractBillRows = await this.contractBillRowsById(
+      client,
+      contractVersionId,
+      lines
+        .filter((line) => line.sourceType === "contract_bill_row")
+        .map((line) => this.requiredText(line.contractBillRowId, "合同清单项"))
+    );
+
+    return lines.map((line, index) => {
+      const sourceType = line.sourceType;
+      if (sourceType !== "contract_bill_row" && sourceType !== "manual_adjustment") {
+        throw new BadRequestException("结算明细来源类型不正确。");
+      }
+
+      const amountCents = this.requiredInteger(line.amountCents, "结算明细金额");
+      if (amountCents === 0) {
+        throw new BadRequestException("结算明细金额不能为 0。");
+      }
+
+      if (sourceType === "manual_adjustment") {
+        const reason = this.requiredText(line.reason, "手工调整原因");
+        return {
+          sourceType,
+          contractBillRowId: null,
+          name: this.requiredText(line.name, "结算明细名称"),
+          unit: this.optionalText(line.unit),
+          quantity: this.optionalDecimal(line.quantity, "结算明细工程量"),
+          unitPriceCents: this.optionalInteger(line.unitPriceCents, "结算明细单价"),
+          amountCents,
+          reason,
+          remark: this.optionalText(line.remark),
+          sortOrder: this.sortOrder(line.sortOrder, index)
+        };
+      }
+
+      const contractBillRowId = this.requiredText(line.contractBillRowId, "合同清单项");
+      const billRow = contractBillRows.get(contractBillRowId);
+      if (!billRow) {
+        throw new BadRequestException("结算明细引用的合同清单项不属于当前有效合同版本。");
+      }
+
+      return {
+        sourceType,
+        contractBillRowId,
+        name: this.optionalText(line.name) ?? billRow.itemName,
+        unit: this.optionalText(line.unit) ?? billRow.unit,
+        quantity: this.optionalDecimal(line.quantity, "结算明细工程量"),
+        unitPriceCents: this.optionalInteger(line.unitPriceCents, "结算明细单价"),
+        amountCents,
+        reason: this.optionalText(line.reason),
+        remark: this.optionalText(line.remark),
+        sortOrder: this.sortOrder(line.sortOrder, index)
+      };
+    });
+  }
+
+  private async contractBillRowsById(
+    client: SettlementLineClient,
+    contractVersionId: string,
+    rowIds: string[]
+  ): Promise<Map<string, SettlementLineContractBillRow>> {
+    const uniqueRowIds = Array.from(new Set(rowIds));
+    if (!uniqueRowIds.length) return new Map();
+
+    const bills = await client.contractBill.findMany({
+      where: { contractVersionId },
+      select: { id: true }
+    });
+    const billIds = bills.map((bill) => bill.id);
+    if (!billIds.length) return new Map();
+
+    const rows = await client.contractBillRow.findMany({
+      where: { id: { in: uniqueRowIds }, contractBillId: { in: billIds } },
+      select: {
+        id: true,
+        contractBillId: true,
+        itemName: true,
+        unit: true,
+        unitPrice: true
+      }
+    });
+
+    return new Map(rows.map((row) => [row.id, row]));
+  }
+
+  private settlementAmountFromLines(
+    calculatedAmountCents: number,
+    lines: NormalizedSettlementLine[]
+  ): number {
+    if (!lines.length) return calculatedAmountCents;
+
+    const lineTotal = lines.reduce((sum, line) => sum + line.amountCents, 0);
+    if (lineTotal !== calculatedAmountCents) {
+      throw new BadRequestException("结算明细合计必须等于本次结算金额，系统不会使用前端合计覆盖后台计算。");
+    }
+
+    return lineTotal;
+  }
+
+  private async createSettlementLines(
+    tx: unknown,
+    settlementId: string,
+    lines: NormalizedSettlementLine[]
+  ): Promise<void> {
+    if (!lines.length) return;
+
+    const client = tx as SettlementLineClient;
+    await client.settlementLine.createMany({
+      data: lines.map((line) => ({ ...line, settlementId }))
+    });
+  }
+
+  private requiredText(value: string | undefined, label: string): string {
+    const text = value?.trim();
+    if (!text) {
+      throw new BadRequestException(`${label}不能为空。`);
+    }
+    return text;
+  }
+
+  private optionalText(value: string | undefined): string | null {
+    const text = value?.trim();
+    return text || null;
+  }
+
+  private requiredInteger(value: number | undefined, label: string): number {
+    if (!Number.isInteger(value)) {
+      throw new BadRequestException(`${label}必须为整数。`);
+    }
+    return Number(value);
+  }
+
+  private optionalInteger(value: number | undefined, label: string): number | null {
+    if (value === undefined || value === null) return null;
+    return this.requiredInteger(value, label);
+  }
+
+  private optionalDecimal(value: number | string | undefined, label: string): Prisma.Decimal | null {
+    if (value === undefined || value === null || value === "") return null;
+    try {
+      return new Prisma.Decimal(value.toString());
+    } catch {
+      throw new BadRequestException(`${label}格式不正确。`);
+    }
+  }
+
+  private sortOrder(value: number | undefined, index: number): number {
+    if (value === undefined || value === null) return index + 1;
+    return this.requiredInteger(value, "结算明细排序");
+  }
+
   async create(input: CreateSettlementDto, applicantUserId?: string) {
     if (!this.prisma) {
       throw new Error("Prisma service is required to create settlement");
@@ -171,6 +393,11 @@ export class SettlementService {
       }
 
       this.assertContractVersionEffective(version.status as ContractVersionStatus);
+      const settlementLines = await this.normalizeSettlementLines(
+        tx,
+        version.id,
+        input.settlementLines
+      );
 
       const [contract, terms] = await Promise.all([
         tx.contract.findUnique({ where: { id: version.contractId } }),
@@ -191,7 +418,7 @@ export class SettlementService {
         throw new Error("Effective payment terms version not found");
       }
 
-      const settlementAmountCents =
+      const calculatedSettlementAmountCents =
         input.isFinal === true
           ? await this.calculateFinalSettlementCurrentAmount(
               tx,
@@ -199,6 +426,10 @@ export class SettlementService {
               input.amountCents
             )
           : input.amountCents;
+      const settlementAmountCents = this.settlementAmountFromLines(
+        calculatedSettlementAmountCents,
+        settlementLines
+      );
 
       const exceptionQuotaAllocations = await this.reserveSettlementQuota(
         tx,
@@ -236,6 +467,7 @@ export class SettlementService {
             : {})
         }
       });
+      await this.createSettlementLines(tx, settlement.id, settlementLines);
 
       if (exceptionQuotaAllocations.length) {
         await tx.projectSettlementExceptionQuotaUsage.createMany({

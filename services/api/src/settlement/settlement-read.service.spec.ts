@@ -190,6 +190,32 @@ describe("SettlementReadService", () => {
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([{ amountCents: 5000000 }])
       },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "line-1",
+            sourceType: "contract_bill_row",
+            name: "钢筋材料",
+            unit: "吨",
+            quantity: { toString: () => "10.000000" },
+            unitPriceCents: 320000,
+            amountCents: 3200000,
+            reason: null,
+            remark: "本期完成量"
+          },
+          {
+            id: "line-2",
+            sourceType: "manual_adjustment",
+            name: "现场扣款",
+            unit: null,
+            quantity: null,
+            unitPriceCents: null,
+            amountCents: -200000,
+            reason: "项目确认扣款",
+            remark: null
+          }
+        ])
+      },
       settlementArchiveFile: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -246,6 +272,34 @@ describe("SettlementReadService", () => {
       { label: "已申请付款", value: "¥200,000.00", tone: "warning" },
       { label: "已实付金额", value: "¥50,000.00" },
       { label: "剩余可申请", value: "¥264,000.00", tone: "primary" }
+    ]);
+    expect(detail.settlementLines).toEqual([
+      {
+        id: "line-1",
+        sourceType: "contract_bill_row",
+        sourceLabel: "合同清单项",
+        name: "钢筋材料",
+        unit: "吨",
+        quantity: "10",
+        unitPrice: "¥3,200.00",
+        amount: "¥32,000.00",
+        amountCents: 3200000,
+        reason: "-",
+        remark: "本期完成量"
+      },
+      {
+        id: "line-2",
+        sourceType: "manual_adjustment",
+        sourceLabel: "手工调整项",
+        name: "现场扣款",
+        unit: "-",
+        quantity: "-",
+        unitPrice: "-",
+        amount: "¥-2,000.00",
+        amountCents: -200000,
+        reason: "项目确认扣款",
+        remark: "-"
+      }
     ]);
     expect(detail.archiveFiles).toEqual([
       {

@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-09 (CodeX)：继续执行办公化合同结算工作台方案账本主线：新增 `SettlementLine` 结算明细行模型和迁移，结算创建支持合同清单项与手工调整项两类明细，后端校验明细合计必须等于本次结算金额，合同清单项必须属于当前有效合同版本，手工调整项必须填写原因；结算详情读模型和 Web 详情页新增“结算明细账本”只读表。本轮不做在线 Excel、导入记录和变更签证正式模块。验证：Prisma generate/validate、API 结算 Jest 2 套 50 例、API typecheck/lint、Web typecheck、`check:ui`、`git diff --check` 通过。
 - 2026-07-09 (CodeX)：执行办公化合同结算工作台方案首个安全切片：新增 Web Admin 中文业务语言规范与检查清单，并把高风险英文技术词检查并入 `check:ui`，防止新增/触达页面直接暴露 `Forbidden`、`Failed to fetch`、`snapshot`、`workflow`、`billItem` 等用户不可理解文案；本轮不引入在线 Office、表格库、低代码或新运行时。验证：`node apps/web-admin/scripts/check-ui-rules.mjs --self-test`、`CI=true pnpm --filter @jiangkong/web-admin check:ui` 通过。
 - 2026-07-09 (CodeX)：新增办公化合同/结算工作台与效率提升方案文档，按“前台像办公工具，后台像业务账本”梳理合同 Word 化、结算 Excel 化、审批稿冻结、付款额度约束、历史接管唯一真相边界和新会话执行提示；ONLYOFFICE、Tabulator、Univer、PDF.js 等外部工具仅作为研究候选或窄边界 POC 方向，任何工程落地必须另行提交技术、安全、授权、部署、回滚和验收方案，不构成生产接入授权。验证：文档空白检查和 `git diff --check` 通过。
 - 2026-07-09 (CodeX)：确认并落地 Web Admin UI 治理基线：TDesign 作为唯一基础组件库，新增项目级 `--jg-*` token 命名、`check:ui` 自动检查、合同台账/合同详情/合同模板库三类样板和“同类 UI 第三次出现前必须抽象”的 agent 宪法；本轮保持 `.superpowers/` 工作流 scratch 未入库。验证：Web 组件与样板 Vitest、Web typecheck、Web lint、Web build、`check:ui`、`git diff --check` 通过。

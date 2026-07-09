@@ -227,6 +227,26 @@ model Settlement {
   updatedAt                  DateTime @updatedAt
 }
 
+model SettlementLine {
+  id                String   @id @default(uuid())
+  settlementId      String
+  contractBillRowId String?
+  sourceType        String
+  name              String
+  unit              String?
+  quantity          Decimal? @db.Decimal(24, 6)
+  unitPriceCents    Int?
+  amountCents       Int
+  reason            String?
+  remark            String?
+  sortOrder         Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([settlementId, sortOrder])
+  @@index([contractBillRowId])
+}
+
 model SettlementArchiveFile {
   id                String    @id @default(uuid())
   settlementId      String

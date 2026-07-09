@@ -176,6 +176,20 @@ export interface SettlementPayableCalculationReadModel {
   note: string;
 }
 
+export interface SettlementLineReadModel {
+  id: string;
+  sourceType: "contract_bill_row" | "manual_adjustment";
+  sourceLabel: string;
+  name: string;
+  unit: string;
+  quantity: string;
+  unitPrice: string;
+  amount: string;
+  amountCents: number;
+  reason: string;
+  remark: string;
+}
+
 export interface SettlementDetailReadModel {
   id: string;
   settlementId: string;
@@ -185,6 +199,7 @@ export interface SettlementDetailReadModel {
   effectivenessSteps: DetailStep[];
   archiveResponsibilities: string[];
   paymentRules: SettlementPaymentRuleReadModel[];
+  settlementLines: SettlementLineReadModel[];
   payableCalculation: SettlementPayableCalculationReadModel;
   paymentBlockMessage: string;
   archiveFiles: EvidenceFileReadModel[];

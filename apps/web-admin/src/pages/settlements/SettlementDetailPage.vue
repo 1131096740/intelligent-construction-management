@@ -416,6 +416,22 @@
 
     <t-card
       class="section-card"
+      title="结算明细账本"
+      :bordered="true"
+    >
+      <t-table
+        row-key="id"
+        size="small"
+        :columns="settlementLineColumns"
+        :data="settlementLinesView"
+      />
+      <p class="calculation-note">
+        明细账本由后端保存和重算，合同清单项追溯有效合同版本，手工调整项必须保留原因。
+      </p>
+    </t-card>
+
+    <t-card
+      class="section-card"
       title="付款执行规则"
       :bordered="true"
     >
@@ -471,6 +487,7 @@ import type { SettlementDetailTone } from "./settlement-detail.config";
 import {
   buildSettlementFlowSummary,
   settlementAttachmentTemplates,
+  settlementLineColumns,
   settlementPaymentRuleColumns
 } from "./settlement-detail.config";
 
@@ -517,6 +534,7 @@ const settlementPayableCalculationView = computed(
       note: "详情读取成功后显示本期可付金额、已申请付款、已实付和剩余可申请金额。"
     }
 );
+const settlementLinesView = computed(() => settlementDetail.value?.settlementLines ?? []);
 const settlementPaymentBlockMessageView = computed(
   () => settlementDetail.value?.paymentBlockMessage ?? "详情读取成功后显示付款申请规则。"
 );
