@@ -32,6 +32,7 @@ const PRICING_NATURES = new Set([
 ]);
 const AMOUNT_SOURCES = new Set(["bill_sum", "manual"]);
 const CHECKPOINT_RETRY_LIMIT = 3;
+const PAYMENT_STAGE_TRIGGER_EVENT = "结算归档确认生效";
 
 interface TemplateSnapshot {
   fieldSchema: ContractFieldDefinition[];
@@ -128,7 +129,7 @@ export class ContractWorkbenchService {
     });
     if (!version) throw new NotFoundException("Contract draft version not found");
 
-    const [bills, checkpoints, parties, documents] = await Promise.all([
+    const [bills, checkpoints, parties, documents, paymentTerms] = await Promise.all([
       this.prisma.contractBill.findMany({ where: { contractVersionId: version.id } }),
       this.prisma.contractDraftCheckpoint.findMany({
         where: { contractVersionId: version.id },
@@ -158,8 +159,29 @@ export class ContractWorkbenchService {
           createdAt: true,
           completedAt: true
         }
+      }),
+      this.prisma.paymentTermsVersion.findFirst({
+        where: { contractVersionId: version.id },
+        select: { id: true, originalText: true }
       })
     ]);
+    const paymentStages = paymentTerms
+      ? await this.prisma.paymentTermsStage.findMany({
+          where: { paymentTermsVersionId: paymentTerms.id },
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            name: true,
+            basis: true,
+            ratioBps: true,
+            triggerEvent: true,
+            dueDays: true,
+            requiresInvoice: true,
+            allowsInstallments: true,
+            originalText: true
+          }
+        })
+      : [];
     const rows = bills.length
       ? await this.prisma.contractBillRow.findMany({
           where: { contractBillId: { in: bills.map((bill) => bill.id) } },
@@ -182,7 +204,10 @@ export class ContractWorkbenchService {
       })),
       checkpoints,
       parties,
-      documents
+      documents,
+      paymentTerms: paymentTerms
+        ? { originalText: paymentTerms.originalText, stages: paymentStages }
+        : { originalText: "", stages: [] }
     });
   }
 
@@ -238,6 +263,9 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
+      if (input.paymentTermsOriginalText !== undefined || input.paymentStages !== undefined) {
+        await this.savePaymentTerms(tx, version.id, input);
+      }
       await this.markOlderSuccessfulDocumentsStale(
         tx,
         contractVersionId,
@@ -858,6 +886,12 @@ export class ContractWorkbenchService {
     ) {
       throw new BadRequestException("layoutTemplateVersionId must be a non-empty string");
     }
+    if (
+      input.paymentTermsOriginalText !== undefined &&
+      typeof input.paymentTermsOriginalText !== "string"
+    ) {
+      throw new BadRequestException("付款条款原文摘要必须是文本。");
+    }
     return {
       expectedRevision: input.expectedRevision as number,
       draftData: { ...(input.draftData as Record<string, unknown>) },
@@ -872,8 +906,106 @@ export class ContractWorkbenchService {
         : { amountAdjustmentReason: input.amountAdjustmentReason }),
       ...(input.layoutTemplateVersionId === undefined
         ? {}
-        : { layoutTemplateVersionId: input.layoutTemplateVersionId })
+        : { layoutTemplateVersionId: input.layoutTemplateVersionId }),
+      ...(input.paymentTermsOriginalText === undefined
+        ? {}
+        : { paymentTermsOriginalText: input.paymentTermsOriginalText as string }),
+      ...(input.paymentStages === undefined
+        ? {}
+        : { paymentStages: this.parsePaymentStages(input.paymentStages) })
     };
+  }
+
+  private parsePaymentStages(value: unknown): SaveContractDraftDto["paymentStages"] {
+    if (!Array.isArray(value)) {
+      throw new BadRequestException("付款条款阶段必须是列表。");
+    }
+    return value.map((stage, index) => {
+      const record = this.requireObject(stage, `第 ${index + 1} 条付款条款`);
+      if (typeof record.name !== "string" || !record.name.trim()) {
+        throw new BadRequestException(`第 ${index + 1} 条付款条款缺少阶段名称。`);
+      }
+      if (record.basis !== "current_settlement") {
+        throw new BadRequestException(`第 ${index + 1} 条付款条款必须按当期结算计算。`);
+      }
+      if (
+        typeof record.ratioBps !== "number" ||
+        !Number.isInteger(record.ratioBps) ||
+        record.ratioBps <= 0 ||
+        record.ratioBps > 10000
+      ) {
+        throw new BadRequestException(`第 ${index + 1} 条付款比例必须大于 0 且不超过 100%。`);
+      }
+      if (
+        typeof record.dueDays !== "number" ||
+        !Number.isInteger(record.dueDays) ||
+        record.dueDays < 0
+      ) {
+        throw new BadRequestException(`第 ${index + 1} 条付款期限必须是非负天数。`);
+      }
+      if (typeof record.requiresInvoice !== "boolean") {
+        throw new BadRequestException(`第 ${index + 1} 条付款条款缺少是否要求发票。`);
+      }
+      if (typeof record.allowsInstallments !== "boolean") {
+        throw new BadRequestException(`第 ${index + 1} 条付款条款缺少是否允许分次付款。`);
+      }
+      return {
+        name: record.name.trim(),
+        basis: "current_settlement",
+        ratioBps: record.ratioBps,
+        triggerEvent:
+          typeof record.triggerEvent === "string" && record.triggerEvent.trim()
+            ? record.triggerEvent.trim()
+            : PAYMENT_STAGE_TRIGGER_EVENT,
+        dueDays: record.dueDays,
+        requiresInvoice: record.requiresInvoice,
+        allowsInstallments: record.allowsInstallments,
+        originalText:
+          typeof record.originalText === "string" && record.originalText.trim()
+            ? record.originalText.trim()
+            : PAYMENT_STAGE_TRIGGER_EVENT
+      };
+    });
+  }
+
+  private async savePaymentTerms(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    input: SaveContractDraftDto
+  ) {
+    const terms = await tx.paymentTermsVersion.findFirst({
+      where: { contractVersionId },
+      select: { id: true }
+    });
+    if (!terms) {
+      throw new BadRequestException("合同付款条款版本不存在，不能保存付款条款。");
+    }
+
+    await tx.paymentTermsVersion.update({
+      where: { id: terms.id },
+      data: { originalText: input.paymentTermsOriginalText?.trim() ?? "" }
+    });
+    await tx.paymentTermsStage.deleteMany({
+      where: { paymentTermsVersionId: terms.id }
+    });
+    if (input.paymentStages?.length) {
+      await tx.paymentTermsStage.createMany({
+        data: input.paymentStages.map((stage) => ({
+          paymentTermsVersionId: terms.id,
+          name: stage.name,
+          stageType: "progress",
+          basis: stage.basis,
+          ratioBps: stage.ratioBps,
+          triggerAnchor: "settlement_effective",
+          triggerEvent: stage.triggerEvent,
+          dueDays: stage.dueDays,
+          requiresInvoice: stage.requiresInvoice,
+          allowsEarlyPayment: false,
+          allowsInstallments: stage.allowsInstallments,
+          originalText: stage.originalText
+        }))
+      });
+    }
   }
 
   private parseTypeChangeInput(rawInput: unknown): PreviewContractTypeChangeDto {

@@ -163,6 +163,20 @@ export interface ContractWorkbenchReadModel {
     snapshot: Record<string, unknown>;
   }>;
   bills: ContractBillReadModel[];
+  paymentTerms: {
+    originalText: string;
+    stages: Array<{
+      id: string;
+      name: string;
+      basis: string;
+      ratioBps: number | null;
+      triggerEvent: string;
+      dueDays: number;
+      requiresInvoice: boolean;
+      allowsInstallments: boolean;
+      originalText: string;
+    }>;
+  };
   checkpoints: ContractDraftCheckpointReadModel[];
   documents: ContractGeneratedDocumentReadModel[];
   readiness: ContractReadinessResult;

@@ -100,6 +100,14 @@ describe("ContractWorkbenchService", () => {
       contractGeneratedDocument: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
       },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }),
+        update: jest.fn().mockResolvedValue({ id: "terms-1" })
+      },
+      paymentTermsStage: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        createMany: jest.fn().mockResolvedValue({ count: 0 })
+      },
       auditLog: { create: jest.fn() },
       ...overrides
     };
@@ -154,6 +162,65 @@ describe("ContractWorkbenchService", () => {
         amountAdjustmentReason: "草稿尚未录完"
       })
     ).resolves.toBeDefined();
+  });
+
+  it("saves structured payment terms with the draft", async () => {
+    const tx = ownedVersionTx({
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }),
+        update: jest.fn().mockResolvedValue({ id: "terms-1" })
+      },
+      paymentTermsStage: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const service = makeService(tx);
+
+    await service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: { project_name: "新名称" },
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: 1_000_000,
+      paymentTermsOriginalText: "结算归档后30天内付款80%。",
+      paymentStages: [
+        {
+          name: "当期结算款",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          triggerEvent: "结算归档确认生效",
+          dueDays: 30,
+          requiresInvoice: true,
+          allowsInstallments: true,
+          originalText: "结算归档后30天内付款80%。"
+        }
+      ]
+    });
+
+    expect(tx.paymentTermsVersion.update).toHaveBeenCalledWith({
+      where: { id: "terms-1" },
+      data: { originalText: "结算归档后30天内付款80%。" }
+    });
+    expect(tx.paymentTermsStage.deleteMany).toHaveBeenCalledWith({
+      where: { paymentTermsVersionId: "terms-1" }
+    });
+    expect(tx.paymentTermsStage.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          paymentTermsVersionId: "terms-1",
+          name: "当期结算款",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          dueDays: 30,
+          requiresInvoice: true,
+          allowsEarlyPayment: false,
+          allowsInstallments: true
+        })
+      ]
+    });
   });
 
   it("does not audit a draft save when stale document marking fails", async () => {
@@ -328,6 +395,8 @@ describe("ContractWorkbenchService", () => {
       contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
       contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
       },
@@ -406,7 +475,28 @@ describe("ContractWorkbenchService", () => {
       },
       contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
       contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
-      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) }
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-1",
+          originalText: "结算归档后30天内付款80%。"
+        })
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "stage-1",
+            name: "当期结算款",
+            basis: "current_settlement",
+            ratioBps: 8000,
+            triggerEvent: "结算归档确认生效",
+            dueDays: 30,
+            requiresInvoice: true,
+            allowsInstallments: true,
+            originalText: "结算归档后30天内付款80%。"
+          }
+        ])
+      }
     } as unknown as PrismaService;
     const service = new ContractWorkbenchService(prisma, audit as never);
 
@@ -416,6 +506,18 @@ describe("ContractWorkbenchService", () => {
     expect(result.version.amountCents).toBe(1_234_500);
     expect(result.bills[0]?.taxInclusiveAmountCents).toBe(1_234_500);
     expect(result.bills[0]?.rows[0]?.quantity).toBe("2.5");
+    expect(result.paymentTerms).toEqual({
+      originalText: "结算归档后30天内付款80%。",
+      stages: [
+        expect.objectContaining({
+          name: "当期结算款",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          dueDays: 30,
+          requiresInvoice: true
+        })
+      ]
+    });
     const row = result.bills[0]?.rows[0] as Record<string, unknown> | undefined;
     expect(row?.unitPrice).toBe("4938.00");
     expect(row?.taxRatePercent).toBe("13");

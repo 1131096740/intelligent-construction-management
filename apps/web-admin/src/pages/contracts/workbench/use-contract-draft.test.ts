@@ -73,6 +73,7 @@ function makeWorkbench(overrides: Record<string, unknown> = {}) {
     },
     parties: [],
     bills: [],
+    paymentTerms: { originalText: "", stages: [] },
     checkpoints: [],
     documents: [],
     readiness: { ready: false, blockingMessages: [], warningMessages: [] },
@@ -151,6 +152,55 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
     expect(mockSaveDraft.mock.calls[0]?.[0]).toBe("cv-1");
     expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({ expectedRevision: 3 });
+  });
+
+  it("saves structured payment terms with the draft payload", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(
+      makeWorkbench({
+        paymentTerms: {
+          originalText: "原合同约定按结算付款。",
+          stages: [
+            {
+              id: "stage-1",
+              name: "当期结算款",
+              basis: "current_settlement",
+              ratioBps: 8000,
+              triggerEvent: "结算归档确认生效",
+              dueDays: 30,
+              requiresInvoice: true,
+              allowsInstallments: true,
+              originalText: "原合同约定按结算付款。"
+            }
+          ]
+        }
+      })
+    );
+    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+
+    await draft.load("ct-1");
+    draft.model.paymentRatioBps = 8500;
+    draft.model.paymentDueDays = 20;
+    draft.model.paymentRequiresInvoice = true;
+    draft.model.paymentAllowsInstallments = false;
+    draft.model.paymentTermsOriginalText = "结算归档后20天内付款85%。";
+    await draft.saveNow();
+
+    expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({
+      paymentTermsOriginalText: "结算归档后20天内付款85%。",
+      paymentStages: [
+        {
+          name: "当期结算款",
+          basis: "current_settlement",
+          ratioBps: 8500,
+          triggerEvent: "结算归档确认生效",
+          dueDays: 20,
+          requiresInvoice: true,
+          allowsInstallments: false,
+          originalText: "结算归档后20天内付款85%。"
+        }
+      ]
+    });
   });
 
   it("shows saving, saved, failed, and conflict states", async () => {

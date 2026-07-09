@@ -9,6 +9,17 @@ export interface SaveContractDraftDto {
   manualAmountCents?: number;
   amountAdjustmentReason?: string;
   layoutTemplateVersionId?: string;
+  paymentTermsOriginalText?: string;
+  paymentStages?: Array<{
+    name: string;
+    basis: "current_settlement";
+    ratioBps: number;
+    triggerEvent: string;
+    dueDays: number;
+    requiresInvoice: boolean;
+    allowsInstallments: boolean;
+    originalText: string;
+  }>;
 }
 
 export interface CreateDraftCheckpointDto {

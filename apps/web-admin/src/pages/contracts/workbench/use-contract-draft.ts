@@ -10,7 +10,8 @@ import {
   createWorkbenchDraft,
   fetchContractWorkbench,
   restoreDraftCheckpoint,
-  saveContractDraft
+  saveContractDraft,
+  type SaveContractDraftPayload
 } from "../../../api/contract-workbench.api";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,11 @@ export interface ContractDraftModel {
   amountSource: string;
   manualAmountCents: number | null;
   amountAdjustmentReason: string;
+  paymentTermsOriginalText: string;
+  paymentRatioBps: number | null;
+  paymentDueDays: number | null;
+  paymentRequiresInvoice: boolean;
+  paymentAllowsInstallments: boolean;
   /** Professional/dynamic field values keyed by template field key. */
   fieldValues: Record<string, unknown>;
   /** Simple per-party values stored back into draftData on save. */
@@ -112,6 +118,11 @@ function emptyModel(): ContractDraftModel {
     amountSource: "",
     manualAmountCents: null,
     amountAdjustmentReason: "",
+    paymentTermsOriginalText: "",
+    paymentRatioBps: null,
+    paymentDueDays: null,
+    paymentRequiresInvoice: true,
+    paymentAllowsInstallments: true,
     fieldValues: {},
     partyValues: {},
     extraDraftData: {},
@@ -135,6 +146,9 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
       extraDraftData[key] = value;
     }
   }
+  const currentSettlementStage = workbench.paymentTerms.stages.find(
+    (stage) => stage.basis === "current_settlement"
+  );
 
   return {
     contractName:
@@ -150,6 +164,11 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
     manualAmountCents:
       workbench.version.amountSource === "manual" ? workbench.version.amountCents ?? null : null,
     amountAdjustmentReason: "",
+    paymentTermsOriginalText: workbench.paymentTerms.originalText ?? "",
+    paymentRatioBps: currentSettlementStage?.ratioBps ?? null,
+    paymentDueDays: currentSettlementStage?.dueDays ?? null,
+    paymentRequiresInvoice: currentSettlementStage?.requiresInvoice ?? true,
+    paymentAllowsInstallments: currentSettlementStage?.allowsInstallments ?? true,
     fieldValues: isRecord(draftData["fieldValues"]) ? { ...draftData["fieldValues"] } : {},
     partyValues: isRecord(draftData["partyValues"]) ? { ...draftData["partyValues"] } : {},
     extraDraftData,
@@ -191,10 +210,35 @@ function assignModel(target: ContractDraftModel, source: ContractDraftModel): vo
   target.amountSource = source.amountSource;
   target.manualAmountCents = source.manualAmountCents;
   target.amountAdjustmentReason = source.amountAdjustmentReason;
+  target.paymentTermsOriginalText = source.paymentTermsOriginalText;
+  target.paymentRatioBps = source.paymentRatioBps;
+  target.paymentDueDays = source.paymentDueDays;
+  target.paymentRequiresInvoice = source.paymentRequiresInvoice;
+  target.paymentAllowsInstallments = source.paymentAllowsInstallments;
   target.fieldValues = { ...source.fieldValues };
   target.partyValues = { ...source.partyValues };
   target.extraDraftData = { ...source.extraDraftData };
   target.clauses = source.clauses.map((clause) => ({ ...clause }));
+}
+
+function paymentStagesFromModel(
+  model: ContractDraftModel
+): NonNullable<SaveContractDraftPayload["paymentStages"]> {
+  if (model.paymentRatioBps === null || model.paymentDueDays === null) {
+    return [];
+  }
+  return [
+    {
+      name: "当期结算款",
+      basis: "current_settlement",
+      ratioBps: model.paymentRatioBps,
+      triggerEvent: "结算归档确认生效",
+      dueDays: model.paymentDueDays,
+      requiresInvoice: model.paymentRequiresInvoice,
+      allowsInstallments: model.paymentAllowsInstallments,
+      originalText: model.paymentTermsOriginalText || "结算归档确认生效后按比例付款。"
+    }
+  ];
 }
 
 function isConflictError(error: unknown): boolean {
@@ -349,7 +393,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         : {}),
       ...(model.amountAdjustmentReason
         ? { amountAdjustmentReason: model.amountAdjustmentReason }
-        : {})
+        : {}),
+      paymentTermsOriginalText: model.paymentTermsOriginalText,
+      paymentStages: paymentStagesFromModel(model)
     };
 
     try {

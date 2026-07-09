@@ -108,6 +108,17 @@ export interface SaveContractDraftPayload {
   pricingNature?: string;
   amountSource?: string;
   manualAmountCents?: number;
+  paymentTermsOriginalText?: string;
+  paymentStages?: Array<{
+    name: string;
+    basis: "current_settlement";
+    ratioBps: number;
+    triggerEvent: string;
+    dueDays: number;
+    requiresInvoice: boolean;
+    allowsInstallments: boolean;
+    originalText: string;
+  }>;
   [key: string]: unknown;
 }
 

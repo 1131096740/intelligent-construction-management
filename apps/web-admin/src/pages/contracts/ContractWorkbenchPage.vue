@@ -204,6 +204,12 @@
             :disabled="!editable"
             @reload="reloadCurrent"
           />
+          <ContractPaymentTermsSection
+            v-else-if="activeSection === 'payment'"
+            :model="model"
+            :disabled="!editable"
+            @update="applyPatch"
+          />
           <ContractClausesSection
             v-else-if="activeSection === 'clauses'"
             :model="model"
@@ -317,6 +323,7 @@ import ContractClausesSection from "./workbench/ContractClausesSection.vue";
 import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
 import ContractOverviewSection from "./workbench/ContractOverviewSection.vue";
 import ContractPartySection from "./workbench/ContractPartySection.vue";
+import ContractPaymentTermsSection from "./workbench/ContractPaymentTermsSection.vue";
 import ContractPricingSection from "./workbench/ContractPricingSection.vue";
 import ContractProfessionalFieldsSection from "./workbench/ContractProfessionalFieldsSection.vue";
 import ContractReadinessPanel from "./workbench/ContractReadinessPanel.vue";
@@ -371,6 +378,7 @@ const sections = [
   { key: "pricing", label: "金额计价", hint: "金额来源" },
   { key: "fields", label: "专业信息", hint: "模板字段" },
   { key: "bills", label: "清单明细", hint: "材料/劳务" },
+  { key: "payment", label: "付款条款", hint: "比例与期限" },
   { key: "clauses", label: "合同条款", hint: "付款与约定" },
   { key: "documents", label: "文档生成", hint: "合同与预览" }
 ] as const;
