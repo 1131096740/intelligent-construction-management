@@ -1336,6 +1336,75 @@ describe("SettlementService", () => {
     });
   });
 
+  it("结算单不存在时不能上传归档文件", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      },
+      settlementArchiveFile: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      assertCanDownloadFile: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.uploadArchiveFile("settlement-missing", "user-contract-staff", {
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("未找到结算单，请刷新结算台账后重试");
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+    expect(tx.settlementArchiveFile.create).not.toHaveBeenCalled();
+  });
+
+  it("结算单尚未通过审批时不能上传归档文件", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      settlementArchiveFile: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      assertCanDownloadFile: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.uploadArchiveFile("settlement-1", "user-contract-staff", {
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("当前结算单尚不能上传归档文件，请确认审批已通过并等待归档");
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+    expect(tx.settlementArchiveFile.create).not.toHaveBeenCalled();
+  });
+
   it("approves a settlement and opens signed archive upload", async () => {
     const tx = {
       settlement: {
@@ -2859,9 +2928,123 @@ describe("SettlementService", () => {
         archiveFileId: "settlement-archive-file-1",
         confirmationPassword: ""
       })
-    ).rejects.toThrow("Settlement archive confirmation password is required");
+    ).rejects.toThrow("确认结算归档需要当前登录密码");
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
+  it("结算单不存在时不能确认归档", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      },
+      settlementArchiveFile: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      settlementService.confirmArchiveFile("settlement-missing", "user-contract-director", {
+        archiveFileId: "settlement-archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("未找到结算单，请刷新结算台账后重试");
+    expect(tx.settlementArchiveFile.findFirst).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("结算单尚未上传归档文件时不能确认归档", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "approved_pending_archive"
+        }),
+        update: jest.fn()
+      },
+      settlementArchiveFile: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      settlementService.confirmArchiveFile("settlement-1", "user-contract-director", {
+        archiveFileId: "settlement-archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("当前结算单尚不能确认归档，请先上传已签署的结算归档文件");
+    expect(tx.settlementArchiveFile.findFirst).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("待确认结算归档文件不存在时不能确认归档", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "pending_archive_confirm"
+        }),
+        update: jest.fn()
+      },
+      settlementArchiveFile: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      settlementService.confirmArchiveFile("settlement-1", "user-contract-director", {
+        archiveFileId: "settlement-archive-file-missing",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("未找到待确认的结算归档文件，请刷新后重试");
+    expect(tx.settlementArchiveFile.update).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("已处理的结算归档文件不能重复确认", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "pending_archive_confirm"
+        }),
+        update: jest.fn()
+      },
+      settlementArchiveFile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "settlement-archive-file-1",
+          status: "confirmed"
+        }),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      settlementService.confirmArchiveFile("settlement-1", "user-contract-director", {
+        archiveFileId: "settlement-archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("该结算归档文件已处理，不能重复确认");
+    expect(tx.settlementArchiveFile.update).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 
   it("exports a draft settlement Excel sheet with the settlement template layout", async () => {
@@ -3433,7 +3616,70 @@ describe("SettlementService", () => {
 
     await expect(
       settlementService.generatePdfArchive("settlement-1", "contract-staff-1")
-    ).rejects.toThrow("Settlement PDF archive already exists");
+    ).rejects.toThrow("结算归档 PDF 已生成，请勿重复生成");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("结算单不存在时不能生成归档 PDF", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      pdfDocument: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.generatePdfArchive("settlement-missing", "contract-staff-1")
+    ).rejects.toThrow("未找到结算单，请刷新结算台账后重试");
+    expect(tx.pdfDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("结算单状态尚不支持时不能生成归档 PDF", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "approval_pending"
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.generatePdfArchive("settlement-1", "contract-staff-1")
+    ).rejects.toThrow("当前结算单尚不能生成归档 PDF，请先完成审批或归档确认");
+    expect(tx.pdfDocument.findFirst).not.toHaveBeenCalled();
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 

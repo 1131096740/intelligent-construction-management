@@ -887,11 +887,11 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到结算单，请刷新结算台账后重试");
       }
 
       if (settlement.status !== "approved_pending_archive") {
-        throw new Error(`Cannot upload settlement archive from status ${settlement.status}`);
+        throw new Error("当前结算单尚不能上传归档文件，请确认审批已通过并等待归档");
       }
 
       if (!this.files) {
@@ -1388,7 +1388,7 @@ export class SettlementService {
     }
 
     if (!input.confirmationPassword?.trim()) {
-      throw new Error("Settlement archive confirmation password is required");
+      throw new Error("确认结算归档需要当前登录密码");
     }
 
     if (!this.auth) {
@@ -1403,11 +1403,11 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到结算单，请刷新结算台账后重试");
       }
 
       if (settlement.status !== "pending_archive_confirm") {
-        throw new Error(`Cannot confirm settlement archive from status ${settlement.status}`);
+        throw new Error("当前结算单尚不能确认归档，请先上传已签署的结算归档文件");
       }
 
       const archiveFile = await tx.settlementArchiveFile.findFirst({
@@ -1418,11 +1418,11 @@ export class SettlementService {
       });
 
       if (!archiveFile) {
-        throw new Error("Settlement archive file not found");
+        throw new Error("未找到待确认的结算归档文件，请刷新后重试");
       }
 
       if (archiveFile.status !== "pending_confirm") {
-        throw new Error(`Cannot confirm settlement archive file from status ${archiveFile.status}`);
+        throw new Error("该结算归档文件已处理，不能重复确认");
       }
 
       const confirmedAt = new Date();
@@ -1477,7 +1477,7 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到结算单，请刷新结算台账后重试");
       }
 
       if (
@@ -1485,7 +1485,7 @@ export class SettlementService {
           settlement.status
         )
       ) {
-        throw new Error(`Cannot generate settlement PDF from status ${settlement.status}`);
+        throw new Error("当前结算单尚不能生成归档 PDF，请先完成审批或归档确认");
       }
 
       const existingPdf = await tx.pdfDocument.findFirst({
@@ -1497,7 +1497,7 @@ export class SettlementService {
       });
 
       if (existingPdf) {
-        throw new Error("Settlement PDF archive already exists");
+        throw new Error("结算归档 PDF 已生成，请勿重复生成");
       }
 
       return this.loadSettlementDocumentInput(tx, settlement.id);
