@@ -276,12 +276,16 @@ onMounted(loadRules);
   gap: var(--jg-space-lg);
   margin-bottom: var(--jg-space-lg);
 }
-.page-head h1 { margin: 0 0 var(--jg-space-sm); font-size: 24px; line-height: 1.2; }
-.page-head p, label span { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
+.page-head h1 {
+  margin: 0 0 var(--jg-space-sm);
+  font-size: var(--jg-font-size-page-title);
+  line-height: var(--jg-line-height-tight);
+}
+.page-head p, label span { margin: 0; color: var(--jg-text-muted); font-size: var(--jg-font-size-meta); }
 .panel { margin-bottom: var(--jg-space-lg); border-radius: var(--jg-radius-sm); }
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  grid-template-columns: repeat(4, minmax(var(--jg-layout-form-field-min-width-compact), 1fr));
   gap: var(--jg-space-md);
   margin-bottom: var(--jg-space-md);
 }
@@ -292,8 +296,14 @@ label { display: grid; gap: var(--jg-space-xs); }
   gap: var(--jg-space-sm);
   margin-bottom: var(--jg-space-md);
 }
-.preview, .message { font-size: 12px; }
+.preview, .message { font-size: var(--jg-font-size-meta); }
 .success { color: var(--jg-success); }
 .danger { color: var(--jg-danger); }
-@media (max-width: 900px) { .page-head, .form-grid { display: grid; grid-template-columns: 1fr; } }
+@media (max-width: var(--jg-layout-breakpoint-tablet)) {
+  .page-head,
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
 </style>

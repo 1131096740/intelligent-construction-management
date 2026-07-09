@@ -47,6 +47,11 @@
   --jg-layout-list-filter-field-min-width: 96px;
   --jg-layout-list-filter-field-max-width: 120px;
   --jg-layout-list-filter-keyword-min-width: 150px;
+  --jg-layout-template-card-min-width: 240px;
+  --jg-layout-form-field-min-width-wide: 160px;
+  --jg-layout-form-field-min-width-compact: 140px;
+  --jg-layout-breakpoint-tablet: 900px;
+  --jg-border-width-base: 1px;
 
   --jg-bg-page: var(--jg-color-bg-page);
   --jg-bg-panel: var(--jg-color-bg-panel);

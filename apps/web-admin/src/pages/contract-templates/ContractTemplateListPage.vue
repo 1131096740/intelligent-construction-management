@@ -18,20 +18,21 @@
       </t-space>
     </div>
 
-    <t-tabs
-      v-model="mode"
-      class="mode-switch"
-    >
-      <t-tab-panel
-        value="use"
-        label="使用模式"
-      />
-      <t-tab-panel
+    <div class="mode-switch">
+      <t-button
+        :theme="mode === 'use' ? 'primary' : 'default'"
+        @click="mode = 'use'"
+      >
+        使用模式
+      </t-button>
+      <t-button
         v-if="canConfigureTemplates"
-        value="config"
-        label="配置模式"
-      />
-    </t-tabs>
+        :theme="mode === 'config' ? 'primary' : 'default'"
+        @click="mode = 'config'"
+      >
+        配置模式
+      </t-button>
+    </div>
 
     <section
       v-if="mode === 'use'"
@@ -290,9 +291,17 @@ onMounted(loadTemplates);
   gap: var(--jg-space-lg);
   margin-bottom: var(--jg-space-lg);
 }
-.page-head h1 { margin: 0 0 var(--jg-space-sm); font-size: 24px; line-height: 1.2; }
-.page-head p { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
-.mode-switch { margin-bottom: var(--jg-space-lg); }
+.page-head h1 {
+  margin: 0 0 var(--jg-space-sm);
+  font-size: var(--jg-font-size-page-title);
+  line-height: var(--jg-line-height-tight);
+}
+.page-head p { margin: 0; color: var(--jg-text-muted); font-size: var(--jg-font-size-meta); }
+.mode-switch {
+  display: flex;
+  gap: var(--jg-space-sm);
+  margin-bottom: var(--jg-space-lg);
+}
 .use-mode { display: grid; gap: var(--jg-space-lg); }
 .mode-note {
   display: grid;
@@ -300,14 +309,14 @@ onMounted(loadTemplates);
   padding: var(--jg-space-md);
   color: var(--jg-text-main);
   background: var(--jg-bg-muted);
-  border: 1px solid var(--jg-border);
+  border: var(--jg-border-width-base) solid var(--jg-border);
   border-radius: var(--jg-radius-sm);
-  font-size: 12px;
+  font-size: var(--jg-font-size-meta);
 }
 .mode-note span { color: var(--jg-text-muted); }
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(var(--jg-layout-template-card-min-width), 1fr));
   gap: var(--jg-space-md);
 }
 .template-card {
@@ -326,19 +335,25 @@ onMounted(loadTemplates);
   padding-top: 0;
   border-top: 0;
 }
-.template-card-body p { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
+.template-card-body p { margin: 0; color: var(--jg-text-muted); font-size: var(--jg-font-size-meta); }
 .template-meta { color: var(--jg-text-main); }
 .panel { margin-bottom: var(--jg-space-lg); border-radius: var(--jg-radius-sm); }
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, minmax(var(--jg-layout-form-field-min-width-wide), 1fr));
   gap: var(--jg-space-md);
   align-items: end;
 }
 label { display: grid; gap: var(--jg-space-xs); }
-label span { color: var(--jg-text-muted); font-size: 12px; font-weight: 600; }
-.message { font-size: 12px; }
+label span { color: var(--jg-text-muted); font-size: var(--jg-font-size-meta); font-weight: 600; }
+.message { font-size: var(--jg-font-size-meta); }
 .success { color: var(--jg-success); }
 .danger { color: var(--jg-danger); }
-@media (max-width: 900px) { .page-head, .form-grid { display: grid; grid-template-columns: 1fr; } }
+@media (max-width: var(--jg-layout-breakpoint-tablet)) {
+  .page-head,
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
 </style>
