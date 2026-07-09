@@ -52,7 +52,7 @@ export class SettlementAttachmentTemplateService {
   async exportTemplate(settlementId: string, templateKey: string, actorUserId: string) {
     const template = TEMPLATES.find((item) => item.key === templateKey);
     if (!template) {
-      throw new BadRequestException("Unknown settlement attachment template");
+      throw new BadRequestException("未找到该结算附件模板，请重新选择模板后再下载");
     }
     const settlement = this.prisma
       ? await this.prisma.settlement.findFirst({
@@ -61,7 +61,7 @@ export class SettlementAttachmentTemplateService {
         })
       : { id: settlementId };
     if (!settlement) {
-      throw new NotFoundException("Settlement not found");
+      throw new NotFoundException("未找到该结算单，请刷新结算台账后重试");
     }
 
     const workbook = new ExcelJS.Workbook();

@@ -44,7 +44,7 @@ describe("SettlementAttachmentTemplateService", () => {
     const service = new SettlementAttachmentTemplateService(prisma as never);
 
     await expect(service.exportTemplate("missing", "receipt-form", "user-1")).rejects.toThrow(
-      "Settlement not found"
+      "未找到该结算单，请刷新结算台账后重试"
     );
   });
 
@@ -52,7 +52,7 @@ describe("SettlementAttachmentTemplateService", () => {
     const service = new SettlementAttachmentTemplateService();
 
     await expect(service.exportTemplate("settlement-1", "unknown", "user-1")).rejects.toThrow(
-      "Unknown settlement attachment template"
+      "未找到该结算附件模板，请重新选择模板后再下载"
     );
   });
 });
