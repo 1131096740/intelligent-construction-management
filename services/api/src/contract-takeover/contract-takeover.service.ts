@@ -229,6 +229,9 @@ export class ContractTakeoverService {
           originalText: data.paymentTermsOriginalText ?? ""
         }
       });
+      await tx.paymentTermsStage.createMany({
+        data: [this.takeoverInitialSettlementStage(terms.id, data.paymentTermsOriginalText)]
+      });
 
       const takeover = await tx.contractTakeover.create({
         data: {
@@ -317,6 +320,17 @@ export class ContractTakeoverService {
       await tx.paymentTermsVersion.update({
         where: { id: takeover.paymentTermsVersionId },
         data: { originalText: data.paymentTermsOriginalText ?? "" }
+      });
+      await tx.paymentTermsStage.deleteMany({
+        where: { paymentTermsVersionId: takeover.paymentTermsVersionId }
+      });
+      await tx.paymentTermsStage.createMany({
+        data: [
+          this.takeoverInitialSettlementStage(
+            takeover.paymentTermsVersionId,
+            data.paymentTermsOriginalText
+          )
+        ]
       });
       const updated = await tx.contractTakeover.update({
         where: { id: takeover.id },
@@ -947,6 +961,26 @@ export class ContractTakeoverService {
       throw new Error(`${field} must be a valid date string`);
     }
     return new Date(value);
+  }
+
+  private takeoverInitialSettlementStage(
+    paymentTermsVersionId: string,
+    originalText?: string
+  ): Prisma.PaymentTermsStageCreateManyInput {
+    return {
+      paymentTermsVersionId,
+      name: "接管期初结算款",
+      stageType: "progress",
+      basis: "current_settlement",
+      ratioBps: 10000,
+      triggerAnchor: "settlement_effective",
+      triggerEvent: "接管确认后形成期初有效结算",
+      dueDays: 0,
+      requiresInvoice: false,
+      allowsEarlyPayment: false,
+      allowsInstallments: true,
+      originalText: originalText?.trim() || "接管确认的历史已结算未付款金额作为期初结算款。"
+    };
   }
 
   private async createHistoricalInitialSettlement(

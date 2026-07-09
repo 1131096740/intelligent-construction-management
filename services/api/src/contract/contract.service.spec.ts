@@ -32,7 +32,7 @@ describe("ContractService", () => {
     };
   }
 
-  it("creates a minimal owned workbench draft from a published template snapshot", async () => {
+  it("creates an owned workbench draft with structured payment stages", async () => {
     const templateSnapshot = {
       fieldSchema: [{ key: "project_name", label: "项目名称", type: "text" }],
       billSchema: [
@@ -92,6 +92,9 @@ describe("ContractService", () => {
           versionNo: 1
         })
       },
+      paymentTermsStage: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       auditLog: {
         create: jest.fn()
       }
@@ -107,7 +110,23 @@ describe("ContractService", () => {
       {
         projectId: "project-1",
         contractTypeKey: "material_purchase",
-        businessTemplateVersionId: "template-version-1"
+        businessTemplateVersionId: "template-version-1",
+        paymentTermsOriginalText: "结算归档确认后30天内付款80%。",
+        paymentStages: [
+          {
+            name: "当期结算款",
+            stageType: "progress",
+            basis: "current_settlement",
+            ratioBps: 8000,
+            triggerAnchor: "settlement_effective",
+            triggerEvent: "结算归档确认生效",
+            dueDays: 30,
+            requiresInvoice: true,
+            allowsEarlyPayment: false,
+            allowsInstallments: true,
+            originalText: "结算归档确认后30天内付款80%。"
+          }
+        ]
       },
       "contract-user"
     );
@@ -120,6 +139,27 @@ describe("ContractService", () => {
         temporaryCode: expect.stringMatching(/^草稿-/),
         code: null
       })
+    });
+    expect(tx.paymentTermsVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractId: "contract-1",
+        contractVersionId: "version-1",
+        status: "draft",
+        originalText: "结算归档确认后30天内付款80%。"
+      })
+    });
+    expect(tx.paymentTermsStage.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          paymentTermsVersionId: "terms-1",
+          name: "当期结算款",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          triggerEvent: "结算归档确认生效",
+          dueDays: 30,
+          requiresInvoice: true
+        })
+      ]
     });
     expect(result.version.status).toBe("draft");
   });
@@ -1811,7 +1851,11 @@ describe("ContractService", () => {
         })
       },
       paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({ id: "stage-1" })
       },
       auditLog: {
         create: jest.fn()
@@ -1853,6 +1897,14 @@ describe("ContractService", () => {
         effectiveAt: expect.any(Date)
       }
     });
+    expect(tx.paymentTermsStage.findFirst).toHaveBeenCalledWith({
+      where: {
+        paymentTermsVersionId: "terms-version-1",
+        basis: "current_settlement",
+        ratioBps: { gt: 0 }
+      },
+      select: { id: true }
+    });
     expect(tx.paymentTermsVersion.updateMany).toHaveBeenCalledWith({
       where: { contractVersionId: "contract-version-1" },
       data: { status: "effective" }
@@ -1866,6 +1918,52 @@ describe("ContractService", () => {
         archiveFileId: "archive-file-1"
       }
     });
+  });
+
+  it("does not confirm archive when structured settlement payment stage is missing", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "pending_archive_confirm"
+        }),
+        update: jest.fn()
+      },
+      contractArchiveFile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "archive-file-1",
+          status: "pending_confirm"
+        }),
+        update: jest.fn()
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" }),
+        updateMany: jest.fn()
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never, auth as never);
+
+    await expect(
+      service.confirmArchiveFile("contract-version-1", "user-contract-director", {
+        archiveFileId: "archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("合同付款条款缺少结算款阶段");
+
+    expect(tx.contractArchiveFile.update).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.paymentTermsVersion.updateMany).not.toHaveBeenCalled();
   });
 
   it("rejects contract archive confirmation without a confirmation password", async () => {

@@ -73,6 +73,9 @@ describe("ContractTakeoverService", () => {
       paymentTermsVersion: {
         create: jest.fn().mockResolvedValue({ id: "terms-version-1" })
       },
+      paymentTermsStage: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       contractTakeover: {
         create: jest.fn().mockResolvedValue(
           takeoverRecord({
@@ -166,6 +169,19 @@ describe("ContractTakeoverService", () => {
         status: "draft",
         originalText: "Monthly settlement, pay 80% after archive."
       })
+    });
+    expect(tx.paymentTermsStage.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          paymentTermsVersionId: "terms-version-1",
+          name: "接管期初结算款",
+          basis: "current_settlement",
+          ratioBps: 10000,
+          triggerEvent: "接管确认后形成期初有效结算",
+          dueDays: 0,
+          originalText: "Monthly settlement, pay 80% after archive."
+        })
+      ]
     });
     expect(tx.contractTakeover.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -430,6 +446,10 @@ describe("ContractTakeoverService", () => {
       contract: { update: jest.fn() },
       contractVersion: { update: jest.fn() },
       paymentTermsVersion: { update: jest.fn() },
+      paymentTermsStage: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
       auditLog: { create: jest.fn() }
     };
     const prisma = {
@@ -493,6 +513,20 @@ describe("ContractTakeoverService", () => {
     expect(tx.paymentTermsVersion.update).toHaveBeenCalledWith({
       where: { id: "terms-version-1" },
       data: { originalText: "Updated terms." }
+    });
+    expect(tx.paymentTermsStage.deleteMany).toHaveBeenCalledWith({
+      where: { paymentTermsVersionId: "terms-version-1" }
+    });
+    expect(tx.paymentTermsStage.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          paymentTermsVersionId: "terms-version-1",
+          name: "接管期初结算款",
+          basis: "current_settlement",
+          ratioBps: 10000,
+          originalText: "Updated terms."
+        })
+      ]
     });
     expect(tx.contractTakeover.update).toHaveBeenCalledWith({
       where: { id: "takeover-1" },

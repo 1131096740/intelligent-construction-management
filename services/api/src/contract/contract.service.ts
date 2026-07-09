@@ -15,7 +15,10 @@ import { FileService } from "../file/file.service";
 import { centsToSafeNumber } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
-import { CreateContractDraftDto } from "./dto/create-contract.dto";
+import {
+  CreateContractDraftDto,
+  type CreatePaymentTermsStageDto
+} from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 
@@ -63,6 +66,24 @@ const DOWNSTREAM_CONTRACT_OCCUPANCY_STATUSES = [
   "pending_archive_confirm",
   "effective"
 ] as const;
+const PAYMENT_STAGE_TYPES = new Set(["advance", "progress", "final", "retention", "other"]);
+const PAYMENT_STAGE_BASES = new Set([
+  "contract_amount",
+  "current_settlement",
+  "cumulative_settlement",
+  "fixed_amount",
+  "manual_amount"
+]);
+const PAYMENT_STAGE_TRIGGER_ANCHORS = new Set([
+  "contract_effective",
+  "settlement_effective",
+  "final_settlement_effective"
+]);
+const ADVANCE_DEDUCTION_MODES = new Set([
+  "none",
+  "per_settlement_ratio",
+  "after_cumulative_settlement_ratio"
+]);
 
 @Injectable()
 export class ContractService {
@@ -193,9 +214,13 @@ export class ContractService {
           contractVersionId: version.id,
           versionNo: 1,
           status: "draft",
-          originalText: ""
+          originalText: input.paymentTermsOriginalText?.trim() ?? ""
         }
       });
+      const paymentStages = this.normalizePaymentStages(input.paymentStages, terms.id);
+      if (paymentStages.length > 0) {
+        await tx.paymentTermsStage.createMany({ data: paymentStages });
+      }
 
       await this.audit.record(tx, {
         actorUserId,
@@ -941,6 +966,8 @@ export class ContractService {
         throw new Error(`Cannot confirm contract archive file from status ${archiveFile.status}`);
       }
 
+      await this.assertStructuredSettlementPaymentStage(tx, version.id);
+
       const confirmedAt = new Date();
       await tx.contractArchiveFile.update({
         where: { id: archiveFile.id },
@@ -976,6 +1003,126 @@ export class ContractService {
 
       return effectiveVersion;
     });
+  }
+
+  private async assertStructuredSettlementPaymentStage(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string
+  ) {
+    const terms = await tx.paymentTermsVersion.findFirst({
+      where: { contractVersionId },
+      select: { id: true }
+    });
+    if (!terms) {
+      throw new BadRequestException(
+        "合同付款条款还未结构化，不能确认归档生效。请先维护结算款、付款比例、付款期限和发票要求。"
+      );
+    }
+
+    const stage = await tx.paymentTermsStage.findFirst({
+      where: {
+        paymentTermsVersionId: terms.id,
+        basis: "current_settlement",
+        ratioBps: { gt: 0 }
+      },
+      select: { id: true }
+    });
+    if (!stage) {
+      throw new BadRequestException(
+        "合同付款条款缺少结算款阶段，不能确认归档生效。请先维护结算款、付款比例、付款期限和发票要求。"
+      );
+    }
+  }
+
+  private normalizePaymentStages(
+    stages: CreatePaymentTermsStageDto[] | undefined,
+    paymentTermsVersionId: string
+  ): Prisma.PaymentTermsStageCreateManyInput[] {
+    if (stages === undefined) return [];
+    if (!Array.isArray(stages) || stages.length === 0) {
+      throw new BadRequestException(
+        "付款条款至少要维护一条结算款、付款比例、付款期限和发票要求。"
+      );
+    }
+
+    return stages.map((stage, index) =>
+      this.normalizePaymentStage(stage, index, paymentTermsVersionId)
+    );
+  }
+
+  private normalizePaymentStage(
+    stage: CreatePaymentTermsStageDto,
+    index: number,
+    paymentTermsVersionId: string
+  ): Prisma.PaymentTermsStageCreateManyInput {
+    if (!stage || typeof stage !== "object") {
+      throw new BadRequestException(`第 ${index + 1} 条付款条款格式不正确。`);
+    }
+    if (!stage.name?.trim()) {
+      throw new BadRequestException(`第 ${index + 1} 条付款条款缺少阶段名称。`);
+    }
+    const stageType = stage.stageType ?? "progress";
+    if (!PAYMENT_STAGE_TYPES.has(stageType)) {
+      throw new BadRequestException(`第 ${index + 1} 条付款条款类型不在支持范围内。`);
+    }
+    if (!PAYMENT_STAGE_BASES.has(stage.basis)) {
+      throw new BadRequestException(`第 ${index + 1} 条付款依据不在支持范围内。`);
+    }
+    if (
+      stage.ratioBps !== undefined &&
+      (!Number.isInteger(stage.ratioBps) || stage.ratioBps < 0 || stage.ratioBps > 10000)
+    ) {
+      throw new BadRequestException(`第 ${index + 1} 条付款比例必须在 0% 到 100% 之间。`);
+    }
+    if (
+      stage.fixedAmountCents !== undefined &&
+      (!Number.isInteger(stage.fixedAmountCents) || stage.fixedAmountCents <= 0)
+    ) {
+      throw new BadRequestException(`第 ${index + 1} 条固定金额必须大于 0。`);
+    }
+    const triggerAnchor = stage.triggerAnchor ?? "settlement_effective";
+    if (!PAYMENT_STAGE_TRIGGER_ANCHORS.has(triggerAnchor)) {
+      throw new BadRequestException(`第 ${index + 1} 条付款触发节点不在支持范围内。`);
+    }
+    if (!stage.triggerEvent?.trim()) {
+      throw new BadRequestException(`第 ${index + 1} 条付款条款缺少触发说明。`);
+    }
+    if (!Number.isInteger(stage.dueDays) || stage.dueDays < 0) {
+      throw new BadRequestException(`第 ${index + 1} 条付款期限必须是非负天数。`);
+    }
+    const advanceDeductionMode = stage.advanceDeductionMode ?? "none";
+    if (!ADVANCE_DEDUCTION_MODES.has(advanceDeductionMode)) {
+      throw new BadRequestException(`第 ${index + 1} 条预付款扣回方式不在支持范围内。`);
+    }
+    for (const [field, label] of [
+      ["requiresInvoice", "是否要求发票"],
+      ["allowsEarlyPayment", "是否允许提前付款"],
+      ["allowsInstallments", "是否允许分次付款"]
+    ] as const) {
+      if (typeof stage[field] !== "boolean") {
+        throw new BadRequestException(`第 ${index + 1} 条付款条款缺少${label}。`);
+      }
+    }
+
+    return {
+      paymentTermsVersionId,
+      name: stage.name.trim(),
+      stageType,
+      basis: stage.basis,
+      ratioBps: stage.ratioBps,
+      fixedAmountCents: stage.fixedAmountCents,
+      triggerAnchor,
+      triggerEvent: stage.triggerEvent.trim(),
+      dueDays: stage.dueDays,
+      advanceDeductionMode,
+      advanceDeductionRatioBps: stage.advanceDeductionRatioBps,
+      advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps,
+      requiresInvoice: stage.requiresInvoice,
+      allowsEarlyPayment: stage.allowsEarlyPayment,
+      allowsInstallments: stage.allowsInstallments,
+      retentionBps: stage.retentionBps,
+      originalText: stage.originalText?.trim() || stage.triggerEvent.trim()
+    };
   }
 
   async generatePdfArchive(
