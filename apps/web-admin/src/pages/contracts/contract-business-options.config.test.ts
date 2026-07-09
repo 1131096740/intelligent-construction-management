@@ -111,7 +111,7 @@ describe("contract business options configuration", () => {
         periodLabel: "2026-07",
         amountYuan: "1"
       })
-    ).toThrow("请选择可发起结算的合同");
+    ).toThrow("当前合同暂不能发起结算，请先确认合同已归档生效、付款条款已补齐，再重新办理。");
   });
 });
 

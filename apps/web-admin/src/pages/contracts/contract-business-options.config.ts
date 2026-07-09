@@ -88,7 +88,10 @@ export function buildSettlementCreatePayload(
   form: SettlementCreateBusinessForm
 ): CreateSettlementPayload {
   if (!contract?.contractVersionId || !contract.canCreateSettlement) {
-    throw new Error(contract?.settlementUnavailableReason ?? "请选择可发起结算的合同");
+    throw new Error(
+      contract?.settlementUnavailableReason ??
+        "当前合同暂不能发起结算，请先确认合同已归档生效、付款条款已补齐，再重新办理。"
+    );
   }
 
   return {
