@@ -711,6 +711,7 @@ import {
 } from "../../api/core-flow-read.api";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
+  buildImportDraftsMessage,
   buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
@@ -1111,9 +1112,13 @@ async function generateImportDrafts() {
   try {
     const rows = parseContractTakeoverImportPrecheckRows(importPrecheckText.value);
     const result = await createContractTakeoverDraftsFromImport(projectId, { rows });
-    const skippedText = result.skippedCount > 0 ? `，重复跳过 ${result.skippedCount} 份` : "";
     setMessage(
-      `${result.batch.batchNo} 已生成 ${result.createdCount} 份历史合同接管草稿${skippedText}`,
+      buildImportDraftsMessage({
+        batchNo: result.batch.batchNo,
+        createdCount: result.createdCount,
+        skippedCount: result.skippedCount,
+        warningRows: result.batch.warningRows
+      }),
       "success"
     );
     importPrecheckResult.value = null;

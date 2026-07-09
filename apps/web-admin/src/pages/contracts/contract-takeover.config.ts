@@ -84,6 +84,13 @@ export interface ImportPrecheckMessageInput {
   warningRows: number;
 }
 
+export interface ImportDraftsMessageInput {
+  batchNo: string;
+  createdCount: number;
+  skippedCount: number;
+  warningRows: number;
+}
+
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
   { value: "A", label: "A级：资料完整，可直接接管" },
   { value: "B", label: "B级：资料基本完整，需补少量说明" },
@@ -127,6 +134,14 @@ export function buildImportPrecheckMessage(result: ImportPrecheckMessageInput): 
     message: `导入预检完成：${result.readyRows} 行可生成草稿，${result.blockedRows} 行需修改，${result.warningRows} 行需要补充说明`,
     tone: result.blockedRows === 0 && result.warningRows === 0 ? "success" : "default"
   };
+}
+
+export function buildImportDraftsMessage(result: ImportDraftsMessageInput): string {
+  const warningText =
+    result.warningRows > 0 ? `，含 ${result.warningRows} 行需要复核说明` : "";
+  const skippedText =
+    result.skippedCount > 0 ? `，已跳过重复行 ${result.skippedCount} 行` : "";
+  return `${result.batchNo} 已生成 ${result.createdCount} 份接管草稿${warningText}${skippedText}，请进入草稿核对后再提交复核。`;
 }
 
 export function lifecycleStatusLabel(value: ContractLifecycleStatus): string {

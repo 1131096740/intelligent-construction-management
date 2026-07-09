@@ -1,6 +1,7 @@
 import type { ContractTakeoverReadModel } from "../../api/core-flow-read.api";
 import { describe, expect, it } from "vitest";
 import {
+  buildImportDraftsMessage,
   buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
@@ -114,6 +115,19 @@ describe("contract takeover page configuration", () => {
       message: "导入预检完成：2 行可生成草稿，0 行需修改，1 行需要补充说明",
       tone: "default"
     });
+  });
+
+  it("keeps import draft warning rows visible after drafts are generated", () => {
+    expect(
+      buildImportDraftsMessage({
+        batchNo: "接管批次-20260710-TEST0001",
+        createdCount: 3,
+        skippedCount: 1,
+        warningRows: 2
+      })
+    ).toBe(
+      "接管批次-20260710-TEST0001 已生成 3 份接管草稿，含 2 行需要复核说明，已跳过重复行 1 行，请进入草稿核对后再提交复核。"
+    );
   });
 
   it("formats cents from API string or number values for display", () => {
