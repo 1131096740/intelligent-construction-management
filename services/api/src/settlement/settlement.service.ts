@@ -410,6 +410,31 @@ export class SettlementService {
     }
   }
 
+  private isDuplicateSettlementPeriodError(error: unknown): boolean {
+    if (!this.isPrismaUniqueError(error)) {
+      return false;
+    }
+    const target = (error as { meta?: { target?: unknown } }).meta?.target;
+    return (
+      target === "Settlement_contractVersion_period_active_key" ||
+      (Array.isArray(target) &&
+        target.includes("contractVersionId") &&
+        target.includes("periodLabel"))
+    );
+  }
+
+  private isDuplicateSettlementCodeError(error: unknown): boolean {
+    if (!this.isPrismaUniqueError(error)) {
+      return false;
+    }
+    const target = (error as { meta?: { target?: unknown } }).meta?.target;
+    return target === "Settlement_code_key" || (Array.isArray(target) && target.includes("code"));
+  }
+
+  private isPrismaUniqueError(error: unknown): boolean {
+    return !!error && typeof error === "object" && (error as { code?: unknown }).code === "P2002";
+  }
+
   private async assertContractBillRowSettlementLimits(
     tx: unknown,
     lines: NormalizedSettlementLine[]
@@ -692,6 +717,16 @@ export class SettlementService {
       }
 
       return settlement;
+    }).catch((error: unknown) => {
+      if (this.isDuplicateSettlementPeriodError(error)) {
+        throw new BadRequestException(
+          "同一合同版本和结算期间已存在结算单，不能重复创建。请打开原结算单继续处理；如确需重做，请先退回或作废原结算单。"
+        );
+      }
+      if (this.isDuplicateSettlementCodeError(error)) {
+        throw new BadRequestException("结算编号已存在，请更换编号后重新提交。");
+      }
+      throw error;
     });
 
     if (applicantUserId) {

@@ -490,6 +490,63 @@ describe("SettlementService", () => {
     expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
+  it("maps database duplicate settlement period guard to Chinese business error", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          ratioBps: 8000
+        })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockRejectedValue({
+          code: "P2002",
+          meta: { target: "Settlement_contractVersion_period_active_key" }
+        })
+      },
+      approvalInstance: {
+        create: jest.fn()
+      },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create(
+        {
+          contractVersionId: "contract-version-1",
+          code: "JS-2026-021",
+          periodLabel: "2026-06",
+          amountCents: 100000
+        },
+        "contract-staff-1"
+      )
+    ).rejects.toThrow("同一合同版本和结算期间已存在结算单");
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
+
   it("rejects duplicate settlement when the period label only differs by spaces", async () => {
     const tx = {
       contractVersion: {
