@@ -597,9 +597,14 @@ export class SettlementService {
         },
         orderBy: { createdAt: "asc" }
       });
+      if (!currentSettlementStage) {
+        throw new BadRequestException(
+          "合同付款条款缺少结算款阶段，不能创建结算。请先补齐结构化付款条款后再办理。"
+        );
+      }
       const payableAmountCents = this.calculatePayableAmount(
         settlementAmountCents,
-        currentSettlementStage?.ratioBps ?? null
+        currentSettlementStage.ratioBps
       );
 
       const settlement = await tx.settlement.create({

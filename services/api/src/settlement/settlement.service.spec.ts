@@ -1,5 +1,5 @@
 import * as ExcelJS from "exceljs";
-import { Prisma } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 import { SettlementService } from "./settlement.service";
 
 describe("SettlementService", () => {
@@ -140,7 +140,7 @@ describe("SettlementService", () => {
             contractBillId: "bill-1",
             itemName: "钢筋材料",
             unit: "吨",
-            unitPrice: new Prisma.Decimal("3200"),
+            unitPrice: new Decimal("3200"),
             taxInclusiveAmountCents: BigInt(1000000)
           }
         ])
@@ -214,7 +214,7 @@ describe("SettlementService", () => {
           sourceType: "contract_bill_row",
           name: "钢筋材料",
           unit: "吨",
-          quantity: new Prisma.Decimal("3"),
+          quantity: new Decimal("3"),
           unitPriceCents: null,
           amountCents: 960000,
           reason: null,
@@ -311,7 +311,7 @@ describe("SettlementService", () => {
             contractBillId: "bill-1",
             itemName: "钢筋材料",
             unit: "吨",
-            unitPrice: new Prisma.Decimal("3200"),
+            unitPrice: new Decimal("3200"),
             taxInclusiveAmountCents: BigInt(100000)
           }
         ])
@@ -378,6 +378,52 @@ describe("SettlementService", () => {
     ).rejects.toThrow("合同清单项“钢筋材料”累计结算金额不能超过合同清单金额");
     expect(tx.settlement.create).not.toHaveBeenCalled();
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects settlement creation when payment terms have no current settlement stage", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-023",
+        periodLabel: "2026-06",
+        amountCents: 100000
+      })
+    ).rejects.toThrow("合同付款条款缺少结算款阶段");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
   it("rejects settlement lines when their total differs from the backend settlement amount", async () => {
@@ -644,7 +690,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
       },
       paymentTermsStage: {
-        findFirst: jest.fn().mockResolvedValue(null)
+        findFirst: jest.fn().mockResolvedValue({ ratioBps: 10000 })
       },
       settlement: {
         findMany: jest.fn().mockResolvedValue([{ amountCents: 8000000, status: "effective" }]),
@@ -733,7 +779,7 @@ describe("SettlementService", () => {
         })
       },
       paymentTermsStage: {
-        findFirst: jest.fn().mockResolvedValue(null)
+        findFirst: jest.fn().mockResolvedValue({ ratioBps: 8000 })
       },
       settlement: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -802,7 +848,7 @@ describe("SettlementService", () => {
         })
       },
       paymentTermsStage: {
-        findFirst: jest.fn().mockResolvedValue(null)
+        findFirst: jest.fn().mockResolvedValue({ ratioBps: 8000 })
       },
       settlement: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -939,7 +985,7 @@ describe("SettlementService", () => {
         })
       },
       paymentTermsStage: {
-        findFirst: jest.fn().mockResolvedValue(null)
+        findFirst: jest.fn().mockResolvedValue({ ratioBps: 8000 })
       },
       settlement: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -1003,7 +1049,7 @@ describe("SettlementService", () => {
         })
       },
       paymentTermsStage: {
-        findFirst: jest.fn().mockResolvedValue(null)
+        findFirst: jest.fn().mockResolvedValue({ ratioBps: 8000 })
       },
       settlement: {
         findMany: jest.fn().mockResolvedValue([]),
