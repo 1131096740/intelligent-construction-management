@@ -765,7 +765,7 @@ async function runArchiveAction(key: string, action: () => Promise<unknown>) {
 async function submitContractArchiveUpload() {
   const contractVersionId = requiredText(
     contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
+    "合同"
   );
 
   await runArchiveAction("upload", async () => {
@@ -786,7 +786,7 @@ async function submitContractArchiveUpload() {
 async function submitContractArchiveConfirmation() {
   const contractVersionId = requiredText(
     contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
+    "合同"
   );
   let archiveFileId = "";
   let confirmationPassword = "";
@@ -817,7 +817,7 @@ async function submitContractArchiveConfirmation() {
 async function submitContractApprovalAction() {
   const contractVersionId = requiredText(
     contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
+    "合同"
   );
 
   await runArchiveAction("submitApproval", () =>
@@ -830,7 +830,7 @@ async function submitContractApprovalAction() {
 async function submitContractReview(decision: "approve" | "reject") {
   const contractVersionId = requiredText(
     contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
+    "合同"
   );
   const comment = contractArchiveForm.approvalComment.trim() || undefined;
   if (decision === "reject" && !comment) {
@@ -892,7 +892,7 @@ async function downloadContractApprovalForm() {
 async function submitContractWithdrawal() {
   const contractVersionId = requiredText(
     contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
+    "合同"
   );
 
   await runArchiveAction("withdrawApproval", () => withdrawContractApproval(contractVersionId));
@@ -901,7 +901,7 @@ async function submitContractWithdrawal() {
 async function submitContractReminder() {
   const contractVersionId = requiredText(
     contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
+    "合同"
   );
 
   await runArchiveAction("remindApproval", () => remindContractApproval(contractVersionId));
@@ -910,7 +910,7 @@ async function submitContractReminder() {
 async function submitContractAssignment(kind: "transfer" | "delegate") {
   const contractVersionId = requiredText(
     contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
+    "合同"
   );
   const toUserId = requiredText(contractArchiveForm.assignmentUserId, "目标处理人");
 
@@ -924,7 +924,7 @@ async function submitContractAssignment(kind: "transfer" | "delegate") {
 async function submitContractSeal() {
   const contractVersionId = requiredText(
     contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
+    "合同"
   );
 
   await runArchiveAction("seal", () => approveContractSeal(contractVersionId));
@@ -933,7 +933,7 @@ async function submitContractSeal() {
 async function submitContractPdfGeneration() {
   const contractVersionId = requiredText(
     contractDetail.value?.contractVersionId ?? "",
-    "合同版本ID"
+    "合同"
   );
 
   await runArchiveAction("pdf", () => generateContractPdfArchive(contractVersionId));
