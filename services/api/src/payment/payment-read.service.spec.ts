@@ -432,13 +432,75 @@ describe("PaymentReadService", () => {
     };
     const service = new PaymentReadService(prisma as never);
 
-    await expect(service.getDetail("FK-2026-011", ["project-1"])).rejects.toThrow("Payment request not found");
+    await expect(service.getDetail("FK-2026-011", ["project-1"])).rejects.toThrow(
+      "未找到付款申请，请刷新付款台账后重试"
+    );
     expect(prisma.paymentRequest.findFirst).toHaveBeenCalledWith({
       where: {
         OR: [{ id: "FK-2026-011" }, { code: "FK-2026-011" }],
         projectId: { in: ["project-1"] }
       }
     });
+  });
+
+  it.each([
+    {
+      name: "linked settlement",
+      settlement: null,
+      contractVersion: { id: "contract-version-2", versionNo: 2 },
+      terms: { id: "terms-version-2", versionNo: 2 },
+      message: "未找到关联结算，请先核对结算归档记录"
+    },
+    {
+      name: "contract version",
+      settlement: { id: "settlement-1", code: "JS-2026-031", periodLabel: "2026-06", status: "effective" },
+      contractVersion: null,
+      terms: { id: "terms-version-2", versionNo: 2 },
+      message: "未找到关联合同版本，请先核对合同归档记录"
+    },
+    {
+      name: "payment terms version",
+      settlement: { id: "settlement-1", code: "JS-2026-031", periodLabel: "2026-06", status: "effective" },
+      contractVersion: { id: "contract-version-2", versionNo: 2 },
+      terms: null,
+      message: "未找到合同付款条款版本，请先核对合同归档记录"
+    }
+  ])("rejects payment detail when $name cannot be found", async ({ settlement, contractVersion, terms, message }) => {
+    const prisma = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          projectId: "project-1",
+          settlementId: "settlement-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-2",
+          paymentTermsVersionId: "terms-version-2",
+          code: "FK-2026-011",
+          status: "approved_pending_payment",
+          requestedAmountCents: 49300000,
+          approvedAmountCents: 49300000,
+          paidAmountCents: 0
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(settlement)
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(contractVersion)
+      },
+      paymentTermsVersion: {
+        findUnique: jest.fn().mockResolvedValue(terms)
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+
+    await expect(service.getDetail("FK-2026-011")).rejects.toThrow(message);
   });
 
   it("builds contract advance payment detail without requiring settlement", async () => {

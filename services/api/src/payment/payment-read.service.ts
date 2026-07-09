@@ -348,7 +348,7 @@ export class PaymentReadService {
     });
 
     if (!payment) {
-      throw new NotFoundException("Payment request not found");
+      throw new NotFoundException("未找到付款申请，请刷新付款台账后重试");
     }
 
     const isContractAdvance = payment.sourceType === "contract_advance";
@@ -374,15 +374,15 @@ export class PaymentReadService {
     ]);
 
     if (payment.settlementId && !settlement) {
-      throw new NotFoundException("Payment settlement not found");
+      throw new NotFoundException("未找到关联结算，请先核对结算归档记录");
     }
 
     if (!contractVersion) {
-      throw new NotFoundException("Payment contract version not found");
+      throw new NotFoundException("未找到关联合同版本，请先核对合同归档记录");
     }
 
     if (!terms) {
-      throw new NotFoundException("Payment terms version not found");
+      throw new NotFoundException("未找到合同付款条款版本，请先核对合同归档记录");
     }
 
     const stage = await this.prisma.paymentTermsStage.findFirst({
