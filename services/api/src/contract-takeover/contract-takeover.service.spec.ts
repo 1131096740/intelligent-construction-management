@@ -268,7 +268,7 @@ describe("ContractTakeoverService", () => {
         },
         "contract-user"
       )
-    ).rejects.toThrow("历史累计结算必须是非负整数分值");
+    ).rejects.toThrow("历史累计结算必须填写 0 或更大的金额");
 
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
@@ -440,7 +440,7 @@ describe("ContractTakeoverService", () => {
     expect(prisma.contractTakeover.create).not.toHaveBeenCalled();
   });
 
-  it("uses business labels for invalid historical amount cells in import precheck", async () => {
+  it("uses business labels for invalid amount cells in import precheck", async () => {
     const prisma = {
       contract: {
         findMany: jest.fn().mockResolvedValue([])
@@ -454,7 +454,7 @@ describe("ContractTakeoverService", () => {
           code: "HT-HIS-AMOUNT",
           name: "历史金额异常合同",
           counterparty: "历史供应商",
-          amountCents: 1_000_000,
+          amountCents: 0,
           signedAt: "2026-01-10",
           takeoverLevel: "B",
           lifecycleStatus: "in_progress",
@@ -467,7 +467,11 @@ describe("ContractTakeoverService", () => {
       expect.arrayContaining([
         expect.objectContaining({
           field: "historicalSettledCents",
-          message: "历史累计结算必须是非负整数分值"
+          message: "历史累计结算必须填写 0 或更大的金额"
+        }),
+        expect.objectContaining({
+          field: "amountCents",
+          message: "合同金额必须填写大于 0 的金额"
         })
       ])
     );

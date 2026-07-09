@@ -435,12 +435,12 @@ function centsValueToBigInt(value: ContractTakeoverCentsValue | bigint): bigint 
   }
   if (typeof value === "number") {
     if (!Number.isInteger(value)) {
-      throw new Error("金额分值必须是整数");
+      throw new Error("金额数据格式不正确，请刷新后重试");
     }
     return BigInt(value);
   }
   if (!/^-?\d+$/.test(value)) {
-    throw new Error("金额分值必须是整数字符串");
+    throw new Error("金额数据格式不正确，请刷新后重试");
   }
   return BigInt(value);
 }

@@ -103,6 +103,7 @@ describe("contract takeover page configuration", () => {
     expect(centsToYuanText(0)).toBe("¥0.00");
     expect(centsToYuanText(1)).toBe("¥0.01");
     expect(centsToYuanText("123456789")).toBe("¥1,234,567.89");
+    expect(() => centsToYuanText("abc")).toThrow("金额数据格式不正确，请刷新后重试");
   });
 
   it("maps takeover status and lifecycle status to Chinese display", () => {

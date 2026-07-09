@@ -1139,7 +1139,7 @@ export class ContractTakeoverService {
       issues.push(issue(rowNo, "counterparty", "error", "相对方不能为空"));
     }
     if (amountCents === null || amountCents <= 0) {
-      issues.push(issue(rowNo, "amountCents", "error", "合同金额分值必须是正整数"));
+      issues.push(issue(rowNo, "amountCents", "error", "合同金额必须填写大于 0 的金额"));
     }
     if (!isStrictDateText(signedAt)) {
       issues.push(issue(rowNo, "signedAt", "error", "签订日期必须是有效日期 YYYY-MM-DD"));
@@ -1154,7 +1154,7 @@ export class ContractTakeoverService {
     for (const field of MONEY_FIELDS) {
       const value = isBlankInput(row[field]) ? 0 : integerValue(row[field]);
       if (value === null || value < 0) {
-        issues.push(issue(rowNo, field, "error", `${MONEY_FIELD_LABELS[field]}必须是非负整数分值`));
+        issues.push(issue(rowNo, field, "error", `${MONEY_FIELD_LABELS[field]}必须填写 0 或更大的金额`));
       }
     }
 
@@ -1244,7 +1244,7 @@ export class ContractTakeoverService {
       MONEY_FIELDS.map((field) => {
         const value = input[field] ?? 0;
         if (!Number.isInteger(value) || value < 0) {
-          throw new Error(`${MONEY_FIELD_LABELS[field]}必须是非负整数分值`);
+          throw new Error(`${MONEY_FIELD_LABELS[field]}必须填写 0 或更大的金额`);
         }
         return [field, value];
       })
