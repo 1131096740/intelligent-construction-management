@@ -1377,6 +1377,8 @@ describe("PaymentReadService", () => {
           historicalProxyPaidCents: BigInt(10_000),
           historicalAdvancePaidCents: BigInt(40_000),
           historicalAdvanceDeductedCents: BigInt(10_000),
+          historicalRetentionWithheldCents: BigInt(0),
+          historicalRetentionReleasedCents: BigInt(0),
           otherConfirmedOccupancyCents: BigInt(0)
         })
       },
@@ -1485,6 +1487,8 @@ describe("PaymentReadService", () => {
       proxyPaidCents: 10_000,
       advancePaidCents: 40_000,
       advanceDeductedCents: 10_000,
+      retentionWithheldCents: 0,
+      retentionReleasedCents: 0,
       otherConfirmedOccupancyCents: 0
     });
     expect(preview.advanceDeduction).toMatchObject({
@@ -1573,6 +1577,8 @@ describe("PaymentReadService", () => {
           historicalProxyPaidCents: BigInt(0),
           historicalAdvancePaidCents: BigInt(0),
           historicalAdvanceDeductedCents: BigInt(0),
+          historicalRetentionWithheldCents: BigInt(0),
+          historicalRetentionReleasedCents: BigInt(0),
           otherConfirmedOccupancyCents: BigInt(5_000)
         })
       },

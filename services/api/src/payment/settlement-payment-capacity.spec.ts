@@ -63,6 +63,8 @@ interface HistoricalContractPaymentBalance {
   proxyPaidCents?: number | bigint;
   advancePaidCents?: number | bigint;
   advanceDeductedCents?: number | bigint;
+  retentionWithheldCents?: number | bigint;
+  retentionReleasedCents?: number | bigint;
   otherConfirmedOccupancyCents?: number | bigint;
 }
 
@@ -93,6 +95,8 @@ interface ContractPaymentApplicationPreview {
     proxyPaidCents: number;
     advancePaidCents: number;
     advanceDeductedCents: number;
+    retentionWithheldCents: number;
+    retentionReleasedCents: number;
     otherConfirmedOccupancyCents: number;
   };
   sections: Array<{
@@ -508,14 +512,16 @@ describe("calculateContractDuePaymentCapacity", () => {
         settledCents: 100_000,
         paidCents: 40_000,
         approvedPendingPaymentCents: 10_000,
-        otherConfirmedOccupancyCents: 5_000
+        otherConfirmedOccupancyCents: 5_000,
+        retentionWithheldCents: 12_000,
+        retentionReleasedCents: 5_000
       }
     });
 
     expect(capacity).toEqual({
       duePayableCents: 100_000,
-      occupiedCents: 55_000,
-      remainingCents: 45_000
+      occupiedCents: 62_000,
+      remainingCents: 38_000
     });
   });
 
@@ -1599,7 +1605,9 @@ describe("buildContractPaymentApplicationPreview", () => {
         approvedPendingPaymentCents: 20_000,
         proxyPaidCents: 10_000,
         advancePaidCents: 40_000,
-        advanceDeductedCents: 10_000
+        advanceDeductedCents: 10_000,
+        retentionWithheldCents: 0,
+        retentionReleasedCents: 0
       }
     });
 
@@ -1621,6 +1629,8 @@ describe("buildContractPaymentApplicationPreview", () => {
       proxyPaidCents: 10_000,
       advancePaidCents: 40_000,
       advanceDeductedCents: 10_000,
+      retentionWithheldCents: 0,
+      retentionReleasedCents: 0,
       otherConfirmedOccupancyCents: 0
     });
     expect(preview.advanceDeduction).toEqual({

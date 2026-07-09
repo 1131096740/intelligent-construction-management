@@ -75,6 +75,8 @@ export interface HistoricalContractPaymentBalance {
   proxyPaidCents?: number | bigint;
   advancePaidCents?: number | bigint;
   advanceDeductedCents?: number | bigint;
+  retentionWithheldCents?: number | bigint;
+  retentionReleasedCents?: number | bigint;
   otherConfirmedOccupancyCents?: number | bigint;
 }
 
@@ -710,6 +712,8 @@ interface NormalizedHistoricalContractPaymentBalance {
   proxyPaidCents: bigint;
   advancePaidCents: bigint;
   advanceDeductedCents: bigint;
+  retentionWithheldCents: bigint;
+  retentionReleasedCents: bigint;
   otherConfirmedOccupancyCents: bigint;
 }
 
@@ -726,6 +730,8 @@ function normalizeHistoricalBalance(
     proxyPaidCents: 0n,
     advancePaidCents: 0n,
     advanceDeductedCents: 0n,
+    retentionWithheldCents: 0n,
+    retentionReleasedCents: 0n,
     otherConfirmedOccupancyCents: 0n
   };
 
@@ -747,6 +753,8 @@ function normalizeHistoricalBalance(
     proxyPaidCents: nonNegativeBigIntCents(value.proxyPaidCents ?? 0),
     advancePaidCents: nonNegativeBigIntCents(value.advancePaidCents ?? 0),
     advanceDeductedCents: nonNegativeBigIntCents(value.advanceDeductedCents ?? 0),
+    retentionWithheldCents: nonNegativeBigIntCents(value.retentionWithheldCents ?? 0),
+    retentionReleasedCents: nonNegativeBigIntCents(value.retentionReleasedCents ?? 0),
     otherConfirmedOccupancyCents: nonNegativeBigIntCents(
       value.otherConfirmedOccupancyCents ?? 0
     )
@@ -764,6 +772,8 @@ function hasHistoricalBalance(balance: NormalizedHistoricalContractPaymentBalanc
       balance.proxyPaidCents,
       balance.advancePaidCents,
       balance.advanceDeductedCents,
+      balance.retentionWithheldCents,
+      balance.retentionReleasedCents,
       balance.otherConfirmedOccupancyCents
     ].some((amount) => amount > 0n)
   );
@@ -778,6 +788,8 @@ function historicalBalanceReadModel(balance: NormalizedHistoricalContractPayment
     proxyPaidCents: centsToSafeNumber(balance.proxyPaidCents),
     advancePaidCents: centsToSafeNumber(balance.advancePaidCents),
     advanceDeductedCents: centsToSafeNumber(balance.advanceDeductedCents),
+    retentionWithheldCents: centsToSafeNumber(balance.retentionWithheldCents),
+    retentionReleasedCents: centsToSafeNumber(balance.retentionReleasedCents),
     otherConfirmedOccupancyCents: centsToSafeNumber(balance.otherConfirmedOccupancyCents)
   };
 }
@@ -788,6 +800,9 @@ function historicalOccupiedCents(balance: NormalizedHistoricalContractPaymentBal
     balance.approvalPendingPaymentCents +
     balance.approvedPendingPaymentCents +
     balance.proxyPaidCents +
+    (balance.retentionWithheldCents > balance.retentionReleasedCents
+      ? balance.retentionWithheldCents - balance.retentionReleasedCents
+      : 0n) +
     balance.otherConfirmedOccupancyCents
   );
 }
