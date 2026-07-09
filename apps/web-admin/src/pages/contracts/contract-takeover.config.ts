@@ -159,6 +159,23 @@ export function takeoverActionDisabledReason(
   return "当前状态不能办理该动作";
 }
 
+export function takeoverEvidenceUploadDisabledReason(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">,
+  hasFile: boolean
+): string {
+  if (!canEditTakeover(takeover)) {
+    if (takeover.takeoverStatus === "pending_review") {
+      return "已提交复核，需退回补充后才能继续上传资料";
+    }
+    if (takeover.takeoverStatus === "confirmed") {
+      return "已完成主管确认，接管资料不能静默补充，请走更正记录";
+    }
+    if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能上传资料";
+  }
+  if (!hasFile) return "请先选择要上传的接管资料文件";
+  return "";
+}
+
 export function takeoverWorkbenchSteps(
   takeover: Pick<ContractTakeoverReadModel, "takeoverStatus"> | null
 ): TakeoverWorkbenchStep[] {

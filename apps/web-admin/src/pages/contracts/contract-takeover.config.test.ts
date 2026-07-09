@@ -10,6 +10,7 @@ import {
   lifecycleStatusLabel,
   parseContractTakeoverImportPrecheckRows,
   takeoverActionDisabledReason,
+  takeoverEvidenceUploadDisabledReason,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverStatusLabel,
@@ -136,6 +137,21 @@ describe("contract takeover page configuration", () => {
     expect(
       takeoverActionDisabledReason({ ...takeover(), takeoverStatus: "confirmed" }, "confirm")
     ).toBe("已完成主管确认，无需重复确认");
+  });
+
+  it("explains why takeover evidence upload is disabled", () => {
+    expect(
+      takeoverEvidenceUploadDisabledReason({ ...takeover(), takeoverStatus: "draft" }, false)
+    ).toBe("请先选择要上传的接管资料文件");
+    expect(takeoverEvidenceUploadDisabledReason(takeover(), true)).toBe(
+      "已提交复核，需退回补充后才能继续上传资料"
+    );
+    expect(
+      takeoverEvidenceUploadDisabledReason({ ...takeover(), takeoverStatus: "confirmed" }, true)
+    ).toBe("已完成主管确认，接管资料不能静默补充，请走更正记录");
+    expect(
+      takeoverEvidenceUploadDisabledReason({ ...takeover(), takeoverStatus: "voided" }, true)
+    ).toBe("接管记录已作废，不能上传资料");
   });
 
   it("describes the takeover workbench as an eight-step office workflow", () => {

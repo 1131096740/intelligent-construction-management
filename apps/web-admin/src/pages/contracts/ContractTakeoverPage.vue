@@ -525,11 +525,23 @@
                 @change="onEvidenceFileChange"
               >
             </label>
+            <t-tooltip
+              v-if="selectedEvidenceUploadDisabledReason"
+              :content="selectedEvidenceUploadDisabledReason"
+            >
+              <t-button
+                theme="primary"
+                variant="outline"
+                disabled
+              >
+                上传接管资料
+              </t-button>
+            </t-tooltip>
             <t-button
+              v-else
               theme="primary"
               variant="outline"
               :loading="evidenceUploading"
-              :disabled="!canEditTakeover(selectedRow.takeover) || !evidenceFile"
               @click="submitEvidenceFile"
             >
               上传接管资料
@@ -676,6 +688,7 @@ import {
   lifecycleStatusOptions,
   parseContractTakeoverImportPrecheckRows,
   takeoverActionDisabledReason,
+  takeoverEvidenceUploadDisabledReason,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverLevelOptions,
@@ -808,6 +821,11 @@ const selectedConfirmationSummary = computed(() =>
 const confirmSummary = computed(() =>
   confirmTarget.value ? buildTakeoverConfirmationSummary(confirmTarget.value) : null
 );
+const selectedEvidenceUploadDisabledReason = computed(() => {
+  const takeover = selectedRow.value?.takeover;
+  if (!takeover) return "请先选择需要补充资料的接管合同";
+  return takeoverEvidenceUploadDisabledReason(takeover, Boolean(evidenceFile.value));
+});
 
 const summaryValues = computed(() => {
   const counts = {
