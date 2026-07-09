@@ -884,7 +884,9 @@ export class PaymentRequestService {
         paidAmountCents: true,
         contractVersionId: true,
         isFinal: true,
-        paymentTermsVersionId: true
+        paymentTermsVersionId: true,
+        sourceType: true,
+        sourceTakeoverId: true
       }
     });
     const settlementIds = contractSettlements.map((row) => row.id);
@@ -2059,12 +2061,21 @@ export class PaymentRequestService {
         paidAmountCents: true,
         contractVersionId: true,
         paymentTermsVersionId: true,
-        isFinal: true
+        isFinal: true,
+        sourceType: true,
+        sourceTakeoverId: true
       }
     });
     const settlementIds = contractSettlements.map((settlement) => settlement.id);
+    const historicalBalance = await this.confirmedHistoricalBalanceForContract(
+      tx,
+      payment.contractId
+    );
     const paymentTermsVersionIds = [
-      ...new Set(contractSettlements.map((settlement) => settlement.paymentTermsVersionId))
+      ...new Set([
+        ...contractSettlements.map((settlement) => settlement.paymentTermsVersionId),
+        ...(historicalBalance?.paymentTermsVersionId ? [historicalBalance.paymentTermsVersionId] : [])
+      ])
     ];
 
     if (!settlementIds.length || !paymentTermsVersionIds.length) {
@@ -2217,7 +2228,8 @@ export class PaymentRequestService {
       settlementArchiveFiles,
       paymentRequests: [],
       advancePaymentRequests: normalizedAdvancePaymentRequests,
-      contractAmountCentsByPaymentTermsVersionId
+      contractAmountCentsByPaymentTermsVersionId,
+      historicalBalance
     });
     const existingConsumptionRows = existingAllocations.map((allocation) => ({
       sourceRowId: allocation.sourceRowId,
