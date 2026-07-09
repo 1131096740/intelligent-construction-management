@@ -1,23 +1,5 @@
 <template>
-  <section class="contract-page">
-    <div class="page-head">
-      <div>
-        <h1>合同台账</h1>
-        <p>合同、合同版本、付款条款版本、归档状态统一台账</p>
-      </div>
-      <t-space>
-        <t-button @click="goContractTakeover">
-          历史合同接管
-        </t-button>
-        <t-button
-          theme="primary"
-          @click="goNewWorkbench"
-        >
-          新建合同
-        </t-button>
-      </t-space>
-    </div>
-
+  <section class="contract-list-page">
     <div class="summary-strip">
       <div
         v-for="item in summaryValues"
@@ -52,34 +34,57 @@
 
     <!-- Ledger tab -->
     <template v-if="activeTab === 'ledger'">
-      <div class="filter-bar">
-        <label
-          v-for="field in contractFilterFields"
-          :key="field.key"
-          :class="['filter-field', { keyword: field.type === 'keyword' }]"
-        >
-          <span>{{ field.label }}</span>
-          <t-input
-            v-model="contractFilters[field.key]"
-            :placeholder="field.placeholder"
-            size="small"
-          />
-        </label>
+      <BusinessTableToolbar
+        title="合同台账"
+        description="查看合同状态、责任人、停留时长和下一步动作"
+      >
+        <template #actions>
+          <t-space size="small">
+            <t-button @click="goContractTakeover">
+              历史合同接管
+            </t-button>
+            <router-link to="/contracts/workbench">
+              <t-button theme="primary">
+                新建合同
+              </t-button>
+            </router-link>
+          </t-space>
+        </template>
 
-        <t-button
-          class="filter-action"
-          theme="primary"
-          @click="loadContractLedger"
+        <t-form
+          layout="inline"
+          label-align="top"
+          class="ledger-filter-form"
         >
-          查询
-        </t-button>
-        <t-button
-          class="filter-action"
-          @click="resetContractFilters"
-        >
-          重置
-        </t-button>
-      </div>
+          <label
+            v-for="field in contractFilterFields"
+            :key="field.key"
+            :class="['filter-field', { keyword: field.type === 'keyword' }]"
+          >
+            <span>{{ field.label }}</span>
+            <t-input
+              v-model="contractFilters[field.key]"
+              :placeholder="field.placeholder"
+              size="small"
+            />
+          </label>
+
+          <t-space
+            class="ledger-filter-actions"
+            size="small"
+          >
+            <t-button
+              theme="primary"
+              @click="loadContractLedger"
+            >
+              查询
+            </t-button>
+            <t-button @click="resetContractFilters">
+              重置
+            </t-button>
+          </t-space>
+        </t-form>
+      </BusinessTableToolbar>
 
       <div
         v-if="noticeMessage"
@@ -113,7 +118,6 @@
           :columns="visibleContractLedgerColumns"
           :data="filteredContractLedgerRows"
           :loading="ledgerLoading"
-          empty="暂无合同数据"
         >
           <template #currentNode="{ row }">
             <t-tag
@@ -131,6 +135,13 @@
             >
               查看合同 {{ row.contractNo }}
             </t-link>
+          </template>
+          <template #empty>
+            <EmptyBusinessState
+              title="暂无合同"
+              description="当前筛选条件下没有合同记录。可以调整筛选，或由合同人员新建合同。"
+              :actions="[{ label: '新建合同', to: '/contracts/workbench' }]"
+            />
           </template>
         </t-table>
       </t-card>
@@ -217,6 +228,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
+import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import { useAuthStore } from "../../auth/auth.store";
 import { fetchContractLedger } from "../../api/core-flow-read.api";
 import { listContractDrafts } from "../../api/contract-workbench.api";
@@ -395,10 +408,6 @@ function applyRouteProjectFilter(value: unknown) {
   activeTab.value = "ledger";
 }
 
-function goNewWorkbench() {
-  void router.push("/contracts/new");
-}
-
 function goContractTakeover() {
   void router.push("/contract-takeovers");
 }
@@ -476,80 +485,61 @@ function statusTagTheme(tone: ContractStatusTone) {
 </script>
 
 <style scoped>
-.contract-page {
+.contract-list-page {
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  color: #151922;
-}
-
-.page-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.page-head h1 {
-  margin: 0 0 8px;
-  font-size: 24px;
-  line-height: 1.2;
-  font-weight: 700;
-}
-
-.page-head p {
-  margin: 0;
-  color: #767f8d;
-  font-size: 12px;
+  background: var(--jg-color-bg-page);
+  color: var(--jg-color-text-secondary);
 }
 
 .summary-strip {
   min-height: 42px;
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  margin-bottom: 16px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
+  gap: var(--jg-space-xs);
+  padding: 0 var(--jg-space-md);
+  margin-bottom: var(--jg-space-lg);
+  background: var(--jg-color-bg-panel);
+  border: 1px solid var(--jg-color-border);
+  border-radius: var(--jg-radius-sm);
 }
 
 .tab-bar {
-  margin-bottom: 16px;
+  margin-bottom: var(--jg-space-lg);
 }
 
 .list-message {
-  margin-bottom: 16px;
-  padding: 10px 12px;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  background: #fff;
-  color: #424955;
-  font-size: 12px;
+  margin-bottom: var(--jg-space-lg);
+  padding: var(--jg-space-sm) var(--jg-space-md);
+  border: 1px solid var(--jg-color-border);
+  border-radius: var(--jg-radius-sm);
+  background: var(--jg-color-bg-panel);
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-meta);
   font-weight: 600;
 }
 
 .list-message.danger {
-  color: #b51d2a;
-  background: #fff5f5;
+  color: var(--jg-danger);
 }
 
 .column-strip {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--jg-space-sm) var(--jg-space-md);
+  gap: var(--jg-space-xs) var(--jg-space-md);
   align-items: center;
   margin-bottom: var(--jg-space-lg);
-  padding: 10px var(--jg-space-md);
-  border: 1px solid var(--jg-border);
+  padding: var(--jg-space-sm) var(--jg-space-md);
+  border: 1px solid var(--jg-color-border);
   border-radius: var(--jg-radius-sm);
-  background: var(--jg-bg-panel);
-  color: var(--jg-text-subtle);
-  font-size: var(--jg-font-meta);
+  background: var(--jg-color-bg-panel);
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
 }
 
 .column-strip > span {
-  color: var(--jg-text-strong);
+  color: var(--jg-color-text-primary);
   font-weight: 700;
 }
 
@@ -561,10 +551,10 @@ function statusTagTheme(tone: ContractStatusTone) {
 
 .summary-item {
   display: flex;
-  gap: 10px;
-  padding-right: 24px;
-  margin-right: 22px;
-  border-right: 1px solid #dce1e8;
+  gap: var(--jg-space-sm);
+  padding-right: var(--jg-space-lg);
+  margin-right: var(--jg-space-lg);
+  border-right: 1px solid var(--jg-color-border);
 }
 
 .summary-item:last-child {
@@ -572,58 +562,55 @@ function statusTagTheme(tone: ContractStatusTone) {
 }
 
 .summary-label {
-  color: #767f8d;
+  color: var(--jg-color-text-tertiary);
 }
 
 .summary-value {
-  color: #151922;
+  color: var(--jg-color-text-primary);
 }
 
 .tone-primary {
-  color: #0052cc;
+  color: var(--jg-info);
 }
 
 .tone-warning {
-  color: #9f4f06;
+  color: var(--jg-warning);
 }
 
 .tone-success {
-  color: #1b6b3a;
+  color: var(--jg-success);
 }
 
-.filter-bar {
+.ledger-filter-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(96px, 120px)) minmax(150px, 1fr) 76px 76px;
-  gap: 8px 10px;
+  gap: var(--jg-space-xs) var(--jg-space-md);
   align-items: end;
-  padding: 10px 12px;
-  margin-bottom: 16px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
+  width: 100%;
 }
 
 .filter-field {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: var(--jg-space-xs);
 }
 
 .filter-field span {
-  color: #767f8d;
-  font-size: 12px;
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
   font-weight: 600;
 }
 
-.filter-action {
-  width: 76px;
-  min-width: 76px;
+.ledger-filter-actions {
+  grid-column: span 2;
+  justify-self: end;
 }
 
 .ledger-panel {
   min-width: 0;
   overflow: hidden;
-  border-radius: 3px;
+  margin-top: var(--jg-space-lg);
+  border-radius: var(--jg-radius-sm);
 }
 
 :deep(.t-card__body) {
@@ -632,12 +619,12 @@ function statusTagTheme(tone: ContractStatusTone) {
 }
 
 :deep(.t-table th) {
-  background: #f6f8fb;
-  font-size: 12px;
+  background: var(--jg-color-bg-page);
+  font-size: var(--jg-font-size-meta);
 }
 
 @media (max-width: 900px) {
-  .filter-bar {
+  .ledger-filter-form {
     grid-template-columns: repeat(4, minmax(120px, 1fr));
   }
 
