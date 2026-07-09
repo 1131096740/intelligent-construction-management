@@ -796,7 +796,7 @@ export class SettlementReadService {
       voided: { label: "已作废", tone: "danger" }
     };
 
-    return views[status] ?? { label: status, tone: "default" };
+    return views[status] ?? { label: "结算状态未读取", tone: "default" };
   }
 
   private archiveFileStatusLabel(status: string): string {

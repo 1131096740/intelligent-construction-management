@@ -1274,7 +1274,7 @@ export class PaymentReadService {
       rejected: { label: "已退回", tone: "danger" }
     };
 
-    return views[status] ?? { label: status, tone: "default" };
+    return views[status] ?? { label: "付款审批状态未读取", tone: "default" };
   }
 
   private executionStatusView(

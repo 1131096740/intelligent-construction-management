@@ -122,6 +122,14 @@ describe("SettlementReadService", () => {
     });
   });
 
+  it("does not expose internal settlement status values in read model labels", () => {
+    const service = new SettlementReadService({} as never);
+    const statusView = (service as unknown as { statusView(status: string): { label: string } })
+      .statusView;
+
+    expect(statusView.call(service, "internal_status").label).toBe("结算状态未读取");
+  });
+
   it("builds settlement detail from persisted settlement and payment terms", async () => {
     const prisma = {
       settlement: {

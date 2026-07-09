@@ -129,6 +129,17 @@ describe("PaymentReadService", () => {
     });
   });
 
+  it("does not expose internal payment approval status values in read model labels", () => {
+    const service = new PaymentReadService({} as never);
+    const approvalStatusView = (
+      service as unknown as { approvalStatusView(status: string): { label: string } }
+    ).approvalStatusView;
+
+    expect(approvalStatusView.call(service, "internal_status").label).toBe(
+      "付款审批状态未读取"
+    );
+  });
+
   it("builds payment ledger rows for contract advance requests without settlement", async () => {
     const prisma = {
       paymentRequest: {
