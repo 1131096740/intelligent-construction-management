@@ -1933,6 +1933,16 @@ describe("SettlementService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("结算审批服务不可用时给出中文业务提示", async () => {
+    const settlementService = new SettlementService();
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "budget-director-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("结算审批服务暂不可用，请稍后重试或联系管理员");
+  });
+
   it("does not write internal user account into settlement approval metadata when name is unavailable", async () => {
     const tx = {
       user: {
@@ -2851,6 +2861,14 @@ describe("SettlementService", () => {
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
   });
 
+  it("结算审批撤回服务不可用时给出中文业务提示", async () => {
+    const settlementService = new SettlementService();
+
+    await expect(
+      settlementService.withdrawApproval("settlement-1", "applicant-1")
+    ).rejects.toThrow("结算审批撤回服务暂不可用，请稍后重试或联系管理员");
+  });
+
   it("transfers the current settlement approval node to a target user", async () => {
     const frozenNodes = [{ name: "物资主管", mode: "any", roleKeys: ["material_director"] }];
     const tx = {
@@ -2933,6 +2951,16 @@ describe("SettlementService", () => {
       })
     ).rejects.toThrow("请选择有效的接收人，且不能选择当前操作人自己");
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("结算审批转交服务不可用时给出中文业务提示", async () => {
+    const settlementService = new SettlementService();
+
+    await expect(
+      settlementService.transferApproval("settlement-1", "material-director-1", {
+        toUserId: "delegate-user-1"
+      })
+    ).rejects.toThrow("结算审批转交服务暂不可用，请稍后重试或联系管理员");
   });
 
   it("结算单不存在时不能转交审批", async () => {
@@ -4642,6 +4670,14 @@ describe("SettlementService", () => {
       settlementService.remindApproval("settlement-1", "applicant-1", now)
     ).rejects.toThrow("当前还未到可催办时间，请稍后再试");
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("结算审批催办服务不可用时给出中文业务提示", async () => {
+    const settlementService = new SettlementService();
+
+    await expect(
+      settlementService.remindApproval("settlement-1", "applicant-1", new Date("2026-06-25T01:00:00.000Z"))
+    ).rejects.toThrow("结算审批催办服务暂不可用，请稍后重试或联系管理员");
   });
 
   it("结算单不存在时不能发起催办", async () => {

@@ -984,7 +984,7 @@ export class SettlementService {
     input: ReviewSettlementApprovalDto
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to review settlement approval");
+      throw new Error("结算审批服务暂不可用，请稍后重试或联系管理员");
     }
     if (
       !["approve", "reject", "reject_previous", "return_to_applicant"].includes(
@@ -1257,7 +1257,7 @@ export class SettlementService {
 
   async withdrawApproval(settlementId: string, actorUserId: string) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to withdraw settlement approval");
+      throw new Error("结算审批撤回服务暂不可用，请稍后重试或联系管理员");
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -1333,7 +1333,7 @@ export class SettlementService {
 
   async remindApproval(settlementId: string, actorUserId: string, now: Date = new Date()) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to remind settlement approval");
+      throw new Error("结算审批催办服务暂不可用，请稍后重试或联系管理员");
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -2216,7 +2216,7 @@ export class SettlementService {
     input: AssignSettlementApprovalDto
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to assign settlement approval");
+      throw new Error("结算审批转交服务暂不可用，请稍后重试或联系管理员");
     }
 
     if (!input.toUserId || input.toUserId === actorUserId) {
