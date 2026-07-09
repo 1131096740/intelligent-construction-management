@@ -25,6 +25,7 @@ import {
   takeoverLevelReviewText,
   takeoverSuggestionApplyDisabledReason,
   takeoverWorkbenchSteps,
+  takeoverPostConfirmationVerificationView,
   takeoverLevelLabel,
   takeoverStatusLabel,
   takeoverStatusTone,
@@ -457,6 +458,32 @@ describe("contract takeover page configuration", () => {
     ]);
   });
 
+  it("formats post-confirmation verification facts for takeover detail", () => {
+    expect(
+      takeoverPostConfirmationVerificationView({
+        ...takeover(),
+        takeoverStatus: "confirmed",
+        postConfirmationVerification: {
+          statusLabel: "已形成闭环",
+          summaryText: "已看到接管后的新结算、付款申请、实付凭证和财务入账。",
+          newSettlementCount: 1,
+          paymentRequestCount: 2,
+          paymentExecutionCount: 1,
+          financeRecordCount: 1
+        }
+      })
+    ).toEqual({
+      statusLabel: "已形成闭环",
+      summaryText: "已看到接管后的新结算、付款申请、实付凭证和财务入账。",
+      items: [
+        { label: "接管后新结算", value: "1 单" },
+        { label: "付款申请", value: "2 笔" },
+        { label: "实付凭证", value: "1 笔" },
+        { label: "财务入账", value: "1 笔" }
+      ]
+    });
+  });
+
   it("keeps historical balances separated in table rows", () => {
     const row = toContractTakeoverTableRow(takeover());
 
@@ -535,6 +562,14 @@ function takeover(): ContractTakeoverReadModel {
     ],
     evidenceFiles: [],
     corrections: [],
+    postConfirmationVerification: {
+      statusLabel: "未到核验",
+      summaryText: "主管确认后，再用接管后的新结算、付款申请、实付凭证和财务入账核验期初账本。",
+      newSettlementCount: 0,
+      paymentRequestCount: 0,
+      paymentExecutionCount: 0,
+      financeRecordCount: 0
+    },
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T10:00:00.000Z"
   };

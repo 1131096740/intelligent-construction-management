@@ -66,6 +66,12 @@ export interface TakeoverPostConfirmationChecklist {
   items: string[];
 }
 
+export interface TakeoverPostConfirmationVerificationView {
+  statusLabel: string;
+  summaryText: string;
+  items: Array<{ label: string; value: string }>;
+}
+
 export interface TakeoverLevelSuggestionDraft {
   lifecycleStatus: ContractLifecycleStatus;
   balanceSourceSummary: string;
@@ -489,6 +495,22 @@ export function buildTakeoverPostConfirmationChecklist(
       "从有效结算和合同付款条款发起付款申请，核对历史已付、已批待付和其他占用是否扣减。",
       "完成实付登记和凭证上传，确认资料下载仍要求当前密码、下载原因和审计留痕。",
       "财务入账后查看付款、凭证、PDF 归档和审计记录是否能串回这份接管合同。"
+    ]
+  };
+}
+
+export function takeoverPostConfirmationVerificationView(
+  takeover: ContractTakeoverReadModel
+): TakeoverPostConfirmationVerificationView {
+  const verification = takeover.postConfirmationVerification;
+  return {
+    statusLabel: verification.statusLabel,
+    summaryText: verification.summaryText,
+    items: [
+      { label: "接管后新结算", value: `${verification.newSettlementCount} 单` },
+      { label: "付款申请", value: `${verification.paymentRequestCount} 笔` },
+      { label: "实付凭证", value: `${verification.paymentExecutionCount} 笔` },
+      { label: "财务入账", value: `${verification.financeRecordCount} 笔` }
     ]
   };
 }

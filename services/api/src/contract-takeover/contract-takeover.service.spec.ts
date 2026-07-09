@@ -2374,6 +2374,81 @@ describe("ContractTakeoverService", () => {
     expect(row.corrections[0]).not.toHaveProperty("afterSnapshot");
   });
 
+  it("summarizes post-confirmation verification facts after takeover", async () => {
+    const prisma = {
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          takeoverRecord({
+            takeoverStatus: "confirmed",
+            confirmedAt: new Date("2026-07-05T10:00:00.000Z")
+          })
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A"
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-new-1",
+            contractVersionId: "contract-version-1",
+            sourceType: "system",
+            sourceTakeoverId: null,
+            status: "effective"
+          },
+          {
+            id: "settlement-initial-1",
+            contractVersionId: "contract-version-1",
+            sourceType: "historical_takeover",
+            sourceTakeoverId: "takeover-1",
+            status: "effective"
+          }
+        ])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "payment-request-1", contractVersionId: "contract-version-1", status: "paid" }
+        ])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "payment-execution-1", paymentRequestId: "payment-request-1" }
+        ])
+      },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "finance-record-1", paymentRequestId: "payment-request-1" }
+        ])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const [row] = await service.list("project-1");
+
+    expect(row.postConfirmationVerification).toEqual({
+      statusLabel: "已形成闭环",
+      summaryText:
+        "已看到接管后的新结算、付款申请、实付凭证和财务入账，可作为试运行核验证据继续抽查审计记录。",
+      newSettlementCount: 1,
+      paymentRequestCount: 1,
+      paymentExecutionCount: 1,
+      financeRecordCount: 1
+    });
+  });
+
   it("does not expose uploader internal account when takeover evidence uploader name is unavailable", async () => {
     const prisma = {
       contractTakeover: {

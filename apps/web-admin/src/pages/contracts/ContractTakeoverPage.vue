@@ -605,6 +605,25 @@
           >
             <strong>{{ selectedPostConfirmationChecklist.title }}</strong>
             <p>{{ selectedPostConfirmationChecklist.description }}</p>
+            <div
+              v-if="selectedPostConfirmationVerification"
+              class="post-verification"
+            >
+              <div class="post-verification-head">
+                <span>当前核验状态</span>
+                <strong>{{ selectedPostConfirmationVerification.statusLabel }}</strong>
+              </div>
+              <p>{{ selectedPostConfirmationVerification.summaryText }}</p>
+              <dl class="post-verification-counts">
+                <div
+                  v-for="item in selectedPostConfirmationVerification.items"
+                  :key="item.label"
+                >
+                  <dt>{{ item.label }}</dt>
+                  <dd>{{ item.value }}</dd>
+                </div>
+              </dl>
+            </div>
             <ol class="post-confirmation-list">
               <li
                 v-for="item in selectedPostConfirmationChecklist.items"
@@ -951,6 +970,7 @@ import {
   takeoverLevelAdjustmentDisabledReason,
   takeoverLevelSelectionHint,
   takeoverSuggestionApplyDisabledReason,
+  takeoverPostConfirmationVerificationView,
   takeoverResponsibleUserText,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
@@ -1104,6 +1124,9 @@ const selectedConfirmationSummary = computed(() =>
 );
 const selectedPostConfirmationChecklist = computed(() =>
   selectedRow.value ? buildTakeoverPostConfirmationChecklist(selectedRow.value.takeover) : null
+);
+const selectedPostConfirmationVerification = computed(() =>
+  selectedRow.value ? takeoverPostConfirmationVerificationView(selectedRow.value.takeover) : null
 );
 const confirmSummary = computed(() =>
   confirmTarget.value ? buildTakeoverConfirmationSummary(confirmTarget.value) : null
@@ -2278,6 +2301,44 @@ input[type="date"] {
   line-height: 1.7;
 }
 
+.post-verification {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e2e7ee;
+  background: #fff;
+}
+
+.post-verification-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.post-verification-head span,
+.post-verification-counts dt {
+  color: #767f8d;
+  font-size: 12px;
+}
+
+.post-verification-head strong,
+.post-verification-counts dd {
+  color: #151922;
+  font-weight: 600;
+}
+
+.post-verification-counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.post-verification-counts dd {
+  margin: 2px 0 0;
+}
+
 .confirm-summary-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2476,7 +2537,8 @@ input[type="date"] {
 
   .takeover-flow,
   .detail-list.compact,
-  .confirm-summary-list {
+  .confirm-summary-list,
+  .post-verification-counts {
     grid-template-columns: 1fr;
   }
 

@@ -92,10 +92,49 @@ type TakeoverReadClient = Pick<
   | "paymentTermsVersion"
   | "contractTakeoverBatch"
   | "contractTakeoverCorrection"
+  | "settlement"
+  | "paymentRequest"
+  | "paymentExecution"
+  | "financeRecord"
   | "archiveRecord"
   | "fileObject"
   | "user"
 >;
+
+type ReadClientFindMany<T> = {
+  findMany(args: unknown): Promise<T[]>;
+};
+
+type PostConfirmationSettlementRecord = {
+  id: string;
+  contractVersionId: string;
+  sourceType: string;
+  sourceTakeoverId: string | null;
+  status: string;
+};
+
+type PostConfirmationPaymentRequestRecord = {
+  id: string;
+  contractVersionId: string;
+  status: string;
+};
+
+type PostConfirmationPaymentExecutionRecord = {
+  id: string;
+  paymentRequestId: string;
+};
+
+type PostConfirmationFinanceRecord = {
+  id: string;
+  paymentRequestId: string | null;
+};
+
+type PostConfirmationVerificationStats = {
+  newSettlementCount: number;
+  paymentRequestCount: number;
+  paymentExecutionCount: number;
+  financeRecordCount: number;
+};
 
 type ContractTakeoverRecord = {
   id: string;
@@ -172,8 +211,18 @@ export interface ContractTakeoverBusinessReadModel {
   evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
+  postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ContractTakeoverPostConfirmationVerificationReadModel {
+  statusLabel: string;
+  summaryText: string;
+  newSettlementCount: number;
+  paymentRequestCount: number;
+  paymentExecutionCount: number;
+  financeRecordCount: number;
 }
 
 export interface ContractTakeoverEvidenceChecklistItemReadModel {
@@ -409,7 +458,11 @@ export class ContractTakeoverService {
         amountCents: data.amountCents,
         paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
         evidenceFiles: [],
-        corrections: []
+        corrections: [],
+        postConfirmationVerification: postConfirmationVerificationReadModel(
+          takeover,
+          emptyPostConfirmationVerificationStats()
+        )
       });
   }
 
@@ -504,7 +557,11 @@ export class ContractTakeoverService {
         amountCents: data.amountCents,
         paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
         evidenceFiles: [],
-        corrections: []
+        corrections: [],
+        postConfirmationVerification: postConfirmationVerificationReadModel(
+          updated,
+          emptyPostConfirmationVerificationStats()
+        )
       });
     });
   }
@@ -1013,6 +1070,12 @@ export class ContractTakeoverService {
     const correctionClient = (client as unknown as {
       contractTakeoverCorrection?: TakeoverReadClient["contractTakeoverCorrection"];
     }).contractTakeoverCorrection;
+    const verificationClient = client as unknown as {
+      settlement?: ReadClientFindMany<PostConfirmationSettlementRecord>;
+      paymentRequest?: ReadClientFindMany<PostConfirmationPaymentRequestRecord>;
+      paymentExecution?: ReadClientFindMany<PostConfirmationPaymentExecutionRecord>;
+      financeRecord?: ReadClientFindMany<PostConfirmationFinanceRecord>;
+    };
     const paymentTermsVersionIds = unique(takeovers.map((takeover) => takeover.paymentTermsVersionId));
     const batchIds = unique(
       takeovers
@@ -1071,6 +1134,47 @@ export class ContractTakeoverService {
     const files = typeof archiveClient.fileObject?.findMany === "function" && fileIds.length
       ? await archiveClient.fileObject.findMany({ where: { id: { in: fileIds } } })
       : [];
+    const [postConfirmationSettlements, postConfirmationPaymentRequests] = await Promise.all([
+      typeof verificationClient.settlement?.findMany === "function"
+        ? verificationClient.settlement.findMany({
+            where: { contractVersionId: { in: contractVersionIds } },
+            select: {
+              id: true,
+              contractVersionId: true,
+              sourceType: true,
+              sourceTakeoverId: true,
+              status: true
+            }
+          })
+        : Promise.resolve([]),
+      typeof verificationClient.paymentRequest?.findMany === "function"
+        ? verificationClient.paymentRequest.findMany({
+            where: { contractVersionId: { in: contractVersionIds } },
+            select: { id: true, contractVersionId: true, status: true }
+          })
+        : Promise.resolve([])
+    ]);
+    const activePostConfirmationPaymentRequests = postConfirmationPaymentRequests.filter(
+      (request) => !isInactiveBusinessStatus(request.status)
+    );
+    const paymentRequestIds = unique(activePostConfirmationPaymentRequests.map((request) => request.id));
+    const [postConfirmationPaymentExecutions, postConfirmationFinanceRecords] =
+      paymentRequestIds.length
+        ? await Promise.all([
+            typeof verificationClient.paymentExecution?.findMany === "function"
+              ? verificationClient.paymentExecution.findMany({
+                  where: { paymentRequestId: { in: paymentRequestIds } },
+                  select: { id: true, paymentRequestId: true }
+                })
+              : Promise.resolve([]),
+            typeof verificationClient.financeRecord?.findMany === "function"
+              ? verificationClient.financeRecord.findMany({
+                  where: { paymentRequestId: { in: paymentRequestIds } },
+                  select: { id: true, paymentRequestId: true }
+                })
+              : Promise.resolve([])
+          ])
+        : [[], []];
     const correctionUserIds = unique(
       correctionRecords.flatMap((record) => [record.responsibleUserId, record.createdByUserId])
     );
@@ -1106,6 +1210,12 @@ export class ContractTakeoverService {
         correction
       ]);
     }
+    const postConfirmationVerificationByVersionId = postConfirmationVerificationStatsByVersion(
+      postConfirmationSettlements,
+      activePostConfirmationPaymentRequests,
+      postConfirmationPaymentExecutions,
+      postConfirmationFinanceRecords
+    );
 
     return takeovers.map((takeover) =>
       this.toReadModel(takeover, {
@@ -1162,7 +1272,12 @@ export class ContractTakeoverService {
             attachmentFileName: attachment?.originalName ?? "更正依据附件未读取",
             createdAt: correction.createdAt
           };
-        })
+        }),
+        postConfirmationVerification: postConfirmationVerificationReadModel(
+          takeover,
+          postConfirmationVerificationByVersionId.get(takeover.contractVersionId) ??
+            emptyPostConfirmationVerificationStats()
+        )
       })
     );
   }
@@ -1188,6 +1303,7 @@ export class ContractTakeoverService {
       responsibleUserName?: string | null;
       evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
       corrections: ContractTakeoverCorrectionReadModel[];
+      postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
     }
   ): ContractTakeoverBusinessReadModel {
     const evidenceChecklist = takeoverEvidenceChecklist(takeover, contract.evidenceFiles);
@@ -1236,6 +1352,7 @@ export class ContractTakeoverService {
       evidenceChecklist,
       evidenceFiles: contract.evidenceFiles,
       corrections: contract.corrections,
+      postConfirmationVerification: contract.postConfirmationVerification,
       createdAt: takeover.createdAt,
       updatedAt: takeover.updatedAt
     };
@@ -1654,6 +1771,116 @@ export class ContractTakeoverService {
 
 function unique<T>(values: T[]): T[] {
   return Array.from(new Set(values));
+}
+
+function emptyPostConfirmationVerificationStats(): PostConfirmationVerificationStats {
+  return {
+    newSettlementCount: 0,
+    paymentRequestCount: 0,
+    paymentExecutionCount: 0,
+    financeRecordCount: 0
+  };
+}
+
+function isInactiveBusinessStatus(status: string): boolean {
+  return ["approval_rejected", "rejected", "withdrawn", "voided"].includes(status);
+}
+
+function postConfirmationVerificationStatsByVersion(
+  settlements: PostConfirmationSettlementRecord[],
+  paymentRequests: PostConfirmationPaymentRequestRecord[],
+  paymentExecutions: PostConfirmationPaymentExecutionRecord[],
+  financeRecords: PostConfirmationFinanceRecord[]
+): Map<string, PostConfirmationVerificationStats> {
+  const statsByVersionId = new Map<string, PostConfirmationVerificationStats>();
+  const paymentRequestVersionById = new Map(
+    paymentRequests.map((request) => [request.id, request.contractVersionId])
+  );
+
+  const statsForVersion = (contractVersionId: string) => {
+    const current = statsByVersionId.get(contractVersionId);
+    if (current) return current;
+    const stats = emptyPostConfirmationVerificationStats();
+    statsByVersionId.set(contractVersionId, stats);
+    return stats;
+  };
+
+  for (const settlement of settlements) {
+    if (
+      settlement.sourceType === "historical_takeover" ||
+      settlement.sourceTakeoverId ||
+      isInactiveBusinessStatus(settlement.status)
+    ) {
+      continue;
+    }
+    statsForVersion(settlement.contractVersionId).newSettlementCount += 1;
+  }
+  for (const request of paymentRequests) {
+    statsForVersion(request.contractVersionId).paymentRequestCount += 1;
+  }
+  for (const execution of paymentExecutions) {
+    const contractVersionId = paymentRequestVersionById.get(execution.paymentRequestId);
+    if (contractVersionId) statsForVersion(contractVersionId).paymentExecutionCount += 1;
+  }
+  for (const record of financeRecords) {
+    const contractVersionId = record.paymentRequestId
+      ? paymentRequestVersionById.get(record.paymentRequestId)
+      : null;
+    if (contractVersionId) statsForVersion(contractVersionId).financeRecordCount += 1;
+  }
+
+  return statsByVersionId;
+}
+
+function postConfirmationVerificationReadModel(
+  takeover: Pick<ContractTakeoverRecord, "takeoverStatus">,
+  stats: PostConfirmationVerificationStats
+): ContractTakeoverPostConfirmationVerificationReadModel {
+  if (takeover.takeoverStatus !== "confirmed") {
+    return {
+      statusLabel: "未到核验",
+      summaryText:
+        "主管确认后，再用接管后的新结算、付款申请、实付凭证和财务入账核验期初账本。",
+      ...stats
+    };
+  }
+
+  const hasAnyFact = [
+    stats.newSettlementCount,
+    stats.paymentRequestCount,
+    stats.paymentExecutionCount,
+    stats.financeRecordCount
+  ].some((count) => count > 0);
+  const hasFullLoop = [
+    stats.newSettlementCount,
+    stats.paymentRequestCount,
+    stats.paymentExecutionCount,
+    stats.financeRecordCount
+  ].every((count) => count > 0);
+
+  if (hasFullLoop) {
+    return {
+      statusLabel: "已形成闭环",
+      summaryText:
+        "已看到接管后的新结算、付款申请、实付凭证和财务入账，可作为试运行核验证据继续抽查审计记录。",
+      ...stats
+    };
+  }
+
+  if (hasAnyFact) {
+    return {
+      statusLabel: "核验中",
+      summaryText:
+        "已看到部分接管后的业务事实，请继续补齐新结算、付款申请、实付凭证和财务入账，完成闭环核验。",
+      ...stats
+    };
+  }
+
+  return {
+    statusLabel: "待核验",
+    summaryText: "主管已确认接管，但尚未看到接管后的新结算、付款申请、实付凭证或财务入账。",
+    ...stats
+  };
 }
 
 function dateFieldLabel(field: string): string {

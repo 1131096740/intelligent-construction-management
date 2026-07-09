@@ -189,6 +189,15 @@ export interface ContractTakeoverCorrectionReadModel {
   createdAt: string;
 }
 
+export interface ContractTakeoverPostConfirmationVerificationReadModel {
+  statusLabel: string;
+  summaryText: string;
+  newSettlementCount: number;
+  paymentRequestCount: number;
+  paymentExecutionCount: number;
+  financeRecordCount: number;
+}
+
 export interface ContractTakeoverReadModel {
   id: string;
   batchNo: string | null;
@@ -229,6 +238,7 @@ export interface ContractTakeoverReadModel {
   evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
   corrections: ContractTakeoverCorrectionReadModel[];
+  postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
   createdAt: string;
   updatedAt: string;
 }
