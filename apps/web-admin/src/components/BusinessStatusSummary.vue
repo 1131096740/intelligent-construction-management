@@ -18,8 +18,8 @@ const normalizedItems = computed(() => normalizeBusinessStatusSummaryItems(props
     bordered
   >
     <div
-      v-for="item in normalizedItems"
-      :key="item.label"
+      v-for="(item, index) in normalizedItems"
+      :key="`${item.label}:${index}`"
       class="business-status-summary__item"
     >
       <span class="business-status-summary__label">{{ item.label }}</span>
@@ -40,7 +40,7 @@ const normalizedItems = computed(() => normalizeBusinessStatusSummaryItems(props
 
 .business-status-summary :deep(.t-card__body) {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(var(--jg-layout-summary-item-min-width), 1fr));
   gap: var(--jg-space-md);
   padding: var(--jg-space-md);
 }

@@ -42,6 +42,7 @@
   --jg-layout-sidebar-width: 240px;
   --jg-layout-header-height: 56px;
   --jg-layout-table-row-height: 46px;
+  --jg-layout-summary-item-min-width: 150px;
 
   --jg-bg-page: var(--jg-color-bg-page);
   --jg-bg-panel: var(--jg-color-bg-panel);

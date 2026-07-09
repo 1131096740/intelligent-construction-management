@@ -28,7 +28,7 @@ const visibleActions = computed(() => normalizeEmptyBusinessStateActions(props.a
           <router-link
             v-for="action in visibleActions"
             :key="action.label"
-            :to="action.to ?? '/'"
+            :to="action.to"
           >
             <t-button variant="outline">
               {{ action.label }}
