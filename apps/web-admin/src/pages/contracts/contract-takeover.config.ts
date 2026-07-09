@@ -226,7 +226,9 @@ export function parseContractTakeoverImportPrecheckRows(
       historicalRetentionReleasedCents: optionalYuanCell(cells, 17),
       otherConfirmedOccupancyCents: optionalYuanCell(cells, 18),
       balanceSourceSummary: textCell(cells, 19),
-      evidenceSummary: textCell(cells, 20)
+      evidenceSummary: textCell(cells, 20),
+      evidenceChecklist: textCell(cells, 21),
+      issueSummary: textCell(cells, 22)
     };
   });
 }

@@ -233,7 +233,8 @@ describe("ContractTakeoverService", () => {
           lifecycleStatus: "in_progress",
           paymentTermsOriginalText: "Pay after archive.",
           balanceSourceSummary: "Finance ledger",
-          evidenceSummary: "Signed scan"
+          evidenceSummary: "Signed scan",
+          evidenceChecklist: "Signed contract scan; settlement ledger; payment vouchers"
         },
         {
           code: "HT-HIS-DUP",
@@ -254,7 +255,9 @@ describe("ContractTakeoverService", () => {
           lifecycleStatus: "in_progress",
           paymentTermsOriginalText: "Monthly payment.",
           balanceSourceSummary: "Finance ledger",
-          evidenceSummary: "Signed scan"
+          evidenceSummary: "Signed scan",
+          evidenceChecklist: "Signed contract scan",
+          issueSummary: "Missing payment voucher, finance owner tracking"
         },
         {
           code: "HT-HIS-DUP",
@@ -312,6 +315,75 @@ describe("ContractTakeoverService", () => {
       select: { code: true, temporaryCode: true }
     });
     expect(prisma.contractTakeover.create).not.toHaveBeenCalled();
+  });
+
+  it("warns when takeover import precheck lacks evidence checklist or issue summary", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractTakeover: {
+        create: jest.fn()
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.precheckImport("project-1", {
+      rows: [
+        {
+          code: "HT-HIS-A",
+          name: "A级有问题合同",
+          counterparty: "Supplier A",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "A",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "Pay after archive.",
+          balanceSourceSummary: "Finance ledger",
+          evidenceSummary: "Signed scan",
+          evidenceChecklist: "Signed contract scan",
+          issueSummary: "Missing invoice"
+        },
+        {
+          code: "HT-HIS-C",
+          name: "C级缺问题合同",
+          counterparty: "Supplier C",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "C",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "Pay after archive.",
+          balanceSourceSummary: "Finance ledger",
+          evidenceSummary: "Signed scan"
+        }
+      ]
+    });
+
+    expect(result.warningRows).toBe(2);
+    expect(result.rows[0]).toMatchObject({
+      evidenceChecklist: "Signed contract scan",
+      issueSummary: "Missing invoice"
+    });
+    expect(result.rows[0].issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "issueSummary",
+          message: "A级合同存在问题清单，请确认是否应降级或先补齐资料"
+        })
+      ])
+    );
+    expect(result.rows[1].issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "evidenceChecklist",
+          message: "未填写资料清单，无法判断合同扫描件、结算依据和付款凭证是否齐全"
+        }),
+        expect.objectContaining({
+          field: "issueSummary",
+          message: "C级合同应填写问题清单，说明缺口、责任人和是否影响付款"
+        })
+      ])
+    );
   });
 
   it("updates an editable takeover draft and keeps linked contract facts in sync", async () => {

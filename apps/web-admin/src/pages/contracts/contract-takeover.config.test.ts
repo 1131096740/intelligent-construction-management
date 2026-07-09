@@ -76,6 +76,20 @@ describe("contract takeover page configuration", () => {
     });
   });
 
+  it("parses evidence checklist and issue summary for takeover import precheck", () => {
+    const rows = parseContractTakeoverImportPrecheckRows(
+      [
+        "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t接管等级\t履约状态\t付款条款\t历史累计结算(元)\t历史审批中付款(元)\t历史已批待付(元)\t历史累计已付(元)\t历史总包代付(元)\t历史预付款已付(元)\t历史预付款已扣回(元)\t历史质保金扣留(元)\t历史质保金释放(元)\t其他确认占用(元)\t余额来源\t证据说明\t资料清单\t问题清单",
+        "HT-LS-002\t历史合同\t供应商\t建工集团\t100.00\t2026-01-01\tC\tin_progress\t按月付款\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t财务台账\t合同扫描件\t缺历史付款凭证\t财务本周补凭证"
+      ].join("\n")
+    );
+
+    expect(rows[0]).toMatchObject({
+      evidenceChecklist: "缺历史付款凭证",
+      issueSummary: "财务本周补凭证"
+    });
+  });
+
   it("formats cents from API string or number values for display", () => {
     expect(centsToYuanText(0)).toBe("¥0.00");
     expect(centsToYuanText(1)).toBe("¥0.01");

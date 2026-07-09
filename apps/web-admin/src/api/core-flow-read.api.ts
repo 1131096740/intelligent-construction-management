@@ -222,6 +222,8 @@ export interface CreateContractTakeoverPayload {
   otherConfirmedOccupancyCents?: number;
   balanceSourceSummary?: string;
   evidenceSummary?: string;
+  evidenceChecklist?: string;
+  issueSummary?: string;
 }
 
 export interface PrecheckContractTakeoverImportRowPayload extends Record<string, unknown> {
@@ -247,6 +249,8 @@ export interface ContractTakeoverImportPrecheckRowReadModel {
   amountCents: number | null;
   takeoverLevel: string;
   lifecycleStatus: string;
+  evidenceChecklist: string;
+  issueSummary: string;
   status: "ready" | "blocked";
   issues: ContractTakeoverImportPrecheckIssueReadModel[];
 }

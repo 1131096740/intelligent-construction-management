@@ -144,6 +144,8 @@ export interface ContractTakeoverImportPrecheckRow {
   amountCents: number | null;
   takeoverLevel: string;
   lifecycleStatus: string;
+  evidenceChecklist: string;
+  issueSummary: string;
   status: ContractTakeoverImportPrecheckStatus;
   issues: ContractTakeoverImportPrecheckIssue[];
 }
@@ -775,6 +777,8 @@ export class ContractTakeoverService {
     const signedAt = stringValue(row["signedAt"]);
     const takeoverLevel = stringValue(row["takeoverLevel"]);
     const lifecycleStatus = stringValue(row["lifecycleStatus"]);
+    const evidenceChecklist = stringValue(row["evidenceChecklist"]);
+    const issueSummary = stringValue(row["issueSummary"]);
 
     if (!code) {
       issues.push(issue(rowNo, "code", "error", "合同编号不能为空"));
@@ -821,6 +825,36 @@ export class ContractTakeoverService {
     if (!stringValue(row["evidenceSummary"])) {
       issues.push(issue(rowNo, "evidenceSummary", "warning", "未填写证据说明"));
     }
+    if (!evidenceChecklist) {
+      issues.push(
+        issue(
+          rowNo,
+          "evidenceChecklist",
+          "warning",
+          "未填写资料清单，无法判断合同扫描件、结算依据和付款凭证是否齐全"
+        )
+      );
+    }
+    if (takeoverLevel === "A" && issueSummary) {
+      issues.push(
+        issue(
+          rowNo,
+          "issueSummary",
+          "warning",
+          "A级合同存在问题清单，请确认是否应降级或先补齐资料"
+        )
+      );
+    }
+    if (takeoverLevel === "C" && !issueSummary) {
+      issues.push(
+        issue(
+          rowNo,
+          "issueSummary",
+          "warning",
+          "C级合同应填写问题清单，说明缺口、责任人和是否影响付款"
+        )
+      );
+    }
 
     return {
       rowNo,
@@ -830,6 +864,8 @@ export class ContractTakeoverService {
       amountCents,
       takeoverLevel,
       lifecycleStatus,
+      evidenceChecklist,
+      issueSummary,
       status: issues.some((item) => item.level === "error") ? "blocked" : "ready",
       issues
     };

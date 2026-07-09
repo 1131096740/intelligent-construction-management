@@ -546,8 +546,8 @@ const importPrecheckText = ref("");
 const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>(null);
 
 const importPrecheckPlaceholder = [
-  "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t接管等级\t履约状态\t付款条款\t历史累计结算(元)\t历史审批中付款(元)\t历史已批待付(元)\t历史累计已付(元)\t历史总包代付(元)\t历史预付款已付(元)\t历史预付款已扣回(元)\t历史质保金扣留(元)\t历史质保金释放(元)\t其他确认占用(元)\t余额来源\t证据说明",
-  "HT-LS-2026-001\t材料采购历史合同\t历史供应商\t建工集团\t1000000.00\t2026-01-01\tB\tin_progress\t按月结算付款\t600000.00\t0\t20000.00\t300000.00\t0\t0\t0\t0\t0\t0\t财务台账核对\t合同扫描件已归档"
+  "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t接管等级\t履约状态\t付款条款\t历史累计结算(元)\t历史审批中付款(元)\t历史已批待付(元)\t历史累计已付(元)\t历史总包代付(元)\t历史预付款已付(元)\t历史预付款已扣回(元)\t历史质保金扣留(元)\t历史质保金释放(元)\t其他确认占用(元)\t余额来源\t证据说明\t资料清单\t问题清单",
+  "HT-LS-2026-001\t材料采购历史合同\t历史供应商\t建工集团\t1000000.00\t2026-01-01\tB\tin_progress\t按月结算付款\t600000.00\t0\t20000.00\t300000.00\t0\t0\t0\t0\t0\t0\t财务台账核对\t合同扫描件已归档\t合同扫描件、历史结算台账、付款凭证\t发票待补，财务负责"
 ].join("\n");
 
 const importPrecheckColumns = [
@@ -556,6 +556,8 @@ const importPrecheckColumns = [
   { colKey: "name", title: "合同名称", minWidth: 180 },
   { colKey: "counterparty", title: "相对方", minWidth: 140 },
   { colKey: "amount", title: "合同金额", width: 116, align: "right" },
+  { colKey: "evidenceChecklist", title: "资料清单", minWidth: 180 },
+  { colKey: "issueSummary", title: "问题清单", minWidth: 180 },
   { colKey: "statusLabel", title: "状态", width: 96 },
   { colKey: "issuesText", title: "预检结果", minWidth: 260 }
 ];
@@ -609,6 +611,8 @@ const importPrecheckRows = computed(() =>
     return {
       ...row,
       amount: row.amountCents === null ? "-" : centsToYuanText(row.amountCents),
+      evidenceChecklist: row.evidenceChecklist || "未填写",
+      issueSummary: row.issueSummary || "未填写",
       statusLabel: row.status === "ready" ? "可导入" : "需修正",
       statusTone: row.status === "ready" ? ("success" as const) : ("danger" as const),
       hasErrors,
