@@ -54,6 +54,8 @@ export interface TakeoverConfirmationSummary {
   evidenceText: string;
 }
 
+export type TakeoverAction = "edit" | "submit_review" | "confirm";
+
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
   { value: "A", label: "A级：资料完整，可直接接管" },
   { value: "B", label: "B级：资料基本完整，需补少量说明" },
@@ -82,7 +84,7 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
   { colKey: "historicalPaid", title: "历史已付", width: 116, align: "right" },
   { colKey: "historicalPending", title: "在途/待付", width: 116, align: "right" },
   { colKey: "updatedAt", title: "更新时间", width: 112 },
-  { colKey: "operation", title: "操作", width: 168, fixed: "right" }
+  { colKey: "operation", title: "操作", width: 248, fixed: "right" }
 ];
 
 export function takeoverLevelLabel(value: ContractTakeoverLevel): string {
@@ -127,6 +129,34 @@ export function canConfirmTakeover(takeover: Pick<ContractTakeoverReadModel, "ta
 
 export function canEditTakeover(takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">) {
   return takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement";
+}
+
+export function takeoverActionDisabledReason(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">,
+  action: TakeoverAction
+): string {
+  if (action === "edit") {
+    if (canEditTakeover(takeover)) return "";
+    if (takeover.takeoverStatus === "pending_review") return "已提交复核，需退回补充后才能编辑";
+    if (takeover.takeoverStatus === "confirmed") return "已完成主管确认，期初事实不能直接编辑";
+    if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能继续编辑";
+  }
+  if (action === "submit_review") {
+    if (canSubmitTakeoverReview(takeover)) return "";
+    if (takeover.takeoverStatus === "pending_review") return "已在复核中，无需重复提交";
+    if (takeover.takeoverStatus === "confirmed") return "已完成主管确认，无需再提交复核";
+    if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能提交复核";
+  }
+  if (action === "confirm") {
+    if (canConfirmTakeover(takeover)) return "";
+    if (takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement") {
+      return "请先补齐资料并提交复核后，再由主管确认";
+    }
+    if (takeover.takeoverStatus === "confirmed") return "已完成主管确认，无需重复确认";
+    if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能确认接管";
+  }
+
+  return "当前状态不能办理该动作";
 }
 
 export function takeoverWorkbenchSteps(

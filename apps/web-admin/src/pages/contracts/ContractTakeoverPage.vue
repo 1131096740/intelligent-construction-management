@@ -385,6 +385,17 @@
               >
                 编辑
               </t-link>
+              <t-tooltip
+                v-else
+                :content="takeoverActionDisabledReason(row.takeover, 'edit')"
+              >
+                <t-link
+                  disabled
+                  theme="primary"
+                >
+                  编辑
+                </t-link>
+              </t-tooltip>
               <t-link
                 v-if="canSubmitTakeoverReview(row.takeover)"
                 theme="primary"
@@ -392,6 +403,17 @@
               >
                 提交复核
               </t-link>
+              <t-tooltip
+                v-else
+                :content="takeoverActionDisabledReason(row.takeover, 'submit_review')"
+              >
+                <t-link
+                  disabled
+                  theme="primary"
+                >
+                  提交复核
+                </t-link>
+              </t-tooltip>
               <t-link
                 v-if="canConfirmTakeover(row.takeover)"
                 theme="danger"
@@ -399,6 +421,17 @@
               >
                 确认接管
               </t-link>
+              <t-tooltip
+                v-else
+                :content="takeoverActionDisabledReason(row.takeover, 'confirm')"
+              >
+                <t-link
+                  disabled
+                  theme="danger"
+                >
+                  确认接管
+                </t-link>
+              </t-tooltip>
             </t-space>
           </template>
         </t-table>
@@ -642,6 +675,7 @@ import {
   lifecycleStatusLabel,
   lifecycleStatusOptions,
   parseContractTakeoverImportPrecheckRows,
+  takeoverActionDisabledReason,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverLevelOptions,

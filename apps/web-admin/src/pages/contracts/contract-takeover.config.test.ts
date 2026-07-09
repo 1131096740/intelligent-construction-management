@@ -9,6 +9,7 @@ import {
   contractTakeoverColumns,
   lifecycleStatusLabel,
   parseContractTakeoverImportPrecheckRows,
+  takeoverActionDisabledReason,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverStatusLabel,
@@ -120,6 +121,21 @@ describe("contract takeover page configuration", () => {
     expect(canEditTakeover({ takeoverStatus: "draft" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "needs_supplement" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "pending_review" })).toBe(false);
+  });
+
+  it("explains disabled takeover actions in business Chinese", () => {
+    expect(takeoverActionDisabledReason(takeover(), "edit")).toBe(
+      "已提交复核，需退回补充后才能编辑"
+    );
+    expect(takeoverActionDisabledReason(takeover(), "submit_review")).toBe(
+      "已在复核中，无需重复提交"
+    );
+    expect(
+      takeoverActionDisabledReason({ ...takeover(), takeoverStatus: "draft" }, "confirm")
+    ).toBe("请先补齐资料并提交复核后，再由主管确认");
+    expect(
+      takeoverActionDisabledReason({ ...takeover(), takeoverStatus: "confirmed" }, "confirm")
+    ).toBe("已完成主管确认，无需重复确认");
   });
 
   it("describes the takeover workbench as an eight-step office workflow", () => {
