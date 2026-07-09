@@ -616,6 +616,50 @@ describe("ContractReadService", () => {
     expect(detail.disabledReasons).toEqual([]);
   });
 
+  it("does not expose internal user accounts when contract archive operator names are unavailable", async () => {
+    const prisma = {
+      contractArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "archive-file-1",
+            fileId: "file-signed-contract",
+            status: "confirmed",
+            uploadedByUserId: "upload-internal-id",
+            confirmedByUserId: "confirm-internal-id",
+            createdAt: new Date("2026-07-01T08:00:00.000Z"),
+            confirmedAt: new Date("2026-07-01T09:00:00.000Z")
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-signed-contract",
+            originalName: "盖章合同.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1024
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+    const archiveFiles = await (
+      service as unknown as {
+        contractArchiveFilesForVersion(id: string): Promise<
+          Array<{ uploadedByName: string; confirmedByName: string | null }>
+        >;
+      }
+    ).contractArchiveFilesForVersion("contract-version-1");
+
+    expect(archiveFiles[0]).toMatchObject({
+      uploadedByName: "上传人未读取",
+      confirmedByName: "确认人未读取"
+    });
+  });
+
   it("summarizes contract settlement and payment ledger without inventing payment term availability", async () => {
     const prisma = {
       contract: {

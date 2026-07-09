@@ -154,6 +154,95 @@ describe("ArchiveService", () => {
     });
   });
 
+  it("does not expose internal user accounts when archive ledger operator names are unavailable", async () => {
+    const prisma = {
+      contractArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-archive-1",
+            contractVersionId: "version-1",
+            fileId: "file-contract",
+            uploadedByUserId: "user-contract",
+            confirmedByUserId: "confirm-internal-id",
+            confirmedAt: new Date("2026-07-01T09:00:00.000Z"),
+            status: "confirmed",
+            createdAt: new Date("2026-07-01T08:00:00.000Z")
+          }
+        ])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "execution-1",
+            paymentRequestId: "payment-1",
+            voucherFileId: "file-voucher",
+            executedByUserId: "executor-internal-id",
+            createdAt: new Date("2026-07-01T10:00:00.000Z")
+          }
+        ])
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "version-1", contractId: "contract-1", versionNo: 1 }
+        ])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            projectId: "project-1",
+            code: "HT-001",
+            temporaryCode: null,
+            name: "材料采购合同"
+          }
+        ])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([{ id: "payment-1", projectId: "project-1", code: "FK-001" }])
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "file-contract", originalName: "盖章合同.pdf", sizeBytes: 1024 },
+          { id: "file-voucher", originalName: "银行回单.pdf", sizeBytes: 2048 }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "一号项目" }])
+      }
+    };
+    const service = new ArchiveService(prisma as never);
+
+    const result = await service.listRecent(20);
+
+    expect(result.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          documentType: "付款凭证",
+          confirmedBy: "经办人未读取"
+        }),
+        expect.objectContaining({
+          documentType: "合同归档件",
+          confirmedBy: "确认人未读取"
+        })
+      ])
+    );
+  });
+
   it("filters archive ledger by visible projects", async () => {
     const prisma = {
       contractArchiveFile: {

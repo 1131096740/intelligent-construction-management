@@ -153,10 +153,10 @@ export class ContractReadService {
           sizeBytes: file.sizeBytes,
           status: archiveFile.status,
           statusLabel: this.settlementArchiveFileStatusLabel(archiveFile),
-          uploadedByName: userNameById.get(archiveFile.uploadedByUserId) ?? archiveFile.uploadedByUserId,
+          uploadedByName: userNameById.get(archiveFile.uploadedByUserId) ?? "上传人未读取",
           createdAt: archiveFile.createdAt.toISOString(),
           confirmedByName: archiveFile.confirmedByUserId
-            ? (userNameById.get(archiveFile.confirmedByUserId) ?? archiveFile.confirmedByUserId)
+            ? (userNameById.get(archiveFile.confirmedByUserId) ?? "确认人未读取")
             : null,
           confirmedAt: archiveFile.confirmedAt?.toISOString() ?? null,
           canDownload,

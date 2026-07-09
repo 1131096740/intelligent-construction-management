@@ -159,11 +159,10 @@ export class SettlementReadService {
           sizeBytes: file.sizeBytes,
           status: archiveFile.status,
           statusLabel: this.archiveFileStatusLabel(archiveFile.status),
-          uploadedByName:
-            userById.get(archiveFile.uploadedByUserId)?.name ?? archiveFile.uploadedByUserId,
+          uploadedByName: userById.get(archiveFile.uploadedByUserId)?.name ?? "上传人未读取",
           uploadedAt: archiveFile.createdAt.toISOString(),
           confirmedByName: archiveFile.confirmedByUserId
-            ? userById.get(archiveFile.confirmedByUserId)?.name ?? archiveFile.confirmedByUserId
+            ? userById.get(archiveFile.confirmedByUserId)?.name ?? "确认人未读取"
             : null,
           confirmedAt: archiveFile.confirmedAt?.toISOString() ?? null,
           canDownload,

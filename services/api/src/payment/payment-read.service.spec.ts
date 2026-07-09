@@ -358,6 +358,70 @@ describe("PaymentReadService", () => {
     ]);
   });
 
+  it("does not expose internal user accounts when payment evidence uploader names are unavailable", async () => {
+    const prisma = {
+      pdfDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "pdf-document-1",
+            fileId: "file-pdf-1",
+            templateKey: "payment_finance_archive",
+            createdAt: new Date("2026-07-01T10:00:00.000Z")
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-voucher-1",
+            originalName: "银行回单.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1024,
+            uploadedByUserId: "voucher-upload-internal-id",
+            createdAt: new Date("2026-07-01T09:00:00.000Z")
+          },
+          {
+            id: "file-pdf-1",
+            originalName: "财务归档.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 2048,
+            uploadedByUserId: "pdf-upload-internal-id",
+            createdAt: new Date("2026-07-01T10:00:00.000Z")
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+    const evidenceFiles = await (
+      service as unknown as {
+        paymentEvidenceFiles(
+          paymentId: string,
+          executions: Array<{
+            id: string;
+            voucherFileId?: string | null;
+            executedByUserId?: string | null;
+            createdAt?: Date;
+          }>
+        ): Promise<Array<{ uploadedByName: string }>>;
+      }
+    ).paymentEvidenceFiles("payment-1", [
+      {
+        id: "execution-1",
+        voucherFileId: "file-voucher-1",
+        executedByUserId: "executor-internal-id",
+        createdAt: new Date("2026-07-01T09:30:00.000Z")
+      }
+    ]);
+
+    expect(evidenceFiles.map((file) => file.uploadedByName)).toEqual([
+      "上传人未读取",
+      "上传人未读取"
+    ]);
+  });
+
   it("exposes enabled payment execution action for cashier after approval", async () => {
     const prisma = {
       paymentRequest: {

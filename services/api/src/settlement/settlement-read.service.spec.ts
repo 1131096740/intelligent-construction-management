@@ -404,6 +404,50 @@ describe("SettlementReadService", () => {
     );
   });
 
+  it("does not expose internal user accounts when settlement archive operator names are unavailable", async () => {
+    const prisma = {
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "settlement-archive-1",
+            fileId: "file-settlement-1",
+            uploadedByUserId: "upload-internal-id",
+            confirmedByUserId: "confirm-internal-id",
+            confirmedAt: new Date("2026-07-01T10:00:00.000Z"),
+            status: "confirmed",
+            createdAt: new Date("2026-07-01T09:00:00.000Z")
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-settlement-1",
+            originalName: "签章结算单.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1024
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new SettlementReadService(prisma as never);
+    const archiveFiles = await (
+      service as unknown as {
+        settlementArchiveFilesForSettlement(id: string): Promise<
+          Array<{ uploadedByName: string; confirmedByName: string | null }>
+        >;
+      }
+    ).settlementArchiveFilesForSettlement("settlement-1");
+
+    expect(archiveFiles[0]).toMatchObject({
+      uploadedByName: "上传人未读取",
+      confirmedByName: "确认人未读取"
+    });
+  });
+
   it("exposes enabled payment creation action for effective settlements", async () => {
     const prisma = {
       settlement: {

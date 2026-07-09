@@ -138,7 +138,7 @@ export class PaymentReadService {
                 ? userById.get(execution.executedByUserId)?.name
                 : undefined) ??
               userById.get(file.uploadedByUserId)?.name ??
-              file.uploadedByUserId,
+              "上传人未读取",
             uploadedAt: execution.createdAt?.toISOString() ?? file.createdAt.toISOString(),
             confirmedByName: null,
             confirmedAt: null,
@@ -163,7 +163,7 @@ export class PaymentReadService {
             sizeBytes: file.sizeBytes,
             status: "archived",
             statusLabel: "已归档",
-            uploadedByName: userById.get(file.uploadedByUserId)?.name ?? file.uploadedByUserId,
+            uploadedByName: userById.get(file.uploadedByUserId)?.name ?? "上传人未读取",
             uploadedAt: document.createdAt.toISOString(),
             confirmedByName: null,
             confirmedAt: null,
