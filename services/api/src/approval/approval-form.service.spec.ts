@@ -382,6 +382,64 @@ describe("ApprovalFormService", () => {
     ).rejects.toThrow("审批单下载密码必填");
   });
 
+  it("uses business message when downloading approval form before approval completion", async () => {
+    const prisma = buildPrisma({
+      approvalInstance: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      }
+    });
+    const service = new ApprovalFormService(
+      prisma as never,
+      { assertCanDownloadFileById: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) } as never
+    );
+
+    await expect(
+      service.renderForDownload(
+        "payment_request",
+        "pay-1",
+        "user-chair",
+        "current-password",
+        "付款审批复核"
+      )
+    ).rejects.toThrow("当前业务尚未完成审批，暂不能生成审批单");
+  });
+
+  it("uses business message when completed approval disappears before approval form download", async () => {
+    const prisma = buildPrisma({
+      approvalInstance: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: "pdf-1", fileId: "file-1" }),
+        create: jest.fn()
+      }
+    });
+    const service = new ApprovalFormService(
+      prisma as never,
+      { assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined) } as never,
+      { record: jest.fn() } as never,
+      { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) } as never
+    );
+
+    await expect(
+      service.renderForDownload(
+        "payment_request",
+        "pay-1",
+        "user-chair",
+        "current-password",
+        "付款审批复核"
+      )
+    ).rejects.toThrow("当前业务尚未完成审批，暂不能下载审批单");
+  });
+
   it("skips generation when the approval is not completed", async () => {
     const prisma = buildPrisma({
       approvalInstance: {

@@ -410,7 +410,7 @@ export class ApprovalFormService {
     // 复用归档 PdfDocument 做权限锚点与幂等；其字节为无水印存档件，下载件按下载人重渲染。
     const pdfDocument = await this.getOrCreateByBusiness(businessType, businessId, downloaderUserId);
     if (!pdfDocument) {
-      throw new Error("Approval form is not available yet");
+      throw new Error("审批单暂未生成，请先确认审批已完成后再下载");
     }
     await this.files.assertCanDownloadFileById(pdfDocument.fileId, downloaderUserId);
 
@@ -419,7 +419,7 @@ export class ApprovalFormService {
       orderBy: { updatedAt: "desc" }
     });
     if (!instance) {
-      throw new Error("No completed approval found for this business object");
+      throw new Error("当前业务尚未完成审批，暂不能下载审批单");
     }
 
     const downloader = await this.prisma.user.findUnique({ where: { id: downloaderUserId } });
@@ -538,7 +538,7 @@ export class ApprovalFormService {
       orderBy: { updatedAt: "desc" }
     });
     if (!instance) {
-      throw new Error("No completed approval found for this business object");
+      throw new Error("当前业务尚未完成审批，暂不能生成审批单");
     }
 
     return this.generateForInstance(instance.id, actorUserId);
