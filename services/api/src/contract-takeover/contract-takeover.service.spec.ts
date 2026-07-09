@@ -559,6 +559,10 @@ describe("ContractTakeoverService", () => {
         create: jest.fn().mockResolvedValue({ id: "archive-record-1" })
       },
       contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          code: "HT-HIS-001",
+          temporaryCode: null
+        }),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "contract-1",
@@ -695,6 +699,10 @@ describe("ContractTakeoverService", () => {
         )
       },
       contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          code: "HT-HIS-001",
+          temporaryCode: null
+        }),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "contract-1",
@@ -769,7 +777,11 @@ describe("ContractTakeoverService", () => {
       paymentTermsVersion: {
         update: jest.fn().mockResolvedValue({})
       },
+      settlement: {
+        create: jest.fn().mockResolvedValue({})
+      },
       contract: {
+        findUnique: jest.fn().mockResolvedValue({ code: "HT-HIS-001", temporaryCode: null }),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "contract-1",
@@ -806,6 +818,22 @@ describe("ContractTakeoverService", () => {
     expect(tx.paymentTermsVersion.update).toHaveBeenCalledWith({
       where: { id: "terms-version-1" },
       data: { status: "effective" }
+    });
+    expect(tx.settlement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        contractId: "contract-1",
+        contractVersionId: "contract-version-1",
+        paymentTermsVersionId: "terms-version-1",
+        code: "HT-HIS-001-期初结算",
+        periodLabel: "历史期初",
+        status: "effective",
+        amountCents: 600_000,
+        payableAmountCents: 600_000,
+        paidAmountCents: 300_000,
+        sourceType: "historical_takeover",
+        sourceTakeoverId: "takeover-1"
+      })
     });
     expect(tx.contractTakeover.update).toHaveBeenCalledWith({
       where: { id: "takeover-1" },

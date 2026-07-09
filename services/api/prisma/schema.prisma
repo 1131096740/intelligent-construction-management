@@ -226,6 +226,8 @@ model Settlement {
   finalCumulativeAmountCents Int?
   payableAmountCents         Int
   paidAmountCents            Int      @default(0)
+  sourceType                 String   @default("system")
+  sourceTakeoverId           String?  @unique
   isFinal                    Boolean  @default(false)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt

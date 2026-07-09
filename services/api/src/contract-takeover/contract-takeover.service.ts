@@ -547,6 +547,7 @@ export class ContractTakeoverService {
         where: { id: takeover.paymentTermsVersionId },
         data: { status: "effective" }
       });
+      await this.createHistoricalInitialSettlement(tx, takeover);
       const updated = await tx.contractTakeover.update({
         where: { id: takeover.id },
         data: {
@@ -947,6 +948,39 @@ export class ContractTakeoverService {
     }
     return new Date(value);
   }
+
+  private async createHistoricalInitialSettlement(
+    tx: Prisma.TransactionClient,
+    takeover: ContractTakeoverRecord
+  ) {
+    const amountCents = safeNumberCents(takeover.historicalSettledCents);
+    if (amountCents <= 0) {
+      return;
+    }
+
+    const contract = await tx.contract.findUnique({
+      where: { id: takeover.contractId },
+      select: { code: true, temporaryCode: true }
+    });
+    const contractNo = contract?.code ?? contract?.temporaryCode ?? takeover.contractId;
+
+    await tx.settlement.create({
+      data: {
+        projectId: takeover.projectId,
+        contractId: takeover.contractId,
+        contractVersionId: takeover.contractVersionId,
+        paymentTermsVersionId: takeover.paymentTermsVersionId,
+        code: `${contractNo}-期初结算`,
+        periodLabel: "历史期初",
+        status: "effective",
+        amountCents,
+        payableAmountCents: amountCents,
+        paidAmountCents: safeNumberCents(takeover.historicalPaidCents),
+        sourceType: "historical_takeover",
+        sourceTakeoverId: takeover.id
+      }
+    });
+  }
 }
 
 function unique<T>(values: T[]): T[] {
@@ -955,6 +989,14 @@ function unique<T>(values: T[]): T[] {
 
 function moneyString(value: bigint | number): string {
   return (typeof value === "bigint" ? value : BigInt(value)).toString();
+}
+
+function safeNumberCents(value: bigint | number): number {
+  const numberValue = typeof value === "bigint" ? Number(value) : value;
+  if (!Number.isSafeInteger(numberValue)) {
+    throw new Error("historical takeover amount exceeds settlement amount limit");
+  }
+  return numberValue;
 }
 
 function evidencePurpose(value: string): ContractTakeoverEvidencePurpose {
