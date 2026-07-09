@@ -272,6 +272,7 @@ onMounted(loadRules);
 .page { color: var(--jg-text-strong); }
 .page-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--jg-space-lg);
   margin-bottom: var(--jg-space-lg);
@@ -285,7 +286,7 @@ onMounted(loadRules);
 .panel { margin-bottom: var(--jg-space-lg); border-radius: var(--jg-radius-sm); }
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(var(--jg-layout-form-field-min-width-compact), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(var(--jg-layout-form-field-min-width-compact), 1fr));
   gap: var(--jg-space-md);
   margin-bottom: var(--jg-space-md);
 }
@@ -299,11 +300,4 @@ label { display: grid; gap: var(--jg-space-xs); }
 .preview, .message { font-size: var(--jg-font-size-meta); }
 .success { color: var(--jg-success); }
 .danger { color: var(--jg-danger); }
-@media (max-width: var(--jg-layout-breakpoint-tablet)) {
-  .page-head,
-  .form-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-}
 </style>

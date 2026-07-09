@@ -287,6 +287,7 @@ onMounted(loadTemplates);
 .page { color: var(--jg-text-strong); }
 .page-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--jg-space-lg);
   margin-bottom: var(--jg-space-lg);
@@ -340,7 +341,7 @@ onMounted(loadTemplates);
 .panel { margin-bottom: var(--jg-space-lg); border-radius: var(--jg-radius-sm); }
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(var(--jg-layout-form-field-min-width-wide), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(var(--jg-layout-form-field-min-width-wide), 1fr));
   gap: var(--jg-space-md);
   align-items: end;
 }
@@ -349,11 +350,4 @@ label span { color: var(--jg-text-muted); font-size: var(--jg-font-size-meta); f
 .message { font-size: var(--jg-font-size-meta); }
 .success { color: var(--jg-success); }
 .danger { color: var(--jg-danger); }
-@media (max-width: var(--jg-layout-breakpoint-tablet)) {
-  .page-head,
-  .form-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-}
 </style>
