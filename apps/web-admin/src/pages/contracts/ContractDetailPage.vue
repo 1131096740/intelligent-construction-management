@@ -632,7 +632,7 @@ const contractEvidenceFilesView = computed(() =>
     confirmedAt: file.confirmedAt,
     canDownload: file.canDownload,
     disabledReason: file.disabledReason,
-    auditHint: "下载需当前密码并记录审计"
+    auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计"
   }))
 );
 const contractApprovalTimelineView = computed(() => contractDetail.value?.approvalTimeline ?? []);

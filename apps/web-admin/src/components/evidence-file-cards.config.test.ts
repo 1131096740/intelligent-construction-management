@@ -7,13 +7,13 @@ describe("evidence file card view helpers", () => {
       toEvidenceFileCardView({
         statusLabel: "已确认",
         canDownload: true,
-        auditHint: "下载需当前密码并记录审计"
+        auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计"
       })
     ).toEqual({
       statusTheme: "success",
       downloadText: "可授权下载",
       downloadTheme: "success",
-      auditHint: "下载需当前密码并记录审计",
+      auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计",
       disabledReason: ""
     });
 

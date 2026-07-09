@@ -545,7 +545,7 @@ const settlementArchiveFilesView = computed(() =>
   (settlementDetail.value?.archiveFiles ?? []).map((file) => ({
     ...file,
     businessRef: settlementDetail.value?.id ?? "当前结算",
-    auditHint: "下载需当前密码并记录审计"
+    auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计"
   }))
 );
 const settlementApprovalTimelineView = computed(() => settlementDetail.value?.approvalTimeline ?? []);

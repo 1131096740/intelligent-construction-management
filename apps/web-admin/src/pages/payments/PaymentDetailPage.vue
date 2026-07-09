@@ -573,7 +573,7 @@ const paymentEvidenceFilesView = computed(() =>
   (paymentDetail.value?.evidenceFiles ?? []).map((file) => ({
     ...file,
     businessRef: paymentDetail.value?.id ?? "当前付款",
-    auditHint: "下载需当前密码并记录审计"
+    auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计"
   }))
 );
 const paymentApprovalTimelineView = computed(() => paymentDetail.value?.approvalTimeline ?? []);
