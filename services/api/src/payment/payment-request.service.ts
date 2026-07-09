@@ -1582,11 +1582,11 @@ export class PaymentRequestService {
       const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
 
       if (!payment) {
-        throw new Error("Payment request not found");
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
 
       if (payment.status !== "approval_pending") {
-        throw new Error(`Cannot withdraw payment approval from status ${payment.status}`);
+        throw new Error("当前付款申请已离开审批中，不能撤回");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -1599,11 +1599,11 @@ export class PaymentRequestService {
       });
 
       if (!instance) {
-        throw new Error("Payment approval instance not found");
+        throw new Error("未找到进行中的付款审批，请刷新后重试");
       }
 
       if (instance.applicantUserId !== actorUserId) {
-        throw new Error("Only payment approval applicant can withdraw");
+        throw new Error("只有付款申请人可以撤回审批");
       }
 
       const updated = await tx.paymentRequest.update({

@@ -5675,7 +5675,55 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.withdrawApproval("FK-2026-012", "other-user")
-    ).rejects.toThrow("Only payment approval applicant can withdraw");
+    ).rejects.toThrow("只有付款申请人可以撤回审批");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment approval withdrawal when payment request cannot be found", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      paymentRequest: {
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.withdrawApproval("FK-2026-012", "applicant-1")
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment approval withdrawal when approval instance cannot be found", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        }
+      ]),
+      paymentRequest: {
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.withdrawApproval("FK-2026-012", "applicant-1")
+    ).rejects.toThrow("未找到进行中的付款审批，请刷新后重试");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
   });
@@ -5704,7 +5752,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.withdrawApproval("FK-2026-012", "applicant-1")
-    ).rejects.toThrow("Cannot withdraw payment approval from status approved_pending_payment");
+    ).rejects.toThrow("当前付款申请已离开审批中，不能撤回");
     expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
   });
 });
