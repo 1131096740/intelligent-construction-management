@@ -843,8 +843,15 @@ export class ContractTakeoverService {
       row,
       rowNo: integerOrFallback(row["rowNo"], index + 1)
     }));
-    const importFingerprint = this.importFingerprint(readyRowsWithRowNo.map(({ row }) => row));
-    const batchInput = this.normalizeImportBatchInput(input, importFingerprint);
+    const batchInputForFingerprint = this.normalizeImportBatchInput(input);
+    const importFingerprint = this.importFingerprint(
+      readyRowsWithRowNo.map(({ row }) => row),
+      batchInputForFingerprint
+    );
+    const batchInput = {
+      ...batchInputForFingerprint,
+      batchNo: input.batchNo?.trim() || this.defaultImportBatchNo(importFingerprint)
+    };
 
     return this.prisma.$transaction(async (tx) => {
       const existingBatch = await tx.contractTakeoverBatch.findUnique({
@@ -1431,10 +1438,7 @@ export class ContractTakeoverService {
     };
   }
 
-  private normalizeImportBatchInput(
-    input: PrecheckContractTakeoverImportDto,
-    importFingerprint: string
-  ) {
+  private normalizeImportBatchInput(input: PrecheckContractTakeoverImportDto) {
     const takeoverCutoffDate = input.takeoverCutoffDate?.trim();
     if (!takeoverCutoffDate) throw new Error("请填写接管截止日后再生成接管草稿");
     const responsibleUserId = input.responsibleUserId?.trim();
@@ -1445,7 +1449,7 @@ export class ContractTakeoverService {
     if (!acceptanceConclusion) throw new Error("请填写批次验收结论后再生成接管草稿");
 
     const cutoffDate = this.normalizeOptionalDate(takeoverCutoffDate, "takeoverCutoffDate");
-    const batchNo = input.batchNo?.trim() || this.defaultImportBatchNo(importFingerprint);
+    const batchNo = input.batchNo?.trim() || "";
 
     return {
       batchNo,
@@ -1461,9 +1465,20 @@ export class ContractTakeoverService {
     return `接管批次-${dateText}-${importFingerprint.slice(0, 8).toUpperCase()}`;
   }
 
-  private importFingerprint(rows: Record<string, unknown>[]) {
+  private importFingerprint(
+    rows: Record<string, unknown>[],
+    batchInput?: ReturnType<ContractTakeoverService["normalizeImportBatchInput"]>
+  ) {
+    const batchFacts = batchInput
+      ? {
+          takeoverCutoffDate: batchInput.takeoverCutoffDate.toISOString(),
+          responsibleUserId: batchInput.responsibleUserId,
+          reviewComment: batchInput.reviewComment,
+          acceptanceConclusion: batchInput.acceptanceConclusion
+        }
+      : null;
     return createHash("sha256")
-      .update(JSON.stringify(rows.map((row) => stableObject(row))))
+      .update(JSON.stringify(stableObject({ batchFacts, rows })))
       .digest("hex");
   }
 

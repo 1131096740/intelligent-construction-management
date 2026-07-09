@@ -1031,6 +1031,111 @@ describe("ContractTakeoverService", () => {
     expect(tx.contractTakeoverBatch.create).not.toHaveBeenCalled();
   });
 
+  it("includes import batch facts in duplicate detection fingerprint", async () => {
+    const existingBatch = {
+      id: "batch-1",
+      projectId: "project-1",
+      batchNo: "接管批次-20260710-TEST0001",
+      status: "drafts_generated",
+      takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
+      responsibleUserId: "contract-director-1",
+      reviewComment: "合同部已完成预检，提交预算和财务复核。",
+      acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
+      importFingerprint: "fingerprint",
+      totalRows: 1,
+      readyRows: 1,
+      blockedRows: 0,
+      warningRows: 0,
+      createdCount: 1,
+      skippedCount: 0,
+      createdByUserId: "contract-user",
+      createdAt: new Date("2026-07-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-10T00:00:00.000Z")
+    };
+    const tx = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-version-1", amountCents: 1_000_000n }])
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([{ id: "terms-version-1", originalText: "按月结算" }])
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          takeoverRecord({
+            takeoverBatchId: "batch-1",
+            importRowNo: 2,
+            contractId: "contract-1",
+            contractVersionId: "contract-version-1",
+            paymentTermsVersionId: "terms-version-1"
+          })
+        ])
+      },
+      contractTakeoverBatch: {
+        findUnique: jest.fn().mockResolvedValue(existingBatch)
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const prisma = {
+      contract: tx.contract,
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+    const baseRows = [
+      {
+        rowNo: 2,
+        code: "HT-HIS-001",
+        name: "历史材料合同",
+        counterparty: "供应商A",
+        amountCents: 1_000_000,
+        signedAt: "2026-01-10",
+        takeoverLevel: "A",
+        lifecycleStatus: "in_progress",
+        paymentTermsOriginalText: "按月结算",
+        balanceSourceSummary: "财务台账核对。",
+        evidenceSummary: "合同扫描件齐全。",
+        evidenceChecklist: "合同扫描件"
+      }
+    ];
+
+    await service.createDraftsFromImport(
+      "project-1",
+      {
+        takeoverCutoffDate: "2026-07-10",
+        responsibleUserId: "contract-director-1",
+        reviewComment: "合同部已完成预检，提交预算和财务复核。",
+        acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
+        rows: baseRows
+      },
+      "contract-user"
+    );
+    await service.createDraftsFromImport(
+      "project-1",
+      {
+        takeoverCutoffDate: "2026-07-11",
+        responsibleUserId: "finance-director-1",
+        reviewComment: "财务重新核对接管口径。",
+        acceptanceConclusion: "本批次按新的截止日重新生成接管草稿。",
+        rows: baseRows
+      },
+      "contract-user"
+    );
+
+    const firstFingerprint =
+      tx.contractTakeoverBatch.findUnique.mock.calls[0][0].where.projectId_importFingerprint
+        .importFingerprint;
+    const secondFingerprint =
+      tx.contractTakeoverBatch.findUnique.mock.calls[1][0].where.projectId_importFingerprint
+        .importFingerprint;
+    expect(firstFingerprint).not.toBe(secondFingerprint);
+  });
+
   it("lists takeover import batches for a project as business read models", async () => {
     const prisma = {
       contractTakeoverBatch: {
