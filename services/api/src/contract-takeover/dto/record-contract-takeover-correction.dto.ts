@@ -6,4 +6,5 @@ export interface RecordContractTakeoverCorrectionDto {
   responsibleUserId: string;
   afterSummary: string;
   attachmentFileId: string;
+  currentPassword: string;
 }

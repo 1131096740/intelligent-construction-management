@@ -108,6 +108,7 @@ export interface TakeoverCorrectionDraft {
   responsibleUserId: string;
   afterSummary: string;
   hasAttachment: boolean;
+  currentPassword: string;
 }
 
 export interface TakeoverCorrectionRow {
@@ -292,6 +293,7 @@ export function takeoverCorrectionDisabledReason(
   if (!draft.responsibleUserId.trim()) return "请填写更正责任人";
   if (!draft.afterSummary.trim()) return "请填写更正后的事实说明";
   if (!draft.hasAttachment) return "请上传更正依据附件";
+  if (!draft.currentPassword.trim()) return "请填写当前登录密码后再保存更正记录";
   return "";
 }
 

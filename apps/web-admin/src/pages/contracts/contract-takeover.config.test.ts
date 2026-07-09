@@ -230,7 +230,8 @@ describe("contract takeover page configuration", () => {
       reason: "补充历史付款凭证复核说明",
       responsibleUserId: "contract-director-1",
       afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
-      hasAttachment: true
+      hasAttachment: true,
+      currentPassword: "current-password"
     };
 
     expect(takeoverCorrectionDisabledReason(takeover(), readyCorrection)).toBe(
@@ -260,6 +261,12 @@ describe("contract takeover page configuration", () => {
         { ...readyCorrection, hasAttachment: false }
       )
     ).toBe("请上传更正依据附件");
+    expect(
+      takeoverCorrectionDisabledReason(
+        { ...takeover(), takeoverStatus: "confirmed" },
+        { ...readyCorrection, currentPassword: "" }
+      )
+    ).toBe("请填写当前登录密码后再保存更正记录");
     expect(
       takeoverCorrectionDisabledReason(
         { ...takeover(), takeoverStatus: "confirmed" },

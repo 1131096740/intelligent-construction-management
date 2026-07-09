@@ -545,7 +545,8 @@ export class ContractTakeoverService {
           contractId: takeover.contractId,
           contractVersionId: takeover.contractVersionId,
           fromStatus: takeover.takeoverStatus,
-          takeoverLevel: data.takeoverLevel
+          fromTakeoverLevel: takeover.takeoverLevel,
+          toTakeoverLevel: data.takeoverLevel
         }
       });
 
@@ -643,6 +644,12 @@ export class ContractTakeoverService {
     if (!afterSummary) throw new Error("请填写更正后的事实说明");
     const attachmentFileId = input.attachmentFileId?.trim();
     if (!attachmentFileId) throw new Error("请上传更正依据附件");
+    const currentPassword = input.currentPassword?.trim();
+    if (!currentPassword) throw new Error("请填写当前登录密码后再保存接管更正记录");
+    if (!this.auth) {
+      throw new Error("系统暂不能确认当前密码，请稍后重试");
+    }
+    await this.auth.confirmPassword(actorUserId, currentPassword);
 
     return this.prisma.$transaction(async (tx) => {
       const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);

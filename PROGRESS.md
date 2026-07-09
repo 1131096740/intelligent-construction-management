@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进接管资料证据链防篡改切片：已主管确认的接管事实发起更正记录时，前后端新增当前登录密码二次确认，缺少密码会在写入更正账本、读取附件权限、记录审计前被拒绝；前台更正表单同步要求当前密码并给出中文禁用原因。草稿接管更新审计元数据补充改前/改后接管等级，便于追查人工等级调整。不改变更正记录账本结构、私有附件权限、短时效下载、接管确认状态机和付款容量口径。验证：API 接管服务 Jest 52 项、Web API/接管配置 Vitest 39 套 296 项、API/Web typecheck、API/Web lint、Web `check:ui` 通过。
 - 2026-07-10 (CodeX)：继续推进历史接管等级人工可选护栏切片：保留业务人员申报选择 A/B/C 等级，但当申报等级低于系统建议时，前台明确要求说明资料核验情况、风险责任和付款限制，并提示主管确认前不会自动解除风险；接管页“接管步骤”调整为“接管进度概览（只读）”，等级调整说明不再暗示一个输入框代表多部门会签，批次复核后果改为要求明确合同、预算、财务责任人分别核验。不改变后端等级兜底校验、付款容量、资料硬拦、主管确认和审计口径。验证：Web 接管配置 Vitest 39 套 296 项、Web typecheck、Web lint、Web `check:ui` 通过。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 环境预检：已尝试打开本机 Docker Desktop，并两轮等待 Docker daemon 就绪；当前 Docker Desktop socket 仍不可用，`localhost:5432` 也无 PostgreSQL 服务，colima/orbstack 未安装，因此未启动本地 PostgreSQL、未执行 migrate/seed、未启动 API、未运行会写入 seed/test 数据的完整 UAT。根目录只读预检入口已可执行，仍会在写入前提示先启动 `services/api/docker-compose.yml` 中的 postgres、完成 migrate/seed 后重试。本轮不改运行时代码、不导入真实业务数据、不连接生产库。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 标准命令入口切片：API 包新增 `verify:trial-run:preflight` 脚本，包内执行时会先 build API 再以只读 `--preflight` 模式检查本地安全边界、seed 数据和 API health；根目录新增轻量 `verify:trial-run:preflight` 入口，直接执行只读预检，避免根目录命令被 workspace 依赖检查挡住。两个入口都不会登录或写入合同/结算/付款/文件数据。验证：`package.json` JSON 解析通过、`services/api/package.json` JSON 解析通过、`node --check services/api/prisma/verify-trial-run.cjs` 通过；`npm run verify:trial-run:preflight` 已执行，仍在写入前被本地 PostgreSQL 未启动拦截，提示先启动 `services/api/docker-compose.yml` 中的 postgres、完成 migrate/seed 后重试。

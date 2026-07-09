@@ -376,6 +376,7 @@ export interface RecordContractTakeoverCorrectionPayload {
   responsibleUserId: string;
   afterSummary: string;
   attachmentFileId: string;
+  currentPassword: string;
 }
 
 export interface CreateSettlementPayload {

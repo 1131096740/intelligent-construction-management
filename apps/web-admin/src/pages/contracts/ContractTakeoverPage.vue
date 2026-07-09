@@ -776,6 +776,14 @@
                   @change="onCorrectionFileChange"
                 >
               </label>
+              <label>
+                <span>当前登录密码</span>
+                <t-input
+                  v-model="correctionForm.currentPassword"
+                  type="password"
+                  placeholder="用于确认本次更正由本人发起"
+                />
+              </label>
             </div>
             <div class="form-actions">
               <t-tooltip
@@ -1024,6 +1032,7 @@ interface CorrectionFormState {
   reason: string;
   responsibleUserId: string;
   afterSummary: string;
+  currentPassword: string;
 }
 
 const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
@@ -1266,7 +1275,8 @@ const selectedCorrectionDisabledReason = computed(() => {
     reason: correctionForm.reason,
     responsibleUserId: correctionForm.responsibleUserId,
     afterSummary: correctionForm.afterSummary,
-    hasAttachment: Boolean(correctionFile.value)
+    hasAttachment: Boolean(correctionFile.value),
+    currentPassword: correctionForm.currentPassword
   });
 });
 const selectedCorrectionRows = computed(() =>
@@ -1682,7 +1692,8 @@ async function submitCorrectionRecord() {
       reason: requiredText(correctionForm.reason, "更正原因"),
       responsibleUserId: requiredText(correctionForm.responsibleUserId, "更正责任人"),
       afterSummary: requiredText(correctionForm.afterSummary, "更正后的事实说明"),
-      attachmentFileId: uploaded.id
+      attachmentFileId: uploaded.id,
+      currentPassword: requiredText(correctionForm.currentPassword, "当前登录密码")
     });
     resetCorrectionForm();
     setMessage(result.message, "success");
@@ -1832,7 +1843,8 @@ function createEmptyCorrectionForm(): CorrectionFormState {
     correctionType: "evidence",
     reason: "",
     responsibleUserId: "",
-    afterSummary: ""
+    afterSummary: "",
+    currentPassword: ""
   };
 }
 

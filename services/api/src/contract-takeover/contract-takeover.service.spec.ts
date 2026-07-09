@@ -1433,7 +1433,9 @@ describe("ContractTakeoverService", () => {
       businessId: "takeover-1",
       metadata: expect.objectContaining({
         projectId: "project-1",
-        fromStatus: "draft"
+        fromStatus: "draft",
+        fromTakeoverLevel: "A",
+        toTakeoverLevel: "C"
       })
     });
   });
@@ -1733,11 +1735,13 @@ describe("ContractTakeoverService", () => {
         reason: "补充历史付款凭证复核说明",
         responsibleUserId: "contract-director-1",
         afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
-        attachmentFileId: "file-1"
+        attachmentFileId: "file-1",
+        currentPassword: "current-password"
       },
       "contract-user"
     );
 
+    expect(auth.confirmPassword).toHaveBeenCalledWith("contract-user", "current-password");
     expect(files.assertCanDownloadFile).toHaveBeenCalledWith(tx, "file-1", "contract-user");
     expect(tx.contractTakeoverCorrection.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -1777,6 +1781,36 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("接管更正记录必须先填写当前登录密码", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.recordCorrection(
+        "project-1",
+        "takeover-1",
+        {
+          correctionType: "evidence",
+          reason: "补充历史付款凭证复核说明",
+          responsibleUserId: "contract-director-1",
+          afterSummary: "补充历史付款凭证。",
+          attachmentFileId: "file-1",
+          currentPassword: ""
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("请填写当前登录密码后再保存接管更正记录");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("未确认接管记录不走更正记录", async () => {
     const tx = {
       contractTakeover: {
@@ -1807,11 +1841,13 @@ describe("ContractTakeoverService", () => {
           reason: "补充历史付款凭证复核说明",
           responsibleUserId: "contract-director-1",
           afterSummary: "补充历史付款凭证。",
-          attachmentFileId: "file-1"
+          attachmentFileId: "file-1",
+          currentPassword: "current-password"
         },
         "contract-user"
       )
     ).rejects.toThrow("接管尚未主管确认，请直接在草稿或待补充阶段修改资料");
+    expect(auth.confirmPassword).toHaveBeenCalledWith("contract-user", "current-password");
     expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
     expect(tx.contractTakeoverCorrection.create).not.toHaveBeenCalled();
   });

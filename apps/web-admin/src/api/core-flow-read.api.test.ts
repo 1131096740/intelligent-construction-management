@@ -760,7 +760,8 @@ describe("core flow read API client", () => {
       reason: "补充历史付款凭证复核说明",
       responsibleUserId: "contract-director-1",
       afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
-      attachmentFileId: "file-1"
+      attachmentFileId: "file-1",
+      currentPassword: "current-password"
     });
     await submitContractTakeoverReview("project-1", "takeover-1");
     await confirmContractTakeover("project-1", "takeover-1", {
@@ -820,7 +821,8 @@ describe("core flow read API client", () => {
         reason: "补充历史付款凭证复核说明",
         responsibleUserId: "contract-director-1",
         afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
-        attachmentFileId: "file-1"
+        attachmentFileId: "file-1",
+        currentPassword: "current-password"
       })
     );
     expect(fetchMock.mock.calls[10][1]?.body).toBe(
