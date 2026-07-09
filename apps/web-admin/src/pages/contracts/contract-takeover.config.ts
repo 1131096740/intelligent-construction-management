@@ -52,6 +52,7 @@ export interface TakeoverConfirmationSummary {
   consequence: string;
   riskText: string;
   paymentBlockingText: string;
+  evidenceGapText: string;
   evidenceText: string;
 }
 
@@ -360,6 +361,7 @@ export function buildTakeoverConfirmationSummary(
       "确认后会形成系统期初事实，后续结算、付款申请、实付和审计都会以这些历史金额和资料作为约束依据。",
     riskText: takeover.levelRiskText || takeoverLevelRiskText(takeover.takeoverLevel),
     paymentBlockingText: takeover.paymentBlockingHint,
+    evidenceGapText: takeover.evidenceGapSummary,
     evidenceText: takeover.evidenceSummary?.trim() || "未填写"
   };
 }
