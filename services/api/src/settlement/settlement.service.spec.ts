@@ -1295,13 +1295,23 @@ describe("SettlementService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const settlementService = new SettlementService(prisma as never, audit as never);
+    const files = {
+      assertCanDownloadFile: jest.fn().mockResolvedValue({ id: "file-1" })
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
 
     const result = await settlementService.uploadArchiveFile("settlement-1", "user-contract-staff", {
       fileId: "file-1"
     });
 
     expect(result.status).toBe("pending_confirm");
+    expect(files.assertCanDownloadFile).toHaveBeenCalledWith(tx, "file-1", "user-contract-staff");
     expect(tx.settlementArchiveFile.create).toHaveBeenCalledWith({
       data: {
         settlementId: "settlement-1",

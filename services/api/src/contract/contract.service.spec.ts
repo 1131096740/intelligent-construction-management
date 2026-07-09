@@ -244,13 +244,23 @@ describe("ContractService", () => {
         callback(tx)
       )
     } as unknown as PrismaService;
-    const service = new ContractService(prisma, audit as never);
+    const files = {
+      assertCanDownloadFile: jest.fn().mockResolvedValue({ id: "file-1" })
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
 
     const result = await service.uploadArchiveFile("contract-version-1", "user-contract-staff", {
       fileId: "file-1"
     });
 
     expect(result.status).toBe("pending_confirm");
+    expect(files.assertCanDownloadFile).toHaveBeenCalledWith(tx, "file-1", "user-contract-staff");
     expect(tx.contractArchiveFile.create).toHaveBeenCalledWith({
       data: {
         contractVersionId: "contract-version-1",

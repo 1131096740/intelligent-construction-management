@@ -257,13 +257,10 @@ export class ContractService {
         throw new Error(`Cannot upload contract archive from status ${version.status}`);
       }
 
-      const file = await tx.fileObject.findUnique({
-        where: { id: input.fileId }
-      });
-
-      if (!file) {
-        throw new Error("Contract archive file not found");
+      if (!this.files) {
+        throw new Error("File service is required to upload contract archive file");
       }
+      await this.files.assertCanDownloadFile(tx, input.fileId, actorUserId);
 
       const archiveFile = await tx.contractArchiveFile.create({
         data: {

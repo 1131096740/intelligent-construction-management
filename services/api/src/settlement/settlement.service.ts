@@ -894,13 +894,10 @@ export class SettlementService {
         throw new Error(`Cannot upload settlement archive from status ${settlement.status}`);
       }
 
-      const file = await tx.fileObject.findUnique({
-        where: { id: input.fileId }
-      });
-
-      if (!file) {
-        throw new Error("Settlement archive file not found");
+      if (!this.files) {
+        throw new Error("File service is required to upload settlement archive file");
       }
+      await this.files.assertCanDownloadFile(tx, input.fileId, actorUserId);
 
       const archiveFile = await tx.settlementArchiveFile.create({
         data: {
