@@ -11,6 +11,7 @@ import {
   centsToYuanText,
   contractTakeoverColumns,
   lifecycleStatusLabel,
+  importPrecheckRowStatusLabel,
   parseContractTakeoverImportPrecheckRows,
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
@@ -117,6 +118,11 @@ describe("contract takeover page configuration", () => {
       message: "导入预检完成：2 行可生成草稿，0 行需修改，1 行需要补充说明",
       tone: "default"
     });
+  });
+
+  it("labels ready precheck rows as draft generation instead of direct import", () => {
+    expect(importPrecheckRowStatusLabel("ready")).toBe("可生成草稿");
+    expect(importPrecheckRowStatusLabel("blocked")).toBe("需修正");
   });
 
   it("keeps import draft warning rows visible after drafts are generated", () => {

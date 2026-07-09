@@ -150,6 +150,10 @@ export function buildImportDraftsMessage(result: ImportDraftsMessageInput): stri
   return `${result.batchNo} 已生成 ${result.createdCount} 份接管草稿${warningText}${skippedText}，请进入草稿核对后再提交复核。`;
 }
 
+export function importPrecheckRowStatusLabel(status: string): string {
+  return status === "ready" ? "可生成草稿" : "需修正";
+}
+
 export function lifecycleStatusLabel(value: ContractLifecycleStatus | string): string {
   return lifecycleStatusOptions.find((option) => option.value === value)?.label ?? "履约状态未读取";
 }

@@ -734,6 +734,7 @@ import {
   centsToYuanText,
   contractTakeoverColumns,
   formatTakeoverDate,
+  importPrecheckRowStatusLabel,
   lifecycleStatusLabel,
   lifecycleStatusOptions,
   parseContractTakeoverImportPrecheckRows,
@@ -928,7 +929,7 @@ const precheckSummaryValues = computed(() => {
 
   return [
     { label: "预检行", value: String(result.totalRows), tone: "default" as const },
-    { label: "可导入", value: String(result.readyRows), tone: "success" as const },
+    { label: "可生成草稿", value: String(result.readyRows), tone: "success" as const },
     { label: "需修正", value: String(result.blockedRows), tone: "danger" as const },
     { label: "有提醒", value: String(result.warningRows), tone: "warning" as const }
   ];
@@ -941,7 +942,7 @@ const importPrecheckRows = computed(() =>
       amount: row.amountCents === null ? "-" : centsToYuanText(row.amountCents),
       evidenceChecklist: row.evidenceChecklist || "未填写",
       issueSummary: row.issueSummary || "未填写",
-      statusLabel: row.status === "ready" ? "可导入" : "需修正",
+      statusLabel: importPrecheckRowStatusLabel(row.status),
       statusTone: row.status === "ready" ? ("success" as const) : ("danger" as const),
       hasErrors,
       issuesText: row.issues.length
