@@ -5540,7 +5540,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.remindApproval("FK-2026-012", "applicant-1", now)
-    ).rejects.toThrow("not due for a reminder");
+    ).rejects.toThrow("当前付款审批还未达到催办时间，请稍后再试");
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 
@@ -5580,7 +5580,88 @@ describe("PaymentRequestService", () => {
         "intruder-1",
         new Date("2026-06-25T00:00:00.000Z")
       )
-    ).rejects.toThrow("applicant");
+    ).rejects.toThrow("只有付款申请人可以催办审批");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a payment approval reminder when payment request cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.remindApproval(
+        "FK-2026-012",
+        "applicant-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a payment approval reminder after payment leaves approval", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approved_pending_payment"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.remindApproval(
+        "FK-2026-012",
+        "applicant-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow("当前付款申请已离开审批中，不能催办");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a payment approval reminder when approval instance cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.remindApproval(
+        "FK-2026-012",
+        "applicant-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow("未找到进行中的付款审批，请刷新后重试");
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 

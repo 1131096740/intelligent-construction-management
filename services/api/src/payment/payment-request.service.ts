@@ -1659,11 +1659,11 @@ export class PaymentRequestService {
       });
 
       if (!payment) {
-        throw new Error("Payment request not found");
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
 
       if (payment.status !== "approval_pending") {
-        throw new Error(`Cannot remind payment approval from status ${payment.status}`);
+        throw new Error("当前付款申请已离开审批中，不能催办");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -1676,11 +1676,11 @@ export class PaymentRequestService {
       });
 
       if (!instance) {
-        throw new Error("Payment approval instance not found");
+        throw new Error("未找到进行中的付款审批，请刷新后重试");
       }
 
       if (instance.applicantUserId !== actorUserId) {
-        throw new Error("Only payment approval applicant can remind");
+        throw new Error("只有付款申请人可以催办审批");
       }
 
       const lastRemind = await tx.approvalActionLog.findFirst({
@@ -1697,7 +1697,7 @@ export class PaymentRequestService {
           now
         })
       ) {
-        throw new Error("Payment approval is not due for a reminder yet");
+        throw new Error("当前付款审批还未达到催办时间，请稍后再试");
       }
 
       const nodes = instance.frozenNodes as unknown as Array<{ name: string }>;
