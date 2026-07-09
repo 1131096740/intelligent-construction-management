@@ -282,6 +282,7 @@ describe("contract takeover page configuration", () => {
     ]);
     expect(summary.consequence).toContain("确认后会形成系统期初事实");
     expect(summary.riskText).toBe("B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。");
+    expect(summary.paymentBlockingText).toBe("尚未完成主管确认，后续付款申请会被系统阻断。");
     expect(summary.evidenceText).toBe("合同与凭证");
   });
 

@@ -496,6 +496,7 @@
             </dl>
             <p>{{ selectedConfirmationSummary.consequence }}</p>
             <p>{{ selectedConfirmationSummary.riskText }}</p>
+            <p>付款办理提示：{{ selectedConfirmationSummary.paymentBlockingText }}</p>
             <p>资料依据：{{ selectedConfirmationSummary.evidenceText }}</p>
           </div>
           <div
@@ -670,6 +671,7 @@
             </div>
           </dl>
           <p>{{ confirmSummary.riskText }}</p>
+          <p>付款办理提示：{{ confirmSummary.paymentBlockingText }}</p>
           <p>资料依据：{{ confirmSummary.evidenceText }}</p>
         </template>
         <label>
