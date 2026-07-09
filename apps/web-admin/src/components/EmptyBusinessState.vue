@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useRouter } from "vue-router";
 import {
   normalizeEmptyBusinessStateActions,
   type EmptyBusinessStateAction
@@ -11,37 +12,30 @@ const props = defineProps<{
   actions?: EmptyBusinessStateAction[];
 }>();
 
+const router = useRouter();
 const visibleActions = computed(() => normalizeEmptyBusinessStateActions(props.actions ?? []));
+
+function openAction(to: string) {
+  void router.push(to);
+}
 </script>
 
 <template>
-  <t-card
-    class="empty-business-state"
-    bordered
+  <t-empty
+    :title="title"
+    :description="description"
   >
-    <t-empty
-      :title="title"
-      :description="description"
-    >
-      <template #actions>
-        <t-space v-if="visibleActions.length">
-          <router-link
-            v-for="action in visibleActions"
-            :key="action.label"
-            :to="action.to"
-          >
-            <t-button variant="outline">
-              {{ action.label }}
-            </t-button>
-          </router-link>
-        </t-space>
-      </template>
-    </t-empty>
-  </t-card>
+    <template #actions>
+      <t-space v-if="visibleActions.length">
+        <t-button
+          v-for="action in visibleActions"
+          :key="action.label"
+          variant="outline"
+          @click="openAction(action.to)"
+        >
+          {{ action.label }}
+        </t-button>
+      </t-space>
+    </template>
+  </t-empty>
 </template>
-
-<style scoped>
-.empty-business-state {
-  background: var(--jg-color-bg-panel);
-}
-</style>

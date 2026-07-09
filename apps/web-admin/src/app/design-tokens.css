@@ -2,6 +2,9 @@
   --jg-color-bg-page: #f4f6f9;
   --jg-color-bg-panel: #ffffff;
   --jg-color-bg-muted: #f7f9fc;
+  --jg-color-bg-success-soft: #f3faf5;
+  --jg-color-bg-warning-soft: #fff8ed;
+  --jg-color-bg-danger-soft: #fff5f5;
   --jg-color-border: #dce1e8;
   --jg-color-text-primary: #151922;
   --jg-color-text-secondary: #424955;
@@ -15,6 +18,8 @@
 
   --jg-font-size-page-title: 24px;
   --jg-font-size-section-title: 16px;
+  --jg-font-size-subtitle: 14px;
+  --jg-font-size-stat: 15px;
   --jg-font-size-body: 13px;
   --jg-font-size-meta: 12px;
   --jg-font-size-mini: 11px;
@@ -24,9 +29,14 @@
   --jg-line-height-title: 1.35;
 
   --jg-space-xs: 4px;
+  --jg-space-input-y: 5px;
   --jg-space-sm: 8px;
+  --jg-space-sm-plus: 10px;
   --jg-space-md: 12px;
+  --jg-space-md-plus: 14px;
   --jg-space-lg: 16px;
+  --jg-space-lg-plus: 18px;
+  --jg-space-section: 20px;
   --jg-space-xl: 24px;
   --jg-space-xxl: 32px;
 
@@ -50,11 +60,26 @@
   --jg-layout-template-card-min-width: 240px;
   --jg-layout-form-field-min-width-wide: 160px;
   --jg-layout-form-field-min-width-compact: 140px;
+  --jg-layout-control-min-height: 32px;
+  --jg-layout-detail-chain-min-height: 40px;
+  --jg-layout-detail-info-label-width: 92px;
+  --jg-layout-detail-flow-marker-width: 14px;
+  --jg-layout-detail-flow-row-min-height: 28px;
+  --jg-layout-detail-action-min-width: 260px;
+  --jg-layout-detail-action-field-min-width: 180px;
+  --jg-layout-detail-fund-panel-min-width: 920px;
+  --jg-layout-detail-timeline-marker-width: 12px;
+  --jg-layout-dot-sm: 8px;
+  --jg-layout-dot-md: 10px;
   --jg-border-width-base: 1px;
+  --jg-border-width-accent: 3px;
 
   --jg-bg-page: var(--jg-color-bg-page);
   --jg-bg-panel: var(--jg-color-bg-panel);
   --jg-bg-muted: var(--jg-color-bg-muted);
+  --jg-bg-success-soft: var(--jg-color-bg-success-soft);
+  --jg-bg-warning-soft: var(--jg-color-bg-warning-soft);
+  --jg-bg-danger-soft: var(--jg-color-bg-danger-soft);
   --jg-text-strong: var(--jg-color-text-primary);
   --jg-text-main: var(--jg-color-text-secondary);
   --jg-text-subtle: var(--jg-color-text-tertiary);
@@ -67,6 +92,8 @@
   --jg-info: var(--jg-color-info);
   --jg-font-page-title: var(--jg-font-size-page-title);
   --jg-font-section-title: var(--jg-font-size-section-title);
+  --jg-font-subtitle: var(--jg-font-size-subtitle);
+  --jg-font-stat: var(--jg-font-size-stat);
   --jg-font-body: var(--jg-font-size-body);
   --jg-font-meta: var(--jg-font-size-meta);
   --jg-font-mini: var(--jg-font-size-mini);

@@ -20,13 +20,9 @@ const allowlistedFiles = new Set([
   "src/pages/audit/AuditLogPage.vue",
   "src/pages/business-parties/BusinessPartyEditorPage.vue",
   "src/pages/business-parties/BusinessPartyListPage.vue",
-  "src/pages/contract-templates/ContractNumberRulePage.vue",
   "src/pages/contract-templates/ContractTemplateEditorPage.vue",
-  "src/pages/contract-templates/ContractTemplateListPage.vue",
   "src/pages/contract-templates/LayoutTemplateEditorPage.vue",
   "src/pages/contract-templates/StandardClauseLibraryPage.vue",
-  "src/pages/contracts/ContractDetailPage.vue",
-  "src/pages/contracts/ContractListPage.vue",
   "src/pages/contracts/ContractTakeoverPage.vue",
   "src/pages/contracts/ContractWorkbenchPage.vue",
   "src/pages/contracts/workbench/ContractBasicSection.vue",
@@ -186,6 +182,8 @@ function main() {
     runSelfTest();
     return;
   }
+
+  runSelfTest();
 
   const rootArgIndex = process.argv.indexOf("--root");
   const sourceDir = rootArgIndex >= 0 ? path.resolve(process.argv[rootArgIndex + 1]) : DEFAULT_SOURCE_DIR;

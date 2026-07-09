@@ -43,11 +43,12 @@
             <t-button @click="goContractTakeover">
               历史合同接管
             </t-button>
-            <router-link to="/contracts/new">
-              <t-button theme="primary">
-                新建合同
-              </t-button>
-            </router-link>
+            <t-button
+              theme="primary"
+              @click="goNewContract"
+            >
+              新建合同
+            </t-button>
           </t-space>
         </template>
 
@@ -95,17 +96,19 @@
 
       <div class="column-strip">
         <span>列设置</span>
-        <label
-          v-for="option in contractColumnOptions"
-          :key="option.key"
+        <t-checkbox-group
+          class="column-checkbox-group"
+          :value="visibleContractColumnKeys"
+          @change="updateVisibleContractColumns"
         >
-          <input
-            type="checkbox"
-            :checked="visibleContractColumnKeys.includes(option.key)"
-            @change="toggleContractColumn(option.key)"
+          <t-checkbox
+            v-for="option in contractColumnOptions"
+            :key="option.key"
+            :value="option.key"
           >
-          {{ option.title }}
-        </label>
+            {{ option.title }}
+          </t-checkbox>
+        </t-checkbox-group>
       </div>
 
       <t-card
@@ -412,6 +415,10 @@ function goContractTakeover() {
   void router.push("/contract-takeovers");
 }
 
+function goNewContract() {
+  void router.push("/contracts/new");
+}
+
 function openDetail(contractId: string) {
   void router.push(`/contracts/${contractId}`);
 }
@@ -424,10 +431,8 @@ function resetContractFilters() {
   Object.assign(contractFilters, emptyContractLedgerFilters());
 }
 
-function toggleContractColumn(key: string) {
-  const next = visibleContractColumnKeys.value.includes(key)
-    ? visibleContractColumnKeys.value.filter((item) => item !== key)
-    : [...visibleContractColumnKeys.value, key];
+function updateVisibleContractColumns(value: unknown) {
+  const next = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
   visibleContractColumnKeys.value = normalizeVisibleColumnKeys(next, configurableContractColumnKeys);
   saveContractColumnPreferences();
 }
@@ -544,9 +549,10 @@ function statusTagTheme(tone: ContractStatusTone) {
   font-weight: 700;
 }
 
-.column-strip label {
-  display: inline-flex;
-  gap: var(--jg-space-xs);
+.column-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-xs) var(--jg-space-md);
   align-items: center;
 }
 
