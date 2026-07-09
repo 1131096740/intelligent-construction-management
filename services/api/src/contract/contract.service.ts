@@ -926,11 +926,11 @@ export class ContractService {
     input: ConfirmContractArchiveDto
   ) {
     if (!input.confirmationPassword?.trim()) {
-      throw new Error("Contract archive confirmation password is required");
+      throw new Error("确认合同归档需要当前登录密码");
     }
 
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm contract archive");
+      throw new Error("当前密码校验服务暂不可用，请稍后重试或联系管理员");
     }
 
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
@@ -941,11 +941,11 @@ export class ContractService {
       });
 
       if (!version) {
-        throw new Error("Contract version not found");
+        throw new Error("未找到合同版本，请刷新合同台账后重试");
       }
 
       if (version.status !== "pending_archive_confirm") {
-        throw new Error(`Cannot confirm contract archive from status ${version.status}`);
+        throw new Error("当前合同版本尚不能确认归档，请先完成用印并上传已签署合同归档文件");
       }
 
       const archiveFile = await tx.contractArchiveFile.findFirst({
@@ -956,11 +956,11 @@ export class ContractService {
       });
 
       if (!archiveFile) {
-        throw new Error("Contract archive file not found");
+        throw new Error("未找到待确认的合同归档文件，请刷新后重试");
       }
 
       if (archiveFile.status !== "pending_confirm") {
-        throw new Error(`Cannot confirm contract archive file from status ${archiveFile.status}`);
+        throw new Error("该合同归档文件已处理，不能重复确认");
       }
 
       await this.assertStructuredSettlementPaymentStage(tx, version.id);

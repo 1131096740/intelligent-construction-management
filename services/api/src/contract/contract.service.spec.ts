@@ -1997,9 +1997,145 @@ describe("ContractService", () => {
         archiveFileId: "archive-file-1",
         confirmationPassword: ""
       })
-    ).rejects.toThrow("Contract archive confirmation password is required");
+    ).rejects.toThrow("确认合同归档需要当前登录密码");
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract archive confirmation when password service is unavailable", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.confirmArchiveFile("contract-version-1", "user-contract-director", {
+        archiveFileId: "archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("当前密码校验服务暂不可用，请稍后重试或联系管理员");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract archive confirmation when the version is unavailable", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      contractArchiveFile: {
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never, auth as never);
+
+    await expect(
+      service.confirmArchiveFile("contract-version-missing", "user-contract-director", {
+        archiveFileId: "archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("未找到合同版本，请刷新合同台账后重试");
+    expect(tx.contractArchiveFile.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract archive confirmation before signed archive upload", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "seal_approved_pending_archive"
+        }),
+        update: jest.fn()
+      },
+      contractArchiveFile: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never, auth as never);
+
+    await expect(
+      service.confirmArchiveFile("contract-version-1", "user-contract-director", {
+        archiveFileId: "archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("当前合同版本尚不能确认归档，请先完成用印并上传已签署合同归档文件");
+    expect(tx.contractArchiveFile.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract archive confirmation when the archive file is unavailable", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "pending_archive_confirm"
+        }),
+        update: jest.fn()
+      },
+      contractArchiveFile: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never, auth as never);
+
+    await expect(
+      service.confirmArchiveFile("contract-version-1", "user-contract-director", {
+        archiveFileId: "archive-file-missing",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("未找到待确认的合同归档文件，请刷新后重试");
+    expect(tx.contractArchiveFile.update).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract archive confirmation when the archive file is already handled", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "pending_archive_confirm"
+        }),
+        update: jest.fn()
+      },
+      contractArchiveFile: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "archive-file-1",
+          status: "confirmed"
+        }),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never, auth as never);
+
+    await expect(
+      service.confirmArchiveFile("contract-version-1", "user-contract-director", {
+        archiveFileId: "archive-file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("该合同归档文件已处理，不能重复确认");
+    expect(tx.contractArchiveFile.update).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
   it("generates a contract PDF file and records its archive", async () => {
