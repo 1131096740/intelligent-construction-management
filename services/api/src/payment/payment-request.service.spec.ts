@@ -6135,6 +6135,16 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("rejects payment pdf archive when archive service is unavailable", async () => {
+    const paymentService = new PaymentRequestService(new PaymentAmountService());
+
+    await expect(
+      paymentService.recordPdfArchive("FK-2026-012", "finance-1", {
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("付款 PDF 归档服务暂不可用，请稍后重试或联系管理员");
+  });
+
   it("generates a payment PDF file and records its archive", async () => {
     const tx = {
       paymentRequest: {

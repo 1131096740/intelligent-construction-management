@@ -2733,7 +2733,7 @@ export class PaymentRequestService {
     input: RecordPaymentPdfArchiveDto
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to record payment PDF archive");
+      throw new Error("付款 PDF 归档服务暂不可用，请稍后重试或联系管理员");
     }
 
     const templateKey = input.templateKey ?? "payment_finance_archive";
