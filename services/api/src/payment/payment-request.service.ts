@@ -367,7 +367,7 @@ export class PaymentRequestService {
 
   async create(input: CreatePaymentRequestDto, applicantUserId?: string) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to create payment request");
+      throw new Error("付款申请创建服务暂不可用，请稍后重试或联系管理员");
     }
 
     return this.prisma.$transaction(async (tx) => {

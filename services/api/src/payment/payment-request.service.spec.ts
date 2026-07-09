@@ -155,6 +155,16 @@ describe("PaymentRequestService", () => {
     };
   }
 
+  it("rejects payment request creation when the service is unavailable", async () => {
+    await expect(
+      service.create({
+        settlementId: "settlement-1",
+        code: "FK-2026-012",
+        requestedAmountCents: 10_000
+      })
+    ).rejects.toThrow("付款申请创建服务暂不可用，请稍后重试或联系管理员");
+  });
+
   it("rejects payment request before settlement is effective", () => {
     expect(() =>
       service.assertRequestAllowed(
