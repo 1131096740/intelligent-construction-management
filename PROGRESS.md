@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进结算付款申请创建入口中文业务体验治理切片：按结算发起付款申请在付款来源不支持、未选择结算、结算不存在或结算尚未归档生效时，不再抛出 `Unsupported payment request source type`、`Settlement is required for settlement payment request`、`Cannot create payment request from a non-effective settlement` 等英文技术错误，统一改为中文业务原因；不改变结算生效硬校验、付款容量、合同应付款容量、项目资金池和垫资占用口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款审批转交/委托中文业务体验治理切片：付款审批转交和委托在接收人无效、付款申请不存在、付款已离开审批中、进行中的付款审批缺失、当前审批节点异常或当前账号无权转交/委托节点时，不再抛出 `Payment approval assignment target is invalid`、`Cannot assign payment approval from status`、`Actor cannot assign payment node` 等英文技术错误，统一改为中文业务原因；不改变转交指派、委托台账有效期、审批动作日志和审计口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款审批处理中文业务体验治理切片：付款审批处理在当前审批节点异常、当前账号无权处理节点、批准金额非法、批准金额超过申请金额或非最终审批节点调整批准金额时，不再抛出 `Payment approval current node not found`、`Actor cannot approve payment node`、`Approved amount must be a positive integer` 等英文技术错误，统一改为中文业务原因并按元展示当前最多可批准金额；不改变审批节点完成、OR 签、批准金额落账、垫资额度缩减和审批单生成口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款审批处理中文业务体验治理切片：付款审批处理在不支持的审批方式、付款申请不存在、付款已离开审批中、进行中的付款审批缺失或首节点退回上一节点时，不再抛出 `Unsupported payment approval decision`、`Cannot review payment approval from status`、`Cannot reject payment approval to previous node from first node` 等英文技术错误，统一改为中文业务原因；不改变审批流转、退回上一节点、退回申请人、驳回、审批通过、垫资额度释放和审批单生成口径。验证：TDD 红绿覆盖 API 付款请求 Jest、API typecheck、API lint 通过。

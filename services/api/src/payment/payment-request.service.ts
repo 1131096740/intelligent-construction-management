@@ -126,7 +126,7 @@ export class PaymentRequestService {
 
   assertSettlementEffective(status: SettlementStatus): void {
     if (!canCreatePaymentFromSettlementStatus(status)) {
-      throw new Error("Cannot create payment request from a non-effective settlement");
+      throw new Error("当前结算尚未归档生效，不能发起付款申请");
     }
   }
 
@@ -361,11 +361,11 @@ export class PaymentRequestService {
       }
 
       if (sourceType !== "settlement") {
-        throw new Error(`Unsupported payment request source type: ${sourceType}`);
+        throw new Error("不支持的付款申请来源，请从结算或合同付款入口发起");
       }
 
       if (!input.settlementId) {
-        throw new Error("Settlement is required for settlement payment request");
+        throw new Error("请选择已归档生效的结算后再发起付款申请");
       }
 
       let settlement = await tx.settlement.findUnique({
@@ -373,7 +373,7 @@ export class PaymentRequestService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到结算记录，请刷新结算台账后重试");
       }
 
       this.assertSettlementEffective(settlement.status as SettlementStatus);
@@ -382,7 +382,7 @@ export class PaymentRequestService {
         where: { id: settlement.id }
       });
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到结算记录，请刷新结算台账后重试");
       }
       this.assertSettlementEffective(settlement.status as SettlementStatus);
       await this.assertHistoricalTakeoverPaymentReady(tx, {

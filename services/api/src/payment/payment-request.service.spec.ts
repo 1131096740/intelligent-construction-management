@@ -164,7 +164,7 @@ describe("PaymentRequestService", () => {
         },
         10_000
       )
-    ).toThrow("non-effective settlement");
+    ).toThrow("当前结算尚未归档生效，不能发起付款申请");
   });
 
   it("allows partial payment request within settlement capacity", () => {
@@ -1477,7 +1477,67 @@ describe("PaymentRequestService", () => {
         code: "FK-2026-012",
         requestedAmountCents: 50_000
       })
-    ).rejects.toThrow("Cannot create payment request from a non-effective settlement");
+    ).rejects.toThrow("当前结算尚未归档生效，不能发起付款申请");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects settlement payment request with an unsupported source type", async () => {
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback({}))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        sourceType: "legacy_manual",
+        settlementId: "settlement-1",
+        code: "FK-2026-012",
+        requestedAmountCents: 50_000
+      } as never)
+    ).rejects.toThrow("不支持的付款申请来源，请从结算或合同付款入口发起");
+  });
+
+  it("rejects settlement payment request without selecting settlement", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        code: "FK-2026-012",
+        requestedAmountCents: 50_000
+      })
+    ).rejects.toThrow("请选择已归档生效的结算后再发起付款申请");
+    expect(tx.settlement.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects settlement payment request when settlement cannot be found", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      paymentRequest: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        code: "FK-2026-012",
+        requestedAmountCents: 50_000
+      })
+    ).rejects.toThrow("未找到结算记录，请刷新结算台账后重试");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
