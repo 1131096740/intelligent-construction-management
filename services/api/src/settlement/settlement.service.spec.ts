@@ -1423,7 +1423,7 @@ describe("SettlementService", () => {
     });
   });
 
-  it("requires a comment when rejecting or returning settlement approval", async () => {
+  it("结算审批驳回或退回时必须填写审批意见", async () => {
     const prisma = {
       $transaction: jest.fn()
     };
@@ -1434,7 +1434,7 @@ describe("SettlementService", () => {
         decision: "return_to_applicant",
         comment: "   "
       })
-    ).rejects.toThrow("approval comment is required");
+    ).rejects.toThrow("请填写审批意见，说明驳回或退回原因");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 

@@ -2272,7 +2272,7 @@ export class SettlementService {
 
 function requireApprovalCommentForReturn(decision: ReviewSettlementApprovalDto["decision"], comment?: string) {
   if (decision !== "approve" && !comment?.trim()) {
-    throw new Error("Settlement approval comment is required for reject or return decisions");
+    throw new Error("请填写审批意见，说明驳回或退回原因");
   }
 }
 
