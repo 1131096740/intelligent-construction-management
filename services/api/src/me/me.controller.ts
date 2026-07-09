@@ -22,7 +22,7 @@ export class MeController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     if (!file) {
-      throw new Error("Signature image is required");
+      throw new Error("请选择个人签名图片后再上传");
     }
 
     return this.me.setSignature(user.id, {

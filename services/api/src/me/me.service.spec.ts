@@ -25,7 +25,7 @@ describe("MeService", () => {
     });
   });
 
-  it("rejects a non-image disguised as an image mime type", async () => {
+  it("rejects a non-image disguised as an image mime type in business Chinese", async () => {
     const prisma = { user: { update: jest.fn() } };
     const files = { uploadPrivateFile: jest.fn() };
     const service = new MeService(prisma as never, files as never);
@@ -37,7 +37,7 @@ describe("MeService", () => {
         sizeBytes: 4,
         buffer: Buffer.from("notpng")
       })
-    ).rejects.toThrow("PNG or JPEG");
+    ).rejects.toThrow("个人签名图片只能上传 PNG 或 JPEG 格式");
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
