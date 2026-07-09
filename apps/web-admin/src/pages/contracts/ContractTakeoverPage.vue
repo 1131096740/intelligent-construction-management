@@ -662,6 +662,88 @@
           </div>
           <EvidenceFileCards :files="selectedEvidenceFiles" />
 
+          <h3>接管更正记录</h3>
+          <div class="correction-form">
+            <p class="correction-hint">
+              已确认的金额、付款条款和证据资料不能静默覆盖。需要补正时，请保存更正原因、责任人、更正后的事实说明和依据附件。
+            </p>
+            <div class="form-grid two">
+              <label>
+                <span>更正事项</span>
+                <select v-model="correctionForm.correctionType">
+                  <option
+                    v-for="option in correctionTypeOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>更正责任人</span>
+                <t-input
+                  v-model="correctionForm.responsibleUserId"
+                  placeholder="填写负责核实和跟进更正的人员"
+                />
+              </label>
+              <label>
+                <span>更正原因</span>
+                <t-textarea
+                  v-model="correctionForm.reason"
+                  placeholder="说明为什么需要补正，不能只写补资料"
+                  :autosize="{ minRows: 2, maxRows: 4 }"
+                />
+              </label>
+              <label>
+                <span>更正后的事实说明</span>
+                <t-textarea
+                  v-model="correctionForm.afterSummary"
+                  placeholder="说明补正后的金额、资料或付款条款事实"
+                  :autosize="{ minRows: 2, maxRows: 4 }"
+                />
+              </label>
+              <label>
+                <span>更正依据附件</span>
+                <input
+                  ref="correctionInputRef"
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                  @change="onCorrectionFileChange"
+                >
+              </label>
+            </div>
+            <div class="form-actions">
+              <t-tooltip
+                v-if="selectedCorrectionDisabledReason"
+                :content="selectedCorrectionDisabledReason"
+              >
+                <t-button
+                  theme="primary"
+                  variant="outline"
+                  disabled
+                >
+                  保存更正记录
+                </t-button>
+              </t-tooltip>
+              <t-button
+                v-else
+                theme="primary"
+                variant="outline"
+                :loading="correctionSubmitting"
+                @click="submitCorrectionRecord"
+              >
+                保存更正记录
+              </t-button>
+              <t-button
+                variant="outline"
+                @click="resetCorrectionForm"
+              >
+                清空更正内容
+              </t-button>
+            </div>
+          </div>
+
           <h3>历史余额</h3>
           <dl class="detail-list money">
             <div
@@ -784,10 +866,12 @@ import {
   listContractTakeoverImportBatches,
   listContractTakeovers,
   precheckContractTakeoverImport,
+  recordContractTakeoverCorrection,
   reviewContractTakeoverImportBatch,
   submitContractTakeoverReview,
   updateContractTakeover,
   uploadPrivateFile,
+  type ContractTakeoverCorrectionType,
   type ContractTakeoverImportBatchReadModel,
   type ContractTakeoverImportBatchReviewStatus,
   type ContractTakeoverImportPrecheckReadModel,
@@ -816,6 +900,7 @@ import {
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
   takeoverConfirmDisabledReason,
+  takeoverCorrectionDisabledReason,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverLevelSelectionHint,
@@ -867,6 +952,13 @@ interface ImportBatchFormState {
   acceptanceConclusion: string;
 }
 
+interface CorrectionFormState {
+  correctionType: ContractTakeoverCorrectionType;
+  reason: string;
+  responsibleUserId: string;
+  afterSummary: string;
+}
+
 const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
   { key: "historicalSettledYuan", label: "历史累计结算" },
   { key: "historicalApprovalPendingPaymentYuan", label: "历史审批中付款" },
@@ -894,6 +986,7 @@ const reviewingImportBatchAction = ref("");
 const editingTakeoverId = ref("");
 const confirming = ref(false);
 const evidenceUploading = ref(false);
+const correctionSubmitting = ref(false);
 const showCreateForm = ref(false);
 const showPrecheckPanel = ref(false);
 const confirmVisible = ref(false);
@@ -902,10 +995,13 @@ const confirmationPassword = ref("");
 const evidencePurpose = ref<ContractTakeoverEvidencePurpose>("historical_contract_scan");
 const evidenceFile = ref<File | null>(null);
 const evidenceInputRef = ref<HTMLInputElement | null>(null);
+const correctionFile = ref<File | null>(null);
+const correctionInputRef = ref<HTMLInputElement | null>(null);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const createForm = reactive<CreateFormState>(createEmptyForm());
 const importBatchForm = reactive<ImportBatchFormState>(createEmptyImportBatchForm());
+const correctionForm = reactive<CorrectionFormState>(createEmptyCorrectionForm());
 const importPrecheckText = ref("");
 const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>(null);
 
@@ -1067,6 +1163,12 @@ const evidencePurposeOptions: Array<{ value: ContractTakeoverEvidencePurpose; la
   { value: "historical_payment_voucher", label: "历史付款凭证" },
   { value: "other", label: "其他接管资料" }
 ];
+const correctionTypeOptions: Array<{ value: ContractTakeoverCorrectionType; label: string }> = [
+  { value: "evidence", label: "资料更正" },
+  { value: "amount", label: "金额更正" },
+  { value: "payment_terms", label: "付款条款更正" },
+  { value: "other", label: "其他更正" }
+];
 const selectedEvidenceFiles = computed(() =>
   (selectedRow.value?.takeover.evidenceFiles ?? []).map((file) => ({
     recordId: file.recordId,
@@ -1084,6 +1186,16 @@ const selectedEvidenceFiles = computed(() =>
     auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计"
   }))
 );
+const selectedCorrectionDisabledReason = computed(() => {
+  const takeover = selectedRow.value?.takeover;
+  if (!takeover) return "请先选择需要更正的接管合同";
+  return takeoverCorrectionDisabledReason(takeover, {
+    reason: correctionForm.reason,
+    responsibleUserId: correctionForm.responsibleUserId,
+    afterSummary: correctionForm.afterSummary,
+    hasAttachment: Boolean(correctionFile.value)
+  });
+});
 
 const selectedBaseInfo = computed(() => {
   const row = selectedRow.value;
@@ -1303,7 +1415,11 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
     return;
   }
 
+  const previousId = selectedTakeoverId.value;
   selectedTakeoverId.value = takeover.id;
+  if (previousId !== takeover.id) {
+    resetCorrectionForm();
+  }
   try {
     const detail = await getContractTakeover(projectId, takeover.id);
     takeovers.value = takeovers.value.map((item) => (item.id === detail.id ? detail : item));
@@ -1420,6 +1536,11 @@ function onEvidenceFileChange(event: Event) {
   evidenceFile.value = input.files?.[0] ?? null;
 }
 
+function onCorrectionFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  correctionFile.value = input.files?.[0] ?? null;
+}
+
 async function submitEvidenceFile() {
   const projectId = selectedProjectId.value;
   const takeover = selectedRow.value?.takeover;
@@ -1452,6 +1573,43 @@ async function submitEvidenceFile() {
     setMessage(error instanceof Error ? error.message : "上传接管资料失败", "danger");
   } finally {
     evidenceUploading.value = false;
+  }
+}
+
+async function submitCorrectionRecord() {
+  const projectId = selectedProjectId.value;
+  const takeover = selectedRow.value?.takeover;
+  const file = correctionFile.value;
+  if (!projectId || !takeover) {
+    setMessage("请先选择需要更正的接管合同", "danger");
+    return;
+  }
+  if (selectedCorrectionDisabledReason.value) {
+    setMessage(selectedCorrectionDisabledReason.value, "danger");
+    return;
+  }
+  if (!file) {
+    setMessage("请上传更正依据附件", "danger");
+    return;
+  }
+
+  correctionSubmitting.value = true;
+  message.value = "";
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    const result = await recordContractTakeoverCorrection(projectId, takeover.id, {
+      correctionType: correctionForm.correctionType,
+      reason: requiredText(correctionForm.reason, "更正原因"),
+      responsibleUserId: requiredText(correctionForm.responsibleUserId, "更正责任人"),
+      afterSummary: requiredText(correctionForm.afterSummary, "更正后的事实说明"),
+      attachmentFileId: uploaded.id
+    });
+    resetCorrectionForm();
+    setMessage(result.message, "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "保存接管更正记录失败", "danger");
+  } finally {
+    correctionSubmitting.value = false;
   }
 }
 
@@ -1503,6 +1661,14 @@ async function confirmSelectedTakeover() {
 
 function resetCreateForm() {
   Object.assign(createForm, createEmptyForm());
+}
+
+function resetCorrectionForm() {
+  Object.assign(correctionForm, createEmptyCorrectionForm());
+  correctionFile.value = null;
+  if (correctionInputRef.value) {
+    correctionInputRef.value.value = "";
+  }
 }
 
 function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState {
@@ -1578,6 +1744,15 @@ function createEmptyImportBatchForm(): ImportBatchFormState {
     responsibleUserId: "",
     reviewComment: "",
     acceptanceConclusion: ""
+  };
+}
+
+function createEmptyCorrectionForm(): CorrectionFormState {
+  return {
+    correctionType: "evidence",
+    reason: "",
+    responsibleUserId: "",
+    afterSummary: ""
   };
 }
 
@@ -2124,6 +2299,38 @@ input[type="date"] {
 }
 
 .evidence-uploader input[type="file"] {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.correction-form {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e7ee;
+  background: #f8fafc;
+}
+
+.correction-hint {
+  margin: 0;
+  color: #424955;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.correction-form label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.correction-form label span {
+  color: #565f6d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.correction-form input[type="file"] {
   min-width: 0;
   font-size: 12px;
 }

@@ -16,6 +16,7 @@ import {
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
   takeoverConfirmDisabledReason,
+  takeoverCorrectionDisabledReason,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
@@ -219,6 +220,49 @@ describe("contract takeover page configuration", () => {
     expect(takeoverConfirmDisabledReason("")).toBe("请填写当前登录密码后再确认接管");
     expect(takeoverConfirmDisabledReason("   ")).toBe("请填写当前登录密码后再确认接管");
     expect(takeoverConfirmDisabledReason("current-password")).toBe("");
+  });
+
+  it("explains when takeover correction records can be submitted", () => {
+    const readyCorrection = {
+      reason: "补充历史付款凭证复核说明",
+      responsibleUserId: "contract-director-1",
+      afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
+      hasAttachment: true
+    };
+
+    expect(takeoverCorrectionDisabledReason(takeover(), readyCorrection)).toBe(
+      "接管正在复核，请退回补充或完成主管确认后再发起更正"
+    );
+    expect(
+      takeoverCorrectionDisabledReason(
+        { ...takeover(), takeoverStatus: "confirmed" },
+        { ...readyCorrection, reason: "" }
+      )
+    ).toBe("请填写更正原因");
+    expect(
+      takeoverCorrectionDisabledReason(
+        { ...takeover(), takeoverStatus: "confirmed" },
+        { ...readyCorrection, responsibleUserId: "" }
+      )
+    ).toBe("请填写更正责任人");
+    expect(
+      takeoverCorrectionDisabledReason(
+        { ...takeover(), takeoverStatus: "confirmed" },
+        { ...readyCorrection, afterSummary: "" }
+      )
+    ).toBe("请填写更正后的事实说明");
+    expect(
+      takeoverCorrectionDisabledReason(
+        { ...takeover(), takeoverStatus: "confirmed" },
+        { ...readyCorrection, hasAttachment: false }
+      )
+    ).toBe("请上传更正依据附件");
+    expect(
+      takeoverCorrectionDisabledReason(
+        { ...takeover(), takeoverStatus: "confirmed" },
+        readyCorrection
+      )
+    ).toBe("");
   });
 
   it("recommends takeover level and requires a reason when manually adjusted", () => {

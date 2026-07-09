@@ -97,6 +97,13 @@ export interface ImportDraftsMessageInput {
   warningRows: number;
 }
 
+export interface TakeoverCorrectionDraft {
+  reason: string;
+  responsibleUserId: string;
+  afterSummary: string;
+  hasAttachment: boolean;
+}
+
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
   { value: "A", label: "A级：申报资料完整，可申请直接接管" },
   { value: "B", label: "B级：申报资料基本完整，需补少量说明" },
@@ -247,6 +254,27 @@ export function takeoverEvidenceUploadDisabledReason(
 
 export function takeoverConfirmDisabledReason(password: string): string {
   if (!password.trim()) return "请填写当前登录密码后再确认接管";
+  return "";
+}
+
+export function takeoverCorrectionDisabledReason(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">,
+  draft: TakeoverCorrectionDraft
+): string {
+  if (takeover.takeoverStatus !== "confirmed") {
+    if (takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement") {
+      return "接管尚未主管确认，请直接在草稿或待补充阶段修改资料";
+    }
+    if (takeover.takeoverStatus === "pending_review") {
+      return "接管正在复核，请退回补充或完成主管确认后再发起更正";
+    }
+    if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能发起更正";
+    return "当前接管状态不能发起更正";
+  }
+  if (!draft.reason.trim()) return "请填写更正原因";
+  if (!draft.responsibleUserId.trim()) return "请填写更正责任人";
+  if (!draft.afterSummary.trim()) return "请填写更正后的事实说明";
+  if (!draft.hasAttachment) return "请上传更正依据附件";
   return "";
 }
 
