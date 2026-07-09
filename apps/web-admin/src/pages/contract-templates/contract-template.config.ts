@@ -1,8 +1,9 @@
 export const templateListColumns = [
-  { colKey: "status", title: "状态" },
+  { colKey: "name", title: "模板名称" },
   { colKey: "contractTypeKey", title: "类型" },
+  { colKey: "status", title: "状态" },
   { colKey: "latestVersion", title: "最新版本" },
-  { colKey: "publishedBy", title: "发布人" },
+  { colKey: "publicationStatus", title: "发布状态" },
   { colKey: "operation", title: "操作" }
 ] as const;
 

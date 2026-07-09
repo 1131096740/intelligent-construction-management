@@ -49,6 +49,11 @@ export class ProjectController {
     return this.projects.listActiveOptions(user.id);
   }
 
+  @Get("contract-create-options")
+  contractCreateOptions(@CurrentUser() user: AuthenticatedUser) {
+    return this.projects.listContractCreateOptions(user.id);
+  }
+
   @Get("roster")
   roster(@CurrentUser() user: AuthenticatedUser) {
     return this.projects.listRoster(user.id);

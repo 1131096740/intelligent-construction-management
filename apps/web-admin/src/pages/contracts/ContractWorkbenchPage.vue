@@ -9,6 +9,12 @@
       <p class="create-hint">
         请先选择项目、合同类型与业务模板，系统将创建草稿并进入工作台。
       </p>
+      <p
+        v-if="projectOptionsLoaded && !projectOptions.length"
+        class="create-hint warning"
+      >
+        当前账号暂无可新建合同的项目，请联系合同部主管或管理员分配项目岗位。
+      </p>
 
       <div class="create-fields">
         <label class="field">
@@ -94,6 +100,32 @@
         </div>
       </header>
 
+      <div
+        v-if="workbench"
+        class="workbench-summary"
+      >
+        <div class="summary-item">
+          <span class="summary-label">这是什么合同</span>
+          <strong>{{ contractTypeLabel(workbench.contract.contractTypeKey) }}</strong>
+          <small>{{ workbench.contract.code ?? workbench.contract.temporaryCode }}</small>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">现在卡在哪</span>
+          <strong>{{ contractVersionStatusLabel(workbench.version.status) }}</strong>
+          <small>{{ activeSectionLabel }}</small>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">还缺什么</span>
+          <strong>{{ readinessGapTitle }}</strong>
+          <small>{{ readinessGapText }}</small>
+        </div>
+        <div class="summary-item">
+          <span class="summary-label">当前能做什么</span>
+          <strong>{{ nextActionTitle }}</strong>
+          <small>{{ nextActionText }}</small>
+        </div>
+      </div>
+
       <div class="shell-body">
         <nav class="section-nav">
           <button
@@ -103,7 +135,8 @@
             :class="['nav-item', { active: activeSection === section.key }]"
             @click="activeSection = section.key"
           >
-            {{ section.label }}
+            <span>{{ section.label }}</span>
+            <small>{{ section.hint }}</small>
           </button>
         </nav>
 
@@ -119,7 +152,7 @@
             v-if="activeSection === 'overview' && workbench"
             class="migration-control"
           >
-            <span class="migration-label">合同类型迁移</span>
+            <span class="migration-label">变更合同类型</span>
             <t-select
               :value="workbench.contract.contractTypeKey"
               :options="contractTypeOptions"
@@ -273,7 +306,10 @@ import {
   previewContractTypeChange,
   transferContractDraft
 } from "../../api/contract-workbench.api";
-import { fetchApprovalDelegationUserOptions } from "../../api/core-flow-read.api";
+import {
+  fetchApprovalDelegationUserOptions,
+  fetchContractCreateProjects
+} from "../../api/core-flow-read.api";
 import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
@@ -329,17 +365,21 @@ const emptyReadiness: ContractReadinessResult = {
 };
 
 const sections = [
-  { key: "overview", label: "概览" },
-  { key: "basic", label: "基础信息" },
-  { key: "party", label: "合作单位" },
-  { key: "pricing", label: "计价与金额" },
-  { key: "fields", label: "专业字段" },
-  { key: "bills", label: "合同清单" },
-  { key: "clauses", label: "合同条款" },
-  { key: "documents", label: "合同文档" }
+  { key: "overview", label: "状态概览", hint: "先看卡点" },
+  { key: "basic", label: "合同信息", hint: "名称与主体" },
+  { key: "party", label: "合作单位", hint: "相对方资料" },
+  { key: "pricing", label: "金额计价", hint: "金额来源" },
+  { key: "fields", label: "专业信息", hint: "模板字段" },
+  { key: "bills", label: "清单明细", hint: "材料/劳务" },
+  { key: "clauses", label: "合同条款", hint: "付款与约定" },
+  { key: "documents", label: "文档生成", hint: "合同与预览" }
 ] as const;
 
 type SectionKey = (typeof sections)[number]["key"];
+type StructuredReadiness = ContractReadinessResult & {
+  blocking?: unknown;
+  warnings?: unknown;
+};
 
 const activeSection = ref<SectionKey>("overview");
 const creating = ref(false);
@@ -355,12 +395,10 @@ const migrationTargetTypeKey = ref("");
 const migrationTargetTemplateVersionId = ref("");
 const migrationPreview = ref<Record<string, unknown> | null>(null);
 
-// Selector option sources. Projects are seeded minimally here; a later task can
-// wire a real project list endpoint. Contract types come from published
-// business templates, so adding a new type is a template-center operation.
-const projectOptions = ref<Array<{ label: string; value: string }>>([
-  { label: "建设项目一期（JGXM-001）", value: "seed-project-jgxm-001" }
-]);
+// Contract types come from published business templates, so adding a new type is
+// a template-center operation. Projects come from backend contract.create scope.
+const projectOptions = ref<Array<{ label: string; value: string }>>([]);
+const projectOptionsLoaded = ref(false);
 const contractTypeOptions = ref<Array<{ label: string; value: string }>>([]);
 const templateOptions = ref<Array<{ label: string; value: string }>>([]);
 
@@ -373,6 +411,42 @@ const isNewDraft = computed(() => !contractId.value);
 const editable = computed(() => {
   const status = workbench.value?.version.status;
   return status ? EDITABLE_STATUSES.has(status) : false;
+});
+
+const activeSectionLabel = computed(
+  () => sections.find((section) => section.key === activeSection.value)?.label ?? "状态概览"
+);
+
+const blockingMessages = computed(() => {
+  const readiness = workbench.value?.readiness as StructuredReadiness | undefined;
+  return readiness ? structuredMessages(readiness.blocking) || stringMessages(readiness.blockingMessages) : [];
+});
+const warningMessages = computed(() => {
+  const readiness = workbench.value?.readiness as StructuredReadiness | undefined;
+  return readiness ? structuredMessages(readiness.warnings) || stringMessages(readiness.warningMessages) : [];
+});
+
+const readinessGapTitle = computed(() => {
+  if (!workbench.value) return "等待加载";
+  if (blockingMessages.value.length) return `${blockingMessages.value.length} 项阻断`;
+  if (warningMessages.value.length) return `${warningMessages.value.length} 项提醒`;
+  return workbench.value.readiness.ready ? "已满足提交条件" : "保存后重新检查";
+});
+
+const readinessGapText = computed(
+  () => blockingMessages.value[0] ?? warningMessages.value[0] ?? "右侧就绪检查会列出缺项"
+);
+
+const nextActionTitle = computed(() => {
+  if (!workbench.value) return "等待加载";
+  if (!editable.value) return "查看合同资料";
+  if (blockingMessages.value.length) return "先补齐阻断项";
+  return workbench.value.readiness.ready ? "生成合同文档" : "继续填写草稿";
+});
+
+const nextActionText = computed(() => {
+  if (!editable.value) return "当前状态不可编辑";
+  return `当前步骤：${activeSectionLabel.value}`;
 });
 
 // A contract director may view + transfer even when they cannot edit. We allow
@@ -447,6 +521,25 @@ async function loadContractTypeOptions() {
     }));
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "合同类型加载失败";
+  }
+}
+
+async function loadProjectOptions() {
+  try {
+    const projects = await fetchContractCreateProjects();
+    projectOptions.value = projects.map((project) => ({
+      label: `${project.name}（${project.code}）`,
+      value: project.id
+    }));
+    const selectedProjectId = initializeDraft.projectId.value;
+    if (!projectOptions.value.some((option) => option.value === selectedProjectId)) {
+      initializeDraft.setProjectId(projectOptions.value.length === 1 ? projectOptions.value[0].value : "");
+    }
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "项目加载失败";
+    projectOptions.value = [];
+  } finally {
+    projectOptionsLoaded.value = true;
   }
 }
 
@@ -613,7 +706,9 @@ async function loadExisting() {
 }
 
 onMounted(() => {
+  void loadProjectOptions();
   void loadContractTypeOptions();
+  initializeDraftFromQuery();
   void loadExisting();
   void fetchApprovalDelegationUserOptions()
     .then((users) => {
@@ -630,13 +725,47 @@ watch(contractId, (next, previous) => {
     void loadExisting();
   }
 });
+
+function queryText(value: unknown): string {
+  return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
+}
+
+function structuredMessages(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  const messages = value.flatMap((item) => {
+    const record = item !== null && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    return typeof record["message"] === "string" ? [record["message"]] : [];
+  });
+  return messages.length ? messages : null;
+}
+
+function stringMessages(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((message): message is string => typeof message === "string")
+    : [];
+}
+
+function initializeDraftFromQuery() {
+  if (!isNewDraft.value) {
+    return;
+  }
+  const contractTypeKey = queryText(route.query.contractType).trim();
+  const templateVersionId = queryText(route.query.templateVersionId).trim();
+  if (contractTypeKey) {
+    initializeDraft.setContractTypeKey(contractTypeKey);
+    void loadTemplatesForType(contractTypeKey);
+  }
+  if (templateVersionId) {
+    initializeDraft.setBusinessTemplateVersionId(templateVersionId);
+  }
+}
 </script>
 
 <style scoped>
 .workbench-page {
   width: 100%;
   min-width: 0;
-  color: #151922;
+  color: var(--jg-text-strong);
 }
 
 /* Draft-creation panel ------------------------------------------------------*/
@@ -645,9 +774,9 @@ watch(contractId, (next, previous) => {
   gap: 16px;
   max-width: 720px;
   padding: 24px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
+  background: var(--jg-bg-panel);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
 }
 
 .create-panel h1 {
@@ -658,8 +787,13 @@ watch(contractId, (next, previous) => {
 
 .create-hint {
   margin: 0;
-  color: #767f8d;
+  color: var(--jg-text-muted);
   font-size: 12px;
+}
+
+.create-hint.warning {
+  color: var(--jg-warning);
+  font-weight: 600;
 }
 
 .create-fields {
@@ -689,9 +823,9 @@ watch(contractId, (next, previous) => {
   gap: 16px;
   min-height: 56px;
   padding: 0 20px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
+  background: var(--jg-bg-panel);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
 }
 
 .status-left {
@@ -711,7 +845,7 @@ watch(contractId, (next, previous) => {
 }
 
 .contract-code {
-  color: #767f8d;
+  color: var(--jg-text-muted);
   font-size: 12px;
 }
 
@@ -727,19 +861,51 @@ watch(contractId, (next, previous) => {
 }
 
 .tone-success {
-  color: #1b6b3a;
+  color: var(--jg-success);
 }
 
 .tone-danger {
-  color: #b51d2a;
+  color: var(--jg-danger);
 }
 
 .tone-primary {
-  color: #0052d9;
+  color: var(--jg-brand);
 }
 
 .tone-muted {
-  color: #767f8d;
+  color: var(--jg-text-muted);
+}
+
+.workbench-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--jg-space-md);
+  margin-top: var(--jg-space-md);
+}
+
+.summary-item {
+  display: grid;
+  gap: var(--jg-space-xs);
+  min-width: 0;
+  padding: var(--jg-space-md);
+  background: var(--jg-bg-panel);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
+}
+
+.summary-label,
+.summary-item small {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
+}
+
+.summary-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--jg-text-strong);
+  font-size: var(--jg-font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shell-body {
@@ -754,31 +920,37 @@ watch(contractId, (next, previous) => {
   align-content: start;
   gap: 4px;
   padding: 8px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
+  background: var(--jg-bg-panel);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
 }
 
 .nav-item {
-  display: block;
+  display: grid;
+  gap: 2px;
   width: 100%;
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 6px 12px;
   text-align: left;
   font-size: 13px;
-  color: #424955;
+  color: var(--jg-text-main);
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--jg-radius-sm);
   cursor: pointer;
 }
 
+.nav-item small {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-mini);
+}
+
 .nav-item:hover {
-  background: #f3f5f8;
+  background: var(--jg-bg-muted);
 }
 
 .nav-item.active {
-  color: #0052d9;
+  color: var(--jg-brand);
   background: #eaf2ff;
   font-weight: 600;
 }
@@ -789,9 +961,9 @@ watch(contractId, (next, previous) => {
   gap: 16px;
   min-width: 0;
   padding: 20px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
+  background: var(--jg-bg-panel);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
 }
 
 .readonly-banner {
@@ -815,19 +987,19 @@ watch(contractId, (next, previous) => {
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  background: #f7f9fc;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
+  background: var(--jg-bg-muted);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
 }
 
 .migration-label {
   font-size: 12px;
   font-weight: 600;
-  color: #424955;
+  color: var(--jg-text-main);
 }
 
 .migration-hint {
-  color: #767f8d;
+  color: var(--jg-text-muted);
   font-size: 12px;
 }
 
@@ -842,7 +1014,7 @@ watch(contractId, (next, previous) => {
   margin: 0;
   padding-left: 18px;
   font-size: 13px;
-  color: #424955;
+  color: var(--jg-text-main);
 }
 
 /* Conflict + transfer -------------------------------------------------------*/
@@ -863,20 +1035,21 @@ watch(contractId, (next, previous) => {
 }
 
 .field-label {
-  color: #767f8d;
+  color: var(--jg-text-muted);
   font-size: 12px;
   font-weight: 600;
 }
 
 .error-text {
   margin: 0;
-  color: #b51d2a;
+  color: var(--jg-danger);
   font-size: 12px;
   font-weight: 600;
 }
 
 /* Responsive collapse under 1100px -----------------------------------------*/
 @media (max-width: 1100px) {
+  .workbench-summary,
   .shell-body {
     grid-template-columns: 1fr;
   }

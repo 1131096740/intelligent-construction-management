@@ -17,6 +17,7 @@ import {
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
+  fetchContractCreateProjects,
   fetchWorkItems,
   createProject,
   updateProject,
@@ -256,11 +257,13 @@ describe("core flow read API client", () => {
     } as Response);
 
     await fetchProjects();
+    await fetchContractCreateProjects();
     await fetchProjectOperatingOverview("project-1");
     await fetchProjectExpenseRequests("project-1");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects",
+      "/api/projects/contract-create-options",
       "/api/projects/project-1/operating-funds-overview",
       "/api/projects/project-1/expense-requests"
     ]);

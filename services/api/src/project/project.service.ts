@@ -6,7 +6,7 @@ import {
   Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -219,6 +219,43 @@ export class ProjectService {
     }
 
     return this.findActiveProjectOptions({ id: { in: visibleProjectIds } });
+  }
+
+  async listContractCreateOptions(userId: string) {
+    const [globalUserPositions, projectUserPositions, projectMemberPositions, activeProjects] =
+      await Promise.all([
+        this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
+        this.prisma.userPosition.findMany({ where: { userId, projectId: { not: null } } }),
+        this.prisma.projectMember.findMany({ where: { userId } }),
+        this.prisma.project.findMany({
+          where: { isActive: true },
+          select: { id: true, code: true, name: true },
+          orderBy: [{ code: "asc" }, { name: "asc" }]
+        })
+      ]);
+    const positionIds = Array.from(
+      new Set([...globalUserPositions, ...projectUserPositions].map((position) => position.positionId))
+    );
+    const positions = positionIds.length
+      ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    const positionKeyById = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
+    const globalRoleKeys = globalUserPositions
+      .map((position) => positionKeyById.get(position.positionId))
+      .filter((role): role is RoleKey => Boolean(role));
+
+    return activeProjects.filter((project) => {
+      const projectRoleKeys = [
+        ...projectUserPositions
+          .filter((position) => position.projectId === project.id)
+          .map((position) => positionKeyById.get(position.positionId))
+          .filter((role): role is RoleKey => Boolean(role)),
+        ...projectMemberPositions
+          .filter((member) => member.projectId === project.id)
+          .map((member) => member.positionKey as RoleKey)
+      ];
+      return canPerform("contract.create", resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys));
+    });
   }
 
   private findActiveProjectOptions(extraWhere: object = {}) {

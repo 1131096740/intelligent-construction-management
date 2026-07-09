@@ -229,6 +229,51 @@ describe("ProjectService", () => {
     });
   });
 
+  it("lists only active projects where the actor can create contracts", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            { projectId: "project-1", positionId: "position-contract-staff" },
+            { projectId: "project-2", positionId: "position-project-manager" }
+          ])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-contract-staff", key: "contract_staff" },
+          { id: "position-project-manager", key: "project_manager" }
+        ])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { projectId: "project-3", positionKey: "contract_director" },
+          { projectId: "project-4", positionKey: "employee" }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "project-1", code: "JG-001", name: "一标段" },
+          { id: "project-2", code: "JG-002", name: "二标段" },
+          { id: "project-3", code: "JG-003", name: "三标段" },
+          { id: "project-4", code: "JG-004", name: "四标段" }
+        ])
+      }
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(service.listContractCreateOptions("contract-user")).resolves.toEqual([
+      { id: "project-1", code: "JG-001", name: "一标段" },
+      { id: "project-3", code: "JG-003", name: "三标段" }
+    ]);
+    expect(prisma.project.findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
+      select: { id: true, code: true, name: true },
+      orderBy: [{ code: "asc" }, { name: "asc" }]
+    });
+  });
+
   it("returns no project options for employees without funds overview positions", async () => {
     const prisma = {
       userPosition: {

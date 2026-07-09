@@ -53,6 +53,10 @@ describe("ProjectController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.list)).toBeUndefined();
   });
 
+  it("lets contract creation project options rely on authentication plus service-level action visibility", () => {
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.contractCreateOptions)).toBeUndefined();
+  });
+
   it("lets project roster rely on authentication plus service-level project visibility", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.roster)).toBeUndefined();
   });

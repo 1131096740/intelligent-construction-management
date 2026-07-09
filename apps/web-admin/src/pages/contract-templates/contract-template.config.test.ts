@@ -20,10 +20,11 @@ import {
 describe("contract template center config", () => {
   it("exposes template list columns and workflow actions", () => {
     expect(templateListColumns.map((column) => column.colKey)).toEqual([
-      "status",
+      "name",
       "contractTypeKey",
+      "status",
       "latestVersion",
-      "publishedBy",
+      "publicationStatus",
       "operation"
     ]);
     expect(templateListActions).toEqual([

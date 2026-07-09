@@ -3,9 +3,9 @@
     <div class="page-head">
       <div>
         <h1>合同模板库</h1>
-        <p>业务模板、版式、标准条款和编号规则统一维护</p>
+        <p>一线人员选择模板建合同；合同主管维护字段、条款、版式和编号规则</p>
       </div>
-      <t-space>
+      <t-space v-if="canConfigureTemplates">
         <t-button @click="go('/合同模板库/版式/new')">
           版式模板
         </t-button>
@@ -18,71 +18,136 @@
       </t-space>
     </div>
 
-    <t-card
-      title="新建业务模板"
-      :bordered="true"
-      class="panel"
-    >
-      <div class="form-grid">
-        <label><span>编码</span><t-input v-model="form.code" /></label>
-        <label><span>名称</span><t-input v-model="form.name" /></label>
-        <label><span>合同类型</span><t-select v-model="form.contractTypeKey">
-          <t-option
-            v-for="option in contractTypeOptions"
-            :key="option.value"
-            :value="option.value"
-            :label="option.label"
-          />
-        </t-select></label>
-        <t-button
-          theme="primary"
-          :loading="saving"
-          @click="createTemplate"
-        >
-          创建草稿版本
-        </t-button>
-      </div>
-    </t-card>
-
-    <t-card
-      :bordered="true"
-      class="panel"
-    >
-      <t-table
-        row-key="id"
-        size="small"
-        :columns="columns"
-        :data="templates"
-        :loading="loading"
-        empty="暂无已发布业务模板"
+    <div class="mode-switch">
+      <t-button
+        :theme="mode === 'use' ? 'primary' : 'default'"
+        @click="mode = 'use'"
       >
-        <template #status="{ row }">
-          <t-tag
-            size="small"
-            variant="light"
-          >
-            {{ templateStatusLabel(row.status) }}
-          </t-tag>
-        </template>
-        <template #contractTypeKey="{ row }">
-          {{ contractTypeLabel(row.contractTypeKey) }}
-        </template>
-        <template #latestVersion="{ row }">
-          {{ row.versionNo ? `v${row.versionNo}` : "暂无发布版本" }}
-        </template>
-        <template #publishedBy="{ row }">
-          {{ row.versionNo ? "已发布" : "暂无发布记录" }}
-        </template>
-        <template #operation="{ row }">
-          <t-link
+        使用模式
+      </t-button>
+      <t-button
+        v-if="canConfigureTemplates"
+        :theme="mode === 'config' ? 'primary' : 'default'"
+        @click="mode = 'config'"
+      >
+        配置模式
+      </t-button>
+    </div>
+
+    <section
+      v-if="mode === 'use'"
+      class="use-mode"
+    >
+      <div class="mode-note">
+        <strong>选择一个已发布模板，新建合同时会自动带入合同类型和模板版本。</strong>
+        <span>{{ canConfigureTemplates ? "如果没有合适模板，可在配置模式维护。" : "如果没有合适模板，请联系合同部主管维护。" }}</span>
+      </div>
+
+      <div
+        v-if="templates.length"
+        class="template-grid"
+      >
+        <article
+          v-for="template in templates"
+          :key="template.id"
+          class="template-card"
+        >
+          <div>
+            <h2>{{ templateName(template) }}</h2>
+            <p>{{ contractTypeLabel(template.contractTypeKey) }}</p>
+          </div>
+          <div class="template-meta">
+            <span>{{ versionLabel(template) }}</span>
+            <t-tag
+              size="small"
+              theme="success"
+              variant="light"
+            >
+              已发布
+            </t-tag>
+          </div>
+          <t-button
             theme="primary"
-            @click="go(`/合同模板库/${row.id}`)"
+            @click="useTemplate(template)"
           >
-            编辑/治理
-          </t-link>
-        </template>
-      </t-table>
-    </t-card>
+            用此模板建合同
+          </t-button>
+        </article>
+      </div>
+
+      <t-empty
+        v-else
+        description="暂无已发布业务模板"
+      />
+    </section>
+
+    <template v-else>
+      <t-card
+        title="配置模式：新建业务模板"
+        :bordered="true"
+        class="panel"
+      >
+        <div class="form-grid">
+          <label><span>编码</span><t-input v-model="form.code" /></label>
+          <label><span>名称</span><t-input v-model="form.name" /></label>
+          <label><span>合同类型</span><t-select v-model="form.contractTypeKey">
+            <t-option
+              v-for="option in contractTypeOptions"
+              :key="option.value"
+              :value="option.value"
+              :label="option.label"
+            />
+          </t-select></label>
+          <t-button
+            theme="primary"
+            :loading="saving"
+            @click="createTemplate"
+          >
+            创建草稿版本
+          </t-button>
+        </div>
+      </t-card>
+
+      <t-card
+        :bordered="true"
+        class="panel"
+      >
+        <t-table
+          row-key="id"
+          size="small"
+          :columns="columns"
+          :data="templates"
+          :loading="loading"
+          empty="暂无已发布业务模板"
+        >
+          <template #status="{ row }">
+            <t-tag
+              size="small"
+              variant="light"
+            >
+              {{ templateStatusLabel(row.status) }}
+            </t-tag>
+          </template>
+          <template #contractTypeKey="{ row }">
+            {{ contractTypeLabel(row.contractTypeKey) }}
+          </template>
+          <template #latestVersion="{ row }">
+            {{ row.versionNo ? `v${row.versionNo}` : "暂无发布版本" }}
+          </template>
+          <template #publicationStatus="{ row }">
+            {{ row.versionNo ? "已发布" : "暂无发布记录" }}
+          </template>
+          <template #operation="{ row }">
+            <t-link
+              theme="primary"
+              @click="go(`/合同模板库/${row.id}`)"
+            >
+              编辑/治理
+            </t-link>
+          </template>
+        </t-table>
+      </t-card>
+    </template>
 
     <p
       v-if="message"
@@ -94,36 +159,72 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import {
   createContractTemplate,
   listPublishedContractTemplates
 } from "../../api/contract-workbench.api";
+import { useAuthStore } from "../../auth/auth.store";
 import { contractTypeLabel, templateStatusLabel } from "../contracts/contract-labels";
 import { contractTypeOptions, templateListColumns } from "./contract-template.config";
 
+const TEMPLATE_CONFIG_ROLE_KEYS = new Set(["contract_director", "super_admin"]);
+
 interface TemplateRow {
   id: string;
+  name?: string;
   status?: string;
   contractTypeKey?: string;
+  versionId?: string;
   versionNo?: number;
   publishedByUserId?: string;
   [key: string]: unknown;
 }
 
 const router = useRouter();
+const auth = useAuthStore();
 const columns = templateListColumns.map((column) => ({ ...column }));
 const templates = ref<TemplateRow[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const message = ref("");
 const tone = ref<"success" | "danger">("success");
+const mode = ref<"use" | "config">("use");
 const emptySchema = { fields: [], bills: [], clauses: [], attachments: [], validations: [] };
 const form = reactive({ code: "", name: "", contractTypeKey: contractTypeOptions[0]?.value ?? "" });
+const canConfigureTemplates = computed(() =>
+  Boolean(auth.user?.roleKeys.some((roleKey) => TEMPLATE_CONFIG_ROLE_KEYS.has(roleKey)))
+);
+
+watch(canConfigureTemplates, (allowed) => {
+  if (!allowed) {
+    mode.value = "use";
+  }
+});
 
 function go(path: string) {
   void router.push(path);
+}
+
+function templateName(template: TemplateRow) {
+  return template.name?.trim() || "未命名业务模板";
+}
+
+function versionLabel(template: TemplateRow) {
+  return template.versionNo ? `当前发布版本 v${template.versionNo}` : "暂无发布版本";
+}
+
+function useTemplate(template: TemplateRow) {
+  const contractType = String(template.contractTypeKey ?? "").trim();
+  const templateVersionId = String(template.versionId ?? "").trim();
+  void router.push({
+    path: "/合同工作台",
+    query: {
+      ...(contractType ? { contractType } : {}),
+      ...(templateVersionId ? { templateVersionId } : {})
+    }
+  });
 }
 
 async function loadTemplates() {
@@ -170,16 +271,45 @@ onMounted(loadTemplates);
 </script>
 
 <style scoped>
-.page { color: #151922; }
+.page { color: var(--jg-text-strong); }
 .page-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .page-head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
-.page-head p { margin: 0; color: #767f8d; font-size: 12px; }
-.panel { margin-bottom: 16px; border-radius: 3px; }
+.page-head p { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
+.mode-switch { display: flex; gap: 8px; margin-bottom: 16px; }
+.use-mode { display: grid; gap: 16px; }
+.mode-note {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  color: var(--jg-text-main);
+  background: var(--jg-bg-muted);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
+  font-size: 12px;
+}
+.mode-note span { color: var(--jg-text-muted); }
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.template-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: var(--jg-bg-panel);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
+}
+.template-card h2 { margin: 0 0 6px; font-size: 16px; }
+.template-card p { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
+.template-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--jg-text-main); font-size: 12px; }
+.panel { margin-bottom: 16px; border-radius: var(--jg-radius-sm); }
 .form-grid { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 12px; align-items: end; }
 label { display: grid; gap: 4px; }
-label span { color: #767f8d; font-size: 12px; font-weight: 600; }
+label span { color: var(--jg-text-muted); font-size: 12px; font-weight: 600; }
 .message { font-size: 12px; }
-.success { color: #1b6b3a; }
-.danger { color: #b51d2a; }
+.success { color: var(--jg-success); }
+.danger { color: var(--jg-danger); }
 @media (max-width: 900px) { .page-head, .form-grid { display: grid; grid-template-columns: 1fr; } }
 </style>

@@ -45,14 +45,15 @@
         </t-select></label>
       </div>
       <div class="token-list">
-        <button
+        <t-button
           v-for="token in numberRuleTokenOptions"
           :key="token.value"
-          type="button"
+          size="small"
+          variant="outline"
           @click="appendToken(token.value)"
         >
           {{ token.label }}
-        </button>
+        </t-button>
       </div>
       <p :class="['preview', patternValid ? 'success' : 'danger']">
         下一编号预览：{{ nextPreview }}
@@ -268,17 +269,16 @@ onMounted(loadRules);
 </script>
 
 <style scoped>
-.page { color: #151922; }
+.page { color: var(--jg-text-strong); }
 .page-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .page-head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
-.page-head p, label span { margin: 0; color: #767f8d; font-size: 12px; }
-.panel { margin-bottom: 16px; border-radius: 3px; }
+.page-head p, label span { margin: 0; color: var(--jg-text-muted); font-size: 12px; }
+.panel { margin-bottom: 16px; border-radius: var(--jg-radius-sm); }
 .form-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
 label { display: grid; gap: 4px; }
 .token-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.token-list button { border: 1px solid #dce1e8; background: #fff; color: #424955; border-radius: 3px; padding: 4px 8px; cursor: pointer; }
 .preview, .message { font-size: 12px; }
-.success { color: #1b6b3a; }
-.danger { color: #b51d2a; }
+.success { color: var(--jg-success); }
+.danger { color: var(--jg-danger); }
 @media (max-width: 900px) { .page-head, .form-grid { display: grid; grid-template-columns: 1fr; } }
 </style>

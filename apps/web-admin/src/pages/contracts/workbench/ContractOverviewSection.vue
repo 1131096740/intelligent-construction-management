@@ -84,11 +84,10 @@ const metaItems = computed(() => {
     return [];
   }
   return [
-    { label: "临时编号", value: workbench.contract.temporaryCode },
+    { label: "草稿编号", value: workbench.contract.temporaryCode },
     { label: "正式编号", value: workbench.contract.code ?? "未生成" },
     { label: "合同类型", value: contractTypeLabel(workbench.contract.contractTypeKey) },
-    { label: "状态", value: contractVersionStatusLabel(workbench.version.status) },
-    { label: "版本号", value: String(workbench.version.versionNo) }
+    { label: "状态", value: contractVersionStatusLabel(workbench.version.status) }
   ];
 });
 </script>
@@ -103,7 +102,7 @@ const metaItems = computed(() => {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: #151922;
+  color: var(--jg-text-strong);
 }
 
 .overview-grid {
@@ -111,9 +110,9 @@ const metaItems = computed(() => {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 16px;
   padding: 16px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
+  background: var(--jg-bg-panel);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
 }
 
 .meta-item {
@@ -122,7 +121,7 @@ const metaItems = computed(() => {
 }
 
 .meta-label {
-  color: #767f8d;
+  color: var(--jg-text-muted);
   font-size: 11px;
   font-weight: 600;
 }
@@ -135,9 +134,9 @@ const metaItems = computed(() => {
   display: grid;
   gap: 12px;
   padding: 16px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
+  background: var(--jg-bg-panel);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-sm);
 }
 
 .checkpoint-head {
@@ -163,12 +162,12 @@ const metaItems = computed(() => {
 }
 
 .checkpoint-time {
-  color: #767f8d;
+  color: var(--jg-text-muted);
 }
 
 .empty {
   margin: 0;
-  color: #767f8d;
+  color: var(--jg-text-muted);
   font-size: 12px;
 }
 </style>

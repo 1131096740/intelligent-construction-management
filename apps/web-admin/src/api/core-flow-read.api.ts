@@ -863,6 +863,10 @@ export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
 }
 
+export function fetchContractCreateProjects() {
+  return readJson<ProjectOptionReadModel[]>("/projects/contract-create-options");
+}
+
 export function fetchProjectRoster() {
   return readJson<ProjectRosterRowReadModel[]>("/projects/roster");
 }
