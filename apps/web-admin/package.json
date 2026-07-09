@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:e2e:p0": "playwright test --config playwright.config.ts",
     "prelint": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
-    "lint": "eslint src --ext .ts,.vue"
+    "lint": "eslint src --ext .ts,.vue",
+    "check:ui": "node scripts/check-ui-rules.mjs"
   },
   "dependencies": {
     "@jiangkong/shared-domain": "workspace:*",
