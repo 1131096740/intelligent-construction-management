@@ -2901,7 +2901,7 @@ export class PaymentRequestService {
     }
 
     if (!input.toUserId || input.toUserId === actorUserId) {
-      throw new Error("Payment approval assignment target is invalid");
+      throw new Error("请选择有效的审批接收人，不能选择当前操作人");
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -2910,11 +2910,11 @@ export class PaymentRequestService {
       });
 
       if (!payment) {
-        throw new Error("Payment request not found");
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
 
       if (payment.status !== "approval_pending") {
-        throw new Error(`Cannot assign payment approval from status ${payment.status}`);
+        throw new Error("当前付款申请已离开审批中，不能转交或委托审批");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -2927,21 +2927,21 @@ export class PaymentRequestService {
       });
 
       if (!instance) {
-        throw new Error("Payment approval instance not found");
+        throw new Error("未找到进行中的付款审批，请刷新后重试");
       }
 
       const nodes = instance.frozenNodes as unknown as PaymentApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
 
       if (!currentNode) {
-        throw new Error("Payment approval current node not found");
+        throw new Error("当前付款审批节点异常，请刷新后重试");
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
       const fromRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
 
       if (!fromRoleKey) {
-        throw new Error(`Actor cannot assign payment node ${currentNode.name}`);
+        throw new Error(`当前账号不能转交或委托“${currentNode.name}”付款审批节点`);
       }
 
       const nextNodes = [...nodes];

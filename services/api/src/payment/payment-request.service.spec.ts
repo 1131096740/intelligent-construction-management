@@ -3036,6 +3036,170 @@ describe("PaymentRequestService", () => {
     });
   });
 
+  it("rejects payment approval assignment when the target user is invalid", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.transferApproval("FK-2026-012", "chairman-1", {
+        toUserId: "chairman-1"
+      })
+    ).rejects.toThrow("请选择有效的审批接收人，不能选择当前操作人");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment approval assignment when payment request cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.transferApproval("FK-2026-012", "chairman-1", {
+        toUserId: "transfer-user-1"
+      })
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment approval assignment unless payment is pending approval", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approved_pending_payment"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.delegateApproval("FK-2026-012", "chairman-1", {
+        toUserId: "agent-user-1"
+      })
+    ).rejects.toThrow("当前付款申请已离开审批中，不能转交或委托审批");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment approval assignment when approval instance cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.transferApproval("FK-2026-012", "chairman-1", {
+        toUserId: "transfer-user-1"
+      })
+    ).rejects.toThrow("未找到进行中的付款审批，请刷新后重试");
+  });
+
+  it("rejects payment approval assignment when the current node cannot be found", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 2,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.delegateApproval("FK-2026-012", "chairman-1", {
+        toUserId: "agent-user-1"
+      })
+    ).rejects.toThrow("当前付款审批节点异常，请刷新后重试");
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects payment approval assignment when the actor cannot assign the node", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      ...approvalRoleTables("employee")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.transferApproval("FK-2026-012", "employee-1", {
+        toUserId: "transfer-user-1"
+      })
+    ).rejects.toThrow("当前账号不能转交或委托“董事长/总经理”付款审批节点");
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
   it("rejects approval review unless the payment request is pending approval", async () => {
     const tx = {
       paymentRequest: {
