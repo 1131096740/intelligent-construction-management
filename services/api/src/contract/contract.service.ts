@@ -1167,14 +1167,14 @@ export class ContractService {
       return { contract, version };
     });
     const buffer = renderSimplePdf([
-      "Contract Archive",
-      `Contract Code: ${source.contract.code}`,
-      `Contract Name: ${source.contract.name}`,
-      `Counterparty: ${source.contract.counterparty}`,
-      `Version: ${source.version.versionNo}`,
-      `Amount: ${this.formatCents(source.version.amountCents)}`,
-      `Template: ${templateKey}`,
-      `Generated At: ${new Date().toISOString()}`
+      "合同归档单",
+      `合同编号：${source.contract.code}`,
+      `合同名称：${source.contract.name}`,
+      `相对方：${source.contract.counterparty}`,
+      `版本号：${source.version.versionNo}`,
+      `合同金额：${this.formatYuan(source.version.amountCents)} 元`,
+      `归档模板：${templateKey}`,
+      `生成时间：${new Date().toISOString()}`
     ]);
     const file = await this.files.uploadPrivateFile({
       originalName: `${source.contract.code}-v${source.version.versionNo}-${templateKey}.pdf`,
@@ -1301,6 +1301,10 @@ export class ContractService {
   private formatCents(value: number | bigint) {
     const safe = centsToSafeNumber(typeof value === "bigint" ? value : BigInt(value));
     return `${(safe / 100).toFixed(2)} CNY`;
+  }
+
+  private formatYuan(value: number | bigint) {
+    return this.formatCents(value).replace(" CNY", "");
   }
 
   // 常驻委托台账消费：本人岗位/节点指派都不命中时，看是否有在窗口内的委托人持有该节点角色。

@@ -10,6 +10,16 @@ describe("ProjectExpenseService", () => {
     auth.confirmPassword.mockResolvedValue({ ok: true });
   });
 
+  function pdfHexText(value: string) {
+    const buffer = Buffer.from(value, "utf16le");
+    for (let index = 0; index < buffer.length; index += 2) {
+      const low = buffer[index];
+      buffer[index] = buffer[index + 1];
+      buffer[index + 1] = low;
+    }
+    return buffer.toString("hex").toUpperCase();
+  }
+
   function roleTables(roleKey: string) {
     return {
       userPosition: {
@@ -949,6 +959,12 @@ describe("ProjectExpenseService", () => {
       uploadedByUserId: "chairman-1",
       buffer: expect.any(Buffer)
     });
+    const approvalPdfText = files.uploadPrivateFile.mock.calls[0][0].buffer.toString("ascii");
+    expect(approvalPdfText).toContain(pdfHexText("报销审批单"));
+    expect(approvalPdfText).toContain(pdfHexText("支出类型：报销"));
+    expect(approvalPdfText).toContain(pdfHexText("附件状态：已上传"));
+    expect(approvalPdfText).not.toContain("Applicant User ID");
+    expect(approvalPdfText).not.toContain("Requested Amount");
     expect(archiveTx.pdfDocument.create).toHaveBeenCalledWith({
       data: {
         businessType: "project_expense_request",
@@ -1571,6 +1587,11 @@ describe("ProjectExpenseService", () => {
       uploadedByUserId: "finance-1",
       buffer: expect.any(Buffer)
     });
+    const financePdfText = files.uploadPrivateFile.mock.calls[0][0].buffer.toString("ascii");
+    expect(financePdfText).toContain(pdfHexText("报销财务归档单"));
+    expect(financePdfText).toContain(pdfHexText("财务入账金额：500.00 元"));
+    expect(financePdfText).not.toContain("Finance Recorded Amount");
+    expect(financePdfText).not.toContain("Generated At");
     expect(archiveTx.pdfDocument.create).toHaveBeenCalledWith({
       data: {
         businessType: "project_expense_request",

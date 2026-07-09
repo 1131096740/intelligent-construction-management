@@ -31,6 +31,16 @@ describe("PaymentRequestService", () => {
     fileAccess.assertCanDownloadFile.mockResolvedValue({ id: "file-1" });
   });
 
+  function pdfHexText(value: string) {
+    const buffer = Buffer.from(value, "utf16le");
+    for (let index = 0; index < buffer.length; index += 2) {
+      const low = buffer[index];
+      buffer[index] = buffer[index + 1];
+      buffer[index + 1] = low;
+    }
+    return buffer.toString("hex").toUpperCase();
+  }
+
   function approvalRoleTables(roleKey: string) {
     return {
       userPosition: {
@@ -4974,7 +4984,12 @@ describe("PaymentRequestService", () => {
       buffer: expect.any(Buffer)
     });
     const uploadedBuffer = files.uploadPrivateFile.mock.calls[0][0].buffer as Buffer;
-    expect(uploadedBuffer.toString("ascii", 0, 8)).toBe("%PDF-1.4");
+    const pdfText = uploadedBuffer.toString("ascii");
+    expect(pdfText.slice(0, 8)).toBe("%PDF-1.4");
+    expect(pdfText).toContain(pdfHexText("付款财务归档单"));
+    expect(pdfText).toContain(pdfHexText("财务入账金额：500.00 元"));
+    expect(pdfText).not.toContain("Payment Finance Archive");
+    expect(pdfText).not.toContain("Finance Recorded Amount");
     expect(tx.pdfDocument.create).toHaveBeenCalledWith({
       data: {
         businessType: "payment_request",

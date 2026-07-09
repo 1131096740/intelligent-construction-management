@@ -969,17 +969,17 @@ export class ProjectExpenseService {
 
     const buffer = renderSimplePdf([
       projectExpenseApprovalPdfTitle(expense.expenseType),
-      `Code: ${expense.code}`,
-      `Type: ${expense.expenseType}`,
-      `Category: ${expense.expenseSubtype}`,
-      `Subject: ${expense.paymentSubject}`,
-      `Purpose: ${expense.reason}`,
-      `Supplier: ${expense.counterpartyName ?? "-"}`,
-      `Attachment: ${expense.attachmentFileId ? "uploaded" : "not uploaded"}`,
-      `Requested Amount: ${formatCents(expense.requestedAmountCents)}`,
-      `Approved Amount: ${formatCents(expense.approvedAmountCents ?? expense.requestedAmountCents)}`,
-      `Applicant User ID: ${expense.applicantUserId}`,
-      `Generated At: ${new Date().toISOString()}`
+      `单据编号：${expense.code}`,
+      `支出类型：${projectExpenseTypeLabel(expense.expenseType)}`,
+      `明细类型：${projectExpenseSubtypeLabel(expense.expenseSubtype)}`,
+      `付款事由：${expense.paymentSubject}`,
+      `用途说明：${expense.reason}`,
+      `收款对象：${expense.counterpartyName ?? "未填写"}`,
+      `附件状态：${expense.attachmentFileId ? "已上传" : "未上传"}`,
+      `申请金额：${formatCents(expense.requestedAmountCents)} 元`,
+      `批准金额：${formatCents(expense.approvedAmountCents ?? expense.requestedAmountCents)} 元`,
+      `申请人：${expense.applicantUserId}`,
+      `生成时间：${new Date().toISOString()}`
     ]);
     const file = await this.files.uploadPrivateFile({
       originalName: `${expense.code}-${APPROVAL_PDF_TEMPLATE_KEY}.pdf`,
@@ -1056,15 +1056,15 @@ export class ProjectExpenseService {
 
     const buffer = renderSimplePdf([
       projectExpenseFinancePdfTitle(expense.expenseType),
-      `Code: ${expense.code}`,
-      `Type: ${expense.expenseType}`,
-      `Subtype: ${expense.expenseSubtype}`,
-      `Payment Subject: ${expense.paymentSubject}`,
-      `Requested Amount: ${formatCents(expense.requestedAmountCents)}`,
-      `Approved Amount: ${formatCents(expense.approvedAmountCents ?? expense.requestedAmountCents)}`,
-      `Paid Amount: ${formatCents(expense.paidAmountCents)}`,
-      `Finance Recorded Amount: ${formatCents(financeRecordedAmountCents)}`,
-      `Generated At: ${new Date().toISOString()}`
+      `单据编号：${expense.code}`,
+      `支出类型：${projectExpenseTypeLabel(expense.expenseType)}`,
+      `明细类型：${projectExpenseSubtypeLabel(expense.expenseSubtype)}`,
+      `付款事由：${expense.paymentSubject}`,
+      `申请金额：${formatCents(expense.requestedAmountCents)} 元`,
+      `批准金额：${formatCents(expense.approvedAmountCents ?? expense.requestedAmountCents)} 元`,
+      `已实付金额：${formatCents(expense.paidAmountCents)} 元`,
+      `财务入账金额：${formatCents(financeRecordedAmountCents)} 元`,
+      `生成时间：${new Date().toISOString()}`
     ]);
     const file = await this.files.uploadPrivateFile({
       originalName: `${expense.code}-${FINANCE_PDF_TEMPLATE_KEY}.pdf`,
@@ -1585,13 +1585,41 @@ function formatCents(amountCents: number) {
 }
 
 function projectExpenseApprovalPdfTitle(expenseType: string) {
-  if (expenseType === "reimbursement") return "Reimbursement Approval Form";
-  if (expenseType === "spot_purchase") return "Spot Purchase Approval Form";
-  return "Project Expense Approval Form";
+  if (expenseType === "reimbursement") return "报销审批单";
+  if (expenseType === "spot_purchase") return "零星采购审批单";
+  return "项目支出审批单";
 }
 
 function projectExpenseFinancePdfTitle(expenseType: string) {
-  if (expenseType === "reimbursement") return "Reimbursement Finance Archive";
-  if (expenseType === "spot_purchase") return "Spot Purchase Finance Archive";
-  return "Project Expense Finance Archive";
+  if (expenseType === "reimbursement") return "报销财务归档单";
+  if (expenseType === "spot_purchase") return "零星采购财务归档单";
+  return "项目支出财务归档单";
+}
+
+function projectExpenseTypeLabel(expenseType: string) {
+  if (expenseType === "sporadic_payment") return "零星付款";
+  if (expenseType === "loan_reserve") return "借款备用金";
+  if (expenseType === "comprehensive_expense") return "综合费用";
+  if (expenseType === "reimbursement") return "报销";
+  if (expenseType === "spot_purchase") return "零星采购";
+  return "项目支出";
+}
+
+function projectExpenseSubtypeLabel(expenseSubtype: string) {
+  if (expenseSubtype === "sporadic_material") return "零星材料";
+  if (expenseSubtype === "sporadic_machinery") return "零星机械";
+  if (expenseSubtype === "sporadic_labor") return "零星人工";
+  if (expenseSubtype === "temporary_service") return "临时服务";
+  if (expenseSubtype === "other_sporadic") return "其他零星";
+  if (expenseSubtype === "employee_loan") return "员工借款";
+  if (expenseSubtype === "owner_loan") return "业主借款";
+  if (expenseSubtype === "project_reserve") return "项目备用金";
+  if (expenseSubtype === "travel") return "差旅费";
+  if (expenseSubtype === "entertainment") return "业务招待费";
+  if (expenseSubtype === "reimbursement") return "报销";
+  if (expenseSubtype === "spot_material_purchase") return "零星材料采购";
+  if (expenseSubtype === "spot_tool_purchase") return "零星工具采购";
+  if (expenseSubtype === "spot_service_purchase") return "零星服务采购";
+  if (expenseSubtype === "spot_other_purchase") return "其他零星采购";
+  return "其他支出";
 }

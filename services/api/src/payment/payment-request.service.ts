@@ -2790,14 +2790,14 @@ export class PaymentRequestService {
       return { payment, financeRecordedAmountCents };
     });
     const buffer = renderSimplePdf([
-      "Payment Finance Archive",
-      `Payment Code: ${source.payment.code}`,
-      `Template: ${templateKey}`,
-      `Requested Amount: ${this.formatCents(source.payment.requestedAmountCents)}`,
-      `Approved Amount: ${this.formatCents(source.payment.approvedAmountCents ?? source.payment.requestedAmountCents)}`,
-      `Paid Amount: ${this.formatCents(source.payment.paidAmountCents)}`,
-      `Finance Recorded Amount: ${this.formatCents(source.financeRecordedAmountCents)}`,
-      `Generated At: ${new Date().toISOString()}`
+      "付款财务归档单",
+      `付款编号：${source.payment.code}`,
+      `归档模板：${templateKey}`,
+      `申请金额：${this.formatYuan(source.payment.requestedAmountCents)} 元`,
+      `批准金额：${this.formatYuan(source.payment.approvedAmountCents ?? source.payment.requestedAmountCents)} 元`,
+      `已实付金额：${this.formatYuan(source.payment.paidAmountCents)} 元`,
+      `财务入账金额：${this.formatYuan(source.financeRecordedAmountCents)} 元`,
+      `生成时间：${new Date().toISOString()}`
     ]);
     const file = await this.files.uploadPrivateFile({
       originalName: `${source.payment.code}-${templateKey}.pdf`,
@@ -2869,6 +2869,10 @@ export class PaymentRequestService {
 
   private formatCents(value: number) {
     return `${(value / 100).toFixed(2)} CNY`;
+  }
+
+  private formatYuan(value: number) {
+    return this.formatCents(value).replace(" CNY", "");
   }
 
   private async assignApproval(

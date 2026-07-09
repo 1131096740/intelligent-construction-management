@@ -15,6 +15,16 @@ describe("ContractService", () => {
     auth.confirmPassword.mockResolvedValue({ ok: true });
   });
 
+  function pdfHexText(value: string) {
+    const buffer = Buffer.from(value, "utf16le");
+    for (let index = 0; index < buffer.length; index += 2) {
+      const low = buffer[index];
+      buffer[index] = buffer[index + 1];
+      buffer[index + 1] = low;
+    }
+    return buffer.toString("hex").toUpperCase();
+  }
+
   function approvalRoleTables(roleKey: string) {
     return {
       contract: {
@@ -2046,7 +2056,12 @@ describe("ContractService", () => {
       buffer: expect.any(Buffer)
     });
     const uploadedBuffer = files.uploadPrivateFile.mock.calls[0][0].buffer as Buffer;
-    expect(uploadedBuffer.toString("ascii", 0, 8)).toBe("%PDF-1.4");
+    const pdfText = uploadedBuffer.toString("ascii");
+    expect(pdfText.slice(0, 8)).toBe("%PDF-1.4");
+    expect(pdfText).toContain(pdfHexText("合同归档单"));
+    expect(pdfText).toContain(pdfHexText("合同编号：HT-2026-001"));
+    expect(pdfText).not.toContain("Contract Archive");
+    expect(pdfText).not.toContain("Contract Code");
     expect(tx.pdfDocument.create).toHaveBeenCalledWith({
       data: {
         businessType: "contract_version",
