@@ -4940,6 +4940,58 @@ describe("PaymentRequestService", () => {
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
   });
 
+  it("rejects finance record without positive amount", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordFinance("FK-2026-012", "finance-1", {
+        amountCents: 0,
+        occurredAt: "2026-06-22T00:00:00.000Z",
+        confirmationPassword: "Current@123"
+      })
+    ).rejects.toThrow("财务入账金额必须大于 0");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects finance record when payment request cannot be found", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      financeRecord: {
+        findMany: jest.fn(),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordFinance("FK-2026-012", "finance-1", {
+        amountCents: 10_000,
+        occurredAt: "2026-06-22T00:00:00.000Z",
+        confirmationPassword: "Current@123"
+      })
+    ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
+    expect(tx.financeRecord.create).not.toHaveBeenCalled();
+  });
+
   it("rejects finance record before actual payment execution", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([

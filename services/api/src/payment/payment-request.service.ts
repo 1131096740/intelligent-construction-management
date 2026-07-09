@@ -2597,7 +2597,7 @@ export class PaymentRequestService {
     }
 
     if (typeof input.amountCents !== "number" || input.amountCents <= 0) {
-      throw new Error("Finance record amount must be greater than zero");
+      throw new Error("财务入账金额必须大于 0");
     }
 
     if (!input.confirmationPassword?.trim()) {
@@ -2614,7 +2614,7 @@ export class PaymentRequestService {
       const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
 
       if (!payment) {
-        throw new Error("Payment request not found");
+        throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
 
       if (payment.paidAmountCents <= 0) {
