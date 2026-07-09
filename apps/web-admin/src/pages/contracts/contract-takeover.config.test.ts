@@ -391,26 +391,26 @@ describe("contract takeover page configuration", () => {
 
     const suggestion = suggestTakeoverLevel(baseDraft);
     expect(takeoverLevelAdjustmentDisabledReason("B", suggestion, "")).toBe(
-      "申报等级与系统建议不一致，请在等级调整说明中说明调整原因"
+      "确认等级与系统建议不一致，请在等级调整说明中说明调整原因"
     );
     expect(takeoverLevelAdjustmentDisabledReason("B", suggestion, "合同部确认按 B级跟踪")).toBe(
       ""
     );
     expect(takeoverLevelSelectionHint("A", suggestion)).toBe(
-      "当前按系统建议申报A级，复核时仍需核对资料清单、缺口说明和付款阻断提示。"
+      "当前确认A级，与系统建议一致；复核时仍需核对资料清单、缺口说明和付款阻断提示。"
     );
     expect(takeoverLevelSelectionHint("B", suggestion)).toBe(
-      "当前申报B级，与系统建议A级不一致；调整原因会进入复核记录和主管确认依据。"
+      "当前确认B级，与系统建议A级不一致；等级调整说明会进入复核记录和主管确认依据。"
     );
     const riskSuggestion = { level: "C" as const, reason: "存在争议资料，建议按 C级受限接管。" };
     expect(takeoverLevelAdjustmentDisabledReason("A", riskSuggestion, "")).toBe(
-      "申报等级低于系统建议，请说明资料已核验、风险由谁确认，以及是否仍需限制付款"
+      "确认等级低于系统建议，请说明资料已核验、风险由谁确认，以及是否仍需限制付款"
     );
     expect(takeoverLevelSelectionHint("A", riskSuggestion)).toBe(
-      "当前申报A级，低于系统建议C级；需说明资料已核验、风险责任和付款限制，主管确认前不会自动解除风险。"
+      "当前确认A级，低于系统建议C级；需说明资料已核验、风险责任和付款限制，主管确认前不会自动解除风险。"
     );
     expect(takeoverSuggestionApplyDisabledReason("A", suggestion)).toBe(
-      "当前申报等级已采用系统建议"
+      "当前确认等级已采用系统建议"
     );
     expect(takeoverSuggestionApplyDisabledReason("B", suggestion)).toBe("");
   });
@@ -462,7 +462,7 @@ describe("contract takeover page configuration", () => {
     expect(summary.consequence).toContain("确认后会形成系统期初事实");
     expect(summary.consequence).toContain("接管截止日后的新结算、付款和资料补正必须从系统办理");
     expect(summary.consequence).toContain("已确认的金额和资料不能静默覆盖");
-    expect(summary.levelReviewText).toContain("申报接管等级与系统建议一致：B级");
+    expect(summary.levelReviewText).toContain("确认接管等级与系统建议一致：B级");
     expect(summary.riskText).toBe("B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。");
     expect(summary.paymentBlockingText).toBe("尚未完成主管确认，后续付款申请会被系统阻断。");
     expect(summary.evidenceGapText).toBe("缺少：历史付款凭证。补齐前会影响主管确认和后续付款核验。");
@@ -485,7 +485,7 @@ describe("contract takeover page configuration", () => {
         reviewComment: "合同部按现场资料完整度降为 B级跟踪"
       })
     ).toBe(
-      "申报接管等级由系统建议A级调整为B级，调整原因：合同部按现场资料完整度降为 B级跟踪"
+      "确认接管等级由系统建议A级调整为B级，调整原因：合同部按现场资料完整度降为 B级跟踪"
     );
   });
 
@@ -501,7 +501,7 @@ describe("contract takeover page configuration", () => {
         historicalRetentionWithheldCents: "0",
         otherConfirmedOccupancyCents: "0"
       })
-    ).toContain("申报接管等级与系统建议一致：B级");
+    ).toContain("确认接管等级与系统建议一致：B级");
   });
 
   it("shows post-confirmation checks only after takeover confirmation", () => {

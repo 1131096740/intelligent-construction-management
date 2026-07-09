@@ -315,7 +315,7 @@
             >
           </label>
           <label>
-            <span>申报接管等级</span>
+            <span>确认接管等级</span>
             <select v-model="createForm.takeoverLevel">
               <option
                 v-for="option in takeoverLevelOptions"
@@ -353,7 +353,7 @@
             <span>{{ takeoverLevelSuggestionView.reason }}</span>
             <span>{{ takeoverLevelSelectionHintView }}</span>
             <span v-if="createFormLevelDisabledReason">
-              如需调整为其他等级，请在等级调整说明中写明业务原因，复核确认后才形成最终等级。
+              如需采用与系统建议不同的等级，请在等级调整说明中写明业务原因，复核确认后才形成最终等级。
             </span>
           </div>
           <label>
@@ -418,10 +418,10 @@
             />
           </label>
           <label>
-            <span>等级调整说明/复核意见</span>
+            <span>等级调整说明（复核意见）</span>
             <t-textarea
               v-model="createForm.reviewComment"
-              placeholder="如申报等级与系统建议不一致，说明本次调整原因、资料核验情况、风险责任和付款限制"
+              placeholder="如确认等级与系统建议不一致，说明本次调整原因、资料核验情况、风险责任和付款限制"
               :autosize="{ minRows: 2, maxRows: 4 }"
             />
           </label>
