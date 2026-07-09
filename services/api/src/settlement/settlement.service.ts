@@ -1983,7 +1983,7 @@ export class SettlementService {
       return {
         nodeName: metadata.nodeName ?? node?.name ?? log.action,
         roleName,
-        approverName: metadata.approverName ?? user?.name ?? log.actorUserId,
+        approverName: metadata.approverName ?? user?.name ?? "审批人未读取",
         comment: log.comment ?? "",
         approvedAt: log.createdAt,
         signatureImage: signatureByActor.get(log.actorUserId) ?? null
@@ -2007,7 +2007,7 @@ export class SettlementService {
       nodeName: node.name,
       roleKey,
       roleName: roleLabel(roleKey),
-      approverName: user[0]?.name ?? actorUserId
+      approverName: user[0]?.name ?? "审批人未读取"
     };
   }
 

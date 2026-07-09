@@ -1521,6 +1521,85 @@ describe("SettlementService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("does not write internal user account into settlement approval metadata when name is unavailable", async () => {
+    const tx = {
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const settlementService = new SettlementService();
+    const metadata = await (
+      settlementService as unknown as {
+        approvalLogMetadata(
+          tx: unknown,
+          node: { name: string; roleKeys: string[]; mode: string },
+          actorUserId: string,
+          roleKey: string
+        ): Promise<Record<string, unknown>>;
+      }
+    ).approvalLogMetadata(
+      tx,
+      { name: "预算部主管", roleKeys: ["budget_director"], mode: "any" },
+      "budget-director-internal-id",
+      "budget_director"
+    );
+
+    expect(metadata).toMatchObject({
+      nodeName: "预算部主管",
+      roleName: "预算部主管",
+      approverName: "审批人未读取"
+    });
+  });
+
+  it("does not expose internal user account in settlement approval PDF rows", async () => {
+    const tx = {
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "budget_director" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const settlementService = new SettlementService();
+    const rows = await (
+      settlementService as unknown as {
+        buildSettlementApprovalRows(
+          tx: unknown,
+          projectId: string,
+          frozenNodes: Array<{ name: string; roleKeys: string[]; mode: string }>,
+          actionLogs: Array<{
+            action: string;
+            actorUserId: string;
+            comment: string | null;
+            createdAt: Date;
+            metadata: unknown;
+          }>
+        ): Promise<Array<{ approverName: string }>>;
+      }
+    ).buildSettlementApprovalRows(
+      tx,
+      "project-1",
+      [{ name: "预算部主管", roleKeys: ["budget_director"], mode: "any" }],
+      [
+        {
+          action: "approve",
+          actorUserId: "budget-director-internal-id",
+          comment: "同意",
+          createdAt: new Date("2026-07-03T10:00:00.000Z"),
+          metadata: {}
+        }
+      ]
+    );
+
+    expect(rows[0]).toMatchObject({ approverName: "审批人未读取" });
+  });
+
   it("结算单不在审批中时不能处理审批", async () => {
     const tx = {
       settlement: {
