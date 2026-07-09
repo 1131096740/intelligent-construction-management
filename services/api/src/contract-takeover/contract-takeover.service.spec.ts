@@ -428,6 +428,14 @@ describe("ContractTakeoverService", () => {
         "historicalPaidCents"
       ])
     );
+    expect(result.rows[3].issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "signedAt",
+          message: "签订日期不正确，请按“年-月-日”填写，例如 2026-01-10"
+        })
+      ])
+    );
     expect(prisma.contract.findMany).toHaveBeenCalledWith({
       where: {
         OR: [
@@ -610,6 +618,42 @@ describe("ContractTakeoverService", () => {
         })
       ])
     );
+  });
+
+  it("uses business guidance for invalid takeover cutoff date before creating import drafts", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.createDraftsFromImport(
+        "project-1",
+        {
+          takeoverCutoffDate: "2026-02-31",
+          rows: [
+            {
+              code: "HT-HIS-CUTOFF",
+              name: "接管截止日错误合同",
+              counterparty: "历史供应商",
+              amountCents: 1_000_000,
+              signedAt: "2026-01-10",
+              takeoverLevel: "B",
+              lifecycleStatus: "in_progress",
+              paymentTermsOriginalText: "按月结算付款",
+              balanceSourceSummary: "财务台账",
+              evidenceSummary: "合同扫描件",
+              evidenceChecklist: "合同扫描件、历史结算台账、付款凭证"
+            }
+          ]
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("接管截止日不正确，请按“年-月-日”填写，例如 2026-01-10");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("creates takeover drafts from ready import rows after precheck", async () => {
@@ -1294,7 +1338,7 @@ describe("ContractTakeoverService", () => {
         },
         "contract-user"
       )
-    ).rejects.toThrow("签订日期不正确，请按 YYYY-MM-DD 填写");
+    ).rejects.toThrow("签订日期不正确，请按“年-月-日”填写，例如 2026-01-10");
 
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
@@ -1329,7 +1373,7 @@ describe("ContractTakeoverService", () => {
         },
         "contract-user"
       )
-    ).rejects.toThrow("签订日期不正确，请按 YYYY-MM-DD 填写");
+    ).rejects.toThrow("签订日期不正确，请按“年-月-日”填写，例如 2026-01-10");
 
     expect(tx.contract.create).not.toHaveBeenCalled();
   });

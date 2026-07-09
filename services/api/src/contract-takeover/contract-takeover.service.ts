@@ -1142,7 +1142,7 @@ export class ContractTakeoverService {
       issues.push(issue(rowNo, "amountCents", "error", "合同金额必须填写大于 0 的金额"));
     }
     if (!isStrictDateText(signedAt)) {
-      issues.push(issue(rowNo, "signedAt", "error", "签订日期必须是有效日期 YYYY-MM-DD"));
+      issues.push(issue(rowNo, "signedAt", "error", dateInputMessage("签订日期")));
     }
     if (!TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel)) {
       issues.push(issue(rowNo, "takeoverLevel", "error", "接管等级请选择 A级、B级或C级"));
@@ -1229,11 +1229,11 @@ export class ContractTakeoverService {
     }
 
     if (typeof input.signedAt !== "string" || !input.signedAt.trim()) {
-      throw new Error("签订日期不正确，请按 YYYY-MM-DD 填写");
+      throw new Error(dateInputMessage("签订日期"));
     }
 
     if (!isStrictDateText(input.signedAt)) {
-      throw new Error("签订日期不正确，请按 YYYY-MM-DD 填写");
+      throw new Error(dateInputMessage("签订日期"));
     }
     const signedAt = new Date(input.signedAt);
     const takeoverCutoffDate = input.takeoverCutoffDate?.trim()
@@ -1296,7 +1296,7 @@ export class ContractTakeoverService {
 
   private normalizeOptionalDate(value: string, field: string) {
     if (!isStrictDateText(value)) {
-      throw new Error(`${dateFieldLabel(field)}不正确，请按 YYYY-MM-DD 填写`);
+      throw new Error(dateInputMessage(dateFieldLabel(field)));
     }
     return new Date(value);
   }
@@ -1362,6 +1362,10 @@ function unique<T>(values: T[]): T[] {
 function dateFieldLabel(field: string): string {
   if (field === "takeoverCutoffDate") return "接管截止日";
   return "日期";
+}
+
+function dateInputMessage(label: string): string {
+  return `${label}不正确，请按“年-月-日”填写，例如 2026-01-10`;
 }
 
 function moneyString(value: bigint | number): string {
