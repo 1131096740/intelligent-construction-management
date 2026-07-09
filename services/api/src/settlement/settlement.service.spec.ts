@@ -292,6 +292,69 @@ describe("SettlementService", () => {
     expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
+  it("rejects duplicate settlement when the period label only differs by spaces", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      settlement: {
+        findFirst: jest.fn((args: { where: { periodLabel: string } }) =>
+          args.where.periodLabel === "2026-06"
+            ? Promise.resolve({ id: "settlement-existing", code: "JS-2026-020" })
+            : Promise.resolve(null)
+        ),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({
+          id: "settlement-duplicate-spaces",
+          code: "JS-2026-021"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          ratioBps: 8000
+        })
+      },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-021",
+        periodLabel: " 2026-06 ",
+        amountCents: 100000
+      })
+    ).rejects.toThrow("同一合同版本和结算期间已存在结算单");
+    expect(tx.settlement.findFirst).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "contract-version-1",
+        periodLabel: "2026-06",
+        status: expect.any(Object)
+      },
+      select: { id: true, code: true }
+    });
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+  });
+
   it("rejects contract bill row settlement lines when cumulative settled amount exceeds the bill row amount", async () => {
     const tx = {
       contractVersion: {

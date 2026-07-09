@@ -543,7 +543,8 @@ export class SettlementService {
       }
 
       this.assertContractVersionEffective(version.status as ContractVersionStatus);
-      await this.assertNoDuplicateActiveSettlementPeriod(tx, version.id, input.periodLabel);
+      const periodLabel = this.requiredText(input.periodLabel, "结算期间");
+      await this.assertNoDuplicateActiveSettlementPeriod(tx, version.id, periodLabel);
       const settlementLines = await this.normalizeSettlementLines(
         tx,
         version.id,
@@ -614,7 +615,7 @@ export class SettlementService {
           contractVersionId: version.id,
           paymentTermsVersionId: terms.id,
           code: input.code,
-          periodLabel: input.periodLabel,
+          periodLabel,
           status: "approval_pending",
           amountCents: settlementAmountCents,
           payableAmountCents,
