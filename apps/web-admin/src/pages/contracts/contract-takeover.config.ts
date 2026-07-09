@@ -128,8 +128,8 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
   { colKey: "operation", title: "操作", width: 248, fixed: "right" }
 ];
 
-export function takeoverLevelLabel(value: ContractTakeoverLevel): string {
-  return takeoverLevelOptions.find((option) => option.value === value)?.label.slice(0, 2) ?? value;
+export function takeoverLevelLabel(value: ContractTakeoverLevel | string): string {
+  return takeoverLevelOptions.find((option) => option.value === value)?.label.slice(0, 2) ?? "等级未读取";
 }
 
 export function buildImportPrecheckMessage(result: ImportPrecheckMessageInput): {
@@ -150,11 +150,11 @@ export function buildImportDraftsMessage(result: ImportDraftsMessageInput): stri
   return `${result.batchNo} 已生成 ${result.createdCount} 份接管草稿${warningText}${skippedText}，请进入草稿核对后再提交复核。`;
 }
 
-export function lifecycleStatusLabel(value: ContractLifecycleStatus): string {
-  return lifecycleStatusOptions.find((option) => option.value === value)?.label ?? value;
+export function lifecycleStatusLabel(value: ContractLifecycleStatus | string): string {
+  return lifecycleStatusOptions.find((option) => option.value === value)?.label ?? "履约状态未读取";
 }
 
-export function takeoverStatusLabel(status: ContractTakeoverStatus): string {
+export function takeoverStatusLabel(status: ContractTakeoverStatus | string): string {
   const labels: Record<ContractTakeoverStatus, string> = {
     draft: "草稿",
     pending_review: "待复核",
@@ -163,7 +163,7 @@ export function takeoverStatusLabel(status: ContractTakeoverStatus): string {
     voided: "已作废"
   };
 
-  return labels[status] ?? status;
+  return labels[status as ContractTakeoverStatus] ?? "接管状态未读取";
 }
 
 export function takeoverStatusTone(status: ContractTakeoverStatus): ContractTakeoverTone {

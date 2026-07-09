@@ -144,6 +144,9 @@ describe("contract takeover page configuration", () => {
     expect(takeoverStatusLabel("pending_review")).toBe("待复核");
     expect(takeoverStatusTone("confirmed")).toBe("success");
     expect(lifecycleStatusLabel("signed_not_started")).toBe("已签未开工");
+    expect(takeoverLevelLabel("internal_level")).toBe("等级未读取");
+    expect(takeoverStatusLabel("internal_status")).toBe("接管状态未读取");
+    expect(lifecycleStatusLabel("internal_lifecycle")).toBe("履约状态未读取");
   });
 
   it("shows takeover responsible user without exposing internal user ids", () => {
