@@ -651,7 +651,7 @@
     <t-dialog
       v-model:visible="confirmVisible"
       header="确认历史合同接管"
-      :confirm-btn="{ content: '确认接管', loading: confirming }"
+      :confirm-btn="confirmButtonProps"
       cancel-btn="取消"
       :close-on-overlay-click="false"
       @confirm="confirmSelectedTakeover"
@@ -690,6 +690,7 @@
             autocomplete="current-password"
             placeholder="请输入当前登录密码"
           />
+          <small v-if="confirmDisabledReason">{{ confirmDisabledReason }}</small>
         </label>
       </div>
     </t-dialog>
@@ -736,6 +737,7 @@ import {
   parseContractTakeoverImportPrecheckRows,
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
+  takeoverConfirmDisabledReason,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
@@ -874,6 +876,12 @@ const selectedPostConfirmationChecklist = computed(() =>
 const confirmSummary = computed(() =>
   confirmTarget.value ? buildTakeoverConfirmationSummary(confirmTarget.value) : null
 );
+const confirmDisabledReason = computed(() => takeoverConfirmDisabledReason(confirmationPassword.value));
+const confirmButtonProps = computed(() => ({
+  content: "确认接管",
+  loading: confirming.value,
+  disabled: Boolean(confirmDisabledReason.value)
+}));
 const selectedEvidenceUploadDisabledReason = computed(() => {
   const takeover = selectedRow.value?.takeover;
   if (!takeover) return "请先选择需要补充资料的接管合同";
@@ -1328,6 +1336,10 @@ async function confirmSelectedTakeover() {
   }
   if (!projectId) {
     setMessage("请先选择项目", "danger");
+    return;
+  }
+  if (confirmDisabledReason.value) {
+    setMessage(confirmDisabledReason.value, "danger");
     return;
   }
 

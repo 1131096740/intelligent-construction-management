@@ -14,6 +14,7 @@ import {
   parseContractTakeoverImportPrecheckRows,
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
+  takeoverConfirmDisabledReason,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
@@ -201,6 +202,12 @@ describe("contract takeover page configuration", () => {
     expect(
       takeoverEvidenceUploadDisabledReason({ ...takeover(), takeoverStatus: "voided" }, true)
     ).toBe("接管记录已作废，不能上传资料");
+  });
+
+  it("requires current password before confirming takeover", () => {
+    expect(takeoverConfirmDisabledReason("")).toBe("请填写当前登录密码后再确认接管");
+    expect(takeoverConfirmDisabledReason("   ")).toBe("请填写当前登录密码后再确认接管");
+    expect(takeoverConfirmDisabledReason("current-password")).toBe("");
   });
 
   it("recommends takeover level and requires a reason when manually adjusted", () => {

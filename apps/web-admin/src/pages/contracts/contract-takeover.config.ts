@@ -240,6 +240,11 @@ export function takeoverEvidenceUploadDisabledReason(
   return "";
 }
 
+export function takeoverConfirmDisabledReason(password: string): string {
+  if (!password.trim()) return "请填写当前登录密码后再确认接管";
+  return "";
+}
+
 export function suggestTakeoverLevel(draft: TakeoverLevelSuggestionDraft): TakeoverLevelSuggestion {
   const text = `${draft.balanceSourceSummary} ${draft.evidenceSummary}`;
 
