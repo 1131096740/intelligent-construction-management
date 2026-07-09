@@ -320,26 +320,23 @@ export function takeoverWorkbenchSteps(
   takeover: Pick<ContractTakeoverReadModel, "takeoverStatus"> | null
 ): TakeoverWorkbenchStep[] {
   const activeIndexByStatus: Record<ContractTakeoverStatus, number> = {
-    draft: 3,
-    needs_supplement: 3,
-    pending_review: 5,
-    confirmed: 7,
-    voided: 3
+    draft: 2,
+    needs_supplement: 2,
+    pending_review: 3,
+    confirmed: 4,
+    voided: 2
   };
   const activeIndex = takeover ? activeIndexByStatus[takeover.takeoverStatus] : 0;
   const isConfirmed = takeover?.takeoverStatus === "confirmed";
 
   return [
     ["接管准备", "明确项目、接管日和责任人"],
-    ["导入预检", "先查重复、金额、资料缺口"],
-    ["生成草稿", "通过预检后形成合同草稿"],
-    ["单合同补录", "补齐余额、条款和责任说明"],
-    ["资料核验", "核对合同、结算、付款凭证"],
-    ["多部门复核", "合同、预算、项目、财务复核"],
-    ["主管确认", "当前密码确认期初事实"],
+    ["导入预检", "预检通过后生成草稿，避免逐份重复录入"],
+    ["资料核验", "单合同补录并核对合同、结算、付款凭证"],
+    ["复核确认", "多部门复核后由主管用当前密码确认"],
     ["接管后核验", "用新结算和付款验证账本"]
   ].map(([label, description], index) => {
-    if (isConfirmed && index === 7) {
+    if (isConfirmed && index === 4) {
       return {
         label,
         description,

@@ -246,26 +246,28 @@ describe("contract takeover page configuration", () => {
     );
   });
 
-  it("describes the takeover workbench as an eight-step office workflow", () => {
+  it("describes the takeover workbench as a five-step office workflow", () => {
     expect(takeoverWorkbenchSteps(null).map((step) => step.label)).toEqual([
       "接管准备",
       "导入预检",
-      "生成草稿",
-      "单合同补录",
       "资料核验",
-      "多部门复核",
-      "主管确认",
+      "复核确认",
       "接管后核验"
+    ]);
+
+    expect(takeoverWorkbenchSteps(null).map((step) => step.description)).toEqual([
+      "明确项目、接管日和责任人",
+      "预检通过后生成草稿，避免逐份重复录入",
+      "单合同补录并核对合同、结算、付款凭证",
+      "多部门复核后由主管用当前密码确认",
+      "用新结算和付款验证账本"
     ]);
 
     expect(takeoverWorkbenchSteps(takeover()).map((step) => step.status)).toEqual([
       "已完成",
       "已完成",
       "已完成",
-      "已完成",
-      "已完成",
       "处理中",
-      "未开始",
       "未开始"
     ]);
 
