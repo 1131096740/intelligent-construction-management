@@ -1,6 +1,7 @@
 import type { ContractTakeoverReadModel } from "../../api/core-flow-read.api";
 import { describe, expect, it } from "vitest";
 import {
+  buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
   canConfirmTakeover,
@@ -99,6 +100,19 @@ describe("contract takeover page configuration", () => {
     expect(rows[0]).toMatchObject({
       evidenceChecklist: "缺历史付款凭证",
       issueSummary: "财务本周补凭证"
+    });
+  });
+
+  it("summarizes import precheck warnings before draft generation", () => {
+    expect(
+      buildImportPrecheckMessage({
+        readyRows: 2,
+        blockedRows: 0,
+        warningRows: 1
+      })
+    ).toEqual({
+      message: "导入预检完成：2 行可生成草稿，0 行需修改，1 行需要补充说明",
+      tone: "default"
     });
   });
 

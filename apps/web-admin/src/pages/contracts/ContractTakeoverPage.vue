@@ -711,6 +711,7 @@ import {
 } from "../../api/core-flow-read.api";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import {
+  buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
   canConfirmTakeover,
@@ -1084,10 +1085,8 @@ async function submitImportPrecheck() {
     const rows = parseContractTakeoverImportPrecheckRows(importPrecheckText.value);
     importPrecheckResult.value = await precheckContractTakeoverImport(projectId, { rows });
     const result = importPrecheckResult.value;
-    setMessage(
-      `预检完成：${result.readyRows} 行可导入，${result.blockedRows} 行需修正`,
-      result.blockedRows > 0 ? "default" : "success"
-    );
+    const precheckMessage = buildImportPrecheckMessage(result);
+    setMessage(precheckMessage.message, precheckMessage.tone);
   } catch (error) {
     importPrecheckResult.value = null;
     setMessage(error instanceof Error ? error.message : "导入预检失败", "danger");

@@ -78,6 +78,12 @@ export interface TakeoverLevelSuggestion {
 
 export type TakeoverAction = "edit" | "submit_review" | "confirm";
 
+export interface ImportPrecheckMessageInput {
+  readyRows: number;
+  blockedRows: number;
+  warningRows: number;
+}
+
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
   { value: "A", label: "A级：资料完整，可直接接管" },
   { value: "B", label: "B级：资料基本完整，需补少量说明" },
@@ -111,6 +117,16 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
 
 export function takeoverLevelLabel(value: ContractTakeoverLevel): string {
   return takeoverLevelOptions.find((option) => option.value === value)?.label.slice(0, 2) ?? value;
+}
+
+export function buildImportPrecheckMessage(result: ImportPrecheckMessageInput): {
+  message: string;
+  tone: "success" | "default";
+} {
+  return {
+    message: `导入预检完成：${result.readyRows} 行可生成草稿，${result.blockedRows} 行需修改，${result.warningRows} 行需要补充说明`,
+    tone: result.blockedRows === 0 && result.warningRows === 0 ? "success" : "default"
+  };
 }
 
 export function lifecycleStatusLabel(value: ContractLifecycleStatus): string {
