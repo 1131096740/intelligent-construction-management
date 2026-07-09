@@ -10,6 +10,7 @@ import type {
   UpdateContractTakeoverDto
 } from "./dto/create-contract-takeover.dto";
 import type { PrecheckContractTakeoverImportDto } from "./dto/precheck-contract-takeover-import.dto";
+import type { RecordContractTakeoverCorrectionDto } from "./dto/record-contract-takeover-correction.dto";
 import type { ReviewContractTakeoverImportBatchDto } from "./dto/review-contract-takeover-import-batch.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
@@ -97,6 +98,17 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.attachEvidenceFile(projectId, takeoverId, body, user.id);
+  }
+
+  @Post(":takeoverId/corrections")
+  @RequireProjectRole("contract.archive.confirm")
+  recordCorrection(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: RecordContractTakeoverCorrectionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.recordCorrection(projectId, takeoverId, body, user.id);
   }
 
   @Post(":takeoverId/review-submission")

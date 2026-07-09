@@ -25,5 +25,9 @@ describe("ContractTakeoverController", () => {
       ContractTakeoverController.prototype.confirm,
       "contract.archive.confirm"
     );
+    expectProjectAction(
+      ContractTakeoverController.prototype.recordCorrection,
+      "contract.archive.confirm"
+    );
   });
 });

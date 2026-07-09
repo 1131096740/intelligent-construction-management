@@ -21,6 +21,10 @@ import type {
   ContractTakeoverImportBatchReviewStatus,
   ReviewContractTakeoverImportBatchDto
 } from "./dto/review-contract-takeover-import-batch.dto";
+import type {
+  ContractTakeoverCorrectionType,
+  RecordContractTakeoverCorrectionDto
+} from "./dto/record-contract-takeover-correction.dto";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
 const LIFECYCLE_STATUSES = [
@@ -48,6 +52,12 @@ const IMPORT_BATCH_FINAL_STATUSES: readonly ContractTakeoverImportBatchReviewSta
   "limited_accepted",
   "disputed"
 ];
+const TAKEOVER_CORRECTION_TYPES = [
+  "amount",
+  "payment_terms",
+  "evidence",
+  "other"
+] as const satisfies readonly ContractTakeoverCorrectionType[];
 const MONEY_FIELDS = [
   "historicalSettledCents",
   "historicalApprovalPendingPaymentCents",
@@ -537,6 +547,74 @@ export class ContractTakeoverService {
       });
 
       return this.toReadModelFromDatabase(tx, takeover);
+    });
+  }
+
+  async recordCorrection(
+    projectId: string,
+    takeoverId: string,
+    input: RecordContractTakeoverCorrectionDto,
+    actorUserId: string
+  ) {
+    const correctionType = input.correctionType?.trim() as ContractTakeoverCorrectionType;
+    if (!TAKEOVER_CORRECTION_TYPES.includes(correctionType)) {
+      throw new Error("更正类型不正确，请重新选择更正事项");
+    }
+    const reason = input.reason?.trim();
+    if (!reason) throw new Error("请填写更正原因");
+    const responsibleUserId = input.responsibleUserId?.trim();
+    if (!responsibleUserId) throw new Error("请填写更正责任人");
+    const afterSummary = input.afterSummary?.trim();
+    if (!afterSummary) throw new Error("请填写更正后的事实说明");
+    const attachmentFileId = input.attachmentFileId?.trim();
+    if (!attachmentFileId) throw new Error("请上传更正依据附件");
+
+    return this.prisma.$transaction(async (tx) => {
+      const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
+      if (takeover.takeoverStatus !== "confirmed") {
+        throw new Error("接管尚未主管确认，请直接在草稿或待补充阶段修改资料");
+      }
+      if (!this.files) {
+        throw new Error("系统暂不能读取更正依据附件，请稍后重试");
+      }
+      try {
+        await this.files.assertCanDownloadFile(tx, attachmentFileId, actorUserId);
+      } catch {
+        throw new Error("当前账号无权读取更正依据附件");
+      }
+
+      const correction = await tx.contractTakeoverCorrection.create({
+        data: {
+          projectId,
+          takeoverId: takeover.id,
+          correctionType,
+          beforeSnapshot: this.toCorrectionBeforeSnapshot(takeover),
+          afterSnapshot: { summary: afterSummary },
+          reason,
+          responsibleUserId,
+          attachmentFileId,
+          createdByUserId: actorUserId
+        }
+      });
+
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover.correction.record",
+        businessType: "contract_takeover",
+        businessId: takeover.id,
+        metadata: {
+          projectId,
+          correctionId: correction.id,
+          correctionType,
+          attachmentFileId,
+          responsibleUserId
+        }
+      });
+
+      return {
+        id: correction.id,
+        message: "接管更正记录已保存，后续复核可查看原因、责任人和附件"
+      };
     });
   }
 
@@ -1132,6 +1210,38 @@ export class ContractTakeoverService {
       warningRows: batch.warningRows,
       createdCount: batch.createdCount,
       skippedCount: batch.skippedCount
+    };
+  }
+
+  private toCorrectionBeforeSnapshot(takeover: ContractTakeoverRecord): Prisma.InputJsonObject {
+    return {
+      takeoverLevel: takeover.takeoverLevel,
+      takeoverStatus: takeover.takeoverStatus,
+      lifecycleStatus: takeover.lifecycleStatus,
+      signedAt: takeover.signedAt.toISOString(),
+      historicalSettledCents: moneyString(takeover.historicalSettledCents),
+      historicalApprovalPendingPaymentCents: moneyString(
+        takeover.historicalApprovalPendingPaymentCents
+      ),
+      historicalApprovedPendingPaymentCents: moneyString(
+        takeover.historicalApprovedPendingPaymentCents
+      ),
+      historicalPaidCents: moneyString(takeover.historicalPaidCents),
+      historicalProxyPaidCents: moneyString(takeover.historicalProxyPaidCents),
+      historicalAdvancePaidCents: moneyString(takeover.historicalAdvancePaidCents),
+      historicalAdvanceDeductedCents: moneyString(takeover.historicalAdvanceDeductedCents),
+      historicalRetentionWithheldCents: moneyString(takeover.historicalRetentionWithheldCents),
+      historicalRetentionReleasedCents: moneyString(takeover.historicalRetentionReleasedCents),
+      otherConfirmedOccupancyCents: moneyString(takeover.otherConfirmedOccupancyCents),
+      balanceSourceSummary: takeover.balanceSourceSummary,
+      evidenceSummary: takeover.evidenceSummary,
+      takeoverCutoffDate: takeover.takeoverCutoffDate?.toISOString() ?? null,
+      responsibleUserId: takeover.responsibleUserId,
+      reviewComment: takeover.reviewComment,
+      acceptanceConclusion: takeover.acceptanceConclusion,
+      submittedAt: takeover.submittedAt?.toISOString() ?? null,
+      confirmedAt: takeover.confirmedAt?.toISOString() ?? null,
+      historicalBalanceConfirmedAt: takeover.historicalBalanceConfirmedAt?.toISOString() ?? null
     };
   }
 

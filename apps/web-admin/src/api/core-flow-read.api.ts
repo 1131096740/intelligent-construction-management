@@ -343,6 +343,16 @@ export interface AttachContractTakeoverEvidencePayload {
   purpose: ContractTakeoverEvidencePurpose;
 }
 
+export type ContractTakeoverCorrectionType = "amount" | "payment_terms" | "evidence" | "other";
+
+export interface RecordContractTakeoverCorrectionPayload {
+  correctionType: ContractTakeoverCorrectionType;
+  reason: string;
+  responsibleUserId: string;
+  afterSummary: string;
+  attachmentFileId: string;
+}
+
 export interface CreateSettlementPayload {
   contractVersionId: string;
   code: string;
@@ -1252,6 +1262,17 @@ export function attachContractTakeoverEvidenceFile(
 ) {
   return postJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}/evidence-files`,
+    body
+  );
+}
+
+export function recordContractTakeoverCorrection(
+  projectId: string,
+  takeoverId: string,
+  body: RecordContractTakeoverCorrectionPayload
+) {
+  return postJson<{ id: string; message: string }>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/corrections`,
     body
   );
 }

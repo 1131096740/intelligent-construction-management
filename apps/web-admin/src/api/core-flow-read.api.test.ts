@@ -86,6 +86,7 @@ import {
   listApprovalDelegations,
   createApprovalDelegation,
   attachContractTakeoverEvidenceFile,
+  recordContractTakeoverCorrection,
   fetchApprovalDelegationUserOptions,
   revokeApprovalDelegation,
   submitContractTakeoverReview,
@@ -754,6 +755,13 @@ describe("core flow read API client", () => {
       fileId: "file-1",
       purpose: "historical_contract_scan"
     });
+    await recordContractTakeoverCorrection("project-1", "takeover-1", {
+      correctionType: "evidence",
+      reason: "补充历史付款凭证复核说明",
+      responsibleUserId: "contract-director-1",
+      afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
+      attachmentFileId: "file-1"
+    });
     await submitContractTakeoverReview("project-1", "takeover-1");
     await confirmContractTakeover("project-1", "takeover-1", {
       confirmationPassword: "current-password"
@@ -768,6 +776,7 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/contract-takeovers/import-precheck",
       "/api/projects/project-1/contract-takeovers/import-drafts",
       "/api/projects/project-1/contract-takeovers/takeover-1/evidence-files",
+      "/api/projects/project-1/contract-takeovers/takeover-1/corrections",
       "/api/projects/project-1/contract-takeovers/takeover-1/review-submission",
       "/api/projects/project-1/contract-takeovers/takeover-1/confirmation"
     ]);
@@ -777,6 +786,7 @@ describe("core flow read API client", () => {
       undefined,
       "POST",
       "PATCH",
+      "POST",
       "POST",
       "POST",
       "POST",
@@ -804,7 +814,16 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[7][1]?.body).toBe(
       JSON.stringify({ fileId: "file-1", purpose: "historical_contract_scan" })
     );
-    expect(fetchMock.mock.calls[9][1]?.body).toBe(
+    expect(fetchMock.mock.calls[8][1]?.body).toBe(
+      JSON.stringify({
+        correctionType: "evidence",
+        reason: "补充历史付款凭证复核说明",
+        responsibleUserId: "contract-director-1",
+        afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
+        attachmentFileId: "file-1"
+      })
+    );
+    expect(fetchMock.mock.calls[10][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
     );
   });

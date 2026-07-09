@@ -1675,6 +1675,124 @@ describe("ContractTakeoverService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("已确认接管事实更正必须记录改前改后、原因、责任人、附件和审计", async () => {
+    const takeover = takeoverRecord({
+      takeoverStatus: "confirmed",
+      evidenceSummary: "原接管资料：合同扫描件、结算台账。",
+      historicalSettledCents: 1_000_000n,
+      historicalPaidCents: 400_000n
+    });
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeover)
+      },
+      contractTakeoverCorrection: {
+        create: jest.fn().mockResolvedValue({ id: "takeover-correction-1" })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    const result = await service.recordCorrection(
+      "project-1",
+      "takeover-1",
+      {
+        correctionType: "evidence",
+        reason: "补充历史付款凭证复核说明",
+        responsibleUserId: "contract-director-1",
+        afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
+        attachmentFileId: "file-1"
+      },
+      "contract-user"
+    );
+
+    expect(files.assertCanDownloadFile).toHaveBeenCalledWith(tx, "file-1", "contract-user");
+    expect(tx.contractTakeoverCorrection.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        takeoverId: "takeover-1",
+        correctionType: "evidence",
+        reason: "补充历史付款凭证复核说明",
+        responsibleUserId: "contract-director-1",
+        attachmentFileId: "file-1",
+        createdByUserId: "contract-user",
+        beforeSnapshot: expect.objectContaining({
+          evidenceSummary: "原接管资料：合同扫描件、结算台账。",
+          historicalSettledCents: "1000000",
+          historicalPaidCents: "400000"
+        }),
+        afterSnapshot: expect.objectContaining({
+          summary: "补充历史付款凭证，确认历史已付金额不变。"
+        })
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "contract-user",
+      action: "contract_takeover.correction.record",
+      businessType: "contract_takeover",
+      businessId: "takeover-1",
+      metadata: expect.objectContaining({
+        projectId: "project-1",
+        correctionId: "takeover-correction-1",
+        correctionType: "evidence",
+        attachmentFileId: "file-1",
+        responsibleUserId: "contract-director-1"
+      })
+    });
+    expect(result).toEqual({
+      id: "takeover-correction-1",
+      message: "接管更正记录已保存，后续复核可查看原因、责任人和附件"
+    });
+  });
+
+  it("未确认接管记录不走更正记录", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
+      },
+      contractTakeoverCorrection: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.recordCorrection(
+        "project-1",
+        "takeover-1",
+        {
+          correctionType: "evidence",
+          reason: "补充历史付款凭证复核说明",
+          responsibleUserId: "contract-director-1",
+          afterSummary: "补充历史付款凭证。",
+          attachmentFileId: "file-1"
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("接管尚未主管确认，请直接在草稿或待补充阶段修改资料");
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+    expect(tx.contractTakeoverCorrection.create).not.toHaveBeenCalled();
+  });
+
   it("rejects missing signed date before writing", async () => {
     const tx = {
       project: {
