@@ -206,6 +206,7 @@ export interface ContractTakeoverReadModel {
   evidenceSummary: string | null;
   takeoverCutoffDate: string | null;
   responsibleUserId: string | null;
+  responsibleUserName: string | null;
   reviewComment: string | null;
   acceptanceConclusion: string | null;
   submittedAt: string | null;

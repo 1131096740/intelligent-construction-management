@@ -1725,7 +1725,10 @@ describe("ContractTakeoverService", () => {
     const prisma = {
       contractTakeover: {
         findMany: jest.fn().mockResolvedValue([
-          takeoverRecord({ takeoverStatus: "pending_review" })
+          takeoverRecord({
+            takeoverStatus: "pending_review",
+            responsibleUserId: "contract-director-1"
+          })
         ])
       },
       contract: {
@@ -1743,6 +1746,9 @@ describe("ContractTakeoverService", () => {
         findMany: jest.fn().mockResolvedValue([
           { id: "contract-version-1", amountCents: 1_000_000n }
         ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-director-1", name: "合同负责人" }])
       }
     };
     const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
@@ -1754,6 +1760,8 @@ describe("ContractTakeoverService", () => {
         contractName: "Historical material contract",
         counterparty: "Supplier A",
         amountCents: "1000000",
+        responsibleUserId: "contract-director-1",
+        responsibleUserName: "合同负责人",
         levelRiskText: "A级资料较完整，可作为首批活跃合同接管，仍需保留原始资料备查。",
         paymentBlockingHint: "尚未完成主管确认，后续付款申请会被系统阻断。",
         evidenceGapSummary:
@@ -1789,6 +1797,10 @@ describe("ContractTakeoverService", () => {
     expect(row).not.toHaveProperty("submittedByUserId");
     expect(row).not.toHaveProperty("confirmedByUserId");
     expect(row).not.toHaveProperty("historicalBalanceConfirmedByUserId");
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["contract-director-1"] } },
+      select: { id: true, name: true }
+    });
   });
 
   it("explains C level takeover payment risk after confirmation", async () => {

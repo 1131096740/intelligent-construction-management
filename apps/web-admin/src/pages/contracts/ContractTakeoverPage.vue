@@ -591,7 +591,7 @@
             </div>
             <div>
               <dt>接管责任人</dt>
-              <dd>{{ selectedRow.takeover.responsibleUserId || "未填写" }}</dd>
+              <dd>{{ takeoverResponsibleUserText(selectedRow.takeover) }}</dd>
             </div>
             <div>
               <dt>提交时间</dt>
@@ -705,6 +705,7 @@ import {
   parseContractTakeoverImportPrecheckRows,
   takeoverActionDisabledReason,
   takeoverEvidenceUploadDisabledReason,
+  takeoverResponsibleUserText,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverLevelOptions,

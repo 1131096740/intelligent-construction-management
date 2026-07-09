@@ -137,6 +137,7 @@ export interface ContractTakeoverBusinessReadModel {
   evidenceSummary: string | null;
   takeoverCutoffDate: Date | null;
   responsibleUserId: string | null;
+  responsibleUserName: string | null;
   reviewComment: string | null;
   acceptanceConclusion: string | null;
   submittedAt: Date | null;
@@ -884,14 +885,19 @@ export class ContractTakeoverService {
           })
         : Promise.resolve([])
     ]);
+    const responsibleUserIds = unique(
+      takeovers
+        .map((takeover) => takeover.responsibleUserId)
+        .filter((id): id is string => typeof id === "string" && Boolean(id))
+    );
     const evidenceFileIds = unique(archiveRecords.map((record) => record.fileId));
     const files = typeof archiveClient.fileObject?.findMany === "function" && evidenceFileIds.length
       ? await archiveClient.fileObject.findMany({ where: { id: { in: evidenceFileIds } } })
       : [];
-    const uploaderIds = unique(files.map((file) => file.uploadedByUserId));
-    const users = typeof archiveClient.user?.findMany === "function" && uploaderIds.length
+    const userIds = unique([...files.map((file) => file.uploadedByUserId), ...responsibleUserIds]);
+    const users = typeof archiveClient.user?.findMany === "function" && userIds.length
       ? await archiveClient.user.findMany({
-          where: { id: { in: uploaderIds } },
+          where: { id: { in: userIds } },
           select: { id: true, name: true }
         })
       : [];
@@ -923,6 +929,9 @@ export class ContractTakeoverService {
         paymentTermsOriginalText: termsById.get(takeover.paymentTermsVersionId)?.originalText ?? "",
         batchNo: takeover.takeoverBatchId
           ? batchById.get(takeover.takeoverBatchId)?.batchNo ?? null
+          : null,
+        responsibleUserName: takeover.responsibleUserId
+          ? userNameById.get(takeover.responsibleUserId) ?? null
           : null,
         evidenceFiles: (recordsByTakeoverId.get(takeover.id) ?? []).flatMap((record) => {
           const file = fileById.get(record.fileId);
@@ -968,6 +977,7 @@ export class ContractTakeoverService {
       amountCents: bigint | number;
       paymentTermsOriginalText: string;
       batchNo?: string | null;
+      responsibleUserName?: string | null;
       evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
     }
   ): ContractTakeoverBusinessReadModel {
@@ -1008,6 +1018,7 @@ export class ContractTakeoverService {
       evidenceSummary: takeover.evidenceSummary,
       takeoverCutoffDate: takeover.takeoverCutoffDate,
       responsibleUserId: takeover.responsibleUserId,
+      responsibleUserName: contract.responsibleUserName ?? null,
       reviewComment: takeover.reviewComment,
       acceptanceConclusion: takeover.acceptanceConclusion,
       submittedAt: takeover.submittedAt,

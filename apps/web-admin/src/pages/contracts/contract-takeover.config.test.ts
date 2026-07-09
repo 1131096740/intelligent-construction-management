@@ -12,6 +12,7 @@ import {
   parseContractTakeoverImportPrecheckRows,
   takeoverActionDisabledReason,
   takeoverEvidenceUploadDisabledReason,
+  takeoverResponsibleUserText,
   takeoverWorkbenchSteps,
   takeoverLevelLabel,
   takeoverStatusLabel,
@@ -111,6 +112,20 @@ describe("contract takeover page configuration", () => {
     expect(takeoverStatusLabel("pending_review")).toBe("待复核");
     expect(takeoverStatusTone("confirmed")).toBe("success");
     expect(lifecycleStatusLabel("signed_not_started")).toBe("已签未开工");
+  });
+
+  it("shows takeover responsible user without exposing internal user ids", () => {
+    expect(takeoverResponsibleUserText(takeover())).toBe("合同负责人");
+    expect(takeoverResponsibleUserText({ ...takeover(), responsibleUserName: null })).toBe(
+      "已指定责任人"
+    );
+    expect(
+      takeoverResponsibleUserText({
+        ...takeover(),
+        responsibleUserId: null,
+        responsibleUserName: null
+      })
+    ).toBe("未填写");
   });
 
   it("shows workflow actions only for allowed statuses", () => {
@@ -277,6 +292,7 @@ function takeover(): ContractTakeoverReadModel {
     evidenceSummary: "合同与凭证",
     takeoverCutoffDate: "2026-06-30T00:00:00.000Z",
     responsibleUserId: "contract-director-1",
+    responsibleUserName: "合同负责人",
     reviewComment: "预算已复核结算口径",
     acceptanceConclusion: "作为 A 级活跃合同继续办理",
     submittedAt: "2026-07-03T10:00:00.000Z",

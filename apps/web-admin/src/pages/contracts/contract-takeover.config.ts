@@ -125,6 +125,12 @@ export function takeoverStatusTone(status: ContractTakeoverStatus): ContractTake
   return tones[status] ?? "default";
 }
 
+export function takeoverResponsibleUserText(takeover: ContractTakeoverReadModel): string {
+  if (takeover.responsibleUserName?.trim()) return takeover.responsibleUserName.trim();
+  if (takeover.responsibleUserId?.trim()) return "已指定责任人";
+  return "未填写";
+}
+
 export function canSubmitTakeoverReview(takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">) {
   return takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement";
 }
