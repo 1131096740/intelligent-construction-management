@@ -305,6 +305,86 @@ describe("ArchiveService", () => {
     expect(result.summary.total).toBe(1);
   });
 
+  it("does not let hidden takeover evidence crowd out visible takeover evidence", async () => {
+    const archiveRecords = [
+      {
+        id: "archive-hidden",
+        businessType: "contract_takeover",
+        businessId: "takeover-hidden",
+        fileId: "file-hidden",
+        departmentScope: "contract",
+        createdAt: new Date("2026-07-01T12:00:00.000Z")
+      },
+      {
+        id: "archive-visible",
+        businessType: "contract_takeover",
+        businessId: "takeover-visible",
+        fileId: "file-visible",
+        departmentScope: "contract",
+        createdAt: new Date("2026-07-01T11:00:00.000Z")
+      }
+    ];
+    const prisma = {
+      contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+      archiveRecord: {
+        findMany: jest.fn(async (args?: { where?: { OR?: Array<{ businessId?: { in: string[] } }> }; take?: number }) => {
+          const visibleIds = args?.where?.OR?.flatMap((item) => item.businessId?.in ?? []) ?? [];
+          if (visibleIds.length) {
+            return archiveRecords.filter((record) => visibleIds.includes(record.businessId));
+          }
+          return archiveRecords.slice(0, args?.take ?? archiveRecords.length);
+        })
+      },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-visible",
+            projectId: "project-visible",
+            code: "HT-VISIBLE",
+            temporaryCode: null,
+            name: "可见历史合同"
+          }
+        ])
+      },
+      contractTakeover: {
+        findMany: jest.fn(async (args: { where: { projectId?: { in: string[] }; id?: { in: string[] } } }) => {
+          if (args.where.projectId) {
+            return [{ id: "takeover-visible", projectId: "project-visible", contractId: "contract-visible" }];
+          }
+          return [{ id: "takeover-visible", projectId: "project-visible", contractId: "contract-visible" }];
+        })
+      },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "file-visible", originalName: "当前项目历史合同.pdf", sizeBytes: 1024 }
+        ])
+      },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-visible", name: "可见项目" }])
+      }
+    };
+    const service = new ArchiveService(prisma as never);
+
+    const result = await service.listRecent(1, ["project-visible"]);
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        documentType: "历史接管资料",
+        businessRef: "HT-VISIBLE / 历史接管",
+        project: "可见项目",
+        fileId: "file-visible"
+      })
+    ]);
+    expect(result.summary.total).toBe(1);
+  });
+
   it("does not mark pending business archive files as downloadable", async () => {
     const prisma = {
       contractArchiveFile: {

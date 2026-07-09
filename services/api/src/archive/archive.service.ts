@@ -10,12 +10,27 @@ export class ArchiveService {
   async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
     const take = this.limit(rawLimit);
     const visibleProjectSet = visibleProjectIds ? new Set(visibleProjectIds) : null;
+    const visibleTakeoverIds = await this.findVisibleContractTakeoverIds(visibleProjectIds);
+    const archiveRecordWhere = visibleProjectIds
+      ? {
+          OR: [
+            { businessType: { not: "contract_takeover" } },
+            ...(visibleTakeoverIds.length
+              ? [{ businessType: "contract_takeover", businessId: { in: visibleTakeoverIds } }]
+              : [])
+          ]
+        }
+      : undefined;
     const [contractArchives, settlementArchives, paymentVouchers, archiveRecords] =
       await Promise.all([
         this.prisma.contractArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
         this.prisma.settlementArchiveFile.findMany({ take, orderBy: { createdAt: "desc" } }),
         this.prisma.paymentExecution.findMany({ take, orderBy: { createdAt: "desc" } }),
-        this.prisma.archiveRecord.findMany({ take, orderBy: { createdAt: "desc" } })
+        this.prisma.archiveRecord.findMany({
+          take,
+          orderBy: { createdAt: "desc" },
+          ...(archiveRecordWhere ? { where: archiveRecordWhere } : {})
+        })
       ]);
 
     const contractVersionIds = [
@@ -288,6 +303,29 @@ export class ArchiveService {
           select: { id: true, projectId: true, contractId: true }
         })
       : Promise.resolve([]);
+  }
+
+  private async findVisibleContractTakeoverIds(visibleProjectIds?: string[]) {
+    if (!visibleProjectIds?.length) {
+      return [];
+    }
+    const contractTakeover = (this.prisma as unknown as {
+      contractTakeover?: {
+        findMany: (args: {
+          where: { projectId: { in: string[] } };
+          select: { id: true };
+        }) => Promise<Array<{ id: string }>>;
+      };
+    }).contractTakeover;
+    if (!contractTakeover) {
+      return [];
+    }
+
+    const rows = await contractTakeover.findMany({
+      where: { projectId: { in: visibleProjectIds } },
+      select: { id: true }
+    });
+    return rows.map((row) => row.id);
   }
 
   private findFiles(ids: string[]) {
