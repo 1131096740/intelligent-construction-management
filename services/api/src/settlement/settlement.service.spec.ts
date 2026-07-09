@@ -140,7 +140,8 @@ describe("SettlementService", () => {
             contractBillId: "bill-1",
             itemName: "钢筋材料",
             unit: "吨",
-            unitPrice: new Prisma.Decimal("3200")
+            unitPrice: new Prisma.Decimal("3200"),
+            taxInclusiveAmountCents: BigInt(1000000)
           }
         ])
       },
@@ -168,6 +169,7 @@ describe("SettlementService", () => {
         })
       },
       settlementLine: {
+        findMany: jest.fn().mockResolvedValue([]),
         createMany: jest.fn()
       },
       ...settlementQuotaTables()
@@ -234,6 +236,148 @@ describe("SettlementService", () => {
         }
       ]
     });
+  });
+
+  it("rejects duplicate active settlement for the same contract version and period", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          ratioBps: 8000
+        })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "settlement-existing",
+          code: "JS-2026-020"
+        }),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({
+          id: "settlement-duplicate",
+          code: "JS-2026-021"
+        })
+      },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-021",
+        periodLabel: "2026-06",
+        amountCents: 100000
+      })
+    ).rejects.toThrow("同一合同版本和结算期间已存在结算单");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract bill row settlement lines when cumulative settled amount exceeds the bill row amount", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([{ id: "bill-1" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "bill-row-1",
+            contractBillId: "bill-1",
+            itemName: "钢筋材料",
+            unit: "吨",
+            unitPrice: new Prisma.Decimal("3200"),
+            taxInclusiveAmountCents: BigInt(100000)
+          }
+        ])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-version-1"
+        })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({
+          ratioBps: 8000
+        })
+      },
+      settlement: {
+        findMany: jest.fn((args: { where?: { id?: { in?: string[] } } }) =>
+          args?.where?.id?.in
+            ? Promise.resolve([{ id: "settlement-old" }])
+            : Promise.resolve([])
+        ),
+        create: jest.fn().mockResolvedValue({
+          id: "settlement-over-bill-row",
+          code: "JS-2026-022"
+        })
+      },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractBillRowId: "bill-row-1",
+            settlementId: "settlement-old",
+            amountCents: 80000
+          }
+        ]),
+        createMany: jest.fn()
+      },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-022",
+        periodLabel: "2026-06",
+        amountCents: 30000,
+        settlementLines: [
+          {
+            sourceType: "contract_bill_row",
+            contractBillRowId: "bill-row-1",
+            quantity: "1",
+            amountCents: 30000
+          }
+        ]
+      })
+    ).rejects.toThrow("合同清单项“钢筋材料”累计结算金额不能超过合同清单金额");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
   });
 
   it("rejects settlement lines when their total differs from the backend settlement amount", async () => {

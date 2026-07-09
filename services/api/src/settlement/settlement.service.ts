@@ -75,6 +75,20 @@ const SETTLEMENT_QUOTA_OCCUPANCY_STATUSES = [
   "partially_paid",
   "paid"
 ] as const;
+const SETTLEMENT_ACTIVE_PERIOD_STATUSES = [
+  "draft",
+  "in_approval",
+  "approval_pending",
+  "approved_pending_archive",
+  "pending_archive_confirm",
+  "effective",
+  "partially_paid",
+  "paid"
+] as const satisfies readonly SettlementStatus[];
+const SETTLEMENT_BILL_ROW_OCCUPANCY_STATUSES = [
+  "in_approval",
+  ...SETTLEMENT_QUOTA_OCCUPANCY_STATUSES
+] as const satisfies readonly SettlementStatus[];
 const SETTLEMENT_EXCEPTION_USAGE_ACTIVE_STATUSES = ["occupied", "used"] as const;
 const SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY = "settlement_approval_latest";
 const SETTLEMENT_PREVIOUS_EFFECTIVE_STATUSES = ["effective", "partially_paid", "paid"] as const;
@@ -145,6 +159,7 @@ interface SettlementLineContractBillRow {
   itemName: string;
   unit: string;
   unitPrice: Prisma.Decimal | string | number;
+  taxInclusiveAmountCents: bigint | number;
 }
 
 interface SettlementLineClient {
@@ -163,10 +178,21 @@ interface SettlementLineClient {
         itemName: true;
         unit: true;
         unitPrice: true;
+        taxInclusiveAmountCents: true;
       };
     }): Promise<SettlementLineContractBillRow[]>;
   };
   settlementLine: {
+    findMany?(args: {
+      where: { contractBillRowId: { in: string[] } };
+      select: { contractBillRowId: true; settlementId: true; amountCents: true };
+    }): Promise<
+      Array<{
+        contractBillRowId: string | null;
+        settlementId: string;
+        amountCents: number;
+      }>
+    >;
     createMany(args: {
       data: Array<{
         settlementId: string;
@@ -183,6 +209,12 @@ interface SettlementLineClient {
       }>;
     }): Promise<unknown>;
   };
+  settlement?: {
+    findMany(args: {
+      where: { id: { in: string[] }; status: { in: SettlementStatus[] } };
+      select: { id: true };
+    }): Promise<Array<{ id: string }>>;
+  };
 }
 
 interface NormalizedSettlementLine {
@@ -196,6 +228,20 @@ interface NormalizedSettlementLine {
   reason: string | null;
   remark: string | null;
   sortOrder: number;
+  contractBillRowLimitCents: bigint | null;
+}
+
+interface SettlementDuplicateClient {
+  settlement?: {
+    findFirst(args: {
+      where: {
+        contractVersionId: string;
+        periodLabel: string;
+        status: { in: SettlementStatus[] };
+      };
+      select: { id: true; code: true };
+    }): Promise<{ id: string; code: string } | null>;
+  };
 }
 
 @Injectable()
@@ -258,7 +304,8 @@ export class SettlementService {
           amountCents,
           reason,
           remark: this.optionalText(line.remark),
-          sortOrder: this.sortOrder(line.sortOrder, index)
+          sortOrder: this.sortOrder(line.sortOrder, index),
+          contractBillRowLimitCents: null
         };
       }
 
@@ -278,7 +325,8 @@ export class SettlementService {
         amountCents,
         reason: this.optionalText(line.reason),
         remark: this.optionalText(line.remark),
-        sortOrder: this.sortOrder(line.sortOrder, index)
+        sortOrder: this.sortOrder(line.sortOrder, index),
+        contractBillRowLimitCents: BigInt(billRow.taxInclusiveAmountCents)
       };
     });
   }
@@ -305,7 +353,8 @@ export class SettlementService {
         contractBillId: true,
         itemName: true,
         unit: true,
-        unitPrice: true
+        unitPrice: true,
+        taxInclusiveAmountCents: true
       }
     });
 
@@ -326,6 +375,95 @@ export class SettlementService {
     return lineTotal;
   }
 
+  private async assertNoDuplicateActiveSettlementPeriod(
+    tx: unknown,
+    contractVersionId: string,
+    periodLabel: string
+  ): Promise<void> {
+    const client = tx as SettlementDuplicateClient;
+    const existing = await client.settlement?.findFirst?.({
+      where: {
+        contractVersionId,
+        periodLabel,
+        status: { in: [...SETTLEMENT_ACTIVE_PERIOD_STATUSES] }
+      },
+      select: { id: true, code: true }
+    });
+
+    if (existing) {
+      throw new BadRequestException(
+        "同一合同版本和结算期间已存在结算单，不能重复创建。请打开原结算单继续处理；如确需重做，请先退回或作废原结算单。"
+      );
+    }
+  }
+
+  private async assertContractBillRowSettlementLimits(
+    tx: unknown,
+    lines: NormalizedSettlementLine[]
+  ): Promise<void> {
+    const billRowLines = lines.filter(
+      (line) => line.sourceType === "contract_bill_row" && line.contractBillRowId
+    );
+    if (!billRowLines.length) return;
+
+    const client = tx as SettlementLineClient;
+    const currentByRowId = new Map<
+      string,
+      { amountCents: bigint; limitCents: bigint; name: string }
+    >();
+
+    for (const line of billRowLines) {
+      const rowId = line.contractBillRowId;
+      if (!rowId || line.contractBillRowLimitCents === null) continue;
+      const current = currentByRowId.get(rowId) ?? {
+        amountCents: 0n,
+        limitCents: line.contractBillRowLimitCents,
+        name: line.name
+      };
+      current.amountCents += BigInt(line.amountCents);
+      currentByRowId.set(rowId, current);
+    }
+
+    const rowIds = [...currentByRowId.keys()];
+    if (!rowIds.length) return;
+
+    const previousLines =
+      (await client.settlementLine.findMany?.({
+        where: { contractBillRowId: { in: rowIds } },
+        select: { contractBillRowId: true, settlementId: true, amountCents: true }
+      })) ?? [];
+
+    const previousSettlementIds = [...new Set(previousLines.map((line) => line.settlementId))];
+    const activeSettlementIds = previousSettlementIds.length
+      ? new Set(
+          (
+            (await client.settlement?.findMany({
+              where: {
+                id: { in: previousSettlementIds },
+                status: { in: [...SETTLEMENT_BILL_ROW_OCCUPANCY_STATUSES] }
+              },
+              select: { id: true }
+            })) ?? []
+          ).map((settlement) => settlement.id)
+        )
+      : new Set<string>();
+
+    for (const line of previousLines) {
+      if (!line.contractBillRowId || !activeSettlementIds.has(line.settlementId)) continue;
+      const current = currentByRowId.get(line.contractBillRowId);
+      if (!current) continue;
+      current.amountCents += BigInt(line.amountCents);
+    }
+
+    for (const { amountCents, limitCents, name } of currentByRowId.values()) {
+      if (amountCents > limitCents) {
+        throw new BadRequestException(
+          `合同清单项“${name}”累计结算金额不能超过合同清单金额。请核对历史结算或调整本次明细。`
+        );
+      }
+    }
+  }
+
   private async createSettlementLines(
     tx: unknown,
     settlementId: string,
@@ -335,7 +473,19 @@ export class SettlementService {
 
     const client = tx as SettlementLineClient;
     await client.settlementLine.createMany({
-      data: lines.map((line) => ({ ...line, settlementId }))
+      data: lines.map((line) => ({
+        settlementId,
+        contractBillRowId: line.contractBillRowId,
+        sourceType: line.sourceType,
+        name: line.name,
+        unit: line.unit,
+        quantity: line.quantity,
+        unitPriceCents: line.unitPriceCents,
+        amountCents: line.amountCents,
+        reason: line.reason,
+        remark: line.remark,
+        sortOrder: line.sortOrder
+      }))
     });
   }
 
@@ -393,6 +543,7 @@ export class SettlementService {
       }
 
       this.assertContractVersionEffective(version.status as ContractVersionStatus);
+      await this.assertNoDuplicateActiveSettlementPeriod(tx, version.id, input.periodLabel);
       const settlementLines = await this.normalizeSettlementLines(
         tx,
         version.id,
@@ -430,6 +581,7 @@ export class SettlementService {
         calculatedSettlementAmountCents,
         settlementLines
       );
+      await this.assertContractBillRowSettlementLimits(tx, settlementLines);
 
       const exceptionQuotaAllocations = await this.reserveSettlementQuota(
         tx,
