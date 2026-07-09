@@ -26,6 +26,8 @@ interface SheetRow {
   rowKey?: string;
 }
 
+type TestSchemaColumn = { key: string; label?: string; type?: string };
+
 // 在内存中构造一个 `清单数据` 工作簿，第 1 行=标签、第 2 行=字段码、数据从第 3 行起。
 async function buildWorkbookBuffer(options: {
   fieldCodes?: string[];
@@ -60,7 +62,7 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
     amountRole: "included",
     quantityScale: 3,
     unitPriceScale: 2,
-    schemaSnapshot: { columns: [] },
+    schemaSnapshot: { columns: [] as TestSchemaColumn[] },
     taxInclusiveAmountCents: 0n,
     taxExclusiveAmountCents: 0n,
     taxAmountCents: 0n
@@ -208,7 +210,7 @@ describe("ContractBillExcelService", () => {
     expect(result.fileName).toMatch(/\.xlsx$/);
   });
 
-  it("includes hidden internal field codes and row keys", async () => {
+  it("hides internal field codes and row keys from business users", async () => {
     const { service } = billFixture();
 
     const result = await service.exportTemplate("bill-1", "owner-1");
@@ -216,15 +218,33 @@ describe("ContractBillExcelService", () => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
     const sheet = workbook.getWorksheet(DATA_SHEET)!;
+    const labelRow = sheet.getRow(1);
     const codeRow = sheet.getRow(2);
     const codes: string[] = [];
     codeRow.eachCell((cell: Cell) => codes.push(String(cell.value)));
+    expect(labelRow.getCell(1).value).toBe("项目编号");
+    expect(codeRow.hidden).toBe(true);
     expect(codes).toContain(ROW_KEY_CODE);
     expect(codes).toContain("quantity");
     // 隐藏列：__rowKey 所在列必须隐藏。
     const rowKeyIndex = codes.indexOf(ROW_KEY_CODE) + 1;
     expect(sheet.getColumn(rowKeyIndex).hidden).toBe(true);
     expect((sheet.views?.[0] as { ySplit?: number })?.ySplit).toBe(2);
+  });
+
+  it("uses Chinese labels for custom bill columns in exported templates", async () => {
+    const { service, bill } = billFixture();
+    bill.schemaSnapshot = { columns: [{ key: "brand", label: "品牌", type: "text" }] };
+
+    const result = await service.exportTemplate("bill-1", "owner-1");
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.getWorksheet(DATA_SHEET)!;
+    const labels: string[] = [];
+    sheet.getRow(1).eachCell((cell: Cell) => labels.push(String(cell.value)));
+    expect(labels).toContain("品牌");
+    expect(labels).not.toContain("brand");
   });
 
   it("recalculates formulas from raw quantity, price, and tax cells", async () => {

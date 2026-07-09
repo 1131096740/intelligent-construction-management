@@ -253,6 +253,132 @@ describe("ProjectService", () => {
     expect(prisma.project.findMany).not.toHaveBeenCalled();
   });
 
+  it("lists every project roster for company leaders", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn(({ where }) => {
+          if (where.userId === "leader" && where.projectId === null) {
+            return Promise.resolve([{ positionId: "position-chairman" }]);
+          }
+          return Promise.resolve([]);
+        })
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ id: "position-chairman", key: "chairman" }])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }) => {
+          if (where.userId === "leader") return Promise.resolve([]);
+          return Promise.resolve([
+            { projectId: "project-1", userId: "user-1", positionKey: "project_manager" },
+            { projectId: "project-2", userId: "user-2", positionKey: "employee" }
+          ]);
+        })
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "project-1", code: "JG-001", name: "总部综合楼" },
+          { id: "project-2", code: "JG-002", name: "二标段" }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "user-1", name: "孙工", phone: "13300000001" },
+          { id: "user-2", name: "杨工", phone: "13300000002" }
+        ])
+      }
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(service.listRoster("leader")).resolves.toEqual([
+      {
+        projectId: "project-1",
+        projectCode: "JG-001",
+        projectName: "总部综合楼",
+        userId: "user-1",
+        name: "孙工",
+        phone: "13300000001",
+        positionKeys: ["project_manager"],
+        positionNames: ["项目经理"]
+      },
+      {
+        projectId: "project-2",
+        projectCode: "JG-002",
+        projectName: "二标段",
+        userId: "user-2",
+        name: "杨工",
+        phone: "13300000002",
+        positionKeys: ["employee"],
+        positionNames: ["员工"]
+      }
+    ]);
+    expect(prisma.project.findMany).toHaveBeenCalledWith({
+      where: { isActive: true },
+      select: { id: true, code: true, name: true },
+      orderBy: [{ code: "asc" }, { name: "asc" }]
+    });
+  });
+
+  it("lists only own project roster for ordinary project members", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn(({ where }) => {
+          if (where.userId === "employee") {
+            return Promise.resolve([{ projectId: "project-2", userId: "employee", positionKey: "employee" }]);
+          }
+          return Promise.resolve([
+            { projectId: "project-2", userId: "employee", positionKey: "employee" },
+            { projectId: "project-2", userId: "user-3", positionKey: "engineering_foreman" }
+          ]);
+        })
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-2", code: "JG-002", name: "二标段" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "employee", name: "杨工", phone: "13300000002" },
+          { id: "user-3", name: "蒋工", phone: "13300000003" }
+        ])
+      }
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(service.listRoster("employee")).resolves.toEqual([
+      {
+        projectId: "project-2",
+        projectCode: "JG-002",
+        projectName: "二标段",
+        userId: "user-3",
+        name: "蒋工",
+        phone: "13300000003",
+        positionKeys: ["engineering_foreman"],
+        positionNames: ["工长"]
+      },
+      {
+        projectId: "project-2",
+        projectCode: "JG-002",
+        projectName: "二标段",
+        userId: "employee",
+        name: "杨工",
+        phone: "13300000002",
+        positionKeys: ["employee"],
+        positionNames: ["员工"]
+      }
+    ]);
+    expect(prisma.project.findMany).toHaveBeenCalledWith({
+      where: { isActive: true, id: { in: ["project-2"] } },
+      select: { id: true, code: true, name: true },
+      orderBy: [{ code: "asc" }, { name: "asc" }]
+    });
+  });
+
   it("aggregates operating funds overview with upstream settlements when available", async () => {
     const prisma = {
       project: {

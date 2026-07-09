@@ -86,6 +86,18 @@ describe("useAuthStore", () => {
     expect(store.isAuthenticated).toBe(false);
   });
 
+  it("shows a Chinese message when the login request cannot reach the server", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError("failed for fetch");
+    }) as never;
+    const store = useAuthStore();
+
+    await expect(store.login("13800000001", "Jgzg@2026")).rejects.toThrow(
+      "网络连接失败，请检查网络后重试。"
+    );
+    expect(store.isAuthenticated).toBe(false);
+  });
+
   it("clears the session and storage on logout", async () => {
     const store = await seedSession();
     globalThis.fetch = vi.fn(async () => new Response("{}", { status: 200 })) as never;

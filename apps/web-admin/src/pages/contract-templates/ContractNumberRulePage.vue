@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>合同编号规则</h1>
-        <p>仅允许 {company} {project} {year} {type} {sequence}；规则可停用，不提供删除/回退序号</p>
+        <p>编号格式支持公司、项目、年份、类型、流水号；规则可停用，不提供删除或回退序号</p>
       </div>
       <t-button @click="loadRules">
         刷新
@@ -16,13 +16,43 @@
       class="panel"
     >
       <div class="form-grid">
-        <label><span>规则 ID（更新时填写）</span><t-input v-model="form.ruleId" /></label>
+        <label><span>编辑状态</span><t-input
+          :value="form.ruleId ? '正在编辑已有规则' : '新建规则'"
+          readonly
+        /></label>
         <label><span>名称</span><t-input v-model="form.name" /></label>
         <label><span>编号格式</span><t-input v-model="form.pattern" /></label>
         <label><span>流水号位数</span><t-input v-model.number="form.sequenceWidth" /></label>
-        <label><span>适用公司主体</span><t-input v-model="form.companyEntityId" /></label>
-        <label><span>适用项目</span><t-input v-model="form.projectId" /></label>
-        <label><span>适用合同类型</span><t-input v-model="form.contractTypeKey" /></label>
+        <label><span>适用公司主体</span><t-input
+          v-model="form.companyEntityId"
+          placeholder="留空代表全部公司"
+        /></label>
+        <label><span>适用项目</span><t-input
+          v-model="form.projectId"
+          placeholder="留空代表全部项目"
+        /></label>
+        <label><span>适用合同类型</span><t-select v-model="form.contractTypeKey">
+          <t-option
+            value=""
+            label="全部类型"
+          />
+          <t-option
+            v-for="option in contractTypeOptions"
+            :key="option.value"
+            :value="option.value"
+            :label="option.label"
+          />
+        </t-select></label>
+      </div>
+      <div class="token-list">
+        <button
+          v-for="token in numberRuleTokenOptions"
+          :key="token.value"
+          type="button"
+          @click="appendToken(token.value)"
+        >
+          {{ token.label }}
+        </button>
       </div>
       <p :class="['preview', patternValid ? 'success' : 'danger']">
         下一编号预览：{{ nextPreview }}
@@ -58,8 +88,17 @@
         :loading="loading"
         empty="暂无编号规则"
       >
+        <template #pattern="{ row }">
+          {{ displayContractNumberPattern(row.pattern) }}
+        </template>
+        <template #companyEntityId="{ row }">
+          {{ scopeLabel(row.companyEntityId) }}
+        </template>
+        <template #projectId="{ row }">
+          {{ scopeLabel(row.projectId) }}
+        </template>
         <template #contractTypeKey="{ row }">
-          {{ contractTypeLabel(row.contractTypeKey) }}
+          {{ row.contractTypeKey ? contractTypeLabel(row.contractTypeKey) : "全部类型" }}
         </template>
         <template #next="{ row }">
           {{ previewContractNumber(row.pattern, row.nextSequence ?? 1, row.sequenceWidth ?? 3) }}
@@ -103,8 +142,12 @@ import {
 } from "../../api/contract-workbench.api";
 import { contractTypeLabel } from "../contracts/contract-labels";
 import {
+  contractTypeOptions,
+  displayContractNumberPattern,
   hasOnlyAllowedNumberRuleTokens,
   isValidContractNumberPattern,
+  normalizeContractNumberPattern,
+  numberRuleTokenOptions,
   previewContractNumber
 } from "./contract-template.config";
 
@@ -138,7 +181,7 @@ const tone = ref<"success" | "danger">("success");
 const form = reactive({
   ruleId: "",
   name: "",
-  pattern: "HT-{company}-{project}-{year}-{type}-{sequence}",
+  pattern: "合同-{公司}-{项目}-{年份}-{类型}-{流水号}",
   sequenceWidth: 3,
   companyEntityId: "",
   projectId: "",
@@ -149,13 +192,13 @@ const patternValid = computed(() => isValidContractNumberPattern(form.pattern));
 const nextPreview = computed(() =>
   patternValid.value
     ? previewContractNumber(form.pattern, 1, Number(form.sequenceWidth) || 3)
-    : hasOnlyAllowedNumberRuleTokens(form.pattern) ? "必须包含 {sequence}" : "包含不允许的占位符"
+    : hasOnlyAllowedNumberRuleTokens(form.pattern) ? "必须包含流水号" : "包含不允许的占位符"
 );
 
 function payload() {
   return {
     name: form.name.trim(),
-    pattern: form.pattern.trim(),
+    pattern: normalizeContractNumberPattern(form.pattern.trim()),
     sequenceWidth: Number(form.sequenceWidth) || 3,
     companyEntityId: form.companyEntityId.trim() || undefined,
     projectId: form.projectId.trim() || undefined,
@@ -166,11 +209,19 @@ function payload() {
 function fill(row: RuleRow) {
   form.ruleId = row.id;
   form.name = row.name;
-  form.pattern = row.pattern;
+  form.pattern = displayContractNumberPattern(row.pattern);
   form.sequenceWidth = row.sequenceWidth ?? 3;
   form.companyEntityId = row.companyEntityId ?? "";
   form.projectId = row.projectId ?? "";
   form.contractTypeKey = row.contractTypeKey ?? "";
+}
+
+function appendToken(token: string) {
+  form.pattern = `${form.pattern}${token}`;
+}
+
+function scopeLabel(value?: string | null) {
+  return value ? "指定范围" : "全部";
 }
 
 async function loadRules() {
@@ -224,6 +275,8 @@ onMounted(loadRules);
 .panel { margin-bottom: 16px; border-radius: 3px; }
 .form-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
 label { display: grid; gap: 4px; }
+.token-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.token-list button { border: 1px solid #dce1e8; background: #fff; color: #424955; border-radius: 3px; padding: 4px 8px; cursor: pointer; }
 .preview, .message { font-size: 12px; }
 .success { color: #1b6b3a; }
 .danger { color: #b51d2a; }

@@ -1,14 +1,11 @@
-const { readFileSync, writeFileSync } = require("node:fs");
+const { readdirSync, readFileSync, writeFileSync } = require("node:fs");
 const path = require("node:path");
 const PizZip = require("pizzip");
 
 const templatesRoot = path.resolve(__dirname, "../assets/templates");
-const templates = [
-  "material-purchase-real-v1.docx",
-  "equipment-rental-real-v1.docx",
-  "labor-subcontract-real-v1.docx",
-  "generic-contract-v1.docx"
-];
+const templates = readdirSync(templatesRoot)
+  .filter((fileName) => fileName.endsWith(".docx"))
+  .sort();
 
 const standardStyles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -108,6 +105,63 @@ function normalizeXml(xml) {
 
 const tablePr = '<w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:jc w:val="center"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:start w:w="80" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:end w:w="80" w:type="dxa"/></w:tblCellMar><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="000000"/></w:tblBorders></w:tblPr>';
 const portraitTextWidthDxa = 8504;
+const placeholderReplacements = new Map([
+  ["{contract.name}", "{合同名称}"],
+  ["{contract.temporaryCode}", "{草稿编号}"],
+  ["{contract.code}", "{合同编号}"],
+  ["{contract.amount}", "{合同金额}"],
+  ["{contract.amountUppercase}", "{合同金额大写}"],
+  ["{document.watermark}", "{文档水印}"],
+  ["{document.generatedAt}", "{生成时间}"],
+  ["{party.owner.name}", "{甲方名称}"],
+  ["{party.counterparty.name}", "{乙方名称}"],
+  ["{field.projectName}", "{项目名称}"],
+  ["{field.counterpartyName}", "{相对方名称}"],
+  ["{field.businessSummary}", "{业务摘要}"],
+  ["{field.deliveryLocation}", "{交货地点}"],
+  ["{field.deliveryDeadline}", "{交货期限}"],
+  ["{field.qualityStandard}", "{质量标准}"],
+  ["{field.settlementMethod}", "{结算方式}"],
+  ["{field.useLocation}", "{使用地点}"],
+  ["{field.rentalStartDate}", "{租赁开始日期}"],
+  ["{field.rentalEndDate}", "{租赁结束日期}"],
+  ["{field.settlementCycle}", "{结算周期}"],
+  ["{field.paymentRatioPercent}", "{付款比例}"],
+  ["{field.workScope}", "{作业范围}"],
+  ["{field.workLocation}", "{作业地点}"],
+  ["{field.plannedStartDate}", "{计划开工日期}"],
+  ["{field.plannedEndDate}", "{计划完工日期}"],
+  ["{field.progressPaymentRatioPercent}", "{进度付款比例}"],
+  ["{field.taxRatePercent}", "{税率}"],
+  ["{clause.payment.text}", "{付款条款}"],
+  ["{clause.specialAgreement.text}", "{特别约定}"],
+  ["{clause.safety.text}", "{安全文明条款}"],
+  ["{clause.wageCommitment.text}", "{工资承诺条款}"],
+  ["{#bill.materials}", "{#材料清单}"],
+  ["{/bill.materials}", "{/材料清单}"],
+  ["{#bill.equipmentRentals}", "{#机械租赁清单}"],
+  ["{/bill.equipmentRentals}", "{/机械租赁清单}"],
+  ["{#bill.laborItems}", "{#劳务清单}"],
+  ["{/bill.laborItems}", "{/劳务清单}"],
+  ["{#bill.genericItems}", "{#通用清单}"],
+  ["{/bill.genericItems}", "{/通用清单}"],
+  ["{itemName}", "{名称}"],
+  ["{specification}", "{规格型号}"],
+  ["{unit}", "{单位}"],
+  ["{quantity}", "{数量}"],
+  ["{unitPrice}", "{单价}"],
+  ["{taxRatePercent}", "{税率}"],
+  ["{taxInclusiveAmount}", "{含税金额}"],
+  ["{remark}", "{备注}"]
+]);
+
+function localizePlaceholders(xml) {
+  let output = xml;
+  for (const [from, to] of placeholderReplacements) {
+    output = output.split(from).join(to);
+  }
+  return output;
+}
 
 function tableHeaderText(tableXml) {
   const firstRow = tableXml.match(/<w:tr\b[\s\S]*?<\/w:tr>/)?.[0] ?? "";
@@ -431,7 +485,7 @@ ${blank}${blank}${blank}${blank}${blank}${blank}${blank}${blank}
 }
 
 function standardHeader() {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:pStyle w:val="ContractMeta"/><w:jc w:val="center"/></w:pPr><w:r><w:t xml:space="preserve">{document.watermark}</w:t></w:r></w:p></w:hdr>`;
+  return localizePlaceholders(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:pStyle w:val="ContractMeta"/><w:jc w:val="center"/></w:pPr><w:r><w:t xml:space="preserve">{document.watermark}</w:t></w:r></w:p></w:hdr>`);
 }
 
 function standardFooter() {
@@ -475,11 +529,14 @@ for (const fileName of templates) {
         normalized = removeStaticAttachmentParagraphs(normalized);
       }
     }
-    zip.file(name, normalized);
+    zip.file(name, localizePlaceholders(normalized));
   }
 
   if (fileName === "generic-contract-v1.docx") {
-    zip.file("word/document.xml", normalizeTables(normalizeCover(genericDocumentXml(), fileName)));
+    zip.file(
+      "word/document.xml",
+      localizePlaceholders(normalizeTables(normalizeCover(genericDocumentXml(), fileName)))
+    );
     zip.file("word/header1.xml", standardHeader());
     zip.file("word/footer1.xml", standardFooter());
   }

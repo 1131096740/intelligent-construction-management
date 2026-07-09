@@ -174,6 +174,41 @@ describe("LayoutTemplateService", () => {
     expect(result.blockingErrors).toEqual([]);
   });
 
+  it("accepts Chinese business placeholders and bill loops", async () => {
+    const version = {
+      id: "version-1",
+      status: "draft",
+      docxFileId: "file-1",
+      placeholderSchema: { bills: [{ key: "materials" }] }
+    };
+    const tx = {
+      ...roleTx("contract_staff"),
+      contractLayoutTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue(version),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const buffer = docx(
+      "<w:document>{合同名称} {草稿编号} {文档水印} {#材料清单}{名称}{规格}{单位}{数量}{/材料清单}</w:document>"
+    );
+    files.getFileBuffer.mockResolvedValue({ file: { id: "file-1" }, buffer });
+    const service = new LayoutTemplateService(prisma, audit as never, files as never);
+
+    const result = await service.inspectVersion("version-1", "staff-1");
+
+    expect(result.placeholders).toEqual([
+      "contract.name",
+      "contract.temporaryCode",
+      "document.watermark"
+    ]);
+    expect(result.hasBillLoop).toBe(true);
+    expect(result.unknownPlaceholders).toEqual([]);
+    expect(result.blockingErrors).toEqual([]);
+  });
+
   it("reports unknown placeholders", async () => {
     const version = {
       id: "version-1",

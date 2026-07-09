@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import type { RoleKey } from "@jiangkong/shared-domain";
+import { formatApiErrorMessage, formatUnknownApiError } from "../api/error-message";
 
 export const AUTH_STORAGE_KEY = "jiangkong-web-admin-auth";
 
@@ -34,11 +35,16 @@ function getStorage(): Storage | null {
 }
 
 async function postAuth<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`/api/auth/${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api/auth/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  } catch (error) {
+    throw new Error(formatUnknownApiError(error, "登录请求失败"));
+  }
 
   if (!response.ok) {
     const text = await response.text();
@@ -50,7 +56,7 @@ async function postAuth<T>(path: string, body: unknown): Promise<T> {
 
 function formatAuthError(text: string, status: number, fallback: string) {
   if (!text) {
-    return `${fallback}：${status}`;
+    return formatApiErrorMessage(text, status, fallback);
   }
 
   try {
@@ -61,35 +67,9 @@ function formatAuthError(text: string, status: number, fallback: string) {
         ? parsed.message
         : "";
 
-    if (message === "Invalid phone or password") {
-      return "手机号或密码错误";
-    }
-
-    if (/Password change required/i.test(message)) {
-      return "请先完成初始密码修改。";
-    }
-
-    if (/old password|current password|Invalid password/i.test(message)) {
-      return "当前密码不正确";
-    }
-
-    if (/new password/i.test(message) || /at least 8/i.test(message)) {
-      return "新密码至少 8 位";
-    }
-
-    if (/Internal server error/i.test(message)) {
-      return "系统暂时无法完成操作，请稍后重试或联系管理员。";
-    }
-
-    return message || `${fallback}：${status}`;
+    return formatApiErrorMessage(message, status, fallback);
   } catch {
-    if (/Password change required/i.test(text)) {
-      return "请先完成初始密码修改。";
-    }
-    if (/Internal server error/i.test(text)) {
-      return "系统暂时无法完成操作，请稍后重试或联系管理员。";
-    }
-    return text;
+    return formatApiErrorMessage(text, status, fallback);
   }
 }
 
@@ -184,14 +164,19 @@ export const useAuthStore = defineStore("auth", {
         throw new Error("请先登录");
       }
 
-      const response = await fetch("/api/auth/change-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.accessToken}`
-        },
-        body: JSON.stringify({ oldPassword, newPassword })
-      });
+      let response: Response;
+      try {
+        response = await fetch("/api/auth/change-password", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.accessToken}`
+          },
+          body: JSON.stringify({ oldPassword, newPassword })
+        });
+      } catch (error) {
+        throw new Error(formatUnknownApiError(error, "修改密码失败"));
+      }
 
       if (!response.ok) {
         const text = await response.text();

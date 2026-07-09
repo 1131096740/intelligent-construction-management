@@ -20,12 +20,12 @@ const enabledThemeByKind: Record<DetailActionReadModel["kind"], BusinessActionPa
 export function toBusinessActionPanelItems(
   actions: DetailActionReadModel[]
 ): BusinessActionPanelItem[] {
-  return actions.map((action) => ({
+  return actions.filter((action) => action.enabled).map((action) => ({
     key: action.key,
     label: action.label,
-    statusText: action.enabled ? "可操作" : "暂不可操作",
-    statusTheme: action.enabled ? enabledThemeByKind[action.kind] : "warning",
-    reason: action.enabled ? "" : action.disabledReason ?? "当前状态或权限不允许操作。",
+    statusText: "可办理",
+    statusTheme: enabledThemeByKind[action.kind],
+    reason: "",
     requirementText: actionRequirements(action)
   }));
 }

@@ -235,47 +235,47 @@ describe("coreFlowSeedData", () => {
       "material purchase",
       coreFlowSeedData.materialPurchaseWorkbench.layout.docxFile.originalName,
       [
-        "field.projectName",
-        "field.deliveryLocation",
-        "party.owner.name",
-        "party.counterparty.name",
-        "clause.payment.text",
-        "bill.materials"
+        "项目名称",
+        "交货地点",
+        "甲方名称",
+        "乙方名称",
+        "付款条款",
+        "材料清单"
       ]
     ],
     [
       "equipment rental",
       coreFlowSeedData.equipmentRentalWorkbench.layout.docxFile.originalName,
       [
-        "field.useLocation",
-        "party.owner.name",
-        "party.counterparty.name",
-        "clause.payment.text",
-        "bill.equipmentRentals"
+        "使用地点",
+        "甲方名称",
+        "乙方名称",
+        "付款条款",
+        "机械租赁清单"
       ]
     ],
     [
       "labor subcontract",
       coreFlowSeedData.laborSubcontractWorkbench.layout.docxFile.originalName,
       [
-        "field.workLocation",
-        "field.plannedStartDate",
-        "clause.payment.text",
-        "clause.safety.text",
-        "clause.wageCommitment.text",
-        "bill.laborItems"
+        "作业地点",
+        "计划开工日期",
+        "付款条款",
+        "安全文明条款",
+        "工资承诺条款",
+        "劳务清单"
       ]
     ],
     [
       "generic contract",
       coreFlowSeedData.genericContractWorkbench.layout.docxFile.originalName,
       [
-        "field.projectName",
-        "field.counterpartyName",
-        "field.businessSummary",
-        "clause.payment.text",
-        "clause.specialAgreement.text",
-        "bill.genericItems"
+        "项目名称",
+        "相对方名称",
+        "业务摘要",
+        "付款条款",
+        "特别约定",
+        "通用清单"
       ]
     ]
   ])("ships a matching %s DOCX seed asset", (_label, originalName, placeholders) => {

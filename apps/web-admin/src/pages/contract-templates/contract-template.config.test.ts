@@ -4,9 +4,12 @@ import {
   businessPartyEditPolicy,
   businessTemplateVersionActionsByStatus,
   canPublishLayoutVersion,
+  contractTypeOptions,
+  displayContractNumberPattern,
   fieldTypeOptions,
   hasOnlyAllowedNumberRuleTokens,
   isValidContractNumberPattern,
+  normalizeContractNumberPattern,
   pricingModeOptions,
   quantityScaleOptions,
   templateListActions,
@@ -34,6 +37,7 @@ describe("contract template center config", () => {
   });
 
   it("supports only explicit field and bill options", () => {
+    expect(contractTypeOptions.map((option) => option.label)).toContain("材料采购合同");
     const values = fieldTypeOptions.map((option) => option.value);
     expect(values).toEqual([
       "text",
@@ -105,8 +109,12 @@ describe("contract template center config", () => {
     expect(hasOnlyAllowedNumberRuleTokens("HT-{company}-{project}-{year}-{type}-{sequence}")).toBe(
       true
     );
+    expect(hasOnlyAllowedNumberRuleTokens("合同-{公司}-{项目}-{年份}-{类型}-{流水号}")).toBe(true);
     expect(hasOnlyAllowedNumberRuleTokens("HT-{company}-{month}-{sequence}")).toBe(false);
     expect(isValidContractNumberPattern("HT-{year}-{sequence}")).toBe(true);
+    expect(isValidContractNumberPattern("合同-{年份}-{流水号}")).toBe(true);
     expect(isValidContractNumberPattern("HT-{year}")).toBe(false);
+    expect(normalizeContractNumberPattern("合同-{公司}-{流水号}")).toBe("合同-{company}-{sequence}");
+    expect(displayContractNumberPattern("HT-{company}-{sequence}")).toBe("HT-{公司}-{流水号}");
   });
 });

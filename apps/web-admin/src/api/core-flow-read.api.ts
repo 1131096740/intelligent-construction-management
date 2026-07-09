@@ -6,6 +6,7 @@ import type {
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
+import { formatApiErrorMessage } from "./error-message";
 
 async function ensureOk(response: Response, fallback: string): Promise<void> {
   if (response.ok) {
@@ -16,45 +17,16 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   try {
     const data = (await response.clone().json()) as { message?: unknown };
     if (typeof data.message === "string") {
-      message = formatBusinessErrorMessage(data.message, response.status, fallback);
+      message = formatApiErrorMessage(data.message, response.status, fallback);
     } else if (Array.isArray(data.message)) {
-      message = formatBusinessErrorMessage(data.message.join("；"), response.status, fallback);
+      message = formatApiErrorMessage(data.message.join("；"), response.status, fallback);
     }
   } catch {
     // 响应体非 JSON，沿用兜底文案。
-    message = formatBusinessErrorMessage(message, response.status, fallback);
+    message = formatApiErrorMessage(message, response.status, fallback);
   }
 
   throw new Error(message);
-}
-
-function formatBusinessErrorMessage(message: string, status: number, fallback: string) {
-  const text = message.trim();
-  if (!text) {
-    return `${fallback}：${status}`;
-  }
-
-  if (/Password change required/i.test(text)) {
-    return "请先完成初始密码修改，再继续办理业务。";
-  }
-
-  if (/Internal server error/i.test(text)) {
-    return "系统暂时无法完成操作，请稍后重试或联系管理员。";
-  }
-
-  if (/Forbidden/i.test(text) || (status === 403 && /^(提交失败|读取失败|上传失败|删除失败)/.test(text))) {
-    return "当前账号暂无该项目或当前节点的处理权限。";
-  }
-
-  if (/not found/i.test(text) || (status === 404 && /^(提交失败|读取失败|上传失败|删除失败)/.test(text))) {
-    return "未找到对应业务单据，请确认单据是否存在或你是否有权查看。";
-  }
-
-  if (/fileId|archiveFileId|voucherFileId/i.test(text)) {
-    return "请选择当前单据下可用的业务文件后再提交。";
-  }
-
-  return text;
 }
 
 async function readJson<T>(path: string): Promise<T> {
@@ -590,6 +562,16 @@ export interface ProjectOptionReadModel {
   name: string;
 }
 
+export interface ProjectRosterRowReadModel {
+  projectId: string;
+  projectCode: string;
+  projectName: string;
+  userId: string;
+  name: string;
+  phone: string;
+  positionNames: string[];
+}
+
 export interface CreateProjectPayload {
   code: string;
   name: string;
@@ -879,6 +861,10 @@ export function fetchWorkItems() {
 
 export function fetchProjects() {
   return readJson<ProjectOptionReadModel[]>("/projects");
+}
+
+export function fetchProjectRoster() {
+  return readJson<ProjectRosterRowReadModel[]>("/projects/roster");
 }
 
 export function createProject(body: CreateProjectPayload) {
@@ -1323,7 +1309,7 @@ function saveBlob(blob: Blob, fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
-// 审批单 PDF 下载：审批通过后后端按下载人动态生成带水印 PDF，直接以 blob 触发浏览器下载。
+// 审批单文件下载：审批通过后后端按下载人动态生成带水印文件，直接以 blob 触发浏览器下载。
 // businessType：合同 contract_version + contractVersionId、结算 settlement + settlementId、付款 payment_request + paymentId。
 export async function downloadApprovalForm(businessType: string, businessId: string): Promise<void> {
   const response = await apiFetch(`/approval-forms/${businessType}/${businessId}/download`);
@@ -1337,7 +1323,7 @@ export async function downloadApprovalForm(businessType: string, businessId: str
 
 export async function downloadSettlementDraftExcel(settlementId: string): Promise<void> {
   const response = await apiFetch(`/settlements/${settlementId}/draft-excel`);
-  await ensureOk(response, "下载结算草稿Excel失败");
+  await ensureOk(response, "下载结算草稿表格失败");
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") ?? "";
   const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);

@@ -6,6 +6,8 @@
  *
  * 逻辑做成纯工厂 + 依赖注入，便于单测；默认实例在 `api-fetch.ts` 里接 Pinia store。
  */
+import { formatUnknownApiError } from "./error-message";
+
 export interface AuthBridge {
   getAccessToken(): string | null;
   /** 用 refresh token 续期；成功返回 true（此后 getAccessToken 应返回新 token）。 */
@@ -32,7 +34,13 @@ export function createApiFetch(
   fetchImpl?: typeof fetch
 ): (path: string, init?: RequestInit) => Promise<Response> {
   return async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
-    const send = () => (fetchImpl ?? fetch)(`/api${path}`, withAuth(init, bridge.getAccessToken()));
+    const send = async () => {
+      try {
+        return await (fetchImpl ?? fetch)(`/api${path}`, withAuth(init, bridge.getAccessToken()));
+      } catch (error) {
+        throw new Error(formatUnknownApiError(error, "网络请求失败"));
+      }
+    };
 
     let response = await send();
 

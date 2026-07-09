@@ -39,7 +39,7 @@
       class="panel"
     >
       <div class="form-grid">
-        <label><span>当前版本 ID</span><t-input
+        <label><span>当前版本编号</span><t-input
           v-model="versionId"
           placeholder="暂无版本时，请先创建或克隆草稿版本"
         /></label>
@@ -83,7 +83,7 @@
       >
         <t-input
           v-model="field.key"
-          placeholder="key"
+          placeholder="字段标识"
         />
         <t-input
           v-model="field.label"
@@ -104,7 +104,7 @@
         > 必填</label>
         <t-input
           v-model="field.optionsText"
-          placeholder="选项：A=1,B=2"
+          placeholder="选项：是=1，否=0"
         />
         <t-input
           v-model="field.visibleWhenFieldKey"
@@ -112,7 +112,7 @@
         />
         <t-input
           v-model="field.visibleWhenValue"
-          placeholder="eq 值"
+          placeholder="匹配值"
         />
         <t-button
           size="small"
@@ -145,7 +145,7 @@
       >
         <t-input
           v-model="bill.key"
-          placeholder="key"
+          placeholder="清单标识"
         />
         <t-input
           v-model="bill.name"
@@ -189,7 +189,7 @@
         </select>
         <t-input
           v-model="bill.columnsText"
-          placeholder="列：spec:规格:text,brand:品牌:text"
+          placeholder="列：规格=规格型号，品牌=品牌"
         />
         <t-button
           size="small"
@@ -222,7 +222,7 @@
       >
         <t-input
           v-model="clause.key"
-          placeholder="key"
+          placeholder="条款标识"
         />
         <t-input
           v-model="clause.title"
@@ -241,7 +241,7 @@
         > 必填</label>
         <t-input
           v-model="clause.standardClauseVersionId"
-          placeholder="标准条款版本 ID"
+          placeholder="标准条款版本编号"
         />
         <t-textarea
           v-model="clause.text"
@@ -278,7 +278,7 @@
       >
         <t-input
           v-model="attachment.key"
-          placeholder="key"
+          placeholder="附件标识"
         />
         <t-input
           v-model="attachment.name"
@@ -323,7 +323,7 @@
       >
         <t-input
           v-model="rule.key"
-          placeholder="key"
+          placeholder="规则标识"
         />
         <select v-model="rule.level">
           <option value="block">
@@ -334,7 +334,7 @@
         </select>
         <t-input
           v-model="rule.targetClauseKey"
-          placeholder="目标条款 key"
+          placeholder="目标条款标识"
         />
         <t-input
           v-model="rule.requiredPhrasesText"
@@ -437,7 +437,7 @@ function addBill() {
     pricingMode: "tax_inclusive",
     quantityScale: 2,
     unitPriceScale: 2,
-    columnsText: "itemName:项目:text,unit:单位:text"
+    columnsText: "项目=项目名称，单位=计量单位"
   });
 }
 
@@ -465,14 +465,73 @@ function optionTextToOptions(value: unknown) {
 }
 
 function columnsTextToColumns(value: unknown) {
+  const usedKeys = new Set<string>();
   return String(value ?? "")
-    .split(",")
+    .split(/[,，]/)
     .map((item) => item.trim())
     .filter(Boolean)
-    .map((item) => {
-      const [key, label, type = "text"] = item.split(":");
-      return { key, label: label ?? key, type };
+    .map((item, index) => {
+      const column = parseColumnText(item, index);
+      const key = ensureUniqueColumnKey(column.key, usedKeys, index);
+      usedKeys.add(key);
+      return { ...column, key };
     });
+}
+
+function parseColumnText(item: string, index: number) {
+  if (item.includes(":")) {
+    const [rawKey, rawLabel, type = "text"] = item.split(":").map((part) => part.trim());
+    const label = rawLabel || rawKey || `列${index + 1}`;
+    return { key: rawKey || columnKeyFromLabel(label, index), label, type: type || "text" };
+  }
+  const [rawName, rawLabel] = item.split("=").map((part) => part.trim());
+  const label = rawLabel || rawName || `列${index + 1}`;
+  return { key: columnKeyFromLabel(rawName || label, index), label, type: inferColumnType(label) };
+}
+
+function columnKeyFromLabel(label: string, index: number) {
+  const normalized = label.replace(/\s+/g, "");
+  const knownKeys: Record<string, string> = {
+    项目: "itemName",
+    项目名称: "itemName",
+    名称: "itemName",
+    材料名称: "itemName",
+    设备名称: "itemName",
+    机械名称: "itemName",
+    规格: "specification",
+    规格型号: "specification",
+    型号: "specification",
+    单位: "unit",
+    计量单位: "unit",
+    数量: "quantity",
+    工程量: "quantity",
+    暂估数量: "quantity",
+    单价: "unitPrice",
+    含税单价: "unitPrice",
+    税率: "taxRatePercent",
+    金额: "taxInclusiveAmount",
+    含税金额: "taxInclusiveAmount",
+    合计: "taxInclusiveAmount",
+    价税合计: "taxInclusiveAmount",
+    品牌: "brand",
+    备注: "remark"
+  };
+  return knownKeys[normalized] ?? `custom_${index + 1}`;
+}
+
+function inferColumnType(label: string) {
+  return /数量|工程量|单价|金额|合计|税率/.test(label) ? "number" : "text";
+}
+
+function ensureUniqueColumnKey(key: string, usedKeys: Set<string>, index: number) {
+  if (!usedKeys.has(key)) return key;
+  let candidate = `${key}_${index + 1}`;
+  let suffix = index + 2;
+  while (usedKeys.has(candidate)) {
+    candidate = `${key}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
 }
 
 function buildSchema() {
@@ -537,7 +596,7 @@ async function saveVersion() {
 async function action(kind: "clone" | "submit" | "publish" | "stop" | "revoke") {
   const id = versionId.value.trim();
   if (!id) {
-    message.value = "请先填写版本 ID";
+    message.value = "请先填写版本编号";
     tone.value = "danger";
     return;
   }

@@ -1,12 +1,14 @@
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
+import {
+  CONTRACT_BILL_PLACEHOLDER_ALIASES,
+  CONTRACT_BILL_ROW_PLACEHOLDER_ALIASES,
+  CONTRACT_DOCUMENT_REQUIRED_PLACEHOLDERS,
+  CONTRACT_VALUE_PLACEHOLDER_ALIASES
+} from "./contract-placeholder-registry";
 import type { ContractDocumentRenderInput } from "./contract-document.types";
 
-const REQUIRED_VALUES = [
-  "contract.name",
-  "contract.temporaryCode",
-  "document.watermark"
-] as const;
+const REQUIRED_VALUES = CONTRACT_DOCUMENT_REQUIRED_PLACEHOLDERS;
 const MERGEABLE_BILL_TABLE_HEADERS = new Set([
   "序号货物名称规格型号计量单位数量含税单价税率(%)价税合计",
   "机械设备名称或费用名称规格型号暂估数量计价单位含税租金单价税率(%)价税合计租金备注",
@@ -16,7 +18,6 @@ const MERGEABLE_BILL_TABLE_HEADERS = new Set([
 const CHINESE_DIGITS = ["零", "壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖"];
 const SECTION_UNITS = ["", "拾", "佰", "仟"];
 const GROUP_UNITS = ["", "万", "亿", "兆", "京"];
-
 function moneyCents(value: bigint | number): bigint {
   if (
     (typeof value === "number" && (!Number.isSafeInteger(value) || value < 0)) ||
@@ -125,6 +126,30 @@ function assertRequiredValues(
   }
 }
 
+function withChinesePlaceholderAliases(values: Record<string, unknown>): Record<string, unknown> {
+  const aliased = { ...values };
+  for (const [alias, source] of Object.entries(CONTRACT_VALUE_PLACEHOLDER_ALIASES)) {
+    if (aliased[alias] === undefined && values[source] !== undefined) {
+      aliased[alias] = values[source];
+    }
+  }
+  for (const [alias, source] of Object.entries(CONTRACT_BILL_PLACEHOLDER_ALIASES)) {
+    const rows = values[source];
+    if (aliased[alias] !== undefined || !Array.isArray(rows)) continue;
+    aliased[alias] = rows.map((row) => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+      const aliasedRow = { ...(row as Record<string, unknown>) };
+      for (const [rowAlias, rowSource] of Object.entries(CONTRACT_BILL_ROW_PLACEHOLDER_ALIASES)) {
+        if (aliasedRow[rowAlias] === undefined && aliasedRow[rowSource] !== undefined) {
+          aliasedRow[rowAlias] = aliasedRow[rowSource];
+        }
+      }
+      return aliasedRow;
+    });
+  }
+  return aliased;
+}
+
 function tableRows(tableXml: string): string[] {
   return tableXml.match(/<w:tr\b[\s\S]*?<\/w:tr>/g) ?? [];
 }
@@ -210,7 +235,7 @@ export function renderContractDocx(
       linebreaks: true,
       nullGetter: () => ""
     });
-    document.render(renderInput.values);
+    document.render(withChinesePlaceholderAliases(renderInput.values));
     const renderedZip = document.getZip();
     const documentXml = renderedZip.file("word/document.xml")?.asText();
     if (documentXml) {

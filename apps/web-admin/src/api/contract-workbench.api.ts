@@ -1,4 +1,5 @@
 import { apiFetch } from "./api-fetch";
+import { formatApiErrorMessage } from "./error-message";
 
 // ---------------------------------------------------------------------------
 // Local HTTP helpers (built on apiFetch; keep isolated from core-flow client)
@@ -13,12 +14,13 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
   try {
     const data = (await response.clone().json()) as { message?: unknown };
     if (typeof data.message === "string") {
-      message = data.message;
+      message = formatApiErrorMessage(data.message, response.status, fallback);
     } else if (Array.isArray(data.message)) {
-      message = data.message.join("；");
+      message = formatApiErrorMessage(data.message.join("；"), response.status, fallback);
     }
   } catch {
     // 响应体非 JSON，沿用兜底文案。
+    message = formatApiErrorMessage(message, response.status, fallback);
   }
 
   throw new Error(message);

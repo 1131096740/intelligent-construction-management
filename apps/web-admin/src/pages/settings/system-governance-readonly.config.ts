@@ -87,7 +87,7 @@ const filePurposeEntries: ReadonlyDictionaryEntry[] = [
   {
     key: "contract_archive",
     label: "合同归档件",
-    description: "盖章合同和合同归档 PDF，归档确认后作为合同版本生效证据。"
+    description: "盖章合同和合同归档文件，归档确认后作为合同版本生效证据。"
   },
   {
     key: "draft",
@@ -107,7 +107,7 @@ const filePurposeEntries: ReadonlyDictionaryEntry[] = [
   {
     key: "settlement_archive",
     label: "结算归档件",
-    description: "签字结算单和结算归档 PDF，归档确认后作为付款依据。"
+    description: "签字结算单和结算归档文件，归档确认后作为付款依据。"
   },
   {
     key: "payment_voucher",
@@ -116,7 +116,7 @@ const filePurposeEntries: ReadonlyDictionaryEntry[] = [
   },
   {
     key: "approval_form",
-    label: "审批单 PDF",
+    label: "审批单文件",
     description: "审批通过后生成的内部审批记录，可下载但必须记录原因。"
   },
   {
@@ -304,7 +304,7 @@ export const readonlyConfigGroups: ReadonlyConfigGroup[] = [
       {
         name: "付款凭证",
         value: "付款详情或项目支出付款动作上传",
-        description: "用于出纳实付、财务入账和最终归档 PDF。"
+        description: "用于出纳实付、财务入账和最终归档文件。"
       }
     ]
   },

@@ -72,12 +72,18 @@
     >
       <BusinessActionPanel :actions="paymentDetail?.availableActions ?? []" />
       <div class="action-grid">
-        <div class="action-group">
+        <div
+          v-if="showPaymentApprovalActions"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>付款审批</strong>
             <span>董事长/总经理或签</span>
           </div>
-          <div class="action-fields">
+          <div
+            v-if="isPaymentActionEnabled('review_approval')"
+            class="action-fields"
+          >
             <t-input
               v-model="paymentActionForm.approvedAmountYuan"
               placeholder="审批金额（元）"
@@ -89,27 +95,27 @@
           </div>
           <div class="action-buttons">
             <t-button
+              v-if="isPaymentActionEnabled('review_approval')"
               theme="primary"
               :loading="actionBusy === 'approval'"
-              :disabled="!isPaymentActionEnabled('review_approval')"
               @click="submitApproval('approve')"
             >
               通过
             </t-button>
             <t-button
+              v-if="isPaymentActionEnabled('review_approval')"
               theme="danger"
               variant="outline"
               :loading="actionBusy === 'approval'"
-              :disabled="!isPaymentActionEnabled('review_approval')"
               @click="submitApproval('reject')"
             >
               驳回
             </t-button>
             <t-button
+              v-if="isPaymentActionEnabled('download_approval_form')"
               theme="default"
               variant="outline"
               :loading="actionBusy === 'approvalForm'"
-              :disabled="!isPaymentActionEnabled('download_approval_form')"
               @click="downloadApprovalForm"
             >
               下载审批单
@@ -117,7 +123,10 @@
           </div>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="isPaymentActionEnabled('record_execution')"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>出纳实付</strong>
             <span>可直接上传付款凭证</span>
@@ -152,14 +161,16 @@
           <t-button
             theme="primary"
             :loading="actionBusy === 'execution'"
-            :disabled="!isPaymentActionEnabled('record_execution')"
             @click="submitExecution"
           >
             登记实付
           </t-button>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="isPaymentActionEnabled('record_finance')"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>财务入账</strong>
             <span>基于已实付金额</span>
@@ -179,16 +190,18 @@
           <t-button
             theme="primary"
             :loading="actionBusy === 'finance'"
-            :disabled="!isPaymentActionEnabled('record_finance')"
             @click="submitFinance"
           >
             确认入账
           </t-button>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="isPaymentActionEnabled('archive_pdf')"
+          class="action-group"
+        >
           <div class="action-title">
-            <strong>PDF归档</strong>
+            <strong>归档文件</strong>
             <span>生成或登记财务归档件</span>
           </div>
           <div class="action-fields">
@@ -206,7 +219,6 @@
           <t-button
             theme="primary"
             :loading="actionBusy === 'pdfArchive'"
-            :disabled="!isPaymentActionEnabled('archive_pdf')"
             @click="submitPdfArchive"
           >
             登记归档
@@ -215,19 +227,24 @@
             theme="primary"
             variant="outline"
             :loading="actionBusy === 'pdfGenerate'"
-            :disabled="!isPaymentActionEnabled('archive_pdf')"
             @click="submitGeneratedPdfArchive"
           >
-            生成PDF归档
+            生成归档文件
           </t-button>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="showPaymentAssistanceActions"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>审批辅助</strong>
             <span>撤回、催办、转审、委托</span>
           </div>
-          <div class="action-fields">
+          <div
+            v-if="isPaymentActionEnabled('transfer_approval') || isPaymentActionEnabled('delegate_approval')"
+            class="action-fields"
+          >
             <t-select
               v-model="paymentActionForm.assignmentUserId"
               :options="assignmentUserOptions"
@@ -236,33 +253,33 @@
           </div>
           <div class="action-buttons">
             <t-button
+              v-if="isPaymentActionEnabled('withdraw_approval')"
               :loading="actionBusy === 'withdrawApproval'"
-              :disabled="!isPaymentActionEnabled('withdraw_approval')"
               @click="submitPaymentWithdrawal"
             >
               撤回
             </t-button>
             <t-button
+              v-if="isPaymentActionEnabled('remind_approval')"
               :loading="actionBusy === 'remindApproval'"
-              :disabled="!isPaymentActionEnabled('remind_approval')"
               @click="submitPaymentReminder"
             >
               催办
             </t-button>
             <t-button
+              v-if="isPaymentActionEnabled('transfer_approval')"
               theme="primary"
               variant="outline"
               :loading="actionBusy === 'transferApproval'"
-              :disabled="!isPaymentActionEnabled('transfer_approval')"
               @click="submitPaymentAssignment('transfer')"
             >
               转审
             </t-button>
             <t-button
+              v-if="isPaymentActionEnabled('delegate_approval')"
               theme="primary"
               variant="outline"
               :loading="actionBusy === 'delegateApproval'"
-              :disabled="!isPaymentActionEnabled('delegate_approval')"
               @click="submitPaymentAssignment('delegate')"
             >
               委托
@@ -270,7 +287,10 @@
           </div>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="isPaymentActionEnabled('download_file')"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>敏感文件下载</strong>
             <span>签发短时效票据</span>
@@ -291,7 +311,6 @@
             theme="primary"
             variant="outline"
             :loading="actionBusy === 'download'"
-            :disabled="!isPaymentActionEnabled('download_file')"
             @click="submitPaymentFileDownload"
           >
             下载文件
@@ -578,6 +597,16 @@ const paymentPdfArchiveFileSummary = computed(() =>
 );
 const paymentActionByKey = computed(
   () => new Map((paymentDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
+);
+const showPaymentApprovalActions = computed(
+  () => isPaymentActionEnabled("review_approval") || isPaymentActionEnabled("download_approval_form")
+);
+const showPaymentAssistanceActions = computed(
+  () =>
+    isPaymentActionEnabled("withdraw_approval") ||
+    isPaymentActionEnabled("remind_approval") ||
+    isPaymentActionEnabled("transfer_approval") ||
+    isPaymentActionEnabled("delegate_approval")
 );
 const assignmentUserOptions = computed(() =>
   assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))

@@ -54,6 +54,36 @@ const PROJECT_OPTION_POSITIONS = new Set<RoleKey>([
   "budget_staff",
   "budget_director"
 ]);
+const ROSTER_ALL_PROJECT_ROLES = new Set<RoleKey>([
+  "chairman",
+  "general_manager",
+  "project_manager",
+  "contract_director",
+  "budget_director",
+  "finance_director",
+  "material_director",
+  "engineering_director",
+  "comprehensive_director"
+]);
+const ROLE_LABELS: Record<RoleKey, string> = {
+  chairman: "董事长",
+  general_manager: "总经理",
+  project_manager: "项目经理",
+  contract_director: "合同部主管",
+  contract_staff: "合同员",
+  budget_director: "预算部主管",
+  budget_staff: "预算员",
+  finance_director: "财务主管",
+  finance_staff: "财务员",
+  material_director: "物资主管",
+  material_staff: "物资员",
+  engineering_director: "工程部主管",
+  engineering_foreman: "工长",
+  engineering_tech: "工程技术部",
+  comprehensive_director: "综合部主管",
+  employee: "员工",
+  super_admin: "系统管理员"
+};
 const RECEIPT_SOURCE_LABELS: Record<ProjectReceiptSourceType, string> = {
   general_contractor_payment: "总包付款",
   owner_direct_payment: "甲方直付",
@@ -197,6 +227,78 @@ export class ProjectService {
       select: { id: true, code: true, name: true },
       orderBy: [{ code: "asc" }, { name: "asc" }]
     });
+  }
+
+  async listRoster(userId: string) {
+    const [globalUserPositions, projectUserPositions, projectMembers] = await Promise.all([
+      this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
+      this.prisma.userPosition.findMany({ where: { userId, projectId: { not: null } } }),
+      this.prisma.projectMember.findMany({ where: { userId } })
+    ]);
+    const positionIds = unique([...globalUserPositions, ...projectUserPositions].map((position) => position.positionId));
+    const positions = positionIds.length
+      ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    const positionKeyById = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
+    const canSeeAllProjects = globalUserPositions.some((position) =>
+      ROSTER_ALL_PROJECT_ROLES.has(positionKeyById.get(position.positionId) as RoleKey)
+    );
+    const scopedProjectIds = unique([
+      ...projectUserPositions.map((position) => position.projectId).filter((id): id is string => !!id),
+      ...projectMembers.map((member) => member.projectId)
+    ]);
+
+    if (!canSeeAllProjects && !scopedProjectIds.length) return [];
+
+    const projects = await this.prisma.project.findMany({
+      where: { isActive: true, ...(canSeeAllProjects ? {} : { id: { in: scopedProjectIds } }) },
+      select: { id: true, code: true, name: true },
+      orderBy: [{ code: "asc" }, { name: "asc" }]
+    });
+    const projectIds = projects.map((project) => project.id);
+    if (!projectIds.length) return [];
+
+    const memberRows = await this.prisma.projectMember.findMany({ where: { projectId: { in: projectIds } } });
+    const userIds = unique(memberRows.map((member) => member.userId));
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds }, isActive: true },
+          select: { id: true, name: true, phone: true }
+        })
+      : [];
+    const userById = new Map(users.map((user) => [user.id, user]));
+    const projectById = new Map(projects.map((project) => [project.id, project]));
+    const rolesByProjectUser = new Map<string, Set<RoleKey>>();
+    const addRole = (projectId: string, rowUserId: string, roleKey: RoleKey | undefined) => {
+      if (!roleKey) return;
+      const key = `${projectId}:${rowUserId}`;
+      const next = new Set(rolesByProjectUser.get(key));
+      next.add(roleKey);
+      rolesByProjectUser.set(key, next);
+    };
+
+    memberRows.forEach((member) => addRole(member.projectId, member.userId, member.positionKey as RoleKey));
+
+    return Array.from(rolesByProjectUser.entries())
+      .map(([key, roleKeys]) => {
+        const [projectId, rowUserId] = key.split(":");
+        const project = projectById.get(projectId);
+        const user = userById.get(rowUserId);
+        if (!project || !user) return null;
+        const positions = Array.from(roleKeys);
+        return {
+          projectId: project.id,
+          projectCode: project.code,
+          projectName: project.name,
+          userId: user.id,
+          name: user.name,
+          phone: user.phone ?? "",
+          positionKeys: positions,
+          positionNames: positions.map((role) => ROLE_LABELS[role] ?? role)
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .sort((left, right) => `${left.projectCode}-${left.name}`.localeCompare(`${right.projectCode}-${right.name}`, "zh-CN"));
   }
 
   async getOperatingFundsOverview(projectId: string) {

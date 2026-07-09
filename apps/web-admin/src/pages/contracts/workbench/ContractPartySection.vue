@@ -120,7 +120,7 @@
               v-if="upload.hasValidUntil"
               v-model="upload.validUntil"
               :disabled="disabled || busy"
-              placeholder="有效期 YYYY-MM-DD"
+              placeholder="有效期，如 2026-12-31"
             />
             <span
               v-else

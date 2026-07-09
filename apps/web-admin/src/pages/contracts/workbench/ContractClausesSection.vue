@@ -112,13 +112,13 @@
                 :checked="block.bold"
                 :disabled="disabled"
                 @change="updateParagraphMark(clause.key, index, 'bold', $event)"
-              > B</label>
+              > 加粗</label>
               <label><input
                 type="checkbox"
                 :checked="block.italic"
                 :disabled="disabled"
                 @change="updateParagraphMark(clause.key, index, 'italic', $event)"
-              > I</label>
+              > 斜体</label>
             </div>
             <t-textarea
               :value="block.text"

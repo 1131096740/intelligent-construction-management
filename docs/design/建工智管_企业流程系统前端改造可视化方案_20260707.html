@@ -807,7 +807,7 @@
         </article>
         <article class="card">
           <h3>设计语言结论</h3>
-          <p>当前已有企业后台风格，但缺项目级 token。P1 新增薄 token 层，收口背景、文本、边框、状态色、字号、间距和圆角。</p>
+          <p>当前已有企业后台风格和薄 token 层，但覆盖仍不完整。P1 继续用 token 收口背景、文本、边框、状态色、字号、间距和圆角。</p>
         </article>
         <article class="card">
           <h3>融合结论</h3>
@@ -834,6 +834,9 @@
             <li><a href="https://gitee.com/jeecg/JeecgBoot">Gitee：JeecgBoot</a></li>
             <li><a href="https://gitee.com/soybeanjs/soybean-admin">Gitee：Soybean Admin</a></li>
             <li><a href="https://github.com/jeecgboot/JeecgBoot">JeecgBoot</a></li>
+            <li><a href="https://github.com/alibaba/formily">Formily</a></li>
+            <li><a href="https://github.com/nocobase/nocobase">NocoBase</a></li>
+            <li><a href="https://github.com/open-xml-templating/docxtemplater">docxtemplater</a></li>
             <li><a href="https://github.com/o2oa/o2oa">O2OA</a></li>
             <li><a href="https://www.o2oa.net/handbook.html">O2OA 使用手册</a></li>
             <li><a href="https://github.com/xiaonuobase/snowy">Snowy</a></li>
@@ -846,8 +849,60 @@
       </div>
     </section>
 
+    <section class="section">
+      <h2>十二、2026-07-09 合同工作台与模板库修订</h2>
+      <div class="grid cols-3" style="margin-bottom:16px">
+        <article class="card">
+          <h3>当前结论</h3>
+          <ul>
+            <li>设计语言方向统一：企业后台、高信息密度、浅灰边界、低饱和状态色。</li>
+            <li>组件库依赖统一为 TDesign，不引入第二套 UI 库。</li>
+            <li>已有薄 token 层，合同工作台和模板中心仍需继续替换硬编码样式。</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>一线工作台</h3>
+          <ul>
+            <li>首屏只回答：这是什么合同、卡在哪、缺什么、我能做什么。</li>
+            <li>按项目与相对方、核心信息、金额清单、付款条款、附件证照、文档生成、提交审批推进。</li>
+            <li>只显示当前账号可办理动作，不展示永远不可点的按钮。</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>模板库模式</h3>
+          <ul>
+            <li>使用模式：一线用户只选模板和新建合同。</li>
+            <li>配置模式：合同主管/法务维护字段、条款、附件、版式、编号规则。</li>
+            <li>发布必须经过检查、样张、签认和版本冻结。</li>
+          </ul>
+        </article>
+      </div>
+      <div class="grid cols-2">
+        <article class="card">
+          <h3>本轮已落地</h3>
+          <ul>
+            <li>英文权限和网络错误统一映射为中文。</li>
+            <li>动作面板和合同/结算/付款详情动作组只展示可办理动作。</li>
+            <li>Excel 导出隐藏系统字段行，Word 模板改中文占位符。</li>
+            <li>版式检查和文档渲染共用中文占位符注册表。</li>
+            <li>版式页、条款库、编号规则、合同文档区去除一批 JSON、内部编号和英文格式文案。</li>
+            <li>版式模板合同类型改为下拉选择，文件上传支持类型提示改为中文业务口径。</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>后续路线</h3>
+          <ul>
+            <li>P1：模板详情读模型，不再手填版本编号。</li>
+            <li>P1：合同工作台改成一线向导式流程。</li>
+            <li>P2：版式模板绑定业务模板版本，检查字段、条款、清单循环一致性。</li>
+            <li>P2：母版验收包自动生成，合同部/法务签认后发布。</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
     <section class="footer">
-      <p>生成时间：2026-07-07；Gitee 参考、组件库和设计 token 结论补充于 2026-07-08。调研方式：多子代理并行调研 + 本项目现有架构约束整合。原则：能用现有读模型解决的，不引入平台；能用固定业务组件解决的，不做低代码运行时。</p>
+      <p>生成时间：2026-07-07；Gitee 参考、组件库和设计 token 结论补充于 2026-07-08；合同工作台与模板库重构修订于 2026-07-09。调研方式：多子代理并行调研 + 本项目现有架构约束整合。原则：能用现有读模型解决的，不引入平台；能用固定业务组件解决的，不做低代码运行时。</p>
     </section>
   </main>
 </body>

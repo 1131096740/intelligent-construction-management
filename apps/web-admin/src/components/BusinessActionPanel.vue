@@ -3,16 +3,16 @@
     <header class="business-action-panel__head">
       <div>
         <strong>当前可执行动作</strong>
-        <span>由后端按角色、项目权限和单据状态返回</span>
+        <span>只显示当前账号现在可以办理的动作</span>
       </div>
-      <em>{{ enabledCount }} / {{ actionItems.length }} 可操作</em>
+      <em>{{ actionItems.length }} 项</em>
     </header>
 
     <div
       v-if="!actionItems.length"
       class="business-action-panel__empty"
     >
-      当前单据暂无可展示动作，请查看流程状态或刷新详情。
+      当前账号在此单据暂无可办理动作。
     </div>
 
     <div
@@ -48,14 +48,13 @@
 <script setup lang="ts">
 import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 import { computed } from "vue";
-import { countEnabledActions, toBusinessActionPanelItems } from "./business-action-panel.config";
+import { toBusinessActionPanelItems } from "./business-action-panel.config";
 
 const props = defineProps<{
   actions: DetailActionReadModel[];
 }>();
 
 const actionItems = computed(() => toBusinessActionPanelItems(props.actions));
-const enabledCount = computed(() => countEnabledActions(props.actions));
 </script>
 
 <style scoped>

@@ -81,7 +81,8 @@ describe("web admin routes", () => {
       "合作单位档案",
       "委托台账",
       "系统配置",
-      "项目经营"
+      "项目经营",
+      "项目花名册"
     ]));
   });
 
@@ -98,6 +99,7 @@ describe("web admin routes", () => {
     expect(redirectOf("settlements")).toBe("/结算管理");
     expect(redirectOf("payments")).toBe("/付款管理");
     expect(redirectOf("archives")).toBe("/资料库");
+    expect(redirectOf("project-roster")).toBe("/项目花名册");
     expect(redirectOf("search")).toBe("/全局搜索");
     expect(redirectOf("approval-center")).toBe("/审批中心");
     expect(redirectOf("audit")).toBe("/审计日志");
@@ -127,6 +129,7 @@ describe("web admin routes", () => {
       { label: "全局搜索", path: "/全局搜索" },
       { label: "审批中心", path: "/审批中心" },
       { label: "项目经营", path: "/项目经营" },
+      { label: "项目花名册", path: "/项目花名册" },
       { label: "合同工作台", path: "/合同工作台" },
       { label: "合同管理", path: "/合同管理" },
       { label: "历史合同接管", path: "/历史合同接管" },
@@ -154,10 +157,10 @@ describe("web admin routes", () => {
     );
   });
 
-  it("hides empty navigation groups after role filtering", () => {
+  it("keeps navigation groups that still contain public business entries after role filtering", () => {
     const groupLabels = visibleAdminNavigationGroups(undefined).map((group) => group.label);
 
-    expect(groupLabels).not.toContain("项目资金链");
+    expect(groupLabels).toContain("项目资金链");
     expect(groupLabels).toContain("合同过程");
     expect(visibleAdminNavigationGroups(["finance_staff"]).map((group) => group.label)).toContain("项目资金链");
   });
@@ -166,6 +169,7 @@ describe("web admin routes", () => {
     expect(visibleAdminNavigationItems(["contract_staff"]).map((item) => item.path)).not.toContain("/项目经营");
     expect(visibleAdminNavigationItems(["finance_staff"]).map((item) => item.path)).toContain("/项目经营");
     expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).not.toContain("/项目经营");
+    expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).toContain("/项目花名册");
   });
 
   it("hides historical contract takeover from nav when the user lacks contract department roles", () => {

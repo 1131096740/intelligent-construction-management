@@ -87,54 +87,62 @@
       >
         <BusinessActionPanel :actions="contractDetail.availableActions" />
         <div class="action-grid">
-          <div class="action-group">
+          <div
+            v-if="showContractApprovalActions"
+            class="action-group"
+          >
             <div class="action-title">
               <strong>合同审批</strong>
               <span>提交、通过、驳回</span>
             </div>
-            <div class="action-fields">
+            <div
+              v-if="isContractActionEnabled('submit_approval') || isContractActionEnabled('review_approval')"
+              class="action-fields"
+            >
               <t-select
+                v-if="isContractActionEnabled('submit_approval')"
                 v-model="contractArchiveForm.numberRuleId"
                 :options="contractNumberRuleOptions"
                 placeholder="选择合同编号规则"
               />
               <t-input
+                v-if="isContractActionEnabled('submit_approval') || isContractActionEnabled('review_approval')"
                 v-model="contractArchiveForm.approvalComment"
                 placeholder="审批意见/备注(可选)"
               />
             </div>
             <div class="action-buttons">
               <t-button
+                v-if="isContractActionEnabled('submit_approval')"
                 theme="primary"
                 :loading="archiveActionBusy === 'submitApproval'"
-                :disabled="!isContractActionEnabled('submit_approval')"
                 @click="submitContractApprovalAction"
               >
                 提交审批
               </t-button>
               <t-button
+                v-if="isContractActionEnabled('review_approval')"
                 theme="primary"
                 variant="outline"
                 :loading="archiveActionBusy === 'reviewApproval'"
-                :disabled="!isContractActionEnabled('review_approval')"
                 @click="submitContractReview('approve')"
               >
                 通过
               </t-button>
               <t-button
+                v-if="isContractActionEnabled('review_approval')"
                 theme="danger"
                 variant="outline"
                 :loading="archiveActionBusy === 'reviewApproval'"
-                :disabled="!isContractActionEnabled('review_approval')"
                 @click="submitContractReview('reject')"
               >
                 驳回
               </t-button>
               <t-button
+                v-if="isContractActionEnabled('download_approval_form')"
                 theme="default"
                 variant="outline"
                 :loading="archiveActionBusy === 'approvalForm'"
-                :disabled="!isContractActionEnabled('download_approval_form')"
                 @click="downloadContractApprovalForm"
               >
                 下载审批单
@@ -142,12 +150,18 @@
             </div>
           </div>
 
-          <div class="action-group">
+          <div
+            v-if="showContractAssistanceActions"
+            class="action-group"
+          >
             <div class="action-title">
               <strong>审批辅助</strong>
               <span>撤回、催办、转审、委托</span>
             </div>
-            <div class="action-fields">
+            <div
+              v-if="isContractActionEnabled('transfer_approval') || isContractActionEnabled('delegate_approval')"
+              class="action-fields"
+            >
               <t-select
                 v-model="contractArchiveForm.assignmentUserId"
                 :options="assignmentUserOptions"
@@ -156,33 +170,33 @@
             </div>
             <div class="action-buttons">
               <t-button
+                v-if="isContractActionEnabled('withdraw_approval')"
                 :loading="archiveActionBusy === 'withdrawApproval'"
-                :disabled="!isContractActionEnabled('withdraw_approval')"
                 @click="submitContractWithdrawal"
               >
                 撤回
               </t-button>
               <t-button
+                v-if="isContractActionEnabled('remind_approval')"
                 :loading="archiveActionBusy === 'remindApproval'"
-                :disabled="!isContractActionEnabled('remind_approval')"
                 @click="submitContractReminder"
               >
                 催办
               </t-button>
               <t-button
+                v-if="isContractActionEnabled('transfer_approval')"
                 theme="primary"
                 variant="outline"
                 :loading="archiveActionBusy === 'transferApproval'"
-                :disabled="!isContractActionEnabled('transfer_approval')"
                 @click="submitContractAssignment('transfer')"
               >
                 转审
               </t-button>
               <t-button
+                v-if="isContractActionEnabled('delegate_approval')"
                 theme="primary"
                 variant="outline"
                 :loading="archiveActionBusy === 'delegateApproval'"
-                :disabled="!isContractActionEnabled('delegate_approval')"
                 @click="submitContractAssignment('delegate')"
               >
                 委托
@@ -190,33 +204,39 @@
             </div>
           </div>
 
-          <div class="action-group">
+          <div
+            v-if="showContractSealActions"
+            class="action-group"
+          >
             <div class="action-title">
-              <strong>用章与PDF</strong>
-              <span>后端生成归档PDF</span>
+              <strong>用章与归档文件</strong>
+              <span>后端生成归档文件</span>
             </div>
             <div class="action-buttons">
               <t-button
+                v-if="isContractActionEnabled('approve_seal')"
                 theme="primary"
                 :loading="archiveActionBusy === 'seal'"
-                :disabled="!isContractActionEnabled('approve_seal')"
                 @click="submitContractSeal"
               >
                 用章通过
               </t-button>
               <t-button
+                v-if="isContractActionEnabled('generate_pdf_archive')"
                 theme="primary"
                 variant="outline"
                 :loading="archiveActionBusy === 'pdf'"
-                :disabled="!isContractActionEnabled('generate_pdf_archive')"
                 @click="submitContractPdfGeneration"
               >
-                生成PDF归档
+                生成归档文件
               </t-button>
             </div>
           </div>
 
-          <div class="action-group">
+          <div
+            v-if="isContractActionEnabled('upload_archive')"
+            class="action-group"
+          >
             <div class="action-title">
               <strong>上传盖章合同</strong>
               <span>合同部成员</span>
@@ -236,14 +256,16 @@
             <t-button
               theme="primary"
               :loading="archiveActionBusy === 'upload'"
-              :disabled="!isContractActionEnabled('upload_archive')"
               @click="submitContractArchiveUpload"
             >
               提交归档件
             </t-button>
           </div>
 
-          <div class="action-group">
+          <div
+            v-if="isContractActionEnabled('confirm_archive')"
+            class="action-group"
+          >
             <div class="action-title">
               <strong>主管确认归档</strong>
               <span>确认后合同版本生效</span>
@@ -263,14 +285,16 @@
             <t-button
               theme="primary"
               :loading="archiveActionBusy === 'confirm'"
-              :disabled="!isContractActionEnabled('confirm_archive')"
               @click="submitContractArchiveConfirmation"
             >
               确认生效
             </t-button>
           </div>
 
-          <div class="action-group">
+          <div
+            v-if="isContractActionEnabled('download_archive')"
+            class="action-group"
+          >
             <div class="action-title">
               <strong>敏感文件下载</strong>
               <span>当前合同归档件</span>
@@ -291,7 +315,6 @@
               theme="primary"
               variant="outline"
               :loading="archiveActionBusy === 'download'"
-              :disabled="!isContractActionEnabled('download_archive')"
               @click="submitContractFileDownload"
             >
               下载文件
@@ -621,6 +644,22 @@ const contractEvidenceFilesView = computed(() =>
 const contractApprovalTimelineView = computed(() => contractDetail.value?.approvalTimeline ?? []);
 const contractActionByKey = computed(
   () => new Map((contractDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
+);
+const showContractApprovalActions = computed(
+  () =>
+    isContractActionEnabled("submit_approval") ||
+    isContractActionEnabled("review_approval") ||
+    isContractActionEnabled("download_approval_form")
+);
+const showContractAssistanceActions = computed(
+  () =>
+    isContractActionEnabled("withdraw_approval") ||
+    isContractActionEnabled("remind_approval") ||
+    isContractActionEnabled("transfer_approval") ||
+    isContractActionEnabled("delegate_approval")
+);
+const showContractSealActions = computed(
+  () => isContractActionEnabled("approve_seal") || isContractActionEnabled("generate_pdf_archive")
 );
 const contractNumberRuleOptions = computed(() =>
   contractNumberRules.value.map((rule) => ({

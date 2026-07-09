@@ -132,6 +132,45 @@ describe("contract DOCX renderer", () => {
     expect(xml).not.toContain("bill.materials");
   });
 
+  it("renders Chinese business placeholders so Word templates do not expose internal keys", () => {
+    const template = createDocx(
+      [
+        paragraph("{合同名称}|{草稿编号}|{甲方名称}|{乙方名称}|{交货地点}|{付款条款}"),
+        paragraph("{#材料清单}"),
+        paragraph("{名称}|{规格型号}|{数量}|{单价}|{税率}|{含税金额}"),
+        paragraph("{/材料清单}")
+      ].join("")
+    );
+
+    const result = renderContractDocx(template, {
+      values: requiredValues({
+        "party.owner.name": "云南建工示例公司",
+        "party.counterparty.name": "云南示例供应商有限公司",
+        "field.deliveryLocation": "项目现场",
+        "clause.payment.text": "结算单生效后方可付款。",
+        "bill.materials": [
+          {
+            itemName: "钢筋",
+            specification: "HRB400E",
+            quantity: "10.000",
+            unitPrice: "100.00",
+            taxRatePercent: "13%",
+            taxInclusiveAmount: "1000.00"
+          }
+        ]
+      })
+    });
+
+    const xml = renderedDocumentXml(result);
+    expect(xml).toContain("钢材采购合同");
+    expect(xml).toContain("云南建工示例公司");
+    expect(xml).toContain("云南示例供应商有限公司");
+    expect(xml).toContain("项目现场");
+    expect(xml).toContain("钢筋");
+    expect(xml).not.toContain("field.deliveryLocation");
+    expect(xml).not.toContain("bill.materials");
+  });
+
   it("merges repeated bill tables after rendering a table-level loop", () => {
     const template = createDocx(
       [

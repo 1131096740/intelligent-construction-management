@@ -125,4 +125,13 @@ describe("createApiFetch", () => {
     expect(onPasswordChangeRequired).toHaveBeenCalledTimes(1);
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
+
+  it("maps browser fetch failures before they reach pages", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const apiFetch = createApiFetch(bridge(), fetchImpl);
+
+    await expect(apiFetch("/contracts/1")).rejects.toThrow("网络连接失败，请检查网络后重试。");
+  });
 });

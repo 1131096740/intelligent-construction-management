@@ -49,6 +49,11 @@ export class ProjectController {
     return this.projects.listActiveOptions(user.id);
   }
 
+  @Get("roster")
+  roster(@CurrentUser() user: AuthenticatedUser) {
+    return this.projects.listRoster(user.id);
+  }
+
   @Get(":projectId/operating-funds-overview")
   @RequirePositions(...FUNDS_OVERVIEW_POSITIONS)
   operatingFundsOverview(@Param("projectId") projectId: string) {

@@ -8,6 +8,14 @@ export const templateListColumns = [
 
 export const templateListActions = ["open", "clone", "submit", "publish", "stop", "revoke"] as const;
 
+export const contractTypeOptions = [
+  { label: "材料采购合同", value: "material_purchase" },
+  { label: "工程机械设备租赁合同", value: "equipment_rental" },
+  { label: "劳务分包合同", value: "labor_subcontract" },
+  { label: "专业分包合同", value: "professional_subcontract" },
+  { label: "通用合同", value: "generic_contract" }
+] as const;
+
 export const fieldTypeOptions = [
   { label: "文本", value: "text" },
   { label: "长文本", value: "long_text" },
@@ -62,17 +70,48 @@ export const businessPartyEditPolicy = {
 } as const;
 
 export const numberRuleTokens = ["{company}", "{project}", "{year}", "{type}", "{sequence}"] as const;
+export const numberRuleTokenOptions = [
+  { label: "公司", value: "{公司}", internalValue: "{company}" },
+  { label: "项目", value: "{项目}", internalValue: "{project}" },
+  { label: "年份", value: "{年份}", internalValue: "{year}" },
+  { label: "类型", value: "{类型}", internalValue: "{type}" },
+  { label: "流水号", value: "{流水号}", internalValue: "{sequence}" }
+] as const;
+
+const numberRuleTokenToInternal = Object.fromEntries(
+  numberRuleTokenOptions.map((option) => [option.value, option.internalValue])
+) as Record<string, (typeof numberRuleTokens)[number]>;
+const numberRuleTokenToChinese = Object.fromEntries(
+  numberRuleTokenOptions.map((option) => [option.internalValue, option.value])
+) as Record<(typeof numberRuleTokens)[number], string>;
+
+export function normalizeContractNumberPattern(pattern: string) {
+  return Object.entries(numberRuleTokenToInternal).reduce(
+    (text, [token, internalToken]) => text.split(token).join(internalToken),
+    pattern
+  );
+}
+
+export function displayContractNumberPattern(pattern: string) {
+  return numberRuleTokens.reduce(
+    (text, token) => text.split(token).join(numberRuleTokenToChinese[token]),
+    pattern
+  );
+}
 
 export function hasOnlyAllowedNumberRuleTokens(pattern: string) {
   const allowed = new Set<string>(numberRuleTokens);
-  return [...pattern.matchAll(/\{[^{}]+\}/g)].every((match) => allowed.has(match[0]));
+  const normalized = normalizeContractNumberPattern(pattern);
+  return [...normalized.matchAll(/\{[^{}]+\}/g)].every((match) => allowed.has(match[0]));
 }
 
 export function isValidContractNumberPattern(pattern: string) {
-  return hasOnlyAllowedNumberRuleTokens(pattern) && pattern.includes("{sequence}");
+  const normalized = normalizeContractNumberPattern(pattern);
+  return hasOnlyAllowedNumberRuleTokens(normalized) && normalized.includes("{sequence}");
 }
 
 export function previewContractNumber(pattern: string, sequence: number, width: number) {
+  const normalized = normalizeContractNumberPattern(pattern);
   const values: Record<string, string> = {
     "{company}": "公司",
     "{project}": "项目",
@@ -80,5 +119,5 @@ export function previewContractNumber(pattern: string, sequence: number, width: 
     "{type}": "材料",
     "{sequence}": String(sequence).padStart(width, "0")
   };
-  return numberRuleTokens.reduce((text, token) => text.split(token).join(values[token]), pattern);
+  return numberRuleTokens.reduce((text, token) => text.split(token).join(values[token]), normalized);
 }

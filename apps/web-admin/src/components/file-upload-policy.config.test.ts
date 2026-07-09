@@ -9,7 +9,7 @@ describe("file upload policy config", () => {
   it("keeps core archive upload accept text, accept attribute, and size limit together", () => {
     expect(CORE_ARCHIVE_UPLOAD_POLICY).toEqual({
       acceptAttribute: ".pdf,.png,.jpg,.jpeg",
-      acceptText: "PDF、PNG、JPG、JPEG",
+      acceptText: "归档文件、常见图片",
       limitBytes: PRIVATE_FILE_UPLOAD_MAX_BYTES,
       limitText: "不超过 100 MB"
     });
@@ -18,7 +18,7 @@ describe("file upload policy config", () => {
   it("keeps PDF archive upload restricted to PDF with the shared private-file limit", () => {
     expect(PDF_ARCHIVE_UPLOAD_POLICY).toEqual({
       acceptAttribute: "application/pdf",
-      acceptText: "PDF",
+      acceptText: "归档文件",
       limitBytes: PRIVATE_FILE_UPLOAD_MAX_BYTES,
       limitText: "不超过 100 MB"
     });

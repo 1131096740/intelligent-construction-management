@@ -40,7 +40,7 @@
     <t-layout class="main-shell">
       <t-header class="header">
         <span>合同付款闭环管理</span>
-        <span class="header-user">建设企业 · 合同部主管</span>
+        <span class="header-user">{{ currentUserText }}</span>
       </t-header>
       <div
         v-if="recentBusinessRoutes.length"
@@ -72,6 +72,7 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../auth/auth.store";
+import { roleLabels } from "../pages/settings/approval-flow-readonly.config";
 import { visibleAdminNavigationGroups } from "../routes/route-records";
 import {
   parseRecentBusinessRoutes,
@@ -99,6 +100,11 @@ const activePath = computed(() => {
   return parent?.path ?? route.path;
 });
 const currentRecentStorageKey = computed(() => (auth.user?.id ? recentBusinessStorageKey(auth.user.id) : ""));
+const currentUserText = computed(() => {
+  if (!auth.user) return "未登录";
+  const roles = auth.user.roleKeys.map((role) => roleLabels[role]).filter(Boolean);
+  return roles.length ? `${auth.user.name} · ${roles.join("、")}` : auth.user.name;
+});
 
 watch(
   () => [route.path, currentRecentStorageKey.value] as const,

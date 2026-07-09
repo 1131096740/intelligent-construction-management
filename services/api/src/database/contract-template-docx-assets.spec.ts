@@ -49,75 +49,75 @@ describe("contract DOCX template assets", () => {
   it.each([
     {
       fileName: "material-purchase-real-v1.docx",
-      billKey: "bill.materials",
+      billKey: "材料清单",
       placeholders: [
-        "contract.name",
-        "contract.temporaryCode",
-        "contract.amountUppercase",
-        "party.owner.name",
-        "party.counterparty.name",
-        "field.projectName",
-        "field.deliveryLocation",
-        "field.deliveryDeadline",
-        "field.qualityStandard",
-        "field.taxRatePercent",
-        "field.settlementMethod",
-        "clause.payment.text",
-        "bill.materials"
+        "合同名称",
+        "草稿编号",
+        "合同金额大写",
+        "甲方名称",
+        "乙方名称",
+        "项目名称",
+        "交货地点",
+        "交货期限",
+        "质量标准",
+        "税率",
+        "结算方式",
+        "付款条款",
+        "材料清单"
       ]
     },
     {
       fileName: "equipment-rental-real-v1.docx",
-      billKey: "bill.equipmentRentals",
+      billKey: "机械租赁清单",
       placeholders: [
-        "contract.name",
-        "contract.temporaryCode",
-        "contract.amountUppercase",
-        "party.owner.name",
-        "party.counterparty.name",
-        "field.rentalStartDate",
-        "field.rentalEndDate",
-        "field.useLocation",
-        "field.settlementCycle",
-        "field.paymentRatioPercent",
-        "clause.payment.text",
-        "bill.equipmentRentals"
+        "合同名称",
+        "草稿编号",
+        "合同金额大写",
+        "甲方名称",
+        "乙方名称",
+        "租赁开始日期",
+        "租赁结束日期",
+        "使用地点",
+        "结算周期",
+        "付款比例",
+        "付款条款",
+        "机械租赁清单"
       ]
     },
     {
       fileName: "labor-subcontract-real-v1.docx",
-      billKey: "bill.laborItems",
+      billKey: "劳务清单",
       placeholders: [
-        "contract.name",
-        "contract.temporaryCode",
-        "contract.amountUppercase",
-        "party.owner.name",
-        "party.counterparty.name",
-        "field.workScope",
-        "field.workLocation",
-        "field.plannedStartDate",
-        "field.plannedEndDate",
-        "field.settlementCycle",
-        "field.progressPaymentRatioPercent",
-        "clause.payment.text",
-        "clause.safety.text",
-        "clause.wageCommitment.text",
-        "bill.laborItems"
+        "合同名称",
+        "草稿编号",
+        "合同金额大写",
+        "甲方名称",
+        "乙方名称",
+        "作业范围",
+        "作业地点",
+        "计划开工日期",
+        "计划完工日期",
+        "结算周期",
+        "进度付款比例",
+        "付款条款",
+        "安全文明条款",
+        "工资承诺条款",
+        "劳务清单"
       ]
     },
     {
       fileName: "generic-contract-v1.docx",
-      billKey: "bill.genericItems",
+      billKey: "通用清单",
       placeholders: [
-        "contract.name",
-        "contract.temporaryCode",
-        "contract.amountUppercase",
-        "field.businessSummary",
-        "field.settlementCycle",
-        "field.paymentRatioPercent",
-        "clause.payment.text",
-        "clause.specialAgreement.text",
-        "bill.genericItems"
+        "合同名称",
+        "草稿编号",
+        "合同金额大写",
+        "业务摘要",
+        "结算周期",
+        "付款比例",
+        "付款条款",
+        "特别约定",
+        "通用清单"
       ]
     }
   ])("$fileName contains required placeholders, Word sections, and neutral metadata", ({ fileName, billKey, placeholders }) => {
@@ -125,7 +125,7 @@ describe("contract DOCX template assets", () => {
     expect(docx.fileNames.some((name) => name.startsWith("word/header"))).toBe(true);
     expect(docx.fileNames.some((name) => name.startsWith("word/footer"))).toBe(true);
     expect(docx.text).toContain("sectPr");
-    expect(docx.text).toContain("document.watermark");
+    expect(docx.text).toContain("文档水印");
     expect(docx.text).toContain("第    页 / 共    页");
     expect(docx.contentTypesXml).toContain('PartName="/word/header1.xml"');
     expect(docx.contentTypesXml).toContain('PartName="/word/footer1.xml"');
@@ -161,7 +161,7 @@ describe("contract DOCX template assets", () => {
     expect(docx.text).toContain('<w:tcW w:w=');
     expect(docx.text).toContain("<w:cantSplit/>");
     expect(docx.text).toContain('w:pStyle w:val="ContractTableText"');
-    expect(countOccurrences(docx.text, "合同编号：{contract.temporaryCode}")).toBe(1);
+    expect(countOccurrences(docx.text, "合同编号：{草稿编号}")).toBe(1);
     expect(countOccurrences(docx.text, `{#${billKey}}`)).toBe(1);
     expect(countOccurrences(docx.text, `{/${billKey}}`)).toBe(1);
     expect(docx.text).toContain("签订地点：");
@@ -185,11 +185,11 @@ describe("contract DOCX template assets", () => {
 
   it("binds material purchase seller on both cover and signature pages", () => {
     const docx = readDocxXml("material-purchase-real-v1.docx");
-    expect(countOccurrences(docx.text, "party.counterparty.name")).toBeGreaterThanOrEqual(2);
+    expect(countOccurrences(docx.text, "乙方名称")).toBeGreaterThanOrEqual(2);
     const signatureLabelIndex = docx.text.lastIndexOf("卖方");
     expect(signatureLabelIndex).toBeGreaterThanOrEqual(0);
     expect(docx.text.slice(signatureLabelIndex, signatureLabelIndex + 600)).toContain(
-      "party.counterparty.name"
+      "乙方名称"
     );
   });
 
@@ -202,9 +202,9 @@ describe("contract DOCX template assets", () => {
 
   it("uses a formal cover and signature page for generic fallback contracts", () => {
     const docx = readDocxXml("generic-contract-v1.docx");
-    expect(docx.text).toContain("工程名称：{field.projectName}");
+    expect(docx.text).toContain("工程名称：{项目名称}");
     expect(docx.text).toContain("甲方：建工智管建设有限公司");
-    expect(docx.text).toContain("乙方：{field.counterpartyName}");
+    expect(docx.text).toContain("乙方：{相对方名称}");
     expect(docx.text).toContain("第一条 业务内容");
     expect(docx.text).toContain("第五条 合同清单");
     expect(docx.text).toContain("签章页");

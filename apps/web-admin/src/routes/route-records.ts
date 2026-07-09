@@ -36,7 +36,10 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   },
   {
     label: "项目资金链",
-    items: [{ label: "项目经营", path: "/项目经营", requiredRoleKeys: fundsOverviewRoleKeys }]
+    items: [
+      { label: "项目经营", path: "/项目经营", requiredRoleKeys: fundsOverviewRoleKeys },
+      { label: "项目花名册", path: "/项目花名册" }
+    ]
   },
   {
     label: "合同过程",
@@ -181,6 +184,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: { requiredRoleKeys: fundsOverviewRoleKeys, title: "项目经营" }
       },
       {
+        path: "项目花名册",
+        component: () => import("../pages/projects/ProjectRosterPage.vue"),
+        meta: { title: "项目花名册" }
+      },
+      {
         path: "结算管理",
         component: () => import("../pages/settlements/SettlementListPage.vue")
       },
@@ -233,6 +241,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "payments", redirect: "/付款管理" },
       { path: "payments/:paymentId", redirect: paymentRedirect },
       { path: "archives", redirect: "/资料库" },
+      { path: "project-roster", redirect: "/项目花名册" },
       { path: "search", redirect: "/全局搜索" },
       { path: "approval-center", redirect: "/审批中心" },
       { path: "delegations", redirect: "/委托台账" },

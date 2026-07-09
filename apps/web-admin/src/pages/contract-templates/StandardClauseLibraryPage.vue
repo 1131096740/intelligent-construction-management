@@ -3,12 +3,12 @@
     <div class="page-head">
       <div>
         <h1>标准条款库</h1>
-        <p>当前后端只提供最新已发布条款列表；草稿创建后请先提交，再用返回版本 ID 发布</p>
+        <p>当前只展示最新已发布条款；草稿创建后请先提交，再用返回的版本编号发布</p>
       </div>
       <t-space>
         <t-input
           v-model="category"
-          placeholder="分类筛选，如 payment"
+          placeholder="分类筛选，如 付款"
         />
         <t-button @click="loadClauses">
           查询
@@ -47,7 +47,7 @@
       class="panel"
     >
       <div class="form-grid submit-grid">
-        <label><span>标准条款版本 ID</span><t-input v-model="submitForm.versionId" /></label>
+        <label><span>标准条款版本编号</span><t-input v-model="submitForm.versionId" /></label>
         <t-button
           theme="primary"
           :disabled="!submitForm.versionId.trim()"
@@ -64,7 +64,7 @@
       class="panel"
     >
       <div class="form-grid publish-grid">
-        <label><span>标准条款版本 ID</span><t-input v-model="publishForm.versionId" /></label>
+        <label><span>标准条款版本编号</span><t-input v-model="publishForm.versionId" /></label>
         <label><span>发布说明</span><t-input v-model="publishForm.changeSummary" /></label>
         <t-button
           theme="primary"
@@ -93,7 +93,7 @@
           v{{ row.versionNo }}
         </template>
         <template #content="{ row }">
-          <pre class="preview">{{ JSON.stringify(row.content, null, 2) }}</pre>
+          <pre class="preview">{{ clauseText(row.content) }}</pre>
         </template>
       </t-table>
       <p class="hint">
@@ -175,7 +175,7 @@ async function createClause() {
 async function submitClause() {
   const versionId = submitForm.versionId.trim();
   if (!versionId) {
-    message.value = "请先填写标准条款版本 ID";
+    message.value = "请先填写标准条款版本编号";
     tone.value = "danger";
     return;
   }
@@ -193,7 +193,7 @@ async function submitClause() {
 async function publishClause() {
   const versionId = publishForm.versionId.trim();
   if (!versionId) {
-    message.value = "请先填写标准条款版本 ID";
+    message.value = "请先填写标准条款版本编号";
     tone.value = "danger";
     return;
   }
@@ -211,6 +211,14 @@ async function publishClause() {
 }
 
 onMounted(loadClauses);
+
+function clauseText(content: unknown) {
+  if (!content || typeof content !== "object" || Array.isArray(content)) {
+    return String(content ?? "");
+  }
+  const text = (content as { text?: unknown }).text;
+  return typeof text === "string" ? text : "条款正文暂未按标准格式保存";
+}
 </script>
 
 <style scoped>

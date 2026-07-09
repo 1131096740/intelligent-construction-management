@@ -52,7 +52,7 @@
         />
         <t-input
           v-model="attachment.validUntil"
-          placeholder="有效期 YYYY-MM-DD"
+          placeholder="有效期，如 2026-12-31"
         />
         <input
           type="file"

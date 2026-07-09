@@ -124,6 +124,21 @@ describe("contract workbench API client", () => {
     expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract-1");
   });
 
+  it("maps backend project-role errors before the workbench page displays them", async () => {
+    mockApiFetch.mockReturnValue(
+      Promise.resolve(
+        new Response(JSON.stringify({ message: "Missing required project role" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+    );
+
+    await expect(fetchContractWorkbench("contract-1")).rejects.toThrow(
+      "当前账号暂无该项目或当前节点的处理权限。"
+    );
+  });
+
   it("listContractDrafts('my') – GET /contract-workbench?scope=my", async () => {
     mockApiFetch.mockReturnValue(makeOkJson([]));
 

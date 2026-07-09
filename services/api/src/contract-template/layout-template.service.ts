@@ -3,6 +3,12 @@ import type { Prisma } from "@prisma/client";
 import PizZip from "pizzip";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import {
+  canonicalContractBillLoopKey,
+  canonicalContractPlaceholder,
+  CONTRACT_DOCUMENT_REQUIRED_PLACEHOLDERS,
+  isContractBillRowPlaceholder
+} from "../contract-document/contract-placeholder-registry";
 import { FileService } from "../file/file.service";
 
 export interface LayoutInspectionReport {
@@ -30,11 +36,7 @@ type RoleClient = {
   };
 };
 
-const REQUIRED_PLACEHOLDERS = [
-  "contract.name",
-  "contract.temporaryCode",
-  "document.watermark"
-];
+const REQUIRED_PLACEHOLDERS = CONTRACT_DOCUMENT_REQUIRED_PLACEHOLDERS;
 const RECOGNIZED_NAMESPACE = /^(contract|party|field|clause|bill|document)\./;
 const DOCX_INSPECTION_XML_MAX_BYTES = 2_000_000;
 const INSPECTION_XML_PATH = /^word\/(document|header\d+|footer\d+|styles)\.xml$/;
@@ -308,11 +310,13 @@ export class LayoutTemplateService {
     } catch {
       throw new BadRequestException("Invalid DOCX layout source");
     }
-    const rawTags = [...text.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map((match) =>
-      match[1].trim()
-    );
+    const rawTags = this.extractTemplateTags(text);
     const placeholders = [
-      ...new Set(rawTags.map((tag) => tag.replace(/^[#/]\s*/, "").trim()))
+      ...new Set(
+        rawTags
+          .map((tag) => this.canonicalPlaceholder(tag))
+          .filter((tag): tag is string => Boolean(tag))
+      )
     ].sort();
     const unknownPlaceholders = placeholders.filter(
       (placeholder) => !RECOGNIZED_NAMESPACE.test(placeholder)
@@ -321,9 +325,10 @@ export class LayoutTemplateService {
       (required) => !placeholders.includes(required)
     );
     const billKeys = this.billKeys(placeholderSchema);
-    const loopKeys = [...text.matchAll(/\{#\s*bill\.([^{}\s]+)\s*\}/g)].map(
-      (match) => match[1]
-    );
+    const loopKeys = rawTags
+      .filter((tag) => tag.trim().startsWith("#"))
+      .map((tag) => this.canonicalBillLoopKey(tag))
+      .filter((key): key is string => Boolean(key));
     const hasBillLoop = billKeys.some((key) => loopKeys.includes(key));
     const blockingErrors: string[] = [];
     if (unknownPlaceholders.length) {
@@ -364,6 +369,25 @@ export class LayoutTemplateService {
       blockingErrors,
       warnings: []
     };
+  }
+
+  private extractTemplateTags(text: string) {
+    return [
+      ...[...text.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map((match) => match[1]),
+      ...[...text.matchAll(/(?<!\{)\{\s*([^{}]+?)\s*\}(?!\})/g)].map(
+        (match) => match[1]
+      )
+    ].map((tag) => tag.trim());
+  }
+
+  private canonicalPlaceholder(tag: string) {
+    if (/^[#/]/.test(tag.trim())) return null;
+    const alias = canonicalContractPlaceholder(tag);
+    return isContractBillRowPlaceholder(alias) ? null : alias;
+  }
+
+  private canonicalBillLoopKey(tag: string) {
+    return canonicalContractBillLoopKey(tag);
   }
 
   private billKeys(schema: unknown) {

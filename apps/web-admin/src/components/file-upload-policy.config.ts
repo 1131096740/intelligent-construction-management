@@ -11,14 +11,14 @@ export const PRIVATE_FILE_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
 
 export const CORE_ARCHIVE_UPLOAD_POLICY: FileUploadPolicy = {
   acceptAttribute: ".pdf,.png,.jpg,.jpeg",
-  acceptText: "PDF、PNG、JPG、JPEG",
+  acceptText: "归档文件、常见图片",
   limitBytes: PRIVATE_FILE_UPLOAD_MAX_BYTES,
   limitText: buildUploadLimitText(PRIVATE_FILE_UPLOAD_MAX_BYTES)
 };
 
 export const PDF_ARCHIVE_UPLOAD_POLICY: FileUploadPolicy = {
   acceptAttribute: "application/pdf",
-  acceptText: "PDF",
+  acceptText: "归档文件",
   limitBytes: PRIVATE_FILE_UPLOAD_MAX_BYTES,
   limitText: buildUploadLimitText(PRIVATE_FILE_UPLOAD_MAX_BYTES)
 };

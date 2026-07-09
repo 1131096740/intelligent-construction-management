@@ -26,7 +26,14 @@
       <div class="form-grid">
         <label><span>编码</span><t-input v-model="form.code" /></label>
         <label><span>名称</span><t-input v-model="form.name" /></label>
-        <label><span>合同类型</span><t-input v-model="form.contractTypeKey" /></label>
+        <label><span>合同类型</span><t-select v-model="form.contractTypeKey">
+          <t-option
+            v-for="option in contractTypeOptions"
+            :key="option.value"
+            :value="option.value"
+            :label="option.label"
+          />
+        </t-select></label>
         <t-button
           theme="primary"
           :loading="saving"
@@ -64,7 +71,7 @@
           {{ row.versionNo ? `v${row.versionNo}` : "暂无发布版本" }}
         </template>
         <template #publishedBy="{ row }">
-          {{ row.publishedByUserId ?? "暂无发布记录" }}
+          {{ row.versionNo ? "已发布" : "暂无发布记录" }}
         </template>
         <template #operation="{ row }">
           <t-link
@@ -94,7 +101,7 @@ import {
   listPublishedContractTemplates
 } from "../../api/contract-workbench.api";
 import { contractTypeLabel, templateStatusLabel } from "../contracts/contract-labels";
-import { templateListColumns } from "./contract-template.config";
+import { contractTypeOptions, templateListColumns } from "./contract-template.config";
 
 interface TemplateRow {
   id: string;
@@ -113,7 +120,7 @@ const saving = ref(false);
 const message = ref("");
 const tone = ref<"success" | "danger">("success");
 const emptySchema = { fields: [], bills: [], clauses: [], attachments: [], validations: [] };
-const form = reactive({ code: "", name: "", contractTypeKey: "" });
+const form = reactive({ code: "", name: "", contractTypeKey: contractTypeOptions[0]?.value ?? "" });
 
 function go(path: string) {
   void router.push(path);
@@ -142,7 +149,7 @@ async function createTemplate() {
     });
     const templateId = (created as { template?: { id?: string } }).template?.id;
     const versionId = (created as { version?: { id?: string } }).version?.id;
-    message.value = versionId ? `业务模板草稿已创建，版本 ID：${versionId}` : "业务模板草稿已创建";
+    message.value = "业务模板草稿已创建，正在进入编辑页";
     tone.value = "success";
     if (templateId) {
       void router.push({

@@ -97,7 +97,7 @@ export function buildProjectBusinessEntries(
     },
     {
       label: "资料",
-      description: "查看当前项目合同原件、结算件、付款凭证和归档 PDF",
+      description: "查看当前项目合同原件、结算件、付款凭证和归档文件",
       path: `/资料库?${projectQuery}`
     },
     {

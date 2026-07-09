@@ -72,12 +72,18 @@
     >
       <BusinessActionPanel :actions="settlementDetail?.availableActions ?? []" />
       <div class="action-grid">
-        <div class="action-group">
+        <div
+          v-if="showSettlementApprovalActions"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>结算审批</strong>
             <span>审批、退回、打回</span>
           </div>
-          <div class="action-fields">
+          <div
+            v-if="isSettlementActionEnabled('review_approval')"
+            class="action-fields"
+          >
             <t-input
               v-model="settlementArchiveForm.approvalComment"
               placeholder="审批意见/备注(可选)"
@@ -85,56 +91,62 @@
           </div>
           <div class="action-buttons">
             <t-button
+              v-if="isSettlementActionEnabled('review_approval')"
               theme="primary"
               :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!isSettlementActionEnabled('review_approval')"
               @click="submitSettlementReview('approve')"
             >
               通过
             </t-button>
             <t-button
+              v-if="isSettlementActionEnabled('review_approval')"
               theme="danger"
               variant="outline"
               :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!isSettlementActionEnabled('review_approval')"
               @click="submitSettlementReview('reject')"
             >
               驳回
             </t-button>
             <t-button
+              v-if="isSettlementActionEnabled('review_approval')"
               variant="outline"
               :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!isSettlementActionEnabled('review_approval')"
               @click="submitSettlementReview('reject_previous')"
             >
               退回上级
             </t-button>
             <t-button
+              v-if="isSettlementActionEnabled('review_approval')"
               variant="outline"
               :loading="archiveActionBusy === 'reviewApproval'"
-              :disabled="!isSettlementActionEnabled('review_approval')"
               @click="submitSettlementReview('return_to_applicant')"
             >
               打回发起人
             </t-button>
             <t-button
+              v-if="isSettlementActionEnabled('download_approval_form')"
               theme="default"
               variant="outline"
               :loading="archiveActionBusy === 'approvalForm'"
-              :disabled="!isSettlementActionEnabled('download_approval_form')"
               @click="downloadSettlementApprovalForm"
             >
-              下载最新审批PDF
+              下载最新审批单
             </t-button>
           </div>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="showSettlementAssistanceActions"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>审批辅助</strong>
             <span>撤回、催办、转审、委托</span>
           </div>
-          <div class="action-fields">
+          <div
+            v-if="isSettlementActionEnabled('transfer_approval') || isSettlementActionEnabled('delegate_approval')"
+            class="action-fields"
+          >
             <t-select
               v-model="settlementArchiveForm.assignmentUserId"
               :options="assignmentUserOptions"
@@ -143,33 +155,33 @@
           </div>
           <div class="action-buttons">
             <t-button
+              v-if="isSettlementActionEnabled('withdraw_approval')"
               :loading="archiveActionBusy === 'withdrawApproval'"
-              :disabled="!isSettlementActionEnabled('withdraw_approval')"
               @click="submitSettlementWithdrawal"
             >
               撤回
             </t-button>
             <t-button
+              v-if="isSettlementActionEnabled('remind_approval')"
               :loading="archiveActionBusy === 'remindApproval'"
-              :disabled="!isSettlementActionEnabled('remind_approval')"
               @click="submitSettlementReminder"
             >
               催办
             </t-button>
             <t-button
+              v-if="isSettlementActionEnabled('transfer_approval')"
               theme="primary"
               variant="outline"
               :loading="archiveActionBusy === 'transferApproval'"
-              :disabled="!isSettlementActionEnabled('transfer_approval')"
               @click="submitSettlementAssignment('transfer')"
             >
               转审
             </t-button>
             <t-button
+              v-if="isSettlementActionEnabled('delegate_approval')"
               theme="primary"
               variant="outline"
               :loading="archiveActionBusy === 'delegateApproval'"
-              :disabled="!isSettlementActionEnabled('delegate_approval')"
               @click="submitSettlementAssignment('delegate')"
             >
               委托
@@ -177,35 +189,40 @@
           </div>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="showSettlementFileActions"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>结算文件</strong>
-            <span>草稿Excel与归档PDF</span>
+            <span>草稿表格与归档文件</span>
           </div>
           <t-button
+            v-if="canRunSettlementAction"
             variant="outline"
             :loading="archiveActionBusy === 'draftExcel'"
-            :disabled="!canRunSettlementAction"
             @click="downloadSettlementDraft"
           >
-            下载草稿Excel
+            下载草稿表格
           </t-button>
           <t-button
+            v-if="isSettlementActionEnabled('generate_pdf_archive')"
             theme="primary"
             :loading="archiveActionBusy === 'pdf'"
-            :disabled="!isSettlementActionEnabled('generate_pdf_archive')"
             @click="submitSettlementPdfGeneration"
           >
-            生成PDF归档
+            生成归档文件
           </t-button>
-          <div class="template-actions">
+          <div
+            v-if="canRunSettlementAction"
+            class="template-actions"
+          >
             <t-button
               v-for="template in settlementAttachmentTemplates"
               :key="template.key"
               variant="outline"
               size="small"
               :loading="archiveActionBusy === `attachmentTemplate:${template.key}`"
-              :disabled="!canRunSettlementAction"
               @click="downloadSettlementAttachment(template.key)"
             >
               {{ template.label }}
@@ -213,7 +230,10 @@
           </div>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="isSettlementActionEnabled('upload_archive')"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>上传签章结算单</strong>
             <span>合同部成员</span>
@@ -233,14 +253,16 @@
           <t-button
             theme="primary"
             :loading="archiveActionBusy === 'upload'"
-            :disabled="!isSettlementActionEnabled('upload_archive')"
             @click="submitSettlementArchiveUpload"
           >
             提交归档件
           </t-button>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="isSettlementActionEnabled('confirm_archive')"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>主管确认归档</strong>
             <span>确认后结算生效</span>
@@ -260,14 +282,16 @@
           <t-button
             theme="primary"
             :loading="archiveActionBusy === 'confirm'"
-            :disabled="!isSettlementActionEnabled('confirm_archive')"
             @click="submitSettlementArchiveConfirmation"
           >
             确认生效
           </t-button>
         </div>
 
-        <div class="action-group">
+        <div
+          v-if="isSettlementActionEnabled('download_archive')"
+          class="action-group"
+        >
           <div class="action-title">
             <strong>敏感文件下载</strong>
             <span>签发短时效票据</span>
@@ -288,7 +312,6 @@
             theme="primary"
             variant="outline"
             :loading="archiveActionBusy === 'download'"
-            :disabled="!isSettlementActionEnabled('download_archive')"
             @click="submitSettlementFileDownload"
           >
             下载文件
@@ -526,6 +549,19 @@ const settlementActionByKey = computed(
   () => new Map((settlementDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
 const canRunSettlementAction = computed(() => !!settlementDetail.value?.settlementId);
+const showSettlementApprovalActions = computed(
+  () => isSettlementActionEnabled("review_approval") || isSettlementActionEnabled("download_approval_form")
+);
+const showSettlementAssistanceActions = computed(
+  () =>
+    isSettlementActionEnabled("withdraw_approval") ||
+    isSettlementActionEnabled("remind_approval") ||
+    isSettlementActionEnabled("transfer_approval") ||
+    isSettlementActionEnabled("delegate_approval")
+);
+const showSettlementFileActions = computed(
+  () => canRunSettlementAction.value || isSettlementActionEnabled("generate_pdf_archive")
+);
 const assignmentUserOptions = computed(() =>
   assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );

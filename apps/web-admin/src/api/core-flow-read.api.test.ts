@@ -144,6 +144,21 @@ describe("core flow read API client", () => {
     );
   });
 
+  it("maps project role guard errors to a Chinese permission message", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 403,
+      clone() {
+        return this;
+      },
+      json: async () => ({ message: "Missing required project role" })
+    } as Response);
+
+    await expect(fetchContractDetail("HT-2026-001")).rejects.toThrow(
+      "当前账号暂无该项目或当前节点的处理权限。"
+    );
+  });
+
   it("maps forced password-change API errors to a business message", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,

@@ -35,7 +35,7 @@
           v-model="confirmationPassword"
           type="password"
           :disabled="busy"
-          placeholder="用于下载 DOCX/PDF"
+          placeholder="用于下载合同文档或预览文件"
         />
       </label>
       <t-button
@@ -56,7 +56,7 @@
         :src="layoutThumbnailUrl(selectedLayout)"
         alt="版式缩略图"
       >
-      <span>版式 v{{ selectedLayout.versionNo ?? "-" }}</span>
+      <span>版式版本 {{ selectedLayout.versionNo ?? "-" }}</span>
       <button
         v-if="selectedLayout.previewPdfFileId"
         type="button"
@@ -64,7 +64,7 @@
         :disabled="busy"
         @click="openFile(String(selectedLayout.previewPdfFileId))"
       >
-        预览 PDF
+        预览文件
       </button>
     </div>
 
@@ -168,7 +168,7 @@
           variant="outline"
           @click="openFile(String(document.docxFileId))"
         >
-          DOCX
+          合同文档
         </t-button>
         <t-button
           v-if="document.pdfFileId"
@@ -176,7 +176,7 @@
           variant="outline"
           @click="openFile(String(document.pdfFileId))"
         >
-          PDF
+          预览文件
         </t-button>
         <t-button
           v-if="document.status === 'failed'"
@@ -202,7 +202,7 @@
             :disabled="disabled || busy"
             @change="uploadOfflineRevisionFile"
           >
-          上传 DOCX
+          上传修订文档
         </label>
         <span
           v-if="offlineRevisionFile"
@@ -554,7 +554,7 @@ async function uploadOfflineRevisionFile(event: Event) {
     const uploadedFile = await uploadPrivateFile(file, file.name);
     if (versionId.value === requestVersionId) {
       offlineRevisionFile.value = uploadedFile;
-      message.value = "DOCX 已上传，确认后记录线下修订稿";
+      message.value = "合同文档已上传，确认后记录线下修订稿";
     }
   } catch (error) {
     if (versionId.value === requestVersionId) {
@@ -665,9 +665,7 @@ function revisionFileText(revision: Record<string, unknown>): string {
   if (typeof revision["originalName"] === "string" && revision["originalName"]) {
     return revision["originalName"];
   }
-  return typeof revision["fileId"] === "string" && revision["fileId"]
-    ? revision["fileId"]
-    : "未记录文件";
+  return "未读取到文件名";
 }
 
 function revisionTimeText(revision: Record<string, unknown>): string {

@@ -818,7 +818,7 @@
               :disabled="expenseActionBusy !== ''"
               @click="downloadExpenseApprovalPdf"
             >
-              下载审批单 PDF
+              下载审批单
             </button>
           </div>
           <div
@@ -1702,7 +1702,7 @@ async function downloadExpenseAttachment() {
 async function downloadExpenseApprovalPdf() {
   await runExpenseAction("approval-pdf", async (row) => {
     if (!row.hasApprovalPdf) {
-      throw new Error("该支出单审批单 PDF 尚未生成");
+      throw new Error("该支出单审批单文件尚未生成");
     }
     const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
     if (!downloadReason) {

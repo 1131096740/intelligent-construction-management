@@ -113,15 +113,15 @@ export class ContractBillExcelService {
 
     const instructions = workbook.addWorksheet(INSTRUCTION_SHEET);
     instructions.addRow(["合同清单导入模板填写说明"]);
-    instructions.addRow(["1. 仅在『清单数据』工作表中填写，第 1、2 行为表头，请勿修改。"]);
-    instructions.addRow(["2. 第 2 行为字段代码，导入时以字段代码为准。"]);
+    instructions.addRow(["1. 仅在『清单数据』工作表中填写，第 1 行为中文表头，请勿修改。"]);
+    instructions.addRow(["2. 系统识别用字段行和内部列已隐藏，请不要取消隐藏或改动。"]);
     instructions.addRow(["3. 数量、单价、税率请填写数字；含公式时以原始填写值为准。"]);
-    instructions.addRow([`4. __rowKey 列为系统内部列（已隐藏），更新模式下请勿改动。`]);
     instructions.getColumn(1).width = 80;
 
     const sheet = workbook.addWorksheet(DATA_SHEET);
     sheet.addRow(columns.map((column) => column.label));
     sheet.addRow(columns.map((column) => column.code));
+    sheet.getRow(HEADER_ROWS).hidden = true;
     sheet.views = [{ state: "frozen", ySplit: HEADER_ROWS }];
 
     const quantityFormat = this.numberFormat(bill.quantityScale);
@@ -807,7 +807,7 @@ export class ContractBillExcelService {
   private templateColumns(bill: BillContext): CoreFieldDef[] {
     const custom = this.schemaColumns(bill.schemaSnapshot).map((column) => ({
       code: column.key,
-      label: column.key,
+      label: column.label,
       required: column.required
     }));
     return [...CORE_FIELDS, ...custom, { code: ROW_KEY_CODE, label: ROW_KEY_CODE, required: false }];
@@ -822,11 +822,14 @@ export class ContractBillExcelService {
         !this.isPlainObject(column) ||
         typeof column.key !== "string" ||
         !column.key.trim() ||
+        (column.label !== undefined && typeof column.label !== "string") ||
         (column.required !== undefined && typeof column.required !== "boolean")
       ) {
         throw new BadRequestException(`Contract bill schema column ${index} is invalid`);
       }
-      return { key: column.key, required: column.required === true };
+      const label =
+        typeof column.label === "string" && column.label.trim() ? column.label.trim() : column.key;
+      return { key: column.key, label, required: column.required === true };
     });
   }
 
