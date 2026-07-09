@@ -352,6 +352,9 @@ export function takeoverLevelAdjustmentDisabledReason(
   reviewComment: string
 ): string {
   if (selectedLevel === suggestion.level || reviewComment.trim()) return "";
+  if (takeoverLevelRiskRank(selectedLevel) < takeoverLevelRiskRank(suggestion.level)) {
+    return "申报等级低于系统建议，请说明资料已核验、风险由谁确认，以及是否仍需限制付款";
+  }
   return "申报等级与系统建议不一致，请在等级调整说明中说明调整原因";
 }
 
@@ -365,7 +368,15 @@ export function takeoverLevelSelectionHint(
     return `当前按系统建议申报${selected}，复核时仍需核对资料清单、缺口说明和付款阻断提示。`;
   }
 
+  if (takeoverLevelRiskRank(selectedLevel) < takeoverLevelRiskRank(suggestion.level)) {
+    return `当前申报${selected}，低于系统建议${suggested}；需说明资料已核验、风险责任和付款限制，主管确认前不会自动解除风险。`;
+  }
+
   return `当前申报${selected}，与系统建议${suggested}不一致；调整原因会进入复核记录和主管确认依据。`;
+}
+
+function takeoverLevelRiskRank(level: ContractTakeoverLevel): number {
+  return { A: 1, B: 2, C: 3 }[level];
 }
 
 export function takeoverSuggestionApplyDisabledReason(

@@ -57,8 +57,8 @@
 
     <div class="workflow-panel panel">
       <div class="workflow-title">
-        <strong>接管步骤</strong>
-        <span>{{ selectedRow ? `${selectedRow.contractNo} · ${selectedRow.takeoverStatusLabel}` : "选择合同后查看当前步骤" }}</span>
+        <strong>接管进度概览（只读）</strong>
+        <span>{{ selectedRow ? `${selectedRow.contractNo} · ${selectedRow.takeoverStatusLabel}` : "选择合同后查看当前进度" }}</span>
       </div>
       <div class="flow-list takeover-flow">
         <div
@@ -421,7 +421,7 @@
             <span>等级调整说明/复核意见</span>
             <t-textarea
               v-model="createForm.reviewComment"
-              placeholder="如申报等级与系统建议不一致，说明调整原因；同时记录合同部、预算、项目、财务复核意见"
+              placeholder="如申报等级与系统建议不一致，说明本次调整原因、资料核验情况、风险责任和付款限制"
               :autosize="{ minRows: 2, maxRows: 4 }"
             />
           </label>
@@ -1854,7 +1854,7 @@ function requiredText(raw: string, label: string) {
 function importBatchReviewConsequence(status: ContractTakeoverImportBatchReviewStatus) {
   const texts: Record<ContractTakeoverImportBatchReviewStatus, string> = {
     under_review:
-      "确认提交批次复核后，合同部、预算和财务应按该批次资料和金额口径继续核验。",
+      "确认提交批次复核后，应指定合同、预算、财务责任人分别核对资料、金额口径和付款限制。",
     accepted:
       "确认验收通过后，该批次将作为接管复核完成记录；后续单合同仍需按资料和主管确认办理。",
     limited_accepted:

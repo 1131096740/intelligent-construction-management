@@ -343,6 +343,13 @@ describe("contract takeover page configuration", () => {
     expect(takeoverLevelSelectionHint("B", suggestion)).toBe(
       "当前申报B级，与系统建议A级不一致；调整原因会进入复核记录和主管确认依据。"
     );
+    const riskSuggestion = { level: "C" as const, reason: "存在争议资料，建议按 C级受限接管。" };
+    expect(takeoverLevelAdjustmentDisabledReason("A", riskSuggestion, "")).toBe(
+      "申报等级低于系统建议，请说明资料已核验、风险由谁确认，以及是否仍需限制付款"
+    );
+    expect(takeoverLevelSelectionHint("A", riskSuggestion)).toBe(
+      "当前申报A级，低于系统建议C级；需说明资料已核验、风险责任和付款限制，主管确认前不会自动解除风险。"
+    );
     expect(takeoverSuggestionApplyDisabledReason("A", suggestion)).toBe(
       "当前申报等级已采用系统建议"
     );
