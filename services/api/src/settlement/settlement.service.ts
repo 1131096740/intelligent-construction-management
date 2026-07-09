@@ -1688,7 +1688,7 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到该结算单，请刷新结算台账后重试");
       }
 
       const pdfDocument = await tx.pdfDocument.findFirst({
@@ -1721,7 +1721,7 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到该结算单，请刷新结算台账后重试");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -1873,7 +1873,7 @@ export class SettlementService {
     });
 
     if (!settlement) {
-      throw new Error("Settlement not found");
+      throw new Error("未找到该结算单，请刷新结算台账后重试");
     }
 
     const [contract, project, previousSettlements, approvalInstance] = await Promise.all([
@@ -1909,11 +1909,11 @@ export class SettlementService {
     ]);
 
     if (!contract) {
-      throw new Error("Settlement contract not found");
+      throw new Error("未找到结算关联合同，请刷新结算台账后重试");
     }
 
     if (!project) {
-      throw new Error("Settlement project not found");
+      throw new Error("未找到结算所属项目，请刷新结算台账后重试");
     }
 
     const actionLogs = approvalInstance

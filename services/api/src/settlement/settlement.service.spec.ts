@@ -3860,6 +3860,42 @@ describe("SettlementService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
+  it("结算审批单下载找不到结算单时给出中文业务提示", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      pdfDocument: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      assertCanDownloadFileById: jest.fn(),
+      getFileBuffer: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.downloadLatestApprovalPdf(
+        "settlement-missing",
+        "approver-1",
+        "current-password",
+        "结算审批复核"
+      )
+    ).rejects.toThrow("未找到该结算单，请刷新结算台账后重试");
+    expect(tx.pdfDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
+  });
+
   it("结算审批单下载服务不可用时给出中文业务提示", async () => {
     const settlementService = new SettlementService(undefined as never, audit as never, auth as never);
 
@@ -4318,6 +4354,70 @@ describe("SettlementService", () => {
       settlementService.generatePdfArchive("settlement-missing", "contract-staff-1")
     ).rejects.toThrow("未找到结算单，请刷新结算台账后重试");
     expect(tx.pdfDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["关联合同", null, { id: "project-1", name: "总部综合楼" }, "未找到结算关联合同，请刷新结算台账后重试"],
+    [
+      "所属项目",
+      {
+        id: "contract-1",
+        code: "HT-2026-009",
+        name: "幕墙分包合同",
+        counterparty: "上海示例劳务有限公司",
+        companyEntityName: "建工智管工程有限公司"
+      },
+      null,
+      "未找到结算所属项目，请刷新结算台账后重试"
+    ]
+  ])("结算%s缺失时不能生成归档 PDF", async (_, contract, project, message) => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          code: "JS-2026-019",
+          periodLabel: "2026-06",
+          status: "approved_pending_archive",
+          amountCents: 1_000_000,
+          payableAmountCents: 800_000,
+          paidAmountCents: 0,
+          isFinal: false
+        }),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue(contract)
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue(project)
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.generatePdfArchive("settlement-1", "contract-staff-1")
+    ).rejects.toThrow(message);
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
