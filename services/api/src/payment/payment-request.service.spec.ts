@@ -2862,7 +2862,7 @@ describe("PaymentRequestService", () => {
         decision: "reject_previous",
         comment: "   "
       })
-    ).rejects.toThrow("approval comment is required");
+    ).rejects.toThrow("请填写审批意见，说明驳回或退回原因");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
