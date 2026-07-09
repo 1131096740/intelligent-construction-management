@@ -255,7 +255,9 @@ describe("ContractTakeoverService", () => {
         projectId: "project-1",
         contractId: "contract-1",
         contractVersionId: "contract-version-1",
-        takeoverLevel: "A"
+        takeoverLevel: "A",
+        suggestedTakeoverLevel: "B",
+        takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。"
       })
     });
   });
@@ -1540,7 +1542,9 @@ describe("ContractTakeoverService", () => {
         projectId: "project-1",
         fromStatus: "draft",
         fromTakeoverLevel: "A",
-        toTakeoverLevel: "C"
+        toTakeoverLevel: "C",
+        suggestedTakeoverLevel: "C",
+        takeoverLevelAdjustmentReason: null
       })
     });
   });

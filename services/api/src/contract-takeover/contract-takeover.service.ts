@@ -445,6 +445,9 @@ export class ContractTakeoverService {
           contractId: contract.id,
           contractVersionId: version.id,
           takeoverLevel: data.takeoverLevel,
+          suggestedTakeoverLevel: data.suggestedTakeoverLevel,
+          takeoverLevelAdjustmentReason:
+            data.takeoverLevel === data.suggestedTakeoverLevel ? null : data.reviewComment,
           takeoverBatchId: options.takeoverBatchId ?? null,
           importRowNo: options.importRowNo ?? null
         }
@@ -546,7 +549,10 @@ export class ContractTakeoverService {
           contractVersionId: takeover.contractVersionId,
           fromStatus: takeover.takeoverStatus,
           fromTakeoverLevel: takeover.takeoverLevel,
-          toTakeoverLevel: data.takeoverLevel
+          toTakeoverLevel: data.takeoverLevel,
+          suggestedTakeoverLevel: data.suggestedTakeoverLevel,
+          takeoverLevelAdjustmentReason:
+            data.takeoverLevel === data.suggestedTakeoverLevel ? null : data.reviewComment
         }
       });
 
@@ -1693,6 +1699,7 @@ export class ContractTakeoverService {
       name: input.name.trim(),
       counterparty: input.counterparty.trim(),
       takeoverLevel: takeoverLevel as ContractTakeoverLevel,
+      suggestedTakeoverLevel: suggestedLevel,
       signedAt,
       takeoverCutoffDate,
       responsibleUserId: input.responsibleUserId?.trim() || null,
