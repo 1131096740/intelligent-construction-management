@@ -631,7 +631,8 @@ export class PaymentReadService {
               dueDays: true,
               advanceDeductionMode: true,
               advanceDeductionRatioBps: true,
-              advanceDeductionStartRatioBps: true
+              advanceDeductionStartRatioBps: true,
+              requiresInvoice: true
             }
           })
         : Promise.resolve([]),
@@ -820,6 +821,7 @@ export class PaymentReadService {
             effectiveAt: this.dateOnly(row.effectiveAt),
             expectedPayableAt: this.dateOnly(row.expectedPayableAt),
             paymentRule: row.paymentRule,
+            invoiceRequirement: row.requiresInvoice ? "需提供发票" : "不要求发票",
             isDue: row.isDue,
             includableAmountCents: row.includableAmountCents
           };

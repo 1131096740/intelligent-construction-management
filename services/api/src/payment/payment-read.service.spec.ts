@@ -1373,7 +1373,8 @@ describe("PaymentReadService", () => {
             dueDays: 30,
             advanceDeductionMode: "none",
             advanceDeductionRatioBps: null,
-            advanceDeductionStartRatioBps: null
+            advanceDeductionStartRatioBps: null,
+            requiresInvoice: true
           },
           {
             id: "stage-advance",
@@ -1388,7 +1389,8 @@ describe("PaymentReadService", () => {
             dueDays: 0,
             advanceDeductionMode: "per_settlement_ratio",
             advanceDeductionRatioBps: 2000,
-            advanceDeductionStartRatioBps: null
+            advanceDeductionStartRatioBps: null,
+            requiresInvoice: false
           }
         ])
       },
@@ -1504,6 +1506,11 @@ describe("PaymentReadService", () => {
       remainingAdvanceToDeductCents: 30_000
     });
     expect(preview.sections.map((section) => section.type)).toEqual(["advance", "progress"]);
+    expect(prisma.paymentTermsStage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ requiresInvoice: true })
+      })
+    );
     expect(preview.sections[1]).toMatchObject({
       type: "progress",
       title: "进度款"
@@ -1515,6 +1522,7 @@ describe("PaymentReadService", () => {
         cumulativeBeforeAmountCents: 0,
         cumulativeAfterAmountCents: 100_000,
         expectedPayableAt: "2026-07-01",
+        invoiceRequirement: "需提供发票",
         isDue: true,
         includableAmountCents: 80_000
       }),
@@ -1523,6 +1531,7 @@ describe("PaymentReadService", () => {
         cumulativeBeforeAmountCents: 100_000,
         cumulativeAfterAmountCents: 150_000,
         expectedPayableAt: "2026-08-09",
+        invoiceRequirement: "需提供发票",
         isDue: false,
         includableAmountCents: 0
       })

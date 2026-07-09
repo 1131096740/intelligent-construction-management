@@ -64,6 +64,7 @@ export interface PaymentApplicationPreviewRow {
   effectiveAt: string;
   expectedPayableAt: string;
   paymentRule: string;
+  invoiceRequirement: string;
   dueStatus: string;
   includableAmount: string;
   isDue: boolean;
@@ -151,6 +152,7 @@ export const paymentApplicationPreviewColumns: PrimaryTableCol<PaymentApplicatio
   { colKey: "effectiveAt", title: "生效日期", width: 108 },
   { colKey: "expectedPayableAt", title: "预计可付日", width: 108 },
   { colKey: "paymentRule", title: "付款规则", minWidth: 168 },
+  { colKey: "invoiceRequirement", title: "发票要求", width: 112 },
   { colKey: "dueStatus", title: "当前是否到账期", width: 124 },
   { colKey: "includableAmount", title: "本行可计入金额", width: 132, align: "right" }
 ];
@@ -232,6 +234,7 @@ export function toPaymentApplicationPreviewRows(
     effectiveAt: formatPaymentDate(row.effectiveAt, "未生效"),
     expectedPayableAt: formatPaymentDate(row.expectedPayableAt, "待计算"),
     paymentRule: row.paymentRule,
+    invoiceRequirement: row.invoiceRequirement,
     dueStatus: row.isDue ? "已到账期" : "未到账期",
     includableAmount: formatPaymentCents(row.includableAmountCents),
     isDue: row.isDue

@@ -49,6 +49,7 @@ export interface ContractDuePaymentTermsStage {
   advanceDeductionMode?: string | null;
   advanceDeductionRatioBps?: number | null;
   advanceDeductionStartRatioBps?: number | null;
+  requiresInvoice?: boolean | null;
 }
 
 export interface ContractDueSettlementArchiveFile {
@@ -111,6 +112,7 @@ export interface ContractPaymentApplicationRow {
   effectiveAt: Date | null;
   expectedPayableAt: Date | null;
   paymentRule: string;
+  requiresInvoice?: boolean;
   isDue: boolean;
   includableAmountCents: number;
 }
@@ -432,6 +434,7 @@ export function buildContractPaymentApplicationPreview(input: {
         effectiveAt: confirmedAt,
         expectedPayableAt,
         paymentRule: paymentRuleLabel(stage),
+        requiresInvoice: stage.requiresInvoice === true,
         isDue,
         includableAmountCents
       });
@@ -475,6 +478,7 @@ export function buildContractPaymentApplicationPreview(input: {
       effectiveAt,
       expectedPayableAt,
       paymentRule: paymentRuleLabel(stage),
+      requiresInvoice: stage.requiresInvoice === true,
       isDue,
       includableAmountCents: isDue
         ? centsToSafeNumber(contractStageAmountCents(contractAmountCents, stage))

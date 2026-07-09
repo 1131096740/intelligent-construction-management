@@ -332,6 +332,7 @@ export interface ContractPaymentApplicationPreviewReadModel {
       effectiveAt: string | null;
       expectedPayableAt: string | null;
       paymentRule: string;
+      invoiceRequirement: string;
       isDue: boolean;
       includableAmountCents: number;
     }>;

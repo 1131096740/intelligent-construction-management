@@ -113,6 +113,7 @@ describe("payment ledger page configuration", () => {
       "生效日期",
       "预计可付日",
       "付款规则",
+      "发票要求",
       "当前是否到账期",
       "本行可计入金额"
     ]);
@@ -135,6 +136,7 @@ describe("payment ledger page configuration", () => {
             effectiveAt: "2026-07-03T08:30:00.000Z",
             expectedPayableAt: "2026-08-03T08:30:00.000Z",
             paymentRule: "本期结算金额 × 80%",
+            invoiceRequirement: "需提供发票",
             isDue: false,
             includableAmountCents: 0
           }
@@ -150,6 +152,7 @@ describe("payment ledger page configuration", () => {
         effectiveAt: "2026-07-03",
         expectedPayableAt: "2026-08-03",
         paymentRule: "本期结算金额 × 80%",
+        invoiceRequirement: "需提供发票",
         dueStatus: "未到账期",
         includableAmount: "¥0.00",
         isDue: false
