@@ -2208,6 +2208,135 @@ describe("ContractService", () => {
     });
   });
 
+  it("rejects contract PDF generation when PDF service is unavailable", async () => {
+    const tx = {
+      pdfDocument: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.generatePdfArchive("contract-version-1", "contract-staff-1")
+    ).rejects.toThrow("合同归档 PDF 服务暂不可用，请稍后重试或联系管理员");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract PDF generation when the contract version is unavailable", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      pdfDocument: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      service.generatePdfArchive("contract-version-missing", "contract-staff-1")
+    ).rejects.toThrow("未找到合同版本，请刷新合同台账后重试");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(tx.pdfDocument.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract PDF generation before the contract version is effective", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "pending_archive_confirm"
+        })
+      },
+      contract: {
+        findUnique: jest.fn()
+      },
+      pdfDocument: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      service.generatePdfArchive("contract-version-1", "contract-staff-1")
+    ).rejects.toThrow("当前合同版本尚未生效，暂不能生成归档 PDF");
+    expect(tx.contract.findUnique).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects contract PDF generation when the contract master data is unavailable", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-missing",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      pdfDocument: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const files = {
+      uploadPrivateFile: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      service.generatePdfArchive("contract-version-1", "contract-staff-1")
+    ).rejects.toThrow("未找到合同主数据，请刷新合同台账后重试");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(tx.pdfDocument.create).not.toHaveBeenCalled();
+  });
+
   it("rejects contract PDF generation when the archive already exists", async () => {
     const tx = {
       contractVersion: {
@@ -2247,7 +2376,7 @@ describe("ContractService", () => {
 
     await expect(
       service.generatePdfArchive("contract-version-1", "contract-staff-1")
-    ).rejects.toThrow("Contract PDF archive already exists");
+    ).rejects.toThrow("合同归档 PDF 已生成，请勿重复生成");
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 

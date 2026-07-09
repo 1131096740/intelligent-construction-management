@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进合同归档 PDF 生成中文业务错误治理切片：合同部生成合同归档 PDF 时，PDF 服务暂不可用、合同版本不存在、合同版本尚未生效、合同主数据不存在或归档 PDF 已生成等场景，不再抛出 `File service is required to generate contract PDF archive`、`Contract version not found`、`Contract PDF archive already exists` 等英文技术提示，统一改为中文业务原因，并确保失败时不会上传文件或创建 PDF 归档记录。不改变合同归档 PDF 内容、私有文件上传、资料库入库和审计口径。验证：API 合同服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进合同归档确认中文业务错误治理切片：合同主管确认已签署合同归档时，缺少当前密码、密码校验服务暂不可用、合同版本不存在、状态尚不能确认、归档文件不存在或归档文件已处理等场景，不再抛出 `Contract archive confirmation password is required`、`Cannot confirm contract archive from status ...`、`Contract archive file not found` 等英文技术提示，统一改为中文业务原因并说明下一步。不改变合同归档状态机、当前密码校验、付款条款冻结、合同版本生效和审计口径。验证：API 合同服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进证据卡下载提示一致性切片：合同详情、历史接管、结算详情和付款详情里显式传给证据文件卡的下载提示，不再停留在“当前密码并记录审计”，统一说明“当前密码、下载原因、短时效链接和审计”；这样资料库、接管资料、合同归档、结算归档和付款凭证在前台看到的私有文件下载口径一致。不改变后端下载权限、当前密码校验、下载原因、短时效链接生成和审计口径。验证：Web 证据文件卡 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。
 - 2026-07-10 (CodeX)：继续推进接管等级人工选择责任留痕切片：接管工作台保留业务人员手动选择 A/B/C 接管等级，但在确认前核验摘要和主管确认弹窗同步展示“系统建议、实际选择、是否调整及复核意见”，让主管看到接管等级不是随手选择；若等级偏离系统建议，仍由既有前后端规则要求填写复核说明。不改变接管等级入库、系统建议规则、主管确认、资料硬拦、付款阻断和审计口径。验证：Web 接管配置 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。

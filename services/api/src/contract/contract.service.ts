@@ -1128,7 +1128,7 @@ export class ContractService {
     input: GenerateContractPdfArchiveDto = {}
   ) {
     if (!this.files) {
-      throw new Error("File service is required to generate contract PDF archive");
+      throw new Error("合同归档 PDF 服务暂不可用，请稍后重试或联系管理员");
     }
 
     const templateKey = input.templateKey ?? "contract_archive";
@@ -1139,17 +1139,17 @@ export class ContractService {
       });
 
       if (!version) {
-        throw new Error("Contract version not found");
+        throw new Error("未找到合同版本，请刷新合同台账后重试");
       }
 
       if (version.status !== "effective") {
-        throw new Error(`Cannot generate contract PDF from status ${version.status}`);
+        throw new Error("当前合同版本尚未生效，暂不能生成归档 PDF");
       }
 
       const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
 
       if (!contract) {
-        throw new Error("Contract not found");
+        throw new Error("未找到合同主数据，请刷新合同台账后重试");
       }
 
       const existingPdf = await tx.pdfDocument.findFirst({
@@ -1161,7 +1161,7 @@ export class ContractService {
       });
 
       if (existingPdf) {
-        throw new Error("Contract PDF archive already exists");
+        throw new Error("合同归档 PDF 已生成，请勿重复生成");
       }
 
       return { contract, version };
