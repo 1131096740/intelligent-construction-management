@@ -267,7 +267,7 @@ export class FileService {
 
   async createDownloadTicket(fileId: string, input: CreateFileDownloadTicketInput) {
     if (!input.actorUserId.trim()) {
-      throw new Error("Actor user id is required");
+      throw new Error("下载人信息缺失，请重新登录后再下载资料");
     }
     const downloadReason = normalizeDownloadReason(input.downloadReason);
 
@@ -277,7 +277,7 @@ export class FileService {
       });
 
       if (!file) {
-        throw new Error("Private file not found");
+        throw new Error("资料文件不存在或已被移除");
       }
 
       await this.assertCanDownloadFileObject(tx, file, input.actorUserId);
@@ -315,11 +315,11 @@ export class FileService {
 
   async readPrivateFile(fileId: string, input: ReadPrivateFileInput) {
     if (!input.actorUserId.trim()) {
-      throw new Error("Actor user id is required");
+      throw new Error("下载人信息缺失，请重新登录后再下载资料");
     }
 
     if (Number.isNaN(Date.parse(input.expiresAt)) || Date.parse(input.expiresAt) < Date.now()) {
-      throw new Error("Private file download ticket expired");
+      throw new Error("下载链接已过期，请重新申请下载");
     }
     const downloadReason = normalizeDownloadReason(input.downloadReason);
 
@@ -332,7 +332,7 @@ export class FileService {
         input.token
       )
     ) {
-      throw new Error("Invalid private file download token");
+      throw new Error("下载链接校验失败，请重新申请下载");
     }
 
     const file = await this.prisma.$transaction(async (tx) => {
@@ -341,7 +341,7 @@ export class FileService {
       });
 
       if (!found) {
-        throw new Error("Private file not found");
+        throw new Error("资料文件不存在或已被移除");
       }
 
       await this.assertCanDownloadFileObject(tx, found, input.actorUserId);
@@ -373,7 +373,7 @@ export class FileService {
   async getFileBuffer(fileId: string): Promise<InternalFileBuffer> {
     const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
     if (!file) {
-      throw new Error("Private file not found");
+      throw new Error("资料文件不存在或已被移除");
     }
     return { file, buffer: await this.storage.read(file.objectKey) };
   }
@@ -392,7 +392,7 @@ export class FileService {
   ) {
     const file = await tx.fileObject.findUnique({ where: { id: fileId } });
     if (!file) {
-      throw new Error("Private file not found");
+      throw new Error("资料文件不存在或已被移除");
     }
     await this.assertCanDownloadFileObject(tx, file, actorUserId);
     return file;
@@ -443,7 +443,7 @@ export class FileService {
       : null;
 
     if (voidedProjectOwnerContract) {
-      throw new Error("Actor cannot download private file");
+      throw new Error("当前账号无权下载该资料");
     }
 
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
@@ -455,7 +455,7 @@ export class FileService {
     });
     if (contractArchiveFile) {
       if (contractArchiveFile.status !== "confirmed") {
-        throw new Error("Archive file is not confirmed");
+        throw new Error("资料尚未归档确认，暂不能下载");
       }
       const version = await tx.contractVersion.findUnique({
         where: { id: contractArchiveFile.contractVersionId }
@@ -477,7 +477,7 @@ export class FileService {
     });
     if (settlementArchiveFile) {
       if (settlementArchiveFile.status !== "confirmed") {
-        throw new Error("Archive file is not confirmed");
+        throw new Error("资料尚未归档确认，暂不能下载");
       }
       const settlement = await tx.settlement.findUnique({
         where: { id: settlementArchiveFile.settlementId }
@@ -774,7 +774,7 @@ export class FileService {
       }
     }
 
-    throw new Error("Actor cannot download private file");
+    throw new Error("当前账号无权下载该资料");
   }
 
   private async resolveApprovalProjectId(

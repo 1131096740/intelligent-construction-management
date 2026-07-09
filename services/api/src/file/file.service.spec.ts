@@ -455,7 +455,7 @@ describe("FileService", () => {
       service.createDownloadTicket("file-1", {
         actorUserId: "finance-1"
       })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -578,7 +578,7 @@ describe("FileService", () => {
         actorUserId: "other-project-user-1",
         downloadReason: "复核历史接管资料"
       })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.contractTakeover.findUnique).toHaveBeenCalledWith({
       where: { id: "takeover-1" },
       select: { projectId: true }
@@ -709,7 +709,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
-    ).rejects.toThrow("Archive file is not confirmed");
+    ).rejects.toThrow("资料尚未归档确认，暂不能下载");
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -761,7 +761,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
-    ).rejects.toThrow("Archive file is not confirmed");
+    ).rejects.toThrow("资料尚未归档确认，暂不能下载");
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -992,7 +992,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -1036,7 +1036,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "budget-1" })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.projectUpstreamSettlement.findFirst).toHaveBeenCalledWith({
       where: { voucherFileId: "file-1", voidedAt: null },
       select: { projectId: true }
@@ -1156,7 +1156,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -1274,7 +1274,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "finance-staff-1" })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -1529,7 +1529,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "contract-director-1" })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(1, {
       where: { fileId: "file-1", voidedAt: null },
       select: { projectId: true }
@@ -1574,7 +1574,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "contract-uploader" })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(1, {
       where: { fileId: "file-1", voidedAt: null },
       select: { projectId: true }
@@ -1866,7 +1866,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "engineering-user-1" })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
   });
 
   it("allows latest settlement approval PDF download to roles in the frozen approval route", async () => {
@@ -1994,7 +1994,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "reminder-user-1" })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.approvalActionLog.findFirst).toHaveBeenCalledWith({
       where: {
         approvalInstanceId: "inst-1",
@@ -2056,7 +2056,7 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", { actorUserId: "stranger-1" })
-    ).rejects.toThrow("Actor cannot download private file");
+    ).rejects.toThrow("当前账号无权下载该资料");
   });
 
   it("reads a private file through a short-lived ticket and records download audit", async () => {

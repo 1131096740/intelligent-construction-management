@@ -58,7 +58,7 @@ export class FileController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     if (!file) {
-      throw new Error("Private file is required");
+      throw new Error("请选择要上传的资料文件");
     }
 
     return this.files.uploadPrivateFile({
