@@ -158,11 +158,13 @@ export class PaymentRequestService {
           select: {
             id: true;
             takeoverStatus: true;
+            takeoverLevel: true;
             historicalBalanceConfirmedAt: true;
           };
         }) => Promise<{
           id: string;
           takeoverStatus: string;
+          takeoverLevel?: string | null;
           historicalBalanceConfirmedAt: Date | null;
         } | null>;
       };
@@ -174,6 +176,7 @@ export class PaymentRequestService {
             select: {
               id: true,
               takeoverStatus: true,
+              takeoverLevel: true,
               historicalBalanceConfirmedAt: true
             }
           })
@@ -205,6 +208,19 @@ export class PaymentRequestService {
           takeoverStatus: takeover.takeoverStatus
         });
         throw new Error(`历史余额尚未确认，不能${actionLabel}`);
+      }
+      if (takeover.takeoverLevel === "C") {
+        await this.recordHistoricalTakeoverPaymentBlock(tx, {
+          actorUserId: input.actorUserId,
+          businessType: "contract_takeover",
+          businessId: takeover.id,
+          contractId: input.contractId,
+          contractVersionId: input.contractVersionId,
+          sourceType: input.sourceType,
+          reason: "takeover_level_c",
+          takeoverStatus: takeover.takeoverStatus
+        });
+        throw new Error(`C级历史接管仍有资料缺口或争议，不能${actionLabel}`);
       }
       return;
     }

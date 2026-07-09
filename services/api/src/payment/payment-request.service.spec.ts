@@ -130,6 +130,7 @@ describe("PaymentRequestService", () => {
       code: string;
       projectId: string;
       contractId: string;
+      contractVersionId: string;
       settlementId: string | null;
       sourceType: string;
       status: string;
@@ -143,6 +144,7 @@ describe("PaymentRequestService", () => {
       code: "FK-2026-012",
       projectId: "project-1",
       contractId: "contract-1",
+      contractVersionId: "contract-version-1",
       settlementId: "settlement-1",
       sourceType: "settlement",
       status: "approved_pending_payment",
@@ -337,6 +339,83 @@ describe("PaymentRequestService", () => {
         sourceType: "settlement",
         reason: "takeover_not_confirmed",
         takeoverStatus: "pending_review"
+      }
+    });
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects settlement payment when historical takeover is C level", async () => {
+    const cashPool = projectCashPoolTables();
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 100_000,
+          paidAmountCents: 0
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          contractVersionId: "contract-version-1",
+          takeoverStatus: "confirmed",
+          takeoverLevel: "C",
+          historicalBalanceConfirmedAt: new Date("2026-07-01T00:00:00.000Z")
+        })
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      },
+      paymentExecutionAllocation: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectProxyPayment: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      ...cashPool.tables,
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
+        .mockResolvedValueOnce([{ id: "project-1", isActive: true }])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never
+    );
+
+    await expect(
+      paymentService.create(
+        {
+          settlementId: "settlement-1",
+          code: "FK-2026-HIS-C-001",
+          requestedAmountCents: 10_000
+        },
+        "applicant-1"
+      )
+    ).rejects.toThrow("C级历史接管仍有资料缺口或争议，不能发起付款申请");
+
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "applicant-1",
+      action: "payment.contract_takeover.blocked",
+      businessType: "contract_takeover",
+      businessId: "takeover-1",
+      metadata: {
+        contractId: "contract-1",
+        contractVersionId: "contract-version-1",
+        sourceType: "settlement",
+        reason: "takeover_level_c",
+        takeoverStatus: "confirmed"
       }
     });
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -3951,6 +4030,7 @@ describe("PaymentRequestService", () => {
       select: {
         id: true,
         takeoverStatus: true,
+        takeoverLevel: true,
         historicalBalanceConfirmedAt: true
       }
     });
@@ -4011,6 +4091,73 @@ describe("PaymentRequestService", () => {
     ).rejects.toThrow(
       "当前结算不是已归档可付款状态，不能登记实付；请先核对结算归档或更正记录"
     );
+
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects historical takeover settlement execution when takeover is C level", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          paymentExecutionRow({
+            requestedAmountCents: 80_000,
+            approvedAmountCents: 80_000,
+            paidAmountCents: 0
+          })
+        ])
+        .mockResolvedValueOnce([{ id: "settlement-1" }]),
+      paymentRequest: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          status: "effective",
+          payableAmountCents: 100_000,
+          paidAmountCents: 0
+        }),
+        update: jest.fn()
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          takeoverStatus: "confirmed",
+          takeoverLevel: "C",
+          historicalBalanceConfirmedAt: new Date("2026-07-01T00:00:00.000Z")
+        })
+      },
+      paymentExecution: {
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      },
+      ...financingUsageUpdates()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 80_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("C级历史接管仍有资料缺口或争议，不能登记实付");
 
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
     expect(tx.settlement.update).not.toHaveBeenCalled();
