@@ -91,6 +91,7 @@ type TakeoverReadClient = Pick<
   | "contractVersion"
   | "paymentTermsVersion"
   | "contractTakeoverBatch"
+  | "contractTakeoverCorrection"
   | "archiveRecord"
   | "fileObject"
   | "user"
@@ -170,6 +171,7 @@ export interface ContractTakeoverBusinessReadModel {
   historicalBalanceConfirmedAt: Date | null;
   evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
+  corrections: ContractTakeoverCorrectionReadModel[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -195,6 +197,20 @@ export interface ContractTakeoverEvidenceFileReadModel {
   uploadedAt: Date;
   canDownload: boolean;
   disabledReason: string | null;
+}
+
+export interface ContractTakeoverCorrectionReadModel {
+  id: string;
+  correctionType: string;
+  correctionTypeLabel: string;
+  reason: string;
+  beforeSummary: string;
+  afterSummary: string;
+  responsibleUserName: string;
+  createdByName: string;
+  attachmentFileId: string;
+  attachmentFileName: string;
+  createdAt: Date;
 }
 
 export type ContractTakeoverImportPrecheckIssueLevel = "error" | "warning";
@@ -392,7 +408,8 @@ export class ContractTakeoverService {
         companyEntityName: data.companyEntityName ?? null,
         amountCents: data.amountCents,
         paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
-        evidenceFiles: []
+        evidenceFiles: [],
+        corrections: []
       });
   }
 
@@ -486,7 +503,8 @@ export class ContractTakeoverService {
         companyEntityName: data.companyEntityName ?? null,
         amountCents: data.amountCents,
         paymentTermsOriginalText: data.paymentTermsOriginalText ?? "",
-        evidenceFiles: []
+        evidenceFiles: [],
+        corrections: []
       });
     });
   }
@@ -992,13 +1010,16 @@ export class ContractTakeoverService {
     const batchClient = (client as unknown as {
       contractTakeoverBatch?: TakeoverReadClient["contractTakeoverBatch"];
     }).contractTakeoverBatch;
+    const correctionClient = (client as unknown as {
+      contractTakeoverCorrection?: TakeoverReadClient["contractTakeoverCorrection"];
+    }).contractTakeoverCorrection;
     const paymentTermsVersionIds = unique(takeovers.map((takeover) => takeover.paymentTermsVersionId));
     const batchIds = unique(
       takeovers
         .map((takeover) => takeover.takeoverBatchId)
         .filter((id): id is string => typeof id === "string" && Boolean(id))
     );
-    const [contracts, versions, terms, batches, archiveRecords] = await Promise.all([
+    const [contracts, versions, terms, batches, archiveRecords, correctionRecords] = await Promise.all([
       client.contract.findMany({
         where: { id: { in: contractIds } },
         select: {
@@ -1031,6 +1052,12 @@ export class ContractTakeoverService {
             where: { businessType: "contract_takeover", businessId: { in: takeoverIds } },
             orderBy: { createdAt: "desc" }
           })
+        : Promise.resolve([]),
+      typeof correctionClient?.findMany === "function"
+        ? correctionClient.findMany({
+            where: { takeoverId: { in: takeoverIds } },
+            orderBy: { createdAt: "desc" }
+          })
         : Promise.resolve([])
     ]);
     const responsibleUserIds = unique(
@@ -1039,10 +1066,19 @@ export class ContractTakeoverService {
         .filter((id): id is string => typeof id === "string" && Boolean(id))
     );
     const evidenceFileIds = unique(archiveRecords.map((record) => record.fileId));
-    const files = typeof archiveClient.fileObject?.findMany === "function" && evidenceFileIds.length
-      ? await archiveClient.fileObject.findMany({ where: { id: { in: evidenceFileIds } } })
+    const correctionFileIds = unique(correctionRecords.map((record) => record.attachmentFileId));
+    const fileIds = unique([...evidenceFileIds, ...correctionFileIds]);
+    const files = typeof archiveClient.fileObject?.findMany === "function" && fileIds.length
+      ? await archiveClient.fileObject.findMany({ where: { id: { in: fileIds } } })
       : [];
-    const userIds = unique([...files.map((file) => file.uploadedByUserId), ...responsibleUserIds]);
+    const correctionUserIds = unique(
+      correctionRecords.flatMap((record) => [record.responsibleUserId, record.createdByUserId])
+    );
+    const userIds = unique([
+      ...files.map((file) => file.uploadedByUserId),
+      ...responsibleUserIds,
+      ...correctionUserIds
+    ]);
     const users = typeof archiveClient.user?.findMany === "function" && userIds.length
       ? await archiveClient.user.findMany({
           where: { id: { in: userIds } },
@@ -1061,6 +1097,13 @@ export class ContractTakeoverService {
       recordsByTakeoverId.set(record.businessId, [
         ...(recordsByTakeoverId.get(record.businessId) ?? []),
         record
+      ]);
+    }
+    const correctionsByTakeoverId = new Map<string, typeof correctionRecords>();
+    for (const correction of correctionRecords) {
+      correctionsByTakeoverId.set(correction.takeoverId, [
+        ...(correctionsByTakeoverId.get(correction.takeoverId) ?? []),
+        correction
       ]);
     }
 
@@ -1102,6 +1145,23 @@ export class ContractTakeoverService {
               disabledReason: null
             }
           ];
+        }),
+        corrections: (correctionsByTakeoverId.get(takeover.id) ?? []).map((correction) => {
+          const attachment = fileById.get(correction.attachmentFileId);
+          return {
+            id: correction.id,
+            correctionType: correction.correctionType,
+            correctionTypeLabel: correctionTypeLabel(correction.correctionType),
+            reason: correction.reason,
+            beforeSummary: correctionBeforeSummary(correction.beforeSnapshot),
+            afterSummary: correctionAfterSummary(correction.afterSnapshot),
+            responsibleUserName:
+              userNameById.get(correction.responsibleUserId) ?? "更正责任人未读取",
+            createdByName: userNameById.get(correction.createdByUserId) ?? "更正记录人未读取",
+            attachmentFileId: correction.attachmentFileId,
+            attachmentFileName: attachment?.originalName ?? "更正依据附件未读取",
+            createdAt: correction.createdAt
+          };
         })
       })
     );
@@ -1127,6 +1187,7 @@ export class ContractTakeoverService {
       batchNo?: string | null;
       responsibleUserName?: string | null;
       evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
+      corrections: ContractTakeoverCorrectionReadModel[];
     }
   ): ContractTakeoverBusinessReadModel {
     const evidenceChecklist = takeoverEvidenceChecklist(takeover, contract.evidenceFiles);
@@ -1174,6 +1235,7 @@ export class ContractTakeoverService {
       historicalBalanceConfirmedAt: takeover.historicalBalanceConfirmedAt,
       evidenceChecklist,
       evidenceFiles: contract.evidenceFiles,
+      corrections: contract.corrections,
       createdAt: takeover.createdAt,
       updatedAt: takeover.updatedAt
     };
@@ -1605,6 +1667,54 @@ function dateInputMessage(label: string): string {
 
 function moneyString(value: bigint | number): string {
   return (typeof value === "bigint" ? value : BigInt(value)).toString();
+}
+
+function correctionTypeLabel(value: string): string {
+  const labels: Record<string, string> = {
+    amount: "金额更正",
+    payment_terms: "付款条款更正",
+    evidence: "资料更正",
+    other: "其他更正"
+  };
+  return labels[value] ?? "更正事项未读取";
+}
+
+function takeoverLevelDisplay(value: string): string {
+  if (TAKEOVER_LEVELS.includes(value as ContractTakeoverLevel)) return `${value}级`;
+  return "等级未读取";
+}
+
+function correctionBeforeSummary(snapshot: unknown): string {
+  if (!isPlainObject(snapshot)) return "改前记录未读取";
+  const parts = [
+    `接管等级 ${takeoverLevelDisplay(String(snapshot.takeoverLevel ?? ""))}`,
+    `历史累计结算 ${formatCents(snapshot.historicalSettledCents)}`,
+    `历史累计已付 ${formatCents(snapshot.historicalPaidCents)}`
+  ];
+  const evidenceSummary = stringValue(snapshot.evidenceSummary);
+  if (evidenceSummary) {
+    parts.push(`证据说明：${evidenceSummary}`);
+  }
+  return `改前：${parts.join("；")}`;
+}
+
+function correctionAfterSummary(snapshot: unknown): string {
+  if (!isPlainObject(snapshot)) return "更正后的事实说明未读取";
+  return stringValue(snapshot.summary) || "更正后的事实说明未读取";
+}
+
+function formatCents(value: unknown): string {
+  const cents = integerValue(value);
+  if (cents === null) return "金额未读取";
+  const abs = Math.abs(cents);
+  const yuan = Math.floor(abs / 100);
+  const centsPart = String(abs % 100).padStart(2, "0");
+  const sign = cents < 0 ? "-" : "";
+  return `${sign}¥${formatInteger(yuan)}.${centsPart}`;
+}
+
+function formatInteger(value: number): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 function safeNumberCents(value: bigint | number): number {

@@ -175,6 +175,20 @@ export interface ContractTakeoverEvidenceChecklistItemReadModel {
   riskText: string;
 }
 
+export interface ContractTakeoverCorrectionReadModel {
+  id: string;
+  correctionType: string;
+  correctionTypeLabel: string;
+  reason: string;
+  beforeSummary: string;
+  afterSummary: string;
+  responsibleUserName: string;
+  createdByName: string;
+  attachmentFileId: string;
+  attachmentFileName: string;
+  createdAt: string;
+}
+
 export interface ContractTakeoverReadModel {
   id: string;
   batchNo: string | null;
@@ -214,6 +228,7 @@ export interface ContractTakeoverReadModel {
   historicalBalanceConfirmedAt: string | null;
   evidenceChecklist: ContractTakeoverEvidenceChecklistItemReadModel[];
   evidenceFiles: ContractTakeoverEvidenceFileReadModel[];
+  corrections: ContractTakeoverCorrectionReadModel[];
   createdAt: string;
   updatedAt: string;
 }

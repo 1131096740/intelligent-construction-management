@@ -17,6 +17,7 @@ import {
   takeoverActionDisabledReason,
   takeoverConfirmDisabledReason,
   takeoverCorrectionDisabledReason,
+  takeoverCorrectionRows,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverResponsibleUserText,
@@ -265,6 +266,42 @@ describe("contract takeover page configuration", () => {
     ).toBe("");
   });
 
+  it("formats takeover correction records for business display", () => {
+    expect(
+      takeoverCorrectionRows({
+        ...takeover(),
+        corrections: [
+          {
+            id: "takeover-correction-1",
+            correctionType: "evidence",
+            correctionTypeLabel: "资料更正",
+            reason: "补充历史付款凭证复核说明",
+            beforeSummary:
+              "改前：接管等级 B级；历史累计结算 ¥10,000.00；历史累计已付 ¥4,000.00",
+            afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
+            responsibleUserName: "合同负责人",
+            createdByName: "合同经办",
+            attachmentFileId: "file-1",
+            attachmentFileName: "付款凭证.pdf",
+            createdAt: "2026-07-04T09:00:00.000Z"
+          }
+        ]
+      })
+    ).toEqual([
+      {
+        id: "takeover-correction-1",
+        title: "资料更正 · 2026-07-04",
+        reason: "补充历史付款凭证复核说明",
+        beforeSummary:
+          "改前：接管等级 B级；历史累计结算 ¥10,000.00；历史累计已付 ¥4,000.00",
+        afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
+        responsibleText: "更正责任人：合同负责人",
+        createdByText: "记录人：合同经办",
+        attachmentText: "依据附件：付款凭证.pdf"
+      }
+    ]);
+  });
+
   it("recommends takeover level and requires a reason when manually adjusted", () => {
     const baseDraft = {
       lifecycleStatus: "in_progress" as const,
@@ -492,6 +529,7 @@ function takeover(): ContractTakeoverReadModel {
       }
     ],
     evidenceFiles: [],
+    corrections: [],
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T10:00:00.000Z"
   };

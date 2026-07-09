@@ -81,6 +81,29 @@ describe("ContractTakeoverService", () => {
     }));
   }
 
+  function takeoverCorrectionRecord() {
+    return {
+      id: "takeover-correction-1",
+      projectId: "project-1",
+      takeoverId: "takeover-1",
+      correctionType: "evidence",
+      beforeSnapshot: {
+        takeoverLevel: "B",
+        historicalSettledCents: "1000000",
+        historicalPaidCents: "400000",
+        evidenceSummary: "原接管资料：合同扫描件、结算台账。"
+      },
+      afterSnapshot: {
+        summary: "补充历史付款凭证，确认历史已付金额不变。"
+      },
+      reason: "补充历史付款凭证复核说明",
+      responsibleUserId: "contract-director-1",
+      attachmentFileId: "file-1",
+      createdByUserId: "contract-user",
+      createdAt: new Date("2026-07-04T09:00:00.000Z")
+    };
+  }
+
   it("creates a historical contract takeover draft on existing contract tables", async () => {
     const tx = {
       project: {
@@ -2286,6 +2309,69 @@ describe("ContractTakeoverService", () => {
       where: { id: { in: ["contract-director-1"] } },
       select: { id: true, name: true }
     });
+  });
+
+  it("lists takeover correction records with business summaries and attachment names", async () => {
+    const prisma = {
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([takeoverRecord({ takeoverStatus: "confirmed" })])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A"
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      },
+      contractTakeoverCorrection: {
+        findMany: jest.fn().mockResolvedValue([takeoverCorrectionRecord()])
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue(takeoverEvidenceFiles(1))
+      },
+      user: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: "contract-director-1", name: "合同负责人" },
+            { id: "contract-user", name: "合同经办" }
+          ])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const [row] = await service.list("project-1");
+
+    expect(row.corrections).toEqual([
+      {
+        id: "takeover-correction-1",
+        correctionType: "evidence",
+        correctionTypeLabel: "资料更正",
+        reason: "补充历史付款凭证复核说明",
+        beforeSummary:
+          "改前：接管等级 B级；历史累计结算 ¥10,000.00；历史累计已付 ¥4,000.00；证据说明：原接管资料：合同扫描件、结算台账。",
+        afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
+        responsibleUserName: "合同负责人",
+        createdByName: "合同经办",
+        attachmentFileId: "file-1",
+        attachmentFileName: "接管资料-1.pdf",
+        createdAt: new Date("2026-07-04T09:00:00.000Z")
+      }
+    ]);
+    expect(row.corrections[0]).not.toHaveProperty("beforeSnapshot");
+    expect(row.corrections[0]).not.toHaveProperty("afterSnapshot");
   });
 
   it("does not expose uploader internal account when takeover evidence uploader name is unavailable", async () => {

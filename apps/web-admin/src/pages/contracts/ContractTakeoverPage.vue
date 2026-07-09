@@ -667,6 +667,29 @@
             <p class="correction-hint">
               已确认的金额、付款条款和证据资料不能静默覆盖。需要补正时，请保存更正原因、责任人、更正后的事实说明和依据附件。
             </p>
+            <div
+              v-if="selectedCorrectionRows.length"
+              class="correction-history"
+            >
+              <div
+                v-for="item in selectedCorrectionRows"
+                :key="item.id"
+                class="correction-history-item"
+              >
+                <strong>{{ item.title }}</strong>
+                <p>更正原因：{{ item.reason }}</p>
+                <p>{{ item.beforeSummary }}</p>
+                <p>更正后：{{ item.afterSummary }}</p>
+                <p>{{ item.responsibleText }}；{{ item.createdByText }}</p>
+                <p>{{ item.attachmentText }}</p>
+              </div>
+            </div>
+            <div
+              v-else
+              class="empty-hint"
+            >
+              暂无接管更正记录
+            </div>
             <div class="form-grid two">
               <label>
                 <span>更正事项</span>
@@ -901,6 +924,7 @@ import {
   takeoverActionDisabledReason,
   takeoverConfirmDisabledReason,
   takeoverCorrectionDisabledReason,
+  takeoverCorrectionRows,
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverLevelSelectionHint,
@@ -1196,6 +1220,9 @@ const selectedCorrectionDisabledReason = computed(() => {
     hasAttachment: Boolean(correctionFile.value)
   });
 });
+const selectedCorrectionRows = computed(() =>
+  selectedRow.value ? takeoverCorrectionRows(selectedRow.value.takeover) : []
+);
 
 const selectedBaseInfo = computed(() => {
   const row = selectedRow.value;
@@ -2316,6 +2343,32 @@ input[type="date"] {
   color: #424955;
   font-size: 12px;
   line-height: 1.6;
+}
+
+.correction-history {
+  display: grid;
+  gap: 8px;
+}
+
+.correction-history-item {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid #e2e7ee;
+  background: #fff;
+}
+
+.correction-history-item strong {
+  color: #151922;
+  font-size: 13px;
+}
+
+.correction-history-item p {
+  margin: 0;
+  color: #424955;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .correction-form label {

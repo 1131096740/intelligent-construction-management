@@ -104,6 +104,17 @@ export interface TakeoverCorrectionDraft {
   hasAttachment: boolean;
 }
 
+export interface TakeoverCorrectionRow {
+  id: string;
+  title: string;
+  reason: string;
+  beforeSummary: string;
+  afterSummary: string;
+  responsibleText: string;
+  createdByText: string;
+  attachmentText: string;
+}
+
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
   { value: "A", label: "A级：申报资料完整，可申请直接接管" },
   { value: "B", label: "B级：申报资料基本完整，需补少量说明" },
@@ -276,6 +287,19 @@ export function takeoverCorrectionDisabledReason(
   if (!draft.afterSummary.trim()) return "请填写更正后的事实说明";
   if (!draft.hasAttachment) return "请上传更正依据附件";
   return "";
+}
+
+export function takeoverCorrectionRows(takeover: ContractTakeoverReadModel): TakeoverCorrectionRow[] {
+  return takeover.corrections.map((correction) => ({
+    id: correction.id,
+    title: `${correction.correctionTypeLabel} · ${formatTakeoverDate(correction.createdAt)}`,
+    reason: correction.reason,
+    beforeSummary: correction.beforeSummary,
+    afterSummary: correction.afterSummary,
+    responsibleText: `更正责任人：${correction.responsibleUserName || "未读取"}`,
+    createdByText: `记录人：${correction.createdByName || "未读取"}`,
+    attachmentText: `依据附件：${correction.attachmentFileName || "未读取"}`
+  }));
 }
 
 export function suggestTakeoverLevel(draft: TakeoverLevelSuggestionDraft): TakeoverLevelSuggestion {
