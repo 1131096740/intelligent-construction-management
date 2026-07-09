@@ -3578,9 +3578,138 @@ describe("SettlementService", () => {
         "current-password",
         "结算审批复核"
       )
-    ).rejects.toThrow("Actor cannot download settlement approval PDF");
+    ).rejects.toThrow("当前账号无权下载该结算审批单");
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
     expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
+  });
+
+  it("结算审批单刷新后仍缺失时提示稍后重试", async () => {
+    const firstSourceTx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-019"
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const authTx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          applicantUserId: "applicant-1",
+          frozenNodes: [{ name: "合同部主管", mode: "any", roleKeys: ["contract_director"] }]
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "contract_director" }]) }
+    };
+    const renderTx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          code: "JS-2026-019",
+          periodLabel: "2026-06",
+          status: "approval_pending",
+          amountCents: 1_000_000,
+          payableAmountCents: 800_000,
+          paidAmountCents: 0,
+          isFinal: false,
+          finalCumulativeAmountCents: null
+        }),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          code: "HT-2026-009",
+          name: "幕墙分包合同",
+          counterparty: "上海示例劳务有限公司",
+          companyEntityName: "建工智管工程有限公司"
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-1",
+          name: "总部综合楼"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          frozenNodes: []
+        })
+      },
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const pdfTx = {
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "pdf-latest",
+          fileId: "file-generated"
+        })
+      }
+    };
+    const finalSourceTx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-019"
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce(async (callback) => callback(firstSourceTx))
+        .mockImplementationOnce(async (callback) => callback(authTx))
+        .mockImplementationOnce(async (callback) => callback(renderTx))
+        .mockImplementationOnce(async (callback) => callback(pdfTx))
+        .mockImplementationOnce(async (callback) => callback(finalSourceTx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-generated" }),
+      assertCanDownloadFileById: jest.fn(),
+      getFileBuffer: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.downloadLatestApprovalPdf(
+        "settlement-1",
+        "approver-1",
+        "current-password",
+        "结算审批复核"
+      )
+    ).rejects.toThrow("结算审批单暂不可下载，请稍后刷新后重试");
+    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
+    expect(files.getFileBuffer).not.toHaveBeenCalled();
   });
 
   it("rejects settlement PDF generation when the archive already exists", async () => {

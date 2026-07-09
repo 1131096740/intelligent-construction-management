@@ -1605,7 +1605,7 @@ export class SettlementService {
     }
 
     if (!source.fileId) {
-      throw new Error("Settlement approval PDF is not available yet");
+      throw new Error("结算审批单暂不可下载，请稍后刷新后重试");
     }
 
     await this.files.assertCanDownloadFileById(source.fileId, actorUserId);
@@ -1718,7 +1718,7 @@ export class SettlementService {
         return;
       }
 
-      throw new Error("Actor cannot download settlement approval PDF");
+      throw new Error("当前账号无权下载该结算审批单");
     });
   }
 
