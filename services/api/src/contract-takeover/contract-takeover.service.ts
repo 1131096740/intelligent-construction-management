@@ -1188,6 +1188,31 @@ export class ContractTakeoverService {
         )
       );
     }
+    if (
+      TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel) &&
+      LIFECYCLE_STATUSES.includes(lifecycleStatus as ContractLifecycleStatus)
+    ) {
+      const suggestedLevel = suggestedTakeoverLevel({
+        lifecycleStatus,
+        balanceSourceSummary: stringValue(row["balanceSourceSummary"]),
+        evidenceSummary: stringValue(row["evidenceSummary"]),
+        historicalApprovalPendingPaymentCents: precheckMoneyValue(row, "historicalApprovalPendingPaymentCents"),
+        historicalApprovedPendingPaymentCents: precheckMoneyValue(row, "historicalApprovedPendingPaymentCents"),
+        historicalProxyPaidCents: precheckMoneyValue(row, "historicalProxyPaidCents"),
+        historicalRetentionWithheldCents: precheckMoneyValue(row, "historicalRetentionWithheldCents"),
+        otherConfirmedOccupancyCents: precheckMoneyValue(row, "otherConfirmedOccupancyCents")
+      });
+      if (takeoverLevel !== suggestedLevel && !issueSummary) {
+        issues.push(
+          issue(
+            rowNo,
+            "takeoverLevel",
+            "warning",
+            "接管等级与系统建议不一致，请在问题清单或批次复核意见说明调整原因"
+          )
+        );
+      }
+    }
     if (takeoverLevel === "A" && issueSummary) {
       issues.push(
         issue(
@@ -1621,6 +1646,16 @@ function integerOrFallback(value: unknown, fallback: number): number {
 
 function isBlankInput(value: unknown): boolean {
   return value === undefined || value === "";
+}
+
+function precheckMoneyValue(
+  row: Record<string, unknown>,
+  field: (typeof MONEY_FIELDS)[number]
+): number {
+  if (isBlankInput(row[field])) {
+    return 0;
+  }
+  return integerValue(row[field]) ?? 0;
 }
 
 function isStrictDateText(value: string): boolean {

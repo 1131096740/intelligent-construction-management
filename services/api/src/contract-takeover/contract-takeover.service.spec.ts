@@ -587,6 +587,46 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("warns when import takeover level differs from system suggestion", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.precheckImport("project-1", {
+      rows: [
+        {
+          code: "HT-HIS-LEVEL-SUGGESTION",
+          name: "等级建议不一致合同",
+          counterparty: "历史供应商",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "A",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "按月结算付款",
+          historicalApprovedPendingPaymentCents: 20_000,
+          balanceSourceSummary: "财务台账已核对",
+          evidenceSummary: "合同扫描件和付款凭证已归档",
+          evidenceChecklist: "合同扫描件、历史结算台账、付款凭证"
+        }
+      ]
+    });
+
+    expect(result).toMatchObject({ readyRows: 1, blockedRows: 0, warningRows: 1 });
+    expect(result.rows[0]).toMatchObject({ status: "ready", takeoverLevel: "A" });
+    expect(result.rows[0].issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "takeoverLevel",
+          level: "warning",
+          message: "接管等级与系统建议不一致，请在问题清单或批次复核意见说明调整原因"
+        })
+      ])
+    );
+  });
+
   it("warns when takeover import precheck lacks evidence checklist or issue summary", async () => {
     const prisma = {
       contract: {
