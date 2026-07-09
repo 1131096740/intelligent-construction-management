@@ -111,7 +111,7 @@ describe("FileController authorization wiring", () => {
         { id: "user-1", name: "张三", phone: "13800000000" },
         { confirmationPassword: "" }
       )
-    ).rejects.toThrow("Confirmation password is required");
+    ).rejects.toThrow("请输入当前登录密码后再下载资料");
 
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(files.createDownloadTicket).not.toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe("FileController authorization wiring", () => {
         { id: "user-1", name: "张三", phone: "13800000000" },
         { confirmationPassword: "current-password", downloadReason: "" }
       )
-    ).rejects.toThrow("Download reason is required");
+    ).rejects.toThrow("请填写下载原因，便于留痕审计");
 
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(files.createDownloadTicket).not.toHaveBeenCalled();

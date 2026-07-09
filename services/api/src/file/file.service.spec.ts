@@ -529,6 +529,63 @@ describe("FileService", () => {
     });
   });
 
+  it("denies takeover evidence download tickets to users outside the project", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "历史合同扫描件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      archiveRecord: {
+        findFirst: jest.fn().mockResolvedValue({
+          businessType: "contract_takeover",
+          businessId: "takeover-1"
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          projectId: "project-1"
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", {
+        actorUserId: "other-project-user-1",
+        downloadReason: "复核历史接管资料"
+      })
+    ).rejects.toThrow("Actor cannot download private file");
+    expect(tx.contractTakeover.findUnique).toHaveBeenCalledWith({
+      where: { id: "takeover-1" },
+      select: { projectId: true }
+    });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("allows finance users to create download tickets for linked contract archives", async () => {
     const tx = {
       fileObject: {

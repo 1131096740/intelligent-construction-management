@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进历史接管资料下载权限验收切片：复核私有文件下载链路已统一通过 `archiveRecord -> contract_takeover -> projectId` 判断项目归属，同项目合同/财务等归档可读岗位可在填写当前登录密码和下载原因后获取短时效链接并写入审计；新增非本项目人员无法为接管资料生成下载票据的后端测试，同时将下载票据入口“当前密码缺失、下载原因缺失”提示中文化。本轮不改变短时效票据签名、私有文件读取和审计动作口径。验证：TDD 覆盖 API 文件服务/控制器 Jest 通过。
 - 2026-07-10 (CodeX)：继续推进历史合同接管资料绑定中文业务体验治理切片：接管资料挂接在未选择文件、资料类型不正确、接管记录状态不允许或当前账号无权读取文件时，不再抛出 `Evidence file is required`、`Invalid evidence purpose`、`Cannot attach takeover evidence from status`、`Actor cannot download private file` 等英文技术错误，统一改为中文业务原因；不改变接管资料 `archiveRecord` 入库、私有文件读取权限校验、资料类型映射和审计口径。验证：TDD 覆盖 API 接管服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进历史合同接管复核/确认中文业务体验治理切片：接管提交复核和主管确认在接管记录不存在、状态不允许或缺少当前登录密码时，不再抛出 `Cannot submit takeover review from status`、`Contract takeover confirmation password is required`、`Cannot confirm takeover from status`、`Contract takeover not found` 等英文技术错误，统一改为中文业务原因；不改变接管资料缺口硬拦、合同版本生效、付款条款生效、历史期初结算生成和审计口径。验证：TDD 覆盖 API 接管服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算审批单下载证据链中文业务体验治理切片：结算审批 PDF 下载在当前账号无权读取或审批单刷新后仍缺失时，不再抛出 `Actor cannot download settlement approval PDF`、`Settlement approval PDF is not available yet` 英文技术错误，统一改为中文业务原因；不改变当前密码、下载原因、审批单自动刷新、私有文件读取校验、下载审计和文件名口径。验证：TDD 覆盖 API 结算服务 Jest、API typecheck、API lint 通过。
