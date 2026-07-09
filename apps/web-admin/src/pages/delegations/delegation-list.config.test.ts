@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   delegationLedgerColumns,
+  getDelegationCreateDisabledReason,
   mapDelegationLedgerRows,
+  toDelegationIsoDatetime,
   type DelegationLedgerRow
 } from "./delegation-list.config";
 
@@ -89,6 +91,38 @@ describe("delegation ledger page configuration", () => {
       expired: "已过期",
       bad: "期限异常"
     });
+  });
+
+  it("explains why a new delegation cannot be created yet", () => {
+    expect(
+      getDelegationCreateDisabledReason({
+        toUserId: "",
+        startsAt: "2026-07-10T09:00",
+        endsAt: "2026-07-11T09:00"
+      })
+    ).toBe("请先选择受托人");
+
+    expect(
+      getDelegationCreateDisabledReason({
+        toUserId: "user-b",
+        startsAt: "",
+        endsAt: "2026-07-11T09:00"
+      })
+    ).toBe("请先填写正确的生效时间");
+
+    expect(
+      getDelegationCreateDisabledReason({
+        toUserId: "user-b",
+        startsAt: "2026-07-10T09:00",
+        endsAt: "2026-07-10T09:00"
+      })
+    ).toBe("失效时间必须晚于生效时间");
+  });
+
+  it("normalizes delegation datetime before submitting to backend", () => {
+    expect(toDelegationIsoDatetime("2026-07-10T09:00")).toMatch(
+      /^2026-07-10T\d{2}:00:00\.000Z$/
+    );
   });
 });
 

@@ -24,25 +24,36 @@
         </label>
         <label>
           <span>生效时间</span>
-          <t-input
+          <input
             v-model="form.startsAt"
-            placeholder="开始 ISO，如 2026-06-23T00:00:00.000Z"
-          />
+            class="native-input"
+            type="datetime-local"
+            aria-label="委托生效时间"
+          >
         </label>
         <label>
           <span>失效时间</span>
-          <t-input
+          <input
             v-model="form.endsAt"
-            placeholder="结束 ISO，如 2026-07-23T00:00:00.000Z"
-          />
+            class="native-input"
+            type="datetime-local"
+            aria-label="委托失效时间"
+          >
         </label>
-        <t-button
-          theme="primary"
-          :loading="creating"
-          @click="submitCreate"
-        >
-          创建委托
-        </t-button>
+        <div class="form-action">
+          <t-button
+            theme="primary"
+            :disabled="Boolean(createDisabledReason) || creating"
+            :loading="creating"
+            :title="createDisabledReason || (creating ? '正在创建委托，请稍候' : '创建审批委托')"
+            @click="submitCreate"
+          >
+            创建委托
+          </t-button>
+          <span v-if="createDisabledReason">
+            {{ createDisabledReason }}
+          </span>
+        </div>
       </div>
       <p
         v-if="message"
@@ -109,7 +120,9 @@ import {
 import { useAuthStore } from "../../auth/auth.store";
 import {
   delegationLedgerColumns,
-  mapDelegationLedgerRows
+  getDelegationCreateDisabledReason,
+  mapDelegationLedgerRows,
+  toDelegationIsoDatetime
 } from "./delegation-list.config";
 
 const auth = useAuthStore();
@@ -126,6 +139,7 @@ const form = reactive({
   startsAt: "",
   endsAt: ""
 });
+const createDisabledReason = computed(() => getDelegationCreateDisabledReason(form));
 
 async function loadDelegations() {
   loading.value = true;
@@ -153,12 +167,18 @@ async function loadUserOptions() {
 }
 
 async function submitCreate() {
+  if (createDisabledReason.value) {
+    message.value = createDisabledReason.value;
+    messageTone.value = "danger";
+    return;
+  }
+
   creating.value = true;
   try {
     await createApprovalDelegation({
       toUserId: form.toUserId.trim(),
-      startsAt: form.startsAt.trim(),
-      endsAt: form.endsAt.trim()
+      startsAt: toDelegationIsoDatetime(form.startsAt),
+      endsAt: toDelegationIsoDatetime(form.endsAt)
     });
     form.toUserId = "";
     form.startsAt = "";
@@ -237,6 +257,28 @@ onMounted(() => {
   color: #767f8d;
   font-size: 12px;
   font-weight: 600;
+}
+
+.form-action {
+  display: grid;
+  gap: 4px;
+}
+
+.form-action span {
+  color: #b51d2a;
+  font-size: 12px;
+}
+
+.native-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid #dce1e8;
+  border-radius: 3px;
+  background: #fff;
+  color: #424955;
+  font-size: 12px;
 }
 
 .form-message {

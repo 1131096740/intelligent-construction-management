@@ -10,6 +10,12 @@ export interface DelegationLedgerRow extends ApprovalDelegationReadModel {
   deadlineTone: DelegationTone;
 }
 
+export interface DelegationCreateDraft {
+  toUserId: string;
+  startsAt: string;
+  endsAt: string;
+}
+
 export const delegationLedgerColumns: PrimaryTableCol<DelegationLedgerRow>[] = [
   { colKey: "fromUserName", title: "委托人", width: 112 },
   { colKey: "toUserName", title: "受托人", width: 112 },
@@ -33,6 +39,37 @@ export function mapDelegationLedgerRows(
     actingLabel: formatActingLabel(row, currentUserId),
     ...formatDeadline(row, now)
   }));
+}
+
+export function getDelegationCreateDisabledReason(draft: DelegationCreateDraft): string {
+  if (!draft.toUserId.trim()) {
+    return "请先选择受托人";
+  }
+
+  const startsAt = parseDelegationDatetime(draft.startsAt);
+  if (!startsAt) {
+    return "请先填写正确的生效时间";
+  }
+
+  const endsAt = parseDelegationDatetime(draft.endsAt);
+  if (!endsAt) {
+    return "请先填写正确的失效时间";
+  }
+
+  if (endsAt.getTime() <= startsAt.getTime()) {
+    return "失效时间必须晚于生效时间";
+  }
+
+  return "";
+}
+
+export function toDelegationIsoDatetime(raw: string): string {
+  const date = parseDelegationDatetime(raw);
+  if (!date) {
+    throw new Error("请填写正确的委托时间");
+  }
+
+  return date.toISOString();
 }
 
 function formatActingLabel(
@@ -101,4 +138,14 @@ function startOfDay(value: Date): Date {
 function startOfIsoDate(value: string): Date {
   const [year = "0", month = "1", day = "1"] = value.slice(0, 10).split("-");
   return new Date(Number(year), Number(month) - 1, Number(day));
+}
+
+function parseDelegationDatetime(raw: string): Date | null {
+  const value = raw.trim();
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
