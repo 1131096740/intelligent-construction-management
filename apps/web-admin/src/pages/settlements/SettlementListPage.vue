@@ -76,7 +76,22 @@
         />
       </div>
       <div class="create-actions">
+        <t-tooltip
+          v-if="createSettlementDisabledReason"
+          :content="createSettlementDisabledReason"
+        >
+          <span class="create-disabled-tip">
+            <t-button
+              theme="primary"
+              :loading="createBusy"
+              disabled
+            >
+              创建结算
+            </t-button>
+          </span>
+        </t-tooltip>
         <t-button
+          v-else
           theme="primary"
           :loading="createBusy"
           @click="submitCreateSettlement"
@@ -216,6 +231,7 @@ import {
 import {
   buildSettlementCreatePayload,
   findContractOption,
+  settlementCreateDisabledReason,
   toContractSelectOptions
 } from "../contracts/contract-business-options.config";
 import type { SettlementLedgerRow, SettlementTone } from "./settlement-list.config";
@@ -301,6 +317,9 @@ const selectedContractHint = computed(() => {
 
   return contract.settlementUnavailableReason ?? "合同已生效，可创建结算";
 });
+const createSettlementDisabledReason = computed(() =>
+  settlementCreateDisabledReason(selectedContract.value, createForm)
+);
 
 function openDetail(settlementId: string) {
   void router.push(`/settlements/${settlementId}`);
@@ -408,6 +427,13 @@ async function loadSettlementContracts() {
 }
 
 async function submitCreateSettlement() {
+  const disabledReason = createSettlementDisabledReason.value;
+  if (disabledReason) {
+    message.value = disabledReason;
+    messageTone.value = "danger";
+    return;
+  }
+
   createBusy.value = true;
   message.value = "";
 
@@ -540,6 +566,10 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   margin-top: 14px;
+}
+
+.create-disabled-tip {
+  display: inline-flex;
 }
 
 .summary-strip {

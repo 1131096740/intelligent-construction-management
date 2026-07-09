@@ -103,6 +103,38 @@ export function buildSettlementCreatePayload(
   };
 }
 
+export function settlementCreateDisabledReason(
+  contract: ContractBusinessOptionReadModel | null,
+  form: SettlementCreateBusinessForm
+): string {
+  if (!contract?.contractVersionId) {
+    return "请先选择已生效合同。";
+  }
+  if (!contract.canCreateSettlement) {
+    return (
+      contract.settlementUnavailableReason ??
+      "当前合同暂不能发起结算，请先确认合同已归档生效、付款条款已补齐，再重新办理。"
+    );
+  }
+  if (!form.code.trim()) {
+    return "请填写结算编号。";
+  }
+  if (!form.periodLabel.trim()) {
+    return "请填写结算期间。";
+  }
+  if (!form.amountYuan.trim()) {
+    return "请填写结算金额。";
+  }
+
+  try {
+    yuanToCents(form.amountYuan, "结算金额");
+  } catch (error) {
+    return error instanceof Error ? error.message : "请填写正确的结算金额。";
+  }
+
+  return "";
+}
+
 export function buildPaymentCreatePayload(
   contract: ContractBusinessOptionReadModel | null,
   settlement: SettlementBusinessOption | null,
