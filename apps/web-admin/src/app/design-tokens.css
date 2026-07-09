@@ -1,34 +1,64 @@
 :root {
-  --jg-bg-page: #f4f6f9;
-  --jg-bg-panel: #ffffff;
-  --jg-bg-muted: #f7f9fc;
+  --jg-color-bg-page: #f4f6f9;
+  --jg-color-bg-panel: #ffffff;
+  --jg-color-bg-muted: #f7f9fc;
+  --jg-color-border: #dce1e8;
+  --jg-color-text-primary: #151922;
+  --jg-color-text-secondary: #424955;
+  --jg-color-text-tertiary: #5f6673;
+  --jg-color-text-muted: #767f8d;
+  --jg-color-brand: #0052cc;
+  --jg-color-success: #2ba471;
+  --jg-color-warning: #d9822b;
+  --jg-color-danger: #c9353f;
+  --jg-color-info: #0052cc;
 
-  --jg-text-strong: #151922;
-  --jg-text-main: #424955;
-  --jg-text-subtle: #5f6673;
-  --jg-text-muted: #767f8d;
+  --jg-font-size-page-title: 24px;
+  --jg-font-size-section-title: 16px;
+  --jg-font-size-body: 13px;
+  --jg-font-size-meta: 12px;
+  --jg-font-size-mini: 11px;
 
-  --jg-border: #dce1e8;
-  --jg-brand: #0052cc;
-
-  --jg-success: #2ba471;
-  --jg-warning: #d9822b;
-  --jg-danger: #c9353f;
-  --jg-info: #0052cc;
-
-  --jg-font-page-title: 24px;
-  --jg-font-section-title: 16px;
-  --jg-font-body: 13px;
-  --jg-font-meta: 12px;
-  --jg-font-mini: 11px;
+  --jg-line-height-tight: 1.25;
+  --jg-line-height-body: 1.6;
+  --jg-line-height-title: 1.35;
 
   --jg-space-xs: 4px;
   --jg-space-sm: 8px;
   --jg-space-md: 12px;
   --jg-space-lg: 16px;
   --jg-space-xl: 24px;
+  --jg-space-xxl: 32px;
 
   --jg-radius-sm: 3px;
   --jg-radius-md: 6px;
   --jg-radius-lg: 8px;
+
+  --jg-shadow-none: none;
+  --jg-shadow-panel: 0 1px 2px rgba(21, 25, 34, 0.06);
+  --jg-shadow-overlay: 0 8px 24px rgba(21, 25, 34, 0.14);
+
+  --jg-layout-page-max-width: 1440px;
+  --jg-layout-sidebar-width: 240px;
+  --jg-layout-header-height: 56px;
+  --jg-layout-table-row-height: 46px;
+
+  --jg-bg-page: var(--jg-color-bg-page);
+  --jg-bg-panel: var(--jg-color-bg-panel);
+  --jg-bg-muted: var(--jg-color-bg-muted);
+  --jg-text-strong: var(--jg-color-text-primary);
+  --jg-text-main: var(--jg-color-text-secondary);
+  --jg-text-subtle: var(--jg-color-text-tertiary);
+  --jg-text-muted: var(--jg-color-text-muted);
+  --jg-border: var(--jg-color-border);
+  --jg-brand: var(--jg-color-brand);
+  --jg-success: var(--jg-color-success);
+  --jg-warning: var(--jg-color-warning);
+  --jg-danger: var(--jg-color-danger);
+  --jg-info: var(--jg-color-info);
+  --jg-font-page-title: var(--jg-font-size-page-title);
+  --jg-font-section-title: var(--jg-font-size-section-title);
+  --jg-font-body: var(--jg-font-size-body);
+  --jg-font-meta: var(--jg-font-size-meta);
+  --jg-font-mini: var(--jg-font-size-mini);
 }
