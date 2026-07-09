@@ -1064,6 +1064,202 @@ describe("ContractTakeoverService", () => {
     ]);
   });
 
+  it("submits a generated takeover import batch for review", async () => {
+    const batch = {
+      id: "batch-1",
+      projectId: "project-1",
+      batchNo: "接管批次-20260710-TEST0001",
+      status: "drafts_generated",
+      takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
+      responsibleUserId: "contract-director-1",
+      reviewComment: "合同部已完成预检，提交预算和财务复核。",
+      acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
+      importFingerprint: "fingerprint",
+      totalRows: 20,
+      readyRows: 18,
+      blockedRows: 0,
+      warningRows: 4,
+      createdCount: 18,
+      skippedCount: 2,
+      createdByUserId: "contract-user",
+      createdAt: new Date("2026-07-10T01:00:00.000Z"),
+      updatedAt: new Date("2026-07-10T01:00:00.000Z")
+    };
+    const tx = {
+      contractTakeoverBatch: {
+        findFirst: jest.fn().mockResolvedValue(batch),
+        update: jest.fn().mockResolvedValue({ ...batch, status: "under_review" })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.reviewImportBatch(
+      "project-1",
+      "batch-1",
+      {
+        status: "under_review",
+        reviewComment: "合同部已完成预检，提交预算和财务复核。",
+        acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。"
+      },
+      "contract-director-1"
+    );
+
+    expect(result).toMatchObject({
+      id: "batch-1",
+      status: "under_review",
+      statusLabel: "复核中",
+      riskText: "批次正在复核，请合同、预算和财务核对资料与金额口径。"
+    });
+    expect(tx.contractTakeoverBatch.findFirst).toHaveBeenCalledWith({
+      where: { id: "batch-1", projectId: "project-1" }
+    });
+    expect(tx.contractTakeoverBatch.update).toHaveBeenCalledWith({
+      where: { id: "batch-1" },
+      data: {
+        status: "under_review",
+        reviewComment: "合同部已完成预检，提交预算和财务复核。",
+        acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "contract-director-1",
+      action: "contract_takeover_batch.review",
+      businessType: "contract_takeover_batch",
+      businessId: "batch-1",
+      metadata: {
+        projectId: "project-1",
+        batchNo: "接管批次-20260710-TEST0001",
+        fromStatus: "drafts_generated",
+        toStatus: "under_review"
+      }
+    });
+  });
+
+  it("records a takeover import batch acceptance result after review", async () => {
+    const batch = {
+      id: "batch-1",
+      projectId: "project-1",
+      batchNo: "接管批次-20260710-TEST0001",
+      status: "under_review",
+      takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
+      responsibleUserId: "contract-director-1",
+      reviewComment: "预算和财务已完成复核。",
+      acceptanceConclusion: "待主管确认。",
+      importFingerprint: "fingerprint",
+      totalRows: 20,
+      readyRows: 18,
+      blockedRows: 0,
+      warningRows: 0,
+      createdCount: 18,
+      skippedCount: 0,
+      createdByUserId: "contract-user",
+      createdAt: new Date("2026-07-10T01:00:00.000Z"),
+      updatedAt: new Date("2026-07-10T01:00:00.000Z")
+    };
+    const tx = {
+      contractTakeoverBatch: {
+        findFirst: jest.fn().mockResolvedValue(batch),
+        update: jest.fn().mockResolvedValue({
+          ...batch,
+          status: "limited_accepted",
+          reviewComment: "预算和财务已完成复核。",
+          acceptanceConclusion: "付款前需补齐发票和付款凭证。"
+        })
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.reviewImportBatch(
+      "project-1",
+      "batch-1",
+      {
+        status: "limited_accepted",
+        reviewComment: "预算和财务已完成复核。",
+        acceptanceConclusion: "付款前需补齐发票和付款凭证。"
+      },
+      "contract-director-1"
+    );
+
+    expect(result).toMatchObject({
+      status: "limited_accepted",
+      statusLabel: "受限验收",
+      riskText: "批次为受限验收，付款前需重点核对缺口和限制说明。",
+      acceptanceConclusion: "付款前需补齐发票和付款凭证。"
+    });
+  });
+
+  it("rejects takeover import batch acceptance before review", async () => {
+    const tx = {
+      contractTakeoverBatch: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "batch-1",
+          projectId: "project-1",
+          batchNo: "接管批次-20260710-TEST0001",
+          status: "drafts_generated"
+        }),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.reviewImportBatch(
+        "project-1",
+        "batch-1",
+        {
+          status: "accepted",
+          reviewComment: "预算和财务已完成复核。",
+          acceptanceConclusion: "同意本批次验收。"
+        },
+        "contract-director-1"
+      )
+    ).rejects.toThrow("当前批次为“已生成草稿”，不能直接变更为“已验收”");
+    expect(tx.contractTakeoverBatch.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects takeover import batch review result without business conclusion", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.reviewImportBatch(
+        "project-1",
+        "batch-1",
+        {
+          status: "under_review",
+          reviewComment: " ",
+          acceptanceConclusion: "待主管确认。"
+        },
+        "contract-director-1"
+      )
+    ).rejects.toThrow("请填写批次复核意见后再提交复核结果");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("does not create import drafts while precheck still has error rows", async () => {
     const tx = {
       contract: {

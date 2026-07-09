@@ -17,6 +17,10 @@ import type {
   UpdateContractTakeoverDto
 } from "./dto/create-contract-takeover.dto";
 import type { PrecheckContractTakeoverImportDto } from "./dto/precheck-contract-takeover-import.dto";
+import type {
+  ContractTakeoverImportBatchReviewStatus,
+  ReviewContractTakeoverImportBatchDto
+} from "./dto/review-contract-takeover-import-batch.dto";
 
 const TAKEOVER_LEVELS = ["A", "B", "C"] as const;
 const LIFECYCLE_STATUSES = [
@@ -33,6 +37,17 @@ const EVIDENCE_PURPOSES = [
   "historical_payment_voucher",
   "other"
 ] as const satisfies readonly ContractTakeoverEvidencePurpose[];
+const IMPORT_BATCH_REVIEW_STATUSES = [
+  "under_review",
+  "accepted",
+  "limited_accepted",
+  "disputed"
+] as const satisfies readonly ContractTakeoverImportBatchReviewStatus[];
+const IMPORT_BATCH_FINAL_STATUSES: readonly ContractTakeoverImportBatchReviewStatus[] = [
+  "accepted",
+  "limited_accepted",
+  "disputed"
+];
 const MONEY_FIELDS = [
   "historicalSettledCents",
   "historicalApprovalPendingPaymentCents",
@@ -536,6 +551,55 @@ export class ContractTakeoverService {
     });
 
     return batches.map((batch) => this.toImportBatchReadModel(batch));
+  }
+
+  async reviewImportBatch(
+    projectId: string,
+    batchId: string,
+    input: ReviewContractTakeoverImportBatchDto,
+    actorUserId: string
+  ) {
+    const status = input.status;
+    if (!IMPORT_BATCH_REVIEW_STATUSES.includes(status)) {
+      throw new Error("请选择正确的接管批次复核结果");
+    }
+    const reviewComment = input.reviewComment?.trim();
+    if (!reviewComment) throw new Error("请填写批次复核意见后再提交复核结果");
+    const acceptanceConclusion = input.acceptanceConclusion?.trim();
+    if (!acceptanceConclusion) throw new Error("请填写批次验收结论后再提交复核结果");
+
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.contractTakeoverBatch.findFirst({
+        where: { id: batchId, projectId }
+      });
+      if (!batch) {
+        throw new Error("接管批次不存在，请刷新接管工作台后重试");
+      }
+      if (!canMoveImportBatchStatus(batch.status, status)) {
+        throw new Error(
+          `当前批次为“${importBatchStatusLabel(batch.status)}”，不能直接变更为“${importBatchStatusLabel(status)}”`
+        );
+      }
+
+      const updated = await tx.contractTakeoverBatch.update({
+        where: { id: batch.id },
+        data: { status, reviewComment, acceptanceConclusion }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract_takeover_batch.review",
+        businessType: "contract_takeover_batch",
+        businessId: batch.id,
+        metadata: {
+          projectId,
+          batchNo: batch.batchNo,
+          fromStatus: batch.status,
+          toStatus: status
+        }
+      });
+
+      return this.toImportBatchReadModel(updated);
+    });
   }
 
   async detail(projectId: string, takeoverId: string) {
@@ -1540,14 +1604,25 @@ function importBatchStatusLabel(status: string): string {
 }
 
 function importBatchRiskText(batch: {
+  status: string;
   blockedRows: number;
   warningRows: number;
   skippedCount: number;
 }): string {
+  if (batch.status === "accepted") return "批次已验收，可按单合同确认结果继续办理。";
+  if (batch.status === "limited_accepted") return "批次为受限验收，付款前需重点核对缺口和限制说明。";
+  if (batch.status === "disputed") return "批次存在争议，争议解决前不宜作为付款放行依据。";
+  if (batch.status === "under_review") return "批次正在复核，请合同、预算和财务核对资料与金额口径。";
   if (batch.blockedRows > 0) return "仍有错误行，先修正后再接管。";
   if (batch.warningRows > 0) return "存在资料或风险提醒，复核时重点核对。";
   if (batch.skippedCount > 0) return "有重复导入记录，已跳过未重复建账。";
   return "预检通过，等待资料核验和复核确认。";
+}
+
+function canMoveImportBatchStatus(fromStatus: string, toStatus: ContractTakeoverImportBatchReviewStatus) {
+  if (fromStatus === "drafts_generated") return toStatus === "under_review";
+  if (fromStatus === "under_review") return IMPORT_BATCH_FINAL_STATUSES.includes(toStatus);
+  return false;
 }
 
 function takeoverLevelRiskText(level: string): string {

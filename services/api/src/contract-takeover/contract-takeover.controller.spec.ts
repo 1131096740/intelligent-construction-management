@@ -18,6 +18,10 @@ describe("ContractTakeoverController", () => {
 
   it("protects confirmation with contract archive confirmation role", () => {
     expectProjectAction(
+      ContractTakeoverController.prototype.reviewImportBatch,
+      "contract.archive.confirm"
+    );
+    expectProjectAction(
       ContractTakeoverController.prototype.confirm,
       "contract.archive.confirm"
     );

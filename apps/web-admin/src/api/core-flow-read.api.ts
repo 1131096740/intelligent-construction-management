@@ -263,6 +263,18 @@ export interface PrecheckContractTakeoverImportPayload {
   acceptanceConclusion?: string;
 }
 
+export type ContractTakeoverImportBatchReviewStatus =
+  | "under_review"
+  | "accepted"
+  | "limited_accepted"
+  | "disputed";
+
+export interface ReviewContractTakeoverImportBatchPayload {
+  status: ContractTakeoverImportBatchReviewStatus;
+  reviewComment: string;
+  acceptanceConclusion: string;
+}
+
 export interface ContractTakeoverImportBatchReadModel {
   id: string;
   batchNo: string;
@@ -1175,6 +1187,17 @@ export function listContractTakeovers(projectId: string) {
 export function listContractTakeoverImportBatches(projectId: string) {
   return readJson<ContractTakeoverImportBatchReadModel[]>(
     `/projects/${projectId}/contract-takeovers/import-batches`
+  );
+}
+
+export function reviewContractTakeoverImportBatch(
+  projectId: string,
+  batchId: string,
+  body: ReviewContractTakeoverImportBatchPayload
+) {
+  return patchJson<ContractTakeoverImportBatchReadModel>(
+    `/projects/${projectId}/contract-takeovers/import-batches/${batchId}/review-result`,
+    body
   );
 }
 

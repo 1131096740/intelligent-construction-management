@@ -89,6 +89,7 @@ import {
   fetchApprovalDelegationUserOptions,
   revokeApprovalDelegation,
   submitContractTakeoverReview,
+  reviewContractTakeoverImportBatch,
   updateContractTakeover
 } from "./core-flow-read.api";
 
@@ -805,6 +806,31 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[9][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
+    );
+  });
+
+  it("submits takeover import batch review results through the backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "batch-1", status: "under_review" })
+    } as Response);
+
+    await reviewContractTakeoverImportBatch("project-1", "batch-1", {
+      status: "under_review",
+      reviewComment: "合同部已完成预检，提交预算和财务复核。",
+      acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/contract-takeovers/import-batches/batch-1/review-result"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("PATCH");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        status: "under_review",
+        reviewComment: "合同部已完成预检，提交预算和财务复核。",
+        acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。"
+      })
     );
   });
 

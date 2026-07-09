@@ -10,6 +10,7 @@ import type {
   UpdateContractTakeoverDto
 } from "./dto/create-contract-takeover.dto";
 import type { PrecheckContractTakeoverImportDto } from "./dto/precheck-contract-takeover-import.dto";
+import type { ReviewContractTakeoverImportBatchDto } from "./dto/review-contract-takeover-import-batch.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
@@ -25,6 +26,17 @@ export class ContractTakeoverController {
   @RequireProjectRole("contract.create")
   listImportBatches(@Param("projectId") projectId: string) {
     return this.takeovers.listImportBatches(projectId);
+  }
+
+  @Patch("import-batches/:batchId/review-result")
+  @RequireProjectRole("contract.archive.confirm")
+  reviewImportBatch(
+    @Param("projectId") projectId: string,
+    @Param("batchId") batchId: string,
+    @Body() body: ReviewContractTakeoverImportBatchDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.takeovers.reviewImportBatch(projectId, batchId, body, user.id);
   }
 
   @Get(":takeoverId")

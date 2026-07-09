@@ -211,7 +211,49 @@
         size="small"
         :columns="importBatchColumns"
         :data="importBatchRows"
-      />
+      >
+        <template #operation="{ row }">
+          <t-space size="small">
+            <t-link
+              v-if="row.status === 'drafts_generated'"
+              theme="primary"
+              :disabled="Boolean(reviewingImportBatchAction)"
+              @click="reviewImportBatch(row, 'under_review')"
+            >
+              提交复核
+            </t-link>
+            <template v-else-if="row.status === 'under_review'">
+              <t-link
+                theme="primary"
+                :disabled="Boolean(reviewingImportBatchAction)"
+                @click="reviewImportBatch(row, 'accepted')"
+              >
+                验收通过
+              </t-link>
+              <t-link
+                theme="warning"
+                :disabled="Boolean(reviewingImportBatchAction)"
+                @click="reviewImportBatch(row, 'limited_accepted')"
+              >
+                受限验收
+              </t-link>
+              <t-link
+                theme="danger"
+                :disabled="Boolean(reviewingImportBatchAction)"
+                @click="reviewImportBatch(row, 'disputed')"
+              >
+                标记争议
+              </t-link>
+            </template>
+            <span
+              v-else
+              class="issue-muted"
+            >
+              已形成批次结论
+            </span>
+          </t-space>
+        </template>
+      </t-table>
     </t-card>
 
     <t-card
@@ -742,10 +784,12 @@ import {
   listContractTakeoverImportBatches,
   listContractTakeovers,
   precheckContractTakeoverImport,
+  reviewContractTakeoverImportBatch,
   submitContractTakeoverReview,
   updateContractTakeover,
   uploadPrivateFile,
   type ContractTakeoverImportBatchReadModel,
+  type ContractTakeoverImportBatchReviewStatus,
   type ContractTakeoverImportPrecheckReadModel,
   type ContractTakeoverEvidencePurpose,
   type ContractLifecycleStatus,
@@ -846,6 +890,7 @@ const loadingTakeovers = ref(false);
 const creating = ref(false);
 const prechecking = ref(false);
 const generatingImportDrafts = ref(false);
+const reviewingImportBatchAction = ref("");
 const editingTakeoverId = ref("");
 const confirming = ref(false);
 const evidenceUploading = ref(false);
@@ -888,7 +933,8 @@ const importBatchColumns = [
   { colKey: "createdCountText", title: "生成草稿", width: 104, align: "right" },
   { colKey: "warningRowsText", title: "提醒", width: 84, align: "right" },
   { colKey: "skippedCountText", title: "重复跳过", width: 104, align: "right" },
-  { colKey: "riskText", title: "复核提示", minWidth: 200 }
+  { colKey: "riskText", title: "复核提示", minWidth: 200 },
+  { colKey: "operation", title: "批次操作", width: 210, fixed: "right" }
 ];
 
 const tableRows = computed(() =>
@@ -1218,6 +1264,38 @@ function clearImportPrecheck() {
   Object.assign(importBatchForm, createEmptyImportBatchForm());
 }
 
+async function reviewImportBatch(
+  batch: ContractTakeoverImportBatchReadModel,
+  status: ContractTakeoverImportBatchReviewStatus
+) {
+  const projectId = selectedProjectId.value;
+  if (!projectId) {
+    setMessage("请先选择项目", "danger");
+    return;
+  }
+  const consequence = importBatchReviewConsequence(status);
+  if (typeof globalThis.confirm === "function" && !globalThis.confirm(consequence)) {
+    return;
+  }
+
+  reviewingImportBatchAction.value = `${batch.id}:${status}`;
+  try {
+    const updated = await reviewContractTakeoverImportBatch(projectId, batch.id, {
+      status,
+      reviewComment: requiredText(batch.reviewComment, "批次复核意见"),
+      acceptanceConclusion: requiredText(batch.acceptanceConclusion, "批次验收结论")
+    });
+    importBatches.value = importBatches.value.map((item) =>
+      item.id === updated.id ? updated : item
+    );
+    setMessage(`接管批次已更新为“${updated.statusLabel}”`, "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "接管批次复核失败", "danger");
+  } finally {
+    reviewingImportBatchAction.value = "";
+  }
+}
+
 async function selectTakeover(takeover: ContractTakeoverReadModel) {
   const projectId = selectedProjectId.value;
   if (!projectId) {
@@ -1516,6 +1594,20 @@ function requiredText(raw: string, label: string) {
   }
 
   return value;
+}
+
+function importBatchReviewConsequence(status: ContractTakeoverImportBatchReviewStatus) {
+  const texts: Record<ContractTakeoverImportBatchReviewStatus, string> = {
+    under_review:
+      "确认提交批次复核后，合同部、预算和财务应按该批次资料和金额口径继续核验。",
+    accepted:
+      "确认验收通过后，该批次将作为接管复核完成记录；后续单合同仍需按资料和主管确认办理。",
+    limited_accepted:
+      "确认受限验收后，付款前必须重点核对缺口和限制说明，不能按完全无风险批次处理。",
+    disputed: "确认标记争议后，该批次争议解决前不宜作为付款放行依据。"
+  };
+
+  return texts[status];
 }
 
 function statusTagTheme(tone: ContractTakeoverTone) {
