@@ -34,7 +34,7 @@ describe("approvalTimelineForBusiness", () => {
         actorName: "王财务",
         comment: "同意进入下一步",
         nodeName: "财务复核",
-        roleName: "finance_director",
+        roleName: "财务主管",
         createdAt: "2026-07-08T02:00:00.000Z"
       }
     ]);
@@ -63,5 +63,40 @@ describe("approvalTimelineForBusiness", () => {
       approvalTimelineForBusiness(prisma, "contract_version", "contract-version-1")
     ).resolves.toEqual([]);
     expect(prisma.approvalActionLog.findMany).not.toHaveBeenCalled();
+  });
+
+  it("does not expose internal approval action, actor, or role values", async () => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
+      },
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "log-1",
+            action: "internal_action",
+            actorUserId: "internal-user-id",
+            comment: null,
+            metadata: { approvedRoleKey: "internal_role" },
+            createdAt: new Date("2026-07-08T02:00:00.000Z")
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+
+    await expect(
+      approvalTimelineForBusiness(prisma, "payment_request", "payment-1")
+    ).resolves.toEqual([
+      expect.objectContaining({
+        action: "internal_action",
+        actionLabel: "审批动作未读取",
+        actorUserId: "internal-user-id",
+        actorName: "审批人未读取",
+        roleName: "审批角色未读取"
+      })
+    ]);
   });
 });

@@ -42,6 +42,26 @@ const ACTION_LABELS: Record<string, string> = {
   delegate: "委托"
 };
 
+const ROLE_LABELS: Record<string, string> = {
+  chairman: "董事长",
+  general_manager: "总经理",
+  project_manager: "项目经理",
+  contract_director: "合同部主管",
+  contract_staff: "合同员",
+  budget_director: "预算部主管",
+  budget_staff: "预算员",
+  finance_director: "财务主管",
+  finance_staff: "财务员",
+  material_director: "物资主管",
+  material_staff: "物资员",
+  engineering_director: "工程部主管",
+  engineering_foreman: "施工队长",
+  engineering_tech: "技术员",
+  comprehensive_director: "综合部主管",
+  employee: "员工",
+  super_admin: "系统管理员"
+};
+
 export async function approvalTimelineForBusiness(
   prisma: unknown,
   businessType: string,
@@ -77,14 +97,22 @@ export async function approvalTimelineForBusiness(
   return logs.map((log) => ({
     id: log.id,
     action: log.action,
-    actionLabel: ACTION_LABELS[log.action] ?? log.action,
+    actionLabel: ACTION_LABELS[log.action] ?? "审批动作未读取",
     actorUserId: log.actorUserId,
-    actorName: userNameById.get(log.actorUserId) ?? log.actorUserId,
+    actorName: userNameById.get(log.actorUserId) ?? "审批人未读取",
     comment: log.comment ?? null,
     nodeName: metadataString(log.metadata, "nodeName") ?? metadataString(log.metadata, "fromNodeName"),
-    roleName: metadataString(log.metadata, "approvedRoleKey"),
+    roleName: roleLabel(metadataString(log.metadata, "approvedRoleKey")),
     createdAt: log.createdAt.toISOString()
   }));
+}
+
+function roleLabel(roleKey: string | null): string | null {
+  if (!roleKey) {
+    return null;
+  }
+
+  return ROLE_LABELS[roleKey] ?? "审批角色未读取";
 }
 
 function metadataString(metadata: unknown, key: string): string | null {
