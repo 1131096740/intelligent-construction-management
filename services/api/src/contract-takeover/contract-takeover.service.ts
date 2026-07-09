@@ -1145,7 +1145,7 @@ export class ContractTakeoverService {
       issues.push(issue(rowNo, "signedAt", "error", "签订日期必须是有效日期 YYYY-MM-DD"));
     }
     if (!TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel)) {
-      issues.push(issue(rowNo, "takeoverLevel", "error", "接管等级必须是 A、B 或 C"));
+      issues.push(issue(rowNo, "takeoverLevel", "error", "接管等级请选择 A级、B级或C级"));
     }
     if (!LIFECYCLE_STATUSES.includes(lifecycleStatus as ContractLifecycleStatus)) {
       issues.push(issue(rowNo, "lifecycleStatus", "error", "履约状态不在系统支持范围内"));

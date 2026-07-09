@@ -505,6 +505,40 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("uses Chinese business guidance for invalid takeover level in import precheck", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.precheckImport("project-1", {
+      rows: [
+        {
+          code: "HT-HIS-LEVEL-INVALID",
+          name: "接管等级错误合同",
+          counterparty: "历史供应商",
+          amountCents: 1_000_000,
+          signedAt: "2026-01-10",
+          takeoverLevel: "D级",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "按月结算付款"
+        }
+      ]
+    });
+
+    expect(result.rows[0]).toMatchObject({
+      status: "blocked",
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          field: "takeoverLevel",
+          message: "接管等级请选择 A级、B级或C级"
+        })
+      ])
+    });
+  });
+
   it("warns when takeover import precheck lacks evidence checklist or issue summary", async () => {
     const prisma = {
       contract: {
