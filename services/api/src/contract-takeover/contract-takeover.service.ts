@@ -668,7 +668,8 @@ export class ContractTakeoverService {
             ...this.importRowToCreateInput(row),
             takeoverCutoffDate: stringValue(row["takeoverCutoffDate"]) || input.takeoverCutoffDate,
             responsibleUserId: stringValue(row["responsibleUserId"]) || batch.responsibleUserId,
-            reviewComment: stringValue(row["reviewComment"]) || batch.reviewComment,
+            reviewComment:
+              stringValue(row["reviewComment"]) || stringValue(row["issueSummary"]) || batch.reviewComment,
             acceptanceConclusion:
               stringValue(row["acceptanceConclusion"]) || batch.acceptanceConclusion
           }),

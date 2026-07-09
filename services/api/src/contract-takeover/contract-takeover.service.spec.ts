@@ -808,7 +808,7 @@ describe("ContractTakeoverService", () => {
             balanceSourceSummary: "财务台账核对。",
             evidenceSummary: "合同扫描件和付款台账齐全。",
             evidenceChecklist: "合同扫描件、结算台账、付款凭证",
-            issueSummary: ""
+            issueSummary: "发票待补，财务复核时重点确认"
           }
         ]
       },
@@ -852,6 +852,7 @@ describe("ContractTakeoverService", () => {
         historicalPaidCents: BigInt(300_000),
         balanceSourceSummary: "财务台账核对。",
         evidenceSummary: "合同扫描件和付款台账齐全。",
+        reviewComment: "发票待补，财务复核时重点确认",
         takeoverBatchId: "batch-1",
         importRowNo: 2
       })
