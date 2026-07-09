@@ -945,7 +945,7 @@ export class SettlementService {
       }
 
       if (!this.files) {
-        throw new Error("File service is required to upload settlement archive file");
+        throw new Error("结算归档文件服务暂不可用，请稍后重试或联系管理员");
       }
       await this.files.assertCanDownloadFile(tx, input.fileId, actorUserId);
 

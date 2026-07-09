@@ -1780,6 +1780,33 @@ describe("SettlementService", () => {
     expect(tx.settlementArchiveFile.create).not.toHaveBeenCalled();
   });
 
+  it("结算归档文件服务不可用时不能上传归档文件", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          status: "approved_pending_archive"
+        }),
+        update: jest.fn()
+      },
+      settlementArchiveFile: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.uploadArchiveFile("settlement-1", "user-contract-staff", {
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("结算归档文件服务暂不可用，请稍后重试或联系管理员");
+    expect(tx.settlementArchiveFile.create).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
   it("approves a settlement and opens signed archive upload", async () => {
     const tx = {
       settlement: {
