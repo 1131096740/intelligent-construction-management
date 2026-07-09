@@ -690,7 +690,7 @@ export class ContractTakeoverService {
     return this.prisma.$transaction(async (tx) => {
       const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
       if (!["draft", "needs_supplement"].includes(takeover.takeoverStatus)) {
-        throw new Error(`Cannot submit takeover review from status ${takeover.takeoverStatus}`);
+        throw new Error("当前接管记录不能提交复核，请确认仍处于草稿或待补充状态");
       }
 
       const submittedAt = new Date();
@@ -728,7 +728,7 @@ export class ContractTakeoverService {
     input: ConfirmContractTakeoverDto
   ) {
     if (!input.confirmationPassword?.trim()) {
-      throw new Error("Contract takeover confirmation password is required");
+      throw new Error("确认历史合同接管需要当前登录密码");
     }
     if (!this.auth) {
       throw new Error("Auth service is required to confirm contract takeover");
@@ -739,7 +739,7 @@ export class ContractTakeoverService {
     return this.prisma.$transaction(async (tx) => {
       const takeover = await this.getProjectTakeover(tx, projectId, takeoverId);
       if (takeover.takeoverStatus !== "pending_review") {
-        throw new Error(`Cannot confirm takeover from status ${takeover.takeoverStatus}`);
+        throw new Error("当前接管记录尚不能确认，请先提交复核并完成资料核验");
       }
       const [takeoverReadModel] = await this.toReadModels(tx, [takeover]);
       const missingEvidenceLabels = takeoverReadModel.evidenceChecklist
@@ -799,7 +799,7 @@ export class ContractTakeoverService {
       where: { id: takeoverId }
     });
     if (!takeover || takeover.projectId !== projectId) {
-      throw new Error("Contract takeover not found");
+      throw new Error("未找到历史合同接管记录，请刷新接管工作台后重试");
     }
 
     return takeover;

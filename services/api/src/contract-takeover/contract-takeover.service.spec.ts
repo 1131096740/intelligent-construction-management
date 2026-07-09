@@ -1165,6 +1165,46 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("接管记录不存在时不能提交复核", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.submitReview("project-1", "takeover-missing", "contract-user")
+    ).rejects.toThrow("未找到历史合同接管记录，请刷新接管工作台后重试");
+    expect(tx.contractTakeover.update).not.toHaveBeenCalled();
+  });
+
+  it("接管记录状态不允许时不能提交复核", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "confirmed" })),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.submitReview("project-1", "takeover-1", "contract-user")
+    ).rejects.toThrow("当前接管记录不能提交复核，请确认仍处于草稿或待补充状态");
+    expect(tx.contractTakeover.update).not.toHaveBeenCalled();
+  });
+
   it("confirms takeover with second confirmation and makes version and terms effective", async () => {
     const tx = {
       contractTakeover: {
@@ -1282,6 +1322,54 @@ describe("ContractTakeoverService", () => {
         contractVersionId: "contract-version-1"
       })
     });
+  });
+
+  it("确认接管时必须填写当前登录密码", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.confirm("project-1", "takeover-1", "director-1", {
+        confirmationPassword: ""
+      })
+    ).rejects.toThrow("确认历史合同接管需要当前登录密码");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("接管记录状态不允许时不能主管确认", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" })),
+        update: jest.fn()
+      },
+      contractVersion: {
+        update: jest.fn()
+      },
+      paymentTermsVersion: {
+        update: jest.fn()
+      },
+      settlement: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.confirm("project-1", "takeover-1", "director-1", {
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("当前接管记录尚不能确认，请先提交复核并完成资料核验");
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.paymentTermsVersion.update).not.toHaveBeenCalled();
+    expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
   it("rejects takeover confirmation when required evidence is missing", async () => {
