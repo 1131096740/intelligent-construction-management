@@ -1087,18 +1087,18 @@ export class ContractTakeoverService {
 
   private parsePrecheckRows(input: PrecheckContractTakeoverImportDto) {
     if (!isPlainObject(input) || !Array.isArray(input.rows)) {
-      throw new Error("Import precheck rows must be an array");
+      throw new Error("请粘贴需要预检的历史合同导入行");
     }
     if (input.rows.length === 0) {
-      throw new Error("Import precheck rows cannot be empty");
+      throw new Error("请至少保留一行导入数据");
     }
     if (input.rows.length > IMPORT_PRECHECK_MAX_ROWS) {
-      throw new Error(`Import precheck supports at most ${IMPORT_PRECHECK_MAX_ROWS} rows`);
+      throw new Error(`单次导入预检最多支持 ${IMPORT_PRECHECK_MAX_ROWS} 行，请分批处理`);
     }
 
     return input.rows.map((row, index) => {
       if (!isPlainObject(row)) {
-        throw new Error(`Import precheck row ${index + 1} must be an object`);
+        throw new Error(`第 ${index + 1} 行导入数据格式不正确，请重新粘贴`);
       }
       return row;
     });

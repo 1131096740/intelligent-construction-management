@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进历史接管导入预检中文业务体验治理切片：导入预检在缺少导入行、导入数据为空、单次超过 200 行或某一行格式不正确时，不再抛出 `Import precheck rows must be an array`、`Import precheck row 1 must be an object` 等英文技术提示，统一改为中文业务原因，并在写入任何业务记录前失败；不改变预检规则、批次生成草稿、幂等指纹和审计口径。验证：API 接管服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进历史接管创建/编辑中文业务体验治理切片：接管创建和草稿编辑在项目不存在或停用、复核中不能编辑、缺少合同编号/名称/相对方、合同金额非法、接管等级或履约状态错误、签订日期或接管截止日错误、历史金额字段为负数、历史金额超过系统范围、接管资料/密码服务暂不可用时，不再抛出 `Project not found or inactive`、`Cannot update takeover draft from status`、`signedAt must be a valid date string`、`historicalSettledCents must be a non-negative integer` 等英文技术提示，统一改为中文业务原因；不改变接管状态机、金额口径、资料归档和审计口径。验证：API 接管服务 Jest、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进接管后核验详情提示切片：历史合同主管确认后，接管详情新增“接管后核验”只读清单，明确下一步要用新结算、付款申请、实付凭证、财务入账和审计记录验证期初账本，不把主管确认误当作真实业务闭环已完成；不改变接管状态机、历史期初结算生成、付款容量和审计口径。验证：Web 接管配置 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。
 - 2026-07-10 (CodeX)：继续推进接管后核验口径治理切片：历史合同完成主管确认后，接管步骤条不再把“接管后核验”误标为已完成，而是展示为“待核验”，提醒业务人员还需要用接管后的新结算、付款申请、实付和审计来验证期初账本；不改变接管确认状态机、历史期初结算生成、付款容量和审计口径。验证：Web 接管配置 Vitest、Web typecheck、Web lint、Web `check:ui` 通过。

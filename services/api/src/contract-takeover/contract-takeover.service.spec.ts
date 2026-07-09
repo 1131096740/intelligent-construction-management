@@ -308,6 +308,27 @@ describe("ContractTakeoverService", () => {
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["缺少导入行", {} as never, "请粘贴需要预检的历史合同导入行"],
+    ["没有导入数据", { rows: [] }, "请至少保留一行导入数据"],
+    [
+      "超过单次上限",
+      { rows: Array.from({ length: 201 }, () => ({})) },
+      "单次导入预检最多支持 200 行，请分批处理"
+    ],
+    ["行格式错误", { rows: ["HT-HIS-001"] as never }, "第 1 行导入数据格式不正确，请重新粘贴"]
+  ])("uses a business message when import precheck input is invalid: %s", async (_, input, message) => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn()
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(service.precheckImport("project-1", input)).rejects.toThrow(message);
+    expect(prisma.contract.findMany).not.toHaveBeenCalled();
+  });
+
   it("prechecks historical takeover import rows without writing business records", async () => {
     const prisma = {
       contract: {
