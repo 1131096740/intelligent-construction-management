@@ -1156,6 +1156,12 @@ export function listContractTakeovers(projectId: string) {
   return readJson<ContractTakeoverReadModel[]>(`/projects/${projectId}/contract-takeovers`);
 }
 
+export function listContractTakeoverImportBatches(projectId: string) {
+  return readJson<ContractTakeoverImportBatchReadModel[]>(
+    `/projects/${projectId}/contract-takeovers/import-batches`
+  );
+}
+
 export function getContractTakeover(projectId: string, takeoverId: string) {
   return readJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}`

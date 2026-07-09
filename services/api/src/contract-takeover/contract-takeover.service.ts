@@ -497,6 +497,15 @@ export class ContractTakeoverService {
     return this.toReadModels(this.prisma, takeovers);
   }
 
+  async listImportBatches(projectId: string) {
+    const batches = await this.prisma.contractTakeoverBatch.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" }
+    });
+
+    return batches.map((batch) => this.toImportBatchReadModel(batch));
+  }
+
   async detail(projectId: string, takeoverId: string) {
     const takeover = await this.getProjectTakeover(this.prisma, projectId, takeoverId);
     return this.toReadModelFromDatabase(this.prisma, takeover);

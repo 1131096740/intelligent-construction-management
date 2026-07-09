@@ -645,6 +645,60 @@ describe("ContractTakeoverService", () => {
     expect(tx.contractTakeoverBatch.create).not.toHaveBeenCalled();
   });
 
+  it("lists takeover import batches for a project as business read models", async () => {
+    const prisma = {
+      contractTakeoverBatch: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "batch-1",
+            projectId: "project-1",
+            batchNo: "接管批次-20260710-TEST0001",
+            status: "drafts_generated",
+            takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
+            responsibleUserId: "contract-user",
+            reviewComment: "合同、预算和财务待复核。",
+            acceptanceConclusion: "待主管确认。",
+            importFingerprint: "fingerprint",
+            totalRows: 20,
+            readyRows: 18,
+            blockedRows: 0,
+            warningRows: 4,
+            createdCount: 18,
+            skippedCount: 2,
+            createdByUserId: "contract-user",
+            createdAt: new Date("2026-07-10T01:00:00.000Z"),
+            updatedAt: new Date("2026-07-10T01:00:00.000Z")
+          }
+        ])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.listImportBatches("project-1");
+
+    expect(prisma.contractTakeoverBatch.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1" },
+      orderBy: { createdAt: "desc" }
+    });
+    expect(result).toEqual([
+      {
+        id: "batch-1",
+        batchNo: "接管批次-20260710-TEST0001",
+        status: "drafts_generated",
+        takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
+        responsibleUserId: "contract-user",
+        reviewComment: "合同、预算和财务待复核。",
+        acceptanceConclusion: "待主管确认。",
+        totalRows: 20,
+        readyRows: 18,
+        blockedRows: 0,
+        warningRows: 4,
+        createdCount: 18,
+        skippedCount: 2
+      }
+    ]);
+  });
+
   it("does not create import drafts while precheck still has error rows", async () => {
     const tx = {
       contract: {

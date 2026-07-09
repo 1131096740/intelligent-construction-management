@@ -21,6 +21,12 @@ export class ContractTakeoverController {
     return this.takeovers.list(projectId);
   }
 
+  @Get("import-batches")
+  @RequireProjectRole("contract.create")
+  listImportBatches(@Param("projectId") projectId: string) {
+    return this.takeovers.listImportBatches(projectId);
+  }
+
   @Get(":takeoverId")
   @RequireProjectRole("contract.create")
   detail(

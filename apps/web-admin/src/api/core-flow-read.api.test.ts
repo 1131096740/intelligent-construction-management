@@ -43,6 +43,7 @@ import {
   createContractDraft,
   createContractTakeover,
   createContractTakeoverDraftsFromImport,
+  listContractTakeoverImportBatches,
   createPaymentRequest,
   precheckContractTakeoverImport,
   createPrivateFileDownloadTicket,
@@ -734,6 +735,7 @@ describe("core flow read API client", () => {
     };
 
     await listContractTakeovers("project-1");
+    await listContractTakeoverImportBatches("project-1");
     await getContractTakeover("project-1", "takeover-1");
     await createContractTakeover("project-1", takeoverPayload);
     await updateContractTakeover("project-1", "takeover-1", takeoverPayload);
@@ -754,6 +756,7 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects/project-1/contract-takeovers",
+      "/api/projects/project-1/contract-takeovers/import-batches",
       "/api/projects/project-1/contract-takeovers/takeover-1",
       "/api/projects/project-1/contract-takeovers",
       "/api/projects/project-1/contract-takeovers/takeover-1",
@@ -766,6 +769,7 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map((call) => call[1]?.method)).toEqual([
       undefined,
       undefined,
+      undefined,
       "POST",
       "PATCH",
       "POST",
@@ -774,22 +778,22 @@ describe("core flow read API client", () => {
       "POST",
       "POST"
     ]);
-    expect(fetchMock.mock.calls[2][1]?.body).toBe(
+    expect(fetchMock.mock.calls[3][1]?.body).toBe(
       JSON.stringify({
         ...takeoverPayload
       })
     );
-    expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify(takeoverPayload));
-    expect(fetchMock.mock.calls[4][1]?.body).toBe(
-      JSON.stringify({ rows: [takeoverPayload] })
-    );
+    expect(fetchMock.mock.calls[4][1]?.body).toBe(JSON.stringify(takeoverPayload));
     expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({ rows: [takeoverPayload] })
     );
     expect(fetchMock.mock.calls[6][1]?.body).toBe(
+      JSON.stringify({ rows: [takeoverPayload] })
+    );
+    expect(fetchMock.mock.calls[7][1]?.body).toBe(
       JSON.stringify({ fileId: "file-1", purpose: "historical_contract_scan" })
     );
-    expect(fetchMock.mock.calls[8][1]?.body).toBe(
+    expect(fetchMock.mock.calls[9][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
     );
   });

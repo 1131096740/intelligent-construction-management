@@ -165,6 +165,26 @@
     </t-card>
 
     <t-card
+      class="panel batch-panel"
+      title="接管批次"
+      :bordered="true"
+    >
+      <div
+        v-if="importBatches.length === 0"
+        class="empty-hint"
+      >
+        暂无接管导入批次
+      </div>
+      <t-table
+        v-else
+        row-key="id"
+        size="small"
+        :columns="importBatchColumns"
+        :data="importBatchRows"
+      />
+    </t-card>
+
+    <t-card
       v-if="showCreateForm"
       class="panel"
       :title="editingTakeoverId ? '编辑历史合同接管草稿' : '新增历史合同接管'"
@@ -574,11 +594,13 @@ import {
   createContractTakeoverDraftsFromImport,
   fetchProjects,
   getContractTakeover,
+  listContractTakeoverImportBatches,
   listContractTakeovers,
   precheckContractTakeoverImport,
   submitContractTakeoverReview,
   updateContractTakeover,
   uploadPrivateFile,
+  type ContractTakeoverImportBatchReadModel,
   type ContractTakeoverImportPrecheckReadModel,
   type ContractTakeoverEvidencePurpose,
   type ContractLifecycleStatus,
@@ -653,6 +675,7 @@ const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
 
 const projects = ref<ProjectOptionReadModel[]>([]);
 const takeovers = ref<ContractTakeoverReadModel[]>([]);
+const importBatches = ref<ContractTakeoverImportBatchReadModel[]>([]);
 const selectedProjectId = ref("");
 const selectedTakeoverId = ref("");
 const loadingProjects = ref(false);
@@ -694,8 +717,27 @@ const importPrecheckColumns = [
   { colKey: "issuesText", title: "预检结果", minWidth: 260 }
 ];
 
+const importBatchColumns = [
+  { colKey: "batchNo", title: "批次号", minWidth: 188 },
+  { colKey: "takeoverCutoffDate", title: "接管截止日", width: 112 },
+  { colKey: "createdCountText", title: "生成草稿", width: 104, align: "right" },
+  { colKey: "warningRowsText", title: "提醒", width: 84, align: "right" },
+  { colKey: "skippedCountText", title: "重复跳过", width: 104, align: "right" },
+  { colKey: "acceptanceConclusion", title: "验收结论", minWidth: 180 }
+];
+
 const tableRows = computed(() =>
   takeovers.value.map((takeover) => toContractTakeoverTableRow(takeover))
+);
+const importBatchRows = computed(() =>
+  importBatches.value.slice(0, 5).map((batch) => ({
+    ...batch,
+    takeoverCutoffDate: formatTakeoverDate(batch.takeoverCutoffDate),
+    createdCountText: `${batch.createdCount} 份`,
+    warningRowsText: `${batch.warningRows} 条`,
+    skippedCountText: `${batch.skippedCount} 份`,
+    acceptanceConclusion: batch.acceptanceConclusion || "待主管确认"
+  }))
 );
 
 const selectedRow = computed<ContractTakeoverTableRow | null>(
@@ -877,6 +919,7 @@ async function loadTakeovers() {
   const projectId = selectedProjectId.value;
   if (!projectId) {
     takeovers.value = [];
+    importBatches.value = [];
     selectedTakeoverId.value = "";
     return;
   }
@@ -884,15 +927,20 @@ async function loadTakeovers() {
   loadingTakeovers.value = true;
   message.value = "";
   try {
-    const nextTakeovers = await listContractTakeovers(projectId);
+    const [nextTakeovers, nextImportBatches] = await Promise.all([
+      listContractTakeovers(projectId),
+      listContractTakeoverImportBatches(projectId)
+    ]);
     takeovers.value = nextTakeovers;
+    importBatches.value = nextImportBatches;
     if (!nextTakeovers.some((takeover) => takeover.id === selectedTakeoverId.value)) {
       selectedTakeoverId.value = "";
     }
   } catch (error) {
     takeovers.value = [];
+    importBatches.value = [];
     selectedTakeoverId.value = "";
-    setMessage(error instanceof Error ? error.message : "加载历史合同接管列表失败", "danger");
+    setMessage(error instanceof Error ? error.message : "加载历史合同接管台账失败", "danger");
   } finally {
     loadingTakeovers.value = false;
   }
