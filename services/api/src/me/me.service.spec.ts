@@ -41,6 +41,21 @@ describe("MeService", () => {
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
+  it("uses a business download reason for signature preview tickets", async () => {
+    const prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "user-1", signatureFileId: "sig-1" }) }
+    };
+    const files = { createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/ticket" }) };
+    const service = new MeService(prisma as never, files as never);
+
+    await service.getSignatureTicket("user-1");
+
+    expect(files.createDownloadTicket).toHaveBeenCalledWith("sig-1", {
+      actorUserId: "user-1",
+      downloadReason: "个人签名预览"
+    });
+  });
+
   it("builds workbench cards only from projects where the user has matching roles", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

@@ -483,7 +483,8 @@ describe("FileService", () => {
 
     await expect(
       service.createDownloadTicket("file-1", {
-        actorUserId: "finance-1"
+        actorUserId: "finance-1",
+        downloadReason: "资料下载复核"
       })
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(audit.record).not.toHaveBeenCalled();
@@ -669,7 +670,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
@@ -680,7 +682,7 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         expiresAt: ticket.expiresAt,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -738,7 +740,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "finance-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("资料尚未归档确认，暂不能下载");
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -790,7 +792,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "finance-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("资料尚未归档确认，暂不能下载");
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -839,7 +841,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
@@ -850,7 +853,7 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         expiresAt: ticket.expiresAt,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -900,7 +903,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
@@ -911,7 +915,7 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         expiresAt: ticket.expiresAt,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -962,7 +966,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "budget-1"
+      actorUserId: "budget-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=budget-1");
@@ -973,7 +978,7 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         expiresAt: ticket.expiresAt,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -1021,7 +1026,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "finance-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -1065,7 +1070,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "budget-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "budget-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.projectUpstreamSettlement.findFirst).toHaveBeenCalledWith({
       where: { voucherFileId: "file-1", voidedAt: null },
@@ -1121,7 +1126,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "contract-director-1"
+      actorUserId: "contract-director-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=contract-director-1");
@@ -1136,7 +1142,7 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         expiresAt: ticket.expiresAt,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -1185,7 +1191,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "finance-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "finance-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -1238,7 +1244,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-director-1"
+      actorUserId: "finance-director-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=finance-director-1");
@@ -1253,7 +1260,7 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         expiresAt: ticket.expiresAt,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -1303,7 +1310,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "finance-staff-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "finance-staff-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -1353,7 +1360,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "budget-director-1"
+      actorUserId: "budget-director-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=budget-director-1");
@@ -1368,7 +1376,7 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         expiresAt: ticket.expiresAt,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -1415,7 +1423,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
@@ -1430,7 +1439,7 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         expiresAt: ticket.expiresAt,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -1494,7 +1503,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "contract-director-1"
+      actorUserId: "contract-director-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=contract-director-1");
@@ -1510,7 +1520,7 @@ describe("FileService", () => {
       businessId: "file-1",
       metadata: {
         expiresAt: ticket.expiresAt,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -1558,7 +1568,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "contract-director-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "contract-director-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(1, {
       where: { fileId: "file-1", voidedAt: null },
@@ -1603,7 +1613,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "contract-uploader" })
+      service.createDownloadTicket("file-1", { actorUserId: "contract-uploader", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(1, {
       where: { fileId: "file-1", voidedAt: null },
@@ -1662,7 +1672,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "applicant-1"
+      actorUserId: "applicant-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=applicant-1");
@@ -1722,7 +1733,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
@@ -1775,7 +1787,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=finance-1");
@@ -1831,7 +1844,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "applicant-1"
+      actorUserId: "applicant-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=applicant-1");
@@ -1895,7 +1909,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "engineering-user-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "engineering-user-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
   });
 
@@ -1958,7 +1972,8 @@ describe("FileService", () => {
     );
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "material-user-1"
+      actorUserId: "material-user-1",
+      downloadReason: "资料下载复核"
     });
 
     expect(ticket.downloadUrl).toContain("actorUserId=material-user-1");
@@ -2023,7 +2038,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "reminder-user-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "reminder-user-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
     expect(tx.approvalActionLog.findFirst).toHaveBeenCalledWith({
       where: {
@@ -2085,7 +2100,7 @@ describe("FileService", () => {
     );
 
     await expect(
-      service.createDownloadTicket("file-1", { actorUserId: "stranger-1" })
+      service.createDownloadTicket("file-1", { actorUserId: "stranger-1", downloadReason: "资料下载复核" })
     ).rejects.toThrow("当前账号无权下载该资料");
   });
 
@@ -2105,6 +2120,26 @@ describe("FileService", () => {
         downloadReason: "下载".repeat(101)
       })
     ).rejects.toThrow("下载原因不能超过 200 个字，请精简后重新提交");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing download reasons before creating a ticket", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("file-1", {
+        actorUserId: "finance-1",
+        downloadReason: "   "
+      })
+    ).rejects.toThrow("请填写下载原因，便于留痕审计");
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -2139,7 +2174,8 @@ describe("FileService", () => {
     storage.read.mockResolvedValue(Buffer.from("private-file"));
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
     });
     const url = new URL(`http://local${ticket.downloadUrl}`);
     audit.record.mockClear();
@@ -2147,6 +2183,7 @@ describe("FileService", () => {
     const result = await service.readPrivateFile("file-1", {
       actorUserId: url.searchParams.get("actorUserId") ?? "",
       expiresAt: url.searchParams.get("expiresAt") ?? "",
+      downloadReason: url.searchParams.get("downloadReason") ?? "",
       token: url.searchParams.get("token") ?? ""
     });
 
@@ -2160,7 +2197,7 @@ describe("FileService", () => {
       metadata: {
         originalName: "盖章合同.pdf",
         sizeBytes: 12,
-        downloadReason: "业务系统下载"
+        downloadReason: "资料下载复核"
       }
     });
   });
@@ -2195,7 +2232,8 @@ describe("FileService", () => {
     storage.read.mockRejectedValueOnce(new Error("ENOENT: object missing"));
 
     const ticket = await service.createDownloadTicket("file-1", {
-      actorUserId: "finance-1"
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
     });
     const url = new URL(`http://local${ticket.downloadUrl}`);
     audit.record.mockClear();
@@ -2204,6 +2242,7 @@ describe("FileService", () => {
       service.readPrivateFile("file-1", {
         actorUserId: url.searchParams.get("actorUserId") ?? "",
         expiresAt: url.searchParams.get("expiresAt") ?? "",
+        downloadReason: url.searchParams.get("downloadReason") ?? "",
         token: url.searchParams.get("token") ?? ""
       })
     ).rejects.toThrow("资料文件暂时无法读取，请稍后重试或联系管理员核对私有存储");

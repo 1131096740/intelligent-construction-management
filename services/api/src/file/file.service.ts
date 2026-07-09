@@ -199,7 +199,10 @@ export class PrivateFileStorage {
 }
 
 function normalizeDownloadReason(value: string | undefined): string {
-  const reason = value?.trim() || "业务系统下载";
+  const reason = value?.trim();
+  if (!reason) {
+    throw new Error("请填写下载原因，便于留痕审计");
+  }
   if (reason.length > 200) {
     throw new Error("下载原因不能超过 200 个字，请精简后重新提交");
   }

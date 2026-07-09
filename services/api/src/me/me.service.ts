@@ -168,7 +168,10 @@ export class MeService {
       return null;
     }
 
-    return this.files.createDownloadTicket(user.signatureFileId, { actorUserId: userId });
+    return this.files.createDownloadTicket(user.signatureFileId, {
+      actorUserId: userId,
+      downloadReason: "个人签名预览"
+    });
   }
 
   async getWorkbenchSummary(userId: string): Promise<WorkbenchSummary> {
