@@ -2205,10 +2205,33 @@ describe("SettlementService", () => {
 
     await expect(
       settlementService.withdrawApproval("settlement-1", "other-user")
-    ).rejects.toThrow("Only settlement approval applicant can withdraw");
+    ).rejects.toThrow("只有结算审批申请人可以撤回");
     expect(tx.settlement.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("结算单不存在时不能撤回审批", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn(),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.withdrawApproval("settlement-missing", "applicant-1")
+    ).rejects.toThrow("未找到结算单，请刷新结算台账后重试");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 
   it("rejects settlement approval withdrawal after approval has left pending status", async () => {
@@ -2236,9 +2259,36 @@ describe("SettlementService", () => {
 
     await expect(
       settlementService.withdrawApproval("settlement-1", "applicant-1")
-    ).rejects.toThrow("Cannot withdraw settlement approval from status approved_pending_archive");
+    ).rejects.toThrow("当前结算单已不在审批中，不能撤回审批");
     expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
     expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("缺少进行中的结算审批流程时不能撤回审批", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.withdrawApproval("settlement-1", "applicant-1")
+    ).rejects.toThrow("未找到进行中的结算审批流程，请刷新后重试");
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
   });
 
   it("transfers the current settlement approval node to a target user", async () => {
@@ -3341,7 +3391,98 @@ describe("SettlementService", () => {
 
     await expect(
       settlementService.remindApproval("settlement-1", "applicant-1", now)
-    ).rejects.toThrow("not due for a reminder");
+    ).rejects.toThrow("当前还未到可催办时间，请稍后再试");
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("结算单不存在时不能发起催办", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.remindApproval(
+        "settlement-missing",
+        "applicant-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow("未找到结算单，请刷新结算台账后重试");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("结算单不在审批中时不能发起催办", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "effective"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.remindApproval(
+        "settlement-1",
+        "applicant-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow("当前结算单已不在审批中，不能发起催办");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("缺少进行中的结算审批流程时不能发起催办", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      approvalActionLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.remindApproval(
+        "settlement-1",
+        "applicant-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow("未找到进行中的结算审批流程，请刷新后重试");
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 
@@ -3380,7 +3521,7 @@ describe("SettlementService", () => {
         "intruder-1",
         new Date("2026-06-25T00:00:00.000Z")
       )
-    ).rejects.toThrow("applicant");
+    ).rejects.toThrow("只有结算审批申请人可以催办");
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 });

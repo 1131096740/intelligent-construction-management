@@ -1216,11 +1216,11 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到结算单，请刷新结算台账后重试");
       }
 
       if (settlement.status !== "approval_pending") {
-        throw new Error(`Cannot withdraw settlement approval from status ${settlement.status}`);
+        throw new Error("当前结算单已不在审批中，不能撤回审批");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -1233,11 +1233,11 @@ export class SettlementService {
       });
 
       if (!instance) {
-        throw new Error("Settlement approval instance not found");
+        throw new Error("未找到进行中的结算审批流程，请刷新后重试");
       }
 
       if (instance.applicantUserId !== actorUserId) {
-        throw new Error("Only settlement approval applicant can withdraw");
+        throw new Error("只有结算审批申请人可以撤回");
       }
 
       const updated = await tx.settlement.update({
@@ -1292,11 +1292,11 @@ export class SettlementService {
       });
 
       if (!settlement) {
-        throw new Error("Settlement not found");
+        throw new Error("未找到结算单，请刷新结算台账后重试");
       }
 
       if (settlement.status !== "approval_pending") {
-        throw new Error(`Cannot remind settlement approval from status ${settlement.status}`);
+        throw new Error("当前结算单已不在审批中，不能发起催办");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -1309,12 +1309,12 @@ export class SettlementService {
       });
 
       if (!instance) {
-        throw new Error("Settlement approval instance not found");
+        throw new Error("未找到进行中的结算审批流程，请刷新后重试");
       }
 
       // 催办由申请人发起，督促当前冻结节点的审批人处理。
       if (instance.applicantUserId !== actorUserId) {
-        throw new Error("Only settlement approval applicant can remind");
+        throw new Error("只有结算审批申请人可以催办");
       }
 
       const lastRemind = await tx.approvalActionLog.findFirst({
@@ -1331,7 +1331,7 @@ export class SettlementService {
           now
         })
       ) {
-        throw new Error("Settlement approval is not due for a reminder yet");
+        throw new Error("当前还未到可催办时间，请稍后再试");
       }
 
       const nodes = instance.frozenNodes as unknown as SettlementApprovalNode[];
