@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException
+} from "@nestjs/common";
 import type {
   ContractBillDefinition,
   ContractClauseDefinition,
@@ -91,6 +96,11 @@ interface TemplateSnapshot {
   validationSchema: ContractValidationRule[];
 }
 
+const PARTY_ROLE_LABELS: Record<string, string> = {
+  party_a: "甲方",
+  party_b: "乙方"
+};
+
 @Injectable()
 export class ContractReadinessService {
   constructor(private readonly prisma?: PrismaService) {}
@@ -99,21 +109,23 @@ export class ContractReadinessService {
     contractVersionId: string,
     actorUserId: string
   ): Promise<ContractReadinessResult> {
-    if (!this.prisma) throw new Error("Prisma service is required");
+    if (!this.prisma) {
+      throw new InternalServerErrorException("合同资料检查服务暂不可用，请稍后重试或联系管理员");
+    }
     return this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
       });
-      if (!version) throw new NotFoundException("Contract version not found");
+      if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
       const contract = await tx.contract.findUnique({
         where: { id: version.contractId }
       });
-      if (!contract) throw new NotFoundException("Contract not found");
+      if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
       if (contract.ownerUserId !== actorUserId) {
-        throw new BadRequestException("Only the contract owner can check readiness");
+        throw new BadRequestException("只有合同经办人可以检查资料是否齐全");
       }
       if (contract.voidedAt) {
-        throw new BadRequestException("Contract draft is voided");
+        throw new BadRequestException("合同草稿已作废，不能继续检查资料");
       }
       const result = await this.check(tx, version, contract, false);
       const updated = await tx.contractVersion.updateMany({
@@ -125,7 +137,7 @@ export class ContractReadinessService {
         data: { readinessSnapshot: result as unknown as Prisma.InputJsonValue }
       });
       if (updated.count !== 1) {
-        throw new BadRequestException("Contract readiness revision/status conflict");
+        throw new BadRequestException("合同草稿已被更新，请刷新后重新检查资料");
       }
       return result;
     });
@@ -285,7 +297,7 @@ export class ContractReadinessService {
         blocking.push({
           key: `party.${roleKey}`,
           section: "parties",
-          message: `缺少合同主体角色：${roleKey}`
+          message: `缺少${PARTY_ROLE_LABELS[roleKey] ?? "合同主体"}信息`
         });
       }
     }
@@ -370,7 +382,7 @@ export class ContractReadinessService {
 
   private template(value: Prisma.JsonValue): TemplateSnapshot {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new BadRequestException("Contract template snapshot is invalid");
+      throw new BadRequestException("合同模板快照异常，请重新选择模板后再检查资料");
     }
     const snapshot = value as unknown as Partial<TemplateSnapshot>;
     if (
@@ -380,14 +392,14 @@ export class ContractReadinessService {
       !Array.isArray(snapshot.attachmentSchema) ||
       !Array.isArray(snapshot.validationSchema)
     ) {
-      throw new BadRequestException("Contract template snapshot is invalid");
+      throw new BadRequestException("合同模板快照异常，请重新选择模板后再检查资料");
     }
     return snapshot as TemplateSnapshot;
   }
 
   private clauses(value: Prisma.JsonValue): ContractClauseDefinition[] {
     if (!Array.isArray(value)) {
-      throw new BadRequestException("Contract clause snapshot is invalid");
+      throw new BadRequestException("合同条款快照异常，请刷新合同工作台后重试");
     }
     return value as unknown as ContractClauseDefinition[];
   }

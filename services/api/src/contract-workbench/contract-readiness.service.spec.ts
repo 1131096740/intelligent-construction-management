@@ -115,6 +115,83 @@ describe("ContractReadinessService", () => {
 
   const contract = { contractTypeKey: "material_purchase" };
 
+  function prismaForCheckAndStore(overrides: Record<string, unknown> = {}) {
+    const transactionClient = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ ...version, contractId: "contract-1" }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null,
+          contractTypeKey: "material_purchase"
+        })
+      },
+      ...tx(),
+      ...overrides
+    };
+    return {
+      $transaction: jest.fn(async (callback) => callback(transactionClient))
+    };
+  }
+
+  it("uses Chinese business errors when readiness preconditions fail", async () => {
+    await expect(
+      new ContractReadinessService(
+        prismaForCheckAndStore({
+          contractVersion: {
+            findUnique: jest.fn().mockResolvedValue(null),
+            updateMany: jest.fn()
+          }
+        }) as never
+      ).checkAndStore("missing-version", "owner-1")
+    ).rejects.toThrow("未找到合同草稿版本");
+
+    await expect(
+      new ContractReadinessService(
+        prismaForCheckAndStore({
+          contract: { findUnique: jest.fn().mockResolvedValue(null) }
+        }) as never
+      ).checkAndStore("version-1", "owner-1")
+    ).rejects.toThrow("未找到合同草稿");
+
+    await expect(
+      new ContractReadinessService().checkAndStore("version-1", "owner-1")
+    ).rejects.toThrow("合同资料检查服务暂不可用");
+
+    await expect(
+      new ContractReadinessService(
+        prismaForCheckAndStore({
+          contract: {
+            findUnique: jest.fn().mockResolvedValue({
+              id: "contract-1",
+              ownerUserId: "other-user",
+              voidedAt: null,
+              contractTypeKey: "material_purchase"
+            })
+          }
+        }) as never
+      ).checkAndStore("version-1", "owner-1")
+    ).rejects.toThrow("只有合同经办人可以检查资料是否齐全");
+
+    await expect(
+      new ContractReadinessService(
+        prismaForCheckAndStore({
+          contract: {
+            findUnique: jest.fn().mockResolvedValue({
+              id: "contract-1",
+              ownerUserId: "owner-1",
+              voidedAt: new Date("2026-07-10"),
+              contractTypeKey: "material_purchase"
+            })
+          }
+        }) as never
+      ).checkAndStore("version-1", "owner-1")
+    ).rejects.toThrow("合同草稿已作废");
+  });
+
   it("blocks internal review when a required field is missing", async () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
@@ -218,5 +295,24 @@ describe("ContractReadinessService", () => {
     );
 
     expect(result.blocking.some((item) => item.section === "attachments")).toBe(false);
+  });
+
+  it("uses Chinese party labels in readiness blocking messages", async () => {
+    const result = await new ContractReadinessService().check(
+      tx({
+        contractPartySnapshot: {
+          findMany: jest.fn().mockResolvedValue([{ id: "party-a", roleKey: "party_a" }])
+        }
+      }) as never,
+      version as never,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "party.party_b", message: "缺少乙方信息" })
+      ])
+    );
   });
 });
