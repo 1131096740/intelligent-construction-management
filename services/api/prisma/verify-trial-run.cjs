@@ -551,10 +551,21 @@ async function downloadPrivateFileWithReason(fileId, token, label, downloadReaso
     token,
     `${label}生成短时效下载链接`
   );
+  const expiresAtMs = Date.parse(ticket.expiresAt);
   assertEqual(ticket.fileId, fileId, `${label}下载票据文件`);
   assert(
-    typeof ticket.downloadUrl === "string" && ticket.downloadUrl.includes("downloadReason="),
-    `${label}下载票据未包含下载原因`
+    Number.isFinite(expiresAtMs),
+    `${label}下载票据未返回有效到期时间`
+  );
+  assert(
+    expiresAtMs > Date.now() && expiresAtMs <= Date.now() + 5 * 60 * 1000,
+    `${label}下载票据不是 5 分钟内短时效链接`
+  );
+  assert(
+    typeof ticket.downloadUrl === "string" &&
+      ticket.downloadUrl.includes("expiresAt=") &&
+      ticket.downloadUrl.includes("downloadReason="),
+    `${label}下载票据未包含到期时间或下载原因`
   );
 
   const response = await fetch(`${baseUrl}${ticket.downloadUrl}`);
