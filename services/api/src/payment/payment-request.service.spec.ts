@@ -5839,7 +5839,7 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    auth.confirmPassword.mockRejectedValue(new Error("Invalid confirmation password"));
+    auth.confirmPassword.mockRejectedValue(new Error("当前密码不正确，请重新输入"));
     const paymentService = new PaymentRequestService(
       new PaymentAmountService(),
       prisma as never,
@@ -5855,7 +5855,7 @@ describe("PaymentRequestService", () => {
         voucherFileId: "file-1",
         confirmationPassword: "wrong-password"
       })
-    ).rejects.toThrow("Invalid confirmation password");
+    ).rejects.toThrow("当前密码不正确，请重新输入");
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });

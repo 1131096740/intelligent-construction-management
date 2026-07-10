@@ -416,6 +416,7 @@ async function loadTakeoverRecord(takeoverId) {
       suggestedTakeoverLevel: true,
       takeoverLevelAdjustmentReason: true,
       takeoverStatus: true,
+      confirmedAt: true,
       historicalBalanceConfirmedAt: true
     }
   });
@@ -433,6 +434,28 @@ async function loadTakeoverRecord(takeoverId) {
     "数据库历史接管等级调整原因"
   );
   return takeover;
+}
+
+async function assertTakeoverConfirmationWrongPasswordBlocked(takeoverId, token) {
+  const failed = await postJsonExpectFailure(
+    `/projects/${PROJECT_ID}/contract-takeovers/${takeoverId}/confirmation`,
+    { confirmationPassword: "UAT-WRONG-PASSWORD" },
+    token,
+    "错误密码确认历史接管"
+  );
+  assert(
+    failed.status >= 400,
+    `错误密码确认历史接管 HTTP 状态异常：${failed.status}`
+  );
+  assert(
+    failed.body.includes("当前密码不正确"),
+    `错误密码确认历史接管未返回中文业务提示：${failed.body}`
+  );
+
+  const takeover = await loadTakeoverRecord(takeoverId);
+  assertEqual(takeover.takeoverStatus, "pending_review", "错误密码确认后接管状态");
+  assert(!takeover.confirmedAt, "错误密码确认后不应写入接管确认时间");
+  assert(!takeover.historicalBalanceConfirmedAt, "错误密码确认后不应写入历史余额确认时间");
 }
 
 async function loadTakeoverReadModel(takeoverId, token) {
@@ -1235,6 +1258,8 @@ async function main() {
     assertCardCountAtLeast(staffBlockedSummary, "payment_blocked", 1, "未确认接管付款阻断");
     await verifyPaymentBlockedBeforeConfirmation(takeoverRecord.contractVersionId, tokens.contractStaff);
   });
+
+  await assertTakeoverConfirmationWrongPasswordBlocked(takeover.id, tokens.contractDirector);
 
   const confirmed = await postJson(
     `/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/confirmation`,

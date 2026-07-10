@@ -229,7 +229,7 @@ describe("AuthService", () => {
     });
 
     await expect(service.confirmPassword("user-1", "wrong-password")).rejects.toThrow(
-      "Invalid confirmation password"
+      "当前密码不正确，请重新输入"
     );
   });
 });

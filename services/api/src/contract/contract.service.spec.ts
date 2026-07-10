@@ -2930,7 +2930,7 @@ describe("ContractService", () => {
   });
 
   it("does not confirm a contract archive when the confirmation password is wrong", async () => {
-    auth.confirmPassword.mockRejectedValueOnce(new Error("Invalid confirmation password"));
+    auth.confirmPassword.mockRejectedValueOnce(new Error("当前密码不正确，请重新输入"));
     const prisma = {
       $transaction: jest.fn()
     } as unknown as PrismaService;
@@ -2941,7 +2941,7 @@ describe("ContractService", () => {
         archiveFileId: "archive-file-1",
         confirmationPassword: "wrong-password"
       })
-    ).rejects.toThrow("Invalid confirmation password");
+    ).rejects.toThrow("当前密码不正确，请重新输入");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 

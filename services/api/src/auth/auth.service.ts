@@ -200,13 +200,13 @@ export class AuthService {
     });
 
     if (!user?.isActive || !user.passwordHash) {
-      throw new UnauthorizedException("Invalid confirmation password");
+      throw new UnauthorizedException("当前密码不正确，请重新输入");
     }
 
     const passwordMatched = await bcrypt.compare(password, user.passwordHash);
 
     if (!passwordMatched) {
-      throw new UnauthorizedException("Invalid confirmation password");
+      throw new UnauthorizedException("当前密码不正确，请重新输入");
     }
 
     return { ok: true };
