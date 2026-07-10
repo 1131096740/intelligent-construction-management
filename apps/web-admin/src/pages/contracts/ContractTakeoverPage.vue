@@ -238,6 +238,7 @@
               v-if="row.status === 'drafts_generated'"
               theme="primary"
               :disabled="Boolean(reviewingImportBatchAction)"
+              :title="importBatchReviewDisabledReason"
               @click="reviewImportBatch(row, 'under_review')"
             >
               提交复核
@@ -246,6 +247,7 @@
               <t-link
                 theme="primary"
                 :disabled="Boolean(reviewingImportBatchAction)"
+                :title="importBatchReviewDisabledReason"
                 @click="reviewImportBatch(row, 'accepted')"
               >
                 验收通过
@@ -253,6 +255,7 @@
               <t-link
                 theme="warning"
                 :disabled="Boolean(reviewingImportBatchAction)"
+                :title="importBatchReviewDisabledReason"
                 @click="reviewImportBatch(row, 'limited_accepted')"
               >
                 受限验收
@@ -260,6 +263,7 @@
               <t-link
                 theme="danger"
                 :disabled="Boolean(reviewingImportBatchAction)"
+                :title="importBatchReviewDisabledReason"
                 @click="reviewImportBatch(row, 'disputed')"
               >
                 标记争议
@@ -1214,6 +1218,9 @@ const importBatchRows = computed(() =>
     warningRowsText: `${batch.warningRows} 条`,
     skippedCountText: `${batch.skippedCount} 份`
   }))
+);
+const importBatchReviewDisabledReason = computed(() =>
+  reviewingImportBatchAction.value ? "正在提交批次复核结果，请稍候" : ""
 );
 
 const selectedRow = computed<ContractTakeoverTableRow | null>(
