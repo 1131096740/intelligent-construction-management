@@ -104,9 +104,9 @@ export class ContractNumberingService {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, ["contract_director"]);
       const current = await tx.contractNumberRule.findUnique({ where: { id: ruleId } });
-      if (!current) throw new NotFoundException("Contract number rule not found");
+      if (!current) throw new NotFoundException("未找到合同编号规则，请刷新编号规则列表后重试");
       if (!current.isActive) {
-        throw new BadRequestException("Stopped contract number rule cannot be updated");
+        throw new BadRequestException("合同编号规则已停用，不能继续修改");
       }
       const rule = await tx.contractNumberRule.update({
         where: { id: ruleId },
@@ -125,7 +125,7 @@ export class ContractNumberingService {
         data: { isActive: false }
       });
       if (stopped.count !== 1) {
-        throw new BadRequestException("Contract number rule is missing or already stopped");
+        throw new BadRequestException("合同编号规则不存在或已停用，请刷新列表后重试");
       }
       await this.record(tx, actorUserId, "stop", ruleId);
       return tx.contractNumberRule.findUnique({ where: { id: ruleId } });
@@ -151,21 +151,21 @@ export class ContractNumberingService {
       WHERE "id" = ${ruleId}
       FOR UPDATE
     `);
-    if (!rule) throw new NotFoundException("Contract number rule not found");
-    if (!rule.isActive) throw new BadRequestException("Contract number rule is stopped");
+    if (!rule) throw new NotFoundException("未找到所选合同编号规则，请重新选择编号规则后再提交审批");
+    if (!rule.isActive) throw new BadRequestException("所选合同编号规则已停用，请重新选择有效编号规则");
     this.assertMatches(rule, contract);
 
     const overrideCode = override.formalCodeOverride?.trim();
     if (overrideCode) {
       if (!override.overrideReason?.trim()) {
-        throw new BadRequestException("overrideReason is required for manual numbering");
+        throw new BadRequestException("手工指定正式合同编号时请填写调整原因");
       }
       await this.assertGlobalRole(tx, actorUserId, ["contract_director"]);
       await this.assertCodeAvailable(tx, overrideCode);
       return overrideCode;
     }
     if (override.overrideReason !== undefined) {
-      throw new BadRequestException("overrideReason requires formalCodeOverride");
+      throw new BadRequestException("填写编号调整原因时必须同步填写手工正式合同编号");
     }
 
     this.assertPattern(rule.pattern);
@@ -173,7 +173,7 @@ export class ContractNumberingService {
       ? await tx.project?.findUnique({ where: { id: contract.projectId } })
       : null;
     if (rule.pattern.includes("{project}") && !project) {
-      throw new BadRequestException("Project is required by contract number rule");
+      throw new BadRequestException("合同编号规则需要项目编号，请先补齐项目编号后再提交审批");
     }
     const values: Record<string, string> = {
       company: contract.companyEntityName?.trim() || contract.companyEntityId || "",
@@ -184,7 +184,7 @@ export class ContractNumberingService {
     };
     for (const token of this.tokens(rule.pattern)) {
       if (values[token] === undefined || values[token] === "") {
-        throw new BadRequestException(`Contract number token has no value: {${token}}`);
+        throw new BadRequestException("合同编号规则缺少必需信息，请补齐合同项目、类型或签约主体后再提交审批");
       }
     }
     const code = rule.pattern.replace(/\{([^{}]+)\}/g, (_, token: string) => values[token]);
@@ -198,14 +198,14 @@ export class ContractNumberingService {
 
   private parseInput(rawInput: unknown, partial: boolean) {
     if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) {
-      throw new BadRequestException("Contract number rule body is required");
+      throw new BadRequestException("请填写合同编号规则信息");
     }
     const input = rawInput as Record<string, unknown>;
     const output: Record<string, unknown> = {};
     for (const key of ["name", "pattern"] as const) {
       if (!partial || input[key] !== undefined) {
         if (typeof input[key] !== "string" || !input[key].trim()) {
-          throw new BadRequestException(`${key} is required`);
+          throw new BadRequestException(key === "name" ? "请填写合同编号规则名称" : "请填写合同编号规则格式");
         }
         output[key] = input[key].trim();
       }
@@ -218,20 +218,20 @@ export class ContractNumberingService {
         input.sequenceWidth < 1 ||
         input.sequenceWidth > 12
       ) {
-        throw new BadRequestException("sequenceWidth must be an integer between 1 and 12");
+        throw new BadRequestException("编号流水号位数必须是 1 到 12 之间的整数");
       }
       output.sequenceWidth = input.sequenceWidth;
     }
     for (const key of ["companyEntityId", "projectId", "contractTypeKey"] as const) {
       if (input[key] !== undefined) {
         if (input[key] !== null && (typeof input[key] !== "string" || !input[key].trim())) {
-          throw new BadRequestException(`${key} must be a non-empty string or null`);
+          throw new BadRequestException("编号规则适用范围必须选择有效的签约主体、项目或合同类型");
         }
         output[key] = input[key] === null ? null : (input[key] as string).trim();
       }
     }
     if (partial && Object.keys(output).length === 0) {
-      throw new BadRequestException("Contract number rule update is empty");
+      throw new BadRequestException("请至少修改一项合同编号规则内容");
     }
     return output as unknown as ContractNumberRuleInput;
   }
@@ -239,11 +239,11 @@ export class ContractNumberingService {
   private assertPattern(pattern: string) {
     for (const token of this.tokens(pattern)) {
       if (!TOKENS.has(token)) {
-        throw new BadRequestException(`Unknown contract number token: {${token}}`);
+        throw new BadRequestException("合同编号规则包含未支持的占位符，请调整编号格式后重试");
       }
     }
     if (!pattern.includes("{sequence}")) {
-      throw new BadRequestException("Contract number pattern must include {sequence}");
+      throw new BadRequestException("合同编号规则必须包含流水号占位符");
     }
   }
 
@@ -260,19 +260,19 @@ export class ContractNumberingService {
     }
   ) {
     if (rule.projectId && rule.projectId !== contract.projectId) {
-      throw new BadRequestException("Contract number rule does not match project");
+      throw new BadRequestException("所选合同编号规则不适用于当前项目，请重新选择");
     }
     if (rule.contractTypeKey && rule.contractTypeKey !== contract.contractTypeKey) {
-      throw new BadRequestException("Contract number rule does not match contract type");
+      throw new BadRequestException("所选合同编号规则不适用于当前合同类型，请重新选择");
     }
     if (rule.companyEntityId && rule.companyEntityId !== contract.companyEntityId) {
-      throw new BadRequestException("Contract number rule does not match company entity");
+      throw new BadRequestException("所选合同编号规则不适用于当前签约主体，请重新选择");
     }
   }
 
   private async assertCodeAvailable(tx: NumberingClient, code: string) {
     if (await tx.contract.findFirst({ where: { code } })) {
-      throw new BadRequestException(`Contract formal code already exists: ${code}`);
+      throw new BadRequestException("正式合同编号已存在，请刷新后重新提交或选择其他编号");
     }
   }
 
@@ -289,7 +289,7 @@ export class ContractNumberingService {
     allowedRoles: string[]
   ) {
     if (!client.userPosition || !client.position) {
-      throw new ForbiddenException(`Requires global role: ${allowedRoles.join(" or ")}`);
+      throw new ForbiddenException("当前账号无权维护或使用合同编号规则");
     }
     const assignments = await client.userPosition.findMany({
       where: { userId: actorUserId, projectId: null }
@@ -300,7 +300,7 @@ export class ContractNumberingService {
         })
       : [];
     if (!positions.some((position) => allowedRoles.includes(position.key))) {
-      throw new ForbiddenException(`Requires global role: ${allowedRoles.join(" or ")}`);
+      throw new ForbiddenException("当前账号无权维护或使用合同编号规则");
     }
   }
 

@@ -70,7 +70,99 @@ describe("ContractNumberingService", () => {
         pattern: "HT-{unknown}-{sequence}",
         sequenceWidth: 3
       })
-    ).toThrow("Unknown contract number token: {unknown}");
+    ).toThrow("合同编号规则包含未支持的占位符");
+  });
+
+  it("uses Chinese business errors when formal numbering cannot be allocated", async () => {
+    const activeRule = {
+      id: "rule-1",
+      name: "材料合同",
+      pattern: "HT-{sequence}",
+      companyEntityId: null,
+      projectId: null,
+      contractTypeKey: null,
+      nextSequence: 7,
+      sequenceWidth: 3,
+      isActive: true
+    };
+    const contract = {
+      projectId: "project-1",
+      contractTypeKey: "material_purchase",
+      companyEntityId: null,
+      companyEntityName: null
+    };
+    const service = new ContractNumberingService({} as never, audit as never);
+
+    await expect(
+      service.allocate(
+        {
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          contractNumberRule: { update: jest.fn() },
+          contract: { findFirst: jest.fn() }
+        } as never,
+        "rule-missing",
+        contract,
+        "staff-1",
+        {}
+      )
+    ).rejects.toThrow("未找到所选合同编号规则");
+
+    await expect(
+      service.allocate(
+        {
+          $queryRaw: jest.fn().mockResolvedValue([{ ...activeRule, isActive: false }]),
+          contractNumberRule: { update: jest.fn() },
+          contract: { findFirst: jest.fn() }
+        } as never,
+        "rule-1",
+        contract,
+        "staff-1",
+        {}
+      )
+    ).rejects.toThrow("所选合同编号规则已停用");
+
+    await expect(
+      service.allocate(
+        {
+          $queryRaw: jest.fn().mockResolvedValue([activeRule]),
+          ...roleTx("contract_director"),
+          contractNumberRule: { update: jest.fn() },
+          contract: { findFirst: jest.fn().mockResolvedValue(null) }
+        } as never,
+        "rule-1",
+        contract,
+        "director-1",
+        { formalCodeOverride: "HT-MANUAL-001" }
+      )
+    ).rejects.toThrow("手工指定正式合同编号时请填写调整原因");
+
+    await expect(
+      service.allocate(
+        {
+          $queryRaw: jest.fn().mockResolvedValue([activeRule]),
+          contractNumberRule: { update: jest.fn() },
+          contract: { findFirst: jest.fn().mockResolvedValue(null) }
+        } as never,
+        "rule-1",
+        contract,
+        "staff-1",
+        { overrideReason: "历史编号衔接" }
+      )
+    ).rejects.toThrow("填写编号调整原因时必须同步填写手工正式合同编号");
+
+    await expect(
+      service.allocate(
+        {
+          $queryRaw: jest.fn().mockResolvedValue([activeRule]),
+          contractNumberRule: { update: jest.fn() },
+          contract: { findFirst: jest.fn().mockResolvedValue({ id: "contract-1" }) }
+        } as never,
+        "rule-1",
+        contract,
+        "staff-1",
+        {}
+      )
+    ).rejects.toThrow("正式合同编号已存在");
   });
 
   it("allocates unique formal numbers under a row lock", async () => {
