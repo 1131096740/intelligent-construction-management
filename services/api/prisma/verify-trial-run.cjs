@@ -687,25 +687,30 @@ async function createAndConfirmSettlement(contractVersionId, tokens) {
 }
 
 async function assertDuplicateSettlementPeriodBlocked(contractVersionId, token) {
-  const failed = await postJsonExpectFailure(
-    "/settlements",
-    {
-      contractVersionId,
-      code: `${CODES.settlement}-DUP`,
-      periodLabel: "2026-07",
-      amountCents: 1000000
-    },
-    token,
-    "创建同期间重复 UAT 结算"
-  );
-  assert(
-    failed.status >= 400,
-    `同期间重复结算拦截 HTTP 状态异常：${failed.status}`
-  );
-  assert(
-    String(failed.body ?? "").includes("已存在结算单"),
-    `同期间重复结算未返回中文业务提示：${failed.body}`
-  );
+  for (const [suffix, periodLabel] of [
+    ["DUP", "2026-07"],
+    ["DUP-SPACES", " 2026-07 "]
+  ]) {
+    const failed = await postJsonExpectFailure(
+      "/settlements",
+      {
+        contractVersionId,
+        code: `${CODES.settlement}-${suffix}`,
+        periodLabel,
+        amountCents: 1000000
+      },
+      token,
+      `创建同期间重复 UAT 结算 ${periodLabel}`
+    );
+    assert(
+      failed.status >= 400,
+      `同期间重复结算拦截 HTTP 状态异常：${failed.status}`
+    );
+    assert(
+      String(failed.body ?? "").includes("已存在结算单"),
+      `同期间重复结算未返回中文业务提示：${failed.body}`
+    );
+  }
 }
 
 function assertHistoricalBalanceInPreview(preview) {
