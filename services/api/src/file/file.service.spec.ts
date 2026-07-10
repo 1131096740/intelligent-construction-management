@@ -2724,6 +2724,70 @@ describe("FileService", () => {
     }
   });
 
+  it.each([
+    ["empty", ""],
+    ["short", "abc"],
+    ["uppercase", "A".repeat(64)],
+    ["non-hex", "g".repeat(64)]
+  ])("rejects a non-null malformed stored content hash: %s", async (_caseName, contentSha256) => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-malformed",
+          bucket: "private-local",
+          objectKey: "uploads/malformed.pdf",
+          originalName: "合同附件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-1",
+          contentSha256
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const loggerError = jest.spyOn(Logger.prototype, "error").mockImplementation();
+    storage.read.mockResolvedValue(Buffer.from("private-file"));
+
+    try {
+      const ticket = await service.createDownloadTicket("file-malformed", {
+        actorUserId: "finance-1",
+        downloadReason: "资料下载复核"
+      });
+      const url = new URL(`http://local${ticket.downloadUrl}`);
+      audit.record.mockClear();
+
+      await expect(
+        service.readPrivateFile("file-malformed", {
+          actorUserId: url.searchParams.get("actorUserId") ?? "",
+          expiresAt: url.searchParams.get("expiresAt") ?? "",
+          downloadReason: url.searchParams.get("downloadReason") ?? "",
+          token: url.searchParams.get("token") ?? ""
+        })
+      ).rejects.toThrow("资料文件完整性校验失败，请联系管理员核对存储文件");
+
+      expect(storage.read).toHaveBeenCalledWith("uploads/malformed.pdf");
+      expect(loggerError).toHaveBeenCalledTimes(1);
+      expect(loggerError).toHaveBeenCalledWith(
+        "私有文件完整性校验失败 fileId=file-malformed"
+      );
+      expect(audit.record).not.toHaveBeenCalled();
+    } finally {
+      loggerError.mockRestore();
+    }
+  });
+
   it("keeps historical files without a content hash readable", async () => {
     const tx = {
       fileObject: {

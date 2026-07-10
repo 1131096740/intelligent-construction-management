@@ -461,12 +461,15 @@ export class FileService {
     } catch {
       throw new Error("资料文件暂时无法读取，请稍后重试或联系管理员核对私有存储");
     }
-    if (
-      file.contentSha256 &&
-      createHash("sha256").update(buffer).digest("hex") !== file.contentSha256
-    ) {
-      this.logger.error(`私有文件完整性校验失败 fileId=${file.id}`);
-      throw new Error("资料文件完整性校验失败，请联系管理员核对存储文件");
+    if (file.contentSha256 !== null) {
+      const actualContentSha256 = createHash("sha256").update(buffer).digest("hex");
+      if (
+        !/^[0-9a-f]{64}$/.test(file.contentSha256) ||
+        actualContentSha256 !== file.contentSha256
+      ) {
+        this.logger.error(`私有文件完整性校验失败 fileId=${file.id}`);
+        throw new Error("资料文件完整性校验失败，请联系管理员核对存储文件");
+      }
     }
     await this.prisma.$transaction((tx) =>
       this.audit.record(tx, {
