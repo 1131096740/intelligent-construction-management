@@ -560,11 +560,11 @@ export class ContractService {
       });
 
       if (!version) {
-        throw new Error("Contract version not found");
+        throw new Error("未找到合同版本，请刷新合同台账后重试");
       }
 
       if (version.status !== "in_approval") {
-        throw new Error(`Cannot review contract approval from status ${version.status}`);
+        throw new Error("当前合同已离开审批中，不能继续处理审批");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -577,14 +577,14 @@ export class ContractService {
       });
 
       if (!instance) {
-        throw new Error("Contract approval instance not found");
+        throw new Error("未找到进行中的合同审批流程，请刷新后重试");
       }
 
       const nodes = instance.frozenNodes as unknown as ContractApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
 
       if (!currentNode) {
-        throw new Error("Contract approval current node not found");
+        throw new Error("当前合同审批节点异常，请刷新后重试");
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
@@ -603,7 +603,7 @@ export class ContractService {
       }
 
       if (!approvedRoleKey) {
-        throw new Error(`Actor cannot approve contract node ${currentNode.name}`);
+        throw new Error("当前账号无权处理该合同审批节点");
       }
 
       if (input.decision === "reject_previous") {

@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进合同审批处理错误中文化切片：处理合同审批时，如果合同版本不存在、合同已离开审批中、审批流程缺失、当前节点异常或当前账号无权处理，不再返回 `Contract version not found`、`Cannot review contract approval...`、`Contract approval instance/current node not found`、`Actor cannot approve...` 英文技术错误，统一给出刷新合同台账、刷新审批页面或无权处理的中文业务提示。本轮不改变合同审批状态机、角色/委托判断、OR签、用章、归档和审计口径。验证：API 合同服务 Jest 57 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进合同审批动作错误中文化切片：合同审批退回上一节点、撤回、催办、转交接收人校验等动作不再返回 `Cannot...`、`Only contract approval applicant...`、`Contract approval assignment target...` 英文技术错误，统一给出“不能退回上一节点”“只有申请人可撤回/催办”“未到催办时间”“请选择有效接收人”等中文业务提示。本轮不改变合同审批节点、催办 SLA、撤回状态、转交/委托权限、用章、归档和审计口径。验证：API 合同服务 Jest 52 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进合同归档上传错误中文化切片：上传签字版合同归档文件时，如果合同版本不存在、合同尚未完成审批/用章或归档文件服务暂不可用，不再返回 `Contract version not found`、`Cannot upload contract archive...`、`File service is required...` 英文技术错误，统一给出刷新合同台账、先完成审批用章、稍后重试或联系管理员的中文业务提示。本轮不改变合同归档上传状态机、私有文件权限、归档确认、合同生效和审计口径。验证：API 合同服务 Jest 51 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进合同审批前置错误中文化切片：合同审批遇到不支持的处理方式、驳回或退回未填写审批意见时，不再返回 `Unsupported contract approval decision` 或 `Contract approval comment is required...` 英文技术错误，统一给出刷新页面重试、填写审批意见的中文业务提示。本轮不改变合同审批状态机、OR签、转交/委托、用章、归档和审计口径。验证：API 合同服务 Jest 48 项、API typecheck、API lint 通过。

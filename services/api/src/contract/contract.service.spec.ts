@@ -1489,6 +1489,163 @@ describe("ContractService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("合同版本不存在时不能处理审批", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.reviewApproval("contract-version-missing", "chairman-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("未找到合同版本，请刷新合同台账后重试");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("合同版本不在审批中时不能处理审批", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "draft"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.reviewApproval("contract-version-1", "chairman-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("当前合同已离开审批中，不能继续处理审批");
+    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("缺少进行中的合同审批流程时不能处理审批", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.reviewApproval("contract-version-1", "chairman-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("未找到进行中的合同审批流程，请刷新后重试");
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("当前合同审批节点异常时不能处理审批", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: []
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.reviewApproval("contract-version-1", "chairman-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("当前合同审批节点异常，请刷新后重试");
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("当前账号无权处理合同审批节点时不能审批", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        })
+      },
+      ...approvalRoleTables("employee")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.reviewApproval("contract-version-1", "employee-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("当前账号无权处理该合同审批节点");
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
   it("rejects a contract approval to the previous node and keeps it in approval", async () => {
     const frozenNodes = [
       {
