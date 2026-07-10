@@ -1624,6 +1624,94 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("records takeover level adjustment reason when editing a draft away from system suggestion", async () => {
+    const adjustmentReason = "合同部确认资料可控，按 A级继续跟踪付款限制。";
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(
+          takeoverRecord({
+            takeoverStatus: "draft",
+            takeoverLevel: "B",
+            suggestedTakeoverLevel: "B"
+          })
+        ),
+        update: jest.fn().mockResolvedValue(
+          takeoverRecord({
+            takeoverLevel: "A",
+            suggestedTakeoverLevel: "B",
+            takeoverLevelAdjustmentReason: adjustmentReason,
+            reviewComment: adjustmentReason,
+            historicalApprovedPendingPaymentCents: 100_000n
+          })
+        )
+      },
+      contract: { update: jest.fn() },
+      contractVersion: { update: jest.fn() },
+      paymentTermsVersion: { update: jest.fn() },
+      paymentTermsStage: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    const result = await service.updateDraft(
+      "project-1",
+      "takeover-1",
+      {
+        code: "HT-HIS-EDIT-LEVEL",
+        name: "Edited historical contract level",
+        counterparty: "Supplier B",
+        amountCents: 1_200_000,
+        signedAt: "2026-02-01",
+        takeoverLevel: "A",
+        lifecycleStatus: "in_progress",
+        paymentTermsOriginalText: "Updated terms.",
+        historicalApprovedPendingPaymentCents: 100_000,
+        balanceSourceSummary: "Finance ledger checked.",
+        evidenceSummary: "Signed scan and finance ledger.",
+        reviewComment: adjustmentReason
+      },
+      "contract-user"
+    );
+
+    expect(result).toMatchObject({
+      takeoverLevel: "A",
+      suggestedTakeoverLevel: "B",
+      takeoverLevelAdjustmentReason: adjustmentReason,
+      reviewComment: adjustmentReason
+    });
+    expect(tx.contractTakeover.update).toHaveBeenCalledWith({
+      where: { id: "takeover-1" },
+      data: expect.objectContaining({
+        takeoverLevel: "A",
+        suggestedTakeoverLevel: "B",
+        takeoverLevelAdjustmentReason: adjustmentReason,
+        reviewComment: adjustmentReason
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "contract-user",
+      action: "contract_takeover.update_draft",
+      businessType: "contract_takeover",
+      businessId: "takeover-1",
+      metadata: expect.objectContaining({
+        projectId: "project-1",
+        fromStatus: "draft",
+        fromTakeoverLevel: "B",
+        toTakeoverLevel: "A",
+        suggestedTakeoverLevel: "B",
+        takeoverLevelAdjustmentReason: adjustmentReason
+      })
+    });
+  });
+
   it("rejects editing takeover records after review submission", async () => {
     const tx = {
       contractTakeover: {
