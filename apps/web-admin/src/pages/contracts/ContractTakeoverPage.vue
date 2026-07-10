@@ -115,9 +115,11 @@
           </label>
           <label>
             <span>接管责任人</span>
-            <t-input
+            <t-select
               v-model="importBatchForm.responsibleUserId"
-              placeholder="填写负责复核跟进的人员"
+              :options="responsibleUserOptions"
+              filterable
+              placeholder="选择负责复核跟进的人员"
             />
           </label>
           <label>
@@ -424,9 +426,11 @@
         <div class="form-grid two">
           <label>
             <span>接管责任人</span>
-            <t-input
+            <t-select
               v-model="createForm.responsibleUserId"
-              placeholder="填写责任人姓名或账号备注"
+              :options="responsibleUserOptions"
+              filterable
+              placeholder="选择负责接管跟进的人员"
             />
           </label>
           <label>
@@ -833,9 +837,11 @@
               </label>
               <label>
                 <span>更正责任人</span>
-                <t-input
+                <t-select
                   v-model="correctionForm.responsibleUserId"
-                  placeholder="填写负责核实和跟进更正的人员"
+                  :options="responsibleUserOptions"
+                  filterable
+                  placeholder="选择负责核实和跟进更正的人员"
                 />
               </label>
               <label>
@@ -1021,6 +1027,7 @@ import {
   createPrivateFileDownloadTicket,
   createContractTakeover,
   createContractTakeoverDraftsFromImport,
+  fetchApprovalDelegationUserOptions,
   fetchProjects,
   getContractTakeover,
   listContractTakeoverImportBatches,
@@ -1039,7 +1046,8 @@ import {
   type ContractLifecycleStatus,
   type ContractTakeoverLevel,
   type ContractTakeoverReadModel,
-  type ProjectOptionReadModel
+  type ProjectOptionReadModel,
+  type UserOptionReadModel
 } from "../../api/core-flow-read.api";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { confirmSensitiveAction, promptSensitiveActionReason } from "../confirm-sensitive-action";
@@ -1140,6 +1148,7 @@ const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
 ];
 
 const projects = ref<ProjectOptionReadModel[]>([]);
+const responsibleUsers = ref<UserOptionReadModel[]>([]);
 const takeovers = ref<ContractTakeoverReadModel[]>([]);
 const importBatches = ref<ContractTakeoverImportBatchReadModel[]>([]);
 const selectedProjectId = ref("");
@@ -1221,6 +1230,12 @@ const importBatchRows = computed(() =>
 );
 const importBatchReviewDisabledReason = computed(() =>
   reviewingImportBatchAction.value ? "正在提交批次复核结果，请稍候" : ""
+);
+const responsibleUserOptions = computed(() =>
+  responsibleUsers.value.map((user) => ({
+    label: user.name,
+    value: user.id
+  }))
 );
 
 const selectedRow = computed<ContractTakeoverTableRow | null>(
@@ -1470,7 +1485,9 @@ const selectedBalanceInfo = computed(() => {
   ];
 });
 
-onMounted(loadProjects);
+onMounted(async () => {
+  await Promise.all([loadProjects(), loadResponsibleUsers()]);
+});
 
 async function loadProjects() {
   loadingProjects.value = true;
@@ -1487,6 +1504,14 @@ async function loadProjects() {
     setMessage(error instanceof Error ? error.message : "加载项目失败", "danger");
   } finally {
     loadingProjects.value = false;
+  }
+}
+
+async function loadResponsibleUsers() {
+  try {
+    responsibleUsers.value = await fetchApprovalDelegationUserOptions();
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "加载人员选择列表失败", "danger");
   }
 }
 
