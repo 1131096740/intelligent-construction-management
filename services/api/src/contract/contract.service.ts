@@ -753,7 +753,7 @@ export class ContractService {
       });
 
       if (!version) {
-        throw new Error("Contract version not found");
+        throw new Error("未找到要撤回的合同审批任务，请刷新审批中心后重试");
       }
 
       if (version.status !== "in_approval") {
@@ -770,7 +770,7 @@ export class ContractService {
       });
 
       if (!instance) {
-        throw new Error("Contract approval instance not found");
+        throw new Error("未找到进行中的合同审批流程，请刷新审批中心后重试");
       }
 
       if (instance.applicantUserId !== actorUserId) {
@@ -823,11 +823,11 @@ export class ContractService {
       });
 
       if (!version) {
-        throw new Error("Contract version not found");
+        throw new Error("未找到要催办的合同审批任务，请刷新审批中心后重试");
       }
 
       if (version.status !== "in_approval") {
-        throw new Error(`Cannot remind contract approval from status ${version.status}`);
+        throw new Error("当前合同不在审批中，不能发起催办");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -840,7 +840,7 @@ export class ContractService {
       });
 
       if (!instance) {
-        throw new Error("Contract approval instance not found");
+        throw new Error("未找到进行中的合同审批流程，请刷新审批中心后重试");
       }
 
       if (instance.applicantUserId !== actorUserId) {

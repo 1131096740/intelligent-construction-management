@@ -2998,6 +2998,61 @@ describe("ContractService", () => {
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      "合同版本不存在",
+      {
+        contractVersion: { findUnique: jest.fn().mockResolvedValue(null) },
+        approvalInstance: { findFirst: jest.fn() },
+        approvalActionLog: { findFirst: jest.fn(), create: jest.fn() }
+      },
+      "未找到要催办的合同审批任务，请刷新审批中心后重试"
+    ],
+    [
+      "合同不在审批中",
+      {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "approved_pending_seal"
+          })
+        },
+        approvalInstance: { findFirst: jest.fn() },
+        approvalActionLog: { findFirst: jest.fn(), create: jest.fn() }
+      },
+      "当前合同不在审批中，不能发起催办"
+    ],
+    [
+      "审批流程缺失",
+      {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "in_approval"
+          })
+        },
+        approvalInstance: { findFirst: jest.fn().mockResolvedValue(null) },
+        approvalActionLog: { findFirst: jest.fn(), create: jest.fn() }
+      },
+      "未找到进行中的合同审批流程，请刷新审批中心后重试"
+    ]
+  ])("合同审批催办在%s时给出中文业务提示", async (_case, tx, message) => {
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const contractService = new ContractService(prisma as never, audit as never);
+
+    await expect(
+      contractService.remindApproval(
+        "contract-version-1",
+        "applicant-1",
+        new Date("2026-06-25T00:00:00.000Z")
+      )
+    ).rejects.toThrow(message);
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("lets the contract approval applicant withdraw back to draft before approval completes", async () => {
     const tx = {
       contractVersion: {
@@ -3085,6 +3140,48 @@ describe("ContractService", () => {
     ).rejects.toThrow("只有合同审批申请人可以撤回审批");
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "合同版本不存在",
+      {
+        contractVersion: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
+        approvalInstance: { findFirst: jest.fn(), update: jest.fn() },
+        approvalActionLog: { create: jest.fn() }
+      },
+      "未找到要撤回的合同审批任务，请刷新审批中心后重试"
+    ],
+    [
+      "审批流程缺失",
+      {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "in_approval"
+          }),
+          update: jest.fn()
+        },
+        approvalInstance: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          update: jest.fn()
+        },
+        approvalActionLog: { create: jest.fn() }
+      },
+      "未找到进行中的合同审批流程，请刷新审批中心后重试"
+    ]
+  ])("合同审批撤回在%s时给出中文业务提示", async (_case, tx, message) => {
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const contractService = new ContractService(prisma as never, audit as never);
+
+    await expect(
+      contractService.withdrawApproval("contract-version-1", "applicant-1")
+    ).rejects.toThrow(message);
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects contract approval withdrawal once it has left in_approval", async () => {
