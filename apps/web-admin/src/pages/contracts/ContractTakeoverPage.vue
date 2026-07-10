@@ -225,7 +225,7 @@
         v-if="importBatches.length === 0"
         class="empty-hint"
       >
-        暂无接管导入批次
+        暂无接管导入批次。请先在“导入预检”粘贴历史合同台账，预检通过后生成接管草稿。
       </div>
       <t-table
         v-else
@@ -505,7 +505,7 @@
           :columns="contractTakeoverColumns"
           :data="tableRows"
           :loading="loadingTakeovers"
-          empty="暂无历史合同接管记录"
+          empty="暂无历史合同接管记录，请先选择项目并完成导入预检或新增接管草稿"
         >
           <template #takeoverStatusLabel="{ row }">
             <t-tag
@@ -827,7 +827,7 @@
               v-else
               class="empty-hint"
             >
-              暂无接管更正记录
+              暂无接管更正记录。已确认金额、付款条款或资料需要调整时，请在下方保存更正原因、责任人和依据附件。
             </div>
             <div class="form-grid two">
               <label>
