@@ -278,7 +278,7 @@ describe("ContractWorkbenchService", () => {
         amountSource: "manual",
         manualAmountCents: 1_000_000
       })
-    ).rejects.toThrow("Contract draft revision conflict");
+    ).rejects.toThrow("合同草稿已被他人更新，请刷新后重新编辑");
 
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
     expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
@@ -875,7 +875,7 @@ describe("ContractWorkbenchService", () => {
         contract: ownerContract,
         contractVersion: editableVersion
       }).voidDraft("contract-1", "owner-1", { reason: "作废" })
-    ).rejects.toThrow("Contract draft state conflict");
+    ).rejects.toThrow("合同草稿状态已变化，请刷新后重试");
 
     await expect(
       makeService({
@@ -889,7 +889,7 @@ describe("ContractWorkbenchService", () => {
         },
         contractVersion: editableVersion
       }).restoreDraft("contract-1", "owner-1")
-    ).rejects.toThrow("Contract draft state conflict");
+    ).rejects.toThrow("合同草稿状态已变化，请刷新后重试");
 
     await expect(
       makeService({
@@ -917,7 +917,7 @@ describe("ContractWorkbenchService", () => {
           findFirst: jest.fn().mockResolvedValue(null)
         }
       }).transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
-    ).rejects.toThrow("Contract draft state conflict");
+    ).rejects.toThrow("合同草稿状态已变化，请刷新后重试");
 
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -943,7 +943,7 @@ describe("ContractWorkbenchService", () => {
 
       await expect(
         service.voidDraft("contract-1", "owner-1", { reason: "作废" })
-      ).rejects.toThrow("Contract has no editable draft version");
+      ).rejects.toThrow("合同没有可编辑的草稿版本，请刷新后重试");
       expect(tx.contract.update).not.toHaveBeenCalled();
     }
   );
@@ -963,7 +963,7 @@ describe("ContractWorkbenchService", () => {
     const service = makeService(tx);
 
     await expect(service.restoreDraft("contract-1", "owner-1")).rejects.toThrow(
-      "Contract has no editable draft version"
+      "合同没有可编辑的草稿版本，请刷新后重试"
     );
     expect(tx.contract.update).not.toHaveBeenCalled();
   });
@@ -989,7 +989,7 @@ describe("ContractWorkbenchService", () => {
 
     await expect(
       service.transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
-    ).rejects.toThrow("Contract has no editable draft version");
+    ).rejects.toThrow("合同没有可编辑的草稿版本，请刷新后重试");
     expect(tx.contract.update).not.toHaveBeenCalled();
   });
 
@@ -1019,7 +1019,7 @@ describe("ContractWorkbenchService", () => {
 
     await expect(
       service.transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
-    ).rejects.toThrow("Transfer target user must exist and be active");
+    ).rejects.toThrow("请选择有效的转交接收人");
     expect(tx.contract.updateMany).not.toHaveBeenCalled();
   });
 
@@ -1051,7 +1051,7 @@ describe("ContractWorkbenchService", () => {
 
     await expect(
       service.transferDraft("contract-1", "director-1", { toUserId: "owner-2" })
-    ).rejects.toThrow("Transfer target user is not in the contract project");
+    ).rejects.toThrow("转交接收人不在合同所属项目中");
     expect(tx.contract.updateMany).not.toHaveBeenCalled();
   });
 
@@ -1563,7 +1563,7 @@ describe("ContractWorkbenchService", () => {
         amountSource: "manual",
         manualAmountCents: 1_000_000
       })
-    ).rejects.toThrow("Contract draft revision/status conflict");
+    ).rejects.toThrow("合同草稿已变化，请刷新后重试");
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -1615,7 +1615,7 @@ describe("ContractWorkbenchService", () => {
 
     await expect(
       service.restoreCheckpoint("version-1", "ckpt-1", "owner-1")
-    ).rejects.toThrow("Contract draft revision/status conflict");
+    ).rejects.toThrow("合同草稿已变化，请刷新后重试");
     expect(tx.contractBill.deleteMany).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -1642,7 +1642,7 @@ describe("ContractWorkbenchService", () => {
         amountSource: "manual",
         manualAmountCents: 1_000_000
       })
-    ).rejects.toThrow("Contract draft revision/status conflict");
+    ).rejects.toThrow("合同草稿已变化，请刷新后重试");
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -1701,7 +1701,7 @@ describe("ContractWorkbenchService", () => {
         expectedRevision: 4,
         confirmed: true
       })
-    ).rejects.toThrow("Contract draft revision/status conflict");
+    ).rejects.toThrow("合同草稿已变化，请刷新后重试");
     expect(audit.record).not.toHaveBeenCalled();
   });
 });

@@ -95,13 +95,15 @@ export class ContractWorkbenchService {
   ) {}
 
   checkReadiness(contractVersionId: string, actorUserId: string) {
-    if (!this.readiness) throw new Error("Contract readiness service is required");
+    if (!this.readiness) {
+      throw new BadRequestException("合同资料检查服务暂不可用，请稍后重试或联系管理员");
+    }
     return this.readiness.checkAndStore(contractVersionId, actorUserId);
   }
 
   async listDrafts(actorUserId: string, scope: "my" | "voided") {
     if (scope !== "my" && scope !== "voided") {
-      throw new BadRequestException("Invalid contract workbench scope");
+      throw new BadRequestException("合同工作台列表范围不正确，请刷新页面后重试");
     }
     const isDirector = await this.hasGlobalContractDirector(this.prisma, actorUserId);
     const versions = await this.prisma.contractVersion.findMany({
@@ -120,14 +122,14 @@ export class ContractWorkbenchService {
 
   async getDraft(contractId: string, actorUserId: string) {
     const contract = await this.prisma.contract.findUnique({ where: { id: contractId } });
-    if (!contract) throw new NotFoundException("Contract draft not found");
+    if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
     await this.assertCanView(this.prisma, contract.ownerUserId, actorUserId);
 
     const version = await this.prisma.contractVersion.findFirst({
       where: { contractId, status: { in: [...EDITABLE_STATUSES] } },
       orderBy: { versionNo: "desc" }
     });
-    if (!version) throw new NotFoundException("Contract draft version not found");
+    if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
 
     const [bills, checkpoints, parties, documents, paymentTerms] = await Promise.all([
       this.prisma.contractBill.findMany({ where: { contractVersionId: version.id } }),
@@ -366,7 +368,7 @@ export class ContractWorkbenchService {
         where: { id: checkpointId }
       });
       if (!checkpoint || checkpoint.contractVersionId !== contractVersionId) {
-        throw new NotFoundException("Contract draft checkpoint not found");
+        throw new NotFoundException("未找到合同草稿保存点，请刷新后重试");
       }
       const snapshot = this.parseCheckpoint(checkpoint.snapshot);
       const updated = await tx.contractVersion.updateMany({
@@ -460,11 +462,11 @@ export class ContractWorkbenchService {
     return this.runSerializableWithRetry(async (tx) => {
       await this.assertGlobalContractDirector(tx, actorUserId);
       const contract = await tx.contract.findUnique({ where: { id: contractId } });
-      if (!contract) throw new NotFoundException("Contract draft not found");
+      if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
       await this.assertEditableVersionGate(tx, contractId);
       const targetUser = await tx.user.findUnique({ where: { id: input.toUserId } });
       if (!targetUser?.isActive) {
-        throw new BadRequestException("Transfer target user must exist and be active");
+        throw new BadRequestException("请选择有效的转交接收人");
       }
       await this.assertTargetInContractProject(tx, contract.projectId, input.toUserId);
       const updated = await tx.contract.updateMany({
@@ -641,7 +643,7 @@ export class ContractWorkbenchService {
       const template = await tx.contractBusinessTemplate.findUnique({
         where: { id: target.templateId }
       });
-      if (!template) throw new NotFoundException("Business template not found");
+      if (!template) throw new NotFoundException("未找到业务模板，请重新选择模板");
       await tx.contract.update({
         where: { id: contract.id },
         data: { contractTypeKey: template.contractTypeKey }
@@ -711,16 +713,16 @@ export class ContractWorkbenchService {
     const version = await tx.contractVersion.findUnique({
       where: { id: contractVersionId }
     });
-    if (!version) throw new NotFoundException("Contract draft version not found");
+    if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
-    if (!contract) throw new NotFoundException("Contract draft not found");
+    if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
     if (contract.ownerUserId !== actorUserId) {
-      throw new ForbiddenException("Only the contract draft owner may edit");
+      throw new ForbiddenException("只有合同经办人可以编辑该草稿");
     }
     if (!EDITABLE_STATUSES.has(version.status)) {
-      throw new BadRequestException("Contract draft is not editable");
+      throw new BadRequestException("合同草稿当前不可编辑，请刷新后查看最新状态");
     }
-    if (contract.voidedAt) throw new BadRequestException("Contract draft is voided");
+    if (contract.voidedAt) throw new BadRequestException("合同草稿已作废，不能继续编辑");
     return { version, contract };
   }
 
@@ -730,9 +732,9 @@ export class ContractWorkbenchService {
     actorUserId: string
   ) {
     const contract = await tx.contract.findUnique({ where: { id: contractId } });
-    if (!contract) throw new NotFoundException("Contract draft not found");
+    if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
     if (contract.ownerUserId !== actorUserId) {
-      throw new ForbiddenException("Only the contract draft owner may edit");
+      throw new ForbiddenException("只有合同经办人可以编辑该草稿");
     }
     return contract;
   }
@@ -746,7 +748,7 @@ export class ContractWorkbenchService {
       data: { draftRevision: { increment: 0 } }
     });
     if (editableVersions.count === 0) {
-      throw new BadRequestException("Contract has no editable draft version");
+      throw new BadRequestException("合同没有可编辑的草稿版本，请刷新后重试");
     }
   }
 
@@ -767,7 +769,7 @@ export class ContractWorkbenchService {
     ]);
 
     if (!projectPosition && !projectMember) {
-      throw new BadRequestException("Transfer target user is not in the contract project");
+      throw new BadRequestException("转交接收人不在合同所属项目中");
     }
   }
 
@@ -785,7 +787,7 @@ export class ContractWorkbenchService {
       data: { ownerUserId: actorUserId }
     });
     if (parent.count !== 1) {
-      throw new BadRequestException("Contract draft revision/status conflict");
+      throw new BadRequestException("合同草稿已变化，请刷新后重试");
     }
   }
 
@@ -813,7 +815,7 @@ export class ContractWorkbenchService {
       ownerUserId !== actorUserId &&
       !(await this.hasGlobalContractDirector(client, actorUserId))
     ) {
-      throw new ForbiddenException("Contract draft is not visible to this user");
+      throw new ForbiddenException("当前账号无权查看该合同草稿");
     }
   }
 
@@ -836,24 +838,24 @@ export class ContractWorkbenchService {
     actorUserId: string
   ) {
     if (!(await this.hasGlobalContractDirector(tx, actorUserId))) {
-      throw new ForbiddenException("Requires global role: contract_director");
+      throw new ForbiddenException("只有合同主管可以执行该操作");
     }
   }
 
   private parseSaveInput(rawInput: unknown): SaveContractDraftDto {
-    const input = this.requireObject(rawInput, "Save contract draft body");
+    const input = this.requireObject(rawInput, "合同草稿保存内容");
     if (
       typeof input.expectedRevision !== "number" ||
       !Number.isInteger(input.expectedRevision) ||
       input.expectedRevision < 1
     ) {
-      throw new BadRequestException("expectedRevision must be a positive integer");
+      throw new BadRequestException("合同草稿版本号不正确，请刷新后重试");
     }
     if (!this.isPlainObject(input.draftData)) {
-      throw new BadRequestException("draftData must be an object");
+      throw new BadRequestException("合同草稿内容格式不正确，请刷新后重试");
     }
     if (!Array.isArray(input.clauses)) {
-      throw new BadRequestException("clauses must be an array");
+      throw new BadRequestException("合同条款内容格式不正确，请刷新后重试");
     }
     const clauses = input.clauses.map((clause, index) =>
       this.parseClause(clause, index)
@@ -862,29 +864,29 @@ export class ContractWorkbenchService {
       typeof input.pricingNature !== "string" ||
       !PRICING_NATURES.has(input.pricingNature)
     ) {
-      throw new BadRequestException("Invalid pricingNature");
+      throw new BadRequestException("合同计价性质不正确，请重新选择");
     }
     if (
       typeof input.amountSource !== "string" ||
       !AMOUNT_SOURCES.has(input.amountSource)
     ) {
-      throw new BadRequestException("Invalid amountSource");
+      throw new BadRequestException("合同金额来源不正确，请重新选择");
     }
     if (input.amountSource === "manual" || input.manualAmountCents !== undefined) {
-      this.toCents(input.manualAmountCents as number | undefined, "manualAmountCents");
+      this.toCents(input.manualAmountCents as number | undefined, "手工合同金额");
     }
     if (
       input.amountAdjustmentReason !== undefined &&
       typeof input.amountAdjustmentReason !== "string"
     ) {
-      throw new BadRequestException("amountAdjustmentReason must be a string");
+      throw new BadRequestException("合同金额调整原因必须填写文本");
     }
     if (
       input.layoutTemplateVersionId !== undefined &&
       (typeof input.layoutTemplateVersionId !== "string" ||
         !input.layoutTemplateVersionId.trim())
     ) {
-      throw new BadRequestException("layoutTemplateVersionId must be a non-empty string");
+      throw new BadRequestException("请选择有效的合同版式");
     }
     if (
       input.paymentTermsOriginalText !== undefined &&
@@ -1009,19 +1011,19 @@ export class ContractWorkbenchService {
   }
 
   private parseTypeChangeInput(rawInput: unknown): PreviewContractTypeChangeDto {
-    const input = this.requireObject(rawInput, "Contract type change body");
+    const input = this.requireObject(rawInput, "合同类型变更内容");
     if (
       typeof input.targetBusinessTemplateVersionId !== "string" ||
       !input.targetBusinessTemplateVersionId.trim()
     ) {
-      throw new BadRequestException("targetBusinessTemplateVersionId is required");
+      throw new BadRequestException("请选择目标合同模板");
     }
     if (
       typeof input.expectedRevision !== "number" ||
       !Number.isInteger(input.expectedRevision) ||
       input.expectedRevision < 1
     ) {
-      throw new BadRequestException("expectedRevision must be a positive integer");
+      throw new BadRequestException("合同草稿版本号不正确，请刷新后重试");
     }
     return {
       targetBusinessTemplateVersionId: input.targetBusinessTemplateVersionId,
@@ -1030,40 +1032,40 @@ export class ContractWorkbenchService {
   }
 
   private parseApplyTypeChangeInput(rawInput: unknown): ApplyContractTypeChangeDto {
-    const input = this.requireObject(rawInput, "Apply contract type change body");
+    const input = this.requireObject(rawInput, "合同类型变更确认内容");
     const parsed = this.parseTypeChangeInput(input);
     if (input.confirmed !== true) {
-      throw new BadRequestException("Contract type change confirmation is required");
+      throw new BadRequestException("请先确认合同类型变更后果");
     }
     return { ...parsed, confirmed: true };
   }
 
   private parseCheckpointInput(rawInput: unknown): CreateDraftCheckpointDto {
-    const input = this.requireObject(rawInput, "Checkpoint body");
+    const input = this.requireObject(rawInput, "合同草稿保存点内容");
     if (input.name !== undefined && typeof input.name !== "string") {
-      throw new BadRequestException("Checkpoint name must be a string");
+      throw new BadRequestException("保存点名称必须填写文本");
     }
     return input.name === undefined ? {} : { name: input.name };
   }
 
   private parseVoidInput(rawInput: unknown): VoidDraftDto {
-    const input = this.requireObject(rawInput, "Void draft body");
+    const input = this.requireObject(rawInput, "合同草稿作废内容");
     if (typeof input.reason !== "string" || !input.reason.trim()) {
-      throw new BadRequestException("Void reason is required");
+      throw new BadRequestException("请填写合同草稿作废原因");
     }
     return { reason: input.reason.trim() };
   }
 
   private parseTransferInput(rawInput: unknown): TransferContractDraftDto {
-    const input = this.requireObject(rawInput, "Transfer draft body");
+    const input = this.requireObject(rawInput, "合同草稿转交内容");
     if (typeof input.toUserId !== "string" || !input.toUserId.trim()) {
-      throw new BadRequestException("toUserId is required");
+      throw new BadRequestException("请选择合同草稿转交接收人");
     }
     return { toUserId: input.toUserId.trim() };
   }
 
   private parseClause(value: unknown, index: number): ContractClauseDefinition {
-    const clause = this.requireObject(value, `clauses[${index}]`);
+    const clause = this.requireObject(value, `第 ${index + 1} 条合同条款`);
     if (
       typeof clause.key !== "string" ||
       !clause.key ||
@@ -1072,17 +1074,17 @@ export class ContractWorkbenchService {
       (clause.numberingMode !== "automatic" && clause.numberingMode !== "fixed") ||
       !Object.hasOwn(clause, "content")
     ) {
-      throw new BadRequestException(`Invalid clauses[${index}]`);
+      throw new BadRequestException(`第 ${index + 1} 条合同条款格式不正确，请刷新后重试`);
     }
     if (clause.required !== undefined && typeof clause.required !== "boolean") {
-      throw new BadRequestException(`Invalid clauses[${index}].required`);
+      throw new BadRequestException(`第 ${index + 1} 条合同条款必填标记不正确`);
     }
     if (
       clause.standardClauseVersionId !== undefined &&
       typeof clause.standardClauseVersionId !== "string"
     ) {
       throw new BadRequestException(
-        `Invalid clauses[${index}].standardClauseVersionId`
+        `第 ${index + 1} 条合同条款引用的标准条款版本不正确`
       );
     }
     return {
@@ -1099,7 +1101,7 @@ export class ContractWorkbenchService {
 
   private requireObject(value: unknown, label: string): Record<string, unknown> {
     if (!this.isPlainObject(value)) {
-      throw new BadRequestException(`${label} must be an object`);
+      throw new BadRequestException(`${label}格式不正确，请刷新后重试`);
     }
     return value;
   }
@@ -1119,15 +1121,15 @@ export class ContractWorkbenchService {
   ) {
     const fieldKeys = new Set(template.fieldSchema.map((field) => field.key));
     const invalidField = Object.keys(draftData).find((key) => !fieldKeys.has(key));
-    if (invalidField) throw new BadRequestException(`Unknown contract field: ${invalidField}`);
+    if (invalidField) throw new BadRequestException("合同草稿包含模板外字段，请刷新后重试");
     const clauseKeys = new Set(template.clauseSchema.map((clause) => clause.key));
     const seen = new Set<string>();
     for (const clause of clauses) {
       if (!clause || typeof clause.key !== "string" || !clauseKeys.has(clause.key)) {
-        throw new BadRequestException(`Unknown contract clause: ${clause?.key ?? ""}`);
+        throw new BadRequestException("合同草稿包含模板外条款，请刷新后重试");
       }
       if (seen.has(clause.key)) {
-        throw new BadRequestException(`Duplicate contract clause: ${clause.key}`);
+        throw new BadRequestException("合同草稿包含重复条款，请刷新后重试");
       }
       seen.add(clause.key);
     }
@@ -1135,7 +1137,7 @@ export class ContractWorkbenchService {
 
   private parseTemplateSnapshot(value: Prisma.JsonValue): TemplateSnapshot {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new BadRequestException("Invalid contract template snapshot");
+      throw new BadRequestException("合同模板快照异常，请重新选择模板后重试");
     }
     const snapshot = value as Record<string, unknown>;
     if (
@@ -1143,7 +1145,7 @@ export class ContractWorkbenchService {
       !Array.isArray(snapshot.billSchema) ||
       !Array.isArray(snapshot.clauseSchema)
     ) {
-      throw new BadRequestException("Invalid contract template snapshot");
+      throw new BadRequestException("合同模板快照异常，请重新选择模板后重试");
     }
     return snapshot as unknown as TemplateSnapshot;
   }
@@ -1171,9 +1173,9 @@ export class ContractWorkbenchService {
     const target = await tx.contractBusinessTemplateVersion.findUnique({
       where: { id: versionId }
     });
-    if (!target) throw new NotFoundException("Business template version not found");
+    if (!target) throw new NotFoundException("未找到业务模板版本，请重新选择模板");
     if (target.status !== "published") {
-      throw new BadRequestException("Target business template version is not published");
+      throw new BadRequestException("目标业务模板尚未发布，请选择已发布模板");
     }
     return target;
   }
@@ -1318,7 +1320,7 @@ export class ContractWorkbenchService {
 
   private parseCheckpoint(value: Prisma.JsonValue): CheckpointSnapshot {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new BadRequestException("Invalid contract draft checkpoint");
+      throw new BadRequestException("合同草稿保存点异常，请重新选择保存点");
     }
     const snapshot = value as unknown as CheckpointSnapshot;
     if (
@@ -1328,7 +1330,7 @@ export class ContractWorkbenchService {
       !Array.isArray(snapshot.bills) ||
       typeof snapshot.amountCents !== "string"
     ) {
-      throw new BadRequestException("Invalid contract draft checkpoint");
+      throw new BadRequestException("合同草稿保存点异常，请重新选择保存点");
     }
     return snapshot;
   }
@@ -1405,22 +1407,24 @@ export class ContractWorkbenchService {
   }
 
   private assertRevision(actual: number, expected: number) {
-    if (actual !== expected) throw new BadRequestException("Contract draft revision conflict");
+    if (actual !== expected) {
+      throw new BadRequestException("合同草稿已被他人更新，请刷新后重新编辑");
+    }
   }
 
   private assertCas(count: number) {
     if (count !== 1) {
-      throw new BadRequestException("Contract draft revision/status conflict");
+      throw new BadRequestException("合同草稿已变化，请刷新后重试");
     }
   }
 
   private assertLifecycleCas(count: number) {
-    if (count !== 1) throw new BadRequestException("Contract draft state conflict");
+    if (count !== 1) throw new BadRequestException("合同草稿状态已变化，请刷新后重试");
   }
 
   private toCents(value: number | undefined, field: string) {
     if (value === undefined || !Number.isSafeInteger(value) || value < 0) {
-      throw new BadRequestException(`${field} must be a non-negative safe integer`);
+      throw new BadRequestException(`${field}必须是大于等于 0 的整数金额`);
     }
     return BigInt(value);
   }

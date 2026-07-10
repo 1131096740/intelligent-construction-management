@@ -17,7 +17,7 @@ export async function bumpContractRenderInputRevision(
     data: { draftRevision: { increment: 1 } }
   });
   if (updated.count !== 1) {
-    throw new BadRequestException("Contract draft revision/status conflict");
+    throw new BadRequestException("合同草稿已变化，请刷新后重试");
   }
   const newRevision = expectedRevision + 1;
   await tx.contractGeneratedDocument.updateMany({
