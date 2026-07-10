@@ -541,6 +541,21 @@ async function assertTakeoverEvidenceVisibleInArchiveLedger(fileId, token) {
   assertEqual(row.canDownload, true, "资料库历史接管资料下载状态");
 }
 
+async function assertSettlementArchiveVisibleInArchiveLedger(fileId, settlementCode, periodLabel, token) {
+  const archiveLedger = await readJson("/archives?limit=200", token, "资料库台账");
+  assert(Array.isArray(archiveLedger.rows), "资料库台账未返回资料行");
+  const row = archiveLedger.rows.find((item) => item.fileId === fileId);
+  assert(row, "资料库台账未展示刚确认的结算归档件");
+  assertEqual(row.documentType, "结算归档件", "资料库结算归档资料类型");
+  assert(
+    String(row.businessRef ?? "").includes(settlementCode) &&
+      String(row.businessRef ?? "").includes(periodLabel),
+    `资料库结算归档关联业务不正确：${row.businessRef}`
+  );
+  assertEqual(row.archiveStatus, "已确认", "资料库结算归档状态");
+  assertEqual(row.canDownload, true, "资料库结算归档下载状态");
+}
+
 async function assertPaymentPdfArchiveVisibleInArchiveLedger(fileId, paymentCode, token) {
   const archiveLedger = await readJson("/archives?limit=200", token, "资料库台账");
   assert(Array.isArray(archiveLedger.rows), "资料库台账未返回资料行");
@@ -696,6 +711,12 @@ async function createAndConfirmSettlement(contractVersionId, tokens) {
     "确认 UAT 结算归档"
   );
   assertEqual(settlement.status, "effective", "UAT 结算归档确认状态");
+  await assertSettlementArchiveVisibleInArchiveLedger(
+    archiveFile.id,
+    settlement.code,
+    settlement.periodLabel,
+    tokens.contractStaff
+  );
 
   return settlement;
 }

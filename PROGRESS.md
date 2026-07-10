@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进真实试运行 UAT 结算归档资料库验收切片：`verify-trial-run.cjs` 在结算审批通过、上传结算归档件并由合同部主管确认后，继续读取资料库台账并按 fileId 精确校验该资料展示为“结算归档件”、关联当前 UAT 结算编号和期间、状态为“已确认”且允许下载，确保新结算生效事实同步进入统一资料库证据链。本轮不改变结算归档、归档确认、资料库读模型、短时效下载和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 付款 PDF 资料库验收切片：`verify-trial-run.cjs` 在付款实付、财务入账并归档付款 PDF 后，继续读取资料库台账并按 fileId 精确校验该付款 PDF 展示为“付款PDF留档”、关联当前 UAT 付款编号、状态为“已入库”且允许下载，确保付款闭环不只停留在付款详情和审计动作，也能进入统一资料库证据链。本轮不改变付款归档、财务入账、资料库读模型、短时效下载和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 结算期间空格防绕过验收切片：`verify-trial-run.cjs` 在同期间重复结算验收中新增“ 2026-07 ”前后带空格的结算期间变体，要求同样被“已存在结算单”的中文业务提示拦截，确保真实试运行主链路能覆盖结算期间归一化后的重复账本硬拦。本轮不改变结算创建、期间归一化、数据库唯一兜底、审批归档、付款容量和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 结算同期间防重验收切片：`verify-trial-run.cjs` 在首张 UAT 结算归档生效后，立即尝试为同一合同版本、同一结算期间再次创建结算单，要求接口拒绝并返回“已存在结算单”的中文业务提示，确保真实试运行主链路能覆盖同期间重复结算的账本硬拦。本轮不改变结算创建、审批、归档、数据库唯一兜底、付款容量和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
