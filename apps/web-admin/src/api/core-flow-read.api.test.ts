@@ -733,7 +733,9 @@ describe("core flow read API client", () => {
       historicalRetentionReleasedCents: 1000000,
       otherConfirmedOccupancyCents: 800000,
       balanceSourceSummary: "财务台账核对",
-      evidenceSummary: "合同与付款凭证已归档"
+      evidenceSummary: "合同与付款凭证已归档",
+      takeoverLevelAdjustmentReason: "资料可控，按 B级接管并继续跟踪付款限制",
+      reviewComment: "合同部已完成单合同补录，提交预算和财务复核。"
     };
 
     await listContractTakeovers("project-1");

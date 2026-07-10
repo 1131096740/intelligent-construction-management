@@ -416,8 +416,7 @@ export class ContractTakeoverService {
           paymentTermsVersionId: terms.id,
           takeoverLevel: data.takeoverLevel,
           suggestedTakeoverLevel: data.suggestedTakeoverLevel,
-          takeoverLevelAdjustmentReason:
-            data.takeoverLevel === data.suggestedTakeoverLevel ? null : data.reviewComment,
+          takeoverLevelAdjustmentReason: data.takeoverLevelAdjustmentReason,
           takeoverStatus: "draft",
           takeoverBatchId: options.takeoverBatchId,
           importRowNo: options.importRowNo,
@@ -454,8 +453,7 @@ export class ContractTakeoverService {
           contractVersionId: version.id,
           takeoverLevel: data.takeoverLevel,
           suggestedTakeoverLevel: data.suggestedTakeoverLevel,
-          takeoverLevelAdjustmentReason:
-            data.takeoverLevel === data.suggestedTakeoverLevel ? null : data.reviewComment,
+          takeoverLevelAdjustmentReason: data.takeoverLevelAdjustmentReason,
           takeoverBatchId: options.takeoverBatchId ?? null,
           importRowNo: options.importRowNo ?? null
         }
@@ -540,8 +538,7 @@ export class ContractTakeoverService {
           balanceSourceSummary: data.balanceSourceSummary ?? null,
           evidenceSummary: data.evidenceSummary ?? null,
           suggestedTakeoverLevel: data.suggestedTakeoverLevel,
-          takeoverLevelAdjustmentReason:
-            data.takeoverLevel === data.suggestedTakeoverLevel ? null : data.reviewComment,
+          takeoverLevelAdjustmentReason: data.takeoverLevelAdjustmentReason,
           takeoverCutoffDate: data.takeoverCutoffDate,
           responsibleUserId: data.responsibleUserId,
           reviewComment: data.reviewComment,
@@ -562,8 +559,7 @@ export class ContractTakeoverService {
           fromTakeoverLevel: takeover.takeoverLevel,
           toTakeoverLevel: data.takeoverLevel,
           suggestedTakeoverLevel: data.suggestedTakeoverLevel,
-          takeoverLevelAdjustmentReason:
-            data.takeoverLevel === data.suggestedTakeoverLevel ? null : data.reviewComment
+          takeoverLevelAdjustmentReason: data.takeoverLevelAdjustmentReason
         }
       });
 
@@ -1706,6 +1702,7 @@ export class ContractTakeoverService {
       })
     ) as Record<(typeof MONEY_FIELDS)[number], number>;
     const reviewComment = input.reviewComment?.trim() || null;
+    const takeoverLevelAdjustmentReason = input.takeoverLevelAdjustmentReason?.trim() || null;
     const suggestedLevel = suggestedTakeoverLevel({
       lifecycleStatus: input.lifecycleStatus,
       balanceSourceSummary: input.balanceSourceSummary,
@@ -1716,8 +1713,8 @@ export class ContractTakeoverService {
       historicalRetentionWithheldCents: money.historicalRetentionWithheldCents,
       otherConfirmedOccupancyCents: money.otherConfirmedOccupancyCents
     });
-    if (takeoverLevel !== suggestedLevel && !reviewComment) {
-      throw new Error("接管等级与系统建议不一致，请在复核意见说明调整原因");
+    if (takeoverLevel !== suggestedLevel && !takeoverLevelAdjustmentReason && !reviewComment) {
+      throw new Error("接管等级与系统建议不一致，请填写等级调整说明");
     }
 
     return {
@@ -1728,6 +1725,8 @@ export class ContractTakeoverService {
       counterparty: input.counterparty.trim(),
       takeoverLevel: takeoverLevel as ContractTakeoverLevel,
       suggestedTakeoverLevel: suggestedLevel,
+      takeoverLevelAdjustmentReason:
+        takeoverLevel === suggestedLevel ? null : takeoverLevelAdjustmentReason ?? reviewComment,
       signedAt,
       takeoverCutoffDate,
       responsibleUserId: input.responsibleUserId?.trim() || null,

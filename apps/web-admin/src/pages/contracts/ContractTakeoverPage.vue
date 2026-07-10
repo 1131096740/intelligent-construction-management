@@ -450,10 +450,18 @@
             />
           </label>
           <label>
-            <span>等级调整说明（复核意见）</span>
+            <span>等级调整说明</span>
+            <t-textarea
+              v-model="createForm.takeoverLevelAdjustmentReason"
+              placeholder="如确认等级与系统建议不一致，说明本次调整原因、资料核验情况、风险责任和付款限制"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+            />
+          </label>
+          <label>
+            <span>复核意见</span>
             <t-textarea
               v-model="createForm.reviewComment"
-              placeholder="如确认等级与系统建议不一致，说明本次调整原因、资料核验情况、风险责任和付款限制"
+              placeholder="记录合同部、预算、财务对本次接管草稿的复核意见"
               :autosize="{ minRows: 2, maxRows: 4 }"
             />
           </label>
@@ -1122,6 +1130,7 @@ interface CreateFormState extends Record<MoneyFieldKey, string> {
   balanceSourceSummary: string;
   evidenceSummary: string;
   responsibleUserId: string;
+  takeoverLevelAdjustmentReason: string;
   reviewComment: string;
   acceptanceConclusion: string;
 }
@@ -1292,7 +1301,7 @@ const createFormLevelDisabledReason = computed(() =>
   takeoverLevelAdjustmentDisabledReason(
     createForm.takeoverLevel,
     takeoverLevelSuggestionView.value,
-    createForm.reviewComment
+    createForm.takeoverLevelAdjustmentReason
   )
 );
 const applySuggestionDisabledReason = computed(() =>
@@ -1726,6 +1735,7 @@ async function submitCreate() {
       balanceSourceSummary: requiredText(createForm.balanceSourceSummary, "余额来源说明"),
       evidenceSummary: requiredText(createForm.evidenceSummary, "证据说明"),
       responsibleUserId: createForm.responsibleUserId.trim() || undefined,
+      takeoverLevelAdjustmentReason: createForm.takeoverLevelAdjustmentReason.trim() || undefined,
       reviewComment: createForm.reviewComment.trim() || undefined,
       acceptanceConclusion: createForm.acceptanceConclusion.trim() || undefined
     };
@@ -1996,6 +2006,7 @@ function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState 
     balanceSourceSummary: takeover.balanceSourceSummary ?? "",
     evidenceSummary: takeover.evidenceSummary ?? "",
     responsibleUserId: takeover.responsibleUserId ?? "",
+    takeoverLevelAdjustmentReason: takeover.takeoverLevelAdjustmentReason ?? "",
     reviewComment: takeover.reviewComment ?? "",
     acceptanceConclusion: takeover.acceptanceConclusion ?? ""
   };
@@ -2033,6 +2044,7 @@ function createEmptyForm(): CreateFormState {
     balanceSourceSummary: "",
     evidenceSummary: "",
     responsibleUserId: "",
+    takeoverLevelAdjustmentReason: "",
     reviewComment: "",
     acceptanceConclusion: ""
   };

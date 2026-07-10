@@ -306,7 +306,7 @@ describe("ContractTakeoverService", () => {
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
 
-  it("requires review comment when takeover level differs from system suggestion", async () => {
+  it("requires adjustment reason when takeover level differs from system suggestion", async () => {
     const tx = {
       contract: {
         create: jest.fn()
@@ -336,7 +336,7 @@ describe("ContractTakeoverService", () => {
         },
         "contract-user"
       )
-    ).rejects.toThrow("接管等级与系统建议不一致，请在复核意见说明调整原因");
+    ).rejects.toThrow("接管等级与系统建议不一致，请填写等级调整说明");
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(tx.contract.create).not.toHaveBeenCalled();
@@ -1660,8 +1660,9 @@ describe("ContractTakeoverService", () => {
     });
   });
 
-  it("records takeover level adjustment reason when editing a draft away from system suggestion", async () => {
+  it("records takeover level adjustment reason separately from review comment", async () => {
     const adjustmentReason = "合同部确认资料可控，按 A级继续跟踪付款限制。";
+    const reviewComment = "预算和财务已复核历史余额，后续按资料清单继续补齐。";
     const tx = {
       contractTakeover: {
         findUnique: jest.fn().mockResolvedValue(
@@ -1676,7 +1677,7 @@ describe("ContractTakeoverService", () => {
             takeoverLevel: "A",
             suggestedTakeoverLevel: "B",
             takeoverLevelAdjustmentReason: adjustmentReason,
-            reviewComment: adjustmentReason,
+            reviewComment,
             historicalApprovedPendingPaymentCents: 100_000n
           })
         )
@@ -1712,7 +1713,8 @@ describe("ContractTakeoverService", () => {
         historicalApprovedPendingPaymentCents: 100_000,
         balanceSourceSummary: "Finance ledger checked.",
         evidenceSummary: "Signed scan and finance ledger.",
-        reviewComment: adjustmentReason
+        takeoverLevelAdjustmentReason: adjustmentReason,
+        reviewComment
       },
       "contract-user"
     );
@@ -1721,7 +1723,7 @@ describe("ContractTakeoverService", () => {
       takeoverLevel: "A",
       suggestedTakeoverLevel: "B",
       takeoverLevelAdjustmentReason: adjustmentReason,
-      reviewComment: adjustmentReason
+      reviewComment
     });
     expect(tx.contractTakeover.update).toHaveBeenCalledWith({
       where: { id: "takeover-1" },
@@ -1729,7 +1731,7 @@ describe("ContractTakeoverService", () => {
         takeoverLevel: "A",
         suggestedTakeoverLevel: "B",
         takeoverLevelAdjustmentReason: adjustmentReason,
-        reviewComment: adjustmentReason
+        reviewComment
       })
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {

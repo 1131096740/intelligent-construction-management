@@ -271,6 +271,7 @@ export interface CreateContractTakeoverPayload {
   evidenceSummary?: string;
   takeoverCutoffDate?: string;
   responsibleUserId?: string;
+  takeoverLevelAdjustmentReason?: string;
   reviewComment?: string;
   acceptanceConclusion?: string;
   evidenceChecklist?: string;

@@ -400,9 +400,9 @@ export function suggestTakeoverLevel(draft: TakeoverLevelSuggestionDraft): Takeo
 export function takeoverLevelAdjustmentDisabledReason(
   selectedLevel: ContractTakeoverLevel,
   suggestion: TakeoverLevelSuggestion,
-  reviewComment: string
+  adjustmentReason: string
 ): string {
-  if (selectedLevel === suggestion.level || reviewComment.trim()) return "";
+  if (selectedLevel === suggestion.level || adjustmentReason.trim()) return "";
   if (takeoverLevelRiskRank(selectedLevel) < takeoverLevelRiskRank(suggestion.level)) {
     return "确认等级低于系统建议，请说明资料已核验、风险由谁确认，以及是否仍需限制付款";
   }
