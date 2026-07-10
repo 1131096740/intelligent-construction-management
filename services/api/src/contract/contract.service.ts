@@ -250,15 +250,15 @@ export class ContractService {
       });
 
       if (!version) {
-        throw new Error("Contract version not found");
+        throw new Error("未找到合同版本，请刷新合同台账后重试");
       }
 
       if (version.status !== "seal_approved_pending_archive") {
-        throw new Error(`Cannot upload contract archive from status ${version.status}`);
+        throw new Error("当前合同尚不能上传签字归档文件，请先完成合同审批和用章审批");
       }
 
       if (!this.files) {
-        throw new Error("File service is required to upload contract archive file");
+        throw new Error("合同归档文件服务暂不可用，请稍后重试或联系管理员");
       }
       await this.files.assertCanDownloadFile(tx, input.fileId, actorUserId);
 

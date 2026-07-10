@@ -295,6 +295,108 @@ describe("ContractService", () => {
     });
   });
 
+  it("合同版本不存在时不能上传归档文件", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      },
+      contractArchiveFile: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const files = {
+      assertCanDownloadFile: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      service.uploadArchiveFile("contract-version-missing", "user-contract-staff", {
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("未找到合同版本，请刷新合同台账后重试");
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+    expect(tx.contractArchiveFile.create).not.toHaveBeenCalled();
+  });
+
+  it("合同尚未完成用章审批时不能上传归档文件", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "in_approval"
+        }),
+        update: jest.fn()
+      },
+      contractArchiveFile: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const files = {
+      assertCanDownloadFile: jest.fn()
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      service.uploadArchiveFile("contract-version-1", "user-contract-staff", {
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("当前合同尚不能上传签字归档文件，请先完成合同审批和用章审批");
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+    expect(tx.contractArchiveFile.create).not.toHaveBeenCalled();
+  });
+
+  it("合同归档文件服务不可用时不能上传归档文件", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "seal_approved_pending_archive"
+        }),
+        update: jest.fn()
+      },
+      contractArchiveFile: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.uploadArchiveFile("contract-version-1", "user-contract-staff", {
+        fileId: "file-1"
+      })
+    ).rejects.toThrow("合同归档文件服务暂不可用，请稍后重试或联系管理员");
+    expect(tx.contractArchiveFile.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
   it("submits a draft contract version for approval", async () => {
     const version = {
       id: "contract-version-1",
