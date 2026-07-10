@@ -452,6 +452,9 @@ export function takeoverLevelReviewText(takeover: ContractTakeoverReadModel): st
   const selectedLevel = takeoverLevelLabel(takeover.takeoverLevel);
 
   if (takeover.takeoverLevel === savedSuggestedLevel) {
+    if (savedSuggestedLevel !== suggestion.level) {
+      return `确认接管等级与系统建议一致：${selectedLevel}。系统建议按接管时保存的资料快照展示，后续资料补录不会改写已保存建议。`;
+    }
     return `确认接管等级与系统建议一致：${selectedLevel}。${suggestion.reason}`;
   }
 

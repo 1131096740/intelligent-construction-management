@@ -529,6 +529,25 @@ describe("contract takeover page configuration", () => {
     ).toBe("确认接管等级由系统建议C级调整为B级，调整原因：主管按受限确认降为 B级");
   });
 
+  it("keeps saved takeover level suggestion reason from drifting after data changes", () => {
+    expect(
+      takeoverLevelReviewText({
+        ...takeover(),
+        takeoverLevel: "B",
+        suggestedTakeoverLevel: "B",
+        historicalApprovalPendingPaymentCents: "0",
+        historicalApprovedPendingPaymentCents: "0",
+        historicalProxyPaidCents: "0",
+        historicalRetentionWithheldCents: "0",
+        otherConfirmedOccupancyCents: "0",
+        balanceSourceSummary: "资料已补齐",
+        evidenceSummary: "合同、结算和付款凭证已补齐"
+      })
+    ).toBe(
+      "确认接管等级与系统建议一致：B级。系统建议按接管时保存的资料快照展示，后续资料补录不会改写已保存建议。"
+    );
+  });
+
   it("keeps takeover level review readable when summaries are missing", () => {
     expect(
       takeoverLevelReviewText({
