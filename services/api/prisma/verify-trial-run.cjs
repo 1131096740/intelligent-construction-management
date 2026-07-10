@@ -25,7 +25,8 @@ const PHONES = {
   budgetDirector: "13800001005",
   financeDirector: "13800001007",
   materialStaff: "13800001009",
-  materialDirector: "13800001008"
+  materialDirector: "13800001008",
+  employee: "13800001014"
 };
 
 const ROLE_LABELS = {
@@ -37,7 +38,8 @@ const ROLE_LABELS = {
   budgetDirector: "预算部主管",
   financeDirector: "财务总监",
   materialStaff: "物资员",
-  materialDirector: "物资主管"
+  materialDirector: "物资主管",
+  employee: "普通员工"
 };
 
 const RUN_ID = (process.env.TRIAL_RUN_ID || `${Date.now()}-${process.pid}`)
@@ -76,6 +78,7 @@ const TAKEOVER_EVIDENCE_DOWNLOAD_REASON_BY_ROLE = {
   "合同员": "UAT 合同员接管资料下载验收",
   "财务总监": "UAT 财务总监接管资料下载验收"
 };
+const TAKEOVER_EVIDENCE_DENIED_DOWNLOAD_REASON = "UAT 普通员工接管资料越权下载校验";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -482,6 +485,18 @@ async function downloadTakeoverEvidenceFile(fileId, token, label) {
   }
   const content = await response.arrayBuffer();
   assert(content.byteLength > 0, `${label}接管资料短时效链接下载内容为空`);
+}
+
+async function assertTakeoverEvidenceDownloadDenied(fileId, token, label) {
+  await postJsonExpectFailure(
+    `/files/${fileId}/download-ticket`,
+    {
+      confirmationPassword: PASSWORD,
+      downloadReason: TAKEOVER_EVIDENCE_DENIED_DOWNLOAD_REASON
+    },
+    token,
+    `${label}越权下载接管资料`
+  );
 }
 
 async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
@@ -900,6 +915,12 @@ async function assertAuditActions(input) {
       row.metadata.downloadReason === financeDownloadReason
   );
   assert(financeDownloadAudit, "关键审计日志缺少财务总监接管资料实际下载原因");
+  const employeeDownloadAudit = auditActions.find(
+    (row) =>
+      row.actorUserId === input.employeeUserId &&
+      (row.action === "file.download.ticket" || row.action === "file.download")
+  );
+  assert(!employeeDownloadAudit, "普通员工越权下载接管资料不应写入下载审计");
 }
 
 function userFacingErrorMessage(error) {
@@ -927,6 +948,7 @@ async function main() {
 
   const tokens = await loginAll();
   const financeDirectorUserId = await userIdByPhone("financeDirector");
+  const employeeUserId = await userIdByPhone("employee");
   console.log(`开始 P0-5B 真实试运行 UAT 验证，编号 ${RUN_ID}`);
 
   const initialStaffSummary = await loadWorkbenchSummary("合同员", tokens.contractStaff);
@@ -944,6 +966,7 @@ async function main() {
   );
   await assertTakeoverEvidenceVisibleInArchiveLedger(evidenceFileId, tokens.contractStaff);
   await downloadTakeoverEvidenceFile(evidenceFileId, tokens.financeDirector, "财务总监");
+  await assertTakeoverEvidenceDownloadDenied(evidenceFileId, tokens.employee, "普通员工");
 
   const staffAfterDraft = await loadWorkbenchSummary("合同员", tokens.contractStaff);
   assertCardCountAtLeast(staffAfterDraft, "contract_takeover_todo", 1, "创建历史接管后");
@@ -1038,7 +1061,8 @@ async function main() {
     settlementId: settlement.id,
     paymentId: payment.id,
     evidenceFileId,
-    financeDirectorUserId
+    financeDirectorUserId,
+    employeeUserId
   });
 
   console.log(
