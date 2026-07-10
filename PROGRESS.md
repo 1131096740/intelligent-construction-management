@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进真实试运行 UAT 付款凭证安全下载验收切片：`verify-trial-run.cjs` 将私有文件当前密码下载抽成复用检查，付款凭证进入资料库后继续用出纳账号携带当前密码和“UAT 出纳付款凭证下载验收”原因生成短时效链接并实际下载，最终审计断言同步校验下载票据和实际下载两条日志都记录出纳、fileId 和下载原因，确保付款凭证不只是入库可见，也符合敏感资料下载证据链。本轮不改变付款实付、凭证上传、资料库读模型、短时效下载和审计写入口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 付款凭证资料库验收切片：`verify-trial-run.cjs` 在出纳登记实付并上传付款凭证后，继续读取资料库台账并按 fileId 精确校验该凭证展示为“付款凭证”、关联当前 UAT 付款编号、状态为“已上传”且允许下载，确保付款实付证据不仅写入付款执行账本，也进入统一资料库证据链。本轮不改变付款实付、凭证上传、资料库读模型、短时效下载和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 结算归档资料库验收切片：`verify-trial-run.cjs` 在结算审批通过、上传结算归档件并由合同部主管确认后，继续读取资料库台账并按 fileId 精确校验该资料展示为“结算归档件”、关联当前 UAT 结算编号和期间、状态为“已确认”且允许下载，确保新结算生效事实同步进入统一资料库证据链。本轮不改变结算归档、归档确认、资料库读模型、短时效下载和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 付款 PDF 资料库验收切片：`verify-trial-run.cjs` 在付款实付、财务入账并归档付款 PDF 后，继续读取资料库台账并按 fileId 精确校验该付款 PDF 展示为“付款PDF留档”、关联当前 UAT 付款编号、状态为“已入库”且允许下载，确保付款闭环不只停留在付款详情和审计动作，也能进入统一资料库证据链。本轮不改变付款归档、财务入账、资料库读模型、短时效下载和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。

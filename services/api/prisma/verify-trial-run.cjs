@@ -79,6 +79,7 @@ const TAKEOVER_EVIDENCE_DOWNLOAD_REASON_BY_ROLE = {
   "财务总监": "UAT 财务总监接管资料下载验收"
 };
 const TAKEOVER_EVIDENCE_DENIED_DOWNLOAD_REASON = "UAT 普通员工接管资料越权下载校验";
+const PAYMENT_VOUCHER_DOWNLOAD_REASON = "UAT 出纳付款凭证下载验收";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -460,9 +461,8 @@ async function assertTakeoverVerification(takeoverId, token, expected) {
   return verification;
 }
 
-async function downloadTakeoverEvidenceFile(fileId, token, label) {
-  const downloadReason = TAKEOVER_EVIDENCE_DOWNLOAD_REASON_BY_ROLE[label];
-  assert(downloadReason, `${label} 接管资料下载原因未配置`);
+async function downloadPrivateFileWithReason(fileId, token, label, downloadReason) {
+  assert(downloadReason, `${label}下载原因未配置`);
   const ticket = await postJson(
     `/files/${fileId}/download-ticket`,
     {
@@ -470,21 +470,30 @@ async function downloadTakeoverEvidenceFile(fileId, token, label) {
       downloadReason
     },
     token,
-    `${label}生成接管资料短时效下载链接`
+    `${label}生成短时效下载链接`
   );
-  assertEqual(ticket.fileId, fileId, `${label}接管资料下载票据文件`);
+  assertEqual(ticket.fileId, fileId, `${label}下载票据文件`);
   assert(
     typeof ticket.downloadUrl === "string" && ticket.downloadUrl.includes("downloadReason="),
-    `${label}接管资料下载票据未包含下载原因`
+    `${label}下载票据未包含下载原因`
   );
 
   const response = await fetch(`${baseUrl}${ticket.downloadUrl}`);
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`${label}接管资料短时效链接下载失败：HTTP ${response.status} ${body}`);
+    throw new Error(`${label}短时效链接下载失败：HTTP ${response.status} ${body}`);
   }
   const content = await response.arrayBuffer();
-  assert(content.byteLength > 0, `${label}接管资料短时效链接下载内容为空`);
+  assert(content.byteLength > 0, `${label}短时效链接下载内容为空`);
+}
+
+async function downloadTakeoverEvidenceFile(fileId, token, label) {
+  await downloadPrivateFileWithReason(
+    fileId,
+    token,
+    `${label}接管资料`,
+    TAKEOVER_EVIDENCE_DOWNLOAD_REASON_BY_ROLE[label]
+  );
 }
 
 async function assertTakeoverEvidenceDownloadDenied(fileId, token, label) {
@@ -882,6 +891,12 @@ async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
     payment.code,
     tokens.contractStaff
   );
+  await downloadPrivateFileWithReason(
+    voucherFile.id,
+    tokens.cashier,
+    "出纳付款凭证",
+    PAYMENT_VOUCHER_DOWNLOAD_REASON
+  );
 
   const financeRecord = await postJson(
     `/payments/${payment.id}/finance-records`,
@@ -916,7 +931,7 @@ async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
   assertEqual(persisted.status, "paid", "付款实付后状态");
   assertEqual(persisted.paidAmountCents, 1000000, "付款实付后累计实付金额");
 
-  return { execution, financeRecord, pdfArchive };
+  return { execution, financeRecord, pdfArchive, voucherFileId: voucherFile.id };
 }
 
 async function assertAuditActions(input) {
@@ -926,7 +941,8 @@ async function assertAuditActions(input) {
         { businessType: "contract_takeover", businessId: input.takeoverId },
         { businessType: "settlement", businessId: input.settlementId },
         { businessType: "payment_request", businessId: input.paymentId },
-        { businessType: "file_object", businessId: input.evidenceFileId }
+        { businessType: "file_object", businessId: input.evidenceFileId },
+        { businessType: "file_object", businessId: input.paymentVoucherFileId }
       ]
     },
     select: { action: true, actorUserId: true, metadata: true }
@@ -1009,6 +1025,26 @@ async function assertAuditActions(input) {
       (row.action === "file.download.ticket" || row.action === "file.download")
   );
   assert(!employeeDownloadAudit, "普通员工越权下载接管资料不应写入下载审计");
+  const voucherTicketAudit = auditActions.find(
+    (row) =>
+      row.action === "file.download.ticket" &&
+      row.actorUserId === input.cashierUserId &&
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      row.metadata.fileId === input.paymentVoucherFileId &&
+      row.metadata.downloadReason === PAYMENT_VOUCHER_DOWNLOAD_REASON
+  );
+  assert(voucherTicketAudit, "关键审计日志缺少出纳付款凭证下载票据原因");
+  const voucherDownloadAudit = auditActions.find(
+    (row) =>
+      row.action === "file.download" &&
+      row.actorUserId === input.cashierUserId &&
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      row.metadata.fileId === input.paymentVoucherFileId &&
+      row.metadata.downloadReason === PAYMENT_VOUCHER_DOWNLOAD_REASON
+  );
+  assert(voucherDownloadAudit, "关键审计日志缺少出纳付款凭证实际下载原因");
 }
 
 function userFacingErrorMessage(error) {
@@ -1035,6 +1071,7 @@ async function main() {
   }
 
   const tokens = await loginAll();
+  const cashierUserId = await userIdByPhone("cashier");
   const financeDirectorUserId = await userIdByPhone("financeDirector");
   const employeeUserId = await userIdByPhone("employee");
   console.log(`开始 P0-5B 真实试运行 UAT 验证，编号 ${RUN_ID}`);
@@ -1133,7 +1170,7 @@ async function main() {
   const cashierSummary = await loadWorkbenchSummary("出纳/财务", tokens.cashier);
   assertCardCountAtLeast(cashierSummary, "approved_pending_payment", 1, "付款审批通过后");
 
-  await recordPaymentExecutionFinanceAndArchive(payment, tokens);
+  const paymentClosure = await recordPaymentExecutionFinanceAndArchive(payment, tokens);
   await assertTakeoverVerification(takeover.id, tokens.contractStaff, {
     label: "实付入账后的核验摘要状态",
     statusLabel: "已形成闭环",
@@ -1150,6 +1187,8 @@ async function main() {
     settlementId: settlement.id,
     paymentId: payment.id,
     evidenceFileId,
+    paymentVoucherFileId: paymentClosure.voucherFileId,
+    cashierUserId,
     financeDirectorUserId,
     employeeUserId
   });
