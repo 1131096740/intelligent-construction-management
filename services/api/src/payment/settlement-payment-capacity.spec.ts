@@ -661,6 +661,20 @@ describe("calculateContractDuePaymentCapacity", () => {
       duePayableCents: 100_000,
       remainingCents: 100_000
     });
+
+    const preview = buildApplicationPreview({
+      asOf: new Date("2026-07-02T00:00:00.000Z"),
+      ...input
+    });
+    expect(preview.sections[0].rows).toEqual([
+      expect.objectContaining({
+        id: "settlement-takeover-initial:progress:0",
+        effectiveAt: new Date("2026-06-01T00:00:00.000Z"),
+        expectedPayableAt: new Date("2026-07-01T00:00:00.000Z"),
+        isDue: true,
+        includableAmountCents: 100_000
+      })
+    ]);
   });
 
   it("counts partially paid and paid settlements as effective contract capacity rows", () => {
