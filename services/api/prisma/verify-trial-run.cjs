@@ -1246,7 +1246,7 @@ async function main() {
   assert(confirmed.historicalBalanceConfirmedAt, "历史接管确认后未写入历史余额确认时间");
   takeoverRecord = await loadTakeoverRecord(takeover.id);
   assert(takeoverRecord.historicalBalanceConfirmedAt, "数据库历史余额确认时间为空");
-  await assertHistoricalInitialSettlement(takeoverRecord);
+  const initialSettlement = await assertHistoricalInitialSettlement(takeoverRecord);
   await assertTakeoverVerification(takeover.id, tokens.contractStaff, {
     label: "确认接管后的核验摘要状态",
     statusLabel: "待核验"
@@ -1272,8 +1272,9 @@ async function main() {
   assertHistoricalBalanceInPreview(preview);
   assert(
     Array.isArray(preview.includedSettlements) &&
+      preview.includedSettlements.some((row) => row.settlementId === initialSettlement.id) &&
       preview.includedSettlements.some((row) => row.settlementId === settlement.id),
-    "付款预览未包含刚生效的 UAT 结算"
+    "付款预览未同时包含历史期初结算和刚生效的 UAT 结算"
   );
 
   const payment = await createAndApprovePayment(takeoverRecord.contractVersionId, tokens);
