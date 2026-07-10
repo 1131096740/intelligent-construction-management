@@ -306,15 +306,15 @@ export class ContractService {
           WHERE "id" = ${contractVersionId}
           FOR UPDATE
         `);
-        if (!version) throw new Error("Contract version not found");
+        if (!version) throw new Error("未找到要提交审批的合同版本，请刷新合同后重试");
 
         const contract = await tx.contract.findUnique({
           where: { id: version.contractId }
         });
-        if (!contract) throw new Error("Contract not found");
-        if (contract.voidedAt) throw new Error("Cannot submit a voided contract");
+        if (!contract) throw new Error("未找到合同主信息，请刷新合同后重试");
+        if (contract.voidedAt) throw new Error("作废合同不能提交审批，请重新选择有效合同");
         if (contract.ownerUserId && contract.ownerUserId !== actorUserId) {
-          throw new Error("Only the contract owner can submit approval");
+          throw new Error("只有合同经办人可以提交该合同审批");
         }
 
         const input = contract.ownerUserId ? this.parseSubmissionInput(rawInput) : null;
@@ -323,12 +323,12 @@ export class ContractService {
         let templateSnapshot = version.templateSnapshot;
         if (input) {
           if (!this.readiness || !this.numbering) {
-            throw new Error("Contract submission services are required");
+            throw new Error("合同提交审批服务暂不可用，请稍后重试或联系管理员");
           }
           const readiness = await this.readiness.check(tx, version, contract, true);
           if (readiness.blocking.length > 0) {
             throw new BadRequestException({
-              message: "Contract is not ready for approval submission",
+              message: "合同资料尚未满足提交审批条件，请按阻断项补齐后再提交",
               readiness
             });
           }
@@ -370,7 +370,7 @@ export class ContractService {
           }
         });
         if (submitted.count !== 1) {
-          throw new Error("Contract approval submission conflict");
+          throw new Error("合同提交审批时数据已变化，请刷新合同后重试");
         }
         const parentGate = await tx.contract.updateMany({
           where: {
@@ -384,7 +384,7 @@ export class ContractService {
           }
         });
         if (parentGate.count !== 1) {
-          throw new Error("Contract approval submission conflict");
+          throw new Error("合同提交审批时数据已变化，请刷新合同后重试");
         }
 
         await tx.approvalInstance.create({
@@ -438,7 +438,7 @@ export class ContractService {
         "code" in error &&
         error.code === "P2002"
       ) {
-        throw new BadRequestException("Contract formal code already exists");
+        throw new BadRequestException("正式合同编号已存在，请刷新后重新提交或选择其他编号");
       }
       throw error;
     }
@@ -509,24 +509,24 @@ export class ContractService {
 
   private parseSubmissionInput(rawInput: unknown): SubmitContractApprovalDto {
     if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) {
-      throw new BadRequestException("Contract approval submission body is required");
+      throw new BadRequestException("提交合同审批前请先选择编号规则");
     }
     const input = rawInput as Record<string, unknown>;
     if (typeof input.numberRuleId !== "string" || !input.numberRuleId.trim()) {
-      throw new BadRequestException("numberRuleId is required");
+      throw new BadRequestException("提交合同审批前请先选择编号规则");
     }
     if (
       input.formalCodeOverride !== undefined &&
       (typeof input.formalCodeOverride !== "string" ||
         !input.formalCodeOverride.trim())
     ) {
-      throw new BadRequestException("formalCodeOverride must be a non-empty string");
+      throw new BadRequestException("正式合同编号不能为空");
     }
     if (
       input.overrideReason !== undefined &&
       (typeof input.overrideReason !== "string" || !input.overrideReason.trim())
     ) {
-      throw new BadRequestException("overrideReason must be a non-empty string");
+      throw new BadRequestException("调整正式合同编号时请填写原因");
     }
     return {
       numberRuleId: input.numberRuleId.trim(),

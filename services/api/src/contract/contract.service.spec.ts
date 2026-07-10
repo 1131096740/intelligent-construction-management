@@ -1071,7 +1071,7 @@ describe("ContractService", () => {
     await expect(
       service.submitApproval("contract-version-1", "user-contract-staff", { numberRuleId: "rule-1" })
     ).rejects.toMatchObject({
-      message: "Contract is not ready for approval submission"
+      message: "合同资料尚未满足提交审批条件，请按阻断项补齐后再提交"
     });
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
     expect(numbering.allocate).not.toHaveBeenCalled();
@@ -1105,19 +1105,19 @@ describe("ContractService", () => {
 
     await expect(
       service.submitApproval("contract-version-1", "user-contract-staff")
-    ).rejects.toThrow("Contract approval submission body is required");
+    ).rejects.toThrow("提交合同审批前请先选择编号规则");
   });
 
   it.each([
     [
       "voided",
       { id: "contract-1", ownerUserId: "user-contract-staff", voidedAt: new Date() },
-      "Cannot submit a voided contract"
+      "作废合同不能提交审批，请重新选择有效合同"
     ],
     [
       "non-owner",
       { id: "contract-1", ownerUserId: "another-user", voidedAt: null },
-      "Only the contract owner can submit approval"
+      "只有合同经办人可以提交该合同审批"
     ]
   ])("rejects %s contract approval submission", async (_case, contract, message) => {
     const tx = {
@@ -1194,7 +1194,7 @@ describe("ContractService", () => {
 
     await expect(
       service.submitApproval("contract-version-1", "user-contract-staff")
-    ).rejects.toThrow("Contract approval submission conflict");
+    ).rejects.toThrow("合同提交审批时数据已变化，请刷新合同后重试");
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -1244,7 +1244,7 @@ describe("ContractService", () => {
 
     await expect(
       service.submitApproval("contract-version-1", "user-contract-staff")
-    ).rejects.toThrow("Contract approval submission conflict");
+    ).rejects.toThrow("合同提交审批时数据已变化，请刷新合同后重试");
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
