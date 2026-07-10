@@ -1,4 +1,9 @@
-import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  type OnModuleInit
+} from "@nestjs/common";
 import { type FileObject, Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
@@ -307,6 +312,23 @@ function normalizeDownloadReason(value: string | undefined): string {
   return reason;
 }
 
+const SAFE_ERROR_FACT = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+
+function safeErrorSummary(error: unknown, stage: string) {
+  const source =
+    typeof error === "object" && error !== null ? (error as Record<string, unknown>) : null;
+  const name =
+    typeof source?.name === "string" && SAFE_ERROR_FACT.test(source.name)
+      ? source.name
+      : "UnknownError";
+  const code =
+    typeof source?.code === "string" && SAFE_ERROR_FACT.test(source.code)
+      ? source.code
+      : undefined;
+
+  return code ? { stage, name, code } : { stage, name };
+}
+
 @Injectable()
 export class FileService {
   private readonly logger = new Logger(FileService.name);
@@ -340,36 +362,51 @@ export class FileService {
     const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
     await this.storage.write(objectKey, input.buffer);
 
-    return this.prisma.$transaction(async (tx) => {
-      const file = await tx.fileObject.create({
-        data: {
-          bucket: this.storage.bucketName(),
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const file = await tx.fileObject.create({
+          data: {
+            bucket: this.storage.bucketName(),
+            objectKey,
+            originalName: input.originalName,
+            mimeType: input.mimeType,
+            sizeBytes: input.sizeBytes,
+            uploadedByUserId: input.uploadedByUserId,
+            contentSha256,
+            storageStatus: "active",
+            supersedesFileObjectId: input.supersedesFileObjectId ?? null
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId: input.uploadedByUserId,
+          action: "file.upload",
+          businessType: "file_object",
+          businessId: file.id,
+          metadata: {
+            bucket: file.bucket,
+            objectKey: file.objectKey,
+            originalName: file.originalName,
+            sizeBytes: file.sizeBytes
+          }
+        });
+
+        return file;
+      });
+    } catch (transactionError) {
+      try {
+        await this.storage.delete(objectKey);
+      } catch (cleanupError) {
+        this.logger.error({
+          event: "private_file_registration_cleanup_failed",
           objectKey,
-          originalName: input.originalName,
-          mimeType: input.mimeType,
-          sizeBytes: input.sizeBytes,
-          uploadedByUserId: input.uploadedByUserId,
-          contentSha256,
-          storageStatus: "active",
-          supersedesFileObjectId: input.supersedesFileObjectId ?? null
-        }
-      });
-
-      await this.audit.record(tx, {
-        actorUserId: input.uploadedByUserId,
-        action: "file.upload",
-        businessType: "file_object",
-        businessId: file.id,
-        metadata: {
-          bucket: file.bucket,
-          objectKey: file.objectKey,
-          originalName: file.originalName,
-          sizeBytes: file.sizeBytes
-        }
-      });
-
-      return file;
-    });
+          transactionError: safeErrorSummary(transactionError, "database_transaction"),
+          cleanupError: safeErrorSummary(cleanupError, "orphan_cleanup")
+        });
+        throw new InternalServerErrorException("文件登记失败且存储清理未完成");
+      }
+      throw transactionError;
+    }
   }
 
   async createDownloadTicket(fileId: string, input: CreateFileDownloadTicketInput) {

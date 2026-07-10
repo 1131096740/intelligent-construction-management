@@ -1,4 +1,4 @@
-import { Logger } from "@nestjs/common";
+import { InternalServerErrorException, Logger } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -594,6 +594,172 @@ describe("FileService", () => {
         sizeBytes: 12
       }
     });
+    expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it.each(["file object creation", "upload audit"] as const)(
+    "deletes the written object once and rethrows the original transaction error when %s fails",
+    async (failureStage) => {
+      const transactionError = Object.assign(new Error(`transaction failed at ${failureStage}`), {
+        name: "PrismaClientKnownRequestError",
+        code: "P2002"
+      });
+      const tx = {
+        fileObject: {
+          create: jest.fn()
+        }
+      };
+      if (failureStage === "file object creation") {
+        tx.fileObject.create.mockRejectedValue(transactionError as never);
+        audit.record.mockResolvedValue(undefined);
+      } else {
+        tx.fileObject.create.mockResolvedValue({
+          id: "file-transaction-failure",
+          bucket: "private-local",
+          objectKey: "uploads/file-transaction-failure.pdf",
+          originalName: "合同附件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1"
+        } as never);
+        audit.record.mockRejectedValue(transactionError);
+      }
+      const prisma = {
+        $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      } as unknown as PrismaService;
+      const service = new FileService(
+        prisma,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage
+      );
+
+      let thrown: unknown;
+      try {
+        await service.uploadPrivateFile({
+          originalName: "合同附件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1",
+          buffer: Buffer.from("private-file")
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      const objectKey = storage.write.mock.calls[0]?.[0] as string;
+      expect(objectKey).toMatch(/^uploads\/[a-f0-9-]+-合同附件\.pdf$/);
+      expect(storage.delete).toHaveBeenCalledTimes(1);
+      expect(storage.delete).toHaveBeenCalledWith(objectKey);
+      expect(thrown).toBe(transactionError);
+      expect((thrown as Error).name).toBe("PrismaClientKnownRequestError");
+      expect((thrown as Error & { code: string }).code).toBe("P2002");
+    }
+  );
+
+  it("logs only safe failure facts and returns a fixed 500 when orphan cleanup also fails", async () => {
+    const transactionError = Object.assign(
+      new Error("database failed Authorization=Bearer db-secret"),
+      {
+        name: "PrismaClientKnownRequestError",
+        code: "P2002",
+        secret: "db-secret",
+        buffer: Buffer.from("db-buffer-secret")
+      }
+    );
+    const cleanupError = Object.assign(
+      new Error("COS delete failed Authorization=Bearer cos-secret"),
+      {
+        name: "CosDeleteError",
+        code: "COS_DELETE_FAILED",
+        Authorization: "Bearer cos-secret",
+        buffer: Buffer.from("cos-buffer-secret")
+      }
+    );
+    const prisma = {
+      $transaction: jest.fn().mockRejectedValue(transactionError)
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const loggerError = jest.spyOn(Logger.prototype, "error").mockImplementation();
+    storage.delete.mockRejectedValue(cleanupError);
+
+    try {
+      let thrown: unknown;
+      try {
+        await service.uploadPrivateFile({
+          originalName: "敏感合同附件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1",
+          buffer: Buffer.from("private-file")
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      const objectKey = storage.write.mock.calls[0]?.[0] as string;
+      expect(storage.delete).toHaveBeenCalledTimes(1);
+      expect(storage.delete).toHaveBeenCalledWith(objectKey);
+      expect(loggerError).toHaveBeenCalledTimes(1);
+
+      const logged = JSON.stringify(loggerError.mock.calls);
+      expect(logged).toContain(objectKey);
+      expect(logged).toContain("database_transaction");
+      expect(logged).toContain("orphan_cleanup");
+      expect(logged).toContain("PrismaClientKnownRequestError");
+      expect(logged).toContain("P2002");
+      expect(logged).toContain("CosDeleteError");
+      expect(logged).toContain("COS_DELETE_FAILED");
+      expect(logged).not.toContain("db-secret");
+      expect(logged).not.toContain("cos-secret");
+      expect(logged).not.toContain("db-buffer-secret");
+      expect(logged).not.toContain("cos-buffer-secret");
+      expect(logged).not.toContain("Authorization");
+
+      expect(thrown).toBeInstanceOf(InternalServerErrorException);
+      expect((thrown as InternalServerErrorException).getStatus()).toBe(500);
+      expect((thrown as InternalServerErrorException).message).toBe(
+        "文件登记失败且存储清理未完成"
+      );
+      const publicFailure = JSON.stringify(thrown);
+      expect(publicFailure).not.toContain(objectKey);
+      expect(publicFailure).not.toContain("db-secret");
+      expect(publicFailure).not.toContain("cos-secret");
+      expect(publicFailure).not.toContain("敏感合同附件.pdf");
+    } finally {
+      loggerError.mockRestore();
+    }
+  });
+
+  it("does not delete an object when the storage write itself fails", async () => {
+    const storageError = new Error("storage write failed");
+    storage.write.mockRejectedValue(storageError);
+    const prisma = {
+      $transaction: jest.fn()
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.uploadPrivateFile({
+        originalName: "合同附件.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 12,
+        uploadedByUserId: "contract-staff-1",
+        buffer: Buffer.from("private-file")
+      })
+    ).rejects.toBe(storageError);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 
   it("creates a new object and preserves the old object when an internal upload supersedes it", async () => {
