@@ -587,6 +587,41 @@ async function assertTakeoverEvidenceDownloadDenied(fileId, token, label) {
   );
 }
 
+async function assertTakeoverEvidenceDownloadReasonRequired(fileId, token) {
+  const auditCountBefore = await prisma.auditLog.count({
+    where: {
+      businessType: "file_object",
+      businessId: fileId,
+      action: { in: ["file.download.ticket", "file.download"] }
+    }
+  });
+  const failed = await postJsonExpectFailure(
+    `/files/${fileId}/download-ticket`,
+    {
+      confirmationPassword: PASSWORD,
+      downloadReason: "   "
+    },
+    token,
+    "缺下载原因下载接管资料"
+  );
+  assert(
+    failed.status >= 400,
+    `缺下载原因下载接管资料 HTTP 状态异常：${failed.status}`
+  );
+  assert(
+    failed.body.includes("请填写下载原因"),
+    `缺下载原因下载接管资料未返回中文业务提示：${failed.body}`
+  );
+  const auditCountAfter = await prisma.auditLog.count({
+    where: {
+      businessType: "file_object",
+      businessId: fileId,
+      action: { in: ["file.download.ticket", "file.download"] }
+    }
+  });
+  assertEqual(auditCountAfter, auditCountBefore, "缺下载原因下载接管资料审计数量");
+}
+
 async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
   for (const purpose of TAKEOVER_EVIDENCE_PURPOSES) {
     const uploaded = await uploadPrivateFile(`UAT-${CODES.contract}-${purpose}.pdf`, token);
@@ -1230,6 +1265,7 @@ async function main() {
     tokens.contractStaff
   );
   await assertTakeoverEvidenceVisibleInArchiveLedger(evidenceFileId, tokens.contractStaff);
+  await assertTakeoverEvidenceDownloadReasonRequired(evidenceFileId, tokens.contractStaff);
   await downloadTakeoverEvidenceFile(evidenceFileId, tokens.financeDirector, "财务总监");
   await assertTakeoverEvidenceDownloadDenied(evidenceFileId, tokens.employee, "普通员工");
 
