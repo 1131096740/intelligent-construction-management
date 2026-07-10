@@ -474,6 +474,7 @@ describe("contract takeover page configuration", () => {
 
     expect(summary.items).toEqual([
       { label: "接管截止日", value: "2026-06-30" },
+      { label: "系统建议等级", value: "B级" },
       { label: "确认接管等级", value: "B级" },
       { label: "历史累计结算", value: "¥600,000.00" },
       { label: "历史累计已付", value: "¥300,000.00" },

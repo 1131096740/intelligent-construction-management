@@ -544,6 +544,7 @@ export function buildTakeoverConfirmationSummary(
   return {
     items: [
       { label: "接管截止日", value: formatTakeoverDate(takeover.takeoverCutoffDate) },
+      { label: "系统建议等级", value: takeoverSuggestedLevelLabel(takeover) },
       { label: "确认接管等级", value: takeoverLevelLabel(takeover.takeoverLevel) },
       { label: "历史累计结算", value: centsToYuanText(takeover.historicalSettledCents) },
       { label: "历史累计已付", value: centsToYuanText(takeover.historicalPaidCents) },
