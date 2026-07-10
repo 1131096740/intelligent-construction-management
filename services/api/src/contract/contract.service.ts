@@ -1232,13 +1232,11 @@ export class ContractService {
       });
 
       if (!version) {
-        throw new Error("Contract version not found");
+        throw new Error("未找到要用章确认的合同版本，请刷新合同台账后重试");
       }
 
       if (version.status !== input.expectedStatus) {
-        throw new Error(
-          `Cannot ${input.action} contract version from status ${version.status}`
-        );
+        throw new Error("当前合同尚不能用章确认，请先完成合同审批");
       }
 
       const updated = await tx.contractVersion.update({

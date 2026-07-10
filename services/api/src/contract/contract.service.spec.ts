@@ -2365,6 +2365,38 @@ describe("ContractService", () => {
     });
   });
 
+  it.each([
+    [
+      "合同版本不存在",
+      null,
+      "未找到要用章确认的合同版本，请刷新合同台账后重试"
+    ],
+    [
+      "合同尚未完成审批",
+      { id: "contract-version-1", status: "in_approval" },
+      "当前合同尚不能用章确认，请先完成合同审批"
+    ]
+  ])("合同用章确认在%s时给出中文业务提示", async (_case, version, message) => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(version),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.approveSeal("contract-version-1", "user-contract-staff")
+    ).rejects.toThrow(message);
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("confirms a signed contract archive file and makes the version effective", async () => {
     const tx = {
       contractVersion: {
