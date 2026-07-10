@@ -675,14 +675,22 @@ model ApprovalDelegation {
 }
 
 model FileObject {
-  id               String   @id @default(uuid())
-  bucket           String
-  objectKey        String
-  originalName     String
-  mimeType         String
-  sizeBytes        Int
-  uploadedByUserId String
-  createdAt        DateTime @default(now())
+  id                      String       @id @default(uuid())
+  bucket                  String
+  objectKey               String
+  originalName            String
+  mimeType                String
+  sizeBytes               Int
+  uploadedByUserId        String
+  contentSha256           String?
+  storageStatus           String       @default("active")
+  supersedesFileObjectId  String?
+  supersedesFileObject    FileObject?  @relation("FileObjectReplacement", fields: [supersedesFileObjectId], references: [id], onDelete: SetNull)
+  supersededByFileObjects FileObject[] @relation("FileObjectReplacement")
+  createdAt               DateTime     @default(now())
+
+  @@index([supersedesFileObjectId])
+  @@index([storageStatus])
 }
 
 model ArchiveRecord {

@@ -74,6 +74,32 @@ describe("FileController authorization wiring", () => {
     }
   );
 
+  it("does not forward a client supplied replacement file id from the public upload", async () => {
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
+    };
+    const controller = new FileController(files as never, { confirmPassword: jest.fn() } as never);
+
+    await controller.upload(
+      {
+        originalname: "合同附件.pdf",
+        mimetype: "application/pdf",
+        size: 12,
+        buffer: Buffer.from("private-file"),
+        supersedesFileObjectId: "file-client-chosen"
+      } as never,
+      { id: "user-1", name: "张三", phone: "13800000000" }
+    );
+
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      originalName: "合同附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "user-1",
+      buffer: Buffer.from("private-file")
+    });
+  });
+
   it("confirms password before issuing a private file download ticket", async () => {
     const files = {
       createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })

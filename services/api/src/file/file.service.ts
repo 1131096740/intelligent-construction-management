@@ -1,4 +1,4 @@
-import { Injectable, type OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { type FileObject, Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
@@ -13,6 +13,7 @@ export interface UploadPrivateFileInput {
   sizeBytes: number;
   uploadedByUserId: string;
   buffer: Buffer;
+  supersedesFileObjectId?: string;
 }
 
 export interface ReadPrivateFileInput {
@@ -308,6 +309,8 @@ function normalizeDownloadReason(value: string | undefined): string {
 
 @Injectable()
 export class FileService {
+  private readonly logger = new Logger(FileService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService = new AuditService(),
@@ -334,6 +337,7 @@ export class FileService {
     }
 
     const objectKey = `uploads/${randomUUID()}-${this.safeFileName(input.originalName)}`;
+    const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
     await this.storage.write(objectKey, input.buffer);
 
     return this.prisma.$transaction(async (tx) => {
@@ -344,7 +348,10 @@ export class FileService {
           originalName: input.originalName,
           mimeType: input.mimeType,
           sizeBytes: input.sizeBytes,
-          uploadedByUserId: input.uploadedByUserId
+          uploadedByUserId: input.uploadedByUserId,
+          contentSha256,
+          storageStatus: "active",
+          supersedesFileObjectId: input.supersedesFileObjectId ?? null
         }
       });
 
@@ -453,6 +460,13 @@ export class FileService {
       buffer = await this.storage.read(file.objectKey);
     } catch {
       throw new Error("资料文件暂时无法读取，请稍后重试或联系管理员核对私有存储");
+    }
+    if (
+      file.contentSha256 &&
+      createHash("sha256").update(buffer).digest("hex") !== file.contentSha256
+    ) {
+      this.logger.error(`私有文件完整性校验失败 fileId=${file.id}`);
+      throw new Error("资料文件完整性校验失败，请联系管理员核对存储文件");
     }
     await this.prisma.$transaction((tx) =>
       this.audit.record(tx, {

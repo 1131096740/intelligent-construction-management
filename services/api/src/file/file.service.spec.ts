@@ -1,3 +1,5 @@
+import { Logger } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,6 +46,7 @@ describe("FileService", () => {
   const storage = {
     write: jest.fn(),
     read: jest.fn(),
+    delete: jest.fn(),
     bucketName: jest.fn()
   };
 
@@ -52,6 +55,7 @@ describe("FileService", () => {
     audit.record.mockReset();
     storage.write.mockReset();
     storage.read.mockReset();
+    storage.delete.mockReset();
     storage.bucketName.mockReset();
     storage.bucketName.mockReturnValue("private-local");
   });
@@ -523,6 +527,8 @@ describe("FileService", () => {
   });
 
   it("stores a private upload and records a file object with audit log", async () => {
+    const buffer = Buffer.from("private-file");
+    const contentSha256 = createHash("sha256").update(buffer).digest("hex");
     const tx = {
       fileObject: {
         create: jest.fn().mockResolvedValue({
@@ -555,21 +561,25 @@ describe("FileService", () => {
       mimeType: "application/pdf",
       sizeBytes: 12,
       uploadedByUserId: "contract-staff-1",
-      buffer: Buffer.from("private-file")
+      buffer
     });
 
     expect(result.id).toBe("file-1");
     expect(storage.write).toHaveBeenCalledWith(
       expect.stringMatching(/^uploads\/[a-f0-9-]+-盖章合同\.pdf$/),
-      Buffer.from("private-file")
+      buffer
     );
     expect(tx.fileObject.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         bucket: "private-local",
+        objectKey: expect.stringMatching(/^uploads\/[a-f0-9-]+-盖章合同\.pdf$/),
         originalName: "盖章合同.pdf",
         mimeType: "application/pdf",
         sizeBytes: 12,
-        uploadedByUserId: "contract-staff-1"
+        uploadedByUserId: "contract-staff-1",
+        contentSha256,
+        storageStatus: "active",
+        supersedesFileObjectId: null
       })
     });
     expect(audit.record).toHaveBeenCalledWith(tx, {
@@ -584,6 +594,58 @@ describe("FileService", () => {
         sizeBytes: 12
       }
     });
+  });
+
+  it("creates a new object and preserves the old object when an internal upload supersedes it", async () => {
+    const tx = {
+      fileObject: {
+        create: jest.fn().mockResolvedValue({
+          id: "file-new",
+          bucket: "private-local",
+          objectKey: "uploads/new-file.pdf",
+          originalName: "合同更正件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "contract-staff-1",
+          supersedesFileObjectId: "file-old"
+        }),
+        update: jest.fn(),
+        delete: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const input = {
+      originalName: "合同更正件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "contract-staff-1",
+      buffer: Buffer.from("private-file"),
+      supersedesFileObjectId: "file-old"
+    };
+
+    await service.uploadPrivateFile(input);
+
+    const objectKey = storage.write.mock.calls[0]?.[0] as string;
+    expect(objectKey).toMatch(/^uploads\/[a-f0-9-]+-合同更正件\.pdf$/);
+    expect(objectKey).not.toBe("uploads/file-old.pdf");
+    expect(tx.fileObject.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        objectKey,
+        supersedesFileObjectId: "file-old"
+      })
+    });
+    expect(tx.fileObject.update).not.toHaveBeenCalled();
+    expect(tx.fileObject.delete).not.toHaveBeenCalled();
+    expect(storage.delete).not.toHaveBeenCalled();
   });
 
   it("loads a private file buffer for an authorized internal service", async () => {
@@ -2540,6 +2602,7 @@ describe("FileService", () => {
   });
 
   it("reads a private file through a short-lived ticket and records download audit", async () => {
+    const buffer = Buffer.from("private-file");
     const tx = {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -2549,7 +2612,8 @@ describe("FileService", () => {
           originalName: "盖章合同.pdf",
           mimeType: "application/pdf",
           sizeBytes: 12,
-          uploadedByUserId: "finance-1"
+          uploadedByUserId: "finance-1",
+          contentSha256: createHash("sha256").update(buffer).digest("hex")
         })
       },
       contractArchiveFile: { findFirst: jest.fn() },
@@ -2566,7 +2630,7 @@ describe("FileService", () => {
       audit as unknown as AuditService,
       storage as unknown as PrivateFileStorage
     );
-    storage.read.mockResolvedValue(Buffer.from("private-file"));
+    storage.read.mockResolvedValue(buffer);
 
     const ticket = await service.createDownloadTicket("file-1", {
       actorUserId: "finance-1",
@@ -2582,7 +2646,7 @@ describe("FileService", () => {
       token: url.searchParams.get("token") ?? ""
     });
 
-    expect(result.buffer).toEqual(Buffer.from("private-file"));
+    expect(result.buffer).toEqual(buffer);
     expect(storage.read).toHaveBeenCalledWith("uploads/file-1.pdf");
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: "finance-1",
@@ -2595,6 +2659,114 @@ describe("FileService", () => {
         downloadReason: "资料下载复核"
       }
     });
+  });
+
+  it("rejects a private file whose stored content hash no longer matches", async () => {
+    const expectedHash = "0".repeat(64);
+    const actualHash = createHash("sha256").update("tampered-file").digest("hex");
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "盖章合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-1",
+          contentSha256: expectedHash
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const loggerError = jest.spyOn(Logger.prototype, "error").mockImplementation();
+    storage.read.mockResolvedValue(Buffer.from("tampered-file"));
+
+    try {
+      const ticket = await service.createDownloadTicket("file-1", {
+        actorUserId: "finance-1",
+        downloadReason: "资料下载复核"
+      });
+      const url = new URL(`http://local${ticket.downloadUrl}`);
+      audit.record.mockClear();
+
+      await expect(
+        service.readPrivateFile("file-1", {
+          actorUserId: url.searchParams.get("actorUserId") ?? "",
+          expiresAt: url.searchParams.get("expiresAt") ?? "",
+          downloadReason: url.searchParams.get("downloadReason") ?? "",
+          token: url.searchParams.get("token") ?? ""
+        })
+      ).rejects.toThrow("资料文件完整性校验失败，请联系管理员核对存储文件");
+
+      const logged = JSON.stringify(loggerError.mock.calls);
+      expect(loggerError).toHaveBeenCalled();
+      expect(logged).not.toContain(expectedHash);
+      expect(logged).not.toContain(actualHash);
+      expect(logged).not.toContain("uploads/file-1.pdf");
+      expect(logged).not.toContain("secret-id");
+      expect(logged).not.toContain("secret-key");
+      expect(audit.record).not.toHaveBeenCalled();
+    } finally {
+      loggerError.mockRestore();
+    }
+  });
+
+  it("keeps historical files without a content hash readable", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-legacy",
+          bucket: "private-local",
+          objectKey: "uploads/legacy.pdf",
+          originalName: "历史合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-1",
+          contentSha256: null
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    storage.read.mockResolvedValue(Buffer.from("legacy-file"));
+
+    const ticket = await service.createDownloadTicket("file-legacy", {
+      actorUserId: "finance-1",
+      downloadReason: "历史资料复核"
+    });
+    const url = new URL(`http://local${ticket.downloadUrl}`);
+    const result = await service.readPrivateFile("file-legacy", {
+      actorUserId: url.searchParams.get("actorUserId") ?? "",
+      expiresAt: url.searchParams.get("expiresAt") ?? "",
+      downloadReason: url.searchParams.get("downloadReason") ?? "",
+      token: url.searchParams.get("token") ?? ""
+    });
+
+    expect(result.buffer).toEqual(Buffer.from("legacy-file"));
   });
 
   it("rejects tampered download ticket fields before reading or auditing a ticket", async () => {
