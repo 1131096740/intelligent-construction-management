@@ -463,6 +463,60 @@ async function assertTakeoverVerification(takeoverId, token, expected) {
   return verification;
 }
 
+async function assertHistoricalInitialSettlement(takeoverRecord) {
+  const settlement = await prisma.settlement.findUnique({
+    where: { sourceTakeoverId: takeoverRecord.id },
+    select: {
+      id: true,
+      contractVersionId: true,
+      paymentTermsVersionId: true,
+      periodLabel: true,
+      status: true,
+      amountCents: true,
+      payableAmountCents: true,
+      paidAmountCents: true,
+      sourceType: true,
+      sourceTakeoverId: true
+    }
+  });
+  assert(settlement, "历史接管确认后未生成期初有效结算来源");
+  assertEqual(settlement.status, "effective", "历史期初结算状态");
+  assertEqual(settlement.periodLabel, "历史期初", "历史期初结算期间");
+  assertEqual(settlement.sourceType, "historical_takeover", "历史期初结算来源类型");
+  assertEqual(settlement.sourceTakeoverId, takeoverRecord.id, "历史期初结算接管来源");
+  assertEqual(
+    settlement.contractVersionId,
+    takeoverRecord.contractVersionId,
+    "历史期初结算合同版本"
+  );
+  assertEqual(
+    settlement.paymentTermsVersionId,
+    takeoverRecord.paymentTermsVersionId,
+    "历史期初结算付款条款版本"
+  );
+  assertEqual(
+    settlement.amountCents,
+    HISTORICAL_BALANCE.historicalSettledCents,
+    "历史期初结算金额"
+  );
+  assertEqual(
+    settlement.payableAmountCents,
+    HISTORICAL_BALANCE.historicalSettledCents,
+    "历史期初结算可付金额"
+  );
+  assertEqual(
+    settlement.paidAmountCents,
+    HISTORICAL_BALANCE.historicalPaidCents,
+    "历史期初结算已付金额"
+  );
+  const archiveCount = await prisma.settlementArchiveFile.count({
+    where: { settlementId: settlement.id }
+  });
+  assertEqual(archiveCount, 0, "历史期初结算不应伪造普通结算归档件");
+
+  return settlement;
+}
+
 async function downloadPrivateFileWithReason(fileId, token, label, downloadReason) {
   assert(downloadReason, `${label}下载原因未配置`);
   const ticket = await postJson(
@@ -1192,6 +1246,7 @@ async function main() {
   assert(confirmed.historicalBalanceConfirmedAt, "历史接管确认后未写入历史余额确认时间");
   takeoverRecord = await loadTakeoverRecord(takeover.id);
   assert(takeoverRecord.historicalBalanceConfirmedAt, "数据库历史余额确认时间为空");
+  await assertHistoricalInitialSettlement(takeoverRecord);
   await assertTakeoverVerification(takeover.id, tokens.contractStaff, {
     label: "确认接管后的核验摘要状态",
     statusLabel: "待核验"
