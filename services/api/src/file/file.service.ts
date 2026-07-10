@@ -149,7 +149,11 @@ export class PrivateFileStorage {
     });
 
     if (!response.ok) {
-      throw new Error(`COS private file ${method} failed: ${response.status}`);
+      throw new Error(
+        method === "PUT"
+          ? "私有文件上传到对象存储失败，请稍后重试或联系管理员"
+          : "资料文件暂时无法从对象存储读取，请稍后重试或联系管理员"
+      );
     }
 
     return Buffer.from(await response.arrayBuffer());

@@ -127,6 +127,51 @@ describe("FileService", () => {
     }
   });
 
+  it.each([
+    ["PUT", "私有文件上传到对象存储失败，请稍后重试或联系管理员"],
+    ["GET", "资料文件暂时无法从对象存储读取，请稍后重试或联系管理员"]
+  ] as const)("uses a business message when COS %s fails", async (method, message) => {
+    const previous = {
+      driver: process.env.FILE_STORAGE_DRIVER,
+      secretId: process.env.COS_SECRET_ID,
+      secretKey: process.env.COS_SECRET_KEY,
+      bucket: process.env.COS_BUCKET,
+      region: process.env.COS_REGION
+    };
+    process.env.FILE_STORAGE_DRIVER = "cos";
+    process.env.COS_SECRET_ID = "secret-id";
+    process.env.COS_SECRET_KEY = "secret-key";
+    process.env.COS_BUCKET = "private-bucket";
+    process.env.COS_REGION = "ap-guangzhou";
+    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 403,
+      arrayBuffer: async () => new ArrayBuffer(0)
+    } as Response);
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+      const action =
+        method === "PUT"
+          ? privateStorage.write("uploads/合同.pdf", Buffer.from("private-file"))
+          : privateStorage.read("uploads/合同.pdf");
+
+      await expect(action).rejects.toThrow(message);
+    } finally {
+      fetchMock.mockRestore();
+      if (previous.driver === undefined) delete process.env.FILE_STORAGE_DRIVER;
+      else process.env.FILE_STORAGE_DRIVER = previous.driver;
+      if (previous.secretId === undefined) delete process.env.COS_SECRET_ID;
+      else process.env.COS_SECRET_ID = previous.secretId;
+      if (previous.secretKey === undefined) delete process.env.COS_SECRET_KEY;
+      else process.env.COS_SECRET_KEY = previous.secretKey;
+      if (previous.bucket === undefined) delete process.env.COS_BUCKET;
+      else process.env.COS_BUCKET = previous.bucket;
+      if (previous.region === undefined) delete process.env.COS_REGION;
+      else process.env.COS_REGION = previous.region;
+    }
+  });
+
   it("stores a private upload and records a file object with audit log", async () => {
     const tx = {
       fileObject: {
