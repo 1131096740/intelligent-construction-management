@@ -2426,7 +2426,7 @@ export class PaymentRequestService {
     input: RecordPaymentExecutionDto
   ) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to record payment execution");
+      throw new Error("付款实付登记服务暂不可用，请稍后重试或联系管理员");
     }
 
     if (typeof input.amountCents !== "number" || input.amountCents <= 0) {
@@ -2659,7 +2659,7 @@ export class PaymentRequestService {
 
   async recordFinance(paymentId: string, actorUserId: string, input: RecordFinanceRecordDto) {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to record finance entry");
+      throw new Error("财务入账记录服务暂不可用，请稍后重试或联系管理员");
     }
 
     if (typeof input.amountCents !== "number" || input.amountCents <= 0) {

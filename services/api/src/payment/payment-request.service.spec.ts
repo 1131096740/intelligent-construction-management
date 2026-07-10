@@ -5706,6 +5706,20 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.findFirst).not.toHaveBeenCalled();
   });
 
+  it("rejects actual payment execution when payment record service is unavailable", async () => {
+    const paymentService = new PaymentRequestService(new PaymentAmountService());
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        amountCents: 10_000,
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("付款实付登记服务暂不可用，请稍后重试或联系管理员");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+  });
+
   it("rejects actual payment execution without voucher file", async () => {
     const tx = {
       paymentRequest: {
@@ -5940,6 +5954,25 @@ describe("PaymentRequestService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects finance record when finance record service is unavailable", async () => {
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      undefined,
+      undefined,
+      undefined,
+      auth as never
+    );
+
+    await expect(
+      paymentService.recordFinance("FK-2026-012", "finance-1", {
+        amountCents: 10_000,
+        occurredAt: "2026-06-22T00:00:00.000Z",
+        confirmationPassword: "Current@123"
+      })
+    ).rejects.toThrow("财务入账记录服务暂不可用，请稍后重试或联系管理员");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
   it("rejects finance record when confirmation service is unavailable", async () => {
