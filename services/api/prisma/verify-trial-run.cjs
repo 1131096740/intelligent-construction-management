@@ -593,6 +593,13 @@ async function assertPrivateFileDownloadTicketTamperBlocked(fileId, downloadUrl,
     `${label}篡改下载原因`
   );
 
+  const tamperedActorUrl = new URL(downloadUrl, baseUrl);
+  tamperedActorUrl.searchParams.set("actorUserId", "UAT-TAMPERED-ACTOR");
+  await assertTamperedPrivateFileDownloadRejected(
+    tamperedActorUrl,
+    `${label}篡改下载人`
+  );
+
   const tamperedExpiryUrl = new URL(downloadUrl, baseUrl);
   tamperedExpiryUrl.searchParams.set("expiresAt", new Date(Date.now() + 120_000).toISOString());
   await assertTamperedPrivateFileDownloadRejected(
