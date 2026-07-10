@@ -24,6 +24,7 @@ import {
   takeoverResponsibleUserText,
   takeoverLevelSelectionHint,
   takeoverLevelReviewText,
+  takeoverOperationSections,
   takeoverSuggestionApplyDisabledReason,
   takeoverWorkbenchSteps,
   takeoverPostConfirmationVerificationView,
@@ -445,6 +446,25 @@ describe("contract takeover page configuration", () => {
       status: "待核验",
       tone: "warning"
     });
+  });
+
+  it("names the operation sections with the same five-step office workflow", () => {
+    expect(takeoverOperationSections.map((section) => section.label)).toEqual([
+      "接管准备",
+      "导入预检",
+      "资料核验",
+      "复核确认",
+      "接管后核验"
+    ]);
+    expect(takeoverOperationSections.map((section) => section.id)).toEqual([
+      "takeover-step-ready",
+      "takeover-step-precheck",
+      "takeover-step-evidence",
+      "takeover-step-review",
+      "takeover-step-after"
+    ]);
+    expect(takeoverOperationSections.at(1)?.description).toContain("生成接管草稿");
+    expect(takeoverOperationSections.at(4)?.description).toContain("唯一账本");
   });
 
   it("builds a confirmation summary with historical money and business consequence", () => {

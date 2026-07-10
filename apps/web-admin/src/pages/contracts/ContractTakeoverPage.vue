@@ -80,14 +80,30 @@
           </t-tag>
         </div>
       </div>
+      <div class="operation-section-nav">
+        <a
+          v-for="section in takeoverOperationSections"
+          :key="section.id"
+          class="operation-section-link"
+          :href="`#${section.id}`"
+          @click.prevent="focusTakeoverSection(section.id)"
+        >
+          <strong>{{ section.label }}</strong>
+          <span>{{ section.description }}</span>
+        </a>
+      </div>
     </div>
 
     <t-card
       v-if="showPrecheckPanel"
+      id="takeover-step-precheck"
       class="panel import-panel"
-      title="历史合同导入预检"
       :bordered="true"
     >
+      <div class="operation-section-title">
+        <span>导入预检</span>
+        <small>先定位错误行和风险说明，预检通过后再生成接管草稿。</small>
+      </div>
       <div class="form-section">
         <div class="form-grid">
           <label>
@@ -195,10 +211,14 @@
     </t-card>
 
     <t-card
+      id="takeover-step-ready"
       class="panel batch-panel"
-      title="接管批次"
       :bordered="true"
     >
+      <div class="operation-section-title">
+        <span>接管准备</span>
+        <small>按项目级批次确认接管截止日、责任人、复核意见和验收结论。</small>
+      </div>
       <div
         v-if="importBatches.length === 0"
         class="empty-hint"
@@ -258,10 +278,14 @@
 
     <t-card
       v-if="showCreateForm"
+      id="takeover-step-evidence-draft"
       class="panel"
-      :title="editingTakeoverId ? '编辑历史合同接管草稿' : '新增历史合同接管'"
       :bordered="true"
     >
+      <div class="operation-section-title">
+        <span>{{ editingTakeoverId ? "单合同补录" : "新增接管草稿" }}</span>
+        <small>维护合同事实、历史余额、系统建议等级和等级调整说明。</small>
+      </div>
       <div class="form-section">
         <h2>合同基础信息</h2>
         <div class="form-grid">
@@ -553,9 +577,12 @@
 
       <t-card
         class="panel detail-panel"
-        title="接管详情"
         :bordered="true"
       >
+        <div class="operation-section-title">
+          <span>资料核验 · 复核确认 · 接管后核验</span>
+          <small>在同一详情页核对资料、确认前摘要、更正记录和接管后的账本闭环。</small>
+        </div>
         <div
           v-if="selectedRow"
           class="detail-body"
@@ -575,7 +602,9 @@
             </div>
           </dl>
 
-          <h3>确认前核验摘要</h3>
+          <h3 id="takeover-step-review">
+            复核确认
+          </h3>
           <div
             v-if="selectedConfirmationSummary"
             class="confirmation-summary"
@@ -601,6 +630,7 @@
           </div>
           <div
             v-if="selectedPostConfirmationChecklist"
+            id="takeover-step-after"
             class="confirmation-summary"
           >
             <strong>{{ selectedPostConfirmationChecklist.title }}</strong>
@@ -634,7 +664,9 @@
             </ol>
           </div>
 
-          <h3>接管资料</h3>
+          <h3 id="takeover-step-evidence">
+            资料核验
+          </h3>
           <div class="evidence-gap-summary">
             {{ selectedRow.takeover.evidenceGapSummary }}
           </div>
@@ -978,7 +1010,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import {
   attachContractTakeoverEvidenceFile,
   confirmContractTakeover,
@@ -1031,6 +1063,7 @@ import {
   takeoverEvidenceUploadDisabledReason,
   takeoverLevelAdjustmentDisabledReason,
   takeoverLevelSelectionHint,
+  takeoverOperationSections,
   takeoverSuggestionApplyDisabledReason,
   takeoverPostConfirmationVerificationView,
   takeoverResponsibleUserText,
@@ -1185,6 +1218,15 @@ const selectedRow = computed<ContractTakeoverTableRow | null>(
 const takeoverWorkbenchStepsView = computed(() =>
   takeoverWorkbenchSteps(selectedRow.value?.takeover ?? null)
 );
+
+async function focusTakeoverSection(sectionId: string) {
+  if (sectionId === "takeover-step-precheck") {
+    showPrecheckPanel.value = true;
+  }
+  await nextTick();
+  document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 const selectedConfirmationSummary = computed(() =>
   selectedRow.value ? buildTakeoverConfirmationSummary(selectedRow.value.takeover) : null
 );
@@ -2230,6 +2272,54 @@ input[type="date"] {
   background: #9aa4b2;
 }
 
+.operation-section-nav {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.operation-section-link {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid #e2e7ee;
+  border-radius: 3px;
+  background: #fff;
+  color: #151922;
+  text-decoration: none;
+}
+
+.operation-section-link strong {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.operation-section-link span {
+  color: #767f8d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.operation-section-title {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.operation-section-title span {
+  color: #151922;
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+
+.operation-section-title small {
+  color: #767f8d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .dot-primary {
   background: #0052cc;
 }
@@ -2670,6 +2760,10 @@ input[type="date"] {
   .takeover-flow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .operation-section-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -2686,6 +2780,7 @@ input[type="date"] {
   }
 
   .takeover-flow,
+  .operation-section-nav,
   .detail-list.compact,
   .confirm-summary-list,
   .post-verification-counts {

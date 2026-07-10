@@ -47,6 +47,12 @@ export interface TakeoverWorkbenchStep {
   description: string;
 }
 
+export interface TakeoverOperationSection {
+  id: string;
+  label: string;
+  description: string;
+}
+
 export interface TakeoverConfirmationSummary {
   items: Array<{ label: string; value: string }>;
   consequence: string;
@@ -472,6 +478,34 @@ export function takeoverWorkbenchSteps(
     return { label, description, status: "未开始", tone: "default" };
   });
 }
+
+export const takeoverOperationSections: TakeoverOperationSection[] = [
+  {
+    id: "takeover-step-ready",
+    label: "接管准备",
+    description: "先选项目、接管截止日和责任人，明确本批次由谁复核。"
+  },
+  {
+    id: "takeover-step-precheck",
+    label: "导入预检",
+    description: "预检只定位问题行，通过后再生成接管草稿。"
+  },
+  {
+    id: "takeover-step-evidence",
+    label: "资料核验",
+    description: "补录单合同事实，核对资料清单、缺口和安全下载。"
+  },
+  {
+    id: "takeover-step-review",
+    label: "复核确认",
+    description: "批次复核、主管确认和更正记录都要留下业务原因。"
+  },
+  {
+    id: "takeover-step-after",
+    label: "接管后核验",
+    description: "用新结算、付款、实付和入账验证唯一账本。"
+  }
+];
 
 export function buildTakeoverConfirmationSummary(
   takeover: ContractTakeoverReadModel
