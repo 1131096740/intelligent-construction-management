@@ -47,6 +47,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：阶段 0A Task 4 首次 `main` 发布已通过：发布 commit `270b527c28c6f3dee9c7df921970bead38d6c7eb` 已非强制快进到 `origin/main`；GitHub Actions Deploy Production run [`29081376619`](https://github.com/1131096740/intelligent-construction-management/actions/runs/29081376619) 的 `Verify build` 与 `Deploy to server` 均成功；生产 `/opt/jiangkong` HEAD 与发布 commit 一致，无 tracked 修改，127.0.0.1 API、服务器侧域名 API、HTTPS 首页和运行健康脚本全部通过。当前 Codex 执行环境仍因既有 TLS 限制返回 `SSL_ERROR_SYSCALL`，已由服务器侧同域名 HTTPS 验证覆盖；发布前备份 `/srv/jiangkong-backups/db/jiangkong-20260710-162703.dump` 保留。阶段 0A Task 4 的结果记录提交尚需再执行一次 docs-only 发布并复验 workflow 与生产最终 HEAD。
 - 2026-07-10 (CodeX)：完成阶段 0A Task 2 全量可发布证据，针对 commit `16c310e67d741bddeac2e928420bdc4835d4d759` 重新确认工作树干净、`main...HEAD` 为 `0 1` 且本地 `main` 是 `HEAD` 祖先；Prisma Client 生成、全仓 typecheck/lint/test、Web `check:ui`、API/Web 生产构建和 `git diff --check` 全部通过，其中 API 62/62 套件、1048/1048 用例，Web 39/39 文件、301/301 用例，shared-domain 7/7 文件、56/56 用例。发布基线详见 `docs/progress/2026-07-10-release-baseline.md`；“代码可发布”不等于“第一版全部完成”，金额 BigInt、COS 正式接入、组织权限 UI、合同/结算办公化工作台仍待完成。本次未推送 `main`，未部署生产。
 - 2026-07-10 (CodeX)：阶段 0A 修正两处陈旧英文断言，使合同清单和业务相对方服务测试与既有“合同草稿已变化，请刷新后重试”中文提示一致；业务实现未变。验证：先复现 API 两套件 2 项因旧英文期望失败，再对齐断言后复跑，2 套件、24 项全部通过。
 - 2026-07-10 (CodeX)：用户书面通过项目接管与第一版规格；新增总控实施路线图和阶段 0A/0B/0C/0D 四份逐任务计划。重新核验当前分支为 `main` 的直接后继（检查时 0 behind / 246 ahead），生产仍只从 `main` 发布；现状基线为 API 60/62 套件、1046/1048 用例通过，唯一两处失败均为测试仍断言旧英文错误，Web 39/39 文件、301/301 用例及 API/Web typecheck、lint、Web `check:ui` 全通过。本轮只写规格状态、计划和进度文档，未修改业务代码。
