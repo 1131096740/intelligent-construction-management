@@ -299,6 +299,18 @@ describe("calculateSettlementPaymentCapacityBigInt", () => {
       remainingCents: 9_007_199_254_740_993n
     });
   });
+
+  it("rejects an unsafe number contract amount before bigint calculation", () => {
+    expect(() =>
+      settlementPaymentCapacity.calculateContractAdvancePaymentCapacityBigInt({
+        asOf: new Date("2026-07-10T00:00:00.000Z"),
+        contractAmountCents: Number.MAX_SAFE_INTEGER + 1,
+        contractEffectiveAt: null,
+        paymentTermsStages: [],
+        paymentRequests: []
+      })
+    ).toThrow("合同金额必须为安全整数分");
+  });
 });
 
 function calculateAdvanceCapacity(
@@ -1939,6 +1951,15 @@ describe("buildContractPaymentApplicationPreview", () => {
 });
 
 describe("allocateContractDuePaymentExecution", () => {
+  it("拒绝将不安全整数的实付金额进入分摊", () => {
+    expect(() =>
+      allocateContractDuePaymentExecution?.({
+        amountCents: Number.MAX_SAFE_INTEGER + 1,
+        sections: []
+      })
+    ).toThrow("登记实付金额必须为安全整数分");
+  });
+
   it("rejects zero amount contract-level execution with a Chinese business reason", () => {
     expect(() =>
       allocateContractDuePaymentExecution?.({

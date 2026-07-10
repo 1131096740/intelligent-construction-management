@@ -631,7 +631,8 @@ export function allocateContractDuePaymentExecution(input: {
     amountCents: number;
   }[];
 }): ContractDuePaymentExecutionAllocation[] {
-  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+  const executionAmountCents = dbMoneyToBigInt(input.amountCents, "登记实付金额");
+  if (executionAmountCents <= 0n) {
     throw new Error("登记实付金额必须大于 0，不能分摊零金额或负数付款。");
   }
 
@@ -648,7 +649,7 @@ export function allocateContractDuePaymentExecution(input: {
     );
   }
 
-  let remainingToAllocate = BigInt(input.amountCents);
+  let remainingToAllocate = executionAmountCents;
   let totalAvailable = 0n;
   const allocations: ContractDuePaymentExecutionAllocation[] = [];
 
@@ -739,7 +740,7 @@ export function calculateContractAdvancePaymentCapacityBigInt(input: {
     : 0n;
   const cappedDuePayableCents = minBigInt(
     duePayableCents,
-    nonNegativeBigIntCents(input.contractAmountCents)
+    nonNegativeBigIntCents(input.contractAmountCents, "合同金额")
   );
   const actualPaidAmountCents = input.paymentRequests.reduce<bigint>(
     (total, payment) =>
@@ -840,21 +841,36 @@ function normalizeHistoricalBalance(
   return {
     paymentTermsVersionId: value.paymentTermsVersionId,
     balanceConfirmedAt: value.balanceConfirmedAt,
-    settledCents: nonNegativeBigIntCents(value.settledCents ?? 0),
+    settledCents: nonNegativeBigIntCents(value.settledCents ?? 0, "历史已结算金额"),
     approvalPendingPaymentCents: nonNegativeBigIntCents(
-      value.approvalPendingPaymentCents ?? 0
+      value.approvalPendingPaymentCents ?? 0,
+      "历史审批中付款金额"
     ),
     approvedPendingPaymentCents: nonNegativeBigIntCents(
-      value.approvedPendingPaymentCents ?? 0
+      value.approvedPendingPaymentCents ?? 0,
+      "历史已批待付金额"
     ),
-    paidCents: nonNegativeBigIntCents(value.paidCents ?? 0),
-    proxyPaidCents: nonNegativeBigIntCents(value.proxyPaidCents ?? 0),
-    advancePaidCents: nonNegativeBigIntCents(value.advancePaidCents ?? 0),
-    advanceDeductedCents: nonNegativeBigIntCents(value.advanceDeductedCents ?? 0),
-    retentionWithheldCents: nonNegativeBigIntCents(value.retentionWithheldCents ?? 0),
-    retentionReleasedCents: nonNegativeBigIntCents(value.retentionReleasedCents ?? 0),
+    paidCents: nonNegativeBigIntCents(value.paidCents ?? 0, "历史已付金额"),
+    proxyPaidCents: nonNegativeBigIntCents(value.proxyPaidCents ?? 0, "历史代付金额"),
+    advancePaidCents: nonNegativeBigIntCents(
+      value.advancePaidCents ?? 0,
+      "历史预付款已付金额"
+    ),
+    advanceDeductedCents: nonNegativeBigIntCents(
+      value.advanceDeductedCents ?? 0,
+      "历史预付款已扣回金额"
+    ),
+    retentionWithheldCents: nonNegativeBigIntCents(
+      value.retentionWithheldCents ?? 0,
+      "历史质保金扣留金额"
+    ),
+    retentionReleasedCents: nonNegativeBigIntCents(
+      value.retentionReleasedCents ?? 0,
+      "历史质保金释放金额"
+    ),
     otherConfirmedOccupancyCents: nonNegativeBigIntCents(
-      value.otherConfirmedOccupancyCents ?? 0
+      value.otherConfirmedOccupancyCents ?? 0,
+      "历史其他确认占用金额"
     )
   };
 }
@@ -1144,7 +1160,7 @@ function contractAmountCentsByTerms(
   }
 
   for (const [termsId, amountCents] of Object.entries(values)) {
-    totals.set(termsId, nonNegativeBigIntCents(amountCents));
+    totals.set(termsId, nonNegativeBigIntCents(amountCents, "付款条款版本合同金额"));
   }
 
   return totals;
@@ -1164,8 +1180,8 @@ function addMapBigInt(map: Map<string, bigint>, key: string, amount: bigint): vo
   map.set(key, (map.get(key) ?? 0n) + amount);
 }
 
-function nonNegativeBigIntCents(value: bigint | number): bigint {
-  const cents = BigInt(value);
+function nonNegativeBigIntCents(value: bigint | number, fieldName: string): bigint {
+  const cents = dbMoneyToBigInt(value, fieldName);
   return cents > 0n ? cents : 0n;
 }
 
