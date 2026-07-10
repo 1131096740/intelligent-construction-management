@@ -497,6 +497,7 @@ describe("contract takeover page configuration", () => {
       takeoverLevelReviewText({
         ...takeover(),
         takeoverLevel: "B",
+        suggestedTakeoverLevel: null,
         historicalApprovalPendingPaymentCents: "0",
         historicalApprovedPendingPaymentCents: "0",
         historicalProxyPaidCents: "0",
@@ -507,6 +508,23 @@ describe("contract takeover page configuration", () => {
     ).toBe(
       "确认接管等级由系统建议A级调整为B级，调整原因：合同部按现场资料完整度降为 B级跟踪"
     );
+  });
+
+  it("uses saved takeover level suggestion when reviewing confirmed facts", () => {
+    expect(
+      takeoverLevelReviewText({
+        ...takeover(),
+        takeoverLevel: "B",
+        suggestedTakeoverLevel: "C",
+        takeoverLevelAdjustmentReason: "主管按受限确认降为 B级",
+        historicalApprovalPendingPaymentCents: "0",
+        historicalApprovedPendingPaymentCents: "0",
+        historicalProxyPaidCents: "0",
+        historicalRetentionWithheldCents: "0",
+        otherConfirmedOccupancyCents: "0",
+        reviewComment: "页面重算会建议 A级"
+      })
+    ).toBe("确认接管等级由系统建议C级调整为B级，调整原因：主管按受限确认降为 B级");
   });
 
   it("keeps takeover level review readable when summaries are missing", () => {
@@ -602,6 +620,8 @@ function takeover(): ContractTakeoverReadModel {
     amountCents: "100000000",
     paymentTermsOriginalText: "按月结算，归档后付款",
     takeoverLevel: "B",
+    suggestedTakeoverLevel: "B",
+    takeoverLevelAdjustmentReason: null,
     levelRiskText: "B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。",
     paymentBlockingHint: "尚未完成主管确认，后续付款申请会被系统阻断。",
     evidenceGapSummary: "缺少：历史付款凭证。补齐前会影响主管确认和后续付款核验。",

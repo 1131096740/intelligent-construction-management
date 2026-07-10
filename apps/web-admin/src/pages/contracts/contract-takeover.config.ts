@@ -424,15 +424,16 @@ export function takeoverLevelReviewText(takeover: ContractTakeoverReadModel): st
     historicalRetentionWithheldYuan: centsToPlainYuan(takeover.historicalRetentionWithheldCents),
     otherConfirmedOccupancyYuan: centsToPlainYuan(takeover.otherConfirmedOccupancyCents)
   });
-  const suggestedLevel = takeoverLevelLabel(suggestion.level);
+  const savedSuggestedLevel = takeover.suggestedTakeoverLevel ?? suggestion.level;
+  const suggestedLevel = takeoverLevelLabel(savedSuggestedLevel);
   const selectedLevel = takeoverLevelLabel(takeover.takeoverLevel);
 
-  if (takeover.takeoverLevel === suggestion.level) {
+  if (takeover.takeoverLevel === savedSuggestedLevel) {
     return `确认接管等级与系统建议一致：${selectedLevel}。${suggestion.reason}`;
   }
 
   return `确认接管等级由系统建议${suggestedLevel}调整为${selectedLevel}，调整原因：${
-    takeover.reviewComment?.trim() || "未填写"
+    takeover.takeoverLevelAdjustmentReason?.trim() || takeover.reviewComment?.trim() || "未填写"
   }`;
 }
 

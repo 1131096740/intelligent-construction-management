@@ -145,6 +145,8 @@ type ContractTakeoverRecord = {
   contractVersionId: string;
   paymentTermsVersionId: string;
   takeoverLevel: string;
+  suggestedTakeoverLevel?: string | null;
+  takeoverLevelAdjustmentReason?: string | null;
   takeoverStatus: string;
   lifecycleStatus: string;
   signedAt: Date;
@@ -182,6 +184,8 @@ export interface ContractTakeoverBusinessReadModel {
   amountCents: string;
   paymentTermsOriginalText: string;
   takeoverLevel: string;
+  suggestedTakeoverLevel: string | null;
+  takeoverLevelAdjustmentReason: string | null;
   levelRiskText: string;
   paymentBlockingHint: string;
   evidenceGapSummary: string;
@@ -410,6 +414,9 @@ export class ContractTakeoverService {
           contractVersionId: version.id,
           paymentTermsVersionId: terms.id,
           takeoverLevel: data.takeoverLevel,
+          suggestedTakeoverLevel: data.suggestedTakeoverLevel,
+          takeoverLevelAdjustmentReason:
+            data.takeoverLevel === data.suggestedTakeoverLevel ? null : data.reviewComment,
           takeoverStatus: "draft",
           takeoverBatchId: options.takeoverBatchId,
           importRowNo: options.importRowNo,
@@ -531,6 +538,9 @@ export class ContractTakeoverService {
           otherConfirmedOccupancyCents: BigInt(data.otherConfirmedOccupancyCents),
           balanceSourceSummary: data.balanceSourceSummary ?? null,
           evidenceSummary: data.evidenceSummary ?? null,
+          suggestedTakeoverLevel: data.suggestedTakeoverLevel,
+          takeoverLevelAdjustmentReason:
+            data.takeoverLevel === data.suggestedTakeoverLevel ? null : data.reviewComment,
           takeoverCutoffDate: data.takeoverCutoffDate,
           responsibleUserId: data.responsibleUserId,
           reviewComment: data.reviewComment,
@@ -1339,6 +1349,8 @@ export class ContractTakeoverService {
       amountCents: moneyString(contract.amountCents),
       paymentTermsOriginalText: contract.paymentTermsOriginalText,
       takeoverLevel: takeover.takeoverLevel,
+      suggestedTakeoverLevel: takeover.suggestedTakeoverLevel ?? null,
+      takeoverLevelAdjustmentReason: takeover.takeoverLevelAdjustmentReason ?? null,
       levelRiskText: takeoverLevelRiskText(takeover.takeoverLevel),
       paymentBlockingHint: takeoverPaymentBlockingHint(takeover, evidenceChecklist),
       evidenceGapSummary: evidenceGapSummary(evidenceChecklist),

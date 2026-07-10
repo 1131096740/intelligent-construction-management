@@ -209,6 +209,8 @@ export interface ContractTakeoverReadModel {
   amountCents: ContractTakeoverCentsValue;
   paymentTermsOriginalText: string;
   takeoverLevel: ContractTakeoverLevel;
+  suggestedTakeoverLevel: ContractTakeoverLevel | null;
+  takeoverLevelAdjustmentReason: string | null;
   levelRiskText: string;
   paymentBlockingHint: string;
   evidenceGapSummary: string;

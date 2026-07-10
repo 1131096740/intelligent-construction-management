@@ -27,6 +27,8 @@ describe("ContractTakeoverService", () => {
       contractVersionId: "contract-version-1",
       paymentTermsVersionId: "terms-version-1",
       takeoverLevel: "A",
+      suggestedTakeoverLevel: "A",
+      takeoverLevelAdjustmentReason: null,
       takeoverStatus: "draft",
       lifecycleStatus: "in_progress",
       signedAt: new Date("2026-01-10T00:00:00.000Z"),
@@ -125,6 +127,8 @@ describe("ContractTakeoverService", () => {
         create: jest.fn().mockResolvedValue(
           takeoverRecord({
             takeoverStatus: "draft",
+            suggestedTakeoverLevel: "B",
+            takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。",
             takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
             responsibleUserId: "contract-director-1",
             reviewComment: "预算和财务已完成期初复核。",
@@ -183,6 +187,8 @@ describe("ContractTakeoverService", () => {
       counterparty: "Supplier A",
       amountCents: "1000000",
       historicalPaidCents: "300000",
+      suggestedTakeoverLevel: "B",
+      takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。",
       takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
       responsibleUserId: "contract-director-1",
       reviewComment: "预算和财务已完成期初复核。",
@@ -235,6 +241,8 @@ describe("ContractTakeoverService", () => {
         contractVersionId: "contract-version-1",
         paymentTermsVersionId: "terms-version-1",
         takeoverLevel: "A",
+        suggestedTakeoverLevel: "B",
+        takeoverLevelAdjustmentReason: "预算和财务已完成期初复核。",
         takeoverStatus: "draft",
         lifecycleStatus: "in_progress",
         takeoverCutoffDate: new Date("2026-06-30T00:00:00.000Z"),
@@ -1496,6 +1504,8 @@ describe("ContractTakeoverService", () => {
         update: jest.fn().mockResolvedValue(
           takeoverRecord({
             takeoverLevel: "C",
+            suggestedTakeoverLevel: "C",
+            takeoverLevelAdjustmentReason: null,
             lifecycleStatus: "disputed",
             historicalPaidCents: 350_000n
           })
@@ -1552,6 +1562,8 @@ describe("ContractTakeoverService", () => {
       companyEntityName: "建工智管公司",
       paymentTermsOriginalText: "Updated terms.",
       takeoverLevel: "C",
+      suggestedTakeoverLevel: "C",
+      takeoverLevelAdjustmentReason: null,
       lifecycleStatus: "disputed",
       historicalPaidCents: "350000"
     });
@@ -1590,6 +1602,8 @@ describe("ContractTakeoverService", () => {
       where: { id: "takeover-1" },
       data: expect.objectContaining({
         takeoverLevel: "C",
+        suggestedTakeoverLevel: "C",
+        takeoverLevelAdjustmentReason: null,
         lifecycleStatus: "disputed",
         historicalPaidCents: BigInt(350_000)
       })

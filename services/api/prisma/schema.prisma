@@ -135,6 +135,8 @@ model ContractTakeover {
   contractVersionId                     String    @unique
   paymentTermsVersionId                 String
   takeoverLevel                         String
+  suggestedTakeoverLevel                String?
+  takeoverLevelAdjustmentReason         String?
   takeoverStatus                        String
   lifecycleStatus                       String
   signedAt                              DateTime
