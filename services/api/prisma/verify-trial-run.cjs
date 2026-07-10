@@ -81,6 +81,7 @@ const TAKEOVER_EVIDENCE_DOWNLOAD_REASON_BY_ROLE = {
 const TAKEOVER_EVIDENCE_DENIED_DOWNLOAD_REASON = "UAT 普通员工接管资料越权下载校验";
 const SETTLEMENT_ARCHIVE_DOWNLOAD_REASON = "UAT 合同员结算归档件下载验收";
 const PAYMENT_VOUCHER_DOWNLOAD_REASON = "UAT 出纳付款凭证下载验收";
+const PAYMENT_PDF_ARCHIVE_DOWNLOAD_REASON = "UAT 出纳付款PDF归档下载验收";
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -932,13 +933,25 @@ async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
     payment.code,
     tokens.contractStaff
   );
+  await downloadPrivateFileWithReason(
+    paymentPdfFileId,
+    tokens.cashier,
+    "出纳付款PDF归档",
+    PAYMENT_PDF_ARCHIVE_DOWNLOAD_REASON
+  );
 
   const persisted = await prisma.paymentRequest.findUnique({ where: { id: payment.id } });
   assert(persisted, "数据库中未找到刚登记实付的付款申请");
   assertEqual(persisted.status, "paid", "付款实付后状态");
   assertEqual(persisted.paidAmountCents, 1000000, "付款实付后累计实付金额");
 
-  return { execution, financeRecord, pdfArchive, voucherFileId: voucherFile.id };
+  return {
+    execution,
+    financeRecord,
+    pdfArchive,
+    voucherFileId: voucherFile.id,
+    paymentPdfFileId
+  };
 }
 
 async function assertAuditActions(input) {
@@ -950,7 +963,8 @@ async function assertAuditActions(input) {
         { businessType: "payment_request", businessId: input.paymentId },
         { businessType: "file_object", businessId: input.evidenceFileId },
         { businessType: "file_object", businessId: input.settlementArchiveFileId },
-        { businessType: "file_object", businessId: input.paymentVoucherFileId }
+        { businessType: "file_object", businessId: input.paymentVoucherFileId },
+        { businessType: "file_object", businessId: input.paymentPdfFileId }
       ]
     },
     select: { action: true, actorUserId: true, metadata: true }
@@ -1073,6 +1087,26 @@ async function assertAuditActions(input) {
       row.metadata.downloadReason === PAYMENT_VOUCHER_DOWNLOAD_REASON
   );
   assert(voucherDownloadAudit, "关键审计日志缺少出纳付款凭证实际下载原因");
+  const paymentPdfTicketAudit = auditActions.find(
+    (row) =>
+      row.action === "file.download.ticket" &&
+      row.actorUserId === input.cashierUserId &&
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      row.metadata.fileId === input.paymentPdfFileId &&
+      row.metadata.downloadReason === PAYMENT_PDF_ARCHIVE_DOWNLOAD_REASON
+  );
+  assert(paymentPdfTicketAudit, "关键审计日志缺少出纳付款PDF归档下载票据原因");
+  const paymentPdfDownloadAudit = auditActions.find(
+    (row) =>
+      row.action === "file.download" &&
+      row.actorUserId === input.cashierUserId &&
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      row.metadata.fileId === input.paymentPdfFileId &&
+      row.metadata.downloadReason === PAYMENT_PDF_ARCHIVE_DOWNLOAD_REASON
+  );
+  assert(paymentPdfDownloadAudit, "关键审计日志缺少出纳付款PDF归档实际下载原因");
 }
 
 function userFacingErrorMessage(error) {
@@ -1218,6 +1252,7 @@ async function main() {
     evidenceFileId,
     settlementArchiveFileId: settlement.archiveFileId,
     paymentVoucherFileId: paymentClosure.voucherFileId,
+    paymentPdfFileId: paymentClosure.paymentPdfFileId,
     contractStaffUserId,
     cashierUserId,
     financeDirectorUserId,
