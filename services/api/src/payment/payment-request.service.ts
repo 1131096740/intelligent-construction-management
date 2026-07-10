@@ -109,9 +109,9 @@ function positiveMoneyCents(value: string, message: string): bigint {
   try {
     cents = parseMoneyCents(value, "金额");
   } catch {
-    throw new Error(message);
+    throw new BadRequestException(message);
   }
-  if (cents <= 0n) throw new Error(message);
+  if (cents <= 0n) throw new BadRequestException(message);
   return cents;
 }
 

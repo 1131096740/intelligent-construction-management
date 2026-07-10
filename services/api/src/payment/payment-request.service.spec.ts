@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { PaymentAmountService } from "./payment-amount.service";
 import { PaymentRequestService } from "./payment-request.service";
 
@@ -30,6 +31,36 @@ describe("PaymentRequestService", () => {
     fileAccess.assertCanDownloadFile.mockReset();
     fileAccess.assertCanDownloadFile.mockResolvedValue({ id: "file-1" });
   });
+
+  it.each([
+    ["number", 2_100_000_001],
+    ["decimal", "1.5"],
+    ["exponent", "1e3"],
+    ["negative", "-1"]
+  ])(
+    "rejects invalid %s payment amount as HTTP 400 before opening a transaction",
+    async (_label, value) => {
+      const prisma = { $transaction: jest.fn() };
+      const paymentService = new PaymentRequestService(
+        new PaymentAmountService(),
+        prisma as never
+      );
+
+      const error = await paymentService
+        .create({
+          sourceType: "settlement",
+          settlementId: "settlement-1",
+          code: "FK-INVALID-AMOUNT",
+          requestedAmountCents: value
+        } as never)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getStatus()).toBe(400);
+      expect((error as Error).message).toBe("付款申请金额必须为大于 0 的整数分");
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    }
+  );
 
   function pdfHexText(value: string) {
     const buffer = Buffer.from(value, "utf16le");

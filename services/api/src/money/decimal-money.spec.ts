@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import {
   calculateBillRow,
   calculateProjectCashPoolBigInt,
@@ -6,6 +7,7 @@ import {
   mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
   parseMoneyCents,
+  parseSignedMoneyCents,
   sumDbMoneyToBigInt,
   yuanTextToCents
 } from "./decimal-money";
@@ -81,11 +83,22 @@ describe("internal bigint money compatibility", () => {
   it.each(["-1", "1.5", "1e3", " 1", "", 1])(
     "rejects invalid API cent input %p",
     (value) => {
-      expect(() => parseMoneyCents(value as string, "金额")).toThrow(
-        "金额必须填写非负整数分"
-      );
+      expect(() => parseMoneyCents(value as string, "金额")).toThrow(BadRequestException);
+      expect(() => parseMoneyCents(value as string, "金额")).toThrow("金额必须填写非负整数分");
     }
   );
+
+  it("keeps the signed manual-adjustment exception while rejecting non-canonical values", () => {
+    expect(parseSignedMoneyCents("-1", "人工调整金额")).toBe(-1n);
+    for (const value of [1, "1.5", "1e3"]) {
+      expect(() => parseSignedMoneyCents(value as string, "人工调整金额")).toThrow(
+        BadRequestException
+      );
+      expect(() => parseSignedMoneyCents(value as string, "人工调整金额")).toThrow(
+        "人工调整金额必须填写整数分"
+      );
+    }
+  });
 
   it("accepts only bigint database money values", () => {
     expect(dbMoneyToBigInt(9_007_199_254_740_993n, "累计金额")).toBe(

@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
 const HUNDRED = new Prisma.Decimal(100);
@@ -122,7 +123,7 @@ export function calculateProjectCashPoolBigInt(input: {
 
 export function parseMoneyCents(value: string, fieldName: string): bigint {
   if (typeof value !== "string" || !NON_NEGATIVE_CENTS_TEXT.test(value)) {
-    throw new Error(`${fieldName}必须填写非负整数分`);
+    throw new BadRequestException(`${fieldName}必须填写非负整数分`);
   }
   return BigInt(value);
 }
@@ -177,7 +178,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 export function parseSignedMoneyCents(value: string, fieldName: string): bigint {
   if (typeof value !== "string" || !SIGNED_CENTS_TEXT.test(value)) {
-    throw new Error(`${fieldName}必须填写整数分`);
+    throw new BadRequestException(`${fieldName}必须填写整数分`);
   }
   return BigInt(value);
 }
