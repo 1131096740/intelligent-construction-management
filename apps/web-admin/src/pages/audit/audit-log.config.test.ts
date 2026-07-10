@@ -83,6 +83,14 @@ describe("audit log page configuration", () => {
         fileName: "付款凭证.png",
         downloadReason: "付款入账",
         businessTarget: "file-2"
+      }),
+      downloadRow({
+        id: "audit-3",
+        action: "审批单下载",
+        actionKey: "approval.form.download",
+        fileName: "合同审批单.pdf",
+        downloadReason: "领导复核",
+        businessTarget: "approval-1"
       })
     ];
 
@@ -95,6 +103,12 @@ describe("audit log page configuration", () => {
         keyword: "file-1"
       }).map((row) => row.id)
     ).toEqual(["audit-1"]);
+    expect(
+      filterFileDownloadAuditRows(rows, {
+        ...emptyFileDownloadAuditFilters(),
+        keyword: "approval.form.download"
+      }).map((row) => row.id)
+    ).toEqual(["audit-3"]);
   });
 });
 

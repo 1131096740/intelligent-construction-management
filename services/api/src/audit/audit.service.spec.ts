@@ -84,6 +84,32 @@ describe("AuditService", () => {
               downloadUrl: "/files/file-1/download?token=secret-token"
             },
             createdAt: new Date("2026-07-01T08:01:00.000Z")
+          },
+          {
+            id: "audit-approval-form-1",
+            actorUserId: "user-1",
+            action: "approval.form.download",
+            businessType: "approval_instance",
+            businessId: "approval-1",
+            ipAddress: "127.0.0.1",
+            metadata: {
+              originalName: "合同审批单.pdf",
+              downloadReason: "领导复核"
+            },
+            createdAt: new Date("2026-07-01T08:02:00.000Z")
+          },
+          {
+            id: "audit-settlement-approval-1",
+            actorUserId: "user-1",
+            action: "settlement.approval_pdf.download",
+            businessType: "settlement",
+            businessId: "settlement-1",
+            ipAddress: "127.0.0.1",
+            metadata: {
+              originalName: "结算审批单.pdf",
+              downloadReason: "结算归档复核"
+            },
+            createdAt: new Date("2026-07-01T08:03:00.000Z")
           }
         ])
       },
@@ -108,7 +134,16 @@ describe("AuditService", () => {
     expect(prisma.auditLog.findMany).toHaveBeenCalledWith({
       take: 20,
       orderBy: { createdAt: "desc" },
-      where: { action: { in: ["file.download.ticket", "file.download"] } }
+      where: {
+        action: {
+          in: [
+            "file.download.ticket",
+            "file.download",
+            "approval.form.download",
+            "settlement.approval_pdf.download"
+          ]
+        }
+      }
     });
     expect(result.rows[0]).toMatchObject({
       id: "audit-ticket-1",
@@ -119,10 +154,16 @@ describe("AuditService", () => {
       traceId: "audit-ticket-1",
       sensitive: "未返回短链/token/COS地址"
     });
+    expect(result.rows.map((row) => row.action)).toEqual([
+      "生成下载票据",
+      "实际下载",
+      "审批单下载",
+      "结算审批单下载"
+    ]);
     expect(JSON.stringify(result.rows)).not.toContain("secret-token");
     expect(JSON.stringify(result.rows)).not.toContain("cos.example.com");
     expect(result.summary).toEqual({
-      total: 2,
+      total: 4,
       ticket: 1,
       downloaded: 1,
       missingReason: 0

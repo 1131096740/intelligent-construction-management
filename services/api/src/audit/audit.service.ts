@@ -4,6 +4,13 @@ import { PrismaService } from "../database/prisma.service";
 
 type AuditLogClient = Pick<Prisma.TransactionClient, "auditLog">;
 
+const FILE_DOWNLOAD_AUDIT_ACTION_LABELS = {
+  "file.download.ticket": "生成下载票据",
+  "file.download": "实际下载",
+  "approval.form.download": "审批单下载",
+  "settlement.approval_pdf.download": "结算审批单下载"
+} as const;
+
 export interface RecordAuditLogInput {
   actorUserId?: string | null;
   action: string;
@@ -79,7 +86,7 @@ export class AuditService {
     const logs = await this.prisma.auditLog.findMany({
       take,
       orderBy: { createdAt: "desc" },
-      where: { action: { in: ["file.download.ticket", "file.download"] } }
+      where: { action: { in: Object.keys(FILE_DOWNLOAD_AUDIT_ACTION_LABELS) } }
     });
     const actorIds = [...new Set(logs.map((log) => log.actorUserId).filter(Boolean))] as string[];
     const fileIds = [...new Set(logs.map((log) => log.businessId).filter(Boolean))] as string[];
@@ -104,7 +111,7 @@ export class AuditService {
         id: log.id,
         occurredAt: log.createdAt.toISOString(),
         actor: actor?.name ?? log.actorUserId ?? "系统",
-        action: log.action === "file.download.ticket" ? "生成下载票据" : "实际下载",
+        action: this.fileDownloadActionLabel(log.action),
         actionKey: log.action,
         fileId: log.businessId ?? "-",
         fileName: file?.originalName ?? metadataFileName ?? log.businessId ?? "-",
@@ -132,6 +139,13 @@ export class AuditService {
     const parsed = typeof rawLimit === "number" ? rawLimit : Number(rawLimit ?? 100);
     if (!Number.isFinite(parsed)) return 100;
     return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+  }
+
+  private fileDownloadActionLabel(action: string) {
+    return (
+      FILE_DOWNLOAD_AUDIT_ACTION_LABELS[action as keyof typeof FILE_DOWNLOAD_AUDIT_ACTION_LABELS] ??
+      "敏感文件下载"
+    );
   }
 
   private actionTone(action: string) {

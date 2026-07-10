@@ -620,7 +620,11 @@ export interface FileDownloadAuditListReadModel {
     occurredAt: string;
     actor: string;
     action: string;
-    actionKey: "file.download.ticket" | "file.download";
+    actionKey:
+      | "file.download.ticket"
+      | "file.download"
+      | "approval.form.download"
+      | "settlement.approval_pdf.download";
     fileId: string;
     fileName: string;
     businessType: string;
