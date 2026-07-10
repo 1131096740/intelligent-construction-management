@@ -1227,7 +1227,7 @@ const tableRows = computed(() =>
   takeovers.value.map((takeover) => toContractTakeoverTableRow(takeover))
 );
 const importBatchRows = computed(() =>
-  importBatches.value.slice(0, 5).map((batch) => ({
+  importBatches.value.map((batch) => ({
     ...batch,
     takeoverCutoffDate: formatTakeoverDate(batch.takeoverCutoffDate),
     responsibleUserText: batch.responsibleUserName?.trim() || "已指定责任人",
