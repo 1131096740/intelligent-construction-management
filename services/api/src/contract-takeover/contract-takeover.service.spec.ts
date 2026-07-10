@@ -829,7 +829,15 @@ describe("ContractTakeoverService", () => {
         createMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractTakeover: {
-        create: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
+        create: jest.fn().mockResolvedValue(
+          takeoverRecord({
+            takeoverStatus: "draft",
+            takeoverLevel: "A",
+            suggestedTakeoverLevel: "B",
+            takeoverLevelAdjustmentReason: "发票待补，财务复核时重点确认",
+            historicalApprovedPendingPaymentCents: 100_000n
+          })
+        )
       },
       contractTakeoverBatch: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -846,7 +854,7 @@ describe("ContractTakeoverService", () => {
           totalRows: 1,
           readyRows: 1,
           blockedRows: 0,
-          warningRows: 0,
+          warningRows: 1,
           createdCount: 1,
           skippedCount: 0,
           createdByUserId: "contract-user",
@@ -886,6 +894,7 @@ describe("ContractTakeoverService", () => {
             lifecycleStatus: "in_progress",
             paymentTermsOriginalText: "按月结算，归档后付款。",
             historicalSettledCents: 600_000,
+            historicalApprovedPendingPaymentCents: 100_000,
             historicalPaidCents: 300_000,
             balanceSourceSummary: "财务台账核对。",
             evidenceSummary: "合同扫描件和付款台账齐全。",
@@ -903,7 +912,7 @@ describe("ContractTakeoverService", () => {
       batchNo: "接管批次-20260710-TEST0001",
       status: "drafts_generated",
       statusLabel: "已生成草稿",
-      riskText: "预检通过，等待资料核验和复核确认。",
+      riskText: "存在资料或风险提醒，复核时重点核对。",
       responsibleUserId: "contract-director-1",
       reviewComment: "合同部已完成预检，提交预算和财务复核。",
       acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
@@ -921,6 +930,7 @@ describe("ContractTakeoverService", () => {
         acceptanceConclusion: "本批次先生成草稿，待主管确认后形成接管事实。",
         totalRows: 1,
         readyRows: 1,
+        warningRows: 1,
         createdCount: 1,
         createdByUserId: "contract-user"
       })
@@ -937,10 +947,28 @@ describe("ContractTakeoverService", () => {
     expect(tx.contractTakeover.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         historicalSettledCents: BigInt(600_000),
+        historicalApprovedPendingPaymentCents: BigInt(100_000),
         historicalPaidCents: BigInt(300_000),
+        takeoverLevel: "A",
+        suggestedTakeoverLevel: "B",
+        takeoverLevelAdjustmentReason: "发票待补，财务复核时重点确认",
         balanceSourceSummary: "财务台账核对。",
         evidenceSummary: "合同扫描件和付款台账齐全。",
         reviewComment: "发票待补，财务复核时重点确认",
+        takeoverBatchId: "batch-1",
+        importRowNo: 2
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "contract-user",
+      action: "contract_takeover.create",
+      businessType: "contract_takeover",
+      businessId: "takeover-1",
+      metadata: expect.objectContaining({
+        projectId: "project-1",
+        takeoverLevel: "A",
+        suggestedTakeoverLevel: "B",
+        takeoverLevelAdjustmentReason: "发票待补，财务复核时重点确认",
         takeoverBatchId: "batch-1",
         importRowNo: 2
       })
