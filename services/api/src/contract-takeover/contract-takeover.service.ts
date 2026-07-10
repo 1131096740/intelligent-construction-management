@@ -318,6 +318,7 @@ export interface ContractTakeoverImportBatchReadModel {
   riskText: string;
   takeoverCutoffDate: Date;
   responsibleUserId: string;
+  responsibleUserName: string | null;
   reviewComment: string;
   acceptanceConclusion: string;
   totalRows: number;
@@ -730,8 +731,21 @@ export class ContractTakeoverService {
       where: { projectId },
       orderBy: { createdAt: "desc" }
     });
+    const responsibleUserIds = unique(batches.map((batch) => batch.responsibleUserId));
+    const users = responsibleUserIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: responsibleUserIds } },
+          select: { id: true, name: true }
+        })
+      : [];
+    const userNameById = new Map(users.map((user) => [user.id, user.name]));
 
-    return batches.map((batch) => this.toImportBatchReadModel(batch));
+    return batches.map((batch) =>
+      this.toImportBatchReadModel({
+        ...batch,
+        responsibleUserName: userNameById.get(batch.responsibleUserId) ?? null
+      })
+    );
   }
 
   async reviewImportBatch(
@@ -1396,6 +1410,7 @@ export class ContractTakeoverService {
     status: string;
     takeoverCutoffDate: Date;
     responsibleUserId: string;
+    responsibleUserName?: string | null;
     reviewComment: string;
     acceptanceConclusion: string;
     totalRows: number;
@@ -1413,6 +1428,7 @@ export class ContractTakeoverService {
       riskText: importBatchRiskText(batch),
       takeoverCutoffDate: batch.takeoverCutoffDate,
       responsibleUserId: batch.responsibleUserId,
+      responsibleUserName: batch.responsibleUserName ?? null,
       reviewComment: batch.reviewComment,
       acceptanceConclusion: batch.acceptanceConclusion,
       totalRows: batch.totalRows,

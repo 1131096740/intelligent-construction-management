@@ -1192,6 +1192,7 @@ const importBatchColumns = [
   { colKey: "batchNo", title: "批次号", minWidth: 188 },
   { colKey: "statusLabel", title: "批次状态", width: 112 },
   { colKey: "takeoverCutoffDate", title: "接管截止日", width: 112 },
+  { colKey: "responsibleUserText", title: "接管责任人", width: 116 },
   { colKey: "createdCountText", title: "生成草稿", width: 104, align: "right" },
   { colKey: "warningRowsText", title: "提醒", width: 84, align: "right" },
   { colKey: "skippedCountText", title: "重复跳过", width: 104, align: "right" },
@@ -1208,6 +1209,7 @@ const importBatchRows = computed(() =>
   importBatches.value.slice(0, 5).map((batch) => ({
     ...batch,
     takeoverCutoffDate: formatTakeoverDate(batch.takeoverCutoffDate),
+    responsibleUserText: batch.responsibleUserName?.trim() || "已指定责任人",
     createdCountText: `${batch.createdCount} 份`,
     warningRowsText: `${batch.warningRows} 条`,
     skippedCountText: `${batch.skippedCount} 份`

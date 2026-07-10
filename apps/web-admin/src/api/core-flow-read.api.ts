@@ -310,6 +310,7 @@ export interface ContractTakeoverImportBatchReadModel {
   riskText: string;
   takeoverCutoffDate: string;
   responsibleUserId: string;
+  responsibleUserName: string | null;
   reviewComment: string;
   acceptanceConclusion: string;
   totalRows: number;

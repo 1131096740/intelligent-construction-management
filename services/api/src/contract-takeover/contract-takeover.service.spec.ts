@@ -1199,6 +1199,9 @@ describe("ContractTakeoverService", () => {
             updatedAt: new Date("2026-07-10T01:00:00.000Z")
           }
         ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-user", name: "合同负责人" }])
       }
     };
     const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
@@ -1209,6 +1212,10 @@ describe("ContractTakeoverService", () => {
       where: { projectId: "project-1" },
       orderBy: { createdAt: "desc" }
     });
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["contract-user"] } },
+      select: { id: true, name: true }
+    });
     expect(result).toEqual([
       {
         id: "batch-1",
@@ -1218,6 +1225,7 @@ describe("ContractTakeoverService", () => {
         riskText: "存在资料或风险提醒，复核时重点核对。",
         takeoverCutoffDate: new Date("2026-07-10T00:00:00.000Z"),
         responsibleUserId: "contract-user",
+        responsibleUserName: "合同负责人",
         reviewComment: "合同、预算和财务待复核。",
         acceptanceConclusion: "待主管确认。",
         totalRows: 20,
