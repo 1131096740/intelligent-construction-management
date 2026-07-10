@@ -639,6 +639,7 @@ async function createAndConfirmSettlement(contractVersionId, tokens) {
 
 function assertHistoricalBalanceInPreview(preview) {
   assert(preview.historicalBalance, "付款预览未返回 historicalBalance");
+  assert(Array.isArray(preview.capacityExplanation), "付款预览未返回容量说明");
   assertEqual(
     preview.historicalBalance.paidCents,
     HISTORICAL_BALANCE.historicalPaidCents,
@@ -661,8 +662,12 @@ function assertHistoricalBalanceInPreview(preview) {
   );
   assertEqual(
     preview.capacity.historicalPaidCents,
-    HISTORICAL_BALANCE.historicalPaidCents,
-    "付款预览容量历史已付金额"
+    0,
+    "付款预览容量历史已付已由期初结算承载"
+  );
+  assert(
+    preview.capacity.actualPaidCents >= HISTORICAL_BALANCE.historicalPaidCents,
+    `付款预览实际已付未包含历史期初已付：${preview.capacity.actualPaidCents}`
   );
   assertEqual(
     preview.capacity.historicalApprovalPendingCents,
@@ -677,6 +682,10 @@ function assertHistoricalBalanceInPreview(preview) {
   assert(
     preview.capacity.maxRequestableCents >= 1000000,
     `付款预览可申请金额不足以发起 UAT 付款：${preview.capacity.maxRequestableCents}`
+  );
+  assert(
+    !preview.capacityExplanation.some((row) => row.note === "含历史接管已付款"),
+    "付款预览容量说明重复展示历史接管已付款"
   );
 }
 
