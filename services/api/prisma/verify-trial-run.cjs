@@ -64,6 +64,9 @@ const HISTORICAL_BALANCE = {
   historicalRetentionReleasedCents: 0,
   otherConfirmedOccupancyCents: 100000
 };
+const EXPECTED_TAKEOVER_SUGGESTED_LEVEL = "B";
+const TAKEOVER_LEVEL_ADJUSTMENT_REASON =
+  "UAT：系统建议B级，合同部按三类接管资料齐全并由主管复核确认后申报A级。";
 const TAKEOVER_EVIDENCE_PURPOSES = [
   "historical_contract_scan",
   "historical_settlement_ledger",
@@ -358,7 +361,8 @@ async function createHistoricalTakeover(token) {
       paymentTermsOriginalText: "UAT：结算归档确认后可按当期结算款 80% 发起付款。",
       ...HISTORICAL_BALANCE,
       balanceSourceSummary: "UAT 脱敏财务台账摘要",
-      evidenceSummary: "UAT 脱敏合同、结算和银行回单摘要"
+      evidenceSummary: "UAT 脱敏合同、结算和银行回单摘要",
+      reviewComment: TAKEOVER_LEVEL_ADJUSTMENT_REASON
     },
     token,
     "创建历史合同接管"
@@ -366,6 +370,17 @@ async function createHistoricalTakeover(token) {
 
   assertEqual(takeover.contractNo, CODES.contract, "历史接管合同编号");
   assertEqual(takeover.takeoverStatus, "draft", "历史接管创建状态");
+  assertEqual(takeover.takeoverLevel, "A", "历史接管申报等级");
+  assertEqual(
+    takeover.suggestedTakeoverLevel,
+    EXPECTED_TAKEOVER_SUGGESTED_LEVEL,
+    "历史接管系统建议等级"
+  );
+  assertEqual(
+    takeover.takeoverLevelAdjustmentReason,
+    TAKEOVER_LEVEL_ADJUSTMENT_REASON,
+    "历史接管等级调整原因"
+  );
   return takeover;
 }
 
@@ -378,12 +393,26 @@ async function loadTakeoverRecord(takeoverId) {
       contractId: true,
       contractVersionId: true,
       paymentTermsVersionId: true,
+      takeoverLevel: true,
+      suggestedTakeoverLevel: true,
+      takeoverLevelAdjustmentReason: true,
       takeoverStatus: true,
       historicalBalanceConfirmedAt: true
     }
   });
 
   assert(takeover, "数据库中未找到刚创建的历史接管记录");
+  assertEqual(takeover.takeoverLevel, "A", "数据库历史接管申报等级");
+  assertEqual(
+    takeover.suggestedTakeoverLevel,
+    EXPECTED_TAKEOVER_SUGGESTED_LEVEL,
+    "数据库历史接管系统建议等级"
+  );
+  assertEqual(
+    takeover.takeoverLevelAdjustmentReason,
+    TAKEOVER_LEVEL_ADJUSTMENT_REASON,
+    "数据库历史接管等级调整原因"
+  );
   return takeover;
 }
 
