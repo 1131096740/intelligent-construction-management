@@ -1,5 +1,11 @@
 const { coreFlowApiVerificationTargets } = require("../dist/database/core-flow-api-verification");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
+const {
+  PRECISION_SENTINEL_CENTS,
+  TARGET_CONTRACT_CENTS,
+  assertExactMoneyText,
+  assertLocalMoneyVerificationRuntime
+} = require("../dist/database/money-bigint-live-verification");
 const { PrismaClient } = require("@prisma/client");
 
 const baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:3000";
@@ -83,6 +89,32 @@ async function postJson(path, body, token) {
   return response.json();
 }
 
+async function postJsonExpectFailure(path, body, token, label) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token)
+    },
+    body: JSON.stringify(body)
+  });
+  const responseBody = await response.text();
+
+  if (response.ok) {
+    throw new Error(`${label} should be rejected, received success: ${responseBody}`);
+  }
+  if (response.status < 400 || response.status >= 500) {
+    throw new Error(
+      `${label} returned unexpected HTTP ${response.status}: ${responseBody}`
+    );
+  }
+  if (!responseBody.includes("付款申请金额必须为大于 0 的整数分")) {
+    throw new Error(`${label} did not return the expected Chinese validation error: ${responseBody}`);
+  }
+
+  return { status: response.status, body: responseBody };
+}
+
 async function uploadPrivateFile(fileName, token) {
   const form = new FormData();
   form.append(
@@ -146,8 +178,15 @@ async function verifyTarget(target, token) {
 
 async function verifySeedReadModels(token) {
   for (const target of coreFlowApiVerificationTargets) {
-    await verifyTarget(target, token);
+    const requiredText = target.path === "/payments/FK-2026-006"
+      ? target.requiredText.filter((text) => text !== "approved_pending_payment")
+      : target.requiredText;
+    await verifyTarget({ ...target, requiredText }, token);
   }
+  const seedPayment = await prisma.paymentRequest.findUnique({
+    where: { id: coreFlowSeedData.paymentRequest.id }
+  });
+  assertEqual(seedPayment?.status, "approved_pending_payment", "seed payment database status");
 }
 
 async function verifyUnauthenticatedIsRejected() {
@@ -171,7 +210,7 @@ async function verifyWrongRoleIsRejected(tokens) {
   // 安全回归：合同部成员不能做用章审批（应为综合部主管），必须 403。
   // 先直接通过 Prisma 建一个可处置合同版本（进入"待用章"状态），再用错误岗位尝试用章。
   const codeSuffix = `${Date.now()}-rbac`;
-  const { versionId: contractVersionId } = await seedDisposableContract(codeSuffix);
+  const { versionId: contractVersionId } = await seedDisposableContract(codeSuffix, "5000000");
 
   await postJson(
     `/contracts/${contractVersionId}/approval-submission`,
@@ -203,7 +242,7 @@ async function verifyWrongRoleIsRejected(tokens) {
  * 直接通过 Prisma 创建可处置的合同/版本/付款条款行，用于 RBAC 和生命周期验证。
  * POST /contracts 已替换为工作台草稿接口（需要已发布模板），不再用于验证辅助合同的创建。
  */
-async function seedDisposableContract(codeSuffix) {
+async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_CENTS) {
   const { randomUUID } = require("crypto");
   const contractId = randomUUID();
   const versionId = randomUUID();
@@ -226,7 +265,7 @@ async function seedDisposableContract(codeSuffix) {
       versionNo: 1,
       changeType: "original",
       status: "draft",
-      amountCents: BigInt(5000000),
+      amountCents: BigInt(amountCents),
       draftData: {},
       templateSnapshot: {},
       clauseSnapshot: {}
@@ -250,14 +289,14 @@ async function seedDisposableContract(codeSuffix) {
       name: "当期结算款",
       stageType: "progress",
       basis: "current_settlement",
-      ratioBps: 8000,
+      ratioBps: 10000,
       triggerAnchor: "settlement_effective",
       triggerEvent: "结算归档确认生效",
-      dueDays: 30,
+      dueDays: 0,
       requiresInvoice: true,
       allowsEarlyPayment: false,
       allowsInstallments: true,
-      originalText: "结算归档确认生效后30天内支付当期结算款80%。"
+      originalText: "结算归档确认生效后可支付当期结算款100%。"
     }
   });
 
@@ -266,8 +305,54 @@ async function seedDisposableContract(codeSuffix) {
 
 async function verifyPhase1WriteLoop(tokens) {
   const codeSuffix = Date.now();
-  const settlementAmountCents = 1000000;
-  const payableAmountCents = 800000;
+  const settlementAmountCents = TARGET_CONTRACT_CENTS;
+  const payableAmountCents = TARGET_CONTRACT_CENTS;
+  const firstExecutionCents = "1000000001";
+  const secondExecutionCents = "1100000000";
+
+  const beforeReceiptOverview = await readJson(
+    `/projects/${coreFlowSeedData.project.id}/operating-funds-overview`,
+    tokens.cashier
+  );
+  assertExactMoneyText(
+    beforeReceiptOverview.cash.actualReceiptsCents,
+    String(beforeReceiptOverview.cash.actualReceiptsCents),
+    "project receipts before bigint verification"
+  );
+  const receiptVoucher = await uploadPrivateFile(
+    `SK-P1-${codeSuffix}-precision-voucher.pdf`,
+    tokens.cashier
+  );
+  const precisionReceipt = await postJson(
+    `/projects/${coreFlowSeedData.project.id}/receipts`,
+    {
+      receivedAt: "2026-06-20T00:00:00.000Z",
+      amountCents: PRECISION_SENTINEL_CENTS,
+      payerName: "一期大额金额验收业主",
+      sourceType: "owner_direct_payment",
+      description: "超过 JavaScript 安全整数的本地临时库精度哨兵",
+      voucherFileId: receiptVoucher.id,
+      confirmationPassword: PASSWORD
+    },
+    tokens.cashier
+  );
+  assertExactMoneyText(
+    precisionReceipt.amountCents,
+    PRECISION_SENTINEL_CENTS,
+    "project receipt API"
+  );
+  const afterReceiptOverview = await readJson(
+    `/projects/${coreFlowSeedData.project.id}/operating-funds-overview`,
+    tokens.cashier
+  );
+  const expectedReceipts = (
+    BigInt(beforeReceiptOverview.cash.actualReceiptsCents) + BigInt(PRECISION_SENTINEL_CENTS)
+  ).toString();
+  assertExactMoneyText(
+    afterReceiptOverview.cash.actualReceiptsCents,
+    expectedReceipts,
+    "project receipt aggregate API"
+  );
 
   // 合同：草稿 → 提交(合同部) → 审批(董事长) → 用章(综合部主管) → 归档上传(合同部) → 归档确认(合同部主管) → 生效
   // 直接通过 Prisma 创建可处置合同行（POST /contracts 已替换为需要已发布模板的工作台接口）。
@@ -327,7 +412,16 @@ async function verifyPhase1WriteLoop(tokens) {
     tokens.contractStaff
   );
   assertEqual(settlement.status, "approval_pending", "settlement creation");
-  assertEqual(settlement.payableAmountCents, payableAmountCents, "settlement payable amount");
+  assertExactMoneyText(
+    settlement.amountCents,
+    settlementAmountCents,
+    "settlement amount API"
+  );
+  assertExactMoneyText(
+    settlement.payableAmountCents,
+    payableAmountCents,
+    "settlement payable amount API"
+  );
 
   for (const token of [
     tokens.materialStaff,
@@ -361,7 +455,27 @@ async function verifyPhase1WriteLoop(tokens) {
   );
   assertEqual(settlement.status, "effective", "settlement archive confirmation");
 
-  // 付款：创建 → 审批(董事长) → 实际付款(出纳) → 财务流水(出纳) → PDF 留档(出纳)
+  const invalidPaymentCodes = [];
+  for (const invalidAmount of [2100000001, "1.5", "1e3", "-1"]) {
+    const invalidCode = `FK-P1-${codeSuffix}-INVALID-${String(invalidAmount).replace(/\W/g, "")}`;
+    invalidPaymentCodes.push(invalidCode);
+    await postJsonExpectFailure(
+      "/payments",
+      {
+        settlementId: settlement.id,
+        code: invalidCode,
+        requestedAmountCents: invalidAmount
+      },
+      tokens.contractStaff,
+      `invalid payment amount ${String(invalidAmount)}`
+    );
+  }
+  const invalidPaymentCount = await prisma.paymentRequest.count({
+    where: { code: { in: invalidPaymentCodes } }
+  });
+  assertEqual(invalidPaymentCount, 0, "invalid payment amounts leave no database rows");
+
+  // 付款：创建 → 按当前代码冻结的审批节点流转 → 两次实际付款 → 财务流水 → PDF 留档
   let payment = await postJson(
     "/payments",
     {
@@ -372,31 +486,93 @@ async function verifyPhase1WriteLoop(tokens) {
     tokens.contractStaff
   );
   assertEqual(payment.status, "approval_pending", "payment request creation");
-
-  payment = await postJson(
-    `/payments/${payment.id}/approval`,
-    { decision: "approve", approvedAmountCents: payableAmountCents },
-    tokens.chairman
+  assertExactMoneyText(
+    payment.requestedAmountCents,
+    payableAmountCents,
+    "payment request API"
   );
-  assertEqual(payment.status, "approved_pending_payment", "payment approval");
 
-  const voucherFile = await uploadPrivateFile(`FK-P1-${codeSuffix}-voucher.pdf`, tokens.cashier);
-  await postJson(
+  for (const [role, token] of [
+    ["projectManager", tokens.projectManager],
+    ["contractDirector", tokens.contractDirector],
+    ["financeDirector", tokens.financeDirector],
+    ["chairman", tokens.chairman]
+  ]) {
+    payment = await postJson(
+      `/payments/${payment.id}/approval`,
+      {
+        decision: "approve",
+        ...(role === "chairman" ? { approvedAmountCents: payableAmountCents } : {})
+      },
+      token
+    );
+  }
+  assertEqual(payment.status, "approved_pending_payment", "payment approval");
+  assertExactMoneyText(
+    payment.approvedAmountCents,
+    payableAmountCents,
+    "payment approval API"
+  );
+
+  const firstVoucherFile = await uploadPrivateFile(
+    `FK-P1-${codeSuffix}-voucher-1.pdf`,
+    tokens.cashier
+  );
+  const firstExecution = await postJson(
     `/payments/${payment.id}/executions`,
     {
-      amountCents: payableAmountCents,
+      amountCents: firstExecutionCents,
       paidAt: "2026-06-22T00:00:00.000Z",
-      voucherFileId: voucherFile.id,
+      voucherFileId: firstVoucherFile.id,
       confirmationPassword: PASSWORD
     },
     tokens.cashier
+  );
+  assertExactMoneyText(
+    firstExecution.amountCents,
+    firstExecutionCents,
+    "first payment execution API"
+  );
+
+  const afterFirstExecution = await prisma.paymentRequest.findUnique({
+    where: { id: payment.id }
+  });
+  if (!afterFirstExecution) {
+    throw new Error("Payment request disappeared after first execution");
+  }
+  assertEqual(afterFirstExecution.status, "partially_paid", "payment partial status");
+  assertEqual(
+    afterFirstExecution.paidAmountCents,
+    BigInt(firstExecutionCents),
+    "payment partial paid amount"
+  );
+
+  const secondVoucherFile = await uploadPrivateFile(
+    `FK-P1-${codeSuffix}-voucher-2.pdf`,
+    tokens.cashier
+  );
+  const secondExecution = await postJson(
+    `/payments/${payment.id}/executions`,
+    {
+      amountCents: secondExecutionCents,
+      paidAt: "2026-06-22T00:30:00.000Z",
+      voucherFileId: secondVoucherFile.id,
+      confirmationPassword: PASSWORD
+    },
+    tokens.cashier
+  );
+  assertExactMoneyText(
+    secondExecution.amountCents,
+    secondExecutionCents,
+    "second payment execution API"
   );
 
   await postJson(
     `/payments/${payment.id}/finance-records`,
     {
       amountCents: payableAmountCents,
-      occurredAt: "2026-06-22T01:00:00.000Z"
+      occurredAt: "2026-06-22T01:00:00.000Z",
+      confirmationPassword: PASSWORD
     },
     tokens.cashier
   );
@@ -420,7 +596,11 @@ async function verifyPhase1WriteLoop(tokens) {
   }
 
   assertEqual(finalPayment.status, "paid", "payment final status");
-  assertEqual(finalPayment.paidAmountCents, payableAmountCents, "payment paid amount");
+  assertEqual(
+    finalPayment.paidAmountCents,
+    BigInt(payableAmountCents),
+    "payment paid amount"
+  );
 
   const auditActions = await prisma.auditLog.findMany({
     where: {
@@ -465,6 +645,11 @@ async function verifyPhase1WriteLoop(tokens) {
 }
 
 async function main() {
+  assertLocalMoneyVerificationRuntime({
+    databaseUrl: process.env.DATABASE_URL ?? "",
+    apiBaseUrl: baseUrl,
+    storageDriver: process.env.FILE_STORAGE_DRIVER ?? "local"
+  });
   await assertSeedDataReady();
   const tokens = await loginAll();
   await verifyUnauthenticatedIsRejected();

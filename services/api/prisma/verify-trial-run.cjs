@@ -55,16 +55,16 @@ const CODES = {
 const IS_PREFLIGHT = process.argv.includes("--preflight");
 
 const HISTORICAL_BALANCE = {
-  historicalSettledCents: 1200000,
-  historicalApprovalPendingPaymentCents: 100000,
-  historicalApprovedPendingPaymentCents: 200000,
-  historicalPaidCents: 1000000,
-  historicalProxyPaidCents: 300000,
-  historicalAdvancePaidCents: 0,
-  historicalAdvanceDeductedCents: 0,
-  historicalRetentionWithheldCents: 0,
-  historicalRetentionReleasedCents: 0,
-  otherConfirmedOccupancyCents: 100000
+  historicalSettledCents: "1200000",
+  historicalApprovalPendingPaymentCents: "100000",
+  historicalApprovedPendingPaymentCents: "200000",
+  historicalPaidCents: "1000000",
+  historicalProxyPaidCents: "300000",
+  historicalAdvancePaidCents: "0",
+  historicalAdvanceDeductedCents: "0",
+  historicalRetentionWithheldCents: "0",
+  historicalRetentionReleasedCents: "0",
+  otherConfirmedOccupancyCents: "100000"
 };
 const EXPECTED_TAKEOVER_SUGGESTED_LEVEL = "B";
 const TAKEOVER_LEVEL_ADJUSTMENT_REASON =
@@ -373,7 +373,7 @@ async function createHistoricalTakeover(token) {
       name: "P0-5B UAT 脱敏历史材料采购合同",
       counterparty: "P0-5B UAT 脱敏供应商",
       contractTypeKey: "material_purchase",
-      amountCents: 10000000,
+      amountCents: "10000000",
       signedAt: "2026-05-20T00:00:00.000Z",
       takeoverLevel: "A",
       lifecycleStatus: "in_progress",
@@ -519,17 +519,17 @@ async function assertHistoricalInitialSettlement(takeoverRecord) {
   );
   assertEqual(
     settlement.amountCents,
-    HISTORICAL_BALANCE.historicalSettledCents,
+    BigInt(HISTORICAL_BALANCE.historicalSettledCents),
     "历史期初结算金额"
   );
   assertEqual(
     settlement.payableAmountCents,
-    HISTORICAL_BALANCE.historicalSettledCents,
+    BigInt(HISTORICAL_BALANCE.historicalSettledCents),
     "历史期初结算可付金额"
   );
   assertEqual(
     settlement.paidAmountCents,
-    HISTORICAL_BALANCE.historicalPaidCents,
+    BigInt(HISTORICAL_BALANCE.historicalPaidCents),
     "历史期初结算已付金额"
   );
   const archiveCount = await prisma.settlementArchiveFile.count({
@@ -860,7 +860,7 @@ async function verifyPaymentBlockedBeforeConfirmation(contractVersionId, token) 
       sourceType: "contract_due",
       contractVersionId,
       code: CODES.blockedPayment,
-      requestedAmountCents: 100000
+      requestedAmountCents: "100000"
     },
     token,
     "未确认接管时创建付款申请"
@@ -879,13 +879,13 @@ async function createAndConfirmSettlement(contractVersionId, tokens) {
       contractVersionId,
       code: CODES.settlement,
       periodLabel: "2026-07",
-      amountCents: 5000000
+      amountCents: "5000000"
     },
     tokens.contractStaff,
     "创建 UAT 结算"
   );
   assertEqual(settlement.status, "approval_pending", "UAT 结算创建状态");
-  assertEqual(settlement.payableAmountCents, 4000000, "UAT 结算可付金额");
+  assertEqual(settlement.payableAmountCents, "4000000", "UAT 结算可付金额");
 
   for (const [role, token] of [
     ["materialStaff", tokens.materialStaff],
@@ -945,7 +945,7 @@ async function assertDuplicateSettlementPeriodBlocked(contractVersionId, token) 
         contractVersionId,
         code: `${CODES.settlement}-${suffix}`,
         periodLabel,
-        amountCents: 1000000
+        amountCents: "1000000"
       },
       token,
       `创建同期间重复 UAT 结算 ${periodLabel}`
@@ -986,11 +986,11 @@ function assertHistoricalBalanceInPreview(preview) {
   );
   assertEqual(
     preview.capacity.historicalPaidCents,
-    0,
+    "0",
     "付款预览容量历史已付已由期初结算承载"
   );
   assert(
-    preview.capacity.actualPaidCents >= HISTORICAL_BALANCE.historicalPaidCents,
+    BigInt(preview.capacity.actualPaidCents) >= BigInt(HISTORICAL_BALANCE.historicalPaidCents),
     `付款预览实际已付未包含历史期初已付：${preview.capacity.actualPaidCents}`
   );
   assertEqual(
@@ -1004,7 +1004,7 @@ function assertHistoricalBalanceInPreview(preview) {
     "付款预览容量历史已批待付金额"
   );
   assert(
-    preview.capacity.maxRequestableCents >= 1000000,
+    BigInt(preview.capacity.maxRequestableCents) >= 1000000n,
     `付款预览可申请金额不足以发起 UAT 付款：${preview.capacity.maxRequestableCents}`
   );
   assert(
@@ -1020,7 +1020,7 @@ async function createAndApprovePayment(contractVersionId, tokens) {
       sourceType: "contract_due",
       contractVersionId,
       code: CODES.payment,
-      requestedAmountCents: 1000000
+      requestedAmountCents: "1000000"
     },
     tokens.contractStaff,
     "创建 UAT 付款申请"
@@ -1033,7 +1033,7 @@ async function createAndApprovePayment(contractVersionId, tokens) {
       sourceType: "contract_due",
       contractVersionId,
       code: CODES.overLimitPayment,
-      requestedAmountCents: 99999999
+      requestedAmountCents: "99999999"
     },
     tokens.contractStaff,
     "创建超额 UAT 付款申请"
@@ -1050,7 +1050,7 @@ async function createAndApprovePayment(contractVersionId, tokens) {
       `/payments/${payment.id}/approval`,
       {
         decision: "approve",
-        ...(isFinalPaymentApproval ? { approvedAmountCents: 1000000 } : {}),
+        ...(isFinalPaymentApproval ? { approvedAmountCents: "1000000" } : {}),
         comment: "P0-5B UAT 脱敏审批通过"
       },
       token,
@@ -1067,7 +1067,7 @@ async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
   const execution = await postJson(
     `/payments/${payment.id}/executions`,
     {
-      amountCents: 1000000,
+      amountCents: "1000000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: voucherFile.id,
       confirmationPassword: PASSWORD
@@ -1091,7 +1091,7 @@ async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
   const financeRecord = await postJson(
     `/payments/${payment.id}/finance-records`,
     {
-      amountCents: 1000000,
+      amountCents: "1000000",
       occurredAt: "2026-06-22T01:00:00.000Z",
       confirmationPassword: PASSWORD
     },
@@ -1125,7 +1125,7 @@ async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
   const persisted = await prisma.paymentRequest.findUnique({ where: { id: payment.id } });
   assert(persisted, "数据库中未找到刚登记实付的付款申请");
   assertEqual(persisted.status, "paid", "付款实付后状态");
-  assertEqual(persisted.paidAmountCents, 1000000, "付款实付后累计实付金额");
+  assertEqual(persisted.paidAmountCents, 1000000n, "付款实付后累计实付金额");
 
   return {
     execution,

@@ -159,6 +159,31 @@ describe("ApprovalFormService", () => {
     );
   });
 
+  it("formats large payment amounts in approval PDF rows without number conversion", () => {
+    const rows = buildProjectPaymentApprovalRows({
+      payment: {
+        sourceType: "settlement",
+        requestedAmountCents: 9007199254740993n
+      },
+      applicantName: "验收经办人",
+      companyName: "四川建工智管建筑工程有限公司",
+      contractAmountCents: 9007199254740993n,
+      cumulativeSettledCents: 2100000001n,
+      cumulativePaidCents: 1000000001n,
+      currentAvailableCents: 1100000000n
+    });
+
+    expect(rows.find((row) => row.label === "本次付款金额")?.value).toBe(
+      "90,071,992,547,409.93 元"
+    );
+    expect(rows.find((row) => row.label === "合同金额")?.value).toBe(
+      "90,071,992,547,409.93 元"
+    );
+    expect(rows.find((row) => row.label === "累计生效结算金额")?.value).toBe(
+      "21,000,000.01 元"
+    );
+  });
+
   it("renders an approval-form PDF and archives it as a PdfDocument", async () => {
     const prisma = buildPrisma();
     let uploaded: { buffer: Buffer; sizeBytes: number; originalName: string } | undefined;

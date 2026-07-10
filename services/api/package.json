@@ -12,6 +12,8 @@
     "seed": "prisma db seed",
     "preverify:core-flow": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:core-flow": "node prisma/verify-core-flow.cjs",
+    "preverify:money-bigint:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
+    "verify:money-bigint:local": "node prisma/run-money-bigint-local.cjs",
     "preverify:contract-workbench": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:contract-workbench": "node prisma/verify-contract-workbench.cjs",
     "preverify:trial-run": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",

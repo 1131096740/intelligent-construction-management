@@ -280,6 +280,37 @@ describe("ContractBillExcelService", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("keeps large Excel unit prices exact through import preview", async () => {
+    const { service, rows, fileService } = billFixture();
+    const buffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "超大额精度验证项",
+            unit: "项",
+            quantity: "1",
+            unitPrice: "90071992547409.93",
+            taxRatePercent: "0"
+          }
+        }
+      ]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-large-amount", originalName: "large-amount.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-large-amount",
+      mode: "append"
+    });
+
+    expect(preview.errors).toEqual([]);
+    expect(preview.added).toBe(1);
+    expect(preview.afterAmountCents).toBe("9007199254740993");
+    expect(rows).toHaveLength(0);
+  });
+
   it("returns sheet-row-column errors for invalid numbers", async () => {
     const { service, fileService } = billFixture();
     const buffer = await buildWorkbookBuffer({

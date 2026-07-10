@@ -8,7 +8,8 @@
     "lint": "node scripts/pnpm-workspace.mjs -r lint",
     "test": "node scripts/pnpm-workspace.mjs -r test",
     "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck",
-    "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight"
+    "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight",
+    "verify:money-bigint:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:money-bigint:local"
   },
   "engines": {
     "node": ">=20.0.0",
