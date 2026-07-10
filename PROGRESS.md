@@ -21,8 +21,8 @@
 
 ## 当前下一步
 
-- [x] 项目接管规格与实施总控已通过：`docs/superpowers/specs/2026-07-10-project-takeover-mvp-design.md` 于 2026-07-10 书面复核通过；总控路线图及阶段 0A 发布真相、0B 大额金额、0C COS 私有文件、0D API 校验/生产复验四份逐任务计划已落盘。下一执行入口固定为阶段 0A，不再继续散点扩功能。
-- [~] 生产等价环境复验：PostgreSQL 本机监听、安全响应头、时间同步、服务器健康检查和备份恢复已有验证记录；COS 桶私有读写、无公开 Policy、无 Everyone 授权、无生命周期删除规则和版本控制已人工确认。用户于 2026-07-10 明确 COS 现状为“私有桶已创建、应用尚未正式接入”，后端上传、元数据登记、鉴权短链和审计闭环仍是 P0；域名、HTTPS 和唯一发布主线需在阶段 0 重新核验。
+- [x] 项目接管规格与实施总控已通过：`docs/superpowers/specs/2026-07-10-project-takeover-mvp-design.md` 于 2026-07-10 书面复核通过；总控路线图及阶段 0A 发布真相、0B 大额金额、0C COS 私有文件、0D API 校验/生产复验四份逐任务计划已落盘。阶段 0A 已完成，下一唯一执行入口固定为阶段 0B 大额金额治理，不再继续散点扩功能。
+- [~] 生产等价环境复验：PostgreSQL 本机监听、安全响应头、时间同步、服务器健康检查、备份恢复、域名、HTTPS 和唯一 `main` 发布主线均已有验证记录；COS 桶私有读写、无公开 Policy、无 Everyone 授权、无生命周期删除规则和版本控制已人工确认。用户于 2026-07-10 明确 COS 现状为“私有桶已创建、应用尚未正式接入”，后端上传、元数据登记、鉴权短链和审计闭环仍是 P0。
 - [ ] 真实数据初始化：项目、成员、岗位、账号、业主主合同、约 20 个历史合同、3-5 个活跃合同槽位。
 - [~] 真实账号收口：seed 通用密码未出现在生产环境，seed 用户和 refresh token 已停用；真实试运行用户清单、临时密码重置和首次改密留痕待执行。
 - [ ] 历史合同接管：导入预检、批次生成草稿、批次接管截止日/责任人/复核意见/验收结论显式填写、批次提交复核与验收结论状态流转、同批次幂等防重复、批次摘要查看、中文复核提示、A/B/C 等级风险说明、系统建议等级一键采用、资料清单/缺口说明、确认前关键资料硬拦、已确认资料静默补充硬拦、更正记录后端账本/API/前台表单/详情展示、接管后核验事实摘要、资料库按项目查询、接管详情安全下载和付款阻断提示已可用；仍需完成真实合同资料补录、复核和当前密码二次确认接管。
@@ -41,13 +41,13 @@
 | P0-2 历史余额控制 | [x] | 已确认接管历史余额进入付款容量硬扣减；付款预览和合同详情金额摘要已接入；付款预览说明已展示历史未释放质保金扣减。 | 历史结算明细/分摊来源、Excel/OCR 为后续增强，不阻断 P0。 |
 | P0-3 真实使用体验 | [x] | 结算/付款业务选择器、真实首页工作台、逐单 `GET /me/work-items`、P0 浏览器冒烟 mock、审批中心五视图、列表可用筛选器、详情页后端动作元数据、详情页审批历史时间线、合同/结算/付款列表过程字段、资料库行内授权下载、审批单下载当前密码和原因审计、委托人员选择器同项目收窄已完成。 | 小程序为 P2；生产等价真实用户长链路验收待现场执行。 |
 | P0-4 真实试运行准备 | [~] | 初始化清单和最小 Runbook 已形成；用户确认问题由其收集后直接进入轻量发布闭环，不建设正式 Go-Live 材料流程。 | 真实数据落库、组织权限 UI 验证、合同母版真实样例和 3-5 条真实业务链路体验。 |
-| P0-5 生产验收 | [~] | 服务器 readiness、迁移状态、安全响应头、UFW、PostgreSQL 本机监听、时间同步、备份恢复和运行告警已有验证记录；COS 桶 `jiangkong-prod-files-1438687719` 为私有读写，无公开 Policy、无 Everyone 授权、无生命周期删除规则，版本控制已开启。 | 按用户确认，COS 应用尚未正式接入；需完成后端上传、PostgreSQL 元数据、鉴权短链、版本和审计闭环，并重新核验域名、HTTPS 和唯一发布分支。 |
+| P0-5 生产验收 | [~] | 服务器 readiness、迁移状态、安全响应头、UFW、PostgreSQL 本机监听、时间同步、备份恢复、运行告警、域名 HTTPS 和唯一 `main` 发布主线已有验证记录；COS 桶 `jiangkong-prod-files-1438687719` 为私有读写，无公开 Policy、无 Everyone 授权、无生命周期删除规则，版本控制已开启。 | 按用户确认，COS 应用尚未正式接入；需完成后端上传、PostgreSQL 元数据、鉴权短链、版本和审计闭环。 |
 | P0-6 真实试运行执行 | [~] | 执行与问题闭环 Runbook 已形成。 | 尚不代表真实试运行已开始或通过。 |
 | P0-7 真实常用单据 | [x] | 项目付款审批表 PDF、结算附件模板、综合费用最小付款闭环已完成。 | 完整 OA 报销、发票识别、行程明细、多人报销、预算科目树不进入 P0。 |
 
 ## 最近变更（保留摘要，最新在最上）
 
-- 2026-07-10 (CodeX)：阶段 0A Task 4 首次 `main` 发布已通过：发布 commit `270b527c28c6f3dee9c7df921970bead38d6c7eb` 已非强制快进到 `origin/main`；GitHub Actions Deploy Production run [`29081376619`](https://github.com/1131096740/intelligent-construction-management/actions/runs/29081376619) 的 `Verify build` 与 `Deploy to server` 均成功；生产 `/opt/jiangkong` HEAD 与发布 commit 一致，无 tracked 修改，127.0.0.1 API、服务器侧域名 API、HTTPS 首页和运行健康脚本全部通过。当前 Codex 执行环境仍因既有 TLS 限制返回 `SSL_ERROR_SYSCALL`，已由服务器侧同域名 HTTPS 验证覆盖；发布前备份 `/srv/jiangkong-backups/db/jiangkong-20260710-162703.dump` 保留。阶段 0A Task 4 的结果记录提交尚需再执行一次 docs-only 发布并复验 workflow 与生产最终 HEAD。
+- 2026-07-10 (CodeX)：阶段 0A Task 4 两次 `main` 发布与生产复验均已完成：代码发布 commit `270b527c28c6f3dee9c7df921970bead38d6c7eb` 对应 Deploy Production run [`29081376619`](https://github.com/1131096740/intelligent-construction-management/actions/runs/29081376619)，结果记录 commit `e95a32f8b1ab79679570cddad8aae3693144ab9e` 对应 run [`29081750029`](https://github.com/1131096740/intelligent-construction-management/actions/runs/29081750029)，两次 run 的 `Verify build` 与 `Deploy to server` 均为 `success`。第二次发布后生产 `/opt/jiangkong` HEAD 与 `origin/main` 均为 `e95a32f8b1ab79679570cddad8aae3693144ab9e`，无 tracked 修改，127.0.0.1 API、服务器侧域名 API、HTTPS 首页和运行健康脚本全部通过；当前 Codex 执行环境的既有 `SSL_ERROR_SYSCALL` 已由服务器侧同域名 HTTPS 验证覆盖，发布前备份 `/srv/jiangkong-backups/db/jiangkong-20260710-162703.dump` 保留。阶段 0A 已完成，下一唯一执行入口为阶段 0B 大额金额治理。
 - 2026-07-10 (CodeX)：完成阶段 0A Task 2 全量可发布证据，针对 commit `16c310e67d741bddeac2e928420bdc4835d4d759` 重新确认工作树干净、`main...HEAD` 为 `0 1` 且本地 `main` 是 `HEAD` 祖先；Prisma Client 生成、全仓 typecheck/lint/test、Web `check:ui`、API/Web 生产构建和 `git diff --check` 全部通过，其中 API 62/62 套件、1048/1048 用例，Web 39/39 文件、301/301 用例，shared-domain 7/7 文件、56/56 用例。发布基线详见 `docs/progress/2026-07-10-release-baseline.md`；“代码可发布”不等于“第一版全部完成”，金额 BigInt、COS 正式接入、组织权限 UI、合同/结算办公化工作台仍待完成。本次未推送 `main`，未部署生产。
 - 2026-07-10 (CodeX)：阶段 0A 修正两处陈旧英文断言，使合同清单和业务相对方服务测试与既有“合同草稿已变化，请刷新后重试”中文提示一致；业务实现未变。验证：先复现 API 两套件 2 项因旧英文期望失败，再对齐断言后复跑，2 套件、24 项全部通过。
 - 2026-07-10 (CodeX)：用户书面通过项目接管与第一版规格；新增总控实施路线图和阶段 0A/0B/0C/0D 四份逐任务计划。重新核验当前分支为 `main` 的直接后继（检查时 0 behind / 246 ahead），生产仍只从 `main` 发布；现状基线为 API 60/62 套件、1046/1048 用例通过，唯一两处失败均为测试仍断言旧英文错误，Web 39/39 文件、301/301 用例及 API/Web typecheck、lint、Web `check:ui` 全通过。本轮只写规格状态、计划和进度文档，未修改业务代码。
