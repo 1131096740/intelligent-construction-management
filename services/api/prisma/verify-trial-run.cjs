@@ -72,6 +72,10 @@ const TAKEOVER_EVIDENCE_PURPOSES = [
   "historical_settlement_ledger",
   "historical_payment_voucher"
 ];
+const TAKEOVER_EVIDENCE_DOWNLOAD_REASON_BY_ROLE = {
+  "合同员": "UAT 合同员接管资料下载验收",
+  "财务总监": "UAT 财务总监接管资料下载验收"
+};
 
 function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -208,6 +212,15 @@ async function loginAll() {
     Object.entries(PHONES).map(async ([role, phone]) => [role, await login(role, phone)])
   );
   return Object.fromEntries(entries);
+}
+
+async function userIdByPhone(role) {
+  const user = await prisma.user.findUnique({
+    where: { phone: PHONES[role] },
+    select: { id: true }
+  });
+  assert(user, `${ROLE_LABELS[role] ?? role} 用户不存在，无法校验审计操作人`);
+  return user.id;
 }
 
 async function readJson(path, token, label = path) {
@@ -445,11 +458,13 @@ async function assertTakeoverVerification(takeoverId, token, expected) {
 }
 
 async function downloadTakeoverEvidenceFile(fileId, token, label) {
+  const downloadReason = TAKEOVER_EVIDENCE_DOWNLOAD_REASON_BY_ROLE[label];
+  assert(downloadReason, `${label} 接管资料下载原因未配置`);
   const ticket = await postJson(
     `/files/${fileId}/download-ticket`,
     {
       confirmationPassword: PASSWORD,
-      downloadReason: `UAT ${label}接管资料下载验收`
+      downloadReason
     },
     token,
     `${label}生成接管资料短时效下载链接`
@@ -866,6 +881,25 @@ async function assertAuditActions(input) {
     TAKEOVER_LEVEL_ADJUSTMENT_REASON,
     "历史接管创建审计等级调整原因"
   );
+  const financeDownloadReason = TAKEOVER_EVIDENCE_DOWNLOAD_REASON_BY_ROLE["财务总监"];
+  const financeTicketAudit = auditActions.find(
+    (row) =>
+      row.action === "file.download.ticket" &&
+      row.actorUserId === input.financeDirectorUserId &&
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      row.metadata.downloadReason === financeDownloadReason
+  );
+  assert(financeTicketAudit, "关键审计日志缺少财务总监接管资料下载票据原因");
+  const financeDownloadAudit = auditActions.find(
+    (row) =>
+      row.action === "file.download" &&
+      row.actorUserId === input.financeDirectorUserId &&
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      row.metadata.downloadReason === financeDownloadReason
+  );
+  assert(financeDownloadAudit, "关键审计日志缺少财务总监接管资料实际下载原因");
 }
 
 function userFacingErrorMessage(error) {
@@ -892,6 +926,7 @@ async function main() {
   }
 
   const tokens = await loginAll();
+  const financeDirectorUserId = await userIdByPhone("financeDirector");
   console.log(`开始 P0-5B 真实试运行 UAT 验证，编号 ${RUN_ID}`);
 
   const initialStaffSummary = await loadWorkbenchSummary("合同员", tokens.contractStaff);
@@ -1002,7 +1037,8 @@ async function main() {
     takeoverId: takeover.id,
     settlementId: settlement.id,
     paymentId: payment.id,
-    evidenceFileId
+    evidenceFileId,
+    financeDirectorUserId
   });
 
   console.log(
