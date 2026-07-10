@@ -2117,7 +2117,7 @@ function takeoverEvidenceChecklist(
 }
 
 function positiveCents(value: bigint): boolean {
-  return typeof value === "bigint" ? value > 0n : value > 0;
+  return dbMoneyToBigInt(value, "历史接管金额") > 0n;
 }
 
 function missingEvidenceRiskText(purpose: ContractTakeoverEvidencePurpose): string {

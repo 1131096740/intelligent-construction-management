@@ -2575,6 +2575,51 @@ describe("ContractTakeoverService", () => {
     expect(tx.contractTakeover.update).not.toHaveBeenCalled();
   });
 
+  it("rejects a runtime number before evaluating the historical settlement evidence checklist", async () => {
+    const takeover = takeoverRecord();
+    let historicalSettledReads = 0;
+    Object.defineProperty(takeover, "historicalSettledCents", {
+      enumerable: true,
+      get: () => (historicalSettledReads++ === 0 ? 600_000 : 600_000n)
+    });
+    const prisma = {
+      contractTakeover: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([takeover])
+          .mockResolvedValueOnce([takeoverRecord({ historicalSettledCents: 0n })])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-1",
+            code: "HT-HIS-001",
+            temporaryCode: null,
+            name: "Historical material contract",
+            counterparty: "Supplier A"
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-version-1", amountCents: 1_000_000n }
+        ])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(service.list("project-1")).rejects.toThrow(
+      "历史接管金额必须为 bigint 分值"
+    );
+
+    const [zeroSettlementTakeover] = await service.list("project-1");
+    expect(zeroSettlementTakeover.evidenceChecklist).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ purpose: "historical_settlement_ledger" })
+      ])
+    );
+  });
+
   it("lists historical takeover rows as business read models without internal IDs", async () => {
     const prisma = {
       contractTakeover: {
