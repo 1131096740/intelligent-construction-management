@@ -608,7 +608,7 @@ export class ContractService {
 
       if (input.decision === "reject_previous") {
         if (instance.currentNodeIndex === 0) {
-          throw new Error("Cannot reject contract approval to previous node from first node");
+          throw new Error("当前已是第一个审批节点，不能退回上一节点");
         }
 
         const previousNodeIndex = instance.currentNodeIndex - 1;
@@ -759,7 +759,7 @@ export class ContractService {
       }
 
       if (version.status !== "in_approval") {
-        throw new Error(`Cannot withdraw contract approval from status ${version.status}`);
+        throw new Error("当前合同已离开审批中，不能撤回审批");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -776,7 +776,7 @@ export class ContractService {
       }
 
       if (instance.applicantUserId !== actorUserId) {
-        throw new Error("Only contract approval applicant can withdraw");
+        throw new Error("只有合同审批申请人可以撤回审批");
       }
 
       const updated = await tx.contractVersion.update({
@@ -846,7 +846,7 @@ export class ContractService {
       }
 
       if (instance.applicantUserId !== actorUserId) {
-        throw new Error("Only contract approval applicant can remind");
+        throw new Error("只有合同审批申请人可以发起催办");
       }
 
       const lastRemind = await tx.approvalActionLog.findFirst({
@@ -863,7 +863,7 @@ export class ContractService {
           now
         })
       ) {
-        throw new Error("Contract approval is not due for a reminder yet");
+        throw new Error("当前合同审批还未达到催办时间，请稍后再试");
       }
 
       const nodes = instance.frozenNodes as unknown as typeof CONTRACT_APPROVAL_NODES;
@@ -1339,7 +1339,7 @@ export class ContractService {
     input: AssignApprovalDto
   ) {
     if (!input.toUserId || input.toUserId === actorUserId) {
-      throw new Error("Contract approval assignment target is invalid");
+      throw new Error("请选择有效的审批接收人，不能选择当前操作人");
     }
 
     return this.prisma.$transaction(async (tx) => {

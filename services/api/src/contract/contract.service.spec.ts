@@ -1627,7 +1627,7 @@ describe("ContractService", () => {
         decision: "reject_previous",
         comment: "无法退回上一节点"
       })
-    ).rejects.toThrow("Cannot reject contract approval to previous node from first node");
+    ).rejects.toThrow("当前已是第一个审批节点，不能退回上一节点");
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
   });
@@ -1781,6 +1781,20 @@ describe("ContractService", () => {
         toUserId: "transfer-user-1"
       }
     });
+  });
+
+  it("合同审批转交接收人无效时直接拒绝", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ContractService(prisma as never, audit as never);
+
+    await expect(
+      service.transferApproval("contract-version-1", "chairman-1", {
+        toUserId: "chairman-1"
+      })
+    ).rejects.toThrow("请选择有效的审批接收人，不能选择当前操作人");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("lets the transferred user approve a contract as the source role", async () => {
@@ -2586,7 +2600,7 @@ describe("ContractService", () => {
 
     await expect(
       contractService.remindApproval("contract-version-1", "applicant-1", now)
-    ).rejects.toThrow("not due for a reminder");
+    ).rejects.toThrow("当前合同审批还未达到催办时间，请稍后再试");
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 
@@ -2625,7 +2639,7 @@ describe("ContractService", () => {
         "intruder-1",
         new Date("2026-06-25T00:00:00.000Z")
       )
-    ).rejects.toThrow("applicant");
+    ).rejects.toThrow("只有合同审批申请人可以发起催办");
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 
@@ -2713,7 +2727,7 @@ describe("ContractService", () => {
 
     await expect(
       contractService.withdrawApproval("contract-version-1", "other-user")
-    ).rejects.toThrow("Only contract approval applicant can withdraw");
+    ).rejects.toThrow("只有合同审批申请人可以撤回审批");
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
   });
@@ -2739,7 +2753,7 @@ describe("ContractService", () => {
 
     await expect(
       contractService.withdrawApproval("contract-version-1", "applicant-1")
-    ).rejects.toThrow("Cannot withdraw contract approval from status approved_pending_seal");
+    ).rejects.toThrow("当前合同已离开审批中，不能撤回审批");
     expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
   });
 });
