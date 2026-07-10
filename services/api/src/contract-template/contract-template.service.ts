@@ -52,7 +52,7 @@ export class ContractTemplateService {
       where: { userId: actorUserId, projectId: null }
     });
     if (!positions.length) {
-      throw new ForbiddenException(`Requires global role: ${roleKey}`);
+      throw new ForbiddenException(this.roleErrorMessage(roleKey));
     }
     const positionIds = positions.map((p: { positionId: string }) => p.positionId);
     const positionRows = await tx.position.findMany({
@@ -60,8 +60,14 @@ export class ContractTemplateService {
     });
     const hasRole = positionRows.some((p: { key: string }) => p.key === roleKey);
     if (!hasRole) {
-      throw new ForbiddenException(`Requires global role: ${roleKey}`);
+      throw new ForbiddenException(this.roleErrorMessage(roleKey));
     }
+  }
+
+  private roleErrorMessage(roleKey: string) {
+    return roleKey === "contract_staff"
+      ? "只有合同经办人可以执行该模板操作"
+      : "只有合同主管可以执行该模板操作";
   }
 
   // ---------------------------------------------------------------------------
@@ -192,9 +198,9 @@ export class ContractTemplateService {
       const version = await tx.contractBusinessTemplateVersion.findUnique({
         where: { id: versionId }
       });
-      if (!version) throw new NotFoundException("Template version not found");
+      if (!version) throw new NotFoundException("未找到业务模板版本，请刷新后重试");
       if (version.status !== "draft") {
-        throw new BadRequestException("Only draft versions can be edited");
+        throw new BadRequestException("只有草稿状态的业务模板版本可以编辑");
       }
 
       const updated = await tx.contractBusinessTemplateVersion.update({
@@ -223,9 +229,9 @@ export class ContractTemplateService {
       const source = await tx.contractBusinessTemplateVersion.findUnique({
         where: { id: versionId }
       });
-      if (!source) throw new NotFoundException("Template version not found");
+      if (!source) throw new NotFoundException("未找到业务模板版本，请刷新后重试");
       if (source.status !== "published") {
-        throw new BadRequestException("Only published versions can be cloned");
+        throw new BadRequestException("只有已发布的业务模板版本可以复制为新草稿");
       }
 
       const existing = await tx.contractBusinessTemplateVersion.findMany({
@@ -266,9 +272,9 @@ export class ContractTemplateService {
       const version = await tx.contractBusinessTemplateVersion.findUnique({
         where: { id: versionId }
       });
-      if (!version) throw new NotFoundException("Template version not found");
+      if (!version) throw new NotFoundException("未找到业务模板版本，请刷新后重试");
       if (version.status !== "draft") {
-        throw new BadRequestException("Only draft versions can be submitted");
+        throw new BadRequestException("只有草稿状态的业务模板版本可以提交");
       }
 
       validateContractTemplateSchema(this.versionToSchema(version));
@@ -299,9 +305,9 @@ export class ContractTemplateService {
       const version = await tx.contractBusinessTemplateVersion.findUnique({
         where: { id: versionId }
       });
-      if (!version) throw new NotFoundException("Template version not found");
+      if (!version) throw new NotFoundException("未找到业务模板版本，请刷新后重试");
       if (version.status !== "submitted") {
-        throw new BadRequestException("Only submitted versions can be published");
+        throw new BadRequestException("只有已提交的业务模板版本可以发布");
       }
 
       validateContractTemplateSchema(this.versionToSchema(version));
@@ -335,9 +341,9 @@ export class ContractTemplateService {
       const version = await tx.contractBusinessTemplateVersion.findUnique({
         where: { id: versionId }
       });
-      if (!version) throw new NotFoundException("Template version not found");
+      if (!version) throw new NotFoundException("未找到业务模板版本，请刷新后重试");
       if (version.status !== "published") {
-        throw new BadRequestException("Only published versions can be stopped");
+        throw new BadRequestException("只有已发布的业务模板版本可以停用");
       }
 
       const updated = await tx.contractBusinessTemplateVersion.update({
@@ -366,9 +372,9 @@ export class ContractTemplateService {
       const version = await tx.contractBusinessTemplateVersion.findUnique({
         where: { id: versionId }
       });
-      if (!version) throw new NotFoundException("Template version not found");
+      if (!version) throw new NotFoundException("未找到业务模板版本，请刷新后重试");
       if (version.status !== "published") {
-        throw new BadRequestException("Only published versions can be revoked");
+        throw new BadRequestException("只有已发布的业务模板版本可以撤回");
       }
 
       const updated = await tx.contractBusinessTemplateVersion.update({
@@ -482,9 +488,9 @@ export class ContractTemplateService {
       const version = await tx.standardClauseVersion.findUnique({
         where: { id: versionId }
       });
-      if (!version) throw new NotFoundException("Clause version not found");
+      if (!version) throw new NotFoundException("未找到标准条款版本，请刷新后重试");
       if (version.status !== "draft") {
-        throw new BadRequestException("Only draft versions can be submitted");
+        throw new BadRequestException("只有草稿状态的标准条款版本可以提交");
       }
 
       const updated = await tx.standardClauseVersion.update({
@@ -513,9 +519,9 @@ export class ContractTemplateService {
       const version = await tx.standardClauseVersion.findUnique({
         where: { id: versionId }
       });
-      if (!version) throw new NotFoundException("Clause version not found");
+      if (!version) throw new NotFoundException("未找到标准条款版本，请刷新后重试");
       if (version.status !== "submitted") {
-        throw new BadRequestException("Only submitted versions can be published");
+        throw new BadRequestException("只有已提交的标准条款版本可以发布");
       }
 
       const updated = await tx.standardClauseVersion.update({

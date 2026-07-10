@@ -144,7 +144,7 @@ describe("ContractTemplateService", () => {
 
     await expect(
       service.updateDraftVersion("version-1", "contract-staff-1", { schema: validSchema })
-    ).rejects.toThrow("Only draft versions can be edited");
+    ).rejects.toThrow("只有草稿状态的业务模板版本可以编辑");
     expect(tx.contractBusinessTemplateVersion.update).not.toHaveBeenCalled();
   });
 
@@ -492,9 +492,116 @@ describe("ContractTemplateService", () => {
     const service = new ContractTemplateService(prisma, audit as never);
 
     await expect(service.cloneVersion("version-1", "contract-staff-1")).rejects.toThrow(
-      "Only published versions can be cloned"
+      "只有已发布的业务模板版本可以复制为新草稿"
     );
     expect(tx.contractBusinessTemplateVersion.create).not.toHaveBeenCalled();
+  });
+
+  it("uses Chinese business errors for template version state transitions", async () => {
+    const baseTx = (status: string, role: "contract_staff" | "contract_director") => ({
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: role }])
+      },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          templateId: "template-1",
+          status,
+          fieldSchema: validSchema.fields,
+          billSchema: [],
+          clauseSchema: [],
+          attachmentSchema: [],
+          validationSchema: []
+        }),
+        update: jest.fn()
+      },
+      auditLog: { create: jest.fn() }
+    });
+
+    await expect(
+      new ContractTemplateService(
+        {
+          $transaction: jest.fn(async (callback) => callback(baseTx("submitted", "contract_staff")))
+        } as never,
+        audit as never
+      ).submitVersion("version-1", "contract-staff")
+    ).rejects.toThrow("只有草稿状态的业务模板版本可以提交");
+
+    await expect(
+      new ContractTemplateService(
+        {
+          $transaction: jest.fn(async (callback) => callback(baseTx("draft", "contract_director")))
+        } as never,
+        audit as never
+      ).publishVersion("version-1", "contract-director", { changeSummary: "发布" })
+    ).rejects.toThrow("只有已提交的业务模板版本可以发布");
+
+    await expect(
+      new ContractTemplateService(
+        {
+          $transaction: jest.fn(async (callback) => callback(baseTx("draft", "contract_director")))
+        } as never,
+        audit as never
+      ).stopVersion("version-1", "contract-director")
+    ).rejects.toThrow("只有已发布的业务模板版本可以停用");
+
+    await expect(
+      new ContractTemplateService(
+        {
+          $transaction: jest.fn(async (callback) => callback(baseTx("draft", "contract_director")))
+        } as never,
+        audit as never
+      ).revokeVersion("version-1", "contract-director")
+    ).rejects.toThrow("只有已发布的业务模板版本可以撤回");
+  });
+
+  it("uses Chinese business errors for standard clause version state transitions", async () => {
+    const serviceWithClauseStatus = (
+      status: string,
+      role: "contract_staff" | "contract_director"
+    ) => {
+      const tx = {
+        userPosition: {
+          findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
+        },
+        position: {
+          findMany: jest.fn().mockResolvedValue([{ key: role }])
+        },
+        standardClauseVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "version-1",
+            clauseId: "clause-1",
+            status
+          }),
+          update: jest.fn()
+        },
+        auditLog: { create: jest.fn() }
+      };
+      return new ContractTemplateService(
+        {
+          $transaction: jest.fn(async (callback) => callback(tx))
+        } as never,
+        audit as never
+      );
+    };
+
+    await expect(
+      serviceWithClauseStatus("submitted", "contract_staff").submitClauseVersion(
+        "version-1",
+        "contract-staff"
+      )
+    ).rejects.toThrow("只有草稿状态的标准条款版本可以提交");
+
+    await expect(
+      serviceWithClauseStatus("draft", "contract_director").publishClauseVersion(
+        "version-1",
+        "contract-director",
+        "发布"
+      )
+    ).rejects.toThrow("只有已提交的标准条款版本可以发布");
   });
 
   it("listPublished returns only templates with a published version", async () => {
