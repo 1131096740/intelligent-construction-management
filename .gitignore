@@ -2,6 +2,7 @@ node_modules/
 .codex/
 .codebase-memory/
 .superpowers/
+.worktrees/
 dist/
 .env
 .env.*
