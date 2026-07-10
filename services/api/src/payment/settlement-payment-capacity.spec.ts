@@ -311,6 +311,22 @@ describe("calculateSettlementPaymentCapacityBigInt", () => {
       })
     ).toThrow("合同金额必须为安全整数分");
   });
+
+  it("rejects an unsafe historical paid amount at the contract capacity boundary", () => {
+    expect(() =>
+      settlementPaymentCapacity.calculateContractDuePaymentCapacityBigInt({
+        asOf: new Date("2026-07-10T00:00:00.000Z"),
+        settlements: [],
+        paymentTermsStages: [],
+        settlementArchiveFiles: [],
+        paymentRequests: [],
+        historicalBalance: {
+          balanceConfirmedAt: new Date("2026-07-09T00:00:00.000Z"),
+          paidCents: Number.MAX_SAFE_INTEGER + 1
+        }
+      })
+    ).toThrow("历史已付金额必须为安全整数分");
+  });
 });
 
 function calculateAdvanceCapacity(
@@ -1964,6 +1980,15 @@ describe("allocateContractDuePaymentExecution", () => {
     expect(() =>
       allocateContractDuePaymentExecution?.({
         amountCents: 0,
+        sections: []
+      })
+    ).toThrow("登记实付金额必须大于 0，不能分摊零金额或负数付款。");
+  });
+
+  it("rejects a negative contract-level execution with the existing Chinese reason", () => {
+    expect(() =>
+      allocateContractDuePaymentExecution?.({
+        amountCents: -1,
         sections: []
       })
     ).toThrow("登记实付金额必须大于 0，不能分摊零金额或负数付款。");
