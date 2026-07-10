@@ -376,7 +376,7 @@ describe("BusinessPartyService", () => {
         roleKey: "other",
         snapshot: { name: "临时单位", attachments: [] }
       })
-    ).rejects.toThrow("Contract draft revision/status conflict");
+    ).rejects.toThrow("合同草稿已变化，请刷新后重试");
     expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
     expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });

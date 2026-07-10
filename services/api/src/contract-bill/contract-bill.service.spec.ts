@@ -196,7 +196,7 @@ describe("ContractBillService", () => {
     tx.contractVersion.updateMany.mockResolvedValueOnce({ count: 0 });
 
     await expect(service.addRow("bill-1", "owner-1", rowInput)).rejects.toThrow(
-      "Contract draft revision/status conflict"
+      "合同草稿已变化，请刷新后重试"
     );
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
     expect(tx.contractBillRow.create).not.toHaveBeenCalled();
