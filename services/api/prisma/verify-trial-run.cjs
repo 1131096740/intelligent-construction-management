@@ -570,6 +570,20 @@ async function assertPaymentPdfArchiveVisibleInArchiveLedger(fileId, paymentCode
   assertEqual(row.canDownload, true, "资料库付款 PDF 下载状态");
 }
 
+async function assertPaymentVoucherVisibleInArchiveLedger(fileId, paymentCode, token) {
+  const archiveLedger = await readJson("/archives?limit=200", token, "资料库台账");
+  assert(Array.isArray(archiveLedger.rows), "资料库台账未返回资料行");
+  const row = archiveLedger.rows.find((item) => item.fileId === fileId);
+  assert(row, "资料库台账未展示刚上传的付款凭证");
+  assertEqual(row.documentType, "付款凭证", "资料库付款凭证资料类型");
+  assert(
+    String(row.businessRef ?? "").includes(paymentCode),
+    `资料库付款凭证关联业务不正确：${row.businessRef}`
+  );
+  assertEqual(row.archiveStatus, "已上传", "资料库付款凭证状态");
+  assertEqual(row.canDownload, true, "资料库付款凭证下载状态");
+}
+
 async function ensureProgressPaymentStage(paymentTermsVersionId) {
   await prisma.paymentTermsStage.create({
     data: {
@@ -863,6 +877,11 @@ async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
     "登记 UAT 付款实付"
   );
   assert(execution.id, "付款实付登记未返回实付记录编号");
+  await assertPaymentVoucherVisibleInArchiveLedger(
+    voucherFile.id,
+    payment.code,
+    tokens.contractStaff
+  );
 
   const financeRecord = await postJson(
     `/payments/${payment.id}/finance-records`,
