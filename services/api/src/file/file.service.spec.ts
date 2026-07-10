@@ -2247,7 +2247,7 @@ describe("FileService", () => {
     });
   });
 
-  it("rejects a tampered download reason before reading or auditing a ticket", async () => {
+  it("rejects tampered download ticket fields before reading or auditing a ticket", async () => {
     const tx = {
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -2289,6 +2289,18 @@ describe("FileService", () => {
         actorUserId: url.searchParams.get("actorUserId") ?? "",
         expiresAt: url.searchParams.get("expiresAt") ?? "",
         downloadReason: "篡改下载原因",
+        token: url.searchParams.get("token") ?? ""
+      })
+    ).rejects.toThrow("下载链接校验失败，请重新申请下载");
+    expect(transaction).not.toHaveBeenCalled();
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+
+    await expect(
+      service.readPrivateFile("file-1", {
+        actorUserId: url.searchParams.get("actorUserId") ?? "",
+        expiresAt: new Date(Date.now() + 120_000).toISOString(),
+        downloadReason: url.searchParams.get("downloadReason") ?? "",
         token: url.searchParams.get("token") ?? ""
       })
     ).rejects.toThrow("下载链接校验失败，请重新申请下载");

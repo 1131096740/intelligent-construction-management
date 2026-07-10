@@ -586,18 +586,18 @@ async function assertPrivateFileDownloadTicketTamperBlocked(fileId, downloadUrl,
       action: "file.download"
     }
   });
-  const tamperedUrl = new URL(downloadUrl, baseUrl);
-  tamperedUrl.searchParams.set("downloadReason", "UAT 篡改下载原因");
-
-  const response = await fetch(tamperedUrl);
-  assert(
-    !response.ok,
-    `${label}篡改下载原因后短时效链接不应下载成功`
+  const tamperedReasonUrl = new URL(downloadUrl, baseUrl);
+  tamperedReasonUrl.searchParams.set("downloadReason", "UAT 篡改下载原因");
+  await assertTamperedPrivateFileDownloadRejected(
+    tamperedReasonUrl,
+    `${label}篡改下载原因`
   );
-  const body = await response.text();
-  assert(
-    body.includes("下载链接校验失败"),
-    `${label}篡改下载原因未返回中文业务提示：${body}`
+
+  const tamperedExpiryUrl = new URL(downloadUrl, baseUrl);
+  tamperedExpiryUrl.searchParams.set("expiresAt", new Date(Date.now() + 120_000).toISOString());
+  await assertTamperedPrivateFileDownloadRejected(
+    tamperedExpiryUrl,
+    `${label}篡改到期时间`
   );
   const auditCountAfter = await prisma.auditLog.count({
     where: {
@@ -606,7 +606,20 @@ async function assertPrivateFileDownloadTicketTamperBlocked(fileId, downloadUrl,
       action: "file.download"
     }
   });
-  assertEqual(auditCountAfter, auditCountBefore, `${label}篡改下载原因审计数量`);
+  assertEqual(auditCountAfter, auditCountBefore, `${label}篡改下载票据审计数量`);
+}
+
+async function assertTamperedPrivateFileDownloadRejected(downloadUrl, label) {
+  const response = await fetch(downloadUrl);
+  assert(
+    !response.ok,
+    `${label}后短时效链接不应下载成功`
+  );
+  const body = await response.text();
+  assert(
+    body.includes("下载链接校验失败"),
+    `${label}未返回中文业务提示：${body}`
+  );
 }
 
 async function downloadTakeoverEvidenceFile(fileId, token, label) {
