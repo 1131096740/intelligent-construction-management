@@ -1,5 +1,6 @@
 import { NestFactory } from "@nestjs/core";
 import { apiJsonReplacer } from "./api-json-replacer";
+import { listenApi } from "./api-listen";
 import { AppModule } from "./app.module";
 
 async function bootstrap() {
@@ -9,7 +10,7 @@ async function bootstrap() {
     origin: process.env.WEB_ORIGIN?.split(",") ?? [],
     credentials: true
   });
-  await app.listen(Number(process.env.PORT ?? 3000));
+  await listenApi(app, Number(process.env.PORT ?? 3000), process.env.HOST);
 }
 
 void bootstrap();

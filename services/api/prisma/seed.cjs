@@ -3,10 +3,15 @@ const bcrypt = require("bcryptjs");
 const { copyFile, mkdir, stat, writeFile } = require("fs/promises");
 const { dirname, join } = require("path");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
+const {
+  resolveSeedAuthRuntime,
+  seedAuthLogLines
+} = require("../dist/database/seed-auth-runtime");
 
 const prisma = new PrismaClient();
 const seed = coreFlowSeedData;
 const testPassword = "Jgzg@2026";
+const seedAuthRuntime = resolveSeedAuthRuntime(process.env, testPassword);
 const positions = [
   ["chairman", "董事长"],
   ["general_manager", "总经理"],
@@ -449,7 +454,7 @@ async function seedContractWorkbenchTemplates() {
 }
 
 async function main() {
-  const passwordHash = await bcrypt.hash(testPassword, 10);
+  const passwordHash = await bcrypt.hash(seedAuthRuntime.password, 10);
 
   for (const [key, name] of positions) {
     await prisma.position.upsert({
@@ -777,11 +782,12 @@ async function main() {
     }
   });
 
-  console.log("Auth seed accounts password:", testPassword);
-  console.log(
-    "Auth seed accounts:",
-    authSeedUsers.map((user) => `${user.positionKey}:${user.phone}`).join(", ")
-  );
+  const accountSummary = authSeedUsers
+    .map((user) => `${user.positionKey}:${user.phone}`)
+    .join(", ");
+  for (const line of seedAuthLogLines(seedAuthRuntime, accountSummary)) {
+    console.log(line);
+  }
 }
 
 main()

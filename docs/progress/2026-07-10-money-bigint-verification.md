@@ -2,6 +2,8 @@
 
 日期：2026-07-10
 
+规格评审加固：2026-07-11
+
 执行分支：`codex/phase0b-money-bigint-20260710`
 
 执行范围：仅独立 worktree 和一次性本地测试环境
@@ -17,9 +19,9 @@ Phase 0B 的 BIGINT 数据库迁移、金额字符串 API 契约和 bigint 内�
 | 项目 | 验收事实 |
 | --- | --- |
 | PostgreSQL | 使用本机已有 `postgres:16` 镜像启动一次性容器；只绑定 `127.0.0.1` 随机端口；容器名包含本次唯一时间戳。 |
-| API | 只监听 `127.0.0.1` 随机端口；验证入口拒绝非本机 API 地址。 |
+| API | runner 显式设置 `HOST=127.0.0.1`；API 启动只在 HOST 非空时把 host 传给 Nest，因此本地验收仅监听回环，普通生产未配置 HOST 时保持原默认行为。live guard 同时拒绝其他 HOST。 |
 | 文件 | 使用本次独立临时目录的本地文件存储；验证入口拒绝 COS 或其他非本地存储配置。 |
-| 环境变量 | runner 构造最小本地测试环境，不加载生产环境文件，不复用生产数据库、COS 或业务密钥；数据库密码、JWT、下载签名和 seed 登录密码每次随机生成。 |
+| 环境变量 | runner 构造最小本地测试环境，不加载生产环境文件，不复用生产数据库、COS 或业务密钥；数据库密码、JWT、下载签名和 seed 登录密码每次随机生成。随机 seed 密码真实用于哈希，seed 输出只保留账号摘要；runner 在转发输出前再次拒绝密码值或密码日志标记。 |
 | 数据 | 只使用 seed/test 身份和唯一验证编号；不会导入真实数据。 |
 | 清理 | 正常、异常与中断路径均停止 API、强制删除临时容器并删除临时目录。最终复核未发现残留容器、API 进程或临时目录。 |
 
@@ -42,7 +44,7 @@ pnpm verify:money-bigint:local
 - 共应用 37 个 Prisma migration，包括 `20260710153000_money_bigint`。
 - `prisma migrate status` 返回 `Database schema is up to date!`。
 - 直接查询 `information_schema.columns`，确认清单中的 21/21 个金额或审批阈值列均为 `bigint`。
-- 同时核对每个目标列的预期默认值与可空性，避免只验证类型名称而遗漏 schema 漂移。
+- 21 个目标列逐项显式声明预期默认值与可空性：18 个列必须没有默认值，3 个 `paidAmountCents` 必须保留等价 bigint 0；非默认列意外出现默认值、默认 0 缺失或变为非 0 都会失败。
 - 直接查询 `_prisma_migrations`，确认目标迁移已成功完成且未回滚。
 
 对应验证器：`services/api/prisma/verify-money-bigint.cjs`。
@@ -54,11 +56,12 @@ pnpm verify:money-bigint:local
 | 项目收款 | `9007199254740993` 分 | 通过 HTTP 写入并从 API 经营汇总读取，字符串与数据库值完全一致。 |
 | 合同 | `2100000001` 分 | 创建、付款条款、审批、用章、归档、生效完成；数据库精确保存。 |
 | 结算 | `2100000001` 分 | 创建、审批、归档、生效完成；合同版本和付款条款版本引用保持。 |
+| 合同付款容量 | `2100000001` 分 | 结算生效后通过 `/payments/contract-application` 读取累计结算、应付、实付、审批中、已批待付、代付、累计占用、预付款扣回和最大可申请；逐字段要求精确 string，初始最大可申请为全额。 |
 | 付款申请 | `2100000001` 分 | 规范十进制字符串输入，审批通过后进入待支付。 |
 | 非法付款输入 | JS number、小数、指数、负数 | 均返回 4xx 中文错误，且数据库残留为 0。 |
-| 第一次实付 | `1000000001` 分 | 上传独立凭证并登记，状态保持部分实付。 |
-| 第二次实付 | `1100000000` 分 | 上传第二份凭证并登记；两次合计精确等于申请金额。 |
-| 财务入账 | `2100000001` 分 | 累计入账金额与付款、实付合计完全一致。 |
+| 第一次实付 | `1000000001` 分 | 上传独立凭证并登记，状态保持部分实付；API 容量读模型精确返回累计占用全额、已付 `1000000001`、剩余已批待付 `1100000000` 和最大可申请 `0`。 |
+| 第二次实付 | `1100000000` 分 | 上传第二份凭证并登记；两次合计精确等于申请金额，API 容量读模型剩余已批待付精确为 `0`。 |
+| 财务入账 | `2100000001` 分 | POST 响应 `amountCents` 明确为精确 string 且等于预期；数据库累计入账金额与付款、实付合计完全一致。 |
 | PDF 与审计 | 付款闭环 | PDF 归档及关键业务审计存在；审批单行金额格式另有大额 bigint 自动化回归。 |
 | 试运行预检 | 本地 seed/test 环境 | `verify-trial-run.cjs --preflight` 通过。 |
 
@@ -88,13 +91,20 @@ pnpm --filter @jiangkong/api test -- approval-form.service.spec.ts contract-bill
 3 suites passed, 27 tests passed
 ```
 
+规格评审加固目标回归：
+
+```text
+pnpm --filter @jiangkong/api test -- api-listen.spec.ts seed-auth-runtime.spec.ts money-bigint-live-verification.spec.ts --runInBand
+3 suites passed, 10 tests passed
+```
+
 全仓质量门禁：
 
 | 命令 | 结果 |
 | --- | --- |
 | `pnpm typecheck` | 通过 |
 | `pnpm lint` | 通过 |
-| `pnpm test` | shared-domain 7/7 文件、58/58 项；Web 40/40 文件、317/317 项；API 63/63 套件、1091/1091 项全部通过 |
+| `pnpm test` | shared-domain 7/7 文件、58/58 项；Web 40/40 文件、317/317 项；API 65/65 套件、1097/1097 项全部通过 |
 | `pnpm --filter @jiangkong/api build` | 通过 |
 | `pnpm --filter @jiangkong/web-admin build` | 通过；仅保留既有大 chunk 警告 |
 | `pnpm --filter @jiangkong/web-admin check:ui` | 通过 |

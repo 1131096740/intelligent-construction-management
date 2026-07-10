@@ -2,7 +2,7 @@ export interface MoneyBigintColumnExpectation {
   tableName: string;
   columnName: string;
   nullable: boolean;
-  defaultZero?: boolean;
+  expectedDefault: null | "0";
 }
 
 export interface MoneyBigintSchemaRow {
@@ -17,62 +17,127 @@ export const TARGET_CONTRACT_CENTS = "2100000001";
 export const PRECISION_SENTINEL_CENTS = "9007199254740993";
 
 export const MONEY_BIGINT_COLUMNS: readonly MoneyBigintColumnExpectation[] = [
-  { tableName: "PaymentTermsStage", columnName: "fixedAmountCents", nullable: true },
-  { tableName: "Settlement", columnName: "amountCents", nullable: false },
-  { tableName: "Settlement", columnName: "finalCumulativeAmountCents", nullable: true },
-  { tableName: "Settlement", columnName: "payableAmountCents", nullable: false },
+  {
+    tableName: "PaymentTermsStage",
+    columnName: "fixedAmountCents",
+    nullable: true,
+    expectedDefault: null
+  },
+  { tableName: "Settlement", columnName: "amountCents", nullable: false, expectedDefault: null },
+  {
+    tableName: "Settlement",
+    columnName: "finalCumulativeAmountCents",
+    nullable: true,
+    expectedDefault: null
+  },
+  {
+    tableName: "Settlement",
+    columnName: "payableAmountCents",
+    nullable: false,
+    expectedDefault: null
+  },
   {
     tableName: "Settlement",
     columnName: "paidAmountCents",
     nullable: false,
-    defaultZero: true
+    expectedDefault: "0"
   },
-  { tableName: "SettlementLine", columnName: "unitPriceCents", nullable: true },
-  { tableName: "SettlementLine", columnName: "amountCents", nullable: false },
-  { tableName: "PaymentRequest", columnName: "requestedAmountCents", nullable: false },
-  { tableName: "PaymentRequest", columnName: "approvedAmountCents", nullable: true },
+  {
+    tableName: "SettlementLine",
+    columnName: "unitPriceCents",
+    nullable: true,
+    expectedDefault: null
+  },
+  {
+    tableName: "SettlementLine",
+    columnName: "amountCents",
+    nullable: false,
+    expectedDefault: null
+  },
+  {
+    tableName: "PaymentRequest",
+    columnName: "requestedAmountCents",
+    nullable: false,
+    expectedDefault: null
+  },
+  {
+    tableName: "PaymentRequest",
+    columnName: "approvedAmountCents",
+    nullable: true,
+    expectedDefault: null
+  },
   {
     tableName: "PaymentRequest",
     columnName: "paidAmountCents",
     nullable: false,
-    defaultZero: true
+    expectedDefault: "0"
   },
-  { tableName: "PaymentExecution", columnName: "amountCents", nullable: false },
+  {
+    tableName: "PaymentExecution",
+    columnName: "amountCents",
+    nullable: false,
+    expectedDefault: null
+  },
   {
     tableName: "PaymentExecutionAllocation",
     columnName: "fixedAmountCents",
-    nullable: true
+    nullable: true,
+    expectedDefault: null
   },
   {
     tableName: "PaymentExecutionAllocation",
     columnName: "sourcePayableAmountCents",
-    nullable: false
+    nullable: false,
+    expectedDefault: null
   },
   {
     tableName: "PaymentExecutionAllocation",
     columnName: "amountCents",
-    nullable: false
+    nullable: false,
+    expectedDefault: null
   },
-  { tableName: "FinanceRecord", columnName: "amountCents", nullable: false },
+  {
+    tableName: "FinanceRecord",
+    columnName: "amountCents",
+    nullable: false,
+    expectedDefault: null
+  },
   {
     tableName: "ProjectExpenseRequest",
     columnName: "requestedAmountCents",
-    nullable: false
+    nullable: false,
+    expectedDefault: null
   },
   {
     tableName: "ProjectExpenseRequest",
     columnName: "approvedAmountCents",
-    nullable: true
+    nullable: true,
+    expectedDefault: null
   },
   {
     tableName: "ProjectExpenseRequest",
     columnName: "paidAmountCents",
     nullable: false,
-    defaultZero: true
+    expectedDefault: "0"
   },
-  { tableName: "ProjectExpenseExecution", columnName: "amountCents", nullable: false },
-  { tableName: "ApprovalFlowNode", columnName: "minAmountCents", nullable: true },
-  { tableName: "ApprovalFlowNode", columnName: "maxAmountCents", nullable: true }
+  {
+    tableName: "ProjectExpenseExecution",
+    columnName: "amountCents",
+    nullable: false,
+    expectedDefault: null
+  },
+  {
+    tableName: "ApprovalFlowNode",
+    columnName: "minAmountCents",
+    nullable: true,
+    expectedDefault: null
+  },
+  {
+    tableName: "ApprovalFlowNode",
+    columnName: "maxAmountCents",
+    nullable: true,
+    expectedDefault: null
+  },
 ] as const;
 
 function isLocalHostName(hostname: string) {
@@ -90,6 +155,7 @@ function parseUrl(value: string, label: string) {
 export function assertLocalMoneyVerificationRuntime(input: {
   databaseUrl: string;
   apiBaseUrl: string;
+  host: string;
   storageDriver: string;
 }) {
   const databaseUrl = parseUrl(input.databaseUrl, "DATABASE_URL");
@@ -107,6 +173,9 @@ export function assertLocalMoneyVerificationRuntime(input: {
   if (!["http:", "https:"].includes(apiBaseUrl.protocol) || !isLocalHostName(apiBaseUrl.hostname)) {
     throw new Error("大额金额验收拒绝连接非本机 API");
   }
+  if (input.host !== "127.0.0.1") {
+    throw new Error("大额金额验收要求 HOST=127.0.0.1，禁止监听所有网卡");
+  }
   if (input.storageDriver.trim().toLowerCase() !== "local") {
     throw new Error("大额金额验收只能使用本地文件存储，拒绝访问 COS");
   }
@@ -120,6 +189,29 @@ export function assertExactMoneyText(actual: unknown, expected: string, label: s
     throw new Error(`${label}精度不一致：预期 ${expected}，实际 ${actual}`);
   }
   return actual;
+}
+
+export function assertExactMoneyFields(
+  actual: unknown,
+  expected: Readonly<Record<string, string>>,
+  label: string
+) {
+  if (!actual || typeof actual !== "object" || Array.isArray(actual)) {
+    throw new Error(`${label}必须返回对象`);
+  }
+  const record = actual as Record<string, unknown>;
+  for (const [field, expectedValue] of Object.entries(expected)) {
+    assertExactMoneyText(record[field], expectedValue, `${label}.${field}`);
+  }
+}
+
+export function assertSeedOutputHasNoPassword(output: string, configuredPassword: string) {
+  if (
+    output.includes("Auth seed accounts password:") ||
+    (configuredPassword && output.includes(configuredPassword))
+  ) {
+    throw new Error("随机 seed 验收禁止输出 seed 密码");
+  }
 }
 
 export function assertMoneyBigintSchemaRows(rows: readonly MoneyBigintSchemaRow[]) {
@@ -138,7 +230,13 @@ export function assertMoneyBigintSchemaRows(rows: readonly MoneyBigintSchemaRow[
     if (row.is_nullable !== expectedNullable) {
       throw new Error(`${key} 可空性应为 ${expectedNullable}，实际为 ${row.is_nullable}`);
     }
-    if (expectation.defaultZero && !/^0(?:::bigint)?$/.test(row.column_default ?? "")) {
+    if (expectation.expectedDefault === null && row.column_default !== null) {
+      throw new Error(`${key} 不应设置默认值，实际为 ${row.column_default}`);
+    }
+    if (
+      expectation.expectedDefault === "0" &&
+      !/^'?0'?(?:::(?:bigint|int8))?$/.test((row.column_default ?? "").trim())
+    ) {
       throw new Error(`${key} 必须保留 0 默认值，实际为 ${row.column_default ?? "NULL"}`);
     }
   }

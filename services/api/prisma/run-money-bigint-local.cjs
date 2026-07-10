@@ -6,6 +6,7 @@ const { tmpdir } = require("node:os");
 const path = require("node:path");
 const {
   assertLocalMoneyVerificationRuntime,
+  assertSeedOutputHasNoPassword,
   withGuaranteedCleanup
 } = require("../dist/database/money-bigint-live-verification");
 
@@ -121,6 +122,7 @@ async function main() {
     HOME: process.env.HOME ?? temporaryRoot,
     TMPDIR: process.env.TMPDIR ?? tmpdir(),
     NODE_ENV: "test",
+    HOST: "127.0.0.1",
     PORT: String(apiPort),
     WEB_ORIGIN: "http://127.0.0.1:5173",
     API_BASE_URL: apiBaseUrl,
@@ -135,6 +137,7 @@ async function main() {
   assertLocalMoneyVerificationRuntime({
     databaseUrl,
     apiBaseUrl,
+    host: runtimeEnv.HOST,
     storageDriver: runtimeEnv.FILE_STORAGE_DRIVER
   });
 
@@ -209,11 +212,20 @@ async function main() {
         ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"],
         { env: runtimeEnv, forwardOutput: true }
       );
-      await command(process.execPath, [path.join(root, "services/api/prisma/seed.cjs")], {
-        cwd: temporaryRoot,
-        env: runtimeEnv,
-        forwardOutput: true
-      });
+      const seedResult = await command(
+        process.execPath,
+        [path.join(root, "services/api/prisma/seed.cjs")],
+        {
+          cwd: temporaryRoot,
+          env: runtimeEnv
+        }
+      );
+      assertSeedOutputHasNoPassword(
+        `${seedResult.stdout}\n${seedResult.stderr}`,
+        runtimeEnv.SEED_PASSWORD
+      );
+      process.stdout.write(seedResult.stdout);
+      process.stderr.write(seedResult.stderr);
       await command(
         process.execPath,
         [path.join(root, "services/api/prisma/prepare-money-bigint-local.cjs")],

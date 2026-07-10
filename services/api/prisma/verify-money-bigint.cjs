@@ -146,6 +146,7 @@ async function main() {
   assertLocalMoneyVerificationRuntime({
     databaseUrl,
     apiBaseUrl,
+    host: process.env.HOST ?? "",
     storageDriver: process.env.FILE_STORAGE_DRIVER ?? "local"
   });
   await verifyMigrationAndSchema();

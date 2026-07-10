@@ -9,6 +9,7 @@ async function main() {
   assertLocalMoneyVerificationRuntime({
     databaseUrl: process.env.DATABASE_URL ?? "",
     apiBaseUrl: process.env.API_BASE_URL ?? "http://127.0.0.1:3000",
+    host: process.env.HOST ?? "",
     storageDriver: process.env.FILE_STORAGE_DRIVER ?? "local"
   });
 
