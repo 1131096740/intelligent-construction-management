@@ -1679,7 +1679,7 @@ export class SettlementService {
     fileId: string | null;
   }> {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to load settlement approval PDF");
+      throw new Error("结算审批单读取服务暂不可用，请稍后重试或联系管理员");
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -1711,7 +1711,7 @@ export class SettlementService {
     actorUserId: string
   ): Promise<void> {
     if (!this.prisma) {
-      throw new Error("Prisma service is required to authorize settlement approval PDF");
+      throw new Error("结算审批单授权服务暂不可用，请稍后重试或联系管理员");
     }
 
     await this.prisma.$transaction(async (tx) => {
