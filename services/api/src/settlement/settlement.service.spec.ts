@@ -1,6 +1,31 @@
 import * as ExcelJS from "exceljs";
 import { Decimal } from "@prisma/client/runtime/library";
-import { SettlementService } from "./settlement.service";
+import {
+  calculateFinalSettlementCurrentAmountBigInt,
+  calculateSettlementLineTotalBigInt,
+  calculateSettlementPayableAmountBigInt,
+  SettlementService
+} from "./settlement.service";
+
+describe("settlement bigint calculations", () => {
+  it("keeps settlement line totals and payable ratios in bigint", () => {
+    expect(calculateSettlementLineTotalBigInt([9_007_199_254_740_993n, 7])).toBe(
+      9_007_199_254_741_000n
+    );
+    expect(calculateSettlementPayableAmountBigInt(9_007_199_254_740_993n, 8_000)).toBe(
+      7_205_759_403_792_794n
+    );
+  });
+
+  it("subtracts previous effective settlements from a bigint final total", () => {
+    expect(
+      calculateFinalSettlementCurrentAmountBigInt(9_007_199_254_740_993n, [
+        9_007_199_254_700_000n,
+        993
+      ])
+    ).toBe(40_000n);
+  });
+});
 
 describe("SettlementService", () => {
   const service = new SettlementService();

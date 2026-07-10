@@ -1,6 +1,11 @@
 import { Prisma } from "@prisma/client";
 
 const HUNDRED = new Prisma.Decimal(100);
+const LEGACY_DB_INT_MIN = -2_147_483_648n;
+const LEGACY_DB_INT_MAX = 2_147_483_647n;
+const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+const MIN_SAFE_INTEGER_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
+const NON_NEGATIVE_CENTS_TEXT = /^(0|[1-9]\d*)$/;
 
 function yuanToCents(value: Prisma.Decimal): bigint {
   return BigInt(value.mul(HUNDRED).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toFixed(0));
@@ -46,9 +51,109 @@ export function calculateBillRow(input: {
 }
 
 export function centsToSafeNumber(value: bigint): number {
-  const result = Number(value);
-  if (!Number.isSafeInteger(result)) {
-    throw new Error("Money value exceeds the supported API range");
+  return moneyCentsToLegacyApiNumber(value, "金额");
+}
+
+export function dbMoneyToBigInt(value: number | bigint, fieldName: string): bigint {
+  if (typeof value === "bigint") {
+    return value;
   }
-  return result;
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`${fieldName}必须为安全整数分`);
+  }
+  return BigInt(value);
+}
+
+export function sumDbMoneyToBigInt(
+  values: readonly (number | bigint)[],
+  fieldName: string
+): bigint {
+  return values.reduce<bigint>(
+    (total, value) => total + dbMoneyToBigInt(value, fieldName),
+    0n
+  );
+}
+
+export interface LegacyMoneyRequestValue {
+  status: string;
+  requestedAmountCents: number | bigint;
+  approvedAmountCents?: number | bigint | null;
+  paidAmountCents: number | bigint;
+}
+
+export function outstandingMoneyRequestCentsBigInt(
+  request: LegacyMoneyRequestValue
+): bigint {
+  const requested = dbMoneyToBigInt(request.requestedAmountCents, "申请金额");
+  const paid = dbMoneyToBigInt(request.paidAmountCents, "已付金额");
+  if (["approval_pending", "in_approval"].includes(request.status)) {
+    const outstanding = requested - paid;
+    return outstanding > 0n ? outstanding : 0n;
+  }
+  if (["approved_pending_payment", "partially_paid"].includes(request.status)) {
+    const approved = dbMoneyToBigInt(
+      request.approvedAmountCents ?? request.requestedAmountCents,
+      "批准金额"
+    );
+    const outstanding = approved - paid;
+    return outstanding > 0n ? outstanding : 0n;
+  }
+  return 0n;
+}
+
+export function calculateProjectCashPoolBigInt(input: {
+  receiptAmountCents: readonly (number | bigint)[];
+  paymentRequests: readonly LegacyMoneyRequestValue[];
+  expenseRequests: readonly LegacyMoneyRequestValue[];
+}): {
+  actualReceiptsCents: bigint;
+  actualPaidCents: bigint;
+  occupiedCents: bigint;
+  availableCents: bigint;
+} {
+  const requests = [...input.paymentRequests, ...input.expenseRequests];
+  const actualReceiptsCents = sumDbMoneyToBigInt(input.receiptAmountCents, "项目实收金额");
+  const actualPaidCents = sumDbMoneyToBigInt(
+    requests.map((request) => request.paidAmountCents),
+    "项目实付金额"
+  );
+  const occupiedCents = requests.reduce<bigint>(
+    (total, request) => total + outstandingMoneyRequestCentsBigInt(request),
+    0n
+  );
+  return {
+    actualReceiptsCents,
+    actualPaidCents,
+    occupiedCents,
+    availableCents: actualReceiptsCents - actualPaidCents - occupiedCents
+  };
+}
+
+export function parseMoneyCentsText(value: string, fieldName: string): bigint {
+  if (!NON_NEGATIVE_CENTS_TEXT.test(value)) {
+    throw new Error(`${fieldName}必须填写非负整数分`);
+  }
+  return BigInt(value);
+}
+
+export function moneyCentsToLegacyApiNumber(value: bigint, fieldName: string): number {
+  if (value < MIN_SAFE_INTEGER_BIGINT || value > MAX_SAFE_INTEGER_BIGINT) {
+    throw new Error(`${fieldName}超过当前 API 安全整数范围`);
+  }
+  return Number(value);
+}
+
+export function legacyBigIntToDbInt(value: bigint, fieldName: string): number {
+  if (value < LEGACY_DB_INT_MIN || value > LEGACY_DB_INT_MAX) {
+    throw new Error(`${fieldName}超过当前数据库 32 位整数范围`);
+  }
+  return Number(value);
+}
+
+export function formatMoneyCentsAsYuan(value: bigint): string {
+  const negative = value < 0n;
+  const absolute = negative ? -value : value;
+  const yuan = (absolute / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const cents = (absolute % 100n).toString().padStart(2, "0");
+  return `${negative ? "-" : ""}${yuan}.${cents}`;
 }

@@ -11,16 +11,21 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import {
+  dbMoneyToBigInt,
+  formatMoneyCentsAsYuan,
+  outstandingMoneyRequestCentsBigInt,
+  sumDbMoneyToBigInt
+} from "../money/decimal-money";
+import {
   CONTRACT_TAKEOVER_BALANCE_SELECT,
   type ContractTakeoverBalanceRow,
   toHistoricalContractPaymentBalance
 } from "../payment/contract-takeover-balance";
 import {
-  calculateContractDuePaymentCapacity,
-  calculateSettlementPaymentCapacity,
+  calculateContractDuePaymentCapacityBigInt,
+  calculateSettlementPaymentCapacityBigInt,
   CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
-  SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
-  sumSafeCents
+  SETTLEMENT_CAPACITY_PAYMENT_STATUSES
 } from "../payment/settlement-payment-capacity";
 import type {
   RecordProjectProxyPaymentDto,
@@ -446,54 +451,61 @@ export class ProjectService {
       : [[], []];
     const financingUsageByQuotaId = [...paymentFinancingUsages, ...expenseFinancingUsages].reduce(
       (totals, usage) => {
-        totals.set(usage.quotaId, (totals.get(usage.quotaId) ?? 0n) + BigInt(usage.amountCents));
+        totals.set(
+          usage.quotaId,
+          (totals.get(usage.quotaId) ?? 0n) +
+            dbMoneyToBigInt(usage.amountCents, "垫资额度占用金额")
+        );
         return totals;
       },
       new Map<string, bigint>()
     );
-    const actualReceiptsCents = sumCents(projectReceipts.map((receipt) => receipt.amountCents));
-    const proxyPaymentCents = sumCents(projectProxyPayments.map((payment) => payment.amountCents));
-    const upstreamSettlementCents = sumCents(
-      projectUpstreamSettlements.map((settlement) => settlement.approvedAmountCents)
+    const actualReceiptsCents = sumDbMoneyToBigInt(
+      projectReceipts.map((receipt) => receipt.amountCents),
+      "项目实收金额"
     );
-    const availableFinancingCents = sumCents(
+    const proxyPaymentCents = sumDbMoneyToBigInt(
+      projectProxyPayments.map((payment) => payment.amountCents),
+      "项目代付金额"
+    );
+    const upstreamSettlementCents = sumDbMoneyToBigInt(
+      projectUpstreamSettlements.map((settlement) => settlement.approvedAmountCents),
+      "对上结算金额"
+    );
+    const availableFinancingCents = sumDbMoneyToBigInt(
       projectFinancingQuotas.map((quota) => {
-        const available = BigInt(quota.amountCents) - (financingUsageByQuotaId.get(quota.id) ?? 0n);
+        const available =
+          dbMoneyToBigInt(quota.amountCents, "项目垫资额度") -
+          (financingUsageByQuotaId.get(quota.id) ?? 0n);
         return available > 0n ? available : 0n;
-      })
+      }),
+      "项目可用垫资额度"
     );
-    const actualPaidCents =
-      sumNumbers(executions.map((execution) => execution.amountCents)) +
-      sumNumbers(expenseExecutions.map((execution) => execution.amountCents));
+    const actualPaidCents = sumDbMoneyToBigInt(
+      [
+        ...executions.map((execution) => execution.amountCents),
+        ...expenseExecutions.map((execution) => execution.amountCents)
+      ],
+      "项目实付金额"
+    );
     const operatingIncomeCents = projectUpstreamSettlements.length
       ? upstreamSettlementCents
       : actualReceiptsCents + proxyPaymentCents;
     const operatingCostCents = actualPaidCents + proxyPaymentCents;
-    const approvalPendingOccupancyCents =
-      sumNumbers(
-        payments
-          .filter((payment) => payment.status === "approval_pending")
-          .map((payment) => payment.requestedAmountCents)
-      ) +
-      sumNumbers(
-        projectExpenseRequests
-          .filter((request) => request.status === "approval_pending")
-          .map((request) => request.requestedAmountCents)
-      );
-    const approvedPendingPaymentCents =
-      sumNumbers(
-        payments
-          .filter((payment) => ["approved_pending_payment", "partially_paid"].includes(payment.status))
-          .map((payment) =>
-            Math.max((payment.approvedAmountCents ?? payment.requestedAmountCents) - payment.paidAmountCents, 0)
-          )
-      ) +
-      sumNumbers(
-        projectExpenseRequests
-          .filter((request) => ["approved_pending_payment", "partially_paid"].includes(request.status))
-          .map((request) =>
-            Math.max((request.approvedAmountCents ?? request.requestedAmountCents) - request.paidAmountCents, 0)
-          )
+    const projectRequests = [...payments, ...projectExpenseRequests];
+    const approvalPendingOccupancyCents = sumDbMoneyToBigInt(
+      projectRequests
+        .filter((request) => request.status === "approval_pending")
+        .map((request) => request.requestedAmountCents),
+      "审批中资金占用"
+    );
+    const approvedPendingPaymentCents = projectRequests
+      .filter((request) =>
+        ["approved_pending_payment", "partially_paid"].includes(request.status)
+      )
+      .reduce<bigint>(
+        (total, request) => total + outstandingMoneyRequestCentsBigInt(request),
+        0n
       );
     const availableFundsCents =
       actualReceiptsCents -
@@ -509,20 +521,40 @@ export class ProjectService {
     return {
       project,
       cash: {
-        actualReceiptsCents,
-        availableFundsCents,
-        actualPaidCents,
-        approvalPendingOccupancyCents,
-        approvedPendingPaymentCents,
-        financeRecordedOutflowCents: sumNumbers(financeRecords.map((record) => record.amountCents))
+        actualReceiptsCents: toSafeNumber(actualReceiptsCents),
+        availableFundsCents: toSafeNumber(availableFundsCents),
+        actualPaidCents: toSafeNumber(actualPaidCents),
+        approvalPendingOccupancyCents: toSafeNumber(approvalPendingOccupancyCents),
+        approvedPendingPaymentCents: toSafeNumber(approvedPendingPaymentCents),
+        financeRecordedOutflowCents: toSafeNumber(
+          sumDbMoneyToBigInt(
+            financeRecords.map((record) => record.amountCents),
+            "财务入账流出金额"
+          )
+        )
       },
       business: {
-        effectiveContractAmountCents: sumCents(latestEffectiveContractVersions.map((version) => version.amountCents)),
-        effectiveSettlementAmountCents: sumNumbers(effectiveSettlements.map((settlement) => settlement.amountCents)),
-        payableSettlementAmountCents: sumNumbers(effectiveSettlements.map((settlement) => settlement.payableAmountCents)),
-        operatingIncomeCents,
-        operatingCostCents,
-        grossProfitCents: operatingIncomeCents - operatingCostCents
+        effectiveContractAmountCents: toSafeNumber(
+          sumDbMoneyToBigInt(
+            latestEffectiveContractVersions.map((version) => version.amountCents),
+            "生效合同金额"
+          )
+        ),
+        effectiveSettlementAmountCents: toSafeNumber(
+          sumDbMoneyToBigInt(
+            effectiveSettlements.map((settlement) => settlement.amountCents),
+            "生效结算金额"
+          )
+        ),
+        payableSettlementAmountCents: toSafeNumber(
+          sumDbMoneyToBigInt(
+            effectiveSettlements.map((settlement) => settlement.payableAmountCents),
+            "结算应付金额"
+          )
+        ),
+        operatingIncomeCents: toSafeNumber(operatingIncomeCents),
+        operatingCostCents: toSafeNumber(operatingCostCents),
+        grossProfitCents: toSafeNumber(operatingIncomeCents - operatingCostCents)
       },
       counts: {
         contracts: contracts.length,
@@ -747,18 +779,21 @@ export class ProjectService {
             }
           })
         ]);
-        const proxyPaidCents = sumSafeCents(existingProxyPayments.map((payment) => payment.amountCents));
-        const capacity = calculateSettlementPaymentCapacity({
+        const proxyPaidCents = sumDbMoneyToBigInt(
+          existingProxyPayments.map((payment) => payment.amountCents),
+          "项目代付金额"
+        );
+        const capacity = calculateSettlementPaymentCapacityBigInt({
           payableAmountCents: lockedSettlement.payableAmountCents,
           actualPaidAmountCents: lockedSettlement.paidAmountCents,
           proxyPaidAmountCents: proxyPaidCents,
           paymentRequests
         });
 
-        if (amountCents > capacity.remainingCents) {
+        if (dbMoneyToBigInt(amountCents, "本次总包代付金额") > capacity.remainingCents) {
           throw new BadRequestException(
-            `本次总包代付超过结算剩余可付金额，当前最多可代付 ${formatYuan(
-              Math.max(capacity.remainingCents, 0)
+            `本次总包代付超过结算剩余可付金额，当前最多可代付 ${formatMoneyCentsAsYuan(
+              capacity.remainingCents > 0n ? capacity.remainingCents : 0n
             )} 元`
           );
         }
@@ -1076,8 +1111,9 @@ export class ProjectService {
         : Promise.resolve([])
     ]);
     const amountByVersionId = new Map(contractVersion.map((version) => [version.id, version.amountCents]));
-    const fallbackContractAmountCents = sumSafeCents(
-      contractSettlements.map((settlement) => settlement.amountCents)
+    const fallbackContractAmountCents = sumDbMoneyToBigInt(
+      contractSettlements.map((settlement) => settlement.amountCents),
+      "合同结算金额"
     );
     const contractAmountCentsByPaymentTermsVersionId = contractSettlements.reduce<Record<string, number | bigint>>(
       (amountByTermsId, settlement) => ({
@@ -1090,23 +1126,26 @@ export class ProjectService {
       {}
     );
 
-    const capacity = calculateContractDuePaymentCapacity({
+    const capacity = calculateContractDuePaymentCapacityBigInt({
       asOf: new Date(),
       settlements: contractSettlements,
       paymentTermsStages,
       settlementArchiveFiles,
       paymentRequests,
-      proxyPaidAmountCents: sumSafeCents(proxyPayments.map((payment) => payment.amountCents)),
+      proxyPaidAmountCents: sumDbMoneyToBigInt(
+        proxyPayments.map((payment) => payment.amountCents),
+        "项目代付金额"
+      ),
       contractAmountCents: fallbackContractAmountCents,
       contractAmountCentsByPaymentTermsVersionId,
       advancePaymentRequests,
       historicalBalance
     });
 
-    if (amountCents > capacity.remainingCents) {
+    if (dbMoneyToBigInt(amountCents, "本次总包代付金额") > capacity.remainingCents) {
       throw new BadRequestException(
-        `本次总包代付超过合同当前可代付金额，当前最多可代付 ${formatYuan(
-          Math.max(capacity.remainingCents, 0)
+        `本次总包代付超过合同当前可代付金额，当前最多可代付 ${formatMoneyCentsAsYuan(
+          capacity.remainingCents > 0n ? capacity.remainingCents : 0n
         )} 元`
       );
     }
@@ -1873,22 +1912,6 @@ function latestByContract<T extends { contractId: string; versionNo?: number | n
       return latestById;
     }, new Map<string, T>()).values()
   );
-}
-
-function sumNumbers(values: number[]): number {
-  return values.reduce((total, value) => total + value, 0);
-}
-
-function sumCents(values: Array<bigint | number>): number {
-  const total = values.reduce<bigint>((sum, value) => sum + BigInt(toSafeNumber(value)), BigInt(0));
-  return toSafeNumber(total);
-}
-
-function formatYuan(amountCents: number): string {
-  return (amountCents / 100).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
 }
 
 function toSafeNumber(value: bigint | number): number {

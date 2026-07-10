@@ -13,6 +13,11 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import {
+  calculateProjectCashPoolBigInt,
+  dbMoneyToBigInt,
+  formatMoneyCentsAsYuan
+} from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
@@ -28,9 +33,9 @@ import { PaymentAmountService, PaymentCapacity } from "./payment-amount.service"
 import {
   allocateContractDuePaymentExecution,
   buildContractPaymentApplicationPreview,
-  calculateContractAdvancePaymentCapacity,
-  calculateContractDuePaymentCapacity,
-  calculateSettlementPaymentCapacity,
+  calculateContractAdvancePaymentCapacityBigInt,
+  calculateContractDuePaymentCapacityBigInt,
+  calculateSettlementPaymentCapacityBigInt,
   CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
   sumSafeCents
@@ -425,16 +430,21 @@ export class PaymentRequestService {
         tx,
         settlement.id
       );
-      const capacityView = calculateSettlementPaymentCapacity({
+      const capacityView = calculateSettlementPaymentCapacityBigInt({
         payableAmountCents: settlement.payableAmountCents,
         actualPaidAmountCents: settlement.paidAmountCents,
-        proxyPaidAmountCents: proxyPaidCents + contractDueAllocatedCents,
+        proxyPaidAmountCents:
+          dbMoneyToBigInt(proxyPaidCents, "项目代付金额") +
+          dbMoneyToBigInt(contractDueAllocatedCents, "合同到期付款分摊金额"),
         paymentRequests: existingApprovedOrPending
       });
       const capacity: PaymentCapacity = {
         payableAmountCents: settlement.payableAmountCents,
         approvedPendingPaymentCents: capacityView.outstandingPaymentCents,
-        paidAmountCents: settlement.paidAmountCents + proxyPaidCents + contractDueAllocatedCents
+        paidAmountCents:
+          dbMoneyToBigInt(settlement.paidAmountCents, "结算已付金额") +
+          dbMoneyToBigInt(proxyPaidCents, "项目代付金额") +
+          dbMoneyToBigInt(contractDueAllocatedCents, "合同到期付款分摊金额")
       };
 
       this.amount.assertCanRequest(capacity, input.requestedAmountCents);
@@ -731,9 +741,9 @@ export class PaymentRequestService {
       tx,
       contractVersion.contractId
     );
-    const capacity = calculateContractAdvancePaymentCapacity({
+    const capacity = calculateContractAdvancePaymentCapacityBigInt({
       asOf: new Date(),
-      contractAmountCents: sumSafeCents([contractVersion.amountCents]),
+      contractAmountCents: dbMoneyToBigInt(contractVersion.amountCents, "合同金额"),
       contractEffectiveAt: contractVersion.effectiveAt,
       paymentTermsStages,
       paymentRequests: existingAdvancePayments,
@@ -743,10 +753,10 @@ export class PaymentRequestService {
     if (!Number.isInteger(input.requestedAmountCents) || input.requestedAmountCents <= 0) {
       throw new Error("付款申请金额必须为大于 0 的整数分");
     }
-    if (input.requestedAmountCents > capacity.remainingCents) {
+    if (dbMoneyToBigInt(input.requestedAmountCents, "付款申请金额") > capacity.remainingCents) {
       throw new Error(
-        `合同预付款当前可申请金额不足，当前最多可申请 ${this.formatYuan(
-          Math.max(capacity.remainingCents, 0)
+        `合同预付款当前可申请金额不足，当前最多可申请 ${formatMoneyCentsAsYuan(
+          capacity.remainingCents > 0n ? capacity.remainingCents : 0n
         )} 元`
       );
     }
@@ -993,7 +1003,7 @@ export class PaymentRequestService {
       contractSettlements
     );
 
-    const capacity = calculateContractDuePaymentCapacity({
+    const capacity = calculateContractDuePaymentCapacityBigInt({
       asOf: new Date(),
       settlements: contractSettlements,
       paymentTermsStages,
@@ -1008,10 +1018,10 @@ export class PaymentRequestService {
       historicalBalance
     });
 
-    if (requestedAmountCents > capacity.remainingCents) {
+    if (dbMoneyToBigInt(requestedAmountCents, "付款申请金额") > capacity.remainingCents) {
       throw new Error(
-        `合同应付款当前可申请金额不足，当前最多可申请 ${this.formatYuan(
-          Math.max(capacity.remainingCents, 0)
+        `合同应付款当前可申请金额不足，当前最多可申请 ${formatMoneyCentsAsYuan(
+          capacity.remainingCents > 0n ? capacity.remainingCents : 0n
         )} 元`
       );
     }
@@ -1173,22 +1183,15 @@ export class PaymentRequestService {
       })
     ]);
 
-    const actualReceiptsCents = sumSafeCents(
-      projectReceipts.map((receipt) => receipt.amountCents)
-    );
-    const actualPaidCents =
-      sumSafeCents(projectPayments.map((payment) => payment.paidAmountCents)) +
-      sumSafeCents(projectExpenseRequests.map((request) => request.paidAmountCents));
-    const occupiedCents = sumSafeCents(
-      [
-        ...projectPayments.map((payment) => projectCashPoolOutstandingCents(payment)),
-        ...projectExpenseRequests.map((request) => projectCashPoolOutstandingCents(request))
-      ]
-    );
-    const cashAvailableCents = actualReceiptsCents - actualPaidCents - occupiedCents;
-    const cashAvailableForCurrent = Math.max(cashAvailableCents, 0);
+    const cashPool = calculateProjectCashPoolBigInt({
+      receiptAmountCents: projectReceipts.map((receipt) => receipt.amountCents),
+      paymentRequests: projectPayments,
+      expenseRequests: projectExpenseRequests
+    });
+    const cashAvailableForCurrent = cashPool.availableCents > 0n ? cashPool.availableCents : 0n;
+    const requestedAmount = BigInt(requestedAmountCents);
 
-    if (requestedAmountCents <= cashAvailableForCurrent) {
+    if (requestedAmount <= cashAvailableForCurrent) {
       return [];
     }
 
@@ -1218,7 +1221,7 @@ export class PaymentRequestService {
       return used;
     }, new Map<string, bigint>());
 
-    let remaining = BigInt(requestedAmountCents - cashAvailableForCurrent);
+    let remaining = requestedAmount - cashAvailableForCurrent;
     const allocations: Array<{ quotaId: string; amountCents: bigint }> = [];
     let totalAvailableFinancingCents = 0n;
     for (const quota of financingQuotas) {
@@ -1236,7 +1239,7 @@ export class PaymentRequestService {
     }
 
     if (remaining > 0n) {
-      const availableCents = BigInt(cashAvailableForCurrent) + totalAvailableFinancingCents;
+      const availableCents = cashAvailableForCurrent + totalAvailableFinancingCents;
       throw new BadRequestException(`项目现金资金池余额不足: ${availableCents.toString()}`);
     }
 
@@ -3067,24 +3070,4 @@ function requireApprovalCommentForReturn(decision: ReviewPaymentApprovalDto["dec
   if (decision !== "approve" && !comment?.trim()) {
     throw new Error("请填写审批意见，说明驳回或退回原因");
   }
-}
-
-function projectCashPoolOutstandingCents(payment: {
-  status: string;
-  requestedAmountCents: number;
-  approvedAmountCents?: number | null;
-  paidAmountCents: number;
-}): number {
-  if (["approval_pending", "in_approval"].includes(payment.status)) {
-    return Math.max(payment.requestedAmountCents - payment.paidAmountCents, 0);
-  }
-
-  if (["approved_pending_payment", "partially_paid"].includes(payment.status)) {
-    return Math.max(
-      (payment.approvedAmountCents ?? payment.requestedAmountCents) - payment.paidAmountCents,
-      0
-    );
-  }
-
-  return 0;
 }

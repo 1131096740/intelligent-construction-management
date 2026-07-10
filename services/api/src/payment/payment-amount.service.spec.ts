@@ -43,4 +43,18 @@ describe("PaymentAmountService", () => {
       "付款申请金额必须为大于 0 的整数分"
     );
   });
+
+  it("calculates and compares large remaining capacity entirely as bigint", () => {
+    const capacity = {
+      payableAmountCents: 9_007_199_254_740_993n,
+      approvedPendingPaymentCents: 1n,
+      paidAmountCents: 2n
+    };
+
+    expect(service.remainingCapacityBigInt(capacity)).toBe(9_007_199_254_740_990n);
+    expect(() => service.assertCanRequest(capacity, 9_007_199_254_740_990n)).not.toThrow();
+    expect(() => service.assertCanRequest(capacity, 9_007_199_254_740_991n)).toThrow(
+      "付款申请金额超过当前可申请余额，当前最多可申请 90,071,992,547,409.90 元"
+    );
+  });
 });

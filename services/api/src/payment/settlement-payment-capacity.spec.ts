@@ -214,6 +214,93 @@ function calculateContractCapacity(
   return calculateContractDuePaymentCapacity(input);
 }
 
+describe("calculateSettlementPaymentCapacityBigInt", () => {
+  it("keeps large settlement capacity accumulation and comparison in bigint", () => {
+    expect(
+      settlementPaymentCapacity.calculateSettlementPaymentCapacityBigInt({
+        payableAmountCents: 9_007_199_254_740_993n,
+        actualPaidAmountCents: 1n,
+        proxyPaidAmountCents: 2,
+        paymentRequests: [
+          {
+            status: "approved_pending_payment",
+            requestedAmountCents: 5n,
+            approvedAmountCents: 4n,
+            paidAmountCents: 1n
+          }
+        ]
+      })
+    ).toEqual({
+      outstandingPaymentCents: 3n,
+      occupiedCents: 6n,
+      remainingCents: 9_007_199_254_740_987n
+    });
+  });
+
+  it("keeps due contract capacity in bigint until the external boundary", () => {
+    expect(
+      settlementPaymentCapacity.calculateContractDuePaymentCapacityBigInt({
+        asOf: new Date("2026-07-10T00:00:00.000Z"),
+        settlements: [
+          {
+            id: "settlement-large",
+            status: "effective",
+            amountCents: 9_007_199_254_740_993n,
+            paidAmountCents: 1n,
+            paymentTermsVersionId: "terms-large"
+          }
+        ],
+        paymentTermsStages: [
+          {
+            paymentTermsVersionId: "terms-large",
+            basis: "current_settlement",
+            ratioBps: 10_000,
+            fixedAmountCents: null,
+            dueDays: 0
+          }
+        ],
+        settlementArchiveFiles: [
+          {
+            settlementId: "settlement-large",
+            confirmedAt: new Date("2026-07-09T00:00:00.000Z")
+          }
+        ],
+        paymentRequests: []
+      })
+    ).toEqual({
+      duePayableCents: 9_007_199_254_740_993n,
+      occupiedCents: 1n,
+      remainingCents: 9_007_199_254_740_992n
+    });
+  });
+
+  it("keeps contract advance capacity in bigint until the external boundary", () => {
+    expect(
+      settlementPaymentCapacity.calculateContractAdvancePaymentCapacityBigInt({
+        asOf: new Date("2026-07-10T00:00:00.000Z"),
+        contractAmountCents: 9_007_199_254_740_993n,
+        contractEffectiveAt: new Date("2026-07-09T00:00:00.000Z"),
+        paymentTermsStages: [
+          {
+            paymentTermsVersionId: "terms-large",
+            stageType: "advance",
+            basis: "contract_amount",
+            ratioBps: 10_000,
+            fixedAmountCents: null,
+            triggerAnchor: "contract_effective",
+            dueDays: 0
+          }
+        ],
+        paymentRequests: []
+      })
+    ).toEqual({
+      duePayableCents: 9_007_199_254_740_993n,
+      occupiedCents: 0n,
+      remainingCents: 9_007_199_254_740_993n
+    });
+  });
+});
+
 function calculateAdvanceCapacity(
   input: Parameters<ContractAdvancePaymentCapacityCalculator>[0]
 ): ContractDuePaymentCapacity {

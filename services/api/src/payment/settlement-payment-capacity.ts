@@ -1,4 +1,8 @@
-import { centsToSafeNumber } from "../money/decimal-money";
+import {
+  centsToSafeNumber,
+  dbMoneyToBigInt,
+  formatMoneyCentsAsYuan
+} from "../money/decimal-money";
 
 export const SETTLEMENT_CAPACITY_PAYMENT_STATUSES = [
   "approval_pending",
@@ -15,9 +19,9 @@ export const CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES = [
 
 export interface SettlementCapacityPaymentRequest {
   status: string;
-  requestedAmountCents: number;
-  approvedAmountCents?: number | null;
-  paidAmountCents: number;
+  requestedAmountCents: number | bigint;
+  approvedAmountCents?: number | bigint | null;
+  paidAmountCents: number | bigint;
 }
 
 export interface SettlementPaymentCapacity {
@@ -29,8 +33,8 @@ export interface SettlementPaymentCapacity {
 export interface ContractDueSettlement {
   id: string;
   status: string;
-  amountCents: number;
-  paidAmountCents?: number;
+  amountCents: number | bigint;
+  paidAmountCents?: number | bigint;
   contractVersionId?: string;
   paymentTermsVersionId: string;
   isFinal?: boolean;
@@ -43,7 +47,7 @@ export interface ContractDuePaymentTermsStage {
   stageType?: string;
   basis: string;
   ratioBps: number | null;
-  fixedAmountCents: number | null;
+  fixedAmountCents: number | bigint | null;
   triggerAnchor?: string;
   dueDays: number;
   advanceDeductionMode?: string | null;
@@ -86,6 +90,13 @@ export interface ContractDuePaymentCapacity {
   occupiedCents: number;
   remainingCents: number;
   advanceDeductionCents?: number;
+}
+
+export interface ContractDuePaymentCapacityBigInt {
+  duePayableCents: bigint;
+  occupiedCents: bigint;
+  remainingCents: bigint;
+  advanceDeductionCents?: bigint;
 }
 
 export type ContractPaymentApplicationSectionType =
@@ -176,25 +187,44 @@ export interface ContractDuePaymentExecutionAllocation {
 }
 
 export function calculateSettlementPaymentCapacity(input: {
-  payableAmountCents: number;
-  actualPaidAmountCents: number;
-  proxyPaidAmountCents: number;
+  payableAmountCents: number | bigint;
+  actualPaidAmountCents: number | bigint;
+  proxyPaidAmountCents: number | bigint;
   paymentRequests: readonly SettlementCapacityPaymentRequest[];
 }): SettlementPaymentCapacity {
+  const capacity = calculateSettlementPaymentCapacityBigInt(input);
+
+  return {
+    outstandingPaymentCents: centsToSafeNumber(capacity.outstandingPaymentCents),
+    occupiedCents: centsToSafeNumber(capacity.occupiedCents),
+    remainingCents: centsToSafeNumber(capacity.remainingCents)
+  };
+}
+
+export function calculateSettlementPaymentCapacityBigInt(input: {
+  payableAmountCents: number | bigint;
+  actualPaidAmountCents: number | bigint;
+  proxyPaidAmountCents: number | bigint;
+  paymentRequests: readonly SettlementCapacityPaymentRequest[];
+}): {
+  outstandingPaymentCents: bigint;
+  occupiedCents: bigint;
+  remainingCents: bigint;
+} {
   const outstandingPaymentCents = input.paymentRequests.reduce<bigint>(
-    (total, payment) => total + BigInt(outstandingPaymentRequestCents(payment)),
+    (total, payment) => total + outstandingPaymentRequestCents(payment),
     0n
   );
   const occupiedCents =
-    BigInt(input.actualPaidAmountCents) +
-    BigInt(input.proxyPaidAmountCents) +
+    dbMoneyToBigInt(input.actualPaidAmountCents, "实付金额") +
+    dbMoneyToBigInt(input.proxyPaidAmountCents, "代付金额") +
     outstandingPaymentCents;
-  const remainingCents = BigInt(input.payableAmountCents) - occupiedCents;
+  const remainingCents = dbMoneyToBigInt(input.payableAmountCents, "应付金额") - occupiedCents;
 
   return {
-    outstandingPaymentCents: centsToSafeNumber(outstandingPaymentCents),
-    occupiedCents: centsToSafeNumber(occupiedCents),
-    remainingCents: centsToSafeNumber(remainingCents)
+    outstandingPaymentCents,
+    occupiedCents,
+    remainingCents
   };
 }
 
@@ -204,12 +234,36 @@ export function calculateContractDuePaymentCapacity(input: {
   paymentTermsStages: readonly ContractDuePaymentTermsStage[];
   settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
   paymentRequests: readonly ContractDuePaymentRequest[];
-  proxyPaidAmountCents?: number;
+  proxyPaidAmountCents?: number | bigint;
   contractAmountCents?: number | bigint;
   contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number | bigint>>;
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
   historicalBalance?: HistoricalContractPaymentBalance;
 }): ContractDuePaymentCapacity {
+  const capacity = calculateContractDuePaymentCapacityBigInt(input);
+
+  return {
+    duePayableCents: centsToSafeNumber(capacity.duePayableCents),
+    occupiedCents: centsToSafeNumber(capacity.occupiedCents),
+    remainingCents: centsToSafeNumber(capacity.remainingCents),
+    ...(capacity.advanceDeductionCents === undefined
+      ? {}
+      : { advanceDeductionCents: centsToSafeNumber(capacity.advanceDeductionCents) })
+  };
+}
+
+export function calculateContractDuePaymentCapacityBigInt(input: {
+  asOf: Date;
+  settlements: readonly ContractDueSettlement[];
+  paymentTermsStages: readonly ContractDuePaymentTermsStage[];
+  settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
+  paymentRequests: readonly ContractDuePaymentRequest[];
+  proxyPaidAmountCents?: number | bigint;
+  contractAmountCents?: number | bigint;
+  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number | bigint>>;
+  advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
+  historicalBalance?: HistoricalContractPaymentBalance;
+}): ContractDuePaymentCapacityBigInt {
   const historicalBalance = normalizeHistoricalBalance(input.historicalBalance);
   const capacityHistoricalBalance = historicalBalanceRepresentedBySettlements(
     input.settlements,
@@ -251,7 +305,7 @@ export function calculateContractDuePaymentCapacity(input: {
     addMapBigInt(
       cumulativeConfirmedSettlementCentsByTerms,
       settlement.paymentTermsVersionId,
-      BigInt(settlement.amountCents)
+      dbMoneyToBigInt(settlement.amountCents, "结算金额")
     );
 
     const stages = currentSettlementStagesByTerms.get(settlement.paymentTermsVersionId) ?? [];
@@ -267,24 +321,30 @@ export function calculateContractDuePaymentCapacity(input: {
       addMapBigInt(
         dueSettlementBasisCentsByTerms,
         settlement.paymentTermsVersionId,
-        BigInt(settlement.amountCents)
+        dbMoneyToBigInt(settlement.amountCents, "结算金额")
       );
     }
 
-    return total + minBigInt(settlementDueCents, BigInt(settlement.amountCents));
+    return total + minBigInt(
+      settlementDueCents,
+      dbMoneyToBigInt(settlement.amountCents, "结算金额")
+    );
   }, 0n);
   const actualPaidAmountCents =
     input.settlements.reduce<bigint>(
-      (total, settlement) => total + BigInt(settlement.paidAmountCents ?? 0),
+      (total, settlement) =>
+        total + dbMoneyToBigInt(settlement.paidAmountCents ?? 0, "结算已付金额"),
       0n
     ) +
     input.paymentRequests.reduce<bigint>(
       (total, payment) =>
-        payment.settlementId === null ? total + BigInt(payment.paidAmountCents ?? 0) : total,
+        payment.settlementId === null
+          ? total + dbMoneyToBigInt(payment.paidAmountCents ?? 0, "合同到期付款实付金额")
+          : total,
       0n
     );
   const outstandingPaymentCents = input.paymentRequests.reduce<bigint>(
-    (total, payment) => total + BigInt(outstandingPaymentRequestCents(payment)),
+    (total, payment) => total + outstandingPaymentRequestCents(payment),
     0n
   );
   const paidAdvanceCentsForCapacity = paidAdvanceCentsByTerms(input.advancePaymentRequests ?? []);
@@ -297,7 +357,7 @@ export function calculateContractDuePaymentCapacity(input: {
     historicalAdvanceDeductedCentsByTerms: historicalAdvanceDeductedCentsByTerms(
       capacityHistoricalBalance
     ),
-    contractAmountCents: BigInt(input.contractAmountCents ?? 0),
+    contractAmountCents: dbMoneyToBigInt(input.contractAmountCents ?? 0, "合同金额"),
     contractAmountCentsByTerms: contractAmountCentsByTerms(
       input.contractAmountCentsByPaymentTermsVersionId
     ),
@@ -307,17 +367,17 @@ export function calculateContractDuePaymentCapacity(input: {
   });
   const occupiedCents =
     actualPaidAmountCents +
-    BigInt(input.proxyPaidAmountCents ?? 0) +
+    dbMoneyToBigInt(input.proxyPaidAmountCents ?? 0, "项目代付金额") +
     outstandingPaymentCents +
     historicalOccupiedCents(capacityHistoricalBalance);
   const remainingCents = duePayableCents - occupiedCents - advanceDeductionCents;
 
   return {
-    duePayableCents: centsToSafeNumber(duePayableCents),
-    occupiedCents: centsToSafeNumber(occupiedCents),
-    remainingCents: centsToSafeNumber(remainingCents),
+    duePayableCents,
+    occupiedCents,
+    remainingCents,
     ...(input.advancePaymentRequests
-      ? { advanceDeductionCents: centsToSafeNumber(advanceDeductionCents) }
+      ? { advanceDeductionCents }
       : {})
   };
 }
@@ -426,9 +486,12 @@ export function buildContractPaymentApplicationPreview(input: {
         triggerAnchor: stage.triggerAnchor,
         dueDays: stage.dueDays,
         ratioBps: stage.ratioBps,
-        fixedAmountCents: stage.fixedAmountCents,
+        fixedAmountCents:
+          stage.fixedAmountCents === null
+            ? null
+            : centsToSafeNumber(dbMoneyToBigInt(stage.fixedAmountCents, "固定付款金额")),
         source: settlement.code ?? settlement.id,
-        currentSettlementAmountCents: settlement.amountCents,
+        currentSettlementAmountCents: centsToSafeNumber(settlementAmountCents),
         cumulativeBeforeAmountCents: centsToSafeNumber(before),
         cumulativeAfterAmountCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
         effectiveAt: confirmedAt,
@@ -470,7 +533,10 @@ export function buildContractPaymentApplicationPreview(input: {
       triggerAnchor: stage.triggerAnchor,
       dueDays: stage.dueDays,
       ratioBps: stage.ratioBps,
-      fixedAmountCents: stage.fixedAmountCents,
+      fixedAmountCents:
+        stage.fixedAmountCents === null
+          ? null
+          : centsToSafeNumber(dbMoneyToBigInt(stage.fixedAmountCents, "固定付款金额")),
       source: "合同生效",
       currentSettlementAmountCents: 0,
       cumulativeBeforeAmountCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
@@ -571,10 +637,14 @@ export function allocateContractDuePaymentExecution(input: {
 
   const allocatedCentsByRow = new Map<string, bigint>();
   for (const allocation of input.existingAllocations ?? []) {
+    const allocationAmountCents = dbMoneyToBigInt(
+      allocation.amountCents,
+      "既有实付分摊金额"
+    );
     addMapBigInt(
       allocatedCentsByRow,
       allocation.sourceRowId,
-      BigInt(Math.max(allocation.amountCents, 0))
+      allocationAmountCents > 0n ? allocationAmountCents : 0n
     );
   }
 
@@ -588,8 +658,12 @@ export function allocateContractDuePaymentExecution(input: {
     for (const row of section.rows) {
       if (!row.isDue || !row.settlementId) continue;
 
+      const includableAmountCents = dbMoneyToBigInt(
+        row.includableAmountCents,
+        "到期应付款金额"
+      );
       const rowAvailable =
-        BigInt(Math.max(row.includableAmountCents, 0)) -
+        (includableAmountCents > 0n ? includableAmountCents : 0n) -
         (allocatedCentsByRow.get(row.id) ?? 0n);
       if (rowAvailable <= 0n) continue;
 
@@ -619,9 +693,10 @@ export function allocateContractDuePaymentExecution(input: {
   }
 
   if (remainingToAllocate > 0n) {
-    const availableYuan = (centsToSafeNumber(totalAvailable) / 100).toFixed(2);
     throw new Error(
-      `登记实付金额超过当前可分摊的到期应付款，当前最多可分摊 ${availableYuan} 元。`
+      `登记实付金额超过当前可分摊的到期应付款，当前最多可分摊 ${formatMoneyCentsAsYuan(
+        totalAvailable
+      )} 元。`
     );
   }
 
@@ -630,12 +705,29 @@ export function allocateContractDuePaymentExecution(input: {
 
 export function calculateContractAdvancePaymentCapacity(input: {
   asOf: Date;
-  contractAmountCents: number;
+  contractAmountCents: number | bigint;
   contractEffectiveAt: Date | null;
   paymentTermsStages: readonly ContractDuePaymentTermsStage[];
   paymentRequests: readonly ContractAdvancePaymentRequest[];
   historicalBalance?: HistoricalContractPaymentBalance;
 }): ContractDuePaymentCapacity {
+  const capacity = calculateContractAdvancePaymentCapacityBigInt(input);
+
+  return {
+    duePayableCents: centsToSafeNumber(capacity.duePayableCents),
+    occupiedCents: centsToSafeNumber(capacity.occupiedCents),
+    remainingCents: centsToSafeNumber(capacity.remainingCents)
+  };
+}
+
+export function calculateContractAdvancePaymentCapacityBigInt(input: {
+  asOf: Date;
+  contractAmountCents: number | bigint;
+  contractEffectiveAt: Date | null;
+  paymentTermsStages: readonly ContractDuePaymentTermsStage[];
+  paymentRequests: readonly ContractAdvancePaymentRequest[];
+  historicalBalance?: HistoricalContractPaymentBalance;
+}): ContractDuePaymentCapacityBigInt {
   const historicalBalance = normalizeHistoricalBalance(input.historicalBalance);
   const contractEffectiveAt = input.contractEffectiveAt;
   const duePayableCents = contractEffectiveAt
@@ -647,14 +739,15 @@ export function calculateContractAdvancePaymentCapacity(input: {
     : 0n;
   const cappedDuePayableCents = minBigInt(
     duePayableCents,
-    BigInt(Math.max(input.contractAmountCents, 0))
+    nonNegativeBigIntCents(input.contractAmountCents)
   );
   const actualPaidAmountCents = input.paymentRequests.reduce<bigint>(
-    (total, payment) => total + BigInt(payment.paidAmountCents ?? 0),
+    (total, payment) =>
+      total + dbMoneyToBigInt(payment.paidAmountCents ?? 0, "预付款实付金额"),
     0n
   );
   const outstandingPaymentCents = input.paymentRequests.reduce<bigint>(
-    (total, payment) => total + BigInt(outstandingPaymentRequestCents(payment)),
+    (total, payment) => total + outstandingPaymentRequestCents(payment),
     0n
   );
   const historicalAdvanceOccupancyCents =
@@ -667,9 +760,9 @@ export function calculateContractAdvancePaymentCapacity(input: {
   const remainingCents = cappedDuePayableCents - occupiedCents;
 
   return {
-    duePayableCents: centsToSafeNumber(cappedDuePayableCents),
-    occupiedCents: centsToSafeNumber(occupiedCents),
-    remainingCents: centsToSafeNumber(remainingCents)
+    duePayableCents: cappedDuePayableCents,
+    occupiedCents,
+    remainingCents
   };
 }
 
@@ -901,7 +994,7 @@ function calculateAdvanceDeductionCents(input: {
       const startRatioBps = stage.advanceDeductionStartRatioBps;
       const startAmountCents =
         (contractAmountCentsForTerms(input, stage.paymentTermsVersionId) *
-          BigInt(Math.max(startRatioBps, 0))) /
+          BigInt(startRatioBps)) /
         10000n;
       const cumulativeConfirmedSettlementCents =
         input.cumulativeConfirmedSettlementCentsByTerms.get(stage.paymentTermsVersionId) ?? 0n;
@@ -910,7 +1003,7 @@ function calculateAdvanceDeductionCents(input: {
       }
     }
 
-    const scheduledCents = (dueSettlementBasisCents * BigInt(Math.max(ratioBps, 0))) / 10000n;
+    const scheduledCents = (dueSettlementBasisCents * BigInt(ratioBps)) / 10000n;
     addMapBigInt(totals, stage.paymentTermsVersionId, scheduledCents);
     return totals;
   }, new Map<string, bigint>());
@@ -1031,10 +1124,11 @@ function paidAdvanceCentsByTerms(
       continue;
     }
 
+    const paidAmountCents = dbMoneyToBigInt(payment.paidAmountCents ?? 0, "预付款实付金额");
     addMapBigInt(
       totals,
       payment.paymentTermsVersionId,
-      BigInt(Math.max(payment.paidAmountCents ?? 0, 0))
+      paidAmountCents > 0n ? paidAmountCents : 0n
     );
   }
 
@@ -1090,31 +1184,38 @@ function contractStageAmountCents(
   stage: ContractDuePaymentTermsStage
 ): bigint {
   if (stage.fixedAmountCents !== null) {
-    return BigInt(Math.max(stage.fixedAmountCents, 0));
+    const fixedAmountCents = dbMoneyToBigInt(stage.fixedAmountCents, "固定付款金额");
+    return fixedAmountCents > 0n ? fixedAmountCents : 0n;
   }
 
   if (stage.ratioBps === null) {
     return 0n;
   }
 
-  return (BigInt(settlementAmountCents) * BigInt(Math.max(stage.ratioBps, 0))) / 10000n;
+  const ratioBps = stage.ratioBps > 0 ? stage.ratioBps : 0;
+  return (dbMoneyToBigInt(settlementAmountCents, "结算金额") * BigInt(ratioBps)) / 10000n;
 }
 
 function minBigInt(left: bigint, right: bigint): bigint {
   return left < right ? left : right;
 }
 
-function outstandingPaymentRequestCents(payment: SettlementCapacityPaymentRequest): number {
+function outstandingPaymentRequestCents(payment: SettlementCapacityPaymentRequest): bigint {
+  const requestedAmountCents = dbMoneyToBigInt(payment.requestedAmountCents, "付款申请金额");
+  const paidAmountCents = dbMoneyToBigInt(payment.paidAmountCents, "已付金额");
   if (["approval_pending", "in_approval"].includes(payment.status)) {
-    return Math.max(payment.requestedAmountCents - payment.paidAmountCents, 0);
+    const outstanding = requestedAmountCents - paidAmountCents;
+    return outstanding > 0n ? outstanding : 0n;
   }
 
   if (["approved_pending_payment", "partially_paid"].includes(payment.status)) {
-    return Math.max(
-      (payment.approvedAmountCents ?? payment.requestedAmountCents) - payment.paidAmountCents,
-      0
+    const approvedAmountCents = dbMoneyToBigInt(
+      payment.approvedAmountCents ?? payment.requestedAmountCents,
+      "批准金额"
     );
+    const outstanding = approvedAmountCents - paidAmountCents;
+    return outstanding > 0n ? outstanding : 0n;
   }
 
-  return 0;
+  return 0n;
 }

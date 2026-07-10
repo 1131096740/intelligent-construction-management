@@ -5,6 +5,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { calculateProjectCashPoolBigInt } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmProjectExpenseReceiptDto } from "./dto/confirm-project-expense-receipt.dto";
 import { CreateProjectExpenseRequestDto } from "./dto/create-project-expense-request.dto";
@@ -1153,15 +1154,14 @@ export class ProjectExpenseService {
       })
     ]);
 
-    const actualReceipts = sumCents(receipts.map((receipt) => receipt.amountCents));
-    const actualPaid =
-      sumNumbers(paymentRequests.map((request) => request.paidAmountCents)) +
-      sumNumbers(expenseRequests.map((request) => request.paidAmountCents));
-    const occupied =
-      sumNumbers(paymentRequests.map((request) => outstandingCents(request))) +
-      sumNumbers(expenseRequests.map((request) => outstandingCents(request)));
-    const cashAvailable = Math.max(actualReceipts - actualPaid - occupied, 0);
-    if (requestedAmountCents <= cashAvailable) {
+    const cashPool = calculateProjectCashPoolBigInt({
+      receiptAmountCents: receipts.map((receipt) => receipt.amountCents),
+      paymentRequests,
+      expenseRequests
+    });
+    const cashAvailable = cashPool.availableCents > 0n ? cashPool.availableCents : 0n;
+    const requestedAmount = BigInt(requestedAmountCents);
+    if (requestedAmount <= cashAvailable) {
       return [];
     }
 
@@ -1183,7 +1183,7 @@ export class ProjectExpenseService {
       return used;
     }, new Map<string, bigint>());
 
-    let remaining = BigInt(requestedAmountCents - cashAvailable);
+    let remaining = requestedAmount - cashAvailable;
     const allocations: Array<{ quotaId: string; amountCents: bigint }> = [];
     let totalAvailableFinancing = 0n;
     for (const quota of financingQuotas) {
@@ -1201,7 +1201,7 @@ export class ProjectExpenseService {
     }
 
     if (remaining > 0n) {
-      const availableCents = BigInt(cashAvailable) + totalAvailableFinancing;
+      const availableCents = cashAvailable + totalAvailableFinancing;
       throw new BadRequestException(`项目现金资金池余额不足: ${availableCents.toString()}`);
     }
     return allocations;
@@ -1553,31 +1553,8 @@ function getProjectExpenseApprovalNodes(expenseType: (typeof EXPENSE_TYPES)[numb
   return PROJECT_EXPENSE_APPROVAL_NODES;
 }
 
-function outstandingCents(request: {
-  status: string;
-  requestedAmountCents: number;
-  approvedAmountCents?: number | null;
-  paidAmountCents: number;
-}) {
-  if (request.status === "approval_pending") {
-    return Math.max(request.requestedAmountCents - request.paidAmountCents, 0);
-  }
-  if (["approved_pending_payment", "partially_paid"].includes(request.status)) {
-    return Math.max((request.approvedAmountCents ?? request.requestedAmountCents) - request.paidAmountCents, 0);
-  }
-  return 0;
-}
-
 function sumNumbers(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
-}
-
-function sumCents(values: Array<bigint | number>) {
-  const total = values.reduce<bigint>((sum, value) => sum + BigInt(value), 0n);
-  if (total > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error("Amount total exceeds safe integer range");
-  }
-  return Number(total);
 }
 
 function formatCents(amountCents: number) {

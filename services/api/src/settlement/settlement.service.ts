@@ -14,6 +14,11 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import {
+  dbMoneyToBigInt,
+  legacyBigIntToDbInt,
+  sumDbMoneyToBigInt
+} from "../money/decimal-money";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import {
@@ -380,12 +385,14 @@ export class SettlementService {
   ): number {
     if (!lines.length) return calculatedAmountCents;
 
-    const lineTotal = lines.reduce((sum, line) => sum + line.amountCents, 0);
-    if (lineTotal !== calculatedAmountCents) {
+    const lineTotal = calculateSettlementLineTotalBigInt(
+      lines.map((line) => line.amountCents)
+    );
+    if (lineTotal !== dbMoneyToBigInt(calculatedAmountCents, "本次结算金额")) {
       throw new BadRequestException("结算明细合计必须等于本次结算金额，系统不会使用前端合计覆盖后台计算。");
     }
 
-    return lineTotal;
+    return legacyBigIntToDbInt(lineTotal, "结算明细合计");
   }
 
   private async assertNoDuplicateActiveSettlementPeriod(
@@ -748,17 +755,16 @@ export class SettlementService {
       },
       select: { amountCents: true }
     });
-    const previousEffectiveCents = previousSettlements.reduce(
-      (total, settlement) => total + settlement.amountCents,
-      0
+    const currentAmountCents = calculateFinalSettlementCurrentAmountBigInt(
+      finalCumulativeAmountCents,
+      previousSettlements.map((settlement) => settlement.amountCents)
     );
-    const currentAmountCents = finalCumulativeAmountCents - previousEffectiveCents;
 
-    if (currentAmountCents <= 0) {
+    if (currentAmountCents <= 0n) {
       throw new BadRequestException("最终审定累计结算总额必须大于前序已生效累计结算金额");
     }
 
-    return currentAmountCents;
+    return legacyBigIntToDbInt(currentAmountCents, "本次结算金额");
   }
 
   private async reserveSettlementQuota(
@@ -915,11 +921,10 @@ export class SettlementService {
   }
 
   private calculatePayableAmount(amountCents: number, ratioBps: number | null): number {
-    if (ratioBps === null) {
-      return amountCents;
-    }
-
-    return Math.floor((amountCents * ratioBps) / 10000);
+    return legacyBigIntToDbInt(
+      calculateSettlementPayableAmountBigInt(amountCents, ratioBps),
+      "结算应付金额"
+    );
   }
 
   async uploadArchiveFile(
@@ -2327,5 +2332,32 @@ function requireApprovalCommentForReturn(decision: ReviewSettlementApprovalDto["
 }
 
 function sumBigInt(values: Array<bigint | number>): bigint {
-  return values.reduce<bigint>((total, value) => total + BigInt(value), 0n);
+  return sumDbMoneyToBigInt(values, "结算金额");
+}
+
+export function calculateSettlementLineTotalBigInt(
+  amountCents: readonly (number | bigint)[]
+): bigint {
+  return sumDbMoneyToBigInt(amountCents, "结算明细金额");
+}
+
+export function calculateSettlementPayableAmountBigInt(
+  amountCents: number | bigint,
+  ratioBps: number | null
+): bigint {
+  const amount = dbMoneyToBigInt(amountCents, "结算金额");
+  if (ratioBps === null) {
+    return amount;
+  }
+  return (amount * BigInt(ratioBps)) / 10_000n;
+}
+
+export function calculateFinalSettlementCurrentAmountBigInt(
+  finalCumulativeAmountCents: number | bigint,
+  previousEffectiveAmountCents: readonly (number | bigint)[]
+): bigint {
+  return (
+    dbMoneyToBigInt(finalCumulativeAmountCents, "最终审定累计结算总额") -
+    calculateSettlementLineTotalBigInt(previousEffectiveAmountCents)
+  );
 }

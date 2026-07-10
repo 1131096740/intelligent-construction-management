@@ -4,7 +4,9 @@
 
 **Goal:** 消除 32 位分值溢出和 JavaScript `number` 精度风险，使单笔合同、结算、付款、报销和累计金额安全支持超过 2100 万元。
 
-**Architecture:** PostgreSQL 金额列统一改为 `BIGINT`；NestJS/Prisma 内部计算使用 `bigint`，API 以十进制字符串承载分值；Web 只把金额字符串转换为显示用元文本，不把大额分值转成 `number`。迁移先改数据库和 Prisma 类型，再收口后端边界，最后更新共享类型与 Web。
+**Architecture:** PostgreSQL 金额列统一改为 `BIGINT`；NestJS/Prisma 内部计算使用 `bigint`，API 以十进制字符串承载分值；Web 只把金额字符串转换为显示用元文本，不把大额分值转成 `number`。
+
+**修正后的切片顺序：** 先完成不改数据库和外部契约的“内部 bigint 兼容准备”；再把数据库 BIGINT、API 字符串、共享读模型和 Web 适配放进同一个全仓通过的原子切换；最后执行数据库与全链路验收。前两个切片均不得单独发布。
 
 **Tech Stack:** PostgreSQL BIGINT, Prisma BigInt, TypeScript bigint/string, Jest, Vitest.
 
@@ -137,8 +139,8 @@ Expected: 测试列出当前 21 个 `Int`/`Int?` 金额列并失败。
 - `ProjectExpenseRequest.approvedAmountCents`
 - `ProjectExpenseRequest.paidAmountCents`
 - `ProjectExpenseExecution.amountCents`
-- `ApprovalFlowRule.minAmountCents`
-- `ApprovalFlowRule.maxAmountCents`
+- `ApprovalFlowNode.minAmountCents`
+- `ApprovalFlowNode.maxAmountCents`
 
 - [ ] **Step 3: 创建可逆的类型扩容 SQL**
 
@@ -164,8 +166,8 @@ ALTER TABLE "ProjectExpenseRequest" ALTER COLUMN "requestedAmountCents" TYPE BIG
 ALTER TABLE "ProjectExpenseRequest" ALTER COLUMN "approvedAmountCents" TYPE BIGINT USING "approvedAmountCents"::BIGINT;
 ALTER TABLE "ProjectExpenseRequest" ALTER COLUMN "paidAmountCents" TYPE BIGINT USING "paidAmountCents"::BIGINT;
 ALTER TABLE "ProjectExpenseExecution" ALTER COLUMN "amountCents" TYPE BIGINT USING "amountCents"::BIGINT;
-ALTER TABLE "ApprovalFlowRule" ALTER COLUMN "minAmountCents" TYPE BIGINT USING "minAmountCents"::BIGINT;
-ALTER TABLE "ApprovalFlowRule" ALTER COLUMN "maxAmountCents" TYPE BIGINT USING "maxAmountCents"::BIGINT;
+ALTER TABLE "ApprovalFlowNode" ALTER COLUMN "minAmountCents" TYPE BIGINT USING "minAmountCents"::BIGINT;
+ALTER TABLE "ApprovalFlowNode" ALTER COLUMN "maxAmountCents" TYPE BIGINT USING "maxAmountCents"::BIGINT;
 ```
 
 对上一步 21 个字段全部覆盖；保留原 nullability 和 default。`paidAmountCents` 的默认值必须保持 0。
