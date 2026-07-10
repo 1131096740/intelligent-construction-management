@@ -541,6 +541,20 @@ async function assertTakeoverEvidenceVisibleInArchiveLedger(fileId, token) {
   assertEqual(row.canDownload, true, "资料库历史接管资料下载状态");
 }
 
+async function assertPaymentPdfArchiveVisibleInArchiveLedger(fileId, paymentCode, token) {
+  const archiveLedger = await readJson("/archives?limit=200", token, "资料库台账");
+  assert(Array.isArray(archiveLedger.rows), "资料库台账未返回资料行");
+  const row = archiveLedger.rows.find((item) => item.fileId === fileId);
+  assert(row, "资料库台账未展示刚归档的付款 PDF");
+  assertEqual(row.documentType, "付款PDF留档", "资料库付款 PDF 资料类型");
+  assert(
+    String(row.businessRef ?? "").includes(paymentCode),
+    `资料库付款 PDF 关联业务不正确：${row.businessRef}`
+  );
+  assertEqual(row.archiveStatus, "已入库", "资料库付款 PDF 归档状态");
+  assertEqual(row.canDownload, true, "资料库付款 PDF 下载状态");
+}
+
 async function ensureProgressPaymentStage(paymentTermsVersionId) {
   await prisma.paymentTermsStage.create({
     data: {
@@ -849,6 +863,13 @@ async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
     "归档 UAT 付款 PDF"
   );
   assert(pdfArchive.pdfDocument?.id, "付款 PDF 归档未返回归档文件记录");
+  const paymentPdfFileId = pdfArchive.archiveRecord?.fileId ?? pdfArchive.pdfDocument?.fileId;
+  assert(paymentPdfFileId, "付款 PDF 归档未返回资料库文件编号");
+  await assertPaymentPdfArchiveVisibleInArchiveLedger(
+    paymentPdfFileId,
+    payment.code,
+    tokens.contractStaff
+  );
 
   const persisted = await prisma.paymentRequest.findUnique({ where: { id: payment.id } });
   assert(persisted, "数据库中未找到刚登记实付的付款申请");
