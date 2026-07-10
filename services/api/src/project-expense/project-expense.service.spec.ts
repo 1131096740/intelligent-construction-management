@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { ProjectExpenseService } from "./project-expense.service";
 
 describe("ProjectExpenseService", () => {
@@ -521,12 +522,12 @@ describe("ProjectExpenseService", () => {
     });
   });
 
-  it("rejects a negative project expense amount before opening a transaction", async () => {
+  it("rejects an invalid project expense amount as HTTP 400 before opening a transaction", async () => {
     const prisma = { $transaction: jest.fn() };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    await expect(
-      service.create("project-1", "handler-1", {
+    const error = await service
+      .create("project-1", "handler-1", {
         code: "LX-2026-NEG",
         expenseType: "sporadic_payment",
         expenseSubtype: "sporadic_material",
@@ -535,7 +536,11 @@ describe("ProjectExpenseService", () => {
         requestedAmountCents: "-1",
         paymentMethod: "bank_transfer"
       })
-    ).rejects.toThrow("申请金额必须大于零");
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getStatus()).toBe(400);
+    expect((error as Error).message).toBe("申请金额必须大于零");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 

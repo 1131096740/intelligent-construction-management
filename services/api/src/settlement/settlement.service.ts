@@ -17,8 +17,8 @@ import { FileService } from "../file/file.service";
 import {
   dbMoneyToBigInt,
   mapBigIntMoneyFieldsToApi,
-  parseMoneyCents,
-  parseSignedMoneyCents,
+  parseMoneyCentsInput,
+  parseSignedMoneyCentsInput,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
@@ -579,13 +579,9 @@ export class SettlementService {
   }
 
   private requiredMoneyCents(value: string | undefined, label: string, signed = false): bigint {
-    try {
-      return signed
-        ? parseSignedMoneyCents(value as string, label)
-        : parseMoneyCents(value as string, label);
-    } catch {
-      throw new BadRequestException(`${label}必须为整数。`);
-    }
+    return signed
+      ? parseSignedMoneyCentsInput(value as string, label, `${label}必须为整数。`)
+      : parseMoneyCentsInput(value as string, label, `${label}必须为整数。`);
   }
 
   private optionalMoneyCents(value: string | undefined, label: string): bigint | null {

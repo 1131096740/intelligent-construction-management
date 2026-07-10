@@ -123,9 +123,21 @@ export function calculateProjectCashPoolBigInt(input: {
 
 export function parseMoneyCents(value: string, fieldName: string): bigint {
   if (typeof value !== "string" || !NON_NEGATIVE_CENTS_TEXT.test(value)) {
-    throw new BadRequestException(`${fieldName}必须填写非负整数分`);
+    throw new Error(`${fieldName}必须填写非负整数分`);
   }
   return BigInt(value);
+}
+
+export function parseMoneyCentsInput(
+  value: string,
+  fieldName: string,
+  invalidMessage = `${fieldName}必须填写非负整数分`
+): bigint {
+  try {
+    return parseMoneyCents(value, fieldName);
+  } catch {
+    throw new BadRequestException(invalidMessage);
+  }
 }
 
 export function moneyCentsToApi(value: bigint): string {
@@ -178,9 +190,21 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 export function parseSignedMoneyCents(value: string, fieldName: string): bigint {
   if (typeof value !== "string" || !SIGNED_CENTS_TEXT.test(value)) {
-    throw new BadRequestException(`${fieldName}必须填写整数分`);
+    throw new Error(`${fieldName}必须填写整数分`);
   }
   return BigInt(value);
+}
+
+export function parseSignedMoneyCentsInput(
+  value: string,
+  fieldName: string,
+  invalidMessage = `${fieldName}必须填写整数分`
+): bigint {
+  try {
+    return parseSignedMoneyCents(value, fieldName);
+  } catch {
+    throw new BadRequestException(invalidMessage);
+  }
 }
 
 export function yuanTextToCents(value: string, fieldName: string): bigint {

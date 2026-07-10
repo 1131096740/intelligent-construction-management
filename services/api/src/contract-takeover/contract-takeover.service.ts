@@ -1,4 +1,4 @@
-import { Injectable, Optional } from "@nestjs/common";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
@@ -8,7 +8,8 @@ import { FileService } from "../file/file.service";
 import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
-  parseMoneyCents
+  parseMoneyCents,
+  parseMoneyCentsInput
 } from "../money/decimal-money";
 import type {
   AttachContractTakeoverEvidenceDto,
@@ -1717,13 +1718,12 @@ export class ContractTakeoverService {
     if (!input.code?.trim()) throw new Error("请填写合同编号");
     if (!input.name?.trim()) throw new Error("请填写合同名称");
     if (!input.counterparty?.trim()) throw new Error("请填写相对方");
-    let amountCents: bigint;
-    try {
-      amountCents = parseMoneyCents(input.amountCents, "合同金额");
-    } catch {
-      throw new Error("合同金额必须大于 0");
-    }
-    if (amountCents <= 0n) throw new Error("合同金额必须大于 0");
+    const amountCents = parseMoneyCentsInput(
+      input.amountCents,
+      "合同金额",
+      "合同金额必须大于 0"
+    );
+    if (amountCents <= 0n) throw new BadRequestException("合同金额必须大于 0");
     if (!TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel)) {
       throw new Error("接管等级不正确，请重新选择");
     }
@@ -1744,13 +1744,14 @@ export class ContractTakeoverService {
       : null;
 
     const money = Object.fromEntries(
-      MONEY_FIELDS.map((field) => {
-        try {
-          return [field, parseMoneyCents(input[field] ?? "0", MONEY_FIELD_LABELS[field])];
-        } catch {
-          throw new Error(`${MONEY_FIELD_LABELS[field]}必须填写 0 或更大的金额`);
-        }
-      })
+      MONEY_FIELDS.map((field) => [
+        field,
+        parseMoneyCentsInput(
+          input[field] ?? "0",
+          MONEY_FIELD_LABELS[field],
+          `${MONEY_FIELD_LABELS[field]}必须填写 0 或更大的金额`
+        )
+      ])
     ) as Record<(typeof MONEY_FIELDS)[number], bigint>;
     const reviewComment = input.reviewComment?.trim() || null;
     const takeoverLevelAdjustmentReason = input.takeoverLevelAdjustmentReason?.trim() || null;

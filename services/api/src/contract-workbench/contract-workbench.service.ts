@@ -13,7 +13,11 @@ import type {
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
-import { moneyCentsToApi, parseMoneyCents } from "../money/decimal-money";
+import {
+  moneyCentsToApi,
+  parseMoneyCents,
+  parseMoneyCentsInput
+} from "../money/decimal-money";
 import type {
   ApplyContractTypeChangeDto,
   CreateDraftCheckpointDto,
@@ -1438,11 +1442,7 @@ export class ContractWorkbenchService {
     if (value === undefined) {
       throw new BadRequestException(`${field}必须是大于等于 0 的整数金额`);
     }
-    try {
-      return parseMoneyCents(value, field);
-    } catch {
-      throw new BadRequestException(`${field}必须是大于等于 0 的整数金额`);
-    }
+    return parseMoneyCentsInput(value, field, `${field}必须是大于等于 0 的整数金额`);
   }
 
   private changedKeys(before: Record<string, unknown>, after: Record<string, unknown>) {

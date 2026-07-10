@@ -1,4 +1,5 @@
 import * as ExcelJS from "exceljs";
+import { BadRequestException } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/library";
 import {
   calculateFinalSettlementCurrentAmountBigInt,
@@ -40,6 +41,25 @@ describe("SettlementService", () => {
     audit.record.mockReset();
     auth.confirmPassword.mockReset();
     auth.confirmPassword.mockResolvedValue({ ok: true });
+  });
+
+  it("rejects an invalid settlement amount as HTTP 400 before opening a transaction", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    const error = await settlementService
+      .create({
+        contractVersionId: "contract-version-1",
+        code: "JS-INVALID",
+        periodLabel: "2026-07",
+        amountCents: "1e3"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getStatus()).toBe(400);
+    expect((error as Error).message).toBe("结算金额必须为整数。");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   function approvalRoleTables(roleKey: string) {

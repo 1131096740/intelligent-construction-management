@@ -4,6 +4,8 @@
 
 规格评审加固：2026-07-11
 
+独立质量评审第二次收口：2026-07-11
+
 执行分支：`codex/phase0b-money-bigint-20260710`
 
 执行范围：仅独立 worktree 和一次性本地测试环境
@@ -29,6 +31,7 @@ Phase 0B 的 BIGINT 数据库迁移、金额字符串 API 契约和 bigint 内�
 
 - `services/api/src/database/money-bigint-live-verification.ts`
 - `services/api/prisma/run-money-bigint-local.cjs`
+- `services/api/prisma/money-bigint-runner-runtime.cjs`
 - `services/api/prisma/prepare-money-bigint-local.cjs`
 
 标准入口：
@@ -98,13 +101,29 @@ pnpm --filter @jiangkong/api test -- api-listen.spec.ts seed-auth-runtime.spec.t
 3 suites passed, 10 tests passed
 ```
 
+独立质量评审第二次收口目标回归：
+
+```text
+pnpm --filter @jiangkong/api test -- --runInBand \
+  src/money/decimal-money.spec.ts \
+  src/database/money-bigint-live-verification.spec.ts \
+  src/database/money-bigint-runner-runtime.spec.ts \
+  src/payment/settlement-payment-capacity.spec.ts \
+  src/payment/payment-request.service.spec.ts \
+  src/contract/contract.service.spec.ts \
+  src/settlement/settlement.service.spec.ts \
+  src/project-expense/project-expense.service.spec.ts \
+  src/project/project.service.spec.ts
+9 suites passed, 482 tests passed
+```
+
 全仓质量门禁：
 
 | 命令 | 结果 |
 | --- | --- |
 | `pnpm typecheck` | 通过 |
 | `pnpm lint` | 通过 |
-| `pnpm test` | shared-domain 7/7 文件、58/58 项；Web 40/40 文件、317/317 项；API 65/65 套件、1097/1097 项全部通过 |
+| `pnpm test` | shared-domain 7/7 文件、58/58 项；Web 40/40 文件、317/317 项；API 66/66 套件、1107/1107 项全部通过 |
 | `pnpm --filter @jiangkong/api build` | 通过 |
 | `pnpm --filter @jiangkong/web-admin build` | 通过；仅保留既有大 chunk 警告 |
 | `pnpm --filter @jiangkong/web-admin check:ui` | 通过 |
@@ -116,7 +135,15 @@ pnpm --filter @jiangkong/api test -- api-listen.spec.ts seed-auth-runtime.spec.t
 
 本次验收按当前代码路径执行，只证明金额链路可运行，不能据此把审批业务规则判定为验收通过。该问题应作为发布前独立 P0 规则切片修正并增加审批实例冻结与 OR 签回归，不应混入本次 BIGINT 验证提交。
 
-评审加严时曾发现非法 number、小数、指数和负数金额虽不落库，但金额解析器抛出的普通错误会被 Nest 映射为 HTTP 500。该问题已在独立提交 `279e6246` 中最小修复：外部金额字符串解析改为客户端异常，付款正金额包装保留中文业务原因，数据库 bigint 不变量仍使用内部错误。目标测试覆盖 4 类非法输入返回 400、事务未开启，并保留结算人工调整负数的合法例外；本次 live 再严格验证 4xx 中文响应和数据库 0 残留。
+评审加严时曾发现非法 number、小数、指数和负数金额虽不落库，但金额解析器抛出的普通错误会被 Nest 映射为 HTTP 500。独立提交 `279e6246` 先把这类输入修正为 HTTP 400；第二次质量评审进一步发现该提交把内部容量解析和 HTTP 异常耦合在一起。本次收口将 `parseMoneyCents` / `parseSignedMoneyCents` 恢复为只抛普通 `Error` 的纯解析器，并新增名称明确的外部输入包装器。付款、合同、结算、项目支出、项目到账、合同工作台和历史接管的写入归一化只在外部边界映射为中文 HTTP 400；数据库值、付款容量和内部快照继续使用普通错误。目标测试确认五类业务输入在事务开启前被拒绝、内部付款分摊损坏不再伪装成 HTTP 400，并保留结算手工调整的有符号金额例外。
+
+第二次质量评审同时收口了本地 runner 的资源生命周期：
+
+- `withGuaranteedCleanup` 在任务与清理同时失败时抛出 `AggregateError`，两个原始错误都保留；任务成功但清理失败仍判定验收失败。
+- 命令子进程启动后立即登记，`close` / `error` 后移除；命令都有可配置超时，超时按 `SIGTERM -> 宽限期 -> SIGKILL` 终止并报告。
+- 清理顺序固定为活动子进程、唯一临时容器、临时目录；任一步失败都不会阻止后续步骤，最终错误摘要只包含资源类别，不包含随机凭据。
+- 容器清理责任在 Docker 启动尝试前建立，不再依赖“容器已成功启动”标记；无论启动成功与否都会执行 `docker rm --force <唯一名称>`，仅安全忽略“容器不存在”。
+- `SIGINT` / `SIGTERM` 会等待 single-flight 清理完成后再退出。受控真实中断在临时 PostgreSQL 容器已启动后发送 `SIGINT`，退出码为 130，容器和临时目录均无残留；标准 `pnpm verify:money-bigint:local` 随后再次完整通过并自动清理。
 
 ## 仍未执行
 

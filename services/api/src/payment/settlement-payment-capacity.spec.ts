@@ -1986,6 +1986,45 @@ describe("buildContractPaymentApplicationPreview", () => {
 });
 
 describe("allocateContractDuePaymentExecution", () => {
+  it("treats corrupted internal row amounts as non-HTTP invariant errors", () => {
+    const error = (() => {
+      try {
+        allocateContractDuePaymentExecution?.({
+          amountCents: 1n,
+          sections: [
+            {
+              type: "progress",
+              title: "进度款",
+              rows: [
+                {
+                  id: "settlement-corrupted:progress:0",
+                  source: "JS-CORRUPTED",
+                  settlementId: "settlement-corrupted",
+                  paymentTermsVersionId: "terms-v1",
+                  currentSettlementAmountCents: "1",
+                  cumulativeBeforeAmountCents: "0",
+                  cumulativeAfterAmountCents: "1",
+                  effectiveAt: new Date("2026-07-01T00:00:00.000Z"),
+                  expectedPayableAt: new Date("2026-07-01T00:00:00.000Z"),
+                  paymentRule: "100%",
+                  isDue: true,
+                  includableAmountCents: "corrupted"
+                }
+              ]
+            }
+          ]
+        });
+      } catch (caught) {
+        return caught;
+      }
+      return undefined;
+    })();
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as { getStatus?: unknown }).getStatus).toBeUndefined();
+    expect((error as Error).message).toBe("可分摊金额必须填写非负整数分");
+  });
+
   it("拒绝将不安全整数的实付金额进入分摊", () => {
     expect(() =>
       allocateContractDuePaymentExecution?.({

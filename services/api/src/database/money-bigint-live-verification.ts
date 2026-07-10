@@ -246,22 +246,32 @@ export async function withGuaranteedCleanup<T>(
   task: () => Promise<T>,
   cleanup: () => Promise<void>
 ): Promise<T> {
+  let taskFailed = false;
   let taskError: unknown;
   let result: T | undefined;
   try {
     result = await task();
   } catch (error) {
+    taskFailed = true;
     taskError = error;
   }
 
+  let cleanupFailed = false;
   let cleanupError: unknown;
   try {
     await cleanup();
   } catch (error) {
+    cleanupFailed = true;
     cleanupError = error;
   }
 
-  if (taskError) throw taskError;
-  if (cleanupError) throw cleanupError;
+  if (taskFailed && cleanupFailed) {
+    throw new AggregateError(
+      [taskError, cleanupError],
+      "大额金额验收任务与清理均失败"
+    );
+  }
+  if (taskFailed) throw taskError;
+  if (cleanupFailed) throw cleanupError;
   return result as T;
 }

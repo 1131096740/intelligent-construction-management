@@ -7,7 +7,9 @@ import {
   mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
   parseMoneyCents,
+  parseMoneyCentsInput,
   parseSignedMoneyCents,
+  parseSignedMoneyCentsInput,
   sumDbMoneyToBigInt,
   yuanTextToCents
 } from "./decimal-money";
@@ -81,21 +83,46 @@ describe("internal bigint money compatibility", () => {
   });
 
   it.each(["-1", "1.5", "1e3", " 1", "", 1])(
-    "rejects invalid API cent input %p",
+    "keeps invalid cent parsing as an internal error and maps input %p to HTTP 400",
     (value) => {
-      expect(() => parseMoneyCents(value as string, "金额")).toThrow(BadRequestException);
+      const parserError = (() => {
+        try {
+          parseMoneyCents(value as string, "金额");
+        } catch (error) {
+          return error;
+        }
+        return undefined;
+      })();
+      expect(parserError).toBeInstanceOf(Error);
+      expect(parserError).not.toBeInstanceOf(BadRequestException);
       expect(() => parseMoneyCents(value as string, "金额")).toThrow("金额必须填写非负整数分");
+      expect(() => parseMoneyCentsInput(value as string, "金额")).toThrow(
+        BadRequestException
+      );
+      expect(() => parseMoneyCentsInput(value as string, "金额")).toThrow(
+        "金额必须填写非负整数分"
+      );
     }
   );
 
   it("keeps the signed manual-adjustment exception while rejecting non-canonical values", () => {
     expect(parseSignedMoneyCents("-1", "人工调整金额")).toBe(-1n);
     for (const value of [1, "1.5", "1e3"]) {
-      expect(() => parseSignedMoneyCents(value as string, "人工调整金额")).toThrow(
-        BadRequestException
-      );
+      const parserError = (() => {
+        try {
+          parseSignedMoneyCents(value as string, "人工调整金额");
+        } catch (error) {
+          return error;
+        }
+        return undefined;
+      })();
+      expect(parserError).toBeInstanceOf(Error);
+      expect(parserError).not.toBeInstanceOf(BadRequestException);
       expect(() => parseSignedMoneyCents(value as string, "人工调整金额")).toThrow(
         "人工调整金额必须填写整数分"
+      );
+      expect(() => parseSignedMoneyCentsInput(value as string, "人工调整金额")).toThrow(
+        BadRequestException
       );
     }
   });

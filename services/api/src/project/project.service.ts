@@ -15,7 +15,7 @@ import {
   formatMoneyCentsAsYuan,
   moneyCentsToApi,
   outstandingMoneyRequestCentsBigInt,
-  parseMoneyCents,
+  parseMoneyCentsInput,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import {
@@ -568,7 +568,7 @@ export class ProjectService {
   }
 
   async recordReceipt(projectId: string, actorUserId: string, input: RecordProjectReceiptDto) {
-    const amountCents = normalizePositiveMoneyCents(input.amountCents, "Receipt amount must be greater than zero");
+    const amountCents = normalizePositiveMoneyCents(input.amountCents, "到账金额必须大于零");
     const receivedAt = parseReceiptDate(input.receivedAt);
     const payerName = requiredTrimmed(input.payerName, "Receipt payer is required");
     const sourceType = normalizeSourceType(input.sourceType);
@@ -1921,12 +1921,7 @@ export function projectMoneyToApi(value: bigint): string {
 }
 
 function normalizePositiveMoneyCents(value: unknown, message: string): bigint {
-  let cents: bigint;
-  try {
-    cents = parseMoneyCents(value as string, "金额");
-  } catch {
-    throw new BadRequestException(message);
-  }
+  const cents = parseMoneyCentsInput(value as string, "金额", message);
   if (cents <= 0n) throw new BadRequestException(message);
   return cents;
 }

@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ContractService } from "./contract.service";
 
@@ -13,6 +14,42 @@ describe("ContractService", () => {
     audit.record.mockReset();
     auth.confirmPassword.mockReset();
     auth.confirmPassword.mockResolvedValue({ ok: true });
+  });
+
+  it("rejects an invalid fixed payment amount as HTTP 400 before opening a transaction", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ContractService(prisma as never, audit as never);
+
+    const error = await service
+      .createDraft(
+        {
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          businessTemplateVersionId: "template-version-1",
+          paymentStages: [
+            {
+              name: "预付款",
+              stageType: "advance",
+              basis: "fixed_amount",
+              fixedAmountCents: "1e3",
+              triggerAnchor: "contract_effective",
+              triggerEvent: "合同生效",
+              dueDays: 0,
+              requiresInvoice: false,
+              allowsEarlyPayment: false,
+              allowsInstallments: true,
+              originalText: "合同生效后支付预付款"
+            }
+          ]
+        },
+        "contract-staff-1"
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getStatus()).toBe(400);
+    expect((error as Error).message).toBe("第 1 条固定金额必须大于 0。");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   function pdfHexText(value: string) {

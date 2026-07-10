@@ -185,4 +185,31 @@ describe("money bigint live verification guard", () => {
     ).rejects.toBe(failure);
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
+
+  it("任务与清理同时失败时保留两个原始错误", async () => {
+    const taskFailure = new Error("live verification failed");
+    const cleanupFailure = new Error("cleanup failed");
+
+    const error = await withGuaranteedCleanup(
+      async () => {
+        throw taskFailure;
+      },
+      async () => {
+        throw cleanupFailure;
+      }
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(AggregateError);
+    expect((error as AggregateError).errors).toEqual([taskFailure, cleanupFailure]);
+  });
+
+  it("任务成功但清理失败时仍判定验收失败", async () => {
+    const cleanupFailure = new Error("cleanup failed");
+
+    await expect(
+      withGuaranteedCleanup(async () => "ok", async () => {
+        throw cleanupFailure;
+      })
+    ).rejects.toBe(cleanupFailure);
+  });
 });

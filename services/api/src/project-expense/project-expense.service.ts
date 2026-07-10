@@ -11,7 +11,7 @@ import {
   formatMoneyCentsAsYuan,
   mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
-  parseMoneyCents,
+  parseMoneyCentsInput,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
@@ -1568,12 +1568,7 @@ function trimmedOrNull(value: string | undefined) {
 }
 
 function positiveMoneyCents(value: string, message: string): bigint {
-  let cents: bigint;
-  try {
-    cents = parseMoneyCents(value, "金额");
-  } catch {
-    throw new BadRequestException(message);
-  }
+  const cents = parseMoneyCentsInput(value, "金额", message);
   if (cents <= 0n) throw new BadRequestException(message);
   return cents;
 }

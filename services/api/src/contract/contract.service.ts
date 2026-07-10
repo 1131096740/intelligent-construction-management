@@ -15,7 +15,7 @@ import { FileService } from "../file/file.service";
 import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
-  parseMoneyCents
+  parseMoneyCentsInput
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
@@ -109,6 +109,7 @@ export class ContractService {
   ) {}
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
+    const normalizedPaymentStages = this.normalizePaymentStages(input.paymentStages);
     return this.prisma.$transaction(async (tx) => {
       // 校验模板版本：必须已发布才能用于新建草稿。
       const templateVersion = await tx.contractBusinessTemplateVersion.findUnique({
@@ -219,7 +220,10 @@ export class ContractService {
           originalText: input.paymentTermsOriginalText?.trim() ?? ""
         }
       });
-      const paymentStages = this.normalizePaymentStages(input.paymentStages, terms.id);
+      const paymentStages = normalizedPaymentStages.map((stage) => ({
+        ...stage,
+        paymentTermsVersionId: terms.id
+      }));
       if (paymentStages.length > 0) {
         await tx.paymentTermsStage.createMany({ data: paymentStages });
       }
@@ -1034,9 +1038,8 @@ export class ContractService {
   }
 
   private normalizePaymentStages(
-    stages: CreatePaymentTermsStageDto[] | undefined,
-    paymentTermsVersionId: string
-  ): Prisma.PaymentTermsStageCreateManyInput[] {
+    stages: CreatePaymentTermsStageDto[] | undefined
+  ): Array<Omit<Prisma.PaymentTermsStageCreateManyInput, "paymentTermsVersionId">> {
     if (stages === undefined) return [];
     if (!Array.isArray(stages) || stages.length === 0) {
       throw new BadRequestException(
@@ -1044,16 +1047,13 @@ export class ContractService {
       );
     }
 
-    return stages.map((stage, index) =>
-      this.normalizePaymentStage(stage, index, paymentTermsVersionId)
-    );
+    return stages.map((stage, index) => this.normalizePaymentStage(stage, index));
   }
 
   private normalizePaymentStage(
     stage: CreatePaymentTermsStageDto,
-    index: number,
-    paymentTermsVersionId: string
-  ): Prisma.PaymentTermsStageCreateManyInput {
+    index: number
+  ): Omit<Prisma.PaymentTermsStageCreateManyInput, "paymentTermsVersionId"> {
     if (!stage || typeof stage !== "object") {
       throw new BadRequestException(`第 ${index + 1} 条付款条款格式不正确。`);
     }
@@ -1075,11 +1075,11 @@ export class ContractService {
     }
     let fixedAmountCents: bigint | undefined;
     if (stage.fixedAmountCents !== undefined) {
-      try {
-        fixedAmountCents = parseMoneyCents(stage.fixedAmountCents, "固定金额");
-      } catch {
-        throw new BadRequestException(`第 ${index + 1} 条固定金额必须大于 0。`);
-      }
+      fixedAmountCents = parseMoneyCentsInput(
+        stage.fixedAmountCents,
+        "固定金额",
+        `第 ${index + 1} 条固定金额必须大于 0。`
+      );
       if (fixedAmountCents <= 0n) {
         throw new BadRequestException(`第 ${index + 1} 条固定金额必须大于 0。`);
       }
@@ -1109,7 +1109,6 @@ export class ContractService {
     }
 
     return {
-      paymentTermsVersionId,
       name: stage.name.trim(),
       stageType,
       basis: stage.basis,

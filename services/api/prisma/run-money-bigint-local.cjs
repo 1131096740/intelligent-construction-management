@@ -9,42 +9,17 @@ const {
   assertSeedOutputHasNoPassword,
   withGuaranteedCleanup
 } = require("../dist/database/money-bigint-live-verification");
+const {
+  createCommandRuntime,
+  createRunnerCleanup,
+  runInterruption
+} = require("./money-bigint-runner-runtime.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
-
-function command(commandName, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(commandName, args, {
-      cwd: options.cwd ?? root,
-      env: options.env,
-      stdio: options.stdio ?? ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.on("data", (chunk) => {
-      stdout += chunk;
-      if (options.forwardOutput) process.stdout.write(chunk);
-    });
-    child.stderr?.on("data", (chunk) => {
-      stderr += chunk;
-      if (options.forwardOutput) process.stderr.write(chunk);
-    });
-    child.on("error", reject);
-    child.on("exit", (code, signal) => {
-      if (code === 0) {
-        resolve({ stdout, stderr });
-        return;
-      }
-      reject(
-        new Error(
-          `${commandName} ${args.join(" ")} failed (${signal ?? code})\n${stderr || stdout}`
-        )
-      );
-    });
-  });
-}
+const commandRuntime = createCommandRuntime({ defaultCwd: root });
+const { command } = commandRuntime;
 
 async function freePort() {
   return new Promise((resolve, reject) => {
@@ -70,7 +45,7 @@ async function waitForPostgres(containerName) {
         "jiangkong",
         "-d",
         "jiangkong_money_verify"
-      ]);
+      ], { timeoutMs: 15_000 });
       return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -85,7 +60,9 @@ async function waitForApi(apiBaseUrl, apiProcess, apiOutput) {
       throw new Error(`本地 API 提前退出：\n${apiOutput.join("")}`);
     }
     try {
-      const response = await fetch(`${apiBaseUrl}/health`);
+      const response = await fetch(`${apiBaseUrl}/health`, {
+        signal: AbortSignal.timeout(5_000)
+      });
       if (response.ok) return;
     } catch {
       // API still starting.
@@ -93,20 +70,6 @@ async function waitForApi(apiBaseUrl, apiProcess, apiOutput) {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error("本地 API 在 60 秒内未就绪");
-}
-
-async function stopProcess(child) {
-  if (!child || child.exitCode !== null) return;
-  child.kill("SIGTERM");
-  await Promise.race([
-    new Promise((resolve) => child.once("exit", resolve)),
-    new Promise((resolve) =>
-      setTimeout(() => {
-        if (child.exitCode === null) child.kill("SIGKILL");
-        resolve();
-      }, 5000)
-    )
-  ]);
 }
 
 async function main() {
@@ -142,29 +105,32 @@ async function main() {
   });
 
   let apiProcess;
-  let containerStarted = false;
-  let cleanupStarted = false;
   const apiOutput = [];
 
-  const cleanup = async () => {
-    if (cleanupStarted) return;
-    cleanupStarted = true;
-    await stopProcess(apiProcess);
-    if (containerStarted) {
-      await command(docker, ["rm", "--force", containerName]).catch((error) => {
-        if (!String(error.message).includes("No such container")) throw error;
-      });
-    }
-    await rm(temporaryRoot, { recursive: true, force: true });
-    console.log(`清理完成：API 已停止，临时容器 ${containerName} 与临时目录已删除`);
-  };
+  const cleanup = createRunnerCleanup({
+    stopChildren: () => commandRuntime.stopAll(),
+    removeContainer: () =>
+      command(docker, ["rm", "--force", containerName], { timeoutMs: 60_000 }).catch(
+        (error) => {
+          if (!String(error?.message).includes("No such container")) throw error;
+        }
+      ),
+    removeTemporaryRoot: () => rm(temporaryRoot, { recursive: true, force: true }),
+    onComplete: () =>
+      console.log(`清理完成：API 已停止，临时容器 ${containerName} 与临时目录已删除`)
+  });
+  let interruptionPromise;
   const interrupt = (signal) => {
-    cleanup()
-      .catch((error) => console.error(`中断清理失败：${error.message}`))
-      .finally(() => process.exit(signal === "SIGINT" ? 130 : 143));
+    interruptionPromise ??= runInterruption({
+      signal,
+      cleanup,
+      reportError: (message) => console.error(message),
+      exit: (code) => process.exit(code)
+    });
+    return interruptionPromise;
   };
-  const onSigint = () => interrupt("SIGINT");
-  const onSigterm = () => interrupt("SIGTERM");
+  const onSigint = () => void interrupt("SIGINT");
+  const onSigterm = () => void interrupt("SIGTERM");
   process.once("SIGINT", onSigint);
   process.once("SIGTERM", onSigterm);
 
@@ -198,7 +164,6 @@ async function main() {
           forwardOutput: true
         }
       );
-      containerStarted = true;
       await waitForPostgres(containerName);
       console.log(`临时 PostgreSQL 已就绪：${containerName}（仅 127.0.0.1）`);
 
@@ -232,11 +197,13 @@ async function main() {
         { cwd: root, env: runtimeEnv, forwardOutput: true }
       );
 
-      apiProcess = spawn(process.execPath, [path.join(root, "services/api/dist/main.js")], {
-        cwd: root,
-        env: runtimeEnv,
-        stdio: ["ignore", "pipe", "pipe"]
-      });
+      apiProcess = commandRuntime.track(
+        spawn(process.execPath, [path.join(root, "services/api/dist/main.js")], {
+          cwd: root,
+          env: runtimeEnv,
+          stdio: ["ignore", "pipe", "pipe"]
+        })
+      );
       for (const stream of [apiProcess.stdout, apiProcess.stderr]) {
         stream.on("data", (chunk) => {
           apiOutput.push(String(chunk));
@@ -254,7 +221,8 @@ async function main() {
           await command(process.execPath, [path.join(root, "services/api/prisma", script)], {
             cwd: root,
             env: runtimeEnv,
-            forwardOutput: true
+            forwardOutput: true,
+            timeoutMs: 15 * 60 * 1000
           });
         } catch (error) {
           throw new Error(`${error.message}\n本地 API 尾部日志：\n${apiOutput.slice(-80).join("")}`);
@@ -263,7 +231,7 @@ async function main() {
       await command(
         process.execPath,
         [path.join(root, "services/api/prisma/verify-trial-run.cjs"), "--preflight"],
-        { cwd: root, env: runtimeEnv, forwardOutput: true }
+        { cwd: root, env: runtimeEnv, forwardOutput: true, timeoutMs: 15 * 60 * 1000 }
       );
       console.log("大额金额临时库与本地 HTTP 全链路验收通过");
     }, cleanup);
@@ -273,7 +241,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
