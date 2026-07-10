@@ -492,6 +492,21 @@ async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
   return downloadable.fileId;
 }
 
+async function assertTakeoverEvidenceVisibleInArchiveLedger(fileId, token) {
+  const archiveLedger = await readJson("/archives?limit=200", token, "资料库台账");
+  assert(Array.isArray(archiveLedger.rows), "资料库台账未返回资料行");
+  const row = archiveLedger.rows.find((item) => item.fileId === fileId);
+  assert(row, "资料库台账未展示刚上传的历史接管资料");
+  assertEqual(row.documentType, "历史接管资料", "资料库历史接管资料类型");
+  assert(
+    String(row.businessRef ?? "").includes(CODES.contract) &&
+      String(row.businessRef ?? "").includes("历史接管"),
+    `资料库历史接管资料业务标识不正确：${row.businessRef}`
+  );
+  assertEqual(row.archiveStatus, "已入库", "资料库历史接管资料状态");
+  assertEqual(row.canDownload, true, "资料库历史接管资料下载状态");
+}
+
 async function ensureProgressPaymentStage(paymentTermsVersionId) {
   await prisma.paymentTermsStage.create({
     data: {
@@ -888,6 +903,7 @@ async function main() {
     takeover.id,
     tokens.contractStaff
   );
+  await assertTakeoverEvidenceVisibleInArchiveLedger(evidenceFileId, tokens.contractStaff);
 
   const staffAfterDraft = await loadWorkbenchSummary("合同员", tokens.contractStaff);
   assertCardCountAtLeast(staffAfterDraft, "contract_takeover_todo", 1, "创建历史接管后");
