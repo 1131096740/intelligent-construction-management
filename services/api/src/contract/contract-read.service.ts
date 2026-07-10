@@ -392,7 +392,7 @@ export class ContractReadService {
     });
 
     if (!contract) {
-      throw new NotFoundException("Contract not found");
+      throw new NotFoundException("未找到合同，请刷新合同台账后重试");
     }
 
     const [project, version] = await Promise.all([
@@ -404,7 +404,7 @@ export class ContractReadService {
     ]);
 
     if (!version) {
-      throw new NotFoundException("Contract version not found");
+      throw new NotFoundException("未找到合同版本，请刷新合同台账后重试");
     }
 
     const terms = await this.prisma.paymentTermsVersion.findFirst({
@@ -413,7 +413,7 @@ export class ContractReadService {
     });
 
     if (!terms) {
-      throw new NotFoundException("Payment terms version not found");
+      throw new NotFoundException("未找到合同付款条款版本，请刷新合同台账后重试");
     }
 
     const [stages, settlements, paymentRequests, contractArchiveFiles, approvalTimeline] = await Promise.all([

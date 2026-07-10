@@ -1063,12 +1063,42 @@ describe("ContractReadService", () => {
     };
     const service = new ContractReadService(prisma as never);
 
-    await expect(service.getDetail("HT-2026-009", ["project-1"])).rejects.toThrow("Contract not found");
+    await expect(service.getDetail("HT-2026-009", ["project-1"])).rejects.toThrow(
+      "未找到合同，请刷新合同台账后重试"
+    );
     expect(prisma.contract.findFirst).toHaveBeenCalledWith({
       where: {
         OR: [{ id: "HT-2026-009" }, { code: "HT-2026-009" }],
         projectId: { in: ["project-1"] }
       }
     });
+  });
+
+  it("uses Chinese business errors when contract detail core records are missing", async () => {
+    const baseContract = {
+      id: "contract-1",
+      projectId: "project-1",
+      code: "HT-2026-009"
+    };
+    const project = { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "总部综合楼" }) };
+
+    await expect(
+      new ContractReadService({
+        contract: { findFirst: jest.fn().mockResolvedValue(baseContract) },
+        project,
+        contractVersion: { findFirst: jest.fn().mockResolvedValue(null) }
+      } as never).getDetail("HT-2026-009")
+    ).rejects.toThrow("未找到合同版本，请刷新合同台账后重试");
+
+    await expect(
+      new ContractReadService({
+        contract: { findFirst: jest.fn().mockResolvedValue(baseContract) },
+        project,
+        contractVersion: {
+          findFirst: jest.fn().mockResolvedValue({ id: "version-1", contractId: "contract-1" })
+        },
+        paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) }
+      } as never).getDetail("HT-2026-009")
+    ).rejects.toThrow("未找到合同付款条款版本，请刷新合同台账后重试");
   });
 });
