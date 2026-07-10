@@ -228,6 +228,7 @@ describe("contract takeover page configuration", () => {
       takeoverEvidenceDownloadDisabledReason({
         fileId: "",
         password: "",
+        downloadReason: "",
         availableFileIds: [],
         hasFiles: false
       })
@@ -236,6 +237,7 @@ describe("contract takeover page configuration", () => {
       takeoverEvidenceDownloadDisabledReason({
         fileId: "",
         password: "",
+        downloadReason: "",
         availableFileIds: [],
         hasFiles: true
       })
@@ -244,6 +246,7 @@ describe("contract takeover page configuration", () => {
       takeoverEvidenceDownloadDisabledReason({
         fileId: "",
         password: "current-password",
+        downloadReason: "复核历史付款凭证",
         availableFileIds: ["file-1"],
         hasFiles: true
       })
@@ -252,6 +255,7 @@ describe("contract takeover page configuration", () => {
       takeoverEvidenceDownloadDisabledReason({
         fileId: "file-2",
         password: "current-password",
+        downloadReason: "复核历史付款凭证",
         availableFileIds: ["file-1"],
         hasFiles: true
       })
@@ -260,6 +264,7 @@ describe("contract takeover page configuration", () => {
       takeoverEvidenceDownloadDisabledReason({
         fileId: "file-1",
         password: "   ",
+        downloadReason: "复核历史付款凭证",
         availableFileIds: ["file-1"],
         hasFiles: true
       })
@@ -268,6 +273,16 @@ describe("contract takeover page configuration", () => {
       takeoverEvidenceDownloadDisabledReason({
         fileId: "file-1",
         password: "current-password",
+        downloadReason: "   ",
+        availableFileIds: ["file-1"],
+        hasFiles: true
+      })
+    ).toBe("请填写下载原因后再下载资料");
+    expect(
+      takeoverEvidenceDownloadDisabledReason({
+        fileId: "file-1",
+        password: "current-password",
+        downloadReason: "复核历史付款凭证",
         availableFileIds: ["file-1"],
         hasFiles: true
       })

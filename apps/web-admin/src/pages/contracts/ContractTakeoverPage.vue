@@ -773,6 +773,13 @@
                 placeholder="下载前需校验当前登录密码"
               />
             </label>
+            <label>
+              <span>下载原因</span>
+              <t-input
+                v-model="evidenceDownloadReason"
+                placeholder="例如：复核历史付款凭证"
+              />
+            </label>
             <t-tooltip
               v-if="selectedEvidenceDownloadDisabledReason"
               :content="selectedEvidenceDownloadDisabledReason"
@@ -1050,7 +1057,7 @@ import {
   type UserOptionReadModel
 } from "../../api/core-flow-read.api";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
-import { confirmSensitiveAction, promptSensitiveActionReason } from "../confirm-sensitive-action";
+import { confirmSensitiveAction } from "../confirm-sensitive-action";
 import {
   buildImportDraftsMessage,
   buildImportPrecheckMessage,
@@ -1174,6 +1181,7 @@ const evidenceFile = ref<File | null>(null);
 const evidenceInputRef = ref<HTMLInputElement | null>(null);
 const evidenceDownloadFileId = ref("");
 const evidenceDownloadPassword = ref("");
+const evidenceDownloadReason = ref("");
 const correctionFile = ref<File | null>(null);
 const correctionInputRef = ref<HTMLInputElement | null>(null);
 const message = ref("");
@@ -1406,6 +1414,7 @@ const selectedEvidenceDownloadDisabledReason = computed(() =>
   takeoverEvidenceDownloadDisabledReason({
     fileId: evidenceDownloadFileId.value,
     password: evidenceDownloadPassword.value,
+    downloadReason: evidenceDownloadReason.value,
     availableFileIds: selectedEvidenceDownloadOptions.value.map((option) => option.value),
     hasFiles: selectedEvidenceFiles.value.length > 0
   })
@@ -1842,20 +1851,15 @@ async function submitEvidenceFileDownload() {
   ) {
     return;
   }
-  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
-  if (!downloadReason) {
-    setMessage("请填写下载原因", "danger");
-    return;
-  }
-
   evidenceDownloading.value = true;
   try {
     const ticket = await createPrivateFileDownloadTicket(evidenceDownloadFileId.value, {
       confirmationPassword: requiredText(evidenceDownloadPassword.value, "当前登录密码"),
-      downloadReason
+      downloadReason: requiredText(evidenceDownloadReason.value, "下载原因")
     });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
     evidenceDownloadPassword.value = "";
+    evidenceDownloadReason.value = "";
     setMessage("已生成短时效下载链接，请在新窗口完成下载。", "success");
   } catch (error) {
     setMessage(error instanceof Error ? error.message : "生成接管资料下载链接失败", "danger");
@@ -1964,6 +1968,7 @@ function resetEvidenceDownloadForm(takeover: ContractTakeoverReadModel | null) {
   evidenceDownloadFileId.value =
     takeover?.evidenceFiles.find((file) => file.canDownload)?.fileId ?? "";
   evidenceDownloadPassword.value = "";
+  evidenceDownloadReason.value = "";
 }
 
 function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState {

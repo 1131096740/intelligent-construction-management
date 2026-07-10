@@ -121,6 +121,7 @@ export interface TakeoverCorrectionDraft {
 export interface TakeoverEvidenceDownloadDraft {
   fileId: string;
   password: string;
+  downloadReason: string;
   availableFileIds: string[];
   hasFiles: boolean;
 }
@@ -314,6 +315,7 @@ export function takeoverEvidenceDownloadDisabledReason(
   if (!draft.fileId.trim()) return "请选择需要下载的接管资料";
   if (!draft.availableFileIds.includes(draft.fileId)) return "所选接管资料暂不可下载，请重新选择";
   if (!draft.password.trim()) return "请填写当前登录密码后再下载资料";
+  if (!draft.downloadReason.trim()) return "请填写下载原因后再下载资料";
   return "";
 }
 
