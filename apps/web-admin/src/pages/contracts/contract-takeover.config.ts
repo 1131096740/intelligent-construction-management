@@ -25,6 +25,7 @@ export interface ContractTakeoverTableRow {
   amount: string;
   takeoverLevel: ContractTakeoverLevel;
   takeoverLevelLabel: string;
+  suggestedTakeoverLevelLabel: string;
   takeoverStatus: ContractTakeoverStatus;
   takeoverStatusLabel: string;
   takeoverStatusTone: ContractTakeoverTone;
@@ -156,7 +157,8 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
   { colKey: "batchNo", title: "接管批次", width: 168 },
   { colKey: "counterparty", title: "相对方", minWidth: 140 },
   { colKey: "amount", title: "合同金额", width: 116, align: "right" },
-  { colKey: "takeoverLevelLabel", title: "申报等级", width: 104 },
+  { colKey: "suggestedTakeoverLevelLabel", title: "系统建议", width: 104 },
+  { colKey: "takeoverLevelLabel", title: "确认等级", width: 104 },
   { colKey: "takeoverStatusLabel", title: "接管状态", width: 112 },
   { colKey: "lifecycleStatusLabel", title: "履约状态", width: 112 },
   { colKey: "takeoverCutoffDate", title: "接管截止日", width: 112 },
@@ -168,6 +170,27 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
 
 export function takeoverLevelLabel(value: ContractTakeoverLevel | string): string {
   return takeoverLevelOptions.find((option) => option.value === value)?.label.slice(0, 2) ?? "等级未读取";
+}
+
+export function takeoverSuggestedLevelLabel(takeover: ContractTakeoverReadModel): string {
+  const suggestion =
+    takeover.suggestedTakeoverLevel ??
+    suggestTakeoverLevel({
+      lifecycleStatus: takeover.lifecycleStatus,
+      balanceSourceSummary: takeover.balanceSourceSummary ?? "",
+      evidenceSummary: takeover.evidenceSummary ?? "",
+      historicalApprovalPendingPaymentYuan: centsToPlainYuan(
+        takeover.historicalApprovalPendingPaymentCents
+      ),
+      historicalApprovedPendingPaymentYuan: centsToPlainYuan(
+        takeover.historicalApprovedPendingPaymentCents
+      ),
+      historicalProxyPaidYuan: centsToPlainYuan(takeover.historicalProxyPaidCents),
+      historicalRetentionWithheldYuan: centsToPlainYuan(takeover.historicalRetentionWithheldCents),
+      otherConfirmedOccupancyYuan: centsToPlainYuan(takeover.otherConfirmedOccupancyCents)
+    }).level;
+
+  return takeoverLevelLabel(suggestion);
 }
 
 export function buildImportPrecheckMessage(result: ImportPrecheckMessageInput): {
@@ -652,6 +675,7 @@ export function toContractTakeoverTableRow(
     amount: centsToYuanText(takeover.amountCents),
     takeoverLevel: takeover.takeoverLevel,
     takeoverLevelLabel: takeoverLevelLabel(takeover.takeoverLevel),
+    suggestedTakeoverLevelLabel: takeoverSuggestedLevelLabel(takeover),
     takeoverStatus: takeover.takeoverStatus,
     takeoverStatusLabel: takeoverStatusLabel(takeover.takeoverStatus),
     takeoverStatusTone: takeoverStatusTone(takeover.takeoverStatus),

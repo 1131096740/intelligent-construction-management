@@ -26,6 +26,7 @@ import {
   takeoverLevelReviewText,
   takeoverOperationSections,
   takeoverSuggestionApplyDisabledReason,
+  takeoverSuggestedLevelLabel,
   takeoverWorkbenchSteps,
   takeoverPostConfirmationVerificationView,
   takeoverLevelLabel,
@@ -43,7 +44,8 @@ describe("contract takeover page configuration", () => {
       "接管批次",
       "相对方",
       "合同金额",
-      "申报等级",
+      "系统建议",
+      "确认等级",
       "接管状态",
       "履约状态",
       "接管截止日",
@@ -597,6 +599,8 @@ describe("contract takeover page configuration", () => {
       batchNo: "接管批次-20260710-TEST0001",
       importRowNo: "第 2 行",
       amount: "¥1,000,000.00",
+      takeoverLevelLabel: "B级",
+      suggestedTakeoverLevelLabel: "B级",
       takeoverStatusLabel: "待复核",
       lifecycleStatusLabel: "履约中",
       takeoverCutoffDate: "2026-06-30",
@@ -604,6 +608,22 @@ describe("contract takeover page configuration", () => {
       historicalPaid: "¥300,000.00",
       historicalPending: "¥30,000.00",
       historicalProxyPaid: "¥40,000.00"
+    });
+  });
+
+  it("keeps the system suggested level visible beside the selected level", () => {
+    expect(takeoverSuggestedLevelLabel({ ...takeover(), suggestedTakeoverLevel: "C" })).toBe(
+      "C级"
+    );
+    expect(
+      toContractTakeoverTableRow({
+        ...takeover(),
+        takeoverLevel: "B",
+        suggestedTakeoverLevel: "C"
+      })
+    ).toMatchObject({
+      takeoverLevelLabel: "B级",
+      suggestedTakeoverLevelLabel: "C级"
     });
   });
 });

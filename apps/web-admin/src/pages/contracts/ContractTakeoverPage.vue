@@ -339,7 +339,7 @@
             >
           </label>
           <label>
-            <span>确认接管等级</span>
+            <span>选择接管等级</span>
             <select v-model="createForm.takeoverLevel">
               <option
                 v-for="option in takeoverLevelOptions"
@@ -1412,7 +1412,12 @@ const selectedBaseInfo = computed(() => {
     { label: "相对方", value: row.counterparty },
     { label: "合同金额", value: row.amount },
     { label: "签订日期", value: row.signedAt },
-    { label: "申报接管等级", value: takeoverLevelLabel(row.takeoverLevel) },
+    { label: "系统建议等级", value: row.suggestedTakeoverLevelLabel },
+    { label: "确认接管等级", value: takeoverLevelLabel(row.takeoverLevel) },
+    {
+      label: "等级复核说明",
+      value: row.takeover.takeoverLevelAdjustmentReason || row.takeover.reviewComment || "未填写"
+    },
     { label: "等级风险", value: row.takeover.levelRiskText },
     { label: "付款提示", value: row.takeover.paymentBlockingHint },
     { label: "接管状态", value: takeoverStatusLabel(row.takeoverStatus) },
