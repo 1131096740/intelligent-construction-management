@@ -6,9 +6,9 @@ import {
 } from "../money/decimal-money";
 
 export interface PaymentCapacity {
-  payableAmountCents: number | bigint;
-  approvedPendingPaymentCents: number | bigint;
-  paidAmountCents: number | bigint;
+  payableAmountCents: bigint;
+  approvedPendingPaymentCents: bigint;
+  paidAmountCents: bigint;
 }
 
 @Injectable()

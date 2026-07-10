@@ -155,16 +155,16 @@ type ContractTakeoverRecord = {
   takeoverStatus: string;
   lifecycleStatus: string;
   signedAt: Date;
-  historicalSettledCents: bigint | number;
-  historicalApprovalPendingPaymentCents: bigint | number;
-  historicalApprovedPendingPaymentCents: bigint | number;
-  historicalPaidCents: bigint | number;
-  historicalProxyPaidCents: bigint | number;
-  historicalAdvancePaidCents: bigint | number;
-  historicalAdvanceDeductedCents: bigint | number;
-  historicalRetentionWithheldCents: bigint | number;
-  historicalRetentionReleasedCents: bigint | number;
-  otherConfirmedOccupancyCents: bigint | number;
+  historicalSettledCents: bigint;
+  historicalApprovalPendingPaymentCents: bigint;
+  historicalApprovedPendingPaymentCents: bigint;
+  historicalPaidCents: bigint;
+  historicalProxyPaidCents: bigint;
+  historicalAdvancePaidCents: bigint;
+  historicalAdvanceDeductedCents: bigint;
+  historicalRetentionWithheldCents: bigint;
+  historicalRetentionReleasedCents: bigint;
+  otherConfirmedOccupancyCents: bigint;
   balanceSourceSummary: string | null;
   evidenceSummary: string | null;
   takeoverCutoffDate: Date | null;
@@ -393,7 +393,7 @@ export class ContractTakeoverService {
           versionNo: 1,
           changeType: "historical_takeover",
           status: "draft",
-          amountCents: BigInt(data.amountCents),
+          amountCents: dbMoneyToBigInt(data.amountCents, "合同金额"),
           draftData: { historicalTakeover: true } as Prisma.InputJsonValue,
           templateSnapshot: { historicalTakeover: true } as Prisma.InputJsonValue,
           clauseSnapshot: [] as Prisma.InputJsonValue
@@ -427,16 +427,37 @@ export class ContractTakeoverService {
           importRowNo: options.importRowNo,
           lifecycleStatus: data.lifecycleStatus,
           signedAt: data.signedAt,
-          historicalSettledCents: BigInt(data.historicalSettledCents),
-          historicalApprovalPendingPaymentCents: BigInt(data.historicalApprovalPendingPaymentCents),
-          historicalApprovedPendingPaymentCents: BigInt(data.historicalApprovedPendingPaymentCents),
-          historicalPaidCents: BigInt(data.historicalPaidCents),
-          historicalProxyPaidCents: BigInt(data.historicalProxyPaidCents),
-          historicalAdvancePaidCents: BigInt(data.historicalAdvancePaidCents),
-          historicalAdvanceDeductedCents: BigInt(data.historicalAdvanceDeductedCents),
-          historicalRetentionWithheldCents: BigInt(data.historicalRetentionWithheldCents),
-          historicalRetentionReleasedCents: BigInt(data.historicalRetentionReleasedCents),
-          otherConfirmedOccupancyCents: BigInt(data.otherConfirmedOccupancyCents),
+          historicalSettledCents: dbMoneyToBigInt(data.historicalSettledCents, "历史累计结算"),
+          historicalApprovalPendingPaymentCents: dbMoneyToBigInt(
+            data.historicalApprovalPendingPaymentCents,
+            "历史审批中付款"
+          ),
+          historicalApprovedPendingPaymentCents: dbMoneyToBigInt(
+            data.historicalApprovedPendingPaymentCents,
+            "历史已批待付款"
+          ),
+          historicalPaidCents: dbMoneyToBigInt(data.historicalPaidCents, "历史累计已付"),
+          historicalProxyPaidCents: dbMoneyToBigInt(data.historicalProxyPaidCents, "历史代付"),
+          historicalAdvancePaidCents: dbMoneyToBigInt(
+            data.historicalAdvancePaidCents,
+            "历史预付款已付"
+          ),
+          historicalAdvanceDeductedCents: dbMoneyToBigInt(
+            data.historicalAdvanceDeductedCents,
+            "历史预付款已扣回"
+          ),
+          historicalRetentionWithheldCents: dbMoneyToBigInt(
+            data.historicalRetentionWithheldCents,
+            "历史质保金扣留"
+          ),
+          historicalRetentionReleasedCents: dbMoneyToBigInt(
+            data.historicalRetentionReleasedCents,
+            "历史质保金释放"
+          ),
+          otherConfirmedOccupancyCents: dbMoneyToBigInt(
+            data.otherConfirmedOccupancyCents,
+            "历史其他确认占用"
+          ),
           balanceSourceSummary: data.balanceSourceSummary ?? null,
           evidenceSummary: data.evidenceSummary ?? null,
           takeoverCutoffDate: data.takeoverCutoffDate,
@@ -507,7 +528,7 @@ export class ContractTakeoverService {
       });
       await tx.contractVersion.update({
         where: { id: takeover.contractVersionId },
-        data: { amountCents: BigInt(data.amountCents) }
+        data: { amountCents: dbMoneyToBigInt(data.amountCents, "合同金额") }
       });
       await tx.paymentTermsVersion.update({
         where: { id: takeover.paymentTermsVersionId },
@@ -530,16 +551,37 @@ export class ContractTakeoverService {
           takeoverLevel: data.takeoverLevel,
           lifecycleStatus: data.lifecycleStatus,
           signedAt: data.signedAt,
-          historicalSettledCents: BigInt(data.historicalSettledCents),
-          historicalApprovalPendingPaymentCents: BigInt(data.historicalApprovalPendingPaymentCents),
-          historicalApprovedPendingPaymentCents: BigInt(data.historicalApprovedPendingPaymentCents),
-          historicalPaidCents: BigInt(data.historicalPaidCents),
-          historicalProxyPaidCents: BigInt(data.historicalProxyPaidCents),
-          historicalAdvancePaidCents: BigInt(data.historicalAdvancePaidCents),
-          historicalAdvanceDeductedCents: BigInt(data.historicalAdvanceDeductedCents),
-          historicalRetentionWithheldCents: BigInt(data.historicalRetentionWithheldCents),
-          historicalRetentionReleasedCents: BigInt(data.historicalRetentionReleasedCents),
-          otherConfirmedOccupancyCents: BigInt(data.otherConfirmedOccupancyCents),
+          historicalSettledCents: dbMoneyToBigInt(data.historicalSettledCents, "历史累计结算"),
+          historicalApprovalPendingPaymentCents: dbMoneyToBigInt(
+            data.historicalApprovalPendingPaymentCents,
+            "历史审批中付款"
+          ),
+          historicalApprovedPendingPaymentCents: dbMoneyToBigInt(
+            data.historicalApprovedPendingPaymentCents,
+            "历史已批待付款"
+          ),
+          historicalPaidCents: dbMoneyToBigInt(data.historicalPaidCents, "历史累计已付"),
+          historicalProxyPaidCents: dbMoneyToBigInt(data.historicalProxyPaidCents, "历史代付"),
+          historicalAdvancePaidCents: dbMoneyToBigInt(
+            data.historicalAdvancePaidCents,
+            "历史预付款已付"
+          ),
+          historicalAdvanceDeductedCents: dbMoneyToBigInt(
+            data.historicalAdvanceDeductedCents,
+            "历史预付款已扣回"
+          ),
+          historicalRetentionWithheldCents: dbMoneyToBigInt(
+            data.historicalRetentionWithheldCents,
+            "历史质保金扣留"
+          ),
+          historicalRetentionReleasedCents: dbMoneyToBigInt(
+            data.historicalRetentionReleasedCents,
+            "历史质保金释放"
+          ),
+          otherConfirmedOccupancyCents: dbMoneyToBigInt(
+            data.otherConfirmedOccupancyCents,
+            "历史其他确认占用"
+          ),
           balanceSourceSummary: data.balanceSourceSummary ?? null,
           evidenceSummary: data.evidenceSummary ?? null,
           suggestedTakeoverLevel: data.suggestedTakeoverLevel,
@@ -1271,7 +1313,7 @@ export class ContractTakeoverService {
         contractName: contractById.get(takeover.contractId)?.name ?? "未读取合同名称",
         counterparty: contractById.get(takeover.contractId)?.counterparty ?? "未读取相对方",
         companyEntityName: contractById.get(takeover.contractId)?.companyEntityName ?? null,
-        amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0,
+        amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0n,
         paymentTermsOriginalText: termsById.get(takeover.paymentTermsVersionId)?.originalText ?? "",
         batchNo: takeover.takeoverBatchId
           ? batchById.get(takeover.takeoverBatchId)?.batchNo ?? null
@@ -1342,7 +1384,7 @@ export class ContractTakeoverService {
       contractName: string;
       counterparty: string;
       companyEntityName: string | null;
-      amountCents: bigint | number;
+      amountCents: bigint;
       paymentTermsOriginalText: string;
       batchNo?: string | null;
       responsibleUserName?: string | null;
@@ -1570,7 +1612,7 @@ export class ContractTakeoverService {
     if (!counterparty) {
       issues.push(issue(rowNo, "counterparty", "error", "相对方不能为空"));
     }
-    if (amountCents === null || BigInt(amountCents) <= 0n) {
+    if (amountCents === null || parseMoneyCents(amountCents, "合同金额") <= 0n) {
       issues.push(issue(rowNo, "amountCents", "error", "合同金额必须填写大于 0 的金额"));
     }
     if (!isStrictDateText(signedAt)) {
@@ -1958,8 +2000,8 @@ function dateInputMessage(label: string): string {
   return `${label}不正确，请按“年-月-日”填写，例如 2026-01-10`;
 }
 
-function moneyString(value: bigint | number): string {
-  return (typeof value === "bigint" ? value : BigInt(value)).toString();
+function moneyString(value: bigint): string {
+  return dbMoneyToBigInt(value, "历史接管金额").toString();
 }
 
 function correctionTypeLabel(value: string): string {
@@ -1998,11 +2040,11 @@ function correctionAfterSummary(snapshot: unknown): string {
 
 function formatCents(value: unknown): string {
   try {
-    if (typeof value === "bigint" || typeof value === "number") {
+    if (typeof value === "bigint") {
       return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(value, "历史接管金额"))}`;
     }
     if (typeof value === "string" && /^-?\d+$/.test(value)) {
-      return `¥${formatMoneyCentsAsYuan(BigInt(value))}`;
+      return `¥${formatMoneyCentsAsYuan(parseMoneyCents(value, "历史接管金额"))}`;
     }
   } catch {
     return "金额未读取";
@@ -2073,7 +2115,7 @@ function takeoverEvidenceChecklist(
   });
 }
 
-function positiveCents(value: bigint | number): boolean {
+function positiveCents(value: bigint): boolean {
   return typeof value === "bigint" ? value > 0n : value > 0;
 }
 
@@ -2251,7 +2293,7 @@ function precheckMoneyValue(
     return 0n;
   }
   const value = moneyTextValue(row[field]);
-  return value === null ? 0n : BigInt(value);
+  return value === null ? 0n : parseMoneyCents(value, MONEY_FIELD_LABELS[field]);
 }
 
 function isStrictDateText(value: string): boolean {

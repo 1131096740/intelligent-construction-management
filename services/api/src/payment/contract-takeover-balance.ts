@@ -26,16 +26,16 @@ export interface ContractTakeoverBalanceRow {
   paymentTermsVersionId: string;
   takeoverStatus: string;
   historicalBalanceConfirmedAt: Date | null;
-  historicalSettledCents: bigint | number;
-  historicalApprovalPendingPaymentCents: bigint | number;
-  historicalApprovedPendingPaymentCents: bigint | number;
-  historicalPaidCents: bigint | number;
-  historicalProxyPaidCents: bigint | number;
-  historicalAdvancePaidCents: bigint | number;
-  historicalAdvanceDeductedCents: bigint | number;
-  historicalRetentionWithheldCents: bigint | number;
-  historicalRetentionReleasedCents: bigint | number;
-  otherConfirmedOccupancyCents: bigint | number;
+  historicalSettledCents: bigint;
+  historicalApprovalPendingPaymentCents: bigint;
+  historicalApprovedPendingPaymentCents: bigint;
+  historicalPaidCents: bigint;
+  historicalProxyPaidCents: bigint;
+  historicalAdvancePaidCents: bigint;
+  historicalAdvanceDeductedCents: bigint;
+  historicalRetentionWithheldCents: bigint;
+  historicalRetentionReleasedCents: bigint;
+  otherConfirmedOccupancyCents: bigint;
 }
 
 export function toHistoricalContractPaymentBalance(

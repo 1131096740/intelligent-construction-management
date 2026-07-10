@@ -382,7 +382,7 @@ export class ContractWorkbenchService {
           clauseSnapshot: this.toJson(snapshot.clauseSnapshot),
           pricingNature: snapshot.pricingNature,
           amountSource: snapshot.amountSource,
-          amountCents: BigInt(snapshot.amountCents),
+          amountCents: parseMoneyCents(snapshot.amountCents, "合同金额"),
           amountAdjustmentReason: snapshot.amountAdjustmentReason,
           layoutTemplateVersionId: snapshot.layoutTemplateVersionId,
           draftRevision: { increment: 1 }
@@ -1360,9 +1360,15 @@ export class ContractWorkbenchService {
           schemaSnapshot: this.toJson(snapshot.schemaSnapshot),
           sourceExcelFileId: snapshot.sourceExcelFileId,
           revision: snapshot.revision,
-          taxInclusiveAmountCents: BigInt(snapshot.taxInclusiveAmountCents),
-          taxExclusiveAmountCents: BigInt(snapshot.taxExclusiveAmountCents),
-          taxAmountCents: BigInt(snapshot.taxAmountCents)
+          taxInclusiveAmountCents: parseMoneyCents(
+            snapshot.taxInclusiveAmountCents,
+            "清单含税金额"
+          ),
+          taxExclusiveAmountCents: parseMoneyCents(
+            snapshot.taxExclusiveAmountCents,
+            "清单不含税金额"
+          ),
+          taxAmountCents: parseMoneyCents(snapshot.taxAmountCents, "清单税额")
         }
       });
       if (snapshot.rows.length) {
@@ -1370,9 +1376,15 @@ export class ContractWorkbenchService {
           data: snapshot.rows.map((row) => ({
             contractBillId: bill.id,
             ...row,
-            taxInclusiveAmountCents: BigInt(row.taxInclusiveAmountCents),
-            taxExclusiveAmountCents: BigInt(row.taxExclusiveAmountCents),
-            taxAmountCents: BigInt(row.taxAmountCents),
+            taxInclusiveAmountCents: parseMoneyCents(
+              row.taxInclusiveAmountCents,
+              "清单行含税金额"
+            ),
+            taxExclusiveAmountCents: parseMoneyCents(
+              row.taxExclusiveAmountCents,
+              "清单行不含税金额"
+            ),
+            taxAmountCents: parseMoneyCents(row.taxAmountCents, "清单行税额"),
             customData: this.toJson(row.customData)
           }))
         });

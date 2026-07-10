@@ -3,8 +3,8 @@ import * as settlementPaymentCapacity from "./settlement-payment-capacity";
 interface ContractDueSettlement {
   id: string;
   status: string;
-  amountCents: number | bigint;
-  paidAmountCents?: number | bigint;
+  amountCents: bigint;
+  paidAmountCents?: bigint;
   paymentTermsVersionId: string;
   isFinal?: boolean;
   sourceType?: string | null;
@@ -16,7 +16,7 @@ interface ContractDuePaymentTermsStage {
   stageType?: string;
   basis: string;
   ratioBps: number | null;
-  fixedAmountCents: number | bigint | null;
+  fixedAmountCents: bigint | null;
   triggerAnchor?: string;
   dueDays: number;
   advanceDeductionMode?: string | null;
@@ -33,9 +33,9 @@ interface ContractDuePaymentRequest {
   settlementId: string | null;
   sourceType?: string | null;
   status: string;
-  requestedAmountCents: number | bigint;
-  approvedAmountCents?: number | bigint | null;
-  paidAmountCents: number | bigint;
+  requestedAmountCents: bigint;
+  approvedAmountCents?: bigint | null;
+  paidAmountCents: bigint;
 }
 
 interface ContractDuePaymentCapacity {
@@ -48,24 +48,24 @@ interface ContractDuePaymentCapacity {
 interface ContractAdvancePaymentRequest {
   paymentTermsVersionId?: string;
   status: string;
-  requestedAmountCents: number | bigint;
-  approvedAmountCents?: number | bigint | null;
-  paidAmountCents: number | bigint;
+  requestedAmountCents: bigint;
+  approvedAmountCents?: bigint | null;
+  paidAmountCents: bigint;
 }
 
 interface HistoricalContractPaymentBalance {
   paymentTermsVersionId?: string;
   balanceConfirmedAt?: Date | null;
-  settledCents?: number | bigint;
-  approvalPendingPaymentCents?: number | bigint;
-  approvedPendingPaymentCents?: number | bigint;
-  paidCents?: number | bigint;
-  proxyPaidCents?: number | bigint;
-  advancePaidCents?: number | bigint;
-  advanceDeductedCents?: number | bigint;
-  retentionWithheldCents?: number | bigint;
-  retentionReleasedCents?: number | bigint;
-  otherConfirmedOccupancyCents?: number | bigint;
+  settledCents?: bigint;
+  approvalPendingPaymentCents?: bigint;
+  approvedPendingPaymentCents?: bigint;
+  paidCents?: bigint;
+  proxyPaidCents?: bigint;
+  advancePaidCents?: bigint;
+  advanceDeductedCents?: bigint;
+  retentionWithheldCents?: bigint;
+  retentionReleasedCents?: bigint;
+  otherConfirmedOccupancyCents?: bigint;
 }
 
 interface ContractPaymentApplicationPreview {
@@ -133,9 +133,9 @@ type ContractDuePaymentCapacityCalculator = (input: {
   paymentTermsStages: readonly ContractDuePaymentTermsStage[];
   settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
   paymentRequests: readonly ContractDuePaymentRequest[];
-  proxyPaidAmountCents?: number | bigint;
-  contractAmountCents?: number | bigint;
-  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number | bigint>>;
+  proxyPaidAmountCents?: bigint;
+  contractAmountCents?: bigint;
+  contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, bigint>>;
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
   historicalBalance?: HistoricalContractPaymentBalance;
 }) => ContractDuePaymentCapacity;
@@ -173,7 +173,7 @@ type ContractDuePaymentExecutionAllocator = (input: {
 
 type ContractAdvancePaymentCapacityCalculator = (input: {
   asOf: Date;
-  contractAmountCents: number | bigint;
+  contractAmountCents: bigint;
   contractEffectiveAt: Date | null;
   paymentTermsStages: readonly ContractDuePaymentTermsStage[];
   paymentRequests: readonly ContractAdvancePaymentRequest[];
@@ -300,16 +300,16 @@ describe("calculateSettlementPaymentCapacityBigInt", () => {
     });
   });
 
-  it("rejects an unsafe number contract amount before bigint calculation", () => {
+  it("rejects any number contract amount before bigint calculation", () => {
     expect(() =>
       settlementPaymentCapacity.calculateContractAdvancePaymentCapacityBigInt({
         asOf: new Date("2026-07-10T00:00:00.000Z"),
-        contractAmountCents: Number.MAX_SAFE_INTEGER + 1,
+        contractAmountCents: 1 as unknown as bigint,
         contractEffectiveAt: null,
         paymentTermsStages: [],
         paymentRequests: []
       })
-    ).toThrow("合同金额必须为安全整数分");
+    ).toThrow("合同金额必须为 bigint 分值");
   });
 
   it("rejects an unsafe historical paid amount at the contract capacity boundary", () => {
@@ -322,10 +322,10 @@ describe("calculateSettlementPaymentCapacityBigInt", () => {
         paymentRequests: [],
         historicalBalance: {
           balanceConfirmedAt: new Date("2026-07-09T00:00:00.000Z"),
-          paidCents: Number.MAX_SAFE_INTEGER + 1
+          paidCents: 1 as unknown as bigint
         }
       })
-    ).toThrow("历史已付金额必须为安全整数分");
+    ).toThrow("历史已付金额必须为 bigint 分值");
   });
 });
 
@@ -1218,8 +1218,8 @@ describe("calculateContractDuePaymentCapacity", () => {
       asOf,
       contractAmountCents: 1_000_000n,
       contractAmountCentsByPaymentTermsVersionId: {
-        "terms-old": 1_000_000,
-        "terms-new": 2_000_000
+        "terms-old": 1_000_000n,
+        "terms-new": 2_000_000n
       },
       settlements: [
         {
@@ -1610,6 +1610,25 @@ describe("calculateContractDuePaymentCapacity", () => {
 describe("buildContractPaymentApplicationPreview", () => {
   const asOf = new Date("2026-07-20T00:00:00.000Z");
 
+  it("rejects number settlement amounts at the public preview boundary", () => {
+    expect(() =>
+      buildApplicationPreview({
+        asOf,
+        settlements: [
+          {
+            id: "settlement-number",
+            status: "effective",
+            amountCents: 1 as unknown as bigint,
+            paymentTermsVersionId: "terms-1"
+          }
+        ],
+        paymentTermsStages: [],
+        settlementArchiveFiles: [],
+        paymentRequests: []
+      })
+    ).toThrow("结算金额必须为 bigint 分值");
+  });
+
   it("lists every effective settlement and marks rows before account period as not includable", () => {
     const preview = buildApplicationPreview({
       asOf,
@@ -1973,7 +1992,7 @@ describe("allocateContractDuePaymentExecution", () => {
         amountCents: (Number.MAX_SAFE_INTEGER + 1) as unknown as bigint,
         sections: []
       })
-    ).toThrow("登记实付金额必须为安全整数分");
+    ).toThrow("登记实付金额必须为 bigint 分值");
   });
 
   it("rejects zero amount contract-level execution with a Chinese business reason", () => {

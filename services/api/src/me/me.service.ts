@@ -122,7 +122,7 @@ interface ApprovalBusinessDetail {
   projectName: string;
   businessCode: string;
   title: string;
-  amountCents: number | bigint;
+  amountCents: bigint;
   targetPath: string;
 }
 
@@ -504,7 +504,7 @@ export class MeService {
         title: contract?.name ?? "历史合同接管",
         projectName: projectNameById.get(takeover.projectId) ?? takeover.projectId,
         businessCode: code,
-        amountText: this.amountText(versionById.get(takeover.contractVersionId)?.amountCents ?? 0),
+        amountText: this.amountText(versionById.get(takeover.contractVersionId)?.amountCents ?? 0n),
         currentNode,
         stayedText: this.stayedText(takeover.updatedAt),
         nextAction,
@@ -1156,7 +1156,7 @@ export class MeService {
     return labels[action] ?? action;
   }
 
-  private amountText(amountCents: number | bigint) {
+  private amountText(amountCents: bigint) {
     return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "金额"))}`;
   }
 

@@ -926,7 +926,7 @@ export class SettlementReadService {
     return `${ratioBps / 100}%`;
   }
 
-  private formatMoney(amountCents: number | bigint): string {
+  private formatMoney(amountCents: bigint): string {
     return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "结算金额"))}`;
   }
 

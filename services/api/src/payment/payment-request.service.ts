@@ -17,6 +17,7 @@ import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
+  mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
   parseMoneyCents,
   sumDbMoneyToBigInt
@@ -51,6 +52,21 @@ interface AssignApprovalDto {
 interface GeneratePaymentPdfArchiveDto {
   templateKey?: string;
   departmentScope?: string;
+}
+
+const PAYMENT_POST_MONEY_FIELDS = [
+  "requestedAmountCents",
+  "approvedAmountCents",
+  "paidAmountCents",
+  "amountCents",
+  "fixedAmountCents",
+  "sourcePayableAmountCents",
+  "payableAmountCents",
+  "contractAmountCents"
+] as const;
+
+function paymentPostResponseToApi<T>(value: T) {
+  return mapBigIntMoneyFieldsToApi(value, PAYMENT_POST_MONEY_FIELDS);
 }
 
 interface PaymentApprovalAssignment {
@@ -398,7 +414,7 @@ export class PaymentRequestService {
       requestedAmountCents: positiveMoneyCents(input.requestedAmountCents, "付款申请金额必须为大于 0 的整数分")
     };
 
-    return this.prisma.$transaction(async (tx) => {
+    const payment = await this.prisma.$transaction(async (tx) => {
       const sourceType = normalizedInput.sourceType ?? "settlement";
       if (sourceType === "contract_advance") {
         return this.createContractAdvancePaymentRequest(tx, normalizedInput, applicantUserId);
@@ -539,6 +555,8 @@ export class PaymentRequestService {
       await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
       return payment;
     });
+
+    return paymentPostResponseToApi(payment);
   }
 
   private async createContractDuePaymentRequest(
@@ -895,7 +913,7 @@ export class PaymentRequestService {
             stageType: string;
             basis: string;
             ratioBps: number | null;
-            fixedAmountCents: number | null;
+            fixedAmountCents: bigint | null;
             triggerAnchor: string;
             dueDays: number;
             advanceDeductionMode: string | null;
@@ -1064,13 +1082,13 @@ export class PaymentRequestService {
       contractVersionId?: string;
       paymentTermsVersionId: string;
     }>
-  ): Promise<Record<string, number | bigint>> {
+  ): Promise<Record<string, bigint>> {
     const contractVersionClient = (tx as unknown as {
       contractVersion?: {
         findMany: (args: {
           where: { id: { in: string[] } };
           select: { id: true; amountCents: true };
-        }) => Promise<Array<{ id: string; amountCents: number | bigint }>>;
+        }) => Promise<Array<{ id: string; amountCents: bigint }>>;
       };
     }).contractVersion;
     const versionIds = [
@@ -1091,7 +1109,7 @@ export class PaymentRequestService {
     const fallbackAmountCents = sumMoneyCents(
       contractSettlements.map((settlement) => settlement.amountCents)
     );
-    const amountByTermsId: Record<string, number | bigint> = {};
+    const amountByTermsId: Record<string, bigint> = {};
     for (const settlement of contractSettlements) {
       amountByTermsId[settlement.paymentTermsVersionId] =
         (settlement.contractVersionId
@@ -1154,7 +1172,7 @@ export class PaymentRequestService {
         findMany: (args: {
           where: { quotaId: { in: string[] }; status: { in: string[] } };
           select: { quotaId: true; amountCents: true };
-        }) => Promise<Array<{ quotaId: string; amountCents: bigint | number }>>;
+        }) => Promise<Array<{ quotaId: string; amountCents: bigint }>>;
       };
     }).projectExpenseFinancingQuotaUsage;
 
@@ -1207,7 +1225,7 @@ export class PaymentRequestService {
       expenseRequests: projectExpenseRequests
     });
     const cashAvailableForCurrent = cashPool.availableCents > 0n ? cashPool.availableCents : 0n;
-    const requestedAmount = BigInt(requestedAmountCents);
+    const requestedAmount = dbMoneyToBigInt(requestedAmountCents, "付款申请金额");
 
     if (requestedAmount <= cashAvailableForCurrent) {
       return [];
@@ -1235,7 +1253,11 @@ export class PaymentRequestService {
         ])
       : [[], []];
     const usedByQuotaId = [...paymentFinancingUsages, ...expenseFinancingUsages].reduce((used, usage) => {
-      used.set(usage.quotaId, (used.get(usage.quotaId) ?? 0n) + BigInt(usage.amountCents));
+      used.set(
+        usage.quotaId,
+        (used.get(usage.quotaId) ?? 0n) +
+          dbMoneyToBigInt(usage.amountCents, "垫资额度占用金额")
+      );
       return used;
     }, new Map<string, bigint>());
 
@@ -1243,7 +1265,9 @@ export class PaymentRequestService {
     const allocations: Array<{ quotaId: string; amountCents: bigint }> = [];
     let totalAvailableFinancingCents = 0n;
     for (const quota of financingQuotas) {
-      const available = BigInt(quota.amountCents) - (usedByQuotaId.get(quota.id) ?? 0n);
+      const available =
+        dbMoneyToBigInt(quota.amountCents, "项目垫资额度") -
+        (usedByQuotaId.get(quota.id) ?? 0n);
       if (available <= 0n) {
         continue;
       }
@@ -1296,10 +1320,11 @@ export class PaymentRequestService {
     const usageTotals = await this.financingUsageTotals(tx, payment.id);
     const approvedAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
     const activeFinancingCents = usageTotals.occupied + usageTotals.used;
-    const cashAllocatedCents = BigInt(approvedAmountCents) - activeFinancingCents;
+    const cashAllocatedCents =
+      dbMoneyToBigInt(approvedAmountCents, "付款批准金额") - activeFinancingCents;
     const targetUsedCents =
-      BigInt(payment.paidAmountCents) > cashAllocatedCents
-        ? BigInt(payment.paidAmountCents) - cashAllocatedCents
+      dbMoneyToBigInt(payment.paidAmountCents, "付款实付金额") > cashAllocatedCents
+        ? dbMoneyToBigInt(payment.paidAmountCents, "付款实付金额") - cashAllocatedCents
         : 0n;
     const amountToUse = targetUsedCents > usageTotals.used ? targetUsedCents - usageTotals.used : 0n;
     const usedAmountCents = await this.moveFinancingQuotaUsage(
@@ -1416,8 +1441,16 @@ export class PaymentRequestService {
     });
     return usages.reduce(
       (totals, usage) => ({
-        occupied: totals.occupied + (usage.status === "occupied" ? BigInt(usage.amountCents) : 0n),
-        used: totals.used + (usage.status === "used" ? BigInt(usage.amountCents) : 0n)
+        occupied:
+          totals.occupied +
+          (usage.status === "occupied"
+            ? dbMoneyToBigInt(usage.amountCents, "垫资额度占用金额")
+            : 0n),
+        used:
+          totals.used +
+          (usage.status === "used"
+            ? dbMoneyToBigInt(usage.amountCents, "垫资额度使用金额")
+            : 0n)
       }),
       { occupied: 0n, used: 0n }
     );
@@ -1447,7 +1480,7 @@ export class PaymentRequestService {
         break;
       }
 
-      const available = BigInt(usage.amountCents);
+      const available = dbMoneyToBigInt(usage.amountCents, "垫资额度占用金额");
       const amount = remaining === undefined || available <= remaining ? available : remaining;
       if (amount <= 0n) {
         continue;
@@ -1492,7 +1525,7 @@ export class PaymentRequestService {
         findMany: (args: {
           where: { settlementId: string; voidedAt: null };
           select: { amountCents: true };
-        }) => Promise<Array<{ amountCents: bigint | number }>>;
+        }) => Promise<Array<{ amountCents: bigint }>>;
       };
     }).projectProxyPayment;
 
@@ -1521,7 +1554,7 @@ export class PaymentRequestService {
             OR: Array<{ contractId: string } | { settlementId: { in: string[] } }>;
           };
           select: { amountCents: true };
-        }) => Promise<Array<{ amountCents: bigint | number }>>;
+        }) => Promise<Array<{ amountCents: bigint }>>;
       };
     }).projectProxyPayment;
 
@@ -1552,7 +1585,7 @@ export class PaymentRequestService {
             allocationType: { in: string[] };
           };
           select: { amountCents: true };
-        }) => Promise<Array<{ amountCents: number | bigint }>>;
+        }) => Promise<Array<{ amountCents: bigint }>>;
       };
     }).paymentExecutionAllocation;
 
@@ -2155,7 +2188,7 @@ export class PaymentRequestService {
         findMany: (args: {
           where: Record<string, unknown>;
           select: Record<string, boolean>;
-        }) => Promise<Array<{ settlementId: string | null; amountCents: bigint | number }>>;
+        }) => Promise<Array<{ settlementId: string | null; amountCents: bigint }>>;
       };
     }).projectProxyPayment;
 
@@ -2357,8 +2390,9 @@ export class PaymentRequestService {
         .filter((allocation) => allocation.allocationType === "advance_deduction")
         .map((allocation) => allocation.amountCents)
     );
-    const configuredAdvanceDeductionCents = BigInt(
-      preview.advanceDeduction.currentDeductionCents
+    const configuredAdvanceDeductionCents = parseMoneyCents(
+      preview.advanceDeduction.currentDeductionCents,
+      "本次预付款扣回金额"
     );
     const residualAdvanceDeductionCents =
       configuredAdvanceDeductionCents > existingAdvanceDeductionCents
@@ -2666,7 +2700,7 @@ export class PaymentRequestService {
       throw new BadRequestException(blockedReason ?? "付款实付登记被阻断");
     }
 
-    return execution;
+    return paymentPostResponseToApi(execution);
   }
 
   private paymentExecutionBlockedMessage(status: string) {
@@ -2696,7 +2730,7 @@ export class PaymentRequestService {
 
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
 
-    return this.prisma.$transaction(async (tx) => {
+    const financeRecord = await this.prisma.$transaction(async (tx) => {
       const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
 
       if (!payment) {
@@ -2745,6 +2779,8 @@ export class PaymentRequestService {
       });
       return financeRecord;
     });
+
+    return paymentPostResponseToApi(financeRecord);
   }
 
   async recordPdfArchive(
@@ -2964,11 +3000,11 @@ export class PaymentRequestService {
     return undefined;
   }
 
-  private formatCents(value: number | bigint) {
+  private formatCents(value: bigint) {
     return `${formatMoneyCentsAsYuan(dbMoneyToBigInt(value, "付款金额"))} CNY`;
   }
 
-  private formatYuan(value: number | bigint) {
+  private formatYuan(value: bigint) {
     return this.formatCents(value).replace(" CNY", "");
   }
 

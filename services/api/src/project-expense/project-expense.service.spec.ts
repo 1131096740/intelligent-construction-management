@@ -35,31 +35,31 @@ describe("ProjectExpenseService", () => {
   }
 
   function cashPoolTables({
-    receiptAmountCents = 100_000,
+    receiptAmountCents = 100_000n,
     paymentRequests = [],
     expenseRequests = [],
     financingQuotas = []
   }: {
-    receiptAmountCents?: number | bigint;
+    receiptAmountCents?: bigint;
     paymentRequests?: Array<{
       status: string;
-      requestedAmountCents: number | bigint;
-      approvedAmountCents?: number | bigint | null;
-      paidAmountCents: number | bigint;
+      requestedAmountCents: bigint;
+      approvedAmountCents?: bigint | null;
+      paidAmountCents: bigint;
     }>;
     expenseRequests?: Array<{
       status: string;
-      requestedAmountCents: number | bigint;
-      approvedAmountCents?: number | bigint | null;
-      paidAmountCents: number | bigint;
+      requestedAmountCents: bigint;
+      approvedAmountCents?: bigint | null;
+      paidAmountCents: bigint;
     }>;
-    financingQuotas?: Array<{ id: string; amountCents: bigint | number }>;
+    financingQuotas?: Array<{ id: string; amountCents: bigint }>;
   } = {}) {
     return {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1", isActive: true }]),
       projectReceipt: {
         findMany: jest.fn().mockResolvedValue(
-          receiptAmountCents > 0 ? [{ amountCents: BigInt(receiptAmountCents) }] : []
+          receiptAmountCents > 0n ? [{ amountCents: receiptAmountCents }] : []
         )
       },
       paymentRequest: {
@@ -468,7 +468,10 @@ describe("ProjectExpenseService", () => {
         create: jest.fn().mockResolvedValue({
           id: "expense-1",
           code: "LX-2026-001",
-          status: "approval_pending"
+          status: "approval_pending",
+          requestedAmountCents: 30_000n,
+          approvedAmountCents: null,
+          paidAmountCents: 0n
         })
       },
       approvalInstance: {
@@ -491,6 +494,11 @@ describe("ProjectExpenseService", () => {
     });
 
     expect(request.status).toBe("approval_pending");
+    expect(request).toMatchObject({
+      requestedAmountCents: "30000",
+      approvedAmountCents: null,
+      paidAmountCents: "0"
+    });
     expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         projectId: "project-1",
@@ -511,6 +519,24 @@ describe("ProjectExpenseService", () => {
         applicantUserId: "handler-1"
       })
     });
+  });
+
+  it("rejects a negative project expense amount before opening a transaction", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.create("project-1", "handler-1", {
+        code: "LX-2026-NEG",
+        expenseType: "sporadic_payment",
+        expenseSubtype: "sporadic_material",
+        paymentSubject: "建工智管",
+        reason: "负数边界验证",
+        requestedAmountCents: "-1",
+        paymentMethod: "bank_transfer"
+      })
+    ).rejects.toThrow("申请金额必须大于零");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1283,7 +1309,7 @@ describe("ProjectExpenseService", () => {
         findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "cashier-1" })
       },
       projectExpenseExecution: {
-        create: jest.fn().mockResolvedValue({ id: "execution-1" })
+        create: jest.fn().mockResolvedValue({ id: "execution-1", amountCents: 30_000n })
       },
       projectExpenseRequest: {
         update: jest.fn()
@@ -1301,6 +1327,7 @@ describe("ProjectExpenseService", () => {
     });
 
     expect(execution.id).toBe("execution-1");
+    expect(execution.amountCents).toBe("30000");
     expect(auth.confirmPassword).toHaveBeenCalledWith("cashier-1", "current-password");
     expect(tx.projectExpenseRequest.update).toHaveBeenCalledWith({
       where: { id: "expense-1" },
@@ -1471,6 +1498,7 @@ describe("ProjectExpenseService", () => {
     });
 
     expect(record.id).toBe("finance-record-1");
+    expect(record.amountCents).toBe("30000");
     expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
     expect(tx.financeRecord.create).toHaveBeenCalledWith({
       data: {

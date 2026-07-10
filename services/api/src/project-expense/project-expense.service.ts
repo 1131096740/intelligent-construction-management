@@ -9,6 +9,7 @@ import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
+  mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
   parseMoneyCents,
   sumDbMoneyToBigInt
@@ -26,6 +27,17 @@ interface ProjectExpenseApprovalNode {
   mode: "any";
   roleKeys: RoleKey[];
   approvedRoleKeys?: RoleKey[];
+}
+
+const PROJECT_EXPENSE_POST_MONEY_FIELDS = [
+  "requestedAmountCents",
+  "approvedAmountCents",
+  "paidAmountCents",
+  "amountCents"
+] as const;
+
+function projectExpensePostResponseToApi<T>(value: T) {
+  return mapBigIntMoneyFieldsToApi(value, PROJECT_EXPENSE_POST_MONEY_FIELDS);
 }
 
 interface ExpenseLockRow {
@@ -354,7 +366,7 @@ export class ProjectExpenseService {
       }
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const request = await this.prisma.$transaction(async (tx) => {
       const [project, attachmentFile] = await Promise.all([
         tx.project.findFirst({ where: { id: projectId, isActive: true }, select: { id: true } }),
         attachmentFileId
@@ -457,6 +469,8 @@ export class ProjectExpenseService {
 
       return request;
     });
+
+    return projectExpensePostResponseToApi(request);
   }
 
   async reviewApproval(
@@ -780,7 +794,7 @@ export class ProjectExpenseService {
     if (blockedReason || !execution) {
       throw new BadRequestException(blockedReason ?? "项目支出实付登记被阻断");
     }
-    return execution;
+    return projectExpensePostResponseToApi(execution);
   }
 
   async recordPurchaseExecution(
@@ -902,7 +916,7 @@ export class ProjectExpenseService {
     if (result.financeRecordedAmountCents >= result.paidAmountCents && this.files) {
       await this.ensureFinancePdfArchive(result.expenseRequestId, actorUserId).catch(() => undefined);
     }
-    return result.record;
+    return projectExpensePostResponseToApi(result.record);
   }
 
   async confirmPurchaseReceipt(
@@ -1199,7 +1213,7 @@ export class ProjectExpenseService {
       expenseRequests
     });
     const cashAvailable = cashPool.availableCents > 0n ? cashPool.availableCents : 0n;
-    const requestedAmount = BigInt(requestedAmountCents);
+    const requestedAmount = dbMoneyToBigInt(requestedAmountCents, "项目支出申请金额");
     if (requestedAmount <= cashAvailable) {
       return [];
     }
@@ -1218,7 +1232,11 @@ export class ProjectExpenseService {
         ])
       : [[], []];
     const usedByQuotaId = [...paymentUsages, ...expenseUsages].reduce((used, usage) => {
-      used.set(usage.quotaId, (used.get(usage.quotaId) ?? 0n) + BigInt(usage.amountCents));
+      used.set(
+        usage.quotaId,
+        (used.get(usage.quotaId) ?? 0n) +
+          dbMoneyToBigInt(usage.amountCents, "项目支出垫资额度占用金额")
+      );
       return used;
     }, new Map<string, bigint>());
 
@@ -1226,7 +1244,9 @@ export class ProjectExpenseService {
     const allocations: Array<{ quotaId: string; amountCents: bigint }> = [];
     let totalAvailableFinancing = 0n;
     for (const quota of financingQuotas) {
-      const available = BigInt(quota.amountCents) - (usedByQuotaId.get(quota.id) ?? 0n);
+      const available =
+        dbMoneyToBigInt(quota.amountCents, "项目垫资额度") -
+        (usedByQuotaId.get(quota.id) ?? 0n);
       if (available <= 0n) {
         continue;
       }
@@ -1276,10 +1296,13 @@ export class ProjectExpenseService {
     actorUserId: string
   ) {
     const usageTotals = await this.financingUsageTotals(tx, request.id);
-    const cashAllocatedCents = BigInt(request.requestedAmountCents) - usageTotals.occupied - usageTotals.used;
+    const cashAllocatedCents =
+      dbMoneyToBigInt(request.requestedAmountCents, "项目支出申请金额") -
+      usageTotals.occupied -
+      usageTotals.used;
     const targetFinancingCents =
-      BigInt(approvedAmountCents) > cashAllocatedCents
-        ? BigInt(approvedAmountCents) - cashAllocatedCents
+      dbMoneyToBigInt(approvedAmountCents, "项目支出批准金额") > cashAllocatedCents
+        ? dbMoneyToBigInt(approvedAmountCents, "项目支出批准金额") - cashAllocatedCents
         : 0n;
     const activeFinancingCents = usageTotals.occupied + usageTotals.used;
     const amountToRelease =
@@ -1312,10 +1335,11 @@ export class ProjectExpenseService {
     const usageTotals = await this.financingUsageTotals(tx, request.id);
     const approvedAmountCents = request.approvedAmountCents ?? request.requestedAmountCents;
     const activeFinancingCents = usageTotals.occupied + usageTotals.used;
-    const cashAllocatedCents = BigInt(approvedAmountCents) - activeFinancingCents;
+    const cashAllocatedCents =
+      dbMoneyToBigInt(approvedAmountCents, "项目支出批准金额") - activeFinancingCents;
     const targetUsedCents =
-      BigInt(request.paidAmountCents) > cashAllocatedCents
-        ? BigInt(request.paidAmountCents) - cashAllocatedCents
+      dbMoneyToBigInt(request.paidAmountCents, "项目支出实付金额") > cashAllocatedCents
+        ? dbMoneyToBigInt(request.paidAmountCents, "项目支出实付金额") - cashAllocatedCents
         : 0n;
     const amountToUse = targetUsedCents > usageTotals.used ? targetUsedCents - usageTotals.used : 0n;
     const usedAmountCents = await this.moveFinancingQuotaUsage(tx, request.id, amountToUse, "used");
@@ -1384,8 +1408,16 @@ export class ProjectExpenseService {
     });
     return usages.reduce(
       (totals, usage) => ({
-        occupied: totals.occupied + (usage.status === "occupied" ? BigInt(usage.amountCents) : 0n),
-        used: totals.used + (usage.status === "used" ? BigInt(usage.amountCents) : 0n)
+        occupied:
+          totals.occupied +
+          (usage.status === "occupied"
+            ? dbMoneyToBigInt(usage.amountCents, "项目支出垫资额度占用金额")
+            : 0n),
+        used:
+          totals.used +
+          (usage.status === "used"
+            ? dbMoneyToBigInt(usage.amountCents, "项目支出垫资额度使用金额")
+            : 0n)
       }),
       { occupied: 0n, used: 0n }
     );
@@ -1408,7 +1440,7 @@ export class ProjectExpenseService {
       if (remaining !== undefined && remaining <= 0n) {
         break;
       }
-      const available = BigInt(usage.amountCents);
+      const available = dbMoneyToBigInt(usage.amountCents, "项目支出垫资额度占用金额");
       const amount = remaining === undefined || available <= remaining ? available : remaining;
       if (amount <= 0n) {
         continue;
@@ -1591,7 +1623,7 @@ function getProjectExpenseApprovalNodes(expenseType: (typeof EXPENSE_TYPES)[numb
   return PROJECT_EXPENSE_APPROVAL_NODES;
 }
 
-function formatCents(amountCents: number | bigint) {
+function formatCents(amountCents: bigint) {
   return formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "项目支出金额")).replace(/,/g, "");
 }
 

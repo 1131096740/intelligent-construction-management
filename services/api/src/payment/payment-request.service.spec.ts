@@ -56,34 +56,34 @@ describe("PaymentRequestService", () => {
   }
 
   function projectCashPoolTables({
-    receiptAmountCents = 200_000,
+    receiptAmountCents = 200_000n,
     projectPayments = [],
     projectExpenses = [],
     financingQuotas = [],
     financingUsages = []
   }: {
-    receiptAmountCents?: number | bigint;
+    receiptAmountCents?: bigint;
     projectPayments?: Array<{
       status: string;
-      requestedAmountCents: number | bigint;
-      approvedAmountCents?: number | bigint | null;
-      paidAmountCents: number | bigint;
+      requestedAmountCents: bigint;
+      approvedAmountCents?: bigint | null;
+      paidAmountCents: bigint;
     }>;
     projectExpenses?: Array<{
       status: string;
-      requestedAmountCents: number | bigint;
-      approvedAmountCents?: number | bigint | null;
-      paidAmountCents: number | bigint;
+      requestedAmountCents: bigint;
+      approvedAmountCents?: bigint | null;
+      paidAmountCents: bigint;
     }>;
-    financingQuotas?: Array<{ id: string; amountCents: bigint | number }>;
-    financingUsages?: Array<{ quotaId: string; amountCents: bigint | number }>;
+    financingQuotas?: Array<{ id: string; amountCents: bigint }>;
+    financingUsages?: Array<{ quotaId: string; amountCents: bigint }>;
   } = {}) {
     return {
       tables: {
         $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1", isActive: true }]),
         projectReceipt: {
           findMany: jest.fn().mockResolvedValue(
-            receiptAmountCents > 0 ? [{ amountCents: BigInt(receiptAmountCents) }] : []
+            receiptAmountCents > 0n ? [{ amountCents: receiptAmountCents }] : []
           )
         },
         projectFinancingQuota: {
@@ -110,7 +110,7 @@ describe("PaymentRequestService", () => {
       id: string;
       quotaId: string;
       projectId: string;
-      amountCents: bigint | number;
+      amountCents: bigint;
       status?: string;
     }> = []
   ) {
@@ -134,9 +134,9 @@ describe("PaymentRequestService", () => {
       settlementId: string | null;
       sourceType: string;
       status: string;
-      requestedAmountCents: number | bigint;
-      approvedAmountCents: number | bigint | null;
-      paidAmountCents: number | bigint;
+      requestedAmountCents: bigint;
+      approvedAmountCents: bigint | null;
+      paidAmountCents: bigint;
     }> = {}
   ) {
     return {
@@ -236,7 +236,10 @@ describe("PaymentRequestService", () => {
           .mockResolvedValueOnce(cashPool.projectPayments),
         create: jest.fn().mockResolvedValue({
           id: "payment-1",
-          code: "FK-2026-012"
+          code: "FK-2026-012",
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: null,
+          paidAmountCents: 0n
         })
       },
       ...cashPool.tables,
@@ -258,6 +261,11 @@ describe("PaymentRequestService", () => {
     });
 
     expect(created.code).toBe("FK-2026-012");
+    expect(created).toMatchObject({
+      requestedAmountCents: "50000",
+      approvedAmountCents: null,
+      paidAmountCents: "0"
+    });
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.paymentRequest.findMany.mock.invocationCallOrder[0]
     );
@@ -1719,7 +1727,9 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           code: "FK-2026-012",
-          requestedAmountCents: "50000"
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: null,
+          paidAmountCents: 0n
         })
       },
       approvalInstance: {
@@ -3878,6 +3888,7 @@ describe("PaymentRequestService", () => {
     });
 
     expect(execution.id).toBe("execution-1");
+    expect(execution.amountCents).toBe("30000");
     expect(auth.confirmPassword).toHaveBeenCalledWith("cashier-1", "current-password");
     expect(tx.$queryRaw).toHaveBeenCalled();
     expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
@@ -5910,6 +5921,7 @@ describe("PaymentRequestService", () => {
     });
 
     expect(record.id).toBe("finance-record-1");
+    expect(record.amountCents).toBe("30000");
     expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "Current@123");
     expect(tx.$queryRaw).toHaveBeenCalled();
     expect(tx.financeRecord.create).toHaveBeenCalledWith({

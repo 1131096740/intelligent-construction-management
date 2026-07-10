@@ -22,6 +22,7 @@ import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
   moneyCentsToApi,
+  parseMoneyCents,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import {
@@ -850,7 +851,8 @@ export class PaymentReadService {
   private contractPaymentCapacityExplanation(
     capacity: ContractPaymentApplicationPreviewReadModel["capacity"]
   ): ContractPaymentApplicationPreviewReadModel["capacityExplanation"] {
-    const cents = (value: string | undefined) => BigInt(value ?? "0");
+    const cents = (value: string | undefined) =>
+      parseMoneyCents(value ?? "0", "付款额度金额");
     const actualPaidCents =
       cents(capacity.actualPaidCents) + cents(capacity.historicalPaidCents);
     const approvalPendingCents =
@@ -950,10 +952,13 @@ export class PaymentReadService {
         amountCents: capacity.maxRequestableCents,
         operator: "result",
         note:
-          BigInt(capacity.maxRequestableCents) > 0n
+          parseMoneyCents(capacity.maxRequestableCents, "本次最多可申请金额") > 0n
             ? "提交金额不得超过该额度"
             : "当前没有可发起的合同累计结算付款额度",
-        tone: BigInt(capacity.maxRequestableCents) > 0n ? "success" : "warning"
+        tone:
+          parseMoneyCents(capacity.maxRequestableCents, "本次最多可申请金额") > 0n
+            ? "success"
+            : "warning"
       }
     ];
   }
@@ -1451,7 +1456,7 @@ export class PaymentReadService {
     return `${ratioBps / 100}%`;
   }
 
-  private formatMoney(amountCents: number | bigint): string {
+  private formatMoney(amountCents: bigint): string {
     return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "付款金额"))}`;
   }
 

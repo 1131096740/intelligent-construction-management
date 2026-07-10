@@ -917,8 +917,8 @@ export class ProjectService {
           Array<{
             id: string;
             status: string;
-            amountCents: number;
-            paidAmountCents: number;
+            amountCents: bigint;
+            paidAmountCents: bigint;
             contractVersionId?: string;
             isFinal: boolean;
             paymentTermsVersionId: string;
@@ -949,7 +949,7 @@ export class ProjectService {
             stageType: string;
             basis: string;
             ratioBps: number | null;
-            fixedAmountCents: number | null;
+            fixedAmountCents: bigint | null;
             triggerAnchor: string;
             dueDays: number;
             advanceDeductionMode: string | null;
@@ -962,7 +962,7 @@ export class ProjectService {
         findMany: (args: {
           where: { id: { in: string[] } };
           select: { id: true; amountCents: true };
-        }) => Promise<Array<{ id: string; amountCents: number | bigint }>>;
+        }) => Promise<Array<{ id: string; amountCents: bigint }>>;
       };
       settlementArchiveFile?: {
         findMany: (args: {
@@ -1117,7 +1117,7 @@ export class ProjectService {
       contractSettlements.map((settlement) => settlement.amountCents),
       "合同结算金额"
     );
-    const contractAmountCentsByPaymentTermsVersionId = contractSettlements.reduce<Record<string, number | bigint>>(
+    const contractAmountCentsByPaymentTermsVersionId = contractSettlements.reduce<Record<string, bigint>>(
       (amountByTermsId, settlement) => ({
         ...amountByTermsId,
         [settlement.paymentTermsVersionId]:
@@ -1916,7 +1916,7 @@ function latestByContract<T extends { contractId: string; versionNo?: number | n
   );
 }
 
-export function projectMoneyToApi(value: bigint | number): string {
+export function projectMoneyToApi(value: bigint): string {
   return moneyCentsToApi(dbMoneyToBigInt(value, "项目金额"));
 }
 
@@ -2036,7 +2036,7 @@ function toReceiptReadModel(receipt: {
   id: string;
   projectId: string;
   receivedAt: Date;
-  amountCents: bigint | number;
+  amountCents: bigint;
   payerName: string;
   sourceType: string;
   description?: string | null;
@@ -2064,7 +2064,7 @@ function toProxyPaymentReadModel(proxyPayment: {
   id: string;
   projectId: string;
   paidAt: Date;
-  amountCents: bigint | number;
+  amountCents: bigint;
   generalContractorName: string;
   paidTargetName: string;
   paymentType: string;
@@ -2098,8 +2098,8 @@ function toUpstreamSettlementReadModel(upstreamSettlement: {
   id: string;
   projectId: string;
   settledAt: Date;
-  reportedAmountCents: bigint | number;
-  approvedAmountCents: bigint | number;
+  reportedAmountCents: bigint;
+  approvedAmountCents: bigint;
   approvingPartyName: string;
   periodLabel: string;
   isFinal: boolean;
@@ -2131,7 +2131,7 @@ function toOwnerContractReadModel(ownerContract: {
   contractName: string;
   contractCode: string;
   signedAt: Date;
-  amountCents: bigint | number;
+  amountCents: bigint;
   taxRateBps?: number | null;
   pricingMethod: string;
   paymentTermsSummary?: string | null;
@@ -2170,7 +2170,7 @@ function toSettlementExceptionQuotaReadModel(quota: {
   id: string;
   projectId: string;
   contractId: string;
-  amountCents: bigint | number;
+  amountCents: bigint;
   reason: string;
   validUntil: Date;
   attachmentFileId: string;
@@ -2201,7 +2201,7 @@ function toSettlementExceptionQuotaReadModel(quota: {
 function toProjectFinancingQuotaReadModel(quota: {
   id: string;
   projectId: string;
-  amountCents: bigint | number;
+  amountCents: bigint;
   reason: string;
   validUntil: Date;
   attachmentFileId: string;

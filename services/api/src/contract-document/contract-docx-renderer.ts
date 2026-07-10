@@ -18,18 +18,14 @@ const MERGEABLE_BILL_TABLE_HEADERS = new Set([
 const CHINESE_DIGITS = ["零", "壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖"];
 const SECTION_UNITS = ["", "拾", "佰", "仟"];
 const GROUP_UNITS = ["", "万", "亿", "兆", "京"];
-function moneyCents(value: bigint | number): bigint {
-  if (
-    (typeof value === "number" && (!Number.isSafeInteger(value) || value < 0)) ||
-    (typeof value === "bigint" && value < 0n) ||
-    (typeof value !== "number" && typeof value !== "bigint")
-  ) {
-    throw new Error("Money cents must be a non-negative bigint or safe integer");
+function moneyCents(value: bigint): bigint {
+  if (typeof value !== "bigint" || value < 0n) {
+    throw new Error("Money cents must be a non-negative bigint");
   }
-  return BigInt(value);
+  return value;
 }
 
-export function formatMoneyCents(value: bigint | number): string {
+export function formatMoneyCents(value: bigint): string {
   const cents = moneyCents(value);
   const yuan = (cents / 100n).toString();
   const groupedYuan = yuan.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -93,7 +89,7 @@ function formatChineseYuan(value: bigint): string {
   return result;
 }
 
-export function formatChineseUppercaseMoney(value: bigint | number): string {
+export function formatChineseUppercaseMoney(value: bigint): string {
   const cents = moneyCents(value);
   if (cents === 0n) return "人民币零元整";
 

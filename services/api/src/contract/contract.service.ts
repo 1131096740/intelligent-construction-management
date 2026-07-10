@@ -12,7 +12,11 @@ import {
 import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { formatMoneyCentsAsYuan, parseMoneyCents } from "../money/decimal-money";
+import {
+  dbMoneyToBigInt,
+  formatMoneyCentsAsYuan,
+  parseMoneyCents
+} from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
 import {
@@ -233,7 +237,7 @@ export class ContractService {
         }
       });
 
-      return { contract, version: { ...version, amountCents: String(version.amountCents ?? 0) }, terms };
+      return { contract, version: { ...version, amountCents: String(version.amountCents ?? 0n) }, terms };
     });
   }
 
@@ -422,7 +426,7 @@ export class ContractService {
 
         return {
           ...version,
-          amountCents: String(version.amountCents ?? 0),
+          amountCents: String(version.amountCents ?? 0n),
           status: "in_approval",
           readinessSnapshot,
           templateSnapshot,
@@ -446,9 +450,9 @@ export class ContractService {
     tx: Prisma.TransactionClient,
     projectId: string,
     currentContractId: string,
-    amountCents: bigint | number
+    amountCents: bigint
   ) {
-    const requestedAmountCents = BigInt(amountCents);
+    const requestedAmountCents = dbMoneyToBigInt(amountCents, "合同金额");
     if (requestedAmountCents <= 0n) {
       throw new BadRequestException("合同金额必须大于 0，不能提交零金额或负数合同审批");
     }
@@ -1299,11 +1303,11 @@ export class ContractService {
     return Array.from(new Set([...positionKeys, ...memberKeys]));
   }
 
-  private formatCents(value: number | bigint) {
-    return `${formatMoneyCentsAsYuan(typeof value === "bigint" ? value : BigInt(value))} CNY`;
+  private formatCents(value: bigint) {
+    return `${formatMoneyCentsAsYuan(dbMoneyToBigInt(value, "合同金额"))} CNY`;
   }
 
-  private formatYuan(value: number | bigint) {
+  private formatYuan(value: bigint) {
     return this.formatCents(value).replace(" CNY", "");
   }
 
@@ -1445,23 +1449,30 @@ function requireApprovalCommentForReturn(decision: ReviewContractApprovalDto["de
   }
 }
 
-function sumBigInt(values: Array<bigint | number>): bigint {
-  return values.reduce<bigint>((total, value) => total + BigInt(value), 0n);
+function sumBigInt(values: Array<bigint>): bigint {
+  return values.reduce<bigint>(
+    (total, value) => total + dbMoneyToBigInt(value, "合同金额"),
+    0n
+  );
 }
 
-function maxBigInt(left: bigint | number, right: bigint | number): bigint {
-  const normalizedLeft = BigInt(left);
-  const normalizedRight = BigInt(right);
+function maxBigInt(left: bigint, right: bigint): bigint {
+  const normalizedLeft = dbMoneyToBigInt(left, "合同金额");
+  const normalizedRight = dbMoneyToBigInt(right, "合同金额");
   return normalizedLeft > normalizedRight ? normalizedLeft : normalizedRight;
 }
 
-function maxContractOccupancies<T extends { contractId: string; amountCents: bigint | number }>(
+function maxContractOccupancies<T extends { contractId: string; amountCents: bigint }>(
   versions: T[]
 ): T[] {
   return Array.from(
     versions.reduce((maxByContract, version) => {
       const current = maxByContract.get(version.contractId);
-      if (!current || BigInt(version.amountCents) > BigInt(current.amountCents)) {
+      if (
+        !current ||
+        dbMoneyToBigInt(version.amountCents, "合同金额") >
+          dbMoneyToBigInt(current.amountCents, "合同金额")
+      ) {
         maxByContract.set(version.contractId, version);
       }
       return maxByContract;

@@ -343,7 +343,7 @@ export class ContractReadService {
         contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
         contractName: contract.name,
         counterparty: contract.counterparty,
-        amountCents: this.centsValue(effectiveVersion?.amountCents ?? latestVersion?.amountCents ?? 0),
+        amountCents: this.centsValue(effectiveVersion?.amountCents ?? latestVersion?.amountCents ?? 0n),
         versionLabel: effectiveVersion ? `合同 v${effectiveVersion.versionNo}` : "-",
         contractStatus: effectiveVersion?.status ?? latestVersion?.status ?? "draft",
         contractStatusLabel: this.statusView(effectiveVersion?.status ?? latestVersion?.status ?? "draft").label,
@@ -621,7 +621,7 @@ export class ContractReadService {
         findMany: (args: {
           where: { settlementId: { in: string[] }; voidedAt: null };
           select: { settlementId: true; amountCents: true };
-        }) => Promise<Array<{ settlementId: string | null; amountCents: bigint | number }>>;
+        }) => Promise<Array<{ settlementId: string | null; amountCents: bigint }>>;
       };
     }).projectProxyPayment;
 
@@ -636,7 +636,7 @@ export class ContractReadService {
   }
 
   private settlementPayment(
-    contractAmountCents: number | bigint,
+    contractAmountCents: bigint,
     settlements: Array<{
       id: string;
       code: string;
@@ -670,27 +670,27 @@ export class ContractReadService {
     }>,
     projectProxyPayments: Array<{
       settlementId: string | null;
-      amountCents: bigint | number;
+      amountCents: bigint;
     }>,
     historicalBalance?: HistoricalContractPaymentBalance
   ): ContractSettlementPaymentReadModel {
-    const historicalSettledCents = this.toBigIntCents(historicalBalance?.settledCents ?? 0);
+    const historicalSettledCents = this.toBigIntCents(historicalBalance?.settledCents ?? 0n);
     const historicalApprovalPendingCents = this.toBigIntCents(
-      historicalBalance?.approvalPendingPaymentCents ?? 0
+      historicalBalance?.approvalPendingPaymentCents ?? 0n
     );
     const historicalApprovedPendingCents = this.toBigIntCents(
-      historicalBalance?.approvedPendingPaymentCents ?? 0
+      historicalBalance?.approvedPendingPaymentCents ?? 0n
     );
-    const historicalPaidCents = this.toBigIntCents(historicalBalance?.paidCents ?? 0);
-    const historicalProxyPaidCents = this.toBigIntCents(historicalBalance?.proxyPaidCents ?? 0);
+    const historicalPaidCents = this.toBigIntCents(historicalBalance?.paidCents ?? 0n);
+    const historicalProxyPaidCents = this.toBigIntCents(historicalBalance?.proxyPaidCents ?? 0n);
     const historicalAdvancePaidCents = this.toBigIntCents(
-      historicalBalance?.advancePaidCents ?? 0
+      historicalBalance?.advancePaidCents ?? 0n
     );
     const historicalAdvanceDeductedCents = this.toBigIntCents(
-      historicalBalance?.advanceDeductedCents ?? 0
+      historicalBalance?.advanceDeductedCents ?? 0n
     );
     const historicalOtherConfirmedOccupancyCents = this.toBigIntCents(
-      historicalBalance?.otherConfirmedOccupancyCents ?? 0
+      historicalBalance?.otherConfirmedOccupancyCents ?? 0n
     );
     const hasHistoricalBalance =
       historicalSettledCents +
@@ -719,7 +719,8 @@ export class ContractReadService {
         hasVoucher: false
       };
       paidByPaymentId.set(execution.paymentRequestId, {
-        amountCents: current.amountCents + BigInt(execution.amountCents),
+        amountCents:
+          current.amountCents + dbMoneyToBigInt(execution.amountCents, "付款执行金额"),
         paidAt:
           !current.paidAt || execution.paidAt.getTime() > current.paidAt.getTime()
             ? execution.paidAt
@@ -734,8 +735,14 @@ export class ContractReadService {
       const archiveFile = archiveFileBySettlementId.get(settlement.id);
       const before = cumulativeEffectiveSettlementCents;
       if (this.isEffectiveSettlementStatus(settlement.status)) {
-        cumulativeEffectiveSettlementCents += BigInt(settlement.amountCents);
-        cumulativeEffectivePayableCents += BigInt(settlement.payableAmountCents);
+        cumulativeEffectiveSettlementCents += dbMoneyToBigInt(
+          settlement.amountCents,
+          "结算金额"
+        );
+        cumulativeEffectivePayableCents += dbMoneyToBigInt(
+          settlement.payableAmountCents,
+          "结算应付金额"
+        );
       }
 
       return {
@@ -772,10 +779,14 @@ export class ContractReadService {
     let approvedPendingCents = 0n;
     const paymentRows = paymentRequests.map((payment) => {
       const execution = paidByPaymentId.get(payment.id);
-      const paidCents = execution?.amountCents ?? BigInt(payment.paidAmountCents);
+      const paidCents =
+        execution?.amountCents ?? dbMoneyToBigInt(payment.paidAmountCents, "付款实付金额");
       const approved = this.isApprovedPaymentStatus(payment.status);
       const approvedCents = approved
-        ? BigInt(payment.approvedAmountCents ?? payment.requestedAmountCents)
+        ? dbMoneyToBigInt(
+            payment.approvedAmountCents ?? payment.requestedAmountCents,
+            "付款批准金额"
+          )
         : 0n;
       const remainingApprovedCents = approvedCents - paidCents;
       actualPaidCents += paidCents;
@@ -819,7 +830,7 @@ export class ContractReadService {
       totalApprovedPendingCents -
       historicalOtherConfirmedOccupancyCents;
     const remainingContractCents =
-      BigInt(contractAmountCents) - totalEffectiveSettlementCents;
+      dbMoneyToBigInt(contractAmountCents, "合同金额") - totalEffectiveSettlementCents;
     const summary: ContractSettlementPaymentReadModel["summary"] = [
       { label: "累计生效结算", value: this.formatMoney(totalEffectiveSettlementCents), tone: "success" },
       ...(hasHistoricalBalance
@@ -1474,12 +1485,12 @@ export class ContractReadService {
     return `${ratioBps / 100}%`;
   }
 
-  private formatMoney(amountCents: number | bigint): string {
+  private formatMoney(amountCents: bigint): string {
     return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "合同金额"))}`;
   }
 
-  private toBigIntCents(amountCents: number | bigint): bigint {
-    return typeof amountCents === "bigint" ? amountCents : BigInt(amountCents);
+  private toBigIntCents(amountCents: bigint): bigint {
+    return dbMoneyToBigInt(amountCents, "合同金额");
   }
 
   private limit(rawLimit?: string | number) {
@@ -1488,7 +1499,7 @@ export class ContractReadService {
     return Math.min(Math.max(Math.trunc(parsed), 1), 200);
   }
 
-  private centsValue(amountCents: number | bigint): string {
+  private centsValue(amountCents: bigint): string {
     return moneyCentsToApi(dbMoneyToBigInt(amountCents, "合同金额"));
   }
 

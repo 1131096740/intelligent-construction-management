@@ -3,6 +3,7 @@ import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
+  mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
   parseMoneyCents,
   sumDbMoneyToBigInt,
@@ -51,6 +52,32 @@ describe("internal bigint money compatibility", () => {
     expect(yuanTextToCents("21000000.01", "合同金额")).toBe(2_100_000_001n);
   });
 
+  it("maps only explicit nested money fields and leaves non-money bigint untouched", () => {
+    expect(
+      mapBigIntMoneyFieldsToApi(
+        {
+          amountCents: 30_000n,
+          sequenceNo: 2n,
+          allocations: [{ sourcePayableAmountCents: 50_000n, amountCents: 30_000n }]
+        },
+        ["amountCents", "sourcePayableAmountCents"]
+      )
+    ).toEqual({
+      amountCents: "30000",
+      sequenceNo: 2n,
+      allocations: [{ sourcePayableAmountCents: "50000", amountCents: "30000" }]
+    });
+  });
+
+  it("rejects a non-bigint value in an explicit API money field", () => {
+    expect(() =>
+      mapBigIntMoneyFieldsToApi(
+        { amountCents: 30_000 as unknown as bigint },
+        ["amountCents"]
+      )
+    ).toThrow("amountCents必须为 bigint 分值");
+  });
+
   it.each(["-1", "1.5", "1e3", " 1", "", 1])(
     "rejects invalid API cent input %p",
     (value) => {
@@ -60,19 +87,21 @@ describe("internal bigint money compatibility", () => {
     }
   );
 
-  it("keeps number and bigint database values in bigint without losing precision", () => {
-    expect(dbMoneyToBigInt(2_100_000_001, "合同金额")).toBe(2_100_000_001n);
+  it("accepts only bigint database money values", () => {
     expect(dbMoneyToBigInt(9_007_199_254_740_993n, "累计金额")).toBe(
       9_007_199_254_740_993n
     );
-    expect(sumDbMoneyToBigInt([9_007_199_254_740_993n, 7], "累计金额")).toBe(
+    expect(sumDbMoneyToBigInt([9_007_199_254_740_993n, 7n], "累计金额")).toBe(
       9_007_199_254_741_000n
+    );
+    expect(() => dbMoneyToBigInt(1 as unknown as bigint, "合同金额")).toThrow(
+      "合同金额必须为 bigint 分值"
     );
   });
 
-  it("rejects unsafe number input before it can enter bigint calculations", () => {
+  it("rejects every number input before it can enter bigint calculations", () => {
     expect(() => dbMoneyToBigInt(Number.MAX_SAFE_INTEGER + 1, "累计金额")).toThrow(
-      "累计金额必须为安全整数分"
+      "累计金额必须为 bigint 分值"
     );
   });
 
@@ -100,7 +129,7 @@ describe("internal bigint money compatibility", () => {
   it("calculates project cash and expense occupancy with bigint totals", () => {
     expect(
       calculateProjectCashPoolBigInt({
-        receiptAmountCents: [9_007_199_254_740_993n, 7],
+        receiptAmountCents: [9_007_199_254_740_993n, 7n],
         paymentRequests: [
           {
             status: "approved_pending_payment",

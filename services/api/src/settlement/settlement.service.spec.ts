@@ -9,7 +9,7 @@ import {
 
 describe("settlement bigint calculations", () => {
   it("keeps settlement line totals and payable ratios in bigint", () => {
-    expect(calculateSettlementLineTotalBigInt([9_007_199_254_740_993n, 7])).toBe(
+    expect(calculateSettlementLineTotalBigInt([9_007_199_254_740_993n, 7n])).toBe(
       9_007_199_254_741_000n
     );
     expect(calculateSettlementPayableAmountBigInt(9_007_199_254_740_993n, 8_000)).toBe(
@@ -21,7 +21,7 @@ describe("settlement bigint calculations", () => {
     expect(
       calculateFinalSettlementCurrentAmountBigInt(9_007_199_254_740_993n, [
         9_007_199_254_700_000n,
-        993
+        993n
       ])
     ).toBe(40_000n);
   });
@@ -112,7 +112,10 @@ describe("SettlementService", () => {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({
           id: "settlement-1",
-          code: "JS-2026-019"
+          code: "JS-2026-019",
+          amountCents: 10_000_000n,
+          payableAmountCents: 8_000_000n,
+          paidAmountCents: 0n
         })
       },
       ...settlementQuotaTables()
@@ -130,6 +133,11 @@ describe("SettlementService", () => {
     });
 
     expect(created.code).toBe("JS-2026-019");
+    expect(created).toMatchObject({
+      amountCents: "10000000",
+      payableAmountCents: "8000000",
+      paidAmountCents: "0"
+    });
     expect(tx.settlement.create).toHaveBeenCalledWith({
       data: {
         projectId: "project-1",
@@ -501,6 +509,32 @@ describe("SettlementService", () => {
     ).rejects.toThrow("合同清单项结算金额必须大于 0");
     expect(tx.settlement.create).not.toHaveBeenCalled();
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a negative manual adjustment without a reason", async () => {
+    const normalizeSettlementLines = (
+      service as unknown as {
+        normalizeSettlementLines: (
+          tx: unknown,
+          contractVersionId: string,
+          lines: Array<{
+            sourceType: "manual_adjustment";
+            name: string;
+            amountCents: string;
+          }>
+        ) => Promise<unknown>;
+      }
+    ).normalizeSettlementLines.bind(service);
+
+    await expect(
+      normalizeSettlementLines({}, "contract-version-1", [
+        {
+          sourceType: "manual_adjustment",
+          name: "材料扣款",
+          amountCents: "-10000"
+        }
+      ])
+    ).rejects.toThrow("手工调整原因不能为空");
   });
 
   it("rejects duplicate active settlement for the same contract version and period", async () => {

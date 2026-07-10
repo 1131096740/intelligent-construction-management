@@ -313,12 +313,12 @@ describe("contract money formatting", () => {
     expect(formatMoneyCents(1_234_567_890_12n)).toBe("1,234,567,890.12");
   });
 
-  it.each([-1n, Number.MAX_SAFE_INTEGER + 1, 1.5])(
+  it.each([-1n, Number.MAX_SAFE_INTEGER, 1.5])(
     "rejects invalid cents value %s",
     (cents) => {
       expect(() =>
-        formatChineseUppercaseMoney(cents as bigint | number)
-      ).toThrow("Money cents must be a non-negative bigint or safe integer");
+        formatChineseUppercaseMoney(cents as bigint)
+      ).toThrow("Money cents must be a non-negative bigint");
     }
   );
 });

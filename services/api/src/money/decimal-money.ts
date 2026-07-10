@@ -48,18 +48,15 @@ export function calculateBillRow(input: {
   };
 }
 
-export function dbMoneyToBigInt(value: number | bigint, fieldName: string): bigint {
-  if (typeof value === "bigint") {
-    return value;
+export function dbMoneyToBigInt(value: unknown, fieldName: string): bigint {
+  if (typeof value !== "bigint") {
+    throw new Error(`${fieldName}必须为 bigint 分值`);
   }
-  if (!Number.isSafeInteger(value)) {
-    throw new Error(`${fieldName}必须为安全整数分`);
-  }
-  return BigInt(value);
+  return value;
 }
 
 export function sumDbMoneyToBigInt(
-  values: readonly (number | bigint)[],
+  values: readonly bigint[],
   fieldName: string
 ): bigint {
   return values.reduce<bigint>(
@@ -68,15 +65,15 @@ export function sumDbMoneyToBigInt(
   );
 }
 
-export interface LegacyMoneyRequestValue {
+export interface MoneyRequestValue {
   status: string;
-  requestedAmountCents: number | bigint;
-  approvedAmountCents?: number | bigint | null;
-  paidAmountCents: number | bigint;
+  requestedAmountCents: bigint;
+  approvedAmountCents?: bigint | null;
+  paidAmountCents: bigint;
 }
 
 export function outstandingMoneyRequestCentsBigInt(
-  request: LegacyMoneyRequestValue
+  request: MoneyRequestValue
 ): bigint {
   const requested = dbMoneyToBigInt(request.requestedAmountCents, "申请金额");
   const paid = dbMoneyToBigInt(request.paidAmountCents, "已付金额");
@@ -96,9 +93,9 @@ export function outstandingMoneyRequestCentsBigInt(
 }
 
 export function calculateProjectCashPoolBigInt(input: {
-  receiptAmountCents: readonly (number | bigint)[];
-  paymentRequests: readonly LegacyMoneyRequestValue[];
-  expenseRequests: readonly LegacyMoneyRequestValue[];
+  receiptAmountCents: readonly bigint[];
+  paymentRequests: readonly MoneyRequestValue[];
+  expenseRequests: readonly MoneyRequestValue[];
 }): {
   actualReceiptsCents: bigint;
   actualPaidCents: bigint;
@@ -132,6 +129,50 @@ export function parseMoneyCents(value: string, fieldName: string): bigint {
 
 export function moneyCentsToApi(value: bigint): string {
   return value.toString();
+}
+
+type ApiMoneyFieldValue<T> = T extends bigint ? string : T;
+
+export type ApiMoneyFields<T, TField extends PropertyKey> = T extends readonly (infer TItem)[]
+  ? ApiMoneyFields<TItem, TField>[]
+  : T extends object
+    ? {
+        [TKey in keyof T]: TKey extends TField
+          ? ApiMoneyFieldValue<T[TKey]>
+          : ApiMoneyFields<T[TKey], TField>;
+      }
+    : T;
+
+export function mapBigIntMoneyFieldsToApi<T, const TField extends string>(
+  value: T,
+  fieldNames: readonly TField[]
+): ApiMoneyFields<T, TField> {
+  const moneyFields = new Set<string>(fieldNames);
+
+  const visit = (item: unknown): unknown => {
+    if (Array.isArray(item)) {
+      return item.map(visit);
+    }
+    if (!isPlainObject(item)) {
+      return item;
+    }
+    return Object.fromEntries(
+      Object.entries(item).map(([key, fieldValue]) => [
+        key,
+        moneyFields.has(key) && fieldValue !== null && fieldValue !== undefined
+          ? moneyCentsToApi(dbMoneyToBigInt(fieldValue, key))
+          : visit(fieldValue)
+      ])
+    );
+  };
+
+  return visit(value) as ApiMoneyFields<T, TField>;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 export function parseSignedMoneyCents(value: string, fieldName: string): bigint {

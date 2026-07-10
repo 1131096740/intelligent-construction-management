@@ -74,7 +74,7 @@ function formatDate(value: Date): string {
 }
 
 // 分 -> 「1,234.56 元」，不依赖运行环境 locale。
-function formatYuan(cents: number | bigint): string {
+function formatYuan(cents: bigint): string {
   return `${formatMoneyCentsAsYuan(dbMoneyToBigInt(cents, "审批金额"))} 元`;
 }
 
@@ -104,8 +104,8 @@ interface RenderInput {
 interface ProjectPaymentApprovalRowsInput {
   payment: {
     sourceType?: string | null;
-    requestedAmountCents: number | bigint;
-    approvedAmountCents?: number | bigint | null;
+    requestedAmountCents: bigint;
+    approvedAmountCents?: bigint | null;
     createdAt?: Date | null;
     dueDate?: Date | null;
   };
@@ -122,10 +122,10 @@ interface ProjectPaymentApprovalRowsInput {
     code?: string | null;
     periodLabel?: string | null;
   } | null;
-  contractAmountCents?: number | bigint | null;
-  cumulativeSettledCents?: number | bigint | null;
-  cumulativePaidCents?: number | bigint | null;
-  currentAvailableCents?: number | bigint | null;
+  contractAmountCents?: bigint | null;
+  cumulativeSettledCents?: bigint | null;
+  cumulativePaidCents?: bigint | null;
+  currentAvailableCents?: bigint | null;
 }
 
 type ApprovalFormRow = { label: string; value: string };
@@ -155,7 +155,7 @@ function paymentReason(input: ProjectPaymentApprovalRowsInput): string {
   return `${empty(input.contract?.name)}结算付款`;
 }
 
-function formatOptionalYuan(cents?: number | bigint | null): string {
+function formatOptionalYuan(cents?: bigint | null): string {
   return cents == null ? "—" : formatYuan(cents);
 }
 
@@ -189,10 +189,10 @@ export function buildProjectPaymentApprovalRows(
   ];
 }
 
-function sumCents(rows: Array<{ amountCents?: number | bigint; paidAmountCents?: number | bigint }>) {
+function sumCents(rows: Array<{ amountCents?: bigint; paidAmountCents?: bigint }>) {
   return rows.reduce<bigint>((total, row) => {
-    const value = row.amountCents ?? row.paidAmountCents ?? 0;
-    return total + (typeof value === "bigint" ? value : BigInt(value));
+    const value = row.amountCents ?? row.paidAmountCents ?? 0n;
+    return total + dbMoneyToBigInt(value, "审批金额");
   }, 0n);
 }
 

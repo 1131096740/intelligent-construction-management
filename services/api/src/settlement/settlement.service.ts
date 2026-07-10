@@ -16,6 +16,7 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import {
   dbMoneyToBigInt,
+  mapBigIntMoneyFieldsToApi,
   parseMoneyCents,
   parseSignedMoneyCents,
   sumDbMoneyToBigInt
@@ -36,6 +37,14 @@ import {
 } from "./settlement-document-renderer";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
+
+const SETTLEMENT_POST_MONEY_FIELDS = [
+  "amountCents",
+  "finalCumulativeAmountCents",
+  "payableAmountCents",
+  "paidAmountCents",
+  "unitPriceCents"
+] as const;
 
 interface GenerateSettlementPdfArchiveDto {
   templateKey?: string;
@@ -173,7 +182,7 @@ interface SettlementLineContractBillRow {
   itemName: string;
   unit: string;
   unitPrice: Prisma.Decimal | string | number;
-  taxInclusiveAmountCents: bigint | number;
+  taxInclusiveAmountCents: bigint;
 }
 
 interface SettlementLineClient {
@@ -349,7 +358,10 @@ export class SettlementService {
         reason: this.optionalText(line.reason),
         remark: this.optionalText(line.remark),
         sortOrder: this.sortOrder(line.sortOrder, index),
-        contractBillRowLimitCents: BigInt(billRow.taxInclusiveAmountCents)
+        contractBillRowLimitCents: dbMoneyToBigInt(
+          billRow.taxInclusiveAmountCents,
+          "合同清单项金额"
+        )
       };
     });
   }
@@ -471,7 +483,7 @@ export class SettlementService {
         limitCents: line.contractBillRowLimitCents,
         name: line.name
       };
-      current.currentAmountCents += BigInt(line.amountCents);
+      current.currentAmountCents += dbMoneyToBigInt(line.amountCents, "结算明细金额");
       currentByRowId.set(rowId, current);
     }
 
@@ -503,7 +515,7 @@ export class SettlementService {
       if (!line.contractBillRowId || !activeSettlementIds.has(line.settlementId)) continue;
       const current = currentByRowId.get(line.contractBillRowId);
       if (!current) continue;
-      current.previousAmountCents += BigInt(line.amountCents);
+      current.previousAmountCents += dbMoneyToBigInt(line.amountCents, "前序结算明细金额");
     }
 
     for (const { currentAmountCents, previousAmountCents, limitCents, name } of currentByRowId.values()) {
@@ -760,7 +772,7 @@ export class SettlementService {
       await this.tryRefreshSettlementApprovalPdf(settlement.id, applicantUserId);
     }
 
-    return settlement;
+    return mapBigIntMoneyFieldsToApi(settlement, SETTLEMENT_POST_MONEY_FIELDS);
   }
 
   private async calculateFinalSettlementCurrentAmount(
@@ -871,14 +883,20 @@ export class SettlementService {
         })
       : [];
     const usedByQuotaId = quotaUsages.reduce((used, usage) => {
-      used.set(usage.quotaId, (used.get(usage.quotaId) ?? 0n) + BigInt(usage.amountCents));
+      used.set(
+        usage.quotaId,
+        (used.get(usage.quotaId) ?? 0n) +
+          dbMoneyToBigInt(usage.amountCents, "结算例外额度占用金额")
+      );
       return used;
     }, new Map<string, bigint>());
 
     let remaining = requiredExceptionCents;
     const allocations: Array<{ quotaId: string; amountCents: bigint }> = [];
     for (const quota of currentContractQuotas) {
-      const available = BigInt(quota.amountCents) - (usedByQuotaId.get(quota.id) ?? 0n);
+      const available =
+        dbMoneyToBigInt(quota.amountCents, "结算例外额度") -
+        (usedByQuotaId.get(quota.id) ?? 0n);
       if (available <= 0n) {
         continue;
       }
@@ -2348,18 +2366,18 @@ function requireApprovalCommentForReturn(decision: ReviewSettlementApprovalDto["
   }
 }
 
-function sumBigInt(values: Array<bigint | number>): bigint {
+function sumBigInt(values: Array<bigint>): bigint {
   return sumDbMoneyToBigInt(values, "结算金额");
 }
 
 export function calculateSettlementLineTotalBigInt(
-  amountCents: readonly (number | bigint)[]
+  amountCents: readonly (bigint)[]
 ): bigint {
   return sumDbMoneyToBigInt(amountCents, "结算明细金额");
 }
 
 export function calculateSettlementPayableAmountBigInt(
-  amountCents: number | bigint,
+  amountCents: bigint,
   ratioBps: number | null
 ): bigint {
   const amount = dbMoneyToBigInt(amountCents, "结算金额");
@@ -2370,8 +2388,8 @@ export function calculateSettlementPayableAmountBigInt(
 }
 
 export function calculateFinalSettlementCurrentAmountBigInt(
-  finalCumulativeAmountCents: number | bigint,
-  previousEffectiveAmountCents: readonly (number | bigint)[]
+  finalCumulativeAmountCents: bigint,
+  previousEffectiveAmountCents: readonly (bigint)[]
 ): bigint {
   return (
     dbMoneyToBigInt(finalCumulativeAmountCents, "最终审定累计结算总额") -
