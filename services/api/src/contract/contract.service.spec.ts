@@ -2009,6 +2009,149 @@ describe("ContractService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      "合同版本不存在",
+      {
+        contractVersion: { findUnique: jest.fn().mockResolvedValue(null) },
+        approvalInstance: { findFirst: jest.fn(), update: jest.fn() },
+        approvalActionLog: { create: jest.fn() }
+      },
+      "未找到要处理的合同审批任务，请刷新审批中心后重试"
+    ],
+    [
+      "合同不在审批中",
+      {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "approved_pending_seal"
+          })
+        },
+        approvalInstance: { findFirst: jest.fn(), update: jest.fn() },
+        approvalActionLog: { create: jest.fn() }
+      },
+      "当前合同不在审批中，不能转交或委托审批"
+    ],
+    [
+      "审批流程缺失",
+      {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "in_approval"
+          })
+        },
+        approvalInstance: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          update: jest.fn()
+        },
+        approvalActionLog: { create: jest.fn() }
+      },
+      "未找到进行中的合同审批流程，请刷新审批中心后重试"
+    ],
+    [
+      "当前审批节点异常",
+      {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "in_approval"
+          })
+        },
+        approvalInstance: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "approval-instance-1",
+            currentNodeIndex: 0,
+            frozenNodes: []
+          }),
+          update: jest.fn()
+        },
+        approvalActionLog: { create: jest.fn() }
+      },
+      "当前合同审批节点异常，请刷新后重试"
+    ],
+    [
+      "当前账号无权处理",
+      {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "in_approval"
+          })
+        },
+        approvalInstance: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "approval-instance-1",
+            currentNodeIndex: 0,
+            frozenNodes: [
+              {
+                name: "董事长/总经理",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"]
+              }
+            ]
+          }),
+          update: jest.fn()
+        },
+        approvalActionLog: { create: jest.fn() },
+        ...approvalRoleTables("employee")
+      },
+      "当前账号无权转交或委托该合同审批节点"
+    ],
+    [
+      "合同主信息缺失",
+      {
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-version-1",
+            contractId: "contract-1",
+            status: "in_approval"
+          })
+        },
+        approvalInstance: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "approval-instance-1",
+            currentNodeIndex: 0,
+            frozenNodes: [
+              {
+                name: "董事长/总经理",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"]
+              }
+            ]
+          }),
+          update: jest.fn()
+        },
+        approvalActionLog: { create: jest.fn() },
+        contract: { findUnique: jest.fn().mockResolvedValue(null) },
+        userPosition: { findMany: jest.fn() },
+        projectMember: { findMany: jest.fn() },
+        position: { findMany: jest.fn() }
+      },
+      "未找到合同主信息，请刷新合同后重试"
+    ]
+  ])("合同审批转交在%s时给出中文业务提示", async (_case, tx, message) => {
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ContractService(prisma as never, audit as never);
+
+    await expect(
+      service.transferApproval("contract-version-1", "chairman-1", {
+        toUserId: "transfer-user-1"
+      })
+    ).rejects.toThrow(message);
+
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("lets the transferred user approve a contract as the source role", async () => {
     const tx = {
       contractVersion: {

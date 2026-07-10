@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进合同审批转交/委托共享错误中文化切片：转交或委托合同审批时，如果合同审批任务不存在、合同已不在审批中、审批流程缺失、当前节点异常、合同主信息缺失或当前账号无权处理，不再返回 `Contract version not found`、`Cannot assign contract approval...`、`Contract approval instance/current node not found`、`Actor cannot assign...` 等英文技术错误，统一给出刷新审批中心、确认合同仍在审批中或当前账号无权转交/委托的中文业务提示。本轮不改变转交/委托权限判断、节点冻结、委托台账、审批动作日志和审计口径。验证：API 合同服务 Jest 66 项通过。
 - 2026-07-10 (CodeX)：继续推进合同新建草稿模板错误中文化切片：合同部新建合同时，如果所选模板版本不存在、模板尚未发布、模板主信息缺失或模板类型与合同类型不一致，不再返回 `Business template...` 英文技术错误，统一提示重新选择模板、等待模板发布或选择匹配模板；新增模板缺失/未发布/主信息缺失测试确认失败时不会创建合同草稿。本轮不改变合同模板冻结、临时编号、付款条款草稿、清单初始化和审计口径。验证：API 合同服务 Jest 60 项通过。
 - 2026-07-10 (CodeX)：继续推进合同提交审批入口错误中文化切片：提交合同审批时，如果合同版本或主信息缺失、合同已作废、当前账号不是合同经办人、资料未满足提交条件、编号规则缺失、提交并发冲突或正式编号重复，不再返回 `Contract version not found`、`Contract is not ready...`、`Contract approval submission conflict` 等英文技术错误，统一给出刷新合同、补齐阻断项、选择编号规则或联系管理员的中文业务提示。本轮不改变合同提交审批事务、编号冻结、资料就绪校验、合同额度占用、审批实例和审计口径。验证：API 合同服务 Jest 57 项通过。
 - 2026-07-10 (CodeX)：继续推进合同审批处理错误中文化切片：处理合同审批时，如果合同版本不存在、合同已离开审批中、审批流程缺失、当前节点异常或当前账号无权处理，不再返回 `Contract version not found`、`Cannot review contract approval...`、`Contract approval instance/current node not found`、`Actor cannot approve...` 英文技术错误，统一给出刷新合同台账、刷新审批页面或无权处理的中文业务提示。本轮不改变合同审批状态机、角色/委托判断、OR签、用章、归档和审计口径。验证：API 合同服务 Jest 57 项、API typecheck、API lint 通过。

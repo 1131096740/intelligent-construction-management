@@ -1276,7 +1276,7 @@ export class ContractService {
     const contract = await tx.contract.findUnique({ where: { id: contractId } });
 
     if (!contract) {
-      throw new Error("Contract not found");
+      throw new Error("未找到合同主信息，请刷新合同后重试");
     }
 
     const [globalPositions, projectPositions, projectMembers] = await Promise.all([
@@ -1346,11 +1346,11 @@ export class ContractService {
       });
 
       if (!version) {
-        throw new Error("Contract version not found");
+        throw new Error("未找到要处理的合同审批任务，请刷新审批中心后重试");
       }
 
       if (version.status !== "in_approval") {
-        throw new Error(`Cannot assign contract approval from status ${version.status}`);
+        throw new Error("当前合同不在审批中，不能转交或委托审批");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -1363,21 +1363,21 @@ export class ContractService {
       });
 
       if (!instance) {
-        throw new Error("Contract approval instance not found");
+        throw new Error("未找到进行中的合同审批流程，请刷新审批中心后重试");
       }
 
       const nodes = instance.frozenNodes as unknown as ContractApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
 
       if (!currentNode) {
-        throw new Error("Contract approval current node not found");
+        throw new Error("当前合同审批节点异常，请刷新后重试");
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
       const fromRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
 
       if (!fromRoleKey) {
-        throw new Error(`Actor cannot assign contract node ${currentNode.name}`);
+        throw new Error("当前账号无权转交或委托该合同审批节点");
       }
 
       const nextNodes = [...nodes];
