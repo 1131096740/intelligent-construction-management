@@ -1,9 +1,9 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, type OnModuleInit } from "@nestjs/common";
 import { type FileObject, Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, extname, join, resolve, sep } from "node:path";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { basename, extname, join, parse, resolve, sep } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 
@@ -91,28 +91,71 @@ function roleKeysFromApprovalFrozenNodes(frozenNodes: unknown): RoleKey[] {
 }
 
 @Injectable()
-export class PrivateFileStorage {
+export class PrivateFileStorage implements OnModuleInit {
+  private readonly configuredRoot = process.env.FILE_STORAGE_ROOT;
   private readonly root = resolve(
-    process.env.FILE_STORAGE_ROOT ?? join(process.cwd(), "storage", "private")
+    this.configuredRoot ?? join(process.cwd(), "storage", "private")
   );
 
+  onModuleInit() {
+    this.assertConfigured();
+  }
+
+  assertConfigured() {
+    if (this.useCos()) {
+      const requiredKeys = [
+        "COS_BUCKET",
+        "COS_REGION",
+        "COS_SECRET_ID",
+        "COS_SECRET_KEY"
+      ] as const;
+      const missingKeys = requiredKeys.filter((key) => !process.env[key]?.trim());
+      if (missingKeys.length) {
+        throw new Error(`私有对象存储配置缺失：${missingKeys.join("、")}`);
+      }
+      return;
+    }
+
+    if (
+      (this.configuredRoot !== undefined && !this.configuredRoot.trim()) ||
+      this.root.includes("\0") ||
+      this.root === parse(this.root).root ||
+      this.root === resolve(process.cwd())
+    ) {
+      throw new Error("FILE_STORAGE_ROOT 配置不安全，请设置为专用私有文件目录");
+    }
+
+    this.resolveObjectKey(".storage-config-check");
+  }
+
   async write(objectKey: string, buffer: Buffer) {
+    const target = this.resolveObjectKey(objectKey);
     if (this.useCos()) {
       await this.cosRequest("PUT", objectKey, buffer);
       return;
     }
 
-    const target = this.resolveObjectKey(objectKey);
     await mkdir(resolve(target, ".."), { recursive: true });
     await writeFile(target, buffer);
   }
 
   async read(objectKey: string) {
+    const target = this.resolveObjectKey(objectKey);
     if (this.useCos()) {
       return this.cosRequest("GET", objectKey);
     }
 
-    return readFile(this.resolveObjectKey(objectKey));
+    return readFile(target);
+  }
+
+  async delete(objectKey: string): Promise<void> {
+    const target = this.resolveObjectKey(objectKey);
+    if (this.useCos()) {
+      await this.cosRequest("DELETE", objectKey);
+      return;
+    }
+
+    await rm(target, { force: true });
   }
 
   bucketName() {
@@ -120,9 +163,19 @@ export class PrivateFileStorage {
   }
 
   private resolveObjectKey(objectKey: string) {
+    const segments = objectKey.split("/");
+    if (
+      !objectKey.trim() ||
+      objectKey.includes("\0") ||
+      objectKey.includes("\\") ||
+      segments.some((segment) => !segment || segment === "." || segment === "..")
+    ) {
+      throw new Error("私有文件路径无效，系统已阻止本次文件读取。");
+    }
+
     const target = resolve(this.root, objectKey);
     const rootPrefix = this.root.endsWith(sep) ? this.root : `${this.root}${sep}`;
-    if (target !== this.root && !target.startsWith(rootPrefix)) {
+    if (target === this.root || !target.startsWith(rootPrefix)) {
       throw new Error("私有文件路径无效，系统已阻止本次文件读取。");
     }
 
@@ -133,8 +186,8 @@ export class PrivateFileStorage {
     return process.env.FILE_STORAGE_DRIVER === "cos";
   }
 
-  private async cosRequest(method: "GET" | "PUT", objectKey: string, body?: Buffer) {
-    // ponytail: direct COS XML PUT/GET; switch to SDK when multipart/resumable upload matters.
+  private async cosRequest(method: "DELETE" | "GET" | "PUT", objectKey: string, body?: Buffer) {
+    // ponytail: direct COS XML operations; switch to SDK when multipart/resumable upload matters.
     const bucket = this.requiredEnv("COS_BUCKET");
     const region = this.requiredEnv("COS_REGION");
     const host = `${bucket}.cos.${region}.myqcloud.com`;
@@ -148,18 +201,20 @@ export class PrivateFileStorage {
       body: body ? new Uint8Array(body) : undefined
     });
 
-    if (!response.ok) {
+    if (!response.ok && !(method === "DELETE" && response.status === 404)) {
       throw new Error(
         method === "PUT"
           ? "私有文件上传到对象存储失败，请稍后重试或联系管理员"
-          : "资料文件暂时无法从对象存储读取，请稍后重试或联系管理员"
+          : method === "GET"
+            ? "资料文件暂时无法从对象存储读取，请稍后重试或联系管理员"
+            : "私有文件从对象存储删除失败，请稍后重试或联系管理员"
       );
     }
 
     return Buffer.from(await response.arrayBuffer());
   }
 
-  private cosAuthorization(method: "GET" | "PUT", pathname: string, host: string) {
+  private cosAuthorization(method: "DELETE" | "GET" | "PUT", pathname: string, host: string) {
     const secretId = this.requiredEnv("COS_SECRET_ID");
     const secretKey = this.requiredEnv("COS_SECRET_KEY");
     const now = Math.floor(Date.now() / 1000);

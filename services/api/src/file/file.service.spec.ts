@@ -1,6 +1,41 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService, PrivateFileStorage } from "./file.service";
+
+const STORAGE_ENV_KEYS = [
+  "FILE_STORAGE_DRIVER",
+  "FILE_STORAGE_ROOT",
+  "COS_SECRET_ID",
+  "COS_SECRET_KEY",
+  "COS_BUCKET",
+  "COS_REGION"
+] as const;
+
+function snapshotStorageEnv() {
+  return Object.fromEntries(STORAGE_ENV_KEYS.map((key) => [key, process.env[key]])) as Record<
+    (typeof STORAGE_ENV_KEYS)[number],
+    string | undefined
+  >;
+}
+
+function restoreStorageEnv(snapshot: ReturnType<typeof snapshotStorageEnv>) {
+  STORAGE_ENV_KEYS.forEach((key) => {
+    const value = snapshot[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  });
+}
+
+function configureCosStorage() {
+  process.env.FILE_STORAGE_DRIVER = "cos";
+  process.env.COS_SECRET_ID = "secret-id";
+  process.env.COS_SECRET_KEY = "secret-key";
+  process.env.COS_BUCKET = "private-bucket";
+  process.env.COS_REGION = "ap-guangzhou";
+}
 
 describe("FileService", () => {
   const audit = {
@@ -61,6 +96,201 @@ describe("FileService", () => {
       } else {
         process.env.FILE_STORAGE_ROOT = previousRoot;
       }
+    }
+  });
+
+  it("deletes local private files and treats a missing object as success", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = join(temporaryRoot, "private");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+      expect(() => privateStorage.onModuleInit()).not.toThrow();
+      await privateStorage.write("uploads/file.pdf", Buffer.from("private-file"));
+
+      await expect(privateStorage.delete("uploads/file.pdf")).resolves.toBeUndefined();
+      await expect(readFile(join(temporaryRoot, "private/uploads/file.pdf"))).rejects.toMatchObject({
+        code: "ENOENT"
+      });
+      await expect(privateStorage.delete("uploads/file.pdf")).resolves.toBeUndefined();
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("rejects an unsafe COS delete key before making a network request", async () => {
+    const previous = snapshotStorageEnv();
+    process.env.FILE_STORAGE_DRIVER = "cos";
+    const fetchMock = jest.spyOn(globalThis, "fetch");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await expect(privateStorage.delete("../outside.pdf")).rejects.toThrow(
+        "私有文件路径无效，系统已阻止本次文件读取。"
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("rejects an out-of-root delete without touching the outside file", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const outsideFile = join(temporaryRoot, "outside.pdf");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = join(temporaryRoot, "private");
+    await writeFile(outsideFile, "outside-file");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await expect(privateStorage.delete("../outside.pdf")).rejects.toThrow(
+        "私有文件路径无效，系统已阻止本次文件读取。"
+      );
+      await expect(readFile(outsideFile, "utf8")).resolves.toBe("outside-file");
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it.each([204, 299, 404])(
+    "deletes a private COS object idempotently when COS returns %s",
+    async (status) => {
+      const previous = snapshotStorageEnv();
+      configureCosStorage();
+      const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: status >= 200 && status < 300,
+        status,
+        arrayBuffer: async () => new ArrayBuffer(0)
+      } as Response);
+      const dateNowMock = jest.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+
+      try {
+        const privateStorage = new PrivateFileStorage();
+
+        await expect(privateStorage.delete("uploads/合同.pdf")).resolves.toBeUndefined();
+        expect(fetchMock).toHaveBeenCalledWith(
+          "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/%E5%90%88%E5%90%8C.pdf",
+          expect.objectContaining({
+            method: "DELETE",
+            headers: expect.objectContaining({
+              Host: "private-bucket.cos.ap-guangzhou.myqcloud.com",
+              Authorization:
+                "q-sign-algorithm=sha1&q-ak=secret-id&q-sign-time=1700000000;1700000600" +
+                "&q-key-time=1700000000;1700000600&q-header-list=host&q-url-param-list=" +
+                "&q-signature=2f3f64220aaf82422875fb3bc0b85f3a1601090a"
+            })
+          })
+        );
+      } finally {
+        dateNowMock.mockRestore();
+        fetchMock.mockRestore();
+        restoreStorageEnv(previous);
+      }
+    }
+  );
+
+  it("uses a safe business message when COS delete fails", async () => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 500,
+      arrayBuffer: async () => new ArrayBuffer(0)
+    } as Response);
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+      const action = privateStorage.delete("uploads/file.pdf");
+
+      await expect(action).rejects.toThrow("私有文件从对象存储删除失败，请稍后重试或联系管理员");
+      await expect(action).rejects.not.toThrow("secret-key");
+    } finally {
+      fetchMock.mockRestore();
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it.each(["COS_BUCKET", "COS_REGION", "COS_SECRET_ID", "COS_SECRET_KEY"] as const)(
+    "fails storage startup when %s is missing without exposing configured values",
+    (missingKey) => {
+      const previous = snapshotStorageEnv();
+      configureCosStorage();
+      process.env.COS_SECRET_ID = "configured-secret-id";
+      process.env.COS_SECRET_KEY = "configured-secret-key";
+      process.env.COS_BUCKET = "configured-private-bucket";
+      delete process.env[missingKey];
+
+      try {
+        const privateStorage = new PrivateFileStorage();
+        expect(() => privateStorage.onModuleInit()).toThrow(missingKey);
+        let errorMessage = "";
+        try {
+          privateStorage.assertConfigured();
+        } catch (error) {
+          errorMessage = String(error);
+        }
+        expect(errorMessage).toContain(missingKey);
+        expect(errorMessage).not.toContain("configured-secret-id");
+        expect(errorMessage).not.toContain("configured-secret-key");
+        expect(errorMessage).not.toContain("configured-private-bucket");
+      } finally {
+        restoreStorageEnv(previous);
+      }
+    }
+  );
+
+  it("validates complete COS configuration at startup without contacting COS", () => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const fetchMock = jest.spyOn(globalThis, "fetch");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      expect(() => privateStorage.onModuleInit()).not.toThrow();
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it.each(["", "   ", "/", "."])(
+    "rejects an unsafe local storage root %j without touching the filesystem",
+    (root) => {
+      const previous = snapshotStorageEnv();
+      process.env.FILE_STORAGE_DRIVER = "local";
+      process.env.FILE_STORAGE_ROOT = root;
+
+      try {
+        const privateStorage = new PrivateFileStorage();
+
+        expect(() => privateStorage.onModuleInit()).toThrow("FILE_STORAGE_ROOT");
+      } finally {
+        restoreStorageEnv(previous);
+      }
+    }
+  );
+
+  it("accepts the default local storage root without creating it during startup", () => {
+    const previous = snapshotStorageEnv();
+    process.env.FILE_STORAGE_DRIVER = "local";
+    delete process.env.FILE_STORAGE_ROOT;
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      expect(() => privateStorage.onModuleInit()).not.toThrow();
+    } finally {
+      restoreStorageEnv(previous);
     }
   });
 
@@ -169,6 +399,32 @@ describe("FileService", () => {
       else process.env.COS_BUCKET = previous.bucket;
       if (previous.region === undefined) delete process.env.COS_REGION;
       else process.env.COS_REGION = previous.region;
+    }
+  });
+
+  it.each([
+    ["PUT", "私有文件上传到对象存储失败，请稍后重试或联系管理员"],
+    ["GET", "资料文件暂时无法从对象存储读取，请稍后重试或联系管理员"]
+  ] as const)("does not treat a COS %s 404 as success", async (method, message) => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      arrayBuffer: async () => new ArrayBuffer(0)
+    } as Response);
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+      const action =
+        method === "PUT"
+          ? privateStorage.write("uploads/file.pdf", Buffer.from("private-file"))
+          : privateStorage.read("uploads/file.pdf");
+
+      await expect(action).rejects.toThrow(message);
+    } finally {
+      fetchMock.mockRestore();
+      restoreStorageEnv(previous);
     }
   });
 
