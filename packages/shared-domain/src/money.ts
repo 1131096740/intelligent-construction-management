@@ -29,7 +29,7 @@ export function assertNonNegativeMoneyCentsText(
   value: string,
   fieldName: string
 ): MoneyCentsText {
-  if (!NON_NEGATIVE_CENTS_TEXT.test(value)) {
+  if (typeof value !== "string" || !NON_NEGATIVE_CENTS_TEXT.test(value)) {
     throw new Error(`${fieldName}必须填写 0 或更大的金额`);
   }
   return value;
@@ -39,7 +39,7 @@ export function assertPositiveMoneyCentsText(
   value: string,
   fieldName: string
 ): MoneyCentsText {
-  if (!POSITIVE_CENTS_TEXT.test(value)) {
+  if (typeof value !== "string" || !POSITIVE_CENTS_TEXT.test(value)) {
     throw new Error(`${fieldName}必须填写大于 0 的金额`);
   }
   return value;

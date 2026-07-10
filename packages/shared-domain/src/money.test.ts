@@ -43,4 +43,16 @@ describe("money helpers", () => {
     expect(() => assertPositiveMoneyCentsText("0", "金额")).toThrow();
     expect(() => assertPositiveMoneyCentsText("-1", "金额")).toThrow();
   });
+
+  it("rejects non-string values in the non-negative text helper", () => {
+    expect(() =>
+      assertNonNegativeMoneyCentsText(1 as unknown as string, "金额")
+    ).toThrow("金额必须填写 0 或更大的金额");
+  });
+
+  it("rejects non-string values in the positive text helper", () => {
+    expect(() =>
+      assertPositiveMoneyCentsText(1 as unknown as string, "金额")
+    ).toThrow("金额必须填写大于 0 的金额");
+  });
 });
