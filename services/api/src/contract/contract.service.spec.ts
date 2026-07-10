@@ -685,6 +685,52 @@ describe("ContractService", () => {
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
   });
 
+  it("rejects approval submission when the contract amount is zero", async () => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 4,
+      amountCents: BigInt(0),
+      readinessSnapshot: null,
+      templateSnapshot: { fieldSchema: [] },
+      clauseSnapshot: []
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([version]),
+      projectOwnerContract: { findMany: jest.fn() },
+      contractVersion: {
+        findMany: jest.fn(),
+        updateMany: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: null,
+          voidedAt: null,
+          code: "HT-JGXM-2026-材料-001",
+          projectId: "project-1"
+        }),
+        findMany: jest.fn(),
+        updateMany: jest.fn()
+      },
+      approvalInstance: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.submitApproval("contract-version-1", "user-contract-staff")
+    ).rejects.toThrow("合同金额必须大于 0，不能提交零金额或负数合同审批");
+    expect(tx.projectOwnerContract.findMany).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
+
   it("continues approval submission when effective owner contract quota is enough", async () => {
     const version = {
       id: "contract-version-1",

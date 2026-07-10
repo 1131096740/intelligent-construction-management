@@ -450,7 +450,7 @@ export class ContractService {
   ) {
     const requestedAmountCents = BigInt(amountCents);
     if (requestedAmountCents <= 0n) {
-      throw new BadRequestException("Contract amount must be greater than zero");
+      throw new BadRequestException("合同金额必须大于 0，不能提交零金额或负数合同审批");
     }
 
     await tx.$queryRaw(Prisma.sql`
