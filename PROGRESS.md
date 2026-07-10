@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进合同审批前置错误中文化切片：合同审批遇到不支持的处理方式、驳回或退回未填写审批意见时，不再返回 `Unsupported contract approval decision` 或 `Contract approval comment is required...` 英文技术错误，统一给出刷新页面重试、填写审批意见的中文业务提示。本轮不改变合同审批状态机、OR签、转交/委托、用章、归档和审计口径。验证：API 合同服务 Jest 48 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算审批动作服务错误中文化切片：结算审批、审批撤回、审批催办、审批转交/委托在后端服务暂不可用时，不再返回 `Prisma service is required... settlement approval` 英文技术错误，分别给出审批、撤回、催办、转交的中文业务提示。本轮不改变结算审批状态机、会签/转交/委托权限、归档确认、付款容量和审计口径。验证：API 结算服务 Jest 102 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进付款审批动作服务错误中文化切片：付款审批、审批撤回、审批催办、审批转交/委托在后端服务暂不可用时，不再返回 `Prisma service is required... payment approval` 英文技术错误，分别给出审批、撤回、催办、转交的中文业务提示。本轮不改变付款审批状态机、OR签、转交/委托权限、付款容量、实付和审计口径。验证：API 付款请求 Jest 138 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进结算归档上传服务错误中文化切片：上传签字版结算归档文件时，如果后端归档上传服务暂不可用，不再返回 `Prisma service is required to upload settlement archive file` 英文技术错误，统一提示稍后重试或联系管理员，并确认不会进入结算归档事务。本轮不改变结算归档上传状态机、私有文件权限、归档确认、付款容量和审计口径。验证：API 结算服务 Jest 98 项、API typecheck、API lint 通过。

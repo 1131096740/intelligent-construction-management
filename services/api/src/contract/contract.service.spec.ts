@@ -1368,7 +1368,7 @@ describe("ContractService", () => {
       service.reviewApproval("contract-version-1", "chairman-1", {
         decision: "invalid"
       } as never)
-    ).rejects.toThrow("Unsupported contract approval decision");
+    ).rejects.toThrow("不支持的合同审批处理方式，请刷新页面后重试");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -1383,7 +1383,7 @@ describe("ContractService", () => {
         decision: "reject",
         comment: "   "
       })
-    ).rejects.toThrow("approval comment is required");
+    ).rejects.toThrow("请填写审批意见，说明驳回或退回原因");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
