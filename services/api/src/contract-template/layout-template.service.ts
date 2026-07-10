@@ -90,12 +90,12 @@ export class LayoutTemplateService {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
       const file = await tx.fileObject.findUnique({ where: { id: input.docxFileId } });
-      if (!file) throw new NotFoundException("Layout source file not found");
+      if (!file) throw new NotFoundException("未找到版式源文件，请重新上传 DOCX 文件");
       if (file.uploadedByUserId !== actorUserId) {
-        throw new ForbiddenException("Layout source file must be uploaded by the actor");
+        throw new ForbiddenException("只能使用本人上传的版式源文件");
       }
       if (!file.originalName.toLowerCase().endsWith(".docx")) {
-        throw new BadRequestException("Layout source must be a DOCX file");
+        throw new BadRequestException("版式源文件必须是 DOCX 文件");
       }
 
       const template = await tx.contractLayoutTemplate.create({
@@ -124,7 +124,7 @@ export class LayoutTemplateService {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "draft") {
-        throw new BadRequestException("Only draft layout versions can be inspected");
+        throw new BadRequestException("只有草稿状态的合同版式可以检查");
       }
       const source = await this.files.getFileBuffer(version.docxFileId);
       const report = this.inspectDocx(source.buffer, version.placeholderSchema);
@@ -133,7 +133,7 @@ export class LayoutTemplateService {
         data: { inspectionReport: report as unknown as Prisma.InputJsonValue }
       });
       if (result.count !== 1) {
-        throw new BadRequestException("Layout version status changed");
+        throw new BadRequestException("合同版式状态已变化，请刷新后重试");
       }
       await this.record(tx, actorUserId, "inspect", versionId);
       return report;
@@ -145,14 +145,14 @@ export class LayoutTemplateService {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "draft") {
-        throw new BadRequestException("Only draft layout versions can be previewed");
+        throw new BadRequestException("只有草稿状态的合同版式可以生成预览");
       }
       const result = await tx.contractLayoutTemplateVersion.updateMany({
         where: { id: versionId, status: "draft" },
         data: { status: "draft" }
       });
       if (result.count !== 1) {
-        throw new BadRequestException("Layout version status changed");
+        throw new BadRequestException("合同版式状态已变化，请刷新后重试");
       }
       const job = await tx.contractLayoutPreviewJob.create({
         data: {
@@ -182,18 +182,18 @@ export class LayoutTemplateService {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "draft") {
-        throw new BadRequestException("Only draft layout versions can be submitted");
+        throw new BadRequestException("只有草稿状态的合同版式可以提交");
       }
       const report = version.inspectionReport as unknown as LayoutInspectionReport | null;
       if (!report || report.blockingErrors.length) {
-        throw new BadRequestException("Layout inspection has blocking errors");
+        throw new BadRequestException("版式检查仍有阻断项，请处理后再提交或发布");
       }
       const result = await tx.contractLayoutTemplateVersion.updateMany({
         where: { id: versionId, status: "draft" },
         data: { status: "submitted", submittedByUserId: actorUserId }
       });
       if (result.count !== 1) {
-        throw new BadRequestException("Layout version status changed");
+        throw new BadRequestException("合同版式状态已变化，请刷新后重试");
       }
       await this.record(tx, actorUserId, "submit", versionId);
       return { ...version, status: "submitted", submittedByUserId: actorUserId };
@@ -205,18 +205,18 @@ export class LayoutTemplateService {
       await this.assertGlobalRole(tx, actorUserId, "contract_director");
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "submitted") {
-        throw new BadRequestException("Only submitted layout versions can be published");
+        throw new BadRequestException("只有已提交的合同版式可以发布");
       }
       const report = version.inspectionReport as unknown as LayoutInspectionReport | null;
       if (!report || report.blockingErrors.length) {
-        throw new BadRequestException("Layout inspection has blocking errors");
+        throw new BadRequestException("版式检查仍有阻断项，请处理后再提交或发布");
       }
       const preview = await tx.contractLayoutPreviewJob.findFirst({
         where: { layoutTemplateVersionId: versionId },
         orderBy: { createdAt: "desc" }
       });
       if (preview?.status !== "succeeded" || !preview.previewPdfFileId) {
-        throw new BadRequestException("Latest layout preview has not succeeded");
+        throw new BadRequestException("请先生成并确认成功的版式预览");
       }
       const publishedAt = new Date();
       const result = await tx.contractLayoutTemplateVersion.updateMany({
@@ -230,7 +230,7 @@ export class LayoutTemplateService {
         }
       });
       if (result.count !== 1) {
-        throw new BadRequestException("Layout version status changed");
+        throw new BadRequestException("合同版式状态已变化，请刷新后重试");
       }
       await this.record(tx, actorUserId, "publish", versionId, { changeSummary });
       return {
@@ -249,7 +249,7 @@ export class LayoutTemplateService {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
       const source = await this.findVersion(tx, versionId);
       if (source.status !== "published") {
-        throw new BadRequestException("Only published layout versions can be cloned");
+        throw new BadRequestException("只有已发布的合同版式可以复制为新草稿");
       }
       const latest = await tx.contractLayoutTemplateVersion.findFirst({
         where: { layoutTemplateId: source.layoutTemplateId },
@@ -282,7 +282,7 @@ export class LayoutTemplateService {
       try {
         return new PizZip(buffer);
       } catch {
-        throw new BadRequestException("Invalid DOCX layout source");
+        throw new BadRequestException("DOCX 版式文件无法读取，请重新上传");
       }
     })();
     const xmlEntries = Object.keys(zip.files)
@@ -297,7 +297,7 @@ export class LayoutTemplateService {
       0
     );
     if (uncompressedSize > DOCX_INSPECTION_XML_MAX_BYTES) {
-      throw new BadRequestException("DOCX inspection XML exceeds size limit");
+      throw new BadRequestException("DOCX 版式内容过大，无法完成检查");
     }
     let text: string;
     let styles: string;
@@ -308,7 +308,7 @@ export class LayoutTemplateService {
         .join("\n");
       styles = xmlEntries.find((entry) => entry.name === "word/styles.xml")?.asText() ?? "";
     } catch {
-      throw new BadRequestException("Invalid DOCX layout source");
+      throw new BadRequestException("DOCX 版式文件无法读取，请重新上传");
     }
     const rawTags = this.extractTemplateTags(text);
     const placeholders = [
@@ -412,7 +412,7 @@ export class LayoutTemplateService {
       await this.assertGlobalRole(tx, actorUserId, "contract_director");
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "published") {
-        throw new BadRequestException(`Only published layout versions can be ${status}`);
+        throw new BadRequestException("只有已发布的合同版式可以停用或撤回");
       }
       const changedAt = new Date();
       const result = await tx.contractLayoutTemplateVersion.updateMany({
@@ -423,7 +423,7 @@ export class LayoutTemplateService {
         }
       });
       if (result.count !== 1) {
-        throw new BadRequestException("Layout version status changed");
+        throw new BadRequestException("合同版式状态已变化，请刷新后重试");
       }
       await this.record(tx, actorUserId, status, versionId);
       return {
@@ -467,7 +467,7 @@ export class LayoutTemplateService {
     const version = await tx.contractLayoutTemplateVersion.findUnique({
       where: { id: versionId }
     });
-    if (!version) throw new NotFoundException("Layout version not found");
+    if (!version) throw new NotFoundException("未找到合同版式版本，请刷新后重试");
     return version;
   }
 
@@ -485,7 +485,11 @@ export class LayoutTemplateService {
         })
       : [];
     if (!positions.some((position) => position.key === roleKey)) {
-      throw new ForbiddenException(`Requires global role: ${roleKey}`);
+      throw new ForbiddenException(
+        roleKey === "contract_staff"
+          ? "只有合同经办人可以执行该版式操作"
+          : "只有合同主管可以执行该版式操作"
+      );
     }
   }
 

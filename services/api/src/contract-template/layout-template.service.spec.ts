@@ -71,7 +71,7 @@ describe("LayoutTemplateService", () => {
         docxFileId: "file-1",
         placeholderSchema: { bills: [] }
       })
-    ).rejects.toThrow("Layout source must be a DOCX file");
+    ).rejects.toThrow("版式源文件必须是 DOCX 文件");
   });
 
   it("rejects a DOCX uploaded by another user", async () => {
@@ -99,7 +99,7 @@ describe("LayoutTemplateService", () => {
         docxFileId: "file-1",
         placeholderSchema: { bills: [] }
       })
-    ).rejects.toThrow("Layout source file must be uploaded by the actor");
+    ).rejects.toThrow("只能使用本人上传的版式源文件");
     expect(tx.contractLayoutTemplate.create).not.toHaveBeenCalled();
   });
 
@@ -337,7 +337,7 @@ describe("LayoutTemplateService", () => {
     const service = new LayoutTemplateService(prisma, audit as never, files as never);
 
     await expect(service.inspectVersion("version-1", "staff-1")).rejects.toThrow(
-      "DOCX inspection XML exceeds size limit"
+      "DOCX 版式内容过大，无法完成检查"
     );
     expect(tx.contractLayoutTemplateVersion.updateMany).not.toHaveBeenCalled();
   });
@@ -387,7 +387,7 @@ describe("LayoutTemplateService", () => {
     const service = new LayoutTemplateService(prisma, audit as never, files as never);
 
     await expect(service.queuePreview("version-1", "staff-1", {})).rejects.toThrow(
-      "Only draft layout versions can be previewed"
+      "只有草稿状态的合同版式可以生成预览"
     );
     expect(tx.contractLayoutPreviewJob.create).not.toHaveBeenCalled();
   });
@@ -428,7 +428,7 @@ describe("LayoutTemplateService", () => {
     const service = new LayoutTemplateService(prisma, audit as never, files as never);
 
     await expect(service.getLatestPreview("version-1", "director-1")).rejects.toThrow(
-      "Requires global role: contract_staff"
+      "只有合同经办人可以执行该版式操作"
     );
     expect(tx.contractLayoutPreviewJob.findFirst).not.toHaveBeenCalled();
   });
@@ -479,7 +479,7 @@ describe("LayoutTemplateService", () => {
     });
     await expect(
       service.publishVersion("version-1", "director-1", "blocked")
-    ).rejects.toThrow("Layout inspection has blocking errors");
+    ).rejects.toThrow("版式检查仍有阻断项，请处理后再提交或发布");
   });
 
   it("rejects publication when the expected status changed concurrently", async () => {
@@ -506,7 +506,7 @@ describe("LayoutTemplateService", () => {
     const service = new LayoutTemplateService(prisma, audit as never, files as never);
 
     await expect(service.publishVersion("version-1", "director-1", "首发")).rejects.toThrow(
-      "Layout version status changed"
+      "合同版式状态已变化，请刷新后重试"
     );
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -569,7 +569,7 @@ describe("LayoutTemplateService", () => {
     const service = new LayoutTemplateService(prisma, audit as never, files as never);
 
     await expect(service.inspectVersion("version-1", "staff-1")).rejects.toThrow(
-      "Only draft layout versions can be inspected"
+      "只有草稿状态的合同版式可以检查"
     );
     expect(tx.contractLayoutTemplateVersion.updateMany).not.toHaveBeenCalled();
   });
