@@ -49,25 +49,25 @@ describe("project-operating proxy payment helpers", () => {
         id: "project-a",
         code: "P-A",
         name: "一号项目",
-        contractAmountCents: 10_000_000,
-        settlementAmountCents: 6_000_000,
-        payableAmountCents: 4_000_000,
-        actualReceiptsCents: 5_000_000,
-        actualPaidCents: 2_000_000,
-        approvedPendingPaymentCents: 1_000_000,
-        availableFundsCents: 3_000_000,
+        contractAmountCents: "10000000",
+        settlementAmountCents: "6000000",
+        payableAmountCents: "4000000",
+        actualReceiptsCents: "5000000",
+        actualPaidCents: "2000000",
+        approvedPendingPaymentCents: "1000000",
+        availableFundsCents: "3000000",
         dataGaps: ["缺收款依据"]
       }),
       projectOverview({
         id: "project-b",
         code: "P-B",
         name: "二号项目",
-        contractAmountCents: 20_000_000,
-        settlementAmountCents: 8_000_000,
-        payableAmountCents: 5_000_000,
+        contractAmountCents: "20000000",
+        settlementAmountCents: "8000000",
+        payableAmountCents: "5000000",
         actualReceiptsCents: null,
-        actualPaidCents: 3_000_000,
-        approvedPendingPaymentCents: 2_000_000,
+        actualPaidCents: "3000000",
+        approvedPendingPaymentCents: "2000000",
         availableFundsCents: null,
         dataGaps: []
       })
@@ -76,13 +76,13 @@ describe("project-operating proxy payment helpers", () => {
     expect(overview.rows.map((row) => row.id)).toEqual(["project-b", "project-a"]);
     expect(overview.summary).toEqual({
       projectCount: 2,
-      contractAmountCents: 30_000_000,
-      settlementAmountCents: 14_000_000,
-      payableAmountCents: 9_000_000,
-      actualReceiptsCents: 5_000_000,
-      actualPaidCents: 5_000_000,
-      approvedPendingPaymentCents: 3_000_000,
-      availableFundsCents: 3_000_000,
+      contractAmountCents: "30000000",
+      settlementAmountCents: "14000000",
+      payableAmountCents: "9000000",
+      actualReceiptsCents: "5000000",
+      actualPaidCents: "5000000",
+      approvedPendingPaymentCents: "3000000",
+      availableFundsCents: "3000000",
       dataGapCount: 1
     });
   });
@@ -95,7 +95,7 @@ function contractOption(): ContractBusinessOptionReadModel {
     contractNo: "HT-001",
     contractName: "材料采购合同",
     counterparty: "供应商",
-    amountCents: 1_000_000,
+    amountCents: "1000000",
     versionLabel: "合同 v1",
     contractStatus: "effective",
     contractStatusLabel: "已生效",
@@ -114,9 +114,9 @@ function contractOption(): ContractBusinessOptionReadModel {
         settlementId: "settlement-1",
         settlementNo: "JS-001",
         periodLabel: "2026-06",
-        amountCents: 500_000,
-        payableAmountCents: 400_000,
-        paidAmountCents: 100_000,
+        amountCents: "500000",
+        payableAmountCents: "400000",
+        paidAmountCents: "100000",
         status: "effective",
         statusLabel: "已生效",
         canCreatePayment: true,
@@ -130,13 +130,13 @@ function projectOverview(overrides: {
   id: string;
   code: string;
   name: string;
-  contractAmountCents: number;
-  settlementAmountCents: number;
-  payableAmountCents: number;
-  actualReceiptsCents: number | null;
-  actualPaidCents: number;
-  approvedPendingPaymentCents: number;
-  availableFundsCents: number | null;
+  contractAmountCents: string;
+  settlementAmountCents: string;
+  payableAmountCents: string;
+  actualReceiptsCents: string | null;
+  actualPaidCents: string;
+  approvedPendingPaymentCents: string;
+  availableFundsCents: string | null;
   dataGaps: string[];
 }) {
   return {
@@ -149,9 +149,9 @@ function projectOverview(overrides: {
       actualReceiptsCents: overrides.actualReceiptsCents,
       availableFundsCents: overrides.availableFundsCents,
       actualPaidCents: overrides.actualPaidCents,
-      approvalPendingOccupancyCents: 0,
+      approvalPendingOccupancyCents: "0",
       approvedPendingPaymentCents: overrides.approvedPendingPaymentCents,
-      financeRecordedOutflowCents: 0
+      financeRecordedOutflowCents: "0"
     },
     business: {
       effectiveContractAmountCents: overrides.contractAmountCents,

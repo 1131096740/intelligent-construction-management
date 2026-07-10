@@ -2695,7 +2695,7 @@ describe("ContractService", () => {
           contractId: "contract-1",
           versionNo: 1,
           status: "effective",
-          amountCents: 1_000_000
+          amountCents: 1_000_000n
         })
       },
       contract: {

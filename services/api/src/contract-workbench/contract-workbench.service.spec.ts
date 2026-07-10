@@ -123,7 +123,7 @@ describe("ContractWorkbenchService", () => {
       clauses: [],
       pricingNature: "fixed_total",
       amountSource: "manual",
-      manualAmountCents: 1_000_000
+      manualAmountCents: "1000000"
     });
 
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
@@ -158,7 +158,7 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: 1_000_000,
+        manualAmountCents: "1000000",
         amountAdjustmentReason: "草稿尚未录完"
       })
     ).resolves.toBeDefined();
@@ -183,7 +183,7 @@ describe("ContractWorkbenchService", () => {
       clauses: [],
       pricingNature: "fixed_total",
       amountSource: "manual",
-      manualAmountCents: 1_000_000,
+      manualAmountCents: "1000000",
       paymentTermsOriginalText: "结算归档后30天内付款80%。",
       paymentStages: [
         {
@@ -238,7 +238,7 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: 1_000_000
+        manualAmountCents: "1000000"
       })
     ).rejects.toThrow("stale update failed");
 
@@ -276,7 +276,7 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: 1_000_000
+        manualAmountCents: "1000000"
       })
     ).rejects.toThrow("合同草稿已被他人更新，请刷新后重新编辑");
 
@@ -295,7 +295,7 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: 1_000_000
+        manualAmountCents: "1000000"
       })
     ).rejects.toThrow();
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -413,7 +413,7 @@ describe("ContractWorkbenchService", () => {
     );
   });
 
-  it("returns a JSON-safe detail read model with numeric money and string decimals", async () => {
+  it("returns a JSON-safe detail read model with string money and string decimals", async () => {
     const prisma = {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
@@ -503,8 +503,8 @@ describe("ContractWorkbenchService", () => {
     const result = await service.getDraft("contract-1", "owner-1");
 
     expect(() => JSON.stringify(result)).not.toThrow();
-    expect(result.version.amountCents).toBe(1_234_500);
-    expect(result.bills[0]?.taxInclusiveAmountCents).toBe(1_234_500);
+    expect(result.version.amountCents).toBe("1234500");
+    expect(result.bills[0]?.taxInclusiveAmountCents).toBe("1234500");
     expect(result.bills[0]?.rows[0]?.quantity).toBe("2.5");
     expect(result.paymentTerms).toEqual({
       originalText: "结算归档后30天内付款80%。",
@@ -1068,7 +1068,7 @@ describe("ContractWorkbenchService", () => {
         clauses: [{ key: "clause_1" }],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: 1
+        manualAmountCents: 1n
       })
     ).rejects.toMatchObject({ name: "BadRequestException" });
     await expect(service.voidDraft("contract-1", "owner-1", null)).rejects.toMatchObject({
@@ -1561,7 +1561,7 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: 1_000_000
+        manualAmountCents: "1000000"
       })
     ).rejects.toThrow("合同草稿已变化，请刷新后重试");
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
@@ -1640,7 +1640,7 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: 1_000_000
+        manualAmountCents: "1000000"
       })
     ).rejects.toThrow("合同草稿已变化，请刷新后重试");
     expect(audit.record).not.toHaveBeenCalled();

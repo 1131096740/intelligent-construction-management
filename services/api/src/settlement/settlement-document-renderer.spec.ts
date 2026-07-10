@@ -18,9 +18,9 @@ const baseInput: SettlementDocumentInput = {
   contractName: "幕墙分包合同",
   counterparty: "上海示例劳务有限公司",
   companyEntityName: "建工智管工程有限公司",
-  amountCents: 1_000_000,
-  payableAmountCents: 800_000,
-  previousEffectiveSettlementCents: 300_000,
+  amountCents: 1_000_000n,
+  payableAmountCents: 800_000n,
+  previousEffectiveSettlementCents: 300_000n,
   isFinal: false,
   generatedAt: new Date("2026-07-03T00:00:00.000Z"),
   approvalRows: [
@@ -64,18 +64,18 @@ describe("settlement document renderer", () => {
     const rows = settlementDocumentRows({
       ...baseInput,
       isFinal: true,
-      amountCents: 300_000,
-      previousEffectiveSettlementCents: 900_000,
-      finalCumulativeAmountCents: 1_200_000
+      amountCents: 300_000n,
+      previousEffectiveSettlementCents: 900_000n,
+      finalCumulativeAmountCents: 1_200_000n
     });
 
     expect(rows).toEqual([
       {
         source: "最终结算",
-        previousCumulativeCents: 900_000,
-        currentSettlementCents: 300_000,
-        afterCumulativeCents: 1_200_000,
-        payableAmountCents: 800_000,
+        previousCumulativeCents: 900_000n,
+        currentSettlementCents: 300_000n,
+        afterCumulativeCents: 1_200_000n,
+        payableAmountCents: 800_000n,
         remark: "最终审定累计结算总额 - 前序已生效累计结算金额"
       }
     ]);

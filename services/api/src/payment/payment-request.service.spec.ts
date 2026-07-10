@@ -62,18 +62,18 @@ describe("PaymentRequestService", () => {
     financingQuotas = [],
     financingUsages = []
   }: {
-    receiptAmountCents?: number;
+    receiptAmountCents?: number | bigint;
     projectPayments?: Array<{
       status: string;
-      requestedAmountCents: number;
-      approvedAmountCents?: number | null;
-      paidAmountCents: number;
+      requestedAmountCents: number | bigint;
+      approvedAmountCents?: number | bigint | null;
+      paidAmountCents: number | bigint;
     }>;
     projectExpenses?: Array<{
       status: string;
-      requestedAmountCents: number;
-      approvedAmountCents?: number | null;
-      paidAmountCents: number;
+      requestedAmountCents: number | bigint;
+      approvedAmountCents?: number | bigint | null;
+      paidAmountCents: number | bigint;
     }>;
     financingQuotas?: Array<{ id: string; amountCents: bigint | number }>;
     financingUsages?: Array<{ quotaId: string; amountCents: bigint | number }>;
@@ -134,9 +134,9 @@ describe("PaymentRequestService", () => {
       settlementId: string | null;
       sourceType: string;
       status: string;
-      requestedAmountCents: number;
-      approvedAmountCents: number | null;
-      paidAmountCents: number;
+      requestedAmountCents: number | bigint;
+      approvedAmountCents: number | bigint | null;
+      paidAmountCents: number | bigint;
     }> = {}
   ) {
     return {
@@ -148,9 +148,9 @@ describe("PaymentRequestService", () => {
       settlementId: "settlement-1",
       sourceType: "settlement",
       status: "approved_pending_payment",
-      requestedAmountCents: 50_000,
-      approvedAmountCents: 50_000,
-      paidAmountCents: 0,
+      requestedAmountCents: 50_000n,
+      approvedAmountCents: 50_000n,
+      paidAmountCents: 0n,
       ...overrides
     };
   }
@@ -160,7 +160,7 @@ describe("PaymentRequestService", () => {
       service.create({
         settlementId: "settlement-1",
         code: "FK-2026-012",
-        requestedAmountCents: 10_000
+        requestedAmountCents: "10000"
       })
     ).rejects.toThrow("付款申请创建服务暂不可用，请稍后重试或联系管理员");
   });
@@ -170,11 +170,11 @@ describe("PaymentRequestService", () => {
       service.assertRequestAllowed(
         "approved_pending_archive",
         {
-          payableAmountCents: 100_000,
-          approvedPendingPaymentCents: 0,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          approvedPendingPaymentCents: 0n,
+          paidAmountCents: 0n
         },
-        10_000
+        10_000n
       )
     ).toThrow("当前结算尚未归档生效，不能发起付款申请");
   });
@@ -184,11 +184,11 @@ describe("PaymentRequestService", () => {
       service.assertRequestAllowed(
         "effective",
         {
-          payableAmountCents: 100_000,
-          approvedPendingPaymentCents: 20_000,
-          paidAmountCents: 20_000
+          payableAmountCents: 100_000n,
+          approvedPendingPaymentCents: 20_000n,
+          paidAmountCents: 20_000n
         },
-        60_000
+        60_000n
       )
     ).not.toThrow();
   });
@@ -198,11 +198,11 @@ describe("PaymentRequestService", () => {
       service.assertRequestAllowed(
         "partially_paid",
         {
-          payableAmountCents: 100_000,
-          approvedPendingPaymentCents: 0,
-          paidAmountCents: 50_000
+          payableAmountCents: 100_000n,
+          approvedPendingPaymentCents: 0n,
+          paidAmountCents: 50_000n
         },
-        50_000
+        50_000n
       )
     ).not.toThrow();
   });
@@ -218,8 +218,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 20_000
+          payableAmountCents: 100_000n,
+          paidAmountCents: 20_000n
         })
       },
       paymentRequest: {
@@ -228,9 +228,9 @@ describe("PaymentRequestService", () => {
           .mockResolvedValueOnce([
             {
               status: "approved_pending_payment",
-              requestedAmountCents: 30_000,
-              approvedAmountCents: 30_000,
-              paidAmountCents: 10_000
+              requestedAmountCents: 30_000n,
+              approvedAmountCents: 30_000n,
+              paidAmountCents: 10_000n
             }
           ])
           .mockResolvedValueOnce(cashPool.projectPayments),
@@ -254,7 +254,7 @@ describe("PaymentRequestService", () => {
     const created = await paymentService.create({
       settlementId: "settlement-1",
       code: "FK-2026-012",
-      requestedAmountCents: 50_000
+      requestedAmountCents: "50000"
     });
 
     expect(created.code).toBe("FK-2026-012");
@@ -271,9 +271,9 @@ describe("PaymentRequestService", () => {
         paymentTermsVersionId: "terms-version-1",
         code: "FK-2026-012",
         status: "approval_pending",
-        requestedAmountCents: 50_000,
+        requestedAmountCents: 50_000n,
         approvedAmountCents: null,
-        paidAmountCents: 0
+        paidAmountCents: 0n
       }
     });
   });
@@ -289,8 +289,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 20_000
+          payableAmountCents: 100_000n,
+          paidAmountCents: 20_000n
         })
       },
       paymentRequest: {
@@ -316,7 +316,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-012",
-        requestedAmountCents: 50_000
+        requestedAmountCents: "50000"
       })
     ).rejects.toThrow("当前项目已停用，不能继续占用项目资金池发起付款");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -333,8 +333,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         })
       },
       contractTakeover: {
@@ -376,7 +376,7 @@ describe("PaymentRequestService", () => {
         {
           settlementId: "settlement-1",
           code: "FK-2026-HIS-001",
-          requestedAmountCents: 10_000
+          requestedAmountCents: "10000"
         },
         "applicant-1"
       )
@@ -409,8 +409,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         })
       },
       contractTakeover: {
@@ -453,7 +453,7 @@ describe("PaymentRequestService", () => {
         {
           settlementId: "settlement-1",
           code: "FK-2026-HIS-C-001",
-          requestedAmountCents: 10_000
+          requestedAmountCents: "10000"
         },
         "applicant-1"
       )
@@ -486,8 +486,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         })
       },
       paymentRequest: {
@@ -496,7 +496,7 @@ describe("PaymentRequestService", () => {
       },
       paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 80_000 }
+          { amountCents: 80_000n }
         ])
       },
       ...cashPool.tables,
@@ -514,7 +514,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-099",
-        requestedAmountCents: 30_000
+        requestedAmountCents: "30000"
       })
     ).rejects.toThrow("付款申请金额超过当前可申请余额，当前最多可申请 200.00 元");
 
@@ -533,7 +533,7 @@ describe("PaymentRequestService", () => {
     jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
 
     try {
-      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000n });
       const tx = {
         settlement: {
           findUnique: jest.fn()
@@ -610,7 +610,7 @@ describe("PaymentRequestService", () => {
         sourceType: "contract_advance",
         contractVersionId: "contract-version-1",
         code: "FK-YF-2026-001",
-        requestedAmountCents: 100_000
+        requestedAmountCents: "100000"
       } as never);
 
       expect(created.code).toBe("FK-YF-2026-001");
@@ -628,9 +628,9 @@ describe("PaymentRequestService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-YF-2026-001",
           status: "approval_pending",
-          requestedAmountCents: 100_000,
+          requestedAmountCents: 100_000n,
           approvedAmountCents: null,
-          paidAmountCents: 0
+          paidAmountCents: 0n
         }
       });
     } finally {
@@ -669,7 +669,7 @@ describe("PaymentRequestService", () => {
         sourceType: "contract_advance",
         contractVersionId: "contract-version-1",
         code: "FK-YF-2026-000",
-        requestedAmountCents: 0
+        requestedAmountCents: 0n
       } as never)
     ).rejects.toThrow("付款申请金额必须为大于 0 的整数分");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -713,7 +713,7 @@ describe("PaymentRequestService", () => {
           sourceType: "contract_advance",
           contractVersionId: "contract-version-1",
           code: "FK-YF-HIS-001",
-          requestedAmountCents: 10_000
+          requestedAmountCents: "10000"
         } as never,
         "applicant-1"
       )
@@ -740,7 +740,7 @@ describe("PaymentRequestService", () => {
     jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
 
     try {
-      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000n });
       const tx = {
         settlement: {
           findUnique: jest.fn(),
@@ -748,8 +748,8 @@ describe("PaymentRequestService", () => {
             {
               id: "settlement-1",
               status: "effective",
-              amountCents: 100_000,
-              paidAmountCents: 0,
+              amountCents: 100_000n,
+              paidAmountCents: 0n,
               contractVersionId: "contract-version-1",
               isFinal: false,
               paymentTermsVersionId: "terms-version-1"
@@ -840,7 +840,7 @@ describe("PaymentRequestService", () => {
         sourceType: "contract_due",
         contractVersionId: "contract-version-1",
         code: "FK-HT-2026-001",
-        requestedAmountCents: 80_000
+        requestedAmountCents: "80000"
       } as never);
 
       expect(created.code).toBe("FK-HT-2026-001");
@@ -863,9 +863,9 @@ describe("PaymentRequestService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-HT-2026-001",
           status: "approval_pending",
-          requestedAmountCents: 80_000,
+          requestedAmountCents: 80_000n,
           approvedAmountCents: null,
-          paidAmountCents: 0
+          paidAmountCents: 0n
         }
       });
     } finally {
@@ -897,22 +897,22 @@ describe("PaymentRequestService", () => {
         sourceType: "contract_due",
         contractVersionId: "contract-version-1",
         code: "FK-HT-2026-000",
-        requestedAmountCents: 0
+        requestedAmountCents: 0n
       } as never)
     ).rejects.toThrow("付款申请金额必须为大于 0 的整数分");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
   it("rejects contract due payment when historical balance is not confirmed", async () => {
-    const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+    const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000n });
     const tx = {
       settlement: {
         findMany: jest.fn().mockResolvedValue([
           {
             id: "settlement-1",
             status: "effective",
-            amountCents: 100_000,
-            paidAmountCents: 0,
+            amountCents: 100_000n,
+            paidAmountCents: 0n,
             contractVersionId: "contract-version-1",
             isFinal: false,
             paymentTermsVersionId: "terms-version-1"
@@ -1014,7 +1014,7 @@ describe("PaymentRequestService", () => {
           sourceType: "contract_due",
           contractVersionId: "contract-version-1",
           code: "FK-HT-2026-HIS-002",
-          requestedAmountCents: 80_000
+          requestedAmountCents: "80000"
         } as never,
         "applicant-1"
       )
@@ -1037,7 +1037,7 @@ describe("PaymentRequestService", () => {
   });
 
   it("rejects contract due payment when confirmed historical balances consume capacity", async () => {
-    const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+    const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000n });
     const confirmedAt = new Date("2026-07-01T00:00:00.000Z");
     const tx = {
       settlement: {
@@ -1045,8 +1045,8 @@ describe("PaymentRequestService", () => {
           {
             id: "settlement-1",
             status: "effective",
-            amountCents: 100_000,
-            paidAmountCents: 0,
+            amountCents: 100_000n,
+            paidAmountCents: 0n,
             contractVersionId: "contract-version-1",
             isFinal: false,
             paymentTermsVersionId: "terms-version-1"
@@ -1159,7 +1159,7 @@ describe("PaymentRequestService", () => {
         sourceType: "contract_due",
         contractVersionId: "contract-version-1",
         code: "FK-HT-HIS-CAP-001",
-        requestedAmountCents: 1
+        requestedAmountCents: "1"
       } as never)
     ).rejects.toThrow("合同应付款当前可申请金额不足，当前最多可申请 0.00 元");
 
@@ -1167,13 +1167,13 @@ describe("PaymentRequestService", () => {
   });
 
   it("allows contract due payment from a historical initial settlement without double counting historical paid", async () => {
-    const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+    const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000n });
     const confirmedAt = new Date("2026-07-01T00:00:00.000Z");
     const historicalSettlement = {
       id: "settlement-history",
       status: "effective",
-      amountCents: 100_000,
-      paidAmountCents: 40_000,
+      amountCents: 100_000n,
+      paidAmountCents: 40_000n,
       contractVersionId: "contract-version-1",
       isFinal: false,
       paymentTermsVersionId: "terms-version-1",
@@ -1295,14 +1295,14 @@ describe("PaymentRequestService", () => {
       sourceType: "contract_due",
       contractVersionId: "contract-version-1",
       code: "FK-HT-HIS-CAP-002",
-      requestedAmountCents: 60_000
+      requestedAmountCents: "60000"
     } as never);
 
     expect(tx.paymentRequest.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         settlementId: null,
         sourceType: "contract_due",
-        requestedAmountCents: 60_000
+        requestedAmountCents: 60_000n
       })
     });
   });
@@ -1324,7 +1324,7 @@ describe("PaymentRequestService", () => {
         settlementId: "settlement-in-other-project",
         contractVersionId: "contract-version-1",
         code: "FK-HT-2026-002",
-        requestedAmountCents: 80_000
+        requestedAmountCents: "80000"
       } as never)
     ).rejects.toThrow("按合同应付款发起付款时不能选择结算，请从合同付款入口办理");
     expect(tx.contractVersion.findUnique).not.toHaveBeenCalled();
@@ -1348,7 +1348,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         sourceType,
         code,
-        requestedAmountCents: 80_000
+        requestedAmountCents: "80000"
       } as never)
     ).rejects.toThrow("请选择已归档生效的合同后再发起付款申请");
     expect(tx.contractVersion.findUnique).not.toHaveBeenCalled();
@@ -1376,7 +1376,7 @@ describe("PaymentRequestService", () => {
         sourceType,
         contractVersionId: "contract-version-missing",
         code,
-        requestedAmountCents: 80_000
+        requestedAmountCents: "80000"
       } as never)
     ).rejects.toThrow("未找到合同版本，请刷新合同台账后重试");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -1410,7 +1410,7 @@ describe("PaymentRequestService", () => {
         sourceType,
         contractVersionId: "contract-version-1",
         code,
-        requestedAmountCents: 80_000
+        requestedAmountCents: "80000"
       } as never)
     ).rejects.toThrow("当前合同尚未归档生效，不能发起付款申请");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -1441,7 +1441,7 @@ describe("PaymentRequestService", () => {
         sourceType: "contract_advance",
         contractVersionId: "contract-version-1",
         code: "FK-YF-2026-NO-DATE",
-        requestedAmountCents: 80_000
+        requestedAmountCents: "80000"
       } as never)
     ).rejects.toThrow("合同生效日期缺失，不能发起预付款申请");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -1476,7 +1476,7 @@ describe("PaymentRequestService", () => {
         sourceType: "contract_due",
         contractVersionId: "contract-version-1",
         code: "FK-HT-2026-NO-CONTRACT",
-        requestedAmountCents: 80_000
+        requestedAmountCents: "80000"
       } as never)
     ).rejects.toThrow("未找到关联合同，请刷新合同台账后重试");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -1520,7 +1520,7 @@ describe("PaymentRequestService", () => {
         sourceType: "contract_advance",
         contractVersionId: "contract-version-1",
         code: "FK-YF-2026-NO-TERMS",
-        requestedAmountCents: 80_000
+        requestedAmountCents: "80000"
       } as never)
     ).rejects.toThrow("未找到已生效的付款条款，请先补齐合同付款条款");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -1531,7 +1531,7 @@ describe("PaymentRequestService", () => {
     jest.setSystemTime(new Date("2026-06-20T00:00:00.000Z"));
 
     try {
-      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000n });
       const tx = {
         contractVersion: {
           findUnique: jest.fn().mockResolvedValue({
@@ -1595,7 +1595,7 @@ describe("PaymentRequestService", () => {
           sourceType: "contract_advance",
           contractVersionId: "contract-version-1",
           code: "FK-YF-2026-002",
-          requestedAmountCents: 100_000
+          requestedAmountCents: "100000"
         } as never)
       ).rejects.toThrow("合同预付款当前可申请金额不足，当前最多可申请 0.00 元");
       expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -1683,7 +1683,7 @@ describe("PaymentRequestService", () => {
         sourceType: "contract_advance",
         contractVersionId: "contract-version-1",
         code: "FK-YF-HIS-CAP-001",
-        requestedAmountCents: 1
+        requestedAmountCents: "1"
       } as never)
     ).rejects.toThrow("合同预付款当前可申请金额不足，当前最多可申请 0.00 元");
 
@@ -1701,8 +1701,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         })
       },
       paymentRequest: {
@@ -1719,7 +1719,7 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           code: "FK-2026-012",
-          requestedAmountCents: 50_000
+          requestedAmountCents: "50000"
         })
       },
       approvalInstance: {
@@ -1744,7 +1744,7 @@ describe("PaymentRequestService", () => {
       {
         settlementId: "settlement-1",
         code: "FK-2026-012",
-        requestedAmountCents: 50_000
+        requestedAmountCents: "50000"
       },
       "contract-staff-1"
     );
@@ -1774,7 +1774,7 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           code: "FK-2026-012",
-          requestedAmountCents: 50_000
+          requestedAmountCents: "50000"
         }
       }
     });
@@ -1786,8 +1786,8 @@ describe("PaymentRequestService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
           status: "approval_pending",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         })
       },
       paymentRequest: {
@@ -1804,7 +1804,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-012",
-        requestedAmountCents: 50_000
+        requestedAmountCents: "50000"
       })
     ).rejects.toThrow("当前结算尚未归档生效，不能发起付款申请");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -1821,7 +1821,7 @@ describe("PaymentRequestService", () => {
         sourceType: "legacy_manual",
         settlementId: "settlement-1",
         code: "FK-2026-012",
-        requestedAmountCents: 50_000
+        requestedAmountCents: "50000"
       } as never)
     ).rejects.toThrow("不支持的付款申请来源，请从结算或合同付款入口发起");
   });
@@ -1840,7 +1840,7 @@ describe("PaymentRequestService", () => {
     await expect(
       paymentService.create({
         code: "FK-2026-012",
-        requestedAmountCents: 50_000
+        requestedAmountCents: "50000"
       })
     ).rejects.toThrow("请选择已归档生效的结算后再发起付款申请");
     expect(tx.settlement.findUnique).not.toHaveBeenCalled();
@@ -1864,7 +1864,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-012",
-        requestedAmountCents: 50_000
+        requestedAmountCents: "50000"
       })
     ).rejects.toThrow("未找到结算记录，请刷新结算台账后重试");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -1881,17 +1881,17 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 20_000
+          payableAmountCents: 100_000n,
+          paidAmountCents: 20_000n
         })
       },
       paymentRequest: {
         findMany: jest.fn().mockResolvedValue([
           {
             status: "approved_pending_payment",
-            requestedAmountCents: 30_000,
-            approvedAmountCents: 30_000,
-            paidAmountCents: 0
+            requestedAmountCents: 30_000n,
+            approvedAmountCents: 30_000n,
+            paidAmountCents: 0n
           }
         ]),
         create: jest.fn()
@@ -1906,7 +1906,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-012",
-        requestedAmountCents: 51_000
+        requestedAmountCents: "51000"
       })
     ).rejects.toThrow("付款申请金额超过当前可申请余额，当前最多可申请 500.00 元");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -1917,7 +1917,7 @@ describe("PaymentRequestService", () => {
     jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
 
     try {
-      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000n });
       const tx = {
         settlement: {
           findUnique: jest.fn().mockResolvedValue({
@@ -1927,22 +1927,22 @@ describe("PaymentRequestService", () => {
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-version-1",
             status: "effective",
-            amountCents: 100_000,
-            payableAmountCents: 100_000,
-            paidAmountCents: 0
+            amountCents: 100_000n,
+            payableAmountCents: 100_000n,
+            paidAmountCents: 0n
           }),
           findMany: jest.fn().mockResolvedValue([
             {
               id: "settlement-1",
-              amountCents: 100_000,
-              paidAmountCents: 0,
+              amountCents: 100_000n,
+              paidAmountCents: 0n,
               paymentTermsVersionId: "terms-version-1",
               status: "effective"
             },
             {
               id: "settlement-2",
-              amountCents: 100_000,
-              paidAmountCents: 0,
+              amountCents: 100_000n,
+              paidAmountCents: 0n,
               paymentTermsVersionId: "terms-version-1",
               status: "effective"
             }
@@ -1981,9 +1981,9 @@ describe("PaymentRequestService", () => {
                 {
                   settlementId: "settlement-2",
                   status: "approval_pending",
-                  requestedAmountCents: 30_000,
+                  requestedAmountCents: 30_000n,
                   approvedAmountCents: null,
-                  paidAmountCents: 0
+                  paidAmountCents: 0n
                 }
               ]);
             }
@@ -2007,7 +2007,7 @@ describe("PaymentRequestService", () => {
         paymentService.create({
           settlementId: "settlement-1",
           code: "FK-2026-014",
-          requestedAmountCents: 60_000
+          requestedAmountCents: "60000"
         })
       ).rejects.toThrow("合同应付款当前可申请金额不足，当前最多可申请 500.00 元");
       expect(tx.settlement.findMany).toHaveBeenCalledWith(
@@ -2052,7 +2052,7 @@ describe("PaymentRequestService", () => {
     jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
 
     try {
-      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000 });
+      const cashPool = projectCashPoolTables({ receiptAmountCents: 200_000n });
       const tx = {
         settlement: {
           findUnique: jest.fn().mockResolvedValue({
@@ -2062,15 +2062,15 @@ describe("PaymentRequestService", () => {
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-version-1",
             status: "effective",
-            amountCents: 100_000,
-            payableAmountCents: 100_000,
-            paidAmountCents: 0
+            amountCents: 100_000n,
+            payableAmountCents: 100_000n,
+            paidAmountCents: 0n
           }),
           findMany: jest.fn().mockResolvedValue([
             {
               id: "settlement-1",
-              amountCents: 100_000,
-              paidAmountCents: 0,
+              amountCents: 100_000n,
+              paidAmountCents: 0n,
               paymentTermsVersionId: "terms-version-1",
               status: "effective",
               isFinal: false
@@ -2123,9 +2123,9 @@ describe("PaymentRequestService", () => {
                 {
                   paymentTermsVersionId: "terms-version-1",
                   status: "paid",
-                  requestedAmountCents: 20_000,
-                  approvedAmountCents: 20_000,
-                  paidAmountCents: 20_000
+                  requestedAmountCents: 20_000n,
+                  approvedAmountCents: 20_000n,
+                  paidAmountCents: 20_000n
                 }
               ]);
             }
@@ -2154,7 +2154,7 @@ describe("PaymentRequestService", () => {
         paymentService.create({
           settlementId: "settlement-1",
           code: "FK-2026-ADV-DED",
-          requestedAmountCents: 61_000
+          requestedAmountCents: "61000"
         })
       ).rejects.toThrow("合同应付款当前可申请金额不足，当前最多可申请 600.00 元");
       expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
@@ -2178,19 +2178,19 @@ describe("PaymentRequestService", () => {
 
   it("blocks payment request creation when project cash pool is insufficient", async () => {
     const cashPool = projectCashPoolTables({
-      receiptAmountCents: 100_000,
+      receiptAmountCents: 100_000n,
       projectPayments: [
         {
           status: "paid",
-          requestedAmountCents: 80_000,
-          approvedAmountCents: 80_000,
-          paidAmountCents: 80_000
+          requestedAmountCents: 80_000n,
+          approvedAmountCents: 80_000n,
+          paidAmountCents: 80_000n
         },
         {
           status: "approval_pending",
-          requestedAmountCents: 10_000,
+          requestedAmountCents: 10_000n,
           approvedAmountCents: null,
-          paidAmountCents: 0
+          paidAmountCents: 0n
         }
       ]
     });
@@ -2203,8 +2203,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 200_000,
-          paidAmountCents: 0
+          payableAmountCents: 200_000n,
+          paidAmountCents: 0n
         })
       },
       paymentRequest: {
@@ -2225,7 +2225,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-013",
-        requestedAmountCents: 20_000
+        requestedAmountCents: "20000"
       })
     ).rejects.toThrow("项目现金资金池余额不足: 10000");
     expect(tx.$queryRaw).toHaveBeenCalled();
@@ -2238,7 +2238,7 @@ describe("PaymentRequestService", () => {
 
   it("occupies approved project financing quota when cash pool is insufficient", async () => {
     const cashPool = projectCashPoolTables({
-      receiptAmountCents: 20_000,
+      receiptAmountCents: 20_000n,
       financingQuotas: [{ id: "financing-quota-1", amountCents: BigInt(100_000) }]
     });
     const tx = {
@@ -2250,8 +2250,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 200_000,
-          paidAmountCents: 0
+          payableAmountCents: 200_000n,
+          paidAmountCents: 0n
         })
       },
       paymentRequest: {
@@ -2261,7 +2261,14 @@ describe("PaymentRequestService", () => {
           .mockResolvedValueOnce(cashPool.projectPayments),
         create: jest.fn().mockResolvedValue({
           id: "payment-1",
-          code: "FK-2026-013"
+          code: "FK-2026-013",
+          projectId: "project-1",
+          settlementId: "settlement-1",
+          sourceType: "settlement",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          requestedAmountCents: 50_000n
         })
       },
       approvalInstance: { create: jest.fn() },
@@ -2281,7 +2288,7 @@ describe("PaymentRequestService", () => {
       {
         settlementId: "settlement-1",
         code: "FK-2026-013",
-        requestedAmountCents: 50_000
+        requestedAmountCents: "50000"
       },
       "contract-staff-1"
     );
@@ -2312,19 +2319,19 @@ describe("PaymentRequestService", () => {
 
   it("counts approved and partially-paid payment balances against project cash pool", async () => {
     const cashPool = projectCashPoolTables({
-      receiptAmountCents: 150_000,
+      receiptAmountCents: 150_000n,
       projectPayments: [
         {
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 40_000,
-          paidAmountCents: 0
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 40_000n,
+          paidAmountCents: 0n
         },
         {
           status: "partially_paid",
-          requestedAmountCents: 80_000,
-          approvedAmountCents: 80_000,
-          paidAmountCents: 30_000
+          requestedAmountCents: 80_000n,
+          approvedAmountCents: 80_000n,
+          paidAmountCents: 30_000n
         }
       ]
     });
@@ -2337,8 +2344,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 300_000,
-          paidAmountCents: 0
+          payableAmountCents: 300_000n,
+          paidAmountCents: 0n
         })
       },
       paymentRequest: {
@@ -2359,7 +2366,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-014",
-        requestedAmountCents: 31_000
+        requestedAmountCents: "31000"
       })
     ).rejects.toThrow("项目现金资金池余额不足: 30000");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -2367,13 +2374,13 @@ describe("PaymentRequestService", () => {
 
   it("counts approved project expense balances against project cash pool", async () => {
     const cashPool = projectCashPoolTables({
-      receiptAmountCents: 100_000,
+      receiptAmountCents: 100_000n,
       projectExpenses: [
         {
           status: "approved_pending_payment",
-          requestedAmountCents: 90_000,
-          approvedAmountCents: 90_000,
-          paidAmountCents: 0
+          requestedAmountCents: 90_000n,
+          approvedAmountCents: 90_000n,
+          paidAmountCents: 0n
         }
       ]
     });
@@ -2386,8 +2393,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 300_000,
-          paidAmountCents: 0
+          payableAmountCents: 300_000n,
+          paidAmountCents: 0n
         })
       },
       paymentRequest: {
@@ -2408,7 +2415,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-EXP",
-        requestedAmountCents: 20_000
+        requestedAmountCents: "20000"
       })
     ).rejects.toThrow("项目现金资金池余额不足: 10000");
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
@@ -2425,17 +2432,17 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 20_000
+          payableAmountCents: 100_000n,
+          paidAmountCents: 20_000n
         })
       },
       paymentRequest: {
         findMany: jest.fn().mockResolvedValue([
           {
             status: "approved_pending_payment",
-            requestedAmountCents: 30_000,
-            approvedAmountCents: 30_000,
-            paidAmountCents: 0
+            requestedAmountCents: 30_000n,
+            approvedAmountCents: 30_000n,
+            paidAmountCents: 0n
           }
         ]),
         create: jest.fn()
@@ -2455,7 +2462,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-012",
-        requestedAmountCents: 26_000
+        requestedAmountCents: "26000"
       })
     ).rejects.toThrow("付款申请金额超过当前可申请余额，当前最多可申请 250.00 元");
     expect(tx.projectProxyPayment.findMany).toHaveBeenCalledWith({
@@ -2466,7 +2473,7 @@ describe("PaymentRequestService", () => {
   });
 
   it("does not treat project proxy payments as project cash receipts", async () => {
-    const cashPool = projectCashPoolTables({ receiptAmountCents: 0 });
+    const cashPool = projectCashPoolTables({ receiptAmountCents: 0n });
     const tx = {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -2476,8 +2483,8 @@ describe("PaymentRequestService", () => {
           contractVersionId: "contract-version-1",
           paymentTermsVersionId: "terms-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         })
       },
       paymentRequest: {
@@ -2501,7 +2508,7 @@ describe("PaymentRequestService", () => {
       paymentService.create({
         settlementId: "settlement-1",
         code: "FK-2026-015",
-        requestedAmountCents: 10_000
+        requestedAmountCents: "10000"
       })
     ).rejects.toThrow("项目现金资金池余额不足: 0");
     expect(tx.projectProxyPayment.findMany).toHaveBeenCalledWith({
@@ -2519,7 +2526,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: "50000"
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -2599,7 +2606,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn()
       },
@@ -2627,7 +2634,7 @@ describe("PaymentRequestService", () => {
     await expect(
       paymentService.reviewApproval("FK-2026-012", "pm-1", {
         decision: "approve",
-        approvedAmountCents: 45_000
+        approvedAmountCents: "45000"
       })
     ).rejects.toThrow("只有最后一个付款审批节点才能调整批准金额");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
@@ -2657,13 +2664,13 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
           status: "approved_pending_payment",
-          approvedAmountCents: 45_000
+          approvedAmountCents: 45_000n
         })
       },
       approvalInstance: {
@@ -2690,7 +2697,7 @@ describe("PaymentRequestService", () => {
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
       decision: "approve",
-      approvedAmountCents: 45_000
+      approvedAmountCents: "45000"
     });
 
     expect(approved.status).toBe("approved_pending_payment");
@@ -2698,7 +2705,7 @@ describe("PaymentRequestService", () => {
       where: { id: "payment-1" },
       data: {
         status: "approved_pending_payment",
-        approvedAmountCents: 45_000
+        approvedAmountCents: 45_000n
       }
     });
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
@@ -2720,10 +2727,10 @@ describe("PaymentRequestService", () => {
   });
 
   it.each([
-    ["zero", 0],
-    ["negative", -1],
-    ["non-integer", 45_000.5],
-    ["non-finite", Number.NaN]
+    ["zero", "0"],
+    ["negative", "-1"],
+    ["non-integer", "45000.5"],
+    ["non-finite", Number.NaN as unknown as string]
   ])("rejects %s approved amount values", async (_label, approvedAmountCents) => {
     const frozenNodes = [
       { ...paymentApprovalNodes[0], approvedRoleKeys: ["project_manager"] },
@@ -2738,7 +2745,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn()
       },
@@ -2780,13 +2787,13 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
           status: "approved_pending_payment",
-          approvedAmountCents: 50_000
+          approvedAmountCents: 50_000n
         })
       },
       approvalInstance: {
@@ -2832,13 +2839,13 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
           status: "approved_pending_payment",
-          approvedAmountCents: 45_000
+          approvedAmountCents: 45_000n
         })
       },
       approvalInstance: {
@@ -2891,7 +2898,7 @@ describe("PaymentRequestService", () => {
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "delegate-user-1", {
       decision: "approve",
-      approvedAmountCents: 45_000
+      approvedAmountCents: "45000"
     });
 
     expect(approved.status).toBe("approved_pending_payment");
@@ -2912,7 +2919,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -3031,7 +3038,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -3113,7 +3120,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn()
       },
@@ -3159,7 +3166,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -3312,7 +3319,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
@@ -3616,7 +3623,7 @@ describe("PaymentRequestService", () => {
           id: "payment-1",
           code: "FK-2026-012",
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn()
       }
@@ -3770,7 +3777,7 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           projectId: "project-1",
           status: "approval_pending",
-          requestedAmountCents: 50_000
+          requestedAmountCents: 50_000n
         }),
         update: jest.fn()
       },
@@ -3797,7 +3804,7 @@ describe("PaymentRequestService", () => {
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
         decision: "approve",
-        approvedAmountCents: 50_001
+        approvedAmountCents: "50001"
       })
     ).rejects.toThrow("批准付款金额不能超过申请金额，当前最多可批准 500.00 元");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
@@ -3807,7 +3814,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
         paymentExecutionRow({
-          paidAmountCents: 20_000
+          paidAmountCents: 20_000n
         })
       ]),
       paymentRequest: {
@@ -3816,26 +3823,26 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           settlementId: "settlement-1",
           status: "approved_pending_payment",
-          approvedAmountCents: 50_000,
-          paidAmountCents: 20_000
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 20_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
           status: "paid",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         }),
         findUnique: jest.fn().mockResolvedValue({
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 50_000
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 50_000n
         })
       },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
           status: "partially_paid",
-          payableAmountCents: 100_000,
-          paidAmountCents: 70_000
+          payableAmountCents: 100_000n,
+          paidAmountCents: 70_000n
         }),
         update: jest.fn()
       },
@@ -3843,7 +3850,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn().mockResolvedValue({
           id: "execution-1",
           paymentRequestId: "payment-1",
-          amountCents: 30_000,
+          amountCents: 30_000n,
           voucherFileId: "file-1"
         })
       },
@@ -3864,7 +3871,7 @@ describe("PaymentRequestService", () => {
     );
 
     const execution = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
-      amountCents: 30_000,
+      amountCents: "30000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
@@ -3880,7 +3887,7 @@ describe("PaymentRequestService", () => {
       data: {
         paymentRequestId: "payment-1",
         settlementId: "settlement-1",
-        amountCents: 30_000,
+        amountCents: 30_000n,
         paidAt: new Date("2026-06-22T00:00:00.000Z"),
         executedByUserId: "cashier-1",
         voucherFileId: "file-1"
@@ -3889,14 +3896,14 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.update).toHaveBeenCalledWith({
       where: { id: "payment-1" },
       data: {
-        paidAmountCents: 50_000,
+        paidAmountCents: 50_000n,
         status: "paid"
       }
     });
     expect(tx.settlement.update).toHaveBeenCalledWith({
       where: { id: "settlement-1" },
       data: {
-        paidAmountCents: 100_000,
+        paidAmountCents: 100_000n,
         status: "paid"
       }
     });
@@ -3921,16 +3928,16 @@ describe("PaymentRequestService", () => {
           settlementId: "settlement-1",
           sourceType: "settlement",
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 20_000
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 20_000n
         }
       ]),
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
-          payableAmountCents: 100_000,
-          paidAmountCents: 70_000
+          payableAmountCents: 100_000n,
+          paidAmountCents: 70_000n
         }),
         update: jest.fn()
       },
@@ -3955,7 +3962,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 30_000,
+        amountCents: "30000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-other",
         confirmationPassword: "current-password"
@@ -3975,7 +3982,7 @@ describe("PaymentRequestService", () => {
         .fn()
         .mockResolvedValueOnce([
           paymentExecutionRow({
-            paidAmountCents: 0
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "settlement-1" }]),
@@ -3988,14 +3995,14 @@ describe("PaymentRequestService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 40_000
+          payableAmountCents: 100_000n,
+          paidAmountCents: 40_000n
         }),
         update: jest.fn()
       },
       paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 40_000 }
+          { amountCents: 40_000n }
         ])
       },
       paymentExecution: {
@@ -4016,7 +4023,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 30_000,
+        amountCents: "30000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -4040,9 +4047,9 @@ describe("PaymentRequestService", () => {
         .fn()
         .mockResolvedValueOnce([
           paymentExecutionRow({
-            requestedAmountCents: 80_000,
-            approvedAmountCents: 80_000,
-            paidAmountCents: 0
+            requestedAmountCents: 80_000n,
+            approvedAmountCents: 80_000n,
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "settlement-1" }]),
@@ -4057,8 +4064,8 @@ describe("PaymentRequestService", () => {
           contractId: "contract-1",
           contractVersionId: "contract-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0,
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n,
           sourceType: "historical_takeover",
           sourceTakeoverId: "takeover-1"
         }),
@@ -4092,7 +4099,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 80_000,
+        amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -4118,9 +4125,9 @@ describe("PaymentRequestService", () => {
         .fn()
         .mockResolvedValueOnce([
           paymentExecutionRow({
-            requestedAmountCents: 80_000,
-            approvedAmountCents: 80_000,
-            paidAmountCents: 0
+            requestedAmountCents: 80_000n,
+            approvedAmountCents: 80_000n,
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "settlement-1" }]),
@@ -4134,8 +4141,8 @@ describe("PaymentRequestService", () => {
           contractId: "contract-1",
           contractVersionId: "contract-version-1",
           status: "draft",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn()
       },
@@ -4157,7 +4164,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 80_000,
+        amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -4176,9 +4183,9 @@ describe("PaymentRequestService", () => {
         .fn()
         .mockResolvedValueOnce([
           paymentExecutionRow({
-            requestedAmountCents: 80_000,
-            approvedAmountCents: 80_000,
-            paidAmountCents: 0
+            requestedAmountCents: 80_000n,
+            approvedAmountCents: 80_000n,
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "settlement-1" }]),
@@ -4192,8 +4199,8 @@ describe("PaymentRequestService", () => {
           contractId: "contract-1",
           contractVersionId: "contract-version-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn()
       },
@@ -4226,7 +4233,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 80_000,
+        amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -4247,9 +4254,9 @@ describe("PaymentRequestService", () => {
             code: "FK-YF-2026-001",
             settlementId: null,
             sourceType: "contract_advance",
-            requestedAmountCents: 100_000,
-            approvedAmountCents: 100_000,
-            paidAmountCents: 0
+            requestedAmountCents: 100_000n,
+            approvedAmountCents: 100_000n,
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "contract-1" }]),
@@ -4259,19 +4266,19 @@ describe("PaymentRequestService", () => {
           code: "FK-YF-2026-001",
           settlementId: null,
           status: "approved_pending_payment",
-          requestedAmountCents: 100_000,
-          approvedAmountCents: 100_000,
-          paidAmountCents: 0
+          requestedAmountCents: 100_000n,
+          approvedAmountCents: 100_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-advance-1",
           status: "paid",
-          paidAmountCents: 100_000
+          paidAmountCents: 100_000n
         }),
         findUnique: jest.fn().mockResolvedValue({
-          requestedAmountCents: 100_000,
-          approvedAmountCents: 100_000,
-          paidAmountCents: 100_000
+          requestedAmountCents: 100_000n,
+          approvedAmountCents: 100_000n,
+          paidAmountCents: 100_000n
         })
       },
       settlement: {
@@ -4282,7 +4289,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn().mockResolvedValue({
           id: "execution-advance-1",
           paymentRequestId: "payment-advance-1",
-          amountCents: 100_000,
+          amountCents: 100_000n,
           voucherFileId: "file-1"
         })
       },
@@ -4303,7 +4310,7 @@ describe("PaymentRequestService", () => {
     );
 
     const execution = await paymentService.recordExecution("FK-YF-2026-001", "cashier-1", {
-      amountCents: 100_000,
+      amountCents: "100000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
@@ -4320,7 +4327,7 @@ describe("PaymentRequestService", () => {
       data: {
         paymentRequestId: "payment-advance-1",
         settlementId: null,
-        amountCents: 100_000,
+        amountCents: 100_000n,
         paidAt: new Date("2026-07-03T00:00:00.000Z"),
         executedByUserId: "cashier-1",
         voucherFileId: "file-1"
@@ -4329,7 +4336,7 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.update).toHaveBeenCalledWith({
       where: { id: "payment-advance-1" },
       data: {
-        paidAmountCents: 100_000,
+        paidAmountCents: 100_000n,
         status: "paid"
       }
     });
@@ -4345,9 +4352,9 @@ describe("PaymentRequestService", () => {
             code: "FK-HT-2026-001",
             settlementId: null,
             sourceType: "contract_due",
-            requestedAmountCents: 70_000,
-            approvedAmountCents: 70_000,
-            paidAmountCents: 0
+            requestedAmountCents: 70_000n,
+            approvedAmountCents: 70_000n,
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "contract-1" }])
@@ -4359,14 +4366,14 @@ describe("PaymentRequestService", () => {
           settlementId: null,
           sourceType: "contract_due",
           status: "approved_pending_payment",
-          requestedAmountCents: 70_000,
-          approvedAmountCents: 70_000,
-          paidAmountCents: 0
+          requestedAmountCents: 70_000n,
+          approvedAmountCents: 70_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-due-1",
           status: "paid",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         }),
         findMany: jest
           .fn()
@@ -4374,9 +4381,9 @@ describe("PaymentRequestService", () => {
           .mockResolvedValueOnce([])
           .mockResolvedValueOnce([]),
         findUnique: jest.fn().mockResolvedValue({
-          requestedAmountCents: 70_000,
-          approvedAmountCents: 70_000,
-          paidAmountCents: 50_000
+          requestedAmountCents: 70_000n,
+          approvedAmountCents: 70_000n,
+          paidAmountCents: 50_000n
         })
       },
       settlement: {
@@ -4384,8 +4391,8 @@ describe("PaymentRequestService", () => {
           {
             id: "settlement-1",
             status: "effective",
-            amountCents: 100_000,
-            paidAmountCents: 0,
+            amountCents: 100_000n,
+            paidAmountCents: 0n,
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-v1",
             isFinal: false
@@ -4393,8 +4400,8 @@ describe("PaymentRequestService", () => {
           {
             id: "settlement-2",
             status: "effective",
-            amountCents: 80_000,
-            paidAmountCents: 0,
+            amountCents: 80_000n,
+            paidAmountCents: 0n,
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-v1",
             isFinal: false
@@ -4429,7 +4436,7 @@ describe("PaymentRequestService", () => {
       },
       paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([
-          { sourceRowId: "settlement-1:progress:0", amountCents: 30_000 }
+          { sourceRowId: "settlement-1:progress:0", amountCents: 30_000n }
         ]),
         createMany: jest.fn()
       },
@@ -4437,7 +4444,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn().mockResolvedValue({
           id: "execution-due-1",
           paymentRequestId: "payment-due-1",
-          amountCents: 50_000,
+          amountCents: 50_000n,
           voucherFileId: "file-1"
         })
       },
@@ -4458,7 +4465,7 @@ describe("PaymentRequestService", () => {
     );
 
     const execution = await paymentService.recordExecution("FK-HT-2026-001", "cashier-1", {
-      amountCents: 50_000,
+      amountCents: "50000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
@@ -4489,10 +4496,10 @@ describe("PaymentRequestService", () => {
           fixedAmountCents: null,
           sourceEffectiveAt: new Date("2026-07-01T00:00:00.000Z"),
           expectedPayableAt: new Date("2026-07-01T00:00:00.000Z"),
-          sourcePayableAmountCents: 50_000,
+          sourcePayableAmountCents: 50_000n,
           allocationOrder: 0,
           createdByUserId: "cashier-1",
-          amountCents: 20_000
+          amountCents: 20_000n
         }),
         expect.objectContaining({
           paymentExecutionId: "execution-due-1",
@@ -4508,10 +4515,10 @@ describe("PaymentRequestService", () => {
           stageType: "progress",
           stageId: "stage-progress",
           stageName: "进度款",
-          sourcePayableAmountCents: 40_000,
+          sourcePayableAmountCents: 40_000n,
           allocationOrder: 1,
           createdByUserId: "cashier-1",
-          amountCents: 30_000
+          amountCents: 30_000n
         })
       ]
     });
@@ -4527,9 +4534,9 @@ describe("PaymentRequestService", () => {
             code: "FK-HT-2026-NO-SOURCE",
             settlementId: null,
             sourceType: "contract_due",
-            requestedAmountCents: 50_000,
-            approvedAmountCents: 50_000,
-            paidAmountCents: 0
+            requestedAmountCents: 50_000n,
+            approvedAmountCents: 50_000n,
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "contract-1" }]),
@@ -4540,9 +4547,9 @@ describe("PaymentRequestService", () => {
           settlementId: null,
           sourceType: "contract_due",
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 0
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn(),
         findUnique: jest.fn()
@@ -4556,7 +4563,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn().mockResolvedValue({
           id: "execution-due-1",
           paymentRequestId: "payment-due-1",
-          amountCents: 50_000,
+          amountCents: 50_000n,
           voucherFileId: "file-1"
         })
       },
@@ -4580,7 +4587,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-HT-2026-NO-SOURCE", "cashier-1", {
-        amountCents: 50_000,
+        amountCents: "50000",
         paidAt: "2026-07-03T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -4594,8 +4601,8 @@ describe("PaymentRequestService", () => {
     const historicalSettlement = {
       id: "settlement-history",
       status: "effective",
-      amountCents: 100_000,
-      paidAmountCents: 40_000,
+      amountCents: 100_000n,
+      paidAmountCents: 40_000n,
       contractVersionId: "contract-version-1",
       paymentTermsVersionId: "terms-v1",
       isFinal: false,
@@ -4611,9 +4618,9 @@ describe("PaymentRequestService", () => {
             code: "FK-HT-HIS-ALLOC-001",
             settlementId: null,
             sourceType: "contract_due",
-            requestedAmountCents: 50_000,
-            approvedAmountCents: 50_000,
-            paidAmountCents: 0
+            requestedAmountCents: 50_000n,
+            approvedAmountCents: 50_000n,
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "contract-1" }])
@@ -4651,14 +4658,14 @@ describe("PaymentRequestService", () => {
           settlementId: null,
           sourceType: "contract_due",
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 0
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-due-history",
           status: "paid",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         }),
         findMany: jest
           .fn()
@@ -4666,9 +4673,9 @@ describe("PaymentRequestService", () => {
           .mockResolvedValueOnce([])
           .mockResolvedValueOnce([]),
         findUnique: jest.fn().mockResolvedValue({
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 50_000
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 50_000n
         })
       },
       settlement: {
@@ -4713,7 +4720,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn().mockResolvedValue({
           id: "execution-history",
           paymentRequestId: "payment-due-history",
-          amountCents: 50_000,
+          amountCents: 50_000n,
           voucherFileId: "file-1"
         })
       },
@@ -4737,7 +4744,7 @@ describe("PaymentRequestService", () => {
     );
 
     const execution = await paymentService.recordExecution("FK-HT-HIS-ALLOC-001", "cashier-1", {
-      amountCents: 50_000,
+      amountCents: "50000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
@@ -4758,8 +4765,8 @@ describe("PaymentRequestService", () => {
           stageName: "历史结算款",
           sourceEffectiveAt: confirmedAt,
           expectedPayableAt: confirmedAt,
-          sourcePayableAmountCents: 100_000,
-          amountCents: 50_000
+          sourcePayableAmountCents: 100_000n,
+          amountCents: 50_000n
         })
       ]
     });
@@ -4775,9 +4782,9 @@ describe("PaymentRequestService", () => {
             code: "FK-HT-2026-002",
             settlementId: null,
             sourceType: "contract_due",
-            requestedAmountCents: 30_000,
-            approvedAmountCents: 30_000,
-            paidAmountCents: 0
+            requestedAmountCents: 30_000n,
+            approvedAmountCents: 30_000n,
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "contract-1" }])
@@ -4787,7 +4794,7 @@ describe("PaymentRequestService", () => {
         update: jest.fn().mockResolvedValue({
           id: "payment-due-2",
           status: "paid",
-          paidAmountCents: 30_000
+          paidAmountCents: 30_000n
         }),
         findMany: jest.fn((args: { where?: { sourceType?: string } }) => {
           if (args.where?.sourceType === "settlement") {
@@ -4795,9 +4802,9 @@ describe("PaymentRequestService", () => {
               {
                 settlementId: "settlement-1",
                 status: "approved_pending_payment",
-                requestedAmountCents: 50_000,
-                approvedAmountCents: 50_000,
-                paidAmountCents: 0
+                requestedAmountCents: 50_000n,
+                approvedAmountCents: 50_000n,
+                paidAmountCents: 0n
               }
             ]);
           }
@@ -4805,9 +4812,9 @@ describe("PaymentRequestService", () => {
           return Promise.resolve([]);
         }),
         findUnique: jest.fn().mockResolvedValue({
-          requestedAmountCents: 30_000,
-          approvedAmountCents: 30_000,
-          paidAmountCents: 30_000
+          requestedAmountCents: 30_000n,
+          approvedAmountCents: 30_000n,
+          paidAmountCents: 30_000n
         })
       },
       settlement: {
@@ -4815,8 +4822,8 @@ describe("PaymentRequestService", () => {
           {
             id: "settlement-1",
             status: "effective",
-            amountCents: 100_000,
-            paidAmountCents: 0,
+            amountCents: 100_000n,
+            paidAmountCents: 0n,
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-v1",
             isFinal: false
@@ -4824,8 +4831,8 @@ describe("PaymentRequestService", () => {
           {
             id: "settlement-2",
             status: "effective",
-            amountCents: 80_000,
-            paidAmountCents: 0,
+            amountCents: 80_000n,
+            paidAmountCents: 0n,
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-v1",
             isFinal: false
@@ -4866,7 +4873,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn().mockResolvedValue({
           id: "execution-due-2",
           paymentRequestId: "payment-due-2",
-          amountCents: 30_000,
+          amountCents: 30_000n,
           voucherFileId: "file-1"
         })
       },
@@ -4887,7 +4894,7 @@ describe("PaymentRequestService", () => {
     );
 
     await paymentService.recordExecution("FK-HT-2026-002", "cashier-1", {
-      amountCents: 30_000,
+      amountCents: "30000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
@@ -4899,7 +4906,7 @@ describe("PaymentRequestService", () => {
           settlementId: "settlement-2",
           sourceRowId: "settlement-2:progress:0",
           allocationType: "contract_due_payment",
-          amountCents: 30_000
+          amountCents: 30_000n
         })
       ]
     });
@@ -4915,9 +4922,9 @@ describe("PaymentRequestService", () => {
             code: "FK-HT-2026-003",
             settlementId: null,
             sourceType: "contract_due",
-            requestedAmountCents: 30_000,
-            approvedAmountCents: 30_000,
-            paidAmountCents: 0
+            requestedAmountCents: 30_000n,
+            approvedAmountCents: 30_000n,
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "contract-1" }])
@@ -4927,7 +4934,7 @@ describe("PaymentRequestService", () => {
         update: jest.fn().mockResolvedValue({
           id: "payment-due-3",
           status: "paid",
-          paidAmountCents: 30_000
+          paidAmountCents: 30_000n
         }),
         findMany: jest.fn((args: { where?: { sourceType?: string } }) => {
           if (args.where?.sourceType === "contract_advance") {
@@ -4935,9 +4942,9 @@ describe("PaymentRequestService", () => {
               {
                 paymentTermsVersionId: "terms-v1",
                 status: "paid",
-                requestedAmountCents: 50_000,
-                approvedAmountCents: 50_000,
-                paidAmountCents: 50_000
+                requestedAmountCents: 50_000n,
+                approvedAmountCents: 50_000n,
+                paidAmountCents: 50_000n
               }
             ]);
           }
@@ -4945,9 +4952,9 @@ describe("PaymentRequestService", () => {
           return Promise.resolve([]);
         }),
         findUnique: jest.fn().mockResolvedValue({
-          requestedAmountCents: 30_000,
-          approvedAmountCents: 30_000,
-          paidAmountCents: 30_000
+          requestedAmountCents: 30_000n,
+          approvedAmountCents: 30_000n,
+          paidAmountCents: 30_000n
         })
       },
       settlement: {
@@ -4955,8 +4962,8 @@ describe("PaymentRequestService", () => {
           {
             id: "settlement-1",
             status: "effective",
-            amountCents: 100_000,
-            paidAmountCents: 0,
+            amountCents: 100_000n,
+            paidAmountCents: 0n,
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-v1",
             isFinal: false
@@ -4969,7 +4976,7 @@ describe("PaymentRequestService", () => {
         findMany: jest.fn().mockResolvedValue([
           {
             id: "contract-version-1",
-            amountCents: 1_000_000
+            amountCents: 1_000_000n
           }
         ])
       },
@@ -5018,7 +5025,7 @@ describe("PaymentRequestService", () => {
         create: jest.fn().mockResolvedValue({
           id: "execution-due-3",
           paymentRequestId: "payment-due-3",
-          amountCents: 30_000,
+          amountCents: 30_000n,
           voucherFileId: "file-1"
         })
       },
@@ -5039,7 +5046,7 @@ describe("PaymentRequestService", () => {
     );
 
     await paymentService.recordExecution("FK-HT-2026-003", "cashier-1", {
-      amountCents: 30_000,
+      amountCents: "30000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
@@ -5050,13 +5057,13 @@ describe("PaymentRequestService", () => {
         expect.objectContaining({
           allocationType: "advance_deduction",
           sourceRowId: "settlement-1:progress:0",
-          amountCents: 20_000,
+          amountCents: 20_000n,
           allocationOrder: 0
         }),
         expect.objectContaining({
           allocationType: "contract_due_payment",
           sourceRowId: "settlement-1:progress:0",
-          amountCents: 30_000,
+          amountCents: 30_000n,
           allocationOrder: 1
         })
       ]
@@ -5067,7 +5074,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
         paymentExecutionRow({
-          paidAmountCents: 10_000
+          paidAmountCents: 10_000n
         })
       ]),
       paymentRequest: {
@@ -5076,26 +5083,26 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           settlementId: "settlement-1",
           status: "approved_pending_payment",
-          approvedAmountCents: 50_000,
-          paidAmountCents: 10_000
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 10_000n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
           status: "partially_paid",
-          paidAmountCents: 30_000
+          paidAmountCents: 30_000n
         }),
         findUnique: jest.fn().mockResolvedValue({
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 30_000
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 30_000n
         })
       },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 10_000
+          payableAmountCents: 100_000n,
+          paidAmountCents: 10_000n
         }),
         update: jest.fn()
       },
@@ -5119,7 +5126,7 @@ describe("PaymentRequestService", () => {
     );
 
     await paymentService.recordExecution("FK-2026-012", "cashier-1", {
-      amountCents: 20_000,
+      amountCents: "20000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
@@ -5128,14 +5135,14 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.update).toHaveBeenCalledWith({
       where: { id: "payment-1" },
       data: {
-        paidAmountCents: 30_000,
+        paidAmountCents: 30_000n,
         status: "partially_paid"
       }
     });
     expect(tx.settlement.update).toHaveBeenCalledWith({
       where: { id: "settlement-1" },
       data: {
-        paidAmountCents: 30_000,
+        paidAmountCents: 30_000n,
         status: "partially_paid"
       }
     });
@@ -5147,7 +5154,7 @@ describe("PaymentRequestService", () => {
         .fn()
         .mockResolvedValueOnce([
           paymentExecutionRow({
-            paidAmountCents: 0
+            paidAmountCents: 0n
           })
         ])
         .mockResolvedValueOnce([{ id: "settlement-1" }])
@@ -5158,27 +5165,27 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           settlementId: "settlement-1",
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 0
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn().mockResolvedValue({
           id: "payment-1",
           status: "partially_paid",
-          paidAmountCents: 30_000
+          paidAmountCents: 30_000n
         }),
         findUnique: jest.fn().mockResolvedValue({
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 30_000
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 30_000n
         })
       },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn()
       },
@@ -5218,7 +5225,7 @@ describe("PaymentRequestService", () => {
     );
 
     await paymentService.recordExecution("FK-2026-012", "cashier-1", {
-      amountCents: 30_000,
+      amountCents: "30000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
@@ -5250,19 +5257,19 @@ describe("PaymentRequestService", () => {
     const tx = {
       $queryRaw: jest
         .fn()
-        .mockResolvedValueOnce([paymentExecutionRow({ paidAmountCents: 0 })])
+        .mockResolvedValueOnce([paymentExecutionRow({ paidAmountCents: 0n })])
         .mockResolvedValueOnce([{ id: "settlement-1" }])
         .mockResolvedValueOnce([{ id: "project-1", isActive: true }]),
       paymentRequest: {
-        findFirst: jest.fn().mockResolvedValue(paymentExecutionRow({ paidAmountCents: 0 })),
+        findFirst: jest.fn().mockResolvedValue(paymentExecutionRow({ paidAmountCents: 0n })),
         update: jest.fn()
       },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn()
       },
@@ -5303,7 +5310,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 30_000,
+        amountCents: "30000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5342,19 +5349,19 @@ describe("PaymentRequestService", () => {
       const tx = {
         $queryRaw: jest
           .fn()
-          .mockResolvedValueOnce([paymentExecutionRow({ paidAmountCents: 0 })])
+          .mockResolvedValueOnce([paymentExecutionRow({ paidAmountCents: 0n })])
           .mockResolvedValueOnce([{ id: "settlement-1" }])
           .mockResolvedValueOnce(lockedProjects),
         paymentRequest: {
-          findFirst: jest.fn().mockResolvedValue(paymentExecutionRow({ paidAmountCents: 0 })),
+          findFirst: jest.fn().mockResolvedValue(paymentExecutionRow({ paidAmountCents: 0n })),
           update: jest.fn()
         },
         settlement: {
           findUnique: jest.fn().mockResolvedValue({
             id: "settlement-1",
             status: "effective",
-            payableAmountCents: 100_000,
-            paidAmountCents: 0
+            payableAmountCents: 100_000n,
+            paidAmountCents: 0n
           }),
           update: jest.fn()
         },
@@ -5389,7 +5396,7 @@ describe("PaymentRequestService", () => {
 
       await expect(
         paymentService.recordExecution("FK-2026-012", "cashier-1", {
-          amountCents: 30_000,
+          amountCents: "30000",
           paidAt: "2026-06-22T00:00:00.000Z",
           voucherFileId: "file-1",
           confirmationPassword: "current-password"
@@ -5410,7 +5417,7 @@ describe("PaymentRequestService", () => {
         paymentExecutionRow({
           status: "approval_pending",
           approvedAmountCents: null,
-          paidAmountCents: 0
+          paidAmountCents: 0n
         })
       ]),
       paymentRequest: {
@@ -5420,7 +5427,7 @@ describe("PaymentRequestService", () => {
           settlementId: "settlement-1",
           status: "approval_pending",
           approvedAmountCents: null,
-          paidAmountCents: 0
+          paidAmountCents: 0n
         }),
         update: jest.fn()
       },
@@ -5444,7 +5451,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 20_000,
+        amountCents: "20000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5473,7 +5480,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-MISSING", "cashier-1", {
-        amountCents: 20_000,
+        amountCents: "20000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5496,7 +5503,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 20_000,
+        amountCents: "20000",
         paidAt: "2999-07-04T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5520,7 +5527,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 20_000,
+        amountCents: "20000",
         paidAt: "not-a-date",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5534,8 +5541,8 @@ describe("PaymentRequestService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
         paymentExecutionRow({
-          approvedAmountCents: 50_000,
-          paidAmountCents: 20_000
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 20_000n
         })
       ]),
       paymentRequest: {
@@ -5544,8 +5551,8 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           settlementId: "settlement-1",
           status: "approved_pending_payment",
-          approvedAmountCents: 50_000,
-          paidAmountCents: 20_000
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 20_000n
         }),
         update: jest.fn()
       },
@@ -5569,7 +5576,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 30_001,
+        amountCents: "30001",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5582,9 +5589,9 @@ describe("PaymentRequestService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
         paymentExecutionRow({
-          requestedAmountCents: 80_000,
-          approvedAmountCents: 80_000,
-          paidAmountCents: 0
+          requestedAmountCents: 80_000n,
+          approvedAmountCents: 80_000n,
+          paidAmountCents: 0n
         })
       ]),
       paymentRequest: {
@@ -5593,9 +5600,9 @@ describe("PaymentRequestService", () => {
           code: "FK-2026-012",
           settlementId: "settlement-1",
           status: "approved_pending_payment",
-          approvedAmountCents: 80_000,
-          requestedAmountCents: 80_000,
-          paidAmountCents: 0
+          approvedAmountCents: 80_000n,
+          requestedAmountCents: 80_000n,
+          paidAmountCents: 0n
         }),
         update: jest.fn()
       },
@@ -5603,8 +5610,8 @@ describe("PaymentRequestService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
           status: "effective",
-          payableAmountCents: 100_000,
-          paidAmountCents: 0
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
         })
       },
       projectProxyPayment: {
@@ -5627,7 +5634,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 80_000,
+        amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5640,9 +5647,9 @@ describe("PaymentRequestService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
         paymentExecutionRow({
-          requestedAmountCents: 80_000,
-          approvedAmountCents: 80_000,
-          paidAmountCents: 0
+          requestedAmountCents: 80_000n,
+          approvedAmountCents: 80_000n,
+          paidAmountCents: 0n
         })
       ]),
       paymentRequest: {
@@ -5668,7 +5675,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 80_000,
+        amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5697,7 +5704,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 0,
+        amountCents: "0",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "",
         confirmationPassword: ""
@@ -5711,7 +5718,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5740,7 +5747,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "",
         confirmationPassword: "current-password"
@@ -5770,7 +5777,7 @@ describe("PaymentRequestService", () => {
     ).rejects.toThrow("实付金额必须大于 0");
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: undefined as never,
         confirmationPassword: "current-password"
@@ -5792,7 +5799,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: ""
@@ -5817,7 +5824,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -5850,7 +5857,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "wrong-password"
@@ -5868,17 +5875,17 @@ describe("PaymentRequestService", () => {
           projectId: "project-1",
           settlementId: "settlement-1",
           status: "paid",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         }
       ]),
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 20_000 }
+          { amountCents: 20_000n }
         ]),
         create: jest.fn().mockResolvedValue({
           id: "finance-record-1",
           direction: "outflow",
-          amountCents: 30_000
+          amountCents: 30_000n
         })
       },
       auditLog: {
@@ -5897,7 +5904,7 @@ describe("PaymentRequestService", () => {
     );
 
     const record = await paymentService.recordFinance("FK-2026-012", "finance-1", {
-      amountCents: 30_000,
+      amountCents: "30000",
       occurredAt: "2026-06-22T00:00:00.000Z",
       confirmationPassword: "Current@123"
     });
@@ -5911,7 +5918,7 @@ describe("PaymentRequestService", () => {
         paymentRequestId: "payment-1",
         settlementId: "settlement-1",
         direction: "outflow",
-        amountCents: 30_000,
+        amountCents: 30_000n,
         occurredAt: new Date("2026-06-22T00:00:00.000Z"),
         createdByUserId: "finance-1"
       }
@@ -5947,7 +5954,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordFinance("FK-2026-012", "finance-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         occurredAt: "2026-06-22T00:00:00.000Z"
       })
     ).rejects.toThrow("财务入账需要当前登录密码确认");
@@ -5967,7 +5974,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordFinance("FK-2026-012", "finance-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         occurredAt: "2026-06-22T00:00:00.000Z",
         confirmationPassword: "Current@123"
       })
@@ -5990,7 +5997,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordFinance("FK-2026-012", "finance-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         occurredAt: "2026-06-22T00:00:00.000Z",
         confirmationPassword: "Current@123"
       })
@@ -6013,7 +6020,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordFinance("FK-2026-012", "finance-1", {
-        amountCents: 0,
+        amountCents: "0",
         occurredAt: "2026-06-22T00:00:00.000Z",
         confirmationPassword: "Current@123"
       })
@@ -6043,7 +6050,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordFinance("FK-2026-012", "finance-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         occurredAt: "2026-06-22T00:00:00.000Z",
         confirmationPassword: "Current@123"
       })
@@ -6057,7 +6064,7 @@ describe("PaymentRequestService", () => {
         {
           id: "payment-1",
           status: "approved_pending_payment",
-          paidAmountCents: 0
+          paidAmountCents: 0n
         }
       ]),
       financeRecord: {
@@ -6078,7 +6085,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordFinance("FK-2026-012", "finance-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         occurredAt: "2026-06-22T00:00:00.000Z",
         confirmationPassword: "Current@123"
       })
@@ -6094,12 +6101,12 @@ describe("PaymentRequestService", () => {
           projectId: "project-1",
           settlementId: "settlement-1",
           status: "partially_paid",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         }
       ]),
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 40_000 }
+          { amountCents: 40_000n }
         ]),
         create: jest.fn()
       }
@@ -6117,7 +6124,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordFinance("FK-2026-012", "finance-1", {
-        amountCents: 10_001,
+        amountCents: "10001",
         occurredAt: "2026-06-22T00:00:00.000Z",
         confirmationPassword: "Current@123"
       })
@@ -6131,12 +6138,12 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         })
       },
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 50_000 }
+          { amountCents: 50_000n }
         ])
       },
       fileObject: {
@@ -6214,13 +6221,13 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
-          requestedAmountCents: 60_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 50_000
+          requestedAmountCents: 60_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 50_000n
         })
       },
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 50_000 }])
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 50_000n }])
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({ id: "file-generated" })
@@ -6311,13 +6318,13 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
-          requestedAmountCents: 60_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 50_000
+          requestedAmountCents: 60_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 50_000n
         })
       },
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 50_000 }])
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 50_000n }])
       },
       pdfDocument: {
         findFirst: jest.fn().mockResolvedValue({ id: "pdf-existing" })
@@ -6373,11 +6380,11 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         })
       },
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000 }])
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000n }])
       }
     };
     const prisma = {
@@ -6405,12 +6412,12 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         })
       },
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 20_000 }
+          { amountCents: 20_000n }
         ])
       },
       fileObject: {
@@ -6469,12 +6476,12 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         })
       },
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 50_000 }
+          { amountCents: 50_000n }
         ])
       },
       fileObject: {
@@ -6507,12 +6514,12 @@ describe("PaymentRequestService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-1",
           code: "FK-2026-012",
-          paidAmountCents: 50_000
+          paidAmountCents: 50_000n
         })
       },
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 50_000 }
+          { amountCents: 50_000n }
         ])
       },
       fileObject: {

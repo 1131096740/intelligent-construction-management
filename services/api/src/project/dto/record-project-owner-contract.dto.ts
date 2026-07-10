@@ -3,7 +3,7 @@ export interface RecordProjectOwnerContractDto {
   contractName: string;
   contractCode: string;
   signedAt: string;
-  amountCents: number;
+  amountCents: string;
   taxRateBps: number;
   pricingMethod: string;
   paymentTermsSummary: string;

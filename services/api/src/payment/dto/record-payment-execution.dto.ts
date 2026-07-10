@@ -1,5 +1,5 @@
 export interface RecordPaymentExecutionDto {
-  amountCents: number;
+  amountCents: string;
   paidAt: string;
   voucherFileId: string;
   confirmationPassword: string;

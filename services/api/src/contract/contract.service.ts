@@ -12,7 +12,7 @@ import {
 import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { centsToSafeNumber } from "../money/decimal-money";
+import { formatMoneyCentsAsYuan, parseMoneyCents } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
 import {
@@ -1069,11 +1069,16 @@ export class ContractService {
     ) {
       throw new BadRequestException(`第 ${index + 1} 条付款比例必须在 0% 到 100% 之间。`);
     }
-    if (
-      stage.fixedAmountCents !== undefined &&
-      (!Number.isInteger(stage.fixedAmountCents) || stage.fixedAmountCents <= 0)
-    ) {
-      throw new BadRequestException(`第 ${index + 1} 条固定金额必须大于 0。`);
+    let fixedAmountCents: bigint | undefined;
+    if (stage.fixedAmountCents !== undefined) {
+      try {
+        fixedAmountCents = parseMoneyCents(stage.fixedAmountCents, "固定金额");
+      } catch {
+        throw new BadRequestException(`第 ${index + 1} 条固定金额必须大于 0。`);
+      }
+      if (fixedAmountCents <= 0n) {
+        throw new BadRequestException(`第 ${index + 1} 条固定金额必须大于 0。`);
+      }
     }
     const triggerAnchor = stage.triggerAnchor ?? "settlement_effective";
     if (!PAYMENT_STAGE_TRIGGER_ANCHORS.has(triggerAnchor)) {
@@ -1105,7 +1110,7 @@ export class ContractService {
       stageType,
       basis: stage.basis,
       ratioBps: stage.ratioBps,
-      fixedAmountCents: stage.fixedAmountCents,
+      fixedAmountCents,
       triggerAnchor,
       triggerEvent: stage.triggerEvent.trim(),
       dueDays: stage.dueDays,
@@ -1295,8 +1300,7 @@ export class ContractService {
   }
 
   private formatCents(value: number | bigint) {
-    const safe = centsToSafeNumber(typeof value === "bigint" ? value : BigInt(value));
-    return `${(safe / 100).toFixed(2)} CNY`;
+    return `${formatMoneyCentsAsYuan(typeof value === "bigint" ? value : BigInt(value))} CNY`;
   }
 
   private formatYuan(value: number | bigint) {

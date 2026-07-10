@@ -1,5 +1,6 @@
 import type { ContractPaymentApplicationPreviewReadModel } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol } from "tdesign-vue-next";
+import { centsTextToYuanText } from "../../lib/money";
 
 export type PaymentTone = "default" | "primary" | "warning" | "danger" | "success";
 
@@ -211,11 +212,8 @@ function includesText(value: string, query: string) {
   return value.toLocaleLowerCase().includes(normalized);
 }
 
-function formatPaymentCents(amountCents: number) {
-  return `¥${(amountCents / 100).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`;
+function formatPaymentCents(amountCents: string) {
+  return `¥${centsTextToYuanText(amountCents)}`;
 }
 
 function formatPaymentDate(value: string | null, fallback: string) {
@@ -258,7 +256,7 @@ export function paymentApplicationPreviewRowClassName(row: Pick<PaymentApplicati
 }
 
 function formatCapacityExplanationAmount(
-  amountCents: number,
+  amountCents: string,
   operator: PaymentCapacityExplanationOperator
 ) {
   const amount = formatPaymentCents(amountCents);

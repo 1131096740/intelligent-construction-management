@@ -107,7 +107,7 @@ export interface SaveContractDraftPayload {
   clauses?: unknown[];
   pricingNature?: string;
   amountSource?: string;
-  manualAmountCents?: number;
+  manualAmountCents?: string;
   paymentTermsOriginalText?: string;
   paymentStages?: Array<{
     name: string;

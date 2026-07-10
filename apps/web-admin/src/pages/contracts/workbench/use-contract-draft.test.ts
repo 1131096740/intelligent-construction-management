@@ -58,7 +58,7 @@ function makeWorkbench(overrides: Record<string, unknown> = {}) {
       versionNo: 1,
       status: "draft",
       draftRevision: 3,
-      amountCents: 0,
+      amountCents: "0",
       pricingNature: "fixed_price",
       amountSource: "manual",
       draftData: { contractName: "测试合同" },

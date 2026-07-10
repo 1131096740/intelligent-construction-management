@@ -6,8 +6,8 @@ export interface CreateSettlementLineDto {
   name?: string;
   unit?: string;
   quantity?: number | string;
-  unitPriceCents?: number;
-  amountCents: number;
+  unitPriceCents?: string;
+  amountCents: string;
   reason?: string;
   remark?: string;
   sortOrder?: number;
@@ -17,7 +17,7 @@ export interface CreateSettlementDto {
   contractVersionId: string;
   code: string;
   periodLabel: string;
-  amountCents: number;
+  amountCents: string;
   isFinal?: boolean;
   settlementLines?: CreateSettlementLineDto[];
 }

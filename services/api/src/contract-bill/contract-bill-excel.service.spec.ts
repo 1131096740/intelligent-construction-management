@@ -276,7 +276,7 @@ describe("ContractBillExcelService", () => {
     expect(preview.errors).toEqual([]);
     expect(preview.added).toBe(1);
     // 3 * 100 = 300.00 元 = 30000 分（含税），与公式缓存结果 999 无关。
-    expect(preview.afterAmountCents).toBe(30000);
+    expect(preview.afterAmountCents).toBe("30000");
     expect(rows).toHaveLength(0);
   });
 

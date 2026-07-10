@@ -24,10 +24,10 @@ export interface SettlementDocumentInput {
   contractName: string;
   counterparty: string;
   companyEntityName: string;
-  amountCents: number;
-  finalCumulativeAmountCents?: number | null;
-  payableAmountCents: number;
-  previousEffectiveSettlementCents: number;
+  amountCents: bigint;
+  finalCumulativeAmountCents?: bigint | null;
+  payableAmountCents: bigint;
+  previousEffectiveSettlementCents: bigint;
   isFinal: boolean;
   generatedAt: Date;
   approvalRows: SettlementApprovalSignatureRow[];
@@ -35,20 +35,28 @@ export interface SettlementDocumentInput {
 
 export interface SettlementDocumentRow {
   source: string;
-  previousCumulativeCents: number;
-  currentSettlementCents: number;
-  afterCumulativeCents: number;
-  payableAmountCents: number;
+  previousCumulativeCents: bigint;
+  currentSettlementCents: bigint;
+  afterCumulativeCents: bigint;
+  payableAmountCents: bigint;
   remark: string;
 }
 
 export function settlementDocumentRows(input: SettlementDocumentInput): SettlementDocumentRow[] {
-  const previousCumulativeCents = Math.max(input.previousEffectiveSettlementCents, 0);
+  const previousCumulativeCents =
+    input.previousEffectiveSettlementCents > 0n
+      ? input.previousEffectiveSettlementCents
+      : 0n;
   const finalCumulativeCents =
-    input.finalCumulativeAmountCents ?? Math.max(input.amountCents, previousCumulativeCents);
+    input.finalCumulativeAmountCents ??
+    (input.amountCents > previousCumulativeCents
+      ? input.amountCents
+      : previousCumulativeCents);
   const currentSettlementCents = input.isFinal
     ? input.finalCumulativeAmountCents == null
-      ? Math.max(input.amountCents - previousCumulativeCents, 0)
+      ? input.amountCents - previousCumulativeCents > 0n
+        ? input.amountCents - previousCumulativeCents
+        : 0n
       : input.amountCents
     : input.amountCents;
   const afterCumulativeCents = input.isFinal
@@ -156,10 +164,10 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
     const excelRow = sheet.addRow([
       index + 1,
       row.source,
-      centsToYuan(row.previousCumulativeCents),
-      centsToYuan(row.currentSettlementCents),
-      centsToYuan(row.afterCumulativeCents),
-      centsToYuan(row.payableAmountCents),
+      centsToYuanText(row.previousCumulativeCents),
+      centsToYuanText(row.currentSettlementCents),
+      centsToYuanText(row.afterCumulativeCents),
+      centsToYuanText(row.payableAmountCents),
       row.remark
     ]);
     excelRow.eachCell((cell, columnNumber) => {
@@ -418,12 +426,16 @@ function thinBorder(): Partial<ExcelJS.Borders> {
   };
 }
 
-function centsToYuan(amountCents: number) {
-  return amountCents / 100;
+function centsToYuanText(amountCents: bigint) {
+  const negative = amountCents < 0n;
+  const absolute = negative ? -amountCents : amountCents;
+  return `${negative ? "-" : ""}${absolute / 100n}.${(absolute % 100n)
+    .toString()
+    .padStart(2, "0")}`;
 }
 
-function formatYuan(amountCents: number) {
-  return `${(amountCents / 100).toFixed(2)} 元`;
+function formatYuan(amountCents: bigint) {
+  return `${centsToYuanText(amountCents)} 元`;
 }
 
 function formatDate(value: Date) {

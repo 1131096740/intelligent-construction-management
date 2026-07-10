@@ -16,7 +16,8 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import {
   dbMoneyToBigInt,
-  legacyBigIntToDbInt,
+  parseMoneyCents,
+  parseSignedMoneyCents,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
@@ -203,7 +204,7 @@ interface SettlementLineClient {
       Array<{
         contractBillRowId: string | null;
         settlementId: string;
-        amountCents: number;
+        amountCents: bigint;
       }>
     >;
     createMany(args: {
@@ -214,8 +215,8 @@ interface SettlementLineClient {
         name: string;
         unit: string | null;
         quantity: Prisma.Decimal | null;
-        unitPriceCents: number | null;
-        amountCents: number;
+        unitPriceCents: bigint | null;
+        amountCents: bigint;
         reason: string | null;
         remark: string | null;
         sortOrder: number;
@@ -236,8 +237,8 @@ interface NormalizedSettlementLine {
   name: string;
   unit: string | null;
   quantity: Prisma.Decimal | null;
-  unitPriceCents: number | null;
-  amountCents: number;
+  unitPriceCents: bigint | null;
+  amountCents: bigint;
   reason: string | null;
   remark: string | null;
   sortOrder: number;
@@ -300,8 +301,12 @@ export class SettlementService {
         throw new BadRequestException("结算明细来源类型不正确。");
       }
 
-      const amountCents = this.requiredInteger(line.amountCents, "结算明细金额");
-      if (amountCents === 0) {
+      const amountCents = this.requiredMoneyCents(
+        line.amountCents,
+        "结算明细金额",
+        true
+      );
+      if (amountCents === 0n) {
         throw new BadRequestException("结算明细金额不能为 0。");
       }
 
@@ -313,7 +318,7 @@ export class SettlementService {
           name: this.requiredText(line.name, "结算明细名称"),
           unit: this.optionalText(line.unit),
           quantity: this.optionalDecimal(line.quantity, "结算明细工程量"),
-          unitPriceCents: this.optionalInteger(line.unitPriceCents, "结算明细单价"),
+          unitPriceCents: this.optionalMoneyCents(line.unitPriceCents, "结算明细单价"),
           amountCents,
           reason,
           remark: this.optionalText(line.remark),
@@ -323,7 +328,7 @@ export class SettlementService {
       }
 
       const contractBillRowId = this.requiredText(line.contractBillRowId, "合同清单项");
-      if (amountCents < 0) {
+      if (amountCents < 0n) {
         throw new BadRequestException(
           "合同清单项结算金额必须大于 0，扣款或冲减请作为手工调整项填写原因。"
         );
@@ -339,7 +344,7 @@ export class SettlementService {
         name: this.optionalText(line.name) ?? billRow.itemName,
         unit: this.optionalText(line.unit) ?? billRow.unit,
         quantity: this.optionalDecimal(line.quantity, "结算明细工程量"),
-        unitPriceCents: this.optionalInteger(line.unitPriceCents, "结算明细单价"),
+        unitPriceCents: this.optionalMoneyCents(line.unitPriceCents, "结算明细单价"),
         amountCents,
         reason: this.optionalText(line.reason),
         remark: this.optionalText(line.remark),
@@ -380,9 +385,9 @@ export class SettlementService {
   }
 
   private settlementAmountFromLines(
-    calculatedAmountCents: number,
+    calculatedAmountCents: bigint,
     lines: NormalizedSettlementLine[]
-  ): number {
+  ): bigint {
     if (!lines.length) return calculatedAmountCents;
 
     const lineTotal = calculateSettlementLineTotalBigInt(
@@ -392,7 +397,7 @@ export class SettlementService {
       throw new BadRequestException("结算明细合计必须等于本次结算金额，系统不会使用前端合计覆盖后台计算。");
     }
 
-    return legacyBigIntToDbInt(lineTotal, "结算明细合计");
+    return lineTotal;
   }
 
   private async assertNoDuplicateActiveSettlementPeriod(
@@ -561,9 +566,19 @@ export class SettlementService {
     return Number(value);
   }
 
-  private optionalInteger(value: number | undefined, label: string): number | null {
+  private requiredMoneyCents(value: string | undefined, label: string, signed = false): bigint {
+    try {
+      return signed
+        ? parseSignedMoneyCents(value as string, label)
+        : parseMoneyCents(value as string, label);
+    } catch {
+      throw new BadRequestException(`${label}必须为整数。`);
+    }
+  }
+
+  private optionalMoneyCents(value: string | undefined, label: string): bigint | null {
     if (value === undefined || value === null) return null;
-    return this.requiredInteger(value, label);
+    return this.requiredMoneyCents(value, label);
   }
 
   private optionalDecimal(value: number | string | undefined, label: string): Prisma.Decimal | null {
@@ -583,6 +598,11 @@ export class SettlementService {
   async create(input: CreateSettlementDto, applicantUserId?: string) {
     if (!this.prisma) {
       throw new Error("结算创建服务暂不可用，请稍后重试或联系管理员");
+    }
+
+    const submittedAmountCents = this.requiredMoneyCents(input.amountCents, "结算金额");
+    if (submittedAmountCents <= 0n) {
+      throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
     }
 
     const settlement = await this.prisma.$transaction(async (tx) => {
@@ -627,9 +647,9 @@ export class SettlementService {
           ? await this.calculateFinalSettlementCurrentAmount(
               tx,
               version.contractId,
-              input.amountCents
+              submittedAmountCents
             )
-          : input.amountCents;
+          : submittedAmountCents;
       const settlementAmountCents = this.settlementAmountFromLines(
         calculatedSettlementAmountCents,
         settlementLines
@@ -671,9 +691,9 @@ export class SettlementService {
           status: "approval_pending",
           amountCents: settlementAmountCents,
           payableAmountCents,
-          paidAmountCents: 0,
+          paidAmountCents: 0n,
           ...(input.isFinal === true
-            ? { isFinal: true, finalCumulativeAmountCents: input.amountCents }
+            ? { isFinal: true, finalCumulativeAmountCents: submittedAmountCents }
             : {})
         }
       });
@@ -746,8 +766,8 @@ export class SettlementService {
   private async calculateFinalSettlementCurrentAmount(
     tx: Prisma.TransactionClient,
     contractId: string,
-    finalCumulativeAmountCents: number
-  ): Promise<number> {
+    finalCumulativeAmountCents: bigint
+  ): Promise<bigint> {
     const previousSettlements = await tx.settlement.findMany({
       where: {
         contractId,
@@ -764,16 +784,16 @@ export class SettlementService {
       throw new BadRequestException("最终审定累计结算总额必须大于前序已生效累计结算金额");
     }
 
-    return legacyBigIntToDbInt(currentAmountCents, "本次结算金额");
+    return currentAmountCents;
   }
 
   private async reserveSettlementQuota(
     tx: Prisma.TransactionClient,
     projectId: string,
     contractId: string,
-    amountCents: number
+    amountCents: bigint
   ): Promise<Array<{ quotaId: string; amountCents: bigint }>> {
-    const requestedAmountCents = BigInt(amountCents);
+    const requestedAmountCents = amountCents;
     if (requestedAmountCents <= 0n) {
       throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
     }
@@ -920,11 +940,8 @@ export class SettlementService {
     }
   }
 
-  private calculatePayableAmount(amountCents: number, ratioBps: number | null): number {
-    return legacyBigIntToDbInt(
-      calculateSettlementPayableAmountBigInt(amountCents, ratioBps),
-      "结算应付金额"
-    );
+  private calculatePayableAmount(amountCents: bigint, ratioBps: number | null): bigint {
+    return calculateSettlementPayableAmountBigInt(amountCents, ratioBps);
   }
 
   async uploadArchiveFile(
@@ -1941,9 +1958,9 @@ export class SettlementService {
       amountCents: settlement.amountCents,
       finalCumulativeAmountCents: settlement.finalCumulativeAmountCents,
       payableAmountCents: settlement.payableAmountCents,
-      previousEffectiveSettlementCents: previousSettlements.reduce(
+      previousEffectiveSettlementCents: previousSettlements.reduce<bigint>(
         (total, row) => total + row.amountCents,
-        0
+        0n
       ),
       isFinal: settlement.isFinal,
       generatedAt: new Date(),

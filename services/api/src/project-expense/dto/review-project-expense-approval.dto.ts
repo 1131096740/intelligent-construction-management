@@ -1,5 +1,5 @@
 export interface ReviewProjectExpenseApprovalDto {
   decision: "approve" | "reject";
-  approvedAmountCents?: number;
+  approvedAmountCents?: string;
   comment?: string;
 }

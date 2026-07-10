@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
-  moneyCentsToLegacyApiNumber
+  moneyCentsToApi
 } from "../money/decimal-money";
 
 export interface PaymentCapacity {
@@ -13,11 +13,8 @@ export interface PaymentCapacity {
 
 @Injectable()
 export class PaymentAmountService {
-  remainingCapacity(input: PaymentCapacity): number {
-    return moneyCentsToLegacyApiNumber(
-      this.remainingCapacityBigInt(input),
-      "当前可申请余额"
-    );
+  remainingCapacity(input: PaymentCapacity): string {
+    return moneyCentsToApi(this.remainingCapacityBigInt(input));
   }
 
   remainingCapacityBigInt(input: PaymentCapacity): bigint {
@@ -28,12 +25,8 @@ export class PaymentAmountService {
     );
   }
 
-  assertCanRequest(input: PaymentCapacity, requestedAmountCents: number | bigint): void {
-    if (
-      (typeof requestedAmountCents === "number" &&
-        (!Number.isSafeInteger(requestedAmountCents) || requestedAmountCents <= 0)) ||
-      (typeof requestedAmountCents === "bigint" && requestedAmountCents <= 0n)
-    ) {
+  assertCanRequest(input: PaymentCapacity, requestedAmountCents: bigint): void {
+    if (requestedAmountCents <= 0n) {
       throw new Error("付款申请金额必须为大于 0 的整数分");
     }
 

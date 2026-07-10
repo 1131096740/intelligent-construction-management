@@ -307,6 +307,7 @@ import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
+import { centsTextToYuanText } from "../../lib/money";
 import {
   createPaymentRequest,
   fetchContractPaymentApplication,
@@ -534,11 +535,8 @@ async function loadPaymentLedger() {
   }
 }
 
-function formatCents(amountCents: number) {
-  return `¥${(amountCents / 100).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`;
+function formatCents(amountCents: string) {
+  return `¥${centsTextToYuanText(amountCents)}`;
 }
 
 function previewRowClassName(params: { row: PaymentApplicationPreviewRow }) {

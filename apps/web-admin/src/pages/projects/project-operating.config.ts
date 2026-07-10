@@ -1,4 +1,4 @@
-import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
+import type { ContractBusinessOptionReadModel, MoneyCents } from "@jiangkong/shared-domain";
 import type { ProjectOperatingOverviewReadModel } from "../../api/core-flow-read.api";
 
 export type ProjectProxySettlementOption = ContractBusinessOptionReadModel["settlements"][number];
@@ -20,25 +20,25 @@ export interface ExecutiveProjectOverviewRow {
   id: string;
   code: string;
   name: string;
-  contractAmountCents: number;
-  settlementAmountCents: number;
-  payableAmountCents: number;
-  actualReceiptsCents: number | null;
-  actualPaidCents: number;
-  approvedPendingPaymentCents: number;
-  availableFundsCents: number | null;
+  contractAmountCents: MoneyCents;
+  settlementAmountCents: MoneyCents;
+  payableAmountCents: MoneyCents;
+  actualReceiptsCents: MoneyCents | null;
+  actualPaidCents: MoneyCents;
+  approvedPendingPaymentCents: MoneyCents;
+  availableFundsCents: MoneyCents | null;
   dataGapCount: number;
 }
 
 export interface ExecutiveProjectOverviewSummary {
   projectCount: number;
-  contractAmountCents: number;
-  settlementAmountCents: number;
-  payableAmountCents: number;
-  actualReceiptsCents: number | null;
-  actualPaidCents: number;
-  approvedPendingPaymentCents: number;
-  availableFundsCents: number | null;
+  contractAmountCents: MoneyCents;
+  settlementAmountCents: MoneyCents;
+  payableAmountCents: MoneyCents;
+  actualReceiptsCents: MoneyCents | null;
+  actualPaidCents: MoneyCents;
+  approvedPendingPaymentCents: MoneyCents;
+  availableFundsCents: MoneyCents | null;
   dataGapCount: number;
 }
 
@@ -130,18 +130,24 @@ export function buildExecutiveProjectOverview(
       availableFundsCents: overview.cash.availableFundsCents,
       dataGapCount: overview.dataGaps.length
     }))
-    .sort((left, right) => right.payableAmountCents - left.payableAmountCents);
+    .sort((left, right) => {
+      const leftAmount = BigInt(left.payableAmountCents);
+      const rightAmount = BigInt(right.payableAmountCents);
+      return leftAmount === rightAmount ? 0 : leftAmount > rightAmount ? -1 : 1;
+    });
 
   return {
     rows,
     summary: {
       projectCount: rows.length,
-      contractAmountCents: sumNumbers(rows.map((row) => row.contractAmountCents)),
-      settlementAmountCents: sumNumbers(rows.map((row) => row.settlementAmountCents)),
-      payableAmountCents: sumNumbers(rows.map((row) => row.payableAmountCents)),
+      contractAmountCents: sumMoneyCents(rows.map((row) => row.contractAmountCents)),
+      settlementAmountCents: sumMoneyCents(rows.map((row) => row.settlementAmountCents)),
+      payableAmountCents: sumMoneyCents(rows.map((row) => row.payableAmountCents)),
       actualReceiptsCents: sumNullableCents(rows.map((row) => row.actualReceiptsCents)),
-      actualPaidCents: sumNumbers(rows.map((row) => row.actualPaidCents)),
-      approvedPendingPaymentCents: sumNumbers(rows.map((row) => row.approvedPendingPaymentCents)),
+      actualPaidCents: sumMoneyCents(rows.map((row) => row.actualPaidCents)),
+      approvedPendingPaymentCents: sumMoneyCents(
+        rows.map((row) => row.approvedPendingPaymentCents)
+      ),
       availableFundsCents: sumNullableCents(rows.map((row) => row.availableFundsCents)),
       dataGapCount: sumNumbers(rows.map((row) => row.dataGapCount))
     }
@@ -152,7 +158,11 @@ function sumNumbers(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0);
 }
 
-function sumNullableCents(values: Array<number | null>): number | null {
-  const knownValues = values.filter((value): value is number => value !== null);
-  return knownValues.length ? sumNumbers(knownValues) : null;
+function sumMoneyCents(values: MoneyCents[]): MoneyCents {
+  return values.reduce((sum, value) => sum + BigInt(value), 0n).toString();
+}
+
+function sumNullableCents(values: Array<MoneyCents | null>): MoneyCents | null {
+  const knownValues = values.filter((value): value is MoneyCents => value !== null);
+  return knownValues.length ? sumMoneyCents(knownValues) : null;
 }

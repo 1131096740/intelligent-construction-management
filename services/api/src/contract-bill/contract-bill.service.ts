@@ -8,7 +8,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
-import { calculateBillRow, centsToSafeNumber } from "../money/decimal-money";
+import { calculateBillRow, moneyCentsToApi } from "../money/decimal-money";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
 import type {
@@ -439,7 +439,7 @@ export class ContractBillService {
   }
 
   private convertReadValue(value: unknown): unknown {
-    if (typeof value === "bigint") return centsToSafeNumber(value);
+    if (typeof value === "bigint") return moneyCentsToApi(value);
     if (value instanceof Prisma.Decimal) return value.toString();
     if (Array.isArray(value)) return value.map((item) => this.convertReadValue(item));
     if (value !== null && typeof value === "object" && !(value instanceof Date)) {

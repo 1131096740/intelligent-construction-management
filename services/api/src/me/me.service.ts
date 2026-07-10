@@ -8,7 +8,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { centsToSafeNumber } from "../money/decimal-money";
+import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
 
 export interface UploadSignatureInput {
   originalName: string;
@@ -542,7 +542,8 @@ export class MeService {
 
     return payments.map((payment) => {
       const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
-      const remainingAmountCents = Math.max(payableAmountCents - payment.paidAmountCents, 0);
+      const balance = payableAmountCents - payment.paidAmountCents;
+      const remainingAmountCents = balance > 0n ? balance : 0n;
 
       return {
         id: `payment-execution:${payment.id}`,
@@ -550,7 +551,9 @@ export class MeService {
         title: "登记实付与凭证",
         projectName: projectNameById.get(payment.projectId) ?? payment.projectId,
         businessCode: payment.code,
-        amountText: this.amountText(remainingAmountCents || payableAmountCents),
+        amountText: this.amountText(
+          remainingAmountCents !== 0n ? remainingAmountCents : payableAmountCents
+        ),
         currentNode: "财务/出纳实付",
         stayedText: this.stayedText(payment.updatedAt),
         nextAction: "登记实付并上传凭证",
@@ -1154,12 +1157,7 @@ export class MeService {
   }
 
   private amountText(amountCents: number | bigint) {
-    const safeCents =
-      typeof amountCents === "bigint" ? centsToSafeNumber(amountCents) : amountCents;
-    return `¥${(safeCents / 100).toLocaleString("zh-CN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`;
+    return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "金额"))}`;
   }
 
   private stayedText(value: Date) {

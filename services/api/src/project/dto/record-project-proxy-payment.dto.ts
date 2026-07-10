@@ -7,7 +7,7 @@ export type ProjectProxyPaymentType =
 
 export interface RecordProjectProxyPaymentDto {
   paidAt: string;
-  amountCents: number;
+  amountCents: string;
   generalContractorName: string;
   paidTargetName: string;
   paymentType: ProjectProxyPaymentType;

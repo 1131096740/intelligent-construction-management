@@ -218,6 +218,7 @@ import {
   updateBillRow
 } from "../../../api/contract-workbench.api";
 import { uploadPrivateFile } from "../../../api/core-flow-read.api";
+import { centsTextToYuanText } from "../../../lib/money";
 import {
   billColumns,
   canApplyImport,
@@ -408,9 +409,8 @@ async function applyImport() {
   await run(() => applyBillExcelImport(importId.value), "已应用导入");
 }
 
-function moneyText(value: string | number | undefined): string {
-  const cents = Number(value ?? 0);
-  return `${(cents / 100).toFixed(2)} 元`;
+function moneyText(value: string | undefined): string {
+  return `${centsTextToYuanText(value ?? "0")} 元`;
 }
 
 function previewRowText(row: Record<string, unknown>): string {

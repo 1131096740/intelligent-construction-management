@@ -207,9 +207,9 @@ describe("ContractReadService", () => {
             code: "JS-001",
             periodLabel: "2026-06",
             status: "effective",
-            amountCents: 30000000,
-            payableAmountCents: 24000000,
-            paidAmountCents: 0,
+            amountCents: 30000000n,
+            payableAmountCents: 24000000n,
+            paidAmountCents: 0n,
             createdAt: new Date("2026-07-03T11:00:00.000Z")
           },
           {
@@ -219,9 +219,9 @@ describe("ContractReadService", () => {
             code: "JS-000",
             periodLabel: "2026-05",
             status: "paid",
-            amountCents: 20000000,
-            payableAmountCents: 16000000,
-            paidAmountCents: 16000000,
+            amountCents: 20000000n,
+            payableAmountCents: 16000000n,
+            paidAmountCents: 16000000n,
             createdAt: new Date("2026-07-02T11:00:00.000Z")
           }
         ])
@@ -241,7 +241,7 @@ describe("ContractReadService", () => {
       contractNo: "HT-LS-001",
       contractName: "历史材料合同",
       counterparty: "历史供应商",
-      amountCents: 100000000,
+      amountCents: "100000000",
       versionLabel: "合同 v1",
       contractStatusLabel: "已生效",
       source: "historical_takeover",
@@ -259,9 +259,9 @@ describe("ContractReadService", () => {
         settlementId: "settlement-effective",
         settlementNo: "JS-001",
         periodLabel: "2026-06",
-        amountCents: 30000000,
-        payableAmountCents: 24000000,
-        paidAmountCents: 0,
+        amountCents: "30000000",
+        payableAmountCents: "24000000",
+        paidAmountCents: "0",
         status: "effective",
         statusLabel: "审批通过",
         canCreatePayment: true,
@@ -271,9 +271,9 @@ describe("ContractReadService", () => {
         settlementId: "settlement-paid",
         settlementNo: "JS-000",
         periodLabel: "2026-05",
-        amountCents: 20000000,
-        payableAmountCents: 16000000,
-        paidAmountCents: 16000000,
+        amountCents: "20000000",
+        payableAmountCents: "16000000",
+        paidAmountCents: "16000000",
         status: "paid",
         statusLabel: "审批通过",
         canCreatePayment: false,
@@ -315,7 +315,7 @@ describe("ContractReadService", () => {
             contractId: "contract-historical",
             versionNo: 1,
             status: "effective",
-            amountCents: 100000000
+            amountCents: 100000000n
           }
         ])
       },
@@ -424,7 +424,7 @@ describe("ContractReadService", () => {
           id: "contract-version-2",
           versionNo: 2,
           status: "effective",
-          amountCents: 98650000
+          amountCents: 98650000n
         })
       },
       paymentTermsVersion: {
@@ -497,8 +497,8 @@ describe("ContractReadService", () => {
             code: "JS-2026-031",
             periodLabel: "2026年6月",
             status: "effective",
-            amountCents: 30000000,
-            payableAmountCents: 30000000,
+            amountCents: 30000000n,
+            payableAmountCents: 30000000n,
             updatedAt: new Date("2026-06-30T08:00:00.000Z")
           }
         ])
@@ -596,7 +596,7 @@ describe("ContractReadService", () => {
           contractId: "contract-1",
           versionNo: 2,
           status: "pending_archive_confirm",
-          amountCents: 98650000
+          amountCents: 98650000n
         })
       },
       paymentTermsVersion: {
@@ -712,7 +712,7 @@ describe("ContractReadService", () => {
           id: "contract-version-2",
           versionNo: 2,
           status: "effective",
-          amountCents: 100000000
+          amountCents: 100000000n
         })
       },
       paymentTermsVersion: {
@@ -732,8 +732,8 @@ describe("ContractReadService", () => {
             code: "JS-2026-001",
             periodLabel: "第1期",
             status: "effective",
-            amountCents: 30000000,
-            payableAmountCents: 30000000,
+            amountCents: 30000000n,
+            payableAmountCents: 30000000n,
             updatedAt: new Date("2026-06-20T08:00:00.000Z"),
             createdAt: new Date("2026-06-20T08:00:00.000Z")
           },
@@ -742,8 +742,8 @@ describe("ContractReadService", () => {
             code: "JS-2026-002",
             periodLabel: "第2期",
             status: "approval_pending",
-            amountCents: 10000000,
-            payableAmountCents: 10000000,
+            amountCents: 10000000n,
+            payableAmountCents: 10000000n,
             updatedAt: new Date("2026-06-29T08:00:00.000Z"),
             createdAt: new Date("2026-06-29T08:00:00.000Z")
           },
@@ -752,8 +752,8 @@ describe("ContractReadService", () => {
             code: "JS-2026-003",
             periodLabel: "第3期",
             status: "paid",
-            amountCents: 2000000,
-            payableAmountCents: 2000000,
+            amountCents: 2000000n,
+            payableAmountCents: 2000000n,
             updatedAt: new Date("2026-07-01T08:00:00.000Z"),
             createdAt: new Date("2026-07-01T08:00:00.000Z")
           }
@@ -776,9 +776,9 @@ describe("ContractReadService", () => {
             settlementId: "settlement-1",
             code: "FK-2026-001",
             status: "paid",
-            requestedAmountCents: 25000000,
-            approvedAmountCents: 22000000,
-            paidAmountCents: 20000000,
+            requestedAmountCents: 25000000n,
+            approvedAmountCents: 22000000n,
+            paidAmountCents: 20000000n,
             updatedAt: new Date("2026-06-25T08:00:00.000Z")
           },
           {
@@ -786,9 +786,9 @@ describe("ContractReadService", () => {
             settlementId: "settlement-1",
             code: "FK-2026-002",
             status: "approved_pending_payment",
-            requestedAmountCents: 5000000,
-            approvedAmountCents: 5000000,
-            paidAmountCents: 0,
+            requestedAmountCents: 5000000n,
+            approvedAmountCents: 5000000n,
+            paidAmountCents: 0n,
             updatedAt: new Date("2026-06-30T08:00:00.000Z")
           },
           {
@@ -796,9 +796,9 @@ describe("ContractReadService", () => {
             settlementId: "settlement-3",
             code: "FK-2026-003",
             status: "approval_pending",
-            requestedAmountCents: 1000000,
+            requestedAmountCents: 1000000n,
             approvedAmountCents: null,
-            paidAmountCents: 0,
+            paidAmountCents: 0n,
             updatedAt: new Date("2026-07-02T08:00:00.000Z")
           }
         ])
@@ -808,7 +808,7 @@ describe("ContractReadService", () => {
           {
             id: "execution-1",
             paymentRequestId: "payment-1",
-            amountCents: 22000000,
+            amountCents: 22000000n,
             paidAt: new Date("2026-06-26T08:00:00.000Z"),
             voucherFileId: "voucher-1"
           }
@@ -895,7 +895,7 @@ describe("ContractReadService", () => {
           id: "contract-version-1",
           versionNo: 1,
           status: "effective",
-          amountCents: 100_000_000
+          amountCents: 100_000_000n
         })
       },
       paymentTermsVersion: {
@@ -915,8 +915,8 @@ describe("ContractReadService", () => {
             code: "JS-2026-041",
             periodLabel: "第4期",
             status: "effective",
-            amountCents: 10_000_000,
-            payableAmountCents: 10_000_000,
+            amountCents: 10_000_000n,
+            payableAmountCents: 10_000_000n,
             updatedAt: new Date("2026-07-01T08:00:00.000Z")
           }
         ])
@@ -993,7 +993,7 @@ describe("ContractReadService", () => {
           id: "contract-version-1",
           versionNo: 1,
           status: "effective",
-          amountCents: 100000000
+          amountCents: 100000000n
         })
       },
       paymentTermsVersion: {
@@ -1020,9 +1020,9 @@ describe("ContractReadService", () => {
             sourceType: "contract_advance",
             code: "FK-YF-2026-001",
             status: "paid",
-            requestedAmountCents: 10000000,
-            approvedAmountCents: 10000000,
-            paidAmountCents: 10000000,
+            requestedAmountCents: 10000000n,
+            approvedAmountCents: 10000000n,
+            paidAmountCents: 10000000n,
             updatedAt: new Date("2026-07-20T08:00:00.000Z")
           }
         ])
@@ -1032,7 +1032,7 @@ describe("ContractReadService", () => {
           {
             id: "execution-advance-1",
             paymentRequestId: "payment-advance-1",
-            amountCents: 10000000,
+            amountCents: 10000000n,
             paidAt: new Date("2026-07-21T08:00:00.000Z"),
             voucherFileId: "voucher-advance-1"
           }

@@ -5,8 +5,8 @@ export interface FlowNodeInput {
   name: string;
   mode: ApprovalNodeMode;
   roleKeys: RoleKey[];
-  minAmountCents?: number;
-  maxAmountCents?: number;
+  minAmountCents?: bigint;
+  maxAmountCents?: bigint;
 }
 
 export interface FrozenNode {
@@ -17,7 +17,7 @@ export interface FrozenNode {
 
 @Injectable()
 export class ApprovalFreezeService {
-  freeze(nodes: FlowNodeInput[], amountCents: number): FrozenNode[] {
+  freeze(nodes: FlowNodeInput[], amountCents: bigint): FrozenNode[] {
     return nodes
       .filter((node) => {
         if (node.minAmountCents !== undefined && amountCents < node.minAmountCents) {

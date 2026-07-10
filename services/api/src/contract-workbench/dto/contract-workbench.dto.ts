@@ -6,7 +6,7 @@ export interface SaveContractDraftDto {
   clauses: ContractClauseDefinition[];
   pricingNature: "fixed_total" | "provisional_total" | "unit_price" | "framework";
   amountSource: "bill_sum" | "manual";
-  manualAmountCents?: number;
+  manualAmountCents?: string;
   amountAdjustmentReason?: string;
   layoutTemplateVersionId?: string;
   paymentTermsOriginalText?: string;

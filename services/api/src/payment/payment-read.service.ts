@@ -19,6 +19,12 @@ import {
 import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
 import { PrismaService } from "../database/prisma.service";
 import {
+  dbMoneyToBigInt,
+  formatMoneyCentsAsYuan,
+  moneyCentsToApi,
+  sumDbMoneyToBigInt
+} from "../money/decimal-money";
+import {
   CONTRACT_TAKEOVER_BALANCE_SELECT,
   type ContractTakeoverBalanceRow,
   toHistoricalContractPaymentBalance
@@ -27,7 +33,7 @@ import {
   buildContractPaymentApplicationPreview,
   CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
-  sumSafeCents
+  sumMoneyCents
 } from "./settlement-payment-capacity";
 
 @Injectable()
@@ -179,14 +185,17 @@ export class PaymentReadService {
     paymentCode: string,
     executions: Array<{
       id: string;
-      amountCents: number;
+      amountCents: bigint;
       paidAt?: Date | null;
       createdAt?: Date;
     }>,
-    financeRecords: Array<{ amountCents: number }>,
+    financeRecords: Array<{ amountCents: bigint }>,
     evidenceFiles: PaymentDetailReadModel["evidenceFiles"]
   ): PaymentDetailReadModel["executionCoverages"] {
-    let remainingFinanceCents = financeRecords.reduce((total, record) => total + record.amountCents, 0);
+    let remainingFinanceCents = sumDbMoneyToBigInt(
+      financeRecords.map((record) => record.amountCents),
+      "财务入账金额"
+    );
     const voucherNameByExecutionId = new Map(
       evidenceFiles
         .filter((file) => file.purpose === "付款凭证")
@@ -196,7 +205,10 @@ export class PaymentReadService {
     return [...executions]
       .sort((left, right) => this.executionTime(left) - this.executionTime(right))
       .map((execution, index) => {
-        const financeRecordedAmountCents = Math.min(execution.amountCents, remainingFinanceCents);
+        const financeRecordedAmountCents =
+          execution.amountCents < remainingFinanceCents
+            ? execution.amountCents
+            : remainingFinanceCents;
         remainingFinanceCents -= financeRecordedAmountCents;
         const unrecordedAmountCents = execution.amountCents - financeRecordedAmountCents;
         return {
@@ -208,9 +220,9 @@ export class PaymentReadService {
           financeRecordedAmount: this.formatMoney(financeRecordedAmountCents),
           unrecordedAmount: this.formatMoney(unrecordedAmountCents),
           coverageStatus:
-            unrecordedAmountCents === 0
+            unrecordedAmountCents === 0n
               ? "已全部入账"
-              : financeRecordedAmountCents > 0
+              : financeRecordedAmountCents > 0n
                 ? "部分入账"
                 : "待入账"
         };
@@ -281,11 +293,11 @@ export class PaymentReadService {
     ]);
     const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
     const projectById = new Map(projects.map((project) => [project.id, project]));
-    const paidByPaymentId = new Map<string, number>();
+    const paidByPaymentId = new Map<string, bigint>();
     for (const execution of executions) {
       paidByPaymentId.set(
         execution.paymentRequestId,
-        (paidByPaymentId.get(execution.paymentRequestId) ?? 0) + execution.amountCents
+        (paidByPaymentId.get(execution.paymentRequestId) ?? 0n) + execution.amountCents
       );
     }
 
@@ -401,9 +413,9 @@ export class PaymentReadService {
           },
       orderBy: { createdAt: "asc" }
     });
-    const executionAmountCents = executions.reduce(
-      (total, execution) => total + execution.amountCents,
-      0
+    const executionAmountCents = sumDbMoneyToBigInt(
+      executions.map((execution) => execution.amountCents),
+      "付款实付金额"
     );
     const executionAllocations = await this.prisma.paymentExecutionAllocation.findMany({
       where: { paymentRequestId: payment.id },
@@ -428,9 +440,9 @@ export class PaymentReadService {
         allocationSettlement
       ])
     );
-    const financeRecordedAmountCents = financeRecords.reduce(
-      (total, record) => total + record.amountCents,
-      0
+    const financeRecordedAmountCents = sumDbMoneyToBigInt(
+      financeRecords.map((record) => record.amountCents),
+      "财务入账金额"
     );
     const [evidenceFiles, approvalTimeline] = await Promise.all([
       this.paymentEvidenceFiles(payment.id, executions),
@@ -517,7 +529,7 @@ export class PaymentReadService {
             : (allocation.settlementId ?? "-"),
           stageName: allocation.stageName ?? allocation.stageType,
           allocationType: this.allocationTypeLabel(allocation.allocationType),
-          amountCents: allocation.amountCents
+          amountCents: moneyCentsToApi(allocation.amountCents)
         };
       }),
       evidenceFiles,
@@ -695,27 +707,27 @@ export class PaymentReadService {
     const contractAmountCentsByVersionId = new Map(
       settlementContractVersions.map((version) => [
         version.id,
-        sumSafeCents([version.amountCents])
+        dbMoneyToBigInt(version.amountCents, "合同金额")
       ])
     );
-    const contractAmountCentsByPaymentTermsVersionId = settlements.reduce<Record<string, number>>(
+    const contractAmountCentsByPaymentTermsVersionId = settlements.reduce<Record<string, bigint>>(
       (amounts, settlement) => ({
         ...amounts,
         [settlement.paymentTermsVersionId]:
           contractAmountCentsByVersionId.get(settlement.contractVersionId) ??
-          sumSafeCents([contractVersion.amountCents])
+          dbMoneyToBigInt(contractVersion.amountCents, "合同金额")
       }),
       {}
     );
     for (const terms of paymentTermsVersions) {
       contractAmountCentsByPaymentTermsVersionId[terms.id] =
         contractAmountCentsByPaymentTermsVersionId[terms.id] ??
-        sumSafeCents([contractVersion.amountCents]);
+        dbMoneyToBigInt(contractVersion.amountCents, "合同金额");
     }
     if (historicalBalance?.paymentTermsVersionId) {
       contractAmountCentsByPaymentTermsVersionId[historicalBalance.paymentTermsVersionId] =
         contractAmountCentsByPaymentTermsVersionId[historicalBalance.paymentTermsVersionId] ??
-        sumSafeCents([contractVersion.amountCents]);
+        dbMoneyToBigInt(contractVersion.amountCents, "合同金额");
     }
 
     const settlementPaymentRequests = paymentRequests.filter(
@@ -727,10 +739,12 @@ export class PaymentReadService {
     const advancePaymentRequests = paymentRequests.filter(
       (payment) =>
         payment.sourceType === "contract_advance" &&
-        payment.paidAmountCents > 0 &&
+        payment.paidAmountCents > 0n &&
         payment.paymentTermsVersionId
     );
-    const proxyPaidCents = sumSafeCents(projectProxyPayments.map((payment) => payment.amountCents));
+    const proxyPaidCents = sumMoneyCents(
+      projectProxyPayments.map((payment) => payment.amountCents)
+    );
     const preview = buildContractPaymentApplicationPreview({
       asOf,
       contractEffectiveAt: contractVersion.effectiveAt,
@@ -739,7 +753,7 @@ export class PaymentReadService {
       settlementArchiveFiles,
       paymentRequests: settlementPaymentRequests,
       proxyPaidAmountCents: proxyPaidCents,
-      contractAmountCents: sumSafeCents([contractVersion.amountCents]),
+      contractAmountCents: dbMoneyToBigInt(contractVersion.amountCents, "合同金额"),
       contractAmountCentsByPaymentTermsVersionId,
       advancePaymentRequests,
       historicalBalance
@@ -747,8 +761,8 @@ export class PaymentReadService {
     const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
     const occupancy = this.paymentOccupancyBreakdown(settlementPaymentRequests);
     const actualPaidCents =
-      sumSafeCents(settlements.map((settlement) => settlement.paidAmountCents)) +
-      sumSafeCents(
+      sumMoneyCents(settlements.map((settlement) => settlement.paidAmountCents)) +
+      sumMoneyCents(
         settlementPaymentRequests
           .filter((payment) => payment.settlementId === null)
           .map((payment) => payment.paidAmountCents)
@@ -756,10 +770,10 @@ export class PaymentReadService {
 
     const capacity = {
       ...preview.capacity,
-      actualPaidCents,
-      approvalPendingCents: occupancy.approvalPendingCents,
-      approvedPendingCents: occupancy.approvedPendingCents,
-      proxyPaidCents,
+      actualPaidCents: moneyCentsToApi(actualPaidCents),
+      approvalPendingCents: moneyCentsToApi(occupancy.approvalPendingCents),
+      approvedPendingCents: moneyCentsToApi(occupancy.approvedPendingCents),
+      proxyPaidCents: moneyCentsToApi(proxyPaidCents),
       ...(preview.historicalBalance
         ? {
             historicalPaidCents: settlements.some(
@@ -767,7 +781,7 @@ export class PaymentReadService {
                 settlement.sourceType === "historical_takeover" ||
                 !!settlement.sourceTakeoverId
             )
-              ? 0
+              ? "0"
               : preview.historicalBalance.paidCents,
             historicalApprovalPendingCents:
               preview.historicalBalance.approvalPendingPaymentCents,
@@ -797,7 +811,7 @@ export class PaymentReadService {
         settlementId: settlement.id,
         settlementNo: settlement.code,
         period: settlement.periodLabel,
-        amountCents: settlement.amountCents,
+        amountCents: moneyCentsToApi(settlement.amountCents),
         status: settlement.status,
         isFinal: settlement.isFinal
       })),
@@ -836,21 +850,23 @@ export class PaymentReadService {
   private contractPaymentCapacityExplanation(
     capacity: ContractPaymentApplicationPreviewReadModel["capacity"]
   ): ContractPaymentApplicationPreviewReadModel["capacityExplanation"] {
+    const cents = (value: string | undefined) => BigInt(value ?? "0");
     const actualPaidCents =
-      capacity.actualPaidCents + (capacity.historicalPaidCents ?? 0);
+      cents(capacity.actualPaidCents) + cents(capacity.historicalPaidCents);
     const approvalPendingCents =
-      capacity.approvalPendingCents + (capacity.historicalApprovalPendingCents ?? 0);
+      cents(capacity.approvalPendingCents) + cents(capacity.historicalApprovalPendingCents);
     const approvedPendingCents =
-      capacity.approvedPendingCents + (capacity.historicalApprovedPendingCents ?? 0);
+      cents(capacity.approvedPendingCents) + cents(capacity.historicalApprovedPendingCents);
     const proxyPaidCents =
-      capacity.proxyPaidCents + (capacity.historicalProxyPaidCents ?? 0);
-    const historicalRetentionUnreleasedCents = Math.max(
-      (capacity.historicalRetentionWithheldCents ?? 0) -
-        (capacity.historicalRetentionReleasedCents ?? 0),
-      0
+      cents(capacity.proxyPaidCents) + cents(capacity.historicalProxyPaidCents);
+    const historicalRetentionBalance =
+      cents(capacity.historicalRetentionWithheldCents) -
+      cents(capacity.historicalRetentionReleasedCents);
+    const historicalRetentionUnreleasedCents =
+      historicalRetentionBalance > 0n ? historicalRetentionBalance : 0n;
+    const historicalOtherConfirmedOccupancyCents = cents(
+      capacity.historicalOtherConfirmedOccupancyCents
     );
-    const historicalOtherConfirmedOccupancyCents =
-      capacity.historicalOtherConfirmedOccupancyCents ?? 0;
 
     return [
       {
@@ -862,37 +878,49 @@ export class PaymentReadService {
       },
       {
         label: "扣已实际付款",
-        amountCents: actualPaidCents,
+        amountCents: moneyCentsToApi(actualPaidCents),
         operator: "subtract",
-        note: capacity.historicalPaidCents ? "含历史接管已付款" : "系统内已登记实付",
+        note:
+          cents(capacity.historicalPaidCents) > 0n
+            ? "含历史接管已付款"
+            : "系统内已登记实付",
         tone: "default"
       },
       {
         label: "扣审批中占用",
-        amountCents: approvalPendingCents,
+        amountCents: moneyCentsToApi(approvalPendingCents),
         operator: "subtract",
-        note: capacity.historicalApprovalPendingCents ? "含历史接管审批中付款" : "已发起但未审批通过",
+        note:
+          cents(capacity.historicalApprovalPendingCents) > 0n
+            ? "含历史接管审批中付款"
+            : "已发起但未审批通过",
         tone: "warning"
       },
       {
         label: "扣已批待付款占用",
-        amountCents: approvedPendingCents,
+        amountCents: moneyCentsToApi(approvedPendingCents),
         operator: "subtract",
-        note: capacity.historicalApprovedPendingCents ? "含历史接管已批待付款" : "审批通过但尚未实付",
+        note:
+          cents(capacity.historicalApprovedPendingCents) > 0n
+            ? "含历史接管已批待付款"
+            : "审批通过但尚未实付",
         tone: "warning"
       },
       {
         label: "扣总包代付",
-        amountCents: proxyPaidCents,
+        amountCents: moneyCentsToApi(proxyPaidCents),
         operator: "subtract",
-        note: capacity.historicalProxyPaidCents ? "含历史接管总包代付" : "系统内已确认代付",
+        note:
+          cents(capacity.historicalProxyPaidCents) > 0n
+            ? "含历史接管总包代付"
+            : "系统内已确认代付",
         tone: "default"
       },
-      ...(historicalRetentionUnreleasedCents > 0
+      ...(historicalRetentionUnreleasedCents > 0n
         ? [
             {
               label: "扣历史未释放质保金",
-              amountCents: historicalRetentionUnreleasedCents,
+        amountCents: moneyCentsToApi(historicalRetentionUnreleasedCents),
               operator: "subtract" as const,
               note: "历史接管质保金扣留扣除已释放金额",
               tone: "warning" as const
@@ -903,7 +931,7 @@ export class PaymentReadService {
         ? [
             {
               label: "扣历史其他确认占用",
-              amountCents: historicalOtherConfirmedOccupancyCents,
+        amountCents: moneyCentsToApi(historicalOtherConfirmedOccupancyCents),
               operator: "subtract" as const,
               note: "历史接管时确认的其他付款占用",
               tone: "warning" as const
@@ -922,10 +950,10 @@ export class PaymentReadService {
         amountCents: capacity.maxRequestableCents,
         operator: "result",
         note:
-          capacity.maxRequestableCents > 0
+          BigInt(capacity.maxRequestableCents) > 0n
             ? "提交金额不得超过该额度"
             : "当前没有可发起的合同累计结算付款额度",
-        tone: capacity.maxRequestableCents > 0 ? "success" : "warning"
+        tone: BigInt(capacity.maxRequestableCents) > 0n ? "success" : "warning"
       }
     ];
   }
@@ -1105,8 +1133,8 @@ export class PaymentReadService {
     roleKeys: RoleKey[],
     canReviewApproval: boolean,
     executionComplete: boolean,
-    financeRecordedAmountCents: number,
-    paidAmountCents: number,
+    financeRecordedAmountCents: bigint,
+    paidAmountCents: bigint,
     evidenceFiles: PaymentDetailReadModel["evidenceFiles"]
   ): DetailActionReadModel[] {
     const workflowActions = [
@@ -1282,14 +1310,14 @@ export class PaymentReadService {
 
   private executionStatusView(
     status: string,
-    paidAmountCents: number,
-    payableAmountCents: number
+    paidAmountCents: bigint,
+    payableAmountCents: bigint
   ): { label: string; tone: CoreFlowTone; complete: boolean } {
-    if (paidAmountCents >= payableAmountCents && payableAmountCents > 0) {
+    if (paidAmountCents >= payableAmountCents && payableAmountCents > 0n) {
       return { label: "已付款", tone: "success", complete: true };
     }
 
-    if (paidAmountCents > 0) {
+    if (paidAmountCents > 0n) {
       return { label: "部分付款", tone: "warning", complete: false };
     }
 
@@ -1376,12 +1404,12 @@ export class PaymentReadService {
 
   private executionSteps(
     status: string,
-    paidAmountCents: number,
-    payableAmountCents: number,
-    financeRecordedAmountCents = 0
+    paidAmountCents: bigint,
+    payableAmountCents: bigint,
+    financeRecordedAmountCents = 0n
   ): PaymentDetailReadModel["executionSteps"] {
-    const hasPayment = paidAmountCents > 0;
-    const complete = paidAmountCents >= payableAmountCents && payableAmountCents > 0;
+    const hasPayment = paidAmountCents > 0n;
+    const complete = paidAmountCents >= payableAmountCents && payableAmountCents > 0n;
     const approved = status === "approved_pending_payment" || hasPayment || complete;
     const financeRecorded = hasPayment && financeRecordedAmountCents >= paidAmountCents;
 
@@ -1423,11 +1451,8 @@ export class PaymentReadService {
     return `${ratioBps / 100}%`;
   }
 
-  private formatMoney(amountCents: number): string {
-    return `¥${(amountCents / 100).toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`;
+  private formatMoney(amountCents: number | bigint): string {
+    return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "付款金额"))}`;
   }
 
   private limit(rawLimit?: string | number) {
@@ -1447,20 +1472,22 @@ export class PaymentReadService {
   private paymentOccupancyBreakdown(
     paymentRequests: Array<{
       status: string;
-      requestedAmountCents: number;
-      approvedAmountCents: number | null;
-      paidAmountCents: number;
+      requestedAmountCents: bigint;
+      approvedAmountCents: bigint | null;
+      paidAmountCents: bigint;
     }>
   ) {
     return paymentRequests.reduce(
       (totals, payment) => {
-        const paidAmountCents = Math.max(payment.paidAmountCents, 0);
+        const paidAmountCents = payment.paidAmountCents > 0n ? payment.paidAmountCents : 0n;
         if (["approval_pending", "in_approval"].includes(payment.status)) {
           return {
             ...totals,
             approvalPendingCents:
               totals.approvalPendingCents +
-              Math.max(payment.requestedAmountCents - paidAmountCents, 0)
+              (payment.requestedAmountCents - paidAmountCents > 0n
+                ? payment.requestedAmountCents - paidAmountCents
+                : 0n)
           };
         }
 
@@ -1469,18 +1496,17 @@ export class PaymentReadService {
             ...totals,
             approvedPendingCents:
               totals.approvedPendingCents +
-              Math.max(
-                (payment.approvedAmountCents ?? payment.requestedAmountCents) - paidAmountCents,
-                0
-              )
+              ((payment.approvedAmountCents ?? payment.requestedAmountCents) - paidAmountCents > 0n
+                ? (payment.approvedAmountCents ?? payment.requestedAmountCents) - paidAmountCents
+                : 0n)
           };
         }
 
         return totals;
       },
       {
-        approvalPendingCents: 0,
-        approvedPendingCents: 0
+        approvalPendingCents: 0n,
+        approvedPendingCents: 0n
       }
     );
   }

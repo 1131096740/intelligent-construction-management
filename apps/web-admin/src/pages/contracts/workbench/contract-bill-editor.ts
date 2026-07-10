@@ -26,7 +26,7 @@ export interface WorkbenchBill {
   billKey: string;
   name: string;
   revision: number;
-  taxInclusiveAmountCents?: string | number;
+  taxInclusiveAmountCents?: string;
   schemaSnapshot?: { columns?: WorkbenchBillColumn[] } | Record<string, unknown>;
   rows: WorkbenchBillRow[];
 }

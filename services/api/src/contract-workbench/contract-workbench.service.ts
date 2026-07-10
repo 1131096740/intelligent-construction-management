@@ -13,7 +13,7 @@ import type {
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
-import { centsToSafeNumber } from "../money/decimal-money";
+import { moneyCentsToApi, parseMoneyCents } from "../money/decimal-money";
 import type {
   ApplyContractTypeChangeDto,
   CreateDraftCheckpointDto,
@@ -873,7 +873,7 @@ export class ContractWorkbenchService {
       throw new BadRequestException("合同金额来源不正确，请重新选择");
     }
     if (input.amountSource === "manual" || input.manualAmountCents !== undefined) {
-      this.toCents(input.manualAmountCents as number | undefined, "手工合同金额");
+      this.toCents(input.manualAmountCents as string | undefined, "手工合同金额");
     }
     if (
       input.amountAdjustmentReason !== undefined &&
@@ -902,7 +902,7 @@ export class ContractWorkbenchService {
       amountSource: input.amountSource as SaveContractDraftDto["amountSource"],
       ...(input.manualAmountCents === undefined
         ? {}
-        : { manualAmountCents: input.manualAmountCents as number }),
+        : { manualAmountCents: input.manualAmountCents as string }),
       ...(input.amountAdjustmentReason === undefined
         ? {}
         : { amountAdjustmentReason: input.amountAdjustmentReason }),
@@ -1422,11 +1422,15 @@ export class ContractWorkbenchService {
     if (count !== 1) throw new BadRequestException("合同草稿状态已变化，请刷新后重试");
   }
 
-  private toCents(value: number | undefined, field: string) {
-    if (value === undefined || !Number.isSafeInteger(value) || value < 0) {
+  private toCents(value: string | undefined, field: string) {
+    if (value === undefined) {
       throw new BadRequestException(`${field}必须是大于等于 0 的整数金额`);
     }
-    return BigInt(value);
+    try {
+      return parseMoneyCents(value, field);
+    } catch {
+      throw new BadRequestException(`${field}必须是大于等于 0 的整数金额`);
+    }
   }
 
   private changedKeys(before: Record<string, unknown>, after: Record<string, unknown>) {
@@ -1503,7 +1507,7 @@ export class ContractWorkbenchService {
 
   private convertReadValue(value: unknown): unknown {
     if (typeof value === "bigint") {
-      return centsToSafeNumber(value);
+      return moneyCentsToApi(value);
     }
     if (value instanceof Prisma.Decimal) {
       return value.toString();

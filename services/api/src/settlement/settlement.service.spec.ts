@@ -126,7 +126,7 @@ describe("SettlementService", () => {
       contractVersionId: "contract-version-1",
       code: "JS-2026-019",
       periodLabel: "2026-06",
-      amountCents: 10000000
+      amountCents: "10000000"
     });
 
     expect(created.code).toBe("JS-2026-019");
@@ -139,9 +139,9 @@ describe("SettlementService", () => {
         code: "JS-2026-019",
         periodLabel: "2026-06",
         status: "approval_pending",
-        amountCents: 10000000,
-        payableAmountCents: 8000000,
-        paidAmountCents: 0
+        amountCents: 10000000n,
+        payableAmountCents: 8000000n,
+        paidAmountCents: 0n
       }
     });
   });
@@ -152,7 +152,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-019",
         periodLabel: "2026-06",
-        amountCents: 10000000
+        amountCents: "10000000"
       })
     ).rejects.toThrow("结算创建服务暂不可用，请稍后重试或联系管理员");
   });
@@ -176,7 +176,7 @@ describe("SettlementService", () => {
         contractVersionId: "missing-version",
         code: "JS-2026-019",
         periodLabel: "2026-06",
-        amountCents: 10000000
+        amountCents: "10000000"
       })
     ).rejects.toThrow("未找到可结算的合同版本，请刷新合同后重试");
     expect(tx.settlement.create).not.toHaveBeenCalled();
@@ -215,7 +215,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-019",
         periodLabel: "2026-06",
-        amountCents: 10000000
+        amountCents: "10000000"
       })
     ).rejects.toThrow("未找到结算关联合同，请刷新合同台账后重试");
     expect(tx.settlement.create).not.toHaveBeenCalled();
@@ -255,7 +255,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-019",
         periodLabel: "2026-06",
-        amountCents: 10000000
+        amountCents: "10000000"
       })
     ).rejects.toThrow("合同缺少已生效的结构化付款条款，不能创建结算。请先补齐并确认合同付款条款。");
     expect(tx.settlement.create).not.toHaveBeenCalled();
@@ -297,7 +297,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-ZERO",
         periodLabel: "2026-06",
-        amountCents: 0
+        amountCents: "0"
       })
     ).rejects.toThrow("结算金额必须大于 0，不能创建零金额或负数结算。");
     expect(tx.settlement.create).not.toHaveBeenCalled();
@@ -365,18 +365,18 @@ describe("SettlementService", () => {
       contractVersionId: "contract-version-1",
       code: "JS-2026-020",
       periodLabel: "2026-06",
-      amountCents: 950000,
+      amountCents: "950000",
       settlementLines: [
         {
           sourceType: "contract_bill_row",
           contractBillRowId: "bill-row-1",
           quantity: "3",
-          amountCents: 960000
+          amountCents: "960000"
         },
         {
           sourceType: "manual_adjustment",
           name: "材料扣款",
-          amountCents: -10000,
+          amountCents: "-10000",
           reason: "现场扣款确认"
         }
       ]
@@ -384,8 +384,8 @@ describe("SettlementService", () => {
 
     expect(tx.settlement.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        amountCents: 950000,
-        payableAmountCents: 760000
+        amountCents: 950000n,
+        payableAmountCents: 760000n
       })
     });
     expect(tx.settlementLine.createMany).toHaveBeenCalledWith({
@@ -398,7 +398,7 @@ describe("SettlementService", () => {
           unit: "吨",
           quantity: new Decimal("3"),
           unitPriceCents: null,
-          amountCents: 960000,
+          amountCents: 960000n,
           reason: null,
           remark: null,
           sortOrder: 1
@@ -411,7 +411,7 @@ describe("SettlementService", () => {
           unit: null,
           quantity: null,
           unitPriceCents: null,
-          amountCents: -10000,
+          amountCents: -10000n,
           reason: "现场扣款确认",
           remark: null,
           sortOrder: 2
@@ -483,17 +483,17 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-NEG",
         periodLabel: "2026-06",
-        amountCents: 100000,
+        amountCents: "100000",
         settlementLines: [
           {
             sourceType: "contract_bill_row",
             contractBillRowId: "bill-row-1",
-            amountCents: -10000
+            amountCents: "-10000"
           },
           {
             sourceType: "manual_adjustment",
             name: "本期补差",
-            amountCents: 110000,
+            amountCents: "110000",
             reason: "补差确认"
           }
         ]
@@ -551,7 +551,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-021",
         periodLabel: "2026-06",
-        amountCents: 100000
+        amountCents: "100000"
       })
     ).rejects.toThrow("同一合同版本和结算期间已存在结算单");
     expect(tx.settlement.create).not.toHaveBeenCalled();
@@ -601,7 +601,7 @@ describe("SettlementService", () => {
       contractVersionId: "contract-version-1",
       code: "JS-2026-022",
       periodLabel: "2026-06",
-      amountCents: 100000
+      amountCents: "100000"
     });
 
     expect(tx.settlement.findFirst).toHaveBeenCalledWith({
@@ -627,7 +627,7 @@ describe("SettlementService", () => {
       data: expect.objectContaining({
         contractVersionId: "contract-version-1",
         periodLabel: "2026-06",
-        amountCents: 100000
+        amountCents: 100000n
       })
     });
   });
@@ -681,7 +681,7 @@ describe("SettlementService", () => {
           contractVersionId: "contract-version-1",
           code: "JS-2026-021",
           periodLabel: "2026-06",
-          amountCents: 100000
+          amountCents: "100000"
         },
         "contract-staff-1"
       )
@@ -738,7 +738,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-021",
         periodLabel: " 2026-06 ",
-        amountCents: 100000
+        amountCents: "100000"
       })
     ).rejects.toThrow("同一合同版本和结算期间已存在结算单");
     expect(tx.settlement.findFirst).toHaveBeenCalledWith({
@@ -808,7 +808,7 @@ describe("SettlementService", () => {
           {
             contractBillRowId: "bill-row-1",
             settlementId: "settlement-old",
-            amountCents: 80000
+            amountCents: 80000n
           }
         ]),
         createMany: jest.fn()
@@ -825,13 +825,13 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-022",
         periodLabel: "2026-06",
-        amountCents: 30000,
+        amountCents: "30000",
         settlementLines: [
           {
             sourceType: "contract_bill_row",
             contractBillRowId: "bill-row-1",
             quantity: "1",
-            amountCents: 30000
+            amountCents: "30000"
           }
         ]
       })
@@ -903,19 +903,19 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-024",
         periodLabel: "2026-06",
-        amountCents: 110000,
+        amountCents: "110000",
         settlementLines: [
           {
             sourceType: "contract_bill_row",
             contractBillRowId: "bill-row-1",
             quantity: "1",
-            amountCents: 60000
+            amountCents: "60000"
           },
           {
             sourceType: "contract_bill_row",
             contractBillRowId: "bill-row-1",
             quantity: "1",
-            amountCents: 50000
+            amountCents: "50000"
           }
         ]
       })
@@ -966,7 +966,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-023",
         periodLabel: "2026-06",
-        amountCents: 100000
+        amountCents: "100000"
       })
     ).rejects.toThrow("合同付款条款缺少结算款阶段");
     expect(tx.settlement.create).not.toHaveBeenCalled();
@@ -1014,12 +1014,12 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-021",
         periodLabel: "2026-06",
-        amountCents: 100000,
+        amountCents: "100000",
         settlementLines: [
           {
             sourceType: "manual_adjustment",
             name: "扣款",
-            amountCents: 90000,
+            amountCents: "90000",
             reason: "扣款确认"
           }
         ]
@@ -1057,8 +1057,8 @@ describe("SettlementService", () => {
       settlement: {
         findMany: jest
           .fn()
-          .mockResolvedValueOnce([{ amountCents: 900000 }])
-          .mockResolvedValueOnce([{ amountCents: 900000 }]),
+          .mockResolvedValueOnce([{ amountCents: 900000n }])
+          .mockResolvedValueOnce([{ amountCents: 900000n }]),
         create: jest.fn().mockResolvedValue({
           id: "settlement-final-1",
           code: "JS-2026-FINAL"
@@ -1075,7 +1075,7 @@ describe("SettlementService", () => {
       contractVersionId: "contract-version-1",
       code: "JS-2026-FINAL",
       periodLabel: "最终结算",
-      amountCents: 1200000,
+      amountCents: "1200000",
       isFinal: true
     });
 
@@ -1095,11 +1095,11 @@ describe("SettlementService", () => {
         code: "JS-2026-FINAL",
         periodLabel: "最终结算",
         status: "approval_pending",
-        amountCents: 300000,
-        payableAmountCents: 240000,
-        paidAmountCents: 0,
+        amountCents: 300000n,
+        payableAmountCents: 240000n,
+        paidAmountCents: 0n,
         isFinal: true,
-        finalCumulativeAmountCents: 1200000
+        finalCumulativeAmountCents: 1200000n
       }
     });
   });
@@ -1128,7 +1128,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn()
       },
       settlement: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 1200000 }]),
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 1200000n }]),
         create: jest.fn()
       },
       ...settlementQuotaTables()
@@ -1143,7 +1143,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-FINAL",
         periodLabel: "最终结算",
-        amountCents: 1200000,
+        amountCents: "1200000",
         isFinal: true
       })
     ).rejects.toThrow("最终审定累计结算总额必须大于前序已生效累计结算金额");
@@ -1173,7 +1173,7 @@ describe("SettlementService", () => {
       },
       settlement: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 8000000, status: "effective" }
+          { amountCents: 8000000n, status: "effective" }
         ]),
         create: jest.fn()
       },
@@ -1203,7 +1203,7 @@ describe("SettlementService", () => {
           contractVersionId: "contract-version-1",
           code: "JS-2026-030",
           periodLabel: "2026-06",
-          amountCents: 3000000
+          amountCents: "3000000"
         },
         "user-contract-staff"
       )
@@ -1239,7 +1239,7 @@ describe("SettlementService", () => {
         findFirst: jest.fn().mockResolvedValue({ ratioBps: 10000 })
       },
       settlement: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 8000000, status: "effective" }]),
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 8000000n, status: "effective" }]),
         create: jest.fn().mockResolvedValue({ id: "settlement-1", code: "JS-2026-031" })
       },
       approvalInstance: {
@@ -1270,7 +1270,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-031",
         periodLabel: "2026-06",
-        amountCents: 3000000
+        amountCents: "3000000"
       },
       "user-contract-staff"
     );
@@ -1349,7 +1349,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-019",
         periodLabel: "2026-06",
-        amountCents: 10000000
+        amountCents: "10000000"
       },
       "user-contract-staff"
     );
@@ -1419,9 +1419,9 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "approval_pending",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0,
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n,
           isFinal: false,
           finalCumulativeAmountCents: null
         }),
@@ -1485,7 +1485,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-019",
         periodLabel: "2026-06",
-        amountCents: 10000000
+        amountCents: "10000000"
       },
       "user-contract-staff"
     );
@@ -1555,7 +1555,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-020",
         periodLabel: "2026-06",
-        amountCents: 10000000
+        amountCents: "10000000"
       },
       "user-contract-staff"
     );
@@ -1619,7 +1619,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-021",
         periodLabel: "2026-06",
-        amountCents: 10000000
+        amountCents: "10000000"
       },
       "user-contract-staff"
     );
@@ -1659,7 +1659,7 @@ describe("SettlementService", () => {
         contractVersionId: "contract-version-1",
         code: "JS-2026-019",
         periodLabel: "2026-06",
-        amountCents: 10000000
+        amountCents: "10000000"
       })
     ).rejects.toThrow("合同尚未归档生效，不能创建结算。请先完成合同归档确认。");
     expect(tx.settlement.create).not.toHaveBeenCalled();
@@ -2172,9 +2172,9 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "approval_pending",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0,
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n,
           isFinal: false
         }),
         findMany: jest.fn().mockResolvedValue([])
@@ -2315,9 +2315,9 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "approval_pending",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0,
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n,
           isFinal: false,
           finalCumulativeAmountCents: null
         }),
@@ -3630,14 +3630,14 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "approval_pending",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0,
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n,
           isFinal: false,
           createdAt: new Date("2026-07-01T00:00:00.000Z")
         }),
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 300_000 }
+          { amountCents: 300_000n }
         ])
       },
       contract: {
@@ -3726,9 +3726,9 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "approval_pending",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0,
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n,
           isFinal: false,
           finalCumulativeAmountCents: null
         }),
@@ -3843,13 +3843,13 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "approved_pending_archive",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0,
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n,
           isFinal: false
         }),
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 300_000 }
+          { amountCents: 300_000n }
         ])
       },
       contract: {
@@ -4112,9 +4112,9 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "approval_pending",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0,
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n,
           isFinal: false,
           finalCumulativeAmountCents: null
         }),
@@ -4315,9 +4315,9 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "approval_pending",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0,
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n,
           isFinal: false,
           finalCumulativeAmountCents: null
         }),
@@ -4410,9 +4410,9 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "effective",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n
         })
       },
       pdfDocument: {
@@ -4513,9 +4513,9 @@ describe("SettlementService", () => {
           code: "JS-2026-019",
           periodLabel: "2026-06",
           status: "approved_pending_archive",
-          amountCents: 1_000_000,
-          payableAmountCents: 800_000,
-          paidAmountCents: 0,
+          amountCents: 1_000_000n,
+          payableAmountCents: 800_000n,
+          paidAmountCents: 0n,
           isFinal: false
         }),
         findMany: jest.fn().mockResolvedValue([])

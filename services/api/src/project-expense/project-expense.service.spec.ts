@@ -40,18 +40,18 @@ describe("ProjectExpenseService", () => {
     expenseRequests = [],
     financingQuotas = []
   }: {
-    receiptAmountCents?: number;
+    receiptAmountCents?: number | bigint;
     paymentRequests?: Array<{
       status: string;
-      requestedAmountCents: number;
-      approvedAmountCents?: number | null;
-      paidAmountCents: number;
+      requestedAmountCents: number | bigint;
+      approvedAmountCents?: number | bigint | null;
+      paidAmountCents: number | bigint;
     }>;
     expenseRequests?: Array<{
       status: string;
-      requestedAmountCents: number;
-      approvedAmountCents?: number | null;
-      paidAmountCents: number;
+      requestedAmountCents: number | bigint;
+      approvedAmountCents?: number | bigint | null;
+      paidAmountCents: number | bigint;
     }>;
     financingQuotas?: Array<{ id: string; amountCents: bigint | number }>;
   } = {}) {
@@ -99,9 +99,9 @@ describe("ProjectExpenseService", () => {
             expenseSubtype: "sporadic_material",
             paymentSubject: "建工智管",
             reason: "零星材料",
-            requestedAmountCents: 30_000,
-            approvedAmountCents: 30_000,
-            paidAmountCents: 10_000,
+            requestedAmountCents: 30_000n,
+            approvedAmountCents: 30_000n,
+            paidAmountCents: 10_000n,
             paymentMethod: "bank_transfer",
             counterpartyName: "材料供应商",
             attachmentFileId: "file-expense-1",
@@ -116,9 +116,9 @@ describe("ProjectExpenseService", () => {
             expenseSubtype: "project_reserve",
             paymentSubject: "建工智管",
             reason: "项目备用金",
-            requestedAmountCents: 20_000,
+            requestedAmountCents: 20_000n,
             approvedAmountCents: null,
-            paidAmountCents: 0,
+            paidAmountCents: 0n,
             paymentMethod: "cash",
             counterpartyName: null,
             attachmentFileId: null,
@@ -160,8 +160,8 @@ describe("ProjectExpenseService", () => {
         approvedPendingPayment: 1,
         paid: 0,
         paymentBlocked: 0,
-        totalRequestedCents: 50_000,
-        totalPaidCents: 10_000
+        totalRequestedCents: "50000",
+        totalPaidCents: "10000"
       }
     });
     expect(prisma.projectExpenseRequest.findMany).toHaveBeenCalledWith({
@@ -180,7 +180,7 @@ describe("ProjectExpenseService", () => {
     });
   });
 
-  it("rejects project expense summary totals outside the legacy API safe range", async () => {
+  it("returns project expense summary totals above the safe integer range without precision loss", async () => {
     const createdAt = new Date("2026-07-02T00:00:00.000Z");
     const prisma = {
       project: {
@@ -214,9 +214,10 @@ describe("ProjectExpenseService", () => {
     };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    await expect(service.list("project-1", "manager-1")).rejects.toThrow(
-      "项目支出申请合计超过当前 API 安全整数范围"
-    );
+    await expect(service.list("project-1", "manager-1")).resolves.toMatchObject({
+      rows: [expect.objectContaining({ requestedAmountCents: "9007199254740993" })],
+      summary: { totalRequestedCents: "9007199254740993", totalPaidCents: "0" }
+    });
   });
 
   it("throws NotFound when listing project expenses for an inactive project", async () => {
@@ -456,7 +457,7 @@ describe("ProjectExpenseService", () => {
   });
 
   it("submits a sporadic payment request without settlement or payment terms", async () => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
       project: {
@@ -484,7 +485,7 @@ describe("ProjectExpenseService", () => {
       expenseSubtype: "sporadic_material",
       paymentSubject: "建工智管",
       reason: "零星材料",
-      requestedAmountCents: 30_000,
+      requestedAmountCents: "30000",
       paymentMethod: "bank_transfer",
       counterpartyName: "材料供应商"
     });
@@ -495,8 +496,8 @@ describe("ProjectExpenseService", () => {
         projectId: "project-1",
         code: "LX-2026-001",
         expenseType: "sporadic_payment",
-        requestedAmountCents: 30_000,
-        paidAmountCents: 0,
+        requestedAmountCents: 30_000n,
+        paidAmountCents: 0n,
         status: "approval_pending",
         applicantUserId: "handler-1"
       })
@@ -516,7 +517,7 @@ describe("ProjectExpenseService", () => {
     ["travel", "差旅费"],
     ["entertainment", "业务招待费"]
   ] as const)("submits a comprehensive expense request for %s", async (expenseSubtype, reason) => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
       project: {
@@ -544,7 +545,7 @@ describe("ProjectExpenseService", () => {
       expenseSubtype,
       paymentSubject: "建工智管",
       reason,
-      requestedAmountCents: 30_000,
+      requestedAmountCents: "30000",
       paymentMethod: "bank_transfer",
       counterpartyName: "经办人"
     });
@@ -554,14 +555,14 @@ describe("ProjectExpenseService", () => {
         expenseType: "comprehensive_expense",
         expenseSubtype,
         reason,
-        requestedAmountCents: 30_000,
+        requestedAmountCents: 30_000n,
         status: "approval_pending"
       })
     });
   });
 
   it("submits a reimbursement request with the confirmed four-step approval route", async () => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
       project: {
@@ -589,7 +590,7 @@ describe("ProjectExpenseService", () => {
       expenseSubtype: "reimbursement",
       paymentSubject: "日常报销",
       reason: "办公用品发票报销",
-      requestedAmountCents: 30_000,
+      requestedAmountCents: "30000",
       paymentMethod: "bank_transfer",
       counterpartyName: "经办人"
     });
@@ -599,7 +600,7 @@ describe("ProjectExpenseService", () => {
         expenseType: "reimbursement",
         expenseSubtype: "reimbursement",
         reason: "办公用品发票报销",
-        requestedAmountCents: 30_000,
+        requestedAmountCents: 30_000n,
         status: "approval_pending"
       })
     });
@@ -616,7 +617,7 @@ describe("ProjectExpenseService", () => {
   });
 
   it("submits a spot purchase request with the confirmed material approval route", async () => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
       ...roleTables("material_staff"),
@@ -648,7 +649,7 @@ describe("ProjectExpenseService", () => {
       expenseSubtype: "spot_material_purchase",
       paymentSubject: "现场临时钢筋采购",
       reason: "抢修临时用料",
-      requestedAmountCents: 30_000,
+      requestedAmountCents: "30000",
       paymentMethod: "bank_transfer",
       counterpartyName: "临采供应商",
       attachmentFileId: "file-purchase-1"
@@ -660,7 +661,7 @@ describe("ProjectExpenseService", () => {
         expenseSubtype: "spot_material_purchase",
         paymentSubject: "现场临时钢筋采购",
         reason: "抢修临时用料",
-        requestedAmountCents: 30_000,
+        requestedAmountCents: 30_000n,
         counterpartyName: "临采供应商",
         attachmentFileId: "file-purchase-1",
         status: "approval_pending"
@@ -679,7 +680,7 @@ describe("ProjectExpenseService", () => {
   });
 
   it("rejects spot purchase creation by non-material staff", async () => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000 });
+    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
     const tx = {
       ...cashPool,
       ...roleTables("employee"),
@@ -705,7 +706,7 @@ describe("ProjectExpenseService", () => {
         expenseSubtype: "spot_material_purchase",
         paymentSubject: "现场临采",
         reason: "抢修临时用料",
-        requestedAmountCents: 30_000,
+        requestedAmountCents: "30000",
         paymentMethod: "bank_transfer",
         counterpartyName: "临采供应商",
         attachmentFileId: "file-purchase-1"
@@ -716,13 +717,13 @@ describe("ProjectExpenseService", () => {
 
   it("blocks project expense submission when the project cash pool is insufficient", async () => {
     const cashPool = cashPoolTables({
-      receiptAmountCents: 20_000,
+      receiptAmountCents: 20_000n,
       paymentRequests: [
         {
           status: "approved_pending_payment",
-          requestedAmountCents: 20_000,
-          approvedAmountCents: 20_000,
-          paidAmountCents: 0
+          requestedAmountCents: 20_000n,
+          approvedAmountCents: 20_000n,
+          paidAmountCents: 0n
         }
       ]
     });
@@ -745,7 +746,7 @@ describe("ProjectExpenseService", () => {
         expenseSubtype: "project_reserve",
         paymentSubject: "建工智管",
         reason: "项目备用金",
-        requestedAmountCents: 10_000,
+        requestedAmountCents: "10000",
         paymentMethod: "cash"
       })
     ).rejects.toThrow("项目现金资金池余额不足: 0");
@@ -762,31 +763,49 @@ describe("ProjectExpenseService", () => {
         expenseSubtype: "sporadic_material",
         paymentSubject: "建工智管",
         reason: "错误分类",
-        requestedAmountCents: 10_000,
+        requestedAmountCents: "10000",
         paymentMethod: "cash"
       })
     ).rejects.toThrow("项目支出类型与明细类型不匹配");
   });
 
-  it("rejects project expense amounts outside the database integer range", async () => {
-    const service = new ProjectExpenseService({} as never, audit as never, auth as never);
+  it("persists project expense amounts above the legacy database integer range as bigint", async () => {
+    const cashPool = cashPoolTables({ receiptAmountCents: 3_000_000_000n });
+    const tx = {
+      ...cashPool,
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectExpenseRequest: {
+        ...cashPool.projectExpenseRequest,
+        create: jest.fn().mockResolvedValue({
+          id: "expense-large",
+          code: "LX-2026-LARGE",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    await expect(
-      service.create("project-1", "handler-1", {
-        code: "LX-2026-002",
-        expenseType: "loan_reserve",
-        expenseSubtype: "project_reserve",
-        paymentSubject: "建工智管",
-        reason: "超大备用金",
-        requestedAmountCents: 2_147_483_648,
-        paymentMethod: "cash"
-      })
-    ).rejects.toThrow("申请金额必须大于零");
+    await service.create("project-1", "handler-1", {
+      code: "LX-2026-LARGE",
+      expenseType: "loan_reserve",
+      expenseSubtype: "project_reserve",
+      paymentSubject: "建工智管",
+      reason: "超大备用金",
+      requestedAmountCents: "2147483648",
+      paymentMethod: "cash"
+    });
+
+    expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ requestedAmountCents: 2_147_483_648n })
+    });
   });
 
   it("occupies project financing quota for the cash shortfall", async () => {
     const cashPool = cashPoolTables({
-      receiptAmountCents: 20_000,
+      receiptAmountCents: 20_000n,
       financingQuotas: [{ id: "financing-quota-1", amountCents: BigInt(100_000) }]
     });
     const tx = {
@@ -812,7 +831,7 @@ describe("ProjectExpenseService", () => {
       expenseSubtype: "sporadic_labor",
       paymentSubject: "建工智管",
       reason: "零星用工",
-      requestedAmountCents: 50_000,
+      requestedAmountCents: "50000",
       paymentMethod: "wechat"
     });
 
@@ -839,9 +858,9 @@ describe("ProjectExpenseService", () => {
             projectId: "project-1",
             code: "LX-2026-004",
             status: "approval_pending",
-            requestedAmountCents: 50_000,
+            requestedAmountCents: 50_000n,
             approvedAmountCents: null,
-            paidAmountCents: 0
+            paidAmountCents: 0n
           }
         ])
         .mockResolvedValueOnce([
@@ -862,7 +881,7 @@ describe("ProjectExpenseService", () => {
         update: jest.fn().mockResolvedValue({
           id: "expense-1",
           status: "approved_pending_payment",
-          approvedAmountCents: 45_000
+          approvedAmountCents: 45_000n
         })
       },
       approvalInstance: {
@@ -878,13 +897,13 @@ describe("ProjectExpenseService", () => {
 
     const approved = await service.reviewApproval("project-1", "expense-1", "chairman-1", {
       decision: "approve",
-      approvedAmountCents: 45_000
+      approvedAmountCents: "45000"
     });
 
     expect(approved.status).toBe("approved_pending_payment");
     expect(tx.projectExpenseRequest.update).toHaveBeenCalledWith({
       where: { id: "expense-1" },
-      data: { status: "approved_pending_payment", approvedAmountCents: 45_000 }
+      data: { status: "approved_pending_payment", approvedAmountCents: 45_000n }
     });
   });
 
@@ -898,9 +917,9 @@ describe("ProjectExpenseService", () => {
             projectId: "project-1",
             code: "BX-2026-002",
             status: "approval_pending",
-            requestedAmountCents: 50_000,
+            requestedAmountCents: 50_000n,
             approvedAmountCents: null,
-            paidAmountCents: 0
+            paidAmountCents: 0n
           }
         ])
         .mockResolvedValueOnce([
@@ -921,7 +940,7 @@ describe("ProjectExpenseService", () => {
         update: jest.fn().mockResolvedValue({
           id: "expense-1",
           status: "approved_pending_payment",
-          approvedAmountCents: 45_000
+          approvedAmountCents: 45_000n
         })
       },
       approvalInstance: { update: jest.fn() },
@@ -953,9 +972,9 @@ describe("ProjectExpenseService", () => {
           expenseSubtype: "reimbursement",
           paymentSubject: "日常报销",
           reason: "办公用品发票报销",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 45_000,
-          paidAmountCents: 0,
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 45_000n,
+          paidAmountCents: 0n,
           paymentMethod: "bank_transfer",
           counterpartyName: "经办人",
           counterpartyAccountName: null,
@@ -988,7 +1007,7 @@ describe("ProjectExpenseService", () => {
 
     await service.reviewApproval("project-1", "expense-1", "chairman-1", {
       decision: "approve",
-      approvedAmountCents: 45_000
+      approvedAmountCents: "45000"
     });
 
     expect(files.uploadPrivateFile).toHaveBeenCalledWith({
@@ -1032,9 +1051,9 @@ describe("ProjectExpenseService", () => {
             projectId: "project-1",
             code: "BX-2026-003",
             status: "approval_pending",
-            requestedAmountCents: 50_000,
+            requestedAmountCents: 50_000n,
             approvedAmountCents: null,
-            paidAmountCents: 0
+            paidAmountCents: 0n
           }
         ])
         .mockResolvedValueOnce([
@@ -1055,7 +1074,7 @@ describe("ProjectExpenseService", () => {
         update: jest.fn().mockResolvedValue({
           id: "expense-1",
           status: "approved_pending_payment",
-          approvedAmountCents: 45_000
+          approvedAmountCents: 45_000n
         })
       },
       approvalInstance: { update: jest.fn() },
@@ -1074,9 +1093,9 @@ describe("ProjectExpenseService", () => {
           expenseSubtype: "reimbursement",
           paymentSubject: "日常报销",
           reason: "办公用品发票报销",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 45_000,
-          paidAmountCents: 0,
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 45_000n,
+          paidAmountCents: 0n,
           applicantUserId: "handler-1",
           status: "approved_pending_payment"
         })
@@ -1095,7 +1114,7 @@ describe("ProjectExpenseService", () => {
 
     const approved = await service.reviewApproval("project-1", "expense-1", "chairman-1", {
       decision: "approve",
-      approvedAmountCents: 45_000
+      approvedAmountCents: "45000"
     });
 
     expect(approved.status).toBe("approved_pending_payment");
@@ -1112,9 +1131,9 @@ describe("ProjectExpenseService", () => {
             projectId: "project-1",
             code: "LX-2026-005",
             status: "approval_pending",
-            requestedAmountCents: 50_000,
+            requestedAmountCents: 50_000n,
             approvedAmountCents: null,
-            paidAmountCents: 0
+            paidAmountCents: 0n
           }
         ])
         .mockResolvedValueOnce([
@@ -1170,9 +1189,9 @@ describe("ProjectExpenseService", () => {
           code: "CG-2026-003",
           expenseType: "spot_purchase",
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 0,
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 0n,
           applicantUserId: "material-1",
           purchaseExecutedAt: null,
           receiptConfirmedAt: null
@@ -1212,9 +1231,9 @@ describe("ProjectExpenseService", () => {
           code: "CG-2026-004",
           expenseType: "spot_purchase",
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 0,
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 0n,
           applicantUserId: "material-1",
           purchaseExecutedAt: null,
           receiptConfirmedAt: null
@@ -1232,7 +1251,7 @@ describe("ProjectExpenseService", () => {
 
     await expect(
       service.recordExecution("project-1", "expense-1", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2026-07-02T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -1250,9 +1269,9 @@ describe("ProjectExpenseService", () => {
           projectId: "project-1",
           code: "LX-2026-005",
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 20_000
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 20_000n
         }
       ]),
       projectExpenseFinancingQuotaUsage: {
@@ -1275,7 +1294,7 @@ describe("ProjectExpenseService", () => {
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
     const execution = await service.recordExecution("project-1", "expense-1", "cashier-1", {
-      amountCents: 30_000,
+      amountCents: "30000",
       paidAt: "2026-07-02T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
@@ -1285,7 +1304,7 @@ describe("ProjectExpenseService", () => {
     expect(auth.confirmPassword).toHaveBeenCalledWith("cashier-1", "current-password");
     expect(tx.projectExpenseRequest.update).toHaveBeenCalledWith({
       where: { id: "expense-1" },
-      data: { paidAmountCents: 50_000, status: "paid" }
+      data: { paidAmountCents: 50_000n, status: "paid" }
     });
   });
 
@@ -1297,9 +1316,9 @@ describe("ProjectExpenseService", () => {
           projectId: "project-1",
           code: "LX-2026-006",
           status: "approved_pending_payment",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 0
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 0n
         }
       ]),
       fileObject: {
@@ -1317,7 +1336,7 @@ describe("ProjectExpenseService", () => {
 
     await expect(
       service.recordExecution("project-1", "expense-1", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2026-07-02T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -1331,7 +1350,7 @@ describe("ProjectExpenseService", () => {
 
     await expect(
       service.recordExecution("project-1", "expense-1", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "not-a-date",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -1345,7 +1364,7 @@ describe("ProjectExpenseService", () => {
 
     await expect(
       service.recordExecution("project-1", "expense-1", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2999-07-02T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -1364,9 +1383,9 @@ describe("ProjectExpenseService", () => {
             projectId: "project-1",
             code: "LX-2026-007",
             status: "approved_pending_payment",
-            requestedAmountCents: 50_000,
-            approvedAmountCents: 50_000,
-            paidAmountCents: 0
+            requestedAmountCents: 50_000n,
+            approvedAmountCents: 50_000n,
+            paidAmountCents: 0n
           }
         ])
         .mockResolvedValueOnce([{ id: "project-1", isActive: true }]),
@@ -1406,7 +1425,7 @@ describe("ProjectExpenseService", () => {
 
     await expect(
       service.recordExecution("project-1", "expense-1", "cashier-1", {
-        amountCents: 10_000,
+        amountCents: "10000",
         paidAt: "2026-07-02T00:00:00.000Z",
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
@@ -1431,14 +1450,14 @@ describe("ProjectExpenseService", () => {
           projectId: "project-1",
           status: "paid",
           code: "LX-2026-008",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 50_000
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 50_000n
         }
       ]),
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000 }]),
-        create: jest.fn().mockResolvedValue({ id: "finance-record-1", amountCents: 30_000 })
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000n }]),
+        create: jest.fn().mockResolvedValue({ id: "finance-record-1", amountCents: 30_000n })
       },
       auditLog: { create: jest.fn() }
     };
@@ -1446,7 +1465,7 @@ describe("ProjectExpenseService", () => {
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
     const record = await service.recordFinance("project-1", "expense-1", "finance-1", {
-      amountCents: 30_000,
+      amountCents: "30000",
       occurredAt: "2026-07-02T00:00:00.000Z",
       confirmationPassword: "current-password"
     });
@@ -1458,7 +1477,7 @@ describe("ProjectExpenseService", () => {
         projectId: "project-1",
         projectExpenseRequestId: "expense-1",
         direction: "outflow",
-        amountCents: 30_000,
+        amountCents: 30_000n,
         occurredAt: new Date("2026-07-02T00:00:00.000Z"),
         createdByUserId: "finance-1"
       }
@@ -1488,7 +1507,7 @@ describe("ProjectExpenseService", () => {
 
     await expect(
       service.recordFinance("project-1", "expense-1", "finance-1", {
-        amountCents: 1,
+        amountCents: "1",
         occurredAt: "2026-07-02T00:00:00.000Z",
         confirmationPassword: "current-password"
       })
@@ -1553,9 +1572,9 @@ describe("ProjectExpenseService", () => {
           code: "CG-2026-006",
           expenseType: "spot_purchase",
           status: "paid",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 50_000,
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 50_000n,
           applicantUserId: "material-1",
           purchaseExecutedAt: new Date("2026-07-02T00:00:00.000Z"),
           receiptConfirmedAt: null
@@ -1588,14 +1607,14 @@ describe("ProjectExpenseService", () => {
           projectId: "project-1",
           status: "paid",
           code: "BX-2026-009",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 50_000
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 50_000n
         }
       ]),
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000 }]),
-        create: jest.fn().mockResolvedValue({ id: "finance-record-1", amountCents: 30_000 })
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000n }]),
+        create: jest.fn().mockResolvedValue({ id: "finance-record-1", amountCents: 30_000n })
       },
       auditLog: { create: jest.fn() }
     };
@@ -1622,9 +1641,9 @@ describe("ProjectExpenseService", () => {
           expenseSubtype: "reimbursement",
           paymentSubject: "日常报销",
           reason: "办公用品发票报销",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 50_000,
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: 50_000n,
+          paidAmountCents: 50_000n,
           applicantUserId: "handler-1",
           status: "paid"
         })
@@ -1645,7 +1664,7 @@ describe("ProjectExpenseService", () => {
     );
 
     await service.recordFinance("project-1", "expense-1", "finance-1", {
-      amountCents: 30_000,
+      amountCents: "30000",
       occurredAt: "2026-07-02T00:00:00.000Z",
       confirmationPassword: "current-password"
     });

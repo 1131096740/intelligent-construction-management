@@ -21,7 +21,7 @@ describe("SettlementReadService", () => {
             code: "JS-2026-031",
             periodLabel: "2026-06",
             status: "archive_pending",
-            amountCents: 58000000,
+            amountCents: 58000000n,
             updatedAt: new Date("2026-06-30T10:00:00.000Z")
           },
           {
@@ -32,7 +32,7 @@ describe("SettlementReadService", () => {
             code: "JS-2026-032",
             periodLabel: "2026-07",
             status: "effective",
-            amountCents: 62000000,
+            amountCents: 62000000n,
             updatedAt: new Date("2026-07-01T10:00:00.000Z")
           }
         ])
@@ -142,8 +142,8 @@ describe("SettlementReadService", () => {
           periodLabel: "2026-06",
           status: "effective",
           sourceType: "historical_takeover",
-          amountCents: 58000000,
-          payableAmountCents: 46400000
+          amountCents: 58000000n,
+          payableAmountCents: 46400000n
         })
       },
       contract: {
@@ -186,19 +186,19 @@ describe("SettlementReadService", () => {
           {
             id: "payment-1",
             status: "approved_pending_payment",
-            requestedAmountCents: 20000000,
-            paidAmountCents: 5000000
+            requestedAmountCents: 20000000n,
+            paidAmountCents: 5000000n
           },
           {
             id: "payment-void",
             status: "rejected",
-            requestedAmountCents: 1000000,
-            paidAmountCents: 0
+            requestedAmountCents: 1000000n,
+            paidAmountCents: 0n
           }
         ])
       },
       paymentExecution: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 5000000 }])
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 5000000n }])
       },
       settlementLine: {
         findMany: jest.fn().mockResolvedValue([
@@ -208,8 +208,8 @@ describe("SettlementReadService", () => {
             name: "钢筋材料",
             unit: "吨",
             quantity: { toString: () => "10.000000" },
-            unitPriceCents: 320000,
-            amountCents: 3200000,
+            unitPriceCents: 320000n,
+            amountCents: 3200000n,
             reason: null,
             remark: "本期完成量"
           },
@@ -220,7 +220,7 @@ describe("SettlementReadService", () => {
             unit: null,
             quantity: null,
             unitPriceCents: null,
-            amountCents: -200000,
+            amountCents: -200000n,
             reason: "项目确认扣款",
             remark: null
           }
@@ -295,7 +295,7 @@ describe("SettlementReadService", () => {
         quantity: "10",
         unitPrice: "¥3,200.00",
         amount: "¥32,000.00",
-        amountCents: 3200000,
+        amountCents: "3200000",
         reason: "-",
         remark: "本期完成量"
       },
@@ -308,7 +308,7 @@ describe("SettlementReadService", () => {
         quantity: "-",
         unitPrice: "-",
         amount: "¥-2,000.00",
-        amountCents: -200000,
+        amountCents: "-200000",
         reason: "项目确认扣款",
         remark: "-"
       }
@@ -350,7 +350,7 @@ describe("SettlementReadService", () => {
           code: "JS-2026-031",
           periodLabel: "2026-06",
           status: "archive_pending",
-          amountCents: 58000000
+          amountCents: 58000000n
         })
       },
       contract: {
@@ -470,7 +470,7 @@ describe("SettlementReadService", () => {
           code: "JS-2026-031",
           periodLabel: "2026-06",
           status: "effective",
-          amountCents: 58000000
+          amountCents: 58000000n
         })
       },
       contract: {
@@ -552,8 +552,8 @@ describe("SettlementReadService", () => {
             periodLabel: "2026-06",
             status: "effective",
             sourceType: "settlement",
-            amountCents: 1000000,
-            payableAmountCents: 800000
+            amountCents: 1000000n,
+            payableAmountCents: 800000n
           })
         },
         contract: {

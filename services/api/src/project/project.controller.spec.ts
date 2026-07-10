@@ -8,7 +8,7 @@ describe("ProjectController authorization wiring", () => {
     contractName: string;
     contractCode: string;
     signedAt: string;
-    amountCents: number;
+    amountCents: string;
     taxRateBps: number;
     pricingMethod: string;
     paymentTermsSummary: string;
@@ -18,7 +18,7 @@ describe("ProjectController authorization wiring", () => {
   type OwnerContractConfirmBody = { confirmationPassword: string };
   type SettlementExceptionQuotaRequestBody = {
     contractId: string;
-    amountCents: number;
+    amountCents: string;
     reason: string;
     validUntil: string;
     attachmentFileId: string;
@@ -29,7 +29,7 @@ describe("ProjectController authorization wiring", () => {
     comment?: string;
   };
   type ProjectFinancingQuotaRequestBody = {
-    amountCents: number;
+    amountCents: string;
     reason: string;
     validUntil: string;
     attachmentFileId: string;
@@ -189,7 +189,7 @@ describe("ProjectController authorization wiring", () => {
     const controller = new ProjectController(projects as never);
     const body = {
       receivedAt: "2026-07-02T00:00:00.000Z",
-      amountCents: 100000,
+      amountCents: "100000",
       payerName: "总包单位",
       sourceType: "general_contractor_payment" as const,
       voucherFileId: "file-1",
@@ -206,7 +206,7 @@ describe("ProjectController authorization wiring", () => {
     const controller = new ProjectController(projects as never);
     const body = {
       paidAt: "2026-07-02T00:00:00.000Z",
-      amountCents: 100000,
+      amountCents: "100000",
       generalContractorName: "总包单位",
       paidTargetName: "材料供应商",
       paymentType: "material" as const,
@@ -228,8 +228,8 @@ describe("ProjectController authorization wiring", () => {
     const controller = new ProjectController(projects as never);
     const body = {
       settledAt: "2026-07-02T00:00:00.000Z",
-      reportedAmountCents: 120000,
-      approvedAmountCents: 100000,
+      reportedAmountCents: "120000",
+      approvedAmountCents: "100000",
       approvingPartyName: "总包单位",
       periodLabel: "2026-06",
       isFinal: false,
@@ -254,7 +254,7 @@ describe("ProjectController authorization wiring", () => {
       contractName: "一期施工总承包合同",
       contractCode: "YZ-2026-001",
       signedAt: "2026-07-02T00:00:00.000Z",
-      amountCents: 200000000,
+      amountCents: "200000000",
       taxRateBps: 900,
       pricingMethod: "fixed_total",
       paymentTermsSummary: "按进度支付",
@@ -304,7 +304,7 @@ describe("ProjectController authorization wiring", () => {
     const controller = new ProjectController(projects as never);
     const body = {
       contractId: "contract-1",
-      amountCents: 1000000,
+      amountCents: "1000000",
       reason: "对上审定暂未覆盖本期必要结算",
       validUntil: "2099-07-02T00:00:00.000Z",
       attachmentFileId: "file-1"
@@ -355,7 +355,7 @@ describe("ProjectController authorization wiring", () => {
     const projects = { requestProjectFinancingQuota: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
-      amountCents: 1000000,
+      amountCents: "1000000",
       reason: "阶段性垫资保障项目付款",
       validUntil: "2099-07-02T00:00:00.000Z",
       attachmentFileId: "file-1"

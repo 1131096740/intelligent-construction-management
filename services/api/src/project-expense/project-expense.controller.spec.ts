@@ -73,7 +73,7 @@ describe("ProjectExpenseController authorization wiring", () => {
       expenseSubtype: "sporadic_material" as const,
       paymentSubject: "建工智管",
       reason: "零星材料",
-      requestedAmountCents: 10000,
+      requestedAmountCents: "10000",
       paymentMethod: "bank_transfer" as const
     };
 

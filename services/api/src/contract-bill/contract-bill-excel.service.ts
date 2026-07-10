@@ -11,7 +11,7 @@ import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { calculateBillRow, centsToSafeNumber } from "../money/decimal-money";
+import { calculateBillRow, moneyCentsToApi } from "../money/decimal-money";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
 
@@ -66,8 +66,8 @@ export interface BillImportPreview {
   updated: number;
   removed: number;
   skipped: number;
-  beforeAmountCents: number;
-  afterAmountCents: number;
+  beforeAmountCents: string;
+  afterAmountCents: string;
   rows: PreviewRowChange[];
   errors: PreviewError[];
 }
@@ -334,8 +334,8 @@ export class ContractBillExcelService {
       updated: plan.updates.length,
       removed: plan.removeKeys.length,
       skipped: plan.skipped,
-      beforeAmountCents: centsToSafeNumber(beforeAmountCents),
-      afterAmountCents: centsToSafeNumber(afterAmountCents),
+      beforeAmountCents: moneyCentsToApi(beforeAmountCents),
+      afterAmountCents: moneyCentsToApi(afterAmountCents),
       rows: plan.previewRows,
       errors: plan.errors
     };
@@ -887,7 +887,7 @@ export class ContractBillExcelService {
   private toJson(value: unknown): Prisma.InputJsonValue {
     try {
       const serialized = JSON.stringify(value, (_key, item) =>
-        typeof item === "bigint" ? centsToSafeNumber(item) : item
+        typeof item === "bigint" ? moneyCentsToApi(item) : item
       );
       if (serialized === undefined) throw new Error("not JSON");
       return JSON.parse(serialized) as Prisma.InputJsonValue;
@@ -901,7 +901,7 @@ export class ContractBillExcelService {
   }
 
   private convertReadValue(value: unknown): unknown {
-    if (typeof value === "bigint") return centsToSafeNumber(value);
+    if (typeof value === "bigint") return moneyCentsToApi(value);
     if (value instanceof Prisma.Decimal) return value.toString();
     if (Array.isArray(value)) return value.map((item) => this.convertReadValue(item));
     if (value !== null && typeof value === "object" && !(value instanceof Date)) {

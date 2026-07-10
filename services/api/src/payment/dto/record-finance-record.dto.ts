@@ -1,5 +1,5 @@
 export interface RecordFinanceRecordDto {
-  amountCents: number;
+  amountCents: string;
   occurredAt: string;
   confirmationPassword?: string;
 }

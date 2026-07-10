@@ -1,4 +1,5 @@
 import type { BusinessAction } from "./permissions";
+import type { MoneyCents } from "./money";
 
 export const CORE_FLOW_READ_ENDPOINTS = {
   contractDetail: "/contracts/:contractId",
@@ -186,7 +187,7 @@ export interface SettlementLineReadModel {
   quantity: string;
   unitPrice: string;
   amount: string;
-  amountCents: number;
+  amountCents: MoneyCents;
   reason: string;
   remark: string;
 }
@@ -224,7 +225,7 @@ export interface PaymentDetailReadModel {
     settlementNo: string;
     stageName: string;
     allocationType: string;
-    amountCents: number;
+    amountCents: MoneyCents;
   }>;
   executionCoverages: Array<{
     id: string;
@@ -267,57 +268,57 @@ export interface ContractPaymentApplicationPreviewReadModel {
     settlementId: string;
     settlementNo: string;
     period: string;
-    amountCents: number;
+    amountCents: MoneyCents;
     status: string;
     isFinal: boolean;
   }>;
   capacity: {
-    cumulativeEffectiveSettlementCents: number;
-    systemCumulativeEffectiveSettlementCents?: number;
-    historicalSettledCents?: number;
-    duePayableCents: number;
-    occupiedCents: number;
-    historicalOccupiedCents?: number;
-    actualPaidCents: number;
-    approvalPendingCents: number;
-    approvedPendingCents: number;
-    proxyPaidCents: number;
-    historicalPaidCents?: number;
-    historicalApprovalPendingCents?: number;
-    historicalApprovedPendingCents?: number;
-    historicalProxyPaidCents?: number;
-    historicalRetentionWithheldCents?: number;
-    historicalRetentionReleasedCents?: number;
-    historicalOtherConfirmedOccupancyCents?: number;
-    advanceDeductionCents: number;
-    maxRequestableCents: number;
+    cumulativeEffectiveSettlementCents: MoneyCents;
+    systemCumulativeEffectiveSettlementCents?: MoneyCents;
+    historicalSettledCents?: MoneyCents;
+    duePayableCents: MoneyCents;
+    occupiedCents: MoneyCents;
+    historicalOccupiedCents?: MoneyCents;
+    actualPaidCents: MoneyCents;
+    approvalPendingCents: MoneyCents;
+    approvedPendingCents: MoneyCents;
+    proxyPaidCents: MoneyCents;
+    historicalPaidCents?: MoneyCents;
+    historicalApprovalPendingCents?: MoneyCents;
+    historicalApprovedPendingCents?: MoneyCents;
+    historicalProxyPaidCents?: MoneyCents;
+    historicalRetentionWithheldCents?: MoneyCents;
+    historicalRetentionReleasedCents?: MoneyCents;
+    historicalOtherConfirmedOccupancyCents?: MoneyCents;
+    advanceDeductionCents: MoneyCents;
+    maxRequestableCents: MoneyCents;
   };
   advanceDeduction: {
-    paidAdvanceCents: number;
-    systemPaidAdvanceCents?: number;
-    historicalAdvancePaidCents?: number;
-    historicalAdvanceDeductedCents?: number;
-    currentDeductionCents: number;
-    remainingAdvanceToDeductCents: number;
+    paidAdvanceCents: MoneyCents;
+    systemPaidAdvanceCents?: MoneyCents;
+    historicalAdvancePaidCents?: MoneyCents;
+    historicalAdvanceDeductedCents?: MoneyCents;
+    currentDeductionCents: MoneyCents;
+    remainingAdvanceToDeductCents: MoneyCents;
   };
   capacityExplanation: Array<{
     label: string;
-    amountCents: number;
+    amountCents: MoneyCents;
     operator: "add" | "subtract" | "result";
     note?: string;
     tone?: CoreFlowTone;
   }>;
   historicalBalance?: {
-    settledCents: number;
-    approvalPendingPaymentCents: number;
-    approvedPendingPaymentCents: number;
-    paidCents: number;
-    proxyPaidCents: number;
-    advancePaidCents: number;
-    advanceDeductedCents: number;
-    retentionWithheldCents: number;
-    retentionReleasedCents: number;
-    otherConfirmedOccupancyCents: number;
+    settledCents: MoneyCents;
+    approvalPendingPaymentCents: MoneyCents;
+    approvedPendingPaymentCents: MoneyCents;
+    paidCents: MoneyCents;
+    proxyPaidCents: MoneyCents;
+    advancePaidCents: MoneyCents;
+    advanceDeductedCents: MoneyCents;
+    retentionWithheldCents: MoneyCents;
+    retentionReleasedCents: MoneyCents;
+    otherConfirmedOccupancyCents: MoneyCents;
   };
   sections: Array<{
     type: ContractPaymentApplicationSectionType;
@@ -327,15 +328,15 @@ export interface ContractPaymentApplicationPreviewReadModel {
       source: string;
       settlementId: string | null;
       settlementNo: string | null;
-      currentSettlementAmountCents: number;
-      cumulativeBeforeAmountCents: number;
-      cumulativeAfterAmountCents: number;
+      currentSettlementAmountCents: MoneyCents;
+      cumulativeBeforeAmountCents: MoneyCents;
+      cumulativeAfterAmountCents: MoneyCents;
       effectiveAt: string | null;
       expectedPayableAt: string | null;
       paymentRule: string;
       invoiceRequirement: string;
       isDue: boolean;
-      includableAmountCents: number;
+      includableAmountCents: MoneyCents;
     }>;
   }>;
   formula: string;
@@ -349,7 +350,7 @@ export interface ContractBusinessOptionReadModel {
   contractNo: string;
   contractName: string;
   counterparty: string;
-  amountCents: number | string;
+  amountCents: MoneyCents;
   versionLabel: string;
   contractStatus: string;
   contractStatusLabel: string;
@@ -367,9 +368,9 @@ export interface ContractBusinessOptionReadModel {
     settlementId: string;
     settlementNo: string;
     periodLabel: string;
-    amountCents: number;
-    payableAmountCents: number;
-    paidAmountCents: number;
+    amountCents: MoneyCents;
+    payableAmountCents: MoneyCents;
+    paidAmountCents: MoneyCents;
     status: string;
     statusLabel: string;
     canCreatePayment: boolean;

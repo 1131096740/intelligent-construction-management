@@ -1,3 +1,5 @@
+import type { MoneyCents } from "./money";
+
 /**
  * Contract workbench schemas and read models.
  *
@@ -103,7 +105,7 @@ export interface ContractBillReadModel {
   id: string;
   billKey: string;
   name: string;
-  totalAmountCents: number;
+  totalAmountCents: MoneyCents;
   rows: Array<Record<string, unknown>>;
 }
 
@@ -142,7 +144,7 @@ export interface ContractWorkbenchReadModel {
     versionNo: number;
     status: string;
     draftRevision: number;
-    amountCents: number;
+    amountCents: MoneyCents;
     pricingNature: string;
     amountSource: string;
     draftData: Record<string, unknown>;

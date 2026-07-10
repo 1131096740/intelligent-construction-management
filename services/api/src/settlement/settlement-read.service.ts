@@ -17,6 +17,12 @@ import {
 } from "../core-flow/detail-actions";
 import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
 import { PrismaService } from "../database/prisma.service";
+import {
+  dbMoneyToBigInt,
+  formatMoneyCentsAsYuan,
+  moneyCentsToApi,
+  sumDbMoneyToBigInt
+} from "../money/decimal-money";
 
 interface SettlementLineStore {
   settlementLine?: {
@@ -30,8 +36,8 @@ interface SettlementLineStore {
         name: string;
         unit: string | null;
         quantity: { toString(): string } | string | number | null;
-        unitPriceCents: number | null;
-        amountCents: number;
+        unitPriceCents: bigint | null;
+        amountCents: bigint;
         reason: string | null;
         remark: string | null;
       }>
@@ -70,7 +76,7 @@ export class SettlementReadService {
       quantity: this.formatQuantity(line.quantity),
       unitPrice: line.unitPriceCents === null ? "-" : this.formatMoney(line.unitPriceCents),
       amount: this.formatMoney(line.amountCents),
-      amountCents: line.amountCents,
+      amountCents: moneyCentsToApi(line.amountCents),
       reason: line.reason ?? "-",
       remark: line.remark ?? "-"
     }));
@@ -173,8 +179,8 @@ export class SettlementReadService {
   }
 
   private async paymentActivityForSettlement(settlementId: string): Promise<{
-    requestedAmountCents: number;
-    paidAmountCents: number;
+    requestedAmountCents: bigint;
+    paidAmountCents: bigint;
     activeRequestCount: number;
   }> {
     const client = this.prisma as unknown as {
@@ -186,8 +192,8 @@ export class SettlementReadService {
           Array<{
             id: string;
             status: string;
-            requestedAmountCents: number;
-            paidAmountCents: number;
+            requestedAmountCents: bigint;
+            paidAmountCents: bigint;
           }>
         >;
       };
@@ -195,12 +201,12 @@ export class SettlementReadService {
         findMany(args: {
           where: { paymentRequestId: { in: string[] } };
           select: { amountCents: true };
-        }): Promise<Array<{ amountCents: number }>>;
+        }): Promise<Array<{ amountCents: bigint }>>;
       };
     };
 
     if (!client.paymentRequest?.findMany) {
-      return { requestedAmountCents: 0, paidAmountCents: 0, activeRequestCount: 0 };
+      return { requestedAmountCents: 0n, paidAmountCents: 0n, activeRequestCount: 0 };
     }
 
     const requests = await client.paymentRequest.findMany({
@@ -208,18 +214,21 @@ export class SettlementReadService {
       select: { id: true, status: true, requestedAmountCents: true, paidAmountCents: true }
     });
     const activeRequests = requests.filter((request) => !["rejected", "withdrawn", "voided"].includes(request.status));
-    const requestedAmountCents = activeRequests.reduce(
-      (total, request) => total + request.requestedAmountCents,
-      0
+    const requestedAmountCents = sumDbMoneyToBigInt(
+      activeRequests.map((request) => request.requestedAmountCents),
+      "付款申请金额"
     );
     if (!activeRequests.length) {
-      return { requestedAmountCents, paidAmountCents: 0, activeRequestCount: 0 };
+      return { requestedAmountCents, paidAmountCents: 0n, activeRequestCount: 0 };
     }
 
     if (!client.paymentExecution?.findMany) {
       return {
         requestedAmountCents,
-        paidAmountCents: activeRequests.reduce((total, request) => total + request.paidAmountCents, 0),
+        paidAmountCents: sumDbMoneyToBigInt(
+          activeRequests.map((request) => request.paidAmountCents),
+          "付款实付金额"
+        ),
         activeRequestCount: activeRequests.length
       };
     }
@@ -230,7 +239,10 @@ export class SettlementReadService {
     });
     return {
       requestedAmountCents,
-      paidAmountCents: executions.reduce((total, execution) => total + execution.amountCents, 0),
+      paidAmountCents: sumDbMoneyToBigInt(
+        executions.map((execution) => execution.amountCents),
+        "付款实付金额"
+      ),
       activeRequestCount: activeRequests.length
     };
   }
@@ -493,7 +505,7 @@ export class SettlementReadService {
           quantity: "10",
           unitPrice: "¥3,200.00",
           amount: "¥320,000.00",
-          amountCents: 32000000,
+          amountCents: "32000000",
           reason: "-",
           remark: "-"
         }
@@ -525,11 +537,12 @@ export class SettlementReadService {
   }
 
   private payableCalculation(
-    settlement: { amountCents: number; payableAmountCents?: number | null },
-    paymentActivity: { requestedAmountCents: number; paidAmountCents: number; activeRequestCount: number }
+    settlement: { amountCents: bigint; payableAmountCents?: bigint | null },
+    paymentActivity: { requestedAmountCents: bigint; paidAmountCents: bigint; activeRequestCount: number }
   ): SettlementDetailReadModel["payableCalculation"] {
-    const payableAmountCents = settlement.payableAmountCents ?? 0;
-    const remainingRequestableCents = Math.max(payableAmountCents - paymentActivity.requestedAmountCents, 0);
+    const payableAmountCents = settlement.payableAmountCents ?? 0n;
+    const remainingBalance = payableAmountCents - paymentActivity.requestedAmountCents;
+    const remainingRequestableCents = remainingBalance > 0n ? remainingBalance : 0n;
 
     return {
       items: [
@@ -913,11 +926,8 @@ export class SettlementReadService {
     return `${ratioBps / 100}%`;
   }
 
-  private formatMoney(amountCents: number): string {
-    return `¥${(amountCents / 100).toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`;
+  private formatMoney(amountCents: number | bigint): string {
+    return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "结算金额"))}`;
   }
 
   private formatQuantity(value: { toString(): string } | string | number | null): string {

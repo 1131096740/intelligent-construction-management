@@ -5,7 +5,7 @@ export type ProjectReceiptSourceType =
 
 export interface RecordProjectReceiptDto {
   receivedAt: string;
-  amountCents: number;
+  amountCents: string;
   payerName: string;
   sourceType: ProjectReceiptSourceType;
   description?: string;

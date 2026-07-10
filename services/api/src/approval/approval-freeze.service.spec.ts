@@ -11,10 +11,10 @@ describe("ApprovalFreezeService", () => {
           name: "工程技术部",
           mode: "any",
           roleKeys: ["engineering_tech"],
-          minAmountCents: 100_000_000
+          minAmountCents: 100_000_000n
         }
       ],
-      99_999_999
+      99_999_999n
     );
 
     expect(nodes.map((node) => node.name)).toEqual(["项目经理"]);
@@ -29,7 +29,7 @@ describe("ApprovalFreezeService", () => {
           roleKeys: ["chairman", "general_manager"]
         }
       ],
-      1
+      1n
     );
 
     expect(nodes[0]).toEqual({
@@ -41,7 +41,7 @@ describe("ApprovalFreezeService", () => {
 
   it("returns cloned role arrays so frozen nodes cannot mutate the source flow", () => {
     const source = [{ name: "合同部", mode: "all" as const, roleKeys: ["contract_director" as const] }];
-    const frozen = service.freeze(source, 1);
+    const frozen = service.freeze(source, 1n);
 
     frozen[0].roleKeys.push("contract_staff");
 

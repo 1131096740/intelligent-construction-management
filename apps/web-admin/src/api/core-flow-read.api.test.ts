@@ -309,7 +309,7 @@ describe("core flow read API client", () => {
 
     await recordProjectReceipt("project-1", {
       receivedAt: "2026-07-02",
-      amountCents: 123456,
+      amountCents: "123456",
       payerName: "建设单位",
       sourceType: "owner_direct_payment",
       description: "业主直付",
@@ -324,7 +324,7 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         receivedAt: "2026-07-02",
-        amountCents: 123456,
+        amountCents: "123456",
         payerName: "建设单位",
         sourceType: "owner_direct_payment",
         description: "业主直付",
@@ -342,7 +342,7 @@ describe("core flow read API client", () => {
 
     await recordProjectProxyPayment("project-1", {
       paidAt: "2026-07-02",
-      amountCents: 123456,
+      amountCents: "123456",
       generalContractorName: "总包单位",
       paidTargetName: "材料供应商",
       paymentType: "material",
@@ -358,7 +358,7 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         paidAt: "2026-07-02",
-        amountCents: 123456,
+        amountCents: "123456",
         generalContractorName: "总包单位",
         paidTargetName: "材料供应商",
         paymentType: "material",
@@ -377,8 +377,8 @@ describe("core flow read API client", () => {
 
     await recordProjectUpstreamSettlement("project-1", {
       settledAt: "2026-07-02",
-      reportedAmountCents: 35000000,
-      approvedAmountCents: 30000000,
+      reportedAmountCents: "35000000",
+      approvedAmountCents: "30000000",
       approvingPartyName: "总包单位",
       periodLabel: "2026-06",
       isFinal: false,
@@ -394,8 +394,8 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         settledAt: "2026-07-02",
-        reportedAmountCents: 35000000,
-        approvedAmountCents: 30000000,
+        reportedAmountCents: "35000000",
+        approvedAmountCents: "30000000",
         approvingPartyName: "总包单位",
         periodLabel: "2026-06",
         isFinal: false,
@@ -417,7 +417,7 @@ describe("core flow read API client", () => {
       contractName: "一期施工总承包合同",
       contractCode: "YZ-2026-001",
       signedAt: "2026-07-02",
-      amountCents: 200000000,
+      amountCents: "200000000",
       taxRateBps: 900,
       pricingMethod: "fixed_total",
       paymentTermsSummary: "按进度支付",
@@ -439,7 +439,7 @@ describe("core flow read API client", () => {
         contractName: "一期施工总承包合同",
         contractCode: "YZ-2026-001",
         signedAt: "2026-07-02",
-        amountCents: 200000000,
+        amountCents: "200000000",
         taxRateBps: 900,
         pricingMethod: "fixed_total",
         paymentTermsSummary: "按进度支付",
@@ -460,7 +460,7 @@ describe("core flow read API client", () => {
 
     await requestSettlementExceptionQuota("project-1", {
       contractId: "contract-1",
-      amountCents: 1200000,
+      amountCents: "1200000",
       reason: "对上审定暂未覆盖的现场签证",
       validUntil: "2026-08-31",
       attachmentFileId: "file-quota-1"
@@ -479,7 +479,7 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         contractId: "contract-1",
-        amountCents: 1200000,
+        amountCents: "1200000",
         reason: "对上审定暂未覆盖的现场签证",
         validUntil: "2026-08-31",
         attachmentFileId: "file-quota-1"
@@ -501,7 +501,7 @@ describe("core flow read API client", () => {
     } as Response);
 
     await requestProjectFinancingQuota("project-1", {
-      amountCents: 5000000,
+      amountCents: "5000000",
       reason: "阶段性垫资保障项目付款",
       validUntil: "2026-08-31",
       attachmentFileId: "file-financing-1"
@@ -519,7 +519,7 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
-        amountCents: 5000000,
+        amountCents: "5000000",
         reason: "阶段性垫资保障项目付款",
         validUntil: "2026-08-31",
         attachmentFileId: "file-financing-1"
@@ -546,7 +546,7 @@ describe("core flow read API client", () => {
       expenseSubtype: "travel",
       paymentSubject: "差旅费",
       reason: "项目现场协调差旅",
-      requestedAmountCents: 80000,
+      requestedAmountCents: "80000",
       paymentMethod: "bank_transfer",
       counterpartyName: "张三",
       counterpartyAccountName: "张三",
@@ -557,7 +557,7 @@ describe("core flow read API client", () => {
     });
     await reviewProjectExpenseApproval("project-1", "expense-1", {
       decision: "approve",
-      approvedAmountCents: 80000,
+      approvedAmountCents: "80000",
       comment: "同意"
     });
     await withdrawProjectExpenseApproval("project-1", "expense-1");
@@ -565,7 +565,7 @@ describe("core flow read API client", () => {
       reason: "重复提交"
     });
     await recordProjectExpenseExecution("project-1", "expense-1", {
-      amountCents: 80000,
+      amountCents: "80000",
       paidAt: "2026-07-02T10:00:00.000Z",
       voucherFileId: "file-voucher-1",
       confirmationPassword: "current-password"
@@ -576,7 +576,7 @@ describe("core flow read API client", () => {
       confirmationPassword: "current-password"
     });
     await recordProjectExpenseFinance("project-1", "expense-1", {
-      amountCents: 80000,
+      amountCents: "80000",
       occurredAt: "2026-07-02T11:00:00.000Z",
       confirmationPassword: "current-password"
     });
@@ -613,7 +613,7 @@ describe("core flow read API client", () => {
         expenseSubtype: "travel",
         paymentSubject: "差旅费",
         reason: "项目现场协调差旅",
-        requestedAmountCents: 80000,
+        requestedAmountCents: "80000",
         paymentMethod: "bank_transfer",
         counterpartyName: "张三",
         counterpartyAccountName: "张三",
@@ -626,14 +626,14 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[1][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
-        approvedAmountCents: 80000,
+        approvedAmountCents: "80000",
         comment: "同意"
       })
     );
     expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify({ reason: "重复提交" }));
     expect(fetchMock.mock.calls[4][1]?.body).toBe(
       JSON.stringify({
-        amountCents: 80000,
+        amountCents: "80000",
         paidAt: "2026-07-02T10:00:00.000Z",
         voucherFileId: "file-voucher-1",
         confirmationPassword: "current-password"
@@ -648,7 +648,7 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[6][1]?.body).toBe(
       JSON.stringify({
-        amountCents: 80000,
+        amountCents: "80000",
         occurredAt: "2026-07-02T11:00:00.000Z",
         confirmationPassword: "current-password"
       })
@@ -684,7 +684,7 @@ describe("core flow read API client", () => {
       code: "HT-2026-002",
       name: "测试合同",
       counterparty: "测试供应商",
-      amountCents: 1000000,
+      amountCents: "1000000",
       paymentTermsOriginalText: "结算归档确认后30天内付款。",
       paymentStages: [
         {
@@ -717,21 +717,21 @@ describe("core flow read API client", () => {
       name: "历史材料采购合同",
       counterparty: "历史供应商",
       companyEntityName: "建工集团",
-      amountCents: 100000000,
+      amountCents: "100000000",
       signedAt: "2026-01-01",
       takeoverLevel: "B" as const,
       lifecycleStatus: "in_progress" as const,
       paymentTermsOriginalText: "按月结算付款。",
-      historicalSettledCents: 60000000,
-      historicalApprovalPendingPaymentCents: 1000000,
-      historicalApprovedPendingPaymentCents: 2000000,
-      historicalPaidCents: 30000000,
-      historicalProxyPaidCents: 4000000,
-      historicalAdvancePaidCents: 5000000,
-      historicalAdvanceDeductedCents: 1000000,
-      historicalRetentionWithheldCents: 3000000,
-      historicalRetentionReleasedCents: 1000000,
-      otherConfirmedOccupancyCents: 800000,
+      historicalSettledCents: "60000000",
+      historicalApprovalPendingPaymentCents: "1000000",
+      historicalApprovedPendingPaymentCents: "2000000",
+      historicalPaidCents: "30000000",
+      historicalProxyPaidCents: "4000000",
+      historicalAdvancePaidCents: "5000000",
+      historicalAdvanceDeductedCents: "1000000",
+      historicalRetentionWithheldCents: "3000000",
+      historicalRetentionReleasedCents: "1000000",
+      otherConfirmedOccupancyCents: "800000",
       balanceSourceSummary: "财务台账核对",
       evidenceSummary: "合同与付款凭证已归档",
       takeoverLevelAdjustmentReason: "资料可控，按 B级接管并继续跟踪付款限制",
@@ -867,25 +867,25 @@ describe("core flow read API client", () => {
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
       code: "JS-2026-019",
       periodLabel: "2026-06",
-      amountCents: 32000000,
+      amountCents: "32000000",
       isFinal: true
     });
     await createPaymentRequest({
       settlementId: "seed-settlement-js-2026-018",
       code: "FK-2026-007",
-      requestedAmountCents: 25600000
+      requestedAmountCents: "25600000"
     });
     await createPaymentRequest({
       sourceType: "contract_advance",
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
       code: "FK-YF-2026-001",
-      requestedAmountCents: 10000000
+      requestedAmountCents: "10000000"
     });
     await createPaymentRequest({
       sourceType: "contract_due",
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
       code: "FK-HT-2026-001",
-      requestedAmountCents: 8000000
+      requestedAmountCents: "8000000"
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
@@ -900,13 +900,13 @@ describe("core flow read API client", () => {
       sourceType: "contract_advance",
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
       code: "FK-YF-2026-001",
-      requestedAmountCents: 10000000
+      requestedAmountCents: "10000000"
     });
     expect(JSON.parse(fetchMock.mock.calls[3][1]?.body as string)).toEqual({
       sourceType: "contract_due",
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
       code: "FK-HT-2026-001",
-      requestedAmountCents: 8000000
+      requestedAmountCents: "8000000"
     });
   });
 
@@ -918,7 +918,7 @@ describe("core flow read API client", () => {
 
     await reviewPaymentApproval("FK-2026-006", {
       decision: "approve",
-      approvedAmountCents: 5000000
+      approvedAmountCents: "5000000"
     });
     await withdrawPaymentApproval("FK-2026-006");
     await remindPaymentApproval("FK-2026-006");
@@ -929,13 +929,13 @@ describe("core flow read API client", () => {
       toUserId: "payment-delegate-user"
     });
     await recordPaymentExecution("FK-2026-006", {
-      amountCents: 5000000,
+      amountCents: "5000000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password"
     });
     await recordPaymentFinance("FK-2026-006", {
-      amountCents: 5000000,
+      amountCents: "5000000",
       occurredAt: "2026-06-22T01:00:00.000Z",
       confirmationPassword: "current-password"
     });
@@ -959,12 +959,12 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
-        approvedAmountCents: 5000000
+        approvedAmountCents: "5000000"
       })
     );
     expect(fetchMock.mock.calls[6][1]?.body).toBe(
       JSON.stringify({
-        amountCents: 5000000,
+        amountCents: "5000000",
         occurredAt: "2026-06-22T01:00:00.000Z",
         confirmationPassword: "current-password"
       })

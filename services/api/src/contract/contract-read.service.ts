@@ -21,7 +21,11 @@ import {
 } from "../core-flow/detail-actions";
 import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
 import { PrismaService } from "../database/prisma.service";
-import { centsToSafeNumber } from "../money/decimal-money";
+import {
+  dbMoneyToBigInt,
+  formatMoneyCentsAsYuan,
+  moneyCentsToApi
+} from "../money/decimal-money";
 import {
   CONTRACT_TAKEOVER_BALANCE_SELECT,
   type ContractTakeoverBalanceRow,
@@ -362,9 +366,9 @@ export class ContractReadService {
             settlementId: settlement.id,
             settlementNo: settlement.code,
             periodLabel: settlement.periodLabel,
-            amountCents: settlement.amountCents,
-            payableAmountCents: settlement.payableAmountCents,
-            paidAmountCents: settlement.paidAmountCents,
+            amountCents: moneyCentsToApi(settlement.amountCents),
+            payableAmountCents: moneyCentsToApi(settlement.payableAmountCents),
+            paidAmountCents: moneyCentsToApi(settlement.paidAmountCents),
             status: settlement.status,
             statusLabel: this.settlementApprovalStatusLabel(settlement.status),
             canCreatePayment,
@@ -638,8 +642,8 @@ export class ContractReadService {
       code: string;
       periodLabel: string;
       status: string;
-      amountCents: number;
-      payableAmountCents: number;
+      amountCents: bigint;
+      payableAmountCents: bigint;
       updatedAt: Date;
     }>,
     settlementArchiveFiles: Array<{
@@ -653,14 +657,14 @@ export class ContractReadService {
       sourceType?: string | null;
       code: string;
       status: string;
-      requestedAmountCents: number;
-      approvedAmountCents: number | null;
-      paidAmountCents: number;
+      requestedAmountCents: bigint;
+      approvedAmountCents: bigint | null;
+      paidAmountCents: bigint;
       updatedAt: Date;
     }>,
     paymentExecutions: Array<{
       paymentRequestId: string;
-      amountCents: number;
+      amountCents: bigint;
       paidAt: Date;
       voucherFileId: string;
     }>,
@@ -776,7 +780,8 @@ export class ContractReadService {
       const remainingApprovedCents = approvedCents - paidCents;
       actualPaidCents += paidCents;
       if (["approval_pending", "in_approval"].includes(payment.status)) {
-        approvalPendingCents += BigInt(Math.max(payment.requestedAmountCents - payment.paidAmountCents, 0));
+        const pendingBalance = payment.requestedAmountCents - payment.paidAmountCents;
+        approvalPendingCents += pendingBalance > 0n ? pendingBalance : 0n;
       }
       if (["approved_pending_payment", "partially_paid"].includes(payment.status)) {
         approvedPendingCents += remainingApprovedCents > 0n ? remainingApprovedCents : 0n;
@@ -1470,10 +1475,7 @@ export class ContractReadService {
   }
 
   private formatMoney(amountCents: number | bigint): string {
-    return `¥${(centsToSafeNumber(typeof amountCents === "bigint" ? amountCents : BigInt(amountCents)) / 100).toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`;
+    return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "合同金额"))}`;
   }
 
   private toBigIntCents(amountCents: number | bigint): bigint {
@@ -1486,14 +1488,8 @@ export class ContractReadService {
     return Math.min(Math.max(Math.trunc(parsed), 1), 200);
   }
 
-  private centsValue(amountCents: number | bigint): number | string {
-    if (typeof amountCents === "bigint") {
-      return amountCents <= BigInt(Number.MAX_SAFE_INTEGER)
-        ? Number(amountCents)
-        : amountCents.toString();
-    }
-
-    return amountCents;
+  private centsValue(amountCents: number | bigint): string {
+    return moneyCentsToApi(dbMoneyToBigInt(amountCents, "合同金额"));
   }
 
   private date(value: Date) {

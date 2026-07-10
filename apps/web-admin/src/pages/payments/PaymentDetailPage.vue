@@ -476,6 +476,7 @@ import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { clearSelectedFileInput } from "../../components/file-input-reset.config";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import {
   CORE_ARCHIVE_UPLOAD_POLICY,
   PDF_ARCHIVE_UPLOAD_POLICY
@@ -678,14 +679,13 @@ function toIsoDatetime(raw: string, label: string) {
 function parseYuanAmount(raw: string, label: string) {
   const value = raw.trim();
 
-  if (!/^\d+(?:\.\d{1,2})?$/.test(value)) {
+  let amount: string;
+  try {
+    amount = yuanTextToCentsText(value);
+  } catch {
     throw new Error(`${label}必须为正数，最多两位小数`);
   }
-
-  const [yuanText, centText = ""] = value.split(".");
-  const amount = Number(yuanText) * 100 + Number(centText.padEnd(2, "0"));
-
-  if (!Number.isSafeInteger(amount) || amount <= 0) {
+  if (amount === "0") {
     throw new Error(`${label}必须为正数，最多两位小数`);
   }
 
@@ -700,11 +700,8 @@ function optionalYuanAmount(raw: string, label: string) {
   return parseYuanAmount(raw, label);
 }
 
-function formatCents(amountCents: number) {
-  return `¥${(amountCents / 100).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`;
+function formatCents(amountCents: string) {
+  return `¥${centsTextToYuanText(amountCents)}`;
 }
 
 function requiredText(raw: string, label: string) {
@@ -754,7 +751,7 @@ async function runPaymentAction(key: string, action: () => Promise<unknown>) {
 async function submitApproval(decision: "approve" | "reject") {
   const paymentId = currentPaymentId();
   const comment = paymentActionForm.approvalComment.trim() || undefined;
-  let approvedAmountCents: number | undefined;
+  let approvedAmountCents: string | undefined;
   try {
     approvedAmountCents =
       decision === "approve"
@@ -825,7 +822,7 @@ async function downloadApprovalForm() {
 async function submitExecution() {
   const paymentId = currentPaymentId();
   const file = selectedPaymentVoucherFile.value;
-  let amountCents = 0;
+  let amountCents = "0";
   let paidAt = "";
   let confirmationPassword = "";
   try {
@@ -867,7 +864,7 @@ async function submitExecution() {
 
 async function submitFinance() {
   const paymentId = currentPaymentId();
-  let amountCents = 0;
+  let amountCents = "0";
   let occurredAt = "";
   let confirmationPassword = "";
   try {

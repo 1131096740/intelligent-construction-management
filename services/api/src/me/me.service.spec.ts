@@ -359,9 +359,9 @@ describe("MeService", () => {
             id: "payment-1",
             projectId: "project-1",
             code: "FK-001",
-            requestedAmountCents: 8000000,
-            approvedAmountCents: 5000000,
-            paidAmountCents: 2000000,
+            requestedAmountCents: 8000000n,
+            approvedAmountCents: 5000000n,
+            paidAmountCents: 2000000n,
             updatedAt: new Date("2026-07-07T08:00:00.000Z")
           }
         ]),

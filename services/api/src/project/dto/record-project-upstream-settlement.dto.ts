@@ -1,7 +1,7 @@
 export interface RecordProjectUpstreamSettlementDto {
   settledAt: string;
-  reportedAmountCents: number;
-  approvedAmountCents: number;
+  reportedAmountCents: string;
+  approvedAmountCents: string;
   approvingPartyName: string;
   periodLabel: string;
   isFinal?: boolean;

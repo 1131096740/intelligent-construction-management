@@ -97,7 +97,7 @@ export interface CreatePaymentTermsStagePayload {
     | "fixed_amount"
     | "manual_amount";
   ratioBps?: number;
-  fixedAmountCents?: number;
+  fixedAmountCents?: string;
   triggerAnchor?: "contract_effective" | "settlement_effective" | "final_settlement_effective";
   triggerEvent: string;
   dueDays: number;
@@ -117,7 +117,7 @@ export interface CreateContractPayload {
   name: string;
   counterparty: string;
   companyEntityId?: string;
-  amountCents: number;
+  amountCents: string;
   paymentTermsOriginalText: string;
   paymentStages: CreatePaymentTermsStagePayload[];
 }
@@ -145,7 +145,7 @@ export type ContractTakeoverStatus =
   | "needs_supplement"
   | "voided";
 
-export type ContractTakeoverCentsValue = number | string;
+export type ContractTakeoverCentsValue = string;
 export type ContractTakeoverEvidencePurpose =
   | "historical_contract_scan"
   | "historical_settlement_ledger"
@@ -252,21 +252,21 @@ export interface CreateContractTakeoverPayload {
   contractTypeKey?: string;
   companyEntityId?: string;
   companyEntityName?: string;
-  amountCents: number;
+  amountCents: string;
   signedAt: string;
   takeoverLevel: ContractTakeoverLevel;
   lifecycleStatus: ContractLifecycleStatus;
   paymentTermsOriginalText?: string;
-  historicalSettledCents?: number;
-  historicalApprovalPendingPaymentCents?: number;
-  historicalApprovedPendingPaymentCents?: number;
-  historicalPaidCents?: number;
-  historicalProxyPaidCents?: number;
-  historicalAdvancePaidCents?: number;
-  historicalAdvanceDeductedCents?: number;
-  historicalRetentionWithheldCents?: number;
-  historicalRetentionReleasedCents?: number;
-  otherConfirmedOccupancyCents?: number;
+  historicalSettledCents?: string;
+  historicalApprovalPendingPaymentCents?: string;
+  historicalApprovedPendingPaymentCents?: string;
+  historicalPaidCents?: string;
+  historicalProxyPaidCents?: string;
+  historicalAdvancePaidCents?: string;
+  historicalAdvanceDeductedCents?: string;
+  historicalRetentionWithheldCents?: string;
+  historicalRetentionReleasedCents?: string;
+  otherConfirmedOccupancyCents?: string;
   balanceSourceSummary?: string;
   evidenceSummary?: string;
   takeoverCutoffDate?: string;
@@ -334,7 +334,7 @@ export interface ContractTakeoverImportPrecheckRowReadModel {
   code: string;
   name: string;
   counterparty: string;
-  amountCents: number | null;
+  amountCents: string | null;
   takeoverLevel: string;
   lifecycleStatus: string;
   evidenceChecklist: string;
@@ -387,7 +387,7 @@ export interface CreateSettlementPayload {
   contractVersionId: string;
   code: string;
   periodLabel: string;
-  amountCents: number;
+  amountCents: string;
   isFinal?: boolean;
 }
 
@@ -402,7 +402,7 @@ export interface CreatePaymentRequestPayload {
   contractVersionId?: string;
   paymentTermsVersionId?: string;
   code: string;
-  requestedAmountCents: number;
+  requestedAmountCents: string;
 }
 
 export interface CreatePaymentRequestReadModel {
@@ -412,7 +412,7 @@ export interface CreatePaymentRequestReadModel {
 
 export interface ReviewPaymentApprovalPayload {
   decision: "approve" | "reject";
-  approvedAmountCents?: number;
+  approvedAmountCents?: string;
   comment?: string;
 }
 
@@ -449,14 +449,14 @@ export interface AssignSettlementApprovalPayload {
 }
 
 export interface RecordPaymentExecutionPayload {
-  amountCents: number;
+  amountCents: string;
   paidAt: string;
   voucherFileId: string;
   confirmationPassword: string;
 }
 
 export interface RecordPaymentFinancePayload {
-  amountCents: number;
+  amountCents: string;
   occurredAt: string;
   confirmationPassword: string;
 }
@@ -701,20 +701,20 @@ export interface UpdateProjectPayload {
 export interface ProjectOperatingOverviewReadModel {
   project: ProjectOptionReadModel;
   cash: {
-    actualReceiptsCents: number | null;
-    availableFundsCents: number | null;
-    actualPaidCents: number;
-    approvalPendingOccupancyCents: number;
-    approvedPendingPaymentCents: number;
-    financeRecordedOutflowCents: number;
+    actualReceiptsCents: string | null;
+    availableFundsCents: string | null;
+    actualPaidCents: string;
+    approvalPendingOccupancyCents: string;
+    approvedPendingPaymentCents: string;
+    financeRecordedOutflowCents: string;
   };
   business: {
-    effectiveContractAmountCents: number;
-    effectiveSettlementAmountCents: number;
-    payableSettlementAmountCents: number;
-    operatingIncomeCents: number | null;
-    operatingCostCents: number | null;
-    grossProfitCents: number | null;
+    effectiveContractAmountCents: string;
+    effectiveSettlementAmountCents: string;
+    payableSettlementAmountCents: string;
+    operatingIncomeCents: string | null;
+    operatingCostCents: string | null;
+    grossProfitCents: string | null;
   };
   counts: {
     contracts: number;
@@ -726,7 +726,7 @@ export interface ProjectOperatingOverviewReadModel {
 
 export interface RecordProjectReceiptPayload {
   receivedAt: string;
-  amountCents: number;
+  amountCents: string;
   payerName: string;
   sourceType: "general_contractor_payment" | "owner_direct_payment" | "other";
   description?: string;
@@ -736,7 +736,7 @@ export interface RecordProjectReceiptPayload {
 
 export interface RecordProjectProxyPaymentPayload {
   paidAt: string;
-  amountCents: number;
+  amountCents: string;
   generalContractorName: string;
   paidTargetName: string;
   paymentType: "material" | "equipment" | "labor" | "professional_subcontract" | "other";
@@ -749,8 +749,8 @@ export interface RecordProjectProxyPaymentPayload {
 
 export interface RecordProjectUpstreamSettlementPayload {
   settledAt: string;
-  reportedAmountCents: number;
-  approvedAmountCents: number;
+  reportedAmountCents: string;
+  approvedAmountCents: string;
   approvingPartyName: string;
   periodLabel: string;
   isFinal?: boolean;
@@ -764,7 +764,7 @@ export interface RecordProjectOwnerContractPayload {
   contractName: string;
   contractCode: string;
   signedAt: string;
-  amountCents: number;
+  amountCents: string;
   taxRateBps: number;
   pricingMethod: string;
   paymentTermsSummary: string;
@@ -778,7 +778,7 @@ export interface ConfirmProjectOwnerContractPayload {
 
 export interface RequestSettlementExceptionQuotaPayload {
   contractId: string;
-  amountCents: number;
+  amountCents: string;
   reason: string;
   validUntil: string;
   attachmentFileId: string;
@@ -791,7 +791,7 @@ export interface ReviewSettlementExceptionQuotaPayload {
 }
 
 export interface RequestProjectFinancingQuotaPayload {
-  amountCents: number;
+  amountCents: string;
   reason: string;
   validUntil: string;
   attachmentFileId: string;
@@ -840,7 +840,7 @@ export interface CreateProjectExpenseRequestPayload {
   expenseSubtype: ProjectExpenseSubtype;
   paymentSubject: string;
   reason: string;
-  requestedAmountCents: number;
+  requestedAmountCents: string;
   paymentMethod: ProjectExpensePaymentMethod;
   counterpartyName?: string;
   counterpartyAccountName?: string;
@@ -852,7 +852,7 @@ export interface CreateProjectExpenseRequestPayload {
 
 export interface ReviewProjectExpenseApprovalPayload {
   decision: "approve" | "reject";
-  approvedAmountCents?: number;
+  approvedAmountCents?: string;
   comment?: string;
 }
 
@@ -861,7 +861,7 @@ export interface VoidProjectExpenseRequestPayload {
 }
 
 export interface RecordProjectExpenseExecutionPayload {
-  amountCents: number;
+  amountCents: string;
   paidAt: string;
   voucherFileId: string;
   confirmationPassword: string;
@@ -874,7 +874,7 @@ export interface RecordProjectExpensePurchaseExecutionPayload {
 }
 
 export interface RecordProjectExpenseFinancePayload {
-  amountCents: number;
+  amountCents: string;
   occurredAt: string;
   confirmationPassword: string;
 }
@@ -892,9 +892,9 @@ export interface ProjectExpenseRequestListReadModel {
     expenseSubtype: ProjectExpenseSubtype;
     paymentSubject: string;
     reason: string;
-    requestedAmountCents: number;
-    approvedAmountCents: number | null;
-    paidAmountCents: number;
+    requestedAmountCents: string;
+    approvedAmountCents: string | null;
+    paidAmountCents: string;
     paymentMethod: ProjectExpensePaymentMethod;
     counterpartyName: string | null;
     hasAttachment: boolean;
@@ -913,8 +913,8 @@ export interface ProjectExpenseRequestListReadModel {
     approvedPendingPayment: number;
     paid: number;
     paymentBlocked: number;
-    totalRequestedCents: number;
-    totalPaidCents: number;
+    totalRequestedCents: string;
+    totalPaidCents: string;
   };
 }
 

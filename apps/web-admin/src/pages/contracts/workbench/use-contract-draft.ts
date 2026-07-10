@@ -49,7 +49,7 @@ export interface ContractDraftModel {
   myCompanyEntity: string;
   pricingNature: string;
   amountSource: string;
-  manualAmountCents: number | null;
+  manualAmountCents: string | null;
   amountAdjustmentReason: string;
   paymentTermsOriginalText: string;
   paymentRatioBps: number | null;

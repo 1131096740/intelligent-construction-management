@@ -13,8 +13,9 @@ import { PrismaService } from "../database/prisma.service";
 import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
-  moneyCentsToLegacyApiNumber,
+  moneyCentsToApi,
   outstandingMoneyRequestCentsBigInt,
+  parseMoneyCents,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import {
@@ -522,12 +523,12 @@ export class ProjectService {
     return {
       project,
       cash: {
-        actualReceiptsCents: projectMoneyToSafeNumber(actualReceiptsCents),
-        availableFundsCents: projectMoneyToSafeNumber(availableFundsCents),
-        actualPaidCents: projectMoneyToSafeNumber(actualPaidCents),
-        approvalPendingOccupancyCents: projectMoneyToSafeNumber(approvalPendingOccupancyCents),
-        approvedPendingPaymentCents: projectMoneyToSafeNumber(approvedPendingPaymentCents),
-        financeRecordedOutflowCents: projectMoneyToSafeNumber(
+        actualReceiptsCents: projectMoneyToApi(actualReceiptsCents),
+        availableFundsCents: projectMoneyToApi(availableFundsCents),
+        actualPaidCents: projectMoneyToApi(actualPaidCents),
+        approvalPendingOccupancyCents: projectMoneyToApi(approvalPendingOccupancyCents),
+        approvedPendingPaymentCents: projectMoneyToApi(approvedPendingPaymentCents),
+        financeRecordedOutflowCents: projectMoneyToApi(
           sumDbMoneyToBigInt(
             financeRecords.map((record) => record.amountCents),
             "财务入账流出金额"
@@ -535,27 +536,27 @@ export class ProjectService {
         )
       },
       business: {
-        effectiveContractAmountCents: projectMoneyToSafeNumber(
+        effectiveContractAmountCents: projectMoneyToApi(
           sumDbMoneyToBigInt(
             latestEffectiveContractVersions.map((version) => version.amountCents),
             "生效合同金额"
           )
         ),
-        effectiveSettlementAmountCents: projectMoneyToSafeNumber(
+        effectiveSettlementAmountCents: projectMoneyToApi(
           sumDbMoneyToBigInt(
             effectiveSettlements.map((settlement) => settlement.amountCents),
             "生效结算金额"
           )
         ),
-        payableSettlementAmountCents: projectMoneyToSafeNumber(
+        payableSettlementAmountCents: projectMoneyToApi(
           sumDbMoneyToBigInt(
             effectiveSettlements.map((settlement) => settlement.payableAmountCents),
             "结算应付金额"
           )
         ),
-        operatingIncomeCents: projectMoneyToSafeNumber(operatingIncomeCents),
-        operatingCostCents: projectMoneyToSafeNumber(operatingCostCents),
-        grossProfitCents: projectMoneyToSafeNumber(operatingIncomeCents - operatingCostCents)
+        operatingIncomeCents: projectMoneyToApi(operatingIncomeCents),
+        operatingCostCents: projectMoneyToApi(operatingCostCents),
+        grossProfitCents: projectMoneyToApi(operatingIncomeCents - operatingCostCents)
       },
       counts: {
         contracts: contracts.length,
@@ -567,7 +568,7 @@ export class ProjectService {
   }
 
   async recordReceipt(projectId: string, actorUserId: string, input: RecordProjectReceiptDto) {
-    const amountCents = normalizePositiveSafeInteger(input.amountCents, "Receipt amount must be greater than zero");
+    const amountCents = normalizePositiveMoneyCents(input.amountCents, "Receipt amount must be greater than zero");
     const receivedAt = parseReceiptDate(input.receivedAt);
     const payerName = requiredTrimmed(input.payerName, "Receipt payer is required");
     const sourceType = normalizeSourceType(input.sourceType);
@@ -612,7 +613,7 @@ export class ProjectService {
         data: {
           projectId: project.id,
           receivedAt,
-          amountCents: BigInt(amountCents),
+          amountCents,
           payerName,
           sourceType,
           description,
@@ -629,7 +630,7 @@ export class ProjectService {
         metadata: {
           projectId: project.id,
           receiptId: receipt.id,
-          amountCents,
+          amountCents: moneyCentsToApi(amountCents),
           sourceType,
           payerName,
           voucherFileId
@@ -641,7 +642,7 @@ export class ProjectService {
   }
 
   async recordProxyPayment(projectId: string, actorUserId: string, input: RecordProjectProxyPaymentDto) {
-    const amountCents = normalizePositiveSafeInteger(
+    const amountCents = normalizePositiveMoneyCents(
       input.amountCents,
       "总包代付金额必须大于 0"
     );
@@ -808,7 +809,7 @@ export class ProjectService {
         data: {
           projectId: project.id,
           paidAt,
-          amountCents: BigInt(amountCents),
+          amountCents,
           generalContractorName,
           paidTargetName,
           paymentType,
@@ -828,7 +829,7 @@ export class ProjectService {
         metadata: {
           projectId: project.id,
           proxyPaymentId: proxyPayment.id,
-          amountCents,
+          amountCents: moneyCentsToApi(amountCents),
           paymentType,
           generalContractorName,
           paidTargetName,
@@ -896,7 +897,7 @@ export class ProjectService {
   private async assertContractDueProxyPaymentCapacity(
     tx: Prisma.TransactionClient,
     contractId: string,
-    amountCents: number
+    amountCents: bigint
   ): Promise<void> {
     const clients = tx as unknown as {
       $queryRaw?: <T = unknown>(query: Prisma.Sql) => Promise<T>;
@@ -1157,11 +1158,11 @@ export class ProjectService {
     actorUserId: string,
     input: RecordProjectUpstreamSettlementDto
   ) {
-    const reportedAmountCents = normalizePositiveSafeInteger(
+    const reportedAmountCents = normalizePositiveMoneyCents(
       input.reportedAmountCents,
       "Upstream settlement reported amount must be greater than zero"
     );
-    const approvedAmountCents = normalizePositiveSafeInteger(
+    const approvedAmountCents = normalizePositiveMoneyCents(
       input.approvedAmountCents,
       "Upstream settlement approved amount must be greater than zero"
     );
@@ -1213,8 +1214,8 @@ export class ProjectService {
         data: {
           projectId: project.id,
           settledAt,
-          reportedAmountCents: BigInt(reportedAmountCents),
-          approvedAmountCents: BigInt(approvedAmountCents),
+          reportedAmountCents,
+          approvedAmountCents,
           approvingPartyName,
           periodLabel,
           isFinal,
@@ -1232,8 +1233,8 @@ export class ProjectService {
         metadata: {
           projectId: project.id,
           upstreamSettlementId: upstreamSettlement.id,
-          reportedAmountCents,
-          approvedAmountCents,
+          reportedAmountCents: moneyCentsToApi(reportedAmountCents),
+          approvedAmountCents: moneyCentsToApi(approvedAmountCents),
           approvingPartyName,
           periodLabel,
           isFinal,
@@ -1254,7 +1255,7 @@ export class ProjectService {
     const contractName = requiredTrimmed(input.contractName, "Project owner contract name is required");
     const contractCode = requiredTrimmed(input.contractCode, "Project owner contract code is required");
     const signedAt = parseOwnerContractDate(input.signedAt);
-    const amountCents = normalizePositiveSafeInteger(
+    const amountCents = normalizePositiveMoneyCents(
       input.amountCents,
       "Project owner contract amount must be greater than zero"
     );
@@ -1322,7 +1323,7 @@ export class ProjectService {
             contractName,
             contractCode,
             signedAt,
-            amountCents: BigInt(amountCents),
+            amountCents,
             taxRateBps,
             pricingMethod,
             paymentTermsSummary,
@@ -1341,7 +1342,7 @@ export class ProjectService {
           metadata: {
             projectId: project.id,
             ownerContractId: ownerContract.id,
-            amountCents,
+            amountCents: moneyCentsToApi(amountCents),
             ownerName,
             contractName,
             contractCode,
@@ -1411,7 +1412,7 @@ export class ProjectService {
         metadata: {
           projectId,
           ownerContractId: confirmed.id,
-          amountCents: projectMoneyToSafeNumber(confirmed.amountCents),
+          amountCents: projectMoneyToApi(confirmed.amountCents),
           confirmedAt: confirmedAt.toISOString()
         }
       });
@@ -1426,7 +1427,7 @@ export class ProjectService {
     input: RequestSettlementExceptionQuotaDto
   ) {
     const contractId = requiredTrimmed(input.contractId, "Settlement exception quota contract is required");
-    const amountCents = normalizePositiveSafeInteger(
+    const amountCents = normalizePositiveMoneyCents(
       input.amountCents,
       "Settlement exception quota amount must be greater than zero"
     );
@@ -1474,7 +1475,7 @@ export class ProjectService {
         data: {
           projectId: project.id,
           contractId: contract.id,
-          amountCents: BigInt(amountCents),
+          amountCents,
           reason,
           validUntil,
           attachmentFileId,
@@ -1503,7 +1504,7 @@ export class ProjectService {
         metadata: {
           projectId: project.id,
           contractId: contract.id,
-          amountCents,
+          amountCents: moneyCentsToApi(amountCents),
           validUntil: validUntil.toISOString(),
           attachmentFileId
         }
@@ -1654,7 +1655,7 @@ export class ProjectService {
     actorUserId: string,
     input: RequestProjectFinancingQuotaDto
   ) {
-    const amountCents = normalizePositiveSafeInteger(
+    const amountCents = normalizePositiveMoneyCents(
       input.amountCents,
       "项目垫资额度金额必须大于零"
     );
@@ -1694,7 +1695,7 @@ export class ProjectService {
       const quota = await tx.projectFinancingQuota.create({
         data: {
           projectId: project.id,
-          amountCents: BigInt(amountCents),
+          amountCents,
           reason,
           validUntil,
           attachmentFileId,
@@ -1722,7 +1723,7 @@ export class ProjectService {
         businessId: quota.id,
         metadata: {
           projectId: project.id,
-          amountCents,
+          amountCents: moneyCentsToApi(amountCents),
           validUntil: validUntil.toISOString(),
           attachmentFileId
         }
@@ -1915,27 +1916,19 @@ function latestByContract<T extends { contractId: string; versionNo?: number | n
   );
 }
 
-export function projectMoneyToSafeNumber(value: bigint | number): number {
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new InternalServerErrorException("Amount exceeds safe integer range");
-    }
-    return value;
-  }
-  if (
-    value < BigInt(Number.MIN_SAFE_INTEGER) ||
-    value > BigInt(Number.MAX_SAFE_INTEGER)
-  ) {
-    throw new InternalServerErrorException("Amount exceeds safe integer range");
-  }
-  return moneyCentsToLegacyApiNumber(value, "项目金额");
+export function projectMoneyToApi(value: bigint | number): string {
+  return moneyCentsToApi(dbMoneyToBigInt(value, "项目金额"));
 }
 
-function normalizePositiveSafeInteger(value: unknown, message: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+function normalizePositiveMoneyCents(value: unknown, message: string): bigint {
+  let cents: bigint;
+  try {
+    cents = parseMoneyCents(value as string, "金额");
+  } catch {
     throw new BadRequestException(message);
   }
-  return value;
+  if (cents <= 0n) throw new BadRequestException(message);
+  return cents;
 }
 
 function parseReceiptDate(value: unknown): Date {
@@ -2056,7 +2049,7 @@ function toReceiptReadModel(receipt: {
     id: receipt.id,
     projectId: receipt.projectId,
     receivedAt: receipt.receivedAt.toISOString(),
-    amountCents: projectMoneyToSafeNumber(receipt.amountCents),
+    amountCents: projectMoneyToApi(receipt.amountCents),
     payerName: receipt.payerName,
     sourceType,
     sourceTypeLabel: RECEIPT_SOURCE_LABELS[sourceType],
@@ -2087,7 +2080,7 @@ function toProxyPaymentReadModel(proxyPayment: {
     id: proxyPayment.id,
     projectId: proxyPayment.projectId,
     paidAt: proxyPayment.paidAt.toISOString(),
-    amountCents: projectMoneyToSafeNumber(proxyPayment.amountCents),
+    amountCents: projectMoneyToApi(proxyPayment.amountCents),
     generalContractorName: proxyPayment.generalContractorName,
     paidTargetName: proxyPayment.paidTargetName,
     paymentType,
@@ -2119,8 +2112,8 @@ function toUpstreamSettlementReadModel(upstreamSettlement: {
     id: upstreamSettlement.id,
     projectId: upstreamSettlement.projectId,
     settledAt: upstreamSettlement.settledAt.toISOString(),
-    reportedAmountCents: projectMoneyToSafeNumber(upstreamSettlement.reportedAmountCents),
-    approvedAmountCents: projectMoneyToSafeNumber(upstreamSettlement.approvedAmountCents),
+    reportedAmountCents: projectMoneyToApi(upstreamSettlement.reportedAmountCents),
+    approvedAmountCents: projectMoneyToApi(upstreamSettlement.approvedAmountCents),
     approvingPartyName: upstreamSettlement.approvingPartyName,
     periodLabel: upstreamSettlement.periodLabel,
     isFinal: upstreamSettlement.isFinal,
@@ -2158,7 +2151,7 @@ function toOwnerContractReadModel(ownerContract: {
     contractName: ownerContract.contractName,
     contractCode: ownerContract.contractCode,
     signedAt: ownerContract.signedAt.toISOString(),
-    amountCents: projectMoneyToSafeNumber(ownerContract.amountCents),
+    amountCents: projectMoneyToApi(ownerContract.amountCents),
     taxRateBps: ownerContract.taxRateBps ?? null,
     pricingMethod: ownerContract.pricingMethod,
     paymentTermsSummary: ownerContract.paymentTermsSummary ?? null,
@@ -2192,7 +2185,7 @@ function toSettlementExceptionQuotaReadModel(quota: {
     id: quota.id,
     projectId: quota.projectId,
     contractId: quota.contractId,
-    amountCents: projectMoneyToSafeNumber(quota.amountCents),
+    amountCents: projectMoneyToApi(quota.amountCents),
     reason: quota.reason,
     validUntil: quota.validUntil.toISOString(),
     attachmentFileId: quota.attachmentFileId,
@@ -2222,7 +2215,7 @@ function toProjectFinancingQuotaReadModel(quota: {
   return {
     id: quota.id,
     projectId: quota.projectId,
-    amountCents: projectMoneyToSafeNumber(quota.amountCents),
+    amountCents: projectMoneyToApi(quota.amountCents),
     reason: quota.reason,
     validUntil: quota.validUntil.toISOString(),
     attachmentFileId: quota.attachmentFileId,

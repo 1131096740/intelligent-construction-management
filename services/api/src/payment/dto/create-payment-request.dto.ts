@@ -4,5 +4,5 @@ export interface CreatePaymentRequestDto {
   contractVersionId?: string;
   paymentTermsVersionId?: string;
   code: string;
-  requestedAmountCents: number;
+  requestedAmountCents: string;
 }

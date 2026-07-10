@@ -9,7 +9,8 @@ import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
-  moneyCentsToLegacyApiNumber,
+  moneyCentsToApi,
+  parseMoneyCents,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
@@ -33,9 +34,9 @@ interface ExpenseLockRow {
   code: string;
   expenseType: string;
   status: string;
-  requestedAmountCents: number;
-  approvedAmountCents: number | null;
-  paidAmountCents: number;
+  requestedAmountCents: bigint;
+  approvedAmountCents: bigint | null;
+  paidAmountCents: bigint;
   applicantUserId: string;
   purchaseExecutedAt: Date | null;
   receiptConfirmedAt: Date | null;
@@ -144,7 +145,6 @@ const SPOT_PURCHASE_SUBTYPES = [
   "spot_service_purchase",
   "spot_other_purchase"
 ] as const;
-const MAX_INT_CENTS = 2_147_483_647;
 
 @Injectable()
 export class ProjectExpenseService {
@@ -217,6 +217,10 @@ export class ProjectExpenseService {
     return {
       rows: rows.map(({ attachmentFileId, ...row }) => ({
         ...row,
+        requestedAmountCents: moneyCentsToApi(row.requestedAmountCents),
+        approvedAmountCents:
+          row.approvedAmountCents === null ? null : moneyCentsToApi(row.approvedAmountCents),
+        paidAmountCents: moneyCentsToApi(row.paidAmountCents),
         hasAttachment: Boolean(attachmentFileId),
         hasApprovalPdf: pdfBusinessIds.has(row.id),
         isPurchaseExecuted: Boolean(row.purchaseExecutedAt),
@@ -234,19 +238,11 @@ export class ProjectExpenseService {
         ).length,
         paid: rows.filter((row) => row.status === "paid").length,
         paymentBlocked: rows.filter((row) => row.status === "payment_blocked").length,
-        totalRequestedCents: moneyCentsToLegacyApiNumber(
-          sumDbMoneyToBigInt(
-            rows.map((row) => row.requestedAmountCents),
-            "项目支出申请合计"
-          ),
-          "项目支出申请合计"
+        totalRequestedCents: moneyCentsToApi(
+          sumDbMoneyToBigInt(rows.map((row) => row.requestedAmountCents), "项目支出申请合计")
         ),
-        totalPaidCents: moneyCentsToLegacyApiNumber(
-          sumDbMoneyToBigInt(
-            rows.map((row) => row.paidAmountCents),
-            "项目支出实付合计"
-          ),
-          "项目支出实付合计"
+        totalPaidCents: moneyCentsToApi(
+          sumDbMoneyToBigInt(rows.map((row) => row.paidAmountCents), "项目支出实付合计")
         )
       }
     };
@@ -349,7 +345,7 @@ export class ProjectExpenseService {
     assertExpenseSubtypeMatchesType(expenseType, expenseSubtype);
     const paymentSubject = requiredTrimmed(input.paymentSubject, "付款主体必填");
     const reason = requiredTrimmed(input.reason, "付款事由必填");
-    const requestedAmountCents = positiveInteger(input.requestedAmountCents, "申请金额必须大于零");
+    const requestedAmountCents = positiveMoneyCents(input.requestedAmountCents, "申请金额必须大于零");
     const attachmentFileId = input.attachmentFileId?.trim() || undefined;
     if (expenseType === "spot_purchase") {
       requiredTrimmed(input.counterpartyName, "零星采购供应商必填");
@@ -395,7 +391,7 @@ export class ProjectExpenseService {
           reason,
           requestedAmountCents,
           approvedAmountCents: null,
-          paidAmountCents: 0,
+          paidAmountCents: 0n,
           paymentMethod,
           counterpartyName: trimmedOrNull(input.counterpartyName),
           counterpartyAccountName: trimmedOrNull(input.counterpartyAccountName),
@@ -450,7 +446,13 @@ export class ProjectExpenseService {
         action: "project_expense.submit",
         businessType: "project_expense_request",
         businessId: request.id,
-        metadata: { projectId: project.id, code, expenseType, expenseSubtype, requestedAmountCents }
+        metadata: {
+          projectId: project.id,
+          code,
+          expenseType,
+          expenseSubtype,
+          requestedAmountCents: moneyCentsToApi(requestedAmountCents)
+        }
       });
 
       return request;
@@ -524,10 +526,9 @@ export class ProjectExpenseService {
         return rejected;
       }
 
-      const approvedAmountCents = input.approvedAmountCents ?? request.requestedAmountCents;
-      if (!Number.isInteger(approvedAmountCents) || approvedAmountCents <= 0) {
-        throw new BadRequestException("批准金额必须大于零");
-      }
+      const approvedAmountCents = input.approvedAmountCents === undefined
+        ? request.requestedAmountCents
+        : positiveMoneyCents(input.approvedAmountCents, "批准金额必须大于零");
       if (approvedAmountCents > request.requestedAmountCents) {
         throw new BadRequestException("批准金额不能超过申请金额");
       }
@@ -584,7 +585,7 @@ export class ProjectExpenseService {
           nodeName: currentNode.name,
           approvedRoleKey,
           flowCompleted,
-          approvedAmountCents: flowCompleted ? approvedAmountCents : undefined
+          approvedAmountCents: flowCompleted ? moneyCentsToApi(approvedAmountCents) : undefined
         }
       });
       return updated;
@@ -692,7 +693,7 @@ export class ProjectExpenseService {
     actorUserId: string,
     input: RecordProjectExpenseExecutionDto
   ) {
-    const amountCents = positiveInteger(input.amountCents, "实付金额必须大于零");
+    const amountCents = positiveMoneyCents(input.amountCents, "实付金额必须大于零");
     const voucherFileId = requiredTrimmed(input.voucherFileId, "实付凭证必填");
     const paidAt = parseDate(input.paidAt, "实付日期无效");
     if (paidAt.getTime() > Date.now()) {
@@ -766,7 +767,12 @@ export class ProjectExpenseService {
         action: "project_expense.execution.record",
         businessType: "project_expense_request",
         businessId: request.id,
-        metadata: { projectId, executionId: created.id, amountCents, voucherFileId }
+        metadata: {
+          projectId,
+          executionId: created.id,
+          amountCents: moneyCentsToApi(amountCents),
+          voucherFileId
+        }
       });
       return created;
     });
@@ -835,7 +841,7 @@ export class ProjectExpenseService {
     actorUserId: string,
     input: RecordProjectExpenseFinanceRecordDto
   ) {
-    const amountCents = positiveInteger(input.amountCents, "财务记录金额必须大于零");
+    const amountCents = positiveMoneyCents(input.amountCents, "财务记录金额必须大于零");
     const occurredAt = parseDate(input.occurredAt, "财务记录日期无效");
     const confirmationPassword = requiredTrimmed(input.confirmationPassword, "财务入账需要当前登录密码确认");
     if (!this.auth) {
@@ -880,7 +886,11 @@ export class ProjectExpenseService {
         action: "project_expense.finance.record",
         businessType: "project_expense_request",
         businessId: request.id,
-        metadata: { projectId, financeRecordId: record.id, amountCents }
+        metadata: {
+          projectId,
+          financeRecordId: record.id,
+          amountCents: moneyCentsToApi(amountCents)
+        }
       });
       return {
         record,
@@ -1141,7 +1151,7 @@ export class ProjectExpenseService {
   private async reserveProjectCashPool(
     tx: Prisma.TransactionClient,
     projectId: string,
-    requestedAmountCents: number
+    requestedAmountCents: bigint
   ) {
     const lockedProjects = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
       SELECT "id", "isActive"
@@ -1261,8 +1271,8 @@ export class ProjectExpenseService {
 
   private async shrinkFinancingQuotaUsageToApprovedAmount(
     tx: Prisma.TransactionClient,
-    request: { id: string; requestedAmountCents: number; approvedAmountCents: number | null },
-    approvedAmountCents: number,
+    request: { id: string; requestedAmountCents: bigint; approvedAmountCents: bigint | null },
+    approvedAmountCents: bigint,
     actorUserId: string
   ) {
     const usageTotals = await this.financingUsageTotals(tx, request.id);
@@ -1525,16 +1535,15 @@ function trimmedOrNull(value: string | undefined) {
   return value?.trim() || null;
 }
 
-function positiveInteger(value: number, message: string) {
-  if (
-    !Number.isFinite(value) ||
-    !Number.isSafeInteger(value) ||
-    value <= 0 ||
-    value > MAX_INT_CENTS
-  ) {
+function positiveMoneyCents(value: string, message: string): bigint {
+  let cents: bigint;
+  try {
+    cents = parseMoneyCents(value, "金额");
+  } catch {
     throw new BadRequestException(message);
   }
-  return value;
+  if (cents <= 0n) throw new BadRequestException(message);
+  return cents;
 }
 
 function parseDate(value: string | undefined, message: string) {

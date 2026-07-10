@@ -876,6 +876,7 @@ import {
 } from "../../api/core-flow-read.api";
 import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { useAuthStore } from "../../auth/auth.store";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import {
   toContractSelectOptions,
   toSettlementSelectOptions
@@ -1030,7 +1031,7 @@ const projectExpenseSummaryItems = computed(() => {
     { label: "支出单", value: String(summary?.total ?? 0) },
     { label: "审批中", value: String(summary?.approvalPending ?? 0) },
     { label: "已批待付", value: String(summary?.approvedPendingPayment ?? 0) },
-    { label: "已实付", value: formatCents(summary?.totalPaidCents ?? 0) }
+    { label: "已实付", value: formatCents(summary?.totalPaidCents ?? "0") }
   ];
 });
 
@@ -1054,19 +1055,19 @@ const cashItems = computed(() => {
   return [
     { label: "实际收款", value: formatCents(cash?.actualReceiptsCents ?? null) },
     { label: "可用资金", value: formatCents(cash?.availableFundsCents ?? null) },
-    { label: "已实付", value: formatCents(cash?.actualPaidCents ?? 0) },
-    { label: "审批中预占", value: formatCents(cash?.approvalPendingOccupancyCents ?? 0) },
-    { label: "已批待付款", value: formatCents(cash?.approvedPendingPaymentCents ?? 0) },
-    { label: "财务已记出账", value: formatCents(cash?.financeRecordedOutflowCents ?? 0) }
+    { label: "已实付", value: formatCents(cash?.actualPaidCents ?? "0") },
+    { label: "审批中预占", value: formatCents(cash?.approvalPendingOccupancyCents ?? "0") },
+    { label: "已批待付款", value: formatCents(cash?.approvedPendingPaymentCents ?? "0") },
+    { label: "财务已记出账", value: formatCents(cash?.financeRecordedOutflowCents ?? "0") }
   ];
 });
 
 const businessItems = computed(() => {
   const business = overview.value?.business;
   return [
-    { label: "生效合同额", value: formatCents(business?.effectiveContractAmountCents ?? 0) },
-    { label: "生效结算额", value: formatCents(business?.effectiveSettlementAmountCents ?? 0) },
-    { label: "结算可付额", value: formatCents(business?.payableSettlementAmountCents ?? 0) },
+    { label: "生效合同额", value: formatCents(business?.effectiveContractAmountCents ?? "0") },
+    { label: "生效结算额", value: formatCents(business?.effectiveSettlementAmountCents ?? "0") },
+    { label: "结算可付额", value: formatCents(business?.payableSettlementAmountCents ?? "0") },
     { label: "经营收入", value: formatCents(business?.operatingIncomeCents ?? null) },
     { label: "经营成本", value: formatCents(business?.operatingCostCents ?? null) },
     { label: "毛利", value: formatCents(business?.grossProfitCents ?? null) }
@@ -1077,12 +1078,12 @@ const executiveSummaryItems = computed(() => {
   const summary = executiveOverview.value?.summary;
   return [
     { label: "项目数", value: String(summary?.projectCount ?? 0) },
-    { label: "生效合同额", value: formatCents(summary?.contractAmountCents ?? 0) },
-    { label: "生效结算额", value: formatCents(summary?.settlementAmountCents ?? 0) },
-    { label: "结算可付额", value: formatCents(summary?.payableAmountCents ?? 0) },
+    { label: "生效合同额", value: formatCents(summary?.contractAmountCents ?? "0") },
+    { label: "生效结算额", value: formatCents(summary?.settlementAmountCents ?? "0") },
+    { label: "结算可付额", value: formatCents(summary?.payableAmountCents ?? "0") },
     { label: "实际收款", value: formatCents(summary?.actualReceiptsCents ?? null) },
-    { label: "已实付", value: formatCents(summary?.actualPaidCents ?? 0) },
-    { label: "已批待付", value: formatCents(summary?.approvedPendingPaymentCents ?? 0) },
+    { label: "已实付", value: formatCents(summary?.actualPaidCents ?? "0") },
+    { label: "已批待付", value: formatCents(summary?.approvedPendingPaymentCents ?? "0") },
     { label: "可用资金", value: formatCents(summary?.availableFundsCents ?? null) },
     { label: "数据缺口", value: `${summary?.dataGapCount ?? 0} 项` }
   ];
@@ -1269,9 +1270,6 @@ async function submitProjectExpense() {
     const paymentSubject = requiredText(form.paymentSubject, isSpotPurchase ? "采购事项" : "付款主体");
     const reason = requiredText(form.reason, isSpotPurchase ? "采购用途" : "付款事由");
     const requestedAmountCents = parseYuanToCents(form.amountYuan, isSpotPurchase ? "预算金额" : "申请金额");
-    if (requestedAmountCents > 2_147_483_647) {
-      throw new Error("申请金额超过系统支持范围");
-    }
     if (isSpotPurchase) {
       requiredText(form.counterpartyName, "供应商");
       if (!form.attachmentFile) {
@@ -1444,15 +1442,17 @@ function createProjectExpenseForm(
 
 function createProjectExpenseActionForm(row?: ProjectExpenseRow): ProjectExpenseActionFormState {
   const remainingCents = row
-    ? Math.max((row.approvedAmountCents ?? row.requestedAmountCents) - row.paidAmountCents, 0)
-    : 0;
+    ? BigInt(row.approvedAmountCents ?? row.requestedAmountCents) - BigInt(row.paidAmountCents)
+    : 0n;
+  const positiveRemainingCents = remainingCents > 0n ? remainingCents.toString() : "0";
   return {
     approvalComment: "",
     approvedAmountYuan: "",
     purchaseExecutedAt: todayText(),
     purchaseExecutionNote: "",
     purchaseExecutionPassword: "",
-    executionAmountYuan: remainingCents > 0 ? centsToYuanInput(remainingCents) : "",
+    executionAmountYuan:
+      positiveRemainingCents === "0" ? "" : centsToYuanInput(positiveRemainingCents),
     executionPaidAt: todayText(),
     executionVoucherFile: null,
     executionPassword: "",
@@ -1565,15 +1565,15 @@ function requiredText(value: string, label: string): string {
   return trimmed;
 }
 
-function parseYuanToCents(value: string, label: string): number {
+function parseYuanToCents(value: string, label: string): string {
   const trimmed = value.trim();
-  if (!/^\d+(?:\.\d{1,2})?$/.test(trimmed)) {
+  let amountCents: string;
+  try {
+    amountCents = yuanTextToCentsText(trimmed);
+  } catch {
     throw new Error(`${label}必须是大于 0 的数字，最多保留两位小数`);
   }
-
-  const [yuan, cents = ""] = trimmed.split(".");
-  const amountCents = Number(yuan) * 100 + Number(cents.padEnd(2, "0"));
-  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) {
+  if (amountCents === "0") {
     throw new Error(`${label}必须大于 0`);
   }
   return amountCents;
@@ -1735,18 +1735,15 @@ function triggerFileDownload(url: string, fileName: string) {
   link.remove();
 }
 
-function formatCents(value: number | null): string {
+function formatCents(value: string | null): string {
   if (value === null) {
     return "暂无数据";
   }
-  return new Intl.NumberFormat("zh-CN", {
-    style: "currency",
-    currency: "CNY"
-  }).format(value / 100);
+  return `¥${centsTextToYuanText(value)}`;
 }
 
-function centsToYuanInput(value: number): string {
-  return (value / 100).toFixed(2);
+function centsToYuanInput(value: string): string {
+  return centsTextToYuanText(value).replaceAll(",", "");
 }
 
 function formatDateTime(value: string): string {

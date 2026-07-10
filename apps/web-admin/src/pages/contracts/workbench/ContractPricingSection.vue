@@ -71,6 +71,7 @@
 <script setup lang="ts">
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed } from "vue";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
 import type { ContractDraftModel } from "./use-contract-draft";
 
 const props = defineProps<{
@@ -94,36 +95,26 @@ const amountSourceOptions = [
 
 // Money is computed in cents by the backend; the UI only formats for display
 // and parses manual input back to integer cents. No float arithmetic on totals.
-function centsToYuanText(cents: number | null): string {
-  if (cents === null || Number.isNaN(cents)) {
-    return "";
-  }
-  const negative = cents < 0;
-  const abs = Math.abs(cents);
-  const yuan = Math.trunc(abs / 100);
-  const fen = abs % 100;
-  return `${negative ? "-" : ""}${yuan}.${String(fen).padStart(2, "0")}`;
+function centsToYuanInput(cents: string | null): string {
+  return cents === null ? "" : centsTextToYuanText(cents).replaceAll(",", "");
 }
 
-const manualAmountYuanText = computed(() => centsToYuanText(props.model.manualAmountCents));
+const manualAmountYuanText = computed(() => centsToYuanInput(props.model.manualAmountCents));
 
 const derivedAmountYuanText = computed(() =>
-  centsToYuanText(props.workbench?.version.amountCents ?? null)
+  centsToYuanInput(props.workbench?.version.amountCents ?? null)
 );
 
-function yuanTextToCents(text: string): number | null {
+function yuanTextToCents(text: string): string | null {
   const trimmed = text.trim();
   if (!trimmed) {
     return null;
   }
-  const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(trimmed);
-  if (!match) {
+  try {
+    return yuanTextToCentsText(trimmed);
+  } catch {
     return null;
   }
-  const sign = match[1] === "-" ? -1 : 1;
-  const yuan = Number.parseInt(match[2], 10);
-  const fen = Number.parseInt((match[3] ?? "0").padEnd(2, "0"), 10);
-  return sign * (yuan * 100 + fen);
 }
 
 function onManualAmountChange(value: string) {

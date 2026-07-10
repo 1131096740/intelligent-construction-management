@@ -19,9 +19,9 @@ describe("PaymentReadService", () => {
             settlementId: "settlement-1",
             code: "FK-2026-011",
             status: "approved_pending_payment",
-            requestedAmountCents: 49300000,
-            approvedAmountCents: 49300000,
-            paidAmountCents: 0,
+            requestedAmountCents: 49300000n,
+            approvedAmountCents: 49300000n,
+            paidAmountCents: 0n,
             updatedAt: new Date("2026-06-30T10:00:00.000Z")
           },
           {
@@ -30,9 +30,9 @@ describe("PaymentReadService", () => {
             settlementId: "settlement-2",
             code: "FK-2026-012",
             status: "paid",
-            requestedAmountCents: 20000000,
-            approvedAmountCents: 20000000,
-            paidAmountCents: 0,
+            requestedAmountCents: 20000000n,
+            approvedAmountCents: 20000000n,
+            paidAmountCents: 0n,
             updatedAt: new Date("2026-07-01T10:00:00.000Z")
           }
         ])
@@ -61,7 +61,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([
           {
             paymentRequestId: "payment-2",
-            amountCents: 20000000
+            amountCents: 20000000n
           }
         ])
       }
@@ -151,9 +151,9 @@ describe("PaymentReadService", () => {
             sourceType: "contract_advance",
             code: "FK-YF-2026-001",
             status: "approval_pending",
-            requestedAmountCents: 10000000,
+            requestedAmountCents: 10000000n,
             approvedAmountCents: null,
-            paidAmountCents: 0,
+            paidAmountCents: 0n,
             updatedAt: new Date("2026-07-20T10:00:00.000Z")
           }
         ])
@@ -198,9 +198,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-2",
           code: "FK-2026-011",
           status: "approved_pending_payment",
-          requestedAmountCents: 49300000,
-          approvedAmountCents: 49300000,
-          paidAmountCents: 12000000
+          requestedAmountCents: 49300000n,
+          approvedAmountCents: 49300000n,
+          paidAmountCents: 12000000n
         })
       },
       settlement: {
@@ -236,7 +236,7 @@ describe("PaymentReadService", () => {
         findMany: jest.fn().mockResolvedValue([
           {
             id: "execution-1",
-            amountCents: 12000000,
+            amountCents: 12000000n,
             voucherFileId: "file-voucher-1",
             executedByUserId: "user-cashier",
             createdAt: new Date("2026-07-01T09:00:00.000Z")
@@ -244,7 +244,7 @@ describe("PaymentReadService", () => {
         ])
       },
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 5000000 }])
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 5000000n }])
       },
       paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([])
@@ -447,9 +447,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-2",
           code: "FK-2026-011",
           status: "approved_pending_payment",
-          requestedAmountCents: 49300000,
-          approvedAmountCents: 49300000,
-          paidAmountCents: 0
+          requestedAmountCents: 49300000n,
+          approvedAmountCents: 49300000n,
+          paidAmountCents: 0n
         })
       },
       settlement: {
@@ -554,9 +554,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-2",
           code: "FK-2026-011",
           status: "approved_pending_payment",
-          requestedAmountCents: 49300000,
-          approvedAmountCents: 49300000,
-          paidAmountCents: 0
+          requestedAmountCents: 49300000n,
+          approvedAmountCents: 49300000n,
+          paidAmountCents: 0n
         })
       },
       settlement: {
@@ -592,9 +592,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-YF-2026-001",
           status: "approved_pending_payment",
-          requestedAmountCents: 10000000,
-          approvedAmountCents: 10000000,
-          paidAmountCents: 0
+          requestedAmountCents: 10000000n,
+          approvedAmountCents: 10000000n,
+          paidAmountCents: 0n
         })
       },
       settlement: {
@@ -674,9 +674,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-HT-2026-001",
           status: "paid",
-          requestedAmountCents: 100_000,
-          approvedAmountCents: 100_000,
-          paidAmountCents: 100_000
+          requestedAmountCents: 100_000n,
+          approvedAmountCents: 100_000n,
+          paidAmountCents: 100_000n
         })
       },
       settlement: {
@@ -723,7 +723,7 @@ describe("PaymentReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "execution-1", amountCents: 100_000 }
+          { id: "execution-1", amountCents: 100_000n }
         ])
       },
       financeRecord: {
@@ -737,7 +737,7 @@ describe("PaymentReadService", () => {
             stageName: "进度款",
             stageType: "progress",
             allocationType: "advance_deduction",
-            amountCents: 10_000,
+            amountCents: 10_000n,
             allocationOrder: 0
           },
           {
@@ -746,7 +746,7 @@ describe("PaymentReadService", () => {
             stageName: "进度款",
             stageType: "progress",
             allocationType: "contract_due_payment",
-            amountCents: 60_000,
+            amountCents: 60_000n,
             allocationOrder: 1
           },
           {
@@ -755,7 +755,7 @@ describe("PaymentReadService", () => {
             stageName: "进度款",
             stageType: "progress",
             allocationType: "contract_due_payment",
-            amountCents: 40_000,
+            amountCents: 40_000n,
             allocationOrder: 2
           }
         ])
@@ -782,7 +782,7 @@ describe("PaymentReadService", () => {
         settlementNo: "JS-2026-031 · 2026-06",
         stageName: "进度款",
         allocationType: "预付款扣回",
-        amountCents: 10_000
+        amountCents: "10000"
       },
       {
         id: "allocation-1",
@@ -790,7 +790,7 @@ describe("PaymentReadService", () => {
         settlementNo: "JS-2026-031 · 2026-06",
         stageName: "进度款",
         allocationType: "合同累计结算付款分摊",
-        amountCents: 60_000
+        amountCents: "60000"
       },
       {
         id: "allocation-2",
@@ -798,7 +798,7 @@ describe("PaymentReadService", () => {
         settlementNo: "JS-2026-032 · 2026-07",
         stageName: "进度款",
         allocationType: "合同累计结算付款分摊",
-        amountCents: 40_000
+        amountCents: "40000"
       }
     ]);
     expect(detail.traceRules).toContain(
@@ -816,9 +816,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-2026-012",
           status: "approval_pending",
-          requestedAmountCents: 5000000,
+          requestedAmountCents: 5000000n,
           approvedAmountCents: null,
-          paidAmountCents: 0
+          paidAmountCents: 0n
         })
       },
       settlement: {
@@ -877,9 +877,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-2026-013",
           status: "partially_paid",
-          requestedAmountCents: 5000000,
-          approvedAmountCents: 5000000,
-          paidAmountCents: 2000000
+          requestedAmountCents: 5000000n,
+          approvedAmountCents: 5000000n,
+          paidAmountCents: 2000000n
         })
       },
       settlement: {
@@ -907,7 +907,7 @@ describe("PaymentReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "execution-1", amountCents: 2000000 }
+          { id: "execution-1", amountCents: 2000000n }
         ])
       },
       financeRecord: {
@@ -942,9 +942,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-2026-013",
           status: "partially_paid",
-          requestedAmountCents: 5000000,
-          approvedAmountCents: 5000000,
-          paidAmountCents: 2000000
+          requestedAmountCents: 5000000n,
+          approvedAmountCents: 5000000n,
+          paidAmountCents: 2000000n
         })
       },
       settlement: {
@@ -972,7 +972,7 @@ describe("PaymentReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "execution-1", amountCents: 2000000 }
+          { id: "execution-1", amountCents: 2000000n }
         ])
       },
       financeRecord: {
@@ -1011,9 +1011,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-2026-014",
           status: "paid",
-          requestedAmountCents: 5000000,
-          approvedAmountCents: 5000000,
-          paidAmountCents: 5000000
+          requestedAmountCents: 5000000n,
+          approvedAmountCents: 5000000n,
+          paidAmountCents: 5000000n
         })
       },
       settlement: {
@@ -1035,7 +1035,7 @@ describe("PaymentReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "execution-1", amountCents: 5000000 }
+          { id: "execution-1", amountCents: 5000000n }
         ])
       },
       financeRecord: {
@@ -1079,9 +1079,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-2026-015",
           status: "approval_pending",
-          requestedAmountCents: 5000000,
+          requestedAmountCents: 5000000n,
           approvedAmountCents: null,
-          paidAmountCents: 0
+          paidAmountCents: 0n
         })
       },
       settlement: {
@@ -1155,9 +1155,9 @@ describe("PaymentReadService", () => {
           paymentTermsVersionId: "terms-version-1",
           code: "FK-2026-014",
           status: "paid",
-          requestedAmountCents: 5000000,
-          approvedAmountCents: 5000000,
-          paidAmountCents: 5000000
+          requestedAmountCents: 5000000n,
+          approvedAmountCents: 5000000n,
+          paidAmountCents: 5000000n
         })
       },
       settlement: {
@@ -1185,12 +1185,12 @@ describe("PaymentReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "execution-1", amountCents: 5000000 }
+          { id: "execution-1", amountCents: 5000000n }
         ])
       },
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "finance-1", amountCents: 5000000 }
+          { id: "finance-1", amountCents: 5000000n }
         ])
       },
       paymentExecutionAllocation: {
@@ -1287,13 +1287,13 @@ describe("PaymentReadService", () => {
           contractId: "contract-1",
           versionNo: 1,
           status: "effective",
-          amountCents: 1_000_000,
+          amountCents: 1_000_000n,
           effectiveAt: new Date("2026-06-01T00:00:00.000Z")
         }),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "contract-version-1",
-            amountCents: 1_000_000
+            amountCents: 1_000_000n
           }
         ])
       },
@@ -1325,8 +1325,8 @@ describe("PaymentReadService", () => {
             code: "JS-2026-031",
             periodLabel: "2026-06",
             status: "effective",
-            amountCents: 100_000,
-            paidAmountCents: 10_000,
+            amountCents: 100_000n,
+            paidAmountCents: 10_000n,
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-version-1",
             isFinal: false,
@@ -1338,8 +1338,8 @@ describe("PaymentReadService", () => {
             code: "JS-2026-032",
             periodLabel: "2026-07",
             status: "effective",
-            amountCents: 50_000,
-            paidAmountCents: 0,
+            amountCents: 50_000n,
+            paidAmountCents: 0n,
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-version-1",
             isFinal: false,
@@ -1403,18 +1403,18 @@ describe("PaymentReadService", () => {
             sourceType: "settlement",
             paymentTermsVersionId: "terms-version-1",
             status: "approved_pending_payment",
-            requestedAmountCents: 30_000,
-            approvedAmountCents: 30_000,
-            paidAmountCents: 0
+            requestedAmountCents: 30_000n,
+            approvedAmountCents: 30_000n,
+            paidAmountCents: 0n
           },
           {
             settlementId: null,
             sourceType: "contract_advance",
             paymentTermsVersionId: "terms-version-1",
             status: "paid",
-            requestedAmountCents: 50_000,
-            approvedAmountCents: 50_000,
-            paidAmountCents: 50_000
+            requestedAmountCents: 50_000n,
+            approvedAmountCents: 50_000n,
+            paidAmountCents: 50_000n
           }
         ])
       },
@@ -1448,47 +1448,47 @@ describe("PaymentReadService", () => {
       projectName: "总部综合楼"
     });
     expect(preview.capacity).toMatchObject({
-      cumulativeEffectiveSettlementCents: 150_000,
-      duePayableCents: 80_000,
-      occupiedCents: 45_000,
-      proxyPaidCents: 5_000,
-      advanceDeductionCents: 20_000,
-      maxRequestableCents: 15_000
+      cumulativeEffectiveSettlementCents: "150000",
+      duePayableCents: "80000",
+      occupiedCents: "45000",
+      proxyPaidCents: "5000",
+      advanceDeductionCents: "20000",
+      maxRequestableCents: "15000"
     });
     expect(preview.capacityExplanation).toEqual([
       expect.objectContaining({
         label: "当前累计可付款金额",
-        amountCents: 80_000,
+        amountCents: "80000",
         operator: "add"
       }),
       expect.objectContaining({
         label: "扣已实际付款",
-        amountCents: 10_000,
+        amountCents: "10000",
         operator: "subtract"
       }),
       expect.objectContaining({
         label: "扣审批中占用",
-        amountCents: 0,
+        amountCents: "0",
         operator: "subtract"
       }),
       expect.objectContaining({
         label: "扣已批待付款占用",
-        amountCents: 30_000,
+        amountCents: "30000",
         operator: "subtract"
       }),
       expect.objectContaining({
         label: "扣总包代付",
-        amountCents: 5_000,
+        amountCents: "5000",
         operator: "subtract"
       }),
       expect.objectContaining({
         label: "扣本次应扣回预付款",
-        amountCents: 20_000,
+        amountCents: "20000",
         operator: "subtract"
       }),
       expect.objectContaining({
         label: "本次最多可申请",
-        amountCents: 15_000,
+        amountCents: "15000",
         operator: "result"
       })
     ]);
@@ -1503,9 +1503,9 @@ describe("PaymentReadService", () => {
       select: { amountCents: true }
     });
     expect(preview.advanceDeduction).toMatchObject({
-      paidAdvanceCents: 50_000,
-      currentDeductionCents: 20_000,
-      remainingAdvanceToDeductCents: 30_000
+      paidAdvanceCents: "50000",
+      currentDeductionCents: "20000",
+      remainingAdvanceToDeductCents: "30000"
     });
     expect(preview.sections.map((section) => section.type)).toEqual(["advance", "progress"]);
     expect(prisma.paymentTermsStage.findMany).toHaveBeenCalledWith(
@@ -1520,22 +1520,22 @@ describe("PaymentReadService", () => {
     expect(preview.sections[1].rows).toEqual([
       expect.objectContaining({
         source: "JS-2026-031 · 2026-06",
-        currentSettlementAmountCents: 100_000,
-        cumulativeBeforeAmountCents: 0,
-        cumulativeAfterAmountCents: 100_000,
+        currentSettlementAmountCents: "100000",
+        cumulativeBeforeAmountCents: "0",
+        cumulativeAfterAmountCents: "100000",
         expectedPayableAt: "2026-07-01",
         invoiceRequirement: "需提供发票",
         isDue: true,
-        includableAmountCents: 80_000
+        includableAmountCents: "80000"
       }),
       expect.objectContaining({
         source: "JS-2026-032 · 2026-07",
-        cumulativeBeforeAmountCents: 100_000,
-        cumulativeAfterAmountCents: 150_000,
+        cumulativeBeforeAmountCents: "100000",
+        cumulativeAfterAmountCents: "150000",
         expectedPayableAt: "2026-08-09",
         invoiceRequirement: "需提供发票",
         isDue: false,
-        includableAmountCents: 0
+        includableAmountCents: "0"
       })
     ]);
     expect(preview.formula).toContain(
@@ -1607,8 +1607,8 @@ describe("PaymentReadService", () => {
             code: "JS-2026-041",
             periodLabel: "2026-07",
             status: "effective",
-            amountCents: 100_000,
-            paidAmountCents: 10_000,
+            amountCents: 100_000n,
+            paidAmountCents: 10_000n,
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-version-1",
             isFinal: false,
@@ -1665,9 +1665,9 @@ describe("PaymentReadService", () => {
             sourceType: "settlement",
             paymentTermsVersionId: "terms-version-1",
             status: "approved_pending_payment",
-            requestedAmountCents: 10_000,
-            approvedAmountCents: 10_000,
-            paidAmountCents: 0
+            requestedAmountCents: 10_000n,
+            approvedAmountCents: 10_000n,
+            paidAmountCents: 0n
           }
         ])
       },
@@ -1683,65 +1683,65 @@ describe("PaymentReadService", () => {
     );
 
     expect(preview.capacity).toMatchObject({
-      systemCumulativeEffectiveSettlementCents: 100_000,
-      historicalSettledCents: 200_000,
-      cumulativeEffectiveSettlementCents: 300_000,
-      duePayableCents: 80_000,
-      actualPaidCents: 10_000,
-      approvedPendingCents: 10_000,
-      proxyPaidCents: 0,
-      historicalPaidCents: 50_000,
-      historicalApprovedPendingCents: 20_000,
-      historicalProxyPaidCents: 10_000,
-      historicalOccupiedCents: 87_000,
-      advanceDeductionCents: 10_000,
-      maxRequestableCents: 0
+      systemCumulativeEffectiveSettlementCents: "100000",
+      historicalSettledCents: "200000",
+      cumulativeEffectiveSettlementCents: "300000",
+      duePayableCents: "80000",
+      actualPaidCents: "10000",
+      approvedPendingCents: "10000",
+      proxyPaidCents: "0",
+      historicalPaidCents: "50000",
+      historicalApprovedPendingCents: "20000",
+      historicalProxyPaidCents: "10000",
+      historicalOccupiedCents: "87000",
+      advanceDeductionCents: "10000",
+      maxRequestableCents: "0"
     });
     expect(preview.historicalBalance).toEqual({
-      settledCents: 200_000,
-      approvalPendingPaymentCents: 0,
-      approvedPendingPaymentCents: 20_000,
-      paidCents: 50_000,
-      proxyPaidCents: 10_000,
-      advancePaidCents: 40_000,
-      advanceDeductedCents: 10_000,
-      retentionWithheldCents: 12_000,
-      retentionReleasedCents: 5_000,
-      otherConfirmedOccupancyCents: 0
+      settledCents: "200000",
+      approvalPendingPaymentCents: "0",
+      approvedPendingPaymentCents: "20000",
+      paidCents: "50000",
+      proxyPaidCents: "10000",
+      advancePaidCents: "40000",
+      advanceDeductedCents: "10000",
+      retentionWithheldCents: "12000",
+      retentionReleasedCents: "5000",
+      otherConfirmedOccupancyCents: "0"
     });
     expect(preview.advanceDeduction).toMatchObject({
-      paidAdvanceCents: 40_000,
-      systemPaidAdvanceCents: 0,
-      historicalAdvancePaidCents: 40_000,
-      historicalAdvanceDeductedCents: 10_000,
-      currentDeductionCents: 10_000,
-      remainingAdvanceToDeductCents: 20_000
+      paidAdvanceCents: "40000",
+      systemPaidAdvanceCents: "0",
+      historicalAdvancePaidCents: "40000",
+      historicalAdvanceDeductedCents: "10000",
+      currentDeductionCents: "10000",
+      remainingAdvanceToDeductCents: "20000"
     });
     expect(preview.capacityExplanation).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           label: "扣已实际付款",
-          amountCents: 60_000,
+          amountCents: "60000",
           note: "含历史接管已付款"
         }),
         expect.objectContaining({
           label: "扣已批待付款占用",
-          amountCents: 30_000,
+          amountCents: "30000",
           note: "含历史接管已批待付款"
         }),
         expect.objectContaining({
           label: "扣总包代付",
-          amountCents: 10_000,
+          amountCents: "10000",
           note: "含历史接管总包代付"
         }),
         expect.objectContaining({
           label: "扣历史未释放质保金",
-          amountCents: 7_000,
+          amountCents: "7000",
           note: "历史接管质保金扣留扣除已释放金额"
         }),
         expect.objectContaining({
           label: "本次最多可申请",
-          amountCents: 0,
+          amountCents: "0",
           tone: "warning"
         })
       ])
@@ -1812,8 +1812,8 @@ describe("PaymentReadService", () => {
             code: "HT-HIS-002-期初结算",
             periodLabel: "历史期初",
             status: "effective",
-            amountCents: 100_000,
-            paidAmountCents: 40_000,
+            amountCents: 100_000n,
+            paidAmountCents: 40_000n,
             contractVersionId: "contract-version-1",
             paymentTermsVersionId: "terms-version-1",
             isFinal: false,
@@ -1860,31 +1860,31 @@ describe("PaymentReadService", () => {
     );
 
     expect(preview.capacity).toMatchObject({
-      duePayableCents: 100_000,
-      actualPaidCents: 40_000,
-      approvedPendingCents: 0,
-      historicalPaidCents: 0,
-      historicalApprovedPendingCents: 10_000,
-      historicalOtherConfirmedOccupancyCents: 5_000,
-      maxRequestableCents: 45_000
+      duePayableCents: "100000",
+      actualPaidCents: "40000",
+      approvedPendingCents: "0",
+      historicalPaidCents: "0",
+      historicalApprovedPendingCents: "10000",
+      historicalOtherConfirmedOccupancyCents: "5000",
+      maxRequestableCents: "45000"
     });
     expect(preview.capacityExplanation).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           label: "扣已实际付款",
-          amountCents: 40_000
+          amountCents: "40000"
         }),
         expect.objectContaining({
           label: "扣已批待付款占用",
-          amountCents: 10_000
+          amountCents: "10000"
         }),
         expect.objectContaining({
           label: "扣历史其他确认占用",
-          amountCents: 5_000
+          amountCents: "5000"
         }),
         expect.objectContaining({
           label: "本次最多可申请",
-          amountCents: 45_000,
+          amountCents: "45000",
           tone: "success"
         })
       ])

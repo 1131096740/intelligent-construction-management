@@ -164,7 +164,7 @@ describe("contract workbench API client", () => {
       clauses: [],
       pricingNature: "fixed_total",
       amountSource: "manual",
-      manualAmountCents: 1_000_000
+      manualAmountCents: "1000000"
     });
 
     const [path, options] = mockApiFetch.mock.calls[0];
@@ -175,7 +175,7 @@ describe("contract workbench API client", () => {
       draftData: { name: "钢材采购合同" },
       pricingNature: "fixed_total",
       amountSource: "manual",
-      manualAmountCents: 1000000
+      manualAmountCents: "1000000"
     });
   });
 

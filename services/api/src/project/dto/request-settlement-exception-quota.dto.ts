@@ -1,6 +1,6 @@
 export interface RequestSettlementExceptionQuotaDto {
   contractId: string;
-  amountCents: number;
+  amountCents: string;
   reason: string;
   validUntil: string;
   attachmentFileId: string;

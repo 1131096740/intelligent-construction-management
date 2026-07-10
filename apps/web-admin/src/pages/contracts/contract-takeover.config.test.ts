@@ -57,10 +57,10 @@ describe("contract takeover page configuration", () => {
   });
 
   it("converts yuan input to integer cents with BigInt-safe parsing", () => {
-    expect(yuanToCents("0.01", "历史已付")).toBe(1);
-    expect(yuanToCents("1234567.89", "合同金额")).toBe(123456789);
-    expect(yuanToCents("", "历史总包代付", { allowZero: true })).toBe(0);
-    expect(yuanToCents("0", "历史总包代付", { allowZero: true })).toBe(0);
+    expect(yuanToCents("0.01", "历史已付")).toBe("1");
+    expect(yuanToCents("1234567.89", "合同金额")).toBe("123456789");
+    expect(yuanToCents("", "历史总包代付", { allowZero: true })).toBe("0");
+    expect(yuanToCents("0", "历史总包代付", { allowZero: true })).toBe("0");
 
     expect(() => yuanToCents("0", "合同金额")).toThrow("合同金额必须大于 0");
     expect(() => yuanToCents("-1", "历史已付")).toThrow("历史已付必须是非负数字");
@@ -81,7 +81,7 @@ describe("contract takeover page configuration", () => {
       code: "",
       name: "缺编号合同",
       counterparty: "历史供应商",
-      amountCents: 10000,
+      amountCents: "10000",
       takeoverLevel: "B",
       lifecycleStatus: "in_progress"
     });
@@ -97,7 +97,7 @@ describe("contract takeover page configuration", () => {
 
     expect(rows[0]).toMatchObject({
       code: "HT-LS-001",
-      amountCents: 10000,
+      amountCents: "10000",
       historicalSettledCents: null
     });
   });
@@ -147,9 +147,9 @@ describe("contract takeover page configuration", () => {
     );
   });
 
-  it("formats cents from API string or number values for display", () => {
-    expect(centsToYuanText(0)).toBe("¥0.00");
-    expect(centsToYuanText(1)).toBe("¥0.01");
+  it("formats cents from API string values for display", () => {
+    expect(centsToYuanText("0")).toBe("¥0.00");
+    expect(centsToYuanText("1")).toBe("¥0.01");
     expect(centsToYuanText("123456789")).toBe("¥1,234,567.89");
     expect(() => centsToYuanText("abc")).toThrow("金额数据格式不正确，请刷新后重试");
   });

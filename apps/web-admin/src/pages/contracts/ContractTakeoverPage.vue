@@ -1065,6 +1065,7 @@ import {
   type UserOptionReadModel
 } from "../../api/core-flow-read.api";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import { centsTextToYuanText } from "../../lib/money";
 import { confirmSensitiveAction } from "../confirm-sensitive-action";
 import {
   buildImportDraftsMessage,
@@ -2012,11 +2013,8 @@ function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState 
   };
 }
 
-function centsToYuanInput(value: number | string) {
-  const cents = BigInt(value);
-  const yuan = cents / 100n;
-  const fraction = String(cents % 100n).padStart(2, "0");
-  return `${yuan}.${fraction}`;
+function centsToYuanInput(value: string) {
+  return centsTextToYuanText(value).replaceAll(",", "");
 }
 
 function createEmptyForm(): CreateFormState {

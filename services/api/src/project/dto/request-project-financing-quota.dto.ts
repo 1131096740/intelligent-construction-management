@@ -1,5 +1,5 @@
 export interface RequestProjectFinancingQuotaDto {
-  amountCents: number;
+  amountCents: string;
   reason: string;
   validUntil: string;
   attachmentFileId: string;

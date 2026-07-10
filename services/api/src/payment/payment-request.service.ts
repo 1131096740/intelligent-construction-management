@@ -16,7 +16,10 @@ import { FileService } from "../file/file.service";
 import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
-  formatMoneyCentsAsYuan
+  formatMoneyCentsAsYuan,
+  moneyCentsToApi,
+  parseMoneyCents,
+  sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
@@ -38,7 +41,7 @@ import {
   calculateSettlementPaymentCapacityBigInt,
   CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES,
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
-  sumSafeCents
+  sumMoneyCents
 } from "./settlement-payment-capacity";
 
 interface AssignApprovalDto {
@@ -74,12 +77,27 @@ interface PaymentExecutionLockRow {
   settlementId: string | null;
   sourceType?: string;
   status: string;
-  requestedAmountCents: number;
-  approvedAmountCents: number | null;
-  paidAmountCents: number;
+  requestedAmountCents: bigint;
+  approvedAmountCents: bigint | null;
+  paidAmountCents: bigint;
 }
 
+type NormalizedCreatePaymentRequest = Omit<CreatePaymentRequestDto, "requestedAmountCents"> & {
+  requestedAmountCents: bigint;
+};
+
 type AuditWriteClient = Pick<Prisma.TransactionClient, "auditLog">;
+
+function positiveMoneyCents(value: string, message: string): bigint {
+  let cents: bigint;
+  try {
+    cents = parseMoneyCents(value, "金额");
+  } catch {
+    throw new Error(message);
+  }
+  if (cents <= 0n) throw new Error(message);
+  return cents;
+}
 
 const PAYMENT_APPROVAL_NODES = [
   {
@@ -139,7 +157,7 @@ export class PaymentRequestService {
   assertRequestAllowed(
     status: SettlementStatus,
     capacity: PaymentCapacity,
-    requestedAmountCents: number
+    requestedAmountCents: bigint
   ): void {
     this.assertSettlementEffective(status);
     this.amount.assertCanRequest(capacity, requestedAmountCents);
@@ -307,7 +325,7 @@ export class PaymentRequestService {
       contractId: string;
       contractVersionId?: string | null;
       paymentTermsVersionId?: string | null;
-      requestedAmountCents: number;
+      requestedAmountCents: bigint;
     },
     actorUserId?: string
   ) {
@@ -332,7 +350,7 @@ export class PaymentRequestService {
         contractVersionId: payment.contractVersionId ?? null,
         paymentTermsVersionId: payment.paymentTermsVersionId ?? null,
         code: payment.code,
-        requestedAmountCents: payment.requestedAmountCents
+        requestedAmountCents: moneyCentsToApi(payment.requestedAmountCents)
       }
     });
   }
@@ -375,26 +393,31 @@ export class PaymentRequestService {
       throw new Error("付款申请创建服务暂不可用，请稍后重试或联系管理员");
     }
 
+    const normalizedInput: NormalizedCreatePaymentRequest = {
+      ...input,
+      requestedAmountCents: positiveMoneyCents(input.requestedAmountCents, "付款申请金额必须为大于 0 的整数分")
+    };
+
     return this.prisma.$transaction(async (tx) => {
-      const sourceType = input.sourceType ?? "settlement";
+      const sourceType = normalizedInput.sourceType ?? "settlement";
       if (sourceType === "contract_advance") {
-        return this.createContractAdvancePaymentRequest(tx, input, applicantUserId);
+        return this.createContractAdvancePaymentRequest(tx, normalizedInput, applicantUserId);
       }
 
       if (sourceType === "contract_due") {
-        return this.createContractDuePaymentRequest(tx, input, applicantUserId);
+        return this.createContractDuePaymentRequest(tx, normalizedInput, applicantUserId);
       }
 
       if (sourceType !== "settlement") {
         throw new Error("不支持的付款申请来源，请从结算或合同付款入口发起");
       }
 
-      if (!input.settlementId) {
+      if (!normalizedInput.settlementId) {
         throw new Error("请选择已归档生效的结算后再发起付款申请");
       }
 
       let settlement = await tx.settlement.findUnique({
-        where: { id: input.settlementId }
+        where: { id: normalizedInput.settlementId }
       });
 
       if (!settlement) {
@@ -447,12 +470,12 @@ export class PaymentRequestService {
           dbMoneyToBigInt(contractDueAllocatedCents, "合同到期付款分摊金额")
       };
 
-      this.amount.assertCanRequest(capacity, input.requestedAmountCents);
-      await this.assertContractDuePaymentCapacity(tx, settlement, input.requestedAmountCents);
+      this.amount.assertCanRequest(capacity, normalizedInput.requestedAmountCents);
+      await this.assertContractDuePaymentCapacity(tx, settlement, normalizedInput.requestedAmountCents);
       const financingQuotaAllocations = await this.reserveProjectCashPool(
         tx,
         settlement.projectId,
-        input.requestedAmountCents
+        normalizedInput.requestedAmountCents
       );
 
       const payment = await tx.paymentRequest.create({
@@ -463,11 +486,11 @@ export class PaymentRequestService {
           contractId: settlement.contractId,
           contractVersionId: settlement.contractVersionId,
           paymentTermsVersionId: settlement.paymentTermsVersionId,
-          code: input.code,
+          code: normalizedInput.code,
           status: "approval_pending",
-          requestedAmountCents: input.requestedAmountCents,
+          requestedAmountCents: normalizedInput.requestedAmountCents,
           approvedAmountCents: null,
-          paidAmountCents: 0
+          paidAmountCents: 0n
         }
       });
 
@@ -520,7 +543,7 @@ export class PaymentRequestService {
 
   private async createContractDuePaymentRequest(
     tx: Prisma.TransactionClient,
-    input: CreatePaymentRequestDto,
+    input: NormalizedCreatePaymentRequest,
     applicantUserId?: string
   ) {
     if (input.settlementId) {
@@ -572,10 +595,6 @@ export class PaymentRequestService {
       throw new Error("未找到已生效的付款条款，请先补齐合同付款条款");
     }
 
-    if (!Number.isInteger(input.requestedAmountCents) || input.requestedAmountCents <= 0) {
-      throw new Error("付款申请金额必须为大于 0 的整数分");
-    }
-
     await this.assertContractDuePaymentCapacityForContract(
       tx,
       contractVersion.contractId,
@@ -600,7 +619,7 @@ export class PaymentRequestService {
         status: "approval_pending",
         requestedAmountCents: input.requestedAmountCents,
         approvedAmountCents: null,
-        paidAmountCents: 0
+        paidAmountCents: 0n
       }
     });
 
@@ -652,7 +671,7 @@ export class PaymentRequestService {
 
   private async createContractAdvancePaymentRequest(
     tx: Prisma.TransactionClient,
-    input: CreatePaymentRequestDto,
+    input: NormalizedCreatePaymentRequest,
     applicantUserId?: string
   ) {
     if (!input.contractVersionId) {
@@ -750,10 +769,7 @@ export class PaymentRequestService {
       historicalBalance
     });
 
-    if (!Number.isInteger(input.requestedAmountCents) || input.requestedAmountCents <= 0) {
-      throw new Error("付款申请金额必须为大于 0 的整数分");
-    }
-    if (dbMoneyToBigInt(input.requestedAmountCents, "付款申请金额") > capacity.remainingCents) {
+    if (input.requestedAmountCents > capacity.remainingCents) {
       throw new Error(
         `合同预付款当前可申请金额不足，当前最多可申请 ${formatMoneyCentsAsYuan(
           capacity.remainingCents > 0n ? capacity.remainingCents : 0n
@@ -779,7 +795,7 @@ export class PaymentRequestService {
         status: "approval_pending",
         requestedAmountCents: input.requestedAmountCents,
         approvedAmountCents: null,
-        paidAmountCents: 0
+        paidAmountCents: 0n
       }
     });
 
@@ -835,10 +851,10 @@ export class PaymentRequestService {
       id: string;
       contractId: string;
       contractVersionId?: string;
-      amountCents: number;
+      amountCents: bigint;
       paymentTermsVersionId: string;
     },
-    requestedAmountCents: number
+    requestedAmountCents: bigint
   ): Promise<void> {
     await this.assertContractDuePaymentCapacityForContract(
       tx,
@@ -852,7 +868,7 @@ export class PaymentRequestService {
     tx: Prisma.TransactionClient,
     contractId: string,
     paymentTermsVersionId: string | undefined,
-    requestedAmountCents: number
+    requestedAmountCents: bigint
   ): Promise<void> {
     const paymentTermsStageClient = (tx as unknown as {
       paymentTermsStage?: {
@@ -1044,7 +1060,7 @@ export class PaymentRequestService {
   private async contractAmountCentsByPaymentTermsVersionIdForCapacity(
     tx: Prisma.TransactionClient,
     contractSettlements: Array<{
-      amountCents: number;
+      amountCents: bigint;
       contractVersionId?: string;
       paymentTermsVersionId: string;
     }>
@@ -1070,9 +1086,11 @@ export class PaymentRequestService {
               })
             ).map((version) => [version.id, version.amountCents])
           )
-        : new Map<string, number>();
+        : new Map<string, bigint>();
 
-    const fallbackAmountCents = sumSafeCents(contractSettlements.map((settlement) => settlement.amountCents));
+    const fallbackAmountCents = sumMoneyCents(
+      contractSettlements.map((settlement) => settlement.amountCents)
+    );
     const amountByTermsId: Record<string, number | bigint> = {};
     for (const settlement of contractSettlements) {
       amountByTermsId[settlement.paymentTermsVersionId] =
@@ -1099,7 +1117,7 @@ export class PaymentRequestService {
   private async reserveProjectCashPool(
     tx: Prisma.TransactionClient,
     projectId: string,
-    requestedAmountCents: number
+    requestedAmountCents: bigint
   ): Promise<Array<{ quotaId: string; amountCents: bigint }>> {
     const lockedProjects = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
       SELECT "id", "isActive"
@@ -1124,9 +1142,9 @@ export class PaymentRequestService {
         }) => Promise<
           Array<{
             status: string;
-            requestedAmountCents: number;
-            approvedAmountCents: number | null;
-            paidAmountCents: number;
+            requestedAmountCents: bigint;
+            approvedAmountCents: bigint | null;
+            paidAmountCents: bigint;
           }>
         >;
       };
@@ -1355,17 +1373,17 @@ export class PaymentRequestService {
     tx: Prisma.TransactionClient,
     payment: {
       id: string;
-      requestedAmountCents: number;
-      approvedAmountCents: number | null;
+      requestedAmountCents: bigint;
+      approvedAmountCents: bigint | null;
     },
-    approvedAmountCents: number,
+    approvedAmountCents: bigint,
     actorUserId: string
   ) {
     const usageTotals = await this.financingUsageTotals(tx, payment.id);
-    const cashAllocatedCents = BigInt(payment.requestedAmountCents) - usageTotals.occupied - usageTotals.used;
+    const cashAllocatedCents = payment.requestedAmountCents - usageTotals.occupied - usageTotals.used;
     const targetFinancingCents =
-      BigInt(approvedAmountCents) > cashAllocatedCents
-        ? BigInt(approvedAmountCents) - cashAllocatedCents
+      approvedAmountCents > cashAllocatedCents
+        ? approvedAmountCents - cashAllocatedCents
         : 0n;
     const activeFinancingCents = usageTotals.occupied + usageTotals.used;
     const amountToRelease =
@@ -1468,7 +1486,7 @@ export class PaymentRequestService {
   private async sumProjectProxyPaymentCents(
     tx: Prisma.TransactionClient,
     settlementId: string
-  ): Promise<number> {
+  ): Promise<bigint> {
     const projectProxyPaymentClient = (tx as unknown as {
       projectProxyPayment?: {
         findMany: (args: {
@@ -1479,7 +1497,7 @@ export class PaymentRequestService {
     }).projectProxyPayment;
 
     if (!projectProxyPaymentClient) {
-      return 0;
+      return 0n;
     }
 
     const payments = await projectProxyPaymentClient.findMany({
@@ -1487,14 +1505,14 @@ export class PaymentRequestService {
       select: { amountCents: true }
     });
 
-    return sumSafeCents(payments.map((payment) => payment.amountCents));
+    return sumMoneyCents(payments.map((payment) => payment.amountCents));
   }
 
   private async sumProjectProxyPaymentCentsForContract(
     tx: Prisma.TransactionClient,
     contractId: string,
     settlementIds: string[]
-  ): Promise<number> {
+  ): Promise<bigint> {
     const projectProxyPaymentClient = (tx as unknown as {
       projectProxyPayment?: {
         findMany: (args: {
@@ -1508,7 +1526,7 @@ export class PaymentRequestService {
     }).projectProxyPayment;
 
     if (!projectProxyPaymentClient) {
-      return 0;
+      return 0n;
     }
 
     const payments = await projectProxyPaymentClient.findMany({
@@ -1519,13 +1537,13 @@ export class PaymentRequestService {
       select: { amountCents: true }
     });
 
-    return sumSafeCents(payments.map((payment) => payment.amountCents));
+    return sumMoneyCents(payments.map((payment) => payment.amountCents));
   }
 
   private async sumContractDueAllocatedCentsForSettlement(
     tx: Prisma.TransactionClient,
     settlementId: string
-  ): Promise<number> {
+  ): Promise<bigint> {
     const allocationClient = (tx as unknown as {
       paymentExecutionAllocation?: {
         findMany: (args: {
@@ -1539,7 +1557,7 @@ export class PaymentRequestService {
     }).paymentExecutionAllocation;
 
     if (!allocationClient) {
-      return 0;
+      return 0n;
     }
 
     const allocations = await allocationClient.findMany({
@@ -1550,21 +1568,22 @@ export class PaymentRequestService {
       select: { amountCents: true }
     });
 
-    return sumSafeCents(allocations.map((allocation) => allocation.amountCents));
+    return sumMoneyCents(allocations.map((allocation) => allocation.amountCents));
   }
 
   private paymentRequestOutstandingCents(payment: {
     status: string;
-    requestedAmountCents: number;
-    approvedAmountCents: number | null;
-    paidAmountCents: number;
-  }): number {
+    requestedAmountCents: bigint;
+    approvedAmountCents: bigint | null;
+    paidAmountCents: bigint;
+  }): bigint {
     const payableAmountCents =
       ["approved_pending_payment", "partially_paid", "paid"].includes(payment.status)
         ? (payment.approvedAmountCents ?? payment.requestedAmountCents)
         : payment.requestedAmountCents;
 
-    return Math.max(payableAmountCents - payment.paidAmountCents, 0);
+    const outstanding = payableAmountCents - payment.paidAmountCents;
+    return outstanding > 0n ? outstanding : 0n;
   }
 
   private async lockPaymentRequestForUpdate(
@@ -1968,18 +1987,17 @@ export class PaymentRequestService {
         return rejected;
       }
 
-      if (
-        input.approvedAmountCents !== undefined &&
-        (!Number.isFinite(input.approvedAmountCents) ||
-          !Number.isInteger(input.approvedAmountCents) ||
-          input.approvedAmountCents <= 0)
-      ) {
-        throw new Error("批准付款金额必须大于 0，请按元填写有效金额");
-      }
+      const requestedApprovedAmountCents =
+        input.approvedAmountCents === undefined
+          ? undefined
+          : positiveMoneyCents(
+              input.approvedAmountCents,
+              "批准付款金额必须大于 0，请按元填写有效金额"
+            );
 
       if (
-        input.approvedAmountCents !== undefined &&
-        input.approvedAmountCents > payment.requestedAmountCents
+        requestedApprovedAmountCents !== undefined &&
+        requestedApprovedAmountCents > payment.requestedAmountCents
       ) {
         throw new Error(
           `批准付款金额不能超过申请金额，当前最多可批准 ${this.formatYuan(
@@ -1999,7 +2017,7 @@ export class PaymentRequestService {
         nextNode.mode === "any" || nextNode.roleKeys.every((role) => approvedRoleKeys.has(role));
       const nextNodeIndex = nodeCompleted ? instance.currentNodeIndex + 1 : instance.currentNodeIndex;
       const flowCompleted = nextNodeIndex >= nextNodes.length;
-      const approvedAmountCents = input.approvedAmountCents ?? payment.requestedAmountCents;
+      const approvedAmountCents = requestedApprovedAmountCents ?? payment.requestedAmountCents;
 
       if (!flowCompleted && input.approvedAmountCents !== undefined) {
         throw new Error("只有最后一个付款审批节点才能调整批准金额");
@@ -2047,8 +2065,8 @@ export class PaymentRequestService {
           code: payment.code,
           fromStatus: payment.status,
           toStatus: flowCompleted ? "approved_pending_payment" : "approval_pending",
-          requestedAmountCents: payment.requestedAmountCents,
-          approvedAmountCents: flowCompleted ? approvedAmountCents : undefined,
+          requestedAmountCents: moneyCentsToApi(payment.requestedAmountCents),
+          approvedAmountCents: flowCompleted ? moneyCentsToApi(approvedAmountCents) : undefined,
           nodeName: currentNode.name,
           approvedRoleKey,
           nodeCompleted
@@ -2081,7 +2099,7 @@ export class PaymentRequestService {
     tx: Prisma.TransactionClient,
     payment: PaymentExecutionLockRow,
     paymentExecutionId: string,
-    amountCents: number,
+    amountCents: bigint,
     paidAt: Date,
     actorUserId: string
   ): Promise<void> {
@@ -2127,9 +2145,9 @@ export class PaymentRequestService {
         settlementId?: string | null;
         paymentTermsVersionId?: string | null;
         status: string;
-        requestedAmountCents: number;
-        approvedAmountCents: number | null;
-        paidAmountCents: number;
+        requestedAmountCents: bigint;
+        approvedAmountCents: bigint | null;
+        paidAmountCents: bigint;
       }>>;
     };
     const projectProxyPaymentClient = (tx as unknown as {
@@ -2272,10 +2290,10 @@ export class PaymentRequestService {
       amountCents: allocation.amountCents
     }));
     const registerSyntheticConsumption = (
-      syntheticAmountCents: number,
+      syntheticAmountCents: bigint,
       sections = preview.sections
     ) => {
-      if (syntheticAmountCents <= 0) return;
+      if (syntheticAmountCents <= 0n) return;
       const syntheticAllocations = allocateContractDuePaymentExecution({
         amountCents: syntheticAmountCents,
         sections,
@@ -2290,9 +2308,9 @@ export class PaymentRequestService {
     };
 
     for (const settlement of contractSettlements) {
-      if ((settlement.paidAmountCents ?? 0) <= 0) continue;
+      if ((settlement.paidAmountCents ?? 0n) <= 0n) continue;
       registerSyntheticConsumption(
-        settlement.paidAmountCents ?? 0,
+        settlement.paidAmountCents ?? 0n,
         this.contractDueSectionsForSettlement(preview.sections, settlement.id)
       );
     }
@@ -2307,7 +2325,7 @@ export class PaymentRequestService {
     }
 
     for (const proxyPayment of projectProxyPayments) {
-      const syntheticAmountCents = sumSafeCents([proxyPayment.amountCents]);
+      const syntheticAmountCents = sumMoneyCents([proxyPayment.amountCents]);
       registerSyntheticConsumption(
         syntheticAmountCents,
         proxyPayment.settlementId
@@ -2318,11 +2336,11 @@ export class PaymentRequestService {
 
     const allocatedCentsByPaymentRequestId = existingAllocations
       .filter((allocation) => allocation.allocationType === "contract_due_payment")
-      .reduce<Map<string, number>>(
+      .reduce<Map<string, bigint>>(
         (totals, allocation) => {
           totals.set(
             allocation.paymentRequestId,
-            (totals.get(allocation.paymentRequestId) ?? 0) + allocation.amountCents
+            (totals.get(allocation.paymentRequestId) ?? 0n) + allocation.amountCents
           );
           return totals;
         },
@@ -2331,20 +2349,23 @@ export class PaymentRequestService {
     for (const paidRequest of contractDuePaidRequests) {
       if (!paidRequest.id) continue;
       const residualPaidCents =
-        paidRequest.paidAmountCents - (allocatedCentsByPaymentRequestId.get(paidRequest.id) ?? 0);
+        paidRequest.paidAmountCents - (allocatedCentsByPaymentRequestId.get(paidRequest.id) ?? 0n);
       registerSyntheticConsumption(residualPaidCents);
     }
-    const existingAdvanceDeductionCents = sumSafeCents(
+    const existingAdvanceDeductionCents = sumMoneyCents(
       existingAllocations
         .filter((allocation) => allocation.allocationType === "advance_deduction")
         .map((allocation) => allocation.amountCents)
     );
-    const residualAdvanceDeductionCents = Math.max(
-      preview.advanceDeduction.currentDeductionCents - existingAdvanceDeductionCents,
-      0
+    const configuredAdvanceDeductionCents = BigInt(
+      preview.advanceDeduction.currentDeductionCents
     );
+    const residualAdvanceDeductionCents =
+      configuredAdvanceDeductionCents > existingAdvanceDeductionCents
+        ? configuredAdvanceDeductionCents - existingAdvanceDeductionCents
+        : 0n;
     const advanceDeductionAllocations =
-      residualAdvanceDeductionCents > 0
+      residualAdvanceDeductionCents > 0n
         ? allocateContractDuePaymentExecution({
             amountCents: residualAdvanceDeductionCents,
             sections: preview.sections,
@@ -2432,9 +2453,7 @@ export class PaymentRequestService {
       throw new Error("付款实付登记服务暂不可用，请稍后重试或联系管理员");
     }
 
-    if (typeof input.amountCents !== "number" || input.amountCents <= 0) {
-      throw new Error("实付金额必须大于 0");
-    }
+    const amountCents = positiveMoneyCents(input.amountCents, "实付金额必须大于 0");
 
     if (!input.voucherFileId?.trim()) {
       throw new Error("登记实付必须上传付款凭证");
@@ -2492,10 +2511,10 @@ export class PaymentRequestService {
 
       const approvedAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
       const remainingAmountCents = approvedAmountCents - payment.paidAmountCents;
-      if (input.amountCents > remainingAmountCents) {
+      if (amountCents > remainingAmountCents) {
         throw new Error(
           `实付金额超过付款申请剩余可实付金额，当前最多可实付 ${this.formatYuan(
-            Math.max(remainingAmountCents, 0)
+            remainingAmountCents > 0n ? remainingAmountCents : 0n
           )} 元`
         );
       }
@@ -2503,7 +2522,7 @@ export class PaymentRequestService {
         await this.files.assertCanDownloadFile(tx, input.voucherFileId, actorUserId);
       }
 
-      const newPaymentPaidAmountCents = payment.paidAmountCents + input.amountCents;
+      const newPaymentPaidAmountCents = payment.paidAmountCents + amountCents;
       const newPaymentStatus =
         newPaymentPaidAmountCents >= approvedAmountCents ? "paid" : "partially_paid";
       let settlement:
@@ -2512,11 +2531,11 @@ export class PaymentRequestService {
             contractId: string;
             contractVersionId: string;
             status: string;
-            payableAmountCents: number;
-            paidAmountCents: number;
+            payableAmountCents: bigint;
+            paidAmountCents: bigint;
           }
         | null = null;
-      let newSettlementPaidAmountCents: number | null = null;
+      let newSettlementPaidAmountCents: bigint | null = null;
       let newSettlementStatus: "paid" | "partially_paid" | null = null;
 
       if (payment.settlementId) {
@@ -2551,15 +2570,15 @@ export class PaymentRequestService {
           settlement.paidAmountCents -
           proxyPaidCents -
           contractDueAllocatedCents;
-        if (input.amountCents > settlementExecutionRemainingCents) {
+        if (amountCents > settlementExecutionRemainingCents) {
           throw new Error(
             `实付金额超过结算剩余可付金额，当前最多可实付 ${this.formatYuan(
-              Math.max(settlementExecutionRemainingCents, 0)
+              settlementExecutionRemainingCents > 0n ? settlementExecutionRemainingCents : 0n
             )} 元`
           );
         }
 
-        newSettlementPaidAmountCents = settlement.paidAmountCents + input.amountCents;
+        newSettlementPaidAmountCents = settlement.paidAmountCents + amountCents;
         newSettlementStatus =
           newSettlementPaidAmountCents >= settlement.payableAmountCents
             ? "paid"
@@ -2580,7 +2599,7 @@ export class PaymentRequestService {
         data: {
           paymentRequestId: payment.id,
           settlementId: payment.settlementId,
-          amountCents: input.amountCents,
+          amountCents,
           paidAt,
           executedByUserId: actorUserId,
           voucherFileId: input.voucherFileId
@@ -2592,7 +2611,7 @@ export class PaymentRequestService {
           tx,
           payment,
           execution.id,
-          input.amountCents,
+          amountCents,
           paidAt,
           actorUserId
         );
@@ -2633,7 +2652,7 @@ export class PaymentRequestService {
         metadata: {
           code: payment.code,
           executionId: execution.id,
-          amountCents: input.amountCents,
+          amountCents: moneyCentsToApi(amountCents),
           voucherFileId: input.voucherFileId,
           fromStatus: payment.status,
           toStatus: newPaymentStatus
@@ -2665,9 +2684,7 @@ export class PaymentRequestService {
       throw new Error("财务入账记录服务暂不可用，请稍后重试或联系管理员");
     }
 
-    if (typeof input.amountCents !== "number" || input.amountCents <= 0) {
-      throw new Error("财务入账金额必须大于 0");
-    }
+    const amountCents = positiveMoneyCents(input.amountCents, "财务入账金额必须大于 0");
 
     if (!input.confirmationPassword?.trim()) {
       throw new Error("财务入账需要当前登录密码确认");
@@ -2686,19 +2703,19 @@ export class PaymentRequestService {
         throw new Error("未找到付款申请，请刷新付款台账后重试");
       }
 
-      if (payment.paidAmountCents <= 0) {
+      if (payment.paidAmountCents <= 0n) {
         throw new Error("付款尚未登记实付，不能做财务入账");
       }
 
       const existingRecords = await tx.financeRecord.findMany({
         where: { paymentRequestId: payment.id }
       });
-      const recordedAmountCents = existingRecords.reduce(
-        (total, record) => total + record.amountCents,
-        0
+      const recordedAmountCents = sumDbMoneyToBigInt(
+        existingRecords.map((record) => record.amountCents),
+        "财务入账金额"
       );
       const unrecordedPaidAmountCents = payment.paidAmountCents - recordedAmountCents;
-      if (input.amountCents > unrecordedPaidAmountCents) {
+      if (amountCents > unrecordedPaidAmountCents) {
         throw new Error(
           `财务入账金额超过未入账实付金额，当前最多可入账 ${this.formatYuan(unrecordedPaidAmountCents)} 元`
         );
@@ -2710,7 +2727,7 @@ export class PaymentRequestService {
           paymentRequestId: payment.id,
           settlementId: payment.settlementId,
           direction: "outflow",
-          amountCents: input.amountCents,
+          amountCents,
           occurredAt: new Date(input.occurredAt),
           createdByUserId: actorUserId
         }
@@ -2722,7 +2739,7 @@ export class PaymentRequestService {
         businessId: payment.id,
         metadata: {
           financeRecordId: financeRecord.id,
-          amountCents: input.amountCents,
+          amountCents: moneyCentsToApi(amountCents),
           direction: "outflow"
         }
       });
@@ -2754,12 +2771,12 @@ export class PaymentRequestService {
       const financeRecords = await tx.financeRecord.findMany({
         where: { paymentRequestId: payment.id }
       });
-      const financeRecordedAmountCents = financeRecords.reduce(
-        (total, record) => total + record.amountCents,
-        0
+      const financeRecordedAmountCents = sumDbMoneyToBigInt(
+        financeRecords.map((record) => record.amountCents),
+        "财务入账金额"
       );
 
-      if (payment.paidAmountCents <= 0 || financeRecordedAmountCents < payment.paidAmountCents) {
+      if (payment.paidAmountCents <= 0n || financeRecordedAmountCents < payment.paidAmountCents) {
         throw new Error("财务入账尚未覆盖全部实付金额，不能归档付款 PDF");
       }
 
@@ -2846,12 +2863,12 @@ export class PaymentRequestService {
       const financeRecords = await tx.financeRecord.findMany({
         where: { paymentRequestId: payment.id }
       });
-      const financeRecordedAmountCents = financeRecords.reduce(
-        (total, record) => total + record.amountCents,
-        0
+      const financeRecordedAmountCents = sumDbMoneyToBigInt(
+        financeRecords.map((record) => record.amountCents),
+        "财务入账金额"
       );
 
-      if (payment.paidAmountCents <= 0 || financeRecordedAmountCents < payment.paidAmountCents) {
+      if (payment.paidAmountCents <= 0n || financeRecordedAmountCents < payment.paidAmountCents) {
         throw new Error("财务入账尚未覆盖全部实付金额，不能生成付款 PDF");
       }
 
@@ -2947,11 +2964,11 @@ export class PaymentRequestService {
     return undefined;
   }
 
-  private formatCents(value: number) {
-    return `${(value / 100).toFixed(2)} CNY`;
+  private formatCents(value: number | bigint) {
+    return `${formatMoneyCentsAsYuan(dbMoneyToBigInt(value, "付款金额"))} CNY`;
   }
 
-  private formatYuan(value: number) {
+  private formatYuan(value: number | bigint) {
     return this.formatCents(value).replace(" CNY", "");
   }
 

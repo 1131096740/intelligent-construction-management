@@ -1,11 +1,9 @@
 import { Prisma } from "@prisma/client";
 
 const HUNDRED = new Prisma.Decimal(100);
-const LEGACY_DB_INT_MIN = -2_147_483_648n;
-const LEGACY_DB_INT_MAX = 2_147_483_647n;
-const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
-const MIN_SAFE_INTEGER_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
 const NON_NEGATIVE_CENTS_TEXT = /^(0|[1-9]\d*)$/;
+const SIGNED_CENTS_TEXT = /^(?:0|[1-9]\d*|-[1-9]\d*)$/;
+const NON_NEGATIVE_YUAN_TEXT = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/;
 
 function yuanToCents(value: Prisma.Decimal): bigint {
   return BigInt(value.mul(HUNDRED).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toFixed(0));
@@ -48,10 +46,6 @@ export function calculateBillRow(input: {
     taxExclusiveAmountCents: exclusive,
     taxAmountCents: tax
   };
-}
-
-export function centsToSafeNumber(value: bigint): number {
-  return moneyCentsToLegacyApiNumber(value, "金额");
 }
 
 export function dbMoneyToBigInt(value: number | bigint, fieldName: string): bigint {
@@ -129,25 +123,34 @@ export function calculateProjectCashPoolBigInt(input: {
   };
 }
 
-export function parseMoneyCentsText(value: string, fieldName: string): bigint {
-  if (!NON_NEGATIVE_CENTS_TEXT.test(value)) {
+export function parseMoneyCents(value: string, fieldName: string): bigint {
+  if (typeof value !== "string" || !NON_NEGATIVE_CENTS_TEXT.test(value)) {
     throw new Error(`${fieldName}必须填写非负整数分`);
   }
   return BigInt(value);
 }
 
-export function moneyCentsToLegacyApiNumber(value: bigint, fieldName: string): number {
-  if (value < MIN_SAFE_INTEGER_BIGINT || value > MAX_SAFE_INTEGER_BIGINT) {
-    throw new Error(`${fieldName}超过当前 API 安全整数范围`);
-  }
-  return Number(value);
+export function moneyCentsToApi(value: bigint): string {
+  return value.toString();
 }
 
-export function legacyBigIntToDbInt(value: bigint, fieldName: string): number {
-  if (value < LEGACY_DB_INT_MIN || value > LEGACY_DB_INT_MAX) {
-    throw new Error(`${fieldName}超过当前数据库 32 位整数范围`);
+export function parseSignedMoneyCents(value: string, fieldName: string): bigint {
+  if (typeof value !== "string" || !SIGNED_CENTS_TEXT.test(value)) {
+    throw new Error(`${fieldName}必须填写整数分`);
   }
-  return Number(value);
+  return BigInt(value);
+}
+
+export function yuanTextToCents(value: string, fieldName: string): bigint {
+  if (typeof value !== "string") {
+    throw new Error(`${fieldName}必须填写非负金额，最多两位小数`);
+  }
+  const match = NON_NEGATIVE_YUAN_TEXT.exec(value);
+  if (!match) {
+    throw new Error(`${fieldName}必须填写非负金额，最多两位小数`);
+  }
+  const [, yuan, cents = ""] = match;
+  return BigInt(yuan) * 100n + BigInt(cents.padEnd(2, "0") || "0");
 }
 
 export function formatMoneyCentsAsYuan(value: bigint): string {

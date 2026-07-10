@@ -130,15 +130,15 @@ describe("payment ledger page configuration", () => {
             source: "JS-001",
             settlementId: "settlement-1",
             settlementNo: "JS-001",
-            currentSettlementAmountCents: 123456,
-            cumulativeBeforeAmountCents: 100000,
-            cumulativeAfterAmountCents: 223456,
+            currentSettlementAmountCents: "123456",
+            cumulativeBeforeAmountCents: "100000",
+            cumulativeAfterAmountCents: "223456",
             effectiveAt: "2026-07-03T08:30:00.000Z",
             expectedPayableAt: "2026-08-03T08:30:00.000Z",
             paymentRule: "本期结算金额 × 80%",
             invoiceRequirement: "需提供发票",
             isDue: false,
-            includableAmountCents: 0
+            includableAmountCents: "0"
           }
         ]
       })
@@ -170,19 +170,19 @@ describe("payment ledger page configuration", () => {
       capacityExplanation: [
         {
           label: "当前累计可付款金额",
-          amountCents: 80_000,
+          amountCents: "80000",
           operator: "add",
           note: "按合同付款条款计算",
           tone: "primary"
         },
         {
           label: "扣已实际付款",
-          amountCents: 10_000,
+          amountCents: "10000",
           operator: "subtract"
         },
         {
           label: "本次最多可申请",
-          amountCents: 70_000,
+          amountCents: "70000",
           operator: "result",
           tone: "success"
         }
@@ -242,20 +242,20 @@ function contractPaymentApplicationPreview(
     asOf: "2026-07-03T00:00:00.000Z",
     includedSettlements: [],
     capacity: {
-      cumulativeEffectiveSettlementCents: 0,
-      duePayableCents: 0,
-      occupiedCents: 0,
-      actualPaidCents: 0,
-      approvalPendingCents: 0,
-      approvedPendingCents: 0,
-      proxyPaidCents: 0,
-      advanceDeductionCents: 0,
-      maxRequestableCents: 0
+      cumulativeEffectiveSettlementCents: "0",
+      duePayableCents: "0",
+      occupiedCents: "0",
+      actualPaidCents: "0",
+      approvalPendingCents: "0",
+      approvedPendingCents: "0",
+      proxyPaidCents: "0",
+      advanceDeductionCents: "0",
+      maxRequestableCents: "0"
     },
     advanceDeduction: {
-      paidAdvanceCents: 0,
-      currentDeductionCents: 0,
-      remainingAdvanceToDeductCents: 0
+      paidAdvanceCents: "0",
+      currentDeductionCents: "0",
+      remainingAdvanceToDeductCents: "0"
     },
     capacityExplanation: [],
     sections: [],

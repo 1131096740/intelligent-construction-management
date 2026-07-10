@@ -54,14 +54,14 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
         settlementId: "set-1",
         contractId: "con-1",
         contractVersionId: "version-1",
-        requestedAmountCents: 123456,
-        approvedAmountCents: 123456,
-        paidAmountCents: 0,
+        requestedAmountCents: 123456n,
+        approvedAmountCents: 123456n,
+        paidAmountCents: 0n,
         sourceType: "settlement",
         createdAt: new Date("2026-06-24T00:00:00.000Z"),
         dueDate: new Date("2026-07-01T00:00:00.000Z")
       }),
-      findMany: jest.fn().mockResolvedValue([{ paidAmountCents: 100000 }])
+      findMany: jest.fn().mockResolvedValue([{ paidAmountCents: 100000n }])
     },
     project: {
       findUnique: jest.fn().mockResolvedValue({ id: "proj-1", name: "建工智管试运行项目" })
@@ -71,10 +71,10 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
         id: "set-1",
         code: "SET-2026-001",
         periodLabel: "2026-06",
-        amountCents: 2000000,
-        payableAmountCents: 1600000
+        amountCents: 2000000n,
+        payableAmountCents: 1600000n
       }),
-      findMany: jest.fn().mockResolvedValue([{ amountCents: 2000000 }])
+      findMany: jest.fn().mockResolvedValue([{ amountCents: 2000000n }])
     },
     contract: {
       findUnique: jest.fn().mockResolvedValue({
@@ -88,7 +88,7 @@ function buildPrisma(overrides: Record<string, unknown> = {}) {
     contractVersion: {
       findUnique: jest.fn().mockResolvedValue({
         id: "version-1",
-        amountCents: 5000000
+        amountCents: 5000000n
       })
     },
     user: {
@@ -110,8 +110,8 @@ describe("ApprovalFormService", () => {
     const rows = buildProjectPaymentApprovalRows({
       payment: {
         sourceType: "settlement",
-        requestedAmountCents: 123456,
-        approvedAmountCents: 120000,
+        requestedAmountCents: 123456n,
+        approvedAmountCents: 120000n,
         createdAt: new Date("2026-06-24T00:00:00.000Z"),
         dueDate: new Date("2026-07-01T00:00:00.000Z")
       },
@@ -124,9 +124,9 @@ describe("ApprovalFormService", () => {
         counterparty: "某某建筑公司"
       },
       settlement: { code: "SET-2026-001", periodLabel: "2026-06" },
-      contractAmountCents: 5000000,
-      cumulativeSettledCents: 2000000,
-      cumulativePaidCents: 100000
+      contractAmountCents: 5000000n,
+      cumulativeSettledCents: 2000000n,
+      cumulativePaidCents: 100000n
     });
 
     expect(rows.map((row) => row.label)).toEqual([
@@ -250,9 +250,9 @@ describe("ApprovalFormService", () => {
           settlementId: null,
           contractId: "con-1",
           contractVersionId: "version-1",
-          requestedAmountCents: 10000000,
-          approvedAmountCents: 10000000,
-          paidAmountCents: 0,
+          requestedAmountCents: 10000000n,
+          approvedAmountCents: 10000000n,
+          paidAmountCents: 0n,
           createdAt: new Date("2026-06-24T00:00:00.000Z"),
           dueDate: null
         }),

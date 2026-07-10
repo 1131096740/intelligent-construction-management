@@ -1,7 +1,7 @@
 import {
-  centsToSafeNumber,
   dbMoneyToBigInt,
-  formatMoneyCentsAsYuan
+  formatMoneyCentsAsYuan,
+  moneyCentsToApi
 } from "../money/decimal-money";
 
 export const SETTLEMENT_CAPACITY_PAYMENT_STATUSES = [
@@ -25,9 +25,9 @@ export interface SettlementCapacityPaymentRequest {
 }
 
 export interface SettlementPaymentCapacity {
-  outstandingPaymentCents: number;
-  occupiedCents: number;
-  remainingCents: number;
+  outstandingPaymentCents: bigint;
+  occupiedCents: bigint;
+  remainingCents: bigint;
 }
 
 export interface ContractDueSettlement {
@@ -86,10 +86,10 @@ export interface HistoricalContractPaymentBalance {
 }
 
 export interface ContractDuePaymentCapacity {
-  duePayableCents: number;
-  occupiedCents: number;
-  remainingCents: number;
-  advanceDeductionCents?: number;
+  duePayableCents: bigint;
+  occupiedCents: bigint;
+  remainingCents: bigint;
+  advanceDeductionCents?: bigint;
 }
 
 export interface ContractDuePaymentCapacityBigInt {
@@ -115,17 +115,17 @@ export interface ContractPaymentApplicationRow {
   triggerAnchor?: string;
   dueDays?: number;
   ratioBps?: number | null;
-  fixedAmountCents?: number | null;
+  fixedAmountCents?: string | null;
   source: string;
-  currentSettlementAmountCents: number;
-  cumulativeBeforeAmountCents: number;
-  cumulativeAfterAmountCents: number;
+  currentSettlementAmountCents: string;
+  cumulativeBeforeAmountCents: string;
+  cumulativeAfterAmountCents: string;
   effectiveAt: Date | null;
   expectedPayableAt: Date | null;
   paymentRule: string;
   requiresInvoice?: boolean;
   isDue: boolean;
-  includableAmountCents: number;
+  includableAmountCents: string;
 }
 
 export interface ContractPaymentApplicationSection {
@@ -136,34 +136,34 @@ export interface ContractPaymentApplicationSection {
 
 export interface ContractPaymentApplicationPreview {
   capacity: {
-    cumulativeEffectiveSettlementCents: number;
-    systemCumulativeEffectiveSettlementCents?: number;
-    historicalSettledCents?: number;
-    duePayableCents: number;
-    occupiedCents: number;
-    historicalOccupiedCents?: number;
-    advanceDeductionCents: number;
-    maxRequestableCents: number;
+    cumulativeEffectiveSettlementCents: string;
+    systemCumulativeEffectiveSettlementCents?: string;
+    historicalSettledCents?: string;
+    duePayableCents: string;
+    occupiedCents: string;
+    historicalOccupiedCents?: string;
+    advanceDeductionCents: string;
+    maxRequestableCents: string;
   };
   advanceDeduction: {
-    paidAdvanceCents: number;
-    systemPaidAdvanceCents?: number;
-    historicalAdvancePaidCents?: number;
-    historicalAdvanceDeductedCents?: number;
-    currentDeductionCents: number;
-    remainingAdvanceToDeductCents: number;
+    paidAdvanceCents: string;
+    systemPaidAdvanceCents?: string;
+    historicalAdvancePaidCents?: string;
+    historicalAdvanceDeductedCents?: string;
+    currentDeductionCents: string;
+    remainingAdvanceToDeductCents: string;
   };
   historicalBalance?: {
-    settledCents: number;
-    approvalPendingPaymentCents: number;
-    approvedPendingPaymentCents: number;
-    paidCents: number;
-    proxyPaidCents: number;
-    advancePaidCents: number;
-    advanceDeductedCents: number;
-    retentionWithheldCents: number;
-    retentionReleasedCents: number;
-    otherConfirmedOccupancyCents: number;
+    settledCents: string;
+    approvalPendingPaymentCents: string;
+    approvedPendingPaymentCents: string;
+    paidCents: string;
+    proxyPaidCents: string;
+    advancePaidCents: string;
+    advanceDeductedCents: string;
+    retentionWithheldCents: string;
+    retentionReleasedCents: string;
+    otherConfirmedOccupancyCents: string;
   };
   sections: ContractPaymentApplicationSection[];
 }
@@ -179,11 +179,11 @@ export interface ContractDuePaymentExecutionAllocation {
   triggerAnchor: string | null;
   dueDays: number | null;
   ratioBps: number | null;
-  fixedAmountCents: number | null;
+  fixedAmountCents: bigint | null;
   sourceEffectiveAt: Date | null;
   expectedPayableAt: Date | null;
-  sourcePayableAmountCents: number;
-  amountCents: number;
+  sourcePayableAmountCents: bigint;
+  amountCents: bigint;
 }
 
 export function calculateSettlementPaymentCapacity(input: {
@@ -192,13 +192,7 @@ export function calculateSettlementPaymentCapacity(input: {
   proxyPaidAmountCents: number | bigint;
   paymentRequests: readonly SettlementCapacityPaymentRequest[];
 }): SettlementPaymentCapacity {
-  const capacity = calculateSettlementPaymentCapacityBigInt(input);
-
-  return {
-    outstandingPaymentCents: centsToSafeNumber(capacity.outstandingPaymentCents),
-    occupiedCents: centsToSafeNumber(capacity.occupiedCents),
-    remainingCents: centsToSafeNumber(capacity.remainingCents)
-  };
+  return calculateSettlementPaymentCapacityBigInt(input);
 }
 
 export function calculateSettlementPaymentCapacityBigInt(input: {
@@ -240,16 +234,7 @@ export function calculateContractDuePaymentCapacity(input: {
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
   historicalBalance?: HistoricalContractPaymentBalance;
 }): ContractDuePaymentCapacity {
-  const capacity = calculateContractDuePaymentCapacityBigInt(input);
-
-  return {
-    duePayableCents: centsToSafeNumber(capacity.duePayableCents),
-    occupiedCents: centsToSafeNumber(capacity.occupiedCents),
-    remainingCents: centsToSafeNumber(capacity.remainingCents),
-    ...(capacity.advanceDeductionCents === undefined
-      ? {}
-      : { advanceDeductionCents: centsToSafeNumber(capacity.advanceDeductionCents) })
-  };
+  return calculateContractDuePaymentCapacityBigInt(input);
 }
 
 export function calculateContractDuePaymentCapacityBigInt(input: {
@@ -395,7 +380,7 @@ export function buildContractPaymentApplicationPreview(input: {
   })[];
   settlementArchiveFiles: readonly ContractDueSettlementArchiveFile[];
   paymentRequests: readonly ContractDuePaymentRequest[];
-  proxyPaidAmountCents?: number;
+  proxyPaidAmountCents?: number | bigint;
   contractAmountCents?: number | bigint;
   contractAmountCentsByPaymentTermsVersionId?: Readonly<Record<string, number | bigint>>;
   advancePaymentRequests?: readonly ContractAdvancePaymentRequest[];
@@ -469,11 +454,11 @@ export function buildContractPaymentApplicationPreview(input: {
 
       const isDue = !!confirmedAt && isStageDue(confirmedAt, stage.dueDays, input.asOf);
       const expectedPayableAt = confirmedAt ? addDays(confirmedAt, stage.dueDays) : null;
-      const includableAmountCents = isDue
-        ? centsToSafeNumber(
-            minBigInt(contractStageAmountCents(settlement.amountCents, stage), settlementAmountCents)
-          )
-        : 0;
+      const includableAmountCents = moneyCentsToApi(
+        isDue
+          ? minBigInt(contractStageAmountCents(settlement.amountCents, stage), settlementAmountCents)
+          : 0n
+      );
       const stageIndex = stageIndexFor(stageIndexesByKey, settlement.paymentTermsVersionId, stage);
       const section = getPaymentApplicationSection(sectionsByType, sectionType);
       section.rows.push({
@@ -489,11 +474,11 @@ export function buildContractPaymentApplicationPreview(input: {
         fixedAmountCents:
           stage.fixedAmountCents === null
             ? null
-            : centsToSafeNumber(dbMoneyToBigInt(stage.fixedAmountCents, "固定付款金额")),
+            : moneyCentsToApi(dbMoneyToBigInt(stage.fixedAmountCents, "固定付款金额")),
         source: settlement.code ?? settlement.id,
-        currentSettlementAmountCents: centsToSafeNumber(settlementAmountCents),
-        cumulativeBeforeAmountCents: centsToSafeNumber(before),
-        cumulativeAfterAmountCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
+        currentSettlementAmountCents: moneyCentsToApi(settlementAmountCents),
+        cumulativeBeforeAmountCents: moneyCentsToApi(before),
+        cumulativeAfterAmountCents: moneyCentsToApi(cumulativeEffectiveSettlementCents),
         effectiveAt: confirmedAt,
         expectedPayableAt,
         paymentRule: paymentRuleLabel(stage),
@@ -511,16 +496,14 @@ export function buildContractPaymentApplicationPreview(input: {
     const effectiveAt = input.contractEffectiveAt ?? null;
     const expectedPayableAt = effectiveAt ? addDays(effectiveAt, stage.dueDays) : null;
     const isDue = !!effectiveAt && isStageDue(effectiveAt, stage.dueDays, input.asOf);
-    const contractAmountCents = centsToSafeNumber(
-      contractAmountCentsForTerms(
-        {
-          contractAmountCents: BigInt(input.contractAmountCents ?? 0),
-          contractAmountCentsByTerms: contractAmountCentsByTerms(
-            input.contractAmountCentsByPaymentTermsVersionId
-          )
-        },
-        stage.paymentTermsVersionId
-      )
+    const contractAmountCents = contractAmountCentsForTerms(
+      {
+        contractAmountCents: dbMoneyToBigInt(input.contractAmountCents ?? 0, "合同金额"),
+        contractAmountCentsByTerms: contractAmountCentsByTerms(
+          input.contractAmountCentsByPaymentTermsVersionId
+        )
+      },
+      stage.paymentTermsVersionId
     );
     const stageIndex = stageIndexFor(stageIndexesByKey, stage.paymentTermsVersionId, stage);
     section.rows.push({
@@ -536,81 +519,72 @@ export function buildContractPaymentApplicationPreview(input: {
       fixedAmountCents:
         stage.fixedAmountCents === null
           ? null
-          : centsToSafeNumber(dbMoneyToBigInt(stage.fixedAmountCents, "固定付款金额")),
+          : moneyCentsToApi(dbMoneyToBigInt(stage.fixedAmountCents, "固定付款金额")),
       source: "合同生效",
-      currentSettlementAmountCents: 0,
-      cumulativeBeforeAmountCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
-      cumulativeAfterAmountCents: centsToSafeNumber(cumulativeEffectiveSettlementCents),
+      currentSettlementAmountCents: "0",
+      cumulativeBeforeAmountCents: moneyCentsToApi(cumulativeEffectiveSettlementCents),
+      cumulativeAfterAmountCents: moneyCentsToApi(cumulativeEffectiveSettlementCents),
       effectiveAt,
       expectedPayableAt,
       paymentRule: paymentRuleLabel(stage),
       requiresInvoice: stage.requiresInvoice === true,
       isDue,
-      includableAmountCents: isDue
-        ? centsToSafeNumber(contractStageAmountCents(contractAmountCents, stage))
-        : 0
+      includableAmountCents: moneyCentsToApi(
+        isDue ? contractStageAmountCents(contractAmountCents, stage) : 0n
+      )
     });
   }
 
-  const capacity = calculateContractDuePaymentCapacity({
+  const capacity = calculateContractDuePaymentCapacityBigInt({
     ...input,
     advancePaymentRequests: input.advancePaymentRequests ?? []
   });
-  const systemPaidAdvanceCents = centsToSafeNumber(
-    [...paidAdvanceCentsByTerms(input.advancePaymentRequests ?? []).values()].reduce(
-      (total, amount) => total + amount,
-      0n
-    )
+  const systemPaidAdvanceCents = [
+    ...paidAdvanceCentsByTerms(input.advancePaymentRequests ?? []).values()
+  ].reduce(
+    (total, amount) => total + amount,
+    0n
   );
-  const paidAdvanceCents = centsToSafeNumber(
-    BigInt(systemPaidAdvanceCents) + historicalBalance.advancePaidCents
-  );
-  const currentDeductionCents = capacity.advanceDeductionCents ?? 0;
+  const paidAdvanceCents = systemPaidAdvanceCents + historicalBalance.advancePaidCents;
+  const currentDeductionCents = capacity.advanceDeductionCents ?? 0n;
   const hasHistorical = hasHistoricalBalance(historicalBalance);
-  const systemCumulativeEffectiveSettlementCents = centsToSafeNumber(
-    cumulativeEffectiveSettlementCents
-  );
-  const totalCumulativeEffectiveSettlementCents = centsToSafeNumber(
-    cumulativeEffectiveSettlementCents + capacityHistoricalBalance.settledCents
-  );
-  const historicalSettledCents = centsToSafeNumber(capacityHistoricalBalance.settledCents);
-  const historicalOccupiedAmountCents = centsToSafeNumber(
-    historicalOccupiedCents(capacityHistoricalBalance)
-  );
-  const historicalAdvanceDeductedCents = centsToSafeNumber(
-    capacityHistoricalBalance.advanceDeductedCents
-  );
-  const remainingAdvanceToDeductCents = Math.max(
+  const systemCumulativeEffectiveSettlementCents = cumulativeEffectiveSettlementCents;
+  const totalCumulativeEffectiveSettlementCents =
+    cumulativeEffectiveSettlementCents + capacityHistoricalBalance.settledCents;
+  const historicalSettledCents = capacityHistoricalBalance.settledCents;
+  const historicalOccupiedAmountCents = historicalOccupiedCents(capacityHistoricalBalance);
+  const historicalAdvanceDeductedCents = capacityHistoricalBalance.advanceDeductedCents;
+  const remainingAdvanceToDeductCents = maxBigInt(
     paidAdvanceCents - historicalAdvanceDeductedCents - currentDeductionCents,
-    0
+    0n
   );
 
   return {
     capacity: {
-      cumulativeEffectiveSettlementCents: totalCumulativeEffectiveSettlementCents,
+      cumulativeEffectiveSettlementCents: moneyCentsToApi(totalCumulativeEffectiveSettlementCents),
       ...(hasHistorical
         ? {
-            systemCumulativeEffectiveSettlementCents,
-            historicalSettledCents,
-            historicalOccupiedCents: historicalOccupiedAmountCents
+            systemCumulativeEffectiveSettlementCents: moneyCentsToApi(systemCumulativeEffectiveSettlementCents),
+            historicalSettledCents: moneyCentsToApi(historicalSettledCents),
+            historicalOccupiedCents: moneyCentsToApi(historicalOccupiedAmountCents)
           }
         : {}),
-      duePayableCents: capacity.duePayableCents,
-      occupiedCents: capacity.occupiedCents,
-      advanceDeductionCents: currentDeductionCents,
-      maxRequestableCents: Math.max(capacity.remainingCents, 0)
+      duePayableCents: moneyCentsToApi(capacity.duePayableCents),
+      occupiedCents: moneyCentsToApi(capacity.occupiedCents),
+      advanceDeductionCents: moneyCentsToApi(currentDeductionCents),
+      maxRequestableCents: moneyCentsToApi(maxBigInt(capacity.remainingCents, 0n))
     },
     advanceDeduction: {
-      paidAdvanceCents,
+      paidAdvanceCents: moneyCentsToApi(paidAdvanceCents),
       ...(hasHistorical
         ? {
-            systemPaidAdvanceCents,
-            historicalAdvancePaidCents: centsToSafeNumber(historicalBalance.advancePaidCents),
-            historicalAdvanceDeductedCents
+            systemPaidAdvanceCents: moneyCentsToApi(systemPaidAdvanceCents),
+            historicalAdvancePaidCents: moneyCentsToApi(historicalBalance.advancePaidCents),
+            historicalAdvanceDeductedCents: moneyCentsToApi(historicalAdvanceDeductedCents)
           }
         : {}),
-      currentDeductionCents,
-      remainingAdvanceToDeductCents
+      currentDeductionCents: moneyCentsToApi(currentDeductionCents),
+      remainingAdvanceToDeductCents: moneyCentsToApi(remainingAdvanceToDeductCents)
     },
     ...(hasHistorical
       ? {
@@ -624,11 +598,11 @@ export function buildContractPaymentApplicationPreview(input: {
 }
 
 export function allocateContractDuePaymentExecution(input: {
-  amountCents: number;
+  amountCents: bigint;
   sections: readonly ContractPaymentApplicationSection[];
   existingAllocations?: readonly {
     sourceRowId: string;
-    amountCents: number;
+    amountCents: bigint;
   }[];
 }): ContractDuePaymentExecutionAllocation[] {
   const executionAmountCents = dbMoneyToBigInt(input.amountCents, "登记实付金额");
@@ -659,10 +633,7 @@ export function allocateContractDuePaymentExecution(input: {
     for (const row of section.rows) {
       if (!row.isDue || !row.settlementId) continue;
 
-      const includableAmountCents = dbMoneyToBigInt(
-        row.includableAmountCents,
-        "到期应付款金额"
-      );
+      const includableAmountCents = BigInt(row.includableAmountCents);
       const rowAvailable =
         (includableAmountCents > 0n ? includableAmountCents : 0n) -
         (allocatedCentsByRow.get(row.id) ?? 0n);
@@ -683,11 +654,14 @@ export function allocateContractDuePaymentExecution(input: {
         triggerAnchor: row.triggerAnchor ?? null,
         dueDays: row.dueDays ?? null,
         ratioBps: row.ratioBps ?? null,
-        fixedAmountCents: row.fixedAmountCents ?? null,
+        fixedAmountCents:
+          row.fixedAmountCents === null || row.fixedAmountCents === undefined
+            ? null
+            : BigInt(row.fixedAmountCents),
         sourceEffectiveAt: row.effectiveAt,
         expectedPayableAt: row.expectedPayableAt,
-        sourcePayableAmountCents: row.includableAmountCents,
-        amountCents: centsToSafeNumber(amount)
+        sourcePayableAmountCents: BigInt(row.includableAmountCents),
+        amountCents: amount
       });
       remainingToAllocate -= amount;
     }
@@ -712,13 +686,7 @@ export function calculateContractAdvancePaymentCapacity(input: {
   paymentRequests: readonly ContractAdvancePaymentRequest[];
   historicalBalance?: HistoricalContractPaymentBalance;
 }): ContractDuePaymentCapacity {
-  const capacity = calculateContractAdvancePaymentCapacityBigInt(input);
-
-  return {
-    duePayableCents: centsToSafeNumber(capacity.duePayableCents),
-    occupiedCents: centsToSafeNumber(capacity.occupiedCents),
-    remainingCents: centsToSafeNumber(capacity.remainingCents)
-  };
+  return calculateContractAdvancePaymentCapacityBigInt(input);
 }
 
 export function calculateContractAdvancePaymentCapacityBigInt(input: {
@@ -767,9 +735,10 @@ export function calculateContractAdvancePaymentCapacityBigInt(input: {
   };
 }
 
-export function sumSafeCents(values: Array<bigint | number>): number {
-  return centsToSafeNumber(
-    values.reduce<bigint>((total, value) => total + BigInt(value), 0n)
+export function sumMoneyCents(values: Array<bigint | number>): bigint {
+  return values.reduce<bigint>(
+    (total, value) => total + dbMoneyToBigInt(value, "金额合计"),
+    0n
   );
 }
 
@@ -895,16 +864,16 @@ function hasHistoricalBalance(balance: NormalizedHistoricalContractPaymentBalanc
 
 function historicalBalanceReadModel(balance: NormalizedHistoricalContractPaymentBalance) {
   return {
-    settledCents: centsToSafeNumber(balance.settledCents),
-    approvalPendingPaymentCents: centsToSafeNumber(balance.approvalPendingPaymentCents),
-    approvedPendingPaymentCents: centsToSafeNumber(balance.approvedPendingPaymentCents),
-    paidCents: centsToSafeNumber(balance.paidCents),
-    proxyPaidCents: centsToSafeNumber(balance.proxyPaidCents),
-    advancePaidCents: centsToSafeNumber(balance.advancePaidCents),
-    advanceDeductedCents: centsToSafeNumber(balance.advanceDeductedCents),
-    retentionWithheldCents: centsToSafeNumber(balance.retentionWithheldCents),
-    retentionReleasedCents: centsToSafeNumber(balance.retentionReleasedCents),
-    otherConfirmedOccupancyCents: centsToSafeNumber(balance.otherConfirmedOccupancyCents)
+    settledCents: moneyCentsToApi(balance.settledCents),
+    approvalPendingPaymentCents: moneyCentsToApi(balance.approvalPendingPaymentCents),
+    approvedPendingPaymentCents: moneyCentsToApi(balance.approvedPendingPaymentCents),
+    paidCents: moneyCentsToApi(balance.paidCents),
+    proxyPaidCents: moneyCentsToApi(balance.proxyPaidCents),
+    advancePaidCents: moneyCentsToApi(balance.advancePaidCents),
+    advanceDeductedCents: moneyCentsToApi(balance.advanceDeductedCents),
+    retentionWithheldCents: moneyCentsToApi(balance.retentionWithheldCents),
+    retentionReleasedCents: moneyCentsToApi(balance.retentionReleasedCents),
+    otherConfirmedOccupancyCents: moneyCentsToApi(balance.otherConfirmedOccupancyCents)
   };
 }
 
@@ -1214,6 +1183,10 @@ function contractStageAmountCents(
 
 function minBigInt(left: bigint, right: bigint): bigint {
   return left < right ? left : right;
+}
+
+function maxBigInt(left: bigint, right: bigint): bigint {
+  return left > right ? left : right;
 }
 
 function outstandingPaymentRequestCents(payment: SettlementCapacityPaymentRequest): bigint {

@@ -7,6 +7,7 @@ import type {
   ContractTakeoverStatus,
   PrecheckContractTakeoverImportRowPayload
 } from "../../api/core-flow-read.api";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 
 export type ContractTakeoverTone = "default" | "primary" | "warning" | "danger" | "success";
 
@@ -624,36 +625,29 @@ export function yuanToCents(
   value: string,
   label: string,
   options: { allowZero?: boolean } = {}
-): number {
+): string {
   const trimmed = value.trim();
   if (!trimmed && options.allowZero) {
-    return 0;
+    return "0";
   }
-  if (!/^\d+(?:\.\d{1,2})?$/.test(trimmed)) {
+  let amountCents: string;
+  try {
+    amountCents = yuanTextToCentsText(trimmed);
+  } catch {
     throw new Error(`${label}必须是非负数字，最多保留两位小数`);
   }
-
-  const [yuan, cents = ""] = trimmed.split(".");
-  const amountCents = BigInt(yuan) * 100n + BigInt(cents.padEnd(2, "0"));
-  if (!options.allowZero && amountCents <= 0n) {
+  if (!options.allowZero && amountCents === "0") {
     throw new Error(`${label}必须大于 0`);
   }
-  if (amountCents > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error(`${label}超过系统支持范围`);
-  }
-
-  return Number(amountCents);
+  return amountCents;
 }
 
 export function centsToYuanText(value: ContractTakeoverCentsValue | bigint): string {
-  const amountCents = centsValueToBigInt(value);
-  const sign = amountCents < 0n ? "-" : "";
-  const absolute = amountCents < 0n ? -amountCents : amountCents;
-  const yuan = absolute / 100n;
-  const cents = String(absolute % 100n).padStart(2, "0");
-  const yuanText = yuan.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-
-  return `¥${sign}${yuanText}.${cents}`;
+  try {
+    return `¥${centsTextToYuanText(value.toString())}`;
+  } catch {
+    throw new Error("金额数据格式不正确，请刷新后重试");
+  }
 }
 
 export function formatTakeoverDate(value: string | null | undefined): string {
@@ -765,12 +759,6 @@ function centsValueToBigInt(value: ContractTakeoverCentsValue | bigint): bigint 
   if (typeof value === "bigint") {
     return value;
   }
-  if (typeof value === "number") {
-    if (!Number.isInteger(value)) {
-      throw new Error("金额数据格式不正确，请刷新后重试");
-    }
-    return BigInt(value);
-  }
   if (!/^-?\d+$/.test(value)) {
     throw new Error("金额数据格式不正确，请刷新后重试");
   }
@@ -824,12 +812,12 @@ function textCell(cells: string[], index: number): string {
   return cells[index]?.trim() ?? "";
 }
 
-function yuanCell(cells: string[], index: number): number | null {
+function yuanCell(cells: string[], index: number): string | null {
   const value = parseYuanText(textCell(cells, index));
   return value ?? null;
 }
 
-function optionalYuanCell(cells: string[], index: number): number | null | undefined {
+function optionalYuanCell(cells: string[], index: number): string | null | undefined {
   const raw = textCell(cells, index);
   if (!raw) {
     return undefined;
@@ -837,20 +825,16 @@ function optionalYuanCell(cells: string[], index: number): number | null | undef
   return parseYuanText(raw) ?? null;
 }
 
-function parseYuanText(raw: string): number | null {
+function parseYuanText(raw: string): string | null {
   const value = raw.replace(/,/g, "").trim();
-  if (!/^\d+(?:\.\d{1,2})?$/.test(value)) {
+  try {
+    return yuanTextToCentsText(value);
+  } catch {
     return null;
   }
-  const [yuan, cents = ""] = value.split(".");
-  const amount = BigInt(yuan) * 100n + BigInt(cents.padEnd(2, "0"));
-  if (amount > BigInt(Number.MAX_SAFE_INTEGER)) {
-    return null;
-  }
-  return Number(amount);
 }
 
 function hasPositiveYuan(value: string): boolean {
   const amount = parseYuanText(value);
-  return amount !== null && amount > 0;
+  return amount !== null && amount !== "0";
 }

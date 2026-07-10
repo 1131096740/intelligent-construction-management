@@ -8,7 +8,7 @@ export interface CreatePaymentTermsStageDto {
     | "fixed_amount"
     | "manual_amount";
   ratioBps?: number;
-  fixedAmountCents?: number;
+  fixedAmountCents?: string;
   triggerAnchor?: "contract_effective" | "settlement_effective" | "final_settlement_effective";
   triggerEvent: string;
   dueDays: number;

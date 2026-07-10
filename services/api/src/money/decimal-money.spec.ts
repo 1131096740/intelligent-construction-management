@@ -3,10 +3,10 @@ import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
-  legacyBigIntToDbInt,
-  moneyCentsToLegacyApiNumber,
-  parseMoneyCentsText,
-  sumDbMoneyToBigInt
+  moneyCentsToApi,
+  parseMoneyCents,
+  sumDbMoneyToBigInt,
+  yuanTextToCents
 } from "./decimal-money";
 
 describe("calculateBillRow", () => {
@@ -42,6 +42,24 @@ describe("calculateBillRow", () => {
 });
 
 describe("internal bigint money compatibility", () => {
+  it("parses and serializes the final decimal-string API contract", () => {
+    expect(parseMoneyCents("2100000001", "合同金额")).toBe(2_100_000_001n);
+    expect(parseMoneyCents("9007199254740993", "累计金额")).toBe(
+      9_007_199_254_740_993n
+    );
+    expect(moneyCentsToApi(9_007_199_254_740_993n)).toBe("9007199254740993");
+    expect(yuanTextToCents("21000000.01", "合同金额")).toBe(2_100_000_001n);
+  });
+
+  it.each(["-1", "1.5", "1e3", " 1", "", 1])(
+    "rejects invalid API cent input %p",
+    (value) => {
+      expect(() => parseMoneyCents(value as string, "金额")).toThrow(
+        "金额必须填写非负整数分"
+      );
+    }
+  );
+
   it("keeps number and bigint database values in bigint without losing precision", () => {
     expect(dbMoneyToBigInt(2_100_000_001, "合同金额")).toBe(2_100_000_001n);
     expect(dbMoneyToBigInt(9_007_199_254_740_993n, "累计金额")).toBe(
@@ -59,12 +77,12 @@ describe("internal bigint money compatibility", () => {
   });
 
   it("parses canonical cents text directly to bigint", () => {
-    expect(parseMoneyCentsText("2100000001", "合同金额")).toBe(2_100_000_001n);
-    expect(parseMoneyCentsText("9007199254740993", "累计金额")).toBe(
+    expect(parseMoneyCents("2100000001", "合同金额")).toBe(2_100_000_001n);
+    expect(parseMoneyCents("9007199254740993", "累计金额")).toBe(
       9_007_199_254_740_993n
     );
-    expect(() => parseMoneyCentsText(" 1", "金额")).toThrow("金额必须填写非负整数分");
-    expect(() => parseMoneyCentsText("1.5", "金额")).toThrow("金额必须填写非负整数分");
+    expect(() => parseMoneyCents(" 1", "金额")).toThrow("金额必须填写非负整数分");
+    expect(() => parseMoneyCents("1.5", "金额")).toThrow("金额必须填写非负整数分");
   });
 
   it("formats bigint cents as yuan without converting the amount to number", () => {
@@ -74,15 +92,9 @@ describe("internal bigint money compatibility", () => {
     expect(formatMoneyCentsAsYuan(-101n)).toBe("-1.01");
   });
 
-  it("keeps legacy database and API conversions guarded at their boundaries", () => {
-    expect(legacyBigIntToDbInt(2_147_483_647n, "金额")).toBe(2_147_483_647);
-    expect(() => legacyBigIntToDbInt(2_147_483_648n, "金额")).toThrow(
-      "金额超过当前数据库 32 位整数范围"
-    );
-    expect(moneyCentsToLegacyApiNumber(2_100_000_001n, "金额")).toBe(2_100_000_001);
-    expect(() =>
-      moneyCentsToLegacyApiNumber(9_007_199_254_740_993n, "金额")
-    ).toThrow("金额超过当前 API 安全整数范围");
+  it("removes the legacy Int and safe-number ceilings from money boundaries", () => {
+    expect(dbMoneyToBigInt(2_147_483_648n, "金额")).toBe(2_147_483_648n);
+    expect(moneyCentsToApi(9_007_199_254_740_993n)).toBe("9007199254740993");
   });
 
   it("calculates project cash and expense occupancy with bigint totals", () => {
@@ -100,9 +112,9 @@ describe("internal bigint money compatibility", () => {
         expenseRequests: [
           {
             status: "approval_pending",
-            requestedAmountCents: 5,
+            requestedAmountCents: 5n,
             approvedAmountCents: null,
-            paidAmountCents: 1
+            paidAmountCents: 1n
           }
         ]
       })

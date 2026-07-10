@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { coreFlowApiVerificationTargets } from "./core-flow-api-verification";
 
 describe("coreFlowApiVerificationTargets", () => {
@@ -10,5 +12,17 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(coreFlowApiVerificationTargets[0].requiredText).toContain("钢材采购合同");
     expect(coreFlowApiVerificationTargets[1].requiredText).toContain("JS-2026-018");
     expect(coreFlowApiVerificationTargets[2].requiredText).toContain("approved_pending_payment");
+  });
+});
+
+describe("money column schema", () => {
+  it("stores every remaining cent amount as BigInt", () => {
+    const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
+    const legacyIntColumns = schema
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => /\w+Cents\s+Int\??(?:\s|$)/.test(line));
+
+    expect(legacyIntColumns).toEqual([]);
   });
 });

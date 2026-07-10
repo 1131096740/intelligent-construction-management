@@ -2,16 +2,11 @@ import { NotFoundException } from "@nestjs/common";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
-import { projectMoneyToSafeNumber, ProjectService } from "./project.service";
+import { projectMoneyToApi, ProjectService } from "./project.service";
 
 describe("project money API boundary", () => {
-  it("rejects unsafe bigint and number values before returning the legacy API number", () => {
-    expect(() => projectMoneyToSafeNumber(9_007_199_254_740_993n)).toThrow(
-      "Amount exceeds safe integer range"
-    );
-    expect(() => projectMoneyToSafeNumber(Number.MAX_SAFE_INTEGER + 1)).toThrow(
-      "Amount exceeds safe integer range"
-    );
+  it("returns large bigint values as exact decimal strings", () => {
+    expect(projectMoneyToApi(9_007_199_254_740_993n)).toBe("9007199254740993");
   });
 });
 
@@ -458,9 +453,9 @@ describe("ProjectService", () => {
       },
       settlement: {
         findMany: jest.fn().mockResolvedValue([
-          { status: "effective", amountCents: 8000000, payableAmountCents: 6400000 },
-          { status: "effective", amountCents: 12000000, payableAmountCents: 9600000 },
-          { status: "approval_pending", amountCents: 5000000, payableAmountCents: 4000000 }
+          { status: "effective", amountCents: 8000000n, payableAmountCents: 6400000n },
+          { status: "effective", amountCents: 12000000n, payableAmountCents: 9600000n },
+          { status: "approval_pending", amountCents: 5000000n, payableAmountCents: 4000000n }
         ])
       },
       paymentRequest: {
@@ -468,44 +463,44 @@ describe("ProjectService", () => {
           {
             id: "payment-1",
             status: "approval_pending",
-            requestedAmountCents: 3000000,
+            requestedAmountCents: 3000000n,
             approvedAmountCents: null,
-            paidAmountCents: 0
+            paidAmountCents: 0n
           },
           {
             id: "payment-2",
             status: "approved_pending_payment",
-            requestedAmountCents: 5000000,
-            approvedAmountCents: 4800000,
-            paidAmountCents: 0
+            requestedAmountCents: 5000000n,
+            approvedAmountCents: 4800000n,
+            paidAmountCents: 0n
           },
           {
             id: "payment-3",
             status: "paid",
-            requestedAmountCents: 2000000,
-            approvedAmountCents: 2000000,
-            paidAmountCents: 2000000
+            requestedAmountCents: 2000000n,
+            approvedAmountCents: 2000000n,
+            paidAmountCents: 2000000n
           },
           {
             id: "payment-4",
             status: "partially_paid",
-            requestedAmountCents: 3000000,
-            approvedAmountCents: 3000000,
-            paidAmountCents: 1000000
+            requestedAmountCents: 3000000n,
+            approvedAmountCents: 3000000n,
+            paidAmountCents: 1000000n
           }
         ])
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 1000000 },
-          { amountCents: 2000000 },
-          { amountCents: 1000000 }
+          { amountCents: 1000000n },
+          { amountCents: 2000000n },
+          { amountCents: 1000000n }
         ])
       },
       financeRecord: {
         findMany: jest.fn().mockResolvedValue([
-          { amountCents: 900000 },
-          { amountCents: 1900000 }
+          { amountCents: 900000n },
+          { amountCents: 1900000n }
         ])
       },
       projectReceipt: {
@@ -546,20 +541,20 @@ describe("ProjectService", () => {
     await expect(service.getOperatingFundsOverview("project-1")).resolves.toEqual({
       project: { id: "project-1", code: "JG-001", name: "总部综合楼" },
       cash: {
-        actualReceiptsCents: 15000000,
-        availableFundsCents: 3200000,
-        actualPaidCents: 4000000,
-        approvalPendingOccupancyCents: 3000000,
-        approvedPendingPaymentCents: 6800000,
-        financeRecordedOutflowCents: 2800000
+        actualReceiptsCents: "15000000",
+        availableFundsCents: "3200000",
+        actualPaidCents: "4000000",
+        approvalPendingOccupancyCents: "3000000",
+        approvedPendingPaymentCents: "6800000",
+        financeRecordedOutflowCents: "2800000"
       },
       business: {
-        effectiveContractAmountCents: 35000000,
-        effectiveSettlementAmountCents: 20000000,
-        payableSettlementAmountCents: 16000000,
-        operatingIncomeCents: 30000000,
-        operatingCostCents: 6500000,
-        grossProfitCents: 23500000
+        effectiveContractAmountCents: "35000000",
+        effectiveSettlementAmountCents: "20000000",
+        payableSettlementAmountCents: "16000000",
+        operatingIncomeCents: "30000000",
+        operatingCostCents: "6500000",
+        grossProfitCents: "23500000"
       },
       counts: { contracts: 2, settlements: 3, payments: 4 },
       dataGaps: []
@@ -613,7 +608,7 @@ describe("ProjectService", () => {
 
     const overview = await service.getOperatingFundsOverview("project-1");
 
-    expect(overview.cash.availableFundsCents).toBe(1200000);
+    expect(overview.cash.availableFundsCents).toBe("1200000");
     expect(prisma.projectFinancingQuotaUsage.findMany).toHaveBeenCalledWith({
       where: { quotaId: { in: ["financing-quota-1"] }, status: { in: ["occupied", "used"] } },
       select: { quotaId: true, amountCents: true }
@@ -658,10 +653,10 @@ describe("ProjectService", () => {
 
     const overview = await service.getOperatingFundsOverview("project-1");
 
-    expect(overview.business.effectiveContractAmountCents).toBe(37000000);
+    expect(overview.business.effectiveContractAmountCents).toBe("37000000");
   });
 
-  it("rejects effective contract totals that overflow safe integer range", async () => {
+  it("returns effective contract totals above the safe integer range without precision loss", async () => {
     const prisma = {
       project: {
         findFirst: jest.fn().mockResolvedValue({
@@ -692,9 +687,9 @@ describe("ProjectService", () => {
     };
     const service = new ProjectService(prisma as never);
 
-    await expect(service.getOperatingFundsOverview("project-1")).rejects.toThrow(
-      "Amount exceeds safe integer range"
-    );
+    await expect(service.getOperatingFundsOverview("project-1")).resolves.toMatchObject({
+      business: { effectiveContractAmountCents: "9007199254740992" }
+    });
   });
 
   it("throws NotFound for missing or inactive project", async () => {
@@ -745,7 +740,7 @@ describe("ProjectService", () => {
 
     const receipt = await service.recordReceipt("project-1", "finance-1", {
       receivedAt,
-      amountCents: 2500000,
+      amountCents: "2500000",
       payerName: "总包单位",
       sourceType: "general_contractor_payment",
       description: "六月进度款",
@@ -757,7 +752,7 @@ describe("ProjectService", () => {
       id: "receipt-1",
       projectId: "project-1",
       receivedAt,
-      amountCents: 2500000,
+      amountCents: "2500000",
       payerName: "总包单位",
       sourceType: "general_contractor_payment",
       sourceTypeLabel: "总包付款",
@@ -818,15 +813,15 @@ describe("ProjectService", () => {
             projectId: "project-1",
             contractId: "contract-1",
             status: "effective",
-            paidAmountCents: 1000000,
-            payableAmountCents: 5000000
+            paidAmountCents: 1000000n,
+            payableAmountCents: 5000000n
           }),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "settlement-1",
             status: "effective",
-            amountCents: 10000000,
-            paidAmountCents: 1000000,
+            amountCents: 10000000n,
+            paidAmountCents: 1000000n,
             paymentTermsVersionId: "terms-version-1"
           }
         ])
@@ -886,7 +881,7 @@ describe("ProjectService", () => {
 
     const result = await service.recordProxyPayment("project-1", "finance-1", {
       paidAt,
-      amountCents: 2000000,
+      amountCents: "2000000",
       generalContractorName: "总包单位",
       paidTargetName: "材料供应商",
       paymentType: "material",
@@ -901,7 +896,7 @@ describe("ProjectService", () => {
       id: "proxy-payment-1",
       projectId: "project-1",
       paidAt,
-      amountCents: 2000000,
+      amountCents: "2000000",
       generalContractorName: "总包单位",
       paidTargetName: "材料供应商",
       paymentType: "material",
@@ -955,7 +950,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordProxyPayment("project-1", "finance-1", {
         paidAt: "bad-date",
-        amountCents: 100,
+        amountCents: "100",
         generalContractorName: "总包单位",
         paidTargetName: "材料供应商",
         paymentType: "material",
@@ -971,7 +966,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordProxyPayment("project-1", "finance-1", {
         paidAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 100,
+        amountCents: "100",
         generalContractorName: "总包单位",
         paidTargetName: "材料供应商",
         paymentType: "bad-type",
@@ -1058,7 +1053,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordProxyPayment("project-1", "finance-1", {
         paidAt,
-        amountCents: 1,
+        amountCents: "1",
         generalContractorName: "总包单位",
         paidTargetName: "材料供应商",
         paymentType: "material",
@@ -1112,8 +1107,8 @@ describe("ProjectService", () => {
 
     const result = await service.recordUpstreamSettlement("project-1", "budget-1", {
       settledAt,
-      reportedAmountCents: 35000000,
-      approvedAmountCents: 30000000,
+      reportedAmountCents: "35000000",
+      approvedAmountCents: "30000000",
       approvingPartyName: "总包单位",
       periodLabel: "2026-06",
       isFinal: false,
@@ -1126,8 +1121,8 @@ describe("ProjectService", () => {
       id: "upstream-1",
       projectId: "project-1",
       settledAt,
-      reportedAmountCents: 35000000,
-      approvedAmountCents: 30000000,
+      reportedAmountCents: "35000000",
+      approvedAmountCents: "30000000",
       approvingPartyName: "总包单位",
       periodLabel: "2026-06",
       isFinal: false,
@@ -1213,7 +1208,7 @@ describe("ProjectService", () => {
           contractName: string;
           contractCode: string;
           signedAt: string;
-          amountCents: number;
+          amountCents: string;
           taxRateBps?: number;
           pricingMethod: string;
           paymentTermsSummary?: string;
@@ -1226,7 +1221,7 @@ describe("ProjectService", () => {
       contractName: "一期施工总承包合同",
       contractCode: "YZ-2026-001",
       signedAt,
-      amountCents: 200000000,
+      amountCents: "200000000",
       taxRateBps: 900,
       pricingMethod: "fixed_total",
       paymentTermsSummary: "按进度支付",
@@ -1238,7 +1233,7 @@ describe("ProjectService", () => {
       id: "owner-contract-1",
       projectId: "project-1",
       signedAt,
-      amountCents: 200000000,
+      amountCents: "200000000",
       status: "pending_confirm",
       fileId: "file-1",
       recordedByUserId: "contract-staff-1",
@@ -1311,7 +1306,7 @@ describe("ProjectService", () => {
             contractName: string;
             contractCode: string;
             signedAt: string;
-            amountCents: number;
+            amountCents: string;
             taxRateBps: number;
             pricingMethod: string;
             paymentTermsSummary: string;
@@ -1324,7 +1319,7 @@ describe("ProjectService", () => {
         contractName: "一期施工总承包合同",
         contractCode: "YZ-2026-001",
         signedAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 200000000,
+        amountCents: "200000000",
         taxRateBps: 900,
         pricingMethod: "fixed_total",
         paymentTermsSummary: "按进度支付",
@@ -1371,7 +1366,7 @@ describe("ProjectService", () => {
             contractName: string;
             contractCode: string;
             signedAt: string;
-            amountCents: number;
+            amountCents: string;
             taxRateBps: number;
             pricingMethod: string;
             paymentTermsSummary: string;
@@ -1384,7 +1379,7 @@ describe("ProjectService", () => {
         contractName: "一期施工总承包合同",
         contractCode: "YZ-2026-002",
         signedAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 200000000,
+        amountCents: "200000000",
         taxRateBps: 900,
         pricingMethod: "fixed_total",
         paymentTermsSummary: "按进度支付",
@@ -1421,7 +1416,7 @@ describe("ProjectService", () => {
             contractName: string;
             contractCode: string;
             signedAt: string;
-            amountCents: number;
+            amountCents: string;
             pricingMethod: string;
             paymentTermsSummary: string;
             retentionSummary: string;
@@ -1433,7 +1428,7 @@ describe("ProjectService", () => {
         contractName: "一期施工总承包合同",
         contractCode: "YZ-2026-001",
         signedAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 200000000,
+        amountCents: "200000000",
         pricingMethod: "fixed_total",
         paymentTermsSummary: "按进度支付",
         retentionSummary: "3%质保金",
@@ -1574,7 +1569,7 @@ describe("ProjectService", () => {
       "project-manager-1",
       {
         contractId: "contract-1",
-        amountCents: 3000000,
+        amountCents: "3000000",
         reason: " 对上审定暂未覆盖本期必要结算 ",
         validUntil,
         attachmentFileId: "file-1"
@@ -1585,7 +1580,7 @@ describe("ProjectService", () => {
       id: "quota-1",
       projectId: "project-1",
       contractId: "contract-1",
-      amountCents: 3000000,
+      amountCents: "3000000",
       status: "approval_pending",
       approvedByUserId: null
     });
@@ -1953,7 +1948,7 @@ describe("ProjectService", () => {
     const service = new ProjectService(prisma as never);
 
     const result = await service.requestProjectFinancingQuota("project-1", "project-manager-1", {
-      amountCents: 5000000,
+      amountCents: "5000000",
       reason: " 阶段性垫资保障项目付款 ",
       validUntil,
       attachmentFileId: "file-1"
@@ -1962,7 +1957,7 @@ describe("ProjectService", () => {
     expect(result).toMatchObject({
       id: "financing-quota-1",
       projectId: "project-1",
-      amountCents: 5000000,
+      amountCents: "5000000",
       status: "approval_pending",
       approvedByUserId: null
     });
@@ -2189,8 +2184,8 @@ describe("ProjectService", () => {
     await expect(
       service.recordUpstreamSettlement("project-1", "budget-1", {
         settledAt: "2026-07-02T00:00:00.000Z",
-        reportedAmountCents: 35000000,
-        approvedAmountCents: 30000000,
+        reportedAmountCents: "35000000",
+        approvedAmountCents: "30000000",
         approvingPartyName: "总包单位",
         periodLabel: "2026-06",
         voucherFileId: "file-1",
@@ -2228,7 +2223,7 @@ describe("ProjectService", () => {
             contractName: string;
             contractCode: string;
             signedAt: string;
-            amountCents: number;
+            amountCents: string;
             taxRateBps: number;
             pricingMethod: string;
             paymentTermsSummary: string;
@@ -2241,7 +2236,7 @@ describe("ProjectService", () => {
         contractName: "一期施工总承包合同",
         contractCode: "YZ-2026-001",
         signedAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 200000000,
+        amountCents: "200000000",
         taxRateBps: 900,
         pricingMethod: "fixed_total",
         paymentTermsSummary: "按进度支付",
@@ -2345,7 +2340,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordProxyPayment("project-1", "finance-1", {
         paidAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 2000000,
+        amountCents: "2000000",
         generalContractorName: "总包单位",
         paidTargetName: "材料供应商",
         paymentType: "material",
@@ -2381,15 +2376,15 @@ describe("ProjectService", () => {
             projectId: "project-1",
             contractId: "contract-1",
             status: "effective",
-            paidAmountCents: 4000000,
-            payableAmountCents: 5000000
+            paidAmountCents: 4000000n,
+            payableAmountCents: 5000000n
           }),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "settlement-1",
             status: "effective",
-            amountCents: 10000000,
-            paidAmountCents: 4000000,
+            amountCents: 10000000n,
+            paidAmountCents: 4000000n,
             paymentTermsVersionId: "terms-version-1"
           }
         ])
@@ -2432,7 +2427,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordProxyPayment("project-1", "finance-1", {
         paidAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 2000000,
+        amountCents: "2000000",
         generalContractorName: "总包单位",
         paidTargetName: "材料供应商",
         paymentType: "material",
@@ -2467,15 +2462,15 @@ describe("ProjectService", () => {
             projectId: "project-1",
             contractId: "contract-1",
             status: "effective",
-            paidAmountCents: 1000000,
-            payableAmountCents: 5000000
+            paidAmountCents: 1000000n,
+            payableAmountCents: 5000000n
           }),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "settlement-1",
             status: "effective",
-            amountCents: 10000000,
-            paidAmountCents: 1000000,
+            amountCents: 10000000n,
+            paidAmountCents: 1000000n,
             paymentTermsVersionId: "terms-version-1"
           }
         ])
@@ -2507,9 +2502,9 @@ describe("ProjectService", () => {
         findMany: jest.fn().mockResolvedValue([
           {
             status: "approved_pending_payment",
-            requestedAmountCents: 3000000,
-            approvedAmountCents: 3000000,
-            paidAmountCents: 0
+            requestedAmountCents: 3000000n,
+            approvedAmountCents: 3000000n,
+            paidAmountCents: 0n
           }
         ])
       }
@@ -2525,7 +2520,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordProxyPayment("project-1", "finance-1", {
         paidAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 600000,
+        amountCents: "600000",
         generalContractorName: "总包单位",
         paidTargetName: "材料供应商",
         paymentType: "material",
@@ -2575,15 +2570,15 @@ describe("ProjectService", () => {
               projectId: "project-1",
               contractId: "contract-1",
               status: "effective",
-              paidAmountCents: 0,
-              payableAmountCents: 2000000
+              paidAmountCents: 0n,
+              payableAmountCents: 2000000n
             }),
           findMany: jest.fn().mockResolvedValue([
             {
               id: "settlement-1",
               status: "effective",
-              amountCents: 5000000,
-              paidAmountCents: 0,
+              amountCents: 5000000n,
+              paidAmountCents: 0n,
               paymentTermsVersionId: "terms-version-1"
             }
           ])
@@ -2643,7 +2638,7 @@ describe("ProjectService", () => {
       await expect(
         service.recordProxyPayment("project-1", "finance-1", {
           paidAt: "2026-07-02T00:00:00.000Z",
-          amountCents: 1200000,
+          amountCents: "1200000",
           generalContractorName: "总包单位",
           paidTargetName: "材料供应商",
           paymentType: "material",
@@ -2700,15 +2695,15 @@ describe("ProjectService", () => {
               projectId: "project-1",
               contractId: "contract-1",
               status: "effective",
-              paidAmountCents: 0,
-              payableAmountCents: 100000
+              paidAmountCents: 0n,
+              payableAmountCents: 100000n
             }),
           findMany: jest.fn().mockResolvedValue([
             {
               id: "settlement-1",
               status: "effective",
-              amountCents: 100000,
-              paidAmountCents: 0,
+              amountCents: 100000n,
+              paidAmountCents: 0n,
               contractVersionId: "contract-version-1",
               isFinal: false,
               paymentTermsVersionId: "terms-version-1"
@@ -2755,7 +2750,7 @@ describe("ProjectService", () => {
           findMany: jest.fn().mockResolvedValue([
             {
               id: "contract-version-1",
-              amountCents: 1000000
+              amountCents: 1000000n
             }
           ])
         },
@@ -2770,9 +2765,9 @@ describe("ProjectService", () => {
                 {
                   paymentTermsVersionId: "terms-version-1",
                   status: "paid",
-                  requestedAmountCents: 20000,
-                  approvedAmountCents: 20000,
-                  paidAmountCents: 20000
+                  requestedAmountCents: 20000n,
+                  approvedAmountCents: 20000n,
+                  paidAmountCents: 20000n
                 }
               ]);
             }
@@ -2795,7 +2790,7 @@ describe("ProjectService", () => {
       await expect(
         service.recordProxyPayment("project-1", "finance-1", {
           paidAt: "2026-07-02T00:00:00.000Z",
-          amountCents: 61000,
+          amountCents: "61000",
           generalContractorName: "总包单位",
           paidTargetName: "材料供应商",
           paymentType: "material",
@@ -2829,7 +2824,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordReceipt("project-1", "finance-1", {
         receivedAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 2500000,
+        amountCents: "2500000",
         payerName: "总包单位",
         sourceType: "general_contractor_payment",
         voucherFileId: "",
@@ -2862,7 +2857,7 @@ describe("ProjectService", () => {
     await expect(
       service.recordReceipt("project-1", "finance-1", {
         receivedAt: "2026-07-02T00:00:00.000Z",
-        amountCents: 2500000,
+        amountCents: "2500000",
         payerName: "总包单位",
         sourceType: "general_contractor_payment",
         voucherFileId: "file-1",

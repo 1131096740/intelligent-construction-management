@@ -5,6 +5,11 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import {
+  dbMoneyToBigInt,
+  formatMoneyCentsAsYuan,
+  parseMoneyCents
+} from "../money/decimal-money";
 import type {
   AttachContractTakeoverEvidenceDto,
   ContractTakeoverEvidencePurpose
@@ -281,7 +286,7 @@ export interface ContractTakeoverImportPrecheckRow {
   code: string;
   name: string;
   counterparty: string;
-  amountCents: number | null;
+  amountCents: string | null;
   takeoverLevel: string;
   lifecycleStatus: string;
   evidenceChecklist: string;
@@ -1542,7 +1547,7 @@ export class ContractTakeoverService {
     const code = stringValue(row["code"]);
     const name = stringValue(row["name"]);
     const counterparty = stringValue(row["counterparty"]);
-    const amountCents = integerValue(row["amountCents"]);
+    const amountCents = moneyTextValue(row["amountCents"]);
     const signedAt = stringValue(row["signedAt"]);
     const takeoverLevel = takeoverLevelInputValue(row["takeoverLevel"]);
     const lifecycleStatus = stringValue(row["lifecycleStatus"]);
@@ -1565,7 +1570,7 @@ export class ContractTakeoverService {
     if (!counterparty) {
       issues.push(issue(rowNo, "counterparty", "error", "相对方不能为空"));
     }
-    if (amountCents === null || amountCents <= 0) {
+    if (amountCents === null || BigInt(amountCents) <= 0n) {
       issues.push(issue(rowNo, "amountCents", "error", "合同金额必须填写大于 0 的金额"));
     }
     if (!isStrictDateText(signedAt)) {
@@ -1579,8 +1584,8 @@ export class ContractTakeoverService {
     }
 
     for (const field of MONEY_FIELDS) {
-      const value = isBlankInput(row[field]) ? 0 : integerValue(row[field]);
-      if (value === null || value < 0) {
+      const value = isBlankInput(row[field]) ? "0" : moneyTextValue(row[field]);
+      if (value === null) {
         issues.push(issue(rowNo, field, "error", `${MONEY_FIELD_LABELS[field]}必须填写 0 或更大的金额`));
       }
     }
@@ -1670,9 +1675,13 @@ export class ContractTakeoverService {
     if (!input.code?.trim()) throw new Error("请填写合同编号");
     if (!input.name?.trim()) throw new Error("请填写合同名称");
     if (!input.counterparty?.trim()) throw new Error("请填写相对方");
-    if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+    let amountCents: bigint;
+    try {
+      amountCents = parseMoneyCents(input.amountCents, "合同金额");
+    } catch {
       throw new Error("合同金额必须大于 0");
     }
+    if (amountCents <= 0n) throw new Error("合同金额必须大于 0");
     if (!TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel)) {
       throw new Error("接管等级不正确，请重新选择");
     }
@@ -1694,13 +1703,13 @@ export class ContractTakeoverService {
 
     const money = Object.fromEntries(
       MONEY_FIELDS.map((field) => {
-        const value = input[field] ?? 0;
-        if (!Number.isInteger(value) || value < 0) {
+        try {
+          return [field, parseMoneyCents(input[field] ?? "0", MONEY_FIELD_LABELS[field])];
+        } catch {
           throw new Error(`${MONEY_FIELD_LABELS[field]}必须填写 0 或更大的金额`);
         }
-        return [field, value];
       })
-    ) as Record<(typeof MONEY_FIELDS)[number], number>;
+    ) as Record<(typeof MONEY_FIELDS)[number], bigint>;
     const reviewComment = input.reviewComment?.trim() || null;
     const takeoverLevelAdjustmentReason = input.takeoverLevelAdjustmentReason?.trim() || null;
     const suggestedLevel = suggestedTakeoverLevel({
@@ -1720,6 +1729,7 @@ export class ContractTakeoverService {
     return {
       ...input,
       ...money,
+      amountCents,
       code: input.code.trim(),
       name: input.name.trim(),
       counterparty: input.counterparty.trim(),
@@ -1742,23 +1752,23 @@ export class ContractTakeoverService {
       counterparty: stringValue(row["counterparty"]),
       contractTypeKey: stringValue(row["contractTypeKey"]) || undefined,
       companyEntityName: stringValue(row["companyEntityName"]) || undefined,
-      amountCents: integerValue(row["amountCents"]) ?? 0,
+      amountCents: moneyTextValue(row["amountCents"]) ?? "0",
       signedAt: stringValue(row["signedAt"]),
       takeoverLevel: takeoverLevelInputValue(row["takeoverLevel"]) as ContractTakeoverLevel,
       lifecycleStatus: stringValue(row["lifecycleStatus"]) as ContractLifecycleStatus,
       paymentTermsOriginalText: stringValue(row["paymentTermsOriginalText"]),
-      historicalSettledCents: integerValue(row["historicalSettledCents"]) ?? 0,
+      historicalSettledCents: moneyTextValue(row["historicalSettledCents"]) ?? "0",
       historicalApprovalPendingPaymentCents:
-        integerValue(row["historicalApprovalPendingPaymentCents"]) ?? 0,
+        moneyTextValue(row["historicalApprovalPendingPaymentCents"]) ?? "0",
       historicalApprovedPendingPaymentCents:
-        integerValue(row["historicalApprovedPendingPaymentCents"]) ?? 0,
-      historicalPaidCents: integerValue(row["historicalPaidCents"]) ?? 0,
-      historicalProxyPaidCents: integerValue(row["historicalProxyPaidCents"]) ?? 0,
-      historicalAdvancePaidCents: integerValue(row["historicalAdvancePaidCents"]) ?? 0,
-      historicalAdvanceDeductedCents: integerValue(row["historicalAdvanceDeductedCents"]) ?? 0,
-      historicalRetentionWithheldCents: integerValue(row["historicalRetentionWithheldCents"]) ?? 0,
-      historicalRetentionReleasedCents: integerValue(row["historicalRetentionReleasedCents"]) ?? 0,
-      otherConfirmedOccupancyCents: integerValue(row["otherConfirmedOccupancyCents"]) ?? 0,
+        moneyTextValue(row["historicalApprovedPendingPaymentCents"]) ?? "0",
+      historicalPaidCents: moneyTextValue(row["historicalPaidCents"]) ?? "0",
+      historicalProxyPaidCents: moneyTextValue(row["historicalProxyPaidCents"]) ?? "0",
+      historicalAdvancePaidCents: moneyTextValue(row["historicalAdvancePaidCents"]) ?? "0",
+      historicalAdvanceDeductedCents: moneyTextValue(row["historicalAdvanceDeductedCents"]) ?? "0",
+      historicalRetentionWithheldCents: moneyTextValue(row["historicalRetentionWithheldCents"]) ?? "0",
+      historicalRetentionReleasedCents: moneyTextValue(row["historicalRetentionReleasedCents"]) ?? "0",
+      otherConfirmedOccupancyCents: moneyTextValue(row["otherConfirmedOccupancyCents"]) ?? "0",
       balanceSourceSummary: stringValue(row["balanceSourceSummary"]) || undefined,
       evidenceSummary: stringValue(row["evidenceSummary"]) || undefined
     };
@@ -1795,8 +1805,8 @@ export class ContractTakeoverService {
     tx: Prisma.TransactionClient,
     takeover: ContractTakeoverRecord
   ) {
-    const amountCents = safeNumberCents(takeover.historicalSettledCents);
-    if (amountCents <= 0) {
+    const amountCents = dbMoneyToBigInt(takeover.historicalSettledCents, "历史累计结算");
+    if (amountCents <= 0n) {
       return;
     }
 
@@ -1817,7 +1827,7 @@ export class ContractTakeoverService {
         status: "effective",
         amountCents,
         payableAmountCents: amountCents,
-        paidAmountCents: safeNumberCents(takeover.historicalPaidCents),
+        paidAmountCents: dbMoneyToBigInt(takeover.historicalPaidCents, "历史累计已付"),
         sourceType: "historical_takeover",
         sourceTakeoverId: takeover.id
       }
@@ -1987,25 +1997,17 @@ function correctionAfterSummary(snapshot: unknown): string {
 }
 
 function formatCents(value: unknown): string {
-  const cents = integerValue(value);
-  if (cents === null) return "金额未读取";
-  const abs = Math.abs(cents);
-  const yuan = Math.floor(abs / 100);
-  const centsPart = String(abs % 100).padStart(2, "0");
-  const sign = cents < 0 ? "-" : "";
-  return `${sign}¥${formatInteger(yuan)}.${centsPart}`;
-}
-
-function formatInteger(value: number): string {
-  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
-function safeNumberCents(value: bigint | number): number {
-  const numberValue = typeof value === "bigint" ? Number(value) : value;
-  if (!Number.isSafeInteger(numberValue)) {
-    throw new Error("历史接管金额超过系统支持范围，请拆分或核对后再确认");
+  try {
+    if (typeof value === "bigint" || typeof value === "number") {
+      return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(value, "历史接管金额"))}`;
+    }
+    if (typeof value === "string" && /^-?\d+$/.test(value)) {
+      return `¥${formatMoneyCentsAsYuan(BigInt(value))}`;
+    }
+  } catch {
+    return "金额未读取";
   }
-  return numberValue;
+  return "金额未读取";
 }
 
 function evidencePurpose(value: string): ContractTakeoverEvidencePurpose {
@@ -2169,11 +2171,11 @@ function suggestedTakeoverLevel(input: {
   lifecycleStatus: string;
   balanceSourceSummary?: string | null;
   evidenceSummary?: string | null;
-  historicalApprovalPendingPaymentCents: number;
-  historicalApprovedPendingPaymentCents: number;
-  historicalProxyPaidCents: number;
-  historicalRetentionWithheldCents: number;
-  otherConfirmedOccupancyCents: number;
+  historicalApprovalPendingPaymentCents: bigint;
+  historicalApprovedPendingPaymentCents: bigint;
+  historicalProxyPaidCents: bigint;
+  historicalRetentionWithheldCents: bigint;
+  otherConfirmedOccupancyCents: bigint;
 }): ContractTakeoverLevel {
   const evidenceText = `${input.balanceSourceSummary ?? ""} ${input.evidenceSummary ?? ""}`;
   if (input.lifecycleStatus === "disputed" || /争议|缺|待补|受限|无法|不一致/.test(evidenceText)) {
@@ -2181,11 +2183,11 @@ function suggestedTakeoverLevel(input: {
   }
 
   if (
-    input.historicalApprovalPendingPaymentCents > 0 ||
-    input.historicalApprovedPendingPaymentCents > 0 ||
-    input.historicalProxyPaidCents > 0 ||
-    input.historicalRetentionWithheldCents > 0 ||
-    input.otherConfirmedOccupancyCents > 0
+    input.historicalApprovalPendingPaymentCents > 0n ||
+    input.historicalApprovedPendingPaymentCents > 0n ||
+    input.historicalProxyPaidCents > 0n ||
+    input.historicalRetentionWithheldCents > 0n ||
+    input.otherConfirmedOccupancyCents > 0n
   ) {
     return "B";
   }
@@ -2228,6 +2230,10 @@ function integerValue(value: unknown): number | null {
   return null;
 }
 
+function moneyTextValue(value: unknown): string | null {
+  return typeof value === "string" && /^(0|[1-9]\d*)$/.test(value) ? value : null;
+}
+
 function integerOrFallback(value: unknown, fallback: number): number {
   const parsed = integerValue(value);
   return parsed !== null && parsed > 0 ? parsed : fallback;
@@ -2240,11 +2246,12 @@ function isBlankInput(value: unknown): boolean {
 function precheckMoneyValue(
   row: Record<string, unknown>,
   field: (typeof MONEY_FIELDS)[number]
-): number {
+): bigint {
   if (isBlankInput(row[field])) {
-    return 0;
+    return 0n;
   }
-  return integerValue(row[field]) ?? 0;
+  const value = moneyTextValue(row[field]);
+  return value === null ? 0n : BigInt(value);
 }
 
 function isStrictDateText(value: string): boolean {

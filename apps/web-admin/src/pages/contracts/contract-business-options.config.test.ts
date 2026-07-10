@@ -64,7 +64,7 @@ describe("contract business options configuration", () => {
       contractVersionId: "version-1",
       code: "JS-002",
       periodLabel: "2026-07",
-      amountCents: 123456
+      amountCents: "123456"
     });
   });
 
@@ -104,7 +104,7 @@ describe("contract business options configuration", () => {
       sourceType: "contract_due",
       contractVersionId: "version-1",
       code: "FK-001",
-      requestedAmountCents: 250000
+      requestedAmountCents: "250000"
     });
     expect(
       buildPaymentCreatePayload(selectedContract, selectedSettlement, {
@@ -116,7 +116,7 @@ describe("contract business options configuration", () => {
       sourceType: "settlement",
       settlementId: "settlement-1",
       code: "FK-002",
-      requestedAmountCents: 99999
+      requestedAmountCents: "99999"
     });
   });
 
@@ -164,9 +164,9 @@ function contract(): ContractBusinessOptionReadModel {
         settlementId: "settlement-1",
         settlementNo: "JS-001",
         periodLabel: "2026-06",
-        amountCents: 30000000,
-        payableAmountCents: 24000000,
-        paidAmountCents: 0,
+        amountCents: "30000000",
+        payableAmountCents: "24000000",
+        paidAmountCents: "0",
         status: "effective",
         statusLabel: "审批通过",
         canCreatePayment: true,
@@ -176,9 +176,9 @@ function contract(): ContractBusinessOptionReadModel {
         settlementId: "settlement-paid",
         settlementNo: "JS-000",
         periodLabel: "2026-05",
-        amountCents: 20000000,
-        payableAmountCents: 16000000,
-        paidAmountCents: 16000000,
+        amountCents: "20000000",
+        payableAmountCents: "16000000",
+        paidAmountCents: "16000000",
         status: "paid",
         statusLabel: "审批通过",
         canCreatePayment: false,

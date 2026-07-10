@@ -24,7 +24,7 @@ export interface CreateProjectExpenseRequestDto {
     | "spot_other_purchase";
   paymentSubject: string;
   reason: string;
-  requestedAmountCents: number;
+  requestedAmountCents: string;
   paymentMethod: "cash" | "wechat" | "alipay" | "bank_transfer" | "other";
   counterpartyName?: string;
   counterpartyAccountName?: string;

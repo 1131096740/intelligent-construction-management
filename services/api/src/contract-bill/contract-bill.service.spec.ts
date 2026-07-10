@@ -154,7 +154,7 @@ describe("ContractBillService", () => {
         taxAmountCents: 3839n
       })
     });
-    expect(result.bill!.taxInclusiveAmountCents).toBe(33370);
+    expect(result.bill!.taxInclusiveAmountCents).toBe("33370");
     expect(result.rows[0].quantity).toBe("3.333");
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {

@@ -127,12 +127,12 @@ model ContractVersion {
 }
 
 model ContractTakeover {
-  id                                    String    @id @default(uuid())
+  id                                    String                 @id @default(uuid())
   projectId                             String
   takeoverBatchId                       String?
   importRowNo                           Int?
   contractId                            String
-  contractVersionId                     String    @unique
+  contractVersionId                     String                 @unique
   paymentTermsVersionId                 String
   takeoverLevel                         String
   suggestedTakeoverLevel                String?
@@ -140,16 +140,16 @@ model ContractTakeover {
   takeoverStatus                        String
   lifecycleStatus                       String
   signedAt                              DateTime
-  historicalSettledCents                BigInt    @default(0)
-  historicalApprovalPendingPaymentCents BigInt    @default(0)
-  historicalApprovedPendingPaymentCents BigInt    @default(0)
-  historicalPaidCents                   BigInt    @default(0)
-  historicalProxyPaidCents              BigInt    @default(0)
-  historicalAdvancePaidCents            BigInt    @default(0)
-  historicalAdvanceDeductedCents        BigInt    @default(0)
-  historicalRetentionWithheldCents      BigInt    @default(0)
-  historicalRetentionReleasedCents      BigInt    @default(0)
-  otherConfirmedOccupancyCents          BigInt    @default(0)
+  historicalSettledCents                BigInt                 @default(0)
+  historicalApprovalPendingPaymentCents BigInt                 @default(0)
+  historicalApprovedPendingPaymentCents BigInt                 @default(0)
+  historicalPaidCents                   BigInt                 @default(0)
+  historicalProxyPaidCents              BigInt                 @default(0)
+  historicalAdvancePaidCents            BigInt                 @default(0)
+  historicalAdvanceDeductedCents        BigInt                 @default(0)
+  historicalRetentionWithheldCents      BigInt                 @default(0)
+  historicalRetentionReleasedCents      BigInt                 @default(0)
+  otherConfirmedOccupancyCents          BigInt                 @default(0)
   balanceSourceSummary                  String?
   evidenceSummary                       String?
   takeoverCutoffDate                    DateTime?
@@ -163,19 +163,19 @@ model ContractTakeover {
   confirmedAt                           DateTime?
   historicalBalanceConfirmedByUserId    String?
   historicalBalanceConfirmedAt          DateTime?
-  createdAt                             DateTime  @default(now())
-  updatedAt                             DateTime  @updatedAt
+  createdAt                             DateTime               @default(now())
+  updatedAt                             DateTime               @updatedAt
   takeoverBatch                         ContractTakeoverBatch? @relation(fields: [takeoverBatchId], references: [id])
 
+  @@unique([takeoverBatchId, importRowNo])
   @@index([projectId, takeoverStatus])
   @@index([takeoverBatchId])
   @@index([contractId])
   @@index([contractVersionId])
-  @@unique([takeoverBatchId, importRowNo])
 }
 
 model ContractTakeoverBatch {
-  id                   String   @id @default(uuid())
+  id                   String             @id @default(uuid())
   projectId            String
   batchNo              String
   status               String
@@ -184,15 +184,15 @@ model ContractTakeoverBatch {
   reviewComment        String
   acceptanceConclusion String
   importFingerprint    String
-  totalRows            Int      @default(0)
-  readyRows            Int      @default(0)
-  blockedRows          Int      @default(0)
-  warningRows          Int      @default(0)
-  createdCount         Int      @default(0)
-  skippedCount         Int      @default(0)
+  totalRows            Int                @default(0)
+  readyRows            Int                @default(0)
+  blockedRows          Int                @default(0)
+  warningRows          Int                @default(0)
+  createdCount         Int                @default(0)
+  skippedCount         Int                @default(0)
   createdByUserId      String
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
   takeovers            ContractTakeover[]
 
   @@unique([projectId, batchNo])
@@ -237,7 +237,7 @@ model PaymentTermsStage {
   stageType                     String   @default("progress")
   basis                         String
   ratioBps                      Int?
-  fixedAmountCents              Int?
+  fixedAmountCents              BigInt?
   triggerAnchor                 String   @default("settlement_effective")
   triggerEvent                  String
   dueDays                       Int
@@ -272,10 +272,10 @@ model Settlement {
   code                       String   @unique
   periodLabel                String
   status                     String
-  amountCents                Int
-  finalCumulativeAmountCents Int?
-  payableAmountCents         Int
-  paidAmountCents            Int      @default(0)
+  amountCents                BigInt
+  finalCumulativeAmountCents BigInt?
+  payableAmountCents         BigInt
+  paidAmountCents            BigInt   @default(0)
   sourceType                 String   @default("system")
   sourceTakeoverId           String?  @unique
   isFinal                    Boolean  @default(false)
@@ -291,8 +291,8 @@ model SettlementLine {
   name              String
   unit              String?
   quantity          Decimal? @db.Decimal(24, 6)
-  unitPriceCents    Int?
-  amountCents       Int
+  unitPriceCents    BigInt?
+  amountCents       BigInt
   reason            String?
   remark            String?
   sortOrder         Int
@@ -324,9 +324,9 @@ model PaymentRequest {
   paymentTermsVersionId String
   code                  String    @unique
   status                String
-  requestedAmountCents  Int
-  approvedAmountCents   Int?
-  paidAmountCents       Int       @default(0)
+  requestedAmountCents  BigInt
+  approvedAmountCents   BigInt?
+  paidAmountCents       BigInt    @default(0)
   dueDate               DateTime?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
@@ -336,7 +336,7 @@ model PaymentExecution {
   id               String   @id @default(uuid())
   paymentRequestId String
   settlementId     String?
-  amountCents      Int
+  amountCents      BigInt
   paidAt           DateTime
   executedByUserId String
   voucherFileId    String
@@ -361,11 +361,11 @@ model PaymentExecutionAllocation {
   triggerAnchor            String?
   dueDays                  Int?
   ratioBps                 Int?
-  fixedAmountCents         Int?
+  fixedAmountCents         BigInt?
   sourceEffectiveAt        DateTime?
   expectedPayableAt        DateTime?
-  sourcePayableAmountCents Int
-  amountCents              Int
+  sourcePayableAmountCents BigInt
+  amountCents              BigInt
   allocationOrder          Int
   createdByUserId          String
   createdAt                DateTime  @default(now())
@@ -385,7 +385,7 @@ model FinanceRecord {
   projectExpenseRequestId String?
   settlementId            String?
   direction               String
-  amountCents             Int
+  amountCents             BigInt
   occurredAt              DateTime
   createdByUserId         String
   createdAt               DateTime @default(now())
@@ -394,36 +394,36 @@ model FinanceRecord {
 }
 
 model ProjectExpenseRequest {
-  id                      String    @id @default(uuid())
-  projectId               String
-  code                    String    @unique
-  expenseType             String
-  expenseSubtype          String
-  paymentSubject          String
-  reason                  String
-  requestedAmountCents    Int
-  approvedAmountCents     Int?
-  paidAmountCents         Int       @default(0)
-  paymentMethod           String
-  counterpartyName        String?
-  counterpartyAccountName String?
-  counterpartyBankName    String?
-  counterpartyBankAccount String?
-  handlerUserId           String
-  applicantUserId         String
-  attachmentFileId        String?
+  id                       String    @id @default(uuid())
+  projectId                String
+  code                     String    @unique
+  expenseType              String
+  expenseSubtype           String
+  paymentSubject           String
+  reason                   String
+  requestedAmountCents     BigInt
+  approvedAmountCents      BigInt?
+  paidAmountCents          BigInt    @default(0)
+  paymentMethod            String
+  counterpartyName         String?
+  counterpartyAccountName  String?
+  counterpartyBankName     String?
+  counterpartyBankAccount  String?
+  handlerUserId            String
+  applicantUserId          String
+  attachmentFileId         String?
   purchaseExecutedByUserId String?
-  purchaseExecutedAt      DateTime?
-  purchaseExecutionNote   String?
+  purchaseExecutedAt       DateTime?
+  purchaseExecutionNote    String?
   receiptConfirmedByUserId String?
-  receiptConfirmedAt      DateTime?
-  receiptConfirmationNote String?
-  status                  String
-  voidedAt                DateTime?
-  voidedByUserId          String?
-  voidReason              String?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  receiptConfirmedAt       DateTime?
+  receiptConfirmationNote  String?
+  status                   String
+  voidedAt                 DateTime?
+  voidedByUserId           String?
+  voidReason               String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   @@index([projectId, status])
   @@index([attachmentFileId])
@@ -433,7 +433,7 @@ model ProjectExpenseExecution {
   id                      String   @id @default(uuid())
   projectExpenseRequestId String
   projectId               String
-  amountCents             Int
+  amountCents             BigInt
   paidAt                  DateTime
   executedByUserId        String
   voucherFileId           String
@@ -637,8 +637,8 @@ model ApprovalFlowNode {
   name           String
   mode           String
   roleKeys       String[]
-  minAmountCents Int?
-  maxAmountCents Int?
+  minAmountCents BigInt?
+  maxAmountCents BigInt?
 }
 
 model ApprovalInstance {
