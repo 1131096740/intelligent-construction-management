@@ -938,6 +938,38 @@ describe("ProjectService", () => {
     );
   });
 
+  it("rejects invalid project proxy payment date with a Chinese business reason", async () => {
+    const service = new ProjectService({} as never);
+
+    await expect(
+      service.recordProxyPayment("project-1", "finance-1", {
+        paidAt: "bad-date",
+        amountCents: 100,
+        generalContractorName: "总包单位",
+        paidTargetName: "材料供应商",
+        paymentType: "material",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      } as unknown as RecordProjectProxyPaymentDto)
+    ).rejects.toThrow("总包代付日期不正确，请重新选择");
+  });
+
+  it("rejects invalid project proxy payment type with a Chinese business reason", async () => {
+    const service = new ProjectService({} as never);
+
+    await expect(
+      service.recordProxyPayment("project-1", "finance-1", {
+        paidAt: "2026-07-02T00:00:00.000Z",
+        amountCents: 100,
+        generalContractorName: "总包单位",
+        paidTargetName: "材料供应商",
+        paymentType: "bad-type",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      } as unknown as RecordProjectProxyPaymentDto)
+    ).rejects.toThrow("总包代付类型不正确，请重新选择");
+  });
+
   it("rejects project proxy payment when confirmed historical balances consume contract capacity", async () => {
     const paidAt = "2026-07-02T00:00:00.000Z";
     const confirmedAt = new Date("2026-07-01T00:00:00.000Z");
@@ -1023,7 +1055,7 @@ describe("ProjectService", () => {
         confirmationPassword: "current-password",
         contractId: "HT-HIS-001"
       } satisfies RecordProjectProxyPaymentDto)
-    ).rejects.toThrow("Project proxy payment exceeds contract due payable amount: 0");
+    ).rejects.toThrow("本次总包代付超过合同当前可代付金额，当前最多可代付 0.00 元");
 
     expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
   });
@@ -2311,7 +2343,7 @@ describe("ProjectService", () => {
         contractId: "contract-1",
         settlementId: "settlement-other"
       } satisfies RecordProjectProxyPaymentDto)
-    ).rejects.toThrow("Linked settlement not found in project");
+    ).rejects.toThrow("关联合同结算不属于当前项目，请重新选择");
     expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
   });
 
@@ -2397,7 +2429,7 @@ describe("ProjectService", () => {
         confirmationPassword: "current-password",
         settlementId: "settlement-1"
       } satisfies RecordProjectProxyPaymentDto)
-    ).rejects.toThrow("Project proxy payment exceeds settlement remaining payable amount: 500000");
+    ).rejects.toThrow("本次总包代付超过结算剩余可付金额，当前最多可代付 5,000.00 元");
     expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
   });
 
@@ -2490,7 +2522,7 @@ describe("ProjectService", () => {
         confirmationPassword: "current-password",
         settlementId: "settlement-1"
       } satisfies RecordProjectProxyPaymentDto)
-    ).rejects.toThrow("Project proxy payment exceeds settlement remaining payable amount: 500000");
+    ).rejects.toThrow("本次总包代付超过结算剩余可付金额，当前最多可代付 5,000.00 元");
     expect(tx.projectProxyPayment.create).not.toHaveBeenCalled();
   });
 
@@ -2608,7 +2640,7 @@ describe("ProjectService", () => {
           confirmationPassword: "current-password",
           settlementId: "settlement-1"
         } satisfies RecordProjectProxyPaymentDto)
-      ).rejects.toThrow("Project proxy payment exceeds contract due payable amount: 1000000");
+      ).rejects.toThrow("本次总包代付超过合同当前可代付金额，当前最多可代付 10,000.00 元");
       expect(tx.$queryRaw).toHaveBeenCalled();
       expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
         tx.settlement.findMany.mock.invocationCallOrder[0]
@@ -2760,7 +2792,7 @@ describe("ProjectService", () => {
           confirmationPassword: "current-password",
           settlementId: "settlement-1"
         } satisfies RecordProjectProxyPaymentDto)
-      ).rejects.toThrow("Project proxy payment exceeds contract due payable amount: 60000");
+      ).rejects.toThrow("本次总包代付超过合同当前可代付金额，当前最多可代付 600.00 元");
       expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({

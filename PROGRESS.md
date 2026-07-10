@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进项目总包代付入口中文业务体验治理切片：登记总包代付时，金额、日期、类型、总包单位、代付对象、凭证、当前登录密码、项目/凭证/关联合同/关联结算校验、历史接管未确认、历史余额未确认、结算剩余可付金额不足和合同当前可代付金额不足，不再返回 `Project proxy payment...`、`Linked settlement...`、`Historical contract takeover...` 等英文技术提示，统一改为中文业务原因并按元展示当前最多可代付金额。本轮不改变总包代付登记、结算容量、合同应付款容量、历史期初结算、审计和凭证口径。验证：API 项目服务 Jest 45 项、API typecheck、API lint 通过。
 - 2026-07-10 (CodeX)：继续推进业务模板和标准条款错误中文化切片：业务模板版本编辑、复制、提交、发布、停用、撤回以及标准条款提交/发布时，不再返回 `Template version not found`、`Only draft versions...`、`Only published versions...`、`Clause version not found`、`Requires global role...` 等英文技术提示，统一改为刷新后重试、草稿/已提交/已发布状态要求、合同经办人/合同主管无权操作等中文业务提示。本轮不改变业务模板 schema 校验、发布前校验、版本冻结、标准条款发布和审计口径。验证：API 合同模板服务 Jest 16 项通过。
 - 2026-07-10 (CodeX)：继续推进合同版式模板错误中文化切片：合同版式源文件上传、DOCX 检查、预览、提交、发布、复制、停用/撤回和角色权限校验时，不再返回 `Layout source...`、`Only draft layout...`、`Layout version status changed`、`Requires global role...` 等英文技术提示，统一改为本人上传 DOCX、草稿/已提交/已发布状态要求、版式检查阻断项、预览未成功、刷新后重试或无权操作等中文业务提示。本轮不改变 DOCX 占位符检查、中文业务占位符映射、预览队列、发布前检查、版式不可变和审计口径。验证：API 合同版式模板服务 Jest 17 项通过。
 - 2026-07-10 (CodeX)：继续推进合同详情读模型缺失数据中文化切片：打开合同详情时，合同不存在、合同版本缺失或付款条款版本缺失不再返回 `Contract not found`、`Contract version not found`、`Payment terms version not found` 英文技术提示，统一提示刷新合同台账后重试；新增缺合同、缺版本、缺付款条款测试。本轮不改变合同详情读模型、合同台账可见项目过滤、付款条款展示、结算/付款汇总和接管金额摘要口径。验证：API 合同读模型 Jest 14 项通过。

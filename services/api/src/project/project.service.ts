@@ -610,19 +610,19 @@ export class ProjectService {
   async recordProxyPayment(projectId: string, actorUserId: string, input: RecordProjectProxyPaymentDto) {
     const amountCents = normalizePositiveSafeInteger(
       input.amountCents,
-      "Project proxy payment amount must be greater than zero"
+      "总包代付金额必须大于 0"
     );
     const paidAt = parseProxyPaymentDate(input.paidAt);
     const generalContractorName = requiredTrimmed(
       input.generalContractorName,
-      "General contractor is required"
+      "请填写总包单位"
     );
-    const paidTargetName = requiredTrimmed(input.paidTargetName, "Proxy payment target is required");
+    const paidTargetName = requiredTrimmed(input.paidTargetName, "请填写代付对象");
     const paymentType = normalizeProxyPaymentType(input.paymentType);
-    const voucherFileId = requiredTrimmed(input.voucherFileId, "Project proxy payment voucher file is required");
+    const voucherFileId = requiredTrimmed(input.voucherFileId, "请上传总包代付凭证");
     const confirmationPassword = requiredTrimmed(
       input.confirmationPassword,
-      "Project proxy payment confirmation password is required"
+      "请输入当前登录密码后再登记总包代付"
     );
     const description =
       typeof input.description === "string" ? input.description.trim() || undefined : undefined;
@@ -630,7 +630,7 @@ export class ProjectService {
     const requestedSettlementId = optionalTrimmed(input.settlementId);
 
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm project proxy payment");
+      throw new Error("总包代付确认服务暂不可用，请稍后重试或联系管理员");
     }
 
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
@@ -642,7 +642,7 @@ export class ProjectService {
       });
 
       if (!project) {
-        throw new NotFoundException("Project not found");
+        throw new NotFoundException("项目不存在或已停用，请刷新后重试");
       }
 
       const voucher = await tx.fileObject.findUnique({
@@ -651,11 +651,11 @@ export class ProjectService {
       });
 
       if (!voucher) {
-        throw new NotFoundException("Project proxy payment voucher file not found");
+        throw new NotFoundException("代付凭证不存在，请重新上传");
       }
 
       if (voucher.uploadedByUserId !== actorUserId) {
-        throw new BadRequestException("Project proxy payment voucher file must be uploaded by the recorder");
+        throw new BadRequestException("只能使用本人上传的代付凭证");
       }
 
       let linkedContractId = requestedContractId ?? null;
@@ -677,7 +677,7 @@ export class ProjectService {
         });
 
         if (!contract) {
-          throw new NotFoundException("Linked contract not found in project");
+          throw new NotFoundException("关联合同不属于当前项目，请重新选择");
         }
 
         linkedContractId = contract.id;
@@ -697,15 +697,15 @@ export class ProjectService {
         });
 
         if (!settlement) {
-          throw new NotFoundException("Linked settlement not found in project");
+          throw new NotFoundException("关联合同结算不属于当前项目，请重新选择");
         }
 
         if (!EFFECTIVE_SETTLEMENT_STATUSES.has(settlement.status)) {
-          throw new BadRequestException("Linked settlement is not effective");
+          throw new BadRequestException("关联合同结算尚未归档生效，不能登记总包代付");
         }
 
         if (linkedContractId && settlement.contractId !== linkedContractId) {
-          throw new BadRequestException("Linked settlement does not belong to linked contract");
+          throw new BadRequestException("关联合同结算与所选合同不一致，请重新选择");
         }
 
         linkedSettlementId = settlement.id;
@@ -726,7 +726,7 @@ export class ProjectService {
         });
 
         if (!lockedSettlement) {
-          throw new BadRequestException("Linked settlement is not effective");
+          throw new BadRequestException("关联合同结算尚未归档生效，不能登记总包代付");
         }
 
         const [existingProxyPayments, paymentRequests] = await Promise.all([
@@ -757,10 +757,9 @@ export class ProjectService {
 
         if (amountCents > capacity.remainingCents) {
           throw new BadRequestException(
-            `Project proxy payment exceeds settlement remaining payable amount: ${Math.max(
-              capacity.remainingCents,
-              0
-            )}`
+            `本次总包代付超过结算剩余可付金额，当前最多可代付 ${formatYuan(
+              Math.max(capacity.remainingCents, 0)
+            )} 元`
           );
         }
       }
@@ -843,22 +842,16 @@ export class ProjectService {
 
     if (takeover) {
       if (takeover.takeoverStatus !== "confirmed") {
-        throw new BadRequestException(
-          "Historical contract takeover must be confirmed before recording project proxy payment"
-        );
+        throw new BadRequestException("历史合同接管尚未主管确认，不能登记总包代付");
       }
       if (!takeover.historicalBalanceConfirmedAt) {
-        throw new BadRequestException(
-          "Historical balance must be confirmed before recording project proxy payment"
-        );
+        throw new BadRequestException("历史接管余额尚未确认，不能登记总包代付");
       }
       return toHistoricalContractPaymentBalance(takeover);
     }
 
     if (contract?.source === "historical_takeover") {
-      throw new BadRequestException(
-        "Historical contract takeover must be confirmed before recording project proxy payment"
-      );
+      throw new BadRequestException("历史合同接管记录缺失或尚未确认，不能登记总包代付");
     }
 
     return undefined;
@@ -948,7 +941,7 @@ export class ProjectService {
       !clients.paymentTermsStage ||
       !clients.settlementArchiveFile
     ) {
-      throw new Error("Project proxy payment contract capacity dependencies are required");
+      throw new Error("总包代付容量检查服务暂不可用，请稍后重试或联系管理员");
     }
 
     await clients.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -991,7 +984,7 @@ export class ProjectService {
     ];
 
     if (!paymentTermsVersionIds.length) {
-      throw new BadRequestException("Project proxy payment exceeds contract due payable amount: 0");
+      throw new BadRequestException("当前合同没有可用于总包代付的有效结算或历史期初余额，请先核对结算归档和接管余额");
     }
 
     const [
@@ -1112,7 +1105,9 @@ export class ProjectService {
 
     if (amountCents > capacity.remainingCents) {
       throw new BadRequestException(
-        `Project proxy payment exceeds contract due payable amount: ${Math.max(capacity.remainingCents, 0)}`
+        `本次总包代付超过合同当前可代付金额，当前最多可代付 ${formatYuan(
+          Math.max(capacity.remainingCents, 0)
+        )} 元`
       );
     }
   }
@@ -1889,6 +1884,13 @@ function sumCents(values: Array<bigint | number>): number {
   return toSafeNumber(total);
 }
 
+function formatYuan(amountCents: number): string {
+  return (amountCents / 100).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
 function toSafeNumber(value: bigint | number): number {
   if (typeof value === "number") {
     return value;
@@ -1920,11 +1922,11 @@ function parseReceiptDate(value: unknown): Date {
 
 function parseProxyPaymentDate(value: unknown): Date {
   if (typeof value !== "string") {
-    throw new BadRequestException("Project proxy payment date is invalid");
+    throw new BadRequestException("总包代付日期不正确，请重新选择");
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new BadRequestException("Project proxy payment date is invalid");
+    throw new BadRequestException("总包代付日期不正确，请重新选择");
   }
   return parsed;
 }
@@ -2000,10 +2002,10 @@ function normalizeSourceType(value: unknown): ProjectReceiptSourceType {
 
 function normalizeProxyPaymentType(value: unknown): ProjectProxyPaymentType {
   if (typeof value !== "string") {
-    throw new BadRequestException("Project proxy payment type is invalid");
+    throw new BadRequestException("总包代付类型不正确，请重新选择");
   }
   if (!Object.prototype.hasOwnProperty.call(PROXY_PAYMENT_TYPE_LABELS, value)) {
-    throw new BadRequestException("Project proxy payment type is invalid");
+    throw new BadRequestException("总包代付类型不正确，请重新选择");
   }
   return value as ProjectProxyPaymentType;
 }
