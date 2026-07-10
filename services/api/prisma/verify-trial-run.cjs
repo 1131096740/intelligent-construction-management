@@ -444,6 +444,31 @@ async function assertTakeoverVerification(takeoverId, token, expected) {
   return verification;
 }
 
+async function downloadTakeoverEvidenceFile(fileId, token, label) {
+  const ticket = await postJson(
+    `/files/${fileId}/download-ticket`,
+    {
+      confirmationPassword: PASSWORD,
+      downloadReason: `UAT ${label}接管资料下载验收`
+    },
+    token,
+    `${label}生成接管资料短时效下载链接`
+  );
+  assertEqual(ticket.fileId, fileId, `${label}接管资料下载票据文件`);
+  assert(
+    typeof ticket.downloadUrl === "string" && ticket.downloadUrl.includes("downloadReason="),
+    `${label}接管资料下载票据未包含下载原因`
+  );
+
+  const response = await fetch(`${baseUrl}${ticket.downloadUrl}`);
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`${label}接管资料短时效链接下载失败：HTTP ${response.status} ${body}`);
+  }
+  const content = await response.arrayBuffer();
+  assert(content.byteLength > 0, `${label}接管资料短时效链接下载内容为空`);
+}
+
 async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
   for (const purpose of TAKEOVER_EVIDENCE_PURPOSES) {
     const uploaded = await uploadPrivateFile(`UAT-${CODES.contract}-${purpose}.pdf`, token);
@@ -467,28 +492,7 @@ async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
 
   const downloadable = takeover.evidenceFiles.find((file) => file.canDownload);
   assert(downloadable?.fileId, "接管资料读模型未返回可下载资料");
-  const ticket = await postJson(
-    `/files/${downloadable.fileId}/download-ticket`,
-    {
-      confirmationPassword: PASSWORD,
-      downloadReason: "UAT 接管资料下载验收"
-    },
-    token,
-    "生成接管资料短时效下载链接"
-  );
-  assertEqual(ticket.fileId, downloadable.fileId, "接管资料下载票据文件");
-  assert(
-    typeof ticket.downloadUrl === "string" && ticket.downloadUrl.includes("downloadReason="),
-    "接管资料下载票据未包含下载原因"
-  );
-
-  const response = await fetch(`${baseUrl}${ticket.downloadUrl}`);
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`接管资料短时效链接下载失败：HTTP ${response.status} ${body}`);
-  }
-  const content = await response.arrayBuffer();
-  assert(content.byteLength > 0, "接管资料短时效链接下载内容为空");
+  await downloadTakeoverEvidenceFile(downloadable.fileId, token, "合同员");
   return downloadable.fileId;
 }
 
@@ -904,6 +908,7 @@ async function main() {
     tokens.contractStaff
   );
   await assertTakeoverEvidenceVisibleInArchiveLedger(evidenceFileId, tokens.contractStaff);
+  await downloadTakeoverEvidenceFile(evidenceFileId, tokens.financeDirector, "财务总监");
 
   const staffAfterDraft = await loadWorkbenchSummary("合同员", tokens.contractStaff);
   assertCardCountAtLeast(staffAfterDraft, "contract_takeover_todo", 1, "创建历史接管后");
