@@ -180,6 +180,45 @@ describe("ProjectExpenseService", () => {
     });
   });
 
+  it("rejects project expense summary totals outside the legacy API safe range", async () => {
+    const createdAt = new Date("2026-07-02T00:00:00.000Z");
+    const prisma = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "expense-large",
+            code: "ZC-2026-LARGE",
+            expenseType: "sporadic_payment",
+            expenseSubtype: "sporadic_material",
+            paymentSubject: "建工智管",
+            reason: "大额兼容验证",
+            requestedAmountCents: 9_007_199_254_740_993n,
+            approvedAmountCents: null,
+            paidAmountCents: 0n,
+            paymentMethod: "bank_transfer",
+            counterpartyName: null,
+            attachmentFileId: null,
+            status: "approval_pending",
+            createdAt,
+            updatedAt: createdAt
+          }
+        ])
+      },
+      pdfDocument: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      ...roleTables("project_manager")
+    };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await expect(service.list("project-1", "manager-1")).rejects.toThrow(
+      "项目支出申请合计超过当前 API 安全整数范围"
+    );
+  });
+
   it("throws NotFound when listing project expenses for an inactive project", async () => {
     const prisma = {
       project: {
@@ -1426,6 +1465,37 @@ describe("ProjectExpenseService", () => {
     });
   });
 
+  it("compares large finance record totals as bigint before the legacy Int write", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "expense-1",
+          projectId: "project-1",
+          status: "paid",
+          code: "LX-2026-LARGE",
+          requestedAmountCents: 9_007_199_254_740_993n,
+          approvedAmountCents: 9_007_199_254_740_993n,
+          paidAmountCents: 9_007_199_254_740_993n
+        }
+      ]),
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 9_007_199_254_740_993n }]),
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.recordFinance("project-1", "expense-1", "finance-1", {
+        amountCents: 1,
+        occurredAt: "2026-07-02T00:00:00.000Z",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("财务记录金额超过未入账实付金额: 0");
+    expect(tx.financeRecord.create).not.toHaveBeenCalled();
+  });
+
   it("confirms spot purchase receipt by the applicant after finance record", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
@@ -1435,16 +1505,16 @@ describe("ProjectExpenseService", () => {
           code: "CG-2026-005",
           expenseType: "spot_purchase",
           status: "paid",
-          requestedAmountCents: 50_000,
-          approvedAmountCents: 50_000,
-          paidAmountCents: 50_000,
+          requestedAmountCents: 9_007_199_254_740_993n,
+          approvedAmountCents: 9_007_199_254_740_993n,
+          paidAmountCents: 9_007_199_254_740_993n,
           applicantUserId: "material-1",
           purchaseExecutedAt: new Date("2026-07-02T00:00:00.000Z"),
           receiptConfirmedAt: null
         }
       ]),
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 50_000 }])
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 9_007_199_254_740_993n }])
       },
       projectExpenseRequest: {
         update: jest.fn().mockResolvedValue({ id: "expense-1", receiptConfirmedAt: new Date() })
@@ -1560,7 +1630,7 @@ describe("ProjectExpenseService", () => {
         })
       },
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000 }, { amountCents: 30_000 }])
+        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000n }, { amountCents: 30_000n }])
       },
       pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }
     };

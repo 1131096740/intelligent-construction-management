@@ -13,6 +13,7 @@ import { PrismaService } from "../database/prisma.service";
 import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
+  moneyCentsToLegacyApiNumber,
   outstandingMoneyRequestCentsBigInt,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
@@ -521,12 +522,12 @@ export class ProjectService {
     return {
       project,
       cash: {
-        actualReceiptsCents: toSafeNumber(actualReceiptsCents),
-        availableFundsCents: toSafeNumber(availableFundsCents),
-        actualPaidCents: toSafeNumber(actualPaidCents),
-        approvalPendingOccupancyCents: toSafeNumber(approvalPendingOccupancyCents),
-        approvedPendingPaymentCents: toSafeNumber(approvedPendingPaymentCents),
-        financeRecordedOutflowCents: toSafeNumber(
+        actualReceiptsCents: projectMoneyToSafeNumber(actualReceiptsCents),
+        availableFundsCents: projectMoneyToSafeNumber(availableFundsCents),
+        actualPaidCents: projectMoneyToSafeNumber(actualPaidCents),
+        approvalPendingOccupancyCents: projectMoneyToSafeNumber(approvalPendingOccupancyCents),
+        approvedPendingPaymentCents: projectMoneyToSafeNumber(approvedPendingPaymentCents),
+        financeRecordedOutflowCents: projectMoneyToSafeNumber(
           sumDbMoneyToBigInt(
             financeRecords.map((record) => record.amountCents),
             "财务入账流出金额"
@@ -534,27 +535,27 @@ export class ProjectService {
         )
       },
       business: {
-        effectiveContractAmountCents: toSafeNumber(
+        effectiveContractAmountCents: projectMoneyToSafeNumber(
           sumDbMoneyToBigInt(
             latestEffectiveContractVersions.map((version) => version.amountCents),
             "生效合同金额"
           )
         ),
-        effectiveSettlementAmountCents: toSafeNumber(
+        effectiveSettlementAmountCents: projectMoneyToSafeNumber(
           sumDbMoneyToBigInt(
             effectiveSettlements.map((settlement) => settlement.amountCents),
             "生效结算金额"
           )
         ),
-        payableSettlementAmountCents: toSafeNumber(
+        payableSettlementAmountCents: projectMoneyToSafeNumber(
           sumDbMoneyToBigInt(
             effectiveSettlements.map((settlement) => settlement.payableAmountCents),
             "结算应付金额"
           )
         ),
-        operatingIncomeCents: toSafeNumber(operatingIncomeCents),
-        operatingCostCents: toSafeNumber(operatingCostCents),
-        grossProfitCents: toSafeNumber(operatingIncomeCents - operatingCostCents)
+        operatingIncomeCents: projectMoneyToSafeNumber(operatingIncomeCents),
+        operatingCostCents: projectMoneyToSafeNumber(operatingCostCents),
+        grossProfitCents: projectMoneyToSafeNumber(operatingIncomeCents - operatingCostCents)
       },
       counts: {
         contracts: contracts.length,
@@ -1410,7 +1411,7 @@ export class ProjectService {
         metadata: {
           projectId,
           ownerContractId: confirmed.id,
-          amountCents: toSafeNumber(confirmed.amountCents),
+          amountCents: projectMoneyToSafeNumber(confirmed.amountCents),
           confirmedAt: confirmedAt.toISOString()
         }
       });
@@ -1914,15 +1915,20 @@ function latestByContract<T extends { contractId: string; versionNo?: number | n
   );
 }
 
-function toSafeNumber(value: bigint | number): number {
+export function projectMoneyToSafeNumber(value: bigint | number): number {
   if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new InternalServerErrorException("Amount exceeds safe integer range");
+    }
     return value;
   }
-  const converted = Number(value);
-  if (!Number.isSafeInteger(converted)) {
+  if (
+    value < BigInt(Number.MIN_SAFE_INTEGER) ||
+    value > BigInt(Number.MAX_SAFE_INTEGER)
+  ) {
     throw new InternalServerErrorException("Amount exceeds safe integer range");
   }
-  return converted;
+  return moneyCentsToLegacyApiNumber(value, "项目金额");
 }
 
 function normalizePositiveSafeInteger(value: unknown, message: string): number {
@@ -2050,7 +2056,7 @@ function toReceiptReadModel(receipt: {
     id: receipt.id,
     projectId: receipt.projectId,
     receivedAt: receipt.receivedAt.toISOString(),
-    amountCents: toSafeNumber(receipt.amountCents),
+    amountCents: projectMoneyToSafeNumber(receipt.amountCents),
     payerName: receipt.payerName,
     sourceType,
     sourceTypeLabel: RECEIPT_SOURCE_LABELS[sourceType],
@@ -2081,7 +2087,7 @@ function toProxyPaymentReadModel(proxyPayment: {
     id: proxyPayment.id,
     projectId: proxyPayment.projectId,
     paidAt: proxyPayment.paidAt.toISOString(),
-    amountCents: toSafeNumber(proxyPayment.amountCents),
+    amountCents: projectMoneyToSafeNumber(proxyPayment.amountCents),
     generalContractorName: proxyPayment.generalContractorName,
     paidTargetName: proxyPayment.paidTargetName,
     paymentType,
@@ -2113,8 +2119,8 @@ function toUpstreamSettlementReadModel(upstreamSettlement: {
     id: upstreamSettlement.id,
     projectId: upstreamSettlement.projectId,
     settledAt: upstreamSettlement.settledAt.toISOString(),
-    reportedAmountCents: toSafeNumber(upstreamSettlement.reportedAmountCents),
-    approvedAmountCents: toSafeNumber(upstreamSettlement.approvedAmountCents),
+    reportedAmountCents: projectMoneyToSafeNumber(upstreamSettlement.reportedAmountCents),
+    approvedAmountCents: projectMoneyToSafeNumber(upstreamSettlement.approvedAmountCents),
     approvingPartyName: upstreamSettlement.approvingPartyName,
     periodLabel: upstreamSettlement.periodLabel,
     isFinal: upstreamSettlement.isFinal,
@@ -2152,7 +2158,7 @@ function toOwnerContractReadModel(ownerContract: {
     contractName: ownerContract.contractName,
     contractCode: ownerContract.contractCode,
     signedAt: ownerContract.signedAt.toISOString(),
-    amountCents: toSafeNumber(ownerContract.amountCents),
+    amountCents: projectMoneyToSafeNumber(ownerContract.amountCents),
     taxRateBps: ownerContract.taxRateBps ?? null,
     pricingMethod: ownerContract.pricingMethod,
     paymentTermsSummary: ownerContract.paymentTermsSummary ?? null,
@@ -2186,7 +2192,7 @@ function toSettlementExceptionQuotaReadModel(quota: {
     id: quota.id,
     projectId: quota.projectId,
     contractId: quota.contractId,
-    amountCents: toSafeNumber(quota.amountCents),
+    amountCents: projectMoneyToSafeNumber(quota.amountCents),
     reason: quota.reason,
     validUntil: quota.validUntil.toISOString(),
     attachmentFileId: quota.attachmentFileId,
@@ -2216,7 +2222,7 @@ function toProjectFinancingQuotaReadModel(quota: {
   return {
     id: quota.id,
     projectId: quota.projectId,
-    amountCents: toSafeNumber(quota.amountCents),
+    amountCents: projectMoneyToSafeNumber(quota.amountCents),
     reason: quota.reason,
     validUntil: quota.validUntil.toISOString(),
     attachmentFileId: quota.attachmentFileId,

@@ -2,7 +2,18 @@ import { NotFoundException } from "@nestjs/common";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
-import { ProjectService } from "./project.service";
+import { projectMoneyToSafeNumber, ProjectService } from "./project.service";
+
+describe("project money API boundary", () => {
+  it("rejects unsafe bigint and number values before returning the legacy API number", () => {
+    expect(() => projectMoneyToSafeNumber(9_007_199_254_740_993n)).toThrow(
+      "Amount exceeds safe integer range"
+    );
+    expect(() => projectMoneyToSafeNumber(Number.MAX_SAFE_INTEGER + 1)).toThrow(
+      "Amount exceeds safe integer range"
+    );
+  });
+});
 
 describe("ProjectService", () => {
   it("creates a project and records an audit log", async () => {

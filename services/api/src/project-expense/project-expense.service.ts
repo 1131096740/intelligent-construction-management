@@ -5,7 +5,13 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { calculateProjectCashPoolBigInt } from "../money/decimal-money";
+import {
+  calculateProjectCashPoolBigInt,
+  dbMoneyToBigInt,
+  formatMoneyCentsAsYuan,
+  moneyCentsToLegacyApiNumber,
+  sumDbMoneyToBigInt
+} from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmProjectExpenseReceiptDto } from "./dto/confirm-project-expense-receipt.dto";
 import { CreateProjectExpenseRequestDto } from "./dto/create-project-expense-request.dto";
@@ -228,8 +234,20 @@ export class ProjectExpenseService {
         ).length,
         paid: rows.filter((row) => row.status === "paid").length,
         paymentBlocked: rows.filter((row) => row.status === "payment_blocked").length,
-        totalRequestedCents: sumNumbers(rows.map((row) => row.requestedAmountCents)),
-        totalPaidCents: sumNumbers(rows.map((row) => row.paidAmountCents))
+        totalRequestedCents: moneyCentsToLegacyApiNumber(
+          sumDbMoneyToBigInt(
+            rows.map((row) => row.requestedAmountCents),
+            "项目支出申请合计"
+          ),
+          "项目支出申请合计"
+        ),
+        totalPaidCents: moneyCentsToLegacyApiNumber(
+          sumDbMoneyToBigInt(
+            rows.map((row) => row.paidAmountCents),
+            "项目支出实付合计"
+          ),
+          "项目支出实付合计"
+        )
       }
     };
   }
@@ -837,10 +855,15 @@ export class ProjectExpenseService {
         where: { projectExpenseRequestId: request.id, direction: "outflow" },
         select: { amountCents: true }
       });
-      const recordedCents = sumNumbers(existingRecords.map((record) => record.amountCents));
-      const remaining = request.paidAmountCents - recordedCents;
-      if (amountCents > remaining) {
-        throw new BadRequestException(`财务记录金额超过未入账实付金额: ${remaining}`);
+      const recordedCents = sumDbMoneyToBigInt(
+        existingRecords.map((record) => record.amountCents),
+        "财务入账金额"
+      );
+      const paidAmountCents = dbMoneyToBigInt(request.paidAmountCents, "项目支出实付金额");
+      const financeAmountCents = dbMoneyToBigInt(amountCents, "财务记录金额");
+      const remaining = paidAmountCents - recordedCents;
+      if (financeAmountCents > remaining) {
+        throw new BadRequestException(`财务记录金额超过未入账实付金额: ${remaining.toString()}`);
       }
       const record = await tx.financeRecord.create({
         data: {
@@ -862,8 +885,8 @@ export class ProjectExpenseService {
       return {
         record,
         expenseRequestId: request.id,
-        financeRecordedAmountCents: recordedCents + amountCents,
-        paidAmountCents: request.paidAmountCents
+        financeRecordedAmountCents: recordedCents + financeAmountCents,
+        paidAmountCents
       };
     });
     if (result.financeRecordedAmountCents >= result.paidAmountCents && this.files) {
@@ -911,10 +934,12 @@ export class ProjectExpenseService {
         where: { projectExpenseRequestId: request.id, direction: "outflow" },
         select: { amountCents: true }
       });
-      const financeRecordedAmountCents = sumNumbers(
-        financeRecords.map((record) => record.amountCents)
+      const financeRecordedAmountCents = sumDbMoneyToBigInt(
+        financeRecords.map((record) => record.amountCents),
+        "财务入账金额"
       );
-      if (request.paidAmountCents <= 0 || financeRecordedAmountCents < request.paidAmountCents) {
+      const paidAmountCents = dbMoneyToBigInt(request.paidAmountCents, "项目支出实付金额");
+      if (paidAmountCents <= 0n || financeRecordedAmountCents < paidAmountCents) {
         throw new BadRequestException("零星采购财务入账完成后才能确认收货");
       }
 
@@ -935,7 +960,7 @@ export class ProjectExpenseService {
         metadata: {
           projectId,
           confirmedAt: confirmedAt.toISOString(),
-          financeRecordedAmountCents
+          financeRecordedAmountCents: financeRecordedAmountCents.toString()
         }
       });
       return updated;
@@ -1039,8 +1064,12 @@ export class ProjectExpenseService {
       where: { projectExpenseRequestId: expense.id, direction: "outflow" },
       select: { amountCents: true }
     });
-    const financeRecordedAmountCents = sumNumbers(financeRecords.map((record) => record.amountCents));
-    if (expense.paidAmountCents <= 0 || financeRecordedAmountCents < expense.paidAmountCents) {
+    const financeRecordedAmountCents = sumDbMoneyToBigInt(
+      financeRecords.map((record) => record.amountCents),
+      "财务入账金额"
+    );
+    const paidAmountCents = dbMoneyToBigInt(expense.paidAmountCents, "项目支出实付金额");
+    if (paidAmountCents <= 0n || financeRecordedAmountCents < paidAmountCents) {
       throw new BadRequestException("项目支出财务入账完成后才能生成归档 PDF");
     }
 
@@ -1553,12 +1582,8 @@ function getProjectExpenseApprovalNodes(expenseType: (typeof EXPENSE_TYPES)[numb
   return PROJECT_EXPENSE_APPROVAL_NODES;
 }
 
-function sumNumbers(values: number[]) {
-  return values.reduce((total, value) => total + value, 0);
-}
-
-function formatCents(amountCents: number) {
-  return (amountCents / 100).toFixed(2);
+function formatCents(amountCents: number | bigint) {
+  return formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "项目支出金额")).replace(/,/g, "");
 }
 
 function projectExpenseApprovalPdfTitle(expenseType: string) {
