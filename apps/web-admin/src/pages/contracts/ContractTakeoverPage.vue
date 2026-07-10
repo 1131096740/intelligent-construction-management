@@ -1196,6 +1196,8 @@ const importBatchColumns = [
   { colKey: "warningRowsText", title: "提醒", width: 84, align: "right" },
   { colKey: "skippedCountText", title: "重复跳过", width: 104, align: "right" },
   { colKey: "riskText", title: "复核提示", minWidth: 200 },
+  { colKey: "reviewComment", title: "批次复核意见", minWidth: 220 },
+  { colKey: "acceptanceConclusion", title: "批次验收结论", minWidth: 220 },
   { colKey: "operation", title: "批次操作", width: 210, fixed: "right" }
 ];
 
