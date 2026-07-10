@@ -210,6 +210,50 @@ describe("FileService", () => {
     }
   });
 
+  it("hides local paths when canonical path validation fails", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const privateRoot = join(temporaryRoot, "private");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = privateRoot;
+    await mkdir(privateRoot, { recursive: true });
+    await symlink("loop-b", join(privateRoot, "loop-a"));
+    await symlink("loop-a", join(privateRoot, "loop-b"));
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+      const error = await privateStorage.delete("loop-a/file.pdf").catch((reason) => reason);
+
+      expect(error).toEqual(
+        expect.objectContaining({ message: "本地文件存储路径校验失败" })
+      );
+      expect(String((error as { message?: unknown }).message)).not.toContain(temporaryRoot);
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("hides local paths when deleting an existing directory fails", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const privateRoot = join(temporaryRoot, "private");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = privateRoot;
+    await mkdir(join(privateRoot, "uploads/folder"), { recursive: true });
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+      const error = await privateStorage.delete("uploads/folder").catch((reason) => reason);
+
+      expect(error).toEqual(expect.objectContaining({ message: "本地文件删除失败" }));
+      expect(String((error as { message?: unknown }).message)).not.toContain(temporaryRoot);
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
   it.each([204, 299, 404])(
     "deletes a private COS object idempotently when COS returns %s",
     async (status) => {

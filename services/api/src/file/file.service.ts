@@ -173,7 +173,7 @@ export class PrivateFileStorage implements OnModuleInit {
       if (isFileNotFoundError(error)) {
         return;
       }
-      throw error;
+      throw new Error("本地文件存储路径校验失败");
     }
 
     const relativeTarget = relative(canonicalRoot, canonicalTarget);
@@ -186,7 +186,14 @@ export class PrivateFileStorage implements OnModuleInit {
       throw new Error("私有文件路径无效，系统已阻止本次文件读取。");
     }
 
-    await rm(canonicalTarget, { force: true });
+    try {
+      await rm(canonicalTarget, { force: true });
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return;
+      }
+      throw new Error("本地文件删除失败");
+    }
   }
 
   bucketName() {
