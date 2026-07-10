@@ -2247,6 +2247,56 @@ describe("FileService", () => {
     });
   });
 
+  it("rejects a tampered download reason before reading or auditing a ticket", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "盖章合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() }
+    };
+    const transaction = jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+      callback(tx)
+    );
+    const prisma = {
+      $transaction: transaction
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
+    });
+    const url = new URL(`http://local${ticket.downloadUrl}`);
+    transaction.mockClear();
+    audit.record.mockClear();
+
+    await expect(
+      service.readPrivateFile("file-1", {
+        actorUserId: url.searchParams.get("actorUserId") ?? "",
+        expiresAt: url.searchParams.get("expiresAt") ?? "",
+        downloadReason: "篡改下载原因",
+        token: url.searchParams.get("token") ?? ""
+      })
+    ).rejects.toThrow("下载链接校验失败，请重新申请下载");
+    expect(transaction).not.toHaveBeenCalled();
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("returns a business message when private storage cannot read a ticket file", async () => {
     const tx = {
       fileObject: {

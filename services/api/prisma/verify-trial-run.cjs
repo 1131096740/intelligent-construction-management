@@ -567,6 +567,7 @@ async function downloadPrivateFileWithReason(fileId, token, label, downloadReaso
       ticket.downloadUrl.includes("downloadReason="),
     `${label}下载票据未包含到期时间或下载原因`
   );
+  await assertPrivateFileDownloadTicketTamperBlocked(fileId, ticket.downloadUrl, label);
 
   const response = await fetch(`${baseUrl}${ticket.downloadUrl}`);
   if (!response.ok) {
@@ -575,6 +576,37 @@ async function downloadPrivateFileWithReason(fileId, token, label, downloadReaso
   }
   const content = await response.arrayBuffer();
   assert(content.byteLength > 0, `${label}短时效链接下载内容为空`);
+}
+
+async function assertPrivateFileDownloadTicketTamperBlocked(fileId, downloadUrl, label) {
+  const auditCountBefore = await prisma.auditLog.count({
+    where: {
+      businessType: "file_object",
+      businessId: fileId,
+      action: "file.download"
+    }
+  });
+  const tamperedUrl = new URL(downloadUrl, baseUrl);
+  tamperedUrl.searchParams.set("downloadReason", "UAT 篡改下载原因");
+
+  const response = await fetch(tamperedUrl);
+  assert(
+    !response.ok,
+    `${label}篡改下载原因后短时效链接不应下载成功`
+  );
+  const body = await response.text();
+  assert(
+    body.includes("下载链接校验失败"),
+    `${label}篡改下载原因未返回中文业务提示：${body}`
+  );
+  const auditCountAfter = await prisma.auditLog.count({
+    where: {
+      businessType: "file_object",
+      businessId: fileId,
+      action: "file.download"
+    }
+  });
+  assertEqual(auditCountAfter, auditCountBefore, `${label}篡改下载原因审计数量`);
 }
 
 async function downloadTakeoverEvidenceFile(fileId, token, label) {
