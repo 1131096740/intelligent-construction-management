@@ -217,10 +217,65 @@ describe("ContractService", () => {
         },
         "contract-user"
       )
-    ).rejects.toThrow("Business template contract type does not match");
+    ).rejects.toThrow("所选模板与合同类型不一致，请重新选择匹配的模板");
 
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      "template version missing",
+      null,
+      undefined,
+      "未找到所选合同模板，请重新选择后再新建合同"
+    ],
+    [
+      "template version unpublished",
+      { id: "template-version-1", templateId: "template-1", status: "draft" },
+      undefined,
+      "所选合同模板尚未发布，不能用于新建合同"
+    ],
+    [
+      "template master missing",
+      { id: "template-version-1", templateId: "template-1", status: "published" },
+      null,
+      "未找到合同模板主信息，请重新选择模板后重试"
+    ]
+  ])(
+    "rejects draft creation when %s",
+    async (_case, templateVersion, template, message) => {
+      const tx = {
+        contractBusinessTemplateVersion: {
+          findUnique: jest.fn().mockResolvedValue(templateVersion)
+        },
+        contractBusinessTemplate: {
+          findUnique: jest.fn().mockResolvedValue(template)
+        },
+        contract: {
+          create: jest.fn()
+        }
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      } as unknown as PrismaService;
+      const service = new ContractService(prisma, audit as never);
+
+      await expect(
+        service.createDraft(
+          {
+            projectId: "project-1",
+            contractTypeKey: "material_purchase",
+            businessTemplateVersionId: "template-version-1"
+          },
+          "contract-user"
+        )
+      ).rejects.toThrow(message);
+
+      expect(tx.contract.create).not.toHaveBeenCalled();
+    }
+  );
 
   it("uploads a signed contract archive file and waits for director confirmation", async () => {
     const tx = {

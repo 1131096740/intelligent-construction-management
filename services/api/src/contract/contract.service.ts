@@ -112,22 +112,20 @@ export class ContractService {
       });
 
       if (!templateVersion) {
-        throw new Error("Business template version not found");
+        throw new Error("未找到所选合同模板，请重新选择后再新建合同");
       }
 
       if (templateVersion.status !== "published") {
-        throw new Error(
-          `Business template version is not published (status: ${templateVersion.status})`
-        );
+        throw new Error("所选合同模板尚未发布，不能用于新建合同");
       }
       const template = await tx.contractBusinessTemplate.findUnique({
         where: { id: templateVersion.templateId }
       });
       if (!template) {
-        throw new Error("Business template not found");
+        throw new Error("未找到合同模板主信息，请重新选择模板后重试");
       }
       if (template.contractTypeKey !== input.contractTypeKey) {
-        throw new BadRequestException("Business template contract type does not match");
+        throw new BadRequestException("所选模板与合同类型不一致，请重新选择匹配的模板");
       }
 
       // 模板快照：将模板五类 schema 整体冻结到合同版本中。
