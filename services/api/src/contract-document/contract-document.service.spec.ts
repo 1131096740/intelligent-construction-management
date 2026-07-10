@@ -259,7 +259,7 @@ describe("ContractDocumentService", () => {
         layoutTemplateVersionId: "layout-1",
         purpose: "internal_review"
       })
-    ).rejects.toThrow("Internal review readiness snapshot is required");
+    ).rejects.toThrow("请先完成合同资料齐全性检查，再生成内部送审稿");
 
     tx.contractVersion.findUnique.mockResolvedValue({
       ...version,
@@ -270,7 +270,7 @@ describe("ContractDocumentService", () => {
         layoutTemplateVersionId: "layout-1",
         purpose: "internal_review"
       })
-    ).rejects.toThrow("Internal review readiness has blocking errors");
+    ).rejects.toThrow("合同资料仍有阻断项，请处理后再生成内部送审稿");
 
     tx.contractVersion.findUnique.mockResolvedValue({
       ...version,
@@ -281,7 +281,7 @@ describe("ContractDocumentService", () => {
         layoutTemplateVersionId: "layout-1",
         purpose: "internal_review"
       })
-    ).rejects.toThrow("Internal review readiness revision is stale");
+    ).rejects.toThrow("合同资料检查结果已过期，请重新检查后再生成内部送审稿");
 
     tx.contractVersion.findUnique.mockResolvedValue({
       ...version,
@@ -309,7 +309,7 @@ describe("ContractDocumentService", () => {
         layoutTemplateVersionId: "layout-1",
         purpose: "draft"
       })
-    ).rejects.toThrow("Contract version is not editable");
+    ).rejects.toThrow("合同草稿当前不可编辑，不能生成或修订合同文档");
 
     tx.contractVersion.findUnique.mockResolvedValue({
       ...version,
@@ -324,7 +324,7 @@ describe("ContractDocumentService", () => {
         layoutTemplateVersionId: "layout-1",
         purpose: "draft"
       })
-    ).rejects.toThrow("Layout template contract type does not match");
+    ).rejects.toThrow("所选合同版式与当前合同类型不匹配，请重新选择");
   });
 
   it("returns the active winner of an idempotency race without queue audit", async () => {
@@ -357,7 +357,7 @@ describe("ContractDocumentService", () => {
         layoutTemplateVersionId: "layout-1",
         purpose: "draft"
       })
-    ).rejects.toThrow("Failed document must be retried");
+    ).rejects.toThrow("上一次文档生成失败，请先重试失败记录");
   });
 
   it("stores JSON-safe bill values without bigint or Decimal objects", async () => {
@@ -544,7 +544,7 @@ describe("ContractDocumentService", () => {
     const { service } = makeService(tx);
 
     await expect(service.retry("document-1", "owner-1")).rejects.toThrow(
-      "Layout template version must be published"
+      "所选合同版式尚未发布，请重新选择已发布版式"
     );
 
     tx.contractLayoutTemplateVersion.findUnique.mockResolvedValue({
@@ -554,7 +554,7 @@ describe("ContractDocumentService", () => {
     });
     tx.contractVersion.updateMany.mockResolvedValue({ count: 0 });
     await expect(service.retry("document-1", "owner-1")).rejects.toThrow(
-      "Contract document revision/status conflict"
+      "合同文档状态已变化，请刷新后重试"
     );
     expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalledWith(
       expect.objectContaining({
@@ -658,7 +658,7 @@ describe("ContractDocumentService", () => {
         fileId: "revision-file-1",
         confirmationStatementAccepted: true
       })
-    ).rejects.toThrow("Only the contract draft owner may manage documents");
+    ).rejects.toThrow("只有合同经办人可以管理合同文档");
     expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
   });
 
@@ -693,7 +693,7 @@ describe("ContractDocumentService", () => {
         fileId: "revision-pdf",
         confirmationStatementAccepted: true
       })
-    ).rejects.toThrow("Offline revision file must be a DOCX document");
+    ).rejects.toThrow("线下修订稿必须上传 DOCX 文档");
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
     expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
   });
@@ -725,7 +725,7 @@ describe("ContractDocumentService", () => {
         fileId: "revision-file-1",
         confirmationStatementAccepted: true
       })
-    ).rejects.toThrow("Contract offline revision status conflict");
+    ).rejects.toThrow("合同草稿状态已变化，请刷新后重试");
     expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
   });
 
@@ -743,7 +743,7 @@ describe("ContractDocumentService", () => {
         fileId: "revision-file-1",
         confirmationStatementAccepted: true
       })
-    ).rejects.toThrow("Contract version is not editable");
+    ).rejects.toThrow("合同草稿当前不可编辑，不能生成或修订合同文档");
     expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
   });
 
@@ -762,7 +762,7 @@ describe("ContractDocumentService", () => {
         confirmationStatementAccepted: true
       })
     ).rejects.toThrow(
-      "Source generated document does not belong to this contract version"
+      "所选来源文档不属于当前合同版本"
     );
     expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
   });

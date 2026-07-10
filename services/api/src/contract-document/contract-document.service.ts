@@ -86,7 +86,7 @@ export class ContractDocumentService {
           actorUserId
         );
         if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
-          throw new BadRequestException("Contract version is not editable");
+          throw new BadRequestException("合同草稿当前不可编辑，不能生成或修订合同文档");
         }
         await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
 
@@ -94,13 +94,13 @@ export class ContractDocumentService {
           where: { id: input.layoutTemplateVersionId }
         });
         if (!layout || layout.status !== "published") {
-          throw new BadRequestException("Layout template version must be published");
+          throw new BadRequestException("所选合同版式尚未发布，请重新选择已发布版式");
         }
         const layoutTemplate = await tx.contractLayoutTemplate.findUnique({
           where: { id: layout.layoutTemplateId }
         });
         if (!layoutTemplate || layoutTemplate.contractTypeKey !== contract.contractTypeKey) {
-          throw new BadRequestException("Layout template contract type does not match");
+          throw new BadRequestException("所选合同版式与当前合同类型不匹配，请重新选择");
         }
         this.assertInternalReviewReady(
           input.purpose,
@@ -129,7 +129,7 @@ export class ContractDocumentService {
           return existing;
         }
         if (existing) {
-          throw new BadRequestException("Failed document must be retried");
+          throw new BadRequestException("上一次文档生成失败，请先重试失败记录");
         }
 
         const [parties, bills] = await Promise.all([
@@ -205,7 +205,7 @@ export class ContractDocumentService {
         where: { idempotencyKey: contestedKey }
       });
       if (winner && ACTIVE_DOCUMENT_STATUSES.includes(winner.status)) return winner;
-      if (winner) throw new BadRequestException("Failed document must be retried");
+      if (winner) throw new BadRequestException("上一次文档生成失败，请先重试失败记录");
       throw error;
     }
   }
@@ -234,7 +234,7 @@ export class ContractDocumentService {
         actorUserId
       );
       if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
-        throw new BadRequestException("Contract version is not editable");
+        throw new BadRequestException("合同草稿当前不可编辑，不能生成或修订合同文档");
       }
       const file = await this.files.assertCanDownloadFile(
         tx,
@@ -246,7 +246,7 @@ export class ContractDocumentService {
         !file.originalName.toLowerCase().endsWith(".docx")
       ) {
         throw new BadRequestException(
-          "Offline revision file must be a DOCX document"
+          "线下修订稿必须上传 DOCX 文档"
         );
       }
       if (input.sourceGeneratedDocumentId) {
@@ -255,7 +255,7 @@ export class ContractDocumentService {
         });
         if (!source || source.contractVersionId !== version.id) {
           throw new BadRequestException(
-            "Source generated document does not belong to this contract version"
+            "所选来源文档不属于当前合同版本"
           );
         }
       }
@@ -268,7 +268,7 @@ export class ContractDocumentService {
         data: { draftRevision: { increment: 0 } }
       });
       if (versionGate.count !== 1) {
-        throw new BadRequestException("Contract offline revision status conflict");
+        throw new BadRequestException("合同草稿状态已变化，请刷新后重试");
       }
       const ownerGate = await tx.contract.updateMany({
         where: {
@@ -279,7 +279,7 @@ export class ContractDocumentService {
         data: { ownerUserId: actorUserId }
       });
       if (ownerGate.count !== 1) {
-        throw new BadRequestException("Contract offline revision status conflict");
+        throw new BadRequestException("合同草稿状态已变化，请刷新后重试");
       }
       const revision = await tx.contractOfflineRevision.create({
         data: {
@@ -321,7 +321,7 @@ export class ContractDocumentService {
       const document = await tx.contractGeneratedDocument.findUnique({
         where: { id: documentId }
       });
-      if (!document) throw new NotFoundException("Contract document not found");
+      if (!document) throw new NotFoundException("未找到合同文档记录，请刷新后重试");
       const { version, contract } = await this.loadOwnedVersion(
         tx,
         document.contractVersionId,
@@ -329,19 +329,19 @@ export class ContractDocumentService {
       );
       await this.markOlderSuccessStale(tx, version.id, version.draftRevision);
       if (document.status !== "failed") {
-        throw new BadRequestException("Only failed documents can be retried");
+        throw new BadRequestException("只有生成失败的合同文档可以重试");
       }
       if (document.sourceRevision !== version.draftRevision) {
-        throw new BadRequestException("Stale document cannot be retried");
+        throw new BadRequestException("该合同文档对应的草稿已过期，请重新生成");
       }
       if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
-        throw new BadRequestException("Contract version is not editable");
+        throw new BadRequestException("合同草稿当前不可编辑，不能生成或修订合同文档");
       }
       const layout = await tx.contractLayoutTemplateVersion.findUnique({
         where: { id: document.layoutTemplateVersionId }
       });
       if (!layout || layout.status !== "published") {
-        throw new BadRequestException("Layout template version must be published");
+        throw new BadRequestException("所选合同版式尚未发布，请重新选择已发布版式");
       }
       const layoutTemplate = await tx.contractLayoutTemplate.findUnique({
         where: { id: layout.layoutTemplateId }
@@ -350,7 +350,7 @@ export class ContractDocumentService {
         !layoutTemplate ||
         layoutTemplate.contractTypeKey !== contract.contractTypeKey
       ) {
-        throw new BadRequestException("Layout template contract type does not match");
+        throw new BadRequestException("所选合同版式与当前合同类型不匹配，请重新选择");
       }
       this.assertInternalReviewReady(
         document.purpose as ContractDocumentPurpose,
@@ -370,7 +370,7 @@ export class ContractDocumentService {
         data: { draftRevision: { increment: 0 } }
       });
       if (versionGate.count !== 1) {
-        throw new BadRequestException("Contract document revision/status conflict");
+        throw new BadRequestException("合同文档状态已变化，请刷新后重试");
       }
       const ownerGate = await tx.contract.updateMany({
         where: {
@@ -381,7 +381,7 @@ export class ContractDocumentService {
         data: { ownerUserId: actorUserId }
       });
       if (ownerGate.count !== 1) {
-        throw new BadRequestException("Contract document revision/status conflict");
+        throw new BadRequestException("合同文档状态已变化，请刷新后重试");
       }
       const updated = await tx.contractGeneratedDocument.updateMany({
         where: {
@@ -397,7 +397,7 @@ export class ContractDocumentService {
         }
       });
       if (updated.count !== 1) {
-        throw new BadRequestException("Contract document status changed");
+        throw new BadRequestException("合同文档状态已变化，请刷新后重试");
       }
       await this.audit.record(tx, {
         actorUserId,
@@ -411,16 +411,16 @@ export class ContractDocumentService {
 
   private parseQueueInput(input: QueueContractDocumentInput) {
     if (!input || typeof input !== "object") {
-      throw new BadRequestException("Contract document body is required");
+      throw new BadRequestException("请填写合同文档生成信息");
     }
     if (
       typeof input.layoutTemplateVersionId !== "string" ||
       !input.layoutTemplateVersionId.trim()
     ) {
-      throw new BadRequestException("layoutTemplateVersionId is required");
+      throw new BadRequestException("请选择合同版式");
     }
     if (!PURPOSES.has(input.purpose)) {
-      throw new BadRequestException("Invalid contract document purpose");
+      throw new BadRequestException("合同文档用途不正确，请刷新后重试");
     }
     if (
       input.attachmentFileIds !== undefined &&
@@ -429,11 +429,11 @@ export class ContractDocumentService {
           (id) => typeof id !== "string" || !id.trim()
         ))
     ) {
-      throw new BadRequestException("attachmentFileIds must contain file ids");
+      throw new BadRequestException("附件列表中存在无效文件，请重新选择附件");
     }
     const attachmentFileIds = [...(input.attachmentFileIds ?? [])].sort();
     if (new Set(attachmentFileIds).size !== attachmentFileIds.length) {
-      throw new BadRequestException("attachmentFileIds must not contain duplicates");
+      throw new BadRequestException("附件列表不能重复选择同一文件");
     }
     return {
       layoutTemplateVersionId: input.layoutTemplateVersionId,
@@ -444,20 +444,20 @@ export class ContractDocumentService {
 
   private parseOfflineRevisionInput(input: UploadOfflineRevisionInput) {
     if (!input || typeof input !== "object") {
-      throw new BadRequestException("Offline revision body is required");
+      throw new BadRequestException("请填写线下修订稿信息");
     }
     if (input.confirmationStatementAccepted !== true) {
-      throw new BadRequestException("Offline revision confirmation is required");
+      throw new BadRequestException("请先确认线下修订稿只作为草稿层依据，不作为审批或归档事实");
     }
     if (typeof input.fileId !== "string" || !input.fileId.trim()) {
-      throw new BadRequestException("fileId is required");
+      throw new BadRequestException("请选择线下修订稿文件");
     }
     if (
       input.sourceGeneratedDocumentId !== undefined &&
       (typeof input.sourceGeneratedDocumentId !== "string" ||
         !input.sourceGeneratedDocumentId.trim())
     ) {
-      throw new BadRequestException("sourceGeneratedDocumentId must be non-empty");
+      throw new BadRequestException("所选来源文档不正确，请刷新后重试");
     }
     return {
       fileId: input.fileId.trim(),
@@ -475,7 +475,7 @@ export class ContractDocumentService {
 
   private retrySnapshot(value: Prisma.JsonValue): ContractDocumentInputSnapshot {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new BadRequestException("Contract document input snapshot is invalid");
+      throw new BadRequestException("合同文档生成快照异常，请重新生成");
     }
     const snapshot = value as unknown as ContractDocumentInputSnapshot;
     if (
@@ -484,7 +484,7 @@ export class ContractDocumentService {
         (file) => !file || typeof file.id !== "string" || !file.id
       )
     ) {
-      throw new BadRequestException("Contract document input snapshot is invalid");
+      throw new BadRequestException("合同文档生成快照异常，请重新生成");
     }
     return snapshot;
   }
@@ -497,13 +497,13 @@ export class ContractDocumentService {
     const version = await tx.contractVersion.findUnique({
       where: { id: contractVersionId }
     });
-    if (!version) throw new NotFoundException("Contract version not found");
+    if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
-    if (!contract) throw new NotFoundException("Contract not found");
+    if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
     if (contract.ownerUserId !== actorUserId) {
-      throw new ForbiddenException("Only the contract draft owner may manage documents");
+      throw new ForbiddenException("只有合同经办人可以管理合同文档");
     }
-    if (contract.voidedAt) throw new BadRequestException("Contract draft is voided");
+    if (contract.voidedAt) throw new BadRequestException("合同草稿已作废，不能管理合同文档");
     return { version, contract };
   }
 
@@ -529,7 +529,7 @@ export class ContractDocumentService {
   ) {
     if (purpose !== "internal_review") return;
     if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
-      throw new BadRequestException("Internal review readiness snapshot is required");
+      throw new BadRequestException("请先完成合同资料齐全性检查，再生成内部送审稿");
     }
     const readiness = snapshot as {
       checkedRevision?: unknown;
@@ -543,10 +543,10 @@ export class ContractDocumentService {
         ? readiness.blockingErrors
         : null;
     if (canonical && readiness.checkedRevision !== draftRevision) {
-      throw new BadRequestException("Internal review readiness revision is stale");
+      throw new BadRequestException("合同资料检查结果已过期，请重新检查后再生成内部送审稿");
     }
     if (!blocking || blocking.length > 0) {
-      throw new BadRequestException("Internal review readiness has blocking errors");
+      throw new BadRequestException("合同资料仍有阻断项，请处理后再生成内部送审稿");
     }
   }
 
@@ -688,7 +688,7 @@ export class ContractDocumentService {
     if (value === null || value === undefined) return "";
     if (typeof value === "string") return value;
     if (typeof value === "number") {
-      if (!Number.isFinite(value)) throw new BadRequestException("Document value is not finite");
+      if (!Number.isFinite(value)) throw new BadRequestException("合同文档存在无法渲染的数值，请检查合同字段");
       return value;
     }
     if (typeof value === "boolean" || typeof value === "bigint") return String(value);
@@ -705,7 +705,7 @@ export class ContractDocumentService {
         ])
       );
     }
-    throw new BadRequestException("Document value is not JSON-safe");
+    throw new BadRequestException("合同文档存在无法渲染的内容，请检查合同字段");
   }
 
   private isObject(value: unknown): value is Record<string, unknown> {
