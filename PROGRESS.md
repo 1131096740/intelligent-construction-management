@@ -46,6 +46,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-10 (CodeX)：继续推进真实试运行 UAT 结算同期间防重验收切片：`verify-trial-run.cjs` 在首张 UAT 结算归档生效后，立即尝试为同一合同版本、同一结算期间再次创建结算单，要求接口拒绝并返回“已存在结算单”的中文业务提示，确保真实试运行主链路能覆盖同期间重复结算的账本硬拦。本轮不改变结算创建、审批、归档、数据库唯一兜底、付款容量和审计口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 接管资料越权下载拦截切片：`verify-trial-run.cjs` 新增普通员工账号登录，上传接管资料后用普通员工请求同一 fileId 的下载票据必须失败，并在最终审计断言中确认普通员工没有生成下载票据或实际下载审计，覆盖“同项目但非资料可读岗位不能下载接管资料”的权限边界。本轮不改变文件授权、当前密码、下载原因、短时效链接、资料库展示和审计写入口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 接管资料下载审计验收切片：`verify-trial-run.cjs` 固定合同员/财务总监接管资料下载原因，并在最终审计断言中校验财务总监生成下载票据和实际下载两条审计日志都记录了同一下载原因和操作人，确保接管资料不仅能安全下载，也能追溯“谁因为什么下载”。本轮不改变文件授权、当前密码、短时效链接、资料库展示和审计写入口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。
 - 2026-07-10 (CodeX)：继续推进真实试运行 UAT 接管资料同项目财务下载验收切片：`verify-trial-run.cjs` 将接管资料短时效下载抽成复用检查，合同员上传资料后仍需通过当前密码、下载原因、短时效链接下载验收，同时新增财务总监按同一 fileId 再次完成当前密码确认、下载原因和短时效链接实际下载，证明接管资料不是只对上传人可见，也能被同项目财务按权限安全读取。本轮不改变文件授权、资料库、当前密码、下载原因、短时效链接和审计写入口径。验证：`node --check services/api/prisma/verify-trial-run.cjs`、API typecheck、API lint 通过；未运行完整 UAT，避免本轮自动写入本地 seed/test 数据。

@@ -686,6 +686,28 @@ async function createAndConfirmSettlement(contractVersionId, tokens) {
   return settlement;
 }
 
+async function assertDuplicateSettlementPeriodBlocked(contractVersionId, token) {
+  const failed = await postJsonExpectFailure(
+    "/settlements",
+    {
+      contractVersionId,
+      code: `${CODES.settlement}-DUP`,
+      periodLabel: "2026-07",
+      amountCents: 1000000
+    },
+    token,
+    "创建同期间重复 UAT 结算"
+  );
+  assert(
+    failed.status >= 400,
+    `同期间重复结算拦截 HTTP 状态异常：${failed.status}`
+  );
+  assert(
+    String(failed.body ?? "").includes("已存在结算单"),
+    `同期间重复结算未返回中文业务提示：${failed.body}`
+  );
+}
+
 function assertHistoricalBalanceInPreview(preview) {
   assert(preview.historicalBalance, "付款预览未返回 historicalBalance");
   assert(Array.isArray(preview.capacityExplanation), "付款预览未返回容量说明");
@@ -1018,6 +1040,7 @@ async function main() {
   );
 
   const settlement = await createAndConfirmSettlement(takeoverRecord.contractVersionId, tokens);
+  await assertDuplicateSettlementPeriodBlocked(takeoverRecord.contractVersionId, tokens.contractStaff);
   const preview = await readJson(
     `/payments/contract-application?contractVersionId=${encodeURIComponent(
       takeoverRecord.contractVersionId
