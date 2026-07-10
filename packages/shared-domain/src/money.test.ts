@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assertNonNegativeMoneyCents, assertPositiveMoneyCents } from "./money";
+import {
+  assertNonNegativeMoneyCents,
+  assertNonNegativeMoneyCentsText,
+  assertPositiveMoneyCents,
+  assertPositiveMoneyCentsText
+} from "./money";
 
 describe("money helpers", () => {
   it("accepts integer cent amounts", () => {
@@ -21,5 +26,21 @@ describe("money helpers", () => {
     expect(() => assertPositiveMoneyCents(1.5, "amount")).toThrow(
       "amount must be a positive integer amount in cents"
     );
+  });
+
+  it("accepts canonical integer cent text without number conversion", () => {
+    expect(assertNonNegativeMoneyCentsText("2100000001", "合同金额")).toBe(
+      "2100000001"
+    );
+    expect(assertPositiveMoneyCentsText("9007199254740993", "累计金额")).toBe(
+      "9007199254740993"
+    );
+  });
+
+  it("rejects non-canonical and non-positive cent text", () => {
+    expect(() => assertNonNegativeMoneyCentsText("1.5", "金额")).toThrow();
+    expect(() => assertNonNegativeMoneyCentsText(" 1", "金额")).toThrow();
+    expect(() => assertPositiveMoneyCentsText("0", "金额")).toThrow();
+    expect(() => assertPositiveMoneyCentsText("-1", "金额")).toThrow();
   });
 });
