@@ -79,6 +79,7 @@ const TAKEOVER_EVIDENCE_DOWNLOAD_REASON_BY_ROLE = {
   "财务总监": "UAT 财务总监接管资料下载验收"
 };
 const TAKEOVER_EVIDENCE_DENIED_DOWNLOAD_REASON = "UAT 普通员工接管资料越权下载校验";
+const SETTLEMENT_ARCHIVE_DOWNLOAD_REASON = "UAT 合同员结算归档件下载验收";
 const PAYMENT_VOUCHER_DOWNLOAD_REASON = "UAT 出纳付款凭证下载验收";
 
 function readEnvFile(filePath) {
@@ -740,8 +741,14 @@ async function createAndConfirmSettlement(contractVersionId, tokens) {
     settlement.periodLabel,
     tokens.contractStaff
   );
+  await downloadPrivateFileWithReason(
+    archiveFile.id,
+    tokens.contractStaff,
+    "合同员结算归档件",
+    SETTLEMENT_ARCHIVE_DOWNLOAD_REASON
+  );
 
-  return settlement;
+  return { ...settlement, archiveFileId: archiveFile.id };
 }
 
 async function assertDuplicateSettlementPeriodBlocked(contractVersionId, token) {
@@ -942,6 +949,7 @@ async function assertAuditActions(input) {
         { businessType: "settlement", businessId: input.settlementId },
         { businessType: "payment_request", businessId: input.paymentId },
         { businessType: "file_object", businessId: input.evidenceFileId },
+        { businessType: "file_object", businessId: input.settlementArchiveFileId },
         { businessType: "file_object", businessId: input.paymentVoucherFileId }
       ]
     },
@@ -1025,6 +1033,26 @@ async function assertAuditActions(input) {
       (row.action === "file.download.ticket" || row.action === "file.download")
   );
   assert(!employeeDownloadAudit, "普通员工越权下载接管资料不应写入下载审计");
+  const settlementArchiveTicketAudit = auditActions.find(
+    (row) =>
+      row.action === "file.download.ticket" &&
+      row.actorUserId === input.contractStaffUserId &&
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      row.metadata.fileId === input.settlementArchiveFileId &&
+      row.metadata.downloadReason === SETTLEMENT_ARCHIVE_DOWNLOAD_REASON
+  );
+  assert(settlementArchiveTicketAudit, "关键审计日志缺少合同员结算归档件下载票据原因");
+  const settlementArchiveDownloadAudit = auditActions.find(
+    (row) =>
+      row.action === "file.download" &&
+      row.actorUserId === input.contractStaffUserId &&
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      row.metadata.fileId === input.settlementArchiveFileId &&
+      row.metadata.downloadReason === SETTLEMENT_ARCHIVE_DOWNLOAD_REASON
+  );
+  assert(settlementArchiveDownloadAudit, "关键审计日志缺少合同员结算归档件实际下载原因");
   const voucherTicketAudit = auditActions.find(
     (row) =>
       row.action === "file.download.ticket" &&
@@ -1071,6 +1099,7 @@ async function main() {
   }
 
   const tokens = await loginAll();
+  const contractStaffUserId = await userIdByPhone("contractStaff");
   const cashierUserId = await userIdByPhone("cashier");
   const financeDirectorUserId = await userIdByPhone("financeDirector");
   const employeeUserId = await userIdByPhone("employee");
@@ -1187,7 +1216,9 @@ async function main() {
     settlementId: settlement.id,
     paymentId: payment.id,
     evidenceFileId,
+    settlementArchiveFileId: settlement.archiveFileId,
     paymentVoucherFileId: paymentClosure.voucherFileId,
+    contractStaffUserId,
     cashierUserId,
     financeDirectorUserId,
     employeeUserId
