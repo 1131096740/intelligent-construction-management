@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuditService } from "../audit/audit.service";
@@ -151,6 +151,56 @@ describe("FileService", () => {
       const privateStorage = new PrivateFileStorage();
 
       await expect(privateStorage.delete("../outside.pdf")).rejects.toThrow(
+        "私有文件路径无效，系统已阻止本次文件读取。"
+      );
+      await expect(readFile(outsideFile, "utf8")).resolves.toBe("outside-file");
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("rejects a local delete through an intermediate symlink outside the root", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const privateRoot = join(temporaryRoot, "private");
+    const outsideRoot = join(temporaryRoot, "outside");
+    const outsideFile = join(outsideRoot, "file.pdf");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = privateRoot;
+    await mkdir(privateRoot, { recursive: true });
+    await mkdir(outsideRoot, { recursive: true });
+    await writeFile(outsideFile, "outside-file");
+    await symlink(outsideRoot, join(privateRoot, "uploads"), "dir");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await expect(privateStorage.delete("uploads/file.pdf")).rejects.toThrow(
+        "私有文件路径无效，系统已阻止本次文件读取。"
+      );
+      await expect(readFile(outsideFile, "utf8")).resolves.toBe("outside-file");
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("rejects deleting a target symlink that points outside the root", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const privateRoot = join(temporaryRoot, "private");
+    const outsideFile = join(temporaryRoot, "outside.pdf");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = privateRoot;
+    await mkdir(join(privateRoot, "uploads"), { recursive: true });
+    await writeFile(outsideFile, "outside-file");
+    await symlink(outsideFile, join(privateRoot, "uploads/file.pdf"), "file");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await expect(privateStorage.delete("uploads/file.pdf")).rejects.toThrow(
         "私有文件路径无效，系统已阻止本次文件读取。"
       );
       await expect(readFile(outsideFile, "utf8")).resolves.toBe("outside-file");

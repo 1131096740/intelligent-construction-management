@@ -2,8 +2,8 @@ import { Injectable, type OnModuleInit } from "@nestjs/common";
 import { type FileObject, Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, extname, join, parse, resolve, sep } from "node:path";
+import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { basename, extname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 
@@ -90,6 +90,15 @@ function roleKeysFromApprovalFrozenNodes(frozenNodes: unknown): RoleKey[] {
   return Array.from(roleKeys);
 }
 
+function isFileNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
+}
+
 @Injectable()
 export class PrivateFileStorage implements OnModuleInit {
   private readonly configuredRoot = process.env.FILE_STORAGE_ROOT;
@@ -155,7 +164,29 @@ export class PrivateFileStorage implements OnModuleInit {
       return;
     }
 
-    await rm(target, { force: true });
+    let canonicalRoot: string;
+    let canonicalTarget: string;
+    try {
+      canonicalRoot = await realpath(this.root);
+      canonicalTarget = await realpath(target);
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return;
+      }
+      throw error;
+    }
+
+    const relativeTarget = relative(canonicalRoot, canonicalTarget);
+    if (
+      !relativeTarget ||
+      relativeTarget === ".." ||
+      relativeTarget.startsWith(`..${sep}`) ||
+      isAbsolute(relativeTarget)
+    ) {
+      throw new Error("私有文件路径无效，系统已阻止本次文件读取。");
+    }
+
+    await rm(canonicalTarget, { force: true });
   }
 
   bucketName() {
