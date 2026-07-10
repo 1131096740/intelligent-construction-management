@@ -783,7 +783,7 @@ async function assertAuditActions(input) {
         { businessType: "file_object", businessId: input.evidenceFileId }
       ]
     },
-    select: { action: true, actorUserId: true }
+    select: { action: true, actorUserId: true, metadata: true }
   });
   const actionSet = new Set(auditActions.map((row) => row.action));
   const requiredActions = [
@@ -813,6 +813,30 @@ async function assertAuditActions(input) {
   assert(
     !anonymousAudit,
     `关键审计日志缺少操作人：${anonymousAudit?.action ?? "unknown"}`
+  );
+  const takeoverCreateAudit = auditActions.find(
+    (row) => row.action === "contract_takeover.create"
+  );
+  assert(takeoverCreateAudit, "关键审计日志缺少历史接管创建记录");
+  const takeoverCreateMetadata =
+    takeoverCreateAudit.metadata &&
+    typeof takeoverCreateAudit.metadata === "object"
+      ? takeoverCreateAudit.metadata
+      : {};
+  assertEqual(
+    takeoverCreateMetadata.takeoverLevel,
+    "A",
+    "历史接管创建审计确认等级"
+  );
+  assertEqual(
+    takeoverCreateMetadata.suggestedTakeoverLevel,
+    EXPECTED_TAKEOVER_SUGGESTED_LEVEL,
+    "历史接管创建审计系统建议等级"
+  );
+  assertEqual(
+    takeoverCreateMetadata.takeoverLevelAdjustmentReason,
+    TAKEOVER_LEVEL_ADJUSTMENT_REASON,
+    "历史接管创建审计等级调整原因"
   );
 }
 
