@@ -497,6 +497,32 @@ describe("ProjectController authorization wiring", () => {
     expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
   });
 
+  it.each([
+    [{ ...validProjectReceiptBody, payerName: "   " }, "付款方名称不能为空白"],
+    [{ ...validProjectReceiptBody, voucherFileId: "   " }, "到账凭证不能为空白"],
+    [{ ...validProjectReceiptBody, confirmationPassword: "   " }, "请输入当前登录密码"],
+    [{ ...validProjectReceiptBody, amountCents: 100 }, "到账金额格式不正确"]
+  ])("returns one precise project receipt field error for %p", async (value, message) => {
+    const response = await getProjectMoneyValidationResponse("recordReceipt", value);
+
+    expect(response.errors).toEqual([message]);
+  });
+
+  it("returns one precise optional project link error", async () => {
+    const response = await getProjectMoneyValidationResponse("recordProxyPayment", {
+      paidAt: "2026-07-11",
+      amountCents: "100",
+      generalContractorName: "总包单位",
+      paidTargetName: "收款方",
+      paymentType: "other",
+      voucherFileId: "file-1",
+      confirmationPassword: "pwd",
+      contractId: null
+    });
+
+    expect(response.errors).toEqual(["关联合同编号必须是文字"]);
+  });
+
   it("passes the transformed receipt DTO to the project service exactly once", async () => {
     const projects = { recordReceipt: jest.fn().mockResolvedValue({ id: "receipt-1" }) };
     const controller = new ProjectController(projects as never);

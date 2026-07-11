@@ -1,4 +1,9 @@
-import { IsIn, IsNotEmpty, IsString, Matches, ValidateIf } from "class-validator";
+import { IsIn, ValidateIf } from "class-validator";
+import {
+  IsCanonicalMoneyText,
+  IsOptionalNonBlankText,
+  IsRequiredText
+} from "../../validation/static-field-validation";
 
 export class CreatePaymentRequestDto {
   @ValidateIf((_object, value) => value !== undefined)
@@ -7,30 +12,34 @@ export class CreatePaymentRequestDto {
   })
   sourceType?: "settlement" | "contract_advance" | "contract_due";
 
-  @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "结算单编号必须是文字" })
-  @IsNotEmpty({ message: "结算单编号不能为空" })
-  @Matches(/\S/u, { message: "结算单编号不能为空白" })
+  @IsOptionalNonBlankText({
+    typeMessage: "结算单编号必须是文字",
+    blankMessage: "结算单编号不能为空白"
+  })
   settlementId?: string;
 
-  @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "合同版本编号必须是文字" })
-  @IsNotEmpty({ message: "合同版本编号不能为空" })
-  @Matches(/\S/u, { message: "合同版本编号不能为空白" })
+  @IsOptionalNonBlankText({
+    typeMessage: "合同版本编号必须是文字",
+    blankMessage: "合同版本编号不能为空白"
+  })
   contractVersionId?: string;
 
-  @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "付款条款版本编号必须是文字" })
-  @IsNotEmpty({ message: "付款条款版本编号不能为空" })
-  @Matches(/\S/u, { message: "付款条款版本编号不能为空白" })
+  @IsOptionalNonBlankText({
+    typeMessage: "付款条款版本编号必须是文字",
+    blankMessage: "付款条款版本编号不能为空白"
+  })
   paymentTermsVersionId?: string;
 
-  @IsString({ message: "付款单号必须是文字" })
-  @IsNotEmpty({ message: "付款单号不能为空" })
-  @Matches(/\S/u, { message: "付款单号不能为空白" })
+  @IsRequiredText({
+    requiredMessage: "付款单号不能为空",
+    typeMessage: "付款单号必须是文字",
+    blankMessage: "付款单号不能为空白"
+  })
   code!: string;
 
-  @IsString({ message: "付款申请金额格式不正确" })
-  @Matches(/^(0|[1-9]\d*)$/, { message: "付款申请金额必须按分填写为 0 或更大的整数" })
+  @IsCanonicalMoneyText({
+    typeMessage: "付款申请金额格式不正确",
+    formatMessage: "付款申请金额必须按分填写为 0 或更大的整数"
+  })
   requestedAmountCents!: string;
 }

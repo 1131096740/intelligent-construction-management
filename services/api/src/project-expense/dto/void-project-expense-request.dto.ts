@@ -1,8 +1,10 @@
-import { IsNotEmpty, IsString, Matches } from "class-validator";
+import { IsRequiredText } from "../../validation/static-field-validation";
 
 export class VoidProjectExpenseRequestDto {
-  @IsString({ message: "作废原因必须是文字" })
-  @IsNotEmpty({ message: "请填写作废原因" })
-  @Matches(/\S/u, { message: "请填写作废原因" })
+  @IsRequiredText({
+    requiredMessage: "请填写作废原因",
+    typeMessage: "作废原因必须是文字",
+    blankMessage: "请填写作废原因"
+  })
   reason!: string;
 }

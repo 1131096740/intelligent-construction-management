@@ -265,6 +265,16 @@ describe("PaymentController authorization wiring", () => {
   });
 
   it.each([
+    [{ ...validPaymentCreateBody, code: "   " }, "付款单号不能为空白"],
+    [{ ...validPaymentCreateBody, requestedAmountCents: 100 }, "付款申请金额格式不正确"],
+    [{ ...validPaymentCreateBody, settlementId: null }, "结算单编号必须是文字"]
+  ])("returns one precise payment field error for %p", async (value, message) => {
+    const response = await getPaymentValidationResponse("create", 0, value);
+
+    expect(response.errors).toEqual([message]);
+  });
+
+  it.each([
     { settlementId: null },
     { contractVersionId: "   " },
     { paymentTermsVersionId: "   " }

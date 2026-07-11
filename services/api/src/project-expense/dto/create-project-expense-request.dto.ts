@@ -1,9 +1,16 @@
-import { IsIn, IsNotEmpty, IsString, Matches, ValidateIf } from "class-validator";
+import { IsIn, IsString, ValidateIf } from "class-validator";
+import {
+  IsCanonicalMoneyText,
+  IsOptionalNonBlankText,
+  IsRequiredText
+} from "../../validation/static-field-validation";
 
 export class CreateProjectExpenseRequestDto {
-  @IsString({ message: "申请单号必须是文字" })
-  @IsNotEmpty({ message: "申请单号不能为空" })
-  @Matches(/\S/u, { message: "申请单号不能为空白" })
+  @IsRequiredText({
+    requiredMessage: "申请单号不能为空",
+    typeMessage: "申请单号必须是文字",
+    blankMessage: "申请单号不能为空白"
+  })
   code!: string;
 
   @IsIn(
@@ -54,18 +61,24 @@ export class CreateProjectExpenseRequestDto {
     | "spot_service_purchase"
     | "spot_other_purchase";
 
-  @IsString({ message: "付款事项必须是文字" })
-  @IsNotEmpty({ message: "付款事项不能为空" })
-  @Matches(/\S/u, { message: "付款事项不能为空白" })
+  @IsRequiredText({
+    requiredMessage: "付款事项不能为空",
+    typeMessage: "付款事项必须是文字",
+    blankMessage: "付款事项不能为空白"
+  })
   paymentSubject!: string;
 
-  @IsString({ message: "申请事由必须是文字" })
-  @IsNotEmpty({ message: "申请事由不能为空" })
-  @Matches(/\S/u, { message: "申请事由不能为空白" })
+  @IsRequiredText({
+    requiredMessage: "申请事由不能为空",
+    typeMessage: "申请事由必须是文字",
+    blankMessage: "申请事由不能为空白"
+  })
   reason!: string;
 
-  @IsString({ message: "申请金额格式不正确" })
-  @Matches(/^(0|[1-9]\d*)$/, { message: "申请金额必须按分填写为 0 或更大的整数" })
+  @IsCanonicalMoneyText({
+    typeMessage: "申请金额格式不正确",
+    formatMessage: "申请金额必须按分填写为 0 或更大的整数"
+  })
   requestedAmountCents!: string;
 
   @IsIn(["cash", "wechat", "alipay", "bank_transfer", "other"], {
@@ -89,15 +102,15 @@ export class CreateProjectExpenseRequestDto {
   @IsString({ message: "银行账号必须是文字" })
   counterpartyBankAccount?: string;
 
-  @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "经办人编号必须是文字" })
-  @IsNotEmpty({ message: "经办人编号不能为空" })
-  @Matches(/\S/u, { message: "经办人编号不能为空白" })
+  @IsOptionalNonBlankText({
+    typeMessage: "经办人编号必须是文字",
+    blankMessage: "经办人编号不能为空白"
+  })
   handlerUserId?: string;
 
-  @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "附件编号必须是文字" })
-  @IsNotEmpty({ message: "附件编号不能为空" })
-  @Matches(/\S/u, { message: "附件编号不能为空白" })
+  @IsOptionalNonBlankText({
+    typeMessage: "附件编号必须是文字",
+    blankMessage: "附件编号不能为空白"
+  })
   attachmentFileId?: string;
 }

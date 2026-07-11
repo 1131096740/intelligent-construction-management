@@ -1,9 +1,12 @@
-import { IsNotEmpty, IsString, Matches, ValidateIf } from "class-validator";
+import { IsString, ValidateIf } from "class-validator";
+import { IsRequiredText } from "../../validation/static-field-validation";
 
 export class RecordPaymentPdfArchiveDto {
-  @IsString({ message: "PDF 文件编号必须是文字" })
-  @IsNotEmpty({ message: "PDF 文件不能为空" })
-  @Matches(/\S/u, { message: "PDF 文件不能为空白" })
+  @IsRequiredText({
+    requiredMessage: "PDF 文件不能为空",
+    typeMessage: "PDF 文件编号必须是文字",
+    blankMessage: "PDF 文件不能为空白"
+  })
   fileId!: string;
 
   @ValidateIf((_object, value) => value !== undefined)

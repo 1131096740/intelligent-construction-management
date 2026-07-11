@@ -215,6 +215,16 @@ describe("ProjectExpenseController authorization wiring", () => {
   });
 
   it.each([
+    [{ ...validExpenseCreateBody, code: "   " }, "申请单号不能为空白"],
+    [{ ...validExpenseCreateBody, requestedAmountCents: 100 }, "申请金额格式不正确"],
+    [{ ...validExpenseCreateBody, attachmentFileId: null }, "附件编号必须是文字"]
+  ])("returns one precise expense field error for %p", async (value, message) => {
+    const response = await getExpenseValidationResponse("create", value);
+
+    expect(response.errors).toEqual([message]);
+  });
+
+  it.each([
     { handlerUserId: null },
     { attachmentFileId: "   " }
   ])("rejects an invalid optional expense association: %p", async (association) => {
