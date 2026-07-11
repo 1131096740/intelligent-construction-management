@@ -62,6 +62,48 @@ describe("SettlementService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it.each([
+    null,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    "NaN",
+    "Infinity",
+    "-Infinity",
+    "1e100",
+    "0.0000001",
+    "1000000000000000000",
+    "-1000000000000000000",
+    {}
+  ])("rejects an unstorable settlement quantity before opening a transaction: %p", async (quantity) => {
+    const createMany = jest.fn();
+    const prisma = { $transaction: jest.fn(), settlementLine: { createMany } };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    const error = await settlementService
+      .create({
+        contractVersionId: "contract-version-1",
+        code: "JS-QUANTITY-INVALID",
+        periodLabel: "2026-07",
+        amountCents: "1",
+        settlementLines: [
+          {
+            sourceType: "manual_adjustment",
+            name: "工程量越界项",
+            quantity: quantity as number | string,
+            amountCents: "1",
+            reason: "测试工程量边界"
+          }
+        ]
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as Error).message).toBe("结算明细工程量超出系统可保存范围");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
   function approvalRoleTables(roleKey: string) {
     return {
       userPosition: {

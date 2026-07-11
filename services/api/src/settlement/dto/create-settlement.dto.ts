@@ -14,6 +14,10 @@ import {
   IsOptionalArray,
   IsRequiredText
 } from "../../validation/static-field-validation";
+import {
+  INVALID_SETTLEMENT_QUANTITY_MESSAGE,
+  isSettlementQuantityInput
+} from "../settlement-quantity";
 
 export type SettlementLineSourceType = "contract_bill_row" | "manual_adjustment";
 
@@ -23,9 +27,9 @@ function IsSettlementQuantity(): PropertyDecorator {
       name: "staticSettlementQuantityType",
       target: target.constructor,
       propertyName: String(propertyKey),
-      options: { message: "结算明细工程量必须是数字或文字" },
+      options: { message: INVALID_SETTLEMENT_QUANTITY_MESSAGE },
       validator: {
-        validate: (value) => typeof value === "number" || typeof value === "string"
+        validate: isSettlementQuantityInput
       }
     });
   };

@@ -184,6 +184,63 @@ describe("SettlementController authorization wiring", () => {
     await expect(validateSettlementBody("create", 0, value)).resolves.toEqual(value);
   });
 
+  it.each(["", "999999999999999999.999999", "-999999999999999999.999999", "1e3", 1e3])(
+    "keeps a storable settlement quantity compatible: %p",
+    async (quantity) => {
+      await expect(
+        validateSettlementBody("create", 0, {
+          ...validSettlementCreate,
+          settlementLines: [
+            {
+              sourceType: "manual_adjustment",
+              name: "工程量兼容项",
+              quantity,
+              amountCents: "1",
+              reason: "测试工程量边界"
+            }
+          ]
+        })
+      ).resolves.toBeDefined();
+    }
+  );
+
+  it.each([
+    null,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    "NaN",
+    "Infinity",
+    "-Infinity",
+    "1e100",
+    "0.0000001",
+    "1000000000000000000",
+    "-1000000000000000000",
+    {}
+  ])("rejects an unstorable settlement quantity before service execution: %p", async (quantity) => {
+    const service = jest.fn();
+    const response = await getSettlementValidationResponse(
+      "create",
+      0,
+      {
+        ...validSettlementCreate,
+        settlementLines: [
+          {
+            sourceType: "manual_adjustment",
+            name: "工程量越界项",
+            quantity,
+            amountCents: "1",
+            reason: "测试工程量边界"
+          }
+        ]
+      },
+      service
+    );
+
+    expect(service).not.toHaveBeenCalled();
+    expect(response.errors).toEqual(["结算明细工程量超出系统可保存范围"]);
+  });
+
   it("lets the service enforce the contract-bill-row positive business condition", async () => {
     const value = {
       ...validSettlementCreate,

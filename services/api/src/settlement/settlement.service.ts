@@ -36,6 +36,10 @@ import {
   renderSettlementDraftExcel,
   type SettlementDocumentInput
 } from "./settlement-document-renderer";
+import {
+  INVALID_SETTLEMENT_QUANTITY_MESSAGE,
+  parseSettlementQuantity
+} from "./settlement-quantity";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -328,7 +332,7 @@ export class SettlementService {
           contractBillRowId: null,
           name: this.requiredText(line.name, "结算明细名称"),
           unit: this.optionalText(line.unit),
-          quantity: this.optionalDecimal(line.quantity, "结算明细工程量"),
+          quantity: this.optionalDecimal(line.quantity),
           unitPriceCents: this.optionalMoneyCents(line.unitPriceCents, "结算明细单价"),
           amountCents,
           reason,
@@ -354,7 +358,7 @@ export class SettlementService {
         contractBillRowId,
         name: this.optionalText(line.name) ?? billRow.itemName,
         unit: this.optionalText(line.unit) ?? billRow.unit,
-        quantity: this.optionalDecimal(line.quantity, "结算明细工程量"),
+        quantity: this.optionalDecimal(line.quantity),
         unitPriceCents: this.optionalMoneyCents(line.unitPriceCents, "结算明细单价"),
         amountCents,
         reason: this.optionalText(line.reason),
@@ -594,12 +598,11 @@ export class SettlementService {
     return this.requiredMoneyCents(value, label);
   }
 
-  private optionalDecimal(value: number | string | undefined, label: string): Prisma.Decimal | null {
-    if (value === undefined || value === null || value === "") return null;
+  private optionalDecimal(value: number | string | undefined): Prisma.Decimal | null {
     try {
-      return new Prisma.Decimal(value.toString());
+      return parseSettlementQuantity(value);
     } catch {
-      throw new BadRequestException(`${label}格式不正确。`);
+      throw new BadRequestException(INVALID_SETTLEMENT_QUANTITY_MESSAGE);
     }
   }
 
@@ -616,6 +619,9 @@ export class SettlementService {
     const submittedAmountCents = this.requiredMoneyCents(input.amountCents, "结算金额");
     if (submittedAmountCents <= 0n) {
       throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
+    }
+    for (const line of input.settlementLines ?? []) {
+      this.optionalDecimal(line.quantity);
     }
 
     const settlement = await this.prisma.$transaction(async (tx) => {
