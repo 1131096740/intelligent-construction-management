@@ -3,14 +3,19 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { CreateDepartmentDto } from "./dto/create-department.dto";
+import { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
 import { UpdateDepartmentDto } from "./dto/update-department.dto";
 import { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
 import { OrganizationService } from "./organization.service";
+import { PermissionImpactService } from "./permission-impact.service";
 
 @Controller("organization")
 @RequirePositions("super_admin")
 export class OrganizationController {
-  constructor(private readonly organization: OrganizationService) {}
+  constructor(
+    private readonly organization: OrganizationService,
+    private readonly permissionImpacts: PermissionImpactService
+  ) {}
 
   @Get("directory")
   directory() {
@@ -20,6 +25,11 @@ export class OrganizationController {
   @Get("permission-integrity")
   permissionIntegrity() {
     return this.organization.getPermissionIntegrity();
+  }
+
+  @Post("role-changes/preview")
+  previewRoleRemoval(@Body() body: PreviewRoleRemovalDto) {
+    return this.permissionImpacts.previewRoleRemoval(body);
   }
 
   @Post("departments")

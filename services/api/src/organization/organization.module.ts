@@ -4,10 +4,11 @@ import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { OrganizationController } from "./organization.controller";
 import { OrganizationService } from "./organization.service";
+import { PermissionImpactService } from "./permission-impact.service";
 
 @Module({
   imports: [DatabaseModule, AuthModule, AuditModule],
   controllers: [OrganizationController],
-  providers: [OrganizationService]
+  providers: [OrganizationService, PermissionImpactService]
 })
 export class OrganizationModule {}

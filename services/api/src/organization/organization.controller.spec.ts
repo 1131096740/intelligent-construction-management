@@ -5,15 +5,20 @@ import { createApiValidationPipe } from "../validation/api-validation";
 import { OrganizationController } from "./organization.controller";
 import type { OrganizationDirectoryReadModel } from "./organization.service";
 
-type OrganizationWriteMethod = "createDepartment" | "updateDepartment" | "updateUser";
+type OrganizationBodyMethod =
+  | "createDepartment"
+  | "updateDepartment"
+  | "updateUser"
+  | "previewRoleRemoval";
 
-const BODY_INDEX: Record<OrganizationWriteMethod, number> = {
+const BODY_INDEX: Record<OrganizationBodyMethod, number> = {
   createDepartment: 1,
   updateDepartment: 2,
-  updateUser: 2
+  updateUser: 2,
+  previewRoleRemoval: 0
 };
 
-function bodyMetatype(method: OrganizationWriteMethod) {
+function bodyMetatype(method: OrganizationBodyMethod) {
   const paramTypes = Reflect.getMetadata(
     "design:paramtypes",
     OrganizationController.prototype,
@@ -26,7 +31,7 @@ function bodyMetatype(method: OrganizationWriteMethod) {
   return metatype as new () => object;
 }
 
-async function validateBody(method: OrganizationWriteMethod, value: unknown) {
+async function validateBody(method: OrganizationBodyMethod, value: unknown) {
   return createApiValidationPipe().transform(value, {
     type: "body",
     metatype: bodyMetatype(method),
@@ -34,7 +39,7 @@ async function validateBody(method: OrganizationWriteMethod, value: unknown) {
   });
 }
 
-async function validationResponse(method: OrganizationWriteMethod, value: unknown) {
+async function validationResponse(method: OrganizationBodyMethod, value: unknown) {
   try {
     await validateBody(method, value);
   } catch (error) {
@@ -59,7 +64,7 @@ describe("OrganizationController", () => {
       positions: []
     };
     const service = { getDirectory: jest.fn().mockResolvedValue(directoryReadModel) };
-    const controller = new OrganizationController(service as never);
+    const controller = new OrganizationController(service as never, undefined as never);
 
     await expect(controller.directory()).resolves.toBe(directoryReadModel);
     expect(service.getDirectory).toHaveBeenCalledTimes(1);
@@ -90,7 +95,7 @@ describe("OrganizationController", () => {
     const service = {
       getPermissionIntegrity: jest.fn().mockResolvedValue(integrityReadModel)
     };
-    const controller = new OrganizationController(service as never) as OrganizationController & {
+    const controller = new OrganizationController(service as never, undefined as never) as OrganizationController & {
       permissionIntegrity(): Promise<unknown>;
     };
 
@@ -114,8 +119,8 @@ describe("OrganizationController", () => {
       updateDepartment: jest.fn().mockResolvedValue({ id: "department-1" }),
       updateUser: jest.fn().mockResolvedValue({ id: "user-2" })
     };
-    const controller = new OrganizationController(service as never) as OrganizationController &
-      Record<OrganizationWriteMethod, (...args: unknown[]) => Promise<unknown>>;
+    const controller = new OrganizationController(service as never, undefined as never) as OrganizationController &
+      Record<Exclude<OrganizationBodyMethod, "previewRoleRemoval">, (...args: unknown[]) => Promise<unknown>>;
     const actor = { id: "actor-1", name: "管理员", phone: null };
     const createBody = { name: " 合同部 ", confirmationPassword: " secret " };
     const departmentBody = { isActive: false, confirmationPassword: " secret " };
@@ -132,6 +137,80 @@ describe("OrganizationController", () => {
       departmentBody
     );
     expect(service.updateUser).toHaveBeenCalledWith("user-2", "actor-1", userBody);
+  });
+
+  it("岗位撤销影响预览使用运行时 DTO 且只把请求体交给独立预览服务", async () => {
+    expect(bodyMetatype("previewRoleRemoval").name).toBe("PreviewRoleRemovalDto");
+    const readModel = { snapshotHash: "sha256:abc", canApply: true };
+    const organization = {};
+    const impacts = { previewRoleRemoval: jest.fn().mockResolvedValue(readModel) };
+    const Controller = OrganizationController as unknown as new (
+      organizationService: unknown,
+      permissionImpactService: unknown
+    ) => { previewRoleRemoval(body: unknown): Promise<unknown> };
+    const controller = new Controller(organization, impacts);
+    const body = {
+      operation: "remove",
+      userId: "user-1",
+      scope: "global",
+      roleKey: "super_admin"
+    };
+
+    await expect(controller.previewRoleRemoval(body)).resolves.toBe(readModel);
+    expect(impacts.previewRoleRemoval).toHaveBeenCalledWith(body);
+  });
+
+  it("接受规范化岗位撤销预览请求且请求体没有密码或登录态字段", async () => {
+    await expect(
+      validateBody("previewRoleRemoval", {
+        operation: "remove",
+        userId: "❤️".repeat(64),
+        scope: "global",
+        projectId: null,
+        roleKey: "super_admin"
+      })
+    ).resolves.toEqual({
+      operation: "remove",
+      userId: "❤️".repeat(64),
+      scope: "global",
+      projectId: null,
+      roleKey: "super_admin"
+    });
+  });
+
+  it.each([
+    [{ operation: "add", userId: "user-1", scope: "global", roleKey: "super_admin" }, "只支持预览撤销岗位"],
+    [{ operation: "remove", userId: "   ", scope: "global", roleKey: "super_admin" }, "人员标识不能为空白"],
+    [{ operation: "remove", userId: "人".repeat(129), scope: "global", roleKey: "super_admin" }, "人员标识不能超过 128 个字符"],
+    [{ operation: "remove", userId: "user-1", scope: "tenant", roleKey: "super_admin" }, "岗位范围不正确"],
+    [{ operation: "remove", userId: "user-1", scope: "project", projectId: "   ", roleKey: "project_manager" }, "项目标识不能为空白"],
+    [{ operation: "remove", userId: "user-1", scope: "project", projectId: "项".repeat(129), roleKey: "project_manager" }, "项目标识不能超过 128 个字符"],
+    [{ operation: "remove", userId: "user-1", scope: "global", roleKey: "root" }, "岗位键不正确"]
+  ] as const)("拒绝非法岗位撤销预览字段 %#", async (body, message) => {
+    const response = await validationResponse("previewRoleRemoval", body);
+    expect(response.errors).toContain(message);
+  });
+
+  it("岗位撤销预览拒绝密码、actor、快照和其他未知字段且不回显原值", async () => {
+    const response = await validationResponse("previewRoleRemoval", {
+      operation: "remove",
+      userId: "user-1",
+      scope: "global",
+      roleKey: "super_admin",
+      confirmationPassword: "TOP-SECRET-PASSWORD",
+      actorUserId: "spoofed-actor",
+      snapshotHash: "spoofed-hash",
+      assignmentId: "spoofed-assignment"
+    });
+
+    expect(response.errors).toEqual([
+      "confirmationPassword 不是允许提交的字段",
+      "actorUserId 不是允许提交的字段",
+      "snapshotHash 不是允许提交的字段",
+      "assignmentId 不是允许提交的字段"
+    ]);
+    expect(JSON.stringify(response)).not.toContain("TOP-SECRET-PASSWORD");
+    expect(JSON.stringify(response)).not.toContain("spoofed-");
   });
 
   it("接受 null 清空值、undefined 不修改和 Unicode code point 边界", async () => {
