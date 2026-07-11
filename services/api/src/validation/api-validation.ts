@@ -132,7 +132,14 @@ function flattenValidationErrors(
 
   for (const error of validationErrors) {
     const propertyPath = joinPropertyPath(parentPath, error.property ?? "");
-    for (const [constraint, message] of Object.entries(error.constraints ?? {})) {
+    const constraints = Object.entries(error.constraints ?? {});
+    const hasNonNestedConstraint = constraints.some(
+      ([constraint]) => constraint !== "nestedValidation"
+    );
+    for (const [constraint, message] of constraints) {
+      if (constraint === "nestedValidation" && hasNonNestedConstraint) {
+        continue;
+      }
       if (constraint === "unknownValue") {
         messages.push(BODY_MUST_BE_OBJECT_MESSAGE);
         continue;
@@ -144,7 +151,7 @@ function flattenValidationErrors(
       }
       messages.push(safeConstraintMessage(error, message, propertyPath));
     }
-    if (!error.constraints || Object.keys(error.constraints).length === 0) {
+    if (constraints.length === 0) {
       messages.push(...flattenValidationErrors(error.children ?? [], propertyPath));
     }
   }

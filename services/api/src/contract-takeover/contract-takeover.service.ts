@@ -1590,7 +1590,8 @@ export class ContractTakeoverService {
     const code = stringValue(row["code"]);
     const name = stringValue(row["name"]);
     const counterparty = stringValue(row["counterparty"]);
-    const amountCents = moneyTextValue(row["amountCents"]);
+    const amountValue = safePrecheckMoneyValue(row["amountCents"], "合同金额");
+    const amountCents = amountValue === null ? null : moneyTextValue(row["amountCents"]);
     const signedAt = stringValue(row["signedAt"]);
     const takeoverLevel = takeoverLevelInputValue(row["takeoverLevel"]);
     const lifecycleStatus = stringValue(row["lifecycleStatus"]);
@@ -1613,7 +1614,7 @@ export class ContractTakeoverService {
     if (!counterparty) {
       issues.push(issue(rowNo, "counterparty", "error", "相对方不能为空"));
     }
-    if (amountCents === null || parseMoneyCents(amountCents, "合同金额") <= 0n) {
+    if (amountValue === null || amountValue <= 0n) {
       issues.push(issue(rowNo, "amountCents", "error", "合同金额必须填写大于 0 的金额"));
     }
     if (!isStrictDateText(signedAt)) {
@@ -1627,7 +1628,9 @@ export class ContractTakeoverService {
     }
 
     for (const field of MONEY_FIELDS) {
-      const value = isBlankInput(row[field]) ? "0" : moneyTextValue(row[field]);
+      const value = isBlankInput(row[field])
+        ? 0n
+        : safePrecheckMoneyValue(row[field], MONEY_FIELD_LABELS[field]);
       if (value === null) {
         issues.push(issue(rowNo, field, "error", `${MONEY_FIELD_LABELS[field]}必须填写 0 或更大的金额`));
       }
@@ -2277,6 +2280,16 @@ function moneyTextValue(value: unknown): string | null {
   return typeof value === "string" && /^(0|[1-9]\d*)$/.test(value) ? value : null;
 }
 
+function safePrecheckMoneyValue(value: unknown, fieldName: string): bigint | null {
+  const text = moneyTextValue(value);
+  if (text === null) return null;
+  try {
+    return parseMoneyCents(text, fieldName);
+  } catch {
+    return null;
+  }
+}
+
 function integerOrFallback(value: unknown, fallback: number): number {
   const parsed = integerValue(value);
   return parsed !== null && parsed > 0 ? parsed : fallback;
@@ -2293,8 +2306,7 @@ function precheckMoneyValue(
   if (isBlankInput(row[field])) {
     return 0n;
   }
-  const value = moneyTextValue(row[field]);
-  return value === null ? 0n : parseMoneyCents(value, MONEY_FIELD_LABELS[field]);
+  return safePrecheckMoneyValue(row[field], MONEY_FIELD_LABELS[field]) ?? 0n;
 }
 
 function isStrictDateText(value: string): boolean {

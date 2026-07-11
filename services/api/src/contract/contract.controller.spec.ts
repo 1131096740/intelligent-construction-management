@@ -196,6 +196,8 @@ describe("ContractController authorization wiring", () => {
 
   it.each([
     [[], "付款阶段至少要填写一条"],
+    [null, "付款阶段必须是数组"],
+    ["stages", "付款阶段必须是数组"],
     [{}, "付款阶段必须是数组"],
     [[123], "paymentStages[0] 填写不正确"]
   ])("rejects an invalid payment stage container: %p", async (paymentStages, message) => {

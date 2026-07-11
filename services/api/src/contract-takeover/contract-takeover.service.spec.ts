@@ -554,6 +554,122 @@ describe("ContractTakeoverService", () => {
     );
   });
 
+  it("accepts the PostgreSQL BIGINT maximum in import precheck money fields", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+    const max = "9223372036854775807";
+
+    const result = await service.precheckImport("project-1", {
+      rows: [
+        {
+          code: "HT-HIS-MAX",
+          name: "历史金额上限合同",
+          counterparty: "历史供应商",
+          amountCents: max,
+          signedAt: "2026-01-10",
+          takeoverLevel: "B",
+          lifecycleStatus: "in_progress",
+          paymentTermsOriginalText: "按月结算付款",
+          balanceSourceSummary: "财务台账已核对",
+          evidenceSummary: "合同扫描件和付款凭证已归档",
+          evidenceChecklist: "合同扫描件、历史结算台账、付款凭证",
+          historicalApprovalPendingPaymentCents: max,
+          historicalApprovedPendingPaymentCents: max,
+          historicalProxyPaidCents: max,
+          historicalRetentionWithheldCents: max,
+          otherConfirmedOccupancyCents: max
+        }
+      ]
+    });
+
+    expect(result).toMatchObject({ readyRows: 1, blockedRows: 0 });
+    expect(result.rows[0]).toMatchObject({ status: "ready", amountCents: max });
+    expect(result.rows[0].issues.filter((item) => item.level === "error")).toEqual([]);
+  });
+
+  it.each([
+    "amountCents",
+    "historicalApprovalPendingPaymentCents",
+    "historicalApprovedPendingPaymentCents",
+    "historicalProxyPaidCents",
+    "historicalRetentionWithheldCents",
+    "otherConfirmedOccupancyCents"
+  ])("turns an out-of-range import %s into a blocked row issue", async (field) => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    for (const value of ["9223372036854775808", "9".repeat(1000)]) {
+      const result = await service.precheckImport("project-1", {
+        rows: [
+          {
+            code: `HT-HIS-${field}`,
+            name: "历史金额越界合同",
+            counterparty: "历史供应商",
+            amountCents: "1000000",
+            signedAt: "2026-01-10",
+            takeoverLevel: "B",
+            lifecycleStatus: "in_progress",
+            paymentTermsOriginalText: "按月结算付款",
+            balanceSourceSummary: "财务台账已核对",
+            evidenceSummary: "合同扫描件和付款凭证已归档",
+            evidenceChecklist: "合同扫描件、历史结算台账、付款凭证",
+            [field]: value
+          }
+        ]
+      });
+
+      expect(result).toMatchObject({ readyRows: 0, blockedRows: 1 });
+      expect(result.rows[0]).toMatchObject({ status: "blocked" });
+      expect(result.rows[0].issues).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field, level: "error" })])
+      );
+      expect(JSON.stringify(result)).not.toContain(value);
+    }
+  });
+
+  it("does not write import drafts when an out-of-range row is blocked by precheck", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.createDraftsFromImport(
+        "project-1",
+        {
+          takeoverCutoffDate: "2026-07-10",
+          responsibleUserId: "contract-director-1",
+          reviewComment: "合同部已完成预检。",
+          acceptanceConclusion: "越界行不能生成草稿。",
+          rows: [
+            {
+              code: "HT-HIS-OVERFLOW",
+              name: "历史金额越界合同",
+              counterparty: "历史供应商",
+              amountCents: "9223372036854775808",
+              signedAt: "2026-01-10",
+              takeoverLevel: "B",
+              lifecycleStatus: "in_progress"
+            }
+          ]
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("导入预检仍有错误行，请先修正后再生成接管草稿");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("accepts Chinese takeover level labels in import precheck", async () => {
     const prisma = {
       contract: {
