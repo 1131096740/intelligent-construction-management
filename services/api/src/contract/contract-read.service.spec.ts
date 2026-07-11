@@ -1161,4 +1161,91 @@ describe("ContractReadService", () => {
       select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
     });
   });
+
+  it.each([
+    ["双端启用", true, true],
+    ["委托人停用", false, false],
+    ["受托人停用", false, true]
+  ] as const)("standing delegation 在%s时 canReview=%s", async (_label, expected, delegatorActive) => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
+          frozenNodes: [{ roleKeys: ["contract_director"] }],
+          currentNodeIndex: 0
+        })
+      },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegator-1", isActive: delegatorActive },
+          { id: "delegatee-1", isActive: _label !== "受托人停用" }
+        ])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockImplementation((userId: string) =>
+        userId === "delegator-1" ? ["contract_director"] : []
+      )
+    };
+    const service = new ContractReadService(prisma as never, projectVisibility as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<{ canReview: boolean }>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "contract_version",
+      "contract-version-1",
+      "project-1",
+      [],
+      "delegatee-1"
+    );
+
+    expect(access.canReview).toBe(expected);
+  });
+
+  it("keeps frozen assignment review without consulting standing delegation", async () => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
+          frozenNodes: [
+            {
+              roleKeys: ["contract_director"],
+              assignments: [{ fromRoleKey: "contract_director", toUserId: "assigned-1" }]
+            }
+          ],
+          currentNodeIndex: 0
+        })
+      },
+      approvalDelegation: { findMany: jest.fn() }
+    };
+    const service = new ContractReadService(prisma as never, {} as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<{ canReview: boolean }>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "contract_version",
+      "contract-version-1",
+      "project-1",
+      [],
+      "assigned-1"
+    );
+
+    expect(access.canReview).toBe(true);
+    expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
+  });
 });

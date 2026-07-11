@@ -11,6 +11,7 @@ import {
   type ApprovalReviewAccess,
   pendingRoleKeysForFrozenApprovalNode
 } from "../approval/approval-node-access";
+import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import {
   detailAction,
@@ -1110,37 +1111,10 @@ export class PaymentReadService {
       return false;
     }
 
-    const delegationClient = (this.prisma as unknown as {
-      approvalDelegation?: {
-        findMany(args: {
-          where: {
-            toUserId: string;
-            enabled: true;
-            startsAt: { lte: Date };
-            endsAt: { gte: Date };
-          };
-          select: { fromUserId: true };
-        }): Promise<Array<{ fromUserId: string }>>;
-      };
-    }).approvalDelegation;
-    if (!delegationClient) {
-      return false;
-    }
-
-    const now = new Date();
-    const delegations = await delegationClient.findMany({
-      where: {
-        toUserId: actorUserId,
-        enabled: true,
-        startsAt: { lte: now },
-        endsAt: { gte: now }
-      },
-      select: { fromUserId: true }
-    });
-
-    for (const delegation of delegations) {
+    const delegatorIds = await activeApprovalDelegatorIds(this.prisma, actorUserId, new Date());
+    for (const delegatorId of delegatorIds) {
       const delegatorRoleKeys = await this.projectVisibility.effectiveRoleKeys(
-        delegation.fromUserId,
+        delegatorId,
         projectId
       );
       if (nodeRoleKeys.some((role) => delegatorRoleKeys.includes(role))) {

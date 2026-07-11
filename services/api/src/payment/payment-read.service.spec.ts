@@ -1119,6 +1119,12 @@ describe("PaymentReadService", () => {
       },
       approvalDelegation: {
         findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "finance-director-1", isActive: true },
+          { id: "delegatee-1", isActive: true }
+        ])
       }
     };
     const projectVisibility = {
@@ -1144,6 +1150,51 @@ describe("PaymentReadService", () => {
         disabledReason: null
       })
     );
+  });
+
+  it("does not enable standing delegation review when the delegator is inactive", async () => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
+          frozenNodes: [{ roleKeys: ["finance_director"] }],
+          currentNodeIndex: 0
+        })
+      },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "finance-director-1", isActive: false },
+          { id: "delegatee-1", isActive: true }
+        ])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockImplementation((userId: string) =>
+        userId === "finance-director-1" ? ["finance_director"] : []
+      )
+    };
+    const service = new PaymentReadService(prisma as never, projectVisibility as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<{ canReview: boolean }>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "payment_request",
+      "payment-1",
+      "project-1",
+      [],
+      "delegatee-1"
+    );
+
+    expect(access.canReview).toBe(false);
   });
 
   it("为本人发起的总经理付款终审节点返回自审确认标记", async () => {

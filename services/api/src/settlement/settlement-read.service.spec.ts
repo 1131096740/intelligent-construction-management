@@ -660,4 +660,53 @@ describe("SettlementReadService", () => {
       ])
     );
   });
+
+  it.each([
+    ["双端启用", true, true],
+    ["委托人停用", false, false],
+    ["受托人缺失", false, true]
+  ] as const)("standing delegation 在%s时 canReview=%s", async (label, expected, delegatorActive) => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
+          frozenNodes: [{ roleKeys: ["budget_director"] }],
+          currentNodeIndex: 0
+        })
+      },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegator-1", isActive: delegatorActive },
+          ...(label === "受托人缺失" ? [] : [{ id: "delegatee-1", isActive: true }])
+        ])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockImplementation((userId: string) =>
+        userId === "delegator-1" ? ["budget_director"] : []
+      )
+    };
+    const service = new SettlementReadService(prisma as never, projectVisibility as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<{ canReview: boolean }>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "settlement",
+      "settlement-1",
+      "project-1",
+      [],
+      "delegatee-1"
+    );
+
+    expect(access.canReview).toBe(expected);
+  });
 });

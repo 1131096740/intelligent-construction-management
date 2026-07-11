@@ -114,6 +114,7 @@ describe("MeService", () => {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
       },
       position: { findMany: jest.fn() },
+      approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
       contractTakeover: { count: jest.fn().mockResolvedValue(0) },
       approvalInstance: {
         findMany: jest.fn().mockResolvedValue([
@@ -402,6 +403,12 @@ describe("MeService", () => {
       approvalDelegation: {
         findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
       },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegator-1", isActive: true },
+          { id: "delegatee-1", isActive: true }
+        ])
+      },
       approvalInstance: {
         findMany: jest.fn().mockImplementation(({ where }: { where: { applicantUserId?: string } }) => {
           if (where.applicantUserId) return [];
@@ -461,6 +468,113 @@ describe("MeService", () => {
     );
     expect(result.approvalCenter.pendingApproval[0].id).toBe("approval:approval-1");
     expect(result.approvalCenter.delegatedToMe[0].id).toBe("approval:approval-1");
+
+    prisma.user.findMany.mockResolvedValue([
+      { id: "delegator-1", isActive: false },
+      { id: "delegatee-1", isActive: true }
+    ]);
+    const inactiveDelegatorResult = await service.getWorkItems("delegatee-1");
+    expect(inactiveDelegatorResult.approvalCenter.pendingApproval).toEqual([]);
+    expect(inactiveDelegatorResult.approvalCenter.delegatedToMe).toEqual([]);
+  });
+
+  it("does not count project expense through standing delegation", async () => {
+    const prisma = {
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            businessType: "project_expense_request",
+            businessId: "expense-1",
+            currentNodeIndex: 0,
+            frozenNodes: [{ roleKeys: ["project_manager"] }]
+          }
+        ])
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([{ id: "expense-1", projectId: "project-1" }])
+      },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
+      }
+    };
+    const service = new MeService(prisma as never, {} as never) as unknown as {
+      countApprovalTodos(
+        scopes: Array<{ projectId: string; roleKeys: string[] }>,
+        userId: string
+      ): Promise<{ expense: number; total: number }>;
+    };
+
+    const counts = await service.countApprovalTodos(
+      [{ projectId: "project-1", roleKeys: [] }],
+      "delegatee-1"
+    );
+
+    expect(counts).toMatchObject({ expense: 0, total: 0 });
+    expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
+  });
+
+  it("counts standing delegation only while both users are active", async () => {
+    const userFindMany = jest.fn().mockResolvedValue([
+      { id: "delegator-1", isActive: true },
+      { id: "delegatee-1", isActive: true }
+    ]);
+    const prisma = {
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            businessType: "settlement",
+            businessId: "settlement-1",
+            currentNodeIndex: 0,
+            frozenNodes: [{ roleKeys: ["project_manager"] }]
+          }
+        ])
+      },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([{ id: "settlement-1", projectId: "project-1" }])
+      },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
+      },
+      user: { findMany: userFindMany },
+      userPosition: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { projectId: unknown } }) =>
+          where.projectId === "project-1"
+            ? [{ projectId: "project-1", positionId: "position-pm" }]
+            : []
+        )
+      },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ id: "position-pm", key: "project_manager" }])
+      }
+    };
+    const service = new MeService(prisma as never, {} as never) as unknown as {
+      countApprovalTodos(
+        scopes: Array<{ projectId: string; roleKeys: string[] }>,
+        userId: string
+      ): Promise<{ settlement: number; total: number }>;
+    };
+    const scopes = [{ projectId: "project-1", roleKeys: ["budget_director"] }];
+
+    await expect(service.countApprovalTodos(scopes, "delegatee-1")).resolves.toMatchObject({
+      settlement: 1,
+      total: 1
+    });
+
+    userFindMany.mockResolvedValue([
+      { id: "delegator-1", isActive: false },
+      { id: "delegatee-1", isActive: true }
+    ]);
+    await expect(service.countApprovalTodos(scopes, "delegatee-1")).resolves.toMatchObject({
+      settlement: 0,
+      total: 0
+    });
   });
 
   it("shows remaining approved amount for partially paid execution work items", async () => {

@@ -6,6 +6,7 @@ import {
   type BusinessAction,
   type RoleKey
 } from "@jiangkong/shared-domain";
+import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
@@ -693,9 +694,10 @@ export class MeService {
       const hasDirectTodo = isProjectExpense
         ? this.hasDirectRoleTodo(node, roleKeys)
         : this.canActOnApprovalNode(node, roleKeys, userId);
-      const hasDelegatedTodo = isProjectExpense
-        ? false
-        : await this.hasDelegatedApprovalTodo(userId, detail.projectId, node);
+      const hasDelegatedTodo =
+        isProjectExpense || hasDirectTodo
+          ? false
+          : await this.hasDelegatedApprovalTodo(userId, detail.projectId, node);
       if (mode === "pending" && !hasDirectTodo && !hasDelegatedTodo) {
         continue;
       }
@@ -934,11 +936,18 @@ export class MeService {
         instance.frozenNodes,
         instance.currentNodeIndex
       );
-      if (
-        !currentNode ||
-        (!this.canActOnApprovalNode(currentNode, roleKeys, userId) &&
-          !(await this.hasDelegatedApprovalTodo(userId, projectId, currentNode)))
-      ) {
+      if (!currentNode) {
+        continue;
+      }
+      const isProjectExpense = instance.businessType === "project_expense_request";
+      const hasDirectTodo = isProjectExpense
+        ? this.hasDirectRoleTodo(currentNode, roleKeys)
+        : this.canActOnApprovalNode(currentNode, roleKeys, userId);
+      const hasDelegatedTodo =
+        !isProjectExpense && !hasDirectTodo
+          ? await this.hasDelegatedApprovalTodo(userId, projectId, currentNode)
+          : false;
+      if (!hasDirectTodo && !hasDelegatedTodo) {
         continue;
       }
 
@@ -1081,36 +1090,9 @@ export class MeService {
       return false;
     }
 
-    const delegationClient = (this.prisma as unknown as {
-      approvalDelegation?: {
-        findMany(args: {
-          where: {
-            toUserId: string;
-            enabled: true;
-            startsAt: { lte: Date };
-            endsAt: { gte: Date };
-          };
-          select: { fromUserId: true };
-        }): Promise<Array<{ fromUserId: string }>>;
-      };
-    }).approvalDelegation;
-    if (!delegationClient) {
-      return false;
-    }
-
-    const now = new Date();
-    const delegations = await delegationClient.findMany({
-      where: {
-        toUserId: userId,
-        enabled: true,
-        startsAt: { lte: now },
-        endsAt: { gte: now }
-      },
-      select: { fromUserId: true }
-    });
-
-    for (const delegation of delegations) {
-      const delegatorRoleKeys = await this.roleKeysForUserProject(delegation.fromUserId, projectId);
+    const delegatorIds = await activeApprovalDelegatorIds(this.prisma, userId, new Date());
+    for (const delegatorId of delegatorIds) {
+      const delegatorRoleKeys = await this.roleKeysForUserProject(delegatorId, projectId);
       if (nodeRoleKeys.some((role) => delegatorRoleKeys.includes(role))) {
         return true;
       }
