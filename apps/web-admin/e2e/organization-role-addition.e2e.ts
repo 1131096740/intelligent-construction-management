@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-test("岗位撤销先展示阻断，放行后原样提交影响版本校验码和密码", async ({ page }) => {
-  const snapshotHash = `sha256:${"a".repeat(64)}`;
+test("岗位新增手动预览后原样提交快照与密码并双刷新", async ({ page }) => {
+  const snapshotHash = `sha256:${"c".repeat(64)}`;
   const previewBodies: unknown[] = [];
   let applyBody: unknown = null;
   let directoryReads = 0;
@@ -45,16 +45,18 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        summary: { departments: 1, activeUsers: 1, inactiveUsers: 0, positions: 2 },
+        summary: { departments: 1, activeUsers: 1, inactiveUsers: 0, positions: 3 },
         departments: [
           { id: "department-1", name: "合同部", parentId: null, isActive: true, children: [] }
         ],
+        projects: [
+          { id: "project-1", code: "XM-001", name: "科技园项目", isActive: true },
+          { id: "project-2", code: "XM-002", name: "停用项目", isActive: false }
+        ],
         positions: [
           { id: "position-1", key: "contract_director", name: "合同部主管" },
-          { id: "position-2", key: "project_manager", name: "项目经理" }
-        ],
-        projects: [
-          { id: "project-1", code: "XM-001", name: "科技园项目", isActive: true }
+          { id: "position-2", key: "project_manager", name: "项目经理" },
+          { id: "position-3", key: "super_admin", name: "系统管理员" }
         ],
         users: [
           {
@@ -66,15 +68,7 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
             status: "active",
             mustChangePassword: false,
             globalPositions: [{ key: "contract_director", name: "合同部主管" }],
-            projectPositions: [
-              {
-                projectId: "project-1",
-                projectCode: "XM-001",
-                projectName: "科技园项目",
-                keys: ["project_manager"],
-                names: ["项目经理"]
-              }
-            ]
+            projectPositions: []
           }
         ]
       })
@@ -94,7 +88,7 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
         readiness: { canonicalRoleWritesReady: true, legacyMigrationReady: true },
         summary: {
           globalAssignments: 1,
-          canonicalProjectAssignments: 1,
+          canonicalProjectAssignments: 0,
           legacyProjectAssignments: 0,
           duplicateGlobalGroups: 0,
           dualSourceOverlaps: 0,
@@ -107,37 +101,37 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
       })
     });
   });
-  await page.route("**/api/organization/role-changes/preview", async (route) => {
+  await page.route("**/api/organization/role-additions/preview", async (route) => {
     const body = route.request().postDataJSON();
     previewBodies.push(body);
-    const projectRemoval = body.scope === "project";
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        change: {
-          ...body,
-          projectId: projectRemoval ? body.projectId : null
-        },
+        change: { ...body, projectId: body.projectId ?? null },
         evaluatedAt: "2026-07-12T08:00:00.000Z",
         snapshotHash,
-        canApply: projectRemoval,
-        summary: { affectedInstances: projectRemoval ? 1 : 0, blockingInstances: projectRemoval ? 0 : 1 },
-        blockingIssues: projectRemoval
-          ? []
-          : [{ code: "last_active_global_super_admin", message: "当前岗位暂不能安全撤销" }],
+        canApply: true,
+        summary: { affectedNodes: 0, blockingNodes: 0 },
+        blockingIssues: [],
         impacts: []
       })
     });
   });
-  await page.route("**/api/organization/role-changes/apply", async (route) => {
+  await page.route("**/api/organization/role-additions/apply", async (route) => {
     applyBody = route.request().postDataJSON();
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        change: { operation: "remove", userId: "user-1", scope: "project", projectId: "project-1", roleKey: "project_manager" },
+        change: {
+          operation: "add",
+          userId: "user-1",
+          scope: "project",
+          projectId: "project-1",
+          roleKey: "project_manager"
+        },
         assignmentId: "member-1",
         source: "project_member",
-        affectedInstances: 1,
+        affectedNodes: 0,
         revokedRefreshTokens: 1
       })
     });
@@ -151,25 +145,30 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
   await page.getByText("组织权限", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole("button", { name: "岗位管理" }).click();
-  const globalRow = page.getByRole("row").filter({ hasText: "合同部主管" });
-  await globalRow.getByRole("button", { name: "预览撤销影响" }).click();
-  await expect(page.getByText("服务端判定不可撤销")).toBeVisible();
-  await expect(page.getByPlaceholder("请输入当前登录密码")).toHaveCount(0);
+  await page.getByRole("button", { name: "新增岗位" }).click();
+  await page.getByPlaceholder("请选择岗位范围").click();
+  await page.locator(".t-select__dropdown:visible").getByText("项目岗位", { exact: true }).click();
+  await page.getByPlaceholder("请选择启用项目").click();
+  const projectDropdown = page.locator(".t-select__dropdown:visible");
+  await expect(projectDropdown.getByText("停用项目", { exact: false })).toHaveCount(0);
+  await projectDropdown.getByText("科技园项目（XM-001）", { exact: true }).click();
+  await page.getByPlaceholder("请选择待新增岗位").click();
+  const roleDropdown = page.locator(".t-select__dropdown:visible");
+  await expect(roleDropdown.getByText("系统管理员", { exact: true })).toHaveCount(0);
+  await roleDropdown.getByText("项目经理", { exact: true }).click();
 
-  const projectRow = page.getByRole("row").filter({ hasText: "项目经理" });
-  await projectRow.getByRole("button", { name: "预览撤销影响" }).click();
-  await expect(page.getByText("服务端判定可撤销")).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(previewBodies).toHaveLength(0);
+  await page.getByRole("button", { name: "预览新增影响" }).click();
+  await expect(page.getByText("服务端判定可新增")).toBeVisible();
   const passwordInput = page.getByPlaceholder("请输入当前登录密码");
-  await passwordInput.scrollIntoViewIfNeeded();
   await passwordInput.fill("  current password  ");
-  await page.getByRole("button", { name: "确认撤销该岗位" }).click();
-  await expect(page.getByText("岗位已撤销，组织目录和岗位数据预检已刷新。")).toBeVisible();
+  await page.getByRole("button", { name: "确认新增该岗位" }).click();
+  await expect(page.getByText("岗位已新增，组织目录和岗位数据预检已刷新。")).toBeVisible();
 
   expect(previewBodies).toEqual([
-    { operation: "remove", userId: "user-1", scope: "global", roleKey: "contract_director" },
     {
-      operation: "remove",
+      operation: "add",
       userId: "user-1",
       scope: "project",
       projectId: "project-1",
@@ -179,7 +178,7 @@ test("岗位撤销先展示阻断，放行后原样提交影响版本校验码�
   expect(JSON.stringify(previewBodies)).not.toContain("password");
   expect(JSON.stringify(previewBodies)).not.toContain("snapshotHash");
   expect(applyBody).toEqual({
-    operation: "remove",
+    operation: "add",
     userId: "user-1",
     scope: "project",
     projectId: "project-1",

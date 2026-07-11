@@ -9,14 +9,14 @@
         <t-button
           variant="outline"
           :loading="refreshing"
-          :disabled="saving || roleDrawerVisible"
+          :disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible"
           @click="refreshPage"
         >
           刷新
         </t-button>
         <t-button
           theme="primary"
-          :disabled="directoryLoading || refreshing || roleDrawerVisible"
+          :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
           @click="openCreateDepartment"
         >
           新建部门
@@ -26,7 +26,7 @@
 
     <t-alert
       theme="info"
-      title="本页可维护部门、人员归属和启停状态，并逐条预览、撤销已有岗位；固定岗位字典仍为只读，岗位新增和批量变更尚未开放。"
+      title="本页可维护部门、人员归属和启停状态，并逐条预览新增或撤销岗位；固定岗位字典仍为只读，批量变更尚未开放。"
       :close="false"
     />
 
@@ -96,7 +96,7 @@
                 size="small"
                 variant="text"
                 theme="primary"
-                :disabled="saving || refreshing || roleDrawerVisible"
+                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
                 @click="openProjectSuperAdminRemediation(row.key)"
               >
                 预览清理
@@ -137,7 +137,7 @@
               size="small"
               variant="text"
               theme="primary"
-              :disabled="saving || refreshing || roleDrawerVisible"
+              :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
               @click="openEditDepartment(row)"
             >
               编辑
@@ -207,7 +207,7 @@
                 size="small"
                 variant="text"
                 theme="primary"
-                :disabled="saving || refreshing || roleDrawerVisible"
+                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
                 @click="openEditUser(row)"
               >
                 编辑
@@ -216,10 +216,35 @@
                 size="small"
                 variant="text"
                 theme="primary"
-                :disabled="saving || refreshing"
+                :disabled="saving || refreshing || roleAdditionDrawerVisible"
                 @click="openRoleDrawer(row)"
               >
                 岗位管理
+              </t-button>
+              <t-tooltip
+                v-if="row.status === 'inactive'"
+                content="人员已停用，不能新增岗位"
+              >
+                <span>
+                  <t-button
+                    size="small"
+                    variant="text"
+                    theme="primary"
+                    disabled
+                  >
+                    新增岗位
+                  </t-button>
+                </span>
+              </t-tooltip>
+              <t-button
+                v-else
+                size="small"
+                variant="text"
+                theme="primary"
+                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
+                @click="openRoleAdditionDrawer(row)"
+              >
+                新增岗位
               </t-button>
             </div>
           </template>
@@ -345,6 +370,15 @@
       @busy-change="roleDrawerBusy = $event"
       @applied="handleRoleRemovalApplied"
     />
+    <OrganizationRoleAdditionDrawer
+      :visible="roleAdditionDrawerVisible"
+      :user="roleAdditionDrawerUser"
+      :projects="directory.projects"
+      :positions="directory.positions"
+      @close="closeRoleAdditionDrawer"
+      @busy-change="roleAdditionDrawerBusy = $event"
+      @applied="handleRoleAdditionApplied"
+    />
   </section>
 </template>
 
@@ -388,11 +422,13 @@ import {
   type OrganizationRoleRemovalTargetRow
 } from "./organization.config";
 import OrganizationRoleRemovalDrawer from "./components/OrganizationRoleRemovalDrawer.vue";
+import OrganizationRoleAdditionDrawer from "./components/OrganizationRoleAdditionDrawer.vue";
 
 const emptyDirectory = (): OrganizationDirectory => ({
   summary: { departments: 0, activeUsers: 0, inactiveUsers: 0, positions: 0 },
   departments: [],
   users: [],
+  projects: [],
   positions: []
 });
 
@@ -406,6 +442,9 @@ const roleDrawerVisible = ref(false);
 const roleDrawerBusy = ref(false);
 const roleDrawerUser = ref<OrganizationDirectoryUser | null>(null);
 const roleDrawerRemediationTarget = ref<OrganizationRoleRemovalTargetRow | null>(null);
+const roleAdditionDrawerVisible = ref(false);
+const roleAdditionDrawerBusy = ref(false);
+const roleAdditionDrawerUser = ref<OrganizationDirectoryUser | null>(null);
 const directoryMessage = ref("");
 const directoryMessageTone = ref<"success" | "error">("success");
 const integrityMessage = ref("");
@@ -444,7 +483,7 @@ const userColumns = [
   { colKey: "mustChangePassword", title: "首次改密", width: 108 },
   { colKey: "globalPositions", title: "全局岗位", minWidth: 150 },
   { colKey: "projectPositions", title: "项目岗位", minWidth: 200 },
-  { colKey: "operation", title: "操作", width: 148, fixed: "right" }
+  { colKey: "operation", title: "操作", width: 224, fixed: "right" }
 ];
 const integrityColumns = [
   { colKey: "severity", title: "严重级别", width: 92 },
@@ -559,7 +598,7 @@ async function loadPermissionIntegrity() {
 }
 
 async function refreshPage() {
-  if (refreshing.value || roleDrawerVisible.value) return;
+  if (refreshing.value || roleDrawerVisible.value || roleAdditionDrawerVisible.value) return;
   refreshing.value = true;
   try {
     await Promise.all([loadDirectory(), loadPermissionIntegrity()]);
@@ -607,7 +646,12 @@ function openEditUser(user: OrganizationDirectoryUser) {
 }
 
 function openRoleDrawer(user: OrganizationDirectoryUser) {
-  if (saving.value || refreshing.value || roleDrawerVisible.value) return;
+  if (
+    saving.value ||
+    refreshing.value ||
+    roleDrawerVisible.value ||
+    roleAdditionDrawerVisible.value
+  ) return;
   roleDrawerUser.value = user;
   roleDrawerRemediationTarget.value = null;
   roleDrawerVisible.value = true;
@@ -618,7 +662,12 @@ function isProjectSuperAdminRemediationRow(issueKey: string) {
 }
 
 function openProjectSuperAdminRemediation(issueKey: string) {
-  if (saving.value || refreshing.value || roleDrawerVisible.value) return;
+  if (
+    saving.value ||
+    refreshing.value ||
+    roleDrawerVisible.value ||
+    roleAdditionDrawerVisible.value
+  ) return;
   const issue = projectSuperAdminRemediationIssues.value.get(issueKey);
   if (!issue?.userId) return;
   const user = directory.users.find((item) => item.id === issue.userId);
@@ -664,6 +713,47 @@ async function handleRoleRemovalApplied() {
     directoryMessage.value = fullyReloaded
       ? "岗位已撤销，组织目录和岗位数据预检已刷新。"
       : "岗位已撤销，但部分页面数据刷新失败，请手动刷新。";
+  } finally {
+    refreshing.value = false;
+  }
+}
+
+function openRoleAdditionDrawer(user: OrganizationDirectoryUser) {
+  if (
+    saving.value ||
+    refreshing.value ||
+    roleDrawerVisible.value ||
+    roleAdditionDrawerVisible.value
+  ) return;
+  if (user.status !== "active") {
+    directoryMessageTone.value = "error";
+    directoryMessage.value = "人员已停用，不能新增岗位。";
+    return;
+  }
+  roleAdditionDrawerUser.value = user;
+  roleAdditionDrawerVisible.value = true;
+}
+
+function closeRoleAdditionDrawer() {
+  if (roleAdditionDrawerBusy.value) return;
+  roleAdditionDrawerVisible.value = false;
+  roleAdditionDrawerUser.value = null;
+}
+
+async function handleRoleAdditionApplied() {
+  roleAdditionDrawerVisible.value = false;
+  roleAdditionDrawerUser.value = null;
+  refreshing.value = true;
+  try {
+    const [directoryReloaded, integrityReloaded] = await Promise.all([
+      loadDirectory(),
+      loadPermissionIntegrity()
+    ]);
+    const fullyReloaded = directoryReloaded && integrityReloaded;
+    directoryMessageTone.value = fullyReloaded ? "success" : "error";
+    directoryMessage.value = fullyReloaded
+      ? "岗位已新增，组织目录和岗位数据预检已刷新。"
+      : "岗位已新增，但部分页面数据刷新失败，请手动刷新。";
   } finally {
     refreshing.value = false;
   }

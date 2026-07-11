@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  applyOrganizationRoleAddition,
   applyOrganizationRoleRemoval,
   createOrganizationDepartment,
   fetchOrganizationDirectory,
   fetchPermissionIntegrity,
   OrganizationApiError,
+  previewOrganizationRoleAddition,
   previewOrganizationRoleRemoval,
   updateOrganizationDepartment,
   updateOrganizationUser
@@ -183,6 +185,101 @@ describe("organization API client", () => {
       status: 409,
       message: "组织或审批数据已变化，请重新预览后再试"
     });
+  });
+
+  it("previews one role addition without sending password, hash or unknown fields", async () => {
+    mockApiFetch.mockReturnValue(jsonResponse({ snapshotHash: "sha256:abc", canApply: false }));
+
+    await previewOrganizationRoleAddition({
+      operation: "add",
+      userId: "user-1",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "project_manager",
+      confirmationPassword: "must-not-be-sent",
+      snapshotHash: "must-not-be-sent",
+      assignmentId: "must-not-be-sent"
+    } as never);
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/organization/role-additions/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "add",
+        userId: "user-1",
+        scope: "project",
+        projectId: "project-1",
+        roleKey: "project_manager"
+      })
+    });
+  });
+
+  it("applies one role addition with the server hash and password preserved exactly", async () => {
+    mockApiFetch.mockReturnValue(jsonResponse({ assignmentId: "assignment-1" }));
+    const snapshotHash = `sha256:${"e".repeat(64)}`;
+
+    await applyOrganizationRoleAddition({
+      operation: "add",
+      userId: "user-1",
+      scope: "global",
+      roleKey: "finance_director",
+      snapshotHash,
+      confirmationPassword: "  current password  ",
+      assignmentId: "must-not-be-sent"
+    } as never);
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/organization/role-additions/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "add",
+        userId: "user-1",
+        scope: "global",
+        roleKey: "finance_director",
+        snapshotHash,
+        confirmationPassword: "  current password  "
+      })
+    });
+  });
+
+  it("fails closed for unsupported addition operations, scopes and project super-admin", () => {
+    expect(() =>
+      previewOrganizationRoleAddition({
+        operation: "remove",
+        userId: "user-1",
+        scope: "global",
+        roleKey: "finance_director"
+      } as never)
+    ).toThrow("岗位变更操作不正确");
+    expect(() =>
+      previewOrganizationRoleAddition({
+        operation: "add",
+        userId: "user-1",
+        scope: "tenant",
+        roleKey: "finance_director"
+      } as never)
+    ).toThrow("岗位范围不正确");
+    expect(() =>
+      previewOrganizationRoleAddition({
+        operation: "add",
+        userId: "user-1",
+        scope: "global",
+        projectId: "project-1",
+        roleKey: "finance_director"
+      })
+    ).toThrow("全局岗位不得提交项目标识");
+    expect(() =>
+      applyOrganizationRoleAddition({
+        operation: "add",
+        userId: "user-1",
+        scope: "project",
+        projectId: "project-1",
+        roleKey: "super_admin",
+        snapshotHash: `sha256:${"f".repeat(64)}`,
+        confirmationPassword: "secret"
+      })
+    ).toThrow("项目岗位不得新增系统管理员");
+    expect(mockApiFetch).not.toHaveBeenCalled();
   });
 
   it("creates a department with only the allowed fields and preserves the password", async () => {

@@ -10,6 +10,10 @@ const drawerSource = readFileSync(
   fileURLToPath(new URL("./components/OrganizationRoleRemovalDrawer.vue", import.meta.url)),
   "utf8"
 );
+const additionDrawerSource = readFileSync(
+  fileURLToPath(new URL("./components/OrganizationRoleAdditionDrawer.vue", import.meta.url)),
+  "utf8"
+);
 
 describe("organization role removal page structure", () => {
   it("uses an independent drawer and exposes only one-role-at-a-time removal", () => {
@@ -32,7 +36,9 @@ describe("organization role removal page structure", () => {
     expect(pageSource).toMatch(
       /handleRoleRemovalApplied[\s\S]*Promise\.all\(\[loadDirectory\(\), loadPermissionIntegrity\(\)\]\)/u
     );
-    expect(pageSource).toContain(':disabled="saving || roleDrawerVisible"');
+    expect(pageSource).toContain(
+      ':disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible"'
+    );
     expect(pageSource).toMatch(
       /handleRoleRemovalApplied[\s\S]*refreshing\.value = true[\s\S]*finally[\s\S]*refreshing\.value = false/u
     );
@@ -47,5 +53,35 @@ describe("organization role removal page structure", () => {
     expect(drawerSource).toContain("remediationTarget");
     expect(drawerSource).toContain("mergeOrganizationRoleRemovalTargets");
     expect(drawerSource).not.toMatch(/watch\([\s\S]{0,300}previewTarget\(/u);
+  });
+});
+
+describe("organization role addition page structure", () => {
+  it("uses a separate one-role addition drawer with explicit inactive-user blocking", () => {
+    expect(pageSource).toContain("OrganizationRoleAdditionDrawer");
+    expect(pageSource).toContain("新增岗位");
+    expect(pageSource).toContain("人员已停用，不能新增岗位");
+    expect(additionDrawerSource).toContain("当前仅支持逐条新增");
+    expect(additionDrawerSource).not.toContain("批量新增");
+    expect(additionDrawerSource).not.toContain("previewOrganizationRoleRemoval");
+    expect(drawerSource).not.toContain("previewOrganizationRoleAddition");
+  });
+
+  it("never auto-previews and clears preview plus password on selection and conflict", () => {
+    expect(additionDrawerSource).not.toMatch(/watch\([\s\S]{0,300}previewTarget\(/u);
+    expect(additionDrawerSource).toContain('v-if="canConfirmAddition"');
+    expect(additionDrawerSource).toContain("resetPreview()");
+    expect(additionDrawerSource).toContain("error.status === 409");
+    expect(additionDrawerSource).toMatch(/error\.status === 409[\s\S]{0,200}preview\.value = null/u);
+    expect(additionDrawerSource).toContain("resetPassword()");
+  });
+
+  it("keeps addition state separate and performs both reloads only after success", () => {
+    expect(pageSource).toContain("roleAdditionDrawerVisible");
+    expect(pageSource).toContain("roleDrawerVisible");
+    expect(pageSource).toContain('@applied="handleRoleAdditionApplied"');
+    expect(pageSource).toMatch(
+      /handleRoleAdditionApplied[\s\S]*Promise\.all\(\[loadDirectory\(\), loadPermissionIntegrity\(\)\]\)/u
+    );
   });
 });

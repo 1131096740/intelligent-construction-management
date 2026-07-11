@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type {
+  OrganizationDirectory,
   OrganizationDepartmentNode,
   OrganizationDirectoryUser,
   PermissionIntegrityIssue,
   PermissionIntegrityReadModel,
+  RoleAdditionImpactPreview,
   RoleRemovalImpactPreview
 } from "../../api/organization.api";
 import {
+  activeOrganizationProjectOptions,
+  buildOrganizationRoleAdditionTarget,
+  buildRoleAdditionApplyPayload,
   buildOrganizationRoleRemovalTargets,
   buildProjectSuperAdminRemediationTarget,
   isProjectSuperAdminRemediationIssue,
@@ -33,7 +38,11 @@ import {
   roleRemovalReasonLabel,
   roleRemovalTargetMatchesPreview,
   canConfirmRoleRemoval,
+  canConfirmRoleAddition,
   projectPositionsText,
+  organizationRoleAdditionOptions,
+  roleAdditionImpactRows,
+  roleAdditionTargetMatchesPreview,
   userStatusText
 } from "./organization.config";
 
@@ -171,6 +180,67 @@ const removalPreview: RoleRemovalImpactPreview = {
       pendingRoleKeys: ["project_manager"],
       blocking: false,
       reasonCode: null,
+      roleCoverage: []
+    }
+  ]
+};
+
+const additionDirectory: OrganizationDirectory = {
+  summary: { departments: 1, activeUsers: 1, inactiveUsers: 1, positions: 5 },
+  departments,
+  users,
+  projects: [
+    { id: "project-2", code: "XM-002", name: "商务中心", isActive: true },
+    { id: "project-3", code: "XM-003", name: "停用项目", isActive: false },
+    { id: "project-1", code: "XM-001", name: "科技园项目", isActive: true }
+  ],
+  positions: [
+    { id: "position-1", key: "contract_director", name: "合同部主管" },
+    { id: "position-2", key: "project_manager", name: "项目经理" },
+    { id: "position-3", key: "budget_director", name: "预算部主管" },
+    { id: "position-4", key: "finance_director", name: "财务主管" },
+    { id: "position-5", key: "super_admin", name: "系统管理员" }
+  ]
+};
+
+const additionPreview: RoleAdditionImpactPreview = {
+  change: {
+    operation: "add",
+    userId: "user-1",
+    scope: "project",
+    projectId: "project-2",
+    roleKey: "project_manager"
+  },
+  evaluatedAt: "2026-07-12T08:00:00.000Z",
+  snapshotHash: `sha256:${"b".repeat(64)}`,
+  canApply: true,
+  summary: { affectedNodes: 1, blockingNodes: 0 },
+  blockingIssues: [],
+  impacts: [
+    {
+      approvalInstanceId: "approval-1",
+      businessType: "payment_request",
+      businessId: "payment-1",
+      projectId: "project-2",
+      nodeIndex: 1,
+      nodeName: "项目经理审批",
+      mode: "any",
+      roleKeys: ["project_manager"],
+      pendingRoleKeys: ["project_manager"],
+      blocking: false,
+      reasonCode: null,
+      targetBefore: {
+        channel: null,
+        roleKey: null,
+        canReview: false,
+        requiresSelfReviewConfirmation: false
+      },
+      targetAfter: {
+        channel: "direct",
+        roleKey: "project_manager",
+        canReview: true,
+        requiresSelfReviewConfirmation: true
+      },
       roleCoverage: []
     }
   ]
@@ -662,6 +732,108 @@ describe("organization config", () => {
         modeLabel: "任一人通过",
         statusLabel: "可继续执行",
         pendingRoleNames: "岗位名称未读取"
+      })
+    ]);
+  });
+
+  it("uses the active governance project directory instead of current user memberships", () => {
+    expect(activeOrganizationProjectOptions(additionDirectory.projects)).toEqual([
+      { label: "科技园项目（XM-001）", value: "project-1" },
+      { label: "商务中心（XM-002）", value: "project-2" }
+    ]);
+    expect(activeOrganizationProjectOptions(additionDirectory.projects)).not.toContainEqual(
+      expect.objectContaining({ value: "project-3" })
+    );
+  });
+
+  it("filters addition roles by exact scope and current assignments", () => {
+    expect(
+      organizationRoleAdditionOptions(users[0], "global", null, additionDirectory.positions).map(
+        (option) => option.value
+      )
+    ).toEqual(["budget_director", "finance_director", "project_manager", "super_admin"]);
+    expect(
+      organizationRoleAdditionOptions(
+        users[0],
+        "project",
+        "project-1",
+        additionDirectory.positions
+      ).map((option) => option.value)
+    ).toEqual(["budget_director", "contract_director", "finance_director"]);
+    expect(
+      organizationRoleAdditionOptions(
+        users[0],
+        "project",
+        "project-2",
+        additionDirectory.positions
+      ).map((option) => option.value)
+    ).toContain("project_manager");
+  });
+
+  it("builds additions only from an active user, active project and latest position directory", () => {
+    expect(
+      buildOrganizationRoleAdditionTarget(users[0], {
+        scope: "project",
+        projectId: "project-2",
+        roleKey: "project_manager"
+      }, additionDirectory)
+    ).toEqual(additionPreview.change);
+    expect(() =>
+      buildOrganizationRoleAdditionTarget(users[1], {
+        scope: "global",
+        roleKey: "project_manager"
+      }, additionDirectory)
+    ).toThrow("人员已停用，不能新增岗位");
+    expect(() =>
+      buildOrganizationRoleAdditionTarget(users[0], {
+        scope: "project",
+        projectId: "project-3",
+        roleKey: "project_manager"
+      }, additionDirectory)
+    ).toThrow("项目已停用，不能新增岗位");
+    expect(() =>
+      buildOrganizationRoleAdditionTarget(users[0], {
+        scope: "project",
+        projectId: "project-2",
+        roleKey: "super_admin"
+      }, additionDirectory)
+    ).toThrow("项目岗位不得新增系统管理员");
+  });
+
+  it("requires exact addition change, server canApply, valid hash and current password", () => {
+    const target = additionPreview.change;
+    expect(roleAdditionTargetMatchesPreview(target, additionPreview)).toBe(true);
+    expect(canConfirmRoleAddition(target, additionPreview, false)).toBe(true);
+    expect(canConfirmRoleAddition(target, { ...additionPreview, canApply: false }, false)).toBe(false);
+    expect(canConfirmRoleAddition(target, additionPreview, true)).toBe(false);
+    expect(
+      buildRoleAdditionApplyPayload(target, additionPreview, "  current password  ")
+    ).toEqual({
+      ...target,
+      snapshotHash: additionPreview.snapshotHash,
+      confirmationPassword: "  current password  "
+    });
+    expect(() =>
+      buildRoleAdditionApplyPayload(
+        { ...target, projectId: "project-1" },
+        additionPreview,
+        "secret"
+      )
+    ).toThrow("岗位目标与影响预览不一致");
+    expect(() => buildRoleAdditionApplyPayload(target, additionPreview, "   ")).toThrow(
+      "请输入当前登录密码"
+    );
+  });
+
+  it("maps addition before and after resolution including self-review", () => {
+    expect(roleAdditionImpactRows(additionPreview.impacts, additionDirectory.positions)).toEqual([
+      expect.objectContaining({
+        key: "approval-1:1",
+        businessTypeLabel: "付款申请",
+        beforeText: "不可办理",
+        afterText: "直接岗位 · 项目经理 · 可办理 · 需自审确认",
+        statusLabel: "新增后可继续执行",
+        reasonLabel: "无阻断"
       })
     ]);
   });

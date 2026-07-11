@@ -37,6 +37,7 @@ export interface OrganizationDirectory {
   };
   departments: OrganizationDepartmentNode[];
   users: OrganizationDirectoryUser[];
+  projects: Array<{ id: string; code: string; name: string; isActive: boolean }>;
   positions: Array<{ id: string; key: RoleKey; name: string }>;
 }
 
@@ -161,6 +162,83 @@ export interface ApplyOrganizationRoleRemovalResult {
   revokedRefreshTokens: number;
 }
 
+export interface OrganizationRoleAdditionTarget {
+  operation: "add";
+  userId: string;
+  scope: OrganizationRoleScope;
+  projectId?: string | null;
+  roleKey: RoleKey;
+}
+
+export type RoleAdditionBlockingIssueCode =
+  | "target_user_missing"
+  | "target_user_inactive"
+  | "target_position_missing"
+  | "target_project_missing"
+  | "target_project_inactive"
+  | "target_assignment_exists"
+  | "target_assignment_ambiguous"
+  | "project_super_admin_forbidden"
+  | "legacy_shadow_assignment"
+  | "canonical_role_writes_not_ready";
+
+export type RoleAdditionImpactReasonCode =
+  | "no_executable_current_approver"
+  | "invalid_approval_instance_data"
+  | "approval_execution_semantics_not_safe"
+  | "role_addition_revokes_target_review_capability";
+
+export interface RoleAdditionResolution {
+  channel: "direct" | "assignment" | "delegation" | null;
+  roleKey: RoleKey | null;
+  canReview: boolean;
+  requiresSelfReviewConfirmation: boolean;
+}
+
+export interface RoleAdditionImpactPreview {
+  change: {
+    operation: "add";
+    userId: string;
+    scope: OrganizationRoleScope;
+    projectId: string | null;
+    roleKey: RoleKey;
+  };
+  evaluatedAt: string;
+  snapshotHash: string;
+  canApply: boolean;
+  summary: { affectedNodes: number; blockingNodes: number };
+  blockingIssues: Array<{ code: RoleAdditionBlockingIssueCode; message: string }>;
+  impacts: Array<{
+    approvalInstanceId: string;
+    businessType: string;
+    businessId: string;
+    projectId: string | null;
+    nodeIndex: number;
+    nodeName: string | null;
+    mode: "any" | "all" | null;
+    roleKeys: RoleKey[];
+    pendingRoleKeys: RoleKey[];
+    blocking: boolean;
+    reasonCode: RoleAdditionImpactReasonCode | null;
+    targetBefore: RoleAdditionResolution;
+    targetAfter: RoleAdditionResolution;
+    roleCoverage: RoleRemovalImpactPreview["impacts"][number]["roleCoverage"];
+  }>;
+}
+
+export interface ApplyOrganizationRoleAdditionPayload extends OrganizationRoleAdditionTarget {
+  snapshotHash: string;
+  confirmationPassword: string;
+}
+
+export interface ApplyOrganizationRoleAdditionResult {
+  change: RoleAdditionImpactPreview["change"];
+  assignmentId: string;
+  source: "user_position" | "project_member";
+  affectedNodes: number;
+  revokedRefreshTokens: number;
+}
+
 export interface CreateOrganizationDepartmentPayload {
   name: string;
   parentId?: string | null;
@@ -278,6 +356,34 @@ function roleRemovalRequestTarget(payload: OrganizationRoleRemovalTarget) {
   };
 }
 
+function roleAdditionRequestTarget(payload: OrganizationRoleAdditionTarget) {
+  const operation: unknown = payload.operation;
+  const scope: unknown = payload.scope;
+  if (operation !== "add") throw new Error("岗位变更操作不正确");
+  if (scope !== "global" && scope !== "project") throw new Error("岗位范围不正确");
+  if (!payload.userId.trim()) throw new Error("人员标识缺失");
+  if (payload.scope === "global") {
+    if (payload.projectId !== undefined && payload.projectId !== null) {
+      throw new Error("全局岗位不得提交项目标识");
+    }
+    return {
+      operation: "add" as const,
+      userId: payload.userId,
+      scope: payload.scope,
+      roleKey: payload.roleKey
+    };
+  }
+  if (!payload.projectId?.trim()) throw new Error("项目岗位缺少项目标识");
+  if (payload.roleKey === "super_admin") throw new Error("项目岗位不得新增系统管理员");
+  return {
+    operation: "add" as const,
+    userId: payload.userId,
+    scope: payload.scope,
+    projectId: payload.projectId,
+    roleKey: payload.roleKey
+  };
+}
+
 export function previewOrganizationRoleRemoval(payload: OrganizationRoleRemovalTarget) {
   const target = roleRemovalRequestTarget(payload);
   return sendJson<RoleRemovalImpactPreview>(
@@ -299,6 +405,30 @@ export function applyOrganizationRoleRemoval(payload: ApplyOrganizationRoleRemov
       confirmationPassword: payload.confirmationPassword
     },
     "撤销岗位失败"
+  );
+}
+
+export function previewOrganizationRoleAddition(payload: OrganizationRoleAdditionTarget) {
+  const target = roleAdditionRequestTarget(payload);
+  return sendJson<RoleAdditionImpactPreview>(
+    "/organization/role-additions/preview",
+    "POST",
+    target,
+    "读取岗位新增影响失败"
+  );
+}
+
+export function applyOrganizationRoleAddition(payload: ApplyOrganizationRoleAdditionPayload) {
+  const target = roleAdditionRequestTarget(payload);
+  return sendJson<ApplyOrganizationRoleAdditionResult>(
+    "/organization/role-additions/apply",
+    "POST",
+    {
+      ...target,
+      snapshotHash: payload.snapshotHash,
+      confirmationPassword: payload.confirmationPassword
+    },
+    "新增岗位失败"
   );
 }
 
