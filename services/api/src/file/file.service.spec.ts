@@ -118,12 +118,144 @@ describe("FileService", () => {
       const privateStorage = new PrivateFileStorage();
       expect(() => privateStorage.onModuleInit()).not.toThrow();
       await privateStorage.write("uploads/file.pdf", Buffer.from("private-file"));
+      await expect(privateStorage.read("uploads/file.pdf")).resolves.toEqual(
+        Buffer.from("private-file")
+      );
+
+      await privateStorage.write("uploads/file.pdf", Buffer.from("updated-private-file"));
+      await expect(privateStorage.read("uploads/file.pdf")).resolves.toEqual(
+        Buffer.from("updated-private-file")
+      );
 
       await expect(privateStorage.delete("uploads/file.pdf")).resolves.toBeUndefined();
       await expect(readFile(join(temporaryRoot, "private/uploads/file.pdf"))).rejects.toMatchObject({
         code: "ENOENT"
       });
       await expect(privateStorage.delete("uploads/file.pdf")).resolves.toBeUndefined();
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("rejects a local read through an intermediate symlink outside the root", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const privateRoot = join(temporaryRoot, "private");
+    const outsideRoot = join(temporaryRoot, "outside");
+    const outsideFile = join(outsideRoot, "file.pdf");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = privateRoot;
+    await mkdir(privateRoot, { recursive: true });
+    await mkdir(outsideRoot, { recursive: true });
+    await writeFile(outsideFile, "outside-file");
+    await symlink(outsideRoot, join(privateRoot, "uploads"), "dir");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await expect(privateStorage.read("uploads/file.pdf")).rejects.toThrow(
+        "私有文件路径无效，系统已阻止本次文件读取。"
+      );
+      await expect(readFile(outsideFile, "utf8")).resolves.toBe("outside-file");
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("rejects reading a target symlink that points outside the root", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const privateRoot = join(temporaryRoot, "private");
+    const outsideFile = join(temporaryRoot, "outside.pdf");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = privateRoot;
+    await mkdir(join(privateRoot, "uploads"), { recursive: true });
+    await writeFile(outsideFile, "outside-file");
+    await symlink(outsideFile, join(privateRoot, "uploads/file.pdf"), "file");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await expect(privateStorage.read("uploads/file.pdf")).rejects.toThrow(
+        "私有文件路径无效，系统已阻止本次文件读取。"
+      );
+      await expect(readFile(outsideFile, "utf8")).resolves.toBe("outside-file");
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("rejects a local write through an intermediate symlink without creating outside files", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const privateRoot = join(temporaryRoot, "private");
+    const outsideRoot = join(temporaryRoot, "outside");
+    const outsideTarget = join(outsideRoot, "nested/file.pdf");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = privateRoot;
+    await mkdir(privateRoot, { recursive: true });
+    await mkdir(outsideRoot, { recursive: true });
+    await symlink(outsideRoot, join(privateRoot, "uploads"), "dir");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await expect(
+        privateStorage.write("uploads/nested/file.pdf", Buffer.from("private-file"))
+      ).rejects.toThrow("私有文件路径无效，系统已阻止本次文件读取。");
+      await expect(readFile(outsideTarget)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("rejects writing a target symlink without modifying its outside target", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const privateRoot = join(temporaryRoot, "private");
+    const outsideFile = join(temporaryRoot, "outside.pdf");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = privateRoot;
+    await mkdir(join(privateRoot, "uploads"), { recursive: true });
+    await writeFile(outsideFile, "outside-file");
+    await symlink(outsideFile, join(privateRoot, "uploads/file.pdf"), "file");
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await expect(
+        privateStorage.write("uploads/file.pdf", Buffer.from("private-file"))
+      ).rejects.toThrow("私有文件路径无效，系统已阻止本次文件读取。");
+      await expect(readFile(outsideFile, "utf8")).resolves.toBe("outside-file");
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("uses fixed messages for missing reads and local filesystem write failures", async () => {
+    const previous = snapshotStorageEnv();
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "jiangkong-private-storage-"));
+    const privateRoot = join(temporaryRoot, "private");
+    process.env.FILE_STORAGE_DRIVER = "local";
+    process.env.FILE_STORAGE_ROOT = privateRoot;
+    await mkdir(join(privateRoot, "uploads/folder.pdf"), { recursive: true });
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+      const readError = await privateStorage.read("uploads/missing.pdf").catch((reason) => reason);
+      const writeError = await privateStorage
+        .write("uploads/folder.pdf", Buffer.from("private-file"))
+        .catch((reason) => reason);
+
+      expect(readError).toEqual(expect.objectContaining({ message: "本地文件读取失败" }));
+      expect(writeError).toEqual(expect.objectContaining({ message: "本地文件写入失败" }));
+      expect(String((readError as { message?: unknown }).message)).not.toContain(temporaryRoot);
+      expect(String((writeError as { message?: unknown }).message)).not.toContain(temporaryRoot);
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true });
       restoreStorageEnv(previous);

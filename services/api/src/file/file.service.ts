@@ -9,7 +9,8 @@ import {
 import { type FileObject, Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -84,6 +85,13 @@ const PROJECT_EXPENSE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "general_manager"
 ];
 const ALLOWED_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf", ".png", ".jpg", ".jpeg"]);
+const INVALID_PRIVATE_FILE_PATH_MESSAGE = "私有文件路径无效，系统已阻止本次文件读取。";
+
+class InvalidPrivateFilePathError extends Error {
+  constructor() {
+    super(INVALID_PRIVATE_FILE_PATH_MESSAGE);
+  }
+}
 
 function roleKeysFromApprovalFrozenNodes(frozenNodes: unknown): RoleKey[] {
   if (!Array.isArray(frozenNodes)) {
@@ -116,6 +124,10 @@ function isFileNotFoundError(error: unknown): boolean {
     "code" in error &&
     error.code === "ENOENT"
   );
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
 @Injectable()
@@ -157,23 +169,103 @@ export class PrivateFileStorage implements OnModuleInit {
   }
 
   async write(objectKey: string, buffer: Buffer) {
-    const target = this.resolveObjectKey(objectKey);
+    this.resolveObjectKey(objectKey);
     if (this.useCos()) {
       await this.cosRequest("PUT", objectKey, buffer);
       return;
     }
 
-    await mkdir(resolve(target, ".."), { recursive: true });
-    await writeFile(target, buffer);
+    const { parent, target } = await this.resolveLocalTarget(objectKey, true, "write");
+    let canonicalParent: string;
+    try {
+      canonicalParent = await realpath(parent);
+    } catch {
+      throw new Error("本地文件存储路径校验失败");
+    }
+    await this.assertCanonicalLocalPath(parent, canonicalParent, true);
+
+    try {
+      const targetStat = await lstat(target);
+      if (targetStat.isSymbolicLink()) {
+        throw new InvalidPrivateFilePathError();
+      }
+      if (!targetStat.isFile()) {
+        throw new Error("本地文件写入失败");
+      }
+    } catch (error) {
+      if (error instanceof InvalidPrivateFilePathError) throw error;
+      if (!isFileNotFoundError(error)) {
+        throw new Error("本地文件写入失败");
+      }
+    }
+
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(
+        target,
+        fsConstants.O_WRONLY |
+          fsConstants.O_CREAT |
+          fsConstants.O_TRUNC |
+          fsConstants.O_NOFOLLOW,
+        0o600
+      );
+      const openedStat = await handle.stat();
+      if (!openedStat.isFile()) {
+        throw new Error("本地文件写入失败");
+      }
+      await handle.writeFile(buffer);
+    } catch (error) {
+      if (hasErrorCode(error, "ELOOP")) {
+        throw new InvalidPrivateFilePathError();
+      }
+      if (error instanceof InvalidPrivateFilePathError) throw error;
+      throw new Error("本地文件写入失败");
+    } finally {
+      await handle?.close().catch(() => undefined);
+    }
   }
 
   async read(objectKey: string) {
-    const target = this.resolveObjectKey(objectKey);
+    this.resolveObjectKey(objectKey);
     if (this.useCos()) {
       return this.cosRequest("GET", objectKey);
     }
 
-    return readFile(target);
+    const { target } = await this.resolveLocalTarget(objectKey, false, "read");
+    let canonicalTarget: string;
+    try {
+      const targetStat = await lstat(target);
+      if (targetStat.isSymbolicLink()) {
+        throw new InvalidPrivateFilePathError();
+      }
+      if (!targetStat.isFile()) {
+        throw new Error("本地文件读取失败");
+      }
+      canonicalTarget = await realpath(target);
+    } catch (error) {
+      if (error instanceof InvalidPrivateFilePathError) throw error;
+      throw new Error("本地文件读取失败");
+    }
+
+    await this.assertCanonicalLocalPath(target, canonicalTarget, false);
+
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(canonicalTarget, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      const openedStat = await handle.stat();
+      if (!openedStat.isFile()) {
+        throw new Error("本地文件读取失败");
+      }
+      return await handle.readFile();
+    } catch (error) {
+      if (hasErrorCode(error, "ELOOP")) {
+        throw new InvalidPrivateFilePathError();
+      }
+      if (error instanceof InvalidPrivateFilePathError) throw error;
+      throw new Error("本地文件读取失败");
+    } finally {
+      await handle?.close().catch(() => undefined);
+    }
   }
 
   async delete(objectKey: string): Promise<void> {
@@ -227,16 +319,105 @@ export class PrivateFileStorage implements OnModuleInit {
       objectKey.includes("\\") ||
       segments.some((segment) => !segment || segment === "." || segment === "..")
     ) {
-      throw new Error("私有文件路径无效，系统已阻止本次文件读取。");
+      throw new Error(INVALID_PRIVATE_FILE_PATH_MESSAGE);
     }
 
     const target = resolve(this.root, objectKey);
     const rootPrefix = this.root.endsWith(sep) ? this.root : `${this.root}${sep}`;
     if (target === this.root || !target.startsWith(rootPrefix)) {
-      throw new Error("私有文件路径无效，系统已阻止本次文件读取。");
+      throw new Error(INVALID_PRIVATE_FILE_PATH_MESSAGE);
     }
 
     return target;
+  }
+
+  private async resolveLocalTarget(
+    objectKey: string,
+    createParents: boolean,
+    operation: "read" | "write"
+  ) {
+    const segments = objectKey.split("/");
+    const operationErrorMessage = operation === "read" ? "本地文件读取失败" : "本地文件写入失败";
+    let canonicalRoot: string;
+    try {
+      await mkdir(this.root, { recursive: true, mode: 0o700 });
+      canonicalRoot = await realpath(this.root);
+      const rootStat = await lstat(canonicalRoot);
+      if (!rootStat.isDirectory()) {
+        throw new Error("not-directory");
+      }
+    } catch {
+      throw new Error("本地文件存储路径校验失败");
+    }
+
+    let parent = canonicalRoot;
+    for (const segment of segments.slice(0, -1)) {
+      const directory = join(parent, segment);
+      let directoryStat;
+      try {
+        directoryStat = await lstat(directory);
+      } catch (error) {
+        if (!createParents || !isFileNotFoundError(error)) {
+          throw new Error(operationErrorMessage);
+        }
+
+        try {
+          await mkdir(directory, { mode: 0o700 });
+        } catch (mkdirError) {
+          if (!hasErrorCode(mkdirError, "EEXIST")) {
+            throw new Error(operationErrorMessage);
+          }
+        }
+
+        try {
+          directoryStat = await lstat(directory);
+        } catch {
+          throw new Error(operationErrorMessage);
+        }
+      }
+
+      if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+        throw new InvalidPrivateFilePathError();
+      }
+
+      let canonicalDirectory: string;
+      try {
+        canonicalDirectory = await realpath(directory);
+      } catch {
+        throw new Error("本地文件存储路径校验失败");
+      }
+      await this.assertCanonicalLocalPath(directory, canonicalDirectory, true, canonicalRoot);
+      parent = canonicalDirectory;
+    }
+
+    return { parent, target: join(parent, segments.at(-1)!) };
+  }
+
+  private async assertCanonicalLocalPath(
+    expectedPath: string,
+    canonicalPath: string,
+    allowRoot: boolean,
+    knownCanonicalRoot?: string
+  ) {
+    let canonicalRoot = knownCanonicalRoot;
+    if (!canonicalRoot) {
+      try {
+        canonicalRoot = await realpath(this.root);
+      } catch {
+        throw new Error("本地文件存储路径校验失败");
+      }
+    }
+
+    const relativeTarget = relative(canonicalRoot, canonicalPath);
+    if (
+      canonicalPath !== expectedPath ||
+      (!allowRoot && !relativeTarget) ||
+      relativeTarget === ".." ||
+      relativeTarget.startsWith(`..${sep}`) ||
+      isAbsolute(relativeTarget)
+    ) {
+      throw new InvalidPrivateFilePathError();
+    }
   }
 
   private useCos() {
