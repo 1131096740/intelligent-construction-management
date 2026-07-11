@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createOrganizationDepartment,
   fetchOrganizationDirectory,
+  fetchPermissionIntegrity,
   updateOrganizationDepartment,
   updateOrganizationUser
 } from "./organization.api";
@@ -33,7 +34,23 @@ describe("organization API client", () => {
 
     await fetchOrganizationDirectory();
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/organization/directory");
+    expect(mockApiFetch).toHaveBeenCalledWith("/organization/directory", { method: "GET" });
+  });
+
+  it("reads permission integrity through the read-only endpoint", async () => {
+    mockApiFetch.mockReturnValue(jsonResponse({ issues: [] }));
+
+    await fetchPermissionIntegrity();
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/organization/permission-integrity", {
+      method: "GET"
+    });
+  });
+
+  it("uses a Chinese fallback when permission integrity cannot be read", async () => {
+    mockApiFetch.mockReturnValue(Promise.resolve(new Response("upstream unavailable", { status: 502 })));
+
+    await expect(fetchPermissionIntegrity()).rejects.toThrow("读取权限完整性预检失败：502");
   });
 
   it("creates a department with only the allowed fields and preserves the password", async () => {

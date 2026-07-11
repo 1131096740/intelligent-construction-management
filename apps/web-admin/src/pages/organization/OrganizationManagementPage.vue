@@ -8,14 +8,15 @@
       <div class="page-actions">
         <t-button
           variant="outline"
-          :loading="loading"
-          @click="loadDirectory"
+          :loading="refreshing"
+          :disabled="saving"
+          @click="refreshPage"
         >
           刷新
         </t-button>
         <t-button
           theme="primary"
-          :disabled="loading"
+          :disabled="directoryLoading || refreshing"
           @click="openCreateDepartment"
         >
           新建部门
@@ -30,13 +31,69 @@
     />
 
     <t-alert
-      v-if="pageMessage"
-      :theme="pageMessageTone"
-      :title="pageMessage"
+      v-if="directoryMessage"
+      :theme="directoryMessageTone"
+      :title="directoryMessage"
       :close="false"
     />
 
     <BusinessStatusSummary :items="summaryItems" />
+
+    <t-card
+      title="岗位数据预检"
+      bordered
+    >
+      <div class="integrity-card-content">
+        <t-alert
+          theme="info"
+          :title="integrityPolicyText"
+          :close="false"
+        />
+        <t-alert
+          v-if="integrityMessage"
+          theme="error"
+          :title="integrityMessage"
+          :close="false"
+        />
+        <template v-if="permissionIntegrity">
+          <div class="readiness-tags">
+            <t-tag
+              v-for="tag in integrityReadinessTags"
+              :key="tag.label"
+              :theme="tag.tone"
+              variant="light"
+            >
+              {{ tag.label }}
+            </t-tag>
+          </div>
+          <BusinessStatusSummary :items="integritySummaryItems" />
+          <t-table
+            row-key="key"
+            size="small"
+            :columns="integrityColumns"
+            :data="integrityIssueRows"
+            :loading="integrityLoading"
+            empty="未发现权限数据问题"
+          >
+            <template #severity="{ row }">
+              <t-tag
+                size="small"
+                :theme="row.severityTone"
+                variant="light"
+              >
+                {{ row.severityLabel }}
+              </t-tag>
+            </template>
+            <template #issue="{ row }">
+              <div class="integrity-issue">
+                <span class="integrity-issue__title">{{ row.issueLabel }}</span>
+                <span class="integrity-issue__message">{{ row.message }}</span>
+              </div>
+            </template>
+          </t-table>
+        </template>
+      </div>
+    </t-card>
 
     <div class="organization-grid">
       <t-card
@@ -48,7 +105,7 @@
           size="small"
           :columns="departmentColumns"
           :data="flatDepartments"
-          :loading="loading"
+          :loading="directoryLoading"
           empty="暂无部门"
         >
           <template #name="{ row }">
@@ -104,7 +161,7 @@
           size="small"
           :columns="userColumns"
           :data="filteredUsers"
-          :loading="loading"
+          :loading="directoryLoading"
           empty="暂无人员"
         >
           <template #status="{ row }">
@@ -263,10 +320,12 @@ import type { BusinessStatusSummaryItem } from "../../components/business-status
 import {
   createOrganizationDepartment,
   fetchOrganizationDirectory,
+  fetchPermissionIntegrity,
   updateOrganizationDepartment,
   updateOrganizationUser,
   type OrganizationDirectory,
-  type OrganizationDirectoryUser
+  type OrganizationDirectoryUser,
+  type PermissionIntegrityReadModel
 } from "../../api/organization.api";
 import {
   buildCreateDepartmentPayload,
@@ -279,6 +338,10 @@ import {
   globalPositionsText,
   mustChangePasswordText,
   organizationActionConsequence,
+  permissionIntegrityIssueRows as buildPermissionIntegrityIssueRows,
+  permissionIntegrityPolicyText,
+  permissionIntegrityReadinessTag,
+  permissionIntegritySummaryItems,
   projectPositionsText,
   userStatusText,
   type FlatOrganizationDepartment,
@@ -293,10 +356,14 @@ const emptyDirectory = (): OrganizationDirectory => ({
 });
 
 const directory = reactive<OrganizationDirectory>(emptyDirectory());
-const loading = ref(false);
+const permissionIntegrity = ref<PermissionIntegrityReadModel | null>(null);
+const directoryLoading = ref(false);
+const integrityLoading = ref(false);
+const refreshing = ref(false);
 const saving = ref(false);
-const pageMessage = ref("");
-const pageMessageTone = ref<"success" | "error">("success");
+const directoryMessage = ref("");
+const directoryMessageTone = ref<"success" | "error">("success");
+const integrityMessage = ref("");
 const dialogVisible = ref(false);
 const dialogAction = ref<OrganizationActionKind | null>(null);
 const dialogMessage = ref("");
@@ -334,6 +401,15 @@ const userColumns = [
   { colKey: "projectPositions", title: "项目岗位（只读）", minWidth: 200 },
   { colKey: "operation", title: "操作", width: 72, fixed: "right" }
 ];
+const integrityColumns = [
+  { colKey: "severity", title: "严重级别", width: 92 },
+  { colKey: "issue", title: "问题", minWidth: 220 },
+  { colKey: "sourceLabel", title: "来源", width: 120 },
+  { colKey: "userId", title: "人员", minWidth: 132 },
+  { colKey: "projectId", title: "项目", minWidth: 132 },
+  { colKey: "roleKey", title: "岗位", minWidth: 150 },
+  { colKey: "assignmentIds", title: "相关记录", minWidth: 200 }
+];
 const userStatusOptions = [
   { label: "启用", value: "active" },
   { label: "停用", value: "inactive" }
@@ -354,6 +430,25 @@ const summaryItems = computed<BusinessStatusSummaryItem[]>(() => [
   { label: "停用人员", value: String(directory.summary.inactiveUsers), tone: "warning" },
   { label: "岗位数", value: String(directory.summary.positions), tone: "default" }
 ]);
+const integrityPolicyText = computed(() =>
+  permissionIntegrity.value
+    ? permissionIntegrityPolicyText(permissionIntegrity.value.policy)
+    : "正在读取全局与项目岗位规范源及兼容读取策略。"
+);
+const integrityReadinessTags = computed(() =>
+  permissionIntegrity.value
+    ? [
+        permissionIntegrityReadinessTag("canonical", permissionIntegrity.value.readiness),
+        permissionIntegrityReadinessTag("migration", permissionIntegrity.value.readiness)
+      ]
+    : []
+);
+const integritySummaryItems = computed<BusinessStatusSummaryItem[]>(() =>
+  permissionIntegrity.value ? permissionIntegritySummaryItems(permissionIntegrity.value.summary) : []
+);
+const integrityIssueRows = computed(() =>
+  permissionIntegrity.value ? buildPermissionIntegrityIssueRows(permissionIntegrity.value.issues) : []
+);
 const dialogTitle = computed(() => {
   if (dialogAction.value === "create_department") return "新建部门";
   if (dialogAction.value === "update_department") return "编辑部门";
@@ -375,22 +470,47 @@ const dialogConfirmButton = computed(() => ({
 const dialogCancelButton = computed(() => ({ content: "取消", disabled: saving.value }));
 
 onMounted(() => {
-  void loadDirectory();
+  void refreshPage();
 });
 
 async function loadDirectory() {
-  loading.value = true;
+  directoryLoading.value = true;
   try {
     const result = await fetchOrganizationDirectory();
     Object.assign(directory, result);
-    pageMessage.value = "";
+    directoryMessage.value = "";
     return true;
   } catch (error) {
-    pageMessageTone.value = "error";
-    pageMessage.value = error instanceof Error ? error.message : "读取组织目录失败，请稍后重试。";
+    directoryMessageTone.value = "error";
+    directoryMessage.value = error instanceof Error ? error.message : "读取组织目录失败，请稍后重试。";
     return false;
   } finally {
-    loading.value = false;
+    directoryLoading.value = false;
+  }
+}
+
+async function loadPermissionIntegrity() {
+  integrityLoading.value = true;
+  try {
+    permissionIntegrity.value = await fetchPermissionIntegrity();
+    integrityMessage.value = "";
+    return true;
+  } catch (error) {
+    integrityMessage.value =
+      error instanceof Error ? error.message : "读取权限完整性预检失败，请稍后重试。";
+    return false;
+  } finally {
+    integrityLoading.value = false;
+  }
+}
+
+async function refreshPage() {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try {
+    await Promise.all([loadDirectory(), loadPermissionIntegrity()]);
+  } finally {
+    refreshing.value = false;
   }
 }
 
@@ -472,8 +592,8 @@ async function submitDialog() {
       );
     }
     const reloaded = await loadDirectory();
-    pageMessageTone.value = reloaded ? "success" : "error";
-    pageMessage.value = reloaded
+    directoryMessageTone.value = reloaded ? "success" : "error";
+    directoryMessage.value = reloaded
       ? "组织信息已保存，并已重新读取最新目录。"
       : "组织信息已保存，但目录刷新失败，请手动刷新。";
     saving.value = false;
@@ -499,7 +619,8 @@ async function submitDialog() {
 .page-head,
 .page-actions,
 .filter-bar,
-.position-tags {
+.position-tags,
+.readiness-tags {
   display: flex;
   align-items: center;
   gap: var(--jg-space-md);
@@ -545,6 +666,26 @@ async function submitDialog() {
   display: flex;
   flex-direction: column;
   gap: var(--jg-space-md);
+}
+
+.integrity-card-content,
+.integrity-issue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--jg-space-md);
+}
+
+.integrity-issue {
+  gap: var(--jg-space-xs);
+}
+
+.integrity-issue__title {
+  color: var(--jg-color-text-primary);
+}
+
+.integrity-issue__message {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
 }
 
 </style>

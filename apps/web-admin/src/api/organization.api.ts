@@ -40,6 +40,53 @@ export interface OrganizationDirectory {
   positions: Array<{ id: string; key: RoleKey; name: string }>;
 }
 
+export type PermissionIntegrityIssueCode =
+  | "duplicate_global_assignment"
+  | "legacy_project_user_position"
+  | "dual_source_project_role"
+  | "invalid_role"
+  | "project_super_admin"
+  | "orphan_user"
+  | "orphan_position"
+  | "orphan_project";
+
+export interface PermissionIntegrityIssue {
+  code: PermissionIntegrityIssueCode;
+  severity: "blocking" | "warning";
+  source: "user_position" | "project_member";
+  assignmentIds: string[];
+  userId?: string;
+  projectId?: string;
+  positionId?: string;
+  roleKey?: string;
+  message: string;
+}
+
+export interface PermissionIntegrityReadModel {
+  policy: {
+    globalWriteSource: "UserPosition(projectId=null)";
+    projectWriteSource: "ProjectMember";
+    legacyProjectUserPositionReadCompatibility: true;
+    projectSuperAdminAllowed: false;
+  };
+  readiness: {
+    canonicalRoleWritesReady: boolean;
+    legacyMigrationReady: boolean;
+  };
+  summary: {
+    globalAssignments: number;
+    canonicalProjectAssignments: number;
+    legacyProjectAssignments: number;
+    duplicateGlobalGroups: number;
+    dualSourceOverlaps: number;
+    invalidRoleAssignments: number;
+    orphanAssignments: number;
+    blockingIssues: number;
+    warningIssues: number;
+  };
+  issues: PermissionIntegrityIssue[];
+}
+
 export interface CreateOrganizationDepartmentPayload {
   name: string;
   parentId?: string | null;
@@ -89,9 +136,9 @@ async function ensureOk(response: Response, fallback: string) {
   throw new Error(message);
 }
 
-async function readJson<T>(path: string): Promise<T> {
-  const response = await apiFetch(path);
-  await ensureOk(response, "读取组织目录失败");
+async function readJson<T>(path: string, fallback = "读取组织目录失败"): Promise<T> {
+  const response = await apiFetch(path, { method: "GET" });
+  await ensureOk(response, fallback);
   return response.json() as Promise<T>;
 }
 
@@ -107,6 +154,13 @@ async function sendJson<T>(path: string, method: "POST" | "PATCH", body: unknown
 
 export function fetchOrganizationDirectory() {
   return readJson<OrganizationDirectory>("/organization/directory");
+}
+
+export function fetchPermissionIntegrity() {
+  return readJson<PermissionIntegrityReadModel>(
+    "/organization/permission-integrity",
+    "读取权限完整性预检失败"
+  );
 }
 
 export function createOrganizationDepartment(payload: CreateOrganizationDepartmentPayload) {

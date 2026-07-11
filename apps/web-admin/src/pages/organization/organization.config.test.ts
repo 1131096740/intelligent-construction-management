@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
   OrganizationDepartmentNode,
-  OrganizationDirectoryUser
+  OrganizationDirectoryUser,
+  PermissionIntegrityReadModel
 } from "../../api/organization.api";
 import {
   buildCreateDepartmentPayload,
@@ -14,6 +15,12 @@ import {
   globalPositionsText,
   mustChangePasswordText,
   organizationActionConsequence,
+  permissionIntegrityIssueLabel,
+  permissionIntegrityPolicyText,
+  permissionIntegrityReadinessTag,
+  permissionIntegritySourceLabel,
+  permissionIntegritySummaryItems,
+  permissionIntegrityIssueRows,
   projectPositionsText,
   userStatusText
 } from "./organization.config";
@@ -83,6 +90,49 @@ const users: OrganizationDirectoryUser[] = [
     projectPositions: []
   }
 ];
+
+const permissionIntegrity: PermissionIntegrityReadModel = {
+  policy: {
+    globalWriteSource: "UserPosition(projectId=null)",
+    projectWriteSource: "ProjectMember",
+    legacyProjectUserPositionReadCompatibility: true,
+    projectSuperAdminAllowed: false
+  },
+  readiness: {
+    canonicalRoleWritesReady: false,
+    legacyMigrationReady: true
+  },
+  summary: {
+    globalAssignments: 2,
+    canonicalProjectAssignments: 3,
+    legacyProjectAssignments: 4,
+    duplicateGlobalGroups: 1,
+    dualSourceOverlaps: 2,
+    invalidRoleAssignments: 0,
+    orphanAssignments: 0,
+    blockingIssues: 3,
+    warningIssues: 4
+  },
+  issues: [
+    {
+      code: "dual_source_project_role",
+      severity: "blocking",
+      source: "user_position",
+      assignmentIds: ["legacy-1", "member-1"],
+      userId: "user-1",
+      projectId: "project-1",
+      roleKey: "project_manager",
+      message: "同一项目岗位同时存在于 UserPosition 和 ProjectMember"
+    },
+    {
+      code: "legacy_project_user_position",
+      severity: "warning",
+      source: "user_position",
+      assignmentIds: [],
+      message: "检测到项目级 UserPosition 遗留岗位事实"
+    }
+  ]
+};
 
 describe("organization config", () => {
   it("flattens the department tree with depth, parent and full path", () => {
@@ -217,5 +267,78 @@ describe("organization config", () => {
     expect(organizationActionConsequence("update_department", false)).toContain("启用人员");
     expect(organizationActionConsequence("update_user", false)).toContain("立即阻止登录");
     expect(organizationActionConsequence("update_user", false)).toContain("保留历史记录和岗位信息");
+  });
+
+  it("maps integrity issue and source codes to stable Chinese labels with safe fallbacks", () => {
+    expect(permissionIntegrityIssueLabel("duplicate_global_assignment")).toBe("全局岗位重复分配");
+    expect(permissionIntegrityIssueLabel("orphan_project")).toBe("项目记录缺失");
+    expect(permissionIntegrityIssueLabel("future_issue")).toBe("未知问题（future_issue）");
+    expect(permissionIntegritySourceLabel("user_position")).toBe("用户岗位（UserPosition）");
+    expect(permissionIntegritySourceLabel("project_member")).toBe("项目成员（ProjectMember）");
+    expect(permissionIntegritySourceLabel("future_source")).toBe("未知来源（future_source）");
+  });
+
+  it("formats server policy and readiness without deriving either from issue counts", () => {
+    expect(permissionIntegrityPolicyText(permissionIntegrity.policy)).toBe(
+      "全局规范源：UserPosition(projectId=null)；项目规范源：ProjectMember；项目级 UserPosition 仅兼容读取；项目范围不允许 super_admin。"
+    );
+    expect(permissionIntegrityReadinessTag("canonical", permissionIntegrity.readiness)).toEqual({
+      label: "规范岗位写入未就绪",
+      tone: "danger"
+    });
+    expect(permissionIntegrityReadinessTag("migration", permissionIntegrity.readiness)).toEqual({
+      label: "遗留迁移已就绪",
+      tone: "success"
+    });
+
+    const contradictoryReadiness = {
+      ...permissionIntegrity,
+      readiness: { canonicalRoleWritesReady: true, legacyMigrationReady: false },
+      summary: { ...permissionIntegrity.summary, blockingIssues: 99, warningIssues: 0 }
+    };
+    expect(permissionIntegrityReadinessTag("canonical", contradictoryReadiness.readiness).label).toBe(
+      "规范岗位写入已就绪"
+    );
+    expect(permissionIntegrityReadinessTag("migration", contradictoryReadiness.readiness).label).toBe(
+      "遗留迁移未就绪"
+    );
+  });
+
+  it("builds the four requested summary items directly from the server summary", () => {
+    expect(permissionIntegritySummaryItems(permissionIntegrity.summary)).toEqual([
+      { label: "阻断项", value: "3", tone: "danger" },
+      { label: "警告项", value: "4", tone: "warning" },
+      { label: "遗留项目岗位", value: "4", tone: "warning" },
+      { label: "双源重叠", value: "2", tone: "danger" }
+    ]);
+  });
+
+  it("turns server issues into stable display rows and fills missing identifiers", () => {
+    expect(permissionIntegrityIssueRows(permissionIntegrity.issues)).toEqual([
+      {
+        key: "dual_source_project_role:legacy-1,member-1",
+        severityLabel: "阻断",
+        severityTone: "danger",
+        issueLabel: "项目岗位双源重叠",
+        message: "同一项目岗位同时存在于 UserPosition 和 ProjectMember",
+        sourceLabel: "用户岗位（UserPosition）",
+        userId: "user-1",
+        projectId: "project-1",
+        roleKey: "project_manager",
+        assignmentIds: "legacy-1、member-1"
+      },
+      {
+        key: "legacy_project_user_position:—",
+        severityLabel: "警告",
+        severityTone: "warning",
+        issueLabel: "项目级 UserPosition 遗留",
+        message: "检测到项目级 UserPosition 遗留岗位事实",
+        sourceLabel: "用户岗位（UserPosition）",
+        userId: "—",
+        projectId: "—",
+        roleKey: "—",
+        assignmentIds: "—"
+      }
+    ]);
   });
 });

@@ -2,9 +2,12 @@ import type {
   CreateOrganizationDepartmentPayload,
   OrganizationDepartmentNode,
   OrganizationDirectoryUser,
+  PermissionIntegrityIssue,
+  PermissionIntegrityReadModel,
   UpdateOrganizationDepartmentPayload,
   UpdateOrganizationUserPayload
 } from "../../api/organization.api";
+import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
 
 export interface FlatOrganizationDepartment extends Omit<OrganizationDepartmentNode, "children"> {
   depth: number;
@@ -42,6 +45,35 @@ export interface OrganizationUserSnapshot {
 }
 
 export type OrganizationActionKind = "create_department" | "update_department" | "update_user";
+
+export interface PermissionIntegrityIssueRow {
+  key: string;
+  severityLabel: "阻断" | "警告";
+  severityTone: "danger" | "warning";
+  issueLabel: string;
+  message: string;
+  sourceLabel: string;
+  userId: string;
+  projectId: string;
+  roleKey: string;
+  assignmentIds: string;
+}
+
+const PERMISSION_INTEGRITY_ISSUE_LABELS: Record<string, string> = {
+  duplicate_global_assignment: "全局岗位重复分配",
+  legacy_project_user_position: "项目级 UserPosition 遗留",
+  dual_source_project_role: "项目岗位双源重叠",
+  invalid_role: "无效岗位",
+  project_super_admin: "项目级超级管理员",
+  orphan_user: "人员记录缺失",
+  orphan_position: "岗位记录缺失",
+  orphan_project: "项目记录缺失"
+};
+
+const PERMISSION_INTEGRITY_SOURCE_LABELS: Record<string, string> = {
+  user_position: "用户岗位（UserPosition）",
+  project_member: "项目成员（ProjectMember）"
+};
 
 function codePointLength(value: string) {
   return Array.from(value).length;
@@ -216,4 +248,68 @@ export function organizationActionConsequence(kind: OrganizationActionKind, isAc
   return kind === "update_department"
     ? "部门名称、上级或状态变更将影响组织目录展示。"
     : "人员部门归属或状态变更将在保存后生效。";
+}
+
+export function permissionIntegrityIssueLabel(code: string) {
+  return PERMISSION_INTEGRITY_ISSUE_LABELS[code] ?? `未知问题（${code || "—"}）`;
+}
+
+export function permissionIntegritySourceLabel(source: string) {
+  return PERMISSION_INTEGRITY_SOURCE_LABELS[source] ?? `未知来源（${source || "—"}）`;
+}
+
+export function permissionIntegrityPolicyText(policy: PermissionIntegrityReadModel["policy"]) {
+  const legacyText = policy.legacyProjectUserPositionReadCompatibility
+    ? "项目级 UserPosition 仅兼容读取"
+    : "项目级 UserPosition 不兼容读取";
+  const superAdminText = policy.projectSuperAdminAllowed
+    ? "项目范围允许 super_admin"
+    : "项目范围不允许 super_admin";
+  return `全局规范源：${policy.globalWriteSource}；项目规范源：${policy.projectWriteSource}；${legacyText}；${superAdminText}。`;
+}
+
+export function permissionIntegrityReadinessTag(
+  kind: "canonical" | "migration",
+  readiness: PermissionIntegrityReadModel["readiness"]
+): { label: string; tone: "success" | "danger" } {
+  const ready =
+    kind === "canonical" ? readiness.canonicalRoleWritesReady : readiness.legacyMigrationReady;
+  return {
+    label:
+      kind === "canonical"
+        ? `规范岗位写入${ready ? "已" : "未"}就绪`
+        : `遗留迁移${ready ? "已" : "未"}就绪`,
+    tone: ready ? "success" : "danger"
+  };
+}
+
+export function permissionIntegritySummaryItems(
+  summary: PermissionIntegrityReadModel["summary"]
+): BusinessStatusSummaryItem[] {
+  return [
+    { label: "阻断项", value: String(summary.blockingIssues), tone: "danger" },
+    { label: "警告项", value: String(summary.warningIssues), tone: "warning" },
+    { label: "遗留项目岗位", value: String(summary.legacyProjectAssignments), tone: "warning" },
+    { label: "双源重叠", value: String(summary.dualSourceOverlaps), tone: "danger" }
+  ];
+}
+
+export function permissionIntegrityIssueRows(
+  issues: readonly PermissionIntegrityIssue[]
+): PermissionIntegrityIssueRow[] {
+  return issues.map((issue) => {
+    const assignmentIds = issue.assignmentIds.length ? issue.assignmentIds.join("、") : "—";
+    return {
+      key: `${issue.code}:${issue.assignmentIds.length ? issue.assignmentIds.join(",") : "—"}`,
+      severityLabel: issue.severity === "blocking" ? "阻断" : "警告",
+      severityTone: issue.severity === "blocking" ? "danger" : "warning",
+      issueLabel: permissionIntegrityIssueLabel(issue.code),
+      message: issue.message,
+      sourceLabel: permissionIntegritySourceLabel(issue.source),
+      userId: issue.userId || "—",
+      projectId: issue.projectId || "—",
+      roleKey: issue.roleKey || "—",
+      assignmentIds
+    };
+  });
 }
