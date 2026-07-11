@@ -4,11 +4,13 @@ import { RequirePositions } from "../auth/decorators/require-positions.decorator
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ConfirmProjectExpenseReceiptDto } from "./dto/confirm-project-expense-receipt.dto";
+import { CreateProjectExpenseDownloadTicketDto } from "./dto/create-project-expense-download-ticket.dto";
 import { CreateProjectExpenseRequestDto } from "./dto/create-project-expense-request.dto";
 import { RecordProjectExpenseExecutionDto } from "./dto/record-project-expense-execution.dto";
 import { RecordProjectExpenseFinanceRecordDto } from "./dto/record-project-expense-finance-record.dto";
 import { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-project-expense-purchase-execution.dto";
 import { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
+import { VoidProjectExpenseRequestDto } from "./dto/void-project-expense-request.dto";
 import { ProjectExpenseService } from "./project-expense.service";
 
 const FUNDS_OVERVIEW_POSITIONS = [
@@ -20,11 +22,6 @@ const FUNDS_OVERVIEW_POSITIONS = [
   "material_director",
   "material_staff"
 ] as const;
-
-interface CreateAttachmentDownloadTicketDto {
-  confirmationPassword?: string;
-  downloadReason?: string;
-}
 
 @Controller("projects/:projectId/expense-requests")
 export class ProjectExpenseController {
@@ -71,14 +68,14 @@ export class ProjectExpenseController {
     @Param("projectId") projectId: string,
     @Param("expenseRequestId") expenseRequestId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body?: CreateAttachmentDownloadTicketDto
+    @Body() body: CreateProjectExpenseDownloadTicketDto
   ) {
     return this.expenses.createAttachmentDownloadTicket(
       projectId,
       expenseRequestId,
       user.id,
-      body?.confirmationPassword,
-      body?.downloadReason
+      body.confirmationPassword,
+      body.downloadReason
     );
   }
 
@@ -87,14 +84,14 @@ export class ProjectExpenseController {
     @Param("projectId") projectId: string,
     @Param("expenseRequestId") expenseRequestId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body?: CreateAttachmentDownloadTicketDto
+    @Body() body: CreateProjectExpenseDownloadTicketDto
   ) {
     return this.expenses.createApprovalPdfDownloadTicket(
       projectId,
       expenseRequestId,
       user.id,
-      body?.confirmationPassword,
-      body?.downloadReason
+      body.confirmationPassword,
+      body.downloadReason
     );
   }
 
@@ -104,7 +101,7 @@ export class ProjectExpenseController {
     @Param("projectId") projectId: string,
     @Param("expenseRequestId") expenseRequestId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { reason: string }
+    @Body() body: VoidProjectExpenseRequestDto
   ) {
     return this.expenses.voidRequest(projectId, expenseRequestId, user.id, body.reason);
   }

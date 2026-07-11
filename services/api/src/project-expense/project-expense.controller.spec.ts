@@ -1,7 +1,64 @@
 import "reflect-metadata";
+import { BadRequestException } from "@nestjs/common";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
+import { createApiValidationPipe } from "../validation/api-validation";
 import { ProjectExpenseController } from "./project-expense.controller";
+
+type ExpenseBodyMethod =
+  | "create"
+  | "reviewApproval"
+  | "createAttachmentDownloadTicket"
+  | "createApprovalPdfDownloadTicket"
+  | "voidRequest"
+  | "recordExecution"
+  | "recordPurchaseExecution"
+  | "recordFinance"
+  | "confirmPurchaseReceipt";
+
+function expenseBodyMetatype(method: ExpenseBodyMethod) {
+  const paramTypes = Reflect.getMetadata(
+    "design:paramtypes",
+    ProjectExpenseController.prototype,
+    method
+  ) as Array<new () => object> | undefined;
+  expect(paramTypes).toBeDefined();
+  const metatype = paramTypes?.[method === "create" ? 2 : 3];
+  expect(metatype).toBeDefined();
+  expect(metatype).not.toBe(Object);
+  return metatype as new () => object;
+}
+
+async function validateExpenseBody(method: ExpenseBodyMethod, value: unknown) {
+  return createApiValidationPipe().transform(value, {
+    type: "body",
+    metatype: expenseBodyMetatype(method),
+    data: undefined
+  });
+}
+
+async function getExpenseValidationResponse(
+  method: ExpenseBodyMethod,
+  value: unknown
+): Promise<Record<string, unknown>> {
+  try {
+    await validateExpenseBody(method, value);
+  } catch (error) {
+    expect(error).toBeInstanceOf(BadRequestException);
+    return (error as BadRequestException).getResponse() as Record<string, unknown>;
+  }
+  throw new Error("Expected project expense body validation to reject the request");
+}
+
+const validExpenseCreateBody = {
+  code: "ZC-2026-001",
+  expenseType: "sporadic_payment",
+  expenseSubtype: "sporadic_material",
+  paymentSubject: "建工智管",
+  reason: "零星材料",
+  requestedAmountCents: "10000",
+  paymentMethod: "bank_transfer"
+};
 
 describe("ProjectExpenseController authorization wiring", () => {
   const fundsOverviewPositions = [
@@ -13,6 +70,175 @@ describe("ProjectExpenseController authorization wiring", () => {
     "material_director",
     "material_staff"
   ];
+
+  it.each([
+    "sporadic_payment",
+    "loan_reserve",
+    "comprehensive_expense",
+    "reimbursement",
+    "spot_purchase"
+  ])("accepts the %s expense type through the controller runtime DTO", async (expenseType) => {
+    const result = await validateExpenseBody("create", {
+      ...validExpenseCreateBody,
+      expenseType
+    });
+
+    expect(result).toBeInstanceOf(expenseBodyMetatype("create"));
+  });
+
+  it.each([
+    "sporadic_material",
+    "sporadic_machinery",
+    "sporadic_labor",
+    "temporary_service",
+    "other_sporadic",
+    "employee_loan",
+    "owner_loan",
+    "project_reserve",
+    "travel",
+    "entertainment",
+    "reimbursement",
+    "spot_material_purchase",
+    "spot_tool_purchase",
+    "spot_service_purchase",
+    "spot_other_purchase"
+  ])("accepts the %s subtype structurally and leaves type compatibility to the service", async (expenseSubtype) => {
+    await expect(
+      validateExpenseBody("create", { ...validExpenseCreateBody, expenseSubtype })
+    ).resolves.toBeDefined();
+  });
+
+  it.each(["cash", "wechat", "alipay", "bank_transfer", "other"])(
+    "accepts the %s payment method",
+    async (paymentMethod) => {
+      await expect(
+        validateExpenseBody("create", { ...validExpenseCreateBody, paymentMethod })
+      ).resolves.toBeDefined();
+    }
+  );
+
+  it.each([
+    ["reviewApproval", { decision: "approve", approvedAmountCents: "0", comment: "同意" }],
+    [
+      "createAttachmentDownloadTicket",
+      { confirmationPassword: "current-password", downloadReason: "附件复核" }
+    ],
+    [
+      "createApprovalPdfDownloadTicket",
+      { confirmationPassword: "current-password", downloadReason: "审批单复核" }
+    ],
+    ["voidRequest", { reason: "重复申请" }],
+    [
+      "recordExecution",
+      {
+        amountCents: "10000",
+        paidAt: "2026-07-11",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      }
+    ],
+    [
+      "recordPurchaseExecution",
+      { executedAt: "2026-07-11T10:00:00.000Z", note: "已采购", confirmationPassword: "current-password" }
+    ],
+    [
+      "recordFinance",
+      { amountCents: "10000", occurredAt: "2026-07-11", confirmationPassword: "current-password" }
+    ],
+    ["confirmPurchaseReceipt", { confirmationPassword: "current-password", note: "数量无误" }]
+  ] as const)("accepts a valid %s body through its runtime DTO", async (method, value) => {
+    const result = await validateExpenseBody(method, value);
+
+    expect(result).toEqual(value);
+    expect(result).toBeInstanceOf(expenseBodyMetatype(method));
+  });
+
+  it.each([100, -1, "-1", "1.2", "1e3", " 1", "01", ""])(
+    "rejects a non-canonical expense amount: %p",
+    async (requestedAmountCents) => {
+      const response = await getExpenseValidationResponse("create", {
+        ...validExpenseCreateBody,
+        requestedAmountCents
+      });
+
+      expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+    }
+  );
+
+  it("allows zero through the expense DTO and keeps the positive service rule", async () => {
+    const result = await validateExpenseBody("create", {
+      ...validExpenseCreateBody,
+      requestedAmountCents: "0"
+    });
+
+    expect(result).toEqual({ ...validExpenseCreateBody, requestedAmountCents: "0" });
+  });
+
+  it("rejects unsupported expense enums", async () => {
+    const typeResponse = await getExpenseValidationResponse("create", {
+      ...validExpenseCreateBody,
+      expenseType: "invoice"
+    });
+    const subtypeResponse = await getExpenseValidationResponse("create", {
+      ...validExpenseCreateBody,
+      expenseSubtype: "hotel"
+    });
+    const methodResponse = await getExpenseValidationResponse("create", {
+      ...validExpenseCreateBody,
+      paymentMethod: "credit_card"
+    });
+
+    expect(typeResponse.errors).toContain("费用类型不正确");
+    expect(subtypeResponse.errors).toContain("费用子类不正确");
+    expect(methodResponse.errors).toContain("付款方式不正确");
+  });
+
+  it("rejects unknown expense fields without exposing submitted values", async () => {
+    const response = await getExpenseValidationResponse("create", {
+      ...validExpenseCreateBody,
+      internalSecret: "TOP-SECRET"
+    });
+
+    expect(response.errors).toEqual(["internalSecret 不是允许提交的字段"]);
+    expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
+  });
+
+  it.each([
+    ["createAttachmentDownloadTicket", "   ", "下载".repeat(101)],
+    ["createApprovalPdfDownloadTicket", "", "下载".repeat(101)]
+  ] as const)("rejects blank password and overlong reason for %s", async (method, confirmationPassword, downloadReason) => {
+    const response = await getExpenseValidationResponse(method, {
+      confirmationPassword,
+      downloadReason
+    });
+
+    expect(response.errors).toEqual(
+      expect.arrayContaining(["请输入当前登录密码", "下载原因不能超过 200 个字"])
+    );
+  });
+
+  it.each([
+    ["recordExecution", { amountCents: "100", paidAt: "bad", voucherFileId: "", confirmationPassword: "" }],
+    ["recordPurchaseExecution", { executedAt: "bad", confirmationPassword: "" }],
+    ["recordFinance", { amountCents: "100", occurredAt: "bad", confirmationPassword: "" }],
+    ["confirmPurchaseReceipt", { confirmationPassword: "" }],
+    ["voidRequest", { reason: "" }]
+  ] as const)("rejects invalid required fields for %s", async (method, value) => {
+    const response = await getExpenseValidationResponse(method, value);
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it("passes the transformed expense DTO to the service exactly once", async () => {
+    const expenses = { create: jest.fn().mockResolvedValue({ id: "expense-1" }) };
+    const controller = new ProjectExpenseController(expenses as never);
+    const body = await validateExpenseBody("create", validExpenseCreateBody);
+
+    await controller.create("project-1", { id: "user-1" } as never, body as never);
+
+    expect(expenses.create).toHaveBeenCalledTimes(1);
+    expect(expenses.create).toHaveBeenCalledWith("project-1", "user-1", body);
+  });
 
   it("guards the expense request list with funds overview positions", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectExpenseController.prototype.list)).toEqual(

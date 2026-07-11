@@ -522,27 +522,30 @@ describe("ProjectExpenseService", () => {
     });
   });
 
-  it("rejects an invalid project expense amount as HTTP 400 before opening a transaction", async () => {
-    const prisma = { $transaction: jest.fn() };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+  it.each(["-1", "0"])(
+    "rejects project expense amount %s as HTTP 400 before opening a transaction",
+    async (requestedAmountCents) => {
+      const prisma = { $transaction: jest.fn() };
+      const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    const error = await service
-      .create("project-1", "handler-1", {
-        code: "LX-2026-NEG",
-        expenseType: "sporadic_payment",
-        expenseSubtype: "sporadic_material",
-        paymentSubject: "建工智管",
-        reason: "负数边界验证",
-        requestedAmountCents: "-1",
-        paymentMethod: "bank_transfer"
-      })
-      .catch((caught: unknown) => caught);
+      const error = await service
+        .create("project-1", "handler-1", {
+          code: "LX-2026-NEG",
+          expenseType: "sporadic_payment",
+          expenseSubtype: "sporadic_material",
+          paymentSubject: "建工智管",
+          reason: "负数边界验证",
+          requestedAmountCents,
+          paymentMethod: "bank_transfer"
+        })
+        .catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(BadRequestException);
-    expect((error as BadRequestException).getStatus()).toBe(400);
-    expect((error as Error).message).toBe("申请金额必须大于零");
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getStatus()).toBe(400);
+      expect((error as Error).message).toBe("申请金额必须大于零");
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ["travel", "差旅费"],

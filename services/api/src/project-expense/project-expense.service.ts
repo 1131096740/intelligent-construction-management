@@ -15,12 +15,12 @@ import {
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
-import { ConfirmProjectExpenseReceiptDto } from "./dto/confirm-project-expense-receipt.dto";
-import { CreateProjectExpenseRequestDto } from "./dto/create-project-expense-request.dto";
-import { RecordProjectExpenseExecutionDto } from "./dto/record-project-expense-execution.dto";
-import { RecordProjectExpenseFinanceRecordDto } from "./dto/record-project-expense-finance-record.dto";
-import { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-project-expense-purchase-execution.dto";
-import { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
+import type { ConfirmProjectExpenseReceiptDto } from "./dto/confirm-project-expense-receipt.dto";
+import type { CreateProjectExpenseRequestDto } from "./dto/create-project-expense-request.dto";
+import type { RecordProjectExpenseExecutionDto } from "./dto/record-project-expense-execution.dto";
+import type { RecordProjectExpenseFinanceRecordDto } from "./dto/record-project-expense-finance-record.dto";
+import type { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-project-expense-purchase-execution.dto";
+import type { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
 
 interface ProjectExpenseApprovalNode {
   name: string;
