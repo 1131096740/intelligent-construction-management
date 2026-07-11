@@ -164,6 +164,24 @@ describe("ContractWorkbenchService", () => {
     ).resolves.toBeDefined();
   });
 
+  it("requires a Chinese adjustment reason when manual amount differs from bill sum", async () => {
+    const tx = ownedVersionTx();
+    const service = makeService(tx);
+
+    await expect(
+      service.saveDraft("version-1", "owner-1", {
+        expectedRevision: 4,
+        draftData: {},
+        clauses: [],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: "2000000"
+      })
+    ).rejects.toThrow("手工合同金额与清单合计不一致时，请填写金额调整说明");
+
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
   it("saves structured payment terms with the draft", async () => {
     const tx = ownedVersionTx({
       paymentTermsVersion: {

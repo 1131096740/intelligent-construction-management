@@ -247,7 +247,7 @@ export class ContractWorkbenchService {
         !input.amountAdjustmentReason?.trim()
       ) {
         throw new BadRequestException(
-          "amountAdjustmentReason is required when manual amount differs from bill sum"
+          "手工合同金额与清单合计不一致时，请填写金额调整说明"
         );
       }
 
