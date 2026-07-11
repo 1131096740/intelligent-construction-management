@@ -35,6 +35,19 @@ describe("business action panel helpers", () => {
       }
     ]);
   });
+
+  it("对领导自审动作明确提示原因和当前密码", () => {
+    expect(
+      toBusinessActionPanelItems([
+        action({
+          key: "review_approval",
+          label: "处理合同审批",
+          kind: "primary",
+          requiresSelfReviewConfirmation: true
+        })
+      ])[0]?.requirementText
+    ).toBe("需填写自审原因 / 需当前密码");
+  });
 });
 
 function action(overrides: Partial<DetailActionReadModel>): DetailActionReadModel {

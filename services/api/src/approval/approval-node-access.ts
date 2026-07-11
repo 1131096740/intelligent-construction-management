@@ -1,4 +1,5 @@
 import type { RoleKey } from "@jiangkong/shared-domain";
+import { requiresApprovalSelfReviewConfirmation } from "./approval-self-review";
 
 interface ApprovalNode {
   roleKeys?: unknown;
@@ -9,6 +10,40 @@ interface ApprovalNode {
 interface ApprovalAssignment {
   toUserId?: unknown;
   fromRoleKey?: unknown;
+}
+
+export interface ApprovalReviewAccess {
+  canAct: boolean;
+  canReview: boolean;
+  requiresSelfReviewConfirmation: boolean;
+}
+
+export function approvalReviewAccessOnFrozenNode(
+  frozenNodes: unknown,
+  currentNodeIndex: number,
+  roleKeys: RoleKey[],
+  userId: string,
+  applicantUserId: string,
+  hasDelegatedRole: boolean
+): ApprovalReviewAccess {
+  const canAct =
+    canActOnFrozenApprovalNode(frozenNodes, currentNodeIndex, roleKeys, userId) ||
+    hasDelegatedRole;
+  const pendingRoleKeys = pendingRoleKeysForFrozenApprovalNode(frozenNodes, currentNodeIndex);
+  const requiresSelfReviewConfirmation =
+    canAct &&
+    requiresApprovalSelfReviewConfirmation({
+      applicantUserId,
+      actorUserId: userId,
+      actorRoleKeys: roleKeys,
+      pendingRoleKeys
+    });
+
+  return {
+    canAct,
+    canReview: canAct && (applicantUserId !== userId || requiresSelfReviewConfirmation),
+    requiresSelfReviewConfirmation
+  };
 }
 
 export function canActOnFrozenApprovalNode(

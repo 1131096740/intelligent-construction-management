@@ -601,4 +601,63 @@ describe("SettlementReadService", () => {
       )
     ).rejects.toThrow("未找到结算绑定的付款条款版本，请刷新结算台账后重试");
   });
+
+  it("结算普通节点不因申请人兼任领导而标记自审确认", async () => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "leader-1",
+          frozenNodes: [{ roleKeys: ["budget_director"] }],
+          currentNodeIndex: 0
+        })
+      }
+    };
+    const service = new SettlementReadService(prisma as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<unknown>;
+      settlementActions(
+        status: string,
+        roleKeys: never[],
+        access: unknown,
+        archiveFiles: never[]
+      ): Array<Record<string, unknown>>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "settlement",
+      "settlement-1",
+      "project-1",
+      ["chairman", "budget_director"],
+      "leader-1"
+    );
+    expect(access).toEqual({
+      canAct: true,
+      canReview: false,
+      requiresSelfReviewConfirmation: false
+    });
+    expect(
+      service.settlementActions(
+        "approval_pending",
+        ["chairman", "budget_director"] as never[],
+        access,
+        []
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "review_approval",
+          enabled: false,
+          disabledReason: "申请人不能审批自己发起的业务",
+          requiresSelfReviewConfirmation: false
+        }),
+        expect.objectContaining({ key: "transfer_approval", enabled: true }),
+        expect.objectContaining({ key: "delegate_approval", enabled: true })
+      ])
+    );
+  });
 });

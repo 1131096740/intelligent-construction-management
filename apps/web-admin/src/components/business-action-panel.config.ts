@@ -36,6 +36,8 @@ export function countEnabledActions(actions: DetailActionReadModel[]) {
 
 function actionRequirements(action: DetailActionReadModel) {
   const requirements = [
+    action.requiresSelfReviewConfirmation ? "需填写自审原因" : "",
+    action.requiresSelfReviewConfirmation ? "需当前密码" : "",
     action.requiresPassword ? "需当前密码" : "",
     action.requiresComment ? "需填写意见" : "",
     action.requiresFile ? "需选择文件" : ""

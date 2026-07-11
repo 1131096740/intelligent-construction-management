@@ -92,6 +92,11 @@
               v-model="paymentActionForm.approvalComment"
               placeholder="审批意见/备注(可选)"
             />
+            <ApprovalSelfReviewFields
+              v-model:self-review-reason="paymentActionForm.selfReviewReason"
+              v-model:confirmation-password="paymentActionForm.selfReviewConfirmationPassword"
+              :required="requiresPaymentSelfReviewConfirmation"
+            />
           </div>
           <div class="action-buttons">
             <t-button
@@ -473,6 +478,8 @@ import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-dom
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
+import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
+import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { clearSelectedFileInput } from "../../components/file-input-reset.config";
@@ -525,6 +532,8 @@ const selectedPaymentPdfArchiveFile = ref<File | null>(null);
 const paymentActionForm = reactive({
   approvedAmountYuan: "",
   approvalComment: "",
+  selfReviewReason: "",
+  selfReviewConfirmationPassword: "",
   executionAmountYuan: "",
   paidAt: toDatetimeLocalValue(new Date()),
   executionConfirmationPassword: "",
@@ -604,6 +613,9 @@ const paymentPdfArchiveFileSummary = computed(() =>
 );
 const paymentActionByKey = computed(
   () => new Map((paymentDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
+);
+const requiresPaymentSelfReviewConfirmation = computed(
+  () => paymentActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
 );
 const showPaymentApprovalActions = computed(
   () => isPaymentActionEnabled("review_approval") || isPaymentActionEnabled("download_approval_form")
@@ -762,6 +774,20 @@ async function submitApproval(decision: "approve" | "reject") {
     actionMessage.value = error instanceof Error ? error.message : "付款审批失败";
     return;
   }
+  let selfReviewPayload;
+  try {
+    selfReviewPayload = buildApprovalSelfReviewPayload(
+      requiresPaymentSelfReviewConfirmation.value,
+      {
+        selfReviewReason: paymentActionForm.selfReviewReason,
+        confirmationPassword: paymentActionForm.selfReviewConfirmationPassword
+      }
+    );
+  } catch (error) {
+    actionMessageTone.value = "danger";
+    actionMessage.value = error instanceof Error ? error.message : "自审确认信息不完整";
+    return;
+  }
   if (decision === "reject" && !comment) {
     actionMessageTone.value = "danger";
     actionMessage.value = "驳回付款审批必须填写原因。";
@@ -777,13 +803,16 @@ async function submitApproval(decision: "approve" | "reject") {
     return;
   }
 
-  await runPaymentAction("approval", () =>
-    reviewPaymentApproval(paymentId, {
+  await runPaymentAction("approval", async () => {
+    await reviewPaymentApproval(paymentId, {
       decision,
       approvedAmountCents,
-      comment
-    })
-  );
+      comment,
+      ...selfReviewPayload
+    });
+    paymentActionForm.selfReviewReason = "";
+    paymentActionForm.selfReviewConfirmationPassword = "";
+  });
 }
 
 async function downloadApprovalForm() {

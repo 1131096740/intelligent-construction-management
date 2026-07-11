@@ -13,7 +13,13 @@ describe("approvalTimelineForBusiness", () => {
             action: "approve",
             actorUserId: "user-1",
             comment: "同意进入下一步",
-            metadata: { nodeName: "财务复核", approvedRoleKey: "finance_director" },
+            metadata: {
+              nodeName: "财务复核",
+              approvedRoleKey: "finance_director",
+              selfReview: true,
+              selfReviewReason: "  紧急业务由本人发起  ",
+              confirmationPassword: "must-never-be-exposed"
+            },
             createdAt: new Date("2026-07-08T02:00:00.000Z")
           }
         ])
@@ -35,6 +41,8 @@ describe("approvalTimelineForBusiness", () => {
         comment: "同意进入下一步",
         nodeName: "财务复核",
         roleName: "财务主管",
+        selfReview: true,
+        selfReviewReason: "紧急业务由本人发起",
         createdAt: "2026-07-08T02:00:00.000Z"
       }
     ]);
@@ -47,6 +55,45 @@ describe("approvalTimelineForBusiness", () => {
       where: { approvalInstanceId: "approval-instance-1" },
       orderBy: { createdAt: "asc" }
     });
+  });
+
+  it.each([
+    { metadata: {}, expectedSelfReview: false, expectedReason: null },
+    {
+      metadata: { selfReview: "true", selfReviewReason: "不应显示" },
+      expectedSelfReview: false,
+      expectedReason: null
+    },
+    {
+      metadata: { selfReview: true, selfReviewReason: "   " },
+      expectedSelfReview: true,
+      expectedReason: null
+    }
+  ])("maps self-review metadata strictly", async ({ metadata, expectedSelfReview, expectedReason }) => {
+    const prisma = {
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue({ id: "approval-instance-1" }) },
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "log-1",
+            action: "approve",
+            actorUserId: "user-1",
+            comment: null,
+            metadata,
+            createdAt: new Date("2026-07-08T02:00:00.000Z")
+          }
+        ])
+      }
+    };
+
+    await expect(
+      approvalTimelineForBusiness(prisma, "payment_request", "payment-1")
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        selfReview: expectedSelfReview,
+        selfReviewReason: expectedReason
+      })
+    );
   });
 
   it("returns an empty timeline when no approval instance exists", async () => {

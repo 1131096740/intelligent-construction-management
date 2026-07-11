@@ -1112,6 +1112,7 @@ describe("PaymentReadService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "applicant-1",
           frozenNodes: [{ roleKeys: ["finance_director"] }],
           currentNodeIndex: 0
         })
@@ -1133,7 +1134,7 @@ describe("PaymentReadService", () => {
     expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({
       where: { businessType: "payment_request", businessId: "payment-1", status: "in_progress" },
       orderBy: { createdAt: "desc" },
-      select: { frozenNodes: true, currentNodeIndex: true }
+      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
     });
     expect(detail.primaryAction).toBe("review_approval");
     expect(detail.availableActions).toContainEqual(
@@ -1142,6 +1143,68 @@ describe("PaymentReadService", () => {
         enabled: true,
         disabledReason: null
       })
+    );
+  });
+
+  it("为本人发起的总经理付款终审节点返回自审确认标记", async () => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "leader-1",
+          frozenNodes: [{ roleKeys: ["chairman", "general_manager"] }],
+          currentNodeIndex: 0
+        })
+      }
+    };
+    const service = new PaymentReadService(prisma as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<unknown>;
+      paymentActions(
+        status: string,
+        roleKeys: never[],
+        access: unknown,
+        executionComplete: boolean,
+        financeRecordedAmountCents: bigint,
+        paidAmountCents: bigint,
+        evidenceFiles: never[]
+      ): Array<Record<string, unknown>>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "payment_request",
+      "payment-1",
+      "project-1",
+      ["general_manager"],
+      "leader-1"
+    );
+    expect(access).toEqual({
+      canAct: true,
+      canReview: true,
+      requiresSelfReviewConfirmation: true
+    });
+    expect(
+      service.paymentActions(
+        "approval_pending",
+        ["general_manager"] as never[],
+        access,
+        false,
+        0n,
+        0n,
+        []
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "review_approval",
+          enabled: true,
+          requiresSelfReviewConfirmation: true
+        })
+      ])
     );
   });
 

@@ -10,7 +10,8 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import {
-  canActOnFrozenApprovalNode,
+  approvalReviewAccessOnFrozenNode,
+  type ApprovalReviewAccess,
   pendingRoleKeysForFrozenApprovalNode
 } from "../approval/approval-node-access";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -32,6 +33,10 @@ import {
   toHistoricalContractPaymentBalance
 } from "../payment/contract-takeover-balance";
 import type { HistoricalContractPaymentBalance } from "../payment/settlement-payment-capacity";
+
+function emptyApprovalReviewAccess(): ApprovalReviewAccess {
+  return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
+}
 
 @Injectable()
 export class ContractReadService {
@@ -456,7 +461,7 @@ export class ContractReadService {
       this.confirmedHistoricalBalanceForContract(contract.id),
       this.actorRoleKeys(actorUserId, contract.projectId)
     ]);
-    const canReviewApproval = await this.canReviewCurrentApproval(
+    const approvalReviewAccess = await this.canReviewCurrentApproval(
       "contract_version",
       version.id,
       contract.projectId,
@@ -468,7 +473,7 @@ export class ContractReadService {
     const availableActions = this.contractActions(
       version.status,
       roleKeys,
-      canReviewApproval,
+      approvalReviewAccess,
       contractArchiveFiles
     );
 
@@ -940,9 +945,9 @@ export class ContractReadService {
     projectId: string,
     roleKeys: RoleKey[],
     actorUserId?: string
-  ): Promise<boolean> {
+  ): Promise<ApprovalReviewAccess> {
     if (!actorUserId) {
-      return false;
+      return emptyApprovalReviewAccess();
     }
 
     const approvalClient = (this.prisma as unknown as {
@@ -950,39 +955,52 @@ export class ContractReadService {
         findFirst(args: {
           where: { businessType: string; businessId: string; status: string };
           orderBy: { createdAt: "desc" };
-          select: { frozenNodes: true; currentNodeIndex: true };
-        }): Promise<{ frozenNodes: unknown; currentNodeIndex: number } | null>;
+          select: { applicantUserId: true; frozenNodes: true; currentNodeIndex: true };
+        }): Promise<{
+          applicantUserId: string;
+          frozenNodes: unknown;
+          currentNodeIndex: number;
+        } | null>;
       };
     }).approvalInstance;
     if (!approvalClient) {
-      return false;
+      return emptyApprovalReviewAccess();
     }
 
     const instance = await approvalClient.findFirst({
       where: { businessType, businessId, status: "in_progress" },
       orderBy: { createdAt: "desc" },
-      select: { frozenNodes: true, currentNodeIndex: true }
+      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
     });
 
     if (!instance) {
-      return false;
+      return emptyApprovalReviewAccess();
     }
 
-    if (
-      canActOnFrozenApprovalNode(
-        instance.frozenNodes,
-        instance.currentNodeIndex,
-        roleKeys,
-        actorUserId
-      )
-    ) {
-      return true;
+    const directOrAssignedAccess = approvalReviewAccessOnFrozenNode(
+      instance.frozenNodes,
+      instance.currentNodeIndex,
+      roleKeys,
+      actorUserId,
+      instance.applicantUserId,
+      false
+    );
+    if (directOrAssignedAccess.canAct) {
+      return directOrAssignedAccess;
     }
 
-    return this.hasDelegatedApprovalRole(
+    const hasDelegatedRole = await this.hasDelegatedApprovalRole(
       actorUserId,
       projectId,
       pendingRoleKeysForFrozenApprovalNode(instance.frozenNodes, instance.currentNodeIndex)
+    );
+    return approvalReviewAccessOnFrozenNode(
+      instance.frozenNodes,
+      instance.currentNodeIndex,
+      roleKeys,
+      actorUserId,
+      instance.applicantUserId,
+      hasDelegatedRole
     );
   }
 
@@ -1039,7 +1057,7 @@ export class ContractReadService {
   private contractActions(
     status: string,
     roleKeys: RoleKey[],
-    canReviewApproval: boolean,
+    approvalReviewAccess: ApprovalReviewAccess,
     archiveFiles: ContractDetailReadModel["archiveFiles"]
   ): DetailActionReadModel[] {
     const workflowActions = [
@@ -1072,7 +1090,7 @@ export class ContractReadService {
         kind: "normal",
         roleKeys,
         skipRoleCheck: true,
-        enabled: canReviewApproval,
+        enabled: approvalReviewAccess.canAct,
         disabledReason: "当前用户不是当前审批节点处理人"
       }),
       detailAction({
@@ -1081,7 +1099,7 @@ export class ContractReadService {
         kind: "normal",
         roleKeys,
         skipRoleCheck: true,
-        enabled: canReviewApproval,
+        enabled: approvalReviewAccess.canAct,
         disabledReason: "当前用户不是当前审批节点处理人"
       }),
       detailAction({
@@ -1116,8 +1134,12 @@ export class ContractReadService {
           roleKeys,
           requiredAction: "contract.approve",
           skipRoleCheck: true,
-          enabled: canReviewApproval,
-          disabledReason: "当前用户不是当前审批节点处理人"
+          enabled: approvalReviewAccess.canReview,
+          requiresSelfReviewConfirmation:
+            approvalReviewAccess.requiresSelfReviewConfirmation,
+          disabledReason: approvalReviewAccess.canAct
+            ? "申请人不能审批自己发起的业务"
+            : "当前用户不是当前审批节点处理人"
         }),
         ...workflowActions
       ];

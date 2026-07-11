@@ -88,6 +88,11 @@
               v-model="settlementArchiveForm.approvalComment"
               placeholder="审批意见/备注(可选)"
             />
+            <ApprovalSelfReviewFields
+              v-model:self-review-reason="settlementArchiveForm.selfReviewReason"
+              v-model:confirmation-password="settlementArchiveForm.selfReviewConfirmationPassword"
+              :required="requiresSettlementSelfReviewConfirmation"
+            />
           </div>
           <div class="action-buttons">
             <t-button
@@ -460,6 +465,8 @@ import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
+import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
+import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { clearSelectedFileInput } from "../../components/file-input-reset.config";
@@ -507,7 +514,9 @@ const settlementArchiveForm = reactive({
   assignmentUserId: "",
   downloadFileId: "",
   downloadPassword: "",
-  approvalComment: ""
+  approvalComment: "",
+  selfReviewReason: "",
+  selfReviewConfirmationPassword: ""
 });
 
 const settlementDetailTitleView = computed(() =>
@@ -565,6 +574,10 @@ const settlementArchiveRecordOptions = computed(() =>
 );
 const settlementActionByKey = computed(
   () => new Map((settlementDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
+);
+const requiresSettlementSelfReviewConfirmation = computed(
+  () =>
+    settlementActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
 );
 const canRunSettlementAction = computed(() => !!settlementDetail.value?.settlementId);
 const showSettlementApprovalActions = computed(
@@ -733,6 +746,20 @@ async function submitSettlementReview(
     archiveActionMessage.value = "驳回或退回审批必须填写原因。";
     return;
   }
+  let selfReviewPayload;
+  try {
+    selfReviewPayload = buildApprovalSelfReviewPayload(
+      requiresSettlementSelfReviewConfirmation.value,
+      {
+        selfReviewReason: settlementArchiveForm.selfReviewReason,
+        confirmationPassword: settlementArchiveForm.selfReviewConfirmationPassword
+      }
+    );
+  } catch (error) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = error instanceof Error ? error.message : "自审确认信息不完整";
+    return;
+  }
   if (
     !confirmSensitiveAction(
       decision === "approve"
@@ -743,12 +770,15 @@ async function submitSettlementReview(
     return;
   }
 
-  await runArchiveAction("reviewApproval", () =>
-    reviewSettlementApproval(settlementId, {
+  await runArchiveAction("reviewApproval", async () => {
+    await reviewSettlementApproval(settlementId, {
       decision,
-      comment
-    })
-  );
+      comment,
+      ...selfReviewPayload
+    });
+    settlementArchiveForm.selfReviewReason = "";
+    settlementArchiveForm.selfReviewConfirmationPassword = "";
+  });
 }
 
 async function downloadSettlementApprovalForm() {

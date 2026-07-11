@@ -1101,4 +1101,64 @@ describe("ContractReadService", () => {
       } as never).getDetail("HT-2026-009")
     ).rejects.toThrow("未找到合同付款条款版本，请刷新合同台账后重试");
   });
+
+  it("为本人发起的董事长终审节点返回精确自审访问标记", async () => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          applicantUserId: "leader-1",
+          frozenNodes: [{ roleKeys: ["chairman", "general_manager"] }],
+          currentNodeIndex: 0
+        })
+      }
+    };
+    const service = new ContractReadService(prisma as never) as unknown as {
+      canReviewCurrentApproval(
+        businessType: string,
+        businessId: string,
+        projectId: string,
+        roleKeys: string[],
+        actorUserId: string
+      ): Promise<unknown>;
+      contractActions(
+        status: string,
+        roleKeys: never[],
+        access: unknown,
+        archiveFiles: never[]
+      ): Array<Record<string, unknown>>;
+    };
+
+    const access = await service.canReviewCurrentApproval(
+      "contract_version",
+      "contract-version-1",
+      "project-1",
+      ["chairman"],
+      "leader-1"
+    );
+    expect(access).toEqual({
+      canAct: true,
+      canReview: true,
+      requiresSelfReviewConfirmation: true
+    });
+    expect(service.contractActions("approval_pending", ["chairman"] as never[], access, [])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "review_approval",
+          enabled: true,
+          requiresSelfReviewConfirmation: true
+        }),
+        expect.objectContaining({ key: "transfer_approval", enabled: true }),
+        expect.objectContaining({ key: "delegate_approval", enabled: true })
+      ])
+    );
+    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({
+      where: {
+        businessType: "contract_version",
+        businessId: "contract-version-1",
+        status: "in_progress"
+      },
+      orderBy: { createdAt: "desc" },
+      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
+    });
+  });
 });

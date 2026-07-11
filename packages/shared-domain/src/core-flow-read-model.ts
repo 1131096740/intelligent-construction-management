@@ -125,6 +125,7 @@ export interface DetailActionReadModel {
   requiresPassword?: boolean;
   requiresComment?: boolean;
   requiresFile?: boolean;
+  requiresSelfReviewConfirmation?: boolean;
 }
 
 export interface ApprovalTimelineItemReadModel {
@@ -136,6 +137,8 @@ export interface ApprovalTimelineItemReadModel {
   comment: string | null;
   nodeName: string | null;
   roleName: string | null;
+  selfReview: boolean;
+  selfReviewReason: string | null;
   createdAt: string;
 }
 

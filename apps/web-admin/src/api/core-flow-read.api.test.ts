@@ -918,7 +918,9 @@ describe("core flow read API client", () => {
 
     await reviewPaymentApproval("FK-2026-006", {
       decision: "approve",
-      approvedAmountCents: "5000000"
+      approvedAmountCents: "5000000",
+      selfReviewReason: "业务紧急",
+      confirmationPassword: " current-password "
     });
     await withdrawPaymentApproval("FK-2026-006");
     await remindPaymentApproval("FK-2026-006");
@@ -959,7 +961,9 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
-        approvedAmountCents: "5000000"
+        approvedAmountCents: "5000000",
+        selfReviewReason: "业务紧急",
+        confirmationPassword: " current-password "
       })
     );
     expect(fetchMock.mock.calls[6][1]?.body).toBe(
@@ -1114,7 +1118,9 @@ describe("core flow read API client", () => {
       numberRuleId: "rule-1"
     });
     await reviewContractApproval("contract-version-1", {
-      decision: "approve"
+      decision: "approve",
+      selfReviewReason: "合同紧急",
+      confirmationPassword: " contract-password "
     });
     await withdrawContractApproval("contract-version-1");
     await remindContractApproval("contract-version-1");
@@ -1126,7 +1132,9 @@ describe("core flow read API client", () => {
     });
     await approveContractSeal("contract-version-1");
     await reviewSettlementApproval("settlement-1", {
-      decision: "approve"
+      decision: "approve",
+      selfReviewReason: "不会在非自审页面生成",
+      confirmationPassword: " settlement-password "
     });
     await withdrawSettlementApproval("settlement-1");
     await remindSettlementApproval("settlement-1");
@@ -1161,7 +1169,16 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[2][1]?.body).toBe(
       JSON.stringify({
-        decision: "approve"
+        decision: "approve",
+        selfReviewReason: "合同紧急",
+        confirmationPassword: " contract-password "
+      })
+    );
+    expect(fetchMock.mock.calls[8][1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        selfReviewReason: "不会在非自审页面生成",
+        confirmationPassword: " settlement-password "
       })
     );
   });

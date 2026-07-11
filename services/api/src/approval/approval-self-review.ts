@@ -27,6 +27,19 @@ export type ApprovalSelfReviewResult =
       metadata: { selfReview: true; selfReviewReason: string };
     };
 
+export function requiresApprovalSelfReviewConfirmation(input: {
+  applicantUserId: string;
+  actorUserId: string;
+  actorRoleKeys: readonly RoleKey[];
+  pendingRoleKeys: readonly RoleKey[];
+}): boolean {
+  if (input.applicantUserId !== input.actorUserId) return false;
+  return input.pendingRoleKeys.some(
+    (roleKey) =>
+      SELF_REVIEW_BUSINESS_ROLES.has(roleKey) && input.actorRoleKeys.includes(roleKey)
+  );
+}
+
 export function assertOrdinaryApplicantCannotReview(input: ApprovalSelfReviewInput): void {
   if (input.applicantUserId !== input.actorUserId) return;
   if (

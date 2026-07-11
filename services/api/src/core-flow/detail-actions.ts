@@ -17,6 +17,7 @@ interface DetailActionInput {
   requiresPassword?: boolean;
   requiresComment?: boolean;
   requiresFile?: boolean;
+  requiresSelfReviewConfirmation?: boolean;
 }
 
 export function detailAction(input: DetailActionInput): DetailActionReadModel {
@@ -40,7 +41,8 @@ export function detailAction(input: DetailActionInput): DetailActionReadModel {
     requiredAction: input.requiredAction,
     requiresPassword: input.requiresPassword,
     requiresComment: input.requiresComment,
-    requiresFile: input.requiresFile
+    requiresFile: input.requiresFile,
+    requiresSelfReviewConfirmation: input.requiresSelfReviewConfirmation
   };
 }
 

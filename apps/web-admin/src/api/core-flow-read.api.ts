@@ -414,11 +414,15 @@ export interface ReviewPaymentApprovalPayload {
   decision: "approve" | "reject";
   approvedAmountCents?: string;
   comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
 }
 
 export interface ReviewContractApprovalPayload {
   decision: "approve" | "reject";
   comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
 }
 
 export interface SubmitContractApprovalPayload {
@@ -442,6 +446,8 @@ export interface ContractNumberRuleReadModel {
 export interface ReviewSettlementApprovalPayload {
   decision: "approve" | "reject" | "reject_previous" | "return_to_applicant";
   comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
 }
 
 export interface AssignSettlementApprovalPayload {

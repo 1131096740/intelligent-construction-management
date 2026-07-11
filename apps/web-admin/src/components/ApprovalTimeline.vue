@@ -16,12 +16,26 @@
           <em>{{ formatTime(item.createdAt) }}</em>
         </div>
         <div
-          v-if="item.nodeName || item.roleName"
+          v-if="item.nodeName || item.roleName || item.selfReview"
           class="approval-timeline__meta"
         >
           <span v-if="item.nodeName">{{ item.nodeName }}</span>
           <span v-if="item.roleName">{{ item.roleName }}</span>
+          <t-tag
+            v-if="item.selfReview"
+            size="small"
+            theme="warning"
+            variant="light"
+          >
+            领导自审
+          </t-tag>
         </div>
+        <p
+          v-if="item.selfReview && item.selfReviewReason"
+          class="approval-timeline__self-review-reason"
+        >
+          自审原因：{{ item.selfReviewReason }}
+        </p>
         <p v-if="item.comment">
           {{ item.comment }}
         </p>
@@ -102,5 +116,11 @@ function formatTime(value: string) {
   margin: 0;
   color: var(--jg-text-main);
   line-height: 1.6;
+}
+
+.approval-timeline__self-review-reason {
+  padding: var(--jg-space-sm);
+  border-radius: var(--jg-radius-sm);
+  background: var(--jg-bg-warning-soft);
 }
 </style>

@@ -103,8 +103,20 @@ export async function approvalTimelineForBusiness(
     comment: log.comment ?? null,
     nodeName: metadataString(log.metadata, "nodeName") ?? metadataString(log.metadata, "fromNodeName"),
     roleName: roleLabel(metadataString(log.metadata, "approvedRoleKey")),
+    selfReview: metadataBoolean(log.metadata, "selfReview"),
+    selfReviewReason:
+      metadataBoolean(log.metadata, "selfReview")
+        ? metadataString(log.metadata, "selfReviewReason")?.trim() ?? null
+        : null,
     createdAt: log.createdAt.toISOString()
   }));
+}
+
+function metadataBoolean(metadata: unknown, key: string): boolean {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return false;
+  }
+  return (metadata as Record<string, unknown>)[key] === true;
 }
 
 function roleLabel(roleKey: string | null): string | null {

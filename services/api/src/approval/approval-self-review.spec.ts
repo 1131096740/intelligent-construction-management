@@ -1,7 +1,50 @@
 import {
   assertOrdinaryApplicantCannotReview,
-  confirmApprovalSelfReview
+  confirmApprovalSelfReview,
+  requiresApprovalSelfReviewConfirmation
 } from "./approval-self-review";
+
+describe("requiresApprovalSelfReviewConfirmation", () => {
+  it.each(["chairman", "general_manager"] as const)(
+    "requires confirmation when the applicant directly holds the pending %s role",
+    (role) => {
+      expect(
+        requiresApprovalSelfReviewConfirmation({
+          applicantUserId: "leader-1",
+          actorUserId: "leader-1",
+          actorRoleKeys: [role],
+          pendingRoleKeys: [role]
+        })
+      ).toBe(true);
+    }
+  );
+
+  it.each([
+    {
+      name: "mixed leader and ordinary roles at an ordinary node",
+      applicantUserId: "leader-1",
+      actorUserId: "leader-1",
+      actorRoleKeys: ["chairman", "budget_director"],
+      pendingRoleKeys: ["budget_director"]
+    },
+    {
+      name: "ordinary delegate at a leader node",
+      applicantUserId: "delegate-1",
+      actorUserId: "delegate-1",
+      actorRoleKeys: ["budget_director"],
+      pendingRoleKeys: ["chairman"]
+    },
+    {
+      name: "another user's business",
+      applicantUserId: "applicant-1",
+      actorUserId: "chairman-1",
+      actorRoleKeys: ["chairman"],
+      pendingRoleKeys: ["chairman"]
+    }
+  ] as const)("does not require confirmation for $name", (input) => {
+    expect(requiresApprovalSelfReviewConfirmation(input)).toBe(false);
+  });
+});
 
 describe("assertOrdinaryApplicantCannotReview", () => {
   it("拒绝普通岗位申请人审批自己发起的业务", () => {

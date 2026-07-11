@@ -102,6 +102,11 @@
                 v-model="contractArchiveForm.approvalComment"
                 placeholder="审批意见/备注(可选)"
               />
+              <ApprovalSelfReviewFields
+                v-model:self-review-reason="contractArchiveForm.selfReviewReason"
+                v-model:confirmation-password="contractArchiveForm.selfReviewConfirmationPassword"
+                :required="requiresContractSelfReviewConfirmation"
+              />
             </div>
             <div class="action-buttons">
               <t-button
@@ -507,6 +512,8 @@ import type { CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-do
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
+import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
+import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
@@ -566,6 +573,8 @@ const contractArchiveForm = reactive({
   downloadFileId: "",
   downloadPassword: "",
   approvalComment: "",
+  selfReviewReason: "",
+  selfReviewConfirmationPassword: "",
   numberRuleId: ""
 });
 
@@ -638,6 +647,10 @@ const contractEvidenceFilesView = computed(() =>
 const contractApprovalTimelineView = computed(() => contractDetail.value?.approvalTimeline ?? []);
 const contractActionByKey = computed(
   () => new Map((contractDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
+);
+const requiresContractSelfReviewConfirmation = computed(
+  () =>
+    contractActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
 );
 const showContractApprovalActions = computed(
   () =>
@@ -838,6 +851,20 @@ async function submitContractReview(decision: "approve" | "reject") {
     archiveActionMessage.value = "驳回审批必须填写原因。";
     return;
   }
+  let selfReviewPayload;
+  try {
+    selfReviewPayload = buildApprovalSelfReviewPayload(
+      requiresContractSelfReviewConfirmation.value,
+      {
+        selfReviewReason: contractArchiveForm.selfReviewReason,
+        confirmationPassword: contractArchiveForm.selfReviewConfirmationPassword
+      }
+    );
+  } catch (error) {
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = error instanceof Error ? error.message : "自审确认信息不完整";
+    return;
+  }
   if (
     !confirmSensitiveAction(
       decision === "approve"
@@ -848,12 +875,15 @@ async function submitContractReview(decision: "approve" | "reject") {
     return;
   }
 
-  await runArchiveAction("reviewApproval", () =>
-    reviewContractApproval(contractVersionId, {
+  await runArchiveAction("reviewApproval", async () => {
+    await reviewContractApproval(contractVersionId, {
       decision,
-      comment
-    })
-  );
+      comment,
+      ...selfReviewPayload
+    });
+    contractArchiveForm.selfReviewReason = "";
+    contractArchiveForm.selfReviewConfirmationPassword = "";
+  });
 }
 
 async function downloadContractApprovalForm() {
