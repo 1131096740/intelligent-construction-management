@@ -5,7 +5,8 @@ import {
   IsCanonicalMoneyText,
   IsMaxUnicodeTextLength,
   IsOptionalNonBlankText,
-  IsRequiredText
+  IsRequiredText,
+  IsStrictDateOnly
 } from "./static-field-validation";
 
 class StaticFieldValidationDto {
@@ -30,6 +31,9 @@ class StaticFieldValidationDto {
 
   @IsMaxUnicodeTextLength({ max: 3, message: "文字不能超过 3 个字" })
   limitedText!: string;
+
+  @IsStrictDateOnly({ message: "日期必须按 YYYY-MM-DD 填写" })
+  dateOnly!: string;
 }
 
 const bodyMetadata = {
@@ -44,6 +48,7 @@ async function fieldMessages(property: keyof StaticFieldValidationDto, value: un
     requiredText: "必填",
     amount: "0",
     limitedText: "三字内",
+    dateOnly: "2026-07-11",
     [property]: value
   });
   const errors = await validate(dto);
@@ -120,5 +125,18 @@ describe("static field validation decorators", () => {
       return;
     }
     throw new Error("Expected static validation to reject the request");
+  });
+
+  it.each(["2026-02-30", "2026-07-11T00:00:00.000Z", " 2026-07-11"])(
+    "rejects a non-date-only value: %s",
+    async (value) => {
+      await expect(fieldMessages("dateOnly", value)).resolves.toEqual([
+        "日期必须按 YYYY-MM-DD 填写"
+      ]);
+    }
+  );
+
+  it.each(["2024-02-29", "2026-07-11"])("accepts a valid date-only value: %s", async (value) => {
+    await expect(fieldMessages("dateOnly", value)).resolves.toEqual([]);
   });
 });

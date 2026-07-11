@@ -3,15 +3,18 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractTakeoverService } from "./contract-takeover.service";
-import type { AttachContractTakeoverEvidenceDto } from "./dto/attach-contract-takeover-evidence.dto";
-import type { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
-import type {
+import { AttachContractTakeoverEvidenceDto } from "./dto/attach-contract-takeover-evidence.dto";
+import { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
+import {
   CreateContractTakeoverDto,
   UpdateContractTakeoverDto
 } from "./dto/create-contract-takeover.dto";
-import type { PrecheckContractTakeoverImportDto } from "./dto/precheck-contract-takeover-import.dto";
-import type { RecordContractTakeoverCorrectionDto } from "./dto/record-contract-takeover-correction.dto";
-import type { ReviewContractTakeoverImportBatchDto } from "./dto/review-contract-takeover-import-batch.dto";
+import {
+  CreateContractTakeoverImportDraftsDto,
+  PrecheckContractTakeoverImportDto
+} from "./dto/precheck-contract-takeover-import.dto";
+import { RecordContractTakeoverCorrectionDto } from "./dto/record-contract-takeover-correction.dto";
+import { ReviewContractTakeoverImportBatchDto } from "./dto/review-contract-takeover-import-batch.dto";
 
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
@@ -72,7 +75,7 @@ export class ContractTakeoverController {
   @RequireProjectRole("contract.create")
   createDraftsFromImport(
     @Param("projectId") projectId: string,
-    @Body() body: PrecheckContractTakeoverImportDto,
+    @Body() body: CreateContractTakeoverImportDraftsDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.createDraftsFromImport(projectId, body, user.id);
