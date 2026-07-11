@@ -51,6 +51,19 @@ class DuplicateMessageDto {
   name!: string;
 }
 
+class ExpandedPlaceholderDto {
+  @IsNumber({}, { message: "字段不正确，提交值为 $value" })
+  secretField!: number;
+
+  @IsNumber({}, { message: "字段不正确，目标类型为 $target" })
+  classNameField!: number;
+}
+
+class FunctionMessageDto {
+  @IsNumber({}, { message: () => "动态字段不正确" })
+  dynamicField!: number;
+}
+
 const bodyMetadata = (metatype: new () => object) => ({
   type: "body" as const,
   metatype,
@@ -148,6 +161,36 @@ describe("createApiValidationPipe", () => {
     const response = await getBadRequest({ name: null }, DuplicateMessageDto);
 
     expect(response.errors).toEqual(["名称不能为空"]);
+  });
+
+  it("removes class-validator expanded values and target class names", async () => {
+    const response = await getBadRequest(
+      { secretField: "TOP-SECRET", classNameField: "invalid" },
+      ExpandedPlaceholderDto
+    );
+    const serialized = JSON.stringify(response);
+
+    expect(response.errors).toEqual([
+      "secretField 填写不正确",
+      "classNameField 填写不正确"
+    ]);
+    for (const forbidden of [
+      "TOP-SECRET",
+      "ExpandedPlaceholderDto",
+      "value",
+      "target",
+      "isNumber",
+      "constraint",
+      "stack"
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  it("does not trust validation message functions", async () => {
+    const response = await getBadRequest({ dynamicField: "invalid" }, FunctionMessageDto);
+
+    expect(response.errors).toEqual(["dynamicField 填写不正确"]);
   });
 
   it("does not expose validation internals in the response", async () => {
