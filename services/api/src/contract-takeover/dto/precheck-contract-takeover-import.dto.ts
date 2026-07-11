@@ -1,9 +1,12 @@
-import { IsString, registerDecorator, ValidateIf } from "class-validator";
+import { BadRequestException } from "@nestjs/common";
+import { Transform } from "class-transformer";
+import { registerDecorator } from "class-validator";
 import {
   IsOptionalNonBlankText,
   IsRequiredText,
   IsStrictDateOnly
 } from "../../validation/static-field-validation";
+import { API_RAW_BODY_PREFLIGHT } from "../../validation/api-validation";
 
 export interface PrecheckContractTakeoverImportRowDto extends Record<string, unknown> {
   rowNo?: number;
@@ -14,6 +17,9 @@ type StaticRowsRule = {
   message: string;
   validate: (value: unknown) => boolean;
 };
+
+const INVALID_REQUEST_MESSAGE = "提交内容格式不正确，请检查后重试";
+const INVALID_IMPORT_ROW_MESSAGE = "每行历史合同导入数据必须是对象";
 
 function registerStaticRowsRule(
   target: object,
@@ -31,8 +37,32 @@ function registerStaticRowsRule(
 
 function isPlainImportRow(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
+}
+
+function RejectUnsafeSourceImportRows(): PropertyDecorator {
+  return Transform(
+    ({ obj, key }) => {
+      try {
+        const rawRows = (obj as Record<string, unknown>)[key];
+        if (Array.isArray(rawRows) && !rawRows.every(isPlainImportRow)) {
+          throw new Error("invalid import row");
+        }
+        return rawRows;
+      } catch {
+        throw new BadRequestException({
+          message: INVALID_REQUEST_MESSAGE,
+          errors: [INVALID_IMPORT_ROW_MESSAGE]
+        });
+      }
+    },
+    { toClassOnly: true }
+  );
 }
 
 function IsOpenImportRows(): PropertyDecorator {
@@ -49,13 +79,29 @@ function IsOpenImportRows(): PropertyDecorator {
     });
     registerStaticRowsRule(target, propertyKey, {
       name: "staticTakeoverImportRowsItems",
-      message: "每行历史合同导入数据必须是对象",
+      message: INVALID_IMPORT_ROW_MESSAGE,
       validate: (value) => !Array.isArray(value) || value.every(isPlainImportRow)
     });
   };
 }
 
 class ContractTakeoverImportRowsDto {
+  static [API_RAW_BODY_PREFLIGHT](body: unknown) {
+    try {
+      if (body === null || typeof body !== "object") return;
+      const rawRows = (body as Record<string, unknown>).rows;
+      if (Array.isArray(rawRows) && !rawRows.every(isPlainImportRow)) {
+        throw new Error("invalid import row");
+      }
+    } catch {
+      throw new BadRequestException({
+        message: INVALID_REQUEST_MESSAGE,
+        errors: [INVALID_IMPORT_ROW_MESSAGE]
+      });
+    }
+  }
+
+  @RejectUnsafeSourceImportRows()
   @IsOpenImportRows()
   rows!: PrecheckContractTakeoverImportRowDto[];
 }
@@ -67,8 +113,10 @@ export class PrecheckContractTakeoverImportDto extends ContractTakeoverImportRow
   })
   batchNo?: string;
 
-  @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "接管截止日必须是文字" })
+  @IsOptionalNonBlankText({
+    typeMessage: "接管截止日必须是文字",
+    blankMessage: "接管截止日不能为空白"
+  })
   @IsStrictDateOnly({ message: "接管截止日必须按 YYYY-MM-DD 填写且日期必须有效" })
   takeoverCutoffDate?: string;
 

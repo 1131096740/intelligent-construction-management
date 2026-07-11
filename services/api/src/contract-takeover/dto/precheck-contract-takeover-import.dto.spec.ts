@@ -47,6 +47,44 @@ describe("PrecheckContractTakeoverImportDto open rows", () => {
     });
   });
 
+  it("preserves a null-prototype row and its dynamic columns", async () => {
+    const row = Object.assign(Object.create(null) as Record<string, unknown>, {
+      rowNo: 1,
+      dynamicExcelColumn: "原始值"
+    });
+    const result = (await createApiValidationPipe().transform(
+      { rows: [row] },
+      bodyMetadata
+    )) as PrecheckContractTakeoverImportDto;
+
+    expect(result.rows[0]).toBe(row);
+    expect(result.rows[0]).toEqual(row);
+  });
+
+  it.each([
+    [Object.assign(Object.create({ inherited: "unsafe" }) as object, { rowNo: 1 })],
+    [new (class ImportRow { rowNo = 1; })()]
+  ])("rejects a custom-prototype source row with one fixed error", async (row) => {
+    const response = await getImportRowsValidationResponse({ rows: [row] });
+
+    expect(response.errors).toEqual(["每行历史合同导入数据必须是对象"]);
+  });
+
+  it("rejects a throwing row Proxy without exposing its error", async () => {
+    const row = new Proxy(
+      { rowNo: 1 },
+      {
+        getPrototypeOf() {
+          throw new Error("TOP-SECRET");
+        }
+      }
+    );
+    const response = await getImportRowsValidationResponse({ rows: [row] });
+
+    expect(response.errors).toEqual(["每行历史合同导入数据必须是对象"]);
+    expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
+  });
+
   it.each([
     [undefined, "历史合同导入行必须是数组"],
     [null, "历史合同导入行必须是数组"],

@@ -1078,7 +1078,11 @@ export class ContractService {
     if (!stage.triggerEvent?.trim()) {
       throw new BadRequestException(`第 ${index + 1} 条付款条款缺少触发说明。`);
     }
-    if (!Number.isInteger(stage.dueDays) || stage.dueDays < 0) {
+    if (
+      !Number.isSafeInteger(stage.dueDays) ||
+      stage.dueDays < 0 ||
+      stage.dueDays > 2_147_483_647
+    ) {
       throw new BadRequestException(`第 ${index + 1} 条付款期限必须是非负天数。`);
     }
     const advanceDeductionMode = stage.advanceDeductionMode ?? "none";

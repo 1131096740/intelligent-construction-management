@@ -204,7 +204,7 @@ describe("ContractController authorization wiring", () => {
       paymentStages
     });
 
-    expect(response.errors).toContain(message);
+    expect(response.errors).toEqual([message]);
   });
 
   it("rejects unknown nested payment stage fields without exposing their values", async () => {
@@ -234,11 +234,11 @@ describe("ContractController authorization wiring", () => {
   });
 
   it.each([
-    [{ ratioBps: 10_001 }, "付款比例不能大于 10000"],
-    [{ advanceDeductionRatioBps: -1 }, "预付款扣回比例不能小于 0"],
-    [{ advanceDeductionStartRatioBps: 10_001 }, "预付款起扣比例不能大于 10000"],
-    [{ retentionBps: -1 }, "质保金比例不能小于 0"],
-    [{ dueDays: -1 }, "付款期限不能是负数"],
+    [{ ratioBps: 10_001 }, "付款比例必须在 0 到 10000 之间"],
+    [{ advanceDeductionRatioBps: -1 }, "预付款扣回比例必须在 0 到 10000 之间"],
+    [{ advanceDeductionStartRatioBps: 10_001 }, "预付款起扣比例必须在 0 到 10000 之间"],
+    [{ retentionBps: -1 }, "质保金比例必须在 0 到 10000 之间"],
+    [{ dueDays: -1 }, "付款期限必须在 0 到 2147483647 天之间"],
     [{ fixedAmountCents: 100 }, "固定金额格式不正确"],
     [{ requiresInvoice: "true" }, "是否要求发票必须是布尔值"]
   ])("rejects an invalid payment stage scalar: %p", async (patch, message) => {
@@ -247,7 +247,68 @@ describe("ContractController authorization wiring", () => {
       paymentStages: [{ ...validPaymentStage, ...patch }]
     });
 
-    expect(response.errors).toContain(message);
+    expect(response.errors).toEqual([message]);
+  });
+
+  it.each([
+    ["ratioBps", 10_000, "付款比例必须是整数", "付款比例必须在 0 到 10000 之间"],
+    [
+      "advanceDeductionRatioBps",
+      10_000,
+      "预付款扣回比例必须是整数",
+      "预付款扣回比例必须在 0 到 10000 之间"
+    ],
+    [
+      "advanceDeductionStartRatioBps",
+      10_000,
+      "预付款起扣比例必须是整数",
+      "预付款起扣比例必须在 0 到 10000 之间"
+    ],
+    ["retentionBps", 10_000, "质保金比例必须是整数", "质保金比例必须在 0 到 10000 之间"],
+    [
+      "dueDays",
+      2_147_483_647,
+      "付款期限必须是整数天",
+      "付款期限必须在 0 到 2147483647 天之间"
+    ]
+  ] as const)(
+    "enforces one precise integer boundary for payment-stage %s",
+    async (field, max, typeMessage, rangeMessage) => {
+      await expect(
+        validateContractBody(ContractController, "create", 0, {
+          ...validContractDraft,
+          paymentStages: [{ ...validPaymentStage, [field]: max }]
+        })
+      ).resolves.toBeDefined();
+
+      for (const [value, message] of [
+        [max + 1, rangeMessage],
+        [1e100, typeMessage],
+        ["1", typeMessage],
+        [null, typeMessage]
+      ] as const) {
+        const response = await getContractValidationResponse(ContractController, "create", 0, {
+          ...validContractDraft,
+          paymentStages: [{ ...validPaymentStage, [field]: value }]
+        });
+        expect(response.errors).toEqual([message]);
+      }
+    }
+  );
+
+  it("enforces the BIGINT storage boundary for a fixed payment amount", async () => {
+    await expect(
+      validateContractBody(ContractController, "create", 0, {
+        ...validContractDraft,
+        paymentStages: [{ ...validPaymentStage, fixedAmountCents: "9223372036854775807" }]
+      })
+    ).resolves.toBeDefined();
+
+    const response = await getContractValidationResponse(ContractController, "create", 0, {
+      ...validContractDraft,
+      paymentStages: [{ ...validPaymentStage, fixedAmountCents: "9223372036854775808" }]
+    });
+    expect(response.errors).toEqual(["金额超出系统可保存范围"]);
   });
 
   it("preserves contract number override text for the existing service parser", async () => {
@@ -314,6 +375,29 @@ describe("ContractController authorization wiring", () => {
       expect(response.errors).toContain(message);
     }
   );
+
+  it.each([
+    [12, undefined],
+    [13, "编号流水号位数必须在 1 到 12 之间"],
+    [1e100, "编号流水号位数必须是整数"],
+    ["4", "编号流水号位数必须是整数"],
+    [null, "编号流水号位数必须是整数"]
+  ] as const)("enforces one precise sequence-width boundary for %p", async (value, message) => {
+    const body = { name: "规则", pattern: "HT-{sequence}", sequenceWidth: value };
+    if (!message) {
+      await expect(
+        validateContractBody(ContractNumberRuleController, "create", 1, body)
+      ).resolves.toBeDefined();
+      return;
+    }
+    const response = await getContractValidationResponse(
+      ContractNumberRuleController,
+      "create",
+      1,
+      body
+    );
+    expect(response.errors).toEqual([message]);
+  });
 
   it.each([
     ["reviewApproval", { decision: "unsupported" }, "合同审批决定不正确"],

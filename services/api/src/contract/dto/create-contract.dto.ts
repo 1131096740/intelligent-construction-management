@@ -1,18 +1,15 @@
 import { Type } from "class-transformer";
 import {
-  ArrayNotEmpty,
-  IsArray,
   IsBoolean,
   IsIn,
-  IsInt,
   IsString,
-  Max,
-  Min,
   ValidateIf,
   ValidateNested
 } from "class-validator";
 import {
   IsCanonicalMoneyText,
+  IsIntegerInRange,
+  IsOptionalNonEmptyArray,
   IsRequiredText
 } from "../../validation/static-field-validation";
 
@@ -48,9 +45,12 @@ export class CreatePaymentTermsStageDto {
     | "manual_amount";
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsInt({ message: "付款比例必须是整数" })
-  @Min(0, { message: "付款比例不能小于 0" })
-  @Max(10_000, { message: "付款比例不能大于 10000" })
+  @IsIntegerInRange({
+    min: 0,
+    max: 10_000,
+    typeMessage: "付款比例必须是整数",
+    rangeMessage: "付款比例必须在 0 到 10000 之间"
+  })
   ratioBps?: number;
 
   @ValidateIf((_object, value) => value !== undefined)
@@ -73,8 +73,12 @@ export class CreatePaymentTermsStageDto {
   })
   triggerEvent!: string;
 
-  @IsInt({ message: "付款期限必须是整数天" })
-  @Min(0, { message: "付款期限不能是负数" })
+  @IsIntegerInRange({
+    min: 0,
+    max: 2_147_483_647,
+    typeMessage: "付款期限必须是整数天",
+    rangeMessage: "付款期限必须在 0 到 2147483647 天之间"
+  })
   dueDays!: number;
 
   @ValidateIf((_object, value) => value !== undefined)
@@ -84,15 +88,21 @@ export class CreatePaymentTermsStageDto {
   advanceDeductionMode?: "none" | "per_settlement_ratio" | "after_cumulative_settlement_ratio";
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsInt({ message: "预付款扣回比例必须是整数" })
-  @Min(0, { message: "预付款扣回比例不能小于 0" })
-  @Max(10_000, { message: "预付款扣回比例不能大于 10000" })
+  @IsIntegerInRange({
+    min: 0,
+    max: 10_000,
+    typeMessage: "预付款扣回比例必须是整数",
+    rangeMessage: "预付款扣回比例必须在 0 到 10000 之间"
+  })
   advanceDeductionRatioBps?: number;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsInt({ message: "预付款起扣比例必须是整数" })
-  @Min(0, { message: "预付款起扣比例不能小于 0" })
-  @Max(10_000, { message: "预付款起扣比例不能大于 10000" })
+  @IsIntegerInRange({
+    min: 0,
+    max: 10_000,
+    typeMessage: "预付款起扣比例必须是整数",
+    rangeMessage: "预付款起扣比例必须在 0 到 10000 之间"
+  })
   advanceDeductionStartRatioBps?: number;
 
   @IsBoolean({ message: "是否要求发票必须是布尔值" })
@@ -105,9 +115,12 @@ export class CreatePaymentTermsStageDto {
   allowsInstallments!: boolean;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsInt({ message: "质保金比例必须是整数" })
-  @Min(0, { message: "质保金比例不能小于 0" })
-  @Max(10_000, { message: "质保金比例不能大于 10000" })
+  @IsIntegerInRange({
+    min: 0,
+    max: 10_000,
+    typeMessage: "质保金比例必须是整数",
+    rangeMessage: "质保金比例必须在 0 到 10000 之间"
+  })
   retentionBps?: number;
 
   @IsRequiredText({
@@ -146,8 +159,10 @@ export class CreateContractDraftDto {
   paymentTermsOriginalText?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsArray({ message: "付款阶段必须是数组" })
-  @ArrayNotEmpty({ message: "付款阶段至少要填写一条" })
+  @IsOptionalNonEmptyArray({
+    typeMessage: "付款阶段必须是数组",
+    emptyMessage: "付款阶段至少要填写一条"
+  })
   @ValidateNested({ each: true, message: "每条付款阶段必须是对象" })
   @Type(() => CreatePaymentTermsStageDto)
   paymentStages?: CreatePaymentTermsStageDto[];

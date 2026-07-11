@@ -157,6 +157,12 @@ describe("createApiValidationPipe", () => {
     expect(response.errors).toEqual(["明细名称必须是文字"]);
   });
 
+  it("does not recurse into child errors when the container already has an error", async () => {
+    const response = await getBadRequest({ items: {} }, NestedRequestDto);
+
+    expect(response.errors).toEqual(["明细必须是数组"]);
+  });
+
   it("preserves and deduplicates custom Chinese messages", async () => {
     const response = await getBadRequest({ name: null }, DuplicateMessageDto);
 

@@ -1,4 +1,5 @@
 import { registerDecorator } from "class-validator";
+import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 
 type StaticFieldRule = {
   name: string;
@@ -20,6 +21,19 @@ export type OptionalNonBlankTextMessages = {
 export type CanonicalMoneyTextMessages = {
   typeMessage: string;
   formatMessage: string;
+  rangeMessage?: string;
+};
+
+export type IntegerInRangeOptions = {
+  min: number;
+  max: number;
+  typeMessage: string;
+  rangeMessage: string;
+};
+
+export type OptionalNonEmptyArrayMessages = {
+  typeMessage: string;
+  emptyMessage: string;
 };
 
 export type MaxUnicodeTextLengthOptions = {
@@ -71,6 +85,15 @@ function isMoneyTextType(value: unknown) {
 
 function isCanonicalMoneyTextFormat(value: unknown) {
   return typeof value !== "string" || /^(0|[1-9]\d*)$/u.test(value);
+}
+
+function isCanonicalMoneyTextInStorageRange(value: unknown) {
+  if (typeof value !== "string" || !/^(0|[1-9]\d*)$/u.test(value)) return true;
+  return isWithinPostgresBigIntRange(BigInt(value));
+}
+
+function isSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value);
 }
 
 function isStrictDateOnlyFormat(value: unknown) {
@@ -138,6 +161,44 @@ export function IsCanonicalMoneyText(
       name: "staticCanonicalMoneyTextFormat",
       message: messages.formatMessage,
       validate: isCanonicalMoneyTextFormat
+    });
+    registerStaticFieldRule(target, propertyKey, {
+      name: "staticCanonicalMoneyTextRange",
+      message: messages.rangeMessage ?? "金额超出系统可保存范围",
+      validate: isCanonicalMoneyTextInStorageRange
+    });
+  };
+}
+
+export function IsIntegerInRange(options: IntegerInRangeOptions): PropertyDecorator {
+  return (target, propertyKey) => {
+    registerStaticFieldRule(target, propertyKey, {
+      name: "staticIntegerInRangeType",
+      message: options.typeMessage,
+      validate: isSafeInteger
+    });
+    registerStaticFieldRule(target, propertyKey, {
+      name: "staticIntegerInRangeValue",
+      message: options.rangeMessage,
+      validate: (value) =>
+        !isSafeInteger(value) || (value >= options.min && value <= options.max)
+    });
+  };
+}
+
+export function IsOptionalNonEmptyArray(
+  messages: OptionalNonEmptyArrayMessages
+): PropertyDecorator {
+  return (target, propertyKey) => {
+    registerStaticFieldRule(target, propertyKey, {
+      name: "staticOptionalNonEmptyArrayType",
+      message: messages.typeMessage,
+      validate: (value) => value === undefined || Array.isArray(value)
+    });
+    registerStaticFieldRule(target, propertyKey, {
+      name: "staticOptionalNonEmptyArrayEmpty",
+      message: messages.emptyMessage,
+      validate: (value) => value === undefined || !Array.isArray(value) || value.length > 0
     });
   };
 }

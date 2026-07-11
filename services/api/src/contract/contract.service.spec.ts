@@ -52,6 +52,48 @@ describe("ContractService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["fixedAmountCents", "9223372036854775808", "第 1 条固定金额必须大于 0。"],
+    ["dueDays", 2_147_483_648, "第 1 条付款期限必须是非负天数。"]
+  ] as const)(
+    "rejects an out-of-storage payment-stage %s before opening a transaction",
+    async (field, value, message) => {
+      const prisma = { $transaction: jest.fn() };
+      const service = new ContractService(prisma as never, audit as never);
+
+      const error = await service
+        .createDraft(
+          {
+            projectId: "project-1",
+            contractTypeKey: "material_purchase",
+            businessTemplateVersionId: "template-version-1",
+            paymentStages: [
+              {
+                name: "预付款",
+                stageType: "advance",
+                basis: "fixed_amount",
+                fixedAmountCents: "100",
+                triggerAnchor: "contract_effective",
+                triggerEvent: "合同生效",
+                dueDays: 0,
+                requiresInvoice: false,
+                allowsEarlyPayment: false,
+                allowsInstallments: true,
+                originalText: "合同生效后支付预付款",
+                [field]: value
+              }
+            ]
+          },
+          "contract-staff-1"
+        )
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as Error).message).toBe(message);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    }
+  );
+
   function pdfHexText(value: string) {
     const buffer = Buffer.from(value, "utf16le");
     for (let index = 0; index < buffer.length; index += 2) {

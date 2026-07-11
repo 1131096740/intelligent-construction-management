@@ -47,6 +47,11 @@ describe("calculateBillRow", () => {
 });
 
 describe("internal bigint money compatibility", () => {
+  const postgresBigIntMax = "9223372036854775807";
+  const postgresBigIntMaxPlusOne = "9223372036854775808";
+  const postgresBigIntMin = "-9223372036854775808";
+  const postgresBigIntMinMinusOne = "-9223372036854775809";
+
   it("parses and serializes the final decimal-string API contract", () => {
     expect(parseMoneyCents("2100000001", "合同金额")).toBe(2_100_000_001n);
     expect(parseMoneyCents("9007199254740993", "累计金额")).toBe(
@@ -125,6 +130,31 @@ describe("internal bigint money compatibility", () => {
         BadRequestException
       );
     }
+  });
+
+  it("keeps non-negative money within the PostgreSQL BIGINT storage range", () => {
+    expect(parseMoneyCents(postgresBigIntMax, "金额")).toBe(9_223_372_036_854_775_807n);
+    expect(() => parseMoneyCents(postgresBigIntMaxPlusOne, "金额")).toThrow(
+      "金额超出系统可保存范围"
+    );
+    expect(() => parseMoneyCentsInput(postgresBigIntMaxPlusOne, "金额")).toThrow(
+      BadRequestException
+    );
+  });
+
+  it("keeps signed money within the PostgreSQL BIGINT storage range", () => {
+    expect(parseSignedMoneyCents(postgresBigIntMin, "人工调整金额")).toBe(
+      -9_223_372_036_854_775_808n
+    );
+    expect(parseSignedMoneyCents(postgresBigIntMax, "人工调整金额")).toBe(
+      9_223_372_036_854_775_807n
+    );
+    expect(() => parseSignedMoneyCents(postgresBigIntMinMinusOne, "人工调整金额")).toThrow(
+      "人工调整金额超出系统可保存范围"
+    );
+    expect(() => parseSignedMoneyCents(postgresBigIntMaxPlusOne, "人工调整金额")).toThrow(
+      "人工调整金额超出系统可保存范围"
+    );
   });
 
   it("accepts only bigint database money values", () => {

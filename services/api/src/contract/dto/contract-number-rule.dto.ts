@@ -1,5 +1,6 @@
-import { IsInt, Max, Min, ValidateIf } from "class-validator";
+import { ValidateIf } from "class-validator";
 import {
+  IsIntegerInRange,
   IsOptionalNonBlankText,
   IsRequiredText
 } from "../../validation/static-field-validation";
@@ -44,9 +45,12 @@ export class CreateContractNumberRuleDto {
   })
   contractTypeKey?: string | null;
 
-  @IsInt({ message: "编号流水号位数必须是整数" })
-  @Min(1, { message: "编号流水号位数不能小于 1" })
-  @Max(12, { message: "编号流水号位数不能大于 12" })
+  @IsIntegerInRange({
+    min: 1,
+    max: 12,
+    typeMessage: "编号流水号位数必须是整数",
+    rangeMessage: "编号流水号位数必须在 1 到 12 之间"
+  })
   sequenceWidth!: number;
 }
 
@@ -85,8 +89,11 @@ export class UpdateContractNumberRuleDto {
   contractTypeKey?: string | null;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsInt({ message: "编号流水号位数必须是整数" })
-  @Min(1, { message: "编号流水号位数不能小于 1" })
-  @Max(12, { message: "编号流水号位数不能大于 12" })
+  @IsIntegerInRange({
+    min: 1,
+    max: 12,
+    typeMessage: "编号流水号位数必须是整数",
+    rangeMessage: "编号流水号位数必须在 1 到 12 之间"
+  })
   sequenceWidth?: number;
 }

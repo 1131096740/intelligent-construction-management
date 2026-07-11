@@ -1,4 +1,4 @@
-import { IsIn, IsString, ValidateIf } from "class-validator";
+import { IsIn, ValidateIf } from "class-validator";
 import {
   IsCanonicalMoneyText,
   IsOptionalNonBlankText,
@@ -167,8 +167,10 @@ export class CreateContractTakeoverDto {
   })
   evidenceSummary?: string;
 
-  @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "接管截止日必须是文字" })
+  @IsOptionalNonBlankText({
+    typeMessage: "接管截止日必须是文字",
+    blankMessage: "接管截止日不能为空白"
+  })
   @IsStrictDateOnly({ message: "接管截止日必须按 YYYY-MM-DD 填写且日期必须有效" })
   takeoverCutoffDate?: string;
 

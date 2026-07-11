@@ -185,6 +185,27 @@ describe("ContractTakeoverController", () => {
     expect(response.errors).toEqual([message]);
   });
 
+  it.each([
+    [null, "接管截止日必须是文字"],
+    [123, "接管截止日必须是文字"],
+    ["", "接管截止日不能为空白"],
+    ["   ", "接管截止日不能为空白"],
+    ["2026-02-30", "接管截止日必须按 YYYY-MM-DD 填写且日期必须有效"],
+    ["2026-07-10T00:00:00.000Z", "接管截止日必须按 YYYY-MM-DD 填写且日期必须有效"]
+  ])("returns one precise optional cutoff error for %p", async (value, message) => {
+    for (const [method, body] of [
+      ["create", { ...validTakeover, takeoverCutoffDate: value }],
+      ["precheckImport", { rows: [validImportRow], takeoverCutoffDate: value }]
+    ] as const) {
+      const response = await getTakeoverValidationResponse(
+        method,
+        method === "create" ? 1 : 1,
+        body
+      );
+      expect(response.errors).toEqual([message]);
+    }
+  });
+
   it.each(["amountCents", "historicalSettledCents", "historicalApprovalPendingPaymentCents", "historicalApprovedPendingPaymentCents", "historicalPaidCents", "historicalProxyPaidCents", "historicalAdvancePaidCents", "historicalAdvanceDeductedCents", "historicalRetentionWithheldCents", "historicalRetentionReleasedCents", "otherConfirmedOccupancyCents"])(
     "rejects a non-canonical takeover money field: %s",
     async (field) => {
@@ -195,6 +216,24 @@ describe("ContractTakeoverController", () => {
 
       expect(response.errors).toHaveLength(1);
       expect((response.errors as string[])[0]).toContain("必须按分填写为 0 或更大的整数");
+    }
+  );
+
+  it.each(["amountCents", "historicalSettledCents", "historicalApprovalPendingPaymentCents", "historicalApprovedPendingPaymentCents", "historicalPaidCents", "historicalProxyPaidCents", "historicalAdvancePaidCents", "historicalAdvanceDeductedCents", "historicalRetentionWithheldCents", "historicalRetentionReleasedCents", "otherConfirmedOccupancyCents"])(
+    "enforces the BIGINT storage boundary for takeover money field: %s",
+    async (field) => {
+      await expect(
+        validateTakeoverBody("create", 1, {
+          ...validTakeover,
+          [field]: "9223372036854775807"
+        })
+      ).resolves.toBeDefined();
+
+      const response = await getTakeoverValidationResponse("create", 1, {
+        ...validTakeover,
+        [field]: "9223372036854775808"
+      });
+      expect(response.errors).toEqual(["金额超出系统可保存范围"]);
     }
   );
 

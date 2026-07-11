@@ -3,7 +3,9 @@ import { validate } from "class-validator";
 import { createApiValidationPipe } from "./api-validation";
 import {
   IsCanonicalMoneyText,
+  IsIntegerInRange,
   IsMaxUnicodeTextLength,
+  IsOptionalNonEmptyArray,
   IsOptionalNonBlankText,
   IsRequiredText,
   IsStrictDateOnly
@@ -34,6 +36,20 @@ class StaticFieldValidationDto {
 
   @IsStrictDateOnly({ message: "日期必须按 YYYY-MM-DD 填写" })
   dateOnly!: string;
+
+  @IsIntegerInRange({
+    min: 0,
+    max: 10_000,
+    typeMessage: "比例必须是安全整数",
+    rangeMessage: "比例必须在 0 到 10000 之间"
+  })
+  ratioBps!: number;
+
+  @IsOptionalNonEmptyArray({
+    typeMessage: "列表必须是数组",
+    emptyMessage: "列表至少填写一条"
+  })
+  items?: unknown[];
 }
 
 const bodyMetadata = {
@@ -49,6 +65,7 @@ async function fieldMessages(property: keyof StaticFieldValidationDto, value: un
     amount: "0",
     limitedText: "三字内",
     dateOnly: "2026-07-11",
+    ratioBps: 0,
     [property]: value
   });
   const errors = await validate(dto);
@@ -90,12 +107,44 @@ describe("static field validation decorators", () => {
     await expect(fieldMessages("amount", value)).resolves.toEqual([message]);
   });
 
+  it.each([
+    ["9223372036854775807", []],
+    ["9223372036854775808", ["金额超出系统可保存范围"]]
+  ])("enforces the PostgreSQL BIGINT money range for %s", async (value, messages) => {
+    await expect(fieldMessages("amount", value)).resolves.toEqual(messages);
+  });
+
+  it.each([
+    [undefined, ["比例必须是安全整数"]],
+    [null, ["比例必须是安全整数"]],
+    ["1", ["比例必须是安全整数"]],
+    [1.5, ["比例必须是安全整数"]],
+    [Number.MAX_SAFE_INTEGER + 1, ["比例必须是安全整数"]],
+    [1e100, ["比例必须是安全整数"]],
+    [-1, ["比例必须在 0 到 10000 之间"]],
+    [10_001, ["比例必须在 0 到 10000 之间"]],
+    [10_000, []]
+  ])("returns one precise integer-range error for %p", async (value, messages) => {
+    await expect(fieldMessages("ratioBps", value)).resolves.toEqual(messages);
+  });
+
+  it.each([
+    [undefined, []],
+    [null, ["列表必须是数组"]],
+    [{}, ["列表必须是数组"]],
+    [[], ["列表至少填写一条"]],
+    [[{}], []]
+  ])("returns one precise optional-array error for %p", async (value, messages) => {
+    await expect(fieldMessages("items", value)).resolves.toEqual(messages);
+  });
+
   it("accepts valid text and canonical money without changing their values", async () => {
     const value = {
       requiredText: "内 部空格",
       optionalText: "可 选文字",
       amount: "2100000000",
-      limitedText: "😀😀😀"
+      limitedText: "😀😀😀",
+      ratioBps: 0
     };
     const result = await createApiValidationPipe().transform(value, bodyMetadata);
 
@@ -110,7 +159,8 @@ describe("static field validation decorators", () => {
         {
           requiredText: { secret: "TOP-SECRET" },
           amount: "0",
-          limitedText: "😀😀😀😀"
+          limitedText: "😀😀😀😀",
+          ratioBps: 0
         },
         bodyMetadata
       );

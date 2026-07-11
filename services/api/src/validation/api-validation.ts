@@ -13,6 +13,12 @@ const CHINESE_CHARACTER = /[\u3400-\u9fff]/u;
 const SAFE_PROPERTY_PATH = /^[A-Za-z0-9_.[\]-]+$/u;
 const DYNAMIC_MESSAGE_TOKEN = /\$(?:value|target|constraint\d+)/u;
 
+export const API_RAW_BODY_PREFLIGHT = Symbol("apiRawBodyPreflight");
+
+type RawBodyPreflightMetatype = {
+  [API_RAW_BODY_PREFLIGHT]?: (value: unknown) => void;
+};
+
 function safePropertyPath(path: string): string | null {
   if (!path || path.length > 120 || !SAFE_PROPERTY_PATH.test(path)) {
     return null;
@@ -138,7 +144,9 @@ function flattenValidationErrors(
       }
       messages.push(safeConstraintMessage(error, message, propertyPath));
     }
-    messages.push(...flattenValidationErrors(error.children ?? [], propertyPath));
+    if (!error.constraints || Object.keys(error.constraints).length === 0) {
+      messages.push(...flattenValidationErrors(error.children ?? [], propertyPath));
+    }
   }
 
   return messages;
@@ -162,6 +170,20 @@ class ApiValidationPipe extends ValidationPipe {
         message: INVALID_REQUEST_MESSAGE,
         errors: [BODY_MUST_BE_OBJECT_MESSAGE]
       });
+    }
+    if (metadata.type === "body" && metadata.metatype) {
+      try {
+        const preflight = (metadata.metatype as RawBodyPreflightMetatype)[
+          API_RAW_BODY_PREFLIGHT
+        ];
+        preflight?.(value);
+      } catch (error) {
+        if (error instanceof BadRequestException) throw error;
+        throw new BadRequestException({
+          message: INVALID_REQUEST_MESSAGE,
+          errors: [FALLBACK_ERROR_MESSAGE]
+        });
+      }
     }
     return super.transform(value, metadata);
   }

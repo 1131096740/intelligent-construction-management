@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { isWithinPostgresBigIntRange } from "./money-storage-range";
 
 const HUNDRED = new Prisma.Decimal(100);
 const NON_NEGATIVE_CENTS_TEXT = /^(0|[1-9]\d*)$/;
@@ -125,7 +126,11 @@ export function parseMoneyCents(value: string, fieldName: string): bigint {
   if (typeof value !== "string" || !NON_NEGATIVE_CENTS_TEXT.test(value)) {
     throw new Error(`${fieldName}必须填写非负整数分`);
   }
-  return BigInt(value);
+  const cents = BigInt(value);
+  if (!isWithinPostgresBigIntRange(cents)) {
+    throw new Error(`${fieldName}超出系统可保存范围`);
+  }
+  return cents;
 }
 
 export function parseMoneyCentsInput(
@@ -192,7 +197,11 @@ export function parseSignedMoneyCents(value: string, fieldName: string): bigint 
   if (typeof value !== "string" || !SIGNED_CENTS_TEXT.test(value)) {
     throw new Error(`${fieldName}必须填写整数分`);
   }
-  return BigInt(value);
+  const cents = BigInt(value);
+  if (!isWithinPostgresBigIntRange(cents)) {
+    throw new Error(`${fieldName}超出系统可保存范围`);
+  }
+  return cents;
 }
 
 export function parseSignedMoneyCentsInput(
