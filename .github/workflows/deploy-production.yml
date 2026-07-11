@@ -41,6 +41,11 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Check business errors
+        run: |
+          node services/api/scripts/check-business-errors.self-test.cjs
+          pnpm --filter @jiangkong/api check:business-errors
+
       - name: Test
         run: pnpm test
 
