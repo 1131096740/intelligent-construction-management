@@ -10,6 +10,10 @@ import {
   isContractBillRowPlaceholder
 } from "../contract-document/contract-placeholder-registry";
 import { FileService } from "../file/file.service";
+import type {
+  CreateLayoutTemplateDto,
+  LayoutTemplatePreviewSampleDataDto
+} from "./dto/layout-template.dto";
 
 export interface LayoutInspectionReport {
   placeholders: string[];
@@ -18,13 +22,6 @@ export interface LayoutInspectionReport {
   hasBillLoop: boolean;
   blockingErrors: string[];
   warnings: string[];
-}
-
-interface CreateLayoutInput {
-  name: string;
-  contractTypeKey: string;
-  docxFileId: string;
-  placeholderSchema: unknown;
 }
 
 type RoleClient = {
@@ -86,7 +83,7 @@ export class LayoutTemplateService {
     });
   }
 
-  async createLayout(actorUserId: string, input: CreateLayoutInput) {
+  async createLayout(actorUserId: string, input: CreateLayoutTemplateDto) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
       const file = await tx.fileObject.findUnique({ where: { id: input.docxFileId } });
@@ -140,7 +137,11 @@ export class LayoutTemplateService {
     });
   }
 
-  async queuePreview(versionId: string, actorUserId: string, sampleData: unknown) {
+  async queuePreview(
+    versionId: string,
+    actorUserId: string,
+    sampleData: LayoutTemplatePreviewSampleDataDto
+  ) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
       const version = await this.findVersion(tx, versionId);

@@ -11,12 +11,17 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractTemplateService } from "./contract-template.service";
-import type {
+import {
   CreateBusinessTemplateDto,
   CreateStandardClauseDto,
   PublishTemplateVersionDto,
   UpdateBusinessTemplateVersionDto
 } from "./dto/contract-template.dto";
+import {
+  CreateLayoutTemplateDto,
+  LayoutTemplatePreviewSampleDataDto,
+  PublishTemplateChangeDto
+} from "./dto/layout-template.dto";
 import { LayoutTemplateService } from "./layout-template.service";
 
 const TEMPLATE_GOVERNANCE_POSITIONS = ["contract_director", "super_admin"] as const;
@@ -37,12 +42,7 @@ export class ContractTemplateController {
   @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
   createLayout(
     @Body()
-    body: {
-      name: string;
-      contractTypeKey: string;
-      docxFileId: string;
-      placeholderSchema: unknown;
-    },
+    body: CreateLayoutTemplateDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.layouts.createLayout(user.id, body);
@@ -61,7 +61,7 @@ export class ContractTemplateController {
   @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
   queueLayoutPreview(
     @Param("versionId") versionId: string,
-    @Body() sampleData: unknown,
+    @Body() sampleData: LayoutTemplatePreviewSampleDataDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.layouts.queuePreview(versionId, user.id, sampleData);
@@ -89,7 +89,7 @@ export class ContractTemplateController {
   @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
   publishLayout(
     @Param("versionId") versionId: string,
-    @Body() body: { changeSummary: string },
+    @Body() body: PublishTemplateChangeDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.layouts.publishVersion(versionId, user.id, body.changeSummary);
@@ -233,7 +233,7 @@ export class ContractTemplateController {
   @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
   publishClauseVersion(
     @Param("versionId") versionId: string,
-    @Body() body: { changeSummary: string },
+    @Body() body: PublishTemplateChangeDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.templates.publishClauseVersion(versionId, user.id, body.changeSummary);
