@@ -29,14 +29,14 @@ export function approvalReviewAccessOnFrozenNode(
   const canAct =
     canActOnFrozenApprovalNode(frozenNodes, currentNodeIndex, roleKeys, userId) ||
     hasDelegatedRole;
-  const pendingRoleKeys = pendingRoleKeysForFrozenApprovalNode(frozenNodes, currentNodeIndex);
+  const nodeRoleKeys = roleKeysForFrozenApprovalNode(frozenNodes, currentNodeIndex);
   const requiresSelfReviewConfirmation =
     canAct &&
     requiresApprovalSelfReviewConfirmation({
       applicantUserId,
       actorUserId: userId,
       actorRoleKeys: roleKeys,
-      pendingRoleKeys
+      nodeRoleKeys
     });
 
   return {
@@ -84,6 +84,18 @@ export function pendingRoleKeysForFrozenApprovalNode(
 
   const node = frozenNodes[currentNodeIndex] as ApprovalNode | undefined;
   return node ? pendingRoleKeysForApprovalNode(node) : [];
+}
+
+export function roleKeysForFrozenApprovalNode(
+  frozenNodes: unknown,
+  currentNodeIndex: number
+): RoleKey[] {
+  if (!Array.isArray(frozenNodes)) {
+    return [];
+  }
+
+  const node = frozenNodes[currentNodeIndex] as ApprovalNode | undefined;
+  return node ? stringArray(node.roleKeys).map((role) => role as RoleKey) : [];
 }
 
 export function pendingRoleKeysForApprovalNode(node: ApprovalNode): RoleKey[] {

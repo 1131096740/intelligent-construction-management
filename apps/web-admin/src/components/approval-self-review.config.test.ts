@@ -55,4 +55,34 @@ describe("buildApprovalSelfReviewPayload", () => {
   ])("$name 超长时拒绝", ({ form, message }) => {
     expect(() => buildApprovalSelfReviewPayload(true, form)).toThrow(message);
   });
+
+  it("按 Unicode code point 计算自审原因长度", () => {
+    expect(
+      buildApprovalSelfReviewPayload(true, {
+        selfReviewReason: "🚀".repeat(500),
+        confirmationPassword: "secret"
+      }).selfReviewReason
+    ).toBe("🚀".repeat(500));
+    expect(() =>
+      buildApprovalSelfReviewPayload(true, {
+        selfReviewReason: "🚀".repeat(501),
+        confirmationPassword: "secret"
+      })
+    ).toThrow("自审原因不能超过 500 字");
+  });
+
+  it("按 Unicode code point 计算当前密码长度", () => {
+    expect(
+      buildApprovalSelfReviewPayload(true, {
+        selfReviewReason: "业务紧急",
+        confirmationPassword: "🚀".repeat(256)
+      }).confirmationPassword
+    ).toBe("🚀".repeat(256));
+    expect(() =>
+      buildApprovalSelfReviewPayload(true, {
+        selfReviewReason: "业务紧急",
+        confirmationPassword: "🚀".repeat(257)
+      })
+    ).toThrow("当前密码不能超过 256 字");
+  });
 });

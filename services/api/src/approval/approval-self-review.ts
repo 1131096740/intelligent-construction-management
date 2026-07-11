@@ -31,13 +31,13 @@ export function requiresApprovalSelfReviewConfirmation(input: {
   applicantUserId: string;
   actorUserId: string;
   actorRoleKeys: readonly RoleKey[];
-  pendingRoleKeys: readonly RoleKey[];
+  nodeRoleKeys: readonly RoleKey[];
 }): boolean {
   if (input.applicantUserId !== input.actorUserId) return false;
-  return input.pendingRoleKeys.some(
-    (roleKey) =>
-      SELF_REVIEW_BUSINESS_ROLES.has(roleKey) && input.actorRoleKeys.includes(roleKey)
+  const approvedRoleKey = input.nodeRoleKeys.find((roleKey) =>
+    input.actorRoleKeys.includes(roleKey)
   );
+  return approvedRoleKey !== undefined && SELF_REVIEW_BUSINESS_ROLES.has(approvedRoleKey);
 }
 
 export function assertOrdinaryApplicantCannotReview(input: ApprovalSelfReviewInput): void {

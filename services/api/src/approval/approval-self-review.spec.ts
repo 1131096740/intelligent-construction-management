@@ -13,7 +13,7 @@ describe("requiresApprovalSelfReviewConfirmation", () => {
           applicantUserId: "leader-1",
           actorUserId: "leader-1",
           actorRoleKeys: [role],
-          pendingRoleKeys: [role]
+          nodeRoleKeys: [role]
         })
       ).toBe(true);
     }
@@ -25,21 +25,21 @@ describe("requiresApprovalSelfReviewConfirmation", () => {
       applicantUserId: "leader-1",
       actorUserId: "leader-1",
       actorRoleKeys: ["chairman", "budget_director"],
-      pendingRoleKeys: ["budget_director"]
+      nodeRoleKeys: ["budget_director"]
     },
     {
       name: "ordinary delegate at a leader node",
       applicantUserId: "delegate-1",
       actorUserId: "delegate-1",
       actorRoleKeys: ["budget_director"],
-      pendingRoleKeys: ["chairman"]
+      nodeRoleKeys: ["chairman"]
     },
     {
       name: "another user's business",
       applicantUserId: "applicant-1",
       actorUserId: "chairman-1",
       actorRoleKeys: ["chairman"],
-      pendingRoleKeys: ["chairman"]
+      nodeRoleKeys: ["chairman"]
     }
   ] as const)("does not require confirmation for $name", (input) => {
     expect(requiresApprovalSelfReviewConfirmation(input)).toBe(false);

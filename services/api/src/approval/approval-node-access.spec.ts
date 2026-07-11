@@ -35,6 +35,23 @@ describe("approvalReviewAccessOnFrozenNode", () => {
     });
   });
 
+  it("按节点顺序解析实际直接岗位，不得因后续领导岗位误放行", () => {
+    expect(
+      approvalReviewAccessOnFrozenNode(
+        [{ roleKeys: ["budget_director", "chairman"] }],
+        0,
+        ["budget_director", "chairman"],
+        "leader-1",
+        "leader-1",
+        false
+      )
+    ).toEqual({
+      canAct: true,
+      canReview: false,
+      requiresSelfReviewConfirmation: false
+    });
+  });
+
   it("does not let an assignment create the leader self-review exception", () => {
     expect(
       approvalReviewAccessOnFrozenNode(

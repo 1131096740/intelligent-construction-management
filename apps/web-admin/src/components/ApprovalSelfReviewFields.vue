@@ -10,13 +10,11 @@
     />
     <t-textarea
       v-model="reasonModel"
-      :maxlength="500"
       placeholder="请填写独立的自审原因"
     />
     <t-input
       v-model="passwordModel"
       type="password"
-      :maxlength="256"
       autocomplete="current-password"
       placeholder="请输入当前密码"
     />
