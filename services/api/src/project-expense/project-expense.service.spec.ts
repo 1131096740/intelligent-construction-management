@@ -941,6 +941,72 @@ describe("ProjectExpenseService", () => {
     });
   });
 
+  it("拒绝普通岗位申请人审批自己发起的项目支出", async () => {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: "expense-1",
+            projectId: "project-1",
+            code: "BX-2026-001",
+            expenseType: "reimbursement",
+            status: "approval_pending",
+            requestedAmountCents: 50_000n,
+            approvedAmountCents: null,
+            paidAmountCents: 0n,
+            applicantUserId: "comprehensive-director-1",
+            purchaseExecutedAt: null,
+            receiptConfirmedAt: null
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-instance-1",
+            status: "in_progress",
+            currentNodeIndex: 0,
+            frozenNodes: [
+              {
+                name: "综合部主管",
+                mode: "any",
+                roleKeys: ["comprehensive_director"]
+              },
+              { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+              { name: "财务总监", mode: "any", roleKeys: ["finance_director"] },
+              {
+                name: "董事长/总经理",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"]
+              }
+            ],
+            applicantUserId: "comprehensive-director-1"
+          }
+        ]),
+      projectExpenseRequest: {
+        update: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          status: "approval_pending"
+        })
+      },
+      approvalInstance: { update: jest.fn() },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...roleTables("comprehensive_director")
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never);
+
+    await expect(
+      service.reviewApproval("project-1", "expense-1", "comprehensive-director-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it("generates and archives a reimbursement approval PDF after final approval", async () => {
     const reviewTx = {
       $queryRaw: jest

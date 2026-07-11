@@ -9,6 +9,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
+import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -1870,6 +1871,12 @@ export class PaymentRequestService {
       if (!approvedRoleKey) {
         throw new Error(`当前账号不能处理“${currentNode.name}”付款审批节点`);
       }
+
+      assertOrdinaryApplicantCannotReview({
+        applicantUserId: instance.applicantUserId,
+        actorUserId,
+        actorRoleKeys
+      });
 
       if (input.decision === "reject_previous") {
         if (instance.currentNodeIndex === 0) {

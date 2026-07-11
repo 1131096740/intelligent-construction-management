@@ -1505,6 +1505,53 @@ describe("ContractService", () => {
     });
   });
 
+  it("拒绝普通岗位申请人审批自己发起的合同", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "合同部主管",
+              mode: "any",
+              roleKeys: ["contract_director"]
+            }
+          ],
+          applicantUserId: "contract-director-1"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...approvalRoleTables("contract_director")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma);
+
+    await expect(
+      service.reviewApproval("contract-version-1", "contract-director-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it("lets a standing delegate approve a contract node as the delegator's role", async () => {
     const tx = {
       contractVersion: {

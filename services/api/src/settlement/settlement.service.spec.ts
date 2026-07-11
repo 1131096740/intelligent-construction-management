@@ -2165,6 +2165,50 @@ describe("SettlementService", () => {
     });
   });
 
+  it("拒绝普通岗位申请人审批自己发起的结算", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [{ name: "预算部主管", mode: "any", roleKeys: ["budget_director"] }],
+          applicantUserId: "budget-director-1"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "budget-director-1", name: "张预算", signatureFileId: null }
+        ])
+      },
+      ...approvalRoleTables("budget_director")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never);
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "budget-director-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it("结算审批驳回或退回时必须填写审批意见", async () => {
     const prisma = {
       $transaction: jest.fn()

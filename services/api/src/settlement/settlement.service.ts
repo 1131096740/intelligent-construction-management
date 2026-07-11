@@ -10,6 +10,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
+import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -1095,6 +1096,12 @@ export class SettlementService {
       if (!approvedRoleKey) {
         throw new Error(`当前账号不能处理“${currentNode.name}”节点，请确认是否为该节点审批人`);
       }
+
+      assertOrdinaryApplicantCannotReview({
+        applicantUserId: instance.applicantUserId,
+        actorUserId,
+        actorRoleKeys
+      });
 
       if (input.decision === "reject_previous") {
         if (instance.currentNodeIndex === 0) {

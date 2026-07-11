@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
+import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -506,6 +507,12 @@ export class ProjectExpenseService {
       if (!approvedRoleKey) {
         throw new BadRequestException(`当前用户不能审批项目支出节点：${currentNode.name}`);
       }
+
+      assertOrdinaryApplicantCannotReview({
+        applicantUserId: instance.applicantUserId,
+        actorUserId,
+        actorRoleKeys
+      });
 
       if (input.decision === "reject") {
         const rejected = await tx.projectExpenseRequest.update({

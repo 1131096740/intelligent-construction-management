@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
+import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
@@ -598,6 +599,12 @@ export class ContractService {
       if (!approvedRoleKey) {
         throw new Error("当前账号无权处理该合同审批节点");
       }
+
+      assertOrdinaryApplicantCannotReview({
+        applicantUserId: instance.applicantUserId,
+        actorUserId,
+        actorRoleKeys
+      });
 
       if (input.decision === "reject_previous") {
         if (instance.currentNodeIndex === 0) {
