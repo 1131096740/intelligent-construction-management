@@ -21,6 +21,7 @@
 
 ## 当前下一步
 
+- [x] 阶段 B 岗位撤销影响预览 API 已在本地完成：仅全局 `super_admin` 可调用 `POST /organization/role-changes/preview`，且只接受 `remove`；以全局 `UserPosition(projectId=null)` 和项目 `ProjectMember` 为唯一撤销目标，批量映射合同版本、结算、付款、项目支出四类在途审批，按 `pendingRoleKeys` 、any/all、直接岗位、冻结 assignment、有效委托和自审边界模拟撤岗后当前节点可执行人；目标缺失/歧义、项目 `super_admin`、legacy shadow、最后启用全局管理员和审批数据异常均 fail closed，并返回顺序无关的 SHA-256 稳定快照。本轮严格只读，未验密、未审计、未启动事务、未写岗位；尚未开放 apply、Web 预览交互、Schema/数据库变更或生产验证，未推送、合并或部署。
 - [x] 阶段 B 权限完整性预检 Web 只读展示已完成：全局 `super_admin` 可在“组织权限”页直接读取服务端 `GET /organization/permission-integrity`，查看全局/项目规范写源、规范岗位写入与遗留迁移 readiness、阻断项、警告项、项目级 `UserPosition` 遗留和双源重叠；问题表只映射服务端分类并展示关联人员、项目、岗位和事实记录 ID，行键按问题、来源和事实记录共同区分，不在 Web 重算分类或 readiness。页面首次进入和手动刷新会并行且独立读取组织目录与权限预检，任一失败不会清空另一份已成功数据；部门/人员写入后仍只刷新目录。本轮只展示本地代码/数据预检，尚未对生产执行预检，未开放影响预览、修复、迁移或岗位写入，未改后端、Schema、数据库或生产，未推送、合并或部署。
 - [x] 阶段 B 岗位写入前权限数据完整性预检已完成：新增只允许全局 `super_admin` 读取的 `GET /organization/permission-integrity`，以全局 `UserPosition(projectId=null)` 和项目 `ProjectMember` 为规范写源，纯只读识别全局重复、项目级 `UserPosition` 遗留、双源重叠、无效岗位、项目级 `super_admin` 及人员/岗位/项目孤儿记录，并稳定输出写入与迁移 readiness。本轮只完成本地代码级预检，未连接生产数据、未执行迁移、未开放全局/项目岗位写入或变更影响预览，未改 Schema、未推送、合并、部署或改动生产。
 - [x] API 默认监听地址已在本地分支收紧：未配置、空字符串或纯空白 `HOST` 均只监听 `127.0.0.1`，显式 `HOST=0.0.0.0` / `HOST=::` / `HOST=127.0.0.1` 仍原样生效。生产仍运行旧 SHA `915b86b33e3fc3f387338e440cd1aeb93eae1265`，本轮未推送、合并或部署；必须经用户授权发布后，再使用生产 SSH 只读复验 API 仅监听 `127.0.0.1:3000` 且公网 3000 不可达。
