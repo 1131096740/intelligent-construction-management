@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException } from "@nestjs/common";
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectReceiptDto } from "./dto/record-project-receipt.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
@@ -34,6 +34,154 @@ describe("ProjectService", () => {
       expect(prisma.$transaction).not.toHaveBeenCalled();
     }
   );
+
+  it.each([
+    {
+      method: "createProject",
+      input: { code: "", name: "项目" },
+      message: "请填写项目编号"
+    },
+    {
+      method: "createProject",
+      input: { code: "XM-001", name: "" },
+      message: "请填写项目名称"
+    }
+  ])("项目基础信息无效时返回中文错误", async ({ method, input, message }) => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      (service[method as "createProject"] as never as (
+        actorUserId: string,
+        value: unknown
+      ) => Promise<unknown>)("user-1", input)
+    ).rejects.toThrow(message);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { field: "receivedAt", value: "bad-date", message: "到账日期不正确，请重新选择" },
+    { field: "payerName", value: "", message: "请填写付款方名称" },
+    { field: "sourceType", value: "bad-source", message: "到账来源类型不正确，请重新选择" },
+    { field: "voucherFileId", value: "", message: "请上传到账凭证" },
+    { field: "confirmationPassword", value: "", message: "请输入当前登录密码" }
+  ])("到账 $field 无效时返回中文错误", async ({ field, value, message }) => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectService(prisma as never);
+    const input = {
+      receivedAt: "2026-07-02T00:00:00.000Z",
+      amountCents: "100",
+      payerName: "总包单位",
+      sourceType: "general_contractor_payment",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password",
+      [field]: value
+    };
+
+    await expect(
+      service.recordReceipt("project-1", "finance-1", input as never)
+    ).rejects.toThrow(message);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { field: "reportedAmountCents", value: "0", message: "对上结算报送金额必须大于零" },
+    { field: "approvedAmountCents", value: "0", message: "对上结算审定金额必须大于零" },
+    { field: "settledAt", value: "bad-date", message: "对上结算日期不正确，请重新选择" },
+    { field: "approvingPartyName", value: "", message: "请填写对上结算审定方名称" },
+    { field: "periodLabel", value: "", message: "请填写对上结算期间" },
+    { field: "voucherFileId", value: "", message: "请上传对上结算凭证" },
+    { field: "confirmationPassword", value: "", message: "请输入当前登录密码" }
+  ])("对上结算 $field 无效时返回中文错误", async ({ field, value, message }) => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectService(prisma as never);
+    const input = {
+      settledAt: "2026-07-02T00:00:00.000Z",
+      reportedAmountCents: "100",
+      approvedAmountCents: "100",
+      approvingPartyName: "建设单位",
+      periodLabel: "2026-06",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password",
+      [field]: value
+    };
+
+    await expect(
+      service.recordUpstreamSettlement("project-1", "budget-1", input as never)
+    ).rejects.toThrow(message);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { field: "ownerName", value: "", message: "请填写业主名称" },
+    { field: "contractName", value: "", message: "请填写业主主合同名称" },
+    { field: "contractCode", value: "", message: "请填写业主主合同编号" },
+    { field: "signedAt", value: "bad-date", message: "业主主合同签订日期不正确，请重新选择" },
+    { field: "amountCents", value: "0", message: "业主主合同金额必须大于零" },
+    { field: "taxRateBps", value: undefined, message: "业主主合同税率必须是 0 到 10000 之间的整数" },
+    { field: "pricingMethod", value: "", message: "请填写业主主合同计价方式" },
+    { field: "paymentTermsSummary", value: "", message: "请填写业主主合同付款条款摘要" },
+    { field: "retentionSummary", value: "", message: "请填写业主主合同质保金摘要" },
+    { field: "fileId", value: "", message: "请上传业主主合同文件" }
+  ])("业主主合同 $field 无效时返回中文错误", async ({ field, value, message }) => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectService(prisma as never);
+    const input = {
+      ownerName: "建设单位",
+      contractName: "施工总承包合同",
+      contractCode: "YZ-001",
+      signedAt: "2026-07-02T00:00:00.000Z",
+      amountCents: "100",
+      taxRateBps: 900,
+      pricingMethod: "fixed_total",
+      paymentTermsSummary: "按进度支付",
+      retentionSummary: "3% 质保金",
+      fileId: "file-1",
+      [field]: value
+    };
+
+    await expect(
+      service.recordOwnerContract("project-1", "staff-1", input as never)
+    ).rejects.toThrow(message);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { field: "contractId", value: "", message: "请选择结算例外额度关联合同" },
+    { field: "amountCents", value: "0", message: "结算例外额度必须大于零" },
+    { field: "reason", value: "", message: "请填写结算例外额度申请原因" },
+    { field: "validUntil", value: "bad-date", message: "结算例外额度有效期不正确，请重新选择" },
+    { field: "attachmentFileId", value: "", message: "请上传结算例外额度附件" }
+  ])("结算例外额度 $field 无效时返回中文错误", async ({ field, value, message }) => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectService(prisma as never);
+    const input = {
+      contractId: "contract-1",
+      amountCents: "100",
+      reason: "临时额度",
+      validUntil: "2099-07-02T00:00:00.000Z",
+      attachmentFileId: "file-1",
+      [field]: value
+    };
+
+    await expect(
+      service.requestSettlementExceptionQuota("project-1", "manager-1", input as never)
+    ).rejects.toThrow(message);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { input: { decision: "invalid", confirmationPassword: "password" }, message: "结算例外额度审批动作无效" },
+    { input: { decision: "approve", confirmationPassword: "" }, message: "请输入当前登录密码" }
+  ])("结算例外额度审批参数无效时返回中文错误", async ({ input, message }) => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      service.reviewSettlementExceptionQuota("project-1", "quota-1", "manager-1", input as never)
+    ).rejects.toThrow(message);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 
   it("creates a project and records an audit log", async () => {
     const tx = {
@@ -722,7 +870,9 @@ describe("ProjectService", () => {
     };
     const service = new ProjectService(prisma as never);
 
-    await expect(service.getOperatingFundsOverview("missing")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getOperatingFundsOverview("missing")).rejects.toThrow(
+      "项目不存在或已停用，请刷新后重试"
+    );
   });
 
   it("records actual project receipt with voucher and audit log", async () => {
@@ -1350,7 +1500,7 @@ describe("ProjectService", () => {
         retentionSummary: "3%质保金",
         fileId: "file-1"
       })
-    ).rejects.toThrow("Project owner contract code already exists");
+    ).rejects.toThrow("业主主合同编号已存在");
     expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
     expect(tx.projectOwnerContract.create).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
@@ -1410,7 +1560,7 @@ describe("ProjectService", () => {
         retentionSummary: "3%质保金",
         fileId: "file-1"
       })
-    ).rejects.toThrow("Project owner contract file already exists");
+    ).rejects.toThrow("该业主主合同文件已登记");
     expect(tx.projectOwnerContract.findFirst).toHaveBeenNthCalledWith(1, {
       where: { projectId: "project-1", contractCode: "YZ-2026-002", voidedAt: null },
       select: { id: true }
@@ -1458,7 +1608,7 @@ describe("ProjectService", () => {
         retentionSummary: "3%质保金",
         fileId: "file-1"
       })
-    ).rejects.toThrow("Project owner contract tax rate is required");
+    ).rejects.toThrow("业主主合同税率必须是 0 到 10000 之间的整数");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -2215,7 +2365,7 @@ describe("ProjectService", () => {
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       } satisfies RecordProjectUpstreamSettlementDto)
-    ).rejects.toThrow("Upstream settlement voucher file must be uploaded by the recorder");
+    ).rejects.toThrow("只能使用本人上传的对上结算凭证");
     expect(tx.projectUpstreamSettlement.create).not.toHaveBeenCalled();
   });
 
@@ -2267,7 +2417,7 @@ describe("ProjectService", () => {
         retentionSummary: "3%质保金",
         fileId: "file-1"
       })
-    ).rejects.toThrow("Project owner contract file must be uploaded by the recorder");
+    ).rejects.toThrow("只能使用本人上传的业主主合同文件");
     expect(tx.projectOwnerContract.create).not.toHaveBeenCalled();
   });
 
@@ -2297,7 +2447,7 @@ describe("ProjectService", () => {
       }).confirmOwnerContract("project-1", "owner-contract-1", "contract-director-1", {
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Project owner contract is not pending confirmation");
+    ).rejects.toThrow("当前业主主合同状态不可确认");
     expect(tx.projectOwnerContract.findUnique).not.toHaveBeenCalled();
   });
 
@@ -2330,7 +2480,7 @@ describe("ProjectService", () => {
       }).confirmOwnerContract("project-1", "owner-contract-1", "contract-director-1", {
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Project owner contract is not pending confirmation");
+    ).rejects.toThrow("当前业主主合同状态不可确认");
     expect(tx.projectOwnerContract.findUnique).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
@@ -2854,7 +3004,7 @@ describe("ProjectService", () => {
         voucherFileId: "",
         confirmationPassword: "current-password"
       } satisfies RecordProjectReceiptDto)
-    ).rejects.toThrow("Receipt voucher file is required");
+    ).rejects.toThrow("请上传到账凭证");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -2887,7 +3037,7 @@ describe("ProjectService", () => {
         voucherFileId: "file-1",
         confirmationPassword: "current-password"
       } satisfies RecordProjectReceiptDto)
-    ).rejects.toThrow("Receipt voucher file must be uploaded by the recorder");
+    ).rejects.toThrow("只能使用本人上传的到账凭证");
     expect(tx.projectReceipt.create).not.toHaveBeenCalled();
   });
 });

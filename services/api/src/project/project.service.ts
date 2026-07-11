@@ -133,8 +133,8 @@ export class ProjectService {
   ) {}
 
   async createProject(actorUserId: string, input: CreateProjectDto) {
-    const code = requiredTrimmed(input.code, "Project code is required");
-    const name = requiredTrimmed(input.name, "Project name is required");
+    const code = requiredTrimmed(input.code, "请填写项目编号");
+    const name = requiredTrimmed(input.name, "请填写项目名称");
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -155,14 +155,14 @@ export class ProjectService {
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        throw new BadRequestException("Project code already exists");
+        throw new BadRequestException("项目编号已存在");
       }
       throw error;
     }
   }
 
   async updateProject(projectId: string, actorUserId: string, input: UpdateProjectDto) {
-    const name = requiredTrimmed(input.name, "Project name is required");
+    const name = requiredTrimmed(input.name, "请填写项目名称");
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -184,7 +184,7 @@ export class ProjectService {
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-        throw new NotFoundException("Project not found");
+        throw new NotFoundException("项目不存在，请刷新后重试");
       }
       throw error;
     }
@@ -352,7 +352,7 @@ export class ProjectService {
     });
 
     if (!project) {
-      throw new NotFoundException("Project not found");
+      throw new NotFoundException("项目不存在或已停用，请刷新后重试");
     }
 
     const [
@@ -570,12 +570,12 @@ export class ProjectService {
   async recordReceipt(projectId: string, actorUserId: string, input: RecordProjectReceiptDto) {
     const amountCents = normalizePositiveMoneyCents(input.amountCents, "到账金额必须大于零");
     const receivedAt = parseReceiptDate(input.receivedAt);
-    const payerName = requiredTrimmed(input.payerName, "Receipt payer is required");
+    const payerName = requiredTrimmed(input.payerName, "请填写付款方名称");
     const sourceType = normalizeSourceType(input.sourceType);
-    const voucherFileId = requiredTrimmed(input.voucherFileId, "Receipt voucher file is required");
+    const voucherFileId = requiredTrimmed(input.voucherFileId, "请上传到账凭证");
     const confirmationPassword = requiredTrimmed(
       input.confirmationPassword,
-      "Receipt confirmation password is required"
+      "请输入当前登录密码"
     );
     const description =
       typeof input.description === "string" ? input.description.trim() || undefined : undefined;
@@ -593,7 +593,7 @@ export class ProjectService {
       });
 
       if (!project) {
-        throw new NotFoundException("Project not found");
+        throw new NotFoundException("项目不存在或已停用，请刷新后重试");
       }
 
       const voucher = await tx.fileObject.findUnique({
@@ -602,11 +602,11 @@ export class ProjectService {
       });
 
       if (!voucher) {
-        throw new NotFoundException("Receipt voucher file not found");
+        throw new NotFoundException("到账凭证不存在，请重新上传");
       }
 
       if (voucher.uploadedByUserId !== actorUserId) {
-        throw new BadRequestException("Receipt voucher file must be uploaded by the recorder");
+        throw new BadRequestException("只能使用本人上传的到账凭证");
       }
 
       const receipt = await tx.projectReceipt.create({
@@ -1160,23 +1160,23 @@ export class ProjectService {
   ) {
     const reportedAmountCents = normalizePositiveMoneyCents(
       input.reportedAmountCents,
-      "Upstream settlement reported amount must be greater than zero"
+      "对上结算报送金额必须大于零"
     );
     const approvedAmountCents = normalizePositiveMoneyCents(
       input.approvedAmountCents,
-      "Upstream settlement approved amount must be greater than zero"
+      "对上结算审定金额必须大于零"
     );
     const settledAt = parseUpstreamSettlementDate(input.settledAt);
     const approvingPartyName = requiredTrimmed(
       input.approvingPartyName,
-      "Upstream settlement approving party is required"
+      "请填写对上结算审定方名称"
     );
-    const periodLabel = requiredTrimmed(input.periodLabel, "Upstream settlement period is required");
+    const periodLabel = requiredTrimmed(input.periodLabel, "请填写对上结算期间");
     const isFinal = input.isFinal === true;
-    const voucherFileId = requiredTrimmed(input.voucherFileId, "Upstream settlement voucher file is required");
+    const voucherFileId = requiredTrimmed(input.voucherFileId, "请上传对上结算凭证");
     const confirmationPassword = requiredTrimmed(
       input.confirmationPassword,
-      "Upstream settlement confirmation password is required"
+      "请输入当前登录密码"
     );
     const description =
       typeof input.description === "string" ? input.description.trim() || undefined : undefined;
@@ -1194,7 +1194,7 @@ export class ProjectService {
       });
 
       if (!project) {
-        throw new NotFoundException("Project not found");
+        throw new NotFoundException("项目不存在或已停用，请刷新后重试");
       }
 
       const voucher = await tx.fileObject.findUnique({
@@ -1203,11 +1203,11 @@ export class ProjectService {
       });
 
       if (!voucher) {
-        throw new NotFoundException("Upstream settlement voucher file not found");
+        throw new NotFoundException("对上结算凭证不存在，请重新上传");
       }
 
       if (voucher.uploadedByUserId !== actorUserId) {
-        throw new BadRequestException("Upstream settlement voucher file must be uploaded by the recorder");
+        throw new BadRequestException("只能使用本人上传的对上结算凭证");
       }
 
       const upstreamSettlement = await tx.projectUpstreamSettlement.create({
@@ -1251,28 +1251,28 @@ export class ProjectService {
     actorUserId: string,
     input: RecordProjectOwnerContractDto
   ) {
-    const ownerName = requiredTrimmed(input.ownerName, "Project owner is required");
-    const contractName = requiredTrimmed(input.contractName, "Project owner contract name is required");
-    const contractCode = requiredTrimmed(input.contractCode, "Project owner contract code is required");
+    const ownerName = requiredTrimmed(input.ownerName, "请填写业主名称");
+    const contractName = requiredTrimmed(input.contractName, "请填写业主主合同名称");
+    const contractCode = requiredTrimmed(input.contractCode, "请填写业主主合同编号");
     const signedAt = parseOwnerContractDate(input.signedAt);
     const amountCents = normalizePositiveMoneyCents(
       input.amountCents,
-      "Project owner contract amount must be greater than zero"
+      "业主主合同金额必须大于零"
     );
     const taxRateBps = normalizeRequiredBps(
       input.taxRateBps,
-      "Project owner contract tax rate is required"
+      "业主主合同税率必须是 0 到 10000 之间的整数"
     );
-    const pricingMethod = requiredTrimmed(input.pricingMethod, "Project owner contract pricing method is required");
+    const pricingMethod = requiredTrimmed(input.pricingMethod, "请填写业主主合同计价方式");
     const paymentTermsSummary = requiredTrimmed(
       input.paymentTermsSummary,
-      "Project owner contract payment terms summary is required"
+      "请填写业主主合同付款条款摘要"
     );
     const retentionSummary = requiredTrimmed(
       input.retentionSummary,
-      "Project owner contract retention summary is required"
+      "请填写业主主合同质保金摘要"
     );
-    const fileId = requiredTrimmed(input.fileId, "Project owner contract file is required");
+    const fileId = requiredTrimmed(input.fileId, "请上传业主主合同文件");
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -1282,7 +1282,7 @@ export class ProjectService {
         });
 
         if (!project) {
-          throw new NotFoundException("Project not found");
+          throw new NotFoundException("项目不存在或已停用，请刷新后重试");
         }
 
         const existing = await tx.projectOwnerContract.findFirst({
@@ -1291,7 +1291,7 @@ export class ProjectService {
         });
 
         if (existing) {
-          throw new BadRequestException("Project owner contract code already exists");
+          throw new BadRequestException("业主主合同编号已存在");
         }
 
         const existingFile = await tx.projectOwnerContract.findFirst({
@@ -1300,7 +1300,7 @@ export class ProjectService {
         });
 
         if (existingFile) {
-          throw new BadRequestException("Project owner contract file already exists");
+          throw new BadRequestException("该业主主合同文件已登记");
         }
 
         const file = await tx.fileObject.findUnique({
@@ -1309,11 +1309,11 @@ export class ProjectService {
         });
 
         if (!file) {
-          throw new NotFoundException("Project owner contract file not found");
+          throw new NotFoundException("业主主合同文件不存在，请重新上传");
         }
 
         if (file.uploadedByUserId !== actorUserId) {
-          throw new BadRequestException("Project owner contract file must be uploaded by the recorder");
+          throw new BadRequestException("只能使用本人上传的业主主合同文件");
         }
 
         const ownerContract = await tx.projectOwnerContract.create({
@@ -1354,7 +1354,7 @@ export class ProjectService {
       });
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        throw new BadRequestException("Project owner contract already exists");
+        throw new BadRequestException("当前项目已存在相同的业主主合同");
       }
       throw error;
     }
@@ -1368,7 +1368,7 @@ export class ProjectService {
   ) {
     const confirmationPassword = requiredTrimmed(
       input.confirmationPassword,
-      "Project owner contract confirmation password is required"
+      "请输入当前登录密码"
     );
 
     if (!this.auth) {
@@ -1394,14 +1394,14 @@ export class ProjectService {
       });
 
       if (updated.count !== 1) {
-        throw new BadRequestException("Project owner contract is not pending confirmation");
+        throw new BadRequestException("当前业主主合同状态不可确认");
       }
 
       const confirmed = await tx.projectOwnerContract.findUnique({
         where: { id: ownerContractId }
       });
       if (!confirmed) {
-        throw new InternalServerErrorException("Project owner contract confirmation was not persisted");
+        throw new InternalServerErrorException("业主主合同确认结果未正确保存，请稍后重试");
       }
 
       await this.audit.record(tx, {
@@ -1426,20 +1426,20 @@ export class ProjectService {
     actorUserId: string,
     input: RequestSettlementExceptionQuotaDto
   ) {
-    const contractId = requiredTrimmed(input.contractId, "Settlement exception quota contract is required");
+    const contractId = requiredTrimmed(input.contractId, "请选择结算例外额度关联合同");
     const amountCents = normalizePositiveMoneyCents(
       input.amountCents,
-      "Settlement exception quota amount must be greater than zero"
+      "结算例外额度必须大于零"
     );
-    const reason = requiredTrimmed(input.reason, "Settlement exception quota reason is required");
+    const reason = requiredTrimmed(input.reason, "请填写结算例外额度申请原因");
     const validUntil = parseFutureDate(
       input.validUntil,
-      "Settlement exception quota valid until date is invalid",
-      "Settlement exception quota valid until date must be in the future"
+      "结算例外额度有效期不正确，请重新选择",
+      "结算例外额度有效期必须晚于当前时间"
     );
     const attachmentFileId = requiredTrimmed(
       input.attachmentFileId,
-      "Settlement exception quota attachment file is required"
+      "请上传结算例外额度附件"
     );
 
     return this.prisma.$transaction(async (tx) => {
@@ -1459,16 +1459,16 @@ export class ProjectService {
       ]);
 
       if (!project) {
-        throw new NotFoundException("Project not found");
+        throw new NotFoundException("项目不存在或已停用，请刷新后重试");
       }
       if (!contract) {
-        throw new NotFoundException("Settlement exception quota contract not found");
+        throw new NotFoundException("关联合同不存在或不属于当前项目，请重新选择");
       }
       if (!file) {
-        throw new NotFoundException("Settlement exception quota attachment file not found");
+        throw new NotFoundException("结算例外额度附件不存在，请重新上传");
       }
       if (file.uploadedByUserId !== actorUserId) {
-        throw new BadRequestException("Settlement exception quota attachment file must be uploaded by the requester");
+        throw new BadRequestException("只能使用申请人本人上传的结算例外额度附件");
       }
 
       const quota = await tx.projectSettlementExceptionQuota.create({
@@ -1521,11 +1521,11 @@ export class ProjectService {
     input: ReviewSettlementExceptionQuotaDto
   ) {
     if (input.decision !== "approve" && input.decision !== "reject") {
-      throw new BadRequestException("Settlement exception quota approval decision is invalid");
+      throw new BadRequestException("结算例外额度审批动作无效");
     }
     const confirmationPassword = requiredTrimmed(
       input.confirmationPassword,
-      "Settlement exception quota approval password is required"
+      "请输入当前登录密码"
     );
     if (!this.auth) {
       throw new Error("Auth service is required to review settlement exception quota");
@@ -1537,10 +1537,10 @@ export class ProjectService {
         where: { id: quotaId, projectId }
       });
       if (!quota) {
-        throw new NotFoundException("Settlement exception quota not found");
+        throw new NotFoundException("结算例外额度申请不存在");
       }
       if (quota.status !== "approval_pending") {
-        throw new BadRequestException(`Cannot review settlement exception quota from status ${quota.status}`);
+        throw new BadRequestException("当前结算例外额度状态不可审批");
       }
 
       const instance = await tx.approvalInstance.findFirst({
@@ -1552,19 +1552,19 @@ export class ProjectService {
         }
       });
       if (!instance) {
-        throw new BadRequestException("Settlement exception quota approval instance not found");
+        throw new BadRequestException("结算例外额度审批流程不存在");
       }
 
       const nodes = instance.frozenNodes as unknown as SettlementExceptionQuotaApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
       if (!currentNode) {
-        throw new BadRequestException("Settlement exception quota approval current node not found");
+        throw new BadRequestException("结算例外额度当前审批节点不存在");
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, quota.projectId);
       const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
       if (!approvedRoleKey) {
-        throw new BadRequestException(`Actor cannot approve settlement exception quota node ${currentNode.name}`);
+        throw new BadRequestException("当前账号不能审批结算例外额度");
       }
 
       if (input.decision === "reject") {
@@ -1783,7 +1783,7 @@ export class ProjectService {
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, quota.projectId);
       const approvedRoleKey = currentNode.roleKeys.find((role) => actorRoleKeys.includes(role));
       if (!approvedRoleKey) {
-        throw new BadRequestException(`当前用户不能审批项目垫资额度节点：${currentNode.name}`);
+        throw new BadRequestException("当前账号不能审批项目垫资额度");
       }
 
       if (input.decision === "reject") {
@@ -1928,11 +1928,11 @@ function normalizePositiveMoneyCents(value: unknown, message: string): bigint {
 
 function parseReceiptDate(value: unknown): Date {
   if (typeof value !== "string") {
-    throw new BadRequestException("Receipt date is invalid");
+    throw new BadRequestException("到账日期不正确，请重新选择");
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new BadRequestException("Receipt date is invalid");
+    throw new BadRequestException("到账日期不正确，请重新选择");
   }
   return parsed;
 }
@@ -1950,22 +1950,22 @@ function parseProxyPaymentDate(value: unknown): Date {
 
 function parseUpstreamSettlementDate(value: unknown): Date {
   if (typeof value !== "string") {
-    throw new BadRequestException("Upstream settlement date is invalid");
+    throw new BadRequestException("对上结算日期不正确，请重新选择");
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new BadRequestException("Upstream settlement date is invalid");
+    throw new BadRequestException("对上结算日期不正确，请重新选择");
   }
   return parsed;
 }
 
 function parseOwnerContractDate(value: unknown): Date {
   if (typeof value !== "string") {
-    throw new BadRequestException("Project owner contract signed date is invalid");
+    throw new BadRequestException("业主主合同签订日期不正确，请重新选择");
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    throw new BadRequestException("Project owner contract signed date is invalid");
+    throw new BadRequestException("业主主合同签订日期不正确，请重新选择");
   }
   return parsed;
 }
@@ -2009,10 +2009,10 @@ function isUniqueConstraintError(error: unknown): boolean {
 
 function normalizeSourceType(value: unknown): ProjectReceiptSourceType {
   if (typeof value !== "string") {
-    throw new BadRequestException("Receipt source type is invalid");
+    throw new BadRequestException("到账来源类型不正确，请重新选择");
   }
   if (!Object.prototype.hasOwnProperty.call(RECEIPT_SOURCE_LABELS, value)) {
-    throw new BadRequestException("Receipt source type is invalid");
+    throw new BadRequestException("到账来源类型不正确，请重新选择");
   }
   return value as ProjectReceiptSourceType;
 }
