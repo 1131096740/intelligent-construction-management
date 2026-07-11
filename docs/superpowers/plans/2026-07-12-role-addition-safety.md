@@ -14,10 +14,12 @@
 
 ## Impact evaluation
 
-- 在同一份只读事实快照中合成待新增的规范事实，再复用真实审批写侧的优先级：冻结 `roleKeys` 顺序内第一个直接岗位 > 冻结 assignment > 有效委托。
-- 相关实例按冻结 `roleKeys` 是否包含新增岗位判断，不能只看 `pendingRoleKeys`；新增较早岗位可能抢占人员原有的后续岗位并改变当前节点可执行性。
+- 在同一轮只读事实读取中合成待新增的规范事实，再复用真实审批写侧的优先级：冻结 `roleKeys` 顺序内第一个直接岗位 > 冻结 assignment > 有效委托；preview 是并发提示而不是数据库原子快照，最终安全性由 apply 的 Serializable 事务内重算与 hash 比对保证。
+- 每个在途实例必须从 `currentNodeIndex` 扫描至冻结流程末尾；相关节点既包括冻结 `roleKeys` 含新增岗位的节点，也包括新增 action 岗位会首次解锁目标既有 frozen assignment 的节点，不能只看当前节点或 `pendingRoleKeys`。每个被评估节点完整进入稳定 hash，节点按实例 ID 与节点序号排序，不依赖数据库返回顺序。
+- preview 对目标人员明确返回 before/after 的解析岗位、来源通道、自审状态与可审批状态；新增导致目标从可审批变为不可审批时，即使节点仍有其他审批人也必须独立阻断。
 - 申请人新增普通前置岗位后，不得借原有领导岗位继续自审；新增董事长/总经理岗位只有在其确为当前解析岗位时才标记需要自审二次确认。
-- 项目支出继续不使用 assignment/delegation；多岗位 `all` 节点继续按现有不安全语义失败关闭。
+- 冻结岗位必须同时属于对应业务动作的 `ACTION_REQUIRED_ROLES`；技术岗 `super_admin` 不进入任何业务审批 direct fact，脏冻结节点按非法审批数据失败关闭。
+- contract/settlement/payment 的 frozen assignment 只有在接收人能以本人规范岗位或有效常驻委托通过真实 HTTP action guard 时才计为可审批；assignment 本身不创造入口资格。项目支出继续完全忽略 assignment/delegation，包括其脏字段；多岗位 `all` 节点继续按现有不安全语义失败关闭。
 - global add 扫描所有项目，project add 只扫描目标项目；冻结数组顺序保留，数据库无序事实稳定排序后进入 hash。
 
 ## Fail-closed conditions
@@ -39,7 +41,8 @@
 ## TDD and verification
 
 - DTO/controller：运行时 DTO、未知字段、add-only、scope/projectId、hash/password 和 actor session-only。
-- impact：global/project 合成事实、重复/shadow/readiness、停用人员/项目、project super_admin、first-role 自审反转、direct 覆盖 assignment/delegation、范围过滤、multi-all、非法业务映射与稳定 hash。
+- impact：global/project 合成事实、重复/shadow/readiness、停用人员/项目、project super_admin、当前及未来节点 first-role 自审反转、before/after 能力下降、direct 覆盖 assignment/delegation、HTTP action guard 资格、项目支出忽略 indirect 脏字段、范围过滤、multi-all、非法业务映射与稳定 hash。
 - apply：密码失败零事务、actor TOCTOU、同 tx 重算、精确 create source/data、stale/blocking/source mismatch 零写、token 撤销、白名单审计、P2002/P2034、审计异常不吞。
 - 运行组织模块 targeted Jest、API business-errors/typecheck/lint/build、Prisma validate、`git diff --check`；独立安全与质量复审后再更新 `PROGRESS.md`。
 - Web 单条新增交互作为后续独立切片；本后端切片不顺带修改撤销抽屉。
+- 发布验收不能用 `Prisma validate` 代替原生部分索引验证；部署迁移后必须只读查询 `pg_indexes`，确认 `UserPosition_global_user_position_key` 存在，才允许人工使用全局岗位新增入口。
