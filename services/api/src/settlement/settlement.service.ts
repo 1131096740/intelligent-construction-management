@@ -1732,7 +1732,8 @@ export class SettlementService {
           businessType: "settlement",
           businessId: settlement.id,
           templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
-        }
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       });
 
       return {
@@ -1825,7 +1826,8 @@ export class SettlementService {
     settlementId: string,
     actorUserId: string
   ): Promise<void> {
-    if (!this.prisma || !this.files) {
+    const files = this.files;
+    if (!this.prisma || !files) {
       return;
     }
 
@@ -1833,7 +1835,7 @@ export class SettlementService {
       this.loadSettlementDocumentInput(tx, settlementId)
     );
     const buffer = await renderSettlementArchivePdf(source);
-    const file = await this.files.uploadPrivateFile({
+    const file = await files.uploadPrivateFile({
       originalName: `${source.settlementCode}-结算审批最新.pdf`,
       mimeType: "application/pdf",
       sizeBytes: buffer.length,
@@ -1842,26 +1844,42 @@ export class SettlementService {
     });
 
     await this.prisma.$transaction(async (tx) => {
+      const [lockedSettlement] = await tx.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT "id" FROM "Settlement" WHERE "id" = ${source.settlementId} FOR UPDATE`
+      );
+      if (!lockedSettlement) {
+        throw new Error("未找到结算单，无法关联结算审批 PDF");
+      }
       const existing = await tx.pdfDocument.findFirst({
         where: {
           businessType: "settlement",
           businessId: source.settlementId,
           templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
-        }
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       });
-      const pdfDocument = existing
-        ? await tx.pdfDocument.update({
-            where: { id: existing.id },
-            data: { fileId: file.id }
-          })
-        : await tx.pdfDocument.create({
-            data: {
-              businessType: "settlement",
-              businessId: source.settlementId,
-              fileId: file.id,
-              templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
-            }
-          });
+      const oldFileId = existing?.fileId ?? null;
+      let pdfDocument;
+      if (existing) {
+        await files.linkFileReplacement(tx, {
+          newFileId: file.id,
+          oldFileId: existing.fileId,
+          actorUserId
+        });
+        pdfDocument = await tx.pdfDocument.update({
+          where: { id: existing.id },
+          data: { fileId: file.id }
+        });
+      } else {
+        pdfDocument = await tx.pdfDocument.create({
+          data: {
+            businessType: "settlement",
+            businessId: source.settlementId,
+            fileId: file.id,
+            templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
+          }
+        });
+      }
 
       await this.audit.record(tx, {
         actorUserId,
@@ -1871,7 +1889,10 @@ export class SettlementService {
         metadata: {
           pdfDocumentId: pdfDocument.id,
           fileId: file.id,
-          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY
+          templateKey: SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY,
+          newFileId: file.id,
+          oldFileId,
+          replacementKind: existing ? "settlement_approval_pdf_refresh" : null
         }
       });
     });
