@@ -279,6 +279,22 @@ describe("organization API client", () => {
         confirmationPassword: "secret"
       })
     ).toThrow("项目岗位不得新增系统管理员");
+    expect(() =>
+      previewOrganizationRoleAddition({
+        operation: "add",
+        userId: "user-1",
+        scope: "global",
+        roleKey: "root"
+      } as never)
+    ).toThrow("岗位键不正确");
+    expect(() =>
+      previewOrganizationRoleAddition({
+        operation: "add",
+        userId: "user-1",
+        scope: "global",
+        roleKey: ""
+      } as never)
+    ).toThrow("岗位键不正确");
     expect(mockApiFetch).not.toHaveBeenCalled();
   });
 

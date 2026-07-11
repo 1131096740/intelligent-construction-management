@@ -825,6 +825,31 @@ describe("organization config", () => {
     );
   });
 
+  it("rejects forged or empty addition role keys before matching or applying", () => {
+    const forgedTarget = {
+      ...additionPreview.change,
+      roleKey: "root"
+    } as never;
+    const forgedPreview = {
+      ...additionPreview,
+      change: { ...additionPreview.change, roleKey: "root" }
+    } as never;
+    const emptyTarget = {
+      ...additionPreview.change,
+      roleKey: ""
+    } as never;
+
+    expect(roleAdditionTargetMatchesPreview(forgedTarget, forgedPreview)).toBe(false);
+    expect(canConfirmRoleAddition(forgedTarget, forgedPreview, false)).toBe(false);
+    expect(roleAdditionTargetMatchesPreview(emptyTarget, forgedPreview)).toBe(false);
+    expect(() => buildRoleAdditionApplyPayload(forgedTarget, forgedPreview, "secret")).toThrow(
+      "岗位键不正确"
+    );
+    expect(() => buildRoleAdditionApplyPayload(emptyTarget, additionPreview, "secret")).toThrow(
+      "岗位键不正确"
+    );
+  });
+
   it("maps addition before and after resolution including self-review", () => {
     expect(roleAdditionImpactRows(additionPreview.impacts, additionDirectory.positions)).toEqual([
       expect.objectContaining({
