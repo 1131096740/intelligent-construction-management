@@ -5,6 +5,7 @@ import {
   adminNavigationGroups,
   fundsOverviewRoleKeys,
   historicalTakeoverRoleKeys,
+  organizationAdminRoleKeys,
   visibleAdminNavigationGroups,
   visibleAdminNavigationItems,
   webAdminRoutes
@@ -80,6 +81,7 @@ describe("web admin routes", () => {
       "合同模板库",
       "合作单位档案",
       "委托台账",
+      "组织权限",
       "系统配置",
       "项目经营",
       "项目花名册"
@@ -107,6 +109,7 @@ describe("web admin routes", () => {
     expect(redirectOf("business-parties")).toBe("/合作单位档案");
     expect(redirectOf("delegations")).toBe("/委托台账");
     expect(redirectOf("settings")).toBe("/系统配置");
+    expect(redirectOf("organization")).toBe("/组织权限");
   });
 
   it("guards project operations as a business module shell", () => {
@@ -147,6 +150,7 @@ describe("web admin routes", () => {
       { label: "资料库", path: "/资料库" },
       { label: "委托台账", path: "/委托台账" },
       { label: "审计日志", path: "/审计日志" },
+      { label: "组织权限", path: "/组织权限" },
       { label: "系统配置", path: "/系统配置" }
     ]);
   });
@@ -239,5 +243,27 @@ describe("web admin routes", () => {
       path: "/首页"
     });
     expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: true, roleKeys: ["contract_director"] })).toBe(true);
+  });
+
+  it("exposes organization governance only to the global super admin", () => {
+    const organizationRoute = childRoute("组织权限");
+    const routeAccessInput = {
+      meta: organizationRoute?.meta ?? {},
+      fullPath: "/组织权限"
+    };
+
+    expect(String(organizationRoute?.component)).toContain("OrganizationManagementPage.vue");
+    expect(organizationRoute?.meta).toMatchObject({
+      title: "组织权限",
+      requiredRoleKeys: organizationAdminRoleKeys
+    });
+    expect(visibleAdminNavigationItems(["super_admin"]).map((item) => item.path)).toContain("/组织权限");
+    expect(visibleAdminNavigationItems(["general_manager"]).map((item) => item.path)).not.toContain("/组织权限");
+    expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).not.toContain("/组织权限");
+    expect(resolveRouteAccess(routeAccessInput, { isAuthenticated: true, roleKeys: ["super_admin"] })).toBe(true);
+    expect(resolveRouteAccess(routeAccessInput, { isAuthenticated: true, roleKeys: ["general_manager"] })).toEqual({
+      path: "/首页"
+    });
+    expect(resolveRouteAccess(routeAccessInput, { isAuthenticated: true, roleKeys: [] })).toEqual({ path: "/首页" });
   });
 });

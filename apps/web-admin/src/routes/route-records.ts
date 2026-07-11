@@ -14,6 +14,8 @@ export const historicalTakeoverRoleKeys = [
   "contract_director"
 ] as const satisfies readonly RoleKey[];
 
+export const organizationAdminRoleKeys = ["super_admin"] as const satisfies readonly RoleKey[];
+
 export interface AdminNavigationItem {
   label: string;
   path: string;
@@ -64,6 +66,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
       { label: "资料库", path: "/资料库" },
       { label: "委托台账", path: "/委托台账" },
       { label: "审计日志", path: "/审计日志" },
+      { label: "组织权限", path: "/组织权限", requiredRoleKeys: organizationAdminRoleKeys },
       { label: "系统配置", path: "/系统配置" }
     ]
   }
@@ -226,6 +229,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/audit/AuditLogPage.vue")
       },
       {
+        path: "组织权限",
+        component: () => import("../pages/organization/OrganizationManagementPage.vue"),
+        meta: { requiredRoleKeys: organizationAdminRoleKeys, title: "组织权限" }
+      },
+      {
         path: "系统配置",
         component: () => import("../pages/settings/SettingsPage.vue")
       },
@@ -251,6 +259,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "approval-center", redirect: "/审批中心" },
       { path: "delegations", redirect: "/委托台账" },
       { path: "audit", redirect: "/审计日志" },
+      { path: "organization", redirect: "/组织权限" },
       { path: "settings", redirect: "/系统配置" }
     ]
   }

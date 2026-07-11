@@ -1,0 +1,550 @@
+<template>
+  <section class="organization-page">
+    <div class="page-head">
+      <div>
+        <h1>组织权限</h1>
+        <p>维护部门层级、人员归属和启停状态，所有变更均需当前密码确认并写入权限审计。</p>
+      </div>
+      <div class="page-actions">
+        <t-button
+          variant="outline"
+          :loading="loading"
+          @click="loadDirectory"
+        >
+          刷新
+        </t-button>
+        <t-button
+          theme="primary"
+          :disabled="loading"
+          @click="openCreateDepartment"
+        >
+          新建部门
+        </t-button>
+      </div>
+    </div>
+
+    <t-alert
+      theme="info"
+      title="本切片只维护部门、人员归属和启停状态；固定岗位、全局岗位、项目岗位和项目成员均为只读。"
+      :close="false"
+    />
+
+    <t-alert
+      v-if="pageMessage"
+      :theme="pageMessageTone"
+      :title="pageMessage"
+      :close="false"
+    />
+
+    <BusinessStatusSummary :items="summaryItems" />
+
+    <div class="organization-grid">
+      <t-card
+        title="部门层级"
+        bordered
+      >
+        <t-table
+          row-key="id"
+          size="small"
+          :columns="departmentColumns"
+          :data="flatDepartments"
+          :loading="loading"
+          empty="暂无部门"
+        >
+          <template #name="{ row }">
+            <span class="department-name">{{ row.path }}</span>
+          </template>
+          <template #isActive="{ row }">
+            <t-tag
+              size="small"
+              :theme="row.isActive ? 'success' : 'default'"
+              variant="light"
+            >
+              {{ departmentStatusText(row.isActive) }}
+            </t-tag>
+          </template>
+          <template #operation="{ row }">
+            <t-button
+              size="small"
+              variant="text"
+              theme="primary"
+              @click="openEditDepartment(row)"
+            >
+              编辑
+            </t-button>
+          </template>
+        </t-table>
+      </t-card>
+
+      <t-card
+        title="人员目录"
+        bordered
+      >
+        <div class="filter-bar">
+          <t-input
+            v-model="filters.keyword"
+            clearable
+            placeholder="姓名、电话、部门或岗位关键词"
+          />
+          <t-select
+            v-model="filters.departmentId"
+            clearable
+            :options="filterDepartmentOptions"
+            placeholder="全部部门"
+          />
+          <t-select
+            v-model="filters.status"
+            clearable
+            :options="userStatusOptions"
+            placeholder="全部状态"
+          />
+        </div>
+        <t-table
+          row-key="id"
+          size="small"
+          :columns="userColumns"
+          :data="filteredUsers"
+          :loading="loading"
+          empty="暂无人员"
+        >
+          <template #status="{ row }">
+            <t-tag
+              size="small"
+              :theme="row.status === 'active' ? 'success' : 'default'"
+              variant="light"
+            >
+              {{ userStatusText(row.status) }}
+            </t-tag>
+          </template>
+          <template #mustChangePassword="{ row }">
+            <t-tag
+              size="small"
+              :theme="row.mustChangePassword ? 'warning' : 'success'"
+              variant="light"
+            >
+              {{ mustChangePasswordText(row.mustChangePassword) }}
+            </t-tag>
+          </template>
+          <template #globalPositions="{ row }">
+            {{ globalPositionsText(row) }}
+          </template>
+          <template #projectPositions="{ row }">
+            {{ projectPositionsText(row) }}
+          </template>
+          <template #operation="{ row }">
+            <t-button
+              size="small"
+              variant="text"
+              theme="primary"
+              @click="openEditUser(row)"
+            >
+              编辑
+            </t-button>
+          </template>
+        </t-table>
+      </t-card>
+    </div>
+
+    <t-card
+      title="固定岗位字典（只读）"
+      bordered
+    >
+      <div class="position-tags">
+        <t-tag
+          v-for="position in directory.positions"
+          :key="position.id"
+          variant="outline"
+        >
+          {{ position.name }} · {{ position.key }}
+        </t-tag>
+        <span v-if="!directory.positions.length">暂无岗位</span>
+      </div>
+    </t-card>
+
+    <t-dialog
+      :visible="dialogVisible"
+      :header="dialogTitle"
+      :confirm-btn="dialogConfirmButton"
+      :cancel-btn="dialogCancelButton"
+      :close-btn="!saving"
+      :close-on-esc-keydown="false"
+      :close-on-overlay-click="false"
+      @confirm="submitDialog"
+      @close="closeDialog"
+    >
+      <div class="dialog-body">
+        <t-alert
+          theme="warning"
+          :title="dialogConsequence"
+          :close="false"
+        />
+        <t-alert
+          v-if="dialogMessage"
+          theme="error"
+          :title="dialogMessage"
+          :close="false"
+        />
+        <t-form label-align="top">
+          <template v-if="dialogAction === 'create_department' || dialogAction === 'update_department'">
+            <t-form-item label="部门名称">
+              <t-input
+                v-model="departmentForm.name"
+                :disabled="saving"
+                placeholder="请输入部门名称"
+              />
+            </t-form-item>
+            <t-form-item label="上级部门">
+              <t-select
+                v-model="departmentForm.parentId"
+                :disabled="saving"
+                clearable
+                :options="dialogDepartmentOptions"
+                placeholder="不选择则为顶级部门"
+                @clear="departmentForm.parentId = null"
+              />
+            </t-form-item>
+            <t-form-item
+              v-if="dialogAction === 'update_department'"
+              label="部门状态"
+            >
+              <t-switch
+                v-model="departmentForm.isActive"
+                :disabled="saving"
+                :label="['启用', '停用']"
+              />
+            </t-form-item>
+          </template>
+
+          <template v-if="dialogAction === 'update_user'">
+            <t-form-item label="人员">
+              <t-input
+                :value="editingUser?.name ?? ''"
+                disabled
+              />
+            </t-form-item>
+            <t-form-item label="所属部门">
+              <t-select
+                v-model="userForm.departmentId"
+                :disabled="saving"
+                clearable
+                :options="activeDepartmentOptions"
+                placeholder="可清空为未分配部门"
+                @clear="userForm.departmentId = null"
+              />
+            </t-form-item>
+            <t-form-item label="人员状态">
+              <t-switch
+                v-model="userForm.isActive"
+                :disabled="saving"
+                :label="['启用', '停用']"
+              />
+            </t-form-item>
+          </template>
+
+          <t-form-item label="当前登录密码">
+            <t-input
+              v-model="confirmationPassword"
+              type="password"
+              autocomplete="current-password"
+              :disabled="saving"
+              placeholder="请输入当前登录密码"
+            />
+          </t-form-item>
+        </t-form>
+      </div>
+    </t-dialog>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from "vue";
+import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
+import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
+import {
+  createOrganizationDepartment,
+  fetchOrganizationDirectory,
+  updateOrganizationDepartment,
+  updateOrganizationUser,
+  type OrganizationDirectory,
+  type OrganizationDirectoryUser
+} from "../../api/organization.api";
+import {
+  buildCreateDepartmentPayload,
+  buildDepartmentParentOptions,
+  buildDepartmentPatch,
+  buildUserPatch,
+  departmentStatusText,
+  filterOrganizationUsers,
+  flattenDepartmentTree,
+  globalPositionsText,
+  mustChangePasswordText,
+  organizationActionConsequence,
+  projectPositionsText,
+  userStatusText,
+  type FlatOrganizationDepartment,
+  type OrganizationActionKind
+} from "./organization.config";
+
+const emptyDirectory = (): OrganizationDirectory => ({
+  summary: { departments: 0, activeUsers: 0, inactiveUsers: 0, positions: 0 },
+  departments: [],
+  users: [],
+  positions: []
+});
+
+const directory = reactive<OrganizationDirectory>(emptyDirectory());
+const loading = ref(false);
+const saving = ref(false);
+const pageMessage = ref("");
+const pageMessageTone = ref<"success" | "error">("success");
+const dialogVisible = ref(false);
+const dialogAction = ref<OrganizationActionKind | null>(null);
+const dialogMessage = ref("");
+const confirmationPassword = ref("");
+const editingDepartment = ref<FlatOrganizationDepartment | null>(null);
+const editingUser = ref<OrganizationDirectoryUser | null>(null);
+const filters = reactive<{
+  keyword: string;
+  departmentId: string | undefined;
+  status: "active" | "inactive" | undefined;
+}>({ keyword: "", departmentId: undefined, status: undefined });
+const departmentForm = reactive<{ name: string; parentId: string | null; isActive: boolean }>({
+  name: "",
+  parentId: null,
+  isActive: true
+});
+const userForm = reactive<{ departmentId: string | null; isActive: boolean }>({
+  departmentId: null,
+  isActive: true
+});
+
+const departmentColumns = [
+  { colKey: "name", title: "部门", minWidth: 180 },
+  { colKey: "parentName", title: "上级", minWidth: 120 },
+  { colKey: "isActive", title: "状态", width: 82 },
+  { colKey: "operation", title: "操作", width: 72, fixed: "right" }
+];
+const userColumns = [
+  { colKey: "name", title: "姓名", width: 96 },
+  { colKey: "phone", title: "电话", width: 132 },
+  { colKey: "departmentName", title: "部门", minWidth: 112 },
+  { colKey: "status", title: "状态", width: 78 },
+  { colKey: "mustChangePassword", title: "首次改密", width: 108 },
+  { colKey: "globalPositions", title: "全局岗位（只读）", minWidth: 150 },
+  { colKey: "projectPositions", title: "项目岗位（只读）", minWidth: 200 },
+  { colKey: "operation", title: "操作", width: 72, fixed: "right" }
+];
+const userStatusOptions = [
+  { label: "启用", value: "active" },
+  { label: "停用", value: "inactive" }
+];
+
+const flatDepartments = computed(() => flattenDepartmentTree(directory.departments));
+const activeDepartmentOptions = computed(() => buildDepartmentParentOptions(directory.departments));
+const filterDepartmentOptions = computed(() =>
+  flatDepartments.value.map((department) => ({ label: department.path, value: department.id }))
+);
+const dialogDepartmentOptions = computed(() =>
+  buildDepartmentParentOptions(directory.departments, editingDepartment.value?.id)
+);
+const filteredUsers = computed(() => filterOrganizationUsers(directory.users, filters));
+const summaryItems = computed<BusinessStatusSummaryItem[]>(() => [
+  { label: "部门数", value: String(directory.summary.departments), tone: "primary" },
+  { label: "启用人员", value: String(directory.summary.activeUsers), tone: "success" },
+  { label: "停用人员", value: String(directory.summary.inactiveUsers), tone: "warning" },
+  { label: "岗位数", value: String(directory.summary.positions), tone: "default" }
+]);
+const dialogTitle = computed(() => {
+  if (dialogAction.value === "create_department") return "新建部门";
+  if (dialogAction.value === "update_department") return "编辑部门";
+  return "编辑人员";
+});
+const dialogConsequence = computed(() =>
+  dialogAction.value
+    ? organizationActionConsequence(
+        dialogAction.value,
+        dialogAction.value === "update_user" ? userForm.isActive : departmentForm.isActive
+      )
+    : ""
+);
+const dialogConfirmButton = computed(() => ({
+  content: "确认保存",
+  loading: saving.value,
+  disabled: saving.value
+}));
+const dialogCancelButton = computed(() => ({ content: "取消", disabled: saving.value }));
+
+onMounted(() => {
+  void loadDirectory();
+});
+
+async function loadDirectory() {
+  loading.value = true;
+  try {
+    const result = await fetchOrganizationDirectory();
+    Object.assign(directory, result);
+    pageMessage.value = "";
+    return true;
+  } catch (error) {
+    pageMessageTone.value = "error";
+    pageMessage.value = error instanceof Error ? error.message : "读取组织目录失败，请稍后重试。";
+    return false;
+  } finally {
+    loading.value = false;
+  }
+}
+
+function resetDialogSecrets() {
+  confirmationPassword.value = "";
+}
+
+function openCreateDepartment() {
+  editingDepartment.value = null;
+  editingUser.value = null;
+  Object.assign(departmentForm, { name: "", parentId: null, isActive: true });
+  dialogAction.value = "create_department";
+  dialogMessage.value = "";
+  resetDialogSecrets();
+  dialogVisible.value = true;
+}
+
+function openEditDepartment(department: FlatOrganizationDepartment) {
+  editingDepartment.value = department;
+  editingUser.value = null;
+  Object.assign(departmentForm, {
+    name: department.name,
+    parentId: department.parentId,
+    isActive: department.isActive
+  });
+  dialogAction.value = "update_department";
+  dialogMessage.value = "";
+  resetDialogSecrets();
+  dialogVisible.value = true;
+}
+
+function openEditUser(user: OrganizationDirectoryUser) {
+  editingDepartment.value = null;
+  editingUser.value = user;
+  Object.assign(userForm, { departmentId: user.departmentId, isActive: user.status === "active" });
+  dialogAction.value = "update_user";
+  dialogMessage.value = "";
+  resetDialogSecrets();
+  dialogVisible.value = true;
+}
+
+function closeDialog() {
+  if (saving.value) return;
+  resetDialogSecrets();
+  dialogMessage.value = "";
+  dialogVisible.value = false;
+  dialogAction.value = null;
+  editingDepartment.value = null;
+  editingUser.value = null;
+}
+
+async function submitDialog() {
+  if (saving.value || !dialogAction.value) return;
+  saving.value = true;
+  dialogMessage.value = "";
+  try {
+    if (dialogAction.value === "create_department") {
+      await createOrganizationDepartment(
+        buildCreateDepartmentPayload({ ...departmentForm, confirmationPassword: confirmationPassword.value })
+      );
+    } else if (dialogAction.value === "update_department") {
+      if (!editingDepartment.value) throw new Error("未找到待编辑部门，请关闭后重试。");
+      await updateOrganizationDepartment(
+        editingDepartment.value.id,
+        buildDepartmentPatch(editingDepartment.value, departmentForm, confirmationPassword.value)
+      );
+    } else {
+      if (!editingUser.value) throw new Error("未找到待编辑人员，请关闭后重试。");
+      await updateOrganizationUser(
+        editingUser.value.id,
+        buildUserPatch(
+          {
+            departmentId: editingUser.value.departmentId,
+            isActive: editingUser.value.status === "active"
+          },
+          userForm,
+          confirmationPassword.value
+        )
+      );
+    }
+    const reloaded = await loadDirectory();
+    pageMessageTone.value = reloaded ? "success" : "error";
+    pageMessage.value = reloaded
+      ? "组织信息已保存，并已重新读取最新目录。"
+      : "组织信息已保存，但目录刷新失败，请手动刷新。";
+    saving.value = false;
+    closeDialog();
+  } catch (error) {
+    dialogMessage.value = error instanceof Error ? error.message : "保存组织信息失败，请稍后重试。";
+  } finally {
+    resetDialogSecrets();
+    saving.value = false;
+  }
+}
+</script>
+
+<style scoped>
+.organization-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--jg-space-lg);
+  max-width: var(--jg-layout-page-max-width);
+  margin: 0 auto;
+}
+
+.page-head,
+.page-actions,
+.filter-bar,
+.position-tags {
+  display: flex;
+  align-items: center;
+  gap: var(--jg-space-md);
+}
+
+.page-head {
+  justify-content: space-between;
+}
+
+.page-head h1 {
+  margin: 0;
+  color: var(--jg-color-text-primary);
+  font-size: var(--jg-font-size-page-title);
+}
+
+.page-head p {
+  margin: var(--jg-space-xs) 0 0;
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-body);
+}
+
+.organization-grid {
+  display: grid;
+  grid-template-columns: minmax(var(--jg-layout-template-card-min-width), 0.8fr) minmax(0, 1.6fr);
+  gap: var(--jg-space-lg);
+}
+
+.filter-bar {
+  display: grid;
+  grid-template-columns: minmax(var(--jg-layout-list-filter-keyword-min-width), 1fr) repeat(2, minmax(var(--jg-layout-form-field-min-width-compact), 0.5fr));
+  margin-bottom: var(--jg-space-md);
+}
+
+.department-name {
+  white-space: pre;
+}
+
+.position-tags {
+  flex-wrap: wrap;
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--jg-space-md);
+}
+
+</style>
