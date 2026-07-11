@@ -675,6 +675,41 @@ describe("PermissionImpactService role addition", () => {
     });
   });
 
+  it.each([
+    ["malformed", { legacy: "not-an-array" }],
+    [
+      "非法岗位",
+      [{ toUserId: "target", fromRoleKey: "super_admin" }]
+    ]
+  ])("项目支出无条件忽略 %s assignment", async (_label, assignments) => {
+    const data = fixture();
+    addProjectExpense(data, {
+      id: `ignored-${_label}`,
+      frozenNodes: [
+        {
+          name: "expense",
+          mode: "any",
+          roleKeys: ["project_manager", "finance_director"],
+          assignments
+        }
+      ]
+    });
+
+    const { result } = await evaluate(data, {
+      operation: "add",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "project_manager"
+    });
+
+    expect(result.preview).toMatchObject({ canApply: true });
+    expect(result.preview.impacts[0]).toMatchObject({
+      blocking: false,
+      targetAfter: { channel: "direct", roleKey: "project_manager" }
+    });
+  });
+
   it("多岗位 all、非法业务映射和 super_admin 冻结节点统一 fail closed", async () => {
     const all = fixture();
     addSettlement(all, {

@@ -849,13 +849,11 @@ function parseNodeAt(
   if (!approvedRoleKeys || approvedRoleKeys.some((role) => !roleKeys.includes(role))) return null;
   const pendingRoleKeys = roleKeys.filter((role) => !approvedRoleKeys.includes(role));
   if (pendingRoleKeys.length === 0) return null;
-  const parsedAssignments =
-    instance.businessType === "project_expense_request" && !allowedRoles
+  const assignments =
+    instance.businessType === "project_expense_request"
       ? []
       : parseAssignments(value.assignments, allowedRoles);
-  if (!parsedAssignments) return null;
-  const assignments =
-    instance.businessType === "project_expense_request" ? [] : parsedAssignments;
+  if (!assignments) return null;
   if (
     allowedRoles &&
     assignments.some((assignment) => !roleKeys.includes(assignment.fromRoleKey))
