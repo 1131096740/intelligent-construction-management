@@ -21,7 +21,7 @@
 
 ## 当前下一步
 
-- [~] 阶段 B 自审治理已完成后端四域规则及合同/结算/付款三个核心详情 Web 交互：普通申请人本人在普通节点不能审批，但仍保留已有转审/委托资格；仅申请人本人在直接持有的 `chairman`/`general_manager` 终审节点可审批，详情读模型精确标记需自审确认。Web 统一要求独立原因和当前密码，非自审请求不发送两字段，密码原值仅随请求发送且成功后从页面内存清空。共享审批时间线已显示“领导自审”和修剪后原因，不读取密码。结算无领导终审节点，即使申请人兼任领导也不标记自审确认。项目支出 Web 仍是列表式入口，需留到独立切片，不得据此宣称四类 Web 交互全部完成。
+- [x] 阶段 B 自审治理已完成后端四域规则及合同/结算/付款/项目支出四类 Web 交互：普通申请人本人在普通节点不能审批；合同/结算/付款保留已有转审/委托资格，项目支出按真实写侧只接受当前节点直接岗位，不支持 assignment/常驻委托。仅审批实例申请人本人在按冻结节点顺序解析出的 `chairman`/`general_manager` 终审节点可审批，详情读模型精确标记需自审确认。Web 统一要求独立原因和当前密码，非自审请求不发送两字段，密码原值仅随请求发送且成功后从页面内存清空。共享审批时间线已显示“领导自审”和修剪后原因，不读取密码。结算无领导终审节点，即使申请人兼任领导也不标记自审确认。
 - [x] 发布前 P0 普通付款审批链已按正式确认规则收口为“综合部主管 -> 项目经理 -> 财务总监 -> 董事长/总经理 OR 签”；删除合同部/预算部审批权限和展示节点，综合部主管已具备付款清单、详情与审批入口权限，有效结算/合同到期付款/合同预付款创建时统一冻结该四节点快照。独立复审 Approved；全量回归 shared-domain 59/59、Web 318/318、API 1911/1911 通过。
 - [x] 生产部署入口已从服务器未跟踪 `deploy.sh` 收回仓库：workflow 仅允许 `main`，按 `github.sha` 精确快进并在前后执行服务器工作树白名单检查；生产脚本先安装、生成与构建，再完整预置 staging，停止 API 后执行唯一一次 `prisma migrate deploy`，同步产物、重启并验证 Nginx/API/runtime health。最终独立复审 Approved，并已随目标 SHA 完成首次受控生产发布。
 - [x] 2026-07-11 阶段 0B-0D 生产发布完成：目标 SHA `915b86b33e3fc3f387338e440cd1aeb93eae1265`，Actions run `29152108290` 的 Verify build 与 Deploy to server 均成功；生产迁移由 36 增至 38，两条新迁移完成且未回滚，21/21 金额列为 BIGINT，文件完整性三列存在。API、Nginx、正式域名、HTTPS 首页和 runtime health 均通过，维护窗口已结束。发布前备份为 `/srv/jiangkong-backups/db/jiangkong-20260711-200634.dump`；详细证据见 `docs/progress/2026-07-11-phase0b-0d-production-release.md`。
@@ -52,6 +52,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-11 (CodeX)：完成项目支出独立审批详情与自审交互：新增按项目和单据授权的聚合读模型，支出申请人本人可读，非申请人必须具备该项目 `project_expense.approve` 有效岗位；审批动作严格按冻结节点岗位顺序解析直接岗位，不支持 assignment/常驻委托，自审身份以冻结审批实例申请人为准。普通同人节点禁用，实际董事长/总经理终审启用原因和当前密码二次确认；Web 复用共享自审组件、payload helper、动作面板和审批时间线，审批中心待办/已办精确跳转独立详情。旧项目经营页仅移除按状态直接审批，采购执行、实付、入账、收货和下载保持。TDD RED 分别捕获后端详情缺失及 API/路由/路径/Me 仍指向旧入口；GREEN 为 API 5/5 套件 179/179、Web 4/4 文件 67/67，shared/API/Web typecheck、业务错误检查、API/Web lint、Web `check:ui` 和 `git diff --check` 通过。仍不能据此宣称组织权限管理 UI、真实账号链路或真实试运行整体完成。
 - 2026-07-11 (CodeX)：收口自审字段字符计数最后一处前后端差异：由于 validator.js `MaxLength` 会将带 variation selector 的 `❤️` 与 Web Unicode code point 预检使用不同计数语义，合同、结算、付款、项目支出四个自审 DTO 统一改用项目已有 `IsMaxUnicodeTextLength`，保留 `ValidateIf` + `IsString` 类型校验和原中文错误。四个 controller 回归均验证 `"❤️".repeat(250)` 作为 500 code points 边界通过，原因/密码再多一个 code point 拒绝。TDD RED 为四套各 1 例失败、共362 例通过；GREEN 后四套366/366，与 Task 3 六套合并为 API 10/10 套、449/449，Web 3/3 文件、43/43，其余门禁全部通过。
 - 2026-07-11 (CodeX)：完成核心详情自审交互独立复审必修：读侧与写侧统一按冻结节点岗位顺序解析当前人第一个直接岗位，解决节点 `[budget_director, chairman]` 且申请人同时持有两岗时读侧误标自审、写侧按预算主管拒绝的不一致；assignment/常驻委托仍不创造领导自审例外，`canAct` 与三个详情契约不回退。Web 自审原因和密码长度预检改为与 class-validator 一致的 Unicode code point 计数，移除会按 UTF-16 提前截断 emoji 的控件 `maxlength`，后端仍作最终校验。两项均先获得精确 RED 后转 GREEN；最终 API 目标 Jest 6/6 套件、83/83 用例，Web 目标 Vitest 3/3 文件、43/43 用例，其余既有门禁全部通过。
 - 2026-07-11 (CodeX)：完成阶段 B 核心详情自审交互：合同、结算、付款详情将当前节点访问拆为 `canAct`/`canReview`/自审确认标记，读侧按直接岗位 -> 节点 assignment -> 有效常驻委托保留转审/委托能力，assignment 与委托不能创造领导自审例外。仅本人直接持有的董事长/总经理终审开放 review 并标记二次确认，结算普通节点有负向回归。三页复用 TDesign 自审字段组件与纯 payload helper；非自审不发原因/密码，自审原因 trim、密码保留原值且成功后清空。审批时间线仅从 metadata 严格布尔 `selfReview === true` 显示“领导自审”及安全修剪后原因。项目支出 Web 仍待独立切片。验证：后端目标 Jest 6/6 套件、82/82 用例，Web 目标 Vitest 3/3 文件、41/41 用例，shared/API/Web typecheck、API 业务错误检查、API/Web lint、Web `check:ui` 和 `git diff --check` 通过。

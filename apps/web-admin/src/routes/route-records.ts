@@ -184,6 +184,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: { requiredRoleKeys: fundsOverviewRoleKeys, title: "项目经营" }
       },
       {
+        path: "项目支出/:projectId/:expenseRequestId",
+        component: () => import("../pages/projects/ProjectExpenseApprovalDetailPage.vue"),
+        meta: { title: "项目支出审批详情" }
+      },
+      {
         path: "项目花名册",
         component: () => import("../pages/projects/ProjectRosterPage.vue"),
         meta: { title: "项目花名册" }

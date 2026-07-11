@@ -142,6 +142,24 @@ export interface ApprovalTimelineItemReadModel {
   createdAt: string;
 }
 
+export interface ProjectExpenseApprovalDetailReadModel {
+  id: string;
+  projectId: string;
+  code: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  expenseTypeLabel: string;
+  expenseSubtypeLabel: string;
+  paymentSubject: string;
+  reason: string;
+  requestedAmountCents: MoneyCents;
+  approvedAmountCents: MoneyCents | null;
+  currentNodeName: string | null;
+  reviewAction: DetailActionReadModel;
+  approvalTimeline: ApprovalTimelineItemReadModel[];
+}
+
 export interface ContractDetailReadModel {
   id: string;
   contractVersionId: string;

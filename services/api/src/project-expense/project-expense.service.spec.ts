@@ -35,6 +35,183 @@ describe("ProjectExpenseService", () => {
     };
   }
 
+  function approvalDetailFixture({
+    actorRoleKeys = ["finance_director"],
+    applicantUserId = "applicant-1",
+    instanceApplicantUserId = applicantUserId,
+    actorUserId = "reviewer-1",
+    status = "approval_pending",
+    currentNode = { name: "财务部", mode: "any", roleKeys: ["finance_director"] }
+  }: {
+    actorRoleKeys?: string[];
+    applicantUserId?: string;
+    instanceApplicantUserId?: string;
+    actorUserId?: string;
+    status?: string;
+    currentNode?: { name: string; mode: "any"; roleKeys: string[] };
+  } = {}) {
+    const prisma = {
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          projectId: "project-1",
+          code: "BX-2026-001",
+          expenseType: "reimbursement",
+          expenseSubtype: "reimbursement",
+          paymentSubject: "建工智管",
+          reason: "现场费用报销",
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: null,
+          applicantUserId,
+          status
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          status: "in_progress",
+          currentNodeIndex: 0,
+          frozenNodes: [currentNode],
+          applicantUserId: instanceApplicantUserId
+        })
+      },
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "log-1",
+            action: "approve",
+            actorUserId: "previous-reviewer",
+            comment: "同意",
+            metadata: { nodeName: "上一节点", approvedRoleKey: "project_manager" },
+            createdAt: new Date("2026-07-11T08:00:00.000Z")
+          }
+        ])
+      },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: "previous-reviewer", name: "王经理" }]) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue(actorRoleKeys.map((positionKey) => ({ positionKey })))
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+    return { service, prisma, actorUserId };
+  }
+
+  it("直接持有当前项目支出节点岗位时返回可审批详情和共享时间线", async () => {
+    const { service, prisma, actorUserId } = approvalDetailFixture();
+
+    await expect(service.getApprovalDetail("project-1", "expense-1", actorUserId)).resolves.toEqual(
+      expect.objectContaining({
+        id: "expense-1",
+        requestedAmountCents: "50000",
+        currentNodeName: "财务部",
+        reviewAction: expect.objectContaining({
+          enabled: true,
+          requiresSelfReviewConfirmation: false
+        }),
+        approvalTimeline: [expect.objectContaining({ actorName: "王经理", nodeName: "上一节点" })]
+      })
+    );
+    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ businessType: "project_expense_request", businessId: "expense-1" })
+      })
+    );
+  });
+
+  it("普通申请人可读自己的详情但不能自审", async () => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["comprehensive_director"],
+      applicantUserId: "applicant-1",
+      actorUserId: "applicant-1",
+      currentNode: { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"] }
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "applicant-1");
+
+    expect(detail.reviewAction).toEqual(
+      expect.objectContaining({
+        enabled: false,
+        disabledReason: "申请人不能审批自己发起的业务",
+        requiresSelfReviewConfirmation: false
+      })
+    );
+  });
+
+  it("领导申请人在实际领导终审节点启用自审二次确认", async () => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["chairman"],
+      applicantUserId: "leader-1",
+      actorUserId: "leader-1",
+      currentNode: { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "leader-1");
+
+    expect(detail.reviewAction).toEqual(
+      expect.objectContaining({ enabled: true, requiresSelfReviewConfirmation: true })
+    );
+  });
+
+  it("mixed 节点按冻结岗位顺序解析并禁止普通岗位自审", async () => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["chairman", "budget_director"],
+      applicantUserId: "leader-1",
+      actorUserId: "leader-1",
+      currentNode: { name: "预算/领导", mode: "any", roleKeys: ["budget_director", "chairman"] }
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "leader-1");
+
+    expect(detail.reviewAction).toEqual(
+      expect.objectContaining({
+        enabled: false,
+        disabledReason: "申请人不能审批自己发起的业务",
+        requiresSelfReviewConfirmation: false
+      })
+    );
+  });
+
+  it("自审分类以冻结审批实例申请人为准而详情可见性仍以支出申请人为准", async () => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["chairman"],
+      applicantUserId: "original-expense-applicant",
+      instanceApplicantUserId: "leader-1",
+      actorUserId: "leader-1",
+      currentNode: { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "leader-1");
+
+    expect(detail.reviewAction).toEqual(
+      expect.objectContaining({ enabled: true, requiresSelfReviewConfirmation: true })
+    );
+  });
+
+  it("无项目支出审批岗位的非申请人不能读取详情", async () => {
+    const { service } = approvalDetailFixture({ actorRoleKeys: ["employee"] });
+
+    await expect(service.getApprovalDetail("project-1", "expense-1", "outsider-1")).rejects.toThrow(
+      "无权查看该项目支出审批详情"
+    );
+  });
+
+  it("申请人无审批岗位仍可读非审批中详情且动作安全禁用", async () => {
+    const { service, prisma } = approvalDetailFixture({
+      actorRoleKeys: [],
+      applicantUserId: "applicant-1",
+      actorUserId: "applicant-1",
+      status: "rejected"
+    });
+    prisma.approvalInstance.findFirst.mockResolvedValue(null);
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "applicant-1");
+
+    expect(detail.currentNodeName).toBeNull();
+    expect(detail.reviewAction).toEqual(expect.objectContaining({ enabled: false }));
+  });
+
   function cashPoolTables({
     receiptAmountCents = 100_000n,
     paymentRequests = [],

@@ -646,18 +646,6 @@
           </div>
           <div class="receipt-form">
             <label>
-              <span>审批意见</span>
-              <input v-model.trim="expenseActionForm.approvalComment">
-            </label>
-            <label>
-              <span>终审批准金额(元)</span>
-              <input
-                v-model.trim="expenseActionForm.approvedAmountYuan"
-                inputmode="decimal"
-                placeholder="不填则按申请金额"
-              >
-            </label>
-            <label>
               <span>附件下载密码</span>
               <input
                 v-model="expenseActionForm.downloadPassword"
@@ -754,21 +742,12 @@
           </div>
           <div class="expense-action-buttons">
             <button
-              v-if="canReviewExpense(selectedExpenseRow)"
+              v-if="selectedExpenseRow.status === 'approval_pending'"
               type="button"
-              :disabled="expenseActionBusy !== ''"
-              @click="submitExpenseReview('approve')"
+              class="secondary-button"
+              @click="openExpenseApprovalDetail(selectedExpenseRow)"
             >
-              审批通过
-            </button>
-            <button
-              v-if="canReviewExpense(selectedExpenseRow)"
-              type="button"
-              class="danger-button"
-              :disabled="expenseActionBusy !== ''"
-              @click="submitExpenseReview('reject')"
-            >
-              审批驳回
+              打开审批详情
             </button>
             <button
               v-if="canRecordPurchaseExecution(selectedExpenseRow)"
@@ -864,7 +843,6 @@ import {
   recordProjectExpensePurchaseExecution,
   recordProjectProxyPayment,
   recordProjectReceipt,
-  reviewProjectExpenseApproval,
   uploadPrivateFile,
   updateProject,
   type ProjectExpensePaymentMethod,
@@ -887,6 +865,7 @@ import {
   expenseSubtypeLabel,
   expenseTypeLabel,
   expenseTypeOptions,
+  projectExpenseApprovalDetailPath,
   subtypeOptionsFor
 } from "./project-expense.config";
 import {
@@ -942,8 +921,6 @@ interface ProjectExpenseFormState {
 }
 
 interface ProjectExpenseActionFormState {
-  approvalComment: string;
-  approvedAmountYuan: string;
   purchaseExecutedAt: string;
   purchaseExecutionNote: string;
   purchaseExecutionPassword: string;
@@ -1446,8 +1423,6 @@ function createProjectExpenseActionForm(row?: ProjectExpenseRow): ProjectExpense
     : 0n;
   const positiveRemainingCents = remainingCents > 0n ? remainingCents.toString() : "0";
   return {
-    approvalComment: "",
-    approvedAmountYuan: "",
     purchaseExecutedAt: todayText(),
     purchaseExecutionNote: "",
     purchaseExecutionPassword: "",
@@ -1519,10 +1494,6 @@ function expenseStatusLabel(status: string) {
     payment_blocked: "付款阻断"
   };
   return labels[status] ?? status;
-}
-
-function canReviewExpense(row: ProjectExpenseRow) {
-  return row.status === "approval_pending";
 }
 
 function canRecordPurchaseExecution(row: ProjectExpenseRow) {
@@ -1620,18 +1591,8 @@ async function runExpenseAction(actionKey: string, action: (row: ProjectExpenseR
   }
 }
 
-async function submitExpenseReview(decision: "approve" | "reject") {
-  await runExpenseAction("review", async (row) => {
-    const approvedAmount = expenseActionForm.value.approvedAmountYuan.trim();
-    await reviewProjectExpenseApproval(selectedProjectId.value, row.id, {
-      decision,
-      approvedAmountCents:
-        decision === "approve" && approvedAmount
-          ? parseYuanToCents(approvedAmount, "终审批准金额")
-          : undefined,
-      comment: expenseActionForm.value.approvalComment.trim() || undefined
-    });
-  });
+function openExpenseApprovalDetail(row: ProjectExpenseRow) {
+  void router.push(projectExpenseApprovalDetailPath(selectedProjectId.value, row.id));
 }
 
 async function submitExpensePurchaseExecution() {

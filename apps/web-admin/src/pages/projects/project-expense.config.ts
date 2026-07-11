@@ -91,3 +91,7 @@ export function expenseSubtypeLabel(value: ProjectExpenseSubtype) {
 export function expensePaymentMethodLabel(value: ProjectExpensePaymentMethod) {
   return expensePaymentMethodOptions.find((option) => option.value === value)?.label ?? value;
 }
+
+export function projectExpenseApprovalDetailPath(projectId: string, expenseRequestId: string) {
+  return `/项目支出/${encodeURIComponent(projectId)}/${encodeURIComponent(expenseRequestId)}`;
+}

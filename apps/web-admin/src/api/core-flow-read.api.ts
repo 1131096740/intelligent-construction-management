@@ -3,6 +3,7 @@ import type {
   ContractDetailReadModel,
   ContractPaymentApplicationPreviewReadModel,
   PaymentDetailReadModel,
+  ProjectExpenseApprovalDetailReadModel,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
@@ -860,6 +861,8 @@ export interface ReviewProjectExpenseApprovalPayload {
   decision: "approve" | "reject";
   approvedAmountCents?: string;
   comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
 }
 
 export interface VoidProjectExpenseRequestPayload {
@@ -1075,6 +1078,15 @@ export function createProjectExpenseRequest(
   body: CreateProjectExpenseRequestPayload
 ) {
   return postJson<unknown>(`/projects/${projectId}/expense-requests`, body);
+}
+
+export function fetchProjectExpenseApprovalDetail(
+  projectId: string,
+  expenseRequestId: string
+) {
+  return readJson<ProjectExpenseApprovalDetailReadModel>(
+    `/projects/${projectId}/expense-requests/${expenseRequestId}/approval-detail`
+  );
 }
 
 export function reviewProjectExpenseApproval(

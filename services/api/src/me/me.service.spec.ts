@@ -245,6 +245,130 @@ describe("MeService", () => {
     expect(result.approvalCenter.pendingApproval[0].id).toBe("approval:approval-1");
   });
 
+  it("routes project expense approval work items to the independent detail", async () => {
+    const expenseInstance = {
+      id: "approval-expense-1",
+      businessType: "project_expense_request",
+      businessId: "expense-1",
+      status: "in_progress",
+      currentNodeIndex: 0,
+      frozenNodes: [{ name: "项目经理审批", roleKeys: ["project_manager"] }],
+      applicantUserId: "applicant-1",
+      createdAt: new Date("2026-07-11T08:00:00.000Z"),
+      updatedAt: new Date("2026-07-11T08:00:00.000Z")
+    };
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ projectId: "project-1", positionKey: "project_manager" }])
+      },
+      project: {
+        findMany: jest.fn().mockImplementation(({ where }: { where?: { isActive?: boolean } }) =>
+          where?.isActive ? [{ id: "project-1" }] : [{ id: "project-1", name: "测试项目" }]
+        )
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeover: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { applicantUserId?: string; id?: unknown } }) => {
+          if (where.applicantUserId || where.id) return [];
+          return [expenseInstance];
+        })
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "expense-1",
+            projectId: "project-1",
+            code: "BX-001",
+            expenseType: "reimbursement",
+            paymentSubject: "现场报销",
+            requestedAmountCents: 50_000n
+          }
+        ])
+      }
+    };
+    const service = new MeService(prisma as never, {} as never);
+
+    const result = await service.getWorkItems("manager-1");
+
+    expect(result.queues.pending[0]).toMatchObject({
+      businessId: "expense-1",
+      targetPath: "/项目支出/project-1/expense-1"
+    });
+  });
+
+  it("does not create project expense todos from assignment or standing delegation", async () => {
+    const expenseInstance = {
+      id: "approval-expense-1",
+      businessType: "project_expense_request",
+      businessId: "expense-1",
+      status: "in_progress",
+      currentNodeIndex: 0,
+      frozenNodes: [
+        {
+          name: "项目经理审批",
+          roleKeys: ["project_manager"],
+          assignments: [{ fromRoleKey: "project_manager", toUserId: "employee-1" }]
+        }
+      ],
+      applicantUserId: "applicant-1",
+      createdAt: new Date("2026-07-11T08:00:00.000Z"),
+      updatedAt: new Date("2026-07-11T08:00:00.000Z")
+    };
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ projectId: "project-1", positionKey: "employee" }])
+      },
+      project: {
+        findMany: jest.fn().mockImplementation(({ where }: { where?: { isActive?: boolean } }) =>
+          where?.isActive ? [{ id: "project-1" }] : [{ id: "project-1", name: "测试项目" }]
+        )
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "manager-1" }])
+      },
+      contractTakeover: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { applicantUserId?: string; id?: unknown } }) => {
+          if (where.applicantUserId || where.id) return [];
+          return [expenseInstance];
+        })
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "expense-1",
+            projectId: "project-1",
+            code: "BX-001",
+            expenseType: "reimbursement",
+            paymentSubject: "现场报销",
+            requestedAmountCents: 50_000n
+          }
+        ])
+      }
+    };
+    const service = new MeService(prisma as never, {} as never);
+
+    const result = await service.getWorkItems("employee-1");
+
+    expect(result.approvalCenter.pendingApproval).toEqual([]);
+    expect(result.approvalCenter.delegatedToMe).toEqual([]);
+    expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
+  });
+
   it("returns pending approval work items accepted through standing delegation", async () => {
     const prisma = {
       userPosition: {

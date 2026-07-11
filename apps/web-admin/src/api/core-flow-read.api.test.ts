@@ -15,6 +15,7 @@ import {
   fetchAuditLogs,
   fetchFileDownloadAudits,
   fetchProjectExpenseRequests,
+  fetchProjectExpenseApprovalDetail,
   fetchProjectOperatingOverview,
   fetchProjects,
   fetchContractCreateProjects,
@@ -669,6 +670,32 @@ describe("core flow read API client", () => {
       JSON.stringify({
         confirmationPassword: "current-password",
         downloadReason: "审批单复核"
+      })
+    );
+  });
+
+  it("reads project expense approval detail and preserves self-review password exactly", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "expense-1" })
+    } as Response);
+
+    await fetchProjectExpenseApprovalDetail("project-1", "expense-1");
+    await reviewProjectExpenseApproval("project-1", "expense-1", {
+      decision: "approve",
+      selfReviewReason: "业务紧急",
+      confirmationPassword: " current-password "
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/projects/project-1/expense-requests/expense-1/approval-detail"
+    );
+    expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        selfReviewReason: "业务紧急",
+        confirmationPassword: " current-password "
       })
     );
   });

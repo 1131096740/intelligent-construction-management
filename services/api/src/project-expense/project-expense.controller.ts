@@ -33,6 +33,15 @@ export class ProjectExpenseController {
     return this.expenses.list(projectId, user.id);
   }
 
+  @Get(":expenseRequestId/approval-detail")
+  getApprovalDetail(
+    @Param("projectId") projectId: string,
+    @Param("expenseRequestId") expenseRequestId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.expenses.getApprovalDetail(projectId, expenseRequestId, user.id);
+  }
+
   @Post()
   @RequireProjectRole("project_expense.create")
   create(

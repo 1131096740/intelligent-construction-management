@@ -61,6 +61,28 @@ const validExpenseCreateBody = {
 };
 
 describe("ProjectExpenseController authorization wiring", () => {
+  it("审批详情 GET 原样转发路径参数和登录用户且不使用粗粒度岗位装饰器", async () => {
+    const expenses = { getApprovalDetail: jest.fn().mockResolvedValue({ id: "expense-1" }) };
+    const controller = new ProjectExpenseController(expenses as never);
+
+    await expect(
+      controller.getApprovalDetail("project-1", "expense-1", { id: "user-1" } as never)
+    ).resolves.toEqual({ id: "expense-1" });
+    expect(expenses.getApprovalDetail).toHaveBeenCalledWith("project-1", "expense-1", "user-1");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ProjectExpenseController.prototype.getApprovalDetail
+      )
+    ).toBeUndefined();
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ProjectExpenseController.prototype.getApprovalDetail
+      )
+    ).toBeUndefined();
+  });
+
   it("保留项目支出领导自审原因和当前密码", async () => {
     const value = {
       decision: "approve",

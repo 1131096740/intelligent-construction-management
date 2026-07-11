@@ -689,12 +689,20 @@ export class MeService {
         continue;
       }
       const roleKeys = roleKeysByProject.get(detail.projectId) ?? [];
-      const hasDirectTodo = this.canActOnApprovalNode(node, roleKeys, userId);
-      const hasDelegatedTodo = await this.hasDelegatedApprovalTodo(userId, detail.projectId, node);
+      const isProjectExpense = instance.businessType === "project_expense_request";
+      const hasDirectTodo = isProjectExpense
+        ? this.hasDirectRoleTodo(node, roleKeys)
+        : this.canActOnApprovalNode(node, roleKeys, userId);
+      const hasDelegatedTodo = isProjectExpense
+        ? false
+        : await this.hasDelegatedApprovalTodo(userId, detail.projectId, node);
       if (mode === "pending" && !hasDirectTodo && !hasDelegatedTodo) {
         continue;
       }
       if (mode === "delegated" && !this.hasAssignmentTodo(node, userId) && !hasDelegatedTodo) {
+        continue;
+      }
+      if (mode === "delegated" && isProjectExpense) {
         continue;
       }
 
@@ -888,7 +896,7 @@ export class MeService {
         businessCode: expense.code,
         title: `${projectExpenseApprovalTitle(expense.expenseType)}：${expense.paymentSubject}`,
         amountCents: expense.requestedAmountCents,
-        targetPath: `/项目经营?project=${expense.projectId}`
+        targetPath: `/项目支出/${expense.projectId}/${expense.id}`
       });
     }
 
@@ -1034,6 +1042,13 @@ export class MeService {
     );
 
     return hasRoleTodo || hasAssignmentTodo;
+  }
+
+  private hasDirectRoleTodo(node: ApprovalNode, roleKeys: RoleKey[]) {
+    const approvedRoleKeys = new Set(this.stringArray(node.approvedRoleKeys));
+    return this.stringArray(node.roleKeys).some(
+      (role) => !approvedRoleKeys.has(role) && roleKeys.includes(role as RoleKey)
+    );
   }
 
   private hasAssignmentTodo(node: ApprovalNode, userId: string) {

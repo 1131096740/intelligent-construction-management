@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   expenseSubtypeLabel,
+  projectExpenseApprovalDetailPath,
   expenseTypeLabel,
   expenseTypeOptions,
   subtypeOptionsFor
@@ -45,5 +46,11 @@ describe("project expense page configuration", () => {
     expect(expenseSubtypeLabel("entertainment")).toBe("招待");
     expect(expenseSubtypeLabel("reimbursement")).toBe("报销");
     expect(expenseSubtypeLabel("spot_material_purchase")).toBe("零星材料采购");
+  });
+
+  it("builds the independent project expense approval detail path", () => {
+    expect(projectExpenseApprovalDetailPath("project-1", "expense-1")).toBe(
+      "/项目支出/project-1/expense-1"
+    );
   });
 });

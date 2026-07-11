@@ -1,11 +1,23 @@
-import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import {
+  canPerform,
+  type ProjectExpenseApprovalDetailReadModel,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
+import { detailAction } from "../core-flow/detail-actions";
 import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
@@ -159,6 +171,43 @@ const SPOT_PURCHASE_SUBTYPES = [
   "spot_other_purchase"
 ] as const;
 
+const PROJECT_EXPENSE_TYPE_LABELS: Record<string, string> = {
+  sporadic_payment: "零星付款",
+  loan_reserve: "借款及备用金",
+  comprehensive_expense: "综合费用",
+  reimbursement: "报销申请",
+  spot_purchase: "零星采购"
+};
+
+const PROJECT_EXPENSE_SUBTYPE_LABELS: Record<string, string> = {
+  sporadic_material: "零星材料",
+  sporadic_machinery: "零星机械",
+  sporadic_labor: "零星人工",
+  temporary_service: "临时服务",
+  other_sporadic: "其他零星支出",
+  employee_loan: "员工借款",
+  owner_loan: "老板借款",
+  project_reserve: "项目备用金",
+  travel: "差旅",
+  entertainment: "招待",
+  reimbursement: "报销",
+  spot_material_purchase: "零星材料采购",
+  spot_tool_purchase: "零星工具采购",
+  spot_service_purchase: "零星服务采购",
+  spot_other_purchase: "其他零星采购"
+};
+
+const PROJECT_EXPENSE_STATUS_LABELS: Record<string, string> = {
+  approval_pending: "审批中",
+  approved_pending_payment: "审批通过待付款",
+  partially_paid: "部分付款",
+  paid: "已付款",
+  payment_blocked: "付款受阻",
+  rejected: "已驳回",
+  withdrawn: "已撤回",
+  voided: "已作废"
+};
+
 @Injectable()
 export class ProjectExpenseService {
   constructor(
@@ -258,6 +307,107 @@ export class ProjectExpenseService {
           sumDbMoneyToBigInt(rows.map((row) => row.paidAmountCents), "项目支出实付合计")
         )
       }
+    };
+  }
+
+  async getApprovalDetail(
+    projectId: string,
+    expenseRequestId: string,
+    actorUserId: string
+  ): Promise<ProjectExpenseApprovalDetailReadModel> {
+    const expense = await this.prisma.projectExpenseRequest.findFirst({
+      where: { id: expenseRequestId, projectId, voidedAt: null },
+      select: {
+        id: true,
+        projectId: true,
+        code: true,
+        expenseType: true,
+        expenseSubtype: true,
+        paymentSubject: true,
+        reason: true,
+        requestedAmountCents: true,
+        approvedAmountCents: true,
+        applicantUserId: true,
+        status: true
+      }
+    });
+    if (!expense) {
+      throw new NotFoundException("项目支出申请不存在");
+    }
+
+    const actorRoleKeys = await this.loadActorRoleKeys(this.prisma, actorUserId, projectId);
+    const isExpenseApplicant = expense.applicantUserId === actorUserId;
+    if (!isExpenseApplicant && !canPerform("project_expense.approve", actorRoleKeys)) {
+      throw new ForbiddenException("无权查看该项目支出审批详情");
+    }
+
+    const instance = expense.status === "approval_pending"
+      ? await this.prisma.approvalInstance.findFirst({
+          where: {
+            businessType: "project_expense_request",
+            businessId: expense.id,
+            flowType: "project_expense.approve",
+            status: "in_progress"
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            currentNodeIndex: true,
+            frozenNodes: true,
+            applicantUserId: true
+          }
+        })
+      : null;
+    const nodes = (instance?.frozenNodes ?? []) as unknown as ProjectExpenseApprovalNode[];
+    const currentNode = instance ? nodes[instance.currentNodeIndex] ?? null : null;
+    const approvedRoleKey = currentNode?.roleKeys.find((role) => actorRoleKeys.includes(role)) ?? null;
+    const isApprovalApplicant = instance?.applicantUserId === actorUserId;
+    const isLeaderSelfReview =
+      isApprovalApplicant && (approvedRoleKey === "chairman" || approvedRoleKey === "general_manager");
+    const canReview = expense.status === "approval_pending" && Boolean(currentNode && approvedRoleKey);
+    const disabledReason = expense.status !== "approval_pending"
+      ? "当前项目支出状态不可审批"
+      : !currentNode
+        ? "项目支出当前审批节点不存在"
+        : !approvedRoleKey
+          ? "当前岗位无权审批此节点"
+          : isApprovalApplicant && !isLeaderSelfReview
+            ? "申请人不能审批自己发起的业务"
+            : undefined;
+    const reviewEnabled = canReview && (!isApprovalApplicant || isLeaderSelfReview);
+
+    return {
+      id: expense.id,
+      projectId: expense.projectId,
+      code: expense.code,
+      title: `${expense.code} · ${expense.paymentSubject}`,
+      status: expense.status,
+      statusLabel: PROJECT_EXPENSE_STATUS_LABELS[expense.status] ?? expense.status,
+      expenseTypeLabel: PROJECT_EXPENSE_TYPE_LABELS[expense.expenseType] ?? expense.expenseType,
+      expenseSubtypeLabel:
+        PROJECT_EXPENSE_SUBTYPE_LABELS[expense.expenseSubtype] ?? expense.expenseSubtype,
+      paymentSubject: expense.paymentSubject,
+      reason: expense.reason,
+      requestedAmountCents: moneyCentsToApi(expense.requestedAmountCents),
+      approvedAmountCents:
+        expense.approvedAmountCents === null ? null : moneyCentsToApi(expense.approvedAmountCents),
+      currentNodeName: currentNode?.name ?? null,
+      reviewAction: detailAction({
+        key: "review",
+        label: "审批项目支出",
+        kind: "primary",
+        roleKeys: actorRoleKeys,
+        enabled: reviewEnabled,
+        disabledReason,
+        skipRoleCheck: true,
+        requiresSelfReviewConfirmation: isLeaderSelfReview
+      }),
+      approvalTimeline: await approvalTimelineForBusiness(
+        this.prisma,
+        "project_expense_request",
+        expense.id
+      )
     };
   }
 

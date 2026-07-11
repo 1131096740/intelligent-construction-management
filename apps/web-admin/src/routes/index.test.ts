@@ -116,6 +116,13 @@ describe("web admin routes", () => {
     expect(String(childRoute("项目经营")?.component)).toContain("ProjectOperatingOverviewPage.vue");
   });
 
+  it("exposes project expense approval detail without the funds overview role allowlist", () => {
+    const route = childRoute("项目支出/:projectId/:expenseRequestId");
+
+    expect(String(route?.component)).toContain("ProjectExpenseApprovalDetailPage.vue");
+    expect(route?.meta?.requiredRoleKeys).toBeUndefined();
+  });
+
   it("guards historical contract takeover as a contract department module", () => {
     expect(childRoute("历史合同接管")?.meta).toMatchObject({
       requiredRoleKeys: historicalTakeoverRoleKeys
