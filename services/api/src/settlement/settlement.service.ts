@@ -10,7 +10,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
-import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
+import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -1097,10 +1097,15 @@ export class SettlementService {
         throw new Error(`当前账号不能处理“${currentNode.name}”节点，请确认是否为该节点审批人`);
       }
 
-      assertOrdinaryApplicantCannotReview({
+      const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
         actorUserId,
-        actorRoleKeys
+        actorRoleKeys,
+        selfReviewReason: input.selfReviewReason,
+        confirmationPassword: input.confirmationPassword,
+        confirmPassword: this.auth
+          ? (password) => this.auth!.confirmPassword(actorUserId, password)
+          : undefined
       });
 
       if (input.decision === "reject_previous") {
@@ -1134,7 +1139,10 @@ export class SettlementService {
             action: "reject_previous",
             actorUserId,
             comment: input.comment?.trim() || undefined,
-            metadata: await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)
+            metadata: {
+              ...(await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)),
+              ...selfReview.metadata
+            }
           }
         });
 
@@ -1147,7 +1155,8 @@ export class SettlementService {
             fromStatus: settlement.status,
             toStatus: "approval_pending",
             fromNodeName: currentNode.name,
-            toNodeName: nextNodes[previousNodeIndex].name
+            toNodeName: nextNodes[previousNodeIndex].name,
+            ...selfReview.metadata
           }
         });
 
@@ -1171,7 +1180,10 @@ export class SettlementService {
             action: "return_to_applicant",
             actorUserId,
             comment: input.comment?.trim() || undefined,
-            metadata: await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)
+            metadata: {
+              ...(await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)),
+              ...selfReview.metadata
+            }
           }
         });
 
@@ -1190,7 +1202,8 @@ export class SettlementService {
           metadata: {
             fromStatus: settlement.status,
             toStatus: "approval_rejected",
-            nodeName: currentNode.name
+            nodeName: currentNode.name,
+            ...selfReview.metadata
           }
         });
 
@@ -1213,7 +1226,8 @@ export class SettlementService {
             approvalInstanceId: instance.id,
             action: "reject",
             actorUserId,
-            comment: input.comment?.trim() || undefined
+            comment: input.comment?.trim() || undefined,
+            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
 
@@ -1232,7 +1246,8 @@ export class SettlementService {
           metadata: {
             fromStatus: settlement.status,
             toStatus: "approval_rejected",
-            nodeName: currentNode.name
+            nodeName: currentNode.name,
+            ...selfReview.metadata
           }
         });
 
@@ -1271,7 +1286,10 @@ export class SettlementService {
           action: "approve",
           actorUserId,
           comment: input.comment?.trim() || undefined,
-          metadata: await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)
+          metadata: {
+            ...(await this.approvalLogMetadata(tx, currentNode, actorUserId, approvedRoleKey)),
+            ...selfReview.metadata
+          }
         }
       });
 
@@ -1289,7 +1307,8 @@ export class SettlementService {
           fromStatus: settlement.status,
           toStatus: nextStatus,
           nodeName: currentNode.name,
-          nodeCompleted
+          nodeCompleted,
+          ...selfReview.metadata
         }
       });
 
@@ -2168,7 +2187,12 @@ export class SettlementService {
     node: SettlementApprovalNode,
     actorUserId: string,
     roleKey: RoleKey
-  ): Promise<Prisma.InputJsonValue> {
+  ): Promise<{
+    nodeName: string;
+    roleKey: RoleKey;
+    roleName: string;
+    approverName: string;
+  }> {
     const user = (tx as unknown as UserLookupClient).user
       ? await (tx as unknown as UserLookupClient).user!.findMany({
           where: { id: { in: [actorUserId] } }

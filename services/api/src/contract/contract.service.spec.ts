@@ -1552,6 +1552,104 @@ describe("ContractService", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
+  function contractLeaderSelfReviewFixture() {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval"
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "approved_pending_seal"
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ],
+          applicantUserId: "leader-1"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never, auth as never);
+    return { service, tx };
+  }
+
+  it.each([
+    [
+      { decision: "approve", confirmationPassword: "top-secret" },
+      "董事长或总经理审批自己发起的业务时，请填写自审原因"
+    ],
+    [
+      { decision: "approve", selfReviewReason: "业务紧急" },
+      "董事长或总经理自审前，请输入当前密码完成二次确认"
+    ]
+  ] as const)("合同领导自审缺少确认事实时零写入", async (input, message) => {
+    const { service, tx } = contractLeaderSelfReviewFixture();
+
+    await expect(service.reviewApproval("contract-version-1", "leader-1", input)).rejects.toThrow(message);
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("合同领导自审当前密码错误时零写入", async () => {
+    auth.confirmPassword.mockRejectedValue(new Error("当前密码不正确，请重新输入"));
+    const { service, tx } = contractLeaderSelfReviewFixture();
+
+    await expect(
+      service.reviewApproval("contract-version-1", "leader-1", {
+        decision: "approve",
+        selfReviewReason: "业务紧急",
+        confirmationPassword: "wrong-password"
+      })
+    ).rejects.toThrow("当前密码不正确，请重新输入");
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("合同领导自审成功后只记录修剪后的原因和自审标记", async () => {
+    const { service, tx } = contractLeaderSelfReviewFixture();
+
+    await service.reviewApproval("contract-version-1", "leader-1", {
+      decision: "approve",
+      selfReviewReason: "  业务紧急且由本人发起  ",
+      confirmationPassword: "top-secret"
+    });
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith("leader-1", "top-secret");
+    const actionMetadata = tx.approvalActionLog.create.mock.calls[0]?.[0].data.metadata;
+    const auditMetadata = audit.record.mock.calls[0]?.[1].metadata;
+    expect(actionMetadata).toEqual({ selfReview: true, selfReviewReason: "业务紧急且由本人发起" });
+    expect(auditMetadata).toEqual(expect.objectContaining({
+      selfReview: true,
+      selfReviewReason: "业务紧急且由本人发起"
+    }));
+    expect(JSON.stringify(actionMetadata)).not.toContain("confirmationPassword");
+    expect(JSON.stringify(actionMetadata)).not.toContain("top-secret");
+    expect(JSON.stringify(auditMetadata)).not.toContain("confirmationPassword");
+    expect(JSON.stringify(auditMetadata)).not.toContain("top-secret");
+  });
+
   it("lets a standing delegate approve a contract node as the delegator's role", async () => {
     const tx = {
       contractVersion: {

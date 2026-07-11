@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
-import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
+import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -508,10 +508,15 @@ export class ProjectExpenseService {
         throw new BadRequestException(`当前用户不能审批项目支出节点：${currentNode.name}`);
       }
 
-      assertOrdinaryApplicantCannotReview({
+      const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
         actorUserId,
-        actorRoleKeys
+        actorRoleKeys,
+        selfReviewReason: input.selfReviewReason,
+        confirmationPassword: input.confirmationPassword,
+        confirmPassword: this.auth
+          ? (password) => this.auth!.confirmPassword(actorUserId, password)
+          : undefined
       });
 
       if (input.decision === "reject") {
@@ -528,7 +533,8 @@ export class ProjectExpenseService {
             approvalInstanceId: instance.id,
             action: "reject",
             actorUserId,
-            comment: input.comment?.trim() || undefined
+            comment: input.comment?.trim() || undefined,
+            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
         await this.releaseFinancingQuotaUsage(
@@ -542,7 +548,12 @@ export class ProjectExpenseService {
           action: "project_expense.approval.reject",
           businessType: "project_expense_request",
           businessId: request.id,
-          metadata: { projectId, nodeName: currentNode.name, approvedRoleKey }
+          metadata: {
+            projectId,
+            nodeName: currentNode.name,
+            approvedRoleKey,
+            ...selfReview.metadata
+          }
         });
         return rejected;
       }
@@ -585,7 +596,8 @@ export class ProjectExpenseService {
           approvalInstanceId: instance.id,
           action: "approve",
           actorUserId,
-          comment: input.comment?.trim() || undefined
+          comment: input.comment?.trim() || undefined,
+          ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
         }
       });
       if (flowCompleted) {
@@ -606,7 +618,8 @@ export class ProjectExpenseService {
           nodeName: currentNode.name,
           approvedRoleKey,
           flowCompleted,
-          approvedAmountCents: flowCompleted ? moneyCentsToApi(approvedAmountCents) : undefined
+          approvedAmountCents: flowCompleted ? moneyCentsToApi(approvedAmountCents) : undefined,
+          ...selfReview.metadata
         }
       });
       return updated;

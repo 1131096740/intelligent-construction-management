@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { approvalElapsedHours, canRemindApproval, type RoleKey } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
-import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
+import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
@@ -600,10 +600,15 @@ export class ContractService {
         throw new Error("当前账号无权处理该合同审批节点");
       }
 
-      assertOrdinaryApplicantCannotReview({
+      const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
         actorUserId,
-        actorRoleKeys
+        actorRoleKeys,
+        selfReviewReason: input.selfReviewReason,
+        confirmationPassword: input.confirmationPassword,
+        confirmPassword: this.auth
+          ? (password) => this.auth!.confirmPassword(actorUserId, password)
+          : undefined
       });
 
       if (input.decision === "reject_previous") {
@@ -636,7 +641,8 @@ export class ContractService {
             approvalInstanceId: instance.id,
             action: "reject_previous",
             actorUserId,
-            comment: input.comment?.trim() || undefined
+            comment: input.comment?.trim() || undefined,
+            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
 
@@ -650,7 +656,8 @@ export class ContractService {
             toStatus: "in_approval",
             fromNodeName: currentNode.name,
             toNodeName: nextNodes[previousNodeIndex].name,
-            approvedRoleKey
+            approvedRoleKey,
+            ...selfReview.metadata
           }
         });
 
@@ -673,7 +680,8 @@ export class ContractService {
             approvalInstanceId: instance.id,
             action: "return_to_applicant",
             actorUserId,
-            comment: input.comment?.trim() || undefined
+            comment: input.comment?.trim() || undefined,
+            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
 
@@ -686,7 +694,8 @@ export class ContractService {
             fromStatus: version.status,
             toStatus: "draft",
             nodeName: currentNode.name,
-            approvedRoleKey
+            approvedRoleKey,
+            ...selfReview.metadata
           }
         });
 
@@ -713,7 +722,8 @@ export class ContractService {
           approvalInstanceId: instance.id,
           action: input.decision === "approve" ? "approve" : "reject",
           actorUserId,
-          comment: input.comment?.trim() || undefined
+          comment: input.comment?.trim() || undefined,
+          ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
         }
       });
 
@@ -731,7 +741,8 @@ export class ContractService {
           fromStatus: version.status,
           toStatus: nextStatus,
           nodeName: currentNode.name,
-          approvedRoleKey
+          approvedRoleKey,
+          ...selfReview.metadata
         }
       });
 

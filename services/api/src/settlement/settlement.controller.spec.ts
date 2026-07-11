@@ -81,6 +81,48 @@ async function getSettlementValidationResponse(
 }
 
 describe("SettlementController authorization wiring", () => {
+  it("保留结算领导自审原因和当前密码", async () => {
+    const value = {
+      decision: "approve",
+      selfReviewReason: "项目紧急且由本人发起",
+      confirmationPassword: "current-password"
+    };
+
+    await expect(validateSettlementBody("reviewApproval", 2, value)).resolves.toEqual(value);
+  });
+
+  it.each([
+    ["selfReviewReason", null, "自审原因必须是文字"],
+    ["selfReviewReason", [], "自审原因必须是文字"],
+    ["selfReviewReason", {}, "自审原因必须是文字"],
+    ["selfReviewReason", 123, "自审原因必须是文字"],
+    ["selfReviewReason", "原".repeat(501), "自审原因不能超过 500 个字符"],
+    ["confirmationPassword", null, "当前密码必须是文字"],
+    ["confirmationPassword", [], "当前密码必须是文字"],
+    ["confirmationPassword", {}, "当前密码必须是文字"],
+    ["confirmationPassword", 123, "当前密码必须是文字"],
+    ["confirmationPassword", "密".repeat(257), "当前密码格式不正确"]
+  ] as const)("拒绝结算自审字段 %s 的非法值", async (field, value, message) => {
+    const response = await getSettlementValidationResponse("reviewApproval", 2, {
+      decision: "approve",
+      [field]: value
+    });
+
+    expect(response.errors).toContain(message);
+  });
+
+  it("拒绝结算审批未知字段且不回显当前密码", async () => {
+    const response = await getSettlementValidationResponse("reviewApproval", 2, {
+      decision: "approve",
+      selfReviewReason: "业务紧急",
+      confirmationPassword: "current-password",
+      internalSecret: "TOP-SECRET"
+    });
+
+    expect(response.errors).toEqual(["internalSecret 不是允许提交的字段"]);
+    expect(JSON.stringify(response)).not.toContain("current-password");
+    expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
+  });
   it.each(settlementBodyRoutes)("exposes a runtime DTO for %s", (method, bodyIndex) => {
     const metatype = settlementBodyMetatype(method, bodyIndex);
 

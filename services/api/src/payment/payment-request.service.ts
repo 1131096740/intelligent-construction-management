@@ -9,7 +9,7 @@ import {
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
-import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
+import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -1872,10 +1872,15 @@ export class PaymentRequestService {
         throw new Error(`当前账号不能处理“${currentNode.name}”付款审批节点`);
       }
 
-      assertOrdinaryApplicantCannotReview({
+      const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
         actorUserId,
-        actorRoleKeys
+        actorRoleKeys,
+        selfReviewReason: input.selfReviewReason,
+        confirmationPassword: input.confirmationPassword,
+        confirmPassword: this.auth
+          ? (password) => this.auth!.confirmPassword(actorUserId, password)
+          : undefined
       });
 
       if (input.decision === "reject_previous") {
@@ -1908,7 +1913,8 @@ export class PaymentRequestService {
             approvalInstanceId: instance.id,
             action: "reject_previous",
             actorUserId,
-            comment: input.comment?.trim() || undefined
+            comment: input.comment?.trim() || undefined,
+            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
 
@@ -1923,7 +1929,8 @@ export class PaymentRequestService {
             toStatus: "approval_pending",
             fromNodeName: currentNode.name,
             toNodeName: nextNodes[previousNodeIndex].name,
-            approvedRoleKey
+            approvedRoleKey,
+            ...selfReview.metadata
           }
         });
 
@@ -1946,7 +1953,8 @@ export class PaymentRequestService {
             approvalInstanceId: instance.id,
             action: "return_to_applicant",
             actorUserId,
-            comment: input.comment?.trim() || undefined
+            comment: input.comment?.trim() || undefined,
+            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
 
@@ -1967,7 +1975,8 @@ export class PaymentRequestService {
             fromStatus: payment.status,
             toStatus: "draft",
             nodeName: currentNode.name,
-            approvedRoleKey
+            approvedRoleKey,
+            ...selfReview.metadata
           }
         });
 
@@ -1991,7 +2000,8 @@ export class PaymentRequestService {
             approvalInstanceId: instance.id,
             action: "reject",
             actorUserId,
-            comment: input.comment?.trim() || undefined
+            comment: input.comment?.trim() || undefined,
+            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
           }
         });
         await this.releaseFinancingQuotaUsage(
@@ -2010,7 +2020,8 @@ export class PaymentRequestService {
             fromStatus: payment.status,
             toStatus: "rejected",
             nodeName: currentNode.name,
-            approvedRoleKey
+            approvedRoleKey,
+            ...selfReview.metadata
           }
         });
         return rejected;
@@ -2074,7 +2085,8 @@ export class PaymentRequestService {
           approvalInstanceId: instance.id,
           action: "approve",
           actorUserId,
-          comment: input.comment?.trim() || undefined
+          comment: input.comment?.trim() || undefined,
+          ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
         }
       });
       if (flowCompleted) {
@@ -2098,7 +2110,8 @@ export class PaymentRequestService {
           approvedAmountCents: flowCompleted ? moneyCentsToApi(approvedAmountCents) : undefined,
           nodeName: currentNode.name,
           approvedRoleKey,
-          nodeCompleted
+          nodeCompleted,
+          ...selfReview.metadata
         }
       });
       if (flowCompleted) {

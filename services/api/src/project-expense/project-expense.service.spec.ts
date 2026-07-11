@@ -1007,6 +1007,115 @@ describe("ProjectExpenseService", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
+  function expenseLeaderSelfReviewFixture() {
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          {
+            id: "expense-1",
+            projectId: "project-1",
+            code: "BX-2026-001",
+            expenseType: "reimbursement",
+            status: "approval_pending",
+            requestedAmountCents: 50_000n,
+            approvedAmountCents: null,
+            paidAmountCents: 0n,
+            applicantUserId: "leader-1",
+            purchaseExecutedAt: null,
+            receiptConfirmedAt: null
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-instance-1",
+            status: "in_progress",
+            currentNodeIndex: 0,
+            frozenNodes: [
+              { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+            ],
+            applicantUserId: "leader-1"
+          }
+        ]),
+      projectExpenseRequest: {
+        update: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          status: "approved_pending_payment",
+          approvedAmountCents: 50_000n
+        })
+      },
+      approvalInstance: { update: jest.fn() },
+      approvalActionLog: { create: jest.fn() },
+      projectExpenseFinancingQuotaUsage: { findMany: jest.fn().mockResolvedValue([]) },
+      ...roleTables("chairman")
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+    return { service, tx };
+  }
+
+  it.each([
+    [
+      { decision: "approve", confirmationPassword: "top-secret" },
+      "董事长或总经理审批自己发起的业务时，请填写自审原因"
+    ],
+    [
+      { decision: "approve", selfReviewReason: "业务紧急" },
+      "董事长或总经理自审前，请输入当前密码完成二次确认"
+    ]
+  ] as const)("项目支出领导自审缺少确认事实时零写入", async (input, message) => {
+    const { service, tx } = expenseLeaderSelfReviewFixture();
+
+    await expect(
+      service.reviewApproval("project-1", "expense-1", "leader-1", input)
+    ).rejects.toThrow(message);
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("项目支出领导自审当前密码错误时零写入", async () => {
+    auth.confirmPassword.mockRejectedValue(new Error("当前密码不正确，请重新输入"));
+    const { service, tx } = expenseLeaderSelfReviewFixture();
+
+    await expect(
+      service.reviewApproval("project-1", "expense-1", "leader-1", {
+        decision: "approve",
+        selfReviewReason: "业务紧急",
+        confirmationPassword: "wrong-password"
+      })
+    ).rejects.toThrow("当前密码不正确，请重新输入");
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("项目支出领导自审成功后只记录修剪后的原因和自审标记", async () => {
+    const { service, tx } = expenseLeaderSelfReviewFixture();
+
+    await service.reviewApproval("project-1", "expense-1", "leader-1", {
+      decision: "approve",
+      selfReviewReason: "  业务紧急且由本人发起  ",
+      confirmationPassword: "top-secret"
+    });
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith("leader-1", "top-secret");
+    const actionMetadata = tx.approvalActionLog.create.mock.calls[0]?.[0].data.metadata;
+    const auditMetadata = audit.record.mock.calls[0]?.[1].metadata;
+    expect(actionMetadata).toEqual({ selfReview: true, selfReviewReason: "业务紧急且由本人发起" });
+    expect(auditMetadata).toEqual(expect.objectContaining({
+      selfReview: true,
+      selfReviewReason: "业务紧急且由本人发起"
+    }));
+    expect(JSON.stringify(actionMetadata)).not.toContain("confirmationPassword");
+    expect(JSON.stringify(actionMetadata)).not.toContain("top-secret");
+    expect(JSON.stringify(auditMetadata)).not.toContain("confirmationPassword");
+    expect(JSON.stringify(auditMetadata)).not.toContain("top-secret");
+  });
+
   it("generates and archives a reimbursement approval PDF after final approval", async () => {
     const reviewTx = {
       $queryRaw: jest
