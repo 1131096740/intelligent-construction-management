@@ -121,7 +121,11 @@ export interface RoleRemovalImpactPreview {
     mode: "any" | "all" | null;
     pendingRoleKeys: RoleKey[];
     blocking: boolean;
-    reasonCode: "no_executable_current_approver" | "invalid_approval_instance_data" | null;
+    reasonCode:
+      | "no_executable_current_approver"
+      | "invalid_approval_instance_data"
+      | "approval_execution_semantics_not_safe"
+      | null;
     roleCoverage: Array<{
       roleKey: RoleKey;
       targetStillDirectAfter: boolean;
@@ -283,7 +287,9 @@ export class PermissionImpactService {
       resolutionIssueCodes.has(blockingIssue.code)
     );
     const relevantInstances = targetResolved
-      ? mappedInstances.filter((instance) => isRelevantInstance(instance, change))
+      ? mappedInstances
+          .filter((instance) => isRelevantInstance(instance, change))
+          .sort((left, right) => compareText(left.id, right.id))
       : [];
     const impacts = relevantInstances
       .map((instance) => buildImpact(instance, change, users, directFacts, delegations))
@@ -305,11 +311,12 @@ export class PermissionImpactService {
             : null,
           projectId: instance.projectId
         })),
-      users,
-      positions,
-      userPositions,
-      projectMembers,
-      delegations
+      users: stableRows(users, (row) => row.id),
+      positions: stableRows(positions, (row) => `${row.id}\u0000${row.key}`),
+      projects: stableRows(projects, (row) => row.id),
+      userPositions: stableRows(userPositions, (row) => row.id),
+      projectMembers: stableRows(projectMembers, (row) => row.id),
+      delegations: stableRows(delegations, (row) => row.id)
     });
 
     return {
@@ -450,7 +457,7 @@ function parseAssignments(value: unknown): FrozenAssignment[] | null {
       fromRoleKey: assignment.fromRoleKey as RoleKey
     });
   }
-  return stableUnique(result, (row) => `${row.fromRoleKey}\u0000${row.toUserId}`);
+  return uniqueInOrder(result, (row) => `${row.fromRoleKey}\u0000${row.toUserId}`);
 }
 
 function buildDirectFacts(
@@ -526,22 +533,45 @@ function buildImpact(
 
   const activeUserIds = new Set(users.filter((user) => user.isActive).map((user) => user.id));
   const supportsIndirect = instance.businessType !== "project_expense_request";
+  const directRoleByUser = new Map<string, RoleKey>();
+  for (const roleKey of instance.parsedNode.roleKeys) {
+    for (const userId of directUsersForRole(directFacts, instance.projectId, roleKey)) {
+      if (!directRoleByUser.has(userId)) directRoleByUser.set(userId, roleKey);
+    }
+  }
+  const assignmentRoleByUser = new Map<string, RoleKey>();
+  if (supportsIndirect) {
+    for (const assignment of instance.parsedNode.assignments) {
+      if (
+        activeUserIds.has(assignment.toUserId) &&
+        !directRoleByUser.has(assignment.toUserId) &&
+        !assignmentRoleByUser.has(assignment.toUserId)
+      ) {
+        assignmentRoleByUser.set(assignment.toUserId, assignment.fromRoleKey);
+      }
+    }
+  }
   const roleCoverage = instance.parsedNode.pendingRoleKeys.map((roleKey) => {
     const rawDirect = directUsersForRole(directFacts, instance.projectId, roleKey);
-    const selfReviewAllowed = (userId: string) =>
+    const directSelfReviewAllowed = (userId: string) =>
       userId !== instance.applicantUserId ||
-      (LEADER_ROLE_KEYS.has(roleKey) && rawDirect.includes(instance.applicantUserId));
-    const directApproverUserIdsAfter = rawDirect.filter(selfReviewAllowed);
+      LEADER_ROLE_KEYS.has(roleKey);
+    const directApproverUserIdsAfter = stableText(
+      [...directRoleByUser.entries()]
+        .filter(
+          ([userId, selectedRoleKey]) =>
+            selectedRoleKey === roleKey && directSelfReviewAllowed(userId)
+        )
+        .map(([userId]) => userId)
+    );
     const assignmentApproverUserIds = supportsIndirect
       ? stableText(
-          instance.parsedNode?.assignments
+          [...assignmentRoleByUser.entries()]
             .filter(
-              (assignment) =>
-                assignment.fromRoleKey === roleKey &&
-                activeUserIds.has(assignment.toUserId) &&
-                selfReviewAllowed(assignment.toUserId)
+              ([userId, selectedRoleKey]) =>
+                selectedRoleKey === roleKey && userId !== instance.applicantUserId
             )
-            .map((assignment) => assignment.toUserId) ?? []
+            .map(([userId]) => userId)
         )
       : [];
     const delegationApproverUserIds = supportsIndirect
@@ -551,8 +581,10 @@ function buildImpact(
               (delegation) =>
                 activeUserIds.has(delegation.fromUserId) &&
                 activeUserIds.has(delegation.toUserId) &&
-                rawDirect.includes(delegation.fromUserId) &&
-                selfReviewAllowed(delegation.toUserId)
+                directRoleByUser.get(delegation.fromUserId) === roleKey &&
+                !directRoleByUser.has(delegation.toUserId) &&
+                !assignmentRoleByUser.has(delegation.toUserId) &&
+                delegation.toUserId !== instance.applicantUserId
             )
             .map((delegation) => delegation.toUserId)
         )
@@ -572,14 +604,18 @@ function buildImpact(
       assignmentApproverUserIds,
       delegationApproverUserIds,
       requiresSelfReviewConfirmation:
-        allApprovers.includes(instance.applicantUserId) && LEADER_ROLE_KEYS.has(roleKey),
+        directApproverUserIdsAfter.includes(instance.applicantUserId) &&
+        LEADER_ROLE_KEYS.has(roleKey),
       executable: allApprovers.length > 0
     };
   });
-  const executable =
+  const executionSemanticsUnsafe =
+    instance.parsedNode.mode === "all" && instance.parsedNode.roleKeys.length > 1;
+  const executableByCoverage =
     instance.parsedNode.mode === "any"
       ? roleCoverage.some((coverage) => coverage.executable)
       : roleCoverage.every((coverage) => coverage.executable);
+  const executable = !executionSemanticsUnsafe && executableByCoverage;
   return {
     approvalInstanceId: instance.id,
     businessType: instance.businessType,
@@ -590,7 +626,11 @@ function buildImpact(
     mode: instance.parsedNode.mode,
     pendingRoleKeys: instance.parsedNode.pendingRoleKeys,
     blocking: !executable,
-    reasonCode: executable ? null : ("no_executable_current_approver" as const),
+    reasonCode: executable
+      ? null
+      : executionSemanticsUnsafe
+        ? ("approval_execution_semantics_not_safe" as const)
+        : ("no_executable_current_approver" as const),
     roleCoverage
   };
 }
@@ -627,9 +667,7 @@ function hashSnapshot(value: unknown) {
 
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) {
-    return value.map(stableValue).sort((left, right) =>
-      compareText(JSON.stringify(left), JSON.stringify(right))
-    );
+    return value.map(stableValue);
   }
   if (value instanceof Date) return value.toISOString();
   if (isRecord(value)) {
@@ -646,10 +684,18 @@ function stableText(values: Iterable<string>) {
   return [...new Set(values)].sort(compareText);
 }
 
-function stableUnique<T>(values: T[], key: (value: T) => string) {
-  return [...new Map(values.map((value) => [key(value), value])).values()].sort((left, right) =>
-    compareText(key(left), key(right))
-  );
+function uniqueInOrder<T>(values: T[], key: (value: T) => string) {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const stableKey = key(value);
+    if (seen.has(stableKey)) return false;
+    seen.add(stableKey);
+    return true;
+  });
+}
+
+function stableRows<T>(values: T[], key: (value: T) => string) {
+  return [...values].sort((left, right) => compareText(key(left), key(right)));
 }
 
 function compareText(left: string, right: string) {

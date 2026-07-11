@@ -104,7 +104,12 @@ async function preview(
     userId: string;
     scope: "global" | "project";
     projectId?: string | null;
-    roleKey: "super_admin" | "project_manager" | "finance_director" | "chairman";
+    roleKey:
+      | "super_admin"
+      | "project_manager"
+      | "finance_director"
+      | "budget_director"
+      | "chairman";
   }
 ) {
   const prisma = createPrisma(fixture);
@@ -464,7 +469,194 @@ describe("PermissionImpactService approval impacts", () => {
       "approval-any"
     ]);
     expect(result.impacts.find((impact) => impact.approvalInstanceId === "approval-any")).toMatchObject({ blocking: false, reasonCode: null });
-    expect(result.impacts.find((impact) => impact.approvalInstanceId === "approval-all")).toMatchObject({ blocking: true, reasonCode: "no_executable_current_approver" });
+    expect(result.impacts.find((impact) => impact.approvalInstanceId === "approval-all")).toMatchObject({
+      blocking: true,
+      reasonCode: "approval_execution_semantics_not_safe"
+    });
+  });
+
+  it("多岗位 all 节点无论初始或已有 approvedRoleKeys 均以执行语义不安全阻断", async () => {
+    const fixture = baseFixture();
+    addProjectInstance(fixture, {
+      id: "approval-all-initial",
+      businessType: "settlement",
+      businessId: "settlement-all-initial",
+      node: { name: "多岗位全签", mode: "all", roleKeys: ["project_manager", "finance_director"] }
+    });
+    addProjectInstance(fixture, {
+      id: "approval-all-partial",
+      businessType: "payment_request",
+      businessId: "payment-all-partial",
+      node: {
+        name: "多岗位全签已部分审批",
+        mode: "all",
+        roleKeys: ["project_manager", "finance_director"],
+        approvedRoleKeys: ["finance_director"]
+      }
+    });
+    const { result } = await preview(fixture, projectManagerRemoval);
+    expect(result.impacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          approvalInstanceId: "approval-all-initial",
+          blocking: true,
+          reasonCode: "approval_execution_semantics_not_safe"
+        }),
+        expect.objectContaining({
+          approvalInstanceId: "approval-all-partial",
+          blocking: true,
+          reasonCode: "approval_execution_semantics_not_safe"
+        })
+      ])
+    );
+    expect(result.summary.blockingInstances).toBe(2);
+  });
+
+  it("单岗位 all 节点仍按真实可执行人计算", async () => {
+    const fixture = baseFixture();
+    fixture.projectMembers.push({
+      id: "member-approver",
+      userId: "approver",
+      projectId: "project-1",
+      positionKey: "project_manager"
+    });
+    addProjectInstance(fixture, {
+      id: "approval-all-single",
+      businessType: "settlement",
+      businessId: "settlement-all-single",
+      node: pendingManagerNode({ mode: "all" })
+    });
+    const { result } = await preview(fixture, projectManagerRemoval);
+    expect(result.impacts[0]).toMatchObject({ blocking: false, reasonCode: null });
+  });
+
+  it.each([
+    [
+      "普通岗位在前且申请人同时持有领导岗位",
+      ["budget_director", "chairman"],
+      ["budget_director", "chairman"],
+      true,
+      []
+    ],
+    ["申请人仅持有领导岗位", ["budget_director", "chairman"], ["chairman"], false, ["applicant"]],
+    ["领导岗位排在前且申请人同时持有两岗", ["chairman", "budget_director"], ["budget_director", "chairman"], false, ["applicant"]]
+  ] as const)(
+    "%s 时严格按节点顺序选择第一个直接岗位",
+    async (_label, roleKeys, applicantRoles, blocking, chairmanUsers) => {
+      const fixture = baseFixture();
+      fixture.positions.push({ id: "position-budget", key: "budget_director" });
+      fixture.projectMembers = [
+        { id: "member-target-budget", userId: "target", projectId: "project-1", positionKey: "budget_director" },
+        ...applicantRoles.map((positionKey) => ({
+          id: `member-applicant-${positionKey}`,
+          userId: "applicant",
+          projectId: "project-1",
+          positionKey
+        }))
+      ];
+      addProjectInstance(fixture, {
+        id: "approval-mixed-self-review",
+        businessType: "contract_version",
+        businessId: "version-mixed-self-review",
+        applicantUserId: "applicant",
+        node: { name: "混合岗位审批", mode: "any", roleKeys: [...roleKeys] }
+      });
+      const { result } = await preview(fixture, {
+        operation: "remove",
+        userId: "target",
+        scope: "project",
+        projectId: "project-1",
+        roleKey: "budget_director"
+      });
+      expect(result.impacts[0]).toMatchObject({ blocking });
+      const chairmanCoverage = result.impacts[0]?.roleCoverage.find(
+        (coverage) => coverage.roleKey === "chairman"
+      );
+      expect(chairmanCoverage).toMatchObject({
+        directApproverUserIdsAfter: [...chairmanUsers],
+        requiresSelfReviewConfirmation: chairmanUsers.length > 0,
+        executable: chairmanUsers.length > 0
+      });
+    }
+  );
+
+  it("用户已有任一直接节点岗位时 assignment 不能覆盖真实 first-role 选择", async () => {
+    const fixture = baseFixture();
+    fixture.positions.push({ id: "position-budget", key: "budget_director" });
+    fixture.projectMembers = [
+      { id: "member-target-budget", userId: "target", projectId: "project-1", positionKey: "budget_director" },
+      { id: "member-approver-budget", userId: "approver", projectId: "project-1", positionKey: "budget_director" }
+    ];
+    addProjectInstance(fixture, {
+      id: "approval-assignment-priority",
+      businessType: "settlement",
+      businessId: "settlement-assignment-priority",
+      node: {
+        name: "直接岗位优先",
+        mode: "any",
+        roleKeys: ["budget_director", "chairman"],
+        assignments: [{ toUserId: "approver", fromRoleKey: "chairman" }]
+      }
+    });
+    const { result } = await preview(fixture, {
+      operation: "remove",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "budget_director"
+    });
+    expect(result.impacts[0]?.roleCoverage.find((coverage) => coverage.roleKey === "budget_director")).toMatchObject({
+      directApproverUserIdsAfter: ["approver"],
+      executable: true
+    });
+    expect(result.impacts[0]?.roleCoverage.find((coverage) => coverage.roleKey === "chairman")).toMatchObject({
+      assignmentApproverUserIds: [],
+      executable: false
+    });
+  });
+
+  it("申请人不能通过 assignment 或 delegation 形成普通自审通道", async () => {
+    const fixture = baseFixture();
+    fixture.positions.push({ id: "position-budget", key: "budget_director" });
+    fixture.projectMembers = [
+      { id: "member-target-budget", userId: "target", projectId: "project-1", positionKey: "budget_director" },
+      { id: "member-delegator-budget", userId: "approver", projectId: "project-1", positionKey: "budget_director" }
+    ];
+    fixture.delegations.push({
+      id: "delegation-to-applicant",
+      fromUserId: "approver",
+      toUserId: "applicant",
+      startsAt: new Date("2026-07-01T00:00:00.000Z"),
+      endsAt: new Date("2026-07-31T00:00:00.000Z"),
+      enabled: true
+    });
+    addProjectInstance(fixture, {
+      id: "approval-indirect-applicant",
+      businessType: "payment_request",
+      businessId: "payment-indirect-applicant",
+      applicantUserId: "applicant",
+      node: {
+        name: "普通岗位间接自审",
+        mode: "any",
+        roleKeys: ["budget_director"],
+        assignments: [{ toUserId: "applicant", fromRoleKey: "budget_director" }]
+      }
+    });
+    const { result } = await preview(fixture, {
+      operation: "remove",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "budget_director"
+    });
+    expect(result.impacts[0]?.roleCoverage[0]).toMatchObject({
+      assignmentApproverUserIds: [],
+      delegationApproverUserIds: [],
+      executable: true
+    });
+    expect(result.impacts[0]?.roleCoverage[0]).toMatchObject({
+      directApproverUserIdsAfter: ["approver"]
+    });
   });
 
   it("冻结 assignment 独立于撤岗后委托人岗位，但项目支出必须忽略", async () => {
@@ -660,6 +852,58 @@ describe("PermissionImpactService snapshot hash", () => {
     const service = new PermissionImpactService(prisma as never);
     const later = await service.previewRoleRemoval(input, new Date("2026-07-12T03:00:00.000Z"));
     expect(later.snapshotHash).toBe(first);
+  });
+
+  it("冻结 roleKeys 顺序变化会改变 hash", async () => {
+    const firstFixture = hashFixture();
+    const secondFixture = hashFixture();
+    firstFixture.instances[0].frozenNodes = [
+      { name: "混合岗位", mode: "any", roleKeys: ["project_manager", "finance_director"] }
+    ];
+    secondFixture.instances[0].frozenNodes = [
+      { name: "混合岗位", mode: "any", roleKeys: ["finance_director", "project_manager"] }
+    ];
+    const first = (await preview(firstFixture, input)).result.snapshotHash;
+    const second = (await preview(secondFixture, input)).result.snapshotHash;
+    expect(second).not.toBe(first);
+  });
+
+  it("同一接收人的冻结 assignments 顺序变化会改变 hash", async () => {
+    const firstFixture = hashFixture();
+    const secondFixture = hashFixture();
+    const firstAssignments = [
+      { toUserId: "approver", fromRoleKey: "project_manager" },
+      { toUserId: "approver", fromRoleKey: "finance_director" }
+    ];
+    const secondAssignments = [...firstAssignments].reverse();
+    firstFixture.instances[0].frozenNodes = [
+      {
+        name: "混合指派",
+        mode: "any",
+        roleKeys: ["project_manager", "finance_director"],
+        assignments: firstAssignments
+      }
+    ];
+    secondFixture.instances[0].frozenNodes = [
+      {
+        name: "混合指派",
+        mode: "any",
+        roleKeys: ["project_manager", "finance_director"],
+        assignments: secondAssignments
+      }
+    ];
+    const first = (await preview(firstFixture, input)).result.snapshotHash;
+    const second = (await preview(secondFixture, input)).result.snapshotHash;
+    expect(second).not.toBe(first);
+  });
+
+  it("目标项目存在性变化会改变 hash，即使当前没有在途实例", async () => {
+    const existing = baseFixture();
+    const missing = baseFixture();
+    missing.projects = missing.projects.filter((project) => project.id !== "project-1");
+    const existingHash = (await preview(existing, input)).result.snapshotHash;
+    const missingHash = (await preview(missing, input)).result.snapshotHash;
+    expect(missingHash).not.toBe(existingHash);
   });
 
   it.each([
