@@ -255,12 +255,28 @@ describe("web admin routes", () => {
     expect(String(organizationRoute?.component)).toContain("OrganizationManagementPage.vue");
     expect(organizationRoute?.meta).toMatchObject({
       title: "组织权限",
-      requiredRoleKeys: organizationAdminRoleKeys
+      requiredGlobalRoleKeys: organizationAdminRoleKeys
     });
-    expect(visibleAdminNavigationItems(["super_admin"]).map((item) => item.path)).toContain("/组织权限");
+    expect(visibleAdminNavigationItems(["super_admin"]).map((item) => item.path)).not.toContain("/组织权限");
+    expect(visibleAdminNavigationItems(["super_admin"], ["super_admin"]).map((item) => item.path)).toContain(
+      "/组织权限"
+    );
     expect(visibleAdminNavigationItems(["general_manager"]).map((item) => item.path)).not.toContain("/组织权限");
     expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).not.toContain("/组织权限");
-    expect(resolveRouteAccess(routeAccessInput, { isAuthenticated: true, roleKeys: ["super_admin"] })).toBe(true);
+    expect(
+      resolveRouteAccess(routeAccessInput, {
+        isAuthenticated: true,
+        roleKeys: ["super_admin"],
+        globalRoleKeys: []
+      })
+    ).toEqual({ path: "/首页" });
+    expect(
+      resolveRouteAccess(routeAccessInput, {
+        isAuthenticated: true,
+        roleKeys: ["super_admin"],
+        globalRoleKeys: ["super_admin"]
+      })
+    ).toBe(true);
     expect(resolveRouteAccess(routeAccessInput, { isAuthenticated: true, roleKeys: ["general_manager"] })).toEqual({
       path: "/首页"
     });

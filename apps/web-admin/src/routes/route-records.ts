@@ -20,6 +20,7 @@ export interface AdminNavigationItem {
   label: string;
   path: string;
   requiredRoleKeys?: readonly RoleKey[];
+  requiredGlobalRoleKeys?: readonly RoleKey[];
 }
 
 export interface AdminNavigationGroup {
@@ -66,7 +67,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
       { label: "资料库", path: "/资料库" },
       { label: "委托台账", path: "/委托台账" },
       { label: "审计日志", path: "/审计日志" },
-      { label: "组织权限", path: "/组织权限", requiredRoleKeys: organizationAdminRoleKeys },
+      {
+        label: "组织权限",
+        path: "/组织权限",
+        requiredGlobalRoleKeys: organizationAdminRoleKeys
+      },
       { label: "系统配置", path: "/系统配置" }
     ]
   }
@@ -80,15 +85,29 @@ export function hasAnyRole(userRoleKeys: readonly RoleKey[] | undefined, require
   return !requiredRoleKeys?.length || requiredRoleKeys.some((role) => userRoleKeys?.includes(role));
 }
 
-export function visibleAdminNavigationItems(userRoleKeys: readonly RoleKey[] | undefined) {
-  return adminNavigationItems.filter((item) => hasAnyRole(userRoleKeys, item.requiredRoleKeys));
+export function visibleAdminNavigationItems(
+  userRoleKeys: readonly RoleKey[] | undefined,
+  userGlobalRoleKeys: readonly RoleKey[] | undefined = []
+) {
+  return adminNavigationItems.filter(
+    (item) =>
+      hasAnyRole(userRoleKeys, item.requiredRoleKeys) &&
+      hasAnyRole(userGlobalRoleKeys, item.requiredGlobalRoleKeys)
+  );
 }
 
-export function visibleAdminNavigationGroups(userRoleKeys: readonly RoleKey[] | undefined) {
+export function visibleAdminNavigationGroups(
+  userRoleKeys: readonly RoleKey[] | undefined,
+  userGlobalRoleKeys: readonly RoleKey[] | undefined = []
+) {
   return adminNavigationGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => hasAnyRole(userRoleKeys, item.requiredRoleKeys))
+      items: group.items.filter(
+        (item) =>
+          hasAnyRole(userRoleKeys, item.requiredRoleKeys) &&
+          hasAnyRole(userGlobalRoleKeys, item.requiredGlobalRoleKeys)
+      )
     }))
     .filter((group) => group.items.length > 0);
 }
@@ -231,7 +250,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "组织权限",
         component: () => import("../pages/organization/OrganizationManagementPage.vue"),
-        meta: { requiredRoleKeys: organizationAdminRoleKeys, title: "组织权限" }
+        meta: { requiredGlobalRoleKeys: organizationAdminRoleKeys, title: "组织权限" }
       },
       {
         path: "系统配置",

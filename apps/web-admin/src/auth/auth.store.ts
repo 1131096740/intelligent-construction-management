@@ -10,6 +10,7 @@ export interface AuthUser {
   phone: string | null;
   mustChangePassword: boolean;
   roleKeys: RoleKey[];
+  globalRoleKeys: RoleKey[];
 }
 
 interface AuthTokens {
@@ -76,7 +77,8 @@ function formatAuthError(text: string, status: number, fallback: string) {
 function normalizeUser(user: AuthUser): AuthUser {
   return {
     ...user,
-    roleKeys: Array.isArray(user.roleKeys) ? user.roleKeys : []
+    roleKeys: Array.isArray(user.roleKeys) ? user.roleKeys : [],
+    globalRoleKeys: Array.isArray(user.globalRoleKeys) ? user.globalRoleKeys : []
   };
 }
 
@@ -136,10 +138,11 @@ export const useAuthStore = defineStore("auth", {
 
       this.accessToken = result.tokens.accessToken;
       this.refreshToken = result.tokens.refreshToken;
-      this.user = normalizeUser(result.user);
+      const user = normalizeUser(result.user);
+      this.user = user;
       this.persist();
 
-      return result.user;
+      return user;
     },
     async refreshTokens(): Promise<boolean> {
       if (!this.refreshToken) {

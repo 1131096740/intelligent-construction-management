@@ -87,7 +87,9 @@ const router = useRouter();
 const auth = useAuthStore();
 const recentBusinessRoutes = ref<RecentBusinessRoute[]>([]);
 
-const adminNavigationGroups = computed(() => visibleAdminNavigationGroups(auth.user?.roleKeys));
+const adminNavigationGroups = computed(() =>
+  visibleAdminNavigationGroups(auth.user?.roleKeys, auth.user?.globalRoleKeys)
+);
 const activePath = computed(() => {
   const items = adminNavigationGroups.value.flatMap((group) => group.items);
   const exact = items.find((item) => item.path === route.path);

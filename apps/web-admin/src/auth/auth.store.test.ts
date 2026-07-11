@@ -28,7 +28,8 @@ function loginResponse() {
         name: "合同部 李工",
         phone: "13800000001",
         mustChangePassword: false,
-        roleKeys: ["finance_staff"]
+        roleKeys: ["finance_staff", "super_admin"],
+        globalRoleKeys: ["finance_staff"]
       },
       tokens: { accessToken: "access-1", refreshToken: "refresh-1", expiresIn: 900 }
     }),
@@ -55,8 +56,10 @@ describe("useAuthStore", () => {
     expect(store.isAuthenticated).toBe(true);
     expect(store.accessToken).toBe("access-1");
     expect(store.user?.name).toBe("合同部 李工");
-    expect(store.user?.roleKeys).toEqual(["finance_staff"]);
+    expect(store.user?.roleKeys).toEqual(["finance_staff", "super_admin"]);
+    expect(store.user?.globalRoleKeys).toEqual(["finance_staff"]);
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain("refresh-1");
+    expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain('"globalRoleKeys":["finance_staff"]');
   });
 
   it("throws and stays unauthenticated on bad credentials", async () => {
@@ -115,7 +118,13 @@ describe("useAuthStore", () => {
       JSON.stringify({
         accessToken: "access-x",
         refreshToken: "refresh-x",
-        user: { id: "u9", name: "出纳", phone: "13800000002", mustChangePassword: false }
+        user: {
+          id: "u9",
+          name: "出纳",
+          phone: "13800000002",
+          mustChangePassword: false,
+          roleKeys: ["super_admin"]
+        }
       })
     );
     const store = useAuthStore();
@@ -124,7 +133,8 @@ describe("useAuthStore", () => {
 
     expect(store.isAuthenticated).toBe(true);
     expect(store.user?.id).toBe("u9");
-    expect(store.user?.roleKeys).toEqual([]);
+    expect(store.user?.roleKeys).toEqual(["super_admin"]);
+    expect(store.user?.globalRoleKeys).toEqual([]);
     expect(store.accessToken).toBe("access-x");
   });
 

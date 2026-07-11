@@ -211,16 +211,21 @@ describe("AuthService", () => {
     prisma.refreshToken.create.mockResolvedValue({});
     prisma.auditLog.create.mockResolvedValue({});
     prisma.userPosition.findMany.mockResolvedValue([
-      { positionId: "pos-finance-director" },
-      { positionId: "pos-project-manager" }
+      { positionId: "pos-finance-director", projectId: null },
+      { positionId: "pos-project-manager", projectId: "project-1" },
+      { positionId: "pos-super-admin", projectId: "project-1" },
+      { positionId: "pos-invalid", projectId: null }
     ]);
     prisma.position.findMany.mockResolvedValue([
       { id: "pos-finance-director", key: "finance_director" },
-      { id: "pos-project-manager", key: "project_manager" }
+      { id: "pos-project-manager", key: "project_manager" },
+      { id: "pos-super-admin", key: "super_admin" },
+      { id: "pos-invalid", key: "legacy_unknown_role" }
     ]);
     prisma.projectMember.findMany.mockResolvedValue([
       { positionKey: "project_manager" },
-      { positionKey: "finance_staff" }
+      { positionKey: "finance_staff" },
+      { positionKey: "super_admin" }
     ]);
 
     const result = await service.login({
@@ -231,7 +236,14 @@ describe("AuthService", () => {
     expect(result.user).toMatchObject({
       id: "user-1",
       mustChangePassword: true,
-      roleKeys: ["finance_director", "project_manager", "finance_staff"]
+      roleKeys: [
+        "finance_director",
+        "project_manager",
+        "super_admin",
+        "legacy_unknown_role",
+        "finance_staff"
+      ],
+      globalRoleKeys: ["finance_director"]
     });
     expect(result.tokens.accessToken).toEqual(expect.any(String));
     expect(result.tokens.refreshToken).toEqual(expect.any(String));
@@ -257,7 +269,7 @@ describe("AuthService", () => {
     ).rejects.toMatchObject({ status: 401, message: "手机号或密码不正确" });
   });
 
-  it("returns deduped role keys for wx login", async () => {
+  it("returns deduped role keys and trusted global role keys for wx login", async () => {
     process.env.WX_APP_ID = "wx-app";
     process.env.WX_APP_SECRET = "wx-secret";
     globalThis.fetch = jest.fn().mockResolvedValue({
@@ -275,8 +287,14 @@ describe("AuthService", () => {
     prisma.user.update.mockResolvedValue({});
     prisma.refreshToken.create.mockResolvedValue({});
     prisma.auditLog.create.mockResolvedValue({});
-    prisma.userPosition.findMany.mockResolvedValue([{ positionId: "pos-chairman" }]);
-    prisma.position.findMany.mockResolvedValue([{ id: "pos-chairman", key: "chairman" }]);
+    prisma.userPosition.findMany.mockResolvedValue([
+      { positionId: "pos-chairman", projectId: null },
+      { positionId: "pos-super-admin", projectId: "project-2" }
+    ]);
+    prisma.position.findMany.mockResolvedValue([
+      { id: "pos-chairman", key: "chairman" },
+      { id: "pos-super-admin", key: "super_admin" }
+    ]);
     prisma.projectMember.findMany.mockResolvedValue([
       { positionKey: "chairman" },
       { positionKey: "finance_staff" }
@@ -287,7 +305,8 @@ describe("AuthService", () => {
     expect(result).toMatchObject({
       user: {
         id: "user-2",
-        roleKeys: ["chairman", "finance_staff"]
+        roleKeys: ["chairman", "super_admin", "finance_staff"],
+        globalRoleKeys: ["chairman"]
       },
       tokens: {
         accessToken: expect.any(String)

@@ -14,6 +14,7 @@ interface RouteAccessTarget {
     public?: unknown;
     passwordChange?: unknown;
     requiredRoleKeys?: readonly RoleKey[];
+    requiredGlobalRoleKeys?: readonly RoleKey[];
     title?: unknown;
   };
 }
@@ -22,6 +23,7 @@ interface RouteAccessAuth {
   isAuthenticated: boolean;
   mustChangePassword?: boolean;
   roleKeys: readonly RoleKey[] | undefined;
+  globalRoleKeys?: readonly RoleKey[];
 }
 
 export function resolveRouteAccess(to: RouteAccessTarget, auth: RouteAccessAuth) {
@@ -45,6 +47,10 @@ export function resolveRouteAccess(to: RouteAccessTarget, auth: RouteAccessAuth)
     return { path: "/首页" };
   }
 
+  if (!hasAnyRole(auth.globalRoleKeys ?? [], to.meta.requiredGlobalRoleKeys)) {
+    return { path: "/首页" };
+  }
+
   return true;
 }
 
@@ -64,7 +70,8 @@ router.beforeEach((to) => {
   return resolveRouteAccess(to, {
     isAuthenticated: auth.isAuthenticated,
     mustChangePassword: Boolean(auth.user?.mustChangePassword),
-    roleKeys: auth.user?.roleKeys
+    roleKeys: auth.user?.roleKeys,
+    globalRoleKeys: auth.user?.globalRoleKeys
   });
 });
 

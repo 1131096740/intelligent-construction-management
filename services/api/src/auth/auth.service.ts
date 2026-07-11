@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
   BadRequestException
 } from "@nestjs/common";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import * as bcrypt from "bcryptjs";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -15,6 +15,12 @@ import type { LogoutDto } from "./dto/logout.dto";
 import type { RefreshTokenDto } from "./dto/refresh-token.dto";
 import type { WxLoginDto } from "./dto/wx-login.dto";
 import { JwtTokenService } from "./jwt-token.service";
+
+const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
+
+function isRoleKey(value: string): value is RoleKey {
+  return ROLE_KEY_SET.has(value);
+}
 
 @Injectable()
 export class AuthService {
@@ -54,7 +60,7 @@ export class AuthService {
       metadata: { phone: user.phone }
     });
 
-    const roleKeys = await this.loadUserRoleKeys(user.id);
+    const roleScopes = await this.loadUserRoleScopes(user.id);
     const tokens = await this.issueTokens({
       id: user.id,
       name: user.name,
@@ -67,13 +73,14 @@ export class AuthService {
         name: user.name,
         phone: user.phone,
         mustChangePassword: user.mustChangePassword,
-        roleKeys
+        roleKeys: roleScopes.roleKeys,
+        globalRoleKeys: roleScopes.globalRoleKeys
       },
       tokens
     };
   }
 
-  private async loadUserRoleKeys(userId: string): Promise<RoleKey[]> {
+  private async loadUserRoleScopes(userId: string) {
     const [userPositions, projectMembers] = await Promise.all([
       this.prisma.userPosition.findMany({ where: { userId } }),
       this.prisma.projectMember.findMany({ where: { userId } })
@@ -83,12 +90,27 @@ export class AuthService {
       ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
       : [];
 
-    return Array.from(
+    const roleKeys = Array.from(
       new Set([
         ...positions.map((position) => position.key as RoleKey),
         ...projectMembers.map((member) => member.positionKey as RoleKey)
       ])
     );
+    const globalPositionIds = new Set(
+      userPositions
+        .filter((assignment) => assignment.projectId === null)
+        .map((assignment) => assignment.positionId)
+    );
+    const globalRoleKeys = Array.from(
+      new Set(
+        positions
+          .filter((position) => globalPositionIds.has(position.id))
+          .map((position) => position.key)
+          .filter(isRoleKey)
+      )
+    );
+
+    return { roleKeys, globalRoleKeys };
   }
 
   private userSummary(user: {
@@ -96,13 +118,14 @@ export class AuthService {
     name: string;
     phone: string | null;
     mustChangePassword: boolean;
-  }, roleKeys: RoleKey[]) {
+  }, roleScopes: { roleKeys: RoleKey[]; globalRoleKeys: RoleKey[] }) {
     return {
       id: user.id,
       name: user.name,
       phone: user.phone,
       mustChangePassword: user.mustChangePassword,
-      roleKeys
+      roleKeys: roleScopes.roleKeys,
+      globalRoleKeys: roleScopes.globalRoleKeys
     };
   }
 
@@ -241,7 +264,7 @@ export class AuthService {
       businessId: user.id
     });
 
-    const roleKeys = await this.loadUserRoleKeys(user.id);
+    const roleScopes = await this.loadUserRoleScopes(user.id);
     const tokens = await this.issueTokens({
       id: user.id,
       name: user.name,
@@ -249,7 +272,7 @@ export class AuthService {
     });
 
     return {
-      user: this.userSummary(user, roleKeys),
+      user: this.userSummary(user, roleScopes),
       tokens
     };
   }
