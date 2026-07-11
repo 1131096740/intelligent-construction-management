@@ -105,7 +105,11 @@ describe("ProjectExpenseService", () => {
       expect.objectContaining({
         id: "expense-1",
         requestedAmountCents: "50000",
+        statusLabel: "审批中",
+        expenseTypeLabel: "报销",
+        expenseSubtypeLabel: "报销",
         currentNodeName: "财务部",
+        canSetApprovedAmount: true,
         reviewAction: expect.objectContaining({
           enabled: true,
           requiresSelfReviewConfirmation: false
@@ -118,6 +122,24 @@ describe("ProjectExpenseService", () => {
         where: expect.objectContaining({ businessType: "project_expense_request", businessId: "expense-1" })
       })
     );
+  });
+
+  it("非最终审批节点不允许填写批准金额", async () => {
+    const { service, prisma, actorUserId } = approvalDetailFixture();
+    prisma.approvalInstance.findFirst.mockResolvedValue({
+      id: "approval-instance-1",
+      status: "in_progress",
+      currentNodeIndex: 0,
+      frozenNodes: [
+        { name: "财务部", mode: "any", roleKeys: ["finance_director"] },
+        { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+      ],
+      applicantUserId: "applicant-1"
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", actorUserId);
+
+    expect(detail.canSetApprovedAmount).toBe(false);
   });
 
   it("普通申请人可读自己的详情但不能自审", async () => {

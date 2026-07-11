@@ -141,3 +141,14 @@ git diff --check
 git add PROGRESS.md docs/superpowers/plans/2026-07-11-phase1b-project-expense-approval-detail.md packages/shared-domain/src services/api/src apps/web-admin/src
 git commit -m "feat: 完成项目支出审批详情"
 ```
+
+---
+
+### Independent Review Fixes
+
+- [x] approve/reject 完成全部字段校验后、请求前复用 `confirmSensitiveAction`；取消确认零请求。
+- [x] 新增注入式 review helper，测试取消不提交、确认只提交一次。
+- [x] 两个审批按钮共享 busy 禁用状态，入口 guard 阻止程序化并发。
+- [x] 详情读模型仅在冻结流程最终节点标记可填写批准金额；非终审不展示、不发送。
+- [x] 终审批准金额恢复正数元输入规则，`0`、负数、非法格式固定拒绝。
+- [x] 删除详情新增的重复标签 map，复用项目支出既有标签 helper，并只新增单一状态 helper。

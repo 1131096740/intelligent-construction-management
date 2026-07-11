@@ -67,6 +67,7 @@
             placeholder="审批意见；驳回时必填"
           />
           <t-input
+            v-if="detail.canSetApprovedAmount"
             v-model="form.approvedAmountYuan"
             placeholder="终审批准金额（元，不填则按申请金额）"
           />
@@ -78,6 +79,7 @@
           <div class="review-buttons">
             <t-button
               theme="primary"
+              :disabled="busy !== ''"
               :loading="busy === 'approve'"
               @click="submitReview('approve')"
             >
@@ -86,6 +88,7 @@
             <t-button
               theme="danger"
               variant="outline"
+              :disabled="busy !== ''"
               :loading="busy === 'reject'"
               @click="submitReview('reject')"
             >
@@ -123,7 +126,13 @@ import {
   fetchProjectExpenseApprovalDetail,
   reviewProjectExpenseApproval
 } from "../../api/core-flow-read.api";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import { centsTextToYuanText } from "../../lib/money";
+import { confirmSensitiveAction } from "../confirm-sensitive-action";
+import {
+  canBeginProjectExpenseReview,
+  projectExpenseApprovedAmountCents,
+  submitConfirmedProjectExpenseReview
+} from "./project-expense-approval.config";
 
 const route = useRoute();
 const detail = ref<ProjectExpenseApprovalDetailReadModel | null>(null);
@@ -165,6 +174,7 @@ async function loadDetail() {
 }
 
 async function submitReview(decision: "approve" | "reject") {
+  if (!canBeginProjectExpenseReview(busy.value)) return;
   if (!detail.value?.reviewAction.enabled) return;
   const comment = form.comment.trim();
   if (decision === "reject" && !comment) {
@@ -181,16 +191,25 @@ async function submitReview(decision: "approve" | "reject") {
       form
     );
     const approvedAmountYuan = form.approvedAmountYuan.trim();
-    const { projectId, expenseRequestId } = routeIds();
-    await reviewProjectExpenseApproval(projectId, expenseRequestId, {
+    const approvedAmountCents = projectExpenseApprovedAmountCents(
+      detail.value.canSetApprovedAmount,
       decision,
-      comment: comment || undefined,
-      approvedAmountCents:
-        decision === "approve" && approvedAmountYuan
-          ? yuanTextToCentsText(approvedAmountYuan)
-          : undefined,
-      ...selfReview
+      approvedAmountYuan
+    );
+    const { projectId, expenseRequestId } = routeIds();
+    const submitted = await submitConfirmedProjectExpenseReview({
+      decision,
+      confirm: (message) => confirmSensitiveAction(message),
+      submit: async () => {
+        await reviewProjectExpenseApproval(projectId, expenseRequestId, {
+          decision,
+          comment: comment || undefined,
+          approvedAmountCents,
+          ...selfReview
+        });
+      }
     });
+    if (!submitted) return;
     form.selfReviewReason = "";
     form.confirmationPassword = "";
     form.comment = "";

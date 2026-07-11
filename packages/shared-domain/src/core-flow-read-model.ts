@@ -156,6 +156,7 @@ export interface ProjectExpenseApprovalDetailReadModel {
   requestedAmountCents: MoneyCents;
   approvedAmountCents: MoneyCents | null;
   currentNodeName: string | null;
+  canSetApprovedAmount: boolean;
   reviewAction: DetailActionReadModel;
   approvalTimeline: ApprovalTimelineItemReadModel[];
 }
