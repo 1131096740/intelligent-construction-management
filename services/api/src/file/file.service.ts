@@ -44,6 +44,11 @@ export interface InternalFileBuffer {
   buffer: Buffer;
 }
 
+type LockedFileReplacementRow = Pick<
+  FileObject,
+  "id" | "uploadedByUserId" | "storageStatus" | "supersedesFileObjectId"
+>;
+
 const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "contract_staff",
   "contract_director",
@@ -424,17 +429,17 @@ export class FileService {
       throw new Error("新旧文件不能为同一文件");
     }
 
-    const files = await tx.fileObject.findMany({
-      where: { id: { in: [input.newFileId, input.oldFileId] } },
-      select: {
-        id: true,
-        uploadedByUserId: true,
-        storageStatus: true,
-        supersedesFileObjectId: true
-      }
-    });
-    const newFile = files.find((file) => file.id === input.newFileId);
-    const oldFile = files.find((file) => file.id === input.oldFileId);
+    const initialFileIds = [input.newFileId, input.oldFileId].sort();
+    const initialFiles = await tx.$queryRaw<LockedFileReplacementRow[]>(Prisma.sql`
+      SELECT "id", "uploadedByUserId", "storageStatus", "supersedesFileObjectId"
+      FROM "FileObject"
+      WHERE "id" IN (${Prisma.join(initialFileIds)})
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+    const lockedFilesById = new Map(initialFiles.map((file) => [file.id, file]));
+    const newFile = lockedFilesById.get(input.newFileId);
+    const oldFile = lockedFilesById.get(input.oldFileId);
 
     if (!newFile || !oldFile) {
       throw new Error("新文件或被替换文件不存在");
@@ -445,11 +450,43 @@ export class FileService {
     if (newFile.uploadedByUserId !== input.actorUserId) {
       throw new Error("当前账号无权接入该文件替换链");
     }
+    if (
+      newFile.supersedesFileObjectId !== null &&
+      newFile.supersedesFileObjectId !== input.oldFileId
+    ) {
+      throw new Error("新文件已关联其他被替换文件");
+    }
+
+    const visitedFileIds = new Set<string>([oldFile.id]);
+    let previousFileId = oldFile.supersedesFileObjectId;
+    while (previousFileId) {
+      if (previousFileId === input.newFileId || visitedFileIds.has(previousFileId)) {
+        throw new Error("文件替换链存在循环，无法接入");
+      }
+
+      let previousFile = lockedFilesById.get(previousFileId);
+      if (!previousFile) {
+        const lockedPreviousFiles = await tx.$queryRaw<LockedFileReplacementRow[]>(Prisma.sql`
+          SELECT "id", "uploadedByUserId", "storageStatus", "supersedesFileObjectId"
+          FROM "FileObject"
+          WHERE "id" = ${previousFileId}
+          FOR UPDATE
+        `);
+        previousFile = lockedPreviousFiles[0];
+        if (!previousFile) {
+          throw new Error("文件替换链状态异常，无法接入");
+        }
+        lockedFilesById.set(previousFile.id, previousFile);
+      }
+      if (previousFile.storageStatus !== "active") {
+        throw new Error("文件替换链状态异常，无法接入");
+      }
+      visitedFileIds.add(previousFile.id);
+      previousFileId = previousFile.supersedesFileObjectId;
+    }
+
     if (newFile.supersedesFileObjectId === input.oldFileId) {
       return;
-    }
-    if (newFile.supersedesFileObjectId !== null) {
-      throw new Error("新文件已关联其他被替换文件");
     }
 
     const updated = await tx.fileObject.updateMany({

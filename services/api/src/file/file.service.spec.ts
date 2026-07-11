@@ -831,14 +831,43 @@ describe("FileService", () => {
     };
   }
 
-  it("rejects linking a file replacement to itself without touching storage", async () => {
-    const tx = {
+  function replacementTransaction(
+    rows: ReadonlyArray<ReturnType<typeof replacementFile>>,
+    options: {
+      casCount?: number;
+      rereadSupersedesFileObjectId?: string | null;
+      unlockedRows?: ReadonlyArray<ReturnType<typeof replacementFile>>;
+      events?: string[];
+    } = {}
+  ) {
+    const rowsById = new Map(rows.map((row) => [row.id, row]));
+    const queryRaw = jest.fn(async (query: { values?: unknown[] }) => {
+      options.events?.push("lock");
+      return (query.values ?? [])
+        .filter((value): value is string => typeof value === "string")
+        .map((id) => rowsById.get(id))
+        .filter((row): row is ReturnType<typeof replacementFile> => Boolean(row));
+    });
+    const updateMany = jest.fn(async () => {
+      options.events?.push("update");
+      return { count: options.casCount ?? 1 };
+    });
+
+    return {
+      $queryRaw: queryRaw,
       fileObject: {
-        findMany: jest.fn(),
-        updateMany: jest.fn(),
-        findUnique: jest.fn()
+        findMany: jest.fn().mockResolvedValue(options.unlockedRows ?? rows),
+        updateMany,
+        findUnique: jest.fn().mockResolvedValue({
+          supersedesFileObjectId: options.rereadSupersedesFileObjectId ?? null
+        }),
+        delete: jest.fn()
       }
     };
+  }
+
+  it("rejects linking a file replacement to itself without touching storage", async () => {
+    const tx = replacementTransaction([]);
     const service = new FileService(
       {} as PrismaService,
       audit as unknown as AuditService,
@@ -853,7 +882,7 @@ describe("FileService", () => {
       })
     ).rejects.toThrow("新旧文件不能为同一文件");
 
-    expect(tx.fileObject.findMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
     expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
     expect(storage.write).not.toHaveBeenCalled();
     expect(storage.read).not.toHaveBeenCalled();
@@ -864,13 +893,7 @@ describe("FileService", () => {
     ["new file", [replacementFile("file-old")]],
     ["old file", [replacementFile("file-new")]]
   ] as const)("rejects linking when the %s is missing", async (_label, files) => {
-    const tx = {
-      fileObject: {
-        findMany: jest.fn().mockResolvedValue(files),
-        updateMany: jest.fn(),
-        findUnique: jest.fn()
-      }
-    };
+    const tx = replacementTransaction(files);
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
     await expect(
@@ -887,20 +910,14 @@ describe("FileService", () => {
   it.each(["file-new", "file-old"])(
     "rejects linking when %s is not active",
     async (inactiveFileId) => {
-      const tx = {
-        fileObject: {
-          findMany: jest.fn().mockResolvedValue([
-            replacementFile("file-new", {
-              storageStatus: inactiveFileId === "file-new" ? "quarantined" : "active"
-            }),
-            replacementFile("file-old", {
-              storageStatus: inactiveFileId === "file-old" ? "quarantined" : "active"
-            })
-          ]),
-          updateMany: jest.fn(),
-          findUnique: jest.fn()
-        }
-      };
+      const tx = replacementTransaction([
+        replacementFile("file-new", {
+          storageStatus: inactiveFileId === "file-new" ? "quarantined" : "active"
+        }),
+        replacementFile("file-old", {
+          storageStatus: inactiveFileId === "file-old" ? "quarantined" : "active"
+        })
+      ]);
       const service = new FileService({} as PrismaService, audit as never, storage as never);
 
       await expect(
@@ -916,16 +933,10 @@ describe("FileService", () => {
   );
 
   it("rejects linking when the actor did not upload the new file", async () => {
-    const tx = {
-      fileObject: {
-        findMany: jest.fn().mockResolvedValue([
-          replacementFile("file-new", { uploadedByUserId: "another-user" }),
-          replacementFile("file-old")
-        ]),
-        updateMany: jest.fn(),
-        findUnique: jest.fn()
-      }
-    };
+    const tx = replacementTransaction([
+      replacementFile("file-new", { uploadedByUserId: "another-user" }),
+      replacementFile("file-old")
+    ]);
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
     await expect(
@@ -940,45 +951,42 @@ describe("FileService", () => {
   });
 
   it("links an unlinked new file with a conditional CAS update and preserves the old file", async () => {
-    const tx = {
-      fileObject: {
-        findMany: jest.fn().mockResolvedValue([
-          replacementFile("file-new"),
-          replacementFile("file-old")
-        ]),
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-        findUnique: jest.fn(),
-        delete: jest.fn()
-      }
-    };
+    const events: string[] = [];
+    const tx = replacementTransaction(
+      [replacementFile("file-z-new"), replacementFile("file-a-old")],
+      { events }
+    );
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
     await expect(
       service.linkFileReplacement(tx as never, {
-        newFileId: "file-new",
-        oldFileId: "file-old",
+        newFileId: "file-z-new",
+        oldFileId: "file-a-old",
         actorUserId: "contract-staff-1"
       })
     ).resolves.toBeUndefined();
 
-    expect(tx.fileObject.findMany).toHaveBeenCalledWith({
-      where: { id: { in: ["file-new", "file-old"] } },
-      select: {
-        id: true,
-        uploadedByUserId: true,
-        storageStatus: true,
-        supersedesFileObjectId: true
-      }
-    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    const initialLockQuery = tx.$queryRaw.mock.calls[0]?.[0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    expect(initialLockQuery.values).toEqual(["file-a-old", "file-z-new"]);
+    expect(initialLockQuery.strings.join("?")).toContain("FOR UPDATE");
+    expect(initialLockQuery.strings.join("?")).toContain('FROM "FileObject"');
+    expect(initialLockQuery.strings.join("?")).not.toContain("file-a-old");
+    expect(initialLockQuery.strings.join("?")).not.toContain("file-z-new");
+    expect(tx.fileObject.findMany).not.toHaveBeenCalled();
     expect(tx.fileObject.updateMany).toHaveBeenCalledWith({
       where: {
-        id: "file-new",
+        id: "file-z-new",
         uploadedByUserId: "contract-staff-1",
         storageStatus: "active",
         supersedesFileObjectId: null
       },
-      data: { supersedesFileObjectId: "file-old" }
+      data: { supersedesFileObjectId: "file-a-old" }
     });
+    expect(events).toEqual(["lock", "update"]);
     expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
     expect(tx.fileObject.delete).not.toHaveBeenCalled();
     expect(storage.write).not.toHaveBeenCalled();
@@ -987,16 +995,10 @@ describe("FileService", () => {
   });
 
   it("treats an existing link to the same old file as idempotent", async () => {
-    const tx = {
-      fileObject: {
-        findMany: jest.fn().mockResolvedValue([
-          replacementFile("file-new", { supersedesFileObjectId: "file-old" }),
-          replacementFile("file-old")
-        ]),
-        updateMany: jest.fn(),
-        findUnique: jest.fn()
-      }
-    };
+    const tx = replacementTransaction([
+      replacementFile("file-new", { supersedesFileObjectId: "file-old" }),
+      replacementFile("file-old")
+    ]);
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
     await expect(
@@ -1012,16 +1014,10 @@ describe("FileService", () => {
   });
 
   it("rejects an existing link to a different old file", async () => {
-    const tx = {
-      fileObject: {
-        findMany: jest.fn().mockResolvedValue([
-          replacementFile("file-new", { supersedesFileObjectId: "file-other" }),
-          replacementFile("file-old")
-        ]),
-        updateMany: jest.fn(),
-        findUnique: jest.fn()
-      }
-    };
+    const tx = replacementTransaction([
+      replacementFile("file-new", { supersedesFileObjectId: "file-other" }),
+      replacementFile("file-old")
+    ]);
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
     await expect(
@@ -1035,17 +1031,109 @@ describe("FileService", () => {
     expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
   });
 
-  it("treats a lost CAS as concurrent idempotency when reread links the same old file", async () => {
-    const tx = {
-      fileObject: {
-        findMany: jest.fn().mockResolvedValue([
-          replacementFile("file-new"),
-          replacementFile("file-old")
-        ]),
-        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-        findUnique: jest.fn().mockResolvedValue({ supersedesFileObjectId: "file-old" })
+  it("rejects a direct A-B replacement cycle after locking both rows", async () => {
+    const tx = replacementTransaction([
+      replacementFile("file-a"),
+      replacementFile("file-b", { supersedesFileObjectId: "file-a" })
+    ]);
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    await expect(
+      service.linkFileReplacement(tx as never, {
+        newFileId: "file-a",
+        oldFileId: "file-b",
+        actorUserId: "contract-staff-1"
+      })
+    ).rejects.toThrow("文件替换链存在循环，无法接入");
+
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects closing an A-B-C replacement chain back to A", async () => {
+    const tx = replacementTransaction([
+      replacementFile("file-a", { supersedesFileObjectId: "file-b" }),
+      replacementFile("file-b", { supersedesFileObjectId: "file-c" }),
+      replacementFile("file-c")
+    ]);
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    await expect(
+      service.linkFileReplacement(tx as never, {
+        newFileId: "file-c",
+        oldFileId: "file-a",
+        actorUserId: "contract-staff-1"
+      })
+    ).rejects.toThrow("文件替换链存在循环，无法接入");
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects an already corrupted repeating replacement chain", async () => {
+    const tx = replacementTransaction([
+      replacementFile("file-new"),
+      replacementFile("file-a", { supersedesFileObjectId: "file-b" }),
+      replacementFile("file-b", { supersedesFileObjectId: "file-a" })
+    ]);
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    await expect(
+      service.linkFileReplacement(tx as never, {
+        newFileId: "file-new",
+        oldFileId: "file-a",
+        actorUserId: "contract-staff-1"
+      })
+    ).rejects.toThrow("文件替换链存在循环，无法接入");
+
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("uses the locked snapshot when an unlocked old row appeared active", async () => {
+    const tx = replacementTransaction(
+      [replacementFile("file-new"), replacementFile("file-old", { storageStatus: "deleted" })],
+      {
+        unlockedRows: [replacementFile("file-new"), replacementFile("file-old")]
       }
-    };
+    );
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    await expect(
+      service.linkFileReplacement(tx as never, {
+        newFileId: "file-new",
+        oldFileId: "file-old",
+        actorUserId: "contract-staff-1"
+      })
+    ).rejects.toThrow("新旧文件必须处于可用状态");
+
+    expect(tx.fileObject.findMany).not.toHaveBeenCalled();
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects the reverse concurrent link after sorted locks reveal the first committed link", async () => {
+    const tx = replacementTransaction([
+      replacementFile("file-a", { supersedesFileObjectId: "file-b" }),
+      replacementFile("file-b")
+    ]);
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    await expect(
+      service.linkFileReplacement(tx as never, {
+        newFileId: "file-b",
+        oldFileId: "file-a",
+        actorUserId: "contract-staff-1"
+      })
+    ).rejects.toThrow("文件替换链存在循环，无法接入");
+
+    const lockQuery = tx.$queryRaw.mock.calls[0]?.[0] as { values: unknown[] };
+    expect(lockQuery.values).toEqual(["file-a", "file-b"]);
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("treats a lost CAS as concurrent idempotency when reread links the same old file", async () => {
+    const tx = replacementTransaction(
+      [replacementFile("file-new"), replacementFile("file-old")],
+      { casCount: 0, rereadSupersedesFileObjectId: "file-old" }
+    );
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
     await expect(
@@ -1065,16 +1153,10 @@ describe("FileService", () => {
   it.each(["file-other", null])(
     "rejects a lost CAS when reread replacement is %s",
     async (supersedesFileObjectId) => {
-      const tx = {
-        fileObject: {
-          findMany: jest.fn().mockResolvedValue([
-            replacementFile("file-new"),
-            replacementFile("file-old")
-          ]),
-          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-          findUnique: jest.fn().mockResolvedValue({ supersedesFileObjectId })
-        }
-      };
+      const tx = replacementTransaction(
+        [replacementFile("file-new"), replacementFile("file-old")],
+        { casCount: 0, rereadSupersedesFileObjectId: supersedesFileObjectId }
+      );
       const service = new FileService({} as PrismaService, audit as never, storage as never);
 
       await expect(
