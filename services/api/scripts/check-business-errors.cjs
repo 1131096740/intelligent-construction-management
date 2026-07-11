@@ -107,11 +107,34 @@ function unwrapExpression(node) {
   return current;
 }
 
-function staticAsciiCandidates(node) {
+function expressionBranches(node) {
   const value = unwrapExpression(node);
+  if (
+    ts.isBinaryExpression(value) &&
+    value.operatorToken.kind === ts.SyntaxKind.CommaToken
+  ) {
+    return expressionBranches(value.right);
+  }
+  if (ts.isConditionalExpression(value)) {
+    return [
+      ...expressionBranches(value.whenTrue),
+      ...expressionBranches(value.whenFalse)
+    ];
+  }
+  return [value];
+}
+
+function staticAsciiAtomicCandidate(value) {
   if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
-    return ASCII_ONLY.test(value.text)
-      ? [{ node: value, message: value.text, composable: true }]
+    return ASCII_FRAGMENT.test(value.text)
+      ? [
+          {
+            node: value,
+            message: value.text,
+            composable: true,
+            reportable: value.text.length > 0
+          }
+        ]
       : [];
   }
   if (ts.isTemplateExpression(value)) {
@@ -124,15 +147,13 @@ function staticAsciiCandidates(node) {
           {
             node: value,
             message: `template:${JSON.stringify(fragments)}`,
-            composable: false
+            composable: false,
+            reportable: true
           }
         ]
       : [];
   }
   if (ts.isBinaryExpression(value)) {
-    if (value.operatorToken.kind === ts.SyntaxKind.CommaToken) {
-      return staticAsciiCandidates(value.right);
-    }
     if (value.operatorToken.kind === ts.SyntaxKind.PlusToken) {
       const left = staticAsciiCandidates(value.left);
       const right = staticAsciiCandidates(value.right);
@@ -145,116 +166,150 @@ function staticAsciiCandidates(node) {
         return left.flatMap((leftCandidate) =>
           right.flatMap((rightCandidate) => {
             const message = `${leftCandidate.message}${rightCandidate.message}`;
-            return ASCII_ONLY.test(message)
-              ? [{ node: value, message, composable: true }]
+            return ASCII_FRAGMENT.test(message)
+              ? [
+                  {
+                    node: value,
+                    message,
+                    composable: true,
+                    reportable: message.length > 0
+                  }
+                ]
               : [];
           })
         );
       }
+      const leftFragments = left.length > 0 ? left : [null];
+      const rightFragments = right.length > 0 ? right : [null];
+      return leftFragments.flatMap((leftCandidate) =>
+        rightFragments.flatMap((rightCandidate) => {
+          if (!leftCandidate?.reportable && !rightCandidate?.reportable) return [];
+          return [
+            {
+              node: value,
+              message: `concat-fragment:${JSON.stringify([
+                leftCandidate?.message ?? null,
+                rightCandidate?.message ?? null
+              ])}`,
+              composable: false,
+              reportable: true
+            }
+          ];
+        })
+      );
     }
     return [];
-  }
-  if (ts.isConditionalExpression(value)) {
-    return [
-      ...staticAsciiCandidates(value.whenTrue),
-      ...staticAsciiCandidates(value.whenFalse)
-    ];
   }
   return [];
 }
 
+function staticAsciiCandidates(node) {
+  return expressionBranches(node).flatMap(staticAsciiAtomicCandidate);
+}
+
 function staticAsciiMessage(node) {
-  const candidates = staticAsciiCandidates(node);
+  const candidates = staticAsciiCandidates(node).filter(
+    (candidate) => candidate.reportable
+  );
   return candidates.length === 1 ? candidates[0].message : null;
 }
 
 function collectStaticCandidates(node, addFinding) {
-  const candidates = staticAsciiCandidates(node);
+  const candidates = staticAsciiCandidates(node).filter(
+    (candidate) => candidate.reportable
+  );
   for (const candidate of candidates) {
     addFinding(candidate.node, candidate.message);
   }
   return candidates.length > 0;
 }
 
-function propertyName(node) {
+function staticComposableStrings(node) {
+  return [
+    ...new Set(
+      staticAsciiCandidates(node)
+        .filter((candidate) => candidate.composable)
+        .map((candidate) => candidate.message)
+    )
+  ];
+}
+
+function propertyNames(node) {
   if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node)) {
-    return node.text;
+    return [node.text];
   }
   if (ts.isComputedPropertyName(node)) {
-    const expression = unwrapExpression(node.expression);
-    if (
-      ts.isStringLiteral(expression) ||
-      ts.isNoSubstitutionTemplateLiteral(expression)
-    ) {
-      return expression.text;
-    }
+    return staticComposableStrings(node.expression);
   }
-  return null;
+  return [];
 }
 
 function collectStaticValues(node, addFinding) {
-  const value = unwrapExpression(node);
-  if (collectStaticCandidates(value, addFinding)) return;
-  if (ts.isArrayLiteralExpression(value)) {
-    for (const element of value.elements) {
-      collectStaticValues(
-        ts.isSpreadElement(element) ? element.expression : element,
-        addFinding
-      );
+  for (const value of expressionBranches(node)) {
+    if (collectStaticCandidates(value, addFinding)) continue;
+    if (ts.isArrayLiteralExpression(value)) {
+      for (const element of value.elements) {
+        collectStaticValues(
+          ts.isSpreadElement(element) ? element.expression : element,
+          addFinding
+        );
+      }
+      continue;
     }
-    return;
-  }
-  if (ts.isObjectLiteralExpression(value)) {
-    for (const property of value.properties) {
-      if (ts.isPropertyAssignment(property)) {
-        collectStaticValues(property.initializer, addFinding);
-      } else if (ts.isSpreadAssignment(property)) {
-        collectStaticValues(property.expression, addFinding);
+    if (ts.isObjectLiteralExpression(value)) {
+      for (const property of value.properties) {
+        if (ts.isPropertyAssignment(property)) {
+          collectStaticValues(property.initializer, addFinding);
+        } else if (ts.isSpreadAssignment(property)) {
+          collectStaticValues(property.expression, addFinding);
+        }
       }
     }
   }
 }
 
 function collectObjectMessages(node, addFinding) {
-  const value = unwrapExpression(node);
-  if (ts.isArrayLiteralExpression(value)) {
-    for (const element of value.elements) {
-      collectObjectMessages(
-        ts.isSpreadElement(element) ? element.expression : element,
-        addFinding
-      );
-    }
-    return;
-  }
-  if (!ts.isObjectLiteralExpression(value)) return;
-  for (const property of value.properties) {
-    if (ts.isSpreadAssignment(property)) {
-      collectObjectMessages(property.expression, addFinding);
+  for (const value of expressionBranches(node)) {
+    if (ts.isArrayLiteralExpression(value)) {
+      for (const element of value.elements) {
+        collectObjectMessages(
+          ts.isSpreadElement(element) ? element.expression : element,
+          addFinding
+        );
+      }
       continue;
     }
-    if (!ts.isPropertyAssignment(property)) continue;
-    const name = propertyName(property.name);
-    if (name === "message" || name === "errors") {
-      collectStaticValues(property.initializer, addFinding);
-    } else {
-      collectObjectMessages(property.initializer, addFinding);
+    if (!ts.isObjectLiteralExpression(value)) continue;
+    for (const property of value.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        collectObjectMessages(property.expression, addFinding);
+        continue;
+      }
+      if (!ts.isPropertyAssignment(property)) continue;
+      const names = propertyNames(property.name);
+      if (names.some((name) => name === "message" || name === "errors")) {
+        collectStaticValues(property.initializer, addFinding);
+      } else {
+        collectObjectMessages(property.initializer, addFinding);
+      }
     }
   }
 }
 
 function collectDirectMessages(node, addFinding) {
-  const value = unwrapExpression(node);
-  if (collectStaticCandidates(value, addFinding)) return;
-  if (ts.isArrayLiteralExpression(value)) {
-    for (const element of value.elements) {
-      collectDirectMessages(
-        ts.isSpreadElement(element) ? element.expression : element,
-        addFinding
-      );
+  for (const value of expressionBranches(node)) {
+    if (collectStaticCandidates(value, addFinding)) continue;
+    if (ts.isArrayLiteralExpression(value)) {
+      for (const element of value.elements) {
+        collectDirectMessages(
+          ts.isSpreadElement(element) ? element.expression : element,
+          addFinding
+        );
+      }
+      continue;
     }
-    return;
+    collectObjectMessages(value, addFinding);
   }
-  collectObjectMessages(value, addFinding);
 }
 
 function addAliasCandidate(aliases, name, kind) {
@@ -299,7 +354,7 @@ function importedExceptionBindings(sourceFile) {
   return { aliases, aliasLines, namespaces };
 }
 
-function namespaceConstructorKind(node, bindings) {
+function namespaceConstructorKinds(node, bindings) {
   const target = unwrapExpression(node);
   if (
     ts.isPropertyAccessExpression(target) &&
@@ -307,7 +362,7 @@ function namespaceConstructorKind(node, bindings) {
     bindings.namespaces.has(unwrapExpression(target.expression).text) &&
     NEST_EXCEPTION_KINDS.has(target.name.text)
   ) {
-    return target.name.text;
+    return new Set([target.name.text]);
   }
   if (
     ts.isElementAccessExpression(target) &&
@@ -315,25 +370,29 @@ function namespaceConstructorKind(node, bindings) {
     bindings.namespaces.has(unwrapExpression(target.expression).text) &&
     target.argumentExpression
   ) {
-    const argument = unwrapExpression(target.argumentExpression);
-    if (
-      (ts.isStringLiteral(argument) ||
-        ts.isNoSubstitutionTemplateLiteral(argument)) &&
-      NEST_EXCEPTION_KINDS.has(argument.text)
-    ) {
-      return argument.text;
+    const kinds = new Set();
+    for (const name of staticComposableStrings(target.argumentExpression)) {
+      if (NEST_EXCEPTION_KINDS.has(name)) kinds.add(name);
     }
+    return kinds;
   }
-  return null;
+  return new Set();
 }
 
 function constructorCandidates(node, bindings) {
-  const target = unwrapExpression(node);
-  if (ts.isIdentifier(target)) {
-    return new Set(bindings.aliases.get(target.text) ?? []);
+  const candidates = new Set();
+  for (const target of expressionBranches(node)) {
+    if (ts.isIdentifier(target)) {
+      for (const kind of bindings.aliases.get(target.text) ?? []) {
+        candidates.add(kind);
+      }
+      continue;
+    }
+    for (const kind of namespaceConstructorKinds(target, bindings)) {
+      candidates.add(kind);
+    }
   }
-  const namespaceKind = namespaceConstructorKind(target, bindings);
-  return namespaceKind ? new Set([namespaceKind]) : new Set();
+  return candidates;
 }
 
 function collectConstructorBindings(sourceFile) {
@@ -383,11 +442,6 @@ function collectConstructorBindings(sourceFile) {
   return { bindings, diagnostics };
 }
 
-function constructorKind(node, bindings) {
-  const candidates = constructorCandidates(node, bindings);
-  return candidates.size === 1 ? candidates.values().next().value : null;
-}
-
 function scanSourceTree(sourceRoot, baseDir = path.dirname(sourceRoot)) {
   const findings = [];
   const diagnostics = [];
@@ -411,7 +465,29 @@ function scanSourceTree(sourceRoot, baseDir = path.dirname(sourceRoot)) {
       if (ts.isThrowStatement(node) && node.expression) {
         const expression = unwrapExpression(node.expression);
         if (ts.isNewExpression(expression)) {
-          const kind = constructorKind(expression.expression, bindings);
+          const constructorKinds = constructorCandidates(
+            expression.expression,
+            bindings
+          );
+          const constructorTarget = unwrapExpression(expression.expression);
+          if (
+            constructorKinds.size > 1 &&
+            !ts.isIdentifier(constructorTarget)
+          ) {
+            diagnostics.push({
+              file: relativeFile,
+              line:
+                sourceFile.getLineAndCharacterOfPosition(
+                  expression.expression.getStart(sourceFile)
+                ).line + 1,
+              kind: "AmbiguousConstructorAlias",
+              message: "constructor-expression"
+            });
+          }
+          const kind =
+            constructorKinds.size === 1
+              ? constructorKinds.values().next().value
+              : null;
           if (kind) {
             const addFinding = (messageNode, message) => {
               const location = sourceFile.getLineAndCharacterOfPosition(

@@ -12,6 +12,8 @@ const {
 } = require("./check-business-errors.cjs");
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "business-error-check-"));
+const concatFragment = (left, right) =>
+  `concat-fragment:${JSON.stringify([left, right])}`;
 
 try {
   assert.doesNotThrow(() => require.resolve("@nestjs/common/exceptions"));
@@ -27,6 +29,7 @@ try {
       'const NamespacePropertyAlias = common.ForbiddenException;',
       'const NamespaceElementAlias = common["NotFoundException"];',
       'const AliasChain = DirectAlias;',
+      'const CommaAlias = (0, BadRequestException);',
       'throw new BadRequestException("English HTTP");',
       'throw new UnauthorizedException("English unauthorized");',
       'throw new InternalServerErrorException("English internal");',
@@ -57,6 +60,19 @@ try {
       'throw new BadRequestException(flag ? "TOP-SECRET conditional true" : "TOP-SECRET conditional false");',
       'throw new BadRequestException({ message: "TOP-" + "SECRET object concat", errors: [flag ? "TOP-SECRET errors true" : "TOP-SECRET errors false"] });',
       'throw new BadRequestException([...[("TOP-" + "SECRET array spread concat")]]);',
+      'throw new BadRequestException(`Audit ${secret}` + "");',
+      'throw new BadRequestException("TOP-SECRET head " + `Audit ${secret}`);',
+      'throw new BadRequestException("TOP-SECRET number " + 1);',
+      'throw new BadRequestException("TOP-SECRET empty right" + "");',
+      'throw new BadRequestException("" + "TOP-SECRET empty left");',
+      'throw new BadRequestException("");',
+      'throw new common["Bad" + "RequestException"]("TOP-SECRET namespace concat key");',
+      'throw new CommaAlias("TOP-SECRET constructor comma alias");',
+      'throw new BadRequestException({ ["mes" + "sage"]: "TOP-SECRET computed concat key" });',
+      'throw new BadRequestException({ [flag ? "message" : "errors"]: "TOP-SECRET computed conditional key" });',
+      'throw new BadRequestException((0, { message: "TOP-SECRET comma object" }));',
+      'throw new BadRequestException((0, ["TOP-SECRET comma array"]));',
+      'throw new BadRequestException(flag ? { message: "TOP-SECRET conditional object" } : ["TOP-SECRET conditional array"]);',
       'throw new BadRequestException("中文通过");',
       'throw new Error(`中文 ${secret}`);'
     ].join("\n")
@@ -113,11 +129,30 @@ try {
       ["BadRequestException", "TOP-SECRET object concat"],
       ["BadRequestException", "TOP-SECRET errors true"],
       ["BadRequestException", "TOP-SECRET errors false"],
-      ["BadRequestException", "TOP-SECRET array spread concat"]
+      ["BadRequestException", "TOP-SECRET array spread concat"],
+      [
+        "BadRequestException",
+        concatFragment('template:["Audit ",""]', "")
+      ],
+      [
+        "BadRequestException",
+        concatFragment("TOP-SECRET head ", 'template:["Audit ",""]')
+      ],
+      ["BadRequestException", concatFragment("TOP-SECRET number ", null)],
+      ["BadRequestException", "TOP-SECRET empty right"],
+      ["BadRequestException", "TOP-SECRET empty left"],
+      ["BadRequestException", "TOP-SECRET namespace concat key"],
+      ["BadRequestException", "TOP-SECRET constructor comma alias"],
+      ["BadRequestException", "TOP-SECRET computed concat key"],
+      ["BadRequestException", "TOP-SECRET computed conditional key"],
+      ["BadRequestException", "TOP-SECRET comma object"],
+      ["BadRequestException", "TOP-SECRET comma array"],
+      ["BadRequestException", "TOP-SECRET conditional object"],
+      ["BadRequestException", "TOP-SECRET conditional array"]
     ]
   );
   const unallowedErrors = evaluateFindings(findings, []);
-  assert.equal(unallowedErrors.filter((error) => error.type === "unallowed").length, 36);
+  assert.equal(unallowedErrors.filter((error) => error.type === "unallowed").length, 49);
   const formattedErrors = formatErrors(unallowedErrors).join("\n");
   assert.doesNotMatch(formattedErrors, /TOP-SECRET|\/tmp\//);
   assert.match(formattedErrors, /sha256:[a-f0-9]{12}/);
@@ -137,11 +172,13 @@ try {
     [
       'import { BadRequestException, NotFoundException } from "@nestjs/common";',
       'function first() { const TOP_SECRET_ALIAS = BadRequestException; return TOP_SECRET_ALIAS; }',
-      'function second() { const TOP_SECRET_ALIAS = NotFoundException; return TOP_SECRET_ALIAS; }'
+      'function second() { const TOP_SECRET_ALIAS = NotFoundException; return TOP_SECRET_ALIAS; }',
+      'const CONDITIONAL_ALIAS = flag ? BadRequestException : NotFoundException;',
+      'throw new (flag ? BadRequestException : NotFoundException)("TOP-SECRET ambiguous constructor");'
     ].join("\n")
   );
   const ambiguousResult = scanSourceTree(path.join(root, "src"), root);
-  assert.equal(ambiguousResult.diagnostics.length, 1);
+  assert.equal(ambiguousResult.diagnostics.length, 3);
   assert.equal(ambiguousResult.diagnostics[0].kind, "AmbiguousConstructorAlias");
   const ambiguousErrors = evaluateScan(ambiguousResult, exactAllowlist);
   assert.equal(
