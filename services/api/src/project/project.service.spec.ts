@@ -11,26 +11,29 @@ describe("project money API boundary", () => {
 });
 
 describe("ProjectService", () => {
-  it("rejects an invalid receipt amount as HTTP 400 before opening a transaction", async () => {
-    const prisma = { $transaction: jest.fn() };
-    const service = new ProjectService(prisma as never);
+  it.each(["1e3", "0"])(
+    "rejects receipt amount %s as HTTP 400 before opening a transaction",
+    async (amountCents) => {
+      const prisma = { $transaction: jest.fn() };
+      const service = new ProjectService(prisma as never);
 
-    const error = await service
-      .recordReceipt("project-1", "finance-1", {
-        receivedAt: "2026-07-02T00:00:00.000Z",
-        amountCents: "1e3",
-        payerName: "总包单位",
-        sourceType: "general_contractor_payment",
-        voucherFileId: "file-1",
-        confirmationPassword: "current-password"
-      })
-      .catch((caught: unknown) => caught);
+      const error = await service
+        .recordReceipt("project-1", "finance-1", {
+          receivedAt: "2026-07-02T00:00:00.000Z",
+          amountCents,
+          payerName: "总包单位",
+          sourceType: "general_contractor_payment",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password"
+        })
+        .catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(BadRequestException);
-    expect((error as BadRequestException).getStatus()).toBe(400);
-    expect((error as Error).message).toBe("到账金额必须大于零");
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getStatus()).toBe(400);
+      expect((error as Error).message).toBe("到账金额必须大于零");
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    }
+  );
 
   it("creates a project and records an audit log", async () => {
     const tx = {

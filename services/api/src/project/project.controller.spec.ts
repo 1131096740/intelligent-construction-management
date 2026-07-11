@@ -1,6 +1,74 @@
 import "reflect-metadata";
+import { BadRequestException } from "@nestjs/common";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
+import { createApiValidationPipe } from "../validation/api-validation";
 import { ProjectController } from "./project.controller";
+
+type ProjectMoneyBodyMethod =
+  | "recordReceipt"
+  | "recordProxyPayment"
+  | "recordUpstreamSettlement"
+  | "recordOwnerContract"
+  | "confirmOwnerContract"
+  | "requestSettlementExceptionQuota"
+  | "reviewSettlementExceptionQuota"
+  | "requestProjectFinancingQuota"
+  | "reviewProjectFinancingQuota";
+
+const projectMoneyBodyIndex: Record<ProjectMoneyBodyMethod, number> = {
+  recordReceipt: 2,
+  recordProxyPayment: 2,
+  recordUpstreamSettlement: 2,
+  recordOwnerContract: 2,
+  confirmOwnerContract: 3,
+  requestSettlementExceptionQuota: 2,
+  reviewSettlementExceptionQuota: 3,
+  requestProjectFinancingQuota: 2,
+  reviewProjectFinancingQuota: 3
+};
+
+function projectMoneyBodyMetatype(method: ProjectMoneyBodyMethod) {
+  const paramTypes = Reflect.getMetadata(
+    "design:paramtypes",
+    ProjectController.prototype,
+    method
+  ) as Array<new () => object> | undefined;
+  expect(paramTypes).toBeDefined();
+  const metatype = paramTypes?.[projectMoneyBodyIndex[method]];
+  expect(metatype).toBeDefined();
+  expect(metatype).not.toBe(Object);
+  return metatype as new () => object;
+}
+
+async function validateProjectMoneyBody(method: ProjectMoneyBodyMethod, value: unknown) {
+  return createApiValidationPipe().transform(value, {
+    type: "body",
+    metatype: projectMoneyBodyMetatype(method),
+    data: undefined
+  });
+}
+
+async function getProjectMoneyValidationResponse(
+  method: ProjectMoneyBodyMethod,
+  value: unknown
+): Promise<Record<string, unknown>> {
+  try {
+    await validateProjectMoneyBody(method, value);
+  } catch (error) {
+    expect(error).toBeInstanceOf(BadRequestException);
+    return (error as BadRequestException).getResponse() as Record<string, unknown>;
+  }
+  throw new Error("Expected project money body validation to reject the request");
+}
+
+const validProjectReceiptBody = {
+  receivedAt: "2026-07-11",
+  amountCents: "10000",
+  payerName: "总包单位",
+  sourceType: "general_contractor_payment",
+  voucherFileId: "file-1",
+  confirmationPassword: "current-password"
+};
 
 describe("ProjectController authorization wiring", () => {
   type OwnerContractRecordBody = {
@@ -48,6 +116,315 @@ describe("ProjectController authorization wiring", () => {
     "finance_staff"
   ];
   const projectCreatePositions = ["chairman", "general_manager"];
+
+  it.each([
+    ["recordReceipt", validProjectReceiptBody],
+    [
+      "recordProxyPayment",
+      {
+        paidAt: "2026-07-11T10:00:00.000Z",
+        amountCents: "10000",
+        generalContractorName: "总包单位",
+        paidTargetName: "材料供应商",
+        paymentType: "material",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      }
+    ],
+    [
+      "recordUpstreamSettlement",
+      {
+        settledAt: "2026-07-11",
+        reportedAmountCents: "12000",
+        approvedAmountCents: "10000",
+        approvingPartyName: "总包单位",
+        periodLabel: "2026-06",
+        isFinal: false,
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      }
+    ],
+    [
+      "recordOwnerContract",
+      {
+        ownerName: "建设单位",
+        contractName: "施工总承包合同",
+        contractCode: "YZ-2026-001",
+        signedAt: "2026-07-11",
+        amountCents: "200000000",
+        taxRateBps: 900,
+        pricingMethod: "fixed_total",
+        paymentTermsSummary: "按进度支付",
+        retentionSummary: "3%质保金",
+        fileId: "file-1"
+      }
+    ],
+    ["confirmOwnerContract", { confirmationPassword: "current-password" }],
+    [
+      "requestSettlementExceptionQuota",
+      {
+        contractId: "contract-1",
+        amountCents: "10000",
+        reason: "临时额度",
+        validUntil: "2099-07-11",
+        attachmentFileId: "file-1"
+      }
+    ],
+    [
+      "reviewSettlementExceptionQuota",
+      { decision: "approve", confirmationPassword: "current-password", comment: "同意" }
+    ],
+    [
+      "requestProjectFinancingQuota",
+      {
+        amountCents: "10000",
+        reason: "项目垫资",
+        validUntil: "2099-07-11T10:00:00.000Z",
+        attachmentFileId: "file-1"
+      }
+    ],
+    [
+      "reviewProjectFinancingQuota",
+      { decision: "reject", confirmationPassword: "current-password", comment: "资料不足" }
+    ]
+  ] as const)("accepts a valid %s body through its controller runtime DTO", async (method, value) => {
+    const result = await validateProjectMoneyBody(method, value);
+
+    expect(result).toEqual(value);
+    expect(result).toBeInstanceOf(projectMoneyBodyMetatype(method));
+  });
+
+  it("keeps project create and update DTO validation outside Task 3", () => {
+    const createTypes = Reflect.getMetadata(
+      "design:paramtypes",
+      ProjectController.prototype,
+      "create"
+    ) as unknown[];
+    const updateTypes = Reflect.getMetadata(
+      "design:paramtypes",
+      ProjectController.prototype,
+      "update"
+    ) as unknown[];
+
+    expect(createTypes[1]).toBe(Object);
+    expect(updateTypes[2]).toBe(Object);
+  });
+
+  it.each([100, -1, "-1", "1.2", "1e3", " 1", "01", ""])(
+    "rejects a non-canonical project receipt amount: %p",
+    async (amountCents) => {
+      const response = await getProjectMoneyValidationResponse("recordReceipt", {
+        ...validProjectReceiptBody,
+        amountCents
+      });
+
+      expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+    }
+  );
+
+  it("allows zero through the receipt DTO and leaves the positive rule in the service", async () => {
+    const result = await validateProjectMoneyBody("recordReceipt", {
+      ...validProjectReceiptBody,
+      amountCents: "0"
+    });
+
+    expect(result).toEqual({ ...validProjectReceiptBody, amountCents: "0" });
+  });
+
+  it.each(["general_contractor_payment", "owner_direct_payment", "other"])(
+    "accepts the %s project receipt source",
+    async (sourceType) => {
+      await expect(
+        validateProjectMoneyBody("recordReceipt", { ...validProjectReceiptBody, sourceType })
+      ).resolves.toBeDefined();
+    }
+  );
+
+  it.each(["material", "equipment", "labor", "professional_subcontract", "other"])(
+    "accepts the %s proxy payment type",
+    async (paymentType) => {
+      await expect(
+        validateProjectMoneyBody("recordProxyPayment", {
+          paidAt: "2026-07-11",
+          amountCents: "10000",
+          generalContractorName: "总包单位",
+          paidTargetName: "收款方",
+          paymentType,
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password"
+        })
+      ).resolves.toBeDefined();
+    }
+  );
+
+  it("accepts a proxy payment without optional contract or settlement association", async () => {
+    const result = await validateProjectMoneyBody("recordProxyPayment", {
+      paidAt: "2026-07-11",
+      amountCents: "10000",
+      generalContractorName: "总包单位",
+      paidTargetName: "收款方",
+      paymentType: "other",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(result).toBeInstanceOf(projectMoneyBodyMetatype("recordProxyPayment"));
+  });
+
+  it("rejects unsupported receipt and proxy payment enums", async () => {
+    const receiptResponse = await getProjectMoneyValidationResponse("recordReceipt", {
+      ...validProjectReceiptBody,
+      sourceType: "invoice"
+    });
+    const proxyResponse = await getProjectMoneyValidationResponse("recordProxyPayment", {
+      paidAt: "2026-07-11",
+      amountCents: "10000",
+      generalContractorName: "总包单位",
+      paidTargetName: "收款方",
+      paymentType: "salary",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(receiptResponse.errors).toContain("到账来源类型不正确");
+    expect(proxyResponse.errors).toContain("代付类型不正确");
+  });
+
+  it("rejects string isFinal without implicit boolean conversion", async () => {
+    const response = await getProjectMoneyValidationResponse("recordUpstreamSettlement", {
+      settledAt: "2026-07-11",
+      reportedAmountCents: "12000",
+      approvedAmountCents: "10000",
+      approvingPartyName: "总包单位",
+      periodLabel: "2026-06",
+      isFinal: "false",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(response.errors).toContain("最终结算标记必须是布尔值");
+  });
+
+  it.each([0, 10_000])("accepts owner contract tax rate boundary %s", async (taxRateBps) => {
+    await expect(
+      validateProjectMoneyBody("recordOwnerContract", {
+        ownerName: "建设单位",
+        contractName: "施工总承包合同",
+        contractCode: "YZ-2026-001",
+        signedAt: "2026-07-11",
+        amountCents: "200000000",
+        taxRateBps,
+        pricingMethod: "fixed_total",
+        paymentTermsSummary: "按进度支付",
+        retentionSummary: "3%质保金",
+        fileId: "file-1"
+      })
+    ).resolves.toBeDefined();
+  });
+
+  it.each([-1, 10_001, "900"])("rejects invalid owner contract tax rate %p", async (taxRateBps) => {
+    const response = await getProjectMoneyValidationResponse("recordOwnerContract", {
+      ownerName: "建设单位",
+      contractName: "施工总承包合同",
+      contractCode: "YZ-2026-001",
+      signedAt: "2026-07-11",
+      amountCents: "200000000",
+      taxRateBps,
+      pricingMethod: "fixed_total",
+      paymentTermsSummary: "按进度支付",
+      retentionSummary: "3%质保金",
+      fileId: "file-1"
+    });
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it.each(["not-a-date", "2026-13-40"])("rejects invalid quota date %s", async (validUntil) => {
+    const response = await getProjectMoneyValidationResponse("requestProjectFinancingQuota", {
+      amountCents: "10000",
+      reason: "项目垫资",
+      validUntil,
+      attachmentFileId: "file-1"
+    });
+
+    expect(response.errors).toContain("额度有效期格式不正确");
+  });
+
+  it.each(["2099-07-11", "2099-07-11T10:00:00.000Z"])(
+    "accepts supported quota date %s",
+    async (validUntil) => {
+      await expect(
+        validateProjectMoneyBody("requestProjectFinancingQuota", {
+          amountCents: "10000",
+          reason: "项目垫资",
+          validUntil,
+          attachmentFileId: "file-1"
+        })
+      ).resolves.toBeDefined();
+    }
+  );
+
+  it("rejects empty required project money fields and unknown fields", async () => {
+    const requiredResponse = await getProjectMoneyValidationResponse("recordReceipt", {
+      ...validProjectReceiptBody,
+      voucherFileId: "",
+      confirmationPassword: ""
+    });
+    const unknownResponse = await getProjectMoneyValidationResponse("recordReceipt", {
+      ...validProjectReceiptBody,
+      internalSecret: "TOP-SECRET"
+    });
+
+    expect(requiredResponse.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+    expect(unknownResponse.errors).toEqual(["internalSecret 不是允许提交的字段"]);
+    expect(JSON.stringify(unknownResponse)).not.toContain("TOP-SECRET");
+  });
+
+  it("rejects whitespace-only required project money fields without trimming values", async () => {
+    const response = await getProjectMoneyValidationResponse("recordReceipt", {
+      ...validProjectReceiptBody,
+      payerName: "   ",
+      voucherFileId: "   ",
+      confirmationPassword: "   "
+    });
+
+    expect(response.errors).toEqual(
+      expect.arrayContaining([
+        "付款方名称不能为空白",
+        "到账凭证不能为空白",
+        "请输入当前登录密码"
+      ])
+    );
+  });
+
+  it.each([
+    { contractId: null },
+    { settlementId: "   " }
+  ])("rejects an invalid optional proxy association: %p", async (association) => {
+    const response = await getProjectMoneyValidationResponse("recordProxyPayment", {
+      paidAt: "2026-07-11",
+      amountCents: "10000",
+      generalContractorName: "总包单位",
+      paidTargetName: "收款方",
+      paymentType: "other",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password",
+      ...association
+    });
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it("passes the transformed receipt DTO to the project service exactly once", async () => {
+    const projects = { recordReceipt: jest.fn().mockResolvedValue({ id: "receipt-1" }) };
+    const controller = new ProjectController(projects as never);
+    const body = await validateProjectMoneyBody("recordReceipt", validProjectReceiptBody);
+
+    await controller.recordReceipt("project-1", { id: "finance-1" } as never, body as never);
+
+    expect(projects.recordReceipt).toHaveBeenCalledTimes(1);
+    expect(projects.recordReceipt).toHaveBeenCalledWith("project-1", "finance-1", body);
+  });
 
   it("lets project list rely on authentication plus service-level project visibility", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.list)).toBeUndefined();
