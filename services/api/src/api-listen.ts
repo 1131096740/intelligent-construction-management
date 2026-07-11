@@ -7,10 +7,6 @@ export async function listenApi(
   port: number,
   rawHost?: string
 ): Promise<void> {
-  const host = rawHost?.trim();
-  if (host) {
-    await app.listen(port, host);
-    return;
-  }
-  await app.listen(port);
+  const host = rawHost?.trim() || "127.0.0.1";
+  await app.listen(port, host);
 }
