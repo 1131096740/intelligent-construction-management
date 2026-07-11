@@ -73,6 +73,29 @@ describe("PaymentController authorization wiring", () => {
     await expect(validatePaymentBody("reviewApproval", 2, value)).resolves.toEqual(value);
   });
 
+  it("按 Unicode code point 校验付款自审字段边界", async () => {
+    const boundary = "❤️".repeat(250);
+    await expect(
+      validatePaymentBody("reviewApproval", 2, {
+        decision: "approve",
+        selfReviewReason: boundary,
+        confirmationPassword: "❤️".repeat(128)
+      })
+    ).resolves.toBeDefined();
+
+    const reasonResponse = await getPaymentValidationResponse("reviewApproval", 2, {
+      decision: "approve",
+      selfReviewReason: `${boundary}原`
+    });
+    expect(reasonResponse.errors).toContain("自审原因不能超过 500 个字符");
+
+    const passwordResponse = await getPaymentValidationResponse("reviewApproval", 2, {
+      decision: "approve",
+      confirmationPassword: `${"❤️".repeat(128)}密`
+    });
+    expect(passwordResponse.errors).toContain("当前密码格式不正确");
+  });
+
   it.each([
     ["selfReviewReason", null, "自审原因必须是文字"],
     ["selfReviewReason", [], "自审原因必须是文字"],

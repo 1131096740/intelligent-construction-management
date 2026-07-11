@@ -138,4 +138,5 @@ git commit -m "feat: 完成核心详情自审交互"
 
 - [x] 读侧不再对待处理岗位做“任一领导交集”，而是与写侧一致，按冻结节点 `roleKeys` 顺序选取当前人第一个直接持有的岗位作为实际 `approvedRoleKey`，再判断是否为董事长/总经理；`[budget_director, chairman]` 且申请人同时持有两岗时不得误放行。
 - [x] Web 长度预检与 class-validator 对齐为 Unicode code point 计数；表单控件不再使用按 UTF-16 code unit 截断的 `maxlength`，后端仍作最终校验。
+- [x] 针对 validator.js `MaxLength` 将 variation selector 组合字符与 Web code point 计数处理不一致的剩余差异，合同/结算/付款/项目支出四个自审 DTO 均改用项目已有 `IsMaxUnicodeTextLength`，保留 `ValidateIf` + `IsString` 及现有中文错误。`"❤️".repeat(250)` 为 500 code points 并通过，再多一个 code point 统一拒绝。
 - [x] 两项修复均先新增边界回归并得到有效 RED，再最小修复转 GREEN；修复以独立 commit 提交，不 amend 原功能提交。

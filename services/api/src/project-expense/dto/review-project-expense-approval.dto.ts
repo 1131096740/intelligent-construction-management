@@ -1,5 +1,8 @@
-import { IsIn, IsString, MaxLength, ValidateIf } from "class-validator";
-import { IsCanonicalMoneyText } from "../../validation/static-field-validation";
+import { IsIn, IsString, ValidateIf } from "class-validator";
+import {
+  IsCanonicalMoneyText,
+  IsMaxUnicodeTextLength
+} from "../../validation/static-field-validation";
 
 export class ReviewProjectExpenseApprovalDto {
   @IsIn(["approve", "reject"], { message: "审批决定不正确" })
@@ -18,11 +21,11 @@ export class ReviewProjectExpenseApprovalDto {
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "自审原因必须是文字" })
-  @MaxLength(500, { message: "自审原因不能超过 500 个字符" })
+  @IsMaxUnicodeTextLength({ max: 500, message: "自审原因不能超过 500 个字符" })
   selfReviewReason?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "当前密码必须是文字" })
-  @MaxLength(256, { message: "当前密码格式不正确" })
+  @IsMaxUnicodeTextLength({ max: 256, message: "当前密码格式不正确" })
   confirmationPassword?: string;
 }
