@@ -8,7 +8,7 @@
 
 - 先验收能不能安全试运行，再扩大功能。
 - 自动脚本只做只读辅助检查：环境变量形态、默认值风险、本机转换器可用性；仅在显式设置 `CHECK_DATABASE_STATE=true` 时做 seed 账号只读查询；不读 COS、不输出密钥值。
-- 人工验收必须留痕：负责人、日期、截图或日志路径、问题和整改结论。
+- 人工验收采用轻量记录：负责人、日期、结果、问题和处理结论；由用户收集问题后交付开发处理，不要求 Go-Live 正式材料或全部签字后才能更新软件。
 - 真实密钥、真实账号密码、COS Secret、数据库连接串完整值不得进入仓库、聊天、截图或共享文档。
 - seed 通用密码 `Jgzg@2026` 只允许开发演示使用，真实试运行前必须停用或改掉。
 
@@ -32,11 +32,11 @@ CHECK_DATABASE_STATE=true pnpm --filter @jiangkong/api verify:production-readine
 - `NODE_ENV` 是否为 `production`；
 - `WEB_ORIGIN` 是否为 HTTPS；
 - `DATABASE_URL` 是否为 PostgreSQL，是否仍使用默认演示账号；
-- `JWT_ACCESS_SECRET`、`JWT_REFRESH_SECRET`、`FILE_DOWNLOAD_SECRET` 是否存在且不像默认值；
+- `JWT_ACCESS_SECRET`、`JWT_REFRESH_SECRET`、`FILE_DOWNLOAD_SECRET` 是否存在且不像默认值；`FILE_DOWNLOAD_SECRET` 少于 32 字符直接失败，JWT 短密钥仍保留现有 WARN 提醒口径；
 - 环境变量中是否仍出现 `Jgzg@2026`；
-- `FILE_STORAGE_DRIVER` 是否为 `cos`；
-- `COS_SECRET_ID`、`COS_SECRET_KEY`、`COS_BUCKET`、`COS_REGION` 是否存在且不像占位值；
-- `FILE_UPLOAD_MAX_BYTES` 是否为正整数；
+- `FILE_STORAGE_DRIVER` 只允许 `local` / `cos`，但生产 readiness 必须为 `cos`；空值、`s3` 等非法枚举和生产 `local` 都直接失败；
+- `COS_SECRET_ID`、`COS_SECRET_KEY` 是否非空且非占位，`COS_BUCKET` 是否符合小写 `<name>-<APPID>` 腾讯桶名格式，`COS_REGION` 是否使用 `ap/na/sa/eu/af/me` 常见前缀并符合 `ap-chengdu` 形式的小写分段格式；
+- `FILE_UPLOAD_MAX_BYTES` 是否为纯十进制正整数且不超过 `Number.MAX_SAFE_INTEGER`；缺失、0、负数、小数、指数、十六进制和超安全整数都直接失败；
 - `DOC_CONVERTER_COMMAND` 是否可执行；
 - `DOC_ALLOWED_FONTS` 是否包含合同母版要求字体。
 
@@ -59,7 +59,7 @@ CHECK_DATABASE_STATE=true pnpm --filter @jiangkong/api verify:production-readine
 | Web 来源 | 自动脚本 | `WEB_ORIGIN` 为正式 HTTPS 域名 | 运维 | 待验收 |
 | 数据库连接 | 自动脚本 + 人工复核 | 不使用 `jiangkong/jiangkong` 演示账号；连接生产库或生产等价库 | 运维 | 待验收 |
 | JWT 密钥 | 自动脚本 | access / refresh secret 均已配置，非占位、非本地默认 | 运维 | 待验收 |
-| 文件下载签票密钥 | 自动脚本 | `FILE_DOWNLOAD_SECRET` 已配置，非占位、非本地默认 | 运维 | 待验收 |
+| 文件下载签票密钥 | 自动脚本 | `FILE_DOWNLOAD_SECRET` 已配置，非占位、非本地默认且至少 32 字符 | 运维 | 待验收 |
 | COS 密钥 | 自动脚本 | Secret ID / Secret Key 仅存在服务器环境或密钥管理处，不入仓 | 运维 | 待验收 |
 | 前端环境 | 人工复核构建配置 | Web 构建指向正式 API，不含密钥 | 运维 / 前端 | 待验收 |
 
@@ -105,12 +105,12 @@ curl -sI https://jgzg.site/api/health | grep -Ei 'strict-transport|x-content-typ
 | --- | --- | --- | --- |
 | 文件存储驱动 | 自动脚本 | `FILE_STORAGE_DRIVER=cos` | 待验收 |
 | COS 桶私有 | 腾讯云控制台人工检查 | 桶非公开读写，无匿名访问策略 | 待验收 |
-| API 上传 | 人工上传测试 | 文件经后端上传，`FileObject.bucket` 指向 COS 桶 | 待验收 |
+| API 上传 | 人工上传测试 | 文件经后端上传，`FileObject` 记录桶、hash、active 状态、上传人，且在对应业务表中有文件绑定 | 待验收 |
 | 短时效下载 | 人工下载测试 | 下载前需要登录和当前密码，票据约 5 分钟过期 | 待验收 |
 | 公开直链 | 人工测试 | 未经 API 签票不能直接下载对象 | 待验收 |
-| 下载审计 | 人工查审计 | 签票和下载动作能查到人、文件、时间 | 待验收 |
+| 上传/下载审计 | 人工查审计 | `file.upload`、`file.download.ticket`、`file.download` 能查到操作人、文件、时间和下载原因 | 待验收 |
 
-注意：脚本只检查配置项，不访问 COS，也不判断桶策略。
+注意：脚本只检查配置形态，不访问 COS，也不判断桶策略；输出只包含环境变量键名和固定结果，不得输出 COS 密钥、完整 `DATABASE_URL` 或数据库密码。
 
 最小留痕命令：
 
@@ -126,8 +126,10 @@ COS 抽样验收记录：
 | 步骤 | 命令 / 证据 | 结果 |
 | --- | --- | --- |
 | 后端上传 | Web 上传一份非敏感测试附件，记录 `FileObject.id` | 待验收 |
-| 存储位置 | `psql "$DATABASE_URL" -c 'select "id","bucket","objectKey" from "FileObject" order by "createdAt" desc limit 1;'` | 待验收 |
-| 签票下载 | Web 输入当前密码下载，确认 200 且写 `file.download.ticket` / `file.download` 审计 | 待验收 |
+| 元数据 | `psql "$DATABASE_URL" -c 'select "id","bucket",("objectKey" is not null and length("objectKey") > 0) as "hasObjectKey",length("objectKey") as "objectKeyLength",("contentSha256" is not null) as "hasContentSha256","storageStatus","uploadedByUserId" from "FileObject" order by "createdAt" desc limit 1;'`；不输出完整 objectKey | 待验收 |
+| 业务绑定 | 从上传入口对应的合同/结算/付款/归档等业务记录反查 fileId | 能从业务对象追溯到该 `FileObject.id`，不存在无业务归属的有效文件 | 待验收 |
+| 签票下载 | Web 输入当前密码和下载原因，确认 200 且写 `file.download.ticket` / `file.download` 审计 | 待验收 |
+| 签票防篡改 | 在隔离测试中分别修改 token、actorUserId、expiresAt、downloadReason 后请求下载 | 任一字段被篡改都固定拒绝，不返回文件内容 | 待验收 |
 | 匿名直链 | 腾讯云 COS 对象 URL 未签名访问返回 403 / AccessDenied | 待验收 |
 
 ## 4. PostgreSQL 不公网暴露
@@ -248,7 +250,7 @@ scripts/ops/check-runtime-health.sh
 | 字体安装 | 人工检查 | 生产等价转换机器已安装上述字体 | 待验收 |
 | 工作台 live 验证 | 人工运行 | `pnpm --filter @jiangkong/api verify:contract-workbench` 通过 | 待验收 |
 | 验收包 | 人工运行 | `pnpm --filter @jiangkong/api contract-master:review-pack` 生成新包 | 待验收 |
-| 逐页签认 | 合同部/法务人工 | DOCX 逐页打开检查通过，不能只看 PDF/PNG | 待验收 |
+| 逐页核对 | 合同部/法务人工 | DOCX 逐页打开检查通过，不能只看 PDF/PNG | 待验收 |
 
 验收以 [合同 Word 版式标准](../../design/建工智管_合同Word版式标准.md) 为准。
 
@@ -278,16 +280,16 @@ scripts/ops/check-runtime-health.sh
 5. 付款审批通过不等于实际付款，只有出纳实付后才有付款执行记录。
 6. 项目付款审批表 PDF、结算附件模板下载和综合费用附件下载均需要登录、权限和审计。
 
-## 最终放行
+## 轻量发布前核对
 
-| 放行项 | 负责人 | 结论 | 日期 |
+| 核对项 | 负责人 | 结果 | 日期 |
 | --- | --- | --- | --- |
-| 自动脚本无 FAIL，WARN 已人工确认 | 运维 | 待签 | 待填 |
-| seed 密码和 seed 账号风险已关闭 | 运维 / 管理层 | 待签 | 待填 |
-| COS、数据库、备份恢复、附件备份通过 | 运维 | 待签 | 待填 |
-| HTTPS、证书续期、时间同步、日志告警通过 | 运维 | 待签 | 待填 |
-| 合同母版逐页人工验收通过 | 合同部 / 法务 | 待签 | 待填 |
-| 权限矩阵验收通过 | 业务负责人 / 运维 | 待签 | 待填 |
-| 项目付款审批表、结算附件模板和综合费用真实单据验收通过 | 财务 / 合同部 / 综合部 / 管理层 | 待签 | 待填 |
+| 自动脚本无 FAIL，WARN 已人工确认 | 运维 | 待核对 | 待填 |
+| seed 密码和 seed 账号风险已关闭 | 运维 / 管理层 | 待核对 | 待填 |
+| COS、数据库、备份恢复、附件备份通过 | 运维 | 待核对 | 待填 |
+| HTTPS、证书续期、时间同步、日志告警通过 | 运维 | 待核对 | 待填 |
+| 合同母版逐页人工验收通过 | 合同部 / 法务 | 待核对 | 待填 |
+| 权限矩阵验收通过 | 业务负责人 / 运维 | 待核对 | 待填 |
+| 项目付款审批表、结算附件模板和综合费用真实单据验收通过 | 财务 / 合同部 / 综合部 / 管理层 | 待核对 | 待填 |
 
-所有放行项签完后，才能让真实项目进入 P0 试运行。
+本表只是发布前的轻量核对记录，不是 Go-Live 审批、正式签字件或软件更新的强制门禁。记录负责人、结果和日期即可；用户收集问题后可直接交付开发审计、修复、验证和更新。

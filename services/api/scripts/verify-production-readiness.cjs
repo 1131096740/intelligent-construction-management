@@ -7,7 +7,7 @@ const REQUIRED_SECRETS = [
   "JWT_REFRESH_SECRET",
   "FILE_DOWNLOAD_SECRET"
 ];
-const COS_ENV = ["COS_SECRET_ID", "COS_SECRET_KEY", "COS_BUCKET", "COS_REGION"];
+const COS_SECRET_ENV = ["COS_SECRET_ID", "COS_SECRET_KEY"];
 const REQUIRED_FONTS = ["方正小标宋简体", "仿宋_GB2312", "楷体_GB2312"];
 const DEFAULT_MARKERS = new Set([
   "local-access-secret",
@@ -110,7 +110,12 @@ function checkSecrets(env, results) {
       continue;
     }
     if (value.trim().length < 32) {
-      add(results, "WARN", key, "set but shorter than 32 chars");
+      add(
+        results,
+        key === "FILE_DOWNLOAD_SECRET" ? "FAIL" : "WARN",
+        key,
+        "set but shorter than 32 chars"
+      );
       continue;
     }
     add(results, "PASS", key, "set");
@@ -135,21 +140,22 @@ function runPsqlScalar(databaseUrl, sql) {
   }).trim();
 }
 
-function checkDatabaseState(env, results) {
+function checkDatabaseState(env, results, options) {
   if (env.CHECK_DATABASE_STATE !== "true") {
     add(results, "WARN", "database state", "skipped; set CHECK_DATABASE_STATE=true to verify seed users");
     return;
   }
 
   try {
+    const queryScalar = options.runPsqlScalar ?? runPsqlScalar;
     const activeSeedUsers = Number(
-      runPsqlScalar(
+      queryScalar(
         env.DATABASE_URL,
         "select count(*) from \"User\" where \"id\" like 'seed-user-%' and \"isActive\" = true;"
       )
     );
     const activeSeedRefreshTokens = Number(
-      runPsqlScalar(
+      queryScalar(
         env.DATABASE_URL,
         "select count(*) from \"RefreshToken\" where \"userId\" like 'seed-user-%' and \"revokedAt\" is null;"
       )
@@ -166,31 +172,72 @@ function checkDatabaseState(env, results) {
     } else {
       add(results, "PASS", "seed refresh tokens", "revoked");
     }
-  } catch (error) {
-    add(results, "FAIL", "database state", error.message);
+  } catch {
+    add(
+      results,
+      "FAIL",
+      "database state",
+      "read-only verification failed; inspect database connectivity and permissions"
+    );
   }
 }
 
 function checkStorage(env, results) {
-  if (env.FILE_STORAGE_DRIVER !== "cos") {
+  const driver = env.FILE_STORAGE_DRIVER;
+  if (!isSet(driver)) {
+    add(results, "FAIL", "FILE_STORAGE_DRIVER", "missing; allowed values are local or cos");
+    return;
+  }
+  if (!new Set(["local", "cos"]).has(driver)) {
+    add(results, "FAIL", "FILE_STORAGE_DRIVER", "invalid; allowed values are local or cos");
+    return;
+  }
+  if (driver === "local") {
     add(results, "FAIL", "FILE_STORAGE_DRIVER", "production must use cos private storage");
     return;
   }
   add(results, "PASS", "FILE_STORAGE_DRIVER", "cos");
 
-  for (const key of COS_ENV) {
+  for (const key of COS_SECRET_ENV) {
     if (!isSet(env[key]) || looksDefault(env[key])) {
       add(results, "FAIL", key, "missing or default placeholder");
     } else {
       add(results, "PASS", key, "set");
     }
   }
+
+  const bucket = env.COS_BUCKET;
+  const bucketMatch =
+    typeof bucket === "string"
+      ? bucket.match(/^([a-z0-9]|[a-z0-9][a-z0-9-]{0,48}[a-z0-9])-([1-9]\d*)$/)
+      : null;
+  if (!isSet(bucket) || looksDefault(bucket)) {
+    add(results, "FAIL", "COS_BUCKET", "missing or default placeholder");
+  } else if (!bucketMatch) {
+    add(results, "FAIL", "COS_BUCKET", "invalid Tencent COS bucket format");
+  } else {
+    add(results, "PASS", "COS_BUCKET", "valid Tencent COS bucket format");
+  }
+
+  const region = env.COS_REGION;
+  if (!isSet(region) || looksDefault(region)) {
+    add(results, "FAIL", "COS_REGION", "missing or default placeholder");
+  } else if (!/^(?:ap|na|sa|eu|af|me)(?:-[a-z0-9]+)+$/.test(region)) {
+    add(results, "FAIL", "COS_REGION", "invalid Tencent COS region format");
+  } else {
+    add(results, "PASS", "COS_REGION", "valid Tencent COS region format");
+  }
 }
 
 function checkUploadLimit(env, results) {
-  const value = Number(env.FILE_UPLOAD_MAX_BYTES ?? 0);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    add(results, "WARN", "FILE_UPLOAD_MAX_BYTES", "missing or invalid; API default may apply");
+  const rawValue = env.FILE_UPLOAD_MAX_BYTES;
+  if (typeof rawValue !== "string" || !/^[1-9]\d*$/.test(rawValue)) {
+    add(results, "FAIL", "FILE_UPLOAD_MAX_BYTES", "must be a positive decimal integer");
+    return;
+  }
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value)) {
+    add(results, "FAIL", "FILE_UPLOAD_MAX_BYTES", "must be a JavaScript safe integer");
   } else {
     add(results, "PASS", "FILE_UPLOAD_MAX_BYTES", "set");
   }
@@ -223,7 +270,11 @@ function checkConverter(env, results, options) {
   }
 }
 
-function checkEnv(env, options = { checkCommands: true }) {
+function checkEnv(env, options = {}) {
+  const runtimeOptions = {
+    checkCommands: options.checkCommands !== false,
+    runPsqlScalar: options.runPsqlScalar ?? runPsqlScalar
+  };
   const results = [];
   if (env.NODE_ENV !== "production") {
     add(results, "WARN", "NODE_ENV", "not set to production");
@@ -234,10 +285,10 @@ function checkEnv(env, options = { checkCommands: true }) {
   checkDatabaseUrl(env, results);
   checkSecrets(env, results);
   checkSeedPassword(env, results);
-  checkDatabaseState(env, results);
+  checkDatabaseState(env, results, runtimeOptions);
   checkStorage(env, results);
   checkUploadLimit(env, results);
-  checkConverter(env, results, options);
+  checkConverter(env, results, runtimeOptions);
   return results;
 }
 
@@ -262,14 +313,95 @@ function selfTest() {
     FILE_STORAGE_DRIVER: "cos",
     COS_SECRET_ID: "AKID".padEnd(40, "x"),
     COS_SECRET_KEY: "SECRET".padEnd(40, "x"),
-    COS_BUCKET: "jiangkong-private",
-    COS_REGION: "ap-guangzhou",
+    COS_BUCKET: "example-private-1250000000",
+    COS_REGION: "ap-chengdu",
     FILE_UPLOAD_MAX_BYTES: "104857600",
     DOC_CONVERTER_COMMAND: "soffice",
     DOC_ALLOWED_FONTS: REQUIRED_FONTS.join(",")
   };
   const good = checkEnv(goodEnv, { checkCommands: false });
   assert.equal(good.some((result) => result.status === "FAIL"), false);
+
+  const assertFail = (overrides, item) => {
+    const results = checkEnv({ ...goodEnv, ...overrides }, { checkCommands: false });
+    assert(
+      results.some((result) => result.item === item && result.status === "FAIL"),
+      `expected ${item} to fail for ${JSON.stringify(Object.keys(overrides))}`
+    );
+    return results;
+  };
+
+  for (const driver of ["local", "s3", ""]) {
+    assertFail({ FILE_STORAGE_DRIVER: driver }, "FILE_STORAGE_DRIVER");
+  }
+  for (const bucket of [
+    "Example-private-1250000000",
+    " example-private-1250000000",
+    "example/private-1250000000",
+    "example-private",
+    "example-private-0",
+    "example-private-012500000000"
+  ]) {
+    assertFail({ COS_BUCKET: bucket }, "COS_BUCKET");
+  }
+  for (const region of ["AP-Chengdu", "ap_chengdu", "ap chengdu", "chengdu", "foo-bar"]) {
+    assertFail({ COS_REGION: region }, "COS_REGION");
+  }
+  for (const uploadLimit of [
+    undefined,
+    "0",
+    "-1",
+    "1.5",
+    "1e6",
+    "0x100",
+    "9007199254740992"
+  ]) {
+    assertFail({ FILE_UPLOAD_MAX_BYTES: uploadLimit }, "FILE_UPLOAD_MAX_BYTES");
+  }
+  assertFail({ FILE_DOWNLOAD_SECRET: "f".repeat(31) }, "FILE_DOWNLOAD_SECRET");
+  assertFail(
+    { FILE_DOWNLOAD_SECRET: "replace-with-long-random-file-download-secret" },
+    "FILE_DOWNLOAD_SECRET"
+  );
+  const shortJwt = checkEnv(
+    { ...goodEnv, JWT_ACCESS_SECRET: "j".repeat(31) },
+    { checkCommands: false }
+  );
+  assert(
+    shortJwt.some(
+      (result) => result.item === "JWT_ACCESS_SECRET" && result.status === "WARN"
+    )
+  );
+
+  const syntheticCosSecret = "SYNTHETIC_COS_SECRET_DO_NOT_PRINT";
+  const syntheticDatabasePassword = "SYNTHETIC_DATABASE_PASSWORD_DO_NOT_PRINT";
+  const databaseFailure = checkEnv(
+    {
+      ...goodEnv,
+      COS_SECRET_KEY: syntheticCosSecret,
+      DATABASE_URL: `postgresql://prod_user:${syntheticDatabasePassword}@10.0.0.8:5432/jiangkong`,
+      CHECK_DATABASE_STATE: "true"
+    },
+    {
+      checkCommands: false,
+      runPsqlScalar: () => {
+        throw new Error(
+          `connection failed for ${syntheticDatabasePassword} using ${syntheticCosSecret}`
+        );
+      }
+    }
+  );
+  const serializedFailure = JSON.stringify(databaseFailure);
+  assert(
+    databaseFailure.some(
+      (result) => result.item === "database state" && result.status === "FAIL"
+    )
+  );
+  assert(!serializedFailure.includes(syntheticCosSecret));
+  assert(!serializedFailure.includes(syntheticDatabasePassword));
+  assert(!serializedFailure.includes("postgresql://"));
+  assert(!JSON.stringify(good).includes(goodEnv.COS_SECRET_ID));
+  assert(!JSON.stringify(good).includes(goodEnv.COS_SECRET_KEY));
 
   const bad = checkEnv(
     {
