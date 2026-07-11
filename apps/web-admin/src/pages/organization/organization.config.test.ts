@@ -316,7 +316,7 @@ describe("organization config", () => {
   it("turns server issues into stable display rows and fills missing identifiers", () => {
     expect(permissionIntegrityIssueRows(permissionIntegrity.issues)).toEqual([
       {
-        key: "dual_source_project_role:legacy-1,member-1",
+        key: "dual_source_project_role:user_position:legacy-1,member-1",
         severityLabel: "阻断",
         severityTone: "danger",
         issueLabel: "项目岗位双源重叠",
@@ -328,7 +328,7 @@ describe("organization config", () => {
         assignmentIds: "legacy-1、member-1"
       },
       {
-        key: "legacy_project_user_position:—",
+        key: "legacy_project_user_position:user_position:—",
         severityLabel: "警告",
         severityTone: "warning",
         issueLabel: "项目级 UserPosition 遗留",
@@ -339,6 +339,30 @@ describe("organization config", () => {
         roleKey: "—",
         assignmentIds: "—"
       }
+    ]);
+  });
+
+  it("keeps issue row keys unique when two sources reuse the same assignment id", () => {
+    const rows = permissionIntegrityIssueRows([
+      {
+        code: "invalid_role",
+        severity: "blocking",
+        source: "user_position",
+        assignmentIds: ["shared-1"],
+        message: "岗位键不在系统固定岗位范围内"
+      },
+      {
+        code: "invalid_role",
+        severity: "blocking",
+        source: "project_member",
+        assignmentIds: ["shared-1"],
+        message: "岗位键不在系统固定岗位范围内"
+      }
+    ]);
+
+    expect(rows.map((row) => row.key)).toEqual([
+      "invalid_role:user_position:shared-1",
+      "invalid_role:project_member:shared-1"
     ]);
   });
 });

@@ -300,7 +300,7 @@ export function permissionIntegrityIssueRows(
   return issues.map((issue) => {
     const assignmentIds = issue.assignmentIds.length ? issue.assignmentIds.join("、") : "—";
     return {
-      key: `${issue.code}:${issue.assignmentIds.length ? issue.assignmentIds.join(",") : "—"}`,
+      key: `${issue.code}:${issue.source}:${issue.assignmentIds.length ? issue.assignmentIds.join(",") : "—"}`,
       severityLabel: issue.severity === "blocking" ? "阻断" : "警告",
       severityTone: issue.severity === "blocking" ? "danger" : "warning",
       issueLabel: permissionIntegrityIssueLabel(issue.code),
