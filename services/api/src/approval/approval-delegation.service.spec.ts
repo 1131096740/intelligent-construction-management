@@ -370,7 +370,16 @@ describe("ApprovalDelegationService", () => {
         findMany: jest.fn().mockResolvedValue([
           { fromUserId: "user-a" },
           { fromUserId: "user-a" },
-          { fromUserId: "user-c" }
+          { fromUserId: "user-c" },
+          { fromUserId: "user-inactive" }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "user-b", isActive: true },
+          { id: "user-a", isActive: true },
+          { id: "user-c", isActive: true },
+          { id: "user-inactive", isActive: false }
         ])
       }
     };
@@ -385,7 +394,12 @@ describe("ApprovalDelegationService", () => {
         enabled: true,
         startsAt: { lte: now },
         endsAt: { gte: now }
-      }
+      },
+      select: { fromUserId: true }
+    });
+    expect(client.user.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["user-b", "user-a", "user-c", "user-inactive"] } },
+      select: { id: true, isActive: true }
     });
   });
 });

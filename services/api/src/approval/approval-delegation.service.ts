@@ -1,11 +1,13 @@
 import { Injectable, Optional } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
+import {
+  activeApprovalDelegatorIds,
+  type ActiveApprovalDelegationClient
+} from "./active-approval-delegations";
 import { CreateApprovalDelegationDto } from "./dto/create-approval-delegation.dto";
 
-type ApprovalDelegationClient = Pick<Prisma.TransactionClient, "approvalDelegation">;
 @Injectable()
 export class ApprovalDelegationService {
   constructor(
@@ -146,20 +148,11 @@ export class ApprovalDelegationService {
 
   // 供合同/结算/付款审批 review 在事务内调用：返回当前时点对该被委托人有效的委托人 id。
   async activeDelegatorIds(
-    client: ApprovalDelegationClient,
+    client: ActiveApprovalDelegationClient,
     toUserId: string,
     now: Date = new Date()
   ): Promise<string[]> {
-    const rows = await client.approvalDelegation.findMany({
-      where: {
-        toUserId,
-        enabled: true,
-        startsAt: { lte: now },
-        endsAt: { gte: now }
-      }
-    });
-
-    return Array.from(new Set(rows.map((row) => row.fromUserId)));
+    return activeApprovalDelegatorIds(client, toUserId, now);
   }
 
   private async sameProjectUserIds(userId: string): Promise<string[]> {

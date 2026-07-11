@@ -12,6 +12,10 @@ import {
   type BusinessAction,
   type RoleKey
 } from "@jiangkong/shared-domain";
+import {
+  activeApprovalDelegatorIds,
+  type ActiveApprovalDelegationClient
+} from "../../approval/active-approval-delegations";
 import { PrismaService } from "../../database/prisma.service";
 import type { AuthenticatedRequest } from "../auth.types";
 import { REQUIRED_POSITIONS_KEY } from "../decorators/require-positions.decorator";
@@ -150,36 +154,14 @@ export class PermissionGuard implements CanActivate {
     projectId: string,
     action: BusinessAction
   ) {
-    const delegationClient = (this.prisma as unknown as {
-      approvalDelegation?: {
-        findMany(args: {
-          where: {
-            toUserId: string;
-            enabled: true;
-            startsAt: { lte: Date };
-            endsAt: { gte: Date };
-          };
-          select: { fromUserId: true };
-        }): Promise<Array<{ fromUserId: string }>>;
-      };
-    }).approvalDelegation;
-    if (!delegationClient) {
-      return false;
-    }
-
-    const now = new Date();
-    const delegations = await delegationClient.findMany({
-      where: {
-        toUserId: userId,
-        enabled: true,
-        startsAt: { lte: now },
-        endsAt: { gte: now }
-      },
-      select: { fromUserId: true }
-    });
-
-    for (const delegation of delegations) {
-      const scopes = await this.loadRoleScopes(delegation.fromUserId, projectId);
+    const delegationClient = this.prisma as Partial<ActiveApprovalDelegationClient>;
+    if (!delegationClient.approvalDelegation || !delegationClient.user) return false;
+    const delegatorIds = await activeApprovalDelegatorIds(
+      delegationClient as ActiveApprovalDelegationClient,
+      userId
+    );
+    for (const delegatorId of delegatorIds) {
+      const scopes = await this.loadRoleScopes(delegatorId, projectId);
       const roleKeys = resolveEffectiveRoleKeys(scopes.globalRoleKeys, scopes.projectRoleKeys);
       if (canPerform(action, roleKeys)) {
         return true;

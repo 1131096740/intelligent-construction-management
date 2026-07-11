@@ -94,6 +94,12 @@ describe("PermissionGuard", () => {
       },
       approvalDelegation: {
         findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegatee-1", isActive: true },
+          { id: "finance-director-1", isActive: true }
+        ])
       }
     };
     const guard = new PermissionGuard(
@@ -122,6 +128,53 @@ describe("PermissionGuard", () => {
         endsAt: { gte: expect.any(Date) }
       },
       select: { fromUserId: true }
+    });
+  });
+
+  it("rejects delegated approval when the delegator is inactive despite residual project roles", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { userId: string; projectId: string } }) =>
+          Promise.resolve(
+            where.userId === "finance-director-1" && where.projectId === "project-1"
+              ? [{ positionKey: "finance_director" }]
+              : []
+          )
+        )
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findFirst: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      approvalDelegation: {
+        findMany: jest.fn().mockResolvedValue([{ fromUserId: "finance-director-1" }])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "delegatee-1", isActive: true },
+          { id: "finance-director-1", isActive: false }
+        ])
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("payment.approve")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "delegatee-1" },
+          params: { paymentId: "payment-1" }
+        })
+      )
+    ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
+    expect(prisma.projectMember.findMany).not.toHaveBeenCalledWith({
+      where: { userId: "finance-director-1", projectId: "project-1" }
     });
   });
 
