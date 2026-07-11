@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { ApplyRoleRemovalDto } from "./dto/apply-role-removal.dto";
 import { OrganizationRoleService } from "./organization-role.service";
@@ -226,6 +226,73 @@ describe("OrganizationRoleService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("global apply 携带非 null projectId 时忠实交给评估器拒绝且零写入", async () => {
+    const { service, impacts, tx, audit } = createHarness();
+    impacts.evaluateRoleRemoval.mockImplementationOnce(
+      async (_client: unknown, change: { scope: string; projectId?: string | null }) => {
+        if (change.scope === "global" && change.projectId !== undefined && change.projectId !== null) {
+          throw new BadRequestException("全局岗位不得提交项目标识");
+        }
+        return {
+          preview: preview(),
+          targetAssignment: { id: "server-global-assignment", source: "user_position" }
+        };
+      }
+    );
+
+    await expect(
+      service.applyRoleRemoval("actor-user", { ...globalInput, projectId: "project-1" })
+    ).rejects.toThrow("全局岗位不得提交项目标识");
+    expect(impacts.evaluateRoleRemoval).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ scope: "global", projectId: "project-1" }),
+      expect.any(Date)
+    );
+    expect(tx.userPosition.delete).not.toHaveBeenCalled();
+    expect(tx.projectMember.delete).not.toHaveBeenCalled();
+    expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "global 评估返回 project_member",
+      globalInput,
+      preview(),
+      { id: "wrong-project-member", source: "project_member" as const }
+    ],
+    [
+      "project 评估返回 user_position",
+      {
+        ...globalInput,
+        scope: "project" as const,
+        projectId: "project-1",
+        roleKey: "project_manager" as const
+      },
+      preview({
+        change: {
+          operation: "remove",
+          userId: "target-user",
+          scope: "project",
+          projectId: "project-1",
+          roleKey: "project_manager"
+        }
+      }),
+      { id: "wrong-user-position", source: "user_position" as const }
+    ]
+  ] as const)("%s 时 409 fail closed 且零写入", async (_label, body, latestPreview, targetAssignment) => {
+    const { service, tx, audit } = createHarness({
+      evaluation: { preview: latestPreview, targetAssignment }
+    });
+    await expect(service.applyRoleRemoval("actor-user", body)).rejects.toEqual(
+      new ConflictException("岗位撤销目标来源与范围不一致，请重新预览后再试")
+    );
+    expect(tx.userPosition.delete).not.toHaveBeenCalled();
+    expect(tx.projectMember.delete).not.toHaveBeenCalled();
+    expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["canApply=false", { preview: preview({ canApply: false }), targetAssignment: { id: "server-global-assignment", source: "user_position" as const } }],
     ["目标缺失/重复", { preview: preview({ canApply: false }), targetAssignment: null }],
@@ -243,15 +310,15 @@ describe("OrganizationRoleService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("审计失败使同一事务失败，不返回成功结果", async () => {
-    const { service, prisma, tx, audit } = createHarness();
+  it("删除、token 撤销和审计使用同一 tx client，审计异常不被吞掉", async () => {
+    const { service, tx, audit } = createHarness();
     audit.record.mockRejectedValueOnce(new Error("audit unavailable"));
     await expect(service.applyRoleRemoval("actor-user", globalInput)).rejects.toThrow(
       "audit unavailable"
     );
     expect(tx.userPosition.delete).toHaveBeenCalledTimes(1);
+    expect(tx.refreshToken.updateMany).toHaveBeenCalledTimes(1);
     expect(audit.record).toHaveBeenCalledWith(tx, expect.any(Object));
-    await expect(prisma.$transaction.mock.results[0]?.value).rejects.toThrow("audit unavailable");
   });
 
   it.each([

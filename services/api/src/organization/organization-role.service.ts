@@ -43,7 +43,7 @@ export class OrganizationRoleService {
               operation: "remove",
               userId: input.userId,
               scope: input.scope,
-              ...(input.scope === "project" ? { projectId: input.projectId } : {}),
+              ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
               roleKey: input.roleKey
             },
             evaluatedAt
@@ -57,7 +57,12 @@ export class OrganizationRoleService {
           }
 
           const target = evaluation.targetAssignment;
-          if (target.source === "user_position") {
+          const expectedSource =
+            evaluation.preview.change.scope === "global" ? "user_position" : "project_member";
+          if (target.source !== expectedSource) {
+            throw new ConflictException("岗位撤销目标来源与范围不一致，请重新预览后再试");
+          }
+          if (expectedSource === "user_position") {
             await tx.userPosition.delete({ where: { id: target.id } });
           } else {
             await tx.projectMember.delete({ where: { id: target.id } });
@@ -77,7 +82,7 @@ export class OrganizationRoleService {
               scope: evaluation.preview.change.scope,
               projectId: evaluation.preview.change.projectId,
               roleKey: evaluation.preview.change.roleKey,
-              source: target.source,
+              source: expectedSource,
               snapshotHash: evaluation.preview.snapshotHash,
               affectedInstances: evaluation.preview.summary.affectedInstances,
               revokedRefreshTokens: revoked.count
@@ -87,7 +92,7 @@ export class OrganizationRoleService {
           return {
             change: evaluation.preview.change,
             assignmentId: target.id,
-            source: target.source,
+            source: expectedSource,
             affectedInstances: evaluation.preview.summary.affectedInstances,
             revokedRefreshTokens: revoked.count
           };
