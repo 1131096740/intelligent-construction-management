@@ -246,9 +246,46 @@ describe("PermissionImpactService target resolution", () => {
     expect(result.blockingIssues).toContainEqual(expect.objectContaining({ code: "target_assignment_ambiguous" }));
   });
 
-  it("拒绝在项目范围撤销 super_admin", async () => {
+  it("允许预览清理唯一规范项目 super_admin 异常事实", async () => {
     const fixture = baseFixture();
     fixture.projectMembers.push({ id: "bad-admin", userId: "target", projectId: "project-1", positionKey: "super_admin" });
+    const prisma = createPrisma(fixture);
+    const service = new PermissionImpactService(prisma as never);
+    const evaluation = await service.evaluateRoleRemoval(prisma as never, {
+      operation: "remove",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "super_admin"
+    }, EVALUATED_AT);
+
+    expect(evaluation.preview).toMatchObject({
+      change: {
+        operation: "remove",
+        userId: "target",
+        scope: "project",
+        projectId: "project-1",
+        roleKey: "super_admin"
+      },
+      canApply: true,
+      blockingIssues: [],
+      summary: { affectedInstances: 0, blockingInstances: 0 }
+    });
+    expect(evaluation.targetAssignment).toEqual({ id: "bad-admin", source: "project_member" });
+  });
+
+  it.each([
+    ["目标缺失", []],
+    [
+      "目标重复",
+      [
+        { id: "bad-admin-1", userId: "target", projectId: "project-1", positionKey: "super_admin" },
+        { id: "bad-admin-2", userId: "target", projectId: "project-1", positionKey: "super_admin" }
+      ]
+    ]
+  ] as const)("项目 super_admin %s 时仍 fail closed", async (_label, assignments) => {
+    const fixture = baseFixture();
+    fixture.projectMembers.push(...assignments);
     const { result } = await preview(fixture, {
       operation: "remove",
       userId: "target",
@@ -258,7 +295,64 @@ describe("PermissionImpactService target resolution", () => {
     });
 
     expect(result.canApply).toBe(false);
-    expect(result.blockingIssues).toContainEqual(expect.objectContaining({ code: "project_super_admin_forbidden" }));
+    expect(result.blockingIssues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: assignments.length === 0 ? "target_assignment_missing" : "target_assignment_ambiguous"
+        })
+      ])
+    );
+  });
+
+  it("项目 super_admin 存在 legacy UserPosition shadow 时仍 fail closed", async () => {
+    const fixture = baseFixture();
+    fixture.projectMembers.push({
+      id: "bad-admin",
+      userId: "target",
+      projectId: "project-1",
+      positionKey: "super_admin"
+    });
+    fixture.userPositions.push({
+      id: "legacy-bad-admin",
+      userId: "target",
+      positionId: "position-admin",
+      projectId: "project-1"
+    });
+    const { result } = await preview(fixture, {
+      operation: "remove",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "super_admin"
+    });
+
+    expect(result.canApply).toBe(false);
+    expect(result.blockingIssues).toContainEqual(
+      expect.objectContaining({ code: "legacy_shadow_assignment" })
+    );
+  });
+
+  it("项目 super_admin 的项目不存在时仍 fail closed", async () => {
+    const fixture = baseFixture();
+    fixture.projects = fixture.projects.filter((project) => project.id !== "project-1");
+    fixture.projectMembers.push({
+      id: "bad-admin",
+      userId: "target",
+      projectId: "project-1",
+      positionKey: "super_admin"
+    });
+    const { result } = await preview(fixture, {
+      operation: "remove",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "super_admin"
+    });
+
+    expect(result.canApply).toBe(false);
+    expect(result.blockingIssues).toContainEqual(
+      expect.objectContaining({ code: "target_project_missing" })
+    );
   });
 
   it("识别项目规范目标的 legacy shadow 且仍保留审批影响计算", async () => {
@@ -372,6 +466,48 @@ describe("PermissionImpactService approval impacts", () => {
     projectId: "project-1",
     roleKey: "project_manager" as const
   };
+
+  it("正常 direct facts 仍忽略项目 super_admin，只保留独立的全局岗位事实", async () => {
+    const fixture = baseFixture();
+    fixture.userPositions = fixture.userPositions.filter(
+      (assignment) => assignment.id !== "global-target"
+    );
+    fixture.projectMembers.push({
+      id: "bad-admin",
+      userId: "target",
+      projectId: "project-1",
+      positionKey: "super_admin"
+    });
+    addProjectInstance(fixture, {
+      id: "approval-invalid-super-admin-node",
+      businessType: "settlement",
+      businessId: "settlement-invalid-super-admin-node",
+      node: { name: "异常超级管理员节点", mode: "any", roleKeys: ["super_admin"] }
+    });
+
+    const { result } = await preview(fixture, {
+      operation: "remove",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "super_admin"
+    });
+
+    expect(result.canApply).toBe(true);
+    expect(result.impacts).toContainEqual(
+      expect.objectContaining({
+        approvalInstanceId: "approval-invalid-super-admin-node",
+        blocking: false,
+        reasonCode: null
+      })
+    );
+    expect(result.impacts[0]?.roleCoverage[0]).toMatchObject({
+      roleKey: "super_admin",
+      targetStillDirectAfter: false,
+      directApproverUserIdsAfter: ["other-admin"],
+      executable: true
+    });
+  });
 
   it("批量映射四类审批的 projectId 且不逐实例查询", async () => {
     const fixture = baseFixture();

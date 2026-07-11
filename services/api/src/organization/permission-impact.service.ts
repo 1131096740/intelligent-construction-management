@@ -36,7 +36,6 @@ export type RoleRemovalBlockingIssueCode =
   | "target_project_missing"
   | "target_assignment_missing"
   | "target_assignment_ambiguous"
-  | "project_super_admin_forbidden"
   | "legacy_shadow_assignment"
   | "last_active_global_super_admin";
 
@@ -46,7 +45,6 @@ const BLOCKING_ISSUE_MESSAGES: Record<RoleRemovalBlockingIssueCode, string> = {
   target_project_missing: "待撤销岗位所属项目不存在",
   target_assignment_missing: "未找到待撤销的规范岗位事实",
   target_assignment_ambiguous: "待撤销的规范岗位事实不唯一",
-  project_super_admin_forbidden: "super_admin 不允许在项目范围内撤销",
   legacy_shadow_assignment: "项目范围仍存在会继续授权的 UserPosition 遗留岗位",
   last_active_global_super_admin: "不能撤销最后一个启用的全局超级管理员"
 };
@@ -245,10 +243,6 @@ export class PermissionImpactService {
     if (change.scope === "project" && !projects.some((project) => project.id === change.projectId)) {
       issue("target_project_missing");
     }
-    if (change.scope === "project" && change.roleKey === "super_admin") {
-      issue("project_super_admin_forbidden");
-    }
-
     const targetAssignments = position
       ? change.scope === "global"
         ? userPositions.filter(
@@ -312,8 +306,7 @@ export class PermissionImpactService {
       "target_position_missing",
       "target_project_missing",
       "target_assignment_missing",
-      "target_assignment_ambiguous",
-      "project_super_admin_forbidden"
+      "target_assignment_ambiguous"
     ]);
     const targetResolved = !blockingIssues.some((blockingIssue) =>
       resolutionIssueCodes.has(blockingIssue.code)
