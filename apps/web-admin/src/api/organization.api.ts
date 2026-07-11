@@ -1,8 +1,32 @@
-import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import type { RoleKey } from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
-const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
+export const ORGANIZATION_ROLE_KEYS = [
+  "chairman",
+  "general_manager",
+  "project_manager",
+  "contract_director",
+  "contract_staff",
+  "budget_director",
+  "budget_staff",
+  "finance_director",
+  "finance_staff",
+  "material_director",
+  "material_staff",
+  "engineering_director",
+  "engineering_foreman",
+  "engineering_tech",
+  "comprehensive_director",
+  "employee",
+  "super_admin"
+] as const satisfies readonly RoleKey[];
+
+const ORGANIZATION_ROLE_KEY_SET = new Set<string>(ORGANIZATION_ROLE_KEYS);
+
+export function isOrganizationRoleKey(value: unknown): value is RoleKey {
+  return typeof value === "string" && ORGANIZATION_ROLE_KEY_SET.has(value);
+}
 
 export interface OrganizationDepartmentNode {
   id: string;
@@ -364,7 +388,7 @@ function roleAdditionRequestTarget(payload: OrganizationRoleAdditionTarget) {
   if (operation !== "add") throw new Error("岗位变更操作不正确");
   if (scope !== "global" && scope !== "project") throw new Error("岗位范围不正确");
   if (!payload.userId.trim()) throw new Error("人员标识缺失");
-  if (!ROLE_KEY_SET.has(payload.roleKey)) throw new Error("岗位键不正确");
+  if (!isOrganizationRoleKey(payload.roleKey)) throw new Error("岗位键不正确");
   if (payload.scope === "global") {
     if (payload.projectId !== undefined && payload.projectId !== null) {
       throw new Error("全局岗位不得提交项目标识");

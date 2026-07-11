@@ -1,3 +1,4 @@
+import { ROLE_KEYS } from "@jiangkong/shared-domain";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyOrganizationRoleAddition,
@@ -5,6 +6,7 @@ import {
   createOrganizationDepartment,
   fetchOrganizationDirectory,
   fetchPermissionIntegrity,
+  ORGANIZATION_ROLE_KEYS,
   OrganizationApiError,
   previewOrganizationRoleAddition,
   previewOrganizationRoleRemoval,
@@ -32,6 +34,10 @@ function jsonResponse(data: unknown, status = 200) {
 describe("organization API client", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("keeps the browser-safe organization role list aligned with the shared domain", () => {
+    expect(ORGANIZATION_ROLE_KEYS).toEqual(ROLE_KEYS);
   });
 
   it("reads the organization directory", async () => {

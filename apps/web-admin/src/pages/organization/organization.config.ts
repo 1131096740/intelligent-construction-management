@@ -1,4 +1,4 @@
-import { ROLE_KEYS } from "@jiangkong/shared-domain";
+import { isOrganizationRoleKey } from "../../api/organization.api";
 import type {
   ApplyOrganizationRoleAdditionPayload,
   CreateOrganizationDepartmentPayload,
@@ -20,8 +20,6 @@ import type {
   UpdateOrganizationUserPayload
 } from "../../api/organization.api";
 import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
-
-const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 
 export interface FlatOrganizationDepartment extends Omit<OrganizationDepartmentNode, "children"> {
   depth: number;
@@ -194,7 +192,7 @@ function normalizedRoleAdditionTarget(target: OrganizationRoleAdditionTarget) {
   if (operation !== "add") throw new Error("岗位变更操作不正确");
   if (scope !== "global" && scope !== "project") throw new Error("岗位范围不正确");
   if (!target.userId.trim()) throw new Error("人员标识缺失");
-  if (!ROLE_KEY_SET.has(target.roleKey)) throw new Error("岗位键不正确");
+  if (!isOrganizationRoleKey(target.roleKey)) throw new Error("岗位键不正确");
   if (target.scope === "global" && target.projectId !== undefined && target.projectId !== null) {
     throw new Error("全局岗位不得提交项目标识");
   }
