@@ -21,15 +21,16 @@ import {
   parseSignedMoneyCentsInput,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
-import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
-import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
-import {
+import type { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
+import type { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
+import type {
   CreateSettlementDto,
-  type CreateSettlementLineDto,
-  type SettlementLineSourceType
+  CreateSettlementLineDto,
+  SettlementLineSourceType
 } from "./dto/create-settlement.dto";
-import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
-import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
+import type { GenerateSettlementPdfArchiveDto } from "./dto/generate-settlement-pdf-archive.dto";
+import type { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
+import type { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 import {
   renderSettlementArchivePdf,
   renderSettlementDraftExcel,
@@ -45,11 +46,6 @@ const SETTLEMENT_POST_MONEY_FIELDS = [
   "paidAmountCents",
   "unitPriceCents"
 ] as const;
-
-interface GenerateSettlementPdfArchiveDto {
-  templateKey?: string;
-  departmentScope?: string;
-}
 
 interface SettlementApprovalNode {
   name: string;
@@ -578,8 +574,11 @@ export class SettlementService {
   }
 
   private requiredInteger(value: number | undefined, label: string): number {
-    if (!Number.isInteger(value)) {
+    if (!Number.isSafeInteger(value)) {
       throw new BadRequestException(`${label}必须为整数。`);
+    }
+    if ((value as number) < -2_147_483_648 || (value as number) > 2_147_483_647) {
+      throw new BadRequestException(`${label}超出系统可保存范围。`);
     }
     return Number(value);
   }

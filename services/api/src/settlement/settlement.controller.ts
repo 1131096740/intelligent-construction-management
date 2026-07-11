@@ -7,6 +7,8 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
+import { DownloadSettlementApprovalPdfDto } from "./dto/download-settlement-approval-pdf.dto";
+import { GenerateSettlementPdfArchiveDto } from "./dto/generate-settlement-pdf-archive.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 import { SettlementReadService } from "./settlement-read.service";
@@ -17,11 +19,6 @@ import {
 import { SettlementService } from "./settlement.service";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-interface DownloadApprovalPdfDto {
-  confirmationPassword?: string;
-  downloadReason?: string;
-}
 
 @Controller("settlements")
 export class SettlementController {
@@ -162,7 +159,7 @@ export class SettlementController {
   generatePdfArchive(
     @Param("settlementId") settlementId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { templateKey?: string; departmentScope?: string }
+    @Body() body: GenerateSettlementPdfArchiveDto
   ) {
     return this.settlements.generatePdfArchive(settlementId, user.id, body);
   }
@@ -192,14 +189,14 @@ export class SettlementController {
   async downloadLatestApprovalPdf(
     @Param("settlementId") settlementId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: DownloadApprovalPdfDto | undefined,
+    @Body() body: DownloadSettlementApprovalPdfDto,
     @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
   ) {
     const result = await this.settlements.downloadLatestApprovalPdf(
       settlementId,
       user.id,
-      body?.confirmationPassword,
-      body?.downloadReason
+      body.confirmationPassword,
+      body.downloadReason
     );
     response.set({
       "Content-Type": "application/pdf",

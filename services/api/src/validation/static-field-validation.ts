@@ -24,6 +24,12 @@ export type CanonicalMoneyTextMessages = {
   rangeMessage?: string;
 };
 
+export type CanonicalSignedMoneyTextMessages = {
+  typeMessage: string;
+  formatMessage: string;
+  rangeMessage?: string;
+};
+
 export type IntegerInRangeOptions = {
   min: number;
   max: number;
@@ -34,6 +40,10 @@ export type IntegerInRangeOptions = {
 export type OptionalNonEmptyArrayMessages = {
   typeMessage: string;
   emptyMessage: string;
+};
+
+export type OptionalArrayOptions = {
+  typeMessage: string;
 };
 
 export type MaxUnicodeTextLengthOptions = {
@@ -89,6 +99,17 @@ function isCanonicalMoneyTextFormat(value: unknown) {
 
 function isCanonicalMoneyTextInStorageRange(value: unknown) {
   if (typeof value !== "string" || !/^(0|[1-9]\d*)$/u.test(value)) return true;
+  return isWithinPostgresBigIntRange(BigInt(value));
+}
+
+function isCanonicalSignedMoneyTextFormat(value: unknown) {
+  return typeof value !== "string" || /^(?:0|[1-9]\d*|-[1-9]\d*)$/u.test(value);
+}
+
+function isCanonicalSignedMoneyTextInStorageRange(value: unknown) {
+  if (typeof value !== "string" || !/^(?:0|[1-9]\d*|-[1-9]\d*)$/u.test(value)) {
+    return true;
+  }
   return isWithinPostgresBigIntRange(BigInt(value));
 }
 
@@ -170,6 +191,28 @@ export function IsCanonicalMoneyText(
   };
 }
 
+export function IsCanonicalSignedMoneyText(
+  messages: CanonicalSignedMoneyTextMessages
+): PropertyDecorator {
+  return (target, propertyKey) => {
+    registerStaticFieldRule(target, propertyKey, {
+      name: "staticCanonicalSignedMoneyTextType",
+      message: messages.typeMessage,
+      validate: isMoneyTextType
+    });
+    registerStaticFieldRule(target, propertyKey, {
+      name: "staticCanonicalSignedMoneyTextFormat",
+      message: messages.formatMessage,
+      validate: isCanonicalSignedMoneyTextFormat
+    });
+    registerStaticFieldRule(target, propertyKey, {
+      name: "staticCanonicalSignedMoneyTextRange",
+      message: messages.rangeMessage ?? "金额超出系统可保存范围",
+      validate: isCanonicalSignedMoneyTextInStorageRange
+    });
+  };
+}
+
 export function IsIntegerInRange(options: IntegerInRangeOptions): PropertyDecorator {
   return (target, propertyKey) => {
     registerStaticFieldRule(target, propertyKey, {
@@ -199,6 +242,16 @@ export function IsOptionalNonEmptyArray(
       name: "staticOptionalNonEmptyArrayEmpty",
       message: messages.emptyMessage,
       validate: (value) => value === undefined || !Array.isArray(value) || value.length > 0
+    });
+  };
+}
+
+export function IsOptionalArray(options: OptionalArrayOptions): PropertyDecorator {
+  return (target, propertyKey) => {
+    registerStaticFieldRule(target, propertyKey, {
+      name: "staticOptionalArrayType",
+      message: options.typeMessage,
+      validate: (value) => value === undefined || Array.isArray(value)
     });
   };
 }

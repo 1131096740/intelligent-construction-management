@@ -631,6 +631,36 @@ describe("SettlementService", () => {
     ).rejects.toThrow("手工调整原因不能为空");
   });
 
+  it("rejects an out-of-range settlement line sort order before persistence", async () => {
+    const normalizeSettlementLines = (
+      service as unknown as {
+        normalizeSettlementLines: (
+          tx: unknown,
+          contractVersionId: string,
+          lines: Array<{
+            sourceType: "manual_adjustment";
+            name: string;
+            amountCents: string;
+            reason: string;
+            sortOrder: number;
+          }>
+        ) => Promise<unknown>;
+      }
+    ).normalizeSettlementLines.bind(service);
+
+    await expect(
+      normalizeSettlementLines({}, "contract-version-1", [
+        {
+          sourceType: "manual_adjustment",
+          name: "材料扣款",
+          amountCents: "-10000",
+          reason: "现场签认",
+          sortOrder: 2_147_483_648
+        }
+      ])
+    ).rejects.toThrow("结算明细排序超出系统可保存范围");
+  });
+
   it("rejects duplicate active settlement for the same contract version and period", async () => {
     const tx = {
       contractVersion: {

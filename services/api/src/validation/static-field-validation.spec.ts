@@ -3,10 +3,12 @@ import { validate } from "class-validator";
 import { createApiValidationPipe } from "./api-validation";
 import {
   IsCanonicalMoneyText,
+  IsCanonicalSignedMoneyText,
   IsIntegerInRange,
   IsMaxUnicodeTextLength,
   IsOptionalNonEmptyArray,
   IsOptionalNonBlankText,
+  IsOptionalArray,
   IsRequiredText,
   IsStrictDateOnly
 } from "./static-field-validation";
@@ -31,6 +33,13 @@ class StaticFieldValidationDto {
   })
   amount!: string;
 
+  @IsCanonicalSignedMoneyText({
+    typeMessage: "有符号金额格式不正确",
+    formatMessage: "有符号金额必须按分填写为整数",
+    rangeMessage: "有符号金额超出系统可保存范围"
+  })
+  signedAmount!: string;
+
   @IsMaxUnicodeTextLength({ max: 3, message: "文字不能超过 3 个字" })
   limitedText!: string;
 
@@ -50,6 +59,9 @@ class StaticFieldValidationDto {
     emptyMessage: "列表至少填写一条"
   })
   items?: unknown[];
+
+  @IsOptionalArray({ typeMessage: "可选列表必须是数组" })
+  optionalItems?: unknown[];
 }
 
 const bodyMetadata = {
@@ -63,6 +75,7 @@ async function fieldMessages(property: keyof StaticFieldValidationDto, value: un
   Object.assign(dto, {
     requiredText: "必填",
     amount: "0",
+    signedAmount: "0",
     limitedText: "三字内",
     dateOnly: "2026-07-11",
     ratioBps: 0,
@@ -115,6 +128,17 @@ describe("static field validation decorators", () => {
   });
 
   it.each([
+    ["-9223372036854775808", []],
+    ["9223372036854775807", []],
+    ["-9223372036854775809", ["有符号金额超出系统可保存范围"]],
+    ["9223372036854775808", ["有符号金额超出系统可保存范围"]],
+    ["-0", ["有符号金额必须按分填写为整数"]],
+    [1, ["有符号金额格式不正确"]]
+  ])("validates one canonical signed-money boundary for %p", async (value, messages) => {
+    await expect(fieldMessages("signedAmount", value)).resolves.toEqual(messages);
+  });
+
+  it.each([
     [undefined, ["比例必须是安全整数"]],
     [null, ["比例必须是安全整数"]],
     ["1", ["比例必须是安全整数"]],
@@ -138,11 +162,22 @@ describe("static field validation decorators", () => {
     await expect(fieldMessages("items", value)).resolves.toEqual(messages);
   });
 
+  it.each([
+    [undefined, []],
+    [[], []],
+    [[{}], []],
+    [null, ["可选列表必须是数组"]],
+    [{}, ["可选列表必须是数组"]]
+  ])("keeps an optional array empty-compatible for %p", async (value, messages) => {
+    await expect(fieldMessages("optionalItems", value)).resolves.toEqual(messages);
+  });
+
   it("accepts valid text and canonical money without changing their values", async () => {
     const value = {
       requiredText: "内 部空格",
       optionalText: "可 选文字",
       amount: "2100000000",
+      signedAmount: "-2100000000",
       limitedText: "😀😀😀",
       ratioBps: 0
     };
@@ -159,6 +194,7 @@ describe("static field validation decorators", () => {
         {
           requiredText: { secret: "TOP-SECRET" },
           amount: "0",
+          signedAmount: "0",
           limitedText: "😀😀😀😀",
           ratioBps: 0
         },
