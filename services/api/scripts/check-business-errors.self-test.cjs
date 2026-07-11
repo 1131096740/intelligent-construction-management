@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const {
+  evaluateScan,
   evaluateFindings,
   formatErrors,
   scanSourceTree
@@ -13,12 +14,19 @@ const {
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "business-error-check-"));
 
 try {
+  assert.doesNotThrow(() => require.resolve("@nestjs/common/exceptions"));
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
   fs.writeFileSync(
     path.join(root, "src", "business.ts"),
     [
       'import { BadRequestException, ForbiddenException, InternalServerErrorException, NotFoundException, UnauthorizedException, BadRequestException as BRE } from "@nestjs/common";',
       'import * as common from "@nestjs/common";',
+      'import { NotFoundException as SubpathNFE } from "@nestjs/common/exceptions";',
+      'import * as subpathCommon from "@nestjs/common/exceptions";',
+      'const DirectAlias = BadRequestException;',
+      'const NamespacePropertyAlias = common.ForbiddenException;',
+      'const NamespaceElementAlias = common["NotFoundException"];',
+      'const AliasChain = DirectAlias;',
       'throw new BadRequestException("English HTTP");',
       'throw new UnauthorizedException("English unauthorized");',
       'throw new InternalServerErrorException("English internal");',
@@ -37,6 +45,18 @@ try {
       'throw new BadRequestException(["TOP-SECRET direct array"]);',
       'throw new BadRequestException({ ...{ message: "TOP-SECRET object spread" } });',
       'throw new BadRequestException({ errors: [...["TOP-SECRET array spread"]] });',
+      'throw new SubpathNFE("TOP-SECRET subpath named import");',
+      'throw new common["NotFoundException"]("TOP-SECRET namespace element");',
+      'throw new subpathCommon[`ForbiddenException`]("TOP-SECRET subpath namespace element");',
+      'throw new DirectAlias("TOP-SECRET direct constructor alias");',
+      'throw new NamespacePropertyAlias("TOP-SECRET namespace property alias");',
+      'throw new NamespaceElementAlias("TOP-SECRET namespace element alias");',
+      'throw new AliasChain("TOP-SECRET constructor alias chain");',
+      'throw new BadRequestException("TOP-" + "SECRET concat /tmp/concat");',
+      'throw new BadRequestException(("ignored left value", "TOP-SECRET comma right"));',
+      'throw new BadRequestException(flag ? "TOP-SECRET conditional true" : "TOP-SECRET conditional false");',
+      'throw new BadRequestException({ message: "TOP-" + "SECRET object concat", errors: [flag ? "TOP-SECRET errors true" : "TOP-SECRET errors false"] });',
+      'throw new BadRequestException([...[("TOP-" + "SECRET array spread concat")]]);',
       'throw new BadRequestException("中文通过");',
       'throw new Error(`中文 ${secret}`);'
     ].join("\n")
@@ -78,11 +98,26 @@ try {
       ["BadRequestException", "TOP-SECRET namespace import"],
       ["BadRequestException", "TOP-SECRET direct array"],
       ["BadRequestException", "TOP-SECRET object spread"],
-      ["BadRequestException", "TOP-SECRET array spread"]
+      ["BadRequestException", "TOP-SECRET array spread"],
+      ["NotFoundException", "TOP-SECRET subpath named import"],
+      ["NotFoundException", "TOP-SECRET namespace element"],
+      ["ForbiddenException", "TOP-SECRET subpath namespace element"],
+      ["BadRequestException", "TOP-SECRET direct constructor alias"],
+      ["ForbiddenException", "TOP-SECRET namespace property alias"],
+      ["NotFoundException", "TOP-SECRET namespace element alias"],
+      ["BadRequestException", "TOP-SECRET constructor alias chain"],
+      ["BadRequestException", "TOP-SECRET concat /tmp/concat"],
+      ["BadRequestException", "TOP-SECRET comma right"],
+      ["BadRequestException", "TOP-SECRET conditional true"],
+      ["BadRequestException", "TOP-SECRET conditional false"],
+      ["BadRequestException", "TOP-SECRET object concat"],
+      ["BadRequestException", "TOP-SECRET errors true"],
+      ["BadRequestException", "TOP-SECRET errors false"],
+      ["BadRequestException", "TOP-SECRET array spread concat"]
     ]
   );
   const unallowedErrors = evaluateFindings(findings, []);
-  assert.equal(unallowedErrors.filter((error) => error.type === "unallowed").length, 21);
+  assert.equal(unallowedErrors.filter((error) => error.type === "unallowed").length, 36);
   const formattedErrors = formatErrors(unallowedErrors).join("\n");
   assert.doesNotMatch(formattedErrors, /TOP-SECRET|\/tmp\//);
   assert.match(formattedErrors, /sha256:[a-f0-9]{12}/);
@@ -96,6 +131,24 @@ try {
     reason: "self-test"
   }));
   assert.deepEqual(evaluateFindings(findings, exactAllowlist), []);
+
+  fs.writeFileSync(
+    path.join(root, "src", "ambiguous.ts"),
+    [
+      'import { BadRequestException, NotFoundException } from "@nestjs/common";',
+      'function first() { const TOP_SECRET_ALIAS = BadRequestException; return TOP_SECRET_ALIAS; }',
+      'function second() { const TOP_SECRET_ALIAS = NotFoundException; return TOP_SECRET_ALIAS; }'
+    ].join("\n")
+  );
+  const ambiguousResult = scanSourceTree(path.join(root, "src"), root);
+  assert.equal(ambiguousResult.diagnostics.length, 1);
+  assert.equal(ambiguousResult.diagnostics[0].kind, "AmbiguousConstructorAlias");
+  const ambiguousErrors = evaluateScan(ambiguousResult, exactAllowlist);
+  assert.equal(
+    ambiguousErrors.some((error) => error.type === "ambiguous_constructor_alias"),
+    true
+  );
+  assert.doesNotMatch(formatErrors(ambiguousErrors).join("\n"), /TOP_SECRET_ALIAS/);
 
   const missingAllowlist = exactAllowlist.slice(1);
   assert.equal(

@@ -17,6 +17,7 @@ const NEST_EXCEPTION_KINDS = new Set([
   "InternalServerErrorException"
 ]);
 const EXCEPTION_KINDS = new Set([...NEST_EXCEPTION_KINDS, "Error"]);
+const OUTPUT_KINDS = new Set([...EXCEPTION_KINDS, "AmbiguousConstructorAlias"]);
 
 const ALLOWED_INTERNAL_ERRORS = [
   { file: "src/approval/approval-delegation.service.ts", kind: "Error", message: "Prisma service is required to create approval delegation", expectedOccurrences: 1, reason: "可选依赖注入缺失时的内部构造保护" },
@@ -106,16 +107,73 @@ function unwrapExpression(node) {
   return current;
 }
 
-function staticAsciiMessage(node) {
+function staticAsciiCandidates(node) {
   const value = unwrapExpression(node);
   if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
-    return ASCII_ONLY.test(value.text) ? value.text : null;
+    return ASCII_ONLY.test(value.text)
+      ? [{ node: value, message: value.text, composable: true }]
+      : [];
   }
-  if (!ts.isTemplateExpression(value)) return null;
-  const fragments = [value.head.text, ...value.templateSpans.map((span) => span.literal.text)];
-  return fragments.every((fragment) => ASCII_FRAGMENT.test(fragment))
-    ? `template:${JSON.stringify(fragments)}`
-    : null;
+  if (ts.isTemplateExpression(value)) {
+    const fragments = [
+      value.head.text,
+      ...value.templateSpans.map((span) => span.literal.text)
+    ];
+    return fragments.every((fragment) => ASCII_FRAGMENT.test(fragment))
+      ? [
+          {
+            node: value,
+            message: `template:${JSON.stringify(fragments)}`,
+            composable: false
+          }
+        ]
+      : [];
+  }
+  if (ts.isBinaryExpression(value)) {
+    if (value.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+      return staticAsciiCandidates(value.right);
+    }
+    if (value.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const left = staticAsciiCandidates(value.left);
+      const right = staticAsciiCandidates(value.right);
+      if (
+        left.length > 0 &&
+        right.length > 0 &&
+        left.every((candidate) => candidate.composable) &&
+        right.every((candidate) => candidate.composable)
+      ) {
+        return left.flatMap((leftCandidate) =>
+          right.flatMap((rightCandidate) => {
+            const message = `${leftCandidate.message}${rightCandidate.message}`;
+            return ASCII_ONLY.test(message)
+              ? [{ node: value, message, composable: true }]
+              : [];
+          })
+        );
+      }
+    }
+    return [];
+  }
+  if (ts.isConditionalExpression(value)) {
+    return [
+      ...staticAsciiCandidates(value.whenTrue),
+      ...staticAsciiCandidates(value.whenFalse)
+    ];
+  }
+  return [];
+}
+
+function staticAsciiMessage(node) {
+  const candidates = staticAsciiCandidates(node);
+  return candidates.length === 1 ? candidates[0].message : null;
+}
+
+function collectStaticCandidates(node, addFinding) {
+  const candidates = staticAsciiCandidates(node);
+  for (const candidate of candidates) {
+    addFinding(candidate.node, candidate.message);
+  }
+  return candidates.length > 0;
 }
 
 function propertyName(node) {
@@ -136,11 +194,7 @@ function propertyName(node) {
 
 function collectStaticValues(node, addFinding) {
   const value = unwrapExpression(node);
-  const message = staticAsciiMessage(value);
-  if (message !== null) {
-    addFinding(value, message);
-    return;
-  }
+  if (collectStaticCandidates(value, addFinding)) return;
   if (ts.isArrayLiteralExpression(value)) {
     for (const element of value.elements) {
       collectStaticValues(
@@ -190,11 +244,7 @@ function collectObjectMessages(node, addFinding) {
 
 function collectDirectMessages(node, addFinding) {
   const value = unwrapExpression(node);
-  const message = staticAsciiMessage(value);
-  if (message !== null) {
-    addFinding(value, message);
-    return;
-  }
+  if (collectStaticCandidates(value, addFinding)) return;
   if (ts.isArrayLiteralExpression(value)) {
     for (const element of value.elements) {
       collectDirectMessages(
@@ -207,14 +257,26 @@ function collectDirectMessages(node, addFinding) {
   collectObjectMessages(value, addFinding);
 }
 
+function addAliasCandidate(aliases, name, kind) {
+  const candidates = aliases.get(name) ?? new Set();
+  const sizeBefore = candidates.size;
+  candidates.add(kind);
+  aliases.set(name, candidates);
+  return candidates.size !== sizeBefore;
+}
+
 function importedExceptionBindings(sourceFile) {
-  const named = new Map();
+  const aliases = new Map([["Error", new Set(["Error"])]]);
+  const aliasLines = new Map();
   const namespaces = new Set();
   for (const statement of sourceFile.statements) {
     if (
       !ts.isImportDeclaration(statement) ||
       !ts.isStringLiteral(statement.moduleSpecifier) ||
-      statement.moduleSpecifier.text !== "@nestjs/common"
+      !(
+        statement.moduleSpecifier.text === "@nestjs/common" ||
+        statement.moduleSpecifier.text.startsWith("@nestjs/common/")
+      )
     ) {
       continue;
     }
@@ -223,22 +285,22 @@ function importedExceptionBindings(sourceFile) {
       for (const element of bindings.elements) {
         const importedName = element.propertyName?.text ?? element.name.text;
         if (NEST_EXCEPTION_KINDS.has(importedName)) {
-          named.set(element.name.text, importedName);
+          addAliasCandidate(aliases, element.name.text, importedName);
+          aliasLines.set(
+            element.name.text,
+            sourceFile.getLineAndCharacterOfPosition(element.getStart(sourceFile)).line + 1
+          );
         }
       }
     } else if (bindings && ts.isNamespaceImport(bindings)) {
       namespaces.add(bindings.name.text);
     }
   }
-  return { named, namespaces };
+  return { aliases, aliasLines, namespaces };
 }
 
-function constructorKind(node, bindings) {
+function namespaceConstructorKind(node, bindings) {
   const target = unwrapExpression(node);
-  if (ts.isIdentifier(target)) {
-    if (target.text === "Error") return "Error";
-    return bindings.named.get(target.text) ?? null;
-  }
   if (
     ts.isPropertyAccessExpression(target) &&
     ts.isIdentifier(unwrapExpression(target.expression)) &&
@@ -247,11 +309,88 @@ function constructorKind(node, bindings) {
   ) {
     return target.name.text;
   }
+  if (
+    ts.isElementAccessExpression(target) &&
+    ts.isIdentifier(unwrapExpression(target.expression)) &&
+    bindings.namespaces.has(unwrapExpression(target.expression).text) &&
+    target.argumentExpression
+  ) {
+    const argument = unwrapExpression(target.argumentExpression);
+    if (
+      (ts.isStringLiteral(argument) ||
+        ts.isNoSubstitutionTemplateLiteral(argument)) &&
+      NEST_EXCEPTION_KINDS.has(argument.text)
+    ) {
+      return argument.text;
+    }
+  }
   return null;
+}
+
+function constructorCandidates(node, bindings) {
+  const target = unwrapExpression(node);
+  if (ts.isIdentifier(target)) {
+    return new Set(bindings.aliases.get(target.text) ?? []);
+  }
+  const namespaceKind = namespaceConstructorKind(target, bindings);
+  return namespaceKind ? new Set([namespaceKind]) : new Set();
+}
+
+function collectConstructorBindings(sourceFile) {
+  const bindings = importedExceptionBindings(sourceFile);
+  const declarations = [];
+  function collect(node) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isVariableDeclarationList(node.parent) &&
+      (node.parent.flags & ts.NodeFlags.Const) !== 0
+    ) {
+      declarations.push({
+        name: node.name.text,
+        initializer: node.initializer,
+        line: sourceFile.getLineAndCharacterOfPosition(node.name.getStart(sourceFile)).line + 1
+      });
+      if (!bindings.aliasLines.has(node.name.text)) {
+        bindings.aliasLines.set(node.name.text, declarations.at(-1).line);
+      }
+    }
+    ts.forEachChild(node, collect);
+  }
+  collect(sourceFile);
+
+  for (let pass = 0; pass <= declarations.length; pass += 1) {
+    let changed = false;
+    for (const declaration of declarations) {
+      for (const kind of constructorCandidates(declaration.initializer, bindings)) {
+        changed = addAliasCandidate(bindings.aliases, declaration.name, kind) || changed;
+      }
+    }
+    if (!changed) break;
+  }
+
+  const diagnostics = [];
+  for (const [name, candidates] of bindings.aliases) {
+    if (candidates.size > 1) {
+      diagnostics.push({
+        line: bindings.aliasLines.get(name) ?? 1,
+        kind: "AmbiguousConstructorAlias",
+        message: name
+      });
+    }
+  }
+  return { bindings, diagnostics };
+}
+
+function constructorKind(node, bindings) {
+  const candidates = constructorCandidates(node, bindings);
+  return candidates.size === 1 ? candidates.values().next().value : null;
 }
 
 function scanSourceTree(sourceRoot, baseDir = path.dirname(sourceRoot)) {
   const findings = [];
+  const diagnostics = [];
   const files = listTypeScriptFiles(sourceRoot);
   for (const absoluteFile of files) {
     const source = fs.readFileSync(absoluteFile, "utf8");
@@ -262,7 +401,12 @@ function scanSourceTree(sourceRoot, baseDir = path.dirname(sourceRoot)) {
       true,
       ts.ScriptKind.TS
     );
-    const bindings = importedExceptionBindings(sourceFile);
+    const constructorBindings = collectConstructorBindings(sourceFile);
+    const bindings = constructorBindings.bindings;
+    const relativeFile = path.relative(baseDir, absoluteFile).split(path.sep).join("/");
+    for (const diagnostic of constructorBindings.diagnostics) {
+      diagnostics.push({ ...diagnostic, file: relativeFile });
+    }
     function visit(node) {
       if (ts.isThrowStatement(node) && node.expression) {
         const expression = unwrapExpression(node.expression);
@@ -274,7 +418,7 @@ function scanSourceTree(sourceRoot, baseDir = path.dirname(sourceRoot)) {
                 messageNode.getStart(sourceFile)
               );
               findings.push({
-                file: path.relative(baseDir, absoluteFile).split(path.sep).join("/"),
+                file: relativeFile,
                 line: location.line + 1,
                 kind,
                 message
@@ -290,7 +434,7 @@ function scanSourceTree(sourceRoot, baseDir = path.dirname(sourceRoot)) {
     }
     visit(sourceFile);
   }
-  return { files, findings };
+  return { files, findings, diagnostics };
 }
 
 function findingKey(value) {
@@ -350,6 +494,16 @@ function evaluateFindings(findings, allowlist) {
   return errors;
 }
 
+function evaluateScan(result, allowlist) {
+  return [
+    ...(result.diagnostics ?? []).map((diagnostic) => ({
+      type: "ambiguous_constructor_alias",
+      diagnostic
+    })),
+    ...evaluateFindings(result.findings, allowlist)
+  ];
+}
+
 function safeOutputFile(value) {
   if (typeof value !== "string") return "src/<invalid-file>";
   const normalized = value.split(path.sep).join("/");
@@ -376,12 +530,15 @@ function describeValue(value, line = "-") {
     .update(message)
     .digest("hex")
     .slice(0, 12);
-  const kind = EXCEPTION_KINDS.has(value?.kind) ? value.kind : "UnknownException";
+  const kind = OUTPUT_KINDS.has(value?.kind) ? value.kind : "UnknownException";
   return `${safeOutputFile(value?.file)}:${safeOutputLine(line)} ${kind} sha256:${fingerprint} length=${message.length}`;
 }
 
 function formatErrors(errors) {
   return errors.map((error) => {
+    if (error.type === "ambiguous_constructor_alias") {
+      return `${describeValue(error.diagnostic, error.diagnostic.line)} 构造器别名映射存在冲突`;
+    }
     if (error.type === "unallowed") {
       return `${describeValue(error.finding, error.finding.line)} 未在允许清单中`;
     }
@@ -400,7 +557,7 @@ function formatErrors(errors) {
 
 function run() {
   const result = scanSourceTree(SOURCE_ROOT, API_ROOT);
-  const errors = evaluateFindings(result.findings, ALLOWED_INTERNAL_ERRORS);
+  const errors = evaluateScan(result, ALLOWED_INTERNAL_ERRORS);
   if (errors.length) {
     console.error("英文业务错误检查失败：");
     for (const line of formatErrors(errors)) console.error(`- ${line}`);
@@ -414,6 +571,7 @@ function run() {
 
 module.exports = {
   ALLOWED_INTERNAL_ERRORS,
+  evaluateScan,
   evaluateFindings,
   formatErrors,
   scanSourceTree,
