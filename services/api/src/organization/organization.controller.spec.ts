@@ -238,7 +238,14 @@ describe("OrganizationController", () => {
       ...previewBody,
       operation: "remove"
     });
-    expect(invalidOperation.errors).toContain("只支持预览新增岗位");
+    expect(invalidOperation.errors).toContain("只支持新增岗位");
+    const invalidApplyOperation = await validationResponse("applyRoleAddition", {
+      ...previewBody,
+      operation: "remove",
+      snapshotHash: `sha256:${"a".repeat(64)}`,
+      confirmationPassword: "password"
+    });
+    expect(invalidApplyOperation.errors).toContain("只支持新增岗位");
     const unknown = await validationResponse("applyRoleAddition", {
       ...previewBody,
       snapshotHash: `sha256:${"a".repeat(64)}`,

@@ -3,7 +3,7 @@ import { IsIn, IsOptional, IsString, Matches, ValidateIf } from "class-validator
 import { IsMaxUnicodeTextLength } from "../../validation/static-field-validation";
 
 export class PreviewRoleAdditionDto {
-  @IsIn(["add"], { message: "只支持预览新增岗位" })
+  @IsIn(["add"], { message: "只支持新增岗位" })
   operation!: "add";
 
   @IsString({ message: "人员标识必须是文字" })

@@ -120,7 +120,12 @@ async function evaluate(
     userId: string;
     scope: "global" | "project";
     projectId?: string | null;
-    roleKey: "super_admin" | "project_manager" | "budget_director" | "finance_director";
+    roleKey:
+      | "super_admin"
+      | "project_manager"
+      | "budget_director"
+      | "finance_director"
+      | "chairman";
   },
   ready = true
 ) {
@@ -153,6 +158,30 @@ function addSettlement(
   });
   data.settlements.push({
     id: `settlement-${input.id}`,
+    projectId: input.projectId ?? "project-1"
+  });
+}
+
+function addProjectExpense(
+  data: Fixture,
+  input: {
+    id: string;
+    projectId?: string;
+    applicantUserId?: string;
+    currentNodeIndex?: number;
+    frozenNodes: unknown;
+  }
+) {
+  data.instances.push({
+    id: input.id,
+    businessType: "project_expense_request",
+    businessId: `expense-${input.id}`,
+    applicantUserId: input.applicantUserId ?? "applicant",
+    currentNodeIndex: input.currentNodeIndex ?? 0,
+    frozenNodes: input.frozenNodes
+  });
+  data.expenses.push({
+    id: `expense-${input.id}`,
     projectId: input.projectId ?? "project-1"
   });
 }
@@ -307,7 +336,7 @@ describe("PermissionImpactService role addition", () => {
       positionId: "position-chairman",
       projectId: null
     });
-    addSettlement(data, {
+    addProjectExpense(data, {
       id: "future-self-review",
       applicantUserId: "target",
       frozenNodes: [
@@ -339,6 +368,218 @@ describe("PermissionImpactService role addition", () => {
       },
       blocking: true,
       reasonCode: "no_executable_current_approver"
+    });
+  });
+
+  it("即使另有审批人，first-role 自审反转导致目标丧失审批能力仍阻断", async () => {
+    const data = fixture();
+    data.userPositions.push(
+      {
+        id: "target-chairman",
+        userId: "target",
+        positionId: "position-chairman",
+        projectId: null
+      },
+      {
+        id: "other-finance",
+        userId: "finance",
+        positionId: "position-finance",
+        projectId: null
+      }
+    );
+    addProjectExpense(data, {
+      id: "self-review-capability-regression",
+      applicantUserId: "target",
+      frozenNodes: [
+        {
+          name: "混合审批节点",
+          mode: "any",
+          roleKeys: ["budget_director", "chairman", "finance_director"]
+        }
+      ]
+    });
+
+    const { result } = await evaluate(data, {
+      operation: "add",
+      userId: "target",
+      scope: "global",
+      roleKey: "budget_director"
+    });
+
+    expect(result.preview).toMatchObject({
+      canApply: false,
+      summary: { affectedNodes: 1, blockingNodes: 1 }
+    });
+    expect(result.preview.impacts[0]).toMatchObject({
+      targetBefore: { roleKey: "chairman", canReview: true },
+      targetAfter: { roleKey: "budget_director", canReview: false },
+      blocking: true,
+      reasonCode: "role_addition_revokes_target_review_capability"
+    });
+  });
+
+  it("合同审批冻结节点包含非 contract.approve 岗位时失败关闭", async () => {
+    const data = fixture();
+    data.userPositions.push(
+      {
+        id: "target-chairman",
+        userId: "target",
+        positionId: "position-chairman",
+        projectId: null
+      },
+      {
+        id: "other-budget",
+        userId: "finance",
+        positionId: "position-budget",
+        projectId: null
+      }
+    );
+    data.instances.push({
+      id: "dirty-contract-node",
+      businessType: "contract_version",
+      businessId: "contract-version-1",
+      applicantUserId: "target",
+      currentNodeIndex: 0,
+      frozenNodes: [
+        {
+          name: "脏合同审批节点",
+          mode: "any",
+          roleKeys: ["budget_director", "chairman"]
+        }
+      ]
+    });
+    data.contractVersions.push({ id: "contract-version-1", contractId: "contract-1" });
+    data.contracts.push({ id: "contract-1", projectId: "project-1" });
+
+    const { result } = await evaluate(data, {
+      operation: "add",
+      userId: "target",
+      scope: "global",
+      roleKey: "budget_director"
+    });
+
+    expect(result.preview).toMatchObject({
+      canApply: false,
+      summary: { affectedNodes: 1, blockingNodes: 1 }
+    });
+    expect(result.preview.impacts[0]).toMatchObject({
+      blocking: true,
+      reasonCode: "invalid_approval_instance_data"
+    });
+  });
+
+  it.each([
+    {
+      name: "approvedRoleKeys",
+      node: {
+        name: "脏已审批岗位",
+        mode: "any",
+        roleKeys: ["chairman"],
+        approvedRoleKeys: ["budget_director"]
+      }
+    },
+    {
+      name: "assignment.fromRoleKey",
+      node: {
+        name: "脏转办岗位",
+        mode: "any",
+        roleKeys: ["chairman"],
+        assignments: [{ toUserId: "finance", fromRoleKey: "budget_director" }]
+      }
+    }
+  ])("合同审批冻结 $name 超出动作白名单时失败关闭", async ({ node }) => {
+    const data = fixture();
+    data.instances.push({
+      id: "dirty-contract-detail",
+      businessType: "contract_version",
+      businessId: "contract-version-detail",
+      applicantUserId: "applicant",
+      currentNodeIndex: 0,
+      frozenNodes: [node]
+    });
+    data.contractVersions.push({
+      id: "contract-version-detail",
+      contractId: "contract-detail"
+    });
+    data.contracts.push({ id: "contract-detail", projectId: "project-1" });
+
+    const { result } = await evaluate(data, {
+      operation: "add",
+      userId: "target",
+      scope: "global",
+      roleKey: "chairman"
+    });
+
+    expect(result.preview).toMatchObject({ canApply: false });
+    expect(result.preview.impacts[0]).toMatchObject({
+      blocking: true,
+      reasonCode: "invalid_approval_instance_data"
+    });
+  });
+
+  it("无动作岗位且仅有冻结 assignment 的接收人不能兜底执行节点", async () => {
+    const data = fixture();
+    addSettlement(data, {
+      id: "assignment-without-guard-role",
+      applicantUserId: "target",
+      frozenNodes: [
+        {
+          name: "无入口授权的转办",
+          mode: "any",
+          roleKeys: ["project_manager", "finance_director"],
+          assignments: [{ toUserId: "finance", fromRoleKey: "finance_director" }]
+        }
+      ]
+    });
+
+    const { result } = await evaluate(data, {
+      operation: "add",
+      userId: "target",
+      scope: "global",
+      roleKey: "project_manager"
+    });
+
+    expect(result.preview).toMatchObject({
+      canApply: false,
+      summary: { affectedNodes: 1, blockingNodes: 1 }
+    });
+    expect(result.preview.impacts[0]).toMatchObject({
+      blocking: true,
+      reasonCode: "no_executable_current_approver"
+    });
+    expect(result.preview.impacts[0].roleCoverage).toContainEqual(
+      expect.objectContaining({
+        roleKey: "finance_director",
+        assignmentApproverUserIds: [],
+        executable: false
+      })
+    );
+  });
+
+  it("目标本人仅有冻结 assignment 且无 Guard 入口资格时 before 不可审批", async () => {
+    const data = fixture();
+    addSettlement(data, {
+      id: "target-assignment-without-guard-role",
+      frozenNodes: [
+        {
+          name: "目标无入口授权的转办",
+          mode: "any",
+          roleKeys: ["project_manager", "finance_director"],
+          assignments: [{ toUserId: "target", fromRoleKey: "finance_director" }]
+        }
+      ]
+    });
+
+    const { result } = await evaluate(data, {
+      operation: "add",
+      userId: "target",
+      scope: "global",
+      roleKey: "project_manager"
+    });
+
+    expect(result.preview.impacts[0]).toMatchObject({
+      targetBefore: { channel: null, roleKey: null, canReview: false },
+      targetAfter: { channel: "direct", roleKey: "project_manager", canReview: true }
     });
   });
 
@@ -469,8 +710,8 @@ describe("PermissionImpactService role addition", () => {
     const data = fixture();
     data.userPositions.push({ id: "chairman", userId: "target", positionId: "position-chairman", projectId: null });
     data.projectMembers.push({ id: "budget-p1", userId: "target", projectId: "project-1", positionKey: "budget_director" });
-    addSettlement(data, { id: "p1", projectId: "project-1", frozenNodes: [{ name: "p1", mode: "any", roleKeys: ["budget_director", "chairman", "finance_director"] }] });
-    addSettlement(data, { id: "p2", projectId: "project-2", frozenNodes: [{ name: "p2", mode: "any", roleKeys: ["chairman", "finance_director"] }] });
+    addProjectExpense(data, { id: "p1", projectId: "project-1", frozenNodes: [{ name: "p1", mode: "any", roleKeys: ["budget_director", "chairman", "finance_director"] }] });
+    addProjectExpense(data, { id: "p2", projectId: "project-2", frozenNodes: [{ name: "p2", mode: "any", roleKeys: ["chairman", "finance_director"] }] });
 
     const global = await evaluate(data, { operation: "add", userId: "target", scope: "global", roleKey: "finance_director" });
     expect(global.result.preview.impacts.map((row) => row.approvalInstanceId)).toEqual(["p1", "p2"]);
@@ -489,12 +730,20 @@ describe("PermissionImpactService role addition", () => {
         { name: "future", mode: "any", roleKeys: ["project_manager", "finance_director"] }
       ]
     });
+    addSettlement(data, {
+      id: "another-hash",
+      frozenNodes: [
+        { name: "another-current", mode: "any", roleKeys: ["project_manager", "finance_director"] }
+      ]
+    });
     const input = { operation: "add" as const, userId: "target", scope: "project" as const, projectId: "project-1", roleKey: "project_manager" as const };
     const first = await evaluate(data, input);
     const reversed = structuredClone(data);
     reversed.users.reverse();
     reversed.positions.reverse();
     reversed.projects.reverse();
+    reversed.instances.reverse();
+    reversed.settlements.reverse();
     const second = await evaluate(reversed, input);
     expect(second.result.preview.snapshotHash).toBe(first.result.preview.snapshotHash);
 

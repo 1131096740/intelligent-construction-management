@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { BUSINESS_APPROVAL_ROLES, ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import { ACTION_REQUIRED_ROLES, ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
@@ -8,7 +8,6 @@ import type { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
 import { OrganizationService } from "./organization.service";
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
-const BUSINESS_APPROVAL_ROLE_SET = new Set<string>(BUSINESS_APPROVAL_ROLES);
 const LEADER_ROLE_KEYS = new Set<RoleKey>(["chairman", "general_manager"]);
 const SUPPORTED_BUSINESS_TYPES = [
   "contract_version",
@@ -17,6 +16,12 @@ const SUPPORTED_BUSINESS_TYPES = [
   "project_expense_request"
 ] as const;
 type SupportedBusinessType = (typeof SUPPORTED_BUSINESS_TYPES)[number];
+const APPROVAL_ROLE_SETS_BY_BUSINESS_TYPE = {
+  contract_version: new Set(ACTION_REQUIRED_ROLES["contract.approve"]),
+  settlement: new Set(ACTION_REQUIRED_ROLES["settlement.approve"]),
+  payment_request: new Set(ACTION_REQUIRED_ROLES["payment.approve"]),
+  project_expense_request: new Set(ACTION_REQUIRED_ROLES["project_expense.approve"])
+} satisfies Record<SupportedBusinessType, ReadonlySet<RoleKey>>;
 type PermissionImpactClient = Pick<
   Prisma.TransactionClient,
   | "user"
@@ -226,6 +231,7 @@ export interface RoleAdditionImpactPreview {
       | "no_executable_current_approver"
       | "invalid_approval_instance_data"
       | "approval_execution_semantics_not_safe"
+      | "role_addition_revokes_target_review_capability"
       | null;
     targetBefore: RoleAdditionResolution;
     targetAfter: RoleAdditionResolution;
@@ -645,9 +651,28 @@ export class PermissionImpactService {
     const relevantNodes = targetCreate
       ? collectRelevantAdditionNodes(mappedInstances, change)
       : [];
-    const impacts = relevantNodes
+    const stableRelevantNodes = [...relevantNodes].sort(
+      (left, right) =>
+        compareText(left.id, right.id) || left.currentNodeIndex - right.currentNodeIndex
+    );
+    const impacts = stableRelevantNodes
       .map((instance) => {
-        const impact = buildImpact(instance, change, users, factsAfter, delegations);
+        const impact = buildImpact(instance, change, users, factsAfter, delegations, true);
+        const targetBefore = resolveUserOnNode(
+          instance,
+          change.userId,
+          users,
+          factsBefore,
+          delegations
+        );
+        const targetAfter = resolveUserOnNode(
+          instance,
+          change.userId,
+          users,
+          factsAfter,
+          delegations
+        );
+        const revokesTargetReviewCapability = targetBefore.canReview && !targetAfter.canReview;
         return {
           approvalInstanceId: impact.approvalInstanceId,
           businessType: impact.businessType,
@@ -658,30 +683,17 @@ export class PermissionImpactService {
           mode: impact.mode,
           roleKeys: instance.parsedNode?.roleKeys ?? [],
           pendingRoleKeys: impact.pendingRoleKeys,
-          blocking: impact.blocking,
-          reasonCode: impact.reasonCode,
-          targetBefore: resolveUserOnNode(
-            instance,
-            change.userId,
-            users,
-            factsBefore,
-            delegations
-          ),
-          targetAfter: resolveUserOnNode(
-            instance,
-            change.userId,
-            users,
-            factsAfter,
-            delegations
-          ),
+          blocking: impact.blocking || revokesTargetReviewCapability,
+          reasonCode:
+            impact.reasonCode ??
+            (revokesTargetReviewCapability
+              ? ("role_addition_revokes_target_review_capability" as const)
+              : null),
+          targetBefore,
+          targetAfter,
           roleCoverage: impact.roleCoverage
         };
-      })
-      .sort(
-        (left, right) =>
-          compareText(left.approvalInstanceId, right.approvalInstanceId) ||
-          left.nodeIndex - right.nodeIndex
-      );
+      });
     const blockingNodes = impacts.filter((impact) => impact.blocking).length;
     const snapshotHash = hashSnapshot({
       schemaVersion: 1,
@@ -689,7 +701,7 @@ export class PermissionImpactService {
       change,
       targetCreate,
       integrity,
-      instances: relevantNodes.map((instance) => ({
+      instances: stableRelevantNodes.map((instance) => ({
         id: instance.id,
         businessType: instance.businessType,
         businessId: instance.businessId,
@@ -796,7 +808,7 @@ function normalizeChange(input: PreviewRoleRemovalDto): NormalizedRoleRemovalCha
 
 function normalizeAdditionChange(input: PreviewRoleAdditionDto): NormalizedRoleAdditionChange {
   if (input.operation !== "add") {
-    throw new BadRequestException("只支持预览新增岗位");
+    throw new BadRequestException("只支持新增岗位");
   }
   if (input.scope === "global" && input.projectId !== undefined && input.projectId !== null) {
     throw new BadRequestException("全局岗位不得提交项目标识");
@@ -814,13 +826,13 @@ function normalizeAdditionChange(input: PreviewRoleAdditionDto): NormalizedRoleA
 }
 
 function parseCurrentNode(instance: ApprovalInstanceRow): ParsedNode | null {
-  return parseNodeAt(instance, instance.currentNodeIndex, false);
+  return parseNodeAt(instance, instance.currentNodeIndex);
 }
 
 function parseNodeAt(
   instance: ApprovalInstanceRow,
   nodeIndex: number,
-  businessRolesOnly: boolean
+  allowedRoles?: ReadonlySet<RoleKey>
 ): ParsedNode | null {
   if (!Array.isArray(instance.frozenNodes)) return null;
   if (!Number.isInteger(nodeIndex) || nodeIndex < 0) return null;
@@ -828,22 +840,24 @@ function parseNodeAt(
   if (!isRecord(value)) return null;
   if (typeof value.name !== "string" || value.name.trim().length === 0) return null;
   if (value.mode !== "any" && value.mode !== "all") return null;
-  const roleKeys = validRoleKeyArray(value.roleKeys, businessRolesOnly);
+  const roleKeys = validRoleKeyArray(value.roleKeys, allowedRoles);
   if (!roleKeys || roleKeys.length === 0) return null;
   const approvedRoleKeys =
     value.approvedRoleKeys === undefined
       ? []
-      : validRoleKeyArray(value.approvedRoleKeys, businessRolesOnly);
+      : validRoleKeyArray(value.approvedRoleKeys, allowedRoles);
   if (!approvedRoleKeys || approvedRoleKeys.some((role) => !roleKeys.includes(role))) return null;
   const pendingRoleKeys = roleKeys.filter((role) => !approvedRoleKeys.includes(role));
   if (pendingRoleKeys.length === 0) return null;
-  const assignments =
-    instance.businessType === "project_expense_request"
+  const parsedAssignments =
+    instance.businessType === "project_expense_request" && !allowedRoles
       ? []
-      : parseAssignments(value.assignments, businessRolesOnly);
-  if (!assignments) return null;
+      : parseAssignments(value.assignments, allowedRoles);
+  if (!parsedAssignments) return null;
+  const assignments =
+    instance.businessType === "project_expense_request" ? [] : parsedAssignments;
   if (
-    businessRolesOnly &&
+    allowedRoles &&
     assignments.some((assignment) => !roleKeys.includes(assignment.fromRoleKey))
   ) {
     return null;
@@ -858,14 +872,17 @@ function parseNodeAt(
   };
 }
 
-function validRoleKeyArray(value: unknown, businessRolesOnly = false): RoleKey[] | null {
+function validRoleKeyArray(
+  value: unknown,
+  allowedRoles?: ReadonlySet<RoleKey>
+): RoleKey[] | null {
   if (!Array.isArray(value)) return null;
   const result: RoleKey[] = [];
   for (const item of value) {
     if (
       typeof item !== "string" ||
       !ROLE_KEY_SET.has(item) ||
-      (businessRolesOnly && !BUSINESS_APPROVAL_ROLE_SET.has(item))
+      (allowedRoles && !allowedRoles.has(item as RoleKey))
     ) {
       return null;
     }
@@ -874,7 +891,10 @@ function validRoleKeyArray(value: unknown, businessRolesOnly = false): RoleKey[]
   return result;
 }
 
-function parseAssignments(value: unknown, businessRolesOnly = false): FrozenAssignment[] | null {
+function parseAssignments(
+  value: unknown,
+  allowedRoles?: ReadonlySet<RoleKey>
+): FrozenAssignment[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
   const result: FrozenAssignment[] = [];
@@ -885,7 +905,7 @@ function parseAssignments(value: unknown, businessRolesOnly = false): FrozenAssi
       assignment.toUserId.trim().length === 0 ||
       typeof assignment.fromRoleKey !== "string" ||
       !ROLE_KEY_SET.has(assignment.fromRoleKey) ||
-      (businessRolesOnly && !BUSINESS_APPROVAL_ROLE_SET.has(assignment.fromRoleKey))
+      (allowedRoles && !allowedRoles.has(assignment.fromRoleKey as RoleKey))
     ) {
       return null;
     }
@@ -952,7 +972,8 @@ function buildImpact(
   change: { userId: string },
   users: UserRow[],
   directFacts: DirectFacts,
-  delegations: DelegationRow[]
+  delegations: DelegationRow[],
+  enforceActionGuardEligibility = false
 ) {
   if (!instance.parsedNode || !instance.projectId) {
     return {
@@ -984,7 +1005,15 @@ function buildImpact(
       if (
         activeUserIds.has(assignment.toUserId) &&
         !directRoleByUser.has(assignment.toUserId) &&
-        !assignmentRoleByUser.has(assignment.toUserId)
+        !assignmentRoleByUser.has(assignment.toUserId) &&
+        (!enforceActionGuardEligibility ||
+          isApprovalActionGuardEligible(
+            instance,
+            assignment.toUserId,
+            users,
+            directFacts,
+            delegations
+          ))
       ) {
         assignmentRoleByUser.set(assignment.toUserId, assignment.fromRoleKey);
       }
@@ -1097,13 +1126,50 @@ function collectRelevantAdditionNodes(
       continue;
     }
     for (let nodeIndex = instance.currentNodeIndex; nodeIndex < instance.frozenNodes.length; nodeIndex += 1) {
-      const parsedNode = parseNodeAt(instance, nodeIndex, true);
+      const allowedRoles = approvalRoleSetForBusinessType(instance.businessType);
+      const parsedNode = allowedRoles ? parseNodeAt(instance, nodeIndex, allowedRoles) : null;
       if (!parsedNode || parsedNode.roleKeys.includes(change.roleKey)) {
         relevant.push({ ...instance, currentNodeIndex: nodeIndex, parsedNode });
       }
     }
   }
   return relevant;
+}
+
+function approvalRoleSetForBusinessType(
+  businessType: string
+): ReadonlySet<RoleKey> | null {
+  if (!SUPPORTED_BUSINESS_TYPES.includes(businessType as SupportedBusinessType)) return null;
+  return APPROVAL_ROLE_SETS_BY_BUSINESS_TYPE[businessType as SupportedBusinessType];
+}
+
+function isApprovalActionGuardEligible(
+  instance: MappedApprovalInstance,
+  userId: string,
+  users: UserRow[],
+  directFacts: DirectFacts,
+  delegations: DelegationRow[]
+): boolean {
+  if (!instance.projectId || !users.some((user) => user.id === userId && user.isActive)) {
+    return false;
+  }
+  const allowedRoles = approvalRoleSetForBusinessType(instance.businessType);
+  if (!allowedRoles) return false;
+  const hasAllowedDirectRole = (candidateUserId: string) =>
+    [...allowedRoles].some((roleKey) =>
+      directUsersForRole(directFacts, instance.projectId, roleKey).includes(candidateUserId)
+    );
+  if (hasAllowedDirectRole(userId)) return true;
+  if (instance.businessType === "project_expense_request") return false;
+
+  const activeUserIds = new Set(users.filter((user) => user.isActive).map((user) => user.id));
+  return delegations.some(
+    (delegation) =>
+      delegation.toUserId === userId &&
+      activeUserIds.has(delegation.fromUserId) &&
+      activeUserIds.has(delegation.toUserId) &&
+      hasAllowedDirectRole(delegation.fromUserId)
+  );
 }
 
 function resolveUserOnNode(
@@ -1142,7 +1208,10 @@ function resolveUserOnNode(
   }
   if (instance.businessType === "project_expense_request") return none;
   const assignment = node.assignments.find((item) => item.toUserId === userId);
-  if (assignment) {
+  if (
+    assignment &&
+    isApprovalActionGuardEligible(instance, userId, users, directFacts, delegations)
+  ) {
     return {
       channel: "assignment",
       roleKey: assignment.fromRoleKey,
