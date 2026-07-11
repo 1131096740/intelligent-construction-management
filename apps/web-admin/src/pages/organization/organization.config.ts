@@ -130,6 +130,10 @@ function roleNameByKey(
 }
 
 function normalizedRoleRemovalTarget(target: OrganizationRoleRemovalTarget) {
+  const operation: unknown = target.operation;
+  const scope: unknown = target.scope;
+  if (operation !== "remove") throw new Error("岗位变更操作不正确");
+  if (scope !== "global" && scope !== "project") throw new Error("岗位范围不正确");
   if (!target.userId.trim()) throw new Error("人员标识缺失");
   if (target.scope === "global" && target.projectId !== undefined && target.projectId !== null) {
     throw new Error("全局岗位不得提交项目标识");

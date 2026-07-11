@@ -142,6 +142,28 @@ describe("organization API client", () => {
     expect(mockApiFetch).not.toHaveBeenCalled();
   });
 
+  it("fails closed before fetch for unsupported role operations and scopes", () => {
+    expect(() =>
+      previewOrganizationRoleRemoval({
+        operation: "add",
+        userId: "user-1",
+        scope: "global",
+        roleKey: "finance_director"
+      } as never)
+    ).toThrow("岗位变更操作不正确");
+    expect(() =>
+      applyOrganizationRoleRemoval({
+        operation: "remove",
+        userId: "user-1",
+        scope: "tenant",
+        roleKey: "finance_director",
+        snapshotHash: `sha256:${"d".repeat(64)}`,
+        confirmationPassword: "secret"
+      } as never)
+    ).toThrow("岗位范围不正确");
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
   it("preserves the HTTP status on organization API errors", async () => {
     mockApiFetch.mockReturnValue(
       jsonResponse({ message: "组织或审批数据已变化，请重新预览后再试" }, 409)

@@ -254,6 +254,10 @@ export function fetchPermissionIntegrity() {
 }
 
 function roleRemovalRequestTarget(payload: OrganizationRoleRemovalTarget) {
+  const operation: unknown = payload.operation;
+  const scope: unknown = payload.scope;
+  if (operation !== "remove") throw new Error("岗位变更操作不正确");
+  if (scope !== "global" && scope !== "project") throw new Error("岗位范围不正确");
   if (payload.scope === "global") {
     if (payload.projectId !== undefined && payload.projectId !== null) {
       throw new Error("全局岗位不得提交项目标识");

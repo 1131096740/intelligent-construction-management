@@ -526,6 +526,35 @@ describe("organization config", () => {
     ).toThrow("全局岗位不得提交项目标识");
   });
 
+  it("rejects unsupported role operations and scopes before building apply payloads", () => {
+    expect(() =>
+      buildRoleRemovalApplyPayload(
+        {
+          operation: "add",
+          userId: "user-1",
+          scope: "project",
+          projectId: "project-1",
+          roleKey: "project_manager"
+        } as never,
+        removalPreview,
+        "secret"
+      )
+    ).toThrow("岗位变更操作不正确");
+    expect(() =>
+      buildRoleRemovalApplyPayload(
+        {
+          operation: "remove",
+          userId: "user-1",
+          scope: "tenant",
+          projectId: "project-1",
+          roleKey: "project_manager"
+        } as never,
+        removalPreview,
+        "secret"
+      )
+    ).toThrow("岗位范围不正确");
+  });
+
   it("maps impact business and blocking reasons to Chinese with safe unknown fallbacks", () => {
     expect(roleRemovalBusinessTypeLabel("payment_request")).toBe("付款申请");
     expect(roleRemovalBusinessTypeLabel("future_type")).toBe("业务类型未读取");
