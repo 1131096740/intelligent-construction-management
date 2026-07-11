@@ -899,7 +899,7 @@ describe("FileService", () => {
     expect(storage.delete).not.toHaveBeenCalled();
   });
 
-  it("creates a new object and preserves the old object when an internal upload supersedes it", async () => {
+  it("ignores a forged replacement pointer during upload so linking only happens through the replacement helper", async () => {
     const tx = {
       fileObject: {
         create: jest.fn().mockResolvedValue({
@@ -910,7 +910,7 @@ describe("FileService", () => {
           mimeType: "application/pdf",
           sizeBytes: 12,
           uploadedByUserId: "contract-staff-1",
-          supersedesFileObjectId: "file-old"
+          supersedesFileObjectId: null
         }),
         update: jest.fn(),
         delete: jest.fn()
@@ -943,7 +943,7 @@ describe("FileService", () => {
     expect(tx.fileObject.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         objectKey,
-        supersedesFileObjectId: "file-old"
+        supersedesFileObjectId: null
       })
     });
     expect(tx.fileObject.update).not.toHaveBeenCalled();
@@ -1327,9 +1327,12 @@ describe("FileService", () => {
   );
 
   it("loads a private file buffer for an authorized internal service", async () => {
+    const buffer = Buffer.from("docx");
     const file = {
       id: "file-docx",
-      objectKey: "uploads/template.docx"
+      objectKey: "uploads/template.docx",
+      storageStatus: "active",
+      contentSha256: createHash("sha256").update(buffer).digest("hex")
     };
     const prisma = {
       fileObject: {
@@ -1341,12 +1344,122 @@ describe("FileService", () => {
       audit as unknown as AuditService,
       storage as unknown as PrivateFileStorage
     );
-    storage.read.mockResolvedValue(Buffer.from("docx"));
+    storage.read.mockResolvedValue(buffer);
 
     const result = await service.getFileBuffer("file-docx");
 
     expect(result.file.id).toBe("file-docx");
     expect(result.buffer.equals(Buffer.from("docx"))).toBe(true);
+  });
+
+  it("keeps a historical internal file without a content hash readable without download audit", async () => {
+    const file = {
+      id: "file-legacy-docx",
+      objectKey: "uploads/legacy-template.docx",
+      storageStatus: "active",
+      contentSha256: null
+    };
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue(file)
+      }
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    storage.read.mockResolvedValue(Buffer.from("legacy-docx"));
+
+    await expect(service.getFileBuffer("file-legacy-docx")).resolves.toEqual({
+      file,
+      buffer: Buffer.from("legacy-docx")
+    });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects an inactive file before an internal storage read", async () => {
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-inactive",
+          objectKey: "uploads/inactive.docx",
+          storageStatus: "quarantined",
+          contentSha256: null
+        })
+      }
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(service.getFileBuffer("file-inactive")).rejects.toThrow(
+      "资料文件当前不可用，请联系管理员核对文件状态"
+    );
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["malformed", "not-a-valid-hash", Buffer.from("private-file")],
+    ["mismatched", "0".repeat(64), Buffer.from("tampered-file")]
+  ])("rejects an internal file with a %s content hash", async (_caseName, contentSha256, buffer) => {
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-invalid-hash",
+          objectKey: "uploads/invalid.docx",
+          storageStatus: "active",
+          contentSha256
+        })
+      }
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const loggerError = jest.spyOn(Logger.prototype, "error").mockImplementation();
+    storage.read.mockResolvedValue(buffer);
+
+    try {
+      await expect(service.getFileBuffer("file-invalid-hash")).rejects.toThrow(
+        "资料文件完整性校验失败，请联系管理员核对存储文件"
+      );
+      expect(loggerError).toHaveBeenCalledWith(
+        "私有文件完整性校验失败 fileId=file-invalid-hash"
+      );
+      expect(JSON.stringify(loggerError.mock.calls)).not.toContain(contentSha256);
+      expect(audit.record).not.toHaveBeenCalled();
+    } finally {
+      loggerError.mockRestore();
+    }
+  });
+
+  it("uses a fixed message when an internal storage read fails", async () => {
+    const prisma = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-storage-error",
+          objectKey: "uploads/storage-error.docx",
+          storageStatus: "active",
+          contentSha256: null
+        })
+      }
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    storage.read.mockRejectedValue(new Error("ENOENT /private/secret/path"));
+
+    await expect(service.getFileBuffer("file-storage-error")).rejects.toThrow(
+      "资料文件暂时无法读取，请稍后重试或联系管理员核对私有存储"
+    );
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("authorizes and returns file metadata with the caller transaction", async () => {
@@ -3291,6 +3404,7 @@ describe("FileService", () => {
           mimeType: "application/pdf",
           sizeBytes: 12,
           uploadedByUserId: "finance-1",
+          storageStatus: "active",
           contentSha256: createHash("sha256").update(buffer).digest("hex")
         })
       },
@@ -3352,6 +3466,7 @@ describe("FileService", () => {
           mimeType: "application/pdf",
           sizeBytes: 12,
           uploadedByUserId: "finance-1",
+          storageStatus: "active",
           contentSha256: expectedHash
         })
       },
@@ -3418,6 +3533,7 @@ describe("FileService", () => {
           mimeType: "application/pdf",
           sizeBytes: 12,
           uploadedByUserId: "finance-1",
+          storageStatus: "active",
           contentSha256
         })
       },
@@ -3477,6 +3593,7 @@ describe("FileService", () => {
           mimeType: "application/pdf",
           sizeBytes: 12,
           uploadedByUserId: "finance-1",
+          storageStatus: "active",
           contentSha256: null
         })
       },
@@ -3509,6 +3626,55 @@ describe("FileService", () => {
     });
 
     expect(result.buffer).toEqual(Buffer.from("legacy-file"));
+  });
+
+  it("rejects an inactive ticket file before storage read or download success audit", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-inactive-ticket",
+          bucket: "private-local",
+          objectKey: "uploads/inactive.pdf",
+          originalName: "停用资料.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-1",
+          storageStatus: "quarantined",
+          contentSha256: null
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("file-inactive-ticket", {
+      actorUserId: "finance-1",
+      downloadReason: "停用资料复核"
+    });
+    const url = new URL(`http://local${ticket.downloadUrl}`);
+    audit.record.mockClear();
+
+    await expect(
+      service.readPrivateFile("file-inactive-ticket", {
+        actorUserId: url.searchParams.get("actorUserId") ?? "",
+        expiresAt: url.searchParams.get("expiresAt") ?? "",
+        downloadReason: url.searchParams.get("downloadReason") ?? "",
+        token: url.searchParams.get("token") ?? ""
+      })
+    ).rejects.toThrow("资料文件当前不可用，请联系管理员核对文件状态");
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects tampered download ticket fields before reading or auditing a ticket", async () => {
@@ -3607,7 +3773,9 @@ describe("FileService", () => {
           originalName: "盖章合同.pdf",
           mimeType: "application/pdf",
           sizeBytes: 12,
-          uploadedByUserId: "finance-1"
+          uploadedByUserId: "finance-1",
+          storageStatus: "active",
+          contentSha256: null
         })
       },
       contractArchiveFile: { findFirst: jest.fn() },

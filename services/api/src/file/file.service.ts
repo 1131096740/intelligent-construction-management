@@ -21,7 +21,6 @@ export interface UploadPrivateFileInput {
   sizeBytes: number;
   uploadedByUserId: string;
   buffer: Buffer;
-  supersedesFileObjectId?: string;
 }
 
 export interface ReadPrivateFileInput {
@@ -568,7 +567,7 @@ export class FileService {
             uploadedByUserId: input.uploadedByUserId,
             contentSha256,
             storageStatus: "active",
-            supersedesFileObjectId: input.supersedesFileObjectId ?? null
+            supersedesFileObjectId: null
           }
         });
 
@@ -779,22 +778,7 @@ export class FileService {
       return found;
     });
 
-    let buffer: Buffer;
-    try {
-      buffer = await this.storage.read(file.objectKey);
-    } catch {
-      throw new Error("资料文件暂时无法读取，请稍后重试或联系管理员核对私有存储");
-    }
-    if (file.contentSha256 !== null) {
-      const actualContentSha256 = createHash("sha256").update(buffer).digest("hex");
-      if (
-        !/^[0-9a-f]{64}$/.test(file.contentSha256) ||
-        actualContentSha256 !== file.contentSha256
-      ) {
-        this.logger.error(`私有文件完整性校验失败 fileId=${file.id}`);
-        throw new Error("资料文件完整性校验失败，请联系管理员核对存储文件");
-      }
-    }
+    const buffer = await this.readVerifiedFileBuffer(file);
     await this.prisma.$transaction((tx) =>
       this.audit.record(tx, {
         actorUserId: input.actorUserId,
@@ -821,7 +805,7 @@ export class FileService {
     if (!file) {
       throw new Error("资料文件不存在或已被移除");
     }
-    return { file, buffer: await this.storage.read(file.objectKey) };
+    return { file, buffer: await this.readVerifiedFileBuffer(file) };
   }
 
   // 供其它模块（如审批单下载）按 fileId 复用下载权限校验。
@@ -847,6 +831,34 @@ export class FileService {
   private safeFileName(fileName: string) {
     const name = basename(fileName).replace(/[^\w.\-\u4e00-\u9fa5]+/g, "_");
     return name || "private-file";
+  }
+
+  private async readVerifiedFileBuffer(file: FileObject): Promise<Buffer> {
+    if (file.storageStatus !== "active") {
+      throw new Error("资料文件当前不可用，请联系管理员核对文件状态");
+    }
+
+    let buffer: Buffer;
+    try {
+      buffer = await this.storage.read(file.objectKey);
+    } catch {
+      throw new Error("资料文件暂时无法读取，请稍后重试或联系管理员核对私有存储");
+    }
+
+    if (file.contentSha256 === null) {
+      return buffer;
+    }
+
+    const actualContentSha256 = createHash("sha256").update(buffer).digest("hex");
+    if (
+      !/^[0-9a-f]{64}$/.test(file.contentSha256) ||
+      actualContentSha256 !== file.contentSha256
+    ) {
+      this.logger.error(`私有文件完整性校验失败 fileId=${file.id}`);
+      throw new Error("资料文件完整性校验失败，请联系管理员核对存储文件");
+    }
+
+    return buffer;
   }
 
   private async assertCanDownloadFileObject(

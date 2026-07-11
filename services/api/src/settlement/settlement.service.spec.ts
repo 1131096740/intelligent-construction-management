@@ -4613,6 +4613,53 @@ describe("SettlementService", () => {
     expect(result.buffer).toEqual(Buffer.from("%PDF-latest"));
   });
 
+  it("does not audit or return a settlement approval PDF when file integrity validation fails", async () => {
+    const integrityError = new Error("资料文件完整性校验失败，请联系管理员核对存储文件");
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          code: "JS-2026-019"
+        })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-latest",
+          fileId: "file-latest"
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const files = {
+      assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined),
+      getFileBuffer: jest.fn().mockRejectedValue(integrityError),
+      uploadPrivateFile: jest.fn(),
+      linkFileReplacement: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      settlementService.downloadLatestApprovalPdf(
+        "settlement-1",
+        "approver-1",
+        "current-password",
+        "结算审批复核"
+      )
+    ).rejects.toBe(integrityError);
+
+    expect(files.assertCanDownloadFileById).toHaveBeenCalledWith("file-latest", "approver-1");
+    expect(files.getFileBuffer).toHaveBeenCalledWith("file-latest");
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("rejects settlement approval PDF download without a download reason", async () => {
     const settlementService = new SettlementService(
       {} as never,
