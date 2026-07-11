@@ -67,7 +67,8 @@ describe("OrganizationController", () => {
       summary: { departments: 0, activeUsers: 0, inactiveUsers: 0, positions: 0 },
       departments: [],
       users: [],
-      positions: []
+      positions: [],
+      projects: []
     };
     const service = { getDirectory: jest.fn().mockResolvedValue(directoryReadModel) };
     const controller = new OrganizationController(

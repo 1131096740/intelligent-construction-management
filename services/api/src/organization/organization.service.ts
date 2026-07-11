@@ -53,6 +53,7 @@ export interface OrganizationDirectoryReadModel {
     }>;
   }>;
   positions: Array<{ id: string; key: RoleKey; name: string }>;
+  projects: Array<{ id: string; code: string; name: string; isActive: boolean }>;
 }
 
 export type PermissionIntegrityIssueCode =
@@ -767,7 +768,9 @@ export class OrganizationService {
         this.prisma.projectMember.findMany({
           select: { userId: true, projectId: true, positionKey: true }
         }),
-        this.prisma.project.findMany({ select: { id: true, code: true, name: true } })
+        this.prisma.project.findMany({
+          select: { id: true, code: true, name: true, isActive: true }
+        })
       ]);
 
     const positions = rawPositions
@@ -877,7 +880,20 @@ export class OrganizationService {
         id: position.id,
         key: position.key,
         name: position.name
-      }))
+      })),
+      projects: projects
+        .map((project) => ({
+          id: project.id,
+          code: project.code,
+          name: project.name,
+          isActive: project.isActive
+        }))
+        .sort(
+          (left, right) =>
+            compareText(left.code, right.code) ||
+            compareText(left.name, right.name) ||
+            compareText(left.id, right.id)
+        )
     };
   }
 }

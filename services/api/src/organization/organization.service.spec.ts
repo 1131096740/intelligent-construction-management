@@ -213,6 +213,30 @@ describe("OrganizationService", () => {
     expect(prisma.projectMember.findMany).toHaveBeenCalledTimes(1);
   });
 
+  it("返回启停完整且按 code/name/id 稳定排序的治理项目目录", async () => {
+    const prisma = createPrisma({
+      projects: [
+        { id: "project-3", code: "XM-B", name: "北区项目", isActive: true },
+        { id: "project-2", code: "XM-A", name: "同名项目", isActive: false },
+        { id: "project-1", code: "XM-A", name: "同名项目", isActive: true },
+        { id: "project-0", code: "XM-A", name: "东区项目", isActive: false }
+      ]
+    });
+    const service = new OrganizationService(prisma as never);
+
+    const result = await service.getDirectory();
+
+    expect(prisma.project.findMany).toHaveBeenCalledWith({
+      select: { id: true, code: true, name: true, isActive: true }
+    });
+    expect(result.projects).toEqual([
+      { id: "project-0", code: "XM-A", name: "东区项目", isActive: false },
+      { id: "project-1", code: "XM-A", name: "同名项目", isActive: true },
+      { id: "project-2", code: "XM-A", name: "同名项目", isActive: false },
+      { id: "project-3", code: "XM-B", name: "北区项目", isActive: true }
+    ]);
+  });
+
   it("把父级缺失、自环或多节点环部门安全放在根层且每个部门只出现一次", async () => {
     const prisma = createPrisma({
       departments: [
