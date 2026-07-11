@@ -184,4 +184,100 @@ describe("OrganizationService", () => {
     );
     expect(result.users[0].projectPositions).toEqual([]);
   });
+
+  it("只把 projectId 精确为 null 的岗位归入全局范围", async () => {
+    const prisma = createPrisma({
+      users: [
+        {
+          id: "user-1",
+          name: "张三",
+          phone: null,
+          departmentId: null,
+          isActive: true,
+          mustChangePassword: false
+        }
+      ],
+      positions: [
+        { id: "position-super-admin", key: "super_admin", name: "超级管理员" },
+        { id: "position-contract-staff", key: "contract_staff", name: "合同员" }
+      ],
+      userPositions: [
+        {
+          id: "blank-project-super-admin",
+          userId: "user-1",
+          positionId: "position-super-admin",
+          projectId: ""
+        },
+        {
+          id: "blank-project-contract-staff",
+          userId: "user-1",
+          positionId: "position-contract-staff",
+          projectId: ""
+        }
+      ]
+    });
+    const service = new OrganizationService(prisma as never);
+
+    const result = await service.getDirectory();
+
+    expect(result.users[0].globalPositions).toEqual([]);
+    expect(result.users[0].projectPositions).toEqual([]);
+  });
+
+  it("全局岗位按中文名称再按 key 稳定排序", async () => {
+    const prisma = createPrisma({
+      users: [
+        {
+          id: "user-1",
+          name: "张三",
+          phone: null,
+          departmentId: null,
+          isActive: true,
+          mustChangePassword: false
+        }
+      ],
+      positions: [
+        { id: "position-contract", key: "contract_staff", name: "3-同名岗位" },
+        { id: "position-budget", key: "budget_staff", name: "3-同名岗位" },
+        { id: "position-finance", key: "finance_staff", name: "2-乙岗位" },
+        { id: "position-employee", key: "employee", name: "1-甲岗位" }
+      ],
+      userPositions: [
+        {
+          id: "global-contract",
+          userId: "user-1",
+          positionId: "position-contract",
+          projectId: null
+        },
+        {
+          id: "global-budget",
+          userId: "user-1",
+          positionId: "position-budget",
+          projectId: null
+        },
+        {
+          id: "global-finance",
+          userId: "user-1",
+          positionId: "position-finance",
+          projectId: null
+        },
+        {
+          id: "global-employee",
+          userId: "user-1",
+          positionId: "position-employee",
+          projectId: null
+        }
+      ]
+    });
+    const service = new OrganizationService(prisma as never);
+
+    const result = await service.getDirectory();
+
+    expect(result.users[0].globalPositions).toEqual([
+      { key: "employee", name: "1-甲岗位" },
+      { key: "finance_staff", name: "2-乙岗位" },
+      { key: "budget_staff", name: "3-同名岗位" },
+      { key: "contract_staff", name: "3-同名岗位" }
+    ]);
+  });
 });

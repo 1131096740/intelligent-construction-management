@@ -21,7 +21,7 @@
 
 ## 当前下一步
 
-- [x] 阶段 B 组织目录后端只读账本已完成：`GET /organization/directory` 聚合部门树、人员启停状态、固定/全局岗位和去重后的项目岗位，仅全局 `super_admin` 可读。项目岗位同时合并 `UserPosition` 与 `ProjectMember`，忽略无效岗位字符串及项目级 `super_admin`；缺父、自环和多节点环部门都能每条恰好输出一次。Prisma 只新增 `User.departmentId`、`Department.parentId/isActive` 及索引，未连接数据库、未执行任何迁移；组织写 API、Web 组织权限 UI 和真实组织数据仍待后续。
+- [x] 阶段 B 组织目录后端只读账本已完成：`GET /organization/directory` 聚合部门树、人员启停状态、固定/全局岗位和去重后的项目岗位，仅全局 `super_admin` 可读。只有 `UserPosition.projectId === null` 归入全局岗位，全局岗位按 `Position.name` 再按 `key` 稳定排序；其他值均进入项目分支，空字符串/不存在项目安全忽略。项目岗位同时合并 `UserPosition` 与 `ProjectMember`，忽略无效岗位字符串及项目级 `super_admin`；缺父、自环和多节点环部门都能每条恰好输出一次。Prisma 只新增 `User.departmentId`、`Department.parentId/isActive` 及索引，未连接数据库、未执行任何迁移；组织写 API、Web 组织权限 UI 和真实组织数据仍待后续。
 - [x] 阶段 B 自审治理已完成后端四域规则及合同/结算/付款/项目支出四类 Web 交互：普通申请人本人在普通节点不能审批；合同/结算/付款保留已有转审/委托资格，项目支出按真实写侧只接受当前节点直接岗位，不支持 assignment/常驻委托。仅审批实例申请人本人在按冻结节点顺序解析出的 `chairman`/`general_manager` 终审节点可审批，详情读模型精确标记需自审确认。Web 统一要求独立原因和当前密码，非自审请求不发送两字段，密码原值仅随请求发送且成功后从页面内存清空。共享审批时间线已显示“领导自审”和修剪后原因，不读取密码。结算无领导终审节点，即使申请人兼任领导也不标记自审确认。
 - [x] 发布前 P0 普通付款审批链已按正式确认规则收口为“综合部主管 -> 项目经理 -> 财务总监 -> 董事长/总经理 OR 签”；删除合同部/预算部审批权限和展示节点，综合部主管已具备付款清单、详情与审批入口权限，有效结算/合同到期付款/合同预付款创建时统一冻结该四节点快照。独立复审 Approved；全量回归 shared-domain 59/59、Web 318/318、API 1911/1911 通过。
 - [x] 生产部署入口已从服务器未跟踪 `deploy.sh` 收回仓库：workflow 仅允许 `main`，按 `github.sha` 精确快进并在前后执行服务器工作树白名单检查；生产脚本先安装、生成与构建，再完整预置 staging，停止 API 后执行唯一一次 `prisma migrate deploy`，同步产物、重启并验证 Nginx/API/runtime health。最终独立复审 Approved，并已随目标 SHA 完成首次受控生产发布。
@@ -53,6 +53,7 @@
 
 ## 最近变更（保留摘要，最新在最上）
 
+- 2026-07-11 (CodeX)：完成组织岗位范围独立复审必修：`UserPosition.projectId` 从 truthy 判断收紧为只有精确 `null` 才是全局岗位，空字符串与其他非 `null` 值都走项目分支，对不存在项目安全忽略，不再把普通岗位或 `super_admin` 误归全局。全局岗位同步按 `Position.name`、再按 `key` 稳定排序，不受数据库返回顺序影响。聚焦 RED 为 2/2 失败，GREEN 为 2/2 通过，服务全部 6/6 通过；完整目标门禁结果见 Task 5 报告。未连接数据库、未执行迁移、未推送或部署。
 - 2026-07-11 (CodeX)：完成阶段 B 组织目录后端只读基础：新增只允许全局 `super_admin` 访问的 `GET /organization/directory`，聚合部门树、人员启停、固定/全局岗位及从 `UserPosition`/`ProjectMember` 合并去重的项目岗位；无效岗位字符串和项目级 `super_admin` 不进入业务岗位事实。部门树对缺父、自环和多节点环失败关闭，保证每条恰好输出一次。全局权限守卫同步收紧 `super_admin` 只能由全局岗位满足，请求伪造 `query.projectId` 不能借项目岗位读取完整目录，其他岗位生效规则不变。Prisma 只新增兼容列/索引，未执行迁移、未连接数据库；组织写 API、Web UI 及真实数据待后续。TDD 依次确认 schema、service、controller 和全局岗位守卫 RED，GREEN 目标 Jest 4/4 套件、33/33 用例；Prisma format/validate/generate、API 业务错误检查、typecheck、lint 和 `git diff --check` 全部通过。
 - 2026-07-11 (CodeX)：收口项目支出审批详情独立复审必修：approve/reject 在审批意见、自审原因/密码和终审批准金额全部校验通过后，复用敏感动作二次确认；取消确认不发请求，两个按钮共享 busy 禁用且入口 guard 阻止程序化并发。后端新增 `canSetApprovedAmount`，仅冻结流程最终节点显示和发送批准金额，非终审忽略；终审继续只接受大于 0、最多两位小数的纯字符串元输入。详情标签删除重复 map，原样复用项目支出 PDF 已在使用的既有类型/子类 helper，并以单一状态 helper 映射，不改既有 PDF 文案。TDD RED 精确捕获 `canSetApprovedAmount` 契约缺失和交互 helper 缺失；GREEN 为 API 5/5 套件 180/180、Web 5/5 文件 76/76，其余门禁全部通过。未连接生产、未推送、未部署。
 - 2026-07-11 (CodeX)：完成项目支出独立审批详情与自审交互：新增按项目和单据授权的聚合读模型，支出申请人本人可读，非申请人必须具备该项目 `project_expense.approve` 有效岗位；审批动作严格按冻结节点岗位顺序解析直接岗位，不支持 assignment/常驻委托，自审身份以冻结审批实例申请人为准。普通同人节点禁用，实际董事长/总经理终审启用原因和当前密码二次确认；Web 复用共享自审组件、payload helper、动作面板和审批时间线，审批中心待办/已办精确跳转独立详情。旧项目经营页仅移除按状态直接审批，采购执行、实付、入账、收货和下载保持。TDD RED 分别捕获后端详情缺失及 API/路由/路径/Me 仍指向旧入口；GREEN 为 API 5/5 套件 179/179、Web 4/4 文件 67/67，shared/API/Web typecheck、业务错误检查、API/Web lint、Web `check:ui` 和 `git diff --check` 通过。仍不能据此宣称组织权限管理 UI、真实账号链路或真实试运行整体完成。

@@ -236,3 +236,9 @@ Expected: 全部退出 0；不连接生产数据库，不执行 `prisma migrate 
 git add PROGRESS.md docs/superpowers/plans/2026-07-11-post-phase0-continuation.md docs/superpowers/plans/2026-07-11-phase1a-organization-directory.md services/api/prisma/schema.prisma services/api/prisma/migrations/20260711130000_organization_directory_foundation/migration.sql services/api/src/database/organization-schema-verification.spec.ts services/api/src/organization
 git commit -m "feat: 建立组织目录只读账本"
 ```
+
+## 独立复审必修
+
+- [x] `UserPosition.projectId` 只有精确为 `null` 时才归入全局岗位；任何非 `null` 值（包括空字符串）都按项目范围处理，无法对应真实项目时安全忽略。
+- [x] 全局岗位按数据库 `Position.name` 中文名称、再按 `key` 稳定排序，不受 Prisma 返回顺序影响。
+- [x] 两项均先获得精确 RED，再用最小服务修复转 GREEN，并以独立 commit 提交。

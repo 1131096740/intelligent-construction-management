@@ -175,7 +175,7 @@ export class OrganizationService {
       if (!position) {
         continue;
       }
-      if (userPosition.projectId) {
+      if (userPosition.projectId !== null) {
         addProjectRole(userPosition.userId, userPosition.projectId, position.key);
       } else {
         const keys = globalRolesByUser.get(userPosition.userId) ?? new Set<RoleKey>();
@@ -197,7 +197,11 @@ export class OrganizationService {
         const globalPositions = [...(globalRolesByUser.get(user.id) ?? [])]
           .map((key) => positionByKey.get(key))
           .filter((position): position is NonNullable<typeof position> => Boolean(position))
-          .map((position) => ({ key: position.key, name: position.name }));
+          .map((position) => ({ key: position.key, name: position.name }))
+          .sort(
+            (left, right) =>
+              compareText(left.name, right.name) || compareText(left.key, right.key)
+          );
         const projectPositions = projects
           .map((project) => {
             const keys = [
