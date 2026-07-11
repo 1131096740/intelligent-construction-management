@@ -33,6 +33,12 @@ export interface CreateFileDownloadTicketInput {
   downloadReason?: string;
 }
 
+export interface LinkFileReplacementInput {
+  newFileId: string;
+  oldFileId: string;
+  actorUserId: string;
+}
+
 export interface InternalFileBuffer {
   file: FileObject;
   buffer: Buffer;
@@ -407,6 +413,67 @@ export class FileService {
       }
       throw transactionError;
     }
+  }
+
+  // 仅供已完成业务权限校验的内部服务在同一事务中接入替换链。
+  async linkFileReplacement(
+    tx: Prisma.TransactionClient,
+    input: LinkFileReplacementInput
+  ): Promise<void> {
+    if (input.newFileId === input.oldFileId) {
+      throw new Error("新旧文件不能为同一文件");
+    }
+
+    const files = await tx.fileObject.findMany({
+      where: { id: { in: [input.newFileId, input.oldFileId] } },
+      select: {
+        id: true,
+        uploadedByUserId: true,
+        storageStatus: true,
+        supersedesFileObjectId: true
+      }
+    });
+    const newFile = files.find((file) => file.id === input.newFileId);
+    const oldFile = files.find((file) => file.id === input.oldFileId);
+
+    if (!newFile || !oldFile) {
+      throw new Error("新文件或被替换文件不存在");
+    }
+    if (newFile.storageStatus !== "active" || oldFile.storageStatus !== "active") {
+      throw new Error("新旧文件必须处于可用状态");
+    }
+    if (newFile.uploadedByUserId !== input.actorUserId) {
+      throw new Error("当前账号无权接入该文件替换链");
+    }
+    if (newFile.supersedesFileObjectId === input.oldFileId) {
+      return;
+    }
+    if (newFile.supersedesFileObjectId !== null) {
+      throw new Error("新文件已关联其他被替换文件");
+    }
+
+    const updated = await tx.fileObject.updateMany({
+      where: {
+        id: input.newFileId,
+        uploadedByUserId: input.actorUserId,
+        storageStatus: "active",
+        supersedesFileObjectId: null
+      },
+      data: { supersedesFileObjectId: input.oldFileId }
+    });
+    if (updated.count === 1) {
+      return;
+    }
+
+    const current = await tx.fileObject.findUnique({
+      where: { id: input.newFileId },
+      select: { supersedesFileObjectId: true }
+    });
+    if (current?.supersedesFileObjectId === input.oldFileId) {
+      return;
+    }
+
+    throw new Error("新文件已关联其他被替换文件");
   }
 
   async createDownloadTicket(fileId: string, input: CreateFileDownloadTicketInput) {
