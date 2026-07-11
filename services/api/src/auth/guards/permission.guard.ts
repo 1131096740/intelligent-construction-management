@@ -52,7 +52,11 @@ export class PermissionGuard implements CanActivate {
     );
 
     if (requiredPositions?.length) {
-      const allowed = requiredPositions.some((position) => effectiveRoleKeys.includes(position));
+      const allowed = requiredPositions.some((position) =>
+        position === "super_admin"
+          ? roleScopes.globalRoleKeys.includes(position)
+          : effectiveRoleKeys.includes(position)
+      );
 
       if (!allowed) {
         throw new ForbiddenException("当前账号缺少执行该操作所需的岗位权限");

@@ -11,6 +11,7 @@ model User {
   id                 String    @id @default(uuid())
   phone              String?   @unique
   name               String
+  departmentId       String?
   wxOpenid           String?   @unique
   passwordHash       String?
   mustChangePassword Boolean   @default(true)
@@ -19,6 +20,8 @@ model User {
   signatureFileId    String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+
+  @@index([departmentId])
 }
 
 // 我方公司主体字典：合同签订时选择其一，名称快照进合同。
@@ -43,8 +46,12 @@ model RefreshToken {
 model Department {
   id        String   @id @default(uuid())
   name      String   @unique
+  parentId  String?
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([parentId])
 }
 
 model Position {

@@ -215,6 +215,76 @@ describe("PermissionGuard", () => {
     ).resolves.toBe(true);
   });
 
+  it("does not treat a project-scoped super_admin as a global technical administrator", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([{ positionId: "position-super-admin" }])
+      },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: "position-super-admin", key: "super_admin" }])
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(["super_admin"])
+          .mockReturnValueOnce(undefined)
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          query: { projectId: "project-1" }
+        })
+      )
+    ).rejects.toThrow("当前账号缺少执行该操作所需的岗位权限");
+  });
+
+  it("allows a global super_admin even when the request contains projectId", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([{ positionId: "position-super-admin" }])
+          .mockResolvedValueOnce([])
+      },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: "position-super-admin", key: "super_admin" }])
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(["super_admin"])
+          .mockReturnValueOnce(undefined)
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          query: { projectId: "project-1" }
+        })
+      )
+    ).resolves.toBe(true);
+  });
+
   it("resolves project roles from payment route ids", async () => {
     const prisma = {
       userPosition: {

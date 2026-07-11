@@ -31,6 +31,8 @@
 - Create: `services/api/src/organization/organization.controller.ts`
 - Create: `services/api/src/organization/organization.controller.spec.ts`
 - Modify: `services/api/src/organization/organization.module.ts`
+- Modify: `services/api/src/auth/guards/permission.guard.ts`
+- Modify: `services/api/src/auth/guards/permission.guard.spec.ts`
 - Modify: `PROGRESS.md`
 
 **Interfaces:**
@@ -38,7 +40,7 @@
 - Produces: `OrganizationService.getDirectory(): Promise<OrganizationDirectoryReadModel>`；HTTP `GET /organization/directory`。
 - `OrganizationDirectoryReadModel` 固定包含 `summary`、`departments`、`users`、`positions`；项目岗位同时合并 `UserPosition.projectId != null` 与现有 `ProjectMember.positionKey`，相同用户/项目/岗位去重。
 
-- [ ] **Step 1: 写数据库契约失败测试**
+- [x] **Step 1: 写数据库契约失败测试**
 
 在 `organization-schema-verification.spec.ts` 读取 `schema.prisma` 和目标迁移，断言以下契约：
 
@@ -52,13 +54,13 @@ expect(migration).toContain('ADD COLUMN "isActive" BOOLEAN NOT NULL DEFAULT true
 expect(migration).toContain('ALTER TABLE "User" ADD COLUMN "departmentId" TEXT');
 ```
 
-- [ ] **Step 2: 运行数据库契约测试并确认 RED**
+- [x] **Step 2: 运行数据库契约测试并确认 RED**
 
 Run: `pnpm --filter @jiangkong/api test -- organization-schema-verification.spec.ts --runInBand`
 
 Expected: FAIL，因为组织目录字段和迁移尚不存在；失败不能来自路径或语法错误。
 
-- [ ] **Step 3: 添加向后兼容 schema 与迁移**
+- [x] **Step 3: 添加向后兼容 schema 与迁移**
 
 `User` 墂加 `departmentId String?` 和 `@@index([departmentId])`。`Department` 改为：
 
@@ -90,13 +92,13 @@ CREATE INDEX "User_departmentId_idx" ON "User"("departmentId");
 
 不要添加需要清洗现有数据的非空外键，不执行数据库迁移。
 
-- [ ] **Step 4: 运行数据库契约测试并确认 GREEN**
+- [x] **Step 4: 运行数据库契约测试并确认 GREEN**
 
 Run: `pnpm --filter @jiangkong/api test -- organization-schema-verification.spec.ts --runInBand`
 
 Expected: 目标测试 PASS。
 
-- [ ] **Step 5: 写服务失败测试**
+- [x] **Step 5: 写服务失败测试**
 
 `organization.service.spec.ts` 使用真实 `OrganizationService` 和 Prisma mock，覆盖以下行为：
 
@@ -131,13 +133,13 @@ it("保留停用人员和停用部门供管理员治理", async () => {
 
 Prisma mock 必须覆盖 `department.findMany`、`user.findMany`、`position.findMany`、`userPosition.findMany`、`projectMember.findMany` 和 `project.findMany`；测试去重同一项目岗位同时来自两张表的情况。
 
-- [ ] **Step 6: 运行服务测试并确认 RED**
+- [x] **Step 6: 运行服务测试并确认 RED**
 
 Run: `pnpm --filter @jiangkong/api test -- organization.service.spec.ts --runInBand`
 
 Expected: FAIL，因为 `OrganizationService` 尚不存在。
 
-- [ ] **Step 7: 实现最小组织目录服务**
+- [x] **Step 7: 实现最小组织目录服务**
 
 定义稳定读模型：
 
@@ -168,13 +170,13 @@ export interface OrganizationDirectoryReadModel {
 
 `getDirectory()` 一次并行读取六类表，使用数据库 `Position.name` 作为中文岗位名；全局岗位只读取 `UserPosition.projectId = null`，项目岗位合并 `UserPosition.projectId != null` 和 `ProjectMember`。部门树构建必须对父级缺失和环路失败关闭：无法安全挂到父节点的部门作为根节点输出，所有部门恰好输出一次。用户按姓名、部门按名称、项目按编号排序。
 
-- [ ] **Step 8: 运行服务测试并确认 GREEN**
+- [x] **Step 8: 运行服务测试并确认 GREEN**
 
 Run: `pnpm --filter @jiangkong/api test -- organization.service.spec.ts --runInBand`
 
 Expected: 全部 PASS，输出无 warning/error。
 
-- [ ] **Step 9: 写控制器守卫失败测试**
+- [x] **Step 9: 写控制器守卫失败测试**
 
 `organization.controller.spec.ts` 断言：
 
@@ -184,13 +186,13 @@ expect(await controller.directory()).toBe(directoryReadModel);
 expect(service.getDirectory).toHaveBeenCalledTimes(1);
 ```
 
-- [ ] **Step 10: 运行控制器测试并确认 RED**
+- [x] **Step 10: 运行控制器测试并确认 RED**
 
 Run: `pnpm --filter @jiangkong/api test -- organization.controller.spec.ts --runInBand`
 
 Expected: FAIL，因为控制器和模块接线尚不存在。
 
-- [ ] **Step 11: 实现控制器和模块接线**
+- [x] **Step 11: 实现控制器和模块接线**
 
 控制器只提供一个 GET：
 
@@ -209,7 +211,9 @@ export class OrganizationController {
 
 `OrganizationModule` 导入 `DatabaseModule`，注册 `OrganizationController` 和 `OrganizationService`。不要新增写端点或让 `super_admin` 获得业务动作。
 
-- [ ] **Step 12: 运行目标测试和结构校验**
+安全复核确认全局 `PermissionGuard` 会解析请求携带的 `projectId`，因此补一条最小规则：`RequirePositions` 中的 `super_admin` 只能由全局岗位满足，其他岗位的既有全局/项目生效行为不变。
+
+- [x] **Step 12: 运行目标测试和结构校验**
 
 Run:
 
@@ -224,7 +228,7 @@ git diff --check
 
 Expected: 全部退出 0；不连接生产数据库，不执行 `prisma migrate deploy`。
 
-- [ ] **Step 13: 更新进度并提交**
+- [x] **Step 13: 更新进度并提交**
 
 在 `PROGRESS.md` 的“当前下一步”和“最近变更”记录：组织目录只读账本已完成、仅 `super_admin` 可读、数据库只是新增兼容字段、尚未执行生产迁移、组织写 API 与 Web UI 仍待后续。
 
