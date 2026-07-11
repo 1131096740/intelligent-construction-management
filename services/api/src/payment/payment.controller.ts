@@ -4,7 +4,9 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { AssignPaymentApprovalDto } from "./dto/assign-payment-approval.dto";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
+import { GeneratePaymentPdfArchiveDto } from "./dto/generate-payment-pdf-archive.dto";
 import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
@@ -64,7 +66,7 @@ export class PaymentController {
   transferApproval(
     @Param("paymentId") paymentId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { toUserId: string }
+    @Body() body: AssignPaymentApprovalDto
   ) {
     return this.payments.transferApproval(paymentId, user.id, body);
   }
@@ -74,7 +76,7 @@ export class PaymentController {
   delegateApproval(
     @Param("paymentId") paymentId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { toUserId: string }
+    @Body() body: AssignPaymentApprovalDto
   ) {
     return this.payments.delegateApproval(paymentId, user.id, body);
   }
@@ -131,7 +133,7 @@ export class PaymentController {
   generatePdfArchive(
     @Param("paymentId") paymentId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { templateKey?: string; departmentScope?: string }
+    @Body() body: GeneratePaymentPdfArchiveDto
   ) {
     return this.payments.generatePdfArchive(paymentId, user.id, body);
   }

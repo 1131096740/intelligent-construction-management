@@ -24,11 +24,13 @@ import {
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
-import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
-import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
-import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
-import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
-import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
+import type { AssignPaymentApprovalDto } from "./dto/assign-payment-approval.dto";
+import type { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
+import type { GeneratePaymentPdfArchiveDto } from "./dto/generate-payment-pdf-archive.dto";
+import type { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
+import type { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
+import type { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
+import type { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import {
   CONTRACT_TAKEOVER_BALANCE_SELECT,
   type ContractTakeoverBalanceRow,
@@ -45,15 +47,6 @@ import {
   SETTLEMENT_CAPACITY_PAYMENT_STATUSES,
   sumMoneyCents
 } from "./settlement-payment-capacity";
-
-interface AssignApprovalDto {
-  toUserId: string;
-}
-
-interface GeneratePaymentPdfArchiveDto {
-  templateKey?: string;
-  departmentScope?: string;
-}
 
 const PAYMENT_POST_MONEY_FIELDS = [
   "requestedAmountCents",
@@ -2116,11 +2109,11 @@ export class PaymentRequestService {
     return result;
   }
 
-  transferApproval(paymentId: string, actorUserId: string, input: AssignApprovalDto) {
+  transferApproval(paymentId: string, actorUserId: string, input: AssignPaymentApprovalDto) {
     return this.assignApproval("transfer", paymentId, actorUserId, input);
   }
 
-  delegateApproval(paymentId: string, actorUserId: string, input: AssignApprovalDto) {
+  delegateApproval(paymentId: string, actorUserId: string, input: AssignPaymentApprovalDto) {
     return this.assignApproval("delegate", paymentId, actorUserId, input);
   }
 
@@ -3008,7 +3001,7 @@ export class PaymentRequestService {
     kind: PaymentApprovalAssignment["kind"],
     paymentId: string,
     actorUserId: string,
-    input: AssignApprovalDto
+    input: AssignPaymentApprovalDto
   ) {
     if (!this.prisma) {
       throw new Error("付款审批转交服务暂不可用，请稍后重试或联系管理员");

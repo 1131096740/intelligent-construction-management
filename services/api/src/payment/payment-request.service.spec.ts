@@ -36,7 +36,8 @@ describe("PaymentRequestService", () => {
     ["number", 2_100_000_001],
     ["decimal", "1.5"],
     ["exponent", "1e3"],
-    ["negative", "-1"]
+    ["negative", "-1"],
+    ["zero", "0"]
   ])(
     "rejects invalid %s payment amount as HTTP 400 before opening a transaction",
     async (_label, value) => {
@@ -5999,7 +6000,7 @@ describe("PaymentRequestService", () => {
       paymentService.recordFinance("FK-2026-012", "finance-1", {
         amountCents: "10000",
         occurredAt: "2026-06-22T00:00:00.000Z"
-      })
+      } as never)
     ).rejects.toThrow("财务入账需要当前登录密码确认");
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
