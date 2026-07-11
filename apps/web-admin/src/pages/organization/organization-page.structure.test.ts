@@ -37,4 +37,15 @@ describe("organization role removal page structure", () => {
       /handleRoleRemovalApplied[\s\S]*refreshing\.value = true[\s\S]*finally[\s\S]*refreshing\.value = false/u
     );
   });
+
+  it("offers manual cleanup only through an injected canonical remediation target", () => {
+    expect(pageSource).toContain('#operation="{ row }"');
+    expect(pageSource).toContain("预览清理");
+    expect(pageSource).toContain("openProjectSuperAdminRemediation");
+    expect(pageSource).toContain(':remediation-target="roleDrawerRemediationTarget"');
+    expect(pageSource).toContain("roleDrawerRemediationTarget.value = null");
+    expect(drawerSource).toContain("remediationTarget");
+    expect(drawerSource).toContain("mergeOrganizationRoleRemovalTargets");
+    expect(drawerSource).not.toMatch(/watch\([\s\S]{0,300}previewTarget\(/u);
+  });
 });

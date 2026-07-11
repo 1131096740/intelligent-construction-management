@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import type {
   OrganizationDepartmentNode,
   OrganizationDirectoryUser,
+  PermissionIntegrityIssue,
   PermissionIntegrityReadModel,
   RoleRemovalImpactPreview
 } from "../../api/organization.api";
 import {
   buildOrganizationRoleRemovalTargets,
+  buildProjectSuperAdminRemediationTarget,
+  isProjectSuperAdminRemediationIssue,
+  mergeOrganizationRoleRemovalTargets,
   buildRoleRemovalApplyPayload,
   buildCreateDepartmentPayload,
   buildDepartmentParentOptions,
@@ -419,6 +423,97 @@ describe("organization config", () => {
       })
     ]);
     expect(targets[0]).not.toHaveProperty("projectId");
+  });
+
+  it("builds one canonical project super-admin remediation target from the integrity issue", () => {
+    const issue: PermissionIntegrityIssue = {
+      code: "project_super_admin",
+      severity: "blocking",
+      source: "project_member",
+      assignmentIds: ["member-super-admin"],
+      userId: "user-1",
+      projectId: "project-1",
+      roleKey: "super_admin",
+      message: "项目范围不允许超级管理员"
+    };
+    const target = buildProjectSuperAdminRemediationTarget(issue, users[0], [
+      { id: "position-super-admin", key: "super_admin", name: "系统管理员" }
+    ]);
+
+    expect(isProjectSuperAdminRemediationIssue(issue)).toBe(true);
+    expect(target).toEqual({
+      key: "project:user-1:project-1:super_admin",
+      operation: "remove",
+      userId: "user-1",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "super_admin",
+      scopeLabel: "项目岗位",
+      projectLabel: "科技园项目（XM-001）",
+      roleName: "系统管理员"
+    });
+  });
+
+  it("shows the project id explicitly when the directory user has no matching project group", () => {
+    const issue: PermissionIntegrityIssue = {
+      code: "project_super_admin",
+      severity: "blocking",
+      source: "project_member",
+      assignmentIds: ["member-super-admin"],
+      userId: "user-1",
+      projectId: "project-9",
+      roleKey: "super_admin",
+      message: "项目范围不允许超级管理员"
+    };
+    expect(
+      buildProjectSuperAdminRemediationTarget(
+        issue,
+        { ...users[0], projectPositions: [] },
+        [{ id: "position-super-admin", key: "super_admin", name: "系统管理员" }]
+      )?.projectLabel
+    ).toBe("项目ID：project-9");
+  });
+
+  it.each([
+    { source: "user_position" },
+    { code: "invalid_role" },
+    { userId: undefined },
+    { projectId: undefined },
+    { roleKey: undefined },
+    { roleKey: "project_manager" }
+  ] as const)("rejects non-canonical remediation input: %#", (patch) => {
+    const issue = {
+      code: "project_super_admin",
+      severity: "blocking",
+      source: "project_member",
+      assignmentIds: ["member-super-admin"],
+      userId: "user-1",
+      projectId: "project-1",
+      roleKey: "super_admin",
+      message: "项目范围不允许超级管理员",
+      ...patch
+    } as PermissionIntegrityIssue;
+    expect(isProjectSuperAdminRemediationIssue(issue)).toBe(false);
+    expect(buildProjectSuperAdminRemediationTarget(issue, users[0], [])).toBeNull();
+  });
+
+  it("rejects a missing or mismatched directory user and deduplicates an injected target", () => {
+    const issue: PermissionIntegrityIssue = {
+      code: "project_super_admin",
+      severity: "blocking",
+      source: "project_member",
+      assignmentIds: ["member-super-admin"],
+      userId: "user-1",
+      projectId: "project-1",
+      roleKey: "super_admin",
+      message: "项目范围不允许超级管理员"
+    };
+    expect(buildProjectSuperAdminRemediationTarget(issue, null, [])).toBeNull();
+    expect(buildProjectSuperAdminRemediationTarget(issue, users[1], [])).toBeNull();
+
+    const target = buildProjectSuperAdminRemediationTarget(issue, users[0], []);
+    expect(target).not.toBeNull();
+    expect(mergeOrganizationRoleRemovalTargets(target ? [target] : [], target)).toEqual([target]);
   });
 
   it("trusts server canApply only while also requiring the selected target to match", () => {

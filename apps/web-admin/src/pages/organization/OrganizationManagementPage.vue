@@ -90,6 +90,18 @@
                 <span class="integrity-issue__message">{{ row.message }}</span>
               </div>
             </template>
+            <template #operation="{ row }">
+              <t-button
+                v-if="isProjectSuperAdminRemediationRow(row.key)"
+                size="small"
+                variant="text"
+                theme="primary"
+                :disabled="saving || refreshing || roleDrawerVisible"
+                @click="openProjectSuperAdminRemediation(row.key)"
+              >
+                预览清理
+              </t-button>
+            </template>
           </t-table>
         </template>
       </div>
@@ -328,6 +340,7 @@
       :visible="roleDrawerVisible"
       :user="roleDrawerUser"
       :positions="directory.positions"
+      :remediation-target="roleDrawerRemediationTarget"
       @close="closeRoleDrawer"
       @busy-change="roleDrawerBusy = $event"
       @applied="handleRoleRemovalApplied"
@@ -347,12 +360,14 @@ import {
   updateOrganizationUser,
   type OrganizationDirectory,
   type OrganizationDirectoryUser,
+  type PermissionIntegrityIssue,
   type PermissionIntegrityReadModel
 } from "../../api/organization.api";
 import {
   buildCreateDepartmentPayload,
   buildDepartmentParentOptions,
   buildDepartmentPatch,
+  buildProjectSuperAdminRemediationTarget,
   buildUserPatch,
   departmentStatusText,
   filterOrganizationUsers,
@@ -360,6 +375,8 @@ import {
   globalPositionsText,
   mustChangePasswordText,
   organizationActionConsequence,
+  isProjectSuperAdminRemediationIssue,
+  permissionIntegrityIssueKey,
   permissionIntegrityIssueRows as buildPermissionIntegrityIssueRows,
   permissionIntegrityPolicyText,
   permissionIntegrityReadinessTag,
@@ -367,7 +384,8 @@ import {
   projectPositionsText,
   userStatusText,
   type FlatOrganizationDepartment,
-  type OrganizationActionKind
+  type OrganizationActionKind,
+  type OrganizationRoleRemovalTargetRow
 } from "./organization.config";
 import OrganizationRoleRemovalDrawer from "./components/OrganizationRoleRemovalDrawer.vue";
 
@@ -387,6 +405,7 @@ const saving = ref(false);
 const roleDrawerVisible = ref(false);
 const roleDrawerBusy = ref(false);
 const roleDrawerUser = ref<OrganizationDirectoryUser | null>(null);
+const roleDrawerRemediationTarget = ref<OrganizationRoleRemovalTargetRow | null>(null);
 const directoryMessage = ref("");
 const directoryMessageTone = ref<"success" | "error">("success");
 const integrityMessage = ref("");
@@ -434,7 +453,8 @@ const integrityColumns = [
   { colKey: "userId", title: "人员", minWidth: 132 },
   { colKey: "projectId", title: "项目", minWidth: 132 },
   { colKey: "roleKey", title: "岗位", minWidth: 150 },
-  { colKey: "assignmentIds", title: "相关记录", minWidth: 200 }
+  { colKey: "assignmentIds", title: "相关记录", minWidth: 200 },
+  { colKey: "operation", title: "操作", width: 96, fixed: "right" }
 ];
 const userStatusOptions = [
   { label: "启用", value: "active" },
@@ -474,6 +494,14 @@ const integritySummaryItems = computed<BusinessStatusSummaryItem[]>(() =>
 );
 const integrityIssueRows = computed(() =>
   permissionIntegrity.value ? buildPermissionIntegrityIssueRows(permissionIntegrity.value.issues) : []
+);
+const projectSuperAdminRemediationIssues = computed(
+  () =>
+    new Map<string, PermissionIntegrityIssue>(
+      (permissionIntegrity.value?.issues ?? [])
+        .filter(isProjectSuperAdminRemediationIssue)
+        .map((issue) => [permissionIntegrityIssueKey(issue), issue])
+    )
 );
 const dialogTitle = computed(() => {
   if (dialogAction.value === "create_department") return "新建部门";
@@ -581,6 +609,36 @@ function openEditUser(user: OrganizationDirectoryUser) {
 function openRoleDrawer(user: OrganizationDirectoryUser) {
   if (saving.value || refreshing.value || roleDrawerVisible.value) return;
   roleDrawerUser.value = user;
+  roleDrawerRemediationTarget.value = null;
+  roleDrawerVisible.value = true;
+}
+
+function isProjectSuperAdminRemediationRow(issueKey: string) {
+  return projectSuperAdminRemediationIssues.value.has(issueKey);
+}
+
+function openProjectSuperAdminRemediation(issueKey: string) {
+  if (saving.value || refreshing.value || roleDrawerVisible.value) return;
+  const issue = projectSuperAdminRemediationIssues.value.get(issueKey);
+  if (!issue?.userId) return;
+  const user = directory.users.find((item) => item.id === issue.userId);
+  if (!user) {
+    directoryMessageTone.value = "error";
+    directoryMessage.value = "未在组织目录中找到对应人员，不能清理该项目超级管理员异常。";
+    return;
+  }
+  const remediationTarget = buildProjectSuperAdminRemediationTarget(
+    issue,
+    user,
+    directory.positions
+  );
+  if (!remediationTarget) {
+    directoryMessageTone.value = "error";
+    directoryMessage.value = "该异常记录不满足安全清理条件，请刷新后重试。";
+    return;
+  }
+  roleDrawerUser.value = user;
+  roleDrawerRemediationTarget.value = remediationTarget;
   roleDrawerVisible.value = true;
 }
 
@@ -588,11 +646,13 @@ function closeRoleDrawer() {
   if (roleDrawerBusy.value) return;
   roleDrawerVisible.value = false;
   roleDrawerUser.value = null;
+  roleDrawerRemediationTarget.value = null;
 }
 
 async function handleRoleRemovalApplied() {
   roleDrawerVisible.value = false;
   roleDrawerUser.value = null;
+  roleDrawerRemediationTarget.value = null;
   refreshing.value = true;
   try {
     const [directoryReloaded, integrityReloaded] = await Promise.all([

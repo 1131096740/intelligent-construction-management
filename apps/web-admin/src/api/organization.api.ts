@@ -103,7 +103,6 @@ export type RoleRemovalBlockingIssueCode =
   | "target_project_missing"
   | "target_assignment_missing"
   | "target_assignment_ambiguous"
-  | "project_super_admin_forbidden"
   | "legacy_shadow_assignment"
   | "last_active_global_super_admin";
 

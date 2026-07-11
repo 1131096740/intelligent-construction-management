@@ -203,6 +203,7 @@ import {
   buildOrganizationRoleRemovalTargets,
   buildRoleRemovalApplyPayload,
   canConfirmRoleRemoval,
+  mergeOrganizationRoleRemovalTargets,
   roleRemovalImpactRows,
   roleRemovalTargetMatchesPreview,
   type OrganizationRoleRemovalTargetRow
@@ -212,6 +213,7 @@ const props = defineProps<{
   visible: boolean;
   user: OrganizationDirectoryUser | null;
   positions: OrganizationDirectory["positions"];
+  remediationTarget?: OrganizationRoleRemovalTargetRow | null;
 }>();
 
 const emit = defineEmits<{
@@ -243,9 +245,13 @@ const impactColumns = [
   { colKey: "status", title: "撤销后状态", minWidth: 190 }
 ];
 
-const targetRows = computed(() =>
-  props.user ? buildOrganizationRoleRemovalTargets(props.user, props.positions) : []
-);
+const targetRows = computed(() => {
+  if (!props.user) return [];
+  return mergeOrganizationRoleRemovalTargets(
+    buildOrganizationRoleRemovalTargets(props.user, props.positions),
+    props.remediationTarget?.userId === props.user.id ? props.remediationTarget : null
+  );
+});
 const impactRows = computed(() =>
   preview.value ? roleRemovalImpactRows(preview.value.impacts, props.positions) : []
 );
@@ -268,9 +274,15 @@ watch(
 );
 
 watch(
-  () => [props.visible, props.user?.id] as const,
+  () => [props.visible, props.user?.id, props.remediationTarget?.key] as const,
   ([visible], previous) => {
-    if (!visible || previous?.[1] !== props.user?.id) resetFlow();
+    if (
+      !visible ||
+      previous?.[1] !== props.user?.id ||
+      previous?.[2] !== props.remediationTarget?.key
+    ) {
+      resetFlow();
+    }
   }
 );
 

@@ -289,7 +289,11 @@ export function buildOrganizationRoleRemovalTargets(
       roleName: roleNameByKey(roleKey, positions)
     }))
   );
-  return [...globalTargets, ...projectTargets].sort((left, right) =>
+  return sortOrganizationRoleRemovalTargets([...globalTargets, ...projectTargets]);
+}
+
+function sortOrganizationRoleRemovalTargets(targets: OrganizationRoleRemovalTargetRow[]) {
+  return targets.sort((left, right) =>
     [left.scope, left.projectLabel, left.roleKey, left.key]
       .join("\u0000")
       .localeCompare(
@@ -297,6 +301,50 @@ export function buildOrganizationRoleRemovalTargets(
         "zh-CN"
       )
   );
+}
+
+export function isProjectSuperAdminRemediationIssue(issue: PermissionIntegrityIssue) {
+  return (
+    issue.code === "project_super_admin" &&
+    issue.source === "project_member" &&
+    Boolean(issue.userId?.trim()) &&
+    Boolean(issue.projectId?.trim()) &&
+    issue.roleKey === "super_admin"
+  );
+}
+
+export function buildProjectSuperAdminRemediationTarget(
+  issue: PermissionIntegrityIssue,
+  user: OrganizationDirectoryUser | null,
+  positions: ReadonlyArray<{ id?: string; key: string; name: string }>
+): OrganizationRoleRemovalTargetRow | null {
+  if (!isProjectSuperAdminRemediationIssue(issue) || !user || user.id !== issue.userId) {
+    return null;
+  }
+  const projectId = issue.projectId as string;
+  const project = user.projectPositions.find((item) => item.projectId === projectId);
+  return {
+    key: `project:${user.id}:${projectId}:super_admin`,
+    operation: "remove",
+    userId: user.id,
+    scope: "project",
+    projectId,
+    roleKey: "super_admin",
+    scopeLabel: "项目岗位",
+    projectLabel: project
+      ? `${project.projectName}（${project.projectCode}）`
+      : `项目ID：${projectId}`,
+    roleName: roleNameByKey("super_admin", positions)
+  };
+}
+
+export function mergeOrganizationRoleRemovalTargets(
+  targets: readonly OrganizationRoleRemovalTargetRow[],
+  remediationTarget: OrganizationRoleRemovalTargetRow | null | undefined
+) {
+  const merged = new Map(targets.map((target) => [target.key, target]));
+  if (remediationTarget) merged.set(remediationTarget.key, remediationTarget);
+  return sortOrganizationRoleRemovalTargets([...merged.values()]);
 }
 
 export function roleRemovalTargetMatchesPreview(
@@ -478,7 +526,7 @@ export function permissionIntegrityIssueRows(
   return issues.map((issue) => {
     const assignmentIds = issue.assignmentIds.length ? issue.assignmentIds.join("、") : "—";
     return {
-      key: `${issue.code}:${issue.source}:${issue.assignmentIds.length ? issue.assignmentIds.join(",") : "—"}`,
+      key: permissionIntegrityIssueKey(issue),
       severityLabel: issue.severity === "blocking" ? "阻断" : "警告",
       severityTone: issue.severity === "blocking" ? "danger" : "warning",
       issueLabel: permissionIntegrityIssueLabel(issue.code),
@@ -490,4 +538,8 @@ export function permissionIntegrityIssueRows(
       assignmentIds
     };
   });
+}
+
+export function permissionIntegrityIssueKey(issue: PermissionIntegrityIssue) {
+  return `${issue.code}:${issue.source}:${issue.assignmentIds.length ? issue.assignmentIds.join(",") : "—"}`;
 }
