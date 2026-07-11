@@ -31,7 +31,11 @@ function passesTextType(value: unknown) {
 }
 
 function passesDownloadReasonLength(value: unknown) {
-  return typeof value !== "string" || value.trim().length === 0 || value.length <= 200;
+  return (
+    typeof value !== "string" ||
+    value.trim().length === 0 ||
+    Array.from(value).length <= 200
+  );
 }
 
 export class CreateDownloadTicketDto {

@@ -79,8 +79,20 @@ describe("FileController authorization wiring", () => {
       expected: "下载原因必须是文字"
     },
     {
-      label: "over 200 characters",
-      value: "下载".repeat(101),
+      label: "201 ASCII characters",
+      value: "a".repeat(201),
+      include: true,
+      expected: "下载原因不能超过 200 个字"
+    },
+    {
+      label: "201 Chinese characters",
+      value: "中".repeat(201),
+      include: true,
+      expected: "下载原因不能超过 200 个字"
+    },
+    {
+      label: "201 emoji characters",
+      value: "😀".repeat(201),
       include: true,
       expected: "下载原因不能超过 200 个字"
     }
@@ -123,6 +135,18 @@ describe("FileController authorization wiring", () => {
       confirmationPassword: "current-password",
       downloadReason: "合同归档复核"
     };
+    const result = await createApiValidationPipe().transform(value, downloadTicketBodyMetadata);
+
+    expect(result).toBeInstanceOf(CreateDownloadTicketDto);
+    expect(result).toEqual(value);
+  });
+
+  it.each([
+    { label: "ASCII", downloadReason: "a".repeat(200) },
+    { label: "Chinese", downloadReason: "中".repeat(200) },
+    { label: "emoji", downloadReason: "😀".repeat(200) }
+  ])("accepts a 200-character $label download reason", async ({ downloadReason }) => {
+    const value = { confirmationPassword: "current-password", downloadReason };
     const result = await createApiValidationPipe().transform(value, downloadTicketBodyMetadata);
 
     expect(result).toBeInstanceOf(CreateDownloadTicketDto);
