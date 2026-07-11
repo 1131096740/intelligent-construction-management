@@ -783,6 +783,7 @@ describe("ContractDocumentService", () => {
       id: "document-1",
       contractVersionId: "version-1",
       status: "success",
+      sourceRevision: 7,
       docxFileId: "generated-docx-1"
     });
     const { service } = makeService(tx);
@@ -825,6 +826,7 @@ describe("ContractDocumentService", () => {
       id: "document-1",
       contractVersionId: "version-1",
       status,
+      sourceRevision: 7,
       docxFileId
     });
     const { service } = makeService(tx);
@@ -847,10 +849,11 @@ describe("ContractDocumentService", () => {
       id: "document-1",
       contractVersionId: "version-1",
       status: "success",
+      sourceRevision: 7,
       docxFileId: "generated-docx-1"
     });
     files.linkFileReplacement.mockRejectedValueOnce(
-      new ForbiddenException("新文件必须由当前操作人上传")
+      new ForbiddenException("当前账号无权接入该文件替换链")
     );
     const { service } = makeService(tx);
 
@@ -860,7 +863,30 @@ describe("ContractDocumentService", () => {
         sourceGeneratedDocumentId: "document-1",
         confirmationStatementAccepted: true
       })
-    ).rejects.toThrow("新文件必须由当前操作人上传");
+    ).rejects.toThrow("当前账号无权接入该文件替换链");
+    expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects a successful generated DOCX from an older draft revision", async () => {
+    const tx = makeTx();
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-old-revision",
+      contractVersionId: "version-1",
+      status: "success",
+      sourceRevision: 6,
+      docxFileId: "generated-docx-old"
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-file-1",
+        sourceGeneratedDocumentId: "document-old-revision",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow("所选来源文档已过期，请重新生成后再上传");
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
     expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });

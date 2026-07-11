@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -426,7 +428,7 @@ export class FileService {
     input: LinkFileReplacementInput
   ): Promise<void> {
     if (input.newFileId === input.oldFileId) {
-      throw new Error("新旧文件不能为同一文件");
+      throw new BadRequestException("新旧文件不能为同一文件");
     }
 
     const initialFileIds = [input.newFileId, input.oldFileId].sort();
@@ -442,26 +444,26 @@ export class FileService {
     const oldFile = lockedFilesById.get(input.oldFileId);
 
     if (!newFile || !oldFile) {
-      throw new Error("新文件或被替换文件不存在");
+      throw new BadRequestException("新文件或被替换文件不存在");
     }
     if (newFile.storageStatus !== "active" || oldFile.storageStatus !== "active") {
-      throw new Error("新旧文件必须处于可用状态");
+      throw new BadRequestException("新旧文件必须处于可用状态");
     }
     if (newFile.uploadedByUserId !== input.actorUserId) {
-      throw new Error("当前账号无权接入该文件替换链");
+      throw new ForbiddenException("当前账号无权接入该文件替换链");
     }
     if (
       newFile.supersedesFileObjectId !== null &&
       newFile.supersedesFileObjectId !== input.oldFileId
     ) {
-      throw new Error("新文件已关联其他被替换文件");
+      throw new BadRequestException("新文件已关联其他被替换文件");
     }
 
     const visitedFileIds = new Set<string>([oldFile.id]);
     let previousFileId = oldFile.supersedesFileObjectId;
     while (previousFileId) {
       if (previousFileId === input.newFileId || visitedFileIds.has(previousFileId)) {
-        throw new Error("文件替换链存在循环，无法接入");
+        throw new BadRequestException("文件替换链存在循环，无法接入");
       }
 
       let previousFile = lockedFilesById.get(previousFileId);
@@ -474,12 +476,12 @@ export class FileService {
         `);
         previousFile = lockedPreviousFiles[0];
         if (!previousFile) {
-          throw new Error("文件替换链状态异常，无法接入");
+          throw new BadRequestException("文件替换链状态异常，无法接入");
         }
         lockedFilesById.set(previousFile.id, previousFile);
       }
       if (previousFile.storageStatus !== "active") {
-        throw new Error("文件替换链状态异常，无法接入");
+        throw new BadRequestException("文件替换链状态异常，无法接入");
       }
       visitedFileIds.add(previousFile.id);
       previousFileId = previousFile.supersedesFileObjectId;
@@ -510,7 +512,7 @@ export class FileService {
       return;
     }
 
-    throw new Error("新文件已关联其他被替换文件");
+    throw new BadRequestException("新文件已关联其他被替换文件");
   }
 
   async createDownloadTicket(fileId: string, input: CreateFileDownloadTicketInput) {

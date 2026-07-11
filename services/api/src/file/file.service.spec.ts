@@ -1,4 +1,9 @@
-import { InternalServerErrorException, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  InternalServerErrorException,
+  Logger
+} from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -874,19 +879,39 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
 
-    await expect(
-      service.linkFileReplacement(tx as never, {
-        newFileId: "file-same",
-        oldFileId: "file-same",
-        actorUserId: "contract-staff-1"
-      })
-    ).rejects.toThrow("新旧文件不能为同一文件");
+    const result = service.linkFileReplacement(tx as never, {
+      newFileId: "file-same",
+      oldFileId: "file-same",
+      actorUserId: "contract-staff-1"
+    });
+    await expect(result).rejects.toBeInstanceOf(BadRequestException);
+    await expect(result).rejects.toThrow("新旧文件不能为同一文件");
 
     expect(tx.$queryRaw).not.toHaveBeenCalled();
     expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
     expect(storage.write).not.toHaveBeenCalled();
     expect(storage.read).not.toHaveBeenCalled();
     expect(storage.delete).not.toHaveBeenCalled();
+  });
+
+  it("does not remap an unexpected database failure while locking replacement files", async () => {
+    const tx = replacementTransaction([
+      replacementFile("file-new"),
+      replacementFile("file-old")
+    ]);
+    const databaseError = new Error("database connection lost");
+    tx.$queryRaw.mockRejectedValueOnce(databaseError);
+    const service = new FileService({} as PrismaService, audit as never, storage as never);
+
+    await expect(
+      service.linkFileReplacement(tx as never, {
+        newFileId: "file-new",
+        oldFileId: "file-old",
+        actorUserId: "contract-staff-1"
+      })
+    ).rejects.toBe(databaseError);
+
+    expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -939,13 +964,13 @@ describe("FileService", () => {
     ]);
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
-    await expect(
-      service.linkFileReplacement(tx as never, {
-        newFileId: "file-new",
-        oldFileId: "file-old",
-        actorUserId: "contract-staff-1"
-      })
-    ).rejects.toThrow("当前账号无权接入该文件替换链");
+    const result = service.linkFileReplacement(tx as never, {
+      newFileId: "file-new",
+      oldFileId: "file-old",
+      actorUserId: "contract-staff-1"
+    });
+    await expect(result).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(result).rejects.toThrow("当前账号无权接入该文件替换链");
 
     expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
   });

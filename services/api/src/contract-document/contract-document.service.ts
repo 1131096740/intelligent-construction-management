@@ -268,6 +268,11 @@ export class ContractDocumentService {
             "所选来源文档尚未生成成功或缺少 DOCX 文件"
           );
         }
+        if (source.sourceRevision !== version.draftRevision) {
+          throw new BadRequestException(
+            "所选来源文档已过期，请重新生成后再上传"
+          );
+        }
         sourceDocxFileId = source.docxFileId;
       }
       const versionGate = await tx.contractVersion.updateMany({
