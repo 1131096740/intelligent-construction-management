@@ -1,8 +1,87 @@
 import "reflect-metadata";
+import { BadRequestException } from "@nestjs/common";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
+import { createApiValidationPipe } from "../validation/api-validation";
+import { CreateDownloadTicketDto } from "./dto/create-download-ticket.dto";
 import { FileController } from "./file.controller";
 
+const downloadTicketBodyMetadata = {
+  type: "body" as const,
+  metatype: CreateDownloadTicketDto,
+  data: undefined
+};
+
+async function getDownloadTicketValidationResponse(
+  value: unknown
+): Promise<Record<string, unknown>> {
+  try {
+    await createApiValidationPipe().transform(value, downloadTicketBodyMetadata);
+  } catch (error) {
+    expect(error).toBeInstanceOf(BadRequestException);
+    return (error as BadRequestException).getResponse() as Record<string, unknown>;
+  }
+  throw new Error("Expected download ticket validation to reject the request");
+}
+
 describe("FileController authorization wiring", () => {
+  it("rejects an empty download ticket body through the API pipe", async () => {
+    const response = await getDownloadTicketValidationResponse({});
+
+    expect(response.message).toBe("提交内容格式不正确，请检查后重试");
+    expect(response.errors).toEqual(
+      expect.arrayContaining(["请输入当前登录密码", "请填写下载原因"])
+    );
+  });
+
+  it("rejects an array download ticket body through the API pipe", async () => {
+    const response = await getDownloadTicketValidationResponse([]);
+
+    expect(response).toEqual({
+      message: "提交内容格式不正确，请检查后重试",
+      errors: ["提交内容必须是对象"]
+    });
+  });
+
+  it("rejects unknown download ticket fields without exposing their values", async () => {
+    const response = await getDownloadTicketValidationResponse({
+      confirmationPassword: "current-password",
+      downloadReason: "合同归档复核",
+      objectKey: "private/TOP-SECRET.pdf"
+    });
+
+    expect(response.errors).toEqual(["objectKey 不是允许提交的字段"]);
+    expect(JSON.stringify(response)).not.toContain("private/TOP-SECRET.pdf");
+  });
+
+  it("rejects an empty confirmation password through the API pipe", async () => {
+    const response = await getDownloadTicketValidationResponse({
+      confirmationPassword: "",
+      downloadReason: "合同归档复核"
+    });
+
+    expect(response.errors).toContain("请输入当前登录密码");
+  });
+
+  it("rejects an overly long download reason through the API pipe", async () => {
+    const response = await getDownloadTicketValidationResponse({
+      confirmationPassword: "current-password",
+      downloadReason: "下载".repeat(101)
+    });
+
+    expect(response.errors).toContain("下载原因不能超过 200 个字");
+  });
+
+  it("accepts and transforms a valid download ticket request", async () => {
+    const value = {
+      confirmationPassword: "current-password",
+      downloadReason: "合同归档复核"
+    };
+    const result = await createApiValidationPipe().transform(value, downloadTicketBodyMetadata);
+
+    expect(result).toBeInstanceOf(CreateDownloadTicketDto);
+    expect(result).toEqual(value);
+  });
+
   it("is not publicly accessible at the class level", () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, FileController)).toBeFalsy();
   });
@@ -135,7 +214,7 @@ describe("FileController authorization wiring", () => {
       controller.createDownloadTicket(
         "file-1",
         { id: "user-1", name: "张三", phone: "13800000000" },
-        { confirmationPassword: "" }
+        { confirmationPassword: "   ", downloadReason: "合同归档复核" }
       )
     ).rejects.toThrow("请输入当前登录密码后再下载资料");
 
@@ -156,7 +235,7 @@ describe("FileController authorization wiring", () => {
       controller.createDownloadTicket(
         "file-1",
         { id: "user-1", name: "张三", phone: "13800000000" },
-        { confirmationPassword: "current-password", downloadReason: "" }
+        { confirmationPassword: "current-password", downloadReason: "   " }
       )
     ).rejects.toThrow("请填写下载原因，便于留痕审计");
 

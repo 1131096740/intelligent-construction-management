@@ -15,6 +15,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { AuthService } from "../auth/auth.service";
+import { CreateDownloadTicketDto } from "./dto/create-download-ticket.dto";
 import { FileService } from "./file.service";
 
 interface MemoryUploadedFile {
@@ -22,11 +23,6 @@ interface MemoryUploadedFile {
   mimetype: string;
   size: number;
   buffer: Buffer;
-}
-
-interface CreateDownloadTicketDto {
-  confirmationPassword?: string;
-  downloadReason?: string;
 }
 
 function normalizeUploadedOriginalName(originalName: string) {
@@ -74,9 +70,9 @@ export class FileController {
   async createDownloadTicket(
     @Param("fileId") fileId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() input?: CreateDownloadTicketDto
+    @Body() input: CreateDownloadTicketDto
   ) {
-    if (!input?.confirmationPassword?.trim()) {
+    if (!input.confirmationPassword.trim()) {
       throw new Error("请输入当前登录密码后再下载资料");
     }
     if (!input.downloadReason?.trim()) {

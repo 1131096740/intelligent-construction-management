@@ -1,6 +1,125 @@
 import * as bcrypt from "bcryptjs";
+import { BadRequestException } from "@nestjs/common";
+import { createApiValidationPipe } from "../validation/api-validation";
 import { AuthService } from "./auth.service";
+import { ChangePasswordDto } from "./dto/change-password.dto";
+import { LoginDto } from "./dto/login.dto";
+import { LogoutDto } from "./dto/logout.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
+import { WxLoginDto } from "./dto/wx-login.dto";
 import { JwtTokenService } from "./jwt-token.service";
+
+const bodyMetadata = (metatype: new () => object) => ({
+  type: "body" as const,
+  metatype,
+  data: undefined
+});
+
+async function getValidationResponse(
+  value: unknown,
+  metatype: new () => object
+): Promise<Record<string, unknown>> {
+  try {
+    await createApiValidationPipe().transform(value, bodyMetadata(metatype));
+  } catch (error) {
+    expect(error).toBeInstanceOf(BadRequestException);
+    return (error as BadRequestException).getResponse() as Record<string, unknown>;
+  }
+  throw new Error("Expected authentication DTO validation to reject the request");
+}
+
+describe("authentication request validation", () => {
+  it("rejects an empty login body through the API validation pipe", async () => {
+    const response = await getValidationResponse({}, LoginDto);
+
+    expect(response).toEqual({
+      message: "提交内容格式不正确，请检查后重试",
+      errors: expect.arrayContaining(["请输入手机号", "请输入登录密码"])
+    });
+  });
+
+  it("rejects invalid login field types without implicit conversion", async () => {
+    const response = await getValidationResponse(
+      { phone: 13800000001, password: 12345678 },
+      LoginDto
+    );
+
+    expect(response).toEqual({
+      message: "提交内容格式不正确，请检查后重试",
+      errors: expect.arrayContaining(["手机号必须是字符串", "密码必须是字符串"])
+    });
+  });
+
+  it("rejects unknown authentication fields without exposing their values", async () => {
+    const response = await getValidationResponse(
+      { phone: "13800000001", password: "current-password", internalSecret: "TOP-SECRET" },
+      LoginDto
+    );
+
+    expect(response.errors).toEqual(["internalSecret 不是允许提交的字段"]);
+    expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
+  });
+
+  it.each([
+    {
+      metatype: LoginDto,
+      value: { phone: "13800000001", password: "current-password" }
+    },
+    { metatype: RefreshTokenDto, value: { refreshToken: "refresh-token" } },
+    { metatype: LogoutDto, value: { refreshToken: "refresh-token" } },
+    {
+      metatype: ChangePasswordDto,
+      value: { oldPassword: "old-password", newPassword: "new-password" }
+    },
+    { metatype: WxLoginDto, value: { code: "wx-code" } }
+  ])("accepts a valid $metatype.name request", async ({ metatype, value }) => {
+    const result = await createApiValidationPipe().transform(value, bodyMetadata(metatype));
+
+    expect(result).toBeInstanceOf(metatype);
+    expect(result).toEqual(value);
+  });
+
+  it.each([
+    {
+      metatype: RefreshTokenDto,
+      field: "refreshToken",
+      value: "",
+      expectedMessage: "登录凭证不能为空，请重新登录"
+    },
+    {
+      metatype: LogoutDto,
+      field: "refreshToken",
+      value: "",
+      expectedMessage: "登录凭证不能为空，请重新登录"
+    },
+    {
+      metatype: ChangePasswordDto,
+      field: "oldPassword",
+      value: "",
+      expectedMessage: "请输入当前密码"
+    },
+    {
+      metatype: ChangePasswordDto,
+      field: "newPassword",
+      value: "",
+      expectedMessage: "请输入新密码"
+    },
+    {
+      metatype: WxLoginDto,
+      field: "code",
+      value: "",
+      expectedMessage: "微信登录凭证不能为空"
+    }
+  ])(
+    "rejects an empty $metatype.name.$field",
+    async ({ metatype, field, value, expectedMessage }) => {
+      const response = await getValidationResponse({ [field]: value }, metatype);
+
+      expect(response.message).toBe("提交内容格式不正确，请检查后重试");
+      expect(response.errors).toEqual(expect.arrayContaining([expectedMessage]));
+    }
+  );
+});
 
 describe("AuthService", () => {
   let prisma: {
@@ -207,6 +326,22 @@ describe("AuthService", () => {
         action: "auth.password.change"
       })
     });
+  });
+
+  it("keeps the existing service rule for a password shorter than eight characters", async () => {
+    await expect(
+      service.changePassword(
+        { id: "user-1", name: "合同部 李工", phone: "13800000001" },
+        { oldPassword: "old-password", newPassword: "1234567" }
+      )
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "New password must be at least 8 characters"
+    });
+
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("confirms the current password for sensitive actions", async () => {

@@ -2,11 +2,11 @@ import { Body, Controller, Post, Req, UnauthorizedException } from "@nestjs/comm
 import { Public } from "./decorators/public.decorator";
 import type { AuthenticatedRequest } from "./auth.types";
 import { AuthService } from "./auth.service";
-import type { ChangePasswordDto } from "./dto/change-password.dto";
-import type { LoginDto } from "./dto/login.dto";
-import type { LogoutDto } from "./dto/logout.dto";
-import type { RefreshTokenDto } from "./dto/refresh-token.dto";
-import type { WxLoginDto } from "./dto/wx-login.dto";
+import { ChangePasswordDto } from "./dto/change-password.dto";
+import { LoginDto } from "./dto/login.dto";
+import { LogoutDto } from "./dto/logout.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
+import { WxLoginDto } from "./dto/wx-login.dto";
 
 @Controller("auth")
 export class AuthController {
