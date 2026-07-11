@@ -1,9 +1,13 @@
 import type {
   CreateOrganizationDepartmentPayload,
+  ApplyOrganizationRoleRemovalPayload,
   OrganizationDepartmentNode,
   OrganizationDirectoryUser,
   PermissionIntegrityIssue,
   PermissionIntegrityReadModel,
+  RoleRemovalImpactPreview,
+  RoleRemovalImpactReasonCode,
+  OrganizationRoleRemovalTarget,
   UpdateOrganizationDepartmentPayload,
   UpdateOrganizationUserPayload
 } from "../../api/organization.api";
@@ -59,6 +63,26 @@ export interface PermissionIntegrityIssueRow {
   assignmentIds: string;
 }
 
+export interface OrganizationRoleRemovalTargetRow extends OrganizationRoleRemovalTarget {
+  key: string;
+  scopeLabel: string;
+  projectLabel: string;
+  roleName: string;
+}
+
+export interface RoleRemovalImpactRow {
+  key: string;
+  businessTypeLabel: string;
+  businessId: string;
+  projectId: string;
+  currentNodeName: string;
+  modeLabel: string;
+  pendingRoleNames: string;
+  statusLabel: string;
+  statusTone: "success" | "danger";
+  reasonLabel: string;
+}
+
 const PERMISSION_INTEGRITY_ISSUE_LABELS: Record<string, string> = {
   duplicate_global_assignment: "全局岗位重复分配",
   legacy_project_user_position: "项目级 UserPosition 遗留",
@@ -75,6 +99,19 @@ const PERMISSION_INTEGRITY_SOURCE_LABELS: Record<string, string> = {
   project_member: "项目成员（ProjectMember）"
 };
 
+const ROLE_REMOVAL_BUSINESS_TYPE_LABELS: Record<string, string> = {
+  contract_version: "合同版本",
+  settlement: "结算",
+  payment_request: "付款申请",
+  project_expense_request: "项目支出申请"
+};
+
+const ROLE_REMOVAL_REASON_LABELS: Record<RoleRemovalImpactReasonCode, string> = {
+  no_executable_current_approver: "撤销后当前节点没有可执行审批人",
+  invalid_approval_instance_data: "审批实例数据不完整，暂不能安全撤销",
+  approval_execution_semantics_not_safe: "当前审批执行规则无法安全模拟，暂不能撤销"
+};
+
 function codePointLength(value: string) {
   return Array.from(value).length;
 }
@@ -83,6 +120,30 @@ function requiredPassword(value: string | undefined) {
   if (!value?.trim()) throw new Error("请输入当前登录密码");
   if (codePointLength(value) > 256) throw new Error("当前登录密码不能超过 256 个字符");
   return value;
+}
+
+function roleNameByKey(
+  roleKey: string,
+  positions: ReadonlyArray<{ id?: string; key: string; name: string }>
+) {
+  return positions.find((position) => position.key === roleKey)?.name ?? "岗位名称未读取";
+}
+
+function normalizedRoleRemovalTarget(target: OrganizationRoleRemovalTarget) {
+  if (!target.userId.trim()) throw new Error("人员标识缺失");
+  if (target.scope === "global" && target.projectId !== undefined && target.projectId !== null) {
+    throw new Error("全局岗位不得提交项目标识");
+  }
+  if (target.scope === "project" && !target.projectId?.trim()) {
+    throw new Error("项目岗位缺少项目标识");
+  }
+  return {
+    operation: "remove" as const,
+    userId: target.userId,
+    scope: target.scope,
+    ...(target.scope === "project" ? { projectId: target.projectId as string } : {}),
+    roleKey: target.roleKey
+  };
 }
 
 function normalizedDepartmentName(value: string) {
@@ -195,6 +256,119 @@ export function projectPositionsText(user: OrganizationDirectoryUser) {
       .map((position) => `${position.projectName}：${position.names.join("、") || "无"}`)
       .join("；") || "无"
   );
+}
+
+export function buildOrganizationRoleRemovalTargets(
+  user: OrganizationDirectoryUser,
+  positions: ReadonlyArray<{ id?: string; key: string; name: string }>
+): OrganizationRoleRemovalTargetRow[] {
+  const globalTargets = user.globalPositions.map((position) => ({
+    key: `global:${user.id}:${position.key}`,
+    operation: "remove" as const,
+    userId: user.id,
+    scope: "global" as const,
+    roleKey: position.key,
+    scopeLabel: "全局岗位",
+    projectLabel: "全公司",
+    roleName: roleNameByKey(position.key, positions)
+  }));
+  const projectTargets = user.projectPositions.flatMap((project) =>
+    project.keys.map((roleKey) => ({
+      key: `project:${user.id}:${project.projectId}:${roleKey}`,
+      operation: "remove" as const,
+      userId: user.id,
+      scope: "project" as const,
+      projectId: project.projectId,
+      roleKey,
+      scopeLabel: "项目岗位",
+      projectLabel: `${project.projectName}（${project.projectCode}）`,
+      roleName: roleNameByKey(roleKey, positions)
+    }))
+  );
+  return [...globalTargets, ...projectTargets].sort((left, right) =>
+    [left.scope, left.projectLabel, left.roleKey, left.key]
+      .join("\u0000")
+      .localeCompare(
+        [right.scope, right.projectLabel, right.roleKey, right.key].join("\u0000"),
+        "zh-CN"
+      )
+  );
+}
+
+export function roleRemovalTargetMatchesPreview(
+  target: OrganizationRoleRemovalTarget,
+  preview: RoleRemovalImpactPreview
+) {
+  if (target.scope === "global" && target.projectId !== undefined && target.projectId !== null) {
+    return false;
+  }
+  const projectId = target.scope === "project" ? target.projectId ?? null : null;
+  return (
+    preview.change.operation === "remove" &&
+    preview.change.userId === target.userId &&
+    preview.change.scope === target.scope &&
+    preview.change.projectId === projectId &&
+    preview.change.roleKey === target.roleKey
+  );
+}
+
+export function canConfirmRoleRemoval(
+  target: OrganizationRoleRemovalTarget | null,
+  preview: RoleRemovalImpactPreview | null,
+  stale: boolean
+) {
+  return Boolean(
+    target && preview && !stale && preview.canApply && roleRemovalTargetMatchesPreview(target, preview)
+  );
+}
+
+export function buildRoleRemovalApplyPayload(
+  target: OrganizationRoleRemovalTarget,
+  preview: RoleRemovalImpactPreview,
+  confirmationPassword: string
+): ApplyOrganizationRoleRemovalPayload {
+  const normalizedTarget = normalizedRoleRemovalTarget(target);
+  if (!roleRemovalTargetMatchesPreview(normalizedTarget, preview)) {
+    throw new Error("岗位目标与影响预览不一致，请重新预览");
+  }
+  if (!preview.canApply) throw new Error("最新影响预览存在阻断，不能撤销该岗位");
+  if (!/^sha256:[0-9a-f]{64}$/u.test(preview.snapshotHash)) {
+    throw new Error("影响版本校验码无效，请重新预览");
+  }
+  return {
+    ...normalizedTarget,
+    snapshotHash: preview.snapshotHash,
+    confirmationPassword: requiredPassword(confirmationPassword)
+  };
+}
+
+export function roleRemovalBusinessTypeLabel(businessType: string) {
+  return ROLE_REMOVAL_BUSINESS_TYPE_LABELS[businessType] ?? "业务类型未读取";
+}
+
+export function roleRemovalReasonLabel(reasonCode: string | null) {
+  if (!reasonCode) return "无阻断";
+  return ROLE_REMOVAL_REASON_LABELS[reasonCode as RoleRemovalImpactReasonCode] ?? "阻断原因未读取";
+}
+
+export function roleRemovalImpactRows(
+  impacts: RoleRemovalImpactPreview["impacts"],
+  positions: ReadonlyArray<{ id?: string; key: string; name: string }>
+): RoleRemovalImpactRow[] {
+  return impacts.map((impact) => ({
+    key: impact.approvalInstanceId,
+    businessTypeLabel: roleRemovalBusinessTypeLabel(impact.businessType),
+    businessId: impact.businessId,
+    projectId: impact.projectId ?? "项目未读取",
+    currentNodeName: impact.currentNodeName ?? "当前审批节点未读取",
+    modeLabel: impact.mode === "any" ? "任一人通过" : impact.mode === "all" ? "全部通过" : "审批方式未读取",
+    pendingRoleNames:
+      impact.pendingRoleKeys.map((roleKey) => roleNameByKey(roleKey, positions)).join("、") ||
+      "无待审岗位",
+    statusLabel: impact.blocking ? "撤销后阻断" : "可继续执行",
+    statusTone: impact.blocking ? "danger" : "success",
+    reasonLabel: roleRemovalReasonLabel(impact.reasonCode)
+  }));
 }
 
 export function buildCreateDepartmentPayload(

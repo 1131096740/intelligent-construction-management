@@ -87,6 +87,81 @@ export interface PermissionIntegrityReadModel {
   issues: PermissionIntegrityIssue[];
 }
 
+export type OrganizationRoleScope = "global" | "project";
+
+export interface OrganizationRoleRemovalTarget {
+  operation: "remove";
+  userId: string;
+  scope: OrganizationRoleScope;
+  projectId?: string | null;
+  roleKey: RoleKey;
+}
+
+export type RoleRemovalBlockingIssueCode =
+  | "target_user_missing"
+  | "target_position_missing"
+  | "target_project_missing"
+  | "target_assignment_missing"
+  | "target_assignment_ambiguous"
+  | "project_super_admin_forbidden"
+  | "legacy_shadow_assignment"
+  | "last_active_global_super_admin";
+
+export type RoleRemovalImpactReasonCode =
+  | "no_executable_current_approver"
+  | "invalid_approval_instance_data"
+  | "approval_execution_semantics_not_safe";
+
+export interface RoleRemovalImpactPreview {
+  change: {
+    operation: "remove";
+    userId: string;
+    scope: OrganizationRoleScope;
+    projectId: string | null;
+    roleKey: RoleKey;
+  };
+  evaluatedAt: string;
+  snapshotHash: string;
+  canApply: boolean;
+  summary: { affectedInstances: number; blockingInstances: number };
+  blockingIssues: Array<{ code: RoleRemovalBlockingIssueCode; message: string }>;
+  impacts: Array<{
+    approvalInstanceId: string;
+    businessType: string;
+    businessId: string;
+    projectId: string | null;
+    currentNodeIndex: number;
+    currentNodeName: string | null;
+    mode: "any" | "all" | null;
+    pendingRoleKeys: RoleKey[];
+    blocking: boolean;
+    reasonCode: RoleRemovalImpactReasonCode | null;
+    roleCoverage: Array<{
+      roleKey: RoleKey;
+      targetStillDirectAfter: boolean;
+      otherDirectApproverUserIds: string[];
+      directApproverUserIdsAfter: string[];
+      assignmentApproverUserIds: string[];
+      delegationApproverUserIds: string[];
+      requiresSelfReviewConfirmation: boolean;
+      executable: boolean;
+    }>;
+  }>;
+}
+
+export interface ApplyOrganizationRoleRemovalPayload extends OrganizationRoleRemovalTarget {
+  snapshotHash: string;
+  confirmationPassword: string;
+}
+
+export interface ApplyOrganizationRoleRemovalResult {
+  change: RoleRemovalImpactPreview["change"];
+  assignmentId: string;
+  source: "user_position" | "project_member";
+  affectedInstances: number;
+  revokedRefreshTokens: number;
+}
+
 export interface CreateOrganizationDepartmentPayload {
   name: string;
   parentId?: string | null;
@@ -119,6 +194,16 @@ export interface OrganizationUserMutationResult {
   isActive: boolean;
 }
 
+export class OrganizationApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = "OrganizationApiError";
+  }
+}
+
 async function ensureOk(response: Response, fallback: string) {
   if (response.ok) return;
 
@@ -133,7 +218,7 @@ async function ensureOk(response: Response, fallback: string) {
   } catch {
     message = formatApiErrorMessage(message, response.status, fallback);
   }
-  throw new Error(message);
+  throw new OrganizationApiError(message, response.status);
 }
 
 async function readJson<T>(path: string, fallback = "读取组织目录失败"): Promise<T> {
@@ -142,13 +227,18 @@ async function readJson<T>(path: string, fallback = "读取组织目录失败"):
   return response.json() as Promise<T>;
 }
 
-async function sendJson<T>(path: string, method: "POST" | "PATCH", body: unknown): Promise<T> {
+async function sendJson<T>(
+  path: string,
+  method: "POST" | "PATCH",
+  body: unknown,
+  fallback = "保存组织信息失败"
+): Promise<T> {
   const response = await apiFetch(path, {
     method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
-  await ensureOk(response, "保存组织信息失败");
+  await ensureOk(response, fallback);
   return response.json() as Promise<T>;
 }
 
@@ -160,6 +250,52 @@ export function fetchPermissionIntegrity() {
   return readJson<PermissionIntegrityReadModel>(
     "/organization/permission-integrity",
     "读取权限完整性预检失败"
+  );
+}
+
+function roleRemovalRequestTarget(payload: OrganizationRoleRemovalTarget) {
+  if (payload.scope === "global") {
+    if (payload.projectId !== undefined && payload.projectId !== null) {
+      throw new Error("全局岗位不得提交项目标识");
+    }
+    return {
+      operation: "remove" as const,
+      userId: payload.userId,
+      scope: payload.scope,
+      roleKey: payload.roleKey
+    };
+  }
+  if (!payload.projectId?.trim()) throw new Error("项目岗位缺少项目标识");
+  return {
+    operation: "remove" as const,
+    userId: payload.userId,
+    scope: payload.scope,
+    projectId: payload.projectId,
+    roleKey: payload.roleKey
+  };
+}
+
+export function previewOrganizationRoleRemoval(payload: OrganizationRoleRemovalTarget) {
+  const target = roleRemovalRequestTarget(payload);
+  return sendJson<RoleRemovalImpactPreview>(
+    "/organization/role-changes/preview",
+    "POST",
+    target,
+    "读取岗位撤销影响失败"
+  );
+}
+
+export function applyOrganizationRoleRemoval(payload: ApplyOrganizationRoleRemovalPayload) {
+  const target = roleRemovalRequestTarget(payload);
+  return sendJson<ApplyOrganizationRoleRemovalResult>(
+    "/organization/role-changes/apply",
+    "POST",
+    {
+      ...target,
+      snapshotHash: payload.snapshotHash,
+      confirmationPassword: payload.confirmationPassword
+    },
+    "撤销岗位失败"
   );
 }
 

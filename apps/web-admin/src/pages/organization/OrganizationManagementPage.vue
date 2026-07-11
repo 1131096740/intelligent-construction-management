@@ -9,14 +9,14 @@
         <t-button
           variant="outline"
           :loading="refreshing"
-          :disabled="saving"
+          :disabled="saving || roleDrawerVisible"
           @click="refreshPage"
         >
           刷新
         </t-button>
         <t-button
           theme="primary"
-          :disabled="directoryLoading || refreshing"
+          :disabled="directoryLoading || refreshing || roleDrawerVisible"
           @click="openCreateDepartment"
         >
           新建部门
@@ -26,7 +26,7 @@
 
     <t-alert
       theme="info"
-      title="本切片只维护部门、人员归属和启停状态；固定岗位、全局岗位、项目岗位和项目成员均为只读。"
+      title="本页可维护部门、人员归属和启停状态，并逐条预览、撤销已有岗位；固定岗位字典仍为只读，岗位新增和批量变更尚未开放。"
       :close="false"
     />
 
@@ -125,6 +125,7 @@
               size="small"
               variant="text"
               theme="primary"
+              :disabled="saving || refreshing || roleDrawerVisible"
               @click="openEditDepartment(row)"
             >
               编辑
@@ -189,14 +190,26 @@
             {{ projectPositionsText(row) }}
           </template>
           <template #operation="{ row }">
-            <t-button
-              size="small"
-              variant="text"
-              theme="primary"
-              @click="openEditUser(row)"
-            >
-              编辑
-            </t-button>
+            <div class="row-actions">
+              <t-button
+                size="small"
+                variant="text"
+                theme="primary"
+                :disabled="saving || refreshing || roleDrawerVisible"
+                @click="openEditUser(row)"
+              >
+                编辑
+              </t-button>
+              <t-button
+                size="small"
+                variant="text"
+                theme="primary"
+                :disabled="saving || refreshing"
+                @click="openRoleDrawer(row)"
+              >
+                岗位管理
+              </t-button>
+            </div>
           </template>
         </t-table>
       </t-card>
@@ -310,6 +323,15 @@
         </t-form>
       </div>
     </t-dialog>
+
+    <OrganizationRoleRemovalDrawer
+      :visible="roleDrawerVisible"
+      :user="roleDrawerUser"
+      :positions="directory.positions"
+      @close="closeRoleDrawer"
+      @busy-change="roleDrawerBusy = $event"
+      @applied="handleRoleRemovalApplied"
+    />
   </section>
 </template>
 
@@ -347,6 +369,7 @@ import {
   type FlatOrganizationDepartment,
   type OrganizationActionKind
 } from "./organization.config";
+import OrganizationRoleRemovalDrawer from "./components/OrganizationRoleRemovalDrawer.vue";
 
 const emptyDirectory = (): OrganizationDirectory => ({
   summary: { departments: 0, activeUsers: 0, inactiveUsers: 0, positions: 0 },
@@ -361,6 +384,9 @@ const directoryLoading = ref(false);
 const integrityLoading = ref(false);
 const refreshing = ref(false);
 const saving = ref(false);
+const roleDrawerVisible = ref(false);
+const roleDrawerBusy = ref(false);
+const roleDrawerUser = ref<OrganizationDirectoryUser | null>(null);
 const directoryMessage = ref("");
 const directoryMessageTone = ref<"success" | "error">("success");
 const integrityMessage = ref("");
@@ -397,9 +423,9 @@ const userColumns = [
   { colKey: "departmentName", title: "部门", minWidth: 112 },
   { colKey: "status", title: "状态", width: 78 },
   { colKey: "mustChangePassword", title: "首次改密", width: 108 },
-  { colKey: "globalPositions", title: "全局岗位（只读）", minWidth: 150 },
-  { colKey: "projectPositions", title: "项目岗位（只读）", minWidth: 200 },
-  { colKey: "operation", title: "操作", width: 72, fixed: "right" }
+  { colKey: "globalPositions", title: "全局岗位", minWidth: 150 },
+  { colKey: "projectPositions", title: "项目岗位", minWidth: 200 },
+  { colKey: "operation", title: "操作", width: 148, fixed: "right" }
 ];
 const integrityColumns = [
   { colKey: "severity", title: "严重级别", width: 92 },
@@ -505,7 +531,7 @@ async function loadPermissionIntegrity() {
 }
 
 async function refreshPage() {
-  if (refreshing.value) return;
+  if (refreshing.value || roleDrawerVisible.value) return;
   refreshing.value = true;
   try {
     await Promise.all([loadDirectory(), loadPermissionIntegrity()]);
@@ -550,6 +576,37 @@ function openEditUser(user: OrganizationDirectoryUser) {
   dialogMessage.value = "";
   resetDialogSecrets();
   dialogVisible.value = true;
+}
+
+function openRoleDrawer(user: OrganizationDirectoryUser) {
+  if (saving.value || refreshing.value || roleDrawerVisible.value) return;
+  roleDrawerUser.value = user;
+  roleDrawerVisible.value = true;
+}
+
+function closeRoleDrawer() {
+  if (roleDrawerBusy.value) return;
+  roleDrawerVisible.value = false;
+  roleDrawerUser.value = null;
+}
+
+async function handleRoleRemovalApplied() {
+  roleDrawerVisible.value = false;
+  roleDrawerUser.value = null;
+  refreshing.value = true;
+  try {
+    const [directoryReloaded, integrityReloaded] = await Promise.all([
+      loadDirectory(),
+      loadPermissionIntegrity()
+    ]);
+    const fullyReloaded = directoryReloaded && integrityReloaded;
+    directoryMessageTone.value = fullyReloaded ? "success" : "error";
+    directoryMessage.value = fullyReloaded
+      ? "岗位已撤销，组织目录和岗位数据预检已刷新。"
+      : "岗位已撤销，但部分页面数据刷新失败，请手动刷新。";
+  } finally {
+    refreshing.value = false;
+  }
 }
 
 function closeDialog() {
@@ -618,6 +675,7 @@ async function submitDialog() {
 
 .page-head,
 .page-actions,
+.row-actions,
 .filter-bar,
 .position-tags,
 .readiness-tags {

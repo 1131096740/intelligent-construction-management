@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  applyOrganizationRoleRemoval,
   createOrganizationDepartment,
   fetchOrganizationDirectory,
   fetchPermissionIntegrity,
+  OrganizationApiError,
+  previewOrganizationRoleRemoval,
   updateOrganizationDepartment,
   updateOrganizationUser
 } from "./organization.api";
@@ -51,6 +54,113 @@ describe("organization API client", () => {
     mockApiFetch.mockReturnValue(Promise.resolve(new Response("upstream unavailable", { status: 502 })));
 
     await expect(fetchPermissionIntegrity()).rejects.toThrow("读取权限完整性预检失败：502");
+  });
+
+  it("previews one role removal without sending password, hash or unknown fields", async () => {
+    mockApiFetch.mockReturnValue(jsonResponse({ snapshotHash: "sha256:abc", canApply: false }));
+
+    await previewOrganizationRoleRemoval({
+      operation: "remove",
+      userId: "user-1",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "project_manager",
+      confirmationPassword: "must-not-be-sent",
+      snapshotHash: "must-not-be-sent"
+    } as never);
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/organization/role-changes/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "remove",
+        userId: "user-1",
+        scope: "project",
+        projectId: "project-1",
+        roleKey: "project_manager"
+      })
+    });
+  });
+
+  it("applies one role removal with the server hash and password preserved exactly", async () => {
+    mockApiFetch.mockReturnValue(jsonResponse({ assignmentId: "assignment-1" }));
+    const snapshotHash = `sha256:${"a".repeat(64)}`;
+
+    await applyOrganizationRoleRemoval({
+      operation: "remove",
+      userId: "user-1",
+      scope: "global",
+      roleKey: "finance_director",
+      snapshotHash,
+      confirmationPassword: "  current password  ",
+      assignmentId: "must-not-be-sent"
+    } as never);
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/organization/role-changes/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "remove",
+        userId: "user-1",
+        scope: "global",
+        roleKey: "finance_director",
+        snapshotHash,
+        confirmationPassword: "  current password  "
+      })
+    });
+  });
+
+  it("fails closed instead of silently correcting role scope project identifiers", () => {
+    expect(() =>
+      previewOrganizationRoleRemoval({
+        operation: "remove",
+        userId: "user-1",
+        scope: "global",
+        projectId: "project-1",
+        roleKey: "finance_director"
+      })
+    ).toThrow("全局岗位不得提交项目标识");
+    expect(() =>
+      previewOrganizationRoleRemoval({
+        operation: "remove",
+        userId: "user-1",
+        scope: "project",
+        roleKey: "project_manager"
+      })
+    ).toThrow("项目岗位缺少项目标识");
+    expect(() =>
+      applyOrganizationRoleRemoval({
+        operation: "remove",
+        userId: "user-1",
+        scope: "project",
+        projectId: "   ",
+        roleKey: "project_manager",
+        snapshotHash: `sha256:${"c".repeat(64)}`,
+        confirmationPassword: "secret"
+      })
+    ).toThrow("项目岗位缺少项目标识");
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves the HTTP status on organization API errors", async () => {
+    mockApiFetch.mockReturnValue(
+      jsonResponse({ message: "组织或审批数据已变化，请重新预览后再试" }, 409)
+    );
+
+    const error = await applyOrganizationRoleRemoval({
+      operation: "remove",
+      userId: "user-1",
+      scope: "global",
+      roleKey: "finance_director",
+      snapshotHash: `sha256:${"b".repeat(64)}`,
+      confirmationPassword: "secret"
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(OrganizationApiError);
+    expect(error).toMatchObject({
+      status: 409,
+      message: "组织或审批数据已变化，请重新预览后再试"
+    });
   });
 
   it("creates a department with only the allowed fields and preserves the password", async () => {

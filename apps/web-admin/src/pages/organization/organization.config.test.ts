@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import type {
   OrganizationDepartmentNode,
   OrganizationDirectoryUser,
-  PermissionIntegrityReadModel
+  PermissionIntegrityReadModel,
+  RoleRemovalImpactPreview
 } from "../../api/organization.api";
 import {
+  buildOrganizationRoleRemovalTargets,
+  buildRoleRemovalApplyPayload,
   buildCreateDepartmentPayload,
   buildDepartmentParentOptions,
   buildDepartmentPatch,
@@ -21,6 +24,11 @@ import {
   permissionIntegritySourceLabel,
   permissionIntegritySummaryItems,
   permissionIntegrityIssueRows,
+  roleRemovalBusinessTypeLabel,
+  roleRemovalImpactRows,
+  roleRemovalReasonLabel,
+  roleRemovalTargetMatchesPreview,
+  canConfirmRoleRemoval,
   projectPositionsText,
   userStatusText
 } from "./organization.config";
@@ -130,6 +138,36 @@ const permissionIntegrity: PermissionIntegrityReadModel = {
       source: "user_position",
       assignmentIds: [],
       message: "检测到项目级 UserPosition 遗留岗位事实"
+    }
+  ]
+};
+
+const removalPreview: RoleRemovalImpactPreview = {
+  change: {
+    operation: "remove",
+    userId: "user-1",
+    scope: "project",
+    projectId: "project-1",
+    roleKey: "project_manager"
+  },
+  evaluatedAt: "2026-07-12T08:00:00.000Z",
+  snapshotHash: `sha256:${"a".repeat(64)}`,
+  canApply: true,
+  summary: { affectedInstances: 1, blockingInstances: 0 },
+  blockingIssues: [],
+  impacts: [
+    {
+      approvalInstanceId: "approval-1",
+      businessType: "payment_request",
+      businessId: "payment-1",
+      projectId: "project-1",
+      currentNodeIndex: 1,
+      currentNodeName: "项目经理审批",
+      mode: "any",
+      pendingRoleKeys: ["project_manager"],
+      blocking: false,
+      reasonCode: null,
+      roleCoverage: []
     }
   ]
 };
@@ -339,6 +377,168 @@ describe("organization config", () => {
         roleKey: "—",
         assignmentIds: "—"
       }
+    ]);
+  });
+
+  it("builds one stable removal target per global and project role without merging project roles", () => {
+    const user = {
+      ...users[0],
+      projectPositions: [
+        {
+          projectId: "project-1",
+          projectCode: "XM-001",
+          projectName: "科技园项目",
+          keys: ["project_manager", "budget_director"],
+          names: ["项目经理", "预算部主管"]
+        }
+      ]
+    } satisfies OrganizationDirectoryUser;
+
+    const targets = buildOrganizationRoleRemovalTargets(user, [
+        { id: "position-1", key: "contract_director", name: "合同部主管" },
+        { id: "position-2", key: "project_manager", name: "项目经理" },
+        { id: "position-3", key: "budget_director", name: "预算部主管" }
+      ]);
+    expect(targets).toEqual([
+      expect.objectContaining({
+        key: "global:user-1:contract_director",
+        scope: "global",
+        roleKey: "contract_director"
+      }),
+      expect.objectContaining({
+        key: "project:user-1:project-1:budget_director",
+        scope: "project",
+        projectId: "project-1",
+        roleKey: "budget_director"
+      }),
+      expect.objectContaining({
+        key: "project:user-1:project-1:project_manager",
+        scope: "project",
+        projectId: "project-1",
+        roleKey: "project_manager"
+      })
+    ]);
+    expect(targets[0]).not.toHaveProperty("projectId");
+  });
+
+  it("trusts server canApply only while also requiring the selected target to match", () => {
+    const target = {
+      operation: "remove" as const,
+      userId: "user-1",
+      scope: "project" as const,
+      projectId: "project-1",
+      roleKey: "project_manager" as const
+    };
+    expect(canConfirmRoleRemoval(target, { ...removalPreview, canApply: false }, false)).toBe(false);
+    expect(
+      canConfirmRoleRemoval(
+        target,
+        {
+          ...removalPreview,
+          canApply: true,
+          blockingIssues: [{ code: "target_assignment_missing", message: "矛盾数据" }],
+          summary: { affectedInstances: 99, blockingInstances: 99 }
+        },
+        false
+      )
+    ).toBe(true);
+    expect(canConfirmRoleRemoval(target, removalPreview, true)).toBe(false);
+    expect(
+      roleRemovalTargetMatchesPreview(
+        { ...target, roleKey: "budget_director" },
+        removalPreview
+      )
+    ).toBe(false);
+  });
+
+  it("builds an apply payload from the matching preview without changing hash or password", () => {
+    const target = {
+      operation: "remove" as const,
+      userId: "user-1",
+      scope: "project" as const,
+      projectId: "project-1",
+      roleKey: "project_manager" as const
+    };
+    expect(buildRoleRemovalApplyPayload(target, removalPreview, "  current password  ")).toEqual({
+      ...target,
+      snapshotHash: removalPreview.snapshotHash,
+      confirmationPassword: "  current password  "
+    });
+    expect(() =>
+      buildRoleRemovalApplyPayload({ ...target, projectId: "project-2" }, removalPreview, "secret")
+    ).toThrow("岗位目标与影响预览不一致");
+    expect(() => buildRoleRemovalApplyPayload(target, removalPreview, "   ")).toThrow(
+      "请输入当前登录密码"
+    );
+    expect(() =>
+      buildRoleRemovalApplyPayload(target, removalPreview, `${"❤️".repeat(128)}密`)
+    ).toThrow("当前登录密码不能超过 256 个字符");
+  });
+
+  it("rejects project targets without a project and omits projectId for global apply", () => {
+    expect(() =>
+      buildRoleRemovalApplyPayload(
+        {
+          operation: "remove",
+          userId: "user-1",
+          scope: "project",
+          roleKey: "project_manager"
+        },
+        removalPreview,
+        "secret"
+      )
+    ).toThrow("项目岗位缺少项目标识");
+
+    const globalPreview = {
+      ...removalPreview,
+      change: {
+        operation: "remove" as const,
+        userId: "user-1",
+        scope: "global" as const,
+        projectId: null,
+        roleKey: "contract_director" as const
+      }
+    };
+    expect(
+      buildRoleRemovalApplyPayload(
+        {
+          operation: "remove",
+          userId: "user-1",
+          scope: "global",
+          roleKey: "contract_director"
+        },
+        globalPreview,
+        "secret"
+      )
+    ).not.toHaveProperty("projectId");
+    expect(() =>
+      buildRoleRemovalApplyPayload(
+        {
+          operation: "remove",
+          userId: "user-1",
+          scope: "global",
+          projectId: "project-1",
+          roleKey: "contract_director"
+        },
+        globalPreview,
+        "secret"
+      )
+    ).toThrow("全局岗位不得提交项目标识");
+  });
+
+  it("maps impact business and blocking reasons to Chinese with safe unknown fallbacks", () => {
+    expect(roleRemovalBusinessTypeLabel("payment_request")).toBe("付款申请");
+    expect(roleRemovalBusinessTypeLabel("future_type")).toBe("业务类型未读取");
+    expect(roleRemovalReasonLabel("approval_execution_semantics_not_safe")).toContain("当前审批执行规则");
+    expect(roleRemovalReasonLabel("future_reason")).toBe("阻断原因未读取");
+    expect(roleRemovalImpactRows(removalPreview.impacts, [])).toEqual([
+      expect.objectContaining({
+        key: "approval-1",
+        businessTypeLabel: "付款申请",
+        modeLabel: "任一人通过",
+        statusLabel: "可继续执行",
+        pendingRoleNames: "岗位名称未读取"
+      })
     ]);
   });
 
