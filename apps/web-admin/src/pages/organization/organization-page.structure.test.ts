@@ -84,4 +84,9 @@ describe("organization role addition page structure", () => {
       /handleRoleAdditionApplied[\s\S]*Promise\.all\(\[loadDirectory\(\), loadPermissionIntegrity\(\)\]\)/u
     );
   });
+
+  it("labels preview rows as approval nodes without claiming they are current nodes", () => {
+    expect(additionDrawerSource).toContain('title: "审批节点"');
+    expect(additionDrawerSource).not.toContain('title: "当前节点"');
+  });
 });

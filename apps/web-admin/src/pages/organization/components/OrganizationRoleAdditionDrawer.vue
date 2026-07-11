@@ -251,7 +251,7 @@ const scopeOptions = [
 ];
 const impactColumns = [
   { colKey: "business", title: "受影响业务", minWidth: 168 },
-  { colKey: "nodeName", title: "当前节点", minWidth: 136 },
+  { colKey: "nodeName", title: "审批节点", minWidth: 136 },
   { colKey: "resolution", title: "办理能力变化", minWidth: 260 },
   { colKey: "status", title: "新增后状态", minWidth: 180 }
 ];
