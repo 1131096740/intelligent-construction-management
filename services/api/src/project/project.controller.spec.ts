@@ -350,6 +350,66 @@ describe("ProjectController authorization wiring", () => {
     expect(response.errors).toContain("额度有效期格式不正确");
   });
 
+  it.each([
+    ["recordReceipt", { ...validProjectReceiptBody, receivedAt: "2026-02-30" }, "到账日期格式不正确"],
+    [
+      "recordProxyPayment",
+      {
+        paidAt: "2026-02-30",
+        amountCents: "100",
+        generalContractorName: "总包单位",
+        paidTargetName: "收款方",
+        paymentType: "other",
+        voucherFileId: "file-1",
+        confirmationPassword: "pwd"
+      },
+      "代付日期格式不正确"
+    ],
+    [
+      "recordUpstreamSettlement",
+      {
+        settledAt: "2026-02-30",
+        reportedAmountCents: "100",
+        approvedAmountCents: "100",
+        approvingPartyName: "总包单位",
+        periodLabel: "2026-02",
+        voucherFileId: "file-1",
+        confirmationPassword: "pwd"
+      },
+      "对上结算日期格式不正确"
+    ],
+    [
+      "recordOwnerContract",
+      {
+        ownerName: "建设单位",
+        contractName: "总包合同",
+        contractCode: "YZ-1",
+        signedAt: "2026-02-30",
+        amountCents: "100",
+        taxRateBps: 900,
+        pricingMethod: "fixed",
+        paymentTermsSummary: "按进度",
+        retentionSummary: "3%",
+        fileId: "file-1"
+      },
+      "业主合同签订日期格式不正确"
+    ],
+    [
+      "requestSettlementExceptionQuota",
+      { contractId: "contract-1", amountCents: "100", reason: "临时", validUntil: "2026-02-30", attachmentFileId: "file-1" },
+      "额度有效期格式不正确"
+    ],
+    [
+      "requestProjectFinancingQuota",
+      { amountCents: "100", reason: "垫资", validUntil: "2026-02-30", attachmentFileId: "file-1" },
+      "额度有效期格式不正确"
+    ]
+  ] as const)("rejects a non-existent calendar date for %s", async (method, value, message) => {
+    const response = await getProjectMoneyValidationResponse(method, value);
+
+    expect(response.errors).toContain(message);
+  });
+
   it.each(["2099-07-11", "2099-07-11T10:00:00.000Z"])(
     "accepts supported quota date %s",
     async (validUntil) => {
@@ -411,6 +471,28 @@ describe("ProjectController authorization wiring", () => {
       confirmationPassword: "current-password",
       ...association
     });
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it.each([
+    ["recordReceipt", { ...validProjectReceiptBody, description: null }],
+    [
+      "recordProxyPayment",
+      {
+        paidAt: "2026-07-11",
+        amountCents: "100",
+        generalContractorName: "总包单位",
+        paidTargetName: "收款方",
+        paymentType: "other",
+        voucherFileId: "file-1",
+        confirmationPassword: "pwd",
+        description: null
+      }
+    ],
+    ["reviewProjectFinancingQuota", { decision: "approve", confirmationPassword: "pwd", comment: null }]
+  ] as const)("rejects explicit null for optional text in %s", async (method, value) => {
+    const response = await getProjectMoneyValidationResponse(method, value);
 
     expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
   });

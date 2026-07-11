@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsNotEmpty, IsOptional, IsString, Matches } from "class-validator";
+import { IsDateString, IsIn, IsNotEmpty, IsString, Matches, ValidateIf } from "class-validator";
 
 export type ProjectReceiptSourceType =
   | "general_contractor_payment"
@@ -6,7 +6,7 @@ export type ProjectReceiptSourceType =
   | "other";
 
 export class RecordProjectReceiptDto {
-  @IsDateString({}, { message: "到账日期格式不正确" })
+  @IsDateString({ strict: true }, { message: "到账日期格式不正确" })
   receivedAt!: string;
 
   @IsString({ message: "到账金额格式不正确" })
@@ -23,7 +23,7 @@ export class RecordProjectReceiptDto {
   })
   sourceType!: ProjectReceiptSourceType;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "到账说明必须是文字" })
   description?: string;
 

@@ -1,11 +1,11 @@
-import { IsOptional, IsString } from "class-validator";
+import { IsString, ValidateIf } from "class-validator";
 
 export class GeneratePaymentPdfArchiveDto {
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "模板标识必须是文字" })
   templateKey?: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "部门范围必须是文字" })
   departmentScope?: string;
 }

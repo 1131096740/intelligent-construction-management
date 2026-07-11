@@ -203,6 +203,29 @@ describe("ProjectExpenseController authorization wiring", () => {
     expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
   });
 
+  it("rejects whitespace-only expense identifiers and required text", async () => {
+    const response = await getExpenseValidationResponse("create", {
+      ...validExpenseCreateBody,
+      code: "   ",
+      paymentSubject: "   ",
+      reason: "   "
+    });
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it.each([
+    { handlerUserId: null },
+    { attachmentFileId: "   " }
+  ])("rejects an invalid optional expense association: %p", async (association) => {
+    const response = await getExpenseValidationResponse("create", {
+      ...validExpenseCreateBody,
+      ...association
+    });
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
   it.each([
     ["createAttachmentDownloadTicket", "   ", "下载".repeat(101)],
     ["createApprovalPdfDownloadTicket", "", "下载".repeat(101)]
@@ -224,6 +247,39 @@ describe("ProjectExpenseController authorization wiring", () => {
     ["confirmPurchaseReceipt", { confirmationPassword: "" }],
     ["voidRequest", { reason: "" }]
   ] as const)("rejects invalid required fields for %s", async (method, value) => {
+    const response = await getExpenseValidationResponse(method, value);
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it.each([
+    [
+      "recordExecution",
+      { amountCents: "100", paidAt: "2026-02-30", voucherFileId: "file-1", confirmationPassword: "pwd" },
+      "付款日期格式不正确"
+    ],
+    [
+      "recordPurchaseExecution",
+      { executedAt: "2026-02-30", confirmationPassword: "pwd" },
+      "采购执行日期格式不正确"
+    ],
+    [
+      "recordFinance",
+      { amountCents: "100", occurredAt: "2026-02-30", confirmationPassword: "pwd" },
+      "入账日期格式不正确"
+    ]
+  ] as const)("rejects a non-existent calendar date for %s", async (method, value, message) => {
+    const response = await getExpenseValidationResponse(method, value);
+
+    expect(response.errors).toContain(message);
+  });
+
+  it.each([
+    ["create", { ...validExpenseCreateBody, counterpartyName: null }],
+    ["reviewApproval", { decision: "approve", comment: null }],
+    ["recordPurchaseExecution", { executedAt: "2026-07-11", confirmationPassword: "pwd", note: null }],
+    ["confirmPurchaseReceipt", { confirmationPassword: "pwd", note: null }]
+  ] as const)("rejects explicit null for optional text in %s", async (method, value) => {
     const response = await getExpenseValidationResponse(method, value);
 
     expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));

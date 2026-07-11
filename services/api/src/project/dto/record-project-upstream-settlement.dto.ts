@@ -2,14 +2,13 @@ import {
   IsBoolean,
   IsDateString,
   IsNotEmpty,
-  IsOptional,
   IsString,
   Matches,
   ValidateIf
 } from "class-validator";
 
 export class RecordProjectUpstreamSettlementDto {
-  @IsDateString({}, { message: "对上结算日期格式不正确" })
+  @IsDateString({ strict: true }, { message: "对上结算日期格式不正确" })
   settledAt!: string;
 
   @IsString({ message: "报送金额格式不正确" })
@@ -34,7 +33,7 @@ export class RecordProjectUpstreamSettlementDto {
   @IsBoolean({ message: "最终结算标记必须是布尔值" })
   isFinal?: boolean;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "对上结算说明必须是文字" })
   description?: string;
 

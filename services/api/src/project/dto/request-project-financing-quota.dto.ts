@@ -10,7 +10,7 @@ export class RequestProjectFinancingQuotaDto {
   @Matches(/\S/u, { message: "请填写融资额度申请原因" })
   reason!: string;
 
-  @IsDateString({}, { message: "额度有效期格式不正确" })
+  @IsDateString({ strict: true }, { message: "额度有效期格式不正确" })
   validUntil!: string;
 
   @IsString({ message: "额度附件编号必须是文字" })

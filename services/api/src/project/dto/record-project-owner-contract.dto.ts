@@ -16,7 +16,7 @@ export class RecordProjectOwnerContractDto {
   @Matches(/\S/u, { message: "业主合同编号不能为空白" })
   contractCode!: string;
 
-  @IsDateString({}, { message: "业主合同签订日期格式不正确" })
+  @IsDateString({ strict: true }, { message: "业主合同签订日期格式不正确" })
   signedAt!: string;
 
   @IsString({ message: "业主合同金额格式不正确" })

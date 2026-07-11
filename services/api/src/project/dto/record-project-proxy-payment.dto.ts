@@ -2,7 +2,6 @@ import {
   IsDateString,
   IsIn,
   IsNotEmpty,
-  IsOptional,
   IsString,
   Matches,
   ValidateIf
@@ -16,7 +15,7 @@ export type ProjectProxyPaymentType =
   | "other";
 
 export class RecordProjectProxyPaymentDto {
-  @IsDateString({}, { message: "代付日期格式不正确" })
+  @IsDateString({ strict: true }, { message: "代付日期格式不正确" })
   paidAt!: string;
 
   @IsString({ message: "代付金额格式不正确" })
@@ -38,7 +37,7 @@ export class RecordProjectProxyPaymentDto {
   })
   paymentType!: ProjectProxyPaymentType;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "代付说明必须是文字" })
   description?: string;
 

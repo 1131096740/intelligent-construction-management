@@ -1,8 +1,9 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, Matches } from "class-validator";
+import { IsIn, IsNotEmpty, IsString, Matches, ValidateIf } from "class-validator";
 
 export class CreateProjectExpenseRequestDto {
   @IsString({ message: "申请单号必须是文字" })
   @IsNotEmpty({ message: "申请单号不能为空" })
+  @Matches(/\S/u, { message: "申请单号不能为空白" })
   code!: string;
 
   @IsIn(
@@ -55,10 +56,12 @@ export class CreateProjectExpenseRequestDto {
 
   @IsString({ message: "付款事项必须是文字" })
   @IsNotEmpty({ message: "付款事项不能为空" })
+  @Matches(/\S/u, { message: "付款事项不能为空白" })
   paymentSubject!: string;
 
   @IsString({ message: "申请事由必须是文字" })
   @IsNotEmpty({ message: "申请事由不能为空" })
+  @Matches(/\S/u, { message: "申请事由不能为空白" })
   reason!: string;
 
   @IsString({ message: "申请金额格式不正确" })
@@ -70,29 +73,31 @@ export class CreateProjectExpenseRequestDto {
   })
   paymentMethod!: "cash" | "wechat" | "alipay" | "bank_transfer" | "other";
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "收款方名称必须是文字" })
   counterpartyName?: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "账户名称必须是文字" })
   counterpartyAccountName?: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "开户银行必须是文字" })
   counterpartyBankName?: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "银行账号必须是文字" })
   counterpartyBankAccount?: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "经办人编号必须是文字" })
   @IsNotEmpty({ message: "经办人编号不能为空" })
+  @Matches(/\S/u, { message: "经办人编号不能为空白" })
   handlerUserId?: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "附件编号必须是文字" })
   @IsNotEmpty({ message: "附件编号不能为空" })
+  @Matches(/\S/u, { message: "附件编号不能为空白" })
   attachmentFileId?: string;
 }

@@ -167,6 +167,23 @@ describe("PaymentController authorization wiring", () => {
     expect(response.errors).toContain("付款日期格式不正确");
   });
 
+  it.each([
+    [
+      "recordExecution",
+      { amountCents: "100", paidAt: "2026-02-30", voucherFileId: "file-1", confirmationPassword: "pwd" },
+      "付款日期格式不正确"
+    ],
+    [
+      "recordFinance",
+      { amountCents: "100", occurredAt: "2026-02-30", confirmationPassword: "pwd" },
+      "入账日期格式不正确"
+    ]
+  ] as const)("rejects a non-existent calendar date for %s", async (method, value, message) => {
+    const response = await getPaymentValidationResponse(method, 2, value);
+
+    expect(response.errors).toContain(message);
+  });
+
   it.each(["2026-07-11", "2026-07-11T10:00:00.000Z"])(
     "accepts a supported execution date: %s",
     async (paidAt) => {
@@ -203,6 +220,71 @@ describe("PaymentController authorization wiring", () => {
 
     expect(sourceResponse.errors).toContain("付款来源类型不正确");
     expect(decisionResponse.errors).toContain("审批决定不正确");
+  });
+
+  it("rejects an explicit null payment source instead of applying the service default", async () => {
+    const response = await getPaymentValidationResponse("create", 0, {
+      ...validPaymentCreateBody,
+      sourceType: null
+    });
+
+    expect(response.errors).toContain("付款来源类型不正确");
+  });
+
+  it("allows an omitted payment source so the service keeps its settlement default", async () => {
+    const value = {
+      settlementId: "settlement-1",
+      code: "FK-2026-001",
+      requestedAmountCents: "10000"
+    };
+    const result = await validatePaymentBody("create", 0, value);
+
+    expect(result).toEqual(value);
+    expect((result as { sourceType?: string }).sourceType).toBeUndefined();
+  });
+
+  it("rejects whitespace-only payment business identifiers and passwords", async () => {
+    const createResponse = await getPaymentValidationResponse("create", 0, {
+      ...validPaymentCreateBody,
+      code: "   ",
+      settlementId: "   "
+    });
+    const assignResponse = await getPaymentValidationResponse("transferApproval", 2, {
+      toUserId: "   "
+    });
+    const executionResponse = await getPaymentValidationResponse("recordExecution", 2, {
+      amountCents: "100",
+      paidAt: "2026-07-11",
+      voucherFileId: "   ",
+      confirmationPassword: "   "
+    });
+
+    expect(createResponse.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+    expect(assignResponse.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+    expect(executionResponse.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it.each([
+    { settlementId: null },
+    { contractVersionId: "   " },
+    { paymentTermsVersionId: "   " }
+  ])("rejects an invalid optional payment association: %p", async (association) => {
+    const response = await getPaymentValidationResponse("create", 0, {
+      ...validPaymentCreateBody,
+      ...association
+    });
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it.each([
+    ["reviewApproval", { decision: "approve", comment: null }],
+    ["recordPdfArchive", { fileId: "file-1", templateKey: null }],
+    ["generatePdfArchive", { departmentScope: null }]
+  ] as const)("rejects explicit null for optional text in %s", async (method, value) => {
+    const response = await getPaymentValidationResponse(method, 2, value);
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
   });
 
   it("passes the transformed runtime DTO to the payment service exactly once", async () => {

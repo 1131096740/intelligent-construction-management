@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, Matches } from "class-validator";
+import { IsIn, IsNotEmpty, IsString, Matches, ValidateIf } from "class-validator";
 
 export class ReviewProjectFinancingQuotaDto {
   @IsIn(["approve", "reject"], { message: "审批决定不正确" })
@@ -9,7 +9,7 @@ export class ReviewProjectFinancingQuotaDto {
   @Matches(/\S/u, { message: "请输入当前登录密码" })
   confirmationPassword!: string;
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "审批意见必须是文字" })
   comment?: string;
 }
