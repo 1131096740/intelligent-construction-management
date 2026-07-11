@@ -888,6 +888,78 @@ describe("PermissionImpactService approval impacts", () => {
     expect(result.impacts[0]?.roleCoverage[0]).toMatchObject({ delegationApproverUserIds: ["approver"], executable: true });
   });
 
+  it.each([
+    {
+      label: "双端启用的常驻委托",
+      fromUserActive: true,
+      toUserId: "approver",
+      businessType: "payment_request" as const,
+      expectedDelegates: ["approver"],
+      executable: true
+    },
+    {
+      label: "委托人已停用",
+      fromUserActive: false,
+      toUserId: "approver",
+      businessType: "payment_request" as const,
+      expectedDelegates: [],
+      executable: false
+    },
+    {
+      label: "受托人已停用",
+      fromUserActive: true,
+      toUserId: "inactive",
+      businessType: "payment_request" as const,
+      expectedDelegates: [],
+      executable: false
+    },
+    {
+      label: "项目支出忽略常驻委托",
+      fromUserActive: true,
+      toUserId: "approver",
+      businessType: "project_expense_request" as const,
+      expectedDelegates: [],
+      executable: false
+    }
+  ])("$label 不会产生错误的委托可执行人", async ({
+    fromUserActive,
+    toUserId,
+    businessType,
+    expectedDelegates,
+    executable
+  }) => {
+    const fixture = baseFixture();
+    fixture.users.find((user) => user.id === "target")!.isActive = fromUserActive;
+    fixture.userPositions.push({
+      id: "global-manager-target",
+      userId: "target",
+      positionId: "position-manager",
+      projectId: null
+    });
+    fixture.delegations.push({
+      id: "delegation-active-window",
+      fromUserId: "target",
+      toUserId,
+      startsAt: new Date("2026-07-01T00:00:00.000Z"),
+      endsAt: new Date("2026-07-31T00:00:00.000Z"),
+      enabled: true
+    });
+    addProjectInstance(fixture, {
+      id: "approval-active-delegation",
+      businessType,
+      businessId: "business-active-delegation",
+      applicantUserId: "target"
+    });
+
+    const { result } = await preview(fixture, projectManagerRemoval);
+
+    expect(result.impacts[0]?.roleCoverage[0]).toMatchObject({
+      directApproverUserIdsAfter: [],
+      delegationApproverUserIds: expectedDelegates,
+      executable
+    });
+  });
+
   it("委托只批量读取 evaluatedAt 有效集合，项目支出不使用委托", async () => {
     const fixture = baseFixture();
     addProjectInstance(fixture, { id: "approval-expense", businessType: "project_expense_request", businessId: "expense-1" });

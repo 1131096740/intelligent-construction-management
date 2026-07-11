@@ -681,6 +681,90 @@ describe("PermissionImpactService role addition", () => {
     );
   });
 
+  it("停用委托人不会让受托人在岗位新增前获得节点权限", async () => {
+    const data = fixture();
+    data.userPositions.push({
+      id: "inactive-finance-role",
+      userId: "inactive",
+      positionId: "position-finance",
+      projectId: null
+    });
+    data.delegations.push({
+      id: "inactive-from-delegation",
+      fromUserId: "inactive",
+      toUserId: "target",
+      startsAt: new Date("2026-07-12T00:00:00.000Z"),
+      endsAt: new Date("2026-07-13T00:00:00.000Z"),
+      enabled: true
+    });
+    addSettlement(data, {
+      id: "inactive-from-delegation",
+      frozenNodes: [
+        {
+          name: "停用委托人节点",
+          mode: "any",
+          roleKeys: ["project_manager", "finance_director"]
+        }
+      ]
+    });
+
+    const { result } = await evaluate(data, {
+      operation: "add",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "project_manager"
+    });
+
+    expect(result.preview.impacts[0]).toMatchObject({
+      targetBefore: { channel: null, roleKey: null, canReview: false },
+      targetAfter: { channel: "direct", roleKey: "project_manager", canReview: true }
+    });
+  });
+
+  it("停用受托人不进入岗位新增的节点解析", async () => {
+    const data = fixture();
+    data.users.find((user) => user.id === "target")!.isActive = false;
+    data.userPositions.push({
+      id: "finance-role",
+      userId: "finance",
+      positionId: "position-finance",
+      projectId: null
+    });
+    data.delegations.push({
+      id: "inactive-to-delegation",
+      fromUserId: "finance",
+      toUserId: "target",
+      startsAt: new Date("2026-07-12T00:00:00.000Z"),
+      endsAt: new Date("2026-07-13T00:00:00.000Z"),
+      enabled: true
+    });
+    addSettlement(data, {
+      id: "inactive-to-delegation",
+      frozenNodes: [
+        {
+          name: "停用受托人节点",
+          mode: "any",
+          roleKeys: ["project_manager", "finance_director"]
+        }
+      ]
+    });
+
+    const { result } = await evaluate(data, {
+      operation: "add",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "project_manager"
+    });
+
+    expect(result.targetCreate).toBeNull();
+    expect(result.preview.blockingIssues).toContainEqual(
+      expect.objectContaining({ code: "target_user_inactive" })
+    );
+    expect(result.preview.impacts).toEqual([]);
+  });
+
   it("项目支出节点继续忽略 assignment/delegation，只计新增后 direct", async () => {
     const data = fixture();
     data.userPositions.push({ id: "finance-role", userId: "finance", positionId: "position-finance", projectId: null });
