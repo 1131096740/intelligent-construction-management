@@ -4,6 +4,8 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { CreateDepartmentDto } from "./dto/create-department.dto";
 import { ApplyRoleRemovalDto } from "./dto/apply-role-removal.dto";
+import { ApplyRoleAdditionDto } from "./dto/apply-role-addition.dto";
+import { PreviewRoleAdditionDto } from "./dto/preview-role-addition.dto";
 import { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
 import { UpdateDepartmentDto } from "./dto/update-department.dto";
 import { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
@@ -41,6 +43,19 @@ export class OrganizationController {
     @Body() body: ApplyRoleRemovalDto
   ) {
     return this.organizationRoles.applyRoleRemoval(actor.id, body);
+  }
+
+  @Post("role-additions/preview")
+  previewRoleAddition(@Body() body: PreviewRoleAdditionDto) {
+    return this.permissionImpacts.previewRoleAddition(body);
+  }
+
+  @Post("role-additions/apply")
+  applyRoleAddition(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() body: ApplyRoleAdditionDto
+  ) {
+    return this.organizationRoles.applyRoleAddition(actor.id, body);
   }
 
   @Post("departments")

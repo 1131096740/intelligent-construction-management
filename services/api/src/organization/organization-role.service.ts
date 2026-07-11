@@ -3,9 +3,11 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import type { ApplyRoleAdditionDto } from "./dto/apply-role-addition.dto";
 import type { ApplyRoleRemovalDto } from "./dto/apply-role-removal.dto";
 import {
   PermissionImpactService,
+  type NormalizedRoleAdditionChange,
   type NormalizedRoleRemovalChange
 } from "./permission-impact.service";
 
@@ -14,6 +16,14 @@ export interface ApplyRoleRemovalResult {
   assignmentId: string;
   source: "user_position" | "project_member";
   affectedInstances: number;
+  revokedRefreshTokens: number;
+}
+
+export interface ApplyRoleAdditionResult {
+  change: NormalizedRoleAdditionChange;
+  assignmentId: string;
+  source: "user_position" | "project_member";
+  affectedNodes: number;
   revokedRefreshTokens: number;
 }
 
@@ -111,16 +121,123 @@ export class OrganizationRoleService {
     }
   }
 
+  async applyRoleAddition(
+    actorUserId: string,
+    input: ApplyRoleAdditionDto
+  ): Promise<ApplyRoleAdditionResult> {
+    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await this.assertActiveGlobalSuperAdmin(tx, actorUserId, "新增");
+          const evaluatedAt = new Date();
+          const evaluation = await this.permissionImpacts.evaluateRoleAddition(
+            tx,
+            {
+              operation: "add",
+              userId: input.userId,
+              scope: input.scope,
+              ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+              roleKey: input.roleKey
+            },
+            evaluatedAt
+          );
+          if (evaluation.preview.snapshotHash !== input.snapshotHash) {
+            throw new ConflictException("组织或审批数据已变化，请重新预览后再试");
+          }
+          if (!evaluation.preview.canApply || !evaluation.targetCreate) {
+            throw new ConflictException("最新岗位新增预览存在阻断，请重新预览后处理");
+          }
+
+          const change = evaluation.preview.change;
+          const target = evaluation.targetCreate;
+          const expectedSource = change.scope === "global" ? "user_position" : "project_member";
+          const targetMatchesChange =
+            target.source === expectedSource &&
+            target.userId === change.userId &&
+            target.projectId === change.projectId &&
+            target.roleKey === change.roleKey;
+          if (!targetMatchesChange) {
+            throw new ConflictException("岗位新增目标与范围不一致，请重新预览后再试");
+          }
+
+          const assignment =
+            expectedSource === "user_position" && target.source === "user_position"
+              ? await tx.userPosition.create({
+                  data: {
+                    userId: target.userId,
+                    positionId: target.positionId,
+                    projectId: null
+                  },
+                  select: { id: true }
+                })
+              : target.source === "project_member"
+                ? await tx.projectMember.create({
+                    data: {
+                      userId: target.userId,
+                      projectId: target.projectId,
+                      positionKey: target.roleKey
+                    },
+                    select: { id: true }
+                  })
+                : null;
+          if (!assignment) {
+            throw new ConflictException("岗位新增目标与范围不一致，请重新预览后再试");
+          }
+          const revoked = await tx.refreshToken.updateMany({
+            where: { userId: change.userId, revokedAt: null },
+            data: { revokedAt: evaluatedAt }
+          });
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "permission.role.add",
+            businessType: "role_assignment",
+            businessId: assignment.id,
+            metadata: {
+              userId: change.userId,
+              scope: change.scope,
+              projectId: change.projectId,
+              roleKey: change.roleKey,
+              source: expectedSource,
+              snapshotHash: evaluation.preview.snapshotHash,
+              affectedNodes: evaluation.preview.summary.affectedNodes,
+              revokedRefreshTokens: revoked.count
+            }
+          });
+          return {
+            change,
+            assignmentId: assignment.id,
+            source: expectedSource,
+            affectedNodes: evaluation.preview.summary.affectedNodes,
+            revokedRefreshTokens: revoked.count
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (error) {
+      const code = prismaErrorCode(error);
+      if (code === "P2002") {
+        throw new ConflictException("岗位事实已存在，请刷新后重新预览");
+      }
+      if (code === "P2034") {
+        throw new ConflictException("组织或审批数据已变化，请重新预览后再试");
+      }
+      throw error;
+    }
+  }
+
   private async assertActiveGlobalSuperAdmin(
     tx: Prisma.TransactionClient,
-    actorUserId: string
+    actorUserId: string,
+    action: "撤销" | "新增" = "撤销"
   ) {
     const actor = await tx.user.findUnique({
       where: { id: actorUserId },
       select: { id: true, isActive: true }
     });
     if (!actor?.isActive) {
-      throw new ForbiddenException("当前账号已停用，不能执行岗位撤销");
+      throw new ForbiddenException(`当前账号已停用，不能执行岗位${action}`);
     }
 
     const adminPosition = await tx.position.findUnique({

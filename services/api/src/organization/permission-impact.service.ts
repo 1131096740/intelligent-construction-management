@@ -1,11 +1,14 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import { BUSINESS_APPROVAL_ROLES, ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
+import type { PreviewRoleAdditionDto } from "./dto/preview-role-addition.dto";
 import type { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
+import { OrganizationService } from "./organization.service";
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
+const BUSINESS_APPROVAL_ROLE_SET = new Set<string>(BUSINESS_APPROVAL_ROLES);
 const LEADER_ROLE_KEYS = new Set<RoleKey>(["chairman", "general_manager"]);
 const SUPPORTED_BUSINESS_TYPES = [
   "contract_version",
@@ -47,6 +50,31 @@ const BLOCKING_ISSUE_MESSAGES: Record<RoleRemovalBlockingIssueCode, string> = {
   target_assignment_ambiguous: "待撤销的规范岗位事实不唯一",
   legacy_shadow_assignment: "项目范围仍存在会继续授权的 UserPosition 遗留岗位",
   last_active_global_super_admin: "不能撤销最后一个启用的全局超级管理员"
+};
+
+export type RoleAdditionBlockingIssueCode =
+  | "target_user_missing"
+  | "target_user_inactive"
+  | "target_position_missing"
+  | "target_project_missing"
+  | "target_project_inactive"
+  | "target_assignment_exists"
+  | "target_assignment_ambiguous"
+  | "project_super_admin_forbidden"
+  | "legacy_shadow_assignment"
+  | "canonical_role_writes_not_ready";
+
+const ADDITION_BLOCKING_ISSUE_MESSAGES: Record<RoleAdditionBlockingIssueCode, string> = {
+  target_user_missing: "待新增岗位的人员不存在",
+  target_user_inactive: "待新增岗位的人员已停用",
+  target_position_missing: "待新增的固定岗位不存在",
+  target_project_missing: "待新增岗位所属项目不存在",
+  target_project_inactive: "待新增岗位所属项目已停用",
+  target_assignment_exists: "该规范岗位事实已存在",
+  target_assignment_ambiguous: "该规范岗位事实存在重复",
+  project_super_admin_forbidden: "super_admin 不允许新增到项目范围",
+  legacy_shadow_assignment: "项目范围存在 UserPosition 遗留岗位",
+  canonical_role_writes_not_ready: "权限事实完整性未通过，不能新增岗位"
 };
 
 interface UserRow {
@@ -118,6 +146,14 @@ export interface NormalizedRoleRemovalChange {
   roleKey: RoleKey;
 }
 
+export interface NormalizedRoleAdditionChange {
+  operation: "add";
+  userId: string;
+  scope: "global" | "project";
+  projectId: string | null;
+  roleKey: RoleKey;
+}
+
 export interface RoleRemovalImpactPreview {
   change: NormalizedRoleRemovalChange;
   evaluatedAt: string;
@@ -161,6 +197,62 @@ export interface RoleRemovalEvaluation {
   } | null;
 }
 
+export interface RoleAdditionResolution {
+  channel: "direct" | "assignment" | "delegation" | null;
+  roleKey: RoleKey | null;
+  canReview: boolean;
+  requiresSelfReviewConfirmation: boolean;
+}
+
+export interface RoleAdditionImpactPreview {
+  change: NormalizedRoleAdditionChange;
+  evaluatedAt: string;
+  snapshotHash: string;
+  canApply: boolean;
+  summary: { affectedNodes: number; blockingNodes: number };
+  blockingIssues: Array<{ code: RoleAdditionBlockingIssueCode; message: string }>;
+  impacts: Array<{
+    approvalInstanceId: string;
+    businessType: string;
+    businessId: string;
+    projectId: string | null;
+    nodeIndex: number;
+    nodeName: string | null;
+    mode: "any" | "all" | null;
+    roleKeys: RoleKey[];
+    pendingRoleKeys: RoleKey[];
+    blocking: boolean;
+    reasonCode:
+      | "no_executable_current_approver"
+      | "invalid_approval_instance_data"
+      | "approval_execution_semantics_not_safe"
+      | null;
+    targetBefore: RoleAdditionResolution;
+    targetAfter: RoleAdditionResolution;
+    roleCoverage: RoleRemovalImpactPreview["impacts"][number]["roleCoverage"];
+  }>;
+}
+
+export type RoleAdditionCreateTarget =
+  | {
+      source: "user_position";
+      userId: string;
+      projectId: null;
+      roleKey: RoleKey;
+      positionId: string;
+    }
+  | {
+      source: "project_member";
+      userId: string;
+      projectId: string;
+      roleKey: RoleKey;
+    };
+
+export interface RoleAdditionEvaluation {
+  preview: RoleAdditionImpactPreview;
+  targetCreate: RoleAdditionCreateTarget | null;
+}
+
 interface DirectFacts {
   usersByProjectAndRole: Map<string, Set<string>>;
   usersByGlobalRole: Map<RoleKey, Set<string>>;
@@ -168,7 +260,10 @@ interface DirectFacts {
 
 @Injectable()
 export class PermissionImpactService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly organization?: OrganizationService
+  ) {}
 
   async previewRoleRemoval(
     input: PreviewRoleRemovalDto,
@@ -364,6 +459,266 @@ export class PermissionImpactService {
     };
   }
 
+  async previewRoleAddition(
+    input: PreviewRoleAdditionDto,
+    evaluatedAt: Date = new Date()
+  ): Promise<RoleAdditionImpactPreview> {
+    return (await this.evaluateRoleAddition(this.prisma, input, evaluatedAt)).preview;
+  }
+
+  async evaluateRoleAddition(
+    client: PermissionImpactClient,
+    input: PreviewRoleAdditionDto,
+    evaluatedAt: Date = new Date()
+  ): Promise<RoleAdditionEvaluation> {
+    if (!this.organization) {
+      throw new Error("岗位新增影响评估缺少组织完整性服务");
+    }
+    const change = normalizeAdditionChange(input);
+    const [integrity, users, positions, userPositions, projectMembers, projects, instances, delegations] =
+      (await Promise.all([
+        this.organization.evaluatePermissionIntegrity(client),
+        client.user.findMany({ select: { id: true, isActive: true } }),
+        client.position.findMany({ select: { id: true, key: true } }),
+        client.userPosition.findMany({
+          select: { id: true, userId: true, positionId: true, projectId: true }
+        }),
+        client.projectMember.findMany({
+          select: { id: true, userId: true, projectId: true, positionKey: true }
+        }),
+        client.project.findMany({ select: { id: true, isActive: true } }),
+        client.approvalInstance.findMany({
+          where: {
+            status: "in_progress",
+            businessType: { in: [...SUPPORTED_BUSINESS_TYPES] }
+          },
+          select: {
+            id: true,
+            businessType: true,
+            businessId: true,
+            applicantUserId: true,
+            currentNodeIndex: true,
+            frozenNodes: true
+          }
+        }),
+        client.approvalDelegation.findMany({
+          where: {
+            enabled: true,
+            startsAt: { lte: evaluatedAt },
+            endsAt: { gte: evaluatedAt }
+          },
+          select: {
+            id: true,
+            fromUserId: true,
+            toUserId: true,
+            startsAt: true,
+            endsAt: true,
+            enabled: true
+          }
+        })
+      ])) as [
+        Awaited<ReturnType<OrganizationService["getPermissionIntegrity"]>>,
+        UserRow[],
+        PositionRow[],
+        UserPositionRow[],
+        ProjectMemberRow[],
+        Array<{ id: string; isActive: boolean }>,
+        ApprovalInstanceRow[],
+        DelegationRow[]
+      ];
+
+    const blockingIssues: Array<{ code: RoleAdditionBlockingIssueCode; message: string }> = [];
+    const issue = (code: RoleAdditionBlockingIssueCode) => {
+      if (!blockingIssues.some((item) => item.code === code)) {
+        blockingIssues.push({ code, message: ADDITION_BLOCKING_ISSUE_MESSAGES[code] });
+      }
+    };
+    const user = users.find((row) => row.id === change.userId);
+    const position = positions.find((row) => row.key === change.roleKey);
+    const project = change.projectId
+      ? projects.find((row) => row.id === change.projectId)
+      : undefined;
+    if (!user) issue("target_user_missing");
+    else if (!user.isActive) issue("target_user_inactive");
+    if (!position) issue("target_position_missing");
+    if (change.scope === "project" && !project) issue("target_project_missing");
+    else if (change.scope === "project" && !project?.isActive) issue("target_project_inactive");
+    if (change.scope === "project" && change.roleKey === "super_admin") {
+      issue("project_super_admin_forbidden");
+    }
+    if (!integrity.readiness.canonicalRoleWritesReady) {
+      issue("canonical_role_writes_not_ready");
+    }
+
+    const canonicalTargets = position
+      ? change.scope === "global"
+        ? userPositions.filter(
+            (row) =>
+              row.userId === change.userId &&
+              row.positionId === position.id &&
+              row.projectId === null
+          )
+        : projectMembers.filter(
+            (row) =>
+              row.userId === change.userId &&
+              row.projectId === change.projectId &&
+              row.positionKey === change.roleKey
+          )
+      : [];
+    if (canonicalTargets.length === 1) issue("target_assignment_exists");
+    else if (canonicalTargets.length > 1) issue("target_assignment_ambiguous");
+    if (
+      change.scope === "project" &&
+      position &&
+      userPositions.some(
+        (row) =>
+          row.userId === change.userId &&
+          row.positionId === position.id &&
+          row.projectId === change.projectId
+      )
+    ) {
+      issue("legacy_shadow_assignment");
+    }
+
+    const resolutionIssueCodes = new Set<RoleAdditionBlockingIssueCode>([
+      "target_user_missing",
+      "target_user_inactive",
+      "target_position_missing",
+      "target_project_missing",
+      "target_project_inactive",
+      "target_assignment_exists",
+      "target_assignment_ambiguous",
+      "project_super_admin_forbidden",
+      "legacy_shadow_assignment"
+    ]);
+    const targetResolved = !blockingIssues.some((item) => resolutionIssueCodes.has(item.code));
+    const targetCreate: RoleAdditionCreateTarget | null =
+      targetResolved && position
+        ? change.scope === "global"
+          ? {
+              source: "user_position",
+              userId: change.userId,
+              projectId: null,
+              roleKey: change.roleKey,
+              positionId: position.id
+            }
+          : {
+              source: "project_member",
+              userId: change.userId,
+              projectId: change.projectId as string,
+              roleKey: change.roleKey
+            }
+        : null;
+    const userPositionsAfter =
+      targetCreate?.source === "user_position"
+        ? [
+            ...userPositions,
+            {
+              id: "__pending_role_addition__",
+              userId: targetCreate.userId,
+              positionId: targetCreate.positionId,
+              projectId: null
+            }
+          ]
+        : userPositions;
+    const projectMembersAfter =
+      targetCreate?.source === "project_member"
+        ? [
+            ...projectMembers,
+            {
+              id: "__pending_role_addition__",
+              userId: targetCreate.userId,
+              projectId: targetCreate.projectId,
+              positionKey: targetCreate.roleKey
+            }
+          ]
+        : projectMembers;
+    const factsBefore = buildDirectFacts(users, positions, userPositions, projectMembers, false);
+    const factsAfter = buildDirectFacts(
+      users,
+      positions,
+      userPositionsAfter,
+      projectMembersAfter,
+      false
+    );
+    const mappedInstances = await this.mapApprovalProjects(client, instances);
+    const relevantNodes = targetCreate
+      ? collectRelevantAdditionNodes(mappedInstances, change)
+      : [];
+    const impacts = relevantNodes
+      .map((instance) => {
+        const impact = buildImpact(instance, change, users, factsAfter, delegations);
+        return {
+          approvalInstanceId: impact.approvalInstanceId,
+          businessType: impact.businessType,
+          businessId: impact.businessId,
+          projectId: impact.projectId,
+          nodeIndex: impact.currentNodeIndex,
+          nodeName: impact.currentNodeName,
+          mode: impact.mode,
+          roleKeys: instance.parsedNode?.roleKeys ?? [],
+          pendingRoleKeys: impact.pendingRoleKeys,
+          blocking: impact.blocking,
+          reasonCode: impact.reasonCode,
+          targetBefore: resolveUserOnNode(
+            instance,
+            change.userId,
+            users,
+            factsBefore,
+            delegations
+          ),
+          targetAfter: resolveUserOnNode(
+            instance,
+            change.userId,
+            users,
+            factsAfter,
+            delegations
+          ),
+          roleCoverage: impact.roleCoverage
+        };
+      })
+      .sort(
+        (left, right) =>
+          compareText(left.approvalInstanceId, right.approvalInstanceId) ||
+          left.nodeIndex - right.nodeIndex
+      );
+    const blockingNodes = impacts.filter((impact) => impact.blocking).length;
+    const snapshotHash = hashSnapshot({
+      schemaVersion: 1,
+      kind: "role_addition",
+      change,
+      targetCreate,
+      integrity,
+      instances: relevantNodes.map((instance) => ({
+        id: instance.id,
+        businessType: instance.businessType,
+        businessId: instance.businessId,
+        applicantUserId: instance.applicantUserId,
+        nodeIndex: instance.currentNodeIndex,
+        node: Array.isArray(instance.frozenNodes)
+          ? instance.frozenNodes[instance.currentNodeIndex] ?? null
+          : null,
+        projectId: instance.projectId
+      })),
+      users: stableRows(users, (row) => row.id),
+      positions: stableRows(positions, (row) => `${row.id}\u0000${row.key}`),
+      projects: stableRows(projects, (row) => row.id),
+      userPositions: stableRows(userPositions, (row) => row.id),
+      projectMembers: stableRows(projectMembers, (row) => row.id),
+      delegations: stableRows(delegations, (row) => row.id)
+    });
+    const preview: RoleAdditionImpactPreview = {
+      change,
+      evaluatedAt: evaluatedAt.toISOString(),
+      snapshotHash,
+      canApply: blockingIssues.length === 0 && blockingNodes === 0,
+      summary: { affectedNodes: impacts.length, blockingNodes },
+      blockingIssues,
+      impacts
+    };
+    return { preview, targetCreate };
+  }
+
   private async mapApprovalProjects(
     client: PermissionImpactClient,
     instances: ApprovalInstanceRow[]
@@ -439,22 +794,60 @@ function normalizeChange(input: PreviewRoleRemovalDto): NormalizedRoleRemovalCha
   };
 }
 
+function normalizeAdditionChange(input: PreviewRoleAdditionDto): NormalizedRoleAdditionChange {
+  if (input.operation !== "add") {
+    throw new BadRequestException("只支持预览新增岗位");
+  }
+  if (input.scope === "global" && input.projectId !== undefined && input.projectId !== null) {
+    throw new BadRequestException("全局岗位不得提交项目标识");
+  }
+  if (input.scope === "project" && !input.projectId?.trim()) {
+    throw new BadRequestException("项目岗位必须提交项目标识");
+  }
+  return {
+    operation: "add",
+    userId: input.userId.trim(),
+    scope: input.scope,
+    projectId: input.scope === "project" ? input.projectId?.trim() || null : null,
+    roleKey: input.roleKey
+  };
+}
+
 function parseCurrentNode(instance: ApprovalInstanceRow): ParsedNode | null {
+  return parseNodeAt(instance, instance.currentNodeIndex, false);
+}
+
+function parseNodeAt(
+  instance: ApprovalInstanceRow,
+  nodeIndex: number,
+  businessRolesOnly: boolean
+): ParsedNode | null {
   if (!Array.isArray(instance.frozenNodes)) return null;
-  if (!Number.isInteger(instance.currentNodeIndex) || instance.currentNodeIndex < 0) return null;
-  const value = instance.frozenNodes[instance.currentNodeIndex];
+  if (!Number.isInteger(nodeIndex) || nodeIndex < 0) return null;
+  const value = instance.frozenNodes[nodeIndex];
   if (!isRecord(value)) return null;
   if (typeof value.name !== "string" || value.name.trim().length === 0) return null;
   if (value.mode !== "any" && value.mode !== "all") return null;
-  const roleKeys = validRoleKeyArray(value.roleKeys);
+  const roleKeys = validRoleKeyArray(value.roleKeys, businessRolesOnly);
   if (!roleKeys || roleKeys.length === 0) return null;
-  const approvedRoleKeys = value.approvedRoleKeys === undefined ? [] : validRoleKeyArray(value.approvedRoleKeys);
+  const approvedRoleKeys =
+    value.approvedRoleKeys === undefined
+      ? []
+      : validRoleKeyArray(value.approvedRoleKeys, businessRolesOnly);
   if (!approvedRoleKeys || approvedRoleKeys.some((role) => !roleKeys.includes(role))) return null;
   const pendingRoleKeys = roleKeys.filter((role) => !approvedRoleKeys.includes(role));
   if (pendingRoleKeys.length === 0) return null;
   const assignments =
-    instance.businessType === "project_expense_request" ? [] : parseAssignments(value.assignments);
+    instance.businessType === "project_expense_request"
+      ? []
+      : parseAssignments(value.assignments, businessRolesOnly);
   if (!assignments) return null;
+  if (
+    businessRolesOnly &&
+    assignments.some((assignment) => !roleKeys.includes(assignment.fromRoleKey))
+  ) {
+    return null;
+  }
   return {
     name: value.name.trim(),
     mode: value.mode,
@@ -465,17 +858,23 @@ function parseCurrentNode(instance: ApprovalInstanceRow): ParsedNode | null {
   };
 }
 
-function validRoleKeyArray(value: unknown): RoleKey[] | null {
+function validRoleKeyArray(value: unknown, businessRolesOnly = false): RoleKey[] | null {
   if (!Array.isArray(value)) return null;
   const result: RoleKey[] = [];
   for (const item of value) {
-    if (typeof item !== "string" || !ROLE_KEY_SET.has(item)) return null;
+    if (
+      typeof item !== "string" ||
+      !ROLE_KEY_SET.has(item) ||
+      (businessRolesOnly && !BUSINESS_APPROVAL_ROLE_SET.has(item))
+    ) {
+      return null;
+    }
     if (!result.includes(item as RoleKey)) result.push(item as RoleKey);
   }
   return result;
 }
 
-function parseAssignments(value: unknown): FrozenAssignment[] | null {
+function parseAssignments(value: unknown, businessRolesOnly = false): FrozenAssignment[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
   const result: FrozenAssignment[] = [];
@@ -485,7 +884,8 @@ function parseAssignments(value: unknown): FrozenAssignment[] | null {
       typeof assignment.toUserId !== "string" ||
       assignment.toUserId.trim().length === 0 ||
       typeof assignment.fromRoleKey !== "string" ||
-      !ROLE_KEY_SET.has(assignment.fromRoleKey)
+      !ROLE_KEY_SET.has(assignment.fromRoleKey) ||
+      (businessRolesOnly && !BUSINESS_APPROVAL_ROLE_SET.has(assignment.fromRoleKey))
     ) {
       return null;
     }
@@ -501,7 +901,8 @@ function buildDirectFacts(
   users: UserRow[],
   positions: PositionRow[],
   userPositions: UserPositionRow[],
-  projectMembers: ProjectMemberRow[]
+  projectMembers: ProjectMemberRow[],
+  allowGlobalSuperAdmin = true
 ): DirectFacts {
   const activeUserIds = new Set(users.filter((user) => user.isActive).map((user) => user.id));
   const roleByPositionId = new Map(
@@ -520,6 +921,7 @@ function buildDirectFacts(
     const roleKey = roleByPositionId.get(assignment.positionId);
     if (!roleKey) continue;
     if (assignment.projectId === null) {
+      if (!allowGlobalSuperAdmin && roleKey === "super_admin") continue;
       const set = usersByGlobalRole.get(roleKey) ?? new Set<string>();
       if (activeUserIds.has(assignment.userId)) set.add(assignment.userId);
       usersByGlobalRole.set(roleKey, set);
@@ -547,7 +949,7 @@ function directUsersForRole(facts: DirectFacts, projectId: string | null, roleKe
 
 function buildImpact(
   instance: MappedApprovalInstance,
-  change: NormalizedRoleRemovalChange,
+  change: { userId: string },
   users: UserRow[],
   directFacts: DirectFacts,
   delegations: DelegationRow[]
@@ -670,6 +1072,103 @@ function buildImpact(
         : ("no_executable_current_approver" as const),
     roleCoverage
   };
+}
+
+function collectRelevantAdditionNodes(
+  instances: MappedApprovalInstance[],
+  change: NormalizedRoleAdditionChange
+): MappedApprovalInstance[] {
+  const relevant: MappedApprovalInstance[] = [];
+  for (const instance of instances) {
+    if (
+      change.scope === "project" &&
+      instance.projectId &&
+      instance.projectId !== change.projectId
+    ) {
+      continue;
+    }
+    if (
+      !Array.isArray(instance.frozenNodes) ||
+      !Number.isInteger(instance.currentNodeIndex) ||
+      instance.currentNodeIndex < 0 ||
+      instance.currentNodeIndex >= instance.frozenNodes.length
+    ) {
+      relevant.push({ ...instance, parsedNode: null });
+      continue;
+    }
+    for (let nodeIndex = instance.currentNodeIndex; nodeIndex < instance.frozenNodes.length; nodeIndex += 1) {
+      const parsedNode = parseNodeAt(instance, nodeIndex, true);
+      if (!parsedNode || parsedNode.roleKeys.includes(change.roleKey)) {
+        relevant.push({ ...instance, currentNodeIndex: nodeIndex, parsedNode });
+      }
+    }
+  }
+  return relevant;
+}
+
+function resolveUserOnNode(
+  instance: MappedApprovalInstance,
+  userId: string,
+  users: UserRow[],
+  directFacts: DirectFacts,
+  delegations: DelegationRow[]
+): RoleAdditionResolution {
+  const none: RoleAdditionResolution = {
+    channel: null,
+    roleKey: null,
+    canReview: false,
+    requiresSelfReviewConfirmation: false
+  };
+  const node = instance.parsedNode;
+  if (!node || !instance.projectId || !users.some((user) => user.id === userId && user.isActive)) {
+    return none;
+  }
+  const directRoleByUser = new Map<string, RoleKey>();
+  for (const roleKey of node.roleKeys) {
+    for (const directUserId of directUsersForRole(directFacts, instance.projectId, roleKey)) {
+      if (!directRoleByUser.has(directUserId)) directRoleByUser.set(directUserId, roleKey);
+    }
+  }
+  const directRole = directRoleByUser.get(userId);
+  if (directRole) {
+    const requiresSelfReviewConfirmation =
+      userId === instance.applicantUserId && LEADER_ROLE_KEYS.has(directRole);
+    return {
+      channel: "direct",
+      roleKey: directRole,
+      canReview: userId !== instance.applicantUserId || requiresSelfReviewConfirmation,
+      requiresSelfReviewConfirmation
+    };
+  }
+  if (instance.businessType === "project_expense_request") return none;
+  const assignment = node.assignments.find((item) => item.toUserId === userId);
+  if (assignment) {
+    return {
+      channel: "assignment",
+      roleKey: assignment.fromRoleKey,
+      canReview: userId !== instance.applicantUserId,
+      requiresSelfReviewConfirmation: false
+    };
+  }
+  const activeUserIds = new Set(users.filter((user) => user.isActive).map((user) => user.id));
+  for (const roleKey of node.roleKeys) {
+    const delegated = delegations.some(
+      (delegation) =>
+        delegation.toUserId === userId &&
+        activeUserIds.has(delegation.fromUserId) &&
+        activeUserIds.has(delegation.toUserId) &&
+        directRoleByUser.get(delegation.fromUserId) === roleKey
+    );
+    if (delegated) {
+      return {
+        channel: "delegation",
+        roleKey,
+        canReview: userId !== instance.applicantUserId,
+        requiresSelfReviewConfirmation: false
+      };
+    }
+  }
+  return none;
 }
 
 function isRelevantInstance(instance: MappedApprovalInstance, change: NormalizedRoleRemovalChange) {

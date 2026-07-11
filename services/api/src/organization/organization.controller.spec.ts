@@ -10,14 +10,18 @@ type OrganizationBodyMethod =
   | "updateDepartment"
   | "updateUser"
   | "previewRoleRemoval"
-  | "applyRoleRemoval";
+  | "applyRoleRemoval"
+  | "previewRoleAddition"
+  | "applyRoleAddition";
 
 const BODY_INDEX: Record<OrganizationBodyMethod, number> = {
   createDepartment: 1,
   updateDepartment: 2,
   updateUser: 2,
   previewRoleRemoval: 0,
-  applyRoleRemoval: 1
+  applyRoleRemoval: 1,
+  previewRoleAddition: 0,
+  applyRoleAddition: 1
 };
 
 function bodyMetatype(method: OrganizationBodyMethod) {
@@ -175,6 +179,126 @@ describe("OrganizationController", () => {
 
     await expect(controller.previewRoleRemoval(body)).resolves.toBe(readModel);
     expect(impacts.previewRoleRemoval).toHaveBeenCalledWith(body);
+  });
+
+  it("岗位新增预览/apply 使用独立运行时 DTO 且 apply actor 只取登录态", async () => {
+    expect(bodyMetatype("previewRoleAddition").name).toBe("PreviewRoleAdditionDto");
+    expect(bodyMetatype("applyRoleAddition").name).toBe("ApplyRoleAdditionDto");
+    const previewResult = { snapshotHash: `sha256:${"a".repeat(64)}`, canApply: true };
+    const applyResult = { assignmentId: "assignment-new", source: "project_member" };
+    const impacts = { previewRoleAddition: jest.fn().mockResolvedValue(previewResult) };
+    const roles = { applyRoleAddition: jest.fn().mockResolvedValue(applyResult) };
+    const controller = new OrganizationController({} as never, impacts as never, roles as never) as
+      OrganizationController & {
+        previewRoleAddition(body: unknown): Promise<unknown>;
+        applyRoleAddition(actor: unknown, body: unknown): Promise<unknown>;
+      };
+    const previewBody = {
+      operation: "add",
+      userId: "user-1",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "project_manager"
+    };
+    const applyBody = {
+      ...previewBody,
+      snapshotHash: `sha256:${"a".repeat(64)}`,
+      confirmationPassword: " original-password "
+    };
+    const actor = { id: "actor-session", name: "管理员", phone: null };
+
+    await expect(controller.previewRoleAddition(previewBody)).resolves.toBe(previewResult);
+    await expect(controller.applyRoleAddition(actor, applyBody)).resolves.toBe(applyResult);
+    expect(impacts.previewRoleAddition).toHaveBeenCalledWith(previewBody);
+    expect(roles.applyRoleAddition).toHaveBeenCalledWith("actor-session", applyBody);
+  });
+
+  it("岗位新增 DTO 只接受 add 并拒绝客户端内部字段", async () => {
+    const previewBody = {
+      operation: "add",
+      userId: "user-1",
+      scope: "global",
+      projectId: null,
+      roleKey: "finance_director"
+    };
+    await expect(validateBody("previewRoleAddition", previewBody)).resolves.toEqual(previewBody);
+    await expect(
+      validateBody("applyRoleAddition", {
+        ...previewBody,
+        snapshotHash: `sha256:${"a".repeat(64)}`,
+        confirmationPassword: " password "
+      })
+    ).resolves.toEqual({
+      ...previewBody,
+      snapshotHash: `sha256:${"a".repeat(64)}`,
+      confirmationPassword: " password "
+    });
+
+    const invalidOperation = await validationResponse("previewRoleAddition", {
+      ...previewBody,
+      operation: "remove"
+    });
+    expect(invalidOperation.errors).toContain("只支持预览新增岗位");
+    const unknown = await validationResponse("applyRoleAddition", {
+      ...previewBody,
+      snapshotHash: `sha256:${"a".repeat(64)}`,
+      confirmationPassword: "TOP-SECRET",
+      assignmentId: "client-id",
+      actorUserId: "spoofed",
+      auditMetadata: {},
+      roles: ["finance_director"]
+    });
+    expect(unknown.errors).toEqual([
+      "assignmentId 不是允许提交的字段",
+      "actorUserId 不是允许提交的字段",
+      "auditMetadata 不是允许提交的字段",
+      "roles 不是允许提交的字段"
+    ]);
+    expect(JSON.stringify(unknown)).not.toContain("TOP-SECRET");
+  });
+
+  it.each([
+    [
+      "preview userId",
+      "previewRoleAddition",
+      { operation: "add", userId: "   ", scope: "global", roleKey: "finance_director" },
+      "人员标识不能为空白"
+    ],
+    [
+      "preview scope",
+      "previewRoleAddition",
+      { operation: "add", userId: "user-1", scope: "tenant", roleKey: "finance_director" },
+      "岗位范围不正确"
+    ],
+    [
+      "apply hash",
+      "applyRoleAddition",
+      {
+        operation: "add",
+        userId: "user-1",
+        scope: "global",
+        roleKey: "finance_director",
+        snapshotHash: `sha256:${"A".repeat(64)}`,
+        confirmationPassword: "password"
+      },
+      "快照标识格式不正确"
+    ],
+    [
+      "apply password",
+      "applyRoleAddition",
+      {
+        operation: "add",
+        userId: "user-1",
+        scope: "global",
+        roleKey: "finance_director",
+        snapshotHash: `sha256:${"a".repeat(64)}`,
+        confirmationPassword: "密".repeat(257)
+      },
+      "当前登录密码不能超过 256 个字符"
+    ]
+  ] as const)("%s 非法时拒绝", async (_label, method, body, message) => {
+    const response = await validationResponse(method, body);
+    expect(response.errors).toContain(message);
   });
 
   it("接受规范化岗位撤销预览请求且请求体没有密码或登录态字段", async () => {

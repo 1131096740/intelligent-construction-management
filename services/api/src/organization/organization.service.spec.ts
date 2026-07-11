@@ -402,6 +402,30 @@ describe("OrganizationService", () => {
 });
 
 describe("OrganizationService permission integrity", () => {
+  it("事务感知完整性评估只使用传入 client", async () => {
+    const outer = createIntegrityHarness();
+    const transaction = createIntegrityHarness({
+      users: [{ id: "user-1" }],
+      positions: [{ id: "position-global", key: "finance_director" }],
+      userPositions: [
+        {
+          id: "global-1",
+          userId: "user-1",
+          positionId: "position-global",
+          projectId: null
+        }
+      ]
+    });
+
+    await expect(
+      outer.service.evaluatePermissionIntegrity(transaction.prisma as never)
+    ).resolves.toMatchObject({ readiness: { canonicalRoleWritesReady: true } });
+    expect(transaction.prisma.user.findMany).toHaveBeenCalledTimes(1);
+    expect(transaction.prisma.userPosition.findMany).toHaveBeenCalledTimes(1);
+    expect(outer.prisma.user.findMany).not.toHaveBeenCalled();
+    expect(outer.prisma.userPosition.findMany).not.toHaveBeenCalled();
+  });
+
   it("干净的规范岗位事实返回 ready 且没有问题", async () => {
     const harness = createIntegrityHarness({
       users: [{ id: "user-1" }],

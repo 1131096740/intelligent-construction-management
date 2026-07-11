@@ -10,6 +10,11 @@ import type { UpdateOrganizationUserDto } from "./dto/update-organization-user.d
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 
+export type PermissionIntegrityClient = Pick<
+  Prisma.TransactionClient,
+  "user" | "position" | "project" | "userPosition" | "projectMember"
+>;
+
 function isRoleKey(value: string): value is RoleKey {
   return ROLE_KEY_SET.has(value);
 }
@@ -453,15 +458,21 @@ export class OrganizationService {
     return this.auth.confirmPassword(actorUserId, password);
   }
 
-  async getPermissionIntegrity(): Promise<PermissionIntegrityReadModel> {
+  getPermissionIntegrity(): Promise<PermissionIntegrityReadModel> {
+    return this.evaluatePermissionIntegrity(this.prisma);
+  }
+
+  async evaluatePermissionIntegrity(
+    client: PermissionIntegrityClient
+  ): Promise<PermissionIntegrityReadModel> {
     const [users, positions, projects, userPositions, projectMembers] = await Promise.all([
-      this.prisma.user.findMany({ select: { id: true } }),
-      this.prisma.position.findMany({ select: { id: true, key: true } }),
-      this.prisma.project.findMany({ select: { id: true } }),
-      this.prisma.userPosition.findMany({
+      client.user.findMany({ select: { id: true } }),
+      client.position.findMany({ select: { id: true, key: true } }),
+      client.project.findMany({ select: { id: true } }),
+      client.userPosition.findMany({
         select: { id: true, userId: true, positionId: true, projectId: true }
       }),
-      this.prisma.projectMember.findMany({
+      client.projectMember.findMany({
         select: { id: true, userId: true, projectId: true, positionKey: true }
       })
     ]);
