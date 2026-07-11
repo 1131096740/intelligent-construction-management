@@ -51,4 +51,50 @@ describe("CompanyEntityService", () => {
     });
     expect(prisma.companyEntity.create).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      "名称 getter 抛错",
+      () =>
+        Object.defineProperty({}, "name", {
+          get() {
+            throw new Error("TOP-SECRET name getter");
+          }
+        })
+    ],
+    [
+      "信用代码 getter 抛错",
+      () =>
+        Object.defineProperty({ name: "测试主体" }, "unifiedSocialCreditCode", {
+          get() {
+            throw new Error("TOP-SECRET credit getter");
+          }
+        })
+    ],
+    [
+      "已撤销 Proxy",
+      () => {
+        const proxy = Proxy.revocable({ name: "测试主体" }, {});
+        proxy.revoke();
+        return proxy.proxy;
+      }
+    ]
+  ])("公司主体字段无法安全读取（%s）时返回脱敏中文 400", async (_case, input) => {
+    const prisma = { companyEntity: { create: jest.fn() } };
+    const service = new CompanyEntityService(prisma as never);
+
+    let thrown: unknown;
+    try {
+      await service.create(input() as never);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toMatchObject({
+      status: 400,
+      message: "公司主体信息格式不正确"
+    });
+    expect(String(thrown)).not.toContain("TOP-SECRET");
+    expect(prisma.companyEntity.create).not.toHaveBeenCalled();
+  });
 });

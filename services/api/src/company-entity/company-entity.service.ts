@@ -6,6 +6,17 @@ export interface CreateCompanyEntityDto {
   unifiedSocialCreditCode?: string;
 }
 
+function readCompanyEntityField(
+  input: CreateCompanyEntityDto,
+  field: keyof CreateCompanyEntityDto
+): unknown {
+  try {
+    return input?.[field];
+  } catch {
+    throw new BadRequestException("公司主体信息格式不正确");
+  }
+}
+
 @Injectable()
 export class CompanyEntityService {
   constructor(private readonly prisma: PrismaService) {}
@@ -18,7 +29,7 @@ export class CompanyEntityService {
   }
 
   create(input: CreateCompanyEntityDto) {
-    const rawName: unknown = input?.name;
+    const rawName = readCompanyEntityField(input, "name");
     if (rawName !== undefined && typeof rawName !== "string") {
       throw new BadRequestException("公司主体名称必须是文字");
     }
@@ -27,7 +38,7 @@ export class CompanyEntityService {
       throw new BadRequestException("请填写公司主体名称");
     }
 
-    const rawCreditCode: unknown = input.unifiedSocialCreditCode;
+    const rawCreditCode = readCompanyEntityField(input, "unifiedSocialCreditCode");
     if (rawCreditCode !== undefined && typeof rawCreditCode !== "string") {
       throw new BadRequestException("统一社会信用代码必须是文字");
     }
