@@ -18,13 +18,22 @@ export class CompanyEntityService {
   }
 
   create(input: CreateCompanyEntityDto) {
-    const name = input.name?.trim();
+    const rawName: unknown = input?.name;
+    if (rawName !== undefined && typeof rawName !== "string") {
+      throw new BadRequestException("公司主体名称必须是文字");
+    }
+    const name = rawName?.trim();
     if (!name) {
       throw new BadRequestException("请填写公司主体名称");
     }
 
+    const rawCreditCode: unknown = input.unifiedSocialCreditCode;
+    if (rawCreditCode !== undefined && typeof rawCreditCode !== "string") {
+      throw new BadRequestException("统一社会信用代码必须是文字");
+    }
+
     return this.prisma.companyEntity.create({
-      data: { name, unifiedSocialCreditCode: input.unifiedSocialCreditCode?.trim() || null }
+      data: { name, unifiedSocialCreditCode: rawCreditCode?.trim() || null }
     });
   }
 }

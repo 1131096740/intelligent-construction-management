@@ -589,7 +589,29 @@ describe("ContractDocumentProcessor", () => {
     });
   });
 
-  it("marks failure with a bounded error and records possible orphan uploads", async () => {
+  it.each([
+    ["unknown Chinese error", () => new Error("合同第三方存储失败：/tmp/secret.docx")],
+    [
+      "throwing string conversion",
+      () => ({
+        toString() {
+          throw new Error("TOP-SECRET toString");
+        }
+      })
+    ],
+    [
+      "throwing Error.message getter",
+      () => {
+        const cause = new Error();
+        Object.defineProperty(cause, "message", {
+          get() {
+            throw new Error("TOP-SECRET message getter");
+          }
+        });
+        return cause;
+      }
+    ]
+  ])("marks failure safely for %s and records possible orphan uploads", async (_case, cause) => {
     const prisma = makePrisma();
     prisma.contractGeneratedDocument.findFirst.mockResolvedValue({
       id: "document-1",
@@ -614,7 +636,7 @@ describe("ContractDocumentProcessor", () => {
       uploadPrivateFile: jest
         .fn()
         .mockResolvedValueOnce({ id: "orphan-docx" })
-        .mockRejectedValueOnce(new Error("合同第三方存储失败：/tmp/secret.docx"))
+        .mockRejectedValueOnce(cause())
     };
     const processor = new ContractDocumentProcessor(
       prisma as unknown as PrismaService,

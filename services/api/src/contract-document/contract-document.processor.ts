@@ -515,7 +515,12 @@ export class ContractDocumentProcessor
   }
 
   private errorMessage(cause: unknown, fallback: string) {
-    const message = cause instanceof Error ? cause.message : String(cause);
+    let message: string;
+    try {
+      message = cause instanceof Error ? cause.message : String(cause);
+    } catch {
+      return fallback;
+    }
     return SAFE_PERSISTED_ERROR_MESSAGES.has(message)
       ? message.slice(0, ERROR_MESSAGE_LIMIT)
       : fallback;
