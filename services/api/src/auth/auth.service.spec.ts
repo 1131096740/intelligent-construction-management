@@ -119,6 +119,26 @@ describe("authentication request validation", () => {
       expect(response.errors).toEqual(expect.arrayContaining([expectedMessage]));
     }
   );
+
+  it("rejects a whitespace-only new password through the API validation pipe", async () => {
+    const response = await getValidationResponse(
+      { oldPassword: "old-password", newPassword: "        " },
+      ChangePasswordDto
+    );
+
+    expect(response.errors).toContain("新密码不能全为空白字符");
+  });
+
+  it("keeps internal password spaces unchanged through the API validation pipe", async () => {
+    const value = { oldPassword: "old-password", newPassword: "abcd efgh" };
+    const result = await createApiValidationPipe().transform(
+      value,
+      bodyMetadata(ChangePasswordDto)
+    );
+
+    expect(result).toBeInstanceOf(ChangePasswordDto);
+    expect(result).toEqual(value);
+  });
 });
 
 describe("AuthService", () => {
@@ -342,6 +362,40 @@ describe("AuthService", () => {
     expect(prisma.user.findUnique).not.toHaveBeenCalled();
     expect(prisma.user.update).not.toHaveBeenCalled();
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a whitespace-only new password in the service without updating or auditing", async () => {
+    await expect(
+      service.changePassword(
+        { id: "user-1", name: "合同部 李工", phone: "13800000001" },
+        { oldPassword: "old-password", newPassword: "        " }
+      )
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "新密码不能全为空白字符"
+    });
+
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("preserves internal spaces when hashing a valid new password", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      passwordHash: await bcrypt.hash("old-password", 10)
+    });
+    prisma.user.update.mockResolvedValue({});
+    prisma.auditLog.create.mockResolvedValue({});
+
+    await service.changePassword(
+      { id: "user-1", name: "合同部 李工", phone: "13800000001" },
+      { oldPassword: "old-password", newPassword: "abcd efgh" }
+    );
+
+    const passwordHash = prisma.user.update.mock.calls[0][0].data.passwordHash as string;
+    await expect(bcrypt.compare("abcd efgh", passwordHash)).resolves.toBe(true);
+    await expect(bcrypt.compare("abcdefgh", passwordHash)).resolves.toBe(false);
   });
 
   it("confirms the current password for sensitive actions", async () => {

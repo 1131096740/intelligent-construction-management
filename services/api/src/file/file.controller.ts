@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Body,
   Get,
@@ -73,10 +74,10 @@ export class FileController {
     @Body() input: CreateDownloadTicketDto
   ) {
     if (!input.confirmationPassword.trim()) {
-      throw new Error("请输入当前登录密码后再下载资料");
+      throw new BadRequestException("请输入当前登录密码后再下载资料");
     }
     if (!input.downloadReason?.trim()) {
-      throw new Error("请填写下载原因，便于留痕审计");
+      throw new BadRequestException("请填写下载原因，便于留痕审计");
     }
 
     await this.auth.confirmPassword(user.id, input.confirmationPassword);

@@ -23,6 +23,18 @@ async function getDownloadTicketValidationResponse(
   throw new Error("Expected download ticket validation to reject the request");
 }
 
+async function expectControllerBadRequest(action: Promise<unknown>, message: string) {
+  try {
+    await action;
+  } catch (error) {
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getStatus()).toBe(400);
+    expect((error as BadRequestException).message).toBe(message);
+    return;
+  }
+  throw new Error("Expected controller validation to reject the request");
+}
+
 describe("FileController authorization wiring", () => {
   it("rejects an empty download ticket body through the API pipe", async () => {
     const response = await getDownloadTicketValidationResponse({});
@@ -60,6 +72,33 @@ describe("FileController authorization wiring", () => {
     });
 
     expect(response.errors).toContain("请输入当前登录密码");
+  });
+
+  it("rejects a whitespace-only confirmation password through the API pipe", async () => {
+    const response = await getDownloadTicketValidationResponse({
+      confirmationPassword: "   ",
+      downloadReason: "合同归档复核"
+    });
+
+    expect(response.errors).toContain("当前登录密码不能全为空白字符");
+  });
+
+  it("rejects an empty download reason through the API pipe", async () => {
+    const response = await getDownloadTicketValidationResponse({
+      confirmationPassword: "current-password",
+      downloadReason: ""
+    });
+
+    expect(response.errors).toContain("请填写下载原因");
+  });
+
+  it("rejects a whitespace-only download reason through the API pipe", async () => {
+    const response = await getDownloadTicketValidationResponse({
+      confirmationPassword: "current-password",
+      downloadReason: "   "
+    });
+
+    expect(response.errors).toContain("下载原因不能全为空白字符");
   });
 
   it("rejects an overly long download reason through the API pipe", async () => {
@@ -210,13 +249,14 @@ describe("FileController authorization wiring", () => {
     };
     const controller = new FileController(files as never, auth as never);
 
-    await expect(
+    await expectControllerBadRequest(
       controller.createDownloadTicket(
         "file-1",
         { id: "user-1", name: "张三", phone: "13800000000" },
         { confirmationPassword: "   ", downloadReason: "合同归档复核" }
-      )
-    ).rejects.toThrow("请输入当前登录密码后再下载资料");
+      ),
+      "请输入当前登录密码后再下载资料"
+    );
 
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(files.createDownloadTicket).not.toHaveBeenCalled();
@@ -231,13 +271,14 @@ describe("FileController authorization wiring", () => {
     };
     const controller = new FileController(files as never, auth as never);
 
-    await expect(
+    await expectControllerBadRequest(
       controller.createDownloadTicket(
         "file-1",
         { id: "user-1", name: "张三", phone: "13800000000" },
         { confirmationPassword: "current-password", downloadReason: "   " }
-      )
-    ).rejects.toThrow("请填写下载原因，便于留痕审计");
+      ),
+      "请填写下载原因，便于留痕审计"
+    );
 
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(files.createDownloadTicket).not.toHaveBeenCalled();

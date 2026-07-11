@@ -7,6 +7,29 @@ const DEFAULT_SECRET_MARKERS = new Set([
   "local-refresh-secret",
   "replace-with-long-random-secret"
 ]);
+const INVALID_TOKEN_MESSAGE = "登录凭证无效，请重新登录";
+const BASE64URL_SEGMENT = /^[A-Za-z0-9_-]+$/u;
+
+function isJwtPayload(value: unknown): value is JwtPayload {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return false;
+  }
+
+  const payload = value as Record<string, unknown>;
+  return (
+    (payload.type === "access" || payload.type === "refresh") &&
+    typeof payload.sub === "string" &&
+    payload.sub.trim().length > 0 &&
+    typeof payload.iat === "number" &&
+    Number.isFinite(payload.iat) &&
+    typeof payload.exp === "number" &&
+    Number.isFinite(payload.exp)
+  );
+}
 
 @Injectable()
 export class JwtTokenService {
@@ -76,25 +99,38 @@ export class JwtTokenService {
   }
 
   private verify(token: string): JwtPayload {
-    const parts = token.split(".");
+    try {
+      if (typeof token !== "string") {
+        throw new Error("invalid token type");
+      }
+      const parts = token.split(".");
+      if (
+        parts.length !== 3 ||
+        parts.some((part) => !part || !BASE64URL_SEGMENT.test(part))
+      ) {
+        throw new Error("invalid token structure");
+      }
 
-    if (parts.length !== 3) {
-      throw new UnauthorizedException("Invalid token");
+      const [header, payload, signature] = parts;
+      const decodedPayload = Buffer.from(payload, "base64url").toString("utf8");
+      if (Buffer.from(decodedPayload, "utf8").toString("base64url") !== payload) {
+        throw new Error("invalid token payload encoding");
+      }
+
+      const parsedPayload: unknown = JSON.parse(decodedPayload);
+      if (!isJwtPayload(parsedPayload)) {
+        throw new Error("invalid token payload");
+      }
+
+      const expected = this.signature(`${header}.${payload}`, this.secret(parsedPayload.type));
+      if (signature !== expected || parsedPayload.exp < this.nowSeconds()) {
+        throw new Error("invalid token signature or expiry");
+      }
+
+      return parsedPayload;
+    } catch {
+      throw new UnauthorizedException(INVALID_TOKEN_MESSAGE);
     }
-
-    const [header, payload, signature] = parts;
-    const parsedPayload = JSON.parse(Buffer.from(payload, "base64url").toString()) as JwtPayload;
-    const expected = this.signature(`${header}.${payload}`, this.secret(parsedPayload.type));
-
-    if (signature !== expected) {
-      throw new UnauthorizedException("Invalid token signature");
-    }
-
-    if (!parsedPayload.exp || parsedPayload.exp < this.nowSeconds()) {
-      throw new UnauthorizedException("Token expired");
-    }
-
-    return parsedPayload;
   }
 
   private encode(value: unknown) {

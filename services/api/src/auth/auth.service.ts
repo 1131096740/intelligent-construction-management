@@ -162,6 +162,9 @@ export class AuthService {
     if (input.newPassword.length < 8) {
       throw new BadRequestException("New password must be at least 8 characters");
     }
+    if (!/\S/u.test(input.newPassword)) {
+      throw new BadRequestException("新密码不能全为空白字符");
+    }
 
     const storedUser = await this.prisma.user.findUnique({
       where: { id: user.id }
