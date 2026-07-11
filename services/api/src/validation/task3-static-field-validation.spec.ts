@@ -137,7 +137,8 @@ describe("Task 3 DTO static field validation coverage", () => {
 
   it("keeps every required text failure mutually exclusive and preserves valid text", async () => {
     const groups = groupsWithRule("staticRequiredText");
-    expect(groups.length).toBeGreaterThan(0);
+    // Adding or removing a governed required field must update this explicit coverage contract.
+    expect(groups).toHaveLength(43);
 
     for (const group of groups) {
       for (const value of [undefined, null, ""]) {

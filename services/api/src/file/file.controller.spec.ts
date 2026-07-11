@@ -95,6 +95,18 @@ describe("FileController authorization wiring", () => {
       value: "😀".repeat(201),
       include: true,
       expected: "下载原因不能超过 200 个字"
+    },
+    {
+      label: "201 ASCII spaces",
+      value: " ".repeat(201),
+      include: true,
+      expected: "请填写下载原因"
+    },
+    {
+      label: "201 full-width spaces",
+      value: "　".repeat(201),
+      include: true,
+      expected: "请填写下载原因"
     }
   ])("returns one exact error for a $label download reason", async ({ value, include, expected }) => {
     const body: Record<string, unknown> = { confirmationPassword: "current-password" };

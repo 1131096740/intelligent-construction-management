@@ -132,7 +132,10 @@ export function IsMaxUnicodeTextLength(
     registerStaticFieldRule(target, propertyKey, {
       name: "staticMaxUnicodeTextLength",
       message,
-      validate: (value) => typeof value !== "string" || Array.from(value).length <= max
+      validate: (value) =>
+        typeof value !== "string" ||
+        value.trim().length === 0 ||
+        Array.from(value).length <= max
     });
   };
 }
