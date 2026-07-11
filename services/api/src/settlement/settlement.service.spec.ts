@@ -93,7 +93,17 @@ describe("SettlementService", () => {
     };
   }
 
-  function approvalPdfRenderTx() {
+  function approvalPdfRenderTx(
+    token: {
+      instanceId: string | null;
+      updatedAt: Date | null;
+      latestActionId: string | null;
+    } = {
+      instanceId: "approval-instance-1",
+      updatedAt: new Date("2026-07-11T08:00:00.000Z"),
+      latestActionId: "approval-action-1"
+    }
+  ) {
     return {
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
@@ -127,13 +137,32 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "approval-instance-1",
-          frozenNodes: []
-        })
+        findFirst: jest.fn().mockResolvedValue(
+          token.instanceId
+            ? {
+                id: token.instanceId,
+                updatedAt: token.updatedAt,
+                frozenNodes: []
+              }
+            : null
+        )
       },
       approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(
+          token.latestActionId ? { id: token.latestActionId } : null
+        ),
         findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+  }
+
+  function approvalPdfTokenTables() {
+    return {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({ id: "approval-instance-1" })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null)
       }
     };
   }
@@ -1548,6 +1577,7 @@ describe("SettlementService", () => {
         })
       },
       approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([])
       },
       user: {
@@ -1555,6 +1585,7 @@ describe("SettlementService", () => {
       }
     };
     const pdfTx = {
+      ...approvalPdfTokenTables(),
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       pdfDocument: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -2333,6 +2364,7 @@ describe("SettlementService", () => {
         })
       },
       approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([
           {
             action: "approve",
@@ -2344,6 +2376,7 @@ describe("SettlementService", () => {
       }
     };
     const pdfTx = {
+      ...approvalPdfTokenTables(),
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       pdfDocument: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -2492,6 +2525,7 @@ describe("SettlementService", () => {
         })
       },
       approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([
           {
             action: "approve",
@@ -2508,6 +2542,7 @@ describe("SettlementService", () => {
       }
     };
     const associationTx = {
+      ...approvalPdfTokenTables(),
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       pdfDocument: {
         findFirst: jest.fn().mockResolvedValue({
@@ -3954,6 +3989,7 @@ describe("SettlementService", () => {
         })
       },
       approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([
           {
             action: "approve",
@@ -4104,11 +4140,254 @@ describe("SettlementService", () => {
     });
   });
 
+  it.each([
+    {
+      name: "no approval instance",
+      instance: null,
+      latestAction: null,
+      expected: {
+        approvalInstanceId: null,
+        approvalInstanceUpdatedAt: null,
+        latestActionLogId: null
+      }
+    },
+    {
+      name: "approval instance without actions",
+      instance: {
+        id: "approval-instance-1",
+        updatedAt: new Date("2026-07-11T08:00:00.000Z")
+      },
+      latestAction: null,
+      expected: {
+        approvalInstanceId: "approval-instance-1",
+        approvalInstanceUpdatedAt: "2026-07-11T08:00:00.000Z",
+        latestActionLogId: null
+      }
+    }
+  ])("builds a deterministic approval PDF snapshot token for $name", async (testCase) => {
+    const tx = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(testCase.instance)
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(testCase.latestAction)
+      }
+    };
+    const settlementService = new SettlementService();
+    const tokenReader = settlementService as unknown as {
+      loadSettlementApprovalPdfSnapshotToken(client: unknown, settlementId: string): Promise<{
+        approvalInstanceId: string | null;
+        approvalInstanceUpdatedAt: string | null;
+        latestActionLogId: string | null;
+      }>;
+    };
+
+    await expect(
+      tokenReader.loadSettlementApprovalPdfSnapshotToken(tx, "settlement-1")
+    ).resolves.toEqual(testCase.expected);
+    expect(tx.approvalInstance.findFirst).toHaveBeenCalledWith({
+      where: {
+        businessType: "settlement",
+        businessId: "settlement-1",
+        flowType: "settlement.approve"
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      select: { id: true, updatedAt: true }
+    });
+    if (testCase.instance) {
+      expect(tx.approvalActionLog.findFirst).toHaveBeenCalledWith({
+        where: { approvalInstanceId: "approval-instance-1" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { id: true }
+      });
+    } else {
+      expect(tx.approvalActionLog.findFirst).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    {
+      name: "instance updatedAt changes",
+      latestToken: {
+        instanceId: "approval-instance-1",
+        updatedAt: new Date("2026-07-11T08:01:00.000Z"),
+        latestActionId: "approval-action-1"
+      }
+    },
+    {
+      name: "latest action changes",
+      latestToken: {
+        instanceId: "approval-instance-1",
+        updatedAt: new Date("2026-07-11T08:00:00.000Z"),
+        latestActionId: "approval-action-2"
+      }
+    }
+  ])("refuses PDF association when $name", async ({ latestToken }) => {
+    const initialToken = {
+      instanceId: "approval-instance-1",
+      updatedAt: new Date("2026-07-11T08:00:00.000Z"),
+      latestActionId: "approval-action-1"
+    };
+    const renderTx = approvalPdfRenderTx(initialToken);
+    const associationTx = {
+      ...approvalPdfRenderTx(latestToken),
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
+      pdfDocument: {
+        findFirst: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce(async (callback) => callback(renderTx))
+        .mockImplementationOnce(async (callback) => callback(associationTx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-stale" }),
+      linkFileReplacement: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+    const refresher = settlementService as unknown as {
+      refreshSettlementApprovalPdf(settlementId: string, actorUserId: string): Promise<void>;
+    };
+
+    await expect(
+      refresher.refreshSettlementApprovalPdf("settlement-1", "contract-staff-1")
+    ).rejects.toThrow("结算审批状态已变化，本次 PDF 不再关联，请重新生成");
+    expect(associationTx.pdfDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+    expect(associationTx.pdfDocument.create).not.toHaveBeenCalled();
+    expect(associationTx.pdfDocument.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalledWith(
+      associationTx,
+      expect.objectContaining({ action: "settlement.approval_pdf.refresh" })
+    );
+  });
+
+  it("does not let an older paused render overwrite a newer approval PDF", async () => {
+    let currentToken = {
+      instanceId: "approval-instance-1",
+      updatedAt: new Date("2026-07-11T08:00:00.000Z"),
+      latestActionId: "approval-action-old"
+    };
+    const renderTx = approvalPdfRenderTx();
+    renderTx.approvalInstance.findFirst.mockImplementation(async () => ({
+      id: currentToken.instanceId,
+      updatedAt: currentToken.updatedAt,
+      frozenNodes: []
+    }));
+    renderTx.approvalActionLog.findFirst.mockImplementation(async () => ({
+      id: currentToken.latestActionId
+    }));
+    let currentPdf: { id: string; fileId: string } | null = null;
+    const associationTx = {
+      ...renderTx,
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
+      pdfDocument: {
+        findFirst: jest.fn().mockImplementation(async () => currentPdf),
+        create: jest.fn().mockImplementation(async ({ data }) => {
+          currentPdf = { id: "pdf-latest", fileId: data.fileId };
+          return currentPdf;
+        }),
+        update: jest.fn().mockImplementation(async ({ data }) => {
+          currentPdf = { id: "pdf-latest", fileId: data.fileId };
+          return currentPdf;
+        })
+      }
+    };
+    let transactionIndex = 0;
+    const transactionClients = [renderTx, renderTx, associationTx, associationTx];
+    const prisma = {
+      $transaction: jest.fn(async (callback) =>
+        callback(transactionClients[transactionIndex++])
+      )
+    };
+    let signalOldUploadStarted: (() => void) | undefined;
+    const oldUploadStarted = new Promise<void>((resolve) => {
+      signalOldUploadStarted = resolve;
+    });
+    let resumeOldUpload: (() => void) | undefined;
+    const oldUploadResume = new Promise<void>((resolve) => {
+      resumeOldUpload = resolve;
+    });
+    const files = {
+      uploadPrivateFile: jest.fn().mockImplementation(async (input) => {
+        if (input.uploadedByUserId === "actor-old") {
+          signalOldUploadStarted?.();
+          await oldUploadResume;
+          return { id: "file-old-render" };
+        }
+        return { id: "file-new-render" };
+      }),
+      linkFileReplacement: jest.fn()
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      files as never
+    );
+    const refresher = settlementService as unknown as {
+      refreshSettlementApprovalPdf(settlementId: string, actorUserId: string): Promise<void>;
+    };
+
+    const oldRefresh = refresher.refreshSettlementApprovalPdf("settlement-1", "actor-old");
+    const oldRefreshRejection = expect(oldRefresh).rejects.toThrow(
+      "结算审批状态已变化，本次 PDF 不再关联，请重新生成"
+    );
+    await oldUploadStarted;
+    currentToken = {
+      ...currentToken,
+      latestActionId: "approval-action-new"
+    };
+
+    await refresher.refreshSettlementApprovalPdf("settlement-1", "actor-new");
+    expect(currentPdf).toEqual({ id: "pdf-latest", fileId: "file-new-render" });
+    resumeOldUpload?.();
+    await oldRefreshRejection;
+
+    expect(currentPdf).toEqual({ id: "pdf-latest", fileId: "file-new-render" });
+    expect(associationTx.pdfDocument.findFirst).toHaveBeenCalledTimes(1);
+    expect(associationTx.pdfDocument.create).toHaveBeenCalledTimes(1);
+    expect(associationTx.pdfDocument.update).not.toHaveBeenCalled();
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(
+      associationTx,
+      expect.objectContaining({
+        action: "settlement.approval_pdf.refresh",
+        metadata: expect.objectContaining({ fileId: "file-new-render" })
+      })
+    );
+    expect(renderTx.approvalInstance.findFirst).toHaveBeenCalledWith({
+      where: {
+        businessType: "settlement",
+        businessId: "settlement-1",
+        flowType: "settlement.approve"
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
+    expect(renderTx.approvalActionLog.findMany).toHaveBeenCalledWith({
+      where: { approvalInstanceId: "approval-instance-1" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+  });
+
   it("serializes first creation and the next refresh under the settlement row lock", async () => {
     const events: string[] = [];
     let currentPdf: { id: string; fileId: string } | null = null;
     const renderTx = approvalPdfRenderTx();
     const associationTx = {
+      ...renderTx,
       $queryRaw: jest.fn().mockImplementation(async () => {
         events.push("lock");
         return [{ id: "settlement-1" }];
@@ -4504,10 +4783,12 @@ describe("SettlementService", () => {
         })
       },
       approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([])
       }
     };
     const pdfTx = {
+      ...approvalPdfTokenTables(),
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       pdfDocument: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -4710,10 +4991,12 @@ describe("SettlementService", () => {
         })
       },
       approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([])
       }
     };
     const pdfTx = {
+      ...approvalPdfTokenTables(),
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       pdfDocument: {
         findFirst: jest.fn().mockResolvedValue(null),

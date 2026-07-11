@@ -168,6 +168,12 @@ interface SettlementApprovalLogMetadataSnapshot {
   approverName?: string;
 }
 
+interface SettlementApprovalPdfSnapshotToken {
+  approvalInstanceId: string | null;
+  approvalInstanceUpdatedAt: string | null;
+  latestActionLogId: string | null;
+}
+
 interface UserLookupClient {
   user?: {
     findMany(args: {
@@ -1831,9 +1837,10 @@ export class SettlementService {
       return;
     }
 
-    const source = await this.prisma.$transaction((tx) =>
-      this.loadSettlementDocumentInput(tx, settlementId)
-    );
+    const { source, snapshotToken } = await this.prisma.$transaction(async (tx) => ({
+      snapshotToken: await this.loadSettlementApprovalPdfSnapshotToken(tx, settlementId),
+      source: await this.loadSettlementDocumentInput(tx, settlementId)
+    }));
     const buffer = await renderSettlementArchivePdf(source);
     const file = await files.uploadPrivateFile({
       originalName: `${source.settlementCode}-结算审批最新.pdf`,
@@ -1849,6 +1856,18 @@ export class SettlementService {
       );
       if (!lockedSettlement) {
         throw new Error("未找到结算单，无法关联结算审批 PDF");
+      }
+      const currentSnapshotToken = await this.loadSettlementApprovalPdfSnapshotToken(
+        tx,
+        source.settlementId
+      );
+      if (
+        currentSnapshotToken.approvalInstanceId !== snapshotToken.approvalInstanceId ||
+        currentSnapshotToken.approvalInstanceUpdatedAt !==
+          snapshotToken.approvalInstanceUpdatedAt ||
+        currentSnapshotToken.latestActionLogId !== snapshotToken.latestActionLogId
+      ) {
+        throw new Error("结算审批状态已变化，本次 PDF 不再关联，请重新生成");
       }
       const existing = await tx.pdfDocument.findFirst({
         where: {
@@ -1896,6 +1915,39 @@ export class SettlementService {
         }
       });
     });
+  }
+
+  private async loadSettlementApprovalPdfSnapshotToken(
+    tx: Prisma.TransactionClient,
+    settlementId: string
+  ): Promise<SettlementApprovalPdfSnapshotToken> {
+    const approvalInstance = await tx.approvalInstance.findFirst({
+      where: {
+        businessType: "settlement",
+        businessId: settlementId,
+        flowType: "settlement.approve"
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      select: { id: true, updatedAt: true }
+    });
+    if (!approvalInstance) {
+      return {
+        approvalInstanceId: null,
+        approvalInstanceUpdatedAt: null,
+        latestActionLogId: null
+      };
+    }
+
+    const latestAction = await tx.approvalActionLog.findFirst({
+      where: { approvalInstanceId: approvalInstance.id },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true }
+    });
+    return {
+      approvalInstanceId: approvalInstance.id,
+      approvalInstanceUpdatedAt: approvalInstance.updatedAt?.toISOString() ?? null,
+      latestActionLogId: latestAction?.id ?? null
+    };
   }
 
   private async recordSettlementApprovalPdfRefreshFailure(
@@ -1961,7 +2013,8 @@ export class SettlementService {
           businessType: "settlement",
           businessId: settlement.id,
           flowType: "settlement.approve"
-        }
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
       })
     ]);
 
@@ -1976,7 +2029,7 @@ export class SettlementService {
     const actionLogs = approvalInstance
       ? await tx.approvalActionLog.findMany({
           where: { approvalInstanceId: approvalInstance.id },
-          orderBy: { createdAt: "asc" }
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }]
         })
       : [];
 
