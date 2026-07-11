@@ -5,7 +5,15 @@ import { JwtTokenService } from "./jwt-token.service";
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
 function tokenWithPayload(payload: unknown, secret = "test-access-secret") {
-  const unsigned = `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}`;
+  return tokenWithHeaderAndPayload({ alg: "HS256", typ: "JWT" }, payload, secret);
+}
+
+function tokenWithHeaderAndPayload(
+  header: unknown,
+  payload: unknown,
+  secret = "test-access-secret"
+) {
+  const unsigned = `${encode(header)}.${encode(payload)}`;
   const signature = createHmac("sha256", secret).update(unsigned).digest("base64url");
   return `${unsigned}.${signature}`;
 }
@@ -75,11 +83,54 @@ describe("JwtTokenService", () => {
     );
   });
 
+  it("maps a non-JSON header to the fixed 401 without exposing submitted content", () => {
+    const secret = "TOP-SECRET";
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(secret).toString("base64url");
+    const payload = encode({ sub: "user-1", type: "access", iat: now, exp: now + 60 });
+
+    expectFixedUnauthorized(
+      () => service.verifyAccessToken(`${header}.${payload}.signature`),
+      secret
+    );
+  });
+
   it.each([
     { label: "wrong segment count", token: "header.payload" },
     { label: "invalid base64url payload", token: "header.%%%.signature" }
   ])("maps $label to the same fixed 401", ({ token }) => {
     expectFixedUnauthorized(() => service.verifyAccessToken(token));
+  });
+
+  it.each([
+    { label: "alg none", header: { alg: "none", typ: "JWT" } },
+    { label: "wrong typ", header: { alg: "HS256", typ: "NOT-JWT" } },
+    { label: "array header", header: [] },
+    { label: "extra header field", header: { alg: "HS256", typ: "JWT", kid: "key-1" } }
+  ])("rejects a signed token with $label using the fixed 401", ({ header }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = tokenWithHeaderAndPayload(header, {
+      sub: "user-1",
+      type: "access",
+      iat: now,
+      exp: now + 60
+    });
+
+    expectFixedUnauthorized(() => service.verifyAccessToken(token));
+  });
+
+  it("rejects non-canonical header and payload segments using the fixed 401", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const canonical = tokenWithPayload({
+      sub: "user-1",
+      type: "access",
+      iat: now,
+      exp: now + 60
+    });
+    const [header, payload, signature] = canonical.split(".");
+
+    expectFixedUnauthorized(() => service.verifyAccessToken(`${header}=.${payload}.${signature}`));
+    expectFixedUnauthorized(() => service.verifyAccessToken(`${header}.${payload}=.${signature}`));
   });
 
   it.each([
@@ -103,6 +154,72 @@ describe("JwtTokenService", () => {
     }
   ])("maps $label to the same fixed 401", ({ payload }) => {
     expectFixedUnauthorized(() => service.verifyAccessToken(tokenWithPayload(payload)));
+  });
+
+  it.each([
+    {
+      label: "subject with surrounding whitespace",
+      payload: { sub: " user-1 ", type: "access" }
+    },
+    { label: "non-string name", payload: { sub: "user-1", name: 123, type: "access" } },
+    {
+      label: "invalid phone type",
+      payload: { sub: "user-1", phone: { value: "13800000000" }, type: "access" }
+    },
+    { label: "negative issued-at", payload: { sub: "user-1", type: "access", iat: -1 } },
+    {
+      label: "unsafe issued-at integer",
+      payload: { sub: "user-1", type: "access", iat: Number.MAX_SAFE_INTEGER + 1 }
+    },
+    {
+      label: "future issued-at",
+      payload: { sub: "user-1", type: "access", iatOffset: 60 }
+    },
+    { label: "expiry equal to issued-at", payload: { sub: "user-1", type: "access", expOffset: 0 } },
+    { label: "expired token", payload: { sub: "user-1", type: "access", expOffset: -1 } }
+  ])("rejects a signed token with $label using the fixed 401", ({ payload }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const values = payload as Record<string, unknown>;
+    const { iatOffset, expOffset, ...claims } = values;
+    const iat = typeof iatOffset === "number" ? now + iatOffset : (values.iat ?? now);
+    const exp = typeof expOffset === "number" ? Number(iat) + expOffset : now + 60;
+    const tokenPayload = { ...claims, iat, exp };
+
+    expectFixedUnauthorized(() => service.verifyAccessToken(tokenWithPayload(tokenPayload)));
+  });
+
+  it("rejects extra payload claims without exposing them", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const secret = "TOP-SECRET";
+    const token = tokenWithPayload({
+      sub: "user-1",
+      type: "access",
+      iat: now,
+      exp: now + 60,
+      internalSecret: secret
+    });
+
+    expectFixedUnauthorized(() => service.verifyAccessToken(token), secret);
+  });
+
+  it("maps an incorrect signature and an expired token to the fixed 401", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = tokenWithPayload({
+      sub: "user-1",
+      type: "access",
+      iat: now,
+      exp: now + 60
+    });
+    const [header, payload] = token.split(".");
+    const expired = tokenWithPayload({
+      sub: "user-1",
+      type: "access",
+      iat: now - 120,
+      exp: now - 60
+    });
+
+    expectFixedUnauthorized(() => service.verifyAccessToken(`${header}.${payload}.wrong`));
+    expectFixedUnauthorized(() => service.verifyAccessToken(expired));
   });
 
   it("rejects refresh tokens when access tokens are required", () => {

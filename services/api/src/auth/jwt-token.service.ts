@@ -9,26 +9,62 @@ const DEFAULT_SECRET_MARKERS = new Set([
 ]);
 const INVALID_TOKEN_MESSAGE = "登录凭证无效，请重新登录";
 const BASE64URL_SEGMENT = /^[A-Za-z0-9_-]+$/u;
+const JWT_HEADER_KEYS = new Set(["alg", "typ"]);
+const JWT_PAYLOAD_KEYS = new Set(["sub", "name", "phone", "type", "iat", "exp"]);
 
-function isJwtPayload(value: unknown): value is JwtPayload {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
   const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
+  return prototype === Object.prototype || prototype === null;
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowedKeys: ReadonlySet<string>) {
+  return Object.keys(value).every((key) => allowedKeys.has(key));
+}
+
+function isJwtHeader(value: unknown): boolean {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, JWT_HEADER_KEYS)) {
+    return false;
+  }
+  return (
+    Object.keys(value).length === JWT_HEADER_KEYS.size &&
+    value.alg === "HS256" &&
+    value.typ === "JWT"
+  );
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function isJwtPayload(value: unknown, now: number): value is JwtPayload {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, JWT_PAYLOAD_KEYS)) {
     return false;
   }
 
-  const payload = value as Record<string, unknown>;
   return (
-    (payload.type === "access" || payload.type === "refresh") &&
-    typeof payload.sub === "string" &&
-    payload.sub.trim().length > 0 &&
-    typeof payload.iat === "number" &&
-    Number.isFinite(payload.iat) &&
-    typeof payload.exp === "number" &&
-    Number.isFinite(payload.exp)
+    (value.type === "access" || value.type === "refresh") &&
+    typeof value.sub === "string" &&
+    value.sub.length > 0 &&
+    value.sub.trim() === value.sub &&
+    (value.name === undefined || typeof value.name === "string") &&
+    (value.phone === undefined || value.phone === null || typeof value.phone === "string") &&
+    isPositiveSafeInteger(value.iat) &&
+    value.iat <= now &&
+    isPositiveSafeInteger(value.exp) &&
+    value.exp > value.iat &&
+    value.exp > now
   );
+}
+
+function decodeCanonicalJson(segment: string): unknown {
+  const decoded = Buffer.from(segment, "base64url").toString("utf8");
+  if (Buffer.from(decoded, "utf8").toString("base64url") !== segment) {
+    throw new Error("invalid token encoding");
+  }
+  return JSON.parse(decoded) as unknown;
 }
 
 @Injectable()
@@ -112,19 +148,20 @@ export class JwtTokenService {
       }
 
       const [header, payload, signature] = parts;
-      const decodedPayload = Buffer.from(payload, "base64url").toString("utf8");
-      if (Buffer.from(decodedPayload, "utf8").toString("base64url") !== payload) {
-        throw new Error("invalid token payload encoding");
+      const parsedHeader = decodeCanonicalJson(header);
+      if (!isJwtHeader(parsedHeader)) {
+        throw new Error("invalid token header");
       }
 
-      const parsedPayload: unknown = JSON.parse(decodedPayload);
-      if (!isJwtPayload(parsedPayload)) {
+      const parsedPayload = decodeCanonicalJson(payload);
+      const now = this.nowSeconds();
+      if (!isJwtPayload(parsedPayload, now)) {
         throw new Error("invalid token payload");
       }
 
       const expected = this.signature(`${header}.${payload}`, this.secret(parsedPayload.type));
-      if (signature !== expected || parsedPayload.exp < this.nowSeconds()) {
-        throw new Error("invalid token signature or expiry");
+      if (signature !== expected) {
+        throw new Error("invalid token signature");
       }
 
       return parsedPayload;

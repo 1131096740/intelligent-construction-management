@@ -65,50 +65,58 @@ describe("FileController authorization wiring", () => {
     expect(JSON.stringify(response)).not.toContain("private/TOP-SECRET.pdf");
   });
 
-  it("rejects an empty confirmation password through the API pipe", async () => {
-    const response = await getDownloadTicketValidationResponse({
-      confirmationPassword: "",
-      downloadReason: "合同归档复核"
-    });
+  it.each([
+    { label: "missing", value: undefined, include: false, expected: "请填写下载原因" },
+    { label: "undefined", value: undefined, include: true, expected: "请填写下载原因" },
+    { label: "null", value: null, include: true, expected: "请填写下载原因" },
+    { label: "empty", value: "", include: true, expected: "请填写下载原因" },
+    { label: "whitespace-only", value: "   ", include: true, expected: "请填写下载原因" },
+    { label: "number", value: 123, include: true, expected: "下载原因必须是文字" },
+    {
+      label: "object",
+      value: { secret: "TOP-SECRET" },
+      include: true,
+      expected: "下载原因必须是文字"
+    },
+    {
+      label: "over 200 characters",
+      value: "下载".repeat(101),
+      include: true,
+      expected: "下载原因不能超过 200 个字"
+    }
+  ])("returns one exact error for a $label download reason", async ({ value, include, expected }) => {
+    const body: Record<string, unknown> = { confirmationPassword: "current-password" };
+    if (include) {
+      body.downloadReason = value;
+    }
 
-    expect(response.errors).toContain("请输入当前登录密码");
+    const response = await getDownloadTicketValidationResponse(body);
+
+    expect(response.errors).toEqual([expected]);
+    expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
   });
 
-  it("rejects a whitespace-only confirmation password through the API pipe", async () => {
-    const response = await getDownloadTicketValidationResponse({
-      confirmationPassword: "   ",
-      downloadReason: "合同归档复核"
-    });
+  it.each([
+    { label: "missing", value: undefined, include: false, expected: "请输入当前登录密码" },
+    { label: "undefined", value: undefined, include: true, expected: "请输入当前登录密码" },
+    { label: "null", value: null, include: true, expected: "请输入当前登录密码" },
+    { label: "empty", value: "", include: true, expected: "请输入当前登录密码" },
+    { label: "whitespace-only", value: "   ", include: true, expected: "请输入当前登录密码" },
+    { label: "number", value: 123, include: true, expected: "当前登录密码必须是文字" },
+    { label: "object", value: {}, include: true, expected: "当前登录密码必须是文字" }
+  ])(
+    "returns one exact error for a $label confirmation password",
+    async ({ value, include, expected }) => {
+      const body: Record<string, unknown> = { downloadReason: "合同归档复核" };
+      if (include) {
+        body.confirmationPassword = value;
+      }
 
-    expect(response.errors).toContain("当前登录密码不能全为空白字符");
-  });
+      const response = await getDownloadTicketValidationResponse(body);
 
-  it("rejects an empty download reason through the API pipe", async () => {
-    const response = await getDownloadTicketValidationResponse({
-      confirmationPassword: "current-password",
-      downloadReason: ""
-    });
-
-    expect(response.errors).toContain("请填写下载原因");
-  });
-
-  it("rejects a whitespace-only download reason through the API pipe", async () => {
-    const response = await getDownloadTicketValidationResponse({
-      confirmationPassword: "current-password",
-      downloadReason: "   "
-    });
-
-    expect(response.errors).toContain("下载原因不能全为空白字符");
-  });
-
-  it("rejects an overly long download reason through the API pipe", async () => {
-    const response = await getDownloadTicketValidationResponse({
-      confirmationPassword: "current-password",
-      downloadReason: "下载".repeat(101)
-    });
-
-    expect(response.errors).toContain("下载原因不能超过 200 个字");
-  });
+      expect(response.errors).toEqual([expected]);
+    }
+  );
 
   it("accepts and transforms a valid download ticket request", async () => {
     const value = {
