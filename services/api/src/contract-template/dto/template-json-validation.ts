@@ -24,15 +24,49 @@ export function isJsonSafeValue(value: unknown, ancestors = new WeakSet<object>(
   if (typeof value !== "object") return false;
   if (ancestors.has(value)) return false;
 
+  ancestors.add(value);
   try {
-    ancestors.add(value);
     if (Array.isArray(value)) {
-      const valid = value.every((item) => isJsonSafeValue(item, ancestors));
-      ancestors.delete(value);
-      return valid;
+      if (
+        Object.getPrototypeOf(value) !== Array.prototype ||
+        Object.getOwnPropertySymbols(value).length > 0
+      ) {
+        return false;
+      }
+      const descriptors = Object.getOwnPropertyDescriptors(value) as unknown as Record<
+        string,
+        PropertyDescriptor
+      >;
+      const lengthDescriptor = descriptors.length;
+      if (
+        !lengthDescriptor ||
+        !("value" in lengthDescriptor) ||
+        !Number.isInteger(lengthDescriptor.value)
+      ) {
+        return false;
+      }
+      const length = lengthDescriptor.value as number;
+      const indexEntries = Object.entries(descriptors).filter(([key]) => key !== "length");
+      if (indexEntries.length !== length) return false;
+
+      return indexEntries.every(([key, descriptor]) => {
+        if (!/^(0|[1-9]\d*)$/u.test(key)) return false;
+        const index = Number(key);
+        if (
+          !Number.isSafeInteger(index) ||
+          index < 0 ||
+          index >= length ||
+          index > 4_294_967_294 ||
+          String(index) !== key ||
+          !("value" in descriptor) ||
+          descriptor.enumerable !== true
+        ) {
+          return false;
+        }
+        return isJsonSafeValue(descriptor.value, ancestors);
+      });
     }
     if (!isPlainRecord(value) || Object.getOwnPropertySymbols(value).length > 0) {
-      ancestors.delete(value);
       return false;
     }
     const descriptors = Object.getOwnPropertyDescriptors(value);
@@ -42,11 +76,11 @@ export function isJsonSafeValue(value: unknown, ancestors = new WeakSet<object>(
         descriptor.enumerable === true &&
         isJsonSafeValue(descriptor.value, ancestors)
     );
-    ancestors.delete(value);
     return valid;
   } catch {
-    ancestors.delete(value);
     return false;
+  } finally {
+    ancestors.delete(value);
   }
 }
 
