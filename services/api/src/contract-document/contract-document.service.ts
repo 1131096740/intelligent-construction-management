@@ -249,6 +249,7 @@ export class ContractDocumentService {
           "线下修订稿必须上传 DOCX 文档"
         );
       }
+      let sourceDocxFileId: string | null = null;
       if (input.sourceGeneratedDocumentId) {
         const source = await tx.contractGeneratedDocument.findUnique({
           where: { id: input.sourceGeneratedDocumentId }
@@ -258,6 +259,16 @@ export class ContractDocumentService {
             "所选来源文档不属于当前合同版本"
           );
         }
+        if (
+          source.status !== "success" ||
+          typeof source.docxFileId !== "string" ||
+          source.docxFileId.trim().length === 0
+        ) {
+          throw new BadRequestException(
+            "所选来源文档尚未生成成功或缺少 DOCX 文件"
+          );
+        }
+        sourceDocxFileId = source.docxFileId;
       }
       const versionGate = await tx.contractVersion.updateMany({
         where: {
@@ -281,6 +292,13 @@ export class ContractDocumentService {
       if (ownerGate.count !== 1) {
         throw new BadRequestException("合同草稿状态已变化，请刷新后重试");
       }
+      if (sourceDocxFileId) {
+        await this.files.linkFileReplacement(tx, {
+          newFileId: input.fileId,
+          oldFileId: sourceDocxFileId,
+          actorUserId
+        });
+      }
       const revision = await tx.contractOfflineRevision.create({
         data: {
           contractVersionId: version.id,
@@ -299,7 +317,12 @@ export class ContractDocumentService {
         metadata: {
           contractVersionId: version.id,
           fileId: input.fileId,
-          sourceGeneratedDocumentId: input.sourceGeneratedDocumentId ?? null
+          sourceGeneratedDocumentId: input.sourceGeneratedDocumentId ?? null,
+          newFileId: input.fileId,
+          oldFileId: sourceDocxFileId,
+          replacementKind: sourceDocxFileId
+            ? "contract_offline_revision_from_generated_docx"
+            : null
         }
       });
       return revision;

@@ -4,12 +4,16 @@ import { ContractDocumentService, requiredPlaceholderKeys } from "./contract-doc
 
 describe("ContractDocumentService", () => {
   const audit = { record: jest.fn() };
-  const files = { assertCanDownloadFile: jest.fn() };
+  const files = {
+    assertCanDownloadFile: jest.fn(),
+    linkFileReplacement: jest.fn()
+  };
   const docxMime =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
   beforeEach(() => {
     audit.record.mockReset();
+    files.linkFileReplacement.mockReset().mockResolvedValue(undefined);
     files.assertCanDownloadFile.mockReset().mockImplementation(
       (_tx, id: string) =>
         Promise.resolve({
@@ -638,10 +642,14 @@ describe("ContractDocumentService", () => {
         metadata: {
           contractVersionId: "version-1",
           fileId: "revision-file-1",
-          sourceGeneratedDocumentId: null
+          sourceGeneratedDocumentId: null,
+          newFileId: "revision-file-1",
+          oldFileId: null,
+          replacementKind: null
         }
       })
     );
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       id: "offline-revision-1",
       fileId: "revision-file-1",
@@ -765,6 +773,96 @@ describe("ContractDocumentService", () => {
       "所选来源文档不属于当前合同版本"
     );
     expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("links a successful generated DOCX before recording its offline revision", async () => {
+    const tx = makeTx();
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-1",
+      contractVersionId: "version-1",
+      status: "success",
+      docxFileId: "generated-docx-1"
+    });
+    const { service } = makeService(tx);
+
+    await service.uploadOfflineRevision("version-1", "owner-1", {
+      fileId: "revision-file-1",
+      sourceGeneratedDocumentId: "document-1",
+      confirmationStatementAccepted: true
+    });
+
+    expect(files.linkFileReplacement).toHaveBeenCalledWith(tx, {
+      newFileId: "revision-file-1",
+      oldFileId: "generated-docx-1",
+      actorUserId: "owner-1"
+    });
+    expect(files.linkFileReplacement.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.contractOfflineRevision.create.mock.invocationCallOrder[0]
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        metadata: {
+          contractVersionId: "version-1",
+          fileId: "revision-file-1",
+          sourceGeneratedDocumentId: "document-1",
+          newFileId: "revision-file-1",
+          oldFileId: "generated-docx-1",
+          replacementKind: "contract_offline_revision_from_generated_docx"
+        }
+      })
+    );
+  });
+
+  it.each([
+    { status: "queued", docxFileId: "generated-docx-1", reason: "not successful" },
+    { status: "success", docxFileId: null, reason: "missing DOCX" }
+  ])("rejects a generated source that is $reason", async ({ status, docxFileId }) => {
+    const tx = makeTx();
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-1",
+      contractVersionId: "version-1",
+      status,
+      docxFileId
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-file-1",
+        sourceGeneratedDocumentId: "document-1",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow("所选来源文档尚未生成成功或缺少 DOCX 文件");
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+    expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("does not create or audit an offline revision when replacement linking fails", async () => {
+    const tx = makeTx();
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-1",
+      contractVersionId: "version-1",
+      status: "success",
+      docxFileId: "generated-docx-1"
+    });
+    files.linkFileReplacement.mockRejectedValueOnce(
+      new ForbiddenException("新文件必须由当前操作人上传")
+    );
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-file-1",
+        sourceGeneratedDocumentId: "document-1",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow("新文件必须由当前操作人上传");
+    expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("lists offline revisions newest first after the owned version gate", async () => {
