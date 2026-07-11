@@ -186,7 +186,7 @@ describe("ContractBillService", () => {
 
     await expect(
       service.updateRow("bill-1", "key-1", "owner-1", rowInput)
-    ).rejects.toThrow("Contract bill revision/status conflict");
+    ).rejects.toThrow("合同清单已变化或当前状态不可编辑，请刷新后重试");
     expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
@@ -208,7 +208,7 @@ describe("ContractBillService", () => {
 
     await expect(
       service.updateRow("bill-1", "foreign-key", "owner-1", rowInput)
-    ).rejects.toThrow("Contract bill row not found");
+    ).rejects.toThrow("合同清单行不存在");
     expect(tx.contractBillRow.findFirst).toHaveBeenCalledWith({
       where: { contractBillId: "bill-1", rowKey: "foreign-key" }
     });
@@ -272,7 +272,7 @@ describe("ContractBillService", () => {
         expectedBillRevision: 2,
         rowKeys: ["a", "a"]
       })
-    ).rejects.toThrow("rowKeys must exactly match");
+    ).rejects.toThrow("排序行必须与当前清单行完全一致");
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
@@ -312,7 +312,7 @@ describe("ContractBillService", () => {
 
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, quantity: "1.001" })
-    ).rejects.toThrow("quantity exceeds scale 2");
+    ).rejects.toThrow("数量小数位数不能超过 2 位");
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
@@ -321,7 +321,7 @@ describe("ContractBillService", () => {
 
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, unitPrice: "100.123" })
-    ).rejects.toThrow("unitPrice exceeds scale 2");
+    ).rejects.toThrow("单价小数位数不能超过 2 位");
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
@@ -331,11 +331,11 @@ describe("ContractBillService", () => {
     for (const invalid of ["1e2", "NaN", "-1", "01", " 1"]) {
       await expect(
         service.addRow("bill-1", "owner-1", { ...rowInput, quantity: invalid })
-      ).rejects.toThrow("quantity must be a canonical non-negative decimal string");
+      ).rejects.toThrow("数量必须是规范的非负数字");
     }
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, taxRatePercent: "100.000001" })
-    ).rejects.toThrow("taxRatePercent must be between 0 and 100");
+    ).rejects.toThrow("税率必须在 0 到 100 之间");
   });
 
   it("allows zero quantity for provisional or not-yet-priced draft rows", async () => {
@@ -358,10 +358,20 @@ describe("ContractBillService", () => {
 
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, customData: { brand: "" } })
-    ).rejects.toThrow("Required custom column is missing: brand");
+    ).rejects.toThrow("必填自定义字段未填写：brand");
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, customData: [] as never })
-    ).rejects.toThrow("customData must be a plain object");
+    ).rejects.toThrow("自定义字段数据必须是普通对象");
+  });
+
+  it("不向用户暴露 not JSON 内部哨兵", async () => {
+    const { service } = fixture();
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    await expect(
+      service.addRow("bill-1", "owner-1", { ...rowInput, customData: cyclic })
+    ).rejects.toThrow("自定义字段数据包含无法保存的内容");
   });
 
   it("sums only included and provisional bills into contract amount", async () => {

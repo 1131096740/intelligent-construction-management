@@ -26,7 +26,7 @@ interface SheetRow {
   rowKey?: string;
 }
 
-type TestSchemaColumn = { key: string; label?: string; type?: string };
+type TestSchemaColumn = { key: string; label?: string; type?: string; required?: boolean };
 
 // 在内存中构造一个 `清单数据` 工作簿，第 1 行=标签、第 2 行=字段码、数据从第 3 行起。
 async function buildWorkbookBuffer(options: {
@@ -338,7 +338,12 @@ describe("ContractBillExcelService", () => {
 
     expect(preview.errors.length).toBeGreaterThan(0);
     expect(preview.errors[0]).toEqual(
-      expect.objectContaining({ sheet: DATA_SHEET, row: 3, column: "quantity" })
+      expect.objectContaining({
+        sheet: DATA_SHEET,
+        row: 3,
+        column: "quantity",
+        message: "数量必须是规范的非负数字"
+      })
     );
   });
 
@@ -372,7 +377,7 @@ describe("ContractBillExcelService", () => {
     expect(preview.errors).toContainEqual(
       expect.objectContaining({ sheet: DATA_SHEET, row: 3 })
     );
-    expect(preview.errors[0].message).toMatch(/merged/i);
+    expect(preview.errors[0].message).toBe("清单数据区域不允许合并单元格");
     // 合并单元格的数据行不得落库。
     expect(rows).toHaveLength(0);
   });
@@ -533,10 +538,223 @@ describe("ContractBillExcelService", () => {
 
     await expect(
       service.applyImport((preview as { importId: string }).importId, "owner-1")
-    ).rejects.toThrow("Contract bill import preview is stale");
+    ).rejects.toThrow("合同清单已变化，请重新预检后再应用");
 
     expect(tx.contractBillRow.create).not.toHaveBeenCalled();
     expect(rows).toHaveLength(0);
     expect(imports[0].status).toBe("preview");
+  });
+
+  it.each([
+    { status: "applied", message: "该合同清单导入已应用，不能重复操作" },
+    { status: "failed", message: "当前合同清单导入状态不可应用" }
+  ])("应用导入时用中文说明 $status 状态", async ({ status, message }) => {
+    const { service, imports } = billFixture();
+    imports.push({ id: "import-1", status, contractBillId: "bill-1" });
+
+    await expect(service.applyImport("import-1", "owner-1")).rejects.toThrow(message);
+  });
+
+  it("导入记录不存在时返回中文错误", async () => {
+    const { service } = billFixture();
+
+    await expect(service.applyImport("missing", "owner-1")).rejects.toThrow(
+      "合同清单导入记录不存在"
+    );
+  });
+
+  it("预检错误使用中文且不暴露公式解析哨兵", async () => {
+    const { service, fileService } = billFixture();
+    const buffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "钢筋",
+            unit: "t",
+            quantity: { formula: "1+", result: 1 },
+            unitPrice: "1",
+            taxRatePercent: "0"
+          }
+        }
+      ]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-formula", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-formula",
+      mode: "append"
+    });
+
+    expect(preview.errors.map((error) => error.message)).toEqual([
+      "数量必须是规范的非负数字"
+    ]);
+    expect(JSON.stringify(preview.errors)).not.toMatch(
+      /invalid expression|unbalanced parentheses|unexpected token|trailing tokens/
+    );
+  });
+
+  it.each([
+    { field: "itemName", value: "", message: "项目名称不能为空" },
+    { field: "unit", value: "", message: "单位不能为空" },
+    { field: "quantity", value: "1234567890123456789", message: "数量整数位数不能超过 18 位" },
+    { field: "quantity", value: "1.0001", message: "数量小数位数不能超过 3 位" },
+    { field: "unitPrice", value: "1.001", message: "单价小数位数不能超过 2 位" },
+    { field: "taxRatePercent", value: "101", message: "税率必须在 0 到 100 之间" },
+    { field: "isProvisional", value: "maybe", message: "是否暂定格式无效" }
+  ])("预检 $field 时返回中文业务错误", async ({ field, value, message }) => {
+    const { service, fileService } = billFixture();
+    const buffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "钢筋",
+            unit: "t",
+            quantity: "1",
+            unitPrice: "1",
+            taxRatePercent: "0",
+            [field]: value
+          }
+        }
+      ]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-validation", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-validation",
+      mode: "append"
+    });
+
+    expect(preview.errors).toContainEqual(
+      expect.objectContaining({ row: 3, column: field, message })
+    );
+  });
+
+  it("必填自定义字段缺失时返回中文预检错误", async () => {
+    const { service, bill, fileService } = billFixture();
+    bill.schemaSnapshot = {
+      columns: [{ key: "brand", label: "品牌", type: "text", required: true }]
+    };
+    const buffer = await buildWorkbookBuffer({
+      fieldCodes: [...FIELD_CODES, "brand"],
+      rows: [
+        {
+          values: {
+            itemName: "钢筋",
+            unit: "t",
+            quantity: "1",
+            unitPrice: "1",
+            taxRatePercent: "0",
+            brand: ""
+          }
+        }
+      ]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-custom", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-custom",
+      mode: "append"
+    });
+
+    expect(preview.errors).toContainEqual(
+      expect.objectContaining({
+        row: 3,
+        column: "brand",
+        message: "必填自定义字段未填写：brand"
+      })
+    );
+  });
+
+  it.each([
+    { rowKeys: [undefined], existingKeys: ["key-1"], message: "更新模式要求每行都包含 __rowKey" },
+    { rowKeys: ["missing"], existingKeys: ["key-1"], message: "清单中不存在行标识：missing" },
+    { rowKeys: ["key-1", "key-1"], existingKeys: ["key-1"], message: "行标识重复：key-1" }
+  ])("更新模式行标识错误使用中文", async ({ rowKeys, existingKeys, message }) => {
+    const existingRows = existingKeys.map((rowKey, index) => ({
+      id: `row-${index + 1}`,
+      contractBillId: "bill-1",
+      rowKey,
+      sortOrder: index,
+      taxInclusiveAmountCents: 100n,
+      taxExclusiveAmountCents: 100n,
+      taxAmountCents: 0n
+    }));
+    const { service, fileService } = billFixture({ rows: existingRows });
+    const buffer = await buildWorkbookBuffer({
+      rows: rowKeys.map((rowKey) => ({
+        rowKey,
+        values: {
+          itemName: "钢筋",
+          unit: "t",
+          quantity: "1",
+          unitPrice: "1",
+          taxRatePercent: "0"
+        }
+      }))
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-row-key", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-row-key",
+      mode: "update"
+    });
+
+    expect(preview.errors.map((error) => error.message)).toContain(message);
+  });
+
+  it.each([
+    { input: null, message: "Excel 导入提交内容必须是对象" },
+    { input: { fileId: "", mode: "append" }, message: "文件标识不能为空" },
+    { input: { fileId: "file-1", mode: "merge" }, message: "导入模式必须是替换、更新或追加" }
+  ])("导入参数无效时返回中文错误", async ({ input, message }) => {
+    const { service } = billFixture();
+
+    await expect(
+      service.previewImport("bill-1", "owner-1", input as never)
+    ).rejects.toThrow(message);
+  });
+
+  it("导入文件缺少清单工作表时返回中文错误", async () => {
+    const { service, fileService } = billFixture();
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet("其他工作表");
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-no-sheet", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    await expect(
+      service.previewImport("bill-1", "owner-1", {
+        fileId: "file-no-sheet",
+        mode: "append"
+      })
+    ).rejects.toThrow("Excel 文件缺少“清单数据”工作表");
+  });
+
+  it("存储的预检数据无效时返回中文错误", async () => {
+    const { service, imports } = billFixture();
+    imports.push({
+      id: "import-invalid-preview",
+      status: "preview",
+      contractBillId: "bill-1",
+      preview: {}
+    });
+
+    await expect(
+      service.applyImport("import-invalid-preview", "owner-1")
+    ).rejects.toThrow("合同清单导入预检数据无效");
   });
 });

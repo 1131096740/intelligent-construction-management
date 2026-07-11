@@ -113,7 +113,7 @@ export class ContractBillService {
           customData: this.toJson(input.customData)
         }
       });
-      if (updated.count !== 1) throw new NotFoundException("Contract bill row not found");
+      if (updated.count !== 1) throw new NotFoundException("合同清单行不存在");
       return this.finishMutation(
         tx,
         bill,
@@ -146,7 +146,7 @@ export class ContractBillService {
       const deleted = await tx.contractBillRow.deleteMany({
         where: { contractBillId: billId, rowKey }
       });
-      if (deleted.count !== 1) throw new NotFoundException("Contract bill row not found");
+      if (deleted.count !== 1) throw new NotFoundException("合同清单行不存在");
       return this.finishMutation(
         tx,
         bill,
@@ -174,7 +174,7 @@ export class ContractBillService {
         input.rowKeys.some((key) => !currentKeys.has(key))
       ) {
         throw new BadRequestException(
-          "rowKeys must exactly match the current bill row set"
+          "排序行必须与当前清单行完全一致"
         );
       }
       const newRevision = await this.lockMutation(
@@ -225,7 +225,7 @@ export class ContractBillService {
       data: { ownerUserId: actorUserId }
     });
     if (ownerGate.count !== 1) {
-      throw new BadRequestException("Contract bill revision/status conflict");
+      throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
     }
     const billGate = await tx.contractBill.updateMany({
       where: {
@@ -236,7 +236,7 @@ export class ContractBillService {
       data: { revision: { increment: 1 } }
     });
     if (billGate.count !== 1) {
-      throw new BadRequestException("Contract bill revision/status conflict");
+      throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
     }
     return newRevision;
   }
@@ -270,7 +270,7 @@ export class ContractBillService {
     const row = await tx.contractBillRow.findFirst({
       where: { contractBillId: billId, rowKey }
     });
-    if (!row) throw new NotFoundException("Contract bill row not found");
+    if (!row) throw new NotFoundException("合同清单行不存在");
     return row;
   }
 
@@ -282,29 +282,29 @@ export class ContractBillService {
       schemaSnapshot: Prisma.JsonValue;
     }
   ): SaveBillRowDto {
-    const input = this.requireObject(rawInput, "Contract bill row body");
+    const input = this.requireObject(rawInput, "合同清单行提交内容");
     this.assertExpectedRevision(input.expectedBillRevision);
-    this.assertRequiredString(input.itemName, "itemName");
-    this.assertRequiredString(input.unit, "unit");
-    this.assertOptionalString(input.itemCode, "itemCode");
-    this.assertOptionalString(input.specification, "specification");
-    this.assertOptionalString(input.settlementBasis, "settlementBasis");
-    this.assertDecimal(input.quantity, "quantity", bill.quantityScale, 18);
+    this.assertRequiredString(input.itemName, "项目名称");
+    this.assertRequiredString(input.unit, "单位");
+    this.assertOptionalString(input.itemCode, "项目编号");
+    this.assertOptionalString(input.specification, "规格型号");
+    this.assertOptionalString(input.settlementBasis, "结算依据");
+    this.assertDecimal(input.quantity, "数量", bill.quantityScale, 18);
     this.assertDecimal(
       input.unitPrice,
-      "unitPrice",
+      "单价",
       Math.min(bill.unitPriceScale, COMPANY_UNIT_PRICE_SCALE),
       18
     );
-    this.assertDecimal(input.taxRatePercent, "taxRatePercent", 6, 3);
+    this.assertDecimal(input.taxRatePercent, "税率", 6, 3);
     if (new Prisma.Decimal(input.taxRatePercent as string).gt(100)) {
-      throw new BadRequestException("taxRatePercent must be between 0 and 100");
+      throw new BadRequestException("税率必须在 0 到 100 之间");
     }
     if (input.isProvisional !== undefined && typeof input.isProvisional !== "boolean") {
-      throw new BadRequestException("isProvisional must be a boolean");
+      throw new BadRequestException("是否暂定必须为布尔值");
     }
     if (!this.isPlainObject(input.customData)) {
-      throw new BadRequestException("customData must be a plain object");
+      throw new BadRequestException("自定义字段数据必须是普通对象");
     }
     const customData = this.toJson(input.customData) as Record<string, unknown>;
     const columns = this.schemaColumns(bill.schemaSnapshot);
@@ -317,7 +317,7 @@ export class ContractBillService {
           value === "" ||
           (typeof value === "string" && !value.trim()))
       ) {
-        throw new BadRequestException(`Required custom column is missing: ${column.key}`);
+        throw new BadRequestException(`必填自定义字段未填写：${column.key}`);
       }
     }
     return {
@@ -342,13 +342,13 @@ export class ContractBillService {
   }
 
   private parseReorderInput(rawInput: unknown): ReorderBillRowsDto {
-    const input = this.requireObject(rawInput, "Reorder bill rows body");
+    const input = this.requireObject(rawInput, "合同清单排序提交内容");
     this.assertExpectedRevision(input.expectedBillRevision);
     if (
       !Array.isArray(input.rowKeys) ||
       input.rowKeys.some((key) => typeof key !== "string" || !key)
     ) {
-      throw new BadRequestException("rowKeys must be an array of non-empty strings");
+      throw new BadRequestException("排序行标识必须是非空字符串数组");
     }
     return {
       expectedBillRevision: input.expectedBillRevision as number,
@@ -358,7 +358,7 @@ export class ContractBillService {
 
   private schemaColumns(value: Prisma.JsonValue) {
     if (!this.isPlainObject(value) || !Array.isArray(value.columns)) {
-      throw new BadRequestException("Contract bill schema snapshot is invalid");
+      throw new BadRequestException("合同清单字段结构无效");
     }
     return value.columns.map((value, index) => {
       if (
@@ -367,7 +367,7 @@ export class ContractBillService {
         !value.key.trim() ||
         (value.required !== undefined && typeof value.required !== "boolean")
       ) {
-        throw new BadRequestException(`Contract bill schema column ${index} is invalid`);
+        throw new BadRequestException(`合同清单第 ${index + 1} 个字段定义无效`);
       }
       return { key: value.key, required: value.required === true };
     });
@@ -375,7 +375,7 @@ export class ContractBillService {
 
   private assertExpectedRevision(value: unknown) {
     if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-      throw new BadRequestException("expectedBillRevision must be a positive integer");
+      throw new BadRequestException("清单版本号必须为正整数");
     }
   }
 
@@ -387,33 +387,33 @@ export class ContractBillService {
   ) {
     if (typeof value !== "string" || !CANONICAL_DECIMAL.test(value)) {
       throw new BadRequestException(
-        `${field} must be a canonical non-negative decimal string`
+        `${field}必须是规范的非负数字`
       );
     }
     const [integer, fraction = ""] = value.split(".");
     if (integer.length > integerDigits) {
-      throw new BadRequestException(`${field} exceeds database precision`);
+      throw new BadRequestException(`${field}整数位数不能超过 ${integerDigits} 位`);
     }
     if (fraction.length > scale) {
-      throw new BadRequestException(`${field} exceeds scale ${scale}`);
+      throw new BadRequestException(`${field}小数位数不能超过 ${scale} 位`);
     }
   }
 
   private assertRequiredString(value: unknown, field: string) {
     if (typeof value !== "string" || !value.trim()) {
-      throw new BadRequestException(`${field} must be a non-empty string`);
+      throw new BadRequestException(`${field}不能为空`);
     }
   }
 
   private assertOptionalString(value: unknown, field: string) {
     if (value !== undefined && typeof value !== "string") {
-      throw new BadRequestException(`${field} must be a string`);
+      throw new BadRequestException(`${field}必须是文本`);
     }
   }
 
   private requireObject(value: unknown, label: string): Record<string, unknown> {
     if (!this.isPlainObject(value)) {
-      throw new BadRequestException(`${label} must be an object`);
+      throw new BadRequestException(`${label}必须是对象`);
     }
     return value;
   }
@@ -430,7 +430,7 @@ export class ContractBillService {
       if (serialized === undefined) throw new Error("not JSON");
       return JSON.parse(serialized) as Prisma.InputJsonValue;
     } catch {
-      throw new BadRequestException("customData must contain JSON-safe values");
+      throw new BadRequestException("自定义字段数据包含无法保存的内容");
     }
   }
 

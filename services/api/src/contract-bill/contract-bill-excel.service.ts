@@ -21,6 +21,7 @@ const INSTRUCTION_SHEET = "填写说明";
 const ROW_KEY_CODE = "__rowKey";
 const HEADER_ROWS = 2;
 const COMPANY_UNIT_PRICE_SCALE = 2;
+type DecimalFieldCode = "quantity" | "unitPrice" | "taxRatePercent";
 
 export type ImportMode = "replace" | "update" | "append";
 
@@ -198,18 +199,18 @@ export class ContractBillExcelService {
   async applyImport(importId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       const record = await tx.contractBillImport.findUnique({ where: { id: importId } });
-      if (!record) throw new NotFoundException("Contract bill import not found");
+      if (!record) throw new NotFoundException("合同清单导入记录不存在");
       if (record.status === "applied") {
-        throw new BadRequestException("Contract bill import already applied");
+        throw new BadRequestException("该合同清单导入已应用，不能重复操作");
       }
       if (record.status !== "preview") {
-        throw new BadRequestException("Contract bill import is not in a previewable state");
+        throw new BadRequestException("当前合同清单导入状态不可应用");
       }
       // 应用仅以“清单 owner + 草稿可编辑状态”为准（见 loadBillContext），不要求 applier 是导入创建者，
       // 以兼容草稿转交（Task 9 transferDraft）后新 owner 应用旧 owner 创建的待应用导入。
       const storedPreview = this.parseStoredPreview(record.preview);
       if (storedPreview.preview.errors.length > 0) {
-        throw new BadRequestException("Contract bill import preview contains errors");
+        throw new BadRequestException("合同清单导入预检存在错误，请先修正后重新预检");
       }
 
       const { bill, version } = await this.loadBillContext(
@@ -218,7 +219,7 @@ export class ContractBillExcelService {
         actorUserId
       );
       if (bill.revision !== storedPreview.billRevision) {
-        throw new BadRequestException("Contract bill import preview is stale; please preview again");
+        throw new BadRequestException("合同清单已变化，请重新预检后再应用");
       }
       const buffer = (await this.files.getFileBuffer(record.fileId)).buffer;
       const existingRows = await tx.contractBillRow.findMany({
@@ -233,7 +234,7 @@ export class ContractBillExcelService {
         existingRows
       );
       if (plan.errors.length > 0) {
-        throw new BadRequestException("Contract bill import preview contains errors");
+        throw new BadRequestException("合同清单导入预检存在错误，请先修正后重新预检");
       }
 
       const newRevision = await this.lockBillRevision(
@@ -277,7 +278,7 @@ export class ContractBillExcelService {
         }
       });
       if (applied.count !== 1) {
-        throw new BadRequestException("Contract bill import already applied");
+        throw new BadRequestException("该合同清单导入已应用，不能重复操作");
       }
 
       await this.audit.record(tx, {
@@ -351,7 +352,7 @@ export class ContractBillExcelService {
     await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
     const sheet = workbook.getWorksheet(DATA_SHEET);
     if (!sheet) {
-      throw new BadRequestException(`Missing worksheet: ${DATA_SHEET}`);
+      throw new BadRequestException(`Excel 文件缺少“${DATA_SHEET}”工作表`);
     }
 
     const errors: PreviewError[] = [];
@@ -407,7 +408,7 @@ export class ContractBillExcelService {
             sheet: DATA_SHEET,
             row: rowNumber,
             column: ROW_KEY_CODE,
-            message: "update mode requires __rowKey"
+            message: "更新模式要求每行都包含 __rowKey"
           });
           previewRows.push({ action: "skip", values: raw });
           skipped += 1;
@@ -419,7 +420,7 @@ export class ContractBillExcelService {
             sheet: DATA_SHEET,
             row: rowNumber,
             column: ROW_KEY_CODE,
-            message: `__rowKey not found in bill: ${sheetRowKey}`
+            message: `清单中不存在行标识：${sheetRowKey}`
           });
           previewRows.push({ action: "skip", rowKey: sheetRowKey, values: raw });
           skipped += 1;
@@ -430,7 +431,7 @@ export class ContractBillExcelService {
             sheet: DATA_SHEET,
             row: rowNumber,
             column: ROW_KEY_CODE,
-            message: `duplicate __rowKey: ${sheetRowKey}`
+            message: `行标识重复：${sheetRowKey}`
           });
           previewRows.push({ action: "skip", rowKey: sheetRowKey, values: raw });
           skipped += 1;
@@ -472,10 +473,10 @@ export class ContractBillExcelService {
     const itemName = this.asString(raw.itemName);
     const unit = this.asString(raw.unit);
     if (!itemName) {
-      errors.push(this.fieldError(rowNumber, "itemName", "itemName is required"));
+      errors.push(this.fieldError(rowNumber, "itemName", "项目名称不能为空"));
     }
     if (!unit) {
-      errors.push(this.fieldError(rowNumber, "unit", "unit is required"));
+      errors.push(this.fieldError(rowNumber, "unit", "单位不能为空"));
     }
 
     const quantity = this.asString(raw.quantity);
@@ -493,7 +494,7 @@ export class ContractBillExcelService {
     this.validateDecimal(taxRatePercent, "taxRatePercent", 6, 3, rowNumber, errors);
     if (CANONICAL_DECIMAL.test(taxRatePercent) && new Prisma.Decimal(taxRatePercent).gt(100)) {
       errors.push(
-        this.fieldError(rowNumber, "taxRatePercent", "taxRatePercent must be between 0 and 100")
+        this.fieldError(rowNumber, "taxRatePercent", "税率必须在 0 到 100 之间")
       );
     }
 
@@ -505,7 +506,7 @@ export class ContractBillExcelService {
       if (value) customData[column.key] = value;
       if (column.required && !value) {
         errors.push(
-          this.fieldError(rowNumber, column.key, `Required custom column is missing: ${column.key}`)
+          this.fieldError(rowNumber, column.key, `必填自定义字段未填写：${column.key}`)
         );
       }
     }
@@ -681,7 +682,7 @@ export class ContractBillExcelService {
           sheet: DATA_SHEET,
           row: rowNumber,
           column: this.columnLetter(column),
-          message: "merged cells are not allowed in the data area"
+          message: "清单数据区域不允许合并单元格"
         });
         return;
       }
@@ -701,7 +702,7 @@ export class ContractBillExcelService {
 
   private validateDecimal(
     value: string,
-    field: string,
+    field: DecimalFieldCode,
     scale: number,
     integerDigits: number,
     rowNumber: number,
@@ -709,17 +710,25 @@ export class ContractBillExcelService {
   ) {
     if (!CANONICAL_DECIMAL.test(value)) {
       errors.push(
-        this.fieldError(rowNumber, field, `${field} must be a canonical non-negative decimal string`)
+        this.fieldError(rowNumber, field, `${this.fieldLabel(field)}必须是规范的非负数字`)
       );
       return;
     }
     const [integer, fraction = ""] = value.split(".");
     if (integer.length > integerDigits) {
-      errors.push(this.fieldError(rowNumber, field, `${field} exceeds database precision`));
+      errors.push(
+        this.fieldError(
+          rowNumber,
+          field,
+          `${this.fieldLabel(field)}整数位数不能超过 ${integerDigits} 位`
+        )
+      );
       return;
     }
     if (fraction.length > scale) {
-      errors.push(this.fieldError(rowNumber, field, `${field} exceeds scale ${scale}`));
+      errors.push(
+        this.fieldError(rowNumber, field, `${this.fieldLabel(field)}小数位数不能超过 ${scale} 位`)
+      );
     }
   }
 
@@ -728,12 +737,21 @@ export class ContractBillExcelService {
     if (!text) return false;
     if (["true", "1", "是", "y", "yes"].includes(text)) return true;
     if (["false", "0", "否", "n", "no"].includes(text)) return false;
-    errors.push(this.fieldError(rowNumber, "isProvisional", "isProvisional must be a boolean"));
+    errors.push(this.fieldError(rowNumber, "isProvisional", "是否暂定格式无效"));
     return false;
   }
 
   private fieldError(rowNumber: number, column: string, message: string): PreviewError {
     return { sheet: DATA_SHEET, row: rowNumber, column, message };
+  }
+
+  private fieldLabel(field: DecimalFieldCode): string {
+    const labels: Record<DecimalFieldCode, string> = {
+      quantity: "数量",
+      unitPrice: "单价",
+      taxRatePercent: "税率"
+    };
+    return labels[field];
   }
 
   private asString(value: unknown): string {
@@ -786,7 +804,7 @@ export class ContractBillExcelService {
       data: { ownerUserId: actorUserId }
     });
     if (ownerGate.count !== 1) {
-      throw new BadRequestException("Contract bill revision/status conflict");
+      throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
     }
     const billGate = await tx.contractBill.updateMany({
       where: {
@@ -797,7 +815,7 @@ export class ContractBillExcelService {
       data: { revision: { increment: 1 } }
     });
     if (billGate.count !== 1) {
-      throw new BadRequestException("Contract bill revision/status conflict");
+      throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
     }
     return newRevision;
   }
@@ -815,7 +833,7 @@ export class ContractBillExcelService {
 
   private schemaColumns(value: Prisma.JsonValue) {
     if (!this.isPlainObject(value) || !Array.isArray(value.columns)) {
-      throw new BadRequestException("Contract bill schema snapshot is invalid");
+      throw new BadRequestException("合同清单字段结构无效");
     }
     return value.columns.map((column, index) => {
       if (
@@ -825,7 +843,7 @@ export class ContractBillExcelService {
         (column.label !== undefined && typeof column.label !== "string") ||
         (column.required !== undefined && typeof column.required !== "boolean")
       ) {
-        throw new BadRequestException(`Contract bill schema column ${index} is invalid`);
+        throw new BadRequestException(`合同清单第 ${index + 1} 个字段定义无效`);
       }
       const label =
         typeof column.label === "string" && column.label.trim() ? column.label.trim() : column.key;
@@ -849,18 +867,18 @@ export class ContractBillExcelService {
   }
 
   private safeBillName(name: string): string {
-    return name.replace(/[\\/:*?"<>|]+/g, "_").trim() || "contract-bill";
+    return name.replace(/[\\/:*?"<>|]+/g, "_").trim() || "合同清单";
   }
 
   private parseImportInput(input: ContractBillExcelImportDto): ContractBillExcelImportDto {
     if (!this.isPlainObject(input)) {
-      throw new BadRequestException("Excel import body must be an object");
+      throw new BadRequestException("Excel 导入提交内容必须是对象");
     }
     if (typeof input.fileId !== "string" || !input.fileId.trim()) {
-      throw new BadRequestException("fileId must be a non-empty string");
+      throw new BadRequestException("文件标识不能为空");
     }
     if (input.mode !== "replace" && input.mode !== "update" && input.mode !== "append") {
-      throw new BadRequestException("mode must be replace, update, or append");
+      throw new BadRequestException("导入模式必须是替换、更新或追加");
     }
     return { fileId: input.fileId.trim(), mode: input.mode };
   }
@@ -873,7 +891,7 @@ export class ContractBillExcelService {
       !this.isPlainObject(value.preview) ||
       !Array.isArray(value.preview.errors)
     ) {
-      throw new BadRequestException("Contract bill import preview is invalid");
+      throw new BadRequestException("合同清单导入预检数据无效");
     }
     return value as unknown as StoredBillImportPreview;
   }
@@ -892,7 +910,7 @@ export class ContractBillExcelService {
       if (serialized === undefined) throw new Error("not JSON");
       return JSON.parse(serialized) as Prisma.InputJsonValue;
     } catch {
-      throw new BadRequestException("Excel import produced non-JSON-safe values");
+      throw new BadRequestException("Excel 导入结果包含无法保存的内容");
     }
   }
 
