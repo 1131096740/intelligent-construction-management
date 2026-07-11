@@ -194,7 +194,7 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
     audit as never,
     fileService
   );
-  return { service, tx, bill, version, rows, imports, fileService };
+  return { service, tx, bill, version, rows, imports, fileService, audit };
 }
 
 describe("ContractBillExcelService", () => {
@@ -742,6 +742,34 @@ describe("ContractBillExcelService", () => {
         mode: "append"
       })
     ).rejects.toThrow("Excel 文件缺少“清单数据”工作表");
+  });
+
+  it("损坏的 Excel 文件返回固定中文错误且不写入预检记录", async () => {
+    const { service, tx, imports, fileService, audit } = billFixture();
+    const sensitiveContent = "TOP-SECRET corrupt workbook";
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-corrupt", originalName: "broken.xlsx" },
+      buffer: Buffer.from(sensitiveContent)
+    });
+
+    let thrown: unknown;
+    try {
+      await service.previewImport("bill-1", "owner-1", {
+        fileId: "file-corrupt",
+        mode: "append"
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toMatchObject({
+      status: 400,
+      message: "Excel 文件无法解析，请确认文件完整且格式正确"
+    });
+    expect(JSON.stringify(thrown)).not.toContain(sensitiveContent);
+    expect(tx.contractBillImport.create).not.toHaveBeenCalled();
+    expect(imports).toHaveLength(0);
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("存储的预检数据无效时返回中文错误", async () => {

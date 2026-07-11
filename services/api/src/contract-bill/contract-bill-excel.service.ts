@@ -349,7 +349,13 @@ export class ContractBillExcelService {
     existingRows: ExistingRow[]
   ): Promise<ResolvedPlan> {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    try {
+      await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    } catch {
+      throw new BadRequestException(
+        "Excel 文件无法解析，请确认文件完整且格式正确"
+      );
+    }
     const sheet = workbook.getWorksheet(DATA_SHEET);
     if (!sheet) {
       throw new BadRequestException(`Excel 文件缺少“${DATA_SHEET}”工作表`);
