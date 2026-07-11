@@ -14,6 +14,44 @@ function createPrisma(overrides: Record<string, unknown[]> = {}) {
   };
 }
 
+function createIntegrityHarness(overrides: Record<string, unknown[]> = {}) {
+  const dangerous = {
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+    createMany: jest.fn(),
+    updateMany: jest.fn(),
+    deleteMany: jest.fn()
+  };
+  const prisma = {
+    user: {
+      findMany: jest.fn().mockResolvedValue(overrides.users ?? []),
+      ...dangerous
+    },
+    position: {
+      findMany: jest.fn().mockResolvedValue(overrides.positions ?? []),
+      ...dangerous
+    },
+    project: {
+      findMany: jest.fn().mockResolvedValue(overrides.projects ?? []),
+      ...dangerous
+    },
+    userPosition: {
+      findMany: jest.fn().mockResolvedValue(overrides.userPositions ?? []),
+      ...dangerous
+    },
+    projectMember: {
+      findMany: jest.fn().mockResolvedValue(overrides.projectMembers ?? []),
+      ...dangerous
+    },
+    $transaction: jest.fn()
+  };
+  const audit = { record: jest.fn() };
+  const service = Reflect.construct(OrganizationService, [prisma, undefined, audit]) as
+    OrganizationService & { getPermissionIntegrity(): Promise<Record<string, unknown>> };
+  return { service, prisma, audit, dangerous };
+}
+
 function flattenDepartmentIds(nodes: DepartmentTreeNode[]): string[] {
   return nodes.flatMap((node) => [node.id, ...flattenDepartmentIds(node.children)]);
 }
@@ -360,6 +398,400 @@ describe("OrganizationService", () => {
       { key: "budget_staff", name: "3-同名岗位" },
       { key: "contract_staff", name: "3-同名岗位" }
     ]);
+  });
+});
+
+describe("OrganizationService permission integrity", () => {
+  it("干净的规范岗位事实返回 ready 且没有问题", async () => {
+    const harness = createIntegrityHarness({
+      users: [{ id: "user-1" }],
+      positions: [
+        { id: "position-global", key: "finance_director" },
+        { id: "position-project", key: "project_manager" }
+      ],
+      projects: [{ id: "project-1" }],
+      userPositions: [
+        {
+          id: "global-1",
+          userId: "user-1",
+          positionId: "position-global",
+          projectId: null
+        }
+      ],
+      projectMembers: [
+        {
+          id: "member-1",
+          userId: "user-1",
+          projectId: "project-1",
+          positionKey: "project_manager"
+        }
+      ]
+    });
+
+    await expect(harness.service.getPermissionIntegrity()).resolves.toEqual({
+      policy: {
+        globalWriteSource: "UserPosition(projectId=null)",
+        projectWriteSource: "ProjectMember",
+        legacyProjectUserPositionReadCompatibility: true,
+        projectSuperAdminAllowed: false
+      },
+      readiness: { canonicalRoleWritesReady: true, legacyMigrationReady: true },
+      summary: {
+        globalAssignments: 1,
+        canonicalProjectAssignments: 1,
+        legacyProjectAssignments: 0,
+        duplicateGlobalGroups: 0,
+        dualSourceOverlaps: 0,
+        invalidRoleAssignments: 0,
+        orphanAssignments: 0,
+        blockingIssues: 0,
+        warningIssues: 0
+      },
+      issues: []
+    });
+  });
+
+  it("把同一人员岗位的多条全局 NULL 事实归为一个 blocking 分组", async () => {
+    const harness = createIntegrityHarness({
+      users: [{ id: "user-1" }],
+      positions: [{ id: "position-1", key: "finance_staff" }],
+      userPositions: [
+        { id: "global-b", userId: "user-1", positionId: "position-1", projectId: null },
+        { id: "global-a", userId: "user-1", positionId: "position-1", projectId: null },
+        { id: "global-c", userId: "user-1", positionId: "position-1", projectId: null }
+      ]
+    });
+
+    const result = await harness.service.getPermissionIntegrity();
+
+    expect(result).toMatchObject({
+      readiness: { canonicalRoleWritesReady: false, legacyMigrationReady: true },
+      summary: {
+        globalAssignments: 3,
+        duplicateGlobalGroups: 1,
+        blockingIssues: 1,
+        warningIssues: 0
+      }
+    });
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "duplicate_global_assignment",
+        severity: "blocking",
+        source: "user_position",
+        assignmentIds: ["global-a", "global-b", "global-c"],
+        userId: "user-1",
+        positionId: "position-1",
+        roleKey: "finance_staff"
+      })
+    ]);
+  });
+
+  it("把空字符串项目 UserPosition 同时报告为遗留事实和孤儿项目", async () => {
+    const harness = createIntegrityHarness({
+      users: [{ id: "user-1" }],
+      positions: [{ id: "position-1", key: "contract_staff" }],
+      userPositions: [
+        { id: "legacy-blank", userId: "user-1", positionId: "position-1", projectId: "" }
+      ]
+    });
+
+    const result = await harness.service.getPermissionIntegrity();
+
+    expect(result).toMatchObject({
+      readiness: { canonicalRoleWritesReady: false, legacyMigrationReady: false },
+      summary: {
+        legacyProjectAssignments: 1,
+        orphanAssignments: 1,
+        blockingIssues: 1,
+        warningIssues: 1
+      }
+    });
+    expect(result.issues.map((issue) => issue.code)).toEqual([
+      "orphan_project",
+      "legacy_project_user_position"
+    ]);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "legacy_project_user_position",
+          assignmentIds: ["legacy-blank"],
+          projectId: ""
+        }),
+        expect.objectContaining({
+          code: "orphan_project",
+          assignmentIds: ["legacy-blank"],
+          projectId: ""
+        })
+      ])
+    );
+  });
+
+  it("识别合法项目岗位在两种事实源中的重叠", async () => {
+    const harness = createIntegrityHarness({
+      users: [{ id: "user-1" }],
+      positions: [{ id: "position-1", key: "project_manager" }],
+      projects: [{ id: "project-1" }],
+      userPositions: [
+        {
+          id: "legacy-2",
+          userId: "user-1",
+          positionId: "position-1",
+          projectId: "project-1"
+        },
+        {
+          id: "legacy-1",
+          userId: "user-1",
+          positionId: "position-1",
+          projectId: "project-1"
+        }
+      ],
+      projectMembers: [
+        {
+          id: "member-1",
+          userId: "user-1",
+          projectId: "project-1",
+          positionKey: "project_manager"
+        }
+      ]
+    });
+
+    const result = await harness.service.getPermissionIntegrity();
+
+    expect(result).toMatchObject({
+      readiness: { canonicalRoleWritesReady: false, legacyMigrationReady: true },
+      summary: { dualSourceOverlaps: 1, blockingIssues: 1, warningIssues: 2 }
+    });
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "dual_source_project_role",
+          source: "user_position",
+          assignmentIds: ["legacy-1", "legacy-2", "member-1"],
+          userId: "user-1",
+          projectId: "project-1",
+          roleKey: "project_manager"
+        })
+      ])
+    );
+  });
+
+  it("识别两种来源的无效角色且不会把缺失 Position 误记为 invalid_role", async () => {
+    const harness = createIntegrityHarness({
+      users: [{ id: "user-1" }],
+      positions: [{ id: "position-invalid", key: "invented_role" }],
+      projects: [{ id: "project-1" }],
+      userPositions: [
+        {
+          id: "invalid-position-role",
+          userId: "user-1",
+          positionId: "position-invalid",
+          projectId: null
+        },
+        {
+          id: "missing-position",
+          userId: "user-1",
+          positionId: "position-missing",
+          projectId: null
+        }
+      ],
+      projectMembers: [
+        {
+          id: "invalid-member-role",
+          userId: "user-1",
+          projectId: "project-1",
+          positionKey: "invented_role"
+        }
+      ]
+    });
+
+    const result = await harness.service.getPermissionIntegrity();
+    const issues = result.issues;
+
+    expect(result).toMatchObject({
+      readiness: { canonicalRoleWritesReady: false, legacyMigrationReady: false },
+      summary: { invalidRoleAssignments: 2, orphanAssignments: 1 }
+    });
+    expect(
+      issues.filter((issue) => issue.code === "invalid_role").map((issue) => issue.assignmentIds)
+    ).toEqual([["invalid-position-role"], ["invalid-member-role"]]);
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "orphan_position",
+          assignmentIds: ["missing-position"],
+          positionId: "position-missing"
+        })
+      ])
+    );
+    expect(
+      issues.some(
+        (issue) =>
+          issue.code === "invalid_role" &&
+          issue.assignmentIds.includes("missing-position")
+      )
+    ).toBe(false);
+  });
+
+  it("把两种项目来源中的 super_admin 都报告为 blocking", async () => {
+    const harness = createIntegrityHarness({
+      users: [{ id: "user-1" }],
+      positions: [{ id: "position-super", key: "super_admin" }],
+      projects: [{ id: "project-1" }],
+      userPositions: [
+        {
+          id: "legacy-super",
+          userId: "user-1",
+          positionId: "position-super",
+          projectId: "project-1"
+        }
+      ],
+      projectMembers: [
+        {
+          id: "member-super",
+          userId: "user-1",
+          projectId: "project-1",
+          positionKey: "super_admin"
+        }
+      ]
+    });
+
+    const result = await harness.service.getPermissionIntegrity();
+    const superAdminIssues = result.issues.filter(
+      (issue) => issue.code === "project_super_admin"
+    );
+
+    expect(result).toMatchObject({
+      readiness: { canonicalRoleWritesReady: false, legacyMigrationReady: false }
+    });
+    expect(superAdminIssues.map((issue) => issue.assignmentIds)).toEqual([
+      ["legacy-super"],
+      ["member-super"]
+    ]);
+    expect(superAdminIssues.map((issue) => issue.source)).toEqual([
+      "user_position",
+      "project_member"
+    ]);
+  });
+
+  it("识别两种来源的孤儿人员、UserPosition 孤儿岗位和项目范围孤儿项目", async () => {
+    const harness = createIntegrityHarness({
+      users: [{ id: "user-existing" }],
+      positions: [{ id: "position-existing", key: "contract_staff" }],
+      projects: [{ id: "project-existing" }],
+      userPositions: [
+        {
+          id: "legacy-orphan-all",
+          userId: "user-missing",
+          positionId: "position-missing",
+          projectId: "project-missing"
+        }
+      ],
+      projectMembers: [
+        {
+          id: "member-orphan-all",
+          userId: "user-missing",
+          projectId: "project-missing",
+          positionKey: "contract_staff"
+        }
+      ]
+    });
+
+    const result = await harness.service.getPermissionIntegrity();
+    const issues = result.issues;
+
+    expect(result).toMatchObject({
+      readiness: { canonicalRoleWritesReady: false, legacyMigrationReady: false },
+      summary: { orphanAssignments: 2 }
+    });
+    expect(issues.filter((issue) => issue.code === "orphan_user")).toHaveLength(2);
+    expect(issues.filter((issue) => issue.code === "orphan_position")).toHaveLength(1);
+    expect(issues.filter((issue) => issue.code === "orphan_project")).toHaveLength(2);
+  });
+
+  it("同一行可保留多个不同问题，但同一 code 和事实不重复", async () => {
+    const harness = createIntegrityHarness({
+      positions: [{ id: "position-invalid", key: "invented_role" }],
+      userPositions: [
+        {
+          id: "legacy-many-problems",
+          userId: "user-missing",
+          positionId: "position-invalid",
+          projectId: "project-missing"
+        }
+      ]
+    });
+
+    const result = await harness.service.getPermissionIntegrity();
+    const issueKeys = result.issues.map(
+      (issue) => `${issue.code}:${issue.assignmentIds.join(",")}`
+    );
+
+    expect(issueKeys.sort()).toEqual([
+      "invalid_role:legacy-many-problems",
+      "legacy_project_user_position:legacy-many-problems",
+      "orphan_project:legacy-many-problems",
+      "orphan_user:legacy-many-problems"
+    ]);
+    expect(new Set(issueKeys).size).toBe(issueKeys.length);
+  });
+
+  it("查询顺序不会改变 issue 或 assignmentIds，并且每个问题使用固定中文消息", async () => {
+    const facts = {
+      users: [{ id: "user-z" }, { id: "user-a" }],
+      positions: [{ id: "position-1", key: "budget_staff" }],
+      projects: [{ id: "project-1" }],
+      userPositions: [
+        { id: "global-z", userId: "user-z", positionId: "position-1", projectId: null },
+        { id: "global-a", userId: "user-z", positionId: "position-1", projectId: null },
+        { id: "legacy-z", userId: "user-a", positionId: "position-1", projectId: "project-1" }
+      ],
+      projectMembers: [
+        {
+          id: "member-z",
+          userId: "user-a",
+          projectId: "project-1",
+          positionKey: "budget_staff"
+        }
+      ]
+    };
+    const reversedFacts = Object.fromEntries(
+      Object.entries(facts).map(([key, values]) => [key, [...values].reverse()])
+    );
+    const first = createIntegrityHarness(facts);
+    const second = createIntegrityHarness(reversedFacts);
+
+    const firstResult = await first.service.getPermissionIntegrity();
+    const secondResult = await second.service.getPermissionIntegrity();
+
+    expect(secondResult).toEqual(firstResult);
+    for (const issue of firstResult.issues) {
+      expect(issue.message).toEqual(expect.any(String));
+      expect(issue.message.length).toBeGreaterThan(0);
+      expect(issue.assignmentIds).toEqual([...issue.assignmentIds].sort());
+    }
+  });
+
+  it("只读取五类最小字段且不调用事务、审计或任何写方法", async () => {
+    const harness = createIntegrityHarness();
+
+    await harness.service.getPermissionIntegrity();
+
+    expect(harness.prisma.user.findMany).toHaveBeenCalledWith({ select: { id: true } });
+    expect(harness.prisma.position.findMany).toHaveBeenCalledWith({
+      select: { id: true, key: true }
+    });
+    expect(harness.prisma.project.findMany).toHaveBeenCalledWith({ select: { id: true } });
+    expect(harness.prisma.userPosition.findMany).toHaveBeenCalledWith({
+      select: { id: true, userId: true, positionId: true, projectId: true }
+    });
+    expect(harness.prisma.projectMember.findMany).toHaveBeenCalledWith({
+      select: { id: true, userId: true, projectId: true, positionKey: true }
+    });
+    expect(harness.prisma.$transaction).not.toHaveBeenCalled();
+    expect(harness.audit.record).not.toHaveBeenCalled();
+    for (const method of Object.values(harness.dangerous)) {
+      expect(method).not.toHaveBeenCalled();
+    }
   });
 });
 

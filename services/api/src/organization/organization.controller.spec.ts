@@ -65,6 +65,43 @@ describe("OrganizationController", () => {
     expect(service.getDirectory).toHaveBeenCalledTimes(1);
   });
 
+  it("返回只读权限完整性预检且继承全局 super_admin 边界", async () => {
+    const integrityReadModel = {
+      policy: {
+        globalWriteSource: "UserPosition(projectId=null)",
+        projectWriteSource: "ProjectMember",
+        legacyProjectUserPositionReadCompatibility: true,
+        projectSuperAdminAllowed: false
+      },
+      readiness: { canonicalRoleWritesReady: true, legacyMigrationReady: true },
+      summary: {
+        globalAssignments: 0,
+        canonicalProjectAssignments: 0,
+        legacyProjectAssignments: 0,
+        duplicateGlobalGroups: 0,
+        dualSourceOverlaps: 0,
+        invalidRoleAssignments: 0,
+        orphanAssignments: 0,
+        blockingIssues: 0,
+        warningIssues: 0
+      },
+      issues: []
+    };
+    const service = {
+      getPermissionIntegrity: jest.fn().mockResolvedValue(integrityReadModel)
+    };
+    const controller = new OrganizationController(service as never) as OrganizationController & {
+      permissionIntegrity(): Promise<unknown>;
+    };
+
+    await expect(controller.permissionIntegrity()).resolves.toBe(integrityReadModel);
+    expect(service.getPermissionIntegrity).toHaveBeenCalledTimes(1);
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, OrganizationController)).toEqual([
+      "super_admin"
+    ]);
+    expect(controller.permissionIntegrity).toHaveLength(0);
+  });
+
   it("三个写端点使用运行时 DTO class", () => {
     expect(bodyMetatype("createDepartment").name).toBe("CreateDepartmentDto");
     expect(bodyMetatype("updateDepartment").name).toBe("UpdateDepartmentDto");

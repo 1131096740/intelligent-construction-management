@@ -50,6 +50,85 @@ export interface OrganizationDirectoryReadModel {
   positions: Array<{ id: string; key: RoleKey; name: string }>;
 }
 
+export type PermissionIntegrityIssueCode =
+  | "duplicate_global_assignment"
+  | "legacy_project_user_position"
+  | "dual_source_project_role"
+  | "invalid_role"
+  | "project_super_admin"
+  | "orphan_user"
+  | "orphan_position"
+  | "orphan_project";
+
+export interface PermissionIntegrityIssue {
+  code: PermissionIntegrityIssueCode;
+  severity: "blocking" | "warning";
+  source: "user_position" | "project_member";
+  assignmentIds: string[];
+  userId?: string;
+  projectId?: string;
+  positionId?: string;
+  roleKey?: string;
+  message: string;
+}
+
+export interface PermissionIntegrityReadModel {
+  policy: {
+    globalWriteSource: "UserPosition(projectId=null)";
+    projectWriteSource: "ProjectMember";
+    legacyProjectUserPositionReadCompatibility: true;
+    projectSuperAdminAllowed: false;
+  };
+  readiness: {
+    canonicalRoleWritesReady: boolean;
+    legacyMigrationReady: boolean;
+  };
+  summary: {
+    globalAssignments: number;
+    canonicalProjectAssignments: number;
+    legacyProjectAssignments: number;
+    duplicateGlobalGroups: number;
+    dualSourceOverlaps: number;
+    invalidRoleAssignments: number;
+    orphanAssignments: number;
+    blockingIssues: number;
+    warningIssues: number;
+  };
+  issues: PermissionIntegrityIssue[];
+}
+
+const PERMISSION_INTEGRITY_MESSAGES: Record<PermissionIntegrityIssueCode, string> = {
+  duplicate_global_assignment: "同一人员存在重复的全局岗位分配",
+  legacy_project_user_position: "检测到项目级 UserPosition 遗留岗位事实",
+  dual_source_project_role: "同一项目岗位同时存在于 UserPosition 和 ProjectMember",
+  invalid_role: "岗位键不在系统固定岗位范围内",
+  project_super_admin: "super_admin 不允许分配到项目范围",
+  orphan_user: "岗位分配关联的人员不存在",
+  orphan_position: "UserPosition 关联的固定岗位不存在",
+  orphan_project: "项目岗位分配关联的项目不存在"
+};
+
+function compareStableText(left: string | undefined, right: string | undefined) {
+  const normalizedLeft = left ?? "";
+  const normalizedRight = right ?? "";
+  return normalizedLeft < normalizedRight ? -1 : normalizedLeft > normalizedRight ? 1 : 0;
+}
+
+function comparePermissionIntegrityIssues(
+  left: PermissionIntegrityIssue,
+  right: PermissionIntegrityIssue
+) {
+  const severityOrder = { blocking: 0, warning: 1 } as const;
+  return (
+    severityOrder[left.severity] - severityOrder[right.severity] ||
+    compareStableText(left.code, right.code) ||
+    compareStableText(left.userId, right.userId) ||
+    compareStableText(left.projectId, right.projectId) ||
+    compareStableText(left.roleKey, right.roleKey) ||
+    compareStableText(left.assignmentIds.join("\u0000"), right.assignmentIds.join("\u0000"))
+  );
+}
+
 interface DepartmentRow {
   id: string;
   name: string;
@@ -372,6 +451,286 @@ export class OrganizationService {
       throw new Error("组织写入缺少认证服务");
     }
     return this.auth.confirmPassword(actorUserId, password);
+  }
+
+  async getPermissionIntegrity(): Promise<PermissionIntegrityReadModel> {
+    const [users, positions, projects, userPositions, projectMembers] = await Promise.all([
+      this.prisma.user.findMany({ select: { id: true } }),
+      this.prisma.position.findMany({ select: { id: true, key: true } }),
+      this.prisma.project.findMany({ select: { id: true } }),
+      this.prisma.userPosition.findMany({
+        select: { id: true, userId: true, positionId: true, projectId: true }
+      }),
+      this.prisma.projectMember.findMany({
+        select: { id: true, userId: true, projectId: true, positionKey: true }
+      })
+    ]);
+
+    const userIds = new Set(users.map((user) => user.id));
+    const positionsById = new Map(positions.map((position) => [position.id, position]));
+    const projectIds = new Set(projects.map((project) => project.id));
+    const globalAssignments = userPositions.filter(
+      (assignment) => assignment.projectId === null
+    );
+    const legacyProjectAssignments = userPositions.filter(
+      (assignment) => assignment.projectId !== null
+    );
+    const invalidAssignmentIds = new Set<string>();
+    const orphanAssignmentIds = new Set<string>();
+    const issues: PermissionIntegrityIssue[] = [];
+    const issueFacts = new Set<string>();
+    const addIssue = (
+      issue: Omit<PermissionIntegrityIssue, "assignmentIds" | "message"> & {
+        assignmentIds: string[];
+      }
+    ) => {
+      const assignmentIds = [...new Set(issue.assignmentIds)].sort(compareStableText);
+      const factKey = `${issue.code}\u0000${issue.source}\u0000${assignmentIds.join("\u0000")}`;
+      if (issueFacts.has(factKey)) return;
+      issueFacts.add(factKey);
+      issues.push({
+        ...issue,
+        assignmentIds,
+        message: PERMISSION_INTEGRITY_MESSAGES[issue.code]
+      });
+    };
+
+    const globalGroups = new Map<string, typeof globalAssignments>();
+    for (const assignment of globalAssignments) {
+      const key = `${assignment.userId}\u0000${assignment.positionId}`;
+      const group = globalGroups.get(key) ?? [];
+      group.push(assignment);
+      globalGroups.set(key, group);
+    }
+    for (const group of globalGroups.values()) {
+      if (group.length < 2) continue;
+      const assignment = group[0];
+      const position = positionsById.get(assignment.positionId);
+      addIssue({
+        code: "duplicate_global_assignment",
+        severity: "blocking",
+        source: "user_position",
+        assignmentIds: group.map((item) => item.id),
+        userId: assignment.userId,
+        positionId: assignment.positionId,
+        ...(position ? { roleKey: position.key } : {})
+      });
+    }
+
+    type ProjectRoleFact = {
+      id: string;
+      userId: string;
+      projectId: string;
+      roleKey: RoleKey;
+    };
+    const legacyProjectRoles = new Map<string, ProjectRoleFact[]>();
+    const canonicalProjectRoles = new Map<string, ProjectRoleFact[]>();
+    const addProjectRoleFact = (target: Map<string, ProjectRoleFact[]>, fact: ProjectRoleFact) => {
+      const key = `${fact.userId}\u0000${fact.projectId}\u0000${fact.roleKey}`;
+      const facts = target.get(key) ?? [];
+      facts.push(fact);
+      target.set(key, facts);
+    };
+
+    for (const assignment of userPositions) {
+      const position = positionsById.get(assignment.positionId);
+      if (!userIds.has(assignment.userId)) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_user",
+          severity: "blocking",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId ?? undefined,
+          positionId: assignment.positionId,
+          ...(position ? { roleKey: position.key } : {})
+        });
+      }
+      if (!position) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_position",
+          severity: "blocking",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId ?? undefined,
+          positionId: assignment.positionId
+        });
+      } else if (!isRoleKey(position.key)) {
+        invalidAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "invalid_role",
+          severity: "blocking",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId ?? undefined,
+          positionId: assignment.positionId,
+          roleKey: position.key
+        });
+      }
+
+      if (assignment.projectId === null) continue;
+
+      addIssue({
+        code: "legacy_project_user_position",
+        severity: "warning",
+        source: "user_position",
+        assignmentIds: [assignment.id],
+        userId: assignment.userId,
+        projectId: assignment.projectId,
+        positionId: assignment.positionId,
+        ...(position ? { roleKey: position.key } : {})
+      });
+      if (!projectIds.has(assignment.projectId)) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_project",
+          severity: "blocking",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          positionId: assignment.positionId,
+          ...(position ? { roleKey: position.key } : {})
+        });
+      }
+      if (position && isRoleKey(position.key)) {
+        if (position.key === "super_admin") {
+          addIssue({
+            code: "project_super_admin",
+            severity: "blocking",
+            source: "user_position",
+            assignmentIds: [assignment.id],
+            userId: assignment.userId,
+            projectId: assignment.projectId,
+            positionId: assignment.positionId,
+            roleKey: position.key
+          });
+        }
+        addProjectRoleFact(legacyProjectRoles, {
+          id: assignment.id,
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: position.key
+        });
+      }
+    }
+
+    for (const assignment of projectMembers) {
+      if (!userIds.has(assignment.userId)) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_user",
+          severity: "blocking",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+      }
+      if (!projectIds.has(assignment.projectId)) {
+        orphanAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "orphan_project",
+          severity: "blocking",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+      }
+      if (!isRoleKey(assignment.positionKey)) {
+        invalidAssignmentIds.add(assignment.id);
+        addIssue({
+          code: "invalid_role",
+          severity: "blocking",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+        continue;
+      }
+      if (assignment.positionKey === "super_admin") {
+        addIssue({
+          code: "project_super_admin",
+          severity: "blocking",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+      }
+      addProjectRoleFact(canonicalProjectRoles, {
+        id: assignment.id,
+        userId: assignment.userId,
+        projectId: assignment.projectId,
+        roleKey: assignment.positionKey
+      });
+    }
+
+    for (const [key, legacyFacts] of legacyProjectRoles) {
+      const canonicalFacts = canonicalProjectRoles.get(key);
+      if (!canonicalFacts) continue;
+      const fact = legacyFacts[0];
+      addIssue({
+        code: "dual_source_project_role",
+        severity: "blocking",
+        source: "user_position",
+        assignmentIds: [...legacyFacts, ...canonicalFacts].map((item) => item.id),
+        userId: fact.userId,
+        projectId: fact.projectId,
+        roleKey: fact.roleKey
+      });
+    }
+
+    issues.sort(comparePermissionIntegrityIssues);
+    const blockingIssues = issues.filter((issue) => issue.severity === "blocking").length;
+    const warningIssues = issues.length - blockingIssues;
+    const migrationBlockingCodes = new Set<PermissionIntegrityIssueCode>([
+      "invalid_role",
+      "project_super_admin",
+      "orphan_user",
+      "orphan_position",
+      "orphan_project"
+    ]);
+
+    return {
+      policy: {
+        globalWriteSource: "UserPosition(projectId=null)",
+        projectWriteSource: "ProjectMember",
+        legacyProjectUserPositionReadCompatibility: true,
+        projectSuperAdminAllowed: false
+      },
+      readiness: {
+        canonicalRoleWritesReady:
+          blockingIssues === 0 && legacyProjectAssignments.length === 0,
+        legacyMigrationReady: !issues.some((issue) => migrationBlockingCodes.has(issue.code))
+      },
+      summary: {
+        globalAssignments: globalAssignments.length,
+        canonicalProjectAssignments: projectMembers.length,
+        legacyProjectAssignments: legacyProjectAssignments.length,
+        duplicateGlobalGroups: issues.filter(
+          (issue) => issue.code === "duplicate_global_assignment"
+        ).length,
+        dualSourceOverlaps: issues.filter(
+          (issue) => issue.code === "dual_source_project_role"
+        ).length,
+        invalidRoleAssignments: invalidAssignmentIds.size,
+        orphanAssignments: orphanAssignmentIds.size,
+        blockingIssues,
+        warningIssues
+      },
+      issues
+    };
   }
 
   async getDirectory(): Promise<OrganizationDirectoryReadModel> {

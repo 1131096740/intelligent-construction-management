@@ -17,6 +17,11 @@ export class OrganizationController {
     return this.organization.getDirectory();
   }
 
+  @Get("permission-integrity")
+  permissionIntegrity() {
+    return this.organization.getPermissionIntegrity();
+  }
+
   @Post("departments")
   createDepartment(
     @CurrentUser() actor: AuthenticatedUser,
