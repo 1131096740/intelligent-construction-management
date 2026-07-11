@@ -229,7 +229,7 @@ describe("JwtTokenService", () => {
       phone: "13800000000"
     });
 
-    expect(() => service.verifyAccessToken(token)).toThrow(UnauthorizedException);
+    expect(() => service.verifyAccessToken(token)).toThrow("登录凭证类型不正确，请重新登录");
   });
 
   it("fails closed when production JWT secrets are missing or default", () => {

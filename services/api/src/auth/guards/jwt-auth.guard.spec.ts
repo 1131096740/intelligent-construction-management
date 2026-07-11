@@ -1,4 +1,3 @@
-import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import type { ExecutionContext } from "@nestjs/common";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 
@@ -63,7 +62,7 @@ describe("JwtAuthGuard", () => {
     );
 
     await expect(guard.canActivate(contextWithRequest({ headers: {} }))).rejects.toThrow(
-      UnauthorizedException
+      "未提供登录凭证，请重新登录"
     );
   });
 
@@ -91,7 +90,7 @@ describe("JwtAuthGuard", () => {
     );
 
     await expect(guard.canActivate(contextWithRequest(request))).rejects.toThrow(
-      ForbiddenException
+      "请先修改初始密码后再继续操作"
     );
   });
 

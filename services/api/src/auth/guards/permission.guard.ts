@@ -41,7 +41,7 @@ export class PermissionGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
 
     if (!request.user) {
-      throw new ForbiddenException("Authenticated user is required");
+      throw new ForbiddenException("未获取到登录用户，请重新登录");
     }
 
     const projectId = await this.extractProjectId(request);
@@ -55,7 +55,7 @@ export class PermissionGuard implements CanActivate {
       const allowed = requiredPositions.some((position) => effectiveRoleKeys.includes(position));
 
       if (!allowed) {
-        throw new ForbiddenException("Missing required position");
+        throw new ForbiddenException("当前账号缺少执行该操作所需的岗位权限");
       }
     }
 
@@ -66,7 +66,7 @@ export class PermissionGuard implements CanActivate {
           this.isDelegatedApprovalAction(requiredAction) &&
           (await this.hasDelegatedProjectActionRole(request.user.id, projectId, requiredAction));
         if (!delegatedApprovalAllowed) {
-          throw new ForbiddenException("Missing required project role");
+          throw new ForbiddenException("当前账号缺少执行该项目操作所需的岗位权限");
         }
       }
 
@@ -75,7 +75,7 @@ export class PermissionGuard implements CanActivate {
         projectId &&
         !this.hasProjectScopedActionRole(requiredAction, roleScopes)
       ) {
-        throw new ForbiddenException("Missing required project role");
+        throw new ForbiddenException("当前账号缺少执行该项目操作所需的岗位权限");
       }
     }
 

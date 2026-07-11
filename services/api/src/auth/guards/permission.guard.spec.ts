@@ -69,7 +69,7 @@ describe("PermissionGuard", () => {
           body: { projectId: "project-1" }
         })
       )
-    ).rejects.toThrow(ForbiddenException);
+    ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
   });
 
   it("allows delegated approval actions through the project-role guard", async () => {
@@ -157,7 +157,7 @@ describe("PermissionGuard", () => {
           params: { projectId: "project-1" }
         })
       )
-    ).rejects.toThrow(ForbiddenException);
+    ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
   });
 
   it("allows project-scoped employees to create project expense requests", async () => {

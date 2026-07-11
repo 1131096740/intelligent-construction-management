@@ -1,5 +1,5 @@
 import * as bcrypt from "bcryptjs";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, Logger } from "@nestjs/common";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { AuthService } from "./auth.service";
 import { ChangePasswordDto } from "./dto/change-password.dto";
@@ -249,6 +249,14 @@ describe("AuthService", () => {
     });
   });
 
+  it("登录账号或密码错误时返回固定中文提示", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.login({ phone: "13800000001", password: "wrong-password" })
+    ).rejects.toMatchObject({ status: 401, message: "手机号或密码不正确" });
+  });
+
   it("returns deduped role keys for wx login", async () => {
     process.env.WX_APP_ID = "wx-app";
     process.env.WX_APP_SECRET = "wx-secret";
@@ -285,6 +293,32 @@ describe("AuthService", () => {
         accessToken: expect.any(String)
       }
     });
+  });
+
+  it("微信会话失败时不回显供应商 errmsg", async () => {
+    process.env.WX_APP_ID = "wx-app";
+    process.env.WX_APP_SECRET = "wx-secret";
+    const vendorMessage = "TOP-SECRET vendor diagnostic";
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: jest.fn().mockResolvedValue({ errcode: 40029, errmsg: vendorMessage })
+    });
+    const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+
+    try {
+      await expect(service.wxLogin({ code: "invalid-code" })).rejects.toMatchObject({
+        status: 401,
+        message: "微信登录失败，请重试"
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(vendorMessage);
+      expect(warn).toHaveBeenCalledWith(
+        "微信登录会话接口返回失败",
+        expect.objectContaining({ status: 400, errcode: 40029 })
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("rotates refresh tokens", async () => {
@@ -356,7 +390,7 @@ describe("AuthService", () => {
       )
     ).rejects.toMatchObject({
       status: 400,
-      message: "New password must be at least 8 characters"
+      message: "新密码至少需要 8 个字符"
     });
 
     expect(prisma.user.findUnique).not.toHaveBeenCalled();

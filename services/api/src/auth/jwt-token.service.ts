@@ -108,7 +108,7 @@ export class JwtTokenService {
     const payload = this.verify(token);
 
     if (payload.type !== "access") {
-      throw new UnauthorizedException("Invalid access token");
+      throw new UnauthorizedException("登录凭证类型不正确，请重新登录");
     }
 
     return payload;
@@ -118,7 +118,7 @@ export class JwtTokenService {
     const payload = this.verify(token);
 
     if (payload.type !== "refresh") {
-      throw new UnauthorizedException("Invalid refresh token");
+      throw new UnauthorizedException("刷新登录凭证类型不正确，请重新登录");
     }
 
     return payload;

@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   BadRequestException
 } from "@nestjs/common";
@@ -17,6 +18,8 @@ import { JwtTokenService } from "./jwt-token.service";
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokens: JwtTokenService,
@@ -29,13 +32,13 @@ export class AuthService {
     });
 
     if (!user?.isActive || !user.passwordHash) {
-      throw new UnauthorizedException("Invalid phone or password");
+      throw new UnauthorizedException("手机号或密码不正确");
     }
 
     const passwordMatched = await bcrypt.compare(input.password, user.passwordHash);
 
     if (!passwordMatched) {
-      throw new UnauthorizedException("Invalid phone or password");
+      throw new UnauthorizedException("手机号或密码不正确");
     }
 
     await this.prisma.user.update({
@@ -111,7 +114,7 @@ export class AuthService {
     });
 
     if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
-      throw new UnauthorizedException("Invalid refresh token");
+      throw new UnauthorizedException("刷新登录凭证无效，请重新登录");
     }
 
     const user = await this.prisma.user.findUnique({
@@ -119,7 +122,7 @@ export class AuthService {
     });
 
     if (!user?.isActive) {
-      throw new UnauthorizedException("Invalid refresh token");
+      throw new UnauthorizedException("刷新登录凭证无效，请重新登录");
     }
 
     await this.prisma.refreshToken.update({
@@ -160,7 +163,7 @@ export class AuthService {
 
   async changePassword(user: AuthenticatedUser, input: ChangePasswordDto) {
     if (input.newPassword.length < 8) {
-      throw new BadRequestException("New password must be at least 8 characters");
+      throw new BadRequestException("新密码至少需要 8 个字符");
     }
     if (!/\S/u.test(input.newPassword)) {
       throw new BadRequestException("新密码不能全为空白字符");
@@ -171,13 +174,13 @@ export class AuthService {
     });
 
     if (!storedUser?.passwordHash) {
-      throw new UnauthorizedException("Invalid user");
+      throw new UnauthorizedException("当前账号无效，请重新登录");
     }
 
     const oldPasswordMatched = await bcrypt.compare(input.oldPassword, storedUser.passwordHash);
 
     if (!oldPasswordMatched) {
-      throw new UnauthorizedException("Invalid old password");
+      throw new UnauthorizedException("当前密码不正确，请重新输入");
     }
 
     await this.prisma.user.update({
@@ -276,7 +279,7 @@ export class AuthService {
     const secret = process.env.WX_APP_SECRET ?? process.env.WECHAT_APP_SECRET;
 
     if (!appId || !secret) {
-      throw new BadRequestException("WeChat login is not configured");
+      throw new BadRequestException("微信登录尚未配置，请联系管理员");
     }
 
     const params = new URLSearchParams({
@@ -289,7 +292,11 @@ export class AuthService {
     const body = (await response.json()) as { openid?: string; errcode?: number; errmsg?: string };
 
     if (!response.ok || !body.openid) {
-      throw new UnauthorizedException(body.errmsg ?? "WeChat login failed");
+      this.logger.warn("微信登录会话接口返回失败", {
+        status: response.status,
+        errcode: typeof body.errcode === "number" ? body.errcode : null
+      });
+      throw new UnauthorizedException("微信登录失败，请重试");
     }
 
     return { openid: body.openid };

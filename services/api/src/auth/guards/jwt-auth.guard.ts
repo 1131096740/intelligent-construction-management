@@ -37,11 +37,11 @@ export class JwtAuthGuard implements CanActivate {
     });
 
     if (!user?.isActive) {
-      throw new UnauthorizedException("Invalid access token");
+      throw new UnauthorizedException("登录凭证无效，请重新登录");
     }
 
     if (user.mustChangePassword && !this.isPasswordChangeRequest(request)) {
-      throw new ForbiddenException("Password change required");
+      throw new ForbiddenException("请先修改初始密码后再继续操作");
     }
 
     request.user = {
@@ -58,7 +58,7 @@ export class JwtAuthGuard implements CanActivate {
     const authorization = Array.isArray(header) ? header[0] : header;
 
     if (!authorization?.startsWith("Bearer ")) {
-      throw new UnauthorizedException("Missing access token");
+      throw new UnauthorizedException("未提供登录凭证，请重新登录");
     }
 
     return authorization.slice("Bearer ".length);

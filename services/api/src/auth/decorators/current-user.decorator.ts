@@ -18,7 +18,7 @@ export function currentUserFactory(
   const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
 
   if (!request.user) {
-    throw new UnauthorizedException("Authenticated user is required");
+    throw new UnauthorizedException("未获取到登录用户，请重新登录");
   }
 
   return request.user;

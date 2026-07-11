@@ -1,4 +1,3 @@
-import { UnauthorizedException } from "@nestjs/common";
 import type { ExecutionContext } from "@nestjs/common";
 import { currentUserFactory } from "./current-user.decorator";
 
@@ -17,7 +16,7 @@ describe("currentUserFactory", () => {
 
   it("rejects requests without an authenticated user", () => {
     expect(() => currentUserFactory(undefined, mockContext({}))).toThrow(
-      UnauthorizedException
+      "未获取到登录用户，请重新登录"
     );
   });
 });
