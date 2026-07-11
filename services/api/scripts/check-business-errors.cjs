@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const ts = require("typescript");
 
@@ -8,14 +9,14 @@ const API_ROOT = path.resolve(__dirname, "..");
 const SOURCE_ROOT = path.join(API_ROOT, "src");
 const ASCII_ONLY = /^[\x00-\x7F]+$/;
 const ASCII_FRAGMENT = /^[\x00-\x7F]*$/;
-const EXCEPTION_KINDS = new Set([
+const NEST_EXCEPTION_KINDS = new Set([
   "BadRequestException",
   "ForbiddenException",
   "NotFoundException",
   "UnauthorizedException",
-  "InternalServerErrorException",
-  "Error"
+  "InternalServerErrorException"
 ]);
+const EXCEPTION_KINDS = new Set([...NEST_EXCEPTION_KINDS, "Error"]);
 
 const ALLOWED_INTERNAL_ERRORS = [
   { file: "src/approval/approval-delegation.service.ts", kind: "Error", message: "Prisma service is required to create approval delegation", expectedOccurrences: 1, reason: "可选依赖注入缺失时的内部构造保护" },
@@ -97,7 +98,8 @@ function unwrapExpression(node) {
     ts.isParenthesizedExpression(current) ||
     ts.isAsExpression(current) ||
     ts.isTypeAssertionExpression(current) ||
-    ts.isNonNullExpression(current)
+    ts.isNonNullExpression(current) ||
+    ts.isSatisfiesExpression(current)
   ) {
     current = current.expression;
   }
@@ -120,6 +122,15 @@ function propertyName(node) {
   if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node)) {
     return node.text;
   }
+  if (ts.isComputedPropertyName(node)) {
+    const expression = unwrapExpression(node.expression);
+    if (
+      ts.isStringLiteral(expression) ||
+      ts.isNoSubstitutionTemplateLiteral(expression)
+    ) {
+      return expression.text;
+    }
+  }
   return null;
 }
 
@@ -131,13 +142,20 @@ function collectStaticValues(node, addFinding) {
     return;
   }
   if (ts.isArrayLiteralExpression(value)) {
-    for (const element of value.elements) collectStaticValues(element, addFinding);
+    for (const element of value.elements) {
+      collectStaticValues(
+        ts.isSpreadElement(element) ? element.expression : element,
+        addFinding
+      );
+    }
     return;
   }
   if (ts.isObjectLiteralExpression(value)) {
     for (const property of value.properties) {
       if (ts.isPropertyAssignment(property)) {
         collectStaticValues(property.initializer, addFinding);
+      } else if (ts.isSpreadAssignment(property)) {
+        collectStaticValues(property.expression, addFinding);
       }
     }
   }
@@ -146,11 +164,20 @@ function collectStaticValues(node, addFinding) {
 function collectObjectMessages(node, addFinding) {
   const value = unwrapExpression(node);
   if (ts.isArrayLiteralExpression(value)) {
-    for (const element of value.elements) collectObjectMessages(element, addFinding);
+    for (const element of value.elements) {
+      collectObjectMessages(
+        ts.isSpreadElement(element) ? element.expression : element,
+        addFinding
+      );
+    }
     return;
   }
   if (!ts.isObjectLiteralExpression(value)) return;
   for (const property of value.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      collectObjectMessages(property.expression, addFinding);
+      continue;
+    }
     if (!ts.isPropertyAssignment(property)) continue;
     const name = propertyName(property.name);
     if (name === "message" || name === "errors") {
@@ -161,9 +188,66 @@ function collectObjectMessages(node, addFinding) {
   }
 }
 
-function constructorName(node) {
+function collectDirectMessages(node, addFinding) {
+  const value = unwrapExpression(node);
+  const message = staticAsciiMessage(value);
+  if (message !== null) {
+    addFinding(value, message);
+    return;
+  }
+  if (ts.isArrayLiteralExpression(value)) {
+    for (const element of value.elements) {
+      collectDirectMessages(
+        ts.isSpreadElement(element) ? element.expression : element,
+        addFinding
+      );
+    }
+    return;
+  }
+  collectObjectMessages(value, addFinding);
+}
+
+function importedExceptionBindings(sourceFile) {
+  const named = new Map();
+  const namespaces = new Set();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "@nestjs/common"
+    ) {
+      continue;
+    }
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        const importedName = element.propertyName?.text ?? element.name.text;
+        if (NEST_EXCEPTION_KINDS.has(importedName)) {
+          named.set(element.name.text, importedName);
+        }
+      }
+    } else if (bindings && ts.isNamespaceImport(bindings)) {
+      namespaces.add(bindings.name.text);
+    }
+  }
+  return { named, namespaces };
+}
+
+function constructorKind(node, bindings) {
   const target = unwrapExpression(node);
-  return ts.isIdentifier(target) ? target.text : null;
+  if (ts.isIdentifier(target)) {
+    if (target.text === "Error") return "Error";
+    return bindings.named.get(target.text) ?? null;
+  }
+  if (
+    ts.isPropertyAccessExpression(target) &&
+    ts.isIdentifier(unwrapExpression(target.expression)) &&
+    bindings.namespaces.has(unwrapExpression(target.expression).text) &&
+    NEST_EXCEPTION_KINDS.has(target.name.text)
+  ) {
+    return target.name.text;
+  }
+  return null;
 }
 
 function scanSourceTree(sourceRoot, baseDir = path.dirname(sourceRoot)) {
@@ -178,12 +262,13 @@ function scanSourceTree(sourceRoot, baseDir = path.dirname(sourceRoot)) {
       true,
       ts.ScriptKind.TS
     );
+    const bindings = importedExceptionBindings(sourceFile);
     function visit(node) {
       if (ts.isThrowStatement(node) && node.expression) {
         const expression = unwrapExpression(node.expression);
         if (ts.isNewExpression(expression)) {
-          const kind = constructorName(expression.expression);
-          if (kind && EXCEPTION_KINDS.has(kind)) {
+          const kind = constructorKind(expression.expression, bindings);
+          if (kind) {
             const addFinding = (messageNode, message) => {
               const location = sourceFile.getLineAndCharacterOfPosition(
                 messageNode.getStart(sourceFile)
@@ -196,12 +281,7 @@ function scanSourceTree(sourceRoot, baseDir = path.dirname(sourceRoot)) {
               });
             };
             for (const argument of expression.arguments ?? []) {
-              const directMessage = staticAsciiMessage(argument);
-              if (directMessage !== null) {
-                addFinding(unwrapExpression(argument), directMessage);
-              } else {
-                collectObjectMessages(argument, addFinding);
-              }
+              collectDirectMessages(argument, addFinding);
             }
           }
         }
@@ -270,8 +350,34 @@ function evaluateFindings(findings, allowlist) {
   return errors;
 }
 
+function safeOutputFile(value) {
+  if (typeof value !== "string") return "src/<invalid-file>";
+  const normalized = value.split(path.sep).join("/");
+  if (
+    !normalized.startsWith("src/") ||
+    path.posix.isAbsolute(normalized) ||
+    normalized.split("/").includes("..") ||
+    !/^src\/[A-Za-z0-9._/-]+$/.test(normalized)
+  ) {
+    return "src/<invalid-file>";
+  }
+  return normalized;
+}
+
+function safeOutputLine(value) {
+  const text = String(value);
+  return /^\d+(,\d+)*$/.test(text) ? text : "-";
+}
+
 function describeValue(value, line = "-") {
-  return `${value.file}:${line} ${value.kind} ${JSON.stringify(value.message)}`;
+  const message = typeof value?.message === "string" ? value.message : "";
+  const fingerprint = crypto
+    .createHash("sha256")
+    .update(message)
+    .digest("hex")
+    .slice(0, 12);
+  const kind = EXCEPTION_KINDS.has(value?.kind) ? value.kind : "UnknownException";
+  return `${safeOutputFile(value?.file)}:${safeOutputLine(line)} ${kind} sha256:${fingerprint} length=${message.length}`;
 }
 
 function formatErrors(errors) {
