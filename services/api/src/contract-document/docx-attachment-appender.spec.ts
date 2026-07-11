@@ -95,4 +95,23 @@ describe("DOCX image attachment appender", () => {
       ])
     ).toBe(source);
   });
+
+  it("拒绝结构损坏的 DOCX 且不回显解析库错误", () => {
+    expect(() =>
+      appendDocxImageAttachments(Buffer.from("TOP-SECRET broken docx"), [
+        { name: "营业执照.png", type: "png", buffer: PNG }
+      ])
+    ).toThrow("合同附件合并所用 DOCX 文件结构不正确");
+  });
+
+  it.each([
+    { name: "broken.png", type: "png" as const },
+    { name: "broken.jpg", type: "jpeg" as const }
+  ])("拒绝损坏的 $type 附件图片", ({ name, type }) => {
+    expect(() =>
+      appendDocxImageAttachments(createDocx(), [
+        { name, type, buffer: Buffer.from("TOP-SECRET broken image") }
+      ])
+    ).toThrow("合同附件图片格式不正确");
+  });
 });

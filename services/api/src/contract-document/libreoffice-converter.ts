@@ -68,7 +68,7 @@ async function assertFontsAvailable(
     (font) => !allowedFonts.has(font.toLocaleLowerCase())
   );
   if (disallowedFonts.length) {
-    throw new Error(`Disallowed document fonts: ${disallowedFonts.join(", ")}`);
+    throw new Error("合同文档包含不允许的字体，请按模板字体规范调整");
   }
   if (platform !== "linux") return;
 
@@ -80,17 +80,15 @@ async function assertFontsAvailable(
         ["--format", "%{family}", font],
         { timeout: CONVERSION_TIMEOUT_MS }
       );
-    } catch (cause) {
-      throw new Error(`Failed to verify document font on conversion host: ${font}`, {
-        cause
-      });
+    } catch {
+      throw new Error("合同文档字体检查失败，请联系管理员");
     }
 
     const matchedFamilies = String(result.stdout ?? "")
       .split(",")
       .map((family) => family.trim().toLocaleLowerCase());
     if (!matchedFamilies.includes(font.toLocaleLowerCase())) {
-      throw new Error(`Document font is unavailable on conversion host: ${font}`);
+      throw new Error("合同文档所需字体在转换服务中不可用，请联系管理员");
     }
   }
 }
@@ -131,26 +129,18 @@ export async function convertDocxToPdf(
       );
     } catch (cause) {
       if (errorProperty(cause, "code") === "ENOENT") {
-        throw new Error(
-          "DOC_CONVERTER_COMMAND is unavailable; install LibreOffice or set the executable path.",
-          { cause }
-        );
+        throw new Error("合同 PDF 转换服务不可用，请联系管理员");
       }
       if (isTimeoutError(cause)) {
-        throw new Error(
-          `LibreOffice PDF conversion timed out after ${CONVERSION_TIMEOUT_MS / 1000} seconds`,
-          { cause }
-        );
+        throw new Error("合同 PDF 转换超时，请稍后重试");
       }
-      throw new Error("LibreOffice PDF conversion failed", { cause });
+      throw new Error("合同 PDF 转换失败，请稍后重试");
     }
 
     try {
       return await readFile(outputPath);
-    } catch (cause) {
-      throw new Error("LibreOffice PDF conversion did not produce input.pdf", {
-        cause
-      });
+    } catch {
+      throw new Error("合同 PDF 转换未生成输出文件，请稍后重试");
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true });

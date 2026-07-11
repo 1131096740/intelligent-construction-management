@@ -322,13 +322,13 @@ describe("contract PDF A4 normalizer", () => {
       normalizeContractPdf(await createPdf([[A4_WIDTH, A4_HEIGHT]]), [
         { name: "notes.txt", buffer: Buffer.from("plain text") }
       ])
-    ).rejects.toThrow('Attachment 1 ("notes.txt") has an unsupported file type');
+    ).rejects.toThrow("合同附件文件类型不受支持");
     await expect(
       normalizeContractPdf(await createPdf([[A4_WIDTH, A4_HEIGHT]]), [
         { name: "ok.png", buffer: PNG },
         { name: "broken.pdf", type: "pdf", buffer: Buffer.from("%PDF-broken") }
       ])
-    ).rejects.toThrow('Failed to process attachment 2 ("broken.pdf")');
+    ).rejects.toThrow("合同附件处理失败，请检查文件是否完整且格式正确");
   });
 
   it("rejects total bytes, page count, and image pixels over resource limits", async () => {
@@ -344,9 +344,7 @@ describe("contract PDF A4 normalizer", () => {
     );
     await expect(
       normalizeContractPdf(contract, oversizedAttachments)
-    ).rejects.toThrow(
-      `Total PDF normalization input exceeds ${MAX_TOTAL_INPUT_BYTES} bytes`
-    );
+    ).rejects.toThrow("合同 PDF 及附件总大小超过系统限制");
 
     await expect(
       normalizeContractPdf(
@@ -361,9 +359,7 @@ describe("contract PDF A4 normalizer", () => {
           }
         ]
       )
-    ).rejects.toThrow(
-      `PDF normalization exceeds ${MAX_TOTAL_PAGES} total pages while processing Attachment 1 ("too-many-pages.pdf")`
-    );
+    ).rejects.toThrow("合同 PDF 总页数超过系统限制");
 
     const oversizedPng = Buffer.alloc(24);
     PNG.copy(oversizedPng, 0, 0, 16);
@@ -373,8 +369,6 @@ describe("contract PDF A4 normalizer", () => {
       normalizeContractPdf(contract, [
         { name: "huge.png", type: "png", buffer: oversizedPng }
       ])
-    ).rejects.toThrow(
-      `Attachment 1 ("huge.png") exceeds ${MAX_IMAGE_PIXELS} image pixels`
-    );
+    ).rejects.toThrow("合同附件图片像素超过系统限制");
   });
 });

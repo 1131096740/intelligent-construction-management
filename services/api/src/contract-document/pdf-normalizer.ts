@@ -85,17 +85,12 @@ function normalizedRotation(page: PDFPage): number {
 async function appendPdf(
   document: PDFDocument,
   buffer: Buffer,
-  pageSizes: NormalizedContractPdf["pageSizes"],
-  context: string
+  pageSizes: NormalizedContractPdf["pageSizes"]
 ): Promise<void> {
   const source = await PDFDocument.load(buffer);
   const sourcePages = source.getPages();
   if (pageSizes.length + sourcePages.length > MAX_TOTAL_PAGES) {
-    throw new PdfNormalizationLimitError(
-      pageSizes.length === 0
-        ? `${context} exceeds ${MAX_TOTAL_PAGES} pages`
-        : `PDF normalization exceeds ${MAX_TOTAL_PAGES} total pages while processing ${context}`
-    );
+    throw new PdfNormalizationLimitError("合同 PDF 总页数超过系统限制");
   }
 
   for (const sourcePage of sourcePages) {
@@ -230,17 +225,14 @@ function findIdentityCardPairIndex(
 
 function assertImagePixels(
   attachment: PdfAttachment,
-  type: "png" | "jpeg",
-  context: string
+  type: "png" | "jpeg"
 ): void {
   const { width, height } =
     type === "png"
       ? pngDimensions(attachment.buffer)
       : jpegDimensions(attachment.buffer);
   if (height !== 0 && width > MAX_IMAGE_PIXELS / height) {
-    throw new PdfNormalizationLimitError(
-      `${context} exceeds ${MAX_IMAGE_PIXELS} image pixels`
-    );
+    throw new PdfNormalizationLimitError("合同附件图片像素超过系统限制");
   }
 }
 
@@ -305,16 +297,12 @@ export async function normalizeContractPdf(
   attachments: readonly PdfAttachment[]
 ): Promise<NormalizedContractPdf> {
   if (generatedContractPdf.length > MAX_TOTAL_INPUT_BYTES) {
-    throw new PdfNormalizationLimitError(
-      `Total PDF normalization input exceeds ${MAX_TOTAL_INPUT_BYTES} bytes`
-    );
+    throw new PdfNormalizationLimitError("合同 PDF 及附件总大小超过系统限制");
   }
   let totalBytes = generatedContractPdf.length;
   for (const attachment of attachments) {
     if (attachment.buffer.length > MAX_TOTAL_INPUT_BYTES - totalBytes) {
-      throw new PdfNormalizationLimitError(
-        `Total PDF normalization input exceeds ${MAX_TOTAL_INPUT_BYTES} bytes`
-      );
+      throw new PdfNormalizationLimitError("合同 PDF 及附件总大小超过系统限制");
     }
     totalBytes += attachment.buffer.length;
   }
@@ -323,15 +311,10 @@ export async function normalizeContractPdf(
   const pageSizes: NormalizedContractPdf["pageSizes"] = [];
 
   try {
-    await appendPdf(
-      document,
-      generatedContractPdf,
-      pageSizes,
-      "Generated contract PDF"
-    );
+    await appendPdf(document, generatedContractPdf, pageSizes);
   } catch (cause) {
     if (cause instanceof PdfNormalizationLimitError) throw cause;
-    throw new Error("Invalid generated contract PDF", { cause });
+    throw new Error("合同正文 PDF 格式不正确");
   }
 
   const consumedAttachmentIndexes = new Set<number>();
@@ -339,12 +322,9 @@ export async function normalizeContractPdf(
     if (consumedAttachmentIndexes.has(index)) {
       continue;
     }
-    const context = `attachment ${index + 1} ("${attachment.name}")`;
     const type = attachmentType(attachment);
     if (!type) {
-      throw new Error(
-        `${context[0].toUpperCase()}${context.slice(1)} has an unsupported file type`
-      );
+      throw new Error("合同附件文件类型不受支持");
     }
 
     try {
@@ -352,20 +332,13 @@ export async function normalizeContractPdf(
         await appendPdf(
           document,
           attachment.buffer,
-          pageSizes,
-          `${context[0].toUpperCase()}${context.slice(1)}`
+          pageSizes
         );
       } else {
         if (pageSizes.length >= MAX_TOTAL_PAGES) {
-          throw new PdfNormalizationLimitError(
-            `PDF normalization exceeds ${MAX_TOTAL_PAGES} total pages while processing ${context[0].toUpperCase()}${context.slice(1)}`
-          );
+          throw new PdfNormalizationLimitError("合同 PDF 总页数超过系统限制");
         }
-        assertImagePixels(
-          attachment,
-          type,
-          `${context[0].toUpperCase()}${context.slice(1)}`
-        );
+        assertImagePixels(attachment, type);
         const identitySide = identityCardSide(attachment.name);
         const pairIndex = identitySide
           ? findIdentityCardPairIndex(
@@ -378,15 +351,10 @@ export async function normalizeContractPdf(
         if (pairIndex > -1) {
           const pair = attachments[pairIndex];
           const pairType = attachmentType(pair);
-          const pairContext = `attachment ${pairIndex + 1} ("${pair.name}")`;
           if (pairType !== "png" && pairType !== "jpeg") {
-            throw new Error(`${pairContext} has an unsupported file type`);
+            throw new Error("合同附件文件类型不受支持");
           }
-          assertImagePixels(
-            pair,
-            pairType,
-            `${pairContext[0].toUpperCase()}${pairContext.slice(1)}`
-          );
+          assertImagePixels(pair, pairType);
           const currentImage = await embedImageAttachment(document, attachment, type);
           const pairImage = await embedImageAttachment(document, pair, pairType);
           drawIdentityCardImages(
@@ -406,10 +374,7 @@ export async function normalizeContractPdf(
       }
     } catch (cause) {
       if (cause instanceof PdfNormalizationLimitError) throw cause;
-      throw new Error(
-        `Failed to process ${context}`,
-        { cause }
-      );
+      throw new Error("合同附件处理失败，请检查文件是否完整且格式正确");
     }
   }
 

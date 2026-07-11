@@ -20,6 +20,33 @@ import { normalizeContractPdf, type PdfAttachment } from "./pdf-normalizer";
 
 const ERROR_MESSAGE_LIMIT = 2_000;
 const PROCESSING_LEASE_MS = 10 * 60 * 1_000;
+const SAFE_PERSISTED_ERROR_MESSAGES = new Set([
+  "合同版式版本不存在",
+  "合同版式版本已不可预览，请刷新后重试",
+  "合同版式预览清单数据格式不正确",
+  "合同生成文档前驱文件记录异常，无法接入版本链",
+  "合同文档输入快照格式不正确",
+  "合同金额格式不正确",
+  "合同金额超出中文大写金额可转换范围",
+  "合同文档缺少必填内容，请补充后重试",
+  "合同 DOCX 模板格式不正确",
+  "合同 DOCX 模板渲染失败，请检查模板内容",
+  "合同附件合并所用 DOCX 文件结构不正确",
+  "合同附件图片格式不正确",
+  "合同文档包含不允许的字体，请按模板字体规范调整",
+  "合同文档字体检查失败，请联系管理员",
+  "合同文档所需字体在转换服务中不可用，请联系管理员",
+  "合同 PDF 转换服务不可用，请联系管理员",
+  "合同 PDF 转换超时，请稍后重试",
+  "合同 PDF 转换失败，请稍后重试",
+  "合同 PDF 转换未生成输出文件，请稍后重试",
+  "合同正文 PDF 格式不正确",
+  "合同附件文件类型不受支持",
+  "合同附件处理失败，请检查文件是否完整且格式正确",
+  "合同 PDF 总页数超过系统限制",
+  "合同附件图片像素超过系统限制",
+  "合同 PDF 及附件总大小超过系统限制"
+]);
 
 @Injectable()
 export class ContractDocumentProcessor
@@ -131,9 +158,9 @@ export class ContractDocumentProcessor
       const layout = await this.prisma.contractLayoutTemplateVersion.findUnique({
         where: { id: job.layoutTemplateVersionId }
       });
-      if (!layout) throw new Error("Layout template version not found");
+      if (!layout) throw new Error("合同版式版本不存在");
       if (!["draft", "submitted"].includes(layout.status)) {
-        throw new Error("Layout template version is no longer previewable");
+        throw new Error("合同版式版本已不可预览，请刷新后重试");
       }
       const values = this.previewValues(job.sampleData);
       const billKeys = declaredBillKeys(
@@ -145,7 +172,7 @@ export class ContractDocumentProcessor
         ...Object.keys(values).filter((key) => /^bill\.[^.]+$/.test(key))
       ])) {
         if (!Array.isArray(values[billKey])) {
-          throw new Error(`Preview bill value must be an array: ${billKey}`);
+          throw new Error("合同版式预览清单数据格式不正确");
         }
       }
       const source = await this.files.getFileBuffer(layout.docxFileId);
@@ -168,7 +195,7 @@ export class ContractDocumentProcessor
           where: { id: job.layoutTemplateVersionId }
         });
         if (!currentLayout || !["draft", "submitted"].includes(currentLayout.status)) {
-          throw new Error("Layout template version is no longer previewable");
+          throw new Error("合同版式版本已不可预览，请刷新后重试");
         }
         const updated = await tx.contractLayoutPreviewJob.updateMany({
           where: { id: job.id, status: "processing" },
@@ -368,7 +395,10 @@ export class ContractDocumentProcessor
     job: { id: string; createdByUserId: string },
     cause: unknown
   ) {
-    const errorMessage = this.errorMessage(cause);
+    const errorMessage = this.errorMessage(
+      cause,
+      "合同版式预览生成失败，请检查版式和预览数据后重试"
+    );
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.contractLayoutPreviewJob.updateMany({
         where: { id: job.id, status: "processing" },
@@ -390,10 +420,10 @@ export class ContractDocumentProcessor
     cause: unknown,
     uploadedFileIds: string[]
   ) {
-    const orphanNote = uploadedFileIds.length
-      ? ` Uploaded private files may be orphaned: ${uploadedFileIds.join(", ")}.`
-      : "";
-    const errorMessage = this.errorMessage(`${this.errorMessage(cause)}${orphanNote}`);
+    const errorMessage = this.errorMessage(
+      cause,
+      "合同文档生成失败，请检查模板和附件后重试"
+    );
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.contractGeneratedDocument.updateMany({
         where: { id: job.id, status: "processing" },
@@ -412,7 +442,7 @@ export class ContractDocumentProcessor
 
   private documentSnapshot(value: Prisma.JsonValue): ContractDocumentInputSnapshot {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new Error("Invalid contract document input snapshot");
+      throw new Error("合同文档输入快照格式不正确");
     }
     const snapshot = value as unknown as ContractDocumentInputSnapshot;
     if (
@@ -424,7 +454,7 @@ export class ContractDocumentProcessor
       (snapshot.requiredKeys !== undefined && !Array.isArray(snapshot.requiredKeys)) ||
       !Array.isArray(snapshot.attachmentFiles)
     ) {
-      throw new Error("Invalid contract document input snapshot");
+      throw new Error("合同文档输入快照格式不正确");
     }
     return {
       ...snapshot,
@@ -484,8 +514,10 @@ export class ContractDocumentProcessor
     return undefined;
   }
 
-  private errorMessage(cause: unknown) {
+  private errorMessage(cause: unknown, fallback: string) {
     const message = cause instanceof Error ? cause.message : String(cause);
-    return message.slice(0, ERROR_MESSAGE_LIMIT);
+    return SAFE_PERSISTED_ERROR_MESSAGES.has(message)
+      ? message.slice(0, ERROR_MESSAGE_LIMIT)
+      : fallback;
   }
 }

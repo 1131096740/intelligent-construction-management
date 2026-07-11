@@ -245,9 +245,7 @@ describe("contract DOCX renderer", () => {
         },
         ["field.deliveryLocation"]
       )
-    ).toThrow(
-      "Missing required contract document values: field.deliveryLocation"
-    );
+    ).toThrow("合同文档缺少必填内容，请补充后重试");
   });
 
   it.each([
@@ -260,7 +258,7 @@ describe("contract DOCX renderer", () => {
       renderContractDocx(template, {
         values: requiredValues({ [key]: value })
       })
-    ).toThrow(`Missing required contract document values: ${key}`);
+    ).toThrow("合同文档缺少必填内容，请补充后重试");
   });
 
   it("allows unresolved optional placeholders to render as empty strings", () => {
@@ -289,7 +287,7 @@ describe("contract DOCX renderer", () => {
       renderContractDocx(Buffer.from("not a docx"), {
         values: requiredValues()
       })
-    ).toThrow("Invalid contract DOCX template");
+    ).toThrow("合同 DOCX 模板格式不正确");
   });
 });
 
@@ -318,7 +316,7 @@ describe("contract money formatting", () => {
     (cents) => {
       expect(() =>
         formatChineseUppercaseMoney(cents as bigint)
-      ).toThrow("Money cents must be a non-negative bigint");
+      ).toThrow("合同金额格式不正确");
     }
   );
 });

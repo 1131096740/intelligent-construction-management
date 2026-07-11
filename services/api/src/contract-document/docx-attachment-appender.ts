@@ -50,10 +50,15 @@ export function appendDocxImageAttachments(
     return docx;
   }
 
-  const zip = new PizZip(docx);
+  let zip: DocxZip;
+  try {
+    zip = new PizZip(docx);
+  } catch {
+    throw new Error("合同附件合并所用 DOCX 文件结构不正确");
+  }
   const documentFile = zip.file("word/document.xml");
   if (!documentFile) {
-    throw new Error("Invalid DOCX: missing word/document.xml");
+    throw new Error("合同附件合并所用 DOCX 文件结构不正确");
   }
   const relationshipIds = nextRelationshipIds(zip, imageCandidates.length);
   const images = imageCandidates.map((item, imageIndex) => {
@@ -264,7 +269,7 @@ function writeRelationships(zip: DocxZip, images: readonly ImageAttachment[]): v
 
 function writeContentTypes(zip: DocxZip, images: readonly ImageAttachment[]): void {
   const file = zip.file("[Content_Types].xml");
-  if (!file) throw new Error("Invalid DOCX: missing [Content_Types].xml");
+  if (!file) throw new Error("合同附件合并所用 DOCX 文件结构不正确");
   let xml = file.asText();
   if (images.some((image) => image.type === "png") && !xml.includes('Extension="png"')) {
     xml = xml.replace(
@@ -287,7 +292,7 @@ function appendBeforeSection(documentXml: string, addition: string): string {
     return `${documentXml.slice(0, sectionIndex)}${addition}${documentXml.slice(sectionIndex)}`;
   }
   const bodyEndIndex = documentXml.lastIndexOf("</w:body>");
-  if (bodyEndIndex < 0) throw new Error("Invalid DOCX: missing w:body");
+  if (bodyEndIndex < 0) throw new Error("合同附件合并所用 DOCX 文件结构不正确");
   return `${documentXml.slice(0, bodyEndIndex)}${addition}${documentXml.slice(bodyEndIndex)}`;
 }
 
@@ -309,7 +314,7 @@ function sideLabel(side: IdentityCardSide): string {
 
 function pngDimensions(buffer: Buffer): { width: number; height: number } {
   if (buffer.length < 24 || buffer.subarray(12, 16).toString("ascii") !== "IHDR") {
-    throw new Error("Invalid PNG");
+    throw new Error("合同附件图片格式不正确");
   }
   return {
     width: buffer.readUInt32BE(16),
@@ -318,16 +323,16 @@ function pngDimensions(buffer: Buffer): { width: number; height: number } {
 }
 
 function jpegDimensions(buffer: Buffer): { width: number; height: number } {
-  if (buffer[0] !== 0xff || buffer[1] !== 0xd8) throw new Error("Invalid JPEG");
+  if (buffer[0] !== 0xff || buffer[1] !== 0xd8) throw new Error("合同附件图片格式不正确");
   let offset = 2;
   while (offset + 8 < buffer.length) {
-    if (buffer[offset] !== 0xff) throw new Error("Invalid JPEG");
+    if (buffer[offset] !== 0xff) throw new Error("合同附件图片格式不正确");
     while (buffer[offset] === 0xff) offset += 1;
     const marker = buffer[offset];
     offset += 1;
     if (marker === 0xd8 || marker === 0xd9) continue;
     const length = buffer.readUInt16BE(offset);
-    if (length < 2 || offset + length > buffer.length) throw new Error("Invalid JPEG");
+    if (length < 2 || offset + length > buffer.length) throw new Error("合同附件图片格式不正确");
     if (
       marker >= 0xc0 &&
       marker <= 0xcf &&
@@ -342,7 +347,7 @@ function jpegDimensions(buffer: Buffer): { width: number; height: number } {
     }
     offset += length;
   }
-  throw new Error("Invalid JPEG");
+  throw new Error("合同附件图片格式不正确");
 }
 
 function escapeXml(value: string): string {

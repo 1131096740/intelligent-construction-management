@@ -114,7 +114,7 @@ describe("LibreOffice converter", () => {
         runner,
         platform: "darwin"
       })
-    ).rejects.toThrow("Disallowed document fonts: 仿宋");
+    ).rejects.toThrow("合同文档包含不允许的字体，请按模板字体规范调整");
     expect(runner).not.toHaveBeenCalled();
   });
 
@@ -127,7 +127,7 @@ describe("LibreOffice converter", () => {
         runner,
         platform: "linux"
       })
-    ).rejects.toThrow("Document font is unavailable on conversion host: 宋体");
+    ).rejects.toThrow("合同文档所需字体在转换服务中不可用，请联系管理员");
   });
 
   it("returns a clear error with cause when the converter executable is missing", async () => {
@@ -142,9 +142,9 @@ describe("LibreOffice converter", () => {
     });
 
     await expect(conversion).rejects.toThrow(
-      "DOC_CONVERTER_COMMAND is unavailable; install LibreOffice or set the executable path."
+      "合同 PDF 转换服务不可用，请联系管理员"
     );
-    await expect(conversion).rejects.toMatchObject({ cause });
+    await expect(conversion).rejects.not.toMatchObject({ cause });
   });
 
   it("returns a clear error with cause on nonzero converter exit and cleans temp files", async () => {
@@ -160,8 +160,8 @@ describe("LibreOffice converter", () => {
       platform: "darwin"
     });
 
-    await expect(conversion).rejects.toThrow("LibreOffice PDF conversion failed");
-    await expect(conversion).rejects.toMatchObject({ cause });
+    await expect(conversion).rejects.toThrow("合同 PDF 转换失败，请稍后重试");
+    await expect(conversion).rejects.not.toMatchObject({ cause });
     await expect(access(tempDir)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -183,9 +183,9 @@ describe("LibreOffice converter", () => {
     });
 
     await expect(conversion).rejects.toThrow(
-      "LibreOffice PDF conversion timed out after 120 seconds"
+      "合同 PDF 转换超时，请稍后重试"
     );
-    await expect(conversion).rejects.toMatchObject({ cause });
+    await expect(conversion).rejects.not.toMatchObject({ cause });
     await expect(access(tempDir)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -202,7 +202,7 @@ describe("LibreOffice converter", () => {
     });
 
     await expect(conversion).rejects.toThrow(
-      "LibreOffice PDF conversion did not produce input.pdf"
+      "合同 PDF 转换未生成输出文件，请稍后重试"
     );
     await expect(access(tempDir)).rejects.toMatchObject({ code: "ENOENT" });
   });

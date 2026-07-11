@@ -614,7 +614,7 @@ describe("ContractDocumentProcessor", () => {
       uploadPrivateFile: jest
         .fn()
         .mockResolvedValueOnce({ id: "orphan-docx" })
-        .mockRejectedValueOnce(new Error("x".repeat(3_000)))
+        .mockRejectedValueOnce(new Error("合同第三方存储失败：/tmp/secret.docx"))
     };
     const processor = new ContractDocumentProcessor(
       prisma as unknown as PrismaService,
@@ -627,7 +627,9 @@ describe("ContractDocumentProcessor", () => {
     const failure = prisma.tx.contractGeneratedDocument.updateMany.mock.calls[0][0];
     expect(failure.where).toEqual({ id: "document-1", status: "processing" });
     expect(failure.data.status).toBe("failed");
-    expect(failure.data.errorMessage).toHaveLength(2_000);
+    expect(failure.data.errorMessage).toBe("合同文档生成失败，请检查模板和附件后重试");
+    expect(failure.data.errorMessage).not.toContain("orphan-docx");
+    expect(failure.data.errorMessage).not.toContain("/tmp/secret.docx");
     expect(audit.record).toHaveBeenCalledWith(
       prisma.tx,
       expect.objectContaining({
@@ -863,7 +865,7 @@ describe("ContractDocumentProcessor", () => {
       where: { id: "preview-1", status: "processing" },
       data: {
         status: "failed",
-        errorMessage: "Preview bill value must be an array: bill.materials",
+        errorMessage: "合同版式预览清单数据格式不正确",
         completedAt: expect.any(Date)
       }
     });

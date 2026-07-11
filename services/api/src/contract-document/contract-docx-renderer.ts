@@ -20,7 +20,7 @@ const SECTION_UNITS = ["", "拾", "佰", "仟"];
 const GROUP_UNITS = ["", "万", "亿", "兆", "京"];
 function moneyCents(value: bigint): bigint {
   if (typeof value !== "bigint" || value < 0n) {
-    throw new Error("Money cents must be a non-negative bigint");
+    throw new Error("合同金额格式不正确");
   }
   return value;
 }
@@ -67,7 +67,7 @@ function formatChineseYuan(value: bigint): string {
 
   while (yuan > 0n) {
     if (groupIndex >= GROUP_UNITS.length) {
-      throw new Error("Money value exceeds the supported Chinese uppercase range");
+      throw new Error("合同金额超出中文大写金额可转换范围");
     }
     const section = Number(yuan % 10_000n);
     if (section === 0) {
@@ -118,7 +118,7 @@ function assertRequiredValues(
       (typeof values[key] === "string" && values[key].trim() === "")
   );
   if (missing.length) {
-    throw new Error(`Missing required contract document values: ${missing.join(", ")}`);
+    throw new Error("合同文档缺少必填内容，请补充后重试");
   }
 }
 
@@ -217,11 +217,11 @@ export function renderContractDocx(
     try {
       const parsed = new PizZip(templateBuffer);
       if (!parsed.file("word/document.xml")) {
-        throw new Error("word/document.xml is missing");
+        throw new Error("合同 DOCX 模板缺少正文结构");
       }
       return parsed;
-    } catch (cause) {
-      throw new Error("Invalid contract DOCX template", { cause });
+    } catch {
+      throw new Error("合同 DOCX 模板格式不正确");
     }
   })();
 
@@ -238,7 +238,7 @@ export function renderContractDocx(
       renderedZip.file("word/document.xml", mergeRepeatedBillTables(documentXml));
     }
     return renderedZip.generate({ type: "nodebuffer" });
-  } catch (cause) {
-    throw new Error("Failed to render contract DOCX template", { cause });
+  } catch {
+    throw new Error("合同 DOCX 模板渲染失败，请检查模板内容");
   }
 }

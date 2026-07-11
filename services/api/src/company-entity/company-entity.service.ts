@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 
 export interface CreateCompanyEntityDto {
@@ -20,7 +20,7 @@ export class CompanyEntityService {
   create(input: CreateCompanyEntityDto) {
     const name = input.name?.trim();
     if (!name) {
-      throw new Error("Company entity name is required");
+      throw new BadRequestException("请填写公司主体名称");
     }
 
     return this.prisma.companyEntity.create({
