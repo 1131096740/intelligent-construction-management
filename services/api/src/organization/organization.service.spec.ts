@@ -559,6 +559,31 @@ describe("OrganizationService core writes", () => {
     expect(harness.tx.department.update).not.toHaveBeenCalled();
   });
 
+  it("重新启用子部门时拒绝沿用已停用父部门", async () => {
+    const harness = createWriteHarness({
+      department: {
+        id: "department-1",
+        name: "合同部",
+        parentId: "department-parent",
+        isActive: false
+      },
+      parent: {
+        id: "department-parent",
+        name: "已停用管理部",
+        parentId: null,
+        isActive: false
+      }
+    });
+
+    await expect(
+      harness.service.updateDepartment("department-1", "actor-1", {
+        isActive: true,
+        confirmationPassword: "password"
+      })
+    ).rejects.toThrow("上级部门已停用，请重新选择");
+    expect(harness.tx.department.update).not.toHaveBeenCalled();
+  });
+
   it("成功更新部门并只审计 before/after 白名单字段", async () => {
     const harness = createWriteHarness({
       departments: [{ id: "department-1", name: "合同部", parentId: null, isActive: true }]
@@ -689,6 +714,26 @@ describe("OrganizationService core writes", () => {
       })
     ).resolves.toEqual({ id: "user-2", departmentId: null, isActive: true });
     expect(harness.tx.refreshToken.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("重新启用人员时拒绝沿用已停用所属部门", async () => {
+    const harness = createWriteHarness({
+      user: { id: "user-2", departmentId: "department-parent", isActive: false },
+      parent: {
+        id: "department-parent",
+        name: "已停用管理部",
+        parentId: null,
+        isActive: false
+      }
+    });
+
+    await expect(
+      harness.service.updateUser("user-2", "actor-1", {
+        isActive: true,
+        confirmationPassword: "password"
+      })
+    ).rejects.toThrow("部门已停用，请重新选择");
+    expect(harness.tx.user.update).not.toHaveBeenCalled();
   });
 
   it("拒绝停用最后一个启用的全局 super_admin", async () => {

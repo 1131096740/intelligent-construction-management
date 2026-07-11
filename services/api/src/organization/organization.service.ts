@@ -205,19 +205,25 @@ export class OrganizationService {
           let departmentGraph:
             | Array<{ id: string; parentId: string | null; isActive: boolean }>
             | undefined;
-          if (data.parentId) {
-            if (data.parentId === departmentId) {
+          const effectiveParentId =
+            data.parentId !== undefined ? data.parentId : before.parentId;
+          const parentIdToValidate =
+            data.parentId !== undefined || (data.isActive === true && !before.isActive)
+              ? effectiveParentId
+              : null;
+          if (parentIdToValidate) {
+            if (parentIdToValidate === departmentId) {
               throw new BadRequestException("上级部门不能选择当前部门或其下级部门");
             }
             const parent = await tx.department.findUnique({
-              where: { id: data.parentId },
+              where: { id: parentIdToValidate },
               select: { id: true, isActive: true }
             });
             assertActiveDepartment(parent, "上级部门");
             departmentGraph = await tx.department.findMany({
               select: { id: true, parentId: true, isActive: true }
             });
-            if (wouldCreateDepartmentCycle(departmentId, data.parentId, departmentGraph)) {
+            if (wouldCreateDepartmentCycle(departmentId, parentIdToValidate, departmentGraph)) {
               throw new BadRequestException("上级部门不能选择当前部门或其下级部门");
             }
           }
@@ -290,9 +296,15 @@ export class OrganizationService {
             throw new NotFoundException("人员不存在，请刷新后重试");
           }
 
-          if (data.departmentId) {
+          const effectiveDepartmentId =
+            data.departmentId !== undefined ? data.departmentId : before.departmentId;
+          const departmentIdToValidate =
+            data.departmentId !== undefined || (data.isActive === true && !before.isActive)
+              ? effectiveDepartmentId
+              : null;
+          if (departmentIdToValidate) {
             const department = await tx.department.findUnique({
-              where: { id: data.departmentId },
+              where: { id: departmentIdToValidate },
               select: { id: true, isActive: true }
             });
             assertActiveDepartment(department, "部门");
