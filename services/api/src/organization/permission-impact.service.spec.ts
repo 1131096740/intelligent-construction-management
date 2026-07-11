@@ -123,6 +123,46 @@ async function preview(
 }
 
 describe("PermissionImpactService target resolution", () => {
+  it("事务感知内部评估只使用传入 client 并返回唯一规范目标", async () => {
+    const outer = createPrisma(baseFixture());
+    const tx = createPrisma(baseFixture());
+    const service = new PermissionImpactService(outer as never);
+    const evaluate = (
+      service as unknown as {
+        evaluateRoleRemoval(
+          client: unknown,
+          input: {
+            operation: "remove";
+            userId: string;
+            scope: "project";
+            projectId: string;
+            roleKey: "project_manager";
+          },
+          evaluatedAt: Date
+        ): Promise<{
+          preview: PreviewResult;
+          targetAssignment: { id: string; source: string } | null;
+        }>;
+      }
+    ).evaluateRoleRemoval;
+
+    const result = await evaluate.call(service, tx, {
+      operation: "remove",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "project_manager"
+    }, EVALUATED_AT);
+
+    expect(result.preview).toMatchObject({ snapshotHash: expect.stringMatching(/^sha256:/u) });
+    expect(result.targetAssignment).toEqual({ id: "member-target", source: "project_member" });
+    expect(tx.user.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.findMany).toHaveBeenCalledTimes(1);
+    for (const delegate of Object.values(outer)) {
+      expect(delegate.findMany).not.toHaveBeenCalled();
+    }
+  });
+
   it("规范化全局岗位撤销并解析唯一 UserPosition 目标", async () => {
     const { result } = await preview(baseFixture(), {
       operation: "remove",

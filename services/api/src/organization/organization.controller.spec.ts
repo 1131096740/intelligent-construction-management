@@ -9,13 +9,15 @@ type OrganizationBodyMethod =
   | "createDepartment"
   | "updateDepartment"
   | "updateUser"
-  | "previewRoleRemoval";
+  | "previewRoleRemoval"
+  | "applyRoleRemoval";
 
 const BODY_INDEX: Record<OrganizationBodyMethod, number> = {
   createDepartment: 1,
   updateDepartment: 2,
   updateUser: 2,
-  previewRoleRemoval: 0
+  previewRoleRemoval: 0,
+  applyRoleRemoval: 1
 };
 
 function bodyMetatype(method: OrganizationBodyMethod) {
@@ -64,7 +66,11 @@ describe("OrganizationController", () => {
       positions: []
     };
     const service = { getDirectory: jest.fn().mockResolvedValue(directoryReadModel) };
-    const controller = new OrganizationController(service as never, undefined as never);
+    const controller = new OrganizationController(
+      service as never,
+      undefined as never,
+      undefined as never
+    );
 
     await expect(controller.directory()).resolves.toBe(directoryReadModel);
     expect(service.getDirectory).toHaveBeenCalledTimes(1);
@@ -95,7 +101,11 @@ describe("OrganizationController", () => {
     const service = {
       getPermissionIntegrity: jest.fn().mockResolvedValue(integrityReadModel)
     };
-    const controller = new OrganizationController(service as never, undefined as never) as OrganizationController & {
+    const controller = new OrganizationController(
+      service as never,
+      undefined as never,
+      undefined as never
+    ) as OrganizationController & {
       permissionIntegrity(): Promise<unknown>;
     };
 
@@ -119,8 +129,15 @@ describe("OrganizationController", () => {
       updateDepartment: jest.fn().mockResolvedValue({ id: "department-1" }),
       updateUser: jest.fn().mockResolvedValue({ id: "user-2" })
     };
-    const controller = new OrganizationController(service as never, undefined as never) as OrganizationController &
-      Record<Exclude<OrganizationBodyMethod, "previewRoleRemoval">, (...args: unknown[]) => Promise<unknown>>;
+    const controller = new OrganizationController(
+      service as never,
+      undefined as never,
+      undefined as never
+    ) as OrganizationController &
+      Record<
+        Exclude<OrganizationBodyMethod, "previewRoleRemoval" | "applyRoleRemoval">,
+        (...args: unknown[]) => Promise<unknown>
+      >;
     const actor = { id: "actor-1", name: "管理员", phone: null };
     const createBody = { name: " 合同部 ", confirmationPassword: " secret " };
     const departmentBody = { isActive: false, confirmationPassword: " secret " };
@@ -211,6 +228,86 @@ describe("OrganizationController", () => {
     ]);
     expect(JSON.stringify(response)).not.toContain("TOP-SECRET-PASSWORD");
     expect(JSON.stringify(response)).not.toContain("spoofed-");
+  });
+
+  it("岗位撤销 apply 使用运行时 DTO 且 actor 只取登录态", async () => {
+    expect(bodyMetatype("applyRoleRemoval").name).toBe("ApplyRoleRemovalDto");
+    const response = { assignmentId: "assignment-1", source: "user_position" };
+    const roles = { applyRoleRemoval: jest.fn().mockResolvedValue(response) };
+    const Controller = OrganizationController as unknown as new (
+      organizationService: unknown,
+      permissionImpactService: unknown,
+      organizationRoleService: unknown
+    ) => { applyRoleRemoval(actor: unknown, body: unknown): Promise<unknown> };
+    const controller = new Controller({}, {}, roles);
+    const actor = { id: "actor-from-session", name: "管理员", phone: null };
+    const body = {
+      operation: "remove",
+      userId: "target",
+      scope: "global",
+      roleKey: "finance_director",
+      snapshotHash: `sha256:${"a".repeat(64)}`,
+      confirmationPassword: "  original-password  "
+    };
+
+    await expect(controller.applyRoleRemoval(actor, body)).resolves.toBe(response);
+    expect(roles.applyRoleRemoval).toHaveBeenCalledWith("actor-from-session", body);
+  });
+
+  it("岗位撤销 apply 保留密码原值并接受严格快照 hash", async () => {
+    const body = {
+      operation: "remove",
+      userId: "❤️".repeat(64),
+      scope: "project",
+      projectId: "❤️".repeat(64),
+      roleKey: "project_manager",
+      snapshotHash: `sha256:${"0a".repeat(32)}`,
+      confirmationPassword: "  do-not-trim  "
+    };
+    await expect(validateBody("applyRoleRemoval", body)).resolves.toEqual(body);
+    await expect(
+      validateBody("applyRoleRemoval", { ...body, confirmationPassword: "   " })
+    ).resolves.toEqual({ ...body, confirmationPassword: "   " });
+  });
+
+  it.each([
+    ["operation", { operation: "add" }, "只支持撤销岗位"],
+    ["snapshotHash", { snapshotHash: `sha256:${"A".repeat(64)}` }, "快照标识格式不正确"],
+    ["snapshotHash", { snapshotHash: `sha256:${"a".repeat(63)}` }, "快照标识格式不正确"],
+    ["snapshotHash", { snapshotHash: " a" }, "快照标识格式不正确"],
+    ["confirmationPassword", { confirmationPassword: "密".repeat(257) }, "当前登录密码不能超过 256 个字符"]
+  ] as const)("apply 拒绝非法 %s", async (_field, override, message) => {
+    const response = await validationResponse("applyRoleRemoval", {
+      operation: "remove",
+      userId: "target",
+      scope: "global",
+      roleKey: "finance_director",
+      snapshotHash: `sha256:${"a".repeat(64)}`,
+      confirmationPassword: "password",
+      ...override
+    });
+    expect(response.errors).toContain(message);
+  });
+
+  it("apply 拒绝 assignment/actor/审计等未知字段且不回显密码", async () => {
+    const response = await validationResponse("applyRoleRemoval", {
+      operation: "remove",
+      userId: "target",
+      scope: "global",
+      roleKey: "finance_director",
+      snapshotHash: `sha256:${"a".repeat(64)}`,
+      confirmationPassword: "TOP-SECRET-PASSWORD",
+      assignmentId: "client-assignment",
+      actorUserId: "client-actor",
+      auditMetadata: { secret: "client-audit" }
+    });
+    expect(response.errors).toEqual([
+      "assignmentId 不是允许提交的字段",
+      "actorUserId 不是允许提交的字段",
+      "auditMetadata 不是允许提交的字段"
+    ]);
+    expect(JSON.stringify(response)).not.toContain("TOP-SECRET-PASSWORD");
+    expect(JSON.stringify(response)).not.toContain("client-");
   });
 
   it("接受 null 清空值、undefined 不修改和 Unicode code point 边界", async () => {

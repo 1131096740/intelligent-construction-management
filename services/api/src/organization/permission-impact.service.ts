@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import type { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 import type { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
@@ -13,6 +14,21 @@ const SUPPORTED_BUSINESS_TYPES = [
   "project_expense_request"
 ] as const;
 type SupportedBusinessType = (typeof SUPPORTED_BUSINESS_TYPES)[number];
+type PermissionImpactClient = Pick<
+  Prisma.TransactionClient,
+  | "user"
+  | "position"
+  | "userPosition"
+  | "projectMember"
+  | "project"
+  | "approvalInstance"
+  | "approvalDelegation"
+  | "contractVersion"
+  | "contract"
+  | "settlement"
+  | "paymentRequest"
+  | "projectExpenseRequest"
+>;
 
 export type RoleRemovalBlockingIssueCode =
   | "target_user_missing"
@@ -139,6 +155,14 @@ export interface RoleRemovalImpactPreview {
   }>;
 }
 
+export interface RoleRemovalEvaluation {
+  preview: RoleRemovalImpactPreview;
+  targetAssignment: {
+    id: string;
+    source: "user_position" | "project_member";
+  } | null;
+}
+
 interface DirectFacts {
   usersByProjectAndRole: Map<string, Set<string>>;
   usersByGlobalRole: Map<RoleKey, Set<string>>;
@@ -152,19 +176,27 @@ export class PermissionImpactService {
     input: PreviewRoleRemovalDto,
     evaluatedAt: Date = new Date()
   ): Promise<RoleRemovalImpactPreview> {
+    return (await this.evaluateRoleRemoval(this.prisma, input, evaluatedAt)).preview;
+  }
+
+  async evaluateRoleRemoval(
+    client: PermissionImpactClient,
+    input: PreviewRoleRemovalDto,
+    evaluatedAt: Date = new Date()
+  ): Promise<RoleRemovalEvaluation> {
     const change = normalizeChange(input);
     const [users, positions, userPositions, projectMembers, projects, instances, delegations] =
       (await Promise.all([
-        this.prisma.user.findMany({ select: { id: true, isActive: true } }),
-        this.prisma.position.findMany({ select: { id: true, key: true } }),
-        this.prisma.userPosition.findMany({
+        client.user.findMany({ select: { id: true, isActive: true } }),
+        client.position.findMany({ select: { id: true, key: true } }),
+        client.userPosition.findMany({
           select: { id: true, userId: true, positionId: true, projectId: true }
         }),
-        this.prisma.projectMember.findMany({
+        client.projectMember.findMany({
           select: { id: true, userId: true, projectId: true, positionKey: true }
         }),
-        this.prisma.project.findMany({ select: { id: true } }),
-        this.prisma.approvalInstance.findMany({
+        client.project.findMany({ select: { id: true } }),
+        client.approvalInstance.findMany({
           where: {
             status: "in_progress",
             businessType: { in: [...SUPPORTED_BUSINESS_TYPES] }
@@ -178,7 +210,7 @@ export class PermissionImpactService {
             frozenNodes: true
           }
         }),
-        this.prisma.approvalDelegation.findMany({
+        client.approvalDelegation.findMany({
           where: {
             enabled: true,
             startsAt: { lte: evaluatedAt },
@@ -268,7 +300,7 @@ export class PermissionImpactService {
       issue("last_active_global_super_admin");
     }
 
-    const mappedInstances = await this.mapApprovalProjects(instances);
+    const mappedInstances = await this.mapApprovalProjects(client, instances);
     const directFacts = buildDirectFacts(
       users,
       positions,
@@ -319,7 +351,7 @@ export class PermissionImpactService {
       delegations: stableRows(delegations, (row) => row.id)
     });
 
-    return {
+    const preview: RoleRemovalImpactPreview = {
       change,
       evaluatedAt: evaluatedAt.toISOString(),
       snapshotHash,
@@ -328,26 +360,38 @@ export class PermissionImpactService {
       blockingIssues,
       impacts
     };
+    return {
+      preview,
+      targetAssignment: targetAssignmentId
+        ? {
+            id: targetAssignmentId,
+            source: change.scope === "global" ? "user_position" : "project_member"
+          }
+        : null
+    };
   }
 
-  private async mapApprovalProjects(instances: ApprovalInstanceRow[]): Promise<MappedApprovalInstance[]> {
+  private async mapApprovalProjects(
+    client: PermissionImpactClient,
+    instances: ApprovalInstanceRow[]
+  ): Promise<MappedApprovalInstance[]> {
     const ids = (businessType: SupportedBusinessType) =>
       instances.filter((row) => row.businessType === businessType).map((row) => row.businessId);
     const contractVersionIds = ids("contract_version");
     const [contractVersions, settlements, payments, expenses] = (await Promise.all([
-      this.prisma.contractVersion.findMany({
+      client.contractVersion.findMany({
         where: { id: { in: contractVersionIds } },
         select: { id: true, contractId: true }
       }),
-      this.prisma.settlement.findMany({
+      client.settlement.findMany({
         where: { id: { in: ids("settlement") } },
         select: { id: true, projectId: true }
       }),
-      this.prisma.paymentRequest.findMany({
+      client.paymentRequest.findMany({
         where: { id: { in: ids("payment_request") } },
         select: { id: true, projectId: true }
       }),
-      this.prisma.projectExpenseRequest.findMany({
+      client.projectExpenseRequest.findMany({
         where: { id: { in: ids("project_expense_request") } },
         select: { id: true, projectId: true }
       })
@@ -357,7 +401,7 @@ export class PermissionImpactService {
       Array<{ id: string; projectId: string }>,
       Array<{ id: string; projectId: string }>
     ];
-    const contracts = (await this.prisma.contract.findMany({
+    const contracts = (await client.contract.findMany({
       where: { id: { in: contractVersions.map((row) => row.contractId) } },
       select: { id: true, projectId: true }
     })) as Array<{ id: string; projectId: string }>;

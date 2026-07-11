@@ -3,10 +3,12 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { CreateDepartmentDto } from "./dto/create-department.dto";
+import { ApplyRoleRemovalDto } from "./dto/apply-role-removal.dto";
 import { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
 import { UpdateDepartmentDto } from "./dto/update-department.dto";
 import { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
 import { OrganizationService } from "./organization.service";
+import { OrganizationRoleService } from "./organization-role.service";
 import { PermissionImpactService } from "./permission-impact.service";
 
 @Controller("organization")
@@ -14,7 +16,8 @@ import { PermissionImpactService } from "./permission-impact.service";
 export class OrganizationController {
   constructor(
     private readonly organization: OrganizationService,
-    private readonly permissionImpacts: PermissionImpactService
+    private readonly permissionImpacts: PermissionImpactService,
+    private readonly organizationRoles: OrganizationRoleService
   ) {}
 
   @Get("directory")
@@ -30,6 +33,14 @@ export class OrganizationController {
   @Post("role-changes/preview")
   previewRoleRemoval(@Body() body: PreviewRoleRemovalDto) {
     return this.permissionImpacts.previewRoleRemoval(body);
+  }
+
+  @Post("role-changes/apply")
+  applyRoleRemoval(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() body: ApplyRoleRemovalDto
+  ) {
+    return this.organizationRoles.applyRoleRemoval(actor.id, body);
   }
 
   @Post("departments")
