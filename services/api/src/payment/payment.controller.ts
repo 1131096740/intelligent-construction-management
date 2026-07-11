@@ -38,6 +38,7 @@ export class PaymentController {
   @RequirePositions(
     "chairman",
     "general_manager",
+    "comprehensive_director",
     "project_manager",
     "contract_director",
     "contract_staff",
@@ -142,6 +143,7 @@ export class PaymentController {
   @RequirePositions(
     "chairman",
     "general_manager",
+    "comprehensive_director",
     "project_manager",
     "contract_director",
     "contract_staff",

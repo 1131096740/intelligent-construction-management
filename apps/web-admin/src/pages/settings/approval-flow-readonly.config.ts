@@ -95,13 +95,13 @@ export const approvalFlowRules: ApprovalFlowRule[] = [
     businessType: "付款",
     status: "readonly",
     nodes: [
+      { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"] },
       { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-      { name: "合同结算部/预算部", mode: "any", roleKeys: ["contract_director", "budget_director"] },
-      { name: "财务", mode: "any", roleKeys: ["finance_director"] },
+      { name: "财务总监", mode: "any", roleKeys: ["finance_director"] },
       { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
     ],
     guardrails: [
-      "付款申请只能来自已生效结算或合同累计结算付款",
+      "付款申请可来自有效结算、合同预付款或历史期初结算",
       "付款审批通过只进入已批待付，不代表实际付款",
       "董事长/总经理为或签终审节点"
     ]

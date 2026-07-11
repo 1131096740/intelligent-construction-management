@@ -14,12 +14,8 @@ describe("PaymentRequestService", () => {
     assertCanDownloadFile: jest.fn()
   };
   const paymentApprovalNodes = [
+    { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"] },
     { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-    {
-      name: "合同结算部/预算部",
-      mode: "any",
-      roleKeys: ["contract_director", "budget_director"]
-    },
     { name: "财务", mode: "any", roleKeys: ["finance_director"] },
     { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
   ];
@@ -2591,7 +2587,7 @@ describe("PaymentRequestService", () => {
       auditLog: {
         create: jest.fn()
       },
-      ...approvalRoleTables("project_manager")
+      ...approvalRoleTables("comprehensive_director")
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -2614,7 +2610,7 @@ describe("PaymentRequestService", () => {
         frozenNodes: [
           {
             ...paymentApprovalNodes[0],
-            approvedRoleKeys: ["project_manager"]
+            approvedRoleKeys: ["comprehensive_director"]
           },
           paymentApprovalNodes[1],
           paymentApprovalNodes[2],
@@ -2666,7 +2662,7 @@ describe("PaymentRequestService", () => {
       auditLog: {
         create: jest.fn()
       },
-      ...approvalRoleTables("project_manager")
+      ...approvalRoleTables("comprehensive_director")
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -2694,8 +2690,8 @@ describe("PaymentRequestService", () => {
 
   it("approves the final OR node into approved pending payment", async () => {
     const frozenNodes = [
-      { ...paymentApprovalNodes[0], approvedRoleKeys: ["project_manager"] },
-      { ...paymentApprovalNodes[1], approvedRoleKeys: ["contract_director"] },
+      { ...paymentApprovalNodes[0], approvedRoleKeys: ["comprehensive_director"] },
+      { ...paymentApprovalNodes[1], approvedRoleKeys: ["project_manager"] },
       { ...paymentApprovalNodes[2], approvedRoleKeys: ["finance_director"] },
       paymentApprovalNodes[3]
     ];
@@ -2775,8 +2771,8 @@ describe("PaymentRequestService", () => {
     ["non-finite", Number.NaN as unknown as string]
   ])("rejects %s approved amount values", async (_label, approvedAmountCents) => {
     const frozenNodes = [
-      { ...paymentApprovalNodes[0], approvedRoleKeys: ["project_manager"] },
-      { ...paymentApprovalNodes[1], approvedRoleKeys: ["contract_director"] },
+      { ...paymentApprovalNodes[0], approvedRoleKeys: ["comprehensive_director"] },
+      { ...paymentApprovalNodes[1], approvedRoleKeys: ["project_manager"] },
       { ...paymentApprovalNodes[2], approvedRoleKeys: ["finance_director"] },
       paymentApprovalNodes[3]
     ];

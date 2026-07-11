@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: deploy-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   verify:
@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Require the production main ref
+        run: test "$GITHUB_REF" = "refs/heads/main"
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -54,6 +57,9 @@ jobs:
           pnpm --filter @jiangkong/api build
           pnpm --filter @jiangkong/web-admin build
 
+      - name: Check Web UI governance
+        run: pnpm --filter @jiangkong/web-admin check:ui
+
   deploy:
     name: Deploy to server
     runs-on: ubuntu-latest
@@ -67,6 +73,7 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -74,6 +81,18 @@ jobs:
           : "${DEPLOY_USER:?DEPLOY_USER is required}"
           : "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY is required}"
           : "${DEPLOY_KNOWN_HOSTS:?DEPLOY_KNOWN_HOSTS is required}"
+          : "${TARGET_SHA:?TARGET_SHA is required}"
+
+          case "$TARGET_SHA" in
+            *[!0-9a-f]* | "")
+              echo "TARGET_SHA must be a lowercase hexadecimal commit id" >&2
+              exit 1
+              ;;
+          esac
+          if [ "${#TARGET_SHA}" -ne 40 ]; then
+            echo "TARGET_SHA must contain exactly 40 hexadecimal characters" >&2
+            exit 1
+          fi
 
           if [ -z "${DEPLOY_PORT:-}" ]; then
             DEPLOY_PORT=22
@@ -89,14 +108,38 @@ jobs:
           ssh -i ~/.ssh/jiangkong_deploy_key \
             -p "$DEPLOY_PORT" \
             -o IdentitiesOnly=yes \
-            "$DEPLOY_USER@$DEPLOY_HOST" <<'REMOTE_DEPLOY'
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "env TARGET_SHA=$TARGET_SHA bash -s" <<'REMOTE_DEPLOY'
           set -euo pipefail
 
-          git config --global --add safe.directory /opt/jiangkong
-          cd /opt/jiangkong
-          git fetch origin main
-          git merge --ff-only origin/main
-          git rev-parse --short HEAD
+          assert_clean_release_tree() {
+            local entry status_output
+            if ! status_output="$(git status --porcelain=v1 --untracked-files=all)"; then
+              echo "unable to inspect the production release tree" >&2
+              return 1
+            fi
+            while IFS= read -r entry; do
+              case "$entry" in
+                "" | "?? .deploy-backups/"* | "?? deploy.sh" | "?? deploy.sh.bak-20260706")
+                  ;;
+                *)
+                  echo "release tree contains a non-allowlisted change: $entry" >&2
+                  exit 1
+                  ;;
+              esac
+            done <<< "$status_output"
+          }
 
-          /opt/jiangkong/deploy.sh
+          git config --global --replace-all safe.directory /opt/jiangkong
+          cd /opt/jiangkong
+          assert_clean_release_tree
+          git fetch origin main
+          git cat-file -e "$TARGET_SHA^{commit}"
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+          git merge --ff-only "$TARGET_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          assert_clean_release_tree
+          git rev-parse HEAD
+
+          /opt/jiangkong/scripts/ops/deploy-production-server.sh
           REMOTE_DEPLOY

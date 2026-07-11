@@ -109,9 +109,8 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "payment.create": ["contract_staff", "contract_director", "project_manager"],
   "payment.approve": [
+    "comprehensive_director",
     "project_manager",
-    "contract_director",
-    "budget_director",
     "finance_director",
     "chairman",
     "general_manager"

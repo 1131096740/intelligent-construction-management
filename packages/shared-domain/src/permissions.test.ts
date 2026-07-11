@@ -62,15 +62,19 @@ describe("final approval OR-sign", () => {
 
   it("allows payment approval route roles before service-level node checks", () => {
     for (const role of [
+      "comprehensive_director",
       "project_manager",
-      "contract_director",
-      "budget_director",
       "finance_director",
       "chairman",
       "general_manager"
     ] as const) {
       expect(canPerform("payment.approve", [role])).toBe(true);
     }
+  });
+
+  it("keeps contract and budget roles outside the payment approval route", () => {
+    expect(canPerform("payment.approve", ["contract_director"])).toBe(false);
+    expect(canPerform("payment.approve", ["budget_director"])).toBe(false);
   });
 
   it("flags final approval actions and only those", () => {

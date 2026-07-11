@@ -986,10 +986,10 @@ export class PaymentReadService {
         { label: "申请人", value: "项目经理 张工" }
       ],
       approvalSteps: [
-        { label: "付款申请", status: "已提交", owner: "项目经理", tone: "success" },
+        { label: "付款申请", status: "已提交", owner: "经办人", tone: "success" },
+        { label: "综合部主管审批", status: "已通过", owner: "综合部主管", tone: "success" },
         { label: "项目经理审批", status: "已通过", owner: "项目经理", tone: "success" },
-        { label: "合同结算部/预算部审批", status: "已通过", owner: "合同结算部/预算部", tone: "success" },
-        { label: "财务复核", status: "已通过", owner: "财务主管", tone: "success" },
+        { label: "财务总监审批", status: "已通过", owner: "财务总监", tone: "success" },
         { label: "董事长/总经理或签", status: "已通过", owner: "董事长或总经理", tone: "success" },
         { label: "审批通过", status: "已批待付", owner: "系统", tone: "warning" }
       ],
@@ -1393,10 +1393,10 @@ export class PaymentReadService {
     const approvalComplete = ["approved_pending_payment", "partially_paid", "paid", "completed"].includes(status);
 
     return [
-      { label: "付款申请", status: "已提交", owner: "项目经理", tone: "success" },
+      { label: "付款申请", status: "已提交", owner: "经办人", tone: "success" },
+      { label: "综合部主管审批", status: approvalComplete ? "已通过" : "待处理", owner: "综合部主管", tone: approvalComplete ? "success" : "primary" },
       { label: "项目经理审批", status: approvalComplete ? "已通过" : "待处理", owner: "项目经理", tone: approvalComplete ? "success" : "primary" },
-      { label: "合同结算部/预算部审批", status: approvalComplete ? "已通过" : "待处理", owner: "合同结算部/预算部", tone: approvalComplete ? "success" : "default" },
-      { label: "财务复核", status: approvalComplete ? "已通过" : "待处理", owner: "财务主管", tone: approvalComplete ? "success" : "default" },
+      { label: "财务总监审批", status: approvalComplete ? "已通过" : "待处理", owner: "财务总监", tone: approvalComplete ? "success" : "default" },
       { label: "董事长/总经理或签", status: approvalComplete ? "已通过" : "待处理", owner: "董事长或总经理", tone: approvalComplete ? "success" : "default" },
       {
         label: "审批通过",

@@ -300,9 +300,9 @@ describe("PaymentReadService", () => {
     expect(detail.baseInfo).toContainEqual({ label: "发票要求", value: "需提供发票" });
     expect(detail.approvalSteps.map((step) => step.label)).toEqual([
       "付款申请",
+      "综合部主管审批",
       "项目经理审批",
-      "合同结算部/预算部审批",
-      "财务复核",
+      "财务总监审批",
       "董事长/总经理或签",
       "审批通过"
     ]);

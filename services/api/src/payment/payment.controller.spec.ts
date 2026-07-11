@@ -341,6 +341,7 @@ describe("PaymentController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, PaymentController.prototype.list)).toEqual([
       "chairman",
       "general_manager",
+      "comprehensive_director",
       "project_manager",
       "contract_director",
       "contract_staff",
@@ -350,6 +351,12 @@ describe("PaymentController authorization wiring", () => {
       "finance_staff",
       "super_admin"
     ]);
+  });
+
+  it("lets the comprehensive director open payment details", () => {
+    expect(
+      Reflect.getMetadata(REQUIRED_POSITIONS_KEY, PaymentController.prototype.detail)
+    ).toContain("comprehensive_director");
   });
 
   it("forwards contract application preview requests to the payment read service", async () => {

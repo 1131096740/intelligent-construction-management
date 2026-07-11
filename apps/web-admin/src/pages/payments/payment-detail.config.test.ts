@@ -39,9 +39,9 @@ describe("payment detail page configuration", () => {
   it("shows the full project payment approval chain", () => {
     expect(paymentApprovalSteps.map((step) => step.label)).toEqual([
       "付款申请",
+      "综合部主管审批",
       "项目经理审批",
-      "合同结算部/预算部审批",
-      "财务复核",
+      "财务总监审批",
       "董事长/总经理或签",
       "审批通过"
     ]);

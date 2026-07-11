@@ -106,14 +106,14 @@ function positiveMoneyCents(value: string, message: string): bigint {
 
 const PAYMENT_APPROVAL_NODES = [
   {
+    name: "综合部主管",
+    mode: "any",
+    roleKeys: ["comprehensive_director"]
+  },
+  {
     name: "项目经理",
     mode: "any",
     roleKeys: ["project_manager"]
-  },
-  {
-    name: "合同结算部/预算部",
-    mode: "any",
-    roleKeys: ["contract_director", "budget_director"]
   },
   {
     name: "财务",

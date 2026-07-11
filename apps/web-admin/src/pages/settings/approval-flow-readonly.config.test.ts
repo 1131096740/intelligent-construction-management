@@ -34,6 +34,17 @@ describe("approval flow readonly configuration", () => {
     expect(settlementRoleKeys).not.toContain("general_manager");
   });
 
+  it("shows the confirmed ordinary payment approval route", () => {
+    const payment = approvalFlowRules.find((rule) => rule.id === "payment");
+
+    expect(payment?.nodes.map((node) => node.roleKeys)).toEqual([
+      ["comprehensive_director"],
+      ["project_manager"],
+      ["finance_director"],
+      ["chairman", "general_manager"]
+    ]);
+  });
+
   it("labels countersign and OR-sign nodes for operators", () => {
     expect(modeLabel("all")).toBe("会签");
     expect(modeLabel("any")).toBe("或签");
