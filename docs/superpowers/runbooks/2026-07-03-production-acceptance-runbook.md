@@ -36,7 +36,7 @@ CHECK_DATABASE_STATE=true pnpm --filter @jiangkong/api verify:production-readine
 - 环境变量中是否仍出现 `Jgzg@2026`；
 - `FILE_STORAGE_DRIVER` 只允许 `local` / `cos`，但生产 readiness 必须为 `cos`；空值、`s3` 等非法枚举和生产 `local` 都直接失败；
 - `COS_SECRET_ID`、`COS_SECRET_KEY` 是否非空且非占位，`COS_BUCKET` 是否符合小写 `<name>-<APPID>` 腾讯桶名格式，`COS_REGION` 是否使用 `ap/na/sa/eu/af/me` 常见前缀并符合 `ap-chengdu` 形式的小写分段格式；
-- `FILE_UPLOAD_MAX_BYTES` 是否为纯十进制正整数且不超过 `Number.MAX_SAFE_INTEGER`；缺失、0、负数、小数、指数、十六进制和超安全整数都直接失败；
+- `FILE_UPLOAD_MAX_BYTES` 是否为 `1..104857600` 的纯十进制正整数（最大 100 MiB）；缺失、0、负数、小数、指数、十六进制、100 MiB 以上和超安全整数都直接失败；
 - `DOC_CONVERTER_COMMAND` 是否可执行；
 - `DOC_ALLOWED_FONTS` 是否包含合同母版要求字体。
 

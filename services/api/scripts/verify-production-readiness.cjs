@@ -8,6 +8,7 @@ const REQUIRED_SECRETS = [
   "FILE_DOWNLOAD_SECRET"
 ];
 const COS_SECRET_ENV = ["COS_SECRET_ID", "COS_SECRET_KEY"];
+const MAX_FILE_UPLOAD_BYTES = 100 * 1024 * 1024;
 const REQUIRED_FONTS = ["方正小标宋简体", "仿宋_GB2312", "楷体_GB2312"];
 const DEFAULT_MARKERS = new Set([
   "local-access-secret",
@@ -140,6 +141,17 @@ function runPsqlScalar(databaseUrl, sql) {
   }).trim();
 }
 
+function parseDatabaseCount(value) {
+  if (typeof value !== "string" || !/^(?:0|[1-9]\d*)$/.test(value)) {
+    throw new Error("invalid database count");
+  }
+  const count = Number(value);
+  if (!Number.isSafeInteger(count)) {
+    throw new Error("invalid database count");
+  }
+  return count;
+}
+
 function checkDatabaseState(env, results, options) {
   if (env.CHECK_DATABASE_STATE !== "true") {
     add(results, "WARN", "database state", "skipped; set CHECK_DATABASE_STATE=true to verify seed users");
@@ -148,13 +160,13 @@ function checkDatabaseState(env, results, options) {
 
   try {
     const queryScalar = options.runPsqlScalar ?? runPsqlScalar;
-    const activeSeedUsers = Number(
+    const activeSeedUsers = parseDatabaseCount(
       queryScalar(
         env.DATABASE_URL,
         "select count(*) from \"User\" where \"id\" like 'seed-user-%' and \"isActive\" = true;"
       )
     );
-    const activeSeedRefreshTokens = Number(
+    const activeSeedRefreshTokens = parseDatabaseCount(
       queryScalar(
         env.DATABASE_URL,
         "select count(*) from \"RefreshToken\" where \"userId\" like 'seed-user-%' and \"revokedAt\" is null;"
@@ -186,17 +198,13 @@ function checkStorage(env, results) {
   const driver = env.FILE_STORAGE_DRIVER;
   if (!isSet(driver)) {
     add(results, "FAIL", "FILE_STORAGE_DRIVER", "missing; allowed values are local or cos");
-    return;
-  }
-  if (!new Set(["local", "cos"]).has(driver)) {
+  } else if (!new Set(["local", "cos"]).has(driver)) {
     add(results, "FAIL", "FILE_STORAGE_DRIVER", "invalid; allowed values are local or cos");
-    return;
-  }
-  if (driver === "local") {
+  } else if (driver === "local") {
     add(results, "FAIL", "FILE_STORAGE_DRIVER", "production must use cos private storage");
-    return;
+  } else {
+    add(results, "PASS", "FILE_STORAGE_DRIVER", "cos");
   }
-  add(results, "PASS", "FILE_STORAGE_DRIVER", "cos");
 
   for (const key of COS_SECRET_ENV) {
     if (!isSet(env[key]) || looksDefault(env[key])) {
@@ -236,8 +244,8 @@ function checkUploadLimit(env, results) {
     return;
   }
   const value = Number(rawValue);
-  if (!Number.isSafeInteger(value)) {
-    add(results, "FAIL", "FILE_UPLOAD_MAX_BYTES", "must be a JavaScript safe integer");
+  if (!Number.isSafeInteger(value) || value > MAX_FILE_UPLOAD_BYTES) {
+    add(results, "FAIL", "FILE_UPLOAD_MAX_BYTES", "must be between 1 and 104857600 bytes");
   } else {
     add(results, "PASS", "FILE_UPLOAD_MAX_BYTES", "set");
   }
@@ -334,6 +342,33 @@ function selfTest() {
   for (const driver of ["local", "s3", ""]) {
     assertFail({ FILE_STORAGE_DRIVER: driver }, "FILE_STORAGE_DRIVER");
   }
+  for (const driver of ["local", "s3"]) {
+    const storageFailures = checkEnv(
+      {
+        ...goodEnv,
+        FILE_STORAGE_DRIVER: driver,
+        COS_SECRET_ID: "",
+        COS_SECRET_KEY: "",
+        COS_BUCKET: "",
+        COS_REGION: ""
+      },
+      { checkCommands: false }
+    );
+    for (const item of [
+      "FILE_STORAGE_DRIVER",
+      "COS_SECRET_ID",
+      "COS_SECRET_KEY",
+      "COS_BUCKET",
+      "COS_REGION"
+    ]) {
+      assert(
+        storageFailures.some(
+          (result) => result.item === item && result.status === "FAIL"
+        ),
+        `expected ${item} to fail together with ${driver}`
+      );
+    }
+  }
   for (const bucket of [
     "Example-private-1250000000",
     " example-private-1250000000",
@@ -354,6 +389,9 @@ function selfTest() {
     "1.5",
     "1e6",
     "0x100",
+    "104857601",
+    "1073741824",
+    "9007199254740991",
     "9007199254740992"
   ]) {
     assertFail({ FILE_UPLOAD_MAX_BYTES: uploadLimit }, "FILE_UPLOAD_MAX_BYTES");
@@ -402,6 +440,50 @@ function selfTest() {
   assert(!serializedFailure.includes("postgresql://"));
   assert(!JSON.stringify(good).includes(goodEnv.COS_SECRET_ID));
   assert(!JSON.stringify(good).includes(goodEnv.COS_SECRET_KEY));
+
+  const validDatabaseState = checkEnv(
+    { ...goodEnv, CHECK_DATABASE_STATE: "true" },
+    { checkCommands: false, runPsqlScalar: () => "0" }
+  );
+  assert(
+    validDatabaseState.some(
+      (result) => result.item === "seed users" && result.status === "PASS"
+    )
+  );
+  assert(
+    validDatabaseState.some(
+      (result) => result.item === "seed refresh tokens" && result.status === "PASS"
+    )
+  );
+  for (const invalidCount of [
+    "",
+    " ",
+    "invalid",
+    "NaN",
+    "-1",
+    "1.5",
+    "1e3",
+    "0x10",
+    "9007199254740992"
+  ]) {
+    const invalidDatabaseState = checkEnv(
+      { ...goodEnv, CHECK_DATABASE_STATE: "true" },
+      { checkCommands: false, runPsqlScalar: () => invalidCount }
+    );
+    assert(
+      invalidDatabaseState.some(
+        (result) => result.item === "database state" && result.status === "FAIL"
+      ),
+      `expected invalid database count ${JSON.stringify(invalidCount)} to fail`
+    );
+    assert(
+      !invalidDatabaseState.some(
+        (result) =>
+          ["seed users", "seed refresh tokens"].includes(result.item) &&
+          result.status === "PASS"
+      )
+    );
+  }
 
   const bad = checkEnv(
     {
