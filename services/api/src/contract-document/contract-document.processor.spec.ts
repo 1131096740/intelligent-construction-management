@@ -56,7 +56,8 @@ describe("ContractDocumentProcessor", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
       contractGeneratedDocument: {
-        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findFirst: jest.fn().mockResolvedValue(null)
       },
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({ id: "layout-1", status: "draft" })
@@ -86,6 +87,40 @@ describe("ContractDocumentProcessor", () => {
     };
   }
 
+  function queuedDocument(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "document-1",
+      contractVersionId: "version-1",
+      status: "queued",
+      purpose: "draft",
+      sourceRevision: 3,
+      inputSnapshot: {
+        templateFileId: "layout-file",
+        outputBaseName: "草稿-001-草稿-修订3",
+        renderInput: { values: {} },
+        requiredKeys: [],
+        attachmentFiles: []
+      },
+      createdByUserId: "owner-1",
+      createdAt: new Date(),
+      ...overrides
+    };
+  }
+
+  function generatedDocumentFiles() {
+    return {
+      getFileBuffer: jest.fn().mockResolvedValue({
+        file: { id: "layout-file" },
+        buffer: Buffer.from("template")
+      }),
+      uploadPrivateFile: jest
+        .fn()
+        .mockResolvedValueOnce({ id: "docx-file" })
+        .mockResolvedValueOnce({ id: "pdf-file" }),
+      linkFileReplacement: jest.fn().mockResolvedValue(undefined)
+    };
+  }
+
   it("claims one queued job atomically and marks it processing", async () => {
     const prisma = makePrisma();
     prisma.contractGeneratedDocument.findFirst.mockResolvedValue({
@@ -111,7 +146,8 @@ describe("ContractDocumentProcessor", () => {
       uploadPrivateFile: jest
         .fn()
         .mockResolvedValueOnce({ id: "docx-file" })
-        .mockResolvedValueOnce({ id: "pdf-file" })
+        .mockResolvedValueOnce({ id: "pdf-file" }),
+      linkFileReplacement: jest.fn().mockResolvedValue(undefined)
     };
     const processor = new ContractDocumentProcessor(
       prisma as unknown as PrismaService,
@@ -180,7 +216,8 @@ describe("ContractDocumentProcessor", () => {
       uploadPrivateFile: jest
         .fn()
         .mockResolvedValueOnce({ id: "docx-file" })
-        .mockResolvedValueOnce({ id: "pdf-file" })
+        .mockResolvedValueOnce({ id: "pdf-file" }),
+      linkFileReplacement: jest.fn()
     };
     const processor = new ContractDocumentProcessor(
       prisma as unknown as PrismaService,
@@ -255,6 +292,238 @@ describe("ContractDocumentProcessor", () => {
         })
       })
     });
+    expect(prisma.tx.contractGeneratedDocument.findFirst).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        purpose: "negotiation",
+        sourceRevision: { lt: 8 },
+        status: { in: ["success", "stale"] },
+        docxFileId: { not: null },
+        pdfFileId: { not: null }
+      },
+      orderBy: [
+        { sourceRevision: "desc" },
+        { createdAt: "desc" },
+        { id: "desc" }
+      ],
+      select: {
+        id: true,
+        sourceRevision: true,
+        docxFileId: true,
+        pdfFileId: true
+      }
+    });
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({
+        action: "contract.document.success",
+        metadata: {
+          docxFileId: "docx-file",
+          pdfFileId: "pdf-file",
+          pageCount: 2,
+          predecessorDocumentId: null,
+          docxOldFileId: null,
+          docxNewFileId: "docx-file",
+          pdfOldFileId: null,
+          pdfNewFileId: "pdf-file",
+          replacementKind: null
+        }
+      })
+    );
+  });
+
+  it.each(["success", "stale"])(
+    "links DOCX then PDF to the nearest %s predecessor after the success CAS",
+    async (predecessorStatus) => {
+      const prisma = makePrisma();
+      prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+      prisma.tx.contractGeneratedDocument.findFirst.mockResolvedValue({
+        id: "document-predecessor",
+        sourceRevision: 2,
+        status: predecessorStatus,
+        docxFileId: "docx-file-old",
+        pdfFileId: "pdf-file-old"
+      });
+      const files = generatedDocumentFiles();
+      const processor = new ContractDocumentProcessor(
+        prisma as unknown as PrismaService,
+        files as never,
+        audit as never
+      );
+
+      await processor.processNext();
+
+      expect(files.linkFileReplacement).toHaveBeenNthCalledWith(1, prisma.tx, {
+        newFileId: "docx-file",
+        oldFileId: "docx-file-old",
+        actorUserId: "owner-1"
+      });
+      expect(files.linkFileReplacement).toHaveBeenNthCalledWith(2, prisma.tx, {
+        newFileId: "pdf-file",
+        oldFileId: "pdf-file-old",
+        actorUserId: "owner-1"
+      });
+      expect(
+        prisma.tx.contractGeneratedDocument.updateMany.mock.invocationCallOrder[0]
+      ).toBeLessThan(
+        prisma.tx.contractGeneratedDocument.findFirst.mock.invocationCallOrder[0]
+      );
+      expect(
+        prisma.tx.contractGeneratedDocument.findFirst.mock.invocationCallOrder[0]
+      ).toBeLessThan(files.linkFileReplacement.mock.invocationCallOrder[0]);
+      expect(files.linkFileReplacement.mock.invocationCallOrder[0]).toBeLessThan(
+        files.linkFileReplacement.mock.invocationCallOrder[1]
+      );
+      expect(files.linkFileReplacement.mock.invocationCallOrder[1]).toBeLessThan(
+        audit.record.mock.invocationCallOrder[0]
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        prisma.tx,
+        expect.objectContaining({
+          action: "contract.document.success",
+          metadata: {
+            docxFileId: "docx-file",
+            pdfFileId: "pdf-file",
+            pageCount: 2,
+            predecessorDocumentId: "document-predecessor",
+            docxOldFileId: "docx-file-old",
+            docxNewFileId: "docx-file",
+            pdfOldFileId: "pdf-file-old",
+            pdfNewFileId: "pdf-file",
+            replacementKind: "contract_generated_document_revision"
+          }
+        })
+      );
+    }
+  );
+
+  it("records failure and skips PDF linking when DOCX replacement linking fails", async () => {
+    const prisma = makePrisma();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    prisma.tx.contractGeneratedDocument.findFirst.mockResolvedValue({
+      id: "document-predecessor",
+      sourceRevision: 2,
+      docxFileId: "docx-file-old",
+      pdfFileId: "pdf-file-old"
+    });
+    const files = generatedDocumentFiles();
+    files.linkFileReplacement.mockRejectedValueOnce(new Error("DOCX link failed"));
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(files.linkFileReplacement).toHaveBeenCalledTimes(1);
+    expect(audit.record).not.toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({ action: "contract.document.success" })
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({
+        action: "contract.document.failure",
+        metadata: expect.objectContaining({
+          orphanFileIds: ["docx-file", "pdf-file"]
+        })
+      })
+    );
+  });
+
+  it("records both uploaded files as orphans when PDF replacement linking fails", async () => {
+    const prisma = makePrisma();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    prisma.tx.contractGeneratedDocument.findFirst.mockResolvedValue({
+      id: "document-predecessor",
+      sourceRevision: 2,
+      docxFileId: "docx-file-old",
+      pdfFileId: "pdf-file-old"
+    });
+    const files = generatedDocumentFiles();
+    files.linkFileReplacement
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("PDF link failed"));
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(files.linkFileReplacement).toHaveBeenCalledTimes(2);
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({
+        action: "contract.document.failure",
+        metadata: expect.objectContaining({
+          orphanFileIds: ["docx-file", "pdf-file"]
+        })
+      })
+    );
+  });
+
+  it("rolls back terminal success and records failure when success audit fails", async () => {
+    const prisma = makePrisma();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    const files = generatedDocumentFiles();
+    audit.record
+      .mockRejectedValueOnce(new Error("success audit failed"))
+      .mockResolvedValueOnce(undefined);
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(audit.record).toHaveBeenCalledTimes(2);
+    expect(audit.record).toHaveBeenNthCalledWith(
+      2,
+      prisma.tx,
+      expect.objectContaining({
+        action: "contract.document.failure",
+        metadata: expect.objectContaining({
+          orphanFileIds: ["docx-file", "pdf-file"]
+        })
+      })
+    );
+  });
+
+  it.each([
+    { id: "", docxFileId: "docx-file-old", pdfFileId: "pdf-file-old" },
+    { id: "document-predecessor", docxFileId: " ", pdfFileId: "pdf-file-old" },
+    { id: "document-predecessor", docxFileId: "docx-file-old", pdfFileId: null }
+  ])("fails safely when the predecessor file ids are malformed", async (predecessor) => {
+    const prisma = makePrisma();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    prisma.tx.contractGeneratedDocument.findFirst.mockResolvedValue({
+      sourceRevision: 2,
+      ...predecessor
+    });
+    const files = generatedDocumentFiles();
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({
+        action: "contract.document.failure",
+        metadata: expect.objectContaining({
+          orphanFileIds: ["docx-file", "pdf-file"]
+        })
+      })
+    );
   });
 
   it("renders a queued layout preview before a queued contract document and attaches its PDF", async () => {
@@ -394,7 +663,8 @@ describe("ContractDocumentProcessor", () => {
       uploadPrivateFile: jest
         .fn()
         .mockResolvedValueOnce({ id: "docx-file" })
-        .mockResolvedValueOnce({ id: "pdf-file" })
+        .mockResolvedValueOnce({ id: "pdf-file" }),
+      linkFileReplacement: jest.fn()
     };
     const processor = new ContractDocumentProcessor(
       prisma as unknown as PrismaService,
@@ -447,7 +717,8 @@ describe("ContractDocumentProcessor", () => {
       uploadPrivateFile: jest
         .fn()
         .mockResolvedValueOnce({ id: "docx-file" })
-        .mockResolvedValueOnce({ id: "pdf-file" })
+        .mockResolvedValueOnce({ id: "pdf-file" }),
+      linkFileReplacement: jest.fn()
     };
     const processor = new ContractDocumentProcessor(
       prisma as unknown as PrismaService,
@@ -474,6 +745,8 @@ describe("ContractDocumentProcessor", () => {
       prisma.tx,
       expect.objectContaining({ action: "contract.document.success" })
     );
+    expect(prisma.tx.contractGeneratedDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
   });
 
   it("does not audit terminal success or failure when its CAS loses", async () => {
@@ -506,7 +779,8 @@ describe("ContractDocumentProcessor", () => {
       uploadPrivateFile: jest
         .fn()
         .mockResolvedValueOnce({ id: "docx-file" })
-        .mockResolvedValueOnce({ id: "pdf-file" })
+        .mockResolvedValueOnce({ id: "pdf-file" }),
+      linkFileReplacement: jest.fn()
     };
     const processor = new ContractDocumentProcessor(
       prisma as unknown as PrismaService,
@@ -517,6 +791,8 @@ describe("ContractDocumentProcessor", () => {
     await processor.processNext();
 
     expect(audit.record).not.toHaveBeenCalled();
+    expect(prisma.tx.contractGeneratedDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
   });
 
   it("does not audit a failure when its processing CAS loses", async () => {

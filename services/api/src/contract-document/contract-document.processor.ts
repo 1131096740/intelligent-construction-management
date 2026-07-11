@@ -289,6 +289,56 @@ export class ContractDocumentProcessor
           }
         });
         if (updated.count !== 1) return;
+        const predecessor = await tx.contractGeneratedDocument.findFirst({
+          where: {
+            contractVersionId: job.contractVersionId,
+            purpose: job.purpose,
+            sourceRevision: { lt: job.sourceRevision },
+            status: { in: ["success", "stale"] },
+            docxFileId: { not: null },
+            pdfFileId: { not: null }
+          },
+          orderBy: [
+            { sourceRevision: "desc" },
+            { createdAt: "desc" },
+            { id: "desc" }
+          ],
+          select: {
+            id: true,
+            sourceRevision: true,
+            docxFileId: true,
+            pdfFileId: true
+          }
+        });
+        let predecessorDocumentId: string | null = null;
+        let docxOldFileId: string | null = null;
+        let pdfOldFileId: string | null = null;
+        if (predecessor) {
+          const { id, docxFileId, pdfFileId } = predecessor;
+          if (
+            typeof id !== "string" ||
+            !id.trim() ||
+            typeof docxFileId !== "string" ||
+            !docxFileId.trim() ||
+            typeof pdfFileId !== "string" ||
+            !pdfFileId.trim()
+          ) {
+            throw new Error("合同生成文档前驱文件记录异常，无法接入版本链");
+          }
+          predecessorDocumentId = id;
+          docxOldFileId = docxFileId;
+          pdfOldFileId = pdfFileId;
+          await this.files.linkFileReplacement(tx, {
+            newFileId: docxFile.id,
+            oldFileId: docxFileId,
+            actorUserId: job.createdByUserId
+          });
+          await this.files.linkFileReplacement(tx, {
+            newFileId: pdfFile.id,
+            oldFileId: pdfFileId,
+            actorUserId: job.createdByUserId
+          });
+        }
         await this.audit.record(tx, {
           actorUserId: job.createdByUserId,
           action: "contract.document.success",
@@ -297,7 +347,15 @@ export class ContractDocumentProcessor
           metadata: {
             docxFileId: docxFile.id,
             pdfFileId: pdfFile.id,
-            pageCount: normalized.pageCount
+            pageCount: normalized.pageCount,
+            predecessorDocumentId,
+            docxOldFileId,
+            docxNewFileId: docxFile.id,
+            pdfOldFileId,
+            pdfNewFileId: pdfFile.id,
+            replacementKind: predecessorDocumentId
+              ? "contract_generated_document_revision"
+              : null
           }
         });
       });
