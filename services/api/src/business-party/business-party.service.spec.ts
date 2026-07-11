@@ -1,4 +1,3 @@
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { BusinessPartyService } from "./business-party.service";
 
@@ -106,8 +105,8 @@ describe("BusinessPartyService", () => {
     };
     const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
 
-    await expect(service.createParty("director-1", snapshot)).rejects.toBeInstanceOf(
-      BadRequestException
+    await expect(service.createParty("director-1", snapshot)).rejects.toThrow(
+      "统一社会信用代码已存在"
     );
     expect(tx.businessParty.create).not.toHaveBeenCalled();
   });
@@ -332,15 +331,58 @@ describe("BusinessPartyService", () => {
         roleKey: "other",
         snapshot: { name: "临时单位", attachments: [] }
       })
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toThrow("只有合同草稿经办人可以变更合同合作单位");
     await expect(
       service.addContractParty("contract-version-1", "owner-1", {
         roleKey: "other",
         businessPartyVersionId: "party-version-1",
         snapshot: { name: "临时单位", attachments: [] }
       })
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toThrow("合作单位版本和临时快照必须且只能选择一项");
     expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      input: { ...snapshot, name: "" },
+      message: "请填写合作单位名称"
+    },
+    {
+      input: { ...snapshot, attachments: null },
+      message: "合作单位附件必须是数组"
+    },
+    {
+      input: {
+        ...snapshot,
+        attachments: [{ category: "invalid", fileId: "file-1", name: "附件" }]
+      },
+      message: "合作单位附件信息不正确"
+    }
+  ])("合作单位资料无效时返回中文错误", async ({ input, message }) => {
+    const tx = {
+      ...globalRole(),
+      businessParty: { findUnique: jest.fn(), create: jest.fn() },
+      businessPartyVersion: { create: jest.fn() }
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
+
+    await expect(service.createParty("staff-1", input as never)).rejects.toThrow(message);
+    expect(tx.businessParty.create).not.toHaveBeenCalled();
+  });
+
+  it("非公司级合同人员不能维护合作单位档案", async () => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn() },
+      businessParty: { create: jest.fn() },
+      businessPartyVersion: { create: jest.fn() }
+    };
+    const service = new BusinessPartyService(prismaWithTransaction(tx), audit as never);
+
+    await expect(service.createParty("employee-1", snapshot)).rejects.toThrow(
+      "只有公司级合同人员可以维护合作单位档案"
+    );
+    expect(tx.businessParty.create).not.toHaveBeenCalled();
   });
 
   it("rejects a party mutation when the contract draft revision CAS is stale", async () => {

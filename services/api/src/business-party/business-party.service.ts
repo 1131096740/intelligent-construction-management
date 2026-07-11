@@ -62,7 +62,7 @@ export class BusinessPartyService {
 
   async get(partyId: string) {
     const party = await this.prisma.businessParty.findUnique({ where: { id: partyId } });
-    if (!party) throw new NotFoundException("Business party not found");
+    if (!party) throw new NotFoundException("合作单位不存在");
     const versions = await this.prisma.businessPartyVersion.findMany({
       where: { businessPartyId: partyId },
       orderBy: { versionNo: "desc" }
@@ -111,7 +111,7 @@ export class BusinessPartyService {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalContractRole(tx, actorUserId);
       const party = await tx.businessParty.findUnique({ where: { id: partyId } });
-      if (!party) throw new NotFoundException("Business party not found");
+      if (!party) throw new NotFoundException("合作单位不存在");
 
       const snapshot = this.normalizeSnapshot(input);
       await this.assertCreditCodeAvailable(
@@ -167,7 +167,7 @@ export class BusinessPartyService {
       const hasInlineSnapshot = Boolean(input.snapshot);
       if (hasVersion === hasInlineSnapshot) {
         throw new BadRequestException(
-          "Provide exactly one of businessPartyVersionId or snapshot"
+          "合作单位版本和临时快照必须且只能选择一项"
         );
       }
 
@@ -176,7 +176,7 @@ export class BusinessPartyService {
         const version = await tx.businessPartyVersion.findUnique({
           where: { id: input.businessPartyVersionId }
         });
-        if (!version) throw new NotFoundException("Business party version not found");
+        if (!version) throw new NotFoundException("合作单位版本不存在");
         snapshot = this.normalizeSnapshot(version.snapshot as unknown as BusinessPartySnapshotDto);
       } else {
         snapshot = this.normalizeSnapshot(input.snapshot as BusinessPartySnapshotDto);
@@ -233,7 +233,7 @@ export class BusinessPartyService {
       const existing = await tx.contractPartySnapshot.findFirst({
         where: { id: partySnapshotId, contractVersionId }
       });
-      if (!existing) throw new NotFoundException("Contract party snapshot not found");
+      if (!existing) throw new NotFoundException("合同合作单位快照不存在");
       const newRevision = await this.lockDraftMutation(
         tx,
         version,
@@ -278,7 +278,7 @@ export class BusinessPartyService {
       const existing = await tx.contractPartySnapshot.findFirst({
         where: { id: partySnapshotId, contractVersionId }
       });
-      if (!existing) throw new NotFoundException("Contract party snapshot not found");
+      if (!existing) throw new NotFoundException("合同合作单位快照不存在");
       const newRevision = await this.lockDraftMutation(
         tx,
         version,
@@ -300,9 +300,9 @@ export class BusinessPartyService {
 
   private normalizeSnapshot(input: BusinessPartySnapshotDto): BusinessPartySnapshotDto {
     const name = input?.name?.trim();
-    if (!name) throw new BadRequestException("Business party name is required");
+    if (!name) throw new BadRequestException("请填写合作单位名称");
     if (!Array.isArray(input.attachments)) {
-      throw new BadRequestException("Business party attachments must be an array");
+      throw new BadRequestException("合作单位附件必须是数组");
     }
     const attachments = input.attachments.map((attachment) => {
       if (
@@ -310,7 +310,7 @@ export class BusinessPartyService {
         !attachment.fileId?.trim() ||
         !attachment.name?.trim()
       ) {
-        throw new BadRequestException("Invalid business party attachment");
+        throw new BadRequestException("合作单位附件信息不正确");
       }
       return {
         ...attachment,
@@ -333,7 +333,7 @@ export class BusinessPartyService {
 
   private assertContractPartyRole(roleKey: AddContractPartyDto["roleKey"]) {
     if (!CONTRACT_PARTY_ROLES.has(roleKey)) {
-      throw new BadRequestException("Invalid contract party role");
+      throw new BadRequestException("合同合作单位角色不正确，请重新选择");
     }
   }
 
@@ -347,7 +347,7 @@ export class BusinessPartyService {
       where: { unifiedSocialCreditCode: code }
     });
     if (duplicate && duplicate.id !== excludedPartyId) {
-      throw new BadRequestException("Unified social credit code already exists");
+      throw new BadRequestException("统一社会信用代码已存在");
     }
   }
 
@@ -370,7 +370,7 @@ export class BusinessPartyService {
       )
     ) {
       throw new ForbiddenException(
-        "Requires global role: contract_staff or contract_director"
+        "只有公司级合同人员可以维护合作单位档案"
       );
     }
   }
@@ -383,17 +383,17 @@ export class BusinessPartyService {
     const version = await tx.contractVersion.findUnique({
       where: { id: contractVersionId }
     });
-    if (!version) throw new NotFoundException("Contract version not found");
+    if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
     if (version.status !== "draft") {
-      throw new BadRequestException("Contract parties can only be changed in draft status");
+      throw new BadRequestException("当前合同版本不是草稿状态，不能变更合作单位");
     }
     const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
-    if (!contract) throw new NotFoundException("Contract not found");
+    if (!contract) throw new NotFoundException("未找到合同草稿，请刷新后重试");
     if (contract.ownerUserId !== actorUserId) {
-      throw new ForbiddenException("Only the draft owner can change contract parties");
+      throw new ForbiddenException("只有合同草稿经办人可以变更合同合作单位");
     }
     if (contract.voidedAt) {
-      throw new BadRequestException("Contract draft is voided");
+      throw new BadRequestException("合同草稿已作废，不能变更合作单位");
     }
     return { version, contract };
   }
@@ -418,7 +418,7 @@ export class BusinessPartyService {
       data: { ownerUserId: actorUserId }
     });
     if (ownerGate.count !== 1) {
-      throw new BadRequestException("Contract draft revision/status conflict");
+      throw new BadRequestException("合同草稿已变化或当前状态不可编辑，请刷新后重试");
     }
     return newRevision;
   }
