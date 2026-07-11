@@ -2,18 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 让董事长/总经理在合同、结算、付款、报销/零星采购中审批自己发起的业务时，必须填写独立自审原因、验证当前密码，并在审批动作日志和审计日志中留下明确且不含密码的自审标记。
+**Goal:** 让董事长/总经理仅在合同、结算、付款、报销/零星采购的领导终审节点审批自己发起的业务时，必须填写独立自审原因、验证当前密码，并在审批动作日志和审计日志中留下明确且不含密码的自审标记。
 
-**Architecture:** 扩展现有 `approval-self-review.ts` 为共享异步确认策略，复用四个服务已经注入的 `AuthService.confirmPassword`。四个 `reviewApproval` 在节点资格确认后、任何写入前取得 `selfReview` 结果，并把 `{ selfReview: true, selfReviewReason }` 合并到审批动作日志和审计 metadata；非自审行为保持原契约。
+**Architecture:** 扩展现有 `approval-self-review.ts` 为共享异步确认策略，策略同时接收直接岗位集合与本次实际 `approvedRoleKey`，仅当实际批准岗位为 `chairman`/`general_manager` 且审批人直接持有同一岗位时允许领导终审自审，并复用四个服务已经注入的 `AuthService.confirmPassword`。四个 `reviewApproval` 在节点资格确认后、任何写入前取得 `selfReview` 结果，并把 `{ selfReview: true, selfReviewReason }` 合并到审批动作日志和审计 metadata；非自审行为保持原契约。
 
 **Tech Stack:** NestJS, TypeScript, class-validator, Jest, Prisma transactions.
 
 ## Global Constraints
 
 - 除董事长/总经理外的普通申请人自审仍按上一切片统一返回 403。
-- 董事长/总经理自审必须同时具备直接业务岗位、自审原因和当前密码确认。
+- 董事长/总经理自审例外仅适用于实际 `approvedRoleKey` 为 `chairman`/`general_manager` 的领导终审节点，并且审批人必须直接持有同一领导岗位；混合岗位领导在普通节点仍禁止自审。
+- 领导终审自审必须同时具备独立自审原因和当前密码确认。
 - `super_admin` 或审批委托不得产生董事长/总经理自审例外。
-- 当前密码只传给 `AuthService.confirmPassword`，不得进入审批日志、审计 metadata、错误消息或测试快照。
+- 当前密码只用 `trim()` 判断是否全空白，调用 `AuthService.confirmPassword` 时必须原样传递，不得 trim、进入审批日志、审计 metadata、错误消息或测试快照。
 - 自审确认失败必须发生在业务状态、审批实例、动作日志、额度、PDF 和审计写入之前。
 - 合同、结算、付款、报销和零星采购使用同一共享确认策略。
 - 本切片不改变审批节点、OR 签、转交、委托、退回、金额、归档或普通非自审审批。
@@ -47,6 +48,7 @@
 
 **Interfaces:**
 - Preserve: `assertOrdinaryApplicantCannotReview(input): void`。
+- `ApprovalSelfReviewInput` add: `approvedRoleKey: RoleKey`，表示本次节点资格解析后的实际批准岗位；不得只凭 `actorRoleKeys` 判断自审例外。
 - Add: `confirmApprovalSelfReview(input): Promise<ApprovalSelfReviewResult>`。
 - DTO add: `selfReviewReason?: string`、`confirmationPassword?: string`；两字段只在后端识别为真实领导自审时强制必填。
 - `ApprovalSelfReviewResult.metadata` 只允许 `{}` 或 `{ selfReview: true; selfReviewReason: string }`。
@@ -62,6 +64,7 @@ it("董事长自审缺少原因时拒绝且不校验密码", async () => {
     applicantUserId: "leader-1",
     actorUserId: "leader-1",
     actorRoleKeys: ["chairman"],
+    approvedRoleKey: "chairman",
     selfReviewReason: "   ",
     confirmationPassword: "secret",
     confirmPassword
@@ -74,6 +77,7 @@ it("总经理自审缺少当前密码时拒绝", async () => {
     applicantUserId: "leader-1",
     actorUserId: "leader-1",
     actorRoleKeys: ["general_manager"],
+    approvedRoleKey: "general_manager",
     selfReviewReason: "项目紧急且由本人发起",
     confirmationPassword: "",
     confirmPassword: jest.fn()
@@ -86,6 +90,7 @@ it("正确密码确认后只返回自审标记和修剪后的原因", async () =
     applicantUserId: "leader-1",
     actorUserId: "leader-1",
     actorRoleKeys: ["chairman"] as const,
+    approvedRoleKey: "chairman" as const,
     selfReviewReason: "  项目紧急且由本人发起  ",
     confirmationPassword: "top-secret",
     confirmPassword
@@ -99,7 +104,7 @@ it("正确密码确认后只返回自审标记和修剪后的原因", async () =
 });
 ```
 
-另覆盖：非自审不调用密码回调并返回 `{ isSelfReview: false, metadata: {} }`；普通角色同人自审仍优先返回上一切片 403；缺少密码服务时返回“审批身份确认服务暂不可用，请稍后重试”。
+另覆盖：非自审不调用密码回调并返回 `{ isSelfReview: false, metadata: {} }`；普通角色同人自审仍优先返回上一切片 403；混合岗位领导以普通岗位处理普通节点时仍返回 403；普通受托人即使以 `approvedRoleKey: "chairman"` 处理领导节点，但没有直接 `chairman` 岗位时仍返回 403；缺少密码服务时返回“审批身份确认服务暂不可用，请稍后重试”；输入密码为 `" top-secret "` 时只用 trim 判断非空，密码回调必须收到完全相同的原始字符串。
 
 - [ ] **Step 2: 写 DTO 运行时验证 RED**
 
@@ -117,7 +122,7 @@ const body = {
 
 - [ ] **Step 3: 写四域服务 RED 回归**
 
-每个 service spec 使用申请人与审批人相同、直接岗位为 `chairman` 或 `general_manager` 的 fixture，新增三类断言：
+每个 service spec 使用申请人与审批人相同、直接岗位与当前节点实际 `approvedRoleKey` 均为 `chairman` 或 `general_manager` 的领导终审 fixture，新增三类断言：
 
 1. 缺少 `selfReviewReason` 或 `confirmationPassword` 时拒绝且业务表、审批实例、动作日志、审计零写入。
 2. `AuthService.confirmPassword` 拒绝时原样返回“当前密码不正确，请重新输入”，且零写入。
@@ -159,6 +164,10 @@ export type ApprovalSelfReviewResult =
   | { isSelfReview: false; metadata: Record<string, never> }
   | { isSelfReview: true; metadata: { selfReview: true; selfReviewReason: string } };
 
+// ApprovalSelfReviewInput 必须包含节点资格解析后的实际 approvedRoleKey。
+// 同人自审仅在 approvedRoleKey 为领导岗位且 actorRoleKeys 直接包含同一岗位时放行；
+// mixed leader + ordinary role 的普通节点、无直接领导岗位的受托节点均返回上一切片 403。
+
 export async function confirmApprovalSelfReview(
   input: ConfirmApprovalSelfReviewInput
 ): Promise<ApprovalSelfReviewResult> {
@@ -170,8 +179,8 @@ export async function confirmApprovalSelfReview(
   if (!selfReviewReason) {
     throw new BadRequestException("董事长或总经理审批自己发起的业务时，请填写自审原因");
   }
-  const confirmationPassword = input.confirmationPassword?.trim();
-  if (!confirmationPassword) {
+  const confirmationPassword = input.confirmationPassword;
+  if (!confirmationPassword?.trim()) {
     throw new BadRequestException("董事长或总经理自审前，请输入当前密码完成二次确认");
   }
   if (!input.confirmPassword) {
@@ -207,6 +216,7 @@ const selfReview = await confirmApprovalSelfReview({
   applicantUserId: instance.applicantUserId,
   actorUserId,
   actorRoleKeys,
+  approvedRoleKey,
   selfReviewReason: input.selfReviewReason,
   confirmationPassword: input.confirmationPassword,
   confirmPassword: this.auth

@@ -1101,6 +1101,7 @@ export class SettlementService {
         applicantUserId: instance.applicantUserId,
         actorUserId,
         actorRoleKeys,
+        approvedRoleKey,
         selfReviewReason: input.selfReviewReason,
         confirmationPassword: input.confirmationPassword,
         confirmPassword: this.auth

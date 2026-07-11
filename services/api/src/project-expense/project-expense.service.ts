@@ -512,6 +512,7 @@ export class ProjectExpenseService {
         applicantUserId: instance.applicantUserId,
         actorUserId,
         actorRoleKeys,
+        approvedRoleKey,
         selfReviewReason: input.selfReviewReason,
         confirmationPassword: input.confirmationPassword,
         confirmPassword: this.auth
