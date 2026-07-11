@@ -8,9 +8,16 @@ import { ContractNumberingService } from "../contract-workbench/contract-numberi
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { ContractReadService } from "./contract-read.service";
 import { ContractService } from "./contract.service";
+import { AssignContractApprovalDto } from "./dto/assign-contract-approval.dto";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
+import {
+  CreateContractNumberRuleDto,
+  UpdateContractNumberRuleDto
+} from "./dto/contract-number-rule.dto";
 import { CreateContractDraftDto } from "./dto/create-contract.dto";
+import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archive.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
+import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 
 @Controller("contracts")
@@ -86,7 +93,7 @@ export class ContractController {
   submitApproval(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: unknown
+    @Body() body: SubmitContractApprovalDto
   ) {
     return this.contracts.submitApproval(contractVersionId, user.id, body);
   }
@@ -115,7 +122,7 @@ export class ContractController {
   transferApproval(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { toUserId: string }
+    @Body() body: AssignContractApprovalDto
   ) {
     return this.contracts.transferApproval(contractVersionId, user.id, body);
   }
@@ -125,7 +132,7 @@ export class ContractController {
   delegateApproval(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { toUserId: string }
+    @Body() body: AssignContractApprovalDto
   ) {
     return this.contracts.delegateApproval(contractVersionId, user.id, body);
   }
@@ -181,7 +188,7 @@ export class ContractController {
   generatePdfArchive(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { templateKey?: string; departmentScope?: string }
+    @Body() body: GenerateContractPdfArchiveDto
   ) {
     return this.contracts.generatePdfArchive(contractVersionId, user.id, body);
   }
@@ -197,7 +204,7 @@ export class ContractNumberRuleController {
   }
 
   @Post()
-  create(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
+  create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateContractNumberRuleDto) {
     return this.numbering.create(user.id, body);
   }
 
@@ -205,7 +212,7 @@ export class ContractNumberRuleController {
   update(
     @Param("ruleId") ruleId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: unknown
+    @Body() body: UpdateContractNumberRuleDto
   ) {
     return this.numbering.update(ruleId, user.id, body);
   }

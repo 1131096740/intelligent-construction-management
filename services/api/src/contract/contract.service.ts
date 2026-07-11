@@ -5,10 +5,7 @@ import { ApprovalDelegationService } from "../approval/approval-delegation.servi
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
-import {
-  ContractNumberingService,
-  type ContractNumberOverride
-} from "../contract-workbench/contract-numbering.service";
+import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
 import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
@@ -19,25 +16,15 @@ import {
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
 import { ConfirmContractArchiveDto } from "./dto/confirm-contract-archive.dto";
+import { AssignContractApprovalDto } from "./dto/assign-contract-approval.dto";
 import {
   CreateContractDraftDto,
   type CreatePaymentTermsStageDto
 } from "./dto/create-contract.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
+import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archive.dto";
+import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
-
-interface AssignApprovalDto {
-  toUserId: string;
-}
-
-interface GenerateContractPdfArchiveDto {
-  templateKey?: string;
-  departmentScope?: string;
-}
-
-export interface SubmitContractApprovalDto extends ContractNumberOverride {
-  numberRuleId: string;
-}
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -903,7 +890,7 @@ export class ContractService {
   transferApproval(
     contractVersionId: string,
     actorUserId: string,
-    input: AssignApprovalDto
+    input: AssignContractApprovalDto
   ) {
     return this.assignApproval("transfer", contractVersionId, actorUserId, input);
   }
@@ -911,7 +898,7 @@ export class ContractService {
   delegateApproval(
     contractVersionId: string,
     actorUserId: string,
-    input: AssignApprovalDto
+    input: AssignContractApprovalDto
   ) {
     return this.assignApproval("delegate", contractVersionId, actorUserId, input);
   }
@@ -1339,7 +1326,7 @@ export class ContractService {
     kind: ContractApprovalAssignment["kind"],
     contractVersionId: string,
     actorUserId: string,
-    input: AssignApprovalDto
+    input: AssignContractApprovalDto
   ) {
     if (!input.toUserId || input.toUserId === actorUserId) {
       throw new Error("请选择有效的审批接收人，不能选择当前操作人");

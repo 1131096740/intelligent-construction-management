@@ -6,6 +6,10 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import type {
+  CreateContractNumberRuleDto,
+  UpdateContractNumberRuleDto
+} from "../contract/dto/contract-number-rule.dto";
 import { PrismaService } from "../database/prisma.service";
 
 const TOKENS = new Set(["company", "project", "year", "type", "sequence"]);
@@ -15,17 +19,6 @@ const CONTRACT_TYPE_CODE_LABELS: Record<string, string> = {
   labor_subcontract: "劳务",
   generic_contract: "通用"
 };
-
-export interface ContractNumberRuleInput {
-  name: string;
-  pattern: string;
-  companyEntityId?: string;
-  projectId?: string;
-  contractTypeKey?: string;
-  sequenceWidth: number;
-}
-
-export interface ContractNumberRuleUpdateInput extends Partial<ContractNumberRuleInput> {}
 
 export interface ContractNumberOverride {
   formalCodeOverride?: string;
@@ -196,7 +189,12 @@ export class ContractNumberingService {
     return code;
   }
 
-  private parseInput(rawInput: unknown, partial: boolean) {
+  private parseInput(rawInput: unknown, partial: false): CreateContractNumberRuleDto;
+  private parseInput(rawInput: unknown, partial: true): UpdateContractNumberRuleDto;
+  private parseInput(
+    rawInput: unknown,
+    partial: boolean
+  ): CreateContractNumberRuleDto | UpdateContractNumberRuleDto {
     if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) {
       throw new BadRequestException("请填写合同编号规则信息");
     }
@@ -233,7 +231,7 @@ export class ContractNumberingService {
     if (partial && Object.keys(output).length === 0) {
       throw new BadRequestException("请至少修改一项合同编号规则内容");
     }
-    return output as unknown as ContractNumberRuleInput;
+    return output as CreateContractNumberRuleDto | UpdateContractNumberRuleDto;
   }
 
   private assertPattern(pattern: string) {
