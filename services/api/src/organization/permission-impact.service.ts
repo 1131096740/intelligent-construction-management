@@ -1126,7 +1126,15 @@ function collectRelevantAdditionNodes(
     for (let nodeIndex = instance.currentNodeIndex; nodeIndex < instance.frozenNodes.length; nodeIndex += 1) {
       const allowedRoles = approvalRoleSetForBusinessType(instance.businessType);
       const parsedNode = allowedRoles ? parseNodeAt(instance, nodeIndex, allowedRoles) : null;
-      if (!parsedNode || parsedNode.roleKeys.includes(change.roleKey)) {
+      const mayUnlockFrozenAssignment =
+        instance.businessType !== "project_expense_request" &&
+        allowedRoles?.has(change.roleKey) &&
+        parsedNode?.assignments.some((assignment) => assignment.toUserId === change.userId);
+      if (
+        !parsedNode ||
+        parsedNode.roleKeys.includes(change.roleKey) ||
+        mayUnlockFrozenAssignment
+      ) {
         relevant.push({ ...instance, currentNodeIndex: nodeIndex, parsedNode });
       }
     }

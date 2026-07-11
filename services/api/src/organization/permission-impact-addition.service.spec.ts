@@ -583,6 +583,53 @@ describe("PermissionImpactService role addition", () => {
     });
   });
 
+  it("新增节点外动作岗位会解锁目标已有 assignment 并纳入影响", async () => {
+    const data = fixture();
+    addSettlement(data, {
+      id: "assignment-unlocked-by-action-role",
+      frozenNodes: [
+        {
+          name: "财务审批",
+          mode: "any",
+          roleKeys: ["finance_director"],
+          assignments: [{ toUserId: "target", fromRoleKey: "finance_director" }]
+        }
+      ]
+    });
+
+    const { result } = await evaluate(data, {
+      operation: "add",
+      userId: "target",
+      scope: "global",
+      roleKey: "project_manager"
+    });
+
+    expect(result.preview).toMatchObject({
+      canApply: true,
+      summary: { affectedNodes: 1, blockingNodes: 0 }
+    });
+    expect(result.preview.impacts[0]).toMatchObject({
+      approvalInstanceId: "assignment-unlocked-by-action-role",
+      targetBefore: { channel: null, roleKey: null, canReview: false },
+      targetAfter: { channel: "assignment", roleKey: "finance_director", canReview: true },
+      blocking: false,
+      reasonCode: null
+    });
+
+    const changedAssignment = structuredClone(data);
+    (
+      (changedAssignment.instances[0].frozenNodes as Array<Record<string, unknown>>)[0]
+        .assignments as Array<Record<string, unknown>>
+    ).push({ toUserId: "finance", fromRoleKey: "finance_director" });
+    const changed = await evaluate(changedAssignment, {
+      operation: "add",
+      userId: "target",
+      scope: "global",
+      roleKey: "project_manager"
+    });
+    expect(changed.result.preview.snapshotHash).not.toBe(result.preview.snapshotHash);
+  });
+
   it("新增 direct 优先于冻结 assignment 和有效 delegation", async () => {
     const data = fixture();
     data.userPositions.push({ id: "finance-role", userId: "finance", positionId: "position-finance", projectId: null });
