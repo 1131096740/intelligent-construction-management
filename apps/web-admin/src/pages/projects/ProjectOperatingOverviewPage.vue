@@ -1493,7 +1493,7 @@ function expenseStatusLabel(status: string) {
     voided: "已作废",
     payment_blocked: "付款阻断"
   };
-  return labels[status] ?? status;
+  return labels[status] ?? "状态待确认";
 }
 
 function canRecordPurchaseExecution(row: ProjectExpenseRow) {

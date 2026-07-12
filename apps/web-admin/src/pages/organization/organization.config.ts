@@ -134,7 +134,7 @@ export interface RoleAdditionImpactRow {
 
 const PERMISSION_INTEGRITY_ISSUE_LABELS: Record<string, string> = {
   duplicate_global_assignment: "全局岗位重复分配",
-  legacy_project_user_position: "项目级 UserPosition 遗留",
+  legacy_project_user_position: "旧项目岗位记录待迁移",
   dual_source_project_role: "项目岗位双源重叠",
   invalid_role: "无效岗位",
   project_super_admin: "项目级超级管理员",
@@ -146,8 +146,21 @@ const PERMISSION_INTEGRITY_ISSUE_LABELS: Record<string, string> = {
 };
 
 const PERMISSION_INTEGRITY_SOURCE_LABELS: Record<string, string> = {
-  user_position: "用户岗位（UserPosition）",
-  project_member: "项目成员（ProjectMember）"
+  user_position: "用户岗位记录",
+  project_member: "项目成员记录"
+};
+
+const PERMISSION_INTEGRITY_ISSUE_MESSAGES: Record<string, string> = {
+  duplicate_global_assignment: "同一人员被重复分配相同的全局岗位。",
+  legacy_project_user_position: "检测到旧版项目岗位记录，请按迁移流程处理。",
+  dual_source_project_role: "同一项目岗位存在两份来源记录，请合并为规范项目岗位。",
+  invalid_role: "岗位记录引用了当前岗位字典中不存在的岗位。",
+  project_super_admin: "项目内误设了技术管理员岗位，请按权限流程清理。",
+  global_scope_mismatch: "项目岗位被误设为全局岗位，请调整岗位范围。",
+  project_scope_mismatch: "全局岗位仍停留在项目范围，请调整岗位范围。",
+  orphan_user: "岗位记录关联的人员不存在。",
+  orphan_position: "岗位记录关联的岗位不存在。",
+  orphan_project: "岗位记录关联的项目不存在。"
 };
 
 const ROLE_REMOVAL_BUSINESS_TYPE_LABELS: Record<string, string> = {
@@ -1017,21 +1030,21 @@ export function organizationActionConsequence(kind: OrganizationActionKind, isAc
 }
 
 export function permissionIntegrityIssueLabel(code: string) {
-  return PERMISSION_INTEGRITY_ISSUE_LABELS[code] ?? `未知问题（${code || "—"}）`;
+  return PERMISSION_INTEGRITY_ISSUE_LABELS[code] ?? "未知权限问题";
 }
 
 export function permissionIntegritySourceLabel(source: string) {
-  return PERMISSION_INTEGRITY_SOURCE_LABELS[source] ?? `未知来源（${source || "—"}）`;
+  return PERMISSION_INTEGRITY_SOURCE_LABELS[source] ?? "未知记录来源";
 }
 
 export function permissionIntegrityPolicyText(policy: PermissionIntegrityReadModel["policy"]) {
   const legacyText = policy.legacyProjectUserPositionReadCompatibility
-    ? "项目级 UserPosition 仅兼容读取"
-    : "项目级 UserPosition 不兼容读取";
+    ? "旧项目岗位记录仅用于历史兼容读取"
+    : "旧项目岗位记录不再兼容读取";
   const superAdminText = policy.projectSuperAdminAllowed
-    ? "项目范围允许 super_admin"
-    : "项目范围不允许 super_admin";
-  return `全局规范源：${policy.globalWriteSource}；项目规范源：${policy.projectWriteSource}；${legacyText}；${superAdminText}。`;
+    ? "项目内允许设置技术管理员"
+    : "项目内不得设置技术管理员";
+  return `全局岗位由用户岗位记录统一维护；项目岗位由项目成员记录统一维护；${legacyText}；${superAdminText}。`;
 }
 
 export function permissionIntegrityReadinessTag(
@@ -1061,21 +1074,25 @@ export function permissionIntegritySummaryItems(
 }
 
 export function permissionIntegrityIssueRows(
-  issues: readonly PermissionIntegrityIssue[]
+  issues: readonly PermissionIntegrityIssue[],
+  directory?: Pick<OrganizationDirectory, "users" | "projects" | "positions">
 ): PermissionIntegrityIssueRow[] {
   return issues.map((issue) => {
-    const assignmentIds = issue.assignmentIds.length ? issue.assignmentIds.join("、") : "—";
+    const userName = directory?.users.find((user) => user.id === issue.userId)?.name;
+    const projectName = directory?.projects.find((project) => project.id === issue.projectId)?.name;
+    const roleName = directory?.positions.find((position) => position.key === issue.roleKey)?.name;
     return {
       key: permissionIntegrityIssueKey(issue),
       severityLabel: issue.severity === "blocking" ? "阻断" : "警告",
       severityTone: issue.severity === "blocking" ? "danger" : "warning",
       issueLabel: permissionIntegrityIssueLabel(issue.code),
-      message: issue.message,
+      message:
+        PERMISSION_INTEGRITY_ISSUE_MESSAGES[issue.code] ?? "检测到待处理的权限数据问题。",
       sourceLabel: permissionIntegritySourceLabel(issue.source),
-      userId: issue.userId || "—",
-      projectId: issue.projectId || "—",
-      roleKey: issue.roleKey || "—",
-      assignmentIds
+      userId: userName ?? (issue.userId ? "人员名称待确认" : "无"),
+      projectId: projectName ?? (issue.projectId ? "项目名称待确认" : "无"),
+      roleKey: roleName ?? (issue.roleKey ? "岗位名称待确认" : "无"),
+      assignmentIds: issue.assignmentIds.length ? `${issue.assignmentIds.length} 条记录` : "无"
     };
   });
 }

@@ -558,15 +558,15 @@ describe("organization config", () => {
   it("maps integrity issue and source codes to stable Chinese labels with safe fallbacks", () => {
     expect(permissionIntegrityIssueLabel("duplicate_global_assignment")).toBe("全局岗位重复分配");
     expect(permissionIntegrityIssueLabel("orphan_project")).toBe("项目记录缺失");
-    expect(permissionIntegrityIssueLabel("future_issue")).toBe("未知问题（future_issue）");
-    expect(permissionIntegritySourceLabel("user_position")).toBe("用户岗位（UserPosition）");
-    expect(permissionIntegritySourceLabel("project_member")).toBe("项目成员（ProjectMember）");
-    expect(permissionIntegritySourceLabel("future_source")).toBe("未知来源（future_source）");
+    expect(permissionIntegrityIssueLabel("future_issue")).toBe("未知权限问题");
+    expect(permissionIntegritySourceLabel("user_position")).toBe("用户岗位记录");
+    expect(permissionIntegritySourceLabel("project_member")).toBe("项目成员记录");
+    expect(permissionIntegritySourceLabel("future_source")).toBe("未知记录来源");
   });
 
   it("formats server policy and readiness without deriving either from issue counts", () => {
     expect(permissionIntegrityPolicyText(permissionIntegrity.policy)).toBe(
-      "全局规范源：UserPosition(projectId=null)；项目规范源：ProjectMember；项目级 UserPosition 仅兼容读取；项目范围不允许 super_admin。"
+      "全局岗位由用户岗位记录统一维护；项目岗位由项目成员记录统一维护；旧项目岗位记录仅用于历史兼容读取；项目内不得设置技术管理员。"
     );
     expect(permissionIntegrityReadinessTag("canonical", permissionIntegrity.readiness)).toEqual({
       label: "规范岗位写入未就绪",
@@ -600,32 +600,49 @@ describe("organization config", () => {
   });
 
   it("turns server issues into stable display rows and fills missing identifiers", () => {
-    expect(permissionIntegrityIssueRows(permissionIntegrity.issues)).toEqual([
+    expect(permissionIntegrityIssueRows(permissionIntegrity.issues, additionDirectory)).toEqual([
       {
         key: "dual_source_project_role:user_position:legacy-1,member-1",
         severityLabel: "阻断",
         severityTone: "danger",
         issueLabel: "项目岗位双源重叠",
-        message: "同一项目岗位同时存在于 UserPosition 和 ProjectMember",
-        sourceLabel: "用户岗位（UserPosition）",
-        userId: "user-1",
-        projectId: "project-1",
-        roleKey: "project_manager",
-        assignmentIds: "legacy-1、member-1"
+        message: "同一项目岗位存在两份来源记录，请合并为规范项目岗位。",
+        sourceLabel: "用户岗位记录",
+        userId: "张三",
+        projectId: "科技园项目",
+        roleKey: "项目经理",
+        assignmentIds: "2 条记录"
       },
       {
         key: "legacy_project_user_position:user_position:—",
         severityLabel: "警告",
         severityTone: "warning",
-        issueLabel: "项目级 UserPosition 遗留",
-        message: "检测到项目级 UserPosition 遗留岗位事实",
-        sourceLabel: "用户岗位（UserPosition）",
-        userId: "—",
-        projectId: "—",
-        roleKey: "—",
-        assignmentIds: "—"
+        issueLabel: "旧项目岗位记录待迁移",
+        message: "检测到旧版项目岗位记录，请按迁移流程处理。",
+        sourceLabel: "用户岗位记录",
+        userId: "无",
+        projectId: "无",
+        roleKey: "无",
+        assignmentIds: "无"
       }
     ]);
+  });
+
+  it("keeps permission integrity display text free of internal English identifiers", () => {
+    const rows = permissionIntegrityIssueRows(permissionIntegrity.issues, additionDirectory);
+    const visibleText = [
+      permissionIntegrityPolicyText(permissionIntegrity.policy),
+      ...rows.flatMap((row) => [
+        row.issueLabel,
+        row.message,
+        row.sourceLabel,
+        row.userId,
+        row.projectId,
+        row.roleKey,
+        row.assignmentIds
+      ])
+    ].join(" ");
+    expect(visibleText).not.toMatch(/[A-Za-z_]/u);
   });
 
   it("builds one stable removal target per global and project role without merging project roles", () => {

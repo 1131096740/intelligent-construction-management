@@ -306,7 +306,7 @@ const busy = ref(false);
 const message = ref("");
 
 function roleLabel(roleKey: string): string {
-  return ROLE_LABELS[roleKey] ?? roleKey;
+  return ROLE_LABELS[roleKey] ?? "其他单位";
 }
 
 function partyValue(
@@ -330,7 +330,7 @@ function partyAttachments(party: ContractWorkbenchReadModel["parties"][number]) 
 }
 
 function attachmentLabel(category: string) {
-  return ATTACHMENT_LABELS[category] ?? category;
+  return ATTACHMENT_LABELS[category] ?? "其他资料";
 }
 
 function flatAttachments() {

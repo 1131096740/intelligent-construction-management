@@ -23,6 +23,13 @@ const userCreationDrawerSource = readFileSync(
   "utf8"
 );
 
+describe("organization business-facing language", () => {
+  it("shows position names without exposing internal role keys", () => {
+    expect(pageSource).toContain("{{ position.name }}");
+    expect(pageSource).not.toContain("{{ position.name }} · {{ position.key }}");
+  });
+});
+
 describe("organization user creation structure", () => {
   it("uses an independent drawer without role assignment or persisted secrets", () => {
     expect(pageSource).toContain("OrganizationUserCreationDrawer");

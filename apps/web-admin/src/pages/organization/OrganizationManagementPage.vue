@@ -281,7 +281,7 @@
           :key="position.id"
           variant="outline"
         >
-          {{ position.name }} · {{ position.key }}
+          {{ position.name }}
         </t-tag>
         <span v-if="!directory.positions.length">暂无岗位</span>
       </div>
@@ -615,7 +615,9 @@ const integritySummaryItems = computed<BusinessStatusSummaryItem[]>(() =>
   permissionIntegrity.value ? permissionIntegritySummaryItems(permissionIntegrity.value.summary) : []
 );
 const integrityIssueRows = computed(() =>
-  permissionIntegrity.value ? buildPermissionIntegrityIssueRows(permissionIntegrity.value.issues) : []
+  permissionIntegrity.value
+    ? buildPermissionIntegrityIssueRows(permissionIntegrity.value.issues, directory)
+    : []
 );
 const projectSuperAdminRemediationIssues = computed(
   () =>

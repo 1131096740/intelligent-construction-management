@@ -199,18 +199,61 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
 }
 
 .menu {
-  padding: 14px 8px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--jg-space-md) var(--jg-space-sm-plus) var(--jg-space-lg);
+  overflow-x: hidden;
   background: transparent;
+}
+
+.menu :deep(.t-menu__item) {
+  box-sizing: border-box;
+  width: auto;
+  max-width: calc(100% - var(--jg-space-lg));
+  min-height: 36px;
+  margin: 1px var(--jg-space-lg) 1px 0;
+  border-radius: var(--jg-radius-md);
+  color: var(--jg-text-main);
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.menu :deep(.t-menu__item:hover) {
+  background: var(--jg-bg-muted);
+  color: var(--jg-text-strong);
+}
+
+.menu :deep(.t-menu__item.t-is-active) {
+  background: var(--jg-bg-brand-soft);
+  box-shadow: inset var(--jg-border-width-accent) 0 0 var(--jg-brand);
+  color: var(--jg-brand);
+  font-weight: 700;
 }
 
 .menu-group-label {
   min-height: 24px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  padding: 10px 12px 4px;
-  color: #767f8d;
-  font-size: 12px;
+  gap: var(--jg-space-sm);
+  padding: var(--jg-space-lg) var(--jg-space-sm) var(--jg-space-sm);
+  color: var(--jg-text-main);
+  font-size: var(--jg-font-body);
   font-weight: 700;
+  line-height: var(--jg-line-height-tight);
+}
+
+.menu-group-label::after {
+  width: 100%;
+  height: var(--jg-border-width-base);
+  background: var(--jg-border);
+  content: "";
+}
+
+.menu-group-label:first-child {
+  padding-top: var(--jg-space-xs);
 }
 
 .header {
@@ -308,13 +351,13 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     gap: 4px;
-    padding: 8px 6px;
+    padding: var(--jg-space-sm) var(--jg-space-sm-plus);
   }
 
   .menu-group-label {
     grid-column: 1 / -1;
     min-height: 20px;
-    padding: 8px 6px 0;
+    padding: var(--jg-space-md) var(--jg-space-xs) var(--jg-space-xs);
   }
 
   .header {

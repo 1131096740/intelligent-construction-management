@@ -2,6 +2,7 @@
   --jg-color-bg-page: #f4f6f9;
   --jg-color-bg-panel: #ffffff;
   --jg-color-bg-muted: #f7f9fc;
+  --jg-color-bg-brand-soft: #e8f0ff;
   --jg-color-bg-success-soft: #f3faf5;
   --jg-color-bg-warning-soft: #fff8ed;
   --jg-color-bg-danger-soft: #fff5f5;
@@ -79,6 +80,7 @@
   --jg-bg-page: var(--jg-color-bg-page);
   --jg-bg-panel: var(--jg-color-bg-panel);
   --jg-bg-muted: var(--jg-color-bg-muted);
+  --jg-bg-brand-soft: var(--jg-color-bg-brand-soft);
   --jg-bg-success-soft: var(--jg-color-bg-success-soft);
   --jg-bg-warning-soft: var(--jg-color-bg-warning-soft);
   --jg-bg-danger-soft: var(--jg-color-bg-danger-soft);
