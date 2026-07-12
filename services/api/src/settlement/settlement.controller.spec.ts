@@ -21,6 +21,7 @@ const settlementBodyRoutes = [
 
 const validSettlementCreate = {
   contractVersionId: "contract-version-1",
+  settlementTemplateVersionId: "settlement-template-version-1",
   code: "JS-2026-001",
   periodLabel: "2026-07",
   settlementLines: [

@@ -444,7 +444,7 @@ describe("PermissionImpactService role addition", () => {
         {
           name: "脏合同审批节点",
           mode: "any",
-          roleKeys: ["budget_director", "chairman"]
+          roleKeys: ["budget_director", "material_director"]
         }
       ]
     });

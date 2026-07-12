@@ -67,3 +67,16 @@
 1. 将 `multer` 以最小兼容方式固定到 `2.2.0`，重装冻结依赖，运行文件上传目标测试、全量测试与 `pnpm audit --prod`。
 2. 只修正两类过时测试证据：结算合法夹具增加结算模板版本；权限用例换成真实非法的合同审批岗位。不放宽生产 DTO 或权限影响算法。
 3. 重跑与 CI 一致的全量门禁；全部通过后再请求用户授权生产备份、临时恢复库迁移演练、异常清理及发布。
+
+## 第 2A 步修复结果
+
+**本地代码与依赖门禁已通过；生产备份/恢复/迁移演练仍是发布前阻断。**
+
+- 漏洞可达路径：受认证的私有文件和个人签名 multipart 上传使用 Nest `FileInterceptor`，修复前最终解析到 `multer@2.0.2`。
+- 安全不变式：不信任 multipart 输入不得触发已知的 Multer 资源耗尽/清理缺陷；同时必须保持现有认证、文件大小限制、文件名归一化、私有存储和审计行为。
+- 最小修复：根工作区使用 pnpm override 将 Nest 的间接 `multer` 精确固定为 `2.2.0`；不升级 Nest 主版本，不修改上传 controller 或业务 API。
+- 测试证据修正：结算 controller 合法夹具增加已经是生产必填的 `settlementTemplateVersionId`；权限非法节点用例改用真实不在 `contract.approve` 白名单的 `material_director`。未放宽 DTO 或修改权限影响算法。
+- 安全闭环：`pnpm list` 确认所有 Nest 路径均解析到 `multer@2.2.0`；`pnpm audit --prod --audit-level high` 从修复前 4 high 降为 0 high，原始 finding 不再复现。
+- 合法行为证据：文件 controller、个人签名 controller/service、结算 controller 与权限新增影响 5 个专项套件 175/175 通过。
+- 全量门禁：Shared 60/60、Web 536/536、API 2,477/2,477；冻结 lockfile 安装、全仓 typecheck/lint、API/Web build、Prisma validate/generate、Web `check:ui`、API `check:business-errors`、`git diff --check` 全部通过。
+- 剩余风险：`pnpm audit --prod` 仍报告 5 个 moderate，分布在 Nest/file-type/qs/ExcelJS 间接依赖；其中 Nest 公告的修复版本需主版本升级。本轮不用多个跨主版本 override 冒充安全修复，将其作为后续专项升级风险登记。
