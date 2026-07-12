@@ -5,7 +5,9 @@ import {
   settlementFilterFields,
   settlementLedgerColumns,
   settlementRules,
+  settlementSourceLineColumns,
   settlementSummaryItems,
+  toSettlementSourceLinePreviewRows,
   type SettlementLedgerRow
 } from "./settlement-list.config";
 
@@ -55,6 +57,54 @@ describe("settlement ledger page configuration", () => {
       "结算未生效前不可创建付款申请",
       "历史结算绑定当时的付款条款版本"
     ]);
+  });
+
+  it("formats the read-only contract source lines without losing bigint money", () => {
+    expect(settlementSourceLineColumns.map((column) => column.title)).toEqual([
+      "清单",
+      "编码",
+      "合同清单项",
+      "单位",
+      "合同数量",
+      "合同金额",
+      "已占用",
+      "剩余",
+      "核对结果"
+    ]);
+    expect(
+      toSettlementSourceLinePreviewRows([
+        {
+          id: "row-1",
+          billId: "bill-1",
+          billKey: "main",
+          billName: "主清单",
+          rowKey: "1",
+          sortOrder: 1,
+          itemCode: null,
+          itemName: "超安全整数金额",
+          specification: null,
+          unit: "项",
+          quantity: "1",
+          unitPrice: "90071992547409.93",
+          contractAmountCents: "9007199254740993",
+          settledQuantity: null,
+          settledAmountCents: "9007199254740994",
+          remainingAmountCents: "-1",
+          provisional: false,
+          settlementBasis: null,
+          exception: {
+            code: "negative_remaining_amount",
+            message: "已超过 0.01 元"
+          }
+        }
+      ])[0]
+    ).toMatchObject({
+      itemCode: "-",
+      contractAmount: "¥90,071,992,547,409.93",
+      settledAmount: "¥90,071,992,547,409.94",
+      remainingAmount: "¥-0.01",
+      statusText: "已超过 0.01 元"
+    });
   });
 
   it("filters settlement rows by project, contract, status, archive text, and keyword", () => {

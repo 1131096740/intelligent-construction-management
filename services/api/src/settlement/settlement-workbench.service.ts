@@ -1,0 +1,263 @@
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import type {
+  SettlementSourceLineReadModel,
+  SettlementSourceLinesReadModel
+} from "@jiangkong/shared-domain";
+import { PrismaService } from "../database/prisma.service";
+import { formatMoneyCentsAsYuan } from "../money/decimal-money";
+
+const SETTLEMENT_SOURCE_OCCUPANCY_STATUSES = [
+  "draft",
+  "in_approval",
+  "approval_pending",
+  "approved_pending_archive",
+  "pending_archive_confirm",
+  "effective",
+  "partially_paid",
+  "paid"
+] as const;
+
+interface SourceLineOccupancy {
+  amountCents: bigint;
+  quantity: Prisma.Decimal;
+  quantityComplete: boolean;
+  count: number;
+}
+
+@Injectable()
+export class SettlementWorkbenchService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async sourceLines(contractVersionId: string): Promise<SettlementSourceLinesReadModel> {
+    const version = await this.prisma.contractVersion.findUnique({
+      where: { id: contractVersionId },
+      select: { id: true, contractId: true, status: true, amountCents: true }
+    });
+    if (!version) {
+      throw new NotFoundException("未找到可结算的合同版本，请刷新合同后重试");
+    }
+    if (version.status !== "effective") {
+      throw new BadRequestException("合同尚未归档生效，不能加载结算清单。请先完成合同归档确认。");
+    }
+
+    const [contract, unorderedBills] = await Promise.all([
+      this.prisma.contract.findUnique({
+        where: { id: version.contractId },
+        select: { id: true, projectId: true }
+      }),
+      this.prisma.contractBill.findMany({
+        where: { contractVersionId: version.id },
+        orderBy: [{ billKey: "asc" }, { id: "asc" }],
+        select: { id: true, billKey: true, name: true }
+      })
+    ]);
+    if (!contract) {
+      throw new NotFoundException("未找到结算关联合同，请刷新合同台账后重试");
+    }
+
+    const bills = [...unorderedBills].sort(
+      (left, right) =>
+        compareText(left.billKey, right.billKey) || compareText(left.id, right.id)
+    );
+    if (!bills.length) {
+      return this.emptySnapshot(version, contract.projectId);
+    }
+
+    const billIds = bills.map((bill) => bill.id);
+    const unorderedRows = await this.prisma.contractBillRow.findMany({
+      where: { contractBillId: { in: billIds } },
+      orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        contractBillId: true,
+        rowKey: true,
+        sortOrder: true,
+        itemCode: true,
+        itemName: true,
+        specification: true,
+        unit: true,
+        quantity: true,
+        unitPrice: true,
+        taxInclusiveAmountCents: true,
+        isProvisional: true,
+        settlementBasis: true
+      }
+    });
+    const billOrder = new Map(bills.map((bill, index) => [bill.id, index]));
+    const rows = [...unorderedRows].sort(
+      (left, right) =>
+        (billOrder.get(left.contractBillId) ?? Number.MAX_SAFE_INTEGER) -
+          (billOrder.get(right.contractBillId) ?? Number.MAX_SAFE_INTEGER) ||
+        left.sortOrder - right.sortOrder ||
+        compareText(left.id, right.id)
+    );
+    if (!rows.length) {
+      return this.emptySnapshot(version, contract.projectId);
+    }
+
+    const settlementRows = await this.prisma.settlement.findMany({
+      where: {
+        contractVersionId: version.id,
+        status: { in: [...SETTLEMENT_SOURCE_OCCUPANCY_STATUSES] }
+      },
+      select: { id: true }
+    });
+    const settlementIds = settlementRows.map((settlement) => settlement.id);
+    const rowIds = rows.map((row) => row.id);
+    const occupiedLines = settlementIds.length
+      ? await this.prisma.settlementLine.findMany({
+          where: {
+            settlementId: { in: settlementIds },
+            contractBillRowId: { in: rowIds }
+          },
+          select: { contractBillRowId: true, quantity: true, amountCents: true }
+        })
+      : [];
+    const occupancy = this.occupancyByRowId(occupiedLines);
+    const billById = new Map(bills.map((bill) => [bill.id, bill]));
+    const sourceRows = rows.map((row) =>
+      this.toSourceLine(row, billById.get(row.contractBillId), occupancy.get(row.id))
+    );
+
+    return {
+      contractVersionId: version.id,
+      contractId: version.contractId,
+      projectId: contract.projectId,
+      contractAmountCents: version.amountCents.toString(),
+      summary: this.summary(sourceRows),
+      rows: sourceRows
+    };
+  }
+
+  private emptySnapshot(
+    version: { id: string; contractId: string; amountCents: bigint },
+    projectId: string
+  ): SettlementSourceLinesReadModel {
+    return {
+      contractVersionId: version.id,
+      contractId: version.contractId,
+      projectId,
+      contractAmountCents: version.amountCents.toString(),
+      summary: {
+        rowCount: 0,
+        exceptionCount: 0,
+        contractAmountCents: "0",
+        settledAmountCents: "0",
+        remainingAmountCents: "0"
+      },
+      rows: []
+    };
+  }
+
+  private occupancyByRowId(
+    lines: Array<{
+      contractBillRowId: string | null;
+      quantity: Prisma.Decimal | null;
+      amountCents: bigint;
+    }>
+  ): Map<string, SourceLineOccupancy> {
+    const result = new Map<string, SourceLineOccupancy>();
+    for (const line of lines) {
+      if (!line.contractBillRowId) continue;
+      const current = result.get(line.contractBillRowId) ?? {
+        amountCents: 0n,
+        quantity: new Prisma.Decimal(0),
+        quantityComplete: true,
+        count: 0
+      };
+      current.amountCents += line.amountCents;
+      current.count += 1;
+      if (line.quantity === null) {
+        current.quantityComplete = false;
+      } else {
+        current.quantity = current.quantity.plus(line.quantity);
+      }
+      result.set(line.contractBillRowId, current);
+    }
+    return result;
+  }
+
+  private toSourceLine(
+    row: {
+      id: string;
+      contractBillId: string;
+      rowKey: string;
+      sortOrder: number;
+      itemCode: string | null;
+      itemName: string;
+      specification: string | null;
+      unit: string;
+      quantity: Prisma.Decimal;
+      unitPrice: Prisma.Decimal;
+      taxInclusiveAmountCents: bigint;
+      isProvisional: boolean;
+      settlementBasis: string | null;
+    },
+    bill: { id: string; billKey: string; name: string } | undefined,
+    occupancy: SourceLineOccupancy | undefined
+  ): SettlementSourceLineReadModel {
+    if (!bill) {
+      throw new Error("合同清单数据不完整，请联系管理员核对合同版本");
+    }
+    const settledAmountCents = occupancy?.amountCents ?? 0n;
+    const remainingAmountCents = row.taxInclusiveAmountCents - settledAmountCents;
+    const exceededAmountCents = remainingAmountCents < 0n ? -remainingAmountCents : 0n;
+    return {
+      id: row.id,
+      billId: bill.id,
+      billKey: bill.billKey,
+      billName: bill.name,
+      rowKey: row.rowKey,
+      sortOrder: row.sortOrder,
+      itemCode: row.itemCode,
+      itemName: row.itemName,
+      specification: row.specification,
+      unit: row.unit,
+      quantity: row.quantity.toString(),
+      unitPrice: row.unitPrice.toString(),
+      contractAmountCents: row.taxInclusiveAmountCents.toString(),
+      settledQuantity:
+        !occupancy || occupancy.count === 0
+          ? "0"
+          : occupancy.quantityComplete
+            ? occupancy.quantity.toString()
+            : null,
+      settledAmountCents: settledAmountCents.toString(),
+      remainingAmountCents: remainingAmountCents.toString(),
+      provisional: row.isProvisional,
+      settlementBasis: row.settlementBasis,
+      exception:
+        remainingAmountCents < 0n
+          ? {
+              code: "negative_remaining_amount",
+              message: `累计已占用金额超过合同清单金额 ${formatMoneyCentsAsYuan(
+                exceededAmountCents
+              )} 元`
+            }
+          : null
+    };
+  }
+
+  private summary(rows: SettlementSourceLineReadModel[]) {
+    const contractAmountCents = rows.reduce(
+      (total, row) => total + BigInt(row.contractAmountCents),
+      0n
+    );
+    const settledAmountCents = rows.reduce(
+      (total, row) => total + BigInt(row.settledAmountCents),
+      0n
+    );
+    return {
+      rowCount: rows.length,
+      exceptionCount: rows.filter((row) => row.exception !== null).length,
+      contractAmountCents: contractAmountCents.toString(),
+      settledAmountCents: settledAmountCents.toString(),
+      remainingAmountCents: (contractAmountCents - settledAmountCents).toString()
+    };
+  }
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}

@@ -1,4 +1,6 @@
+import type { SettlementSourceLineReadModel } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol } from "tdesign-vue-next";
+import { centsTextToYuanText } from "../../lib/money";
 
 export type SettlementTone = "default" | "primary" | "warning" | "danger" | "success";
 
@@ -101,6 +103,38 @@ export const settlementLedgerColumns: PrimaryTableCol<SettlementLedgerRow>[] = [
 ];
 
 export const settlementLedgerRows: SettlementLedgerRow[] = [];
+
+export interface SettlementSourceLinePreviewRow extends SettlementSourceLineReadModel {
+  contractAmount: string;
+  settledAmount: string;
+  remainingAmount: string;
+  statusText: string;
+}
+
+export const settlementSourceLineColumns: PrimaryTableCol<SettlementSourceLinePreviewRow>[] = [
+  { colKey: "billName", title: "清单", width: 120 },
+  { colKey: "itemCode", title: "编码", width: 92 },
+  { colKey: "itemName", title: "合同清单项", minWidth: 180 },
+  { colKey: "unit", title: "单位", width: 68 },
+  { colKey: "quantity", title: "合同数量", width: 110, align: "right" },
+  { colKey: "contractAmount", title: "合同金额", width: 126, align: "right" },
+  { colKey: "settledAmount", title: "已占用", width: 126, align: "right" },
+  { colKey: "remainingAmount", title: "剩余", width: 126, align: "right" },
+  { colKey: "statusText", title: "核对结果", minWidth: 180 }
+];
+
+export function toSettlementSourceLinePreviewRows(
+  rows: readonly SettlementSourceLineReadModel[]
+): SettlementSourceLinePreviewRow[] {
+  return rows.map((row) => ({
+    ...row,
+    itemCode: row.itemCode ?? "-",
+    contractAmount: `¥${centsTextToYuanText(row.contractAmountCents)}`,
+    settledAmount: `¥${centsTextToYuanText(row.settledAmountCents)}`,
+    remainingAmount: `¥${centsTextToYuanText(row.remainingAmountCents)}`,
+    statusText: row.exception?.message ?? (row.provisional ? "暂估项，结算时需重点核对" : "可用")
+  }));
+}
 
 export const settlementRules = [
   "只能从已生效合同版本创建结算",

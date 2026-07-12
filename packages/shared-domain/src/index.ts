@@ -6,3 +6,4 @@ export * from "./money";
 export * from "./core-flow-read-model";
 export * from "./permissions";
 export * from "./contract-workbench";
+export * from "./settlement-workbench";
