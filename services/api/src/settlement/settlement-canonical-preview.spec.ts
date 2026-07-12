@@ -73,4 +73,145 @@ describe("SettlementService canonical preview", () => {
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
+
+  it("rejects a canonical preview when valid bigint lines overflow in aggregate", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "version-1", status: "effective" })
+      },
+      contractBill: { findMany: jest.fn() },
+      settlementLine: { createMany: jest.fn() },
+      settlement: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new SettlementService(prisma as never);
+    const max = "9223372036854775807";
+
+    await expect(
+      service.previewLines("version-1", {
+        settlementLines: [
+          {
+            sourceType: "manual_adjustment",
+            name: "调整一",
+            amountCents: max,
+            reason: "核对一"
+          },
+          {
+            sourceType: "manual_adjustment",
+            name: "调整二",
+            amountCents: max,
+            reason: "核对二"
+          }
+        ]
+      })
+    ).rejects.toThrow("结算明细合计超出系统可保存范围，请调整本期明细金额。");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("uses the ContractBill amount role to keep reference groups manual", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "version-1", status: "effective" })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "bill-reference", amountRole: "reference", pricingMode: "tax_inclusive" }
+        ])
+      },
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "row-reference",
+            contractBillId: "bill-reference",
+            itemName: "参考价材料",
+            unit: "项",
+            quantity: new Decimal("1"),
+            unitPrice: new Decimal("999"),
+            taxRate: new Decimal("0"),
+            taxInclusiveAmountCents: 99900n,
+            isProvisional: false
+          }
+        ])
+      },
+      settlementLine: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn() },
+      settlement: { findMany: jest.fn(), create: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new SettlementService(prisma as never);
+
+    await expect(
+      service.previewLines("version-1", {
+        settlementLines: [
+          {
+            sourceType: "contract_bill_row",
+            contractBillRowId: "row-reference",
+            amountCents: "123"
+          }
+        ]
+      })
+    ).resolves.toMatchObject({
+      amountCents: "123",
+      lines: [expect.objectContaining({ calculationMode: "manual_amount" })]
+    });
+  });
+
+  it("rejects create through the same aggregate range guard before business writes", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contractBill: { findMany: jest.fn() },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-1", projectId: "project-1" })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-1" })
+      },
+      settlement: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      settlementLine: { createMany: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new SettlementService(prisma as never);
+    const max = "9223372036854775807";
+
+    await expect(
+      service.create({
+        contractVersionId: "version-1",
+        code: "JS-OVERFLOW",
+        periodLabel: "2026-07",
+        settlementLines: [
+          {
+            sourceType: "manual_adjustment",
+            name: "调整一",
+            amountCents: max,
+            reason: "核对一"
+          },
+          {
+            sourceType: "manual_adjustment",
+            name: "调整二",
+            amountCents: max,
+            reason: "核对二"
+          }
+        ]
+      })
+    ).rejects.toThrow("结算明细合计超出系统可保存范围，请调整本期明细金额。");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
 });

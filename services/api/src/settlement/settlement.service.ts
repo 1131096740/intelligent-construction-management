@@ -15,6 +15,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import {
   dbMoneyToBigInt,
   mapBigIntMoneyFieldsToApi,
@@ -405,6 +406,7 @@ export class SettlementService {
       }
     });
     const billById = new Map(bills.map((bill) => [bill.id, bill]));
+    // amountRole/pricingMode 是 ContractBill 模板分组属性；行只继承该分组口径，不能自行改写。
     return new Map(
       rows.map((row) => {
         const bill = billById.get(row.contractBillId);
@@ -439,6 +441,9 @@ export class SettlementService {
     const lineTotal = calculateSettlementLineTotalBigInt(
       lines.map((line) => line.amountCents)
     );
+    if (!isWithinPostgresBigIntRange(lineTotal)) {
+      throw new BadRequestException("结算明细合计超出系统可保存范围，请调整本期明细金额。");
+    }
     if (calculatedAmountCents !== null && lineTotal !== calculatedAmountCents) {
       throw new BadRequestException("结算明细合计必须等于本次结算金额，系统不会使用前端合计覆盖后台计算。");
     }
