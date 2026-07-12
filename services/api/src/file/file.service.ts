@@ -943,6 +943,39 @@ export class FileService {
       throw new Error("当前账号无权下载该结算模板文件");
     }
 
+    const offlineRevisionClient = (tx as unknown as {
+      contractOfflineRevision?: {
+        findFirst(args: {
+          where: {
+            OR: Array<{ fileId: string } | { previewPdfFileId: string }>;
+          };
+          select: { contractVersionId: true };
+        }): Promise<{ contractVersionId: string } | null>;
+      };
+    }).contractOfflineRevision;
+    const offlineRevisionPreview = offlineRevisionClient
+      ? await offlineRevisionClient.findFirst({
+          where: {
+            OR: [{ fileId: file.id }, { previewPdfFileId: file.id }]
+          },
+          select: { contractVersionId: true }
+        })
+      : null;
+    if (offlineRevisionPreview) {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: offlineRevisionPreview.contractVersionId },
+        select: { contractId: true }
+      });
+      const contract = version
+        ? await tx.contract.findUnique({
+            where: { id: version.contractId },
+            select: { ownerUserId: true, voidedAt: true }
+          })
+        : null;
+      if (contract?.ownerUserId === actorUserId && !contract.voidedAt) return;
+      throw new Error("当前账号无权下载该线下修订稿文件");
+    }
+
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
       return;
     }

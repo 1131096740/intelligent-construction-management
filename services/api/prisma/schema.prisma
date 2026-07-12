@@ -1065,16 +1065,87 @@ model ContractGeneratedDocument {
 }
 
 model ContractOfflineRevision {
-  id                        String   @id @default(uuid())
+  id                        String    @id @default(uuid())
   contractVersionId         String
+  negotiationRoundId        String?
   sourceGeneratedDocumentId String?
+  sourceRevision            Int?
   fileId                    String
+  previewPdfFileId          String?
+  status                    String    @default("queued")
+  errorMessage              String?
   label                     String
   note                      String?
   confirmedByUserId         String
-  confirmedAt               DateTime @default(now())
-  createdAt                 DateTime @default(now())
+  confirmedAt               DateTime  @default(now())
+  startedAt                 DateTime?
+  completedAt               DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   @@index([contractVersionId, createdAt])
+  @@index([negotiationRoundId, createdAt])
   @@index([fileId])
+}
+
+model ContractNegotiationRound {
+  id                        String    @id @default(uuid())
+  contractVersionId         String
+  roundNo                   Int
+  status                    String    @default("open")
+  sourceGeneratedDocumentId String
+  sourceRevision            Int
+  note                      String?
+  openedByUserId            String
+  openedAt                  DateTime  @default(now())
+  closedByUserId            String?
+  closedAt                  DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@unique([contractVersionId, roundNo])
+  @@index([contractVersionId, status])
+}
+
+model ContractDocumentComparison {
+  id                      String    @id @default(uuid())
+  negotiationRoundId      String
+  offlineRevisionId       String    @unique
+  sourceRevision          Int
+  status                  String    @default("queued")
+  algorithmVersion        String?
+  baseNormalizedSha256    String?
+  revisedNormalizedSha256 String?
+  errorMessage            String?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([negotiationRoundId, status])
+}
+
+model ContractDocumentDifference {
+  id                String    @id @default(uuid())
+  comparisonId      String
+  differenceKey     String
+  sortOrder         Int
+  changeType        String
+  kind              String
+  locationPath      String
+  basePath          String?
+  revisedPath       String?
+  beforeText        String?
+  afterText         String?
+  candidate         Json?
+  disposition       String    @default("pending")
+  dispositionReason String?
+  disposedByUserId  String?
+  disposedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([comparisonId, differenceKey])
+  @@index([comparisonId, sortOrder])
+  @@index([comparisonId, disposition])
 }

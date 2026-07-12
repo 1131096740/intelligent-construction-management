@@ -3,13 +3,22 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   ContractDocumentService,
-  type QueueContractDocumentInput,
-  type UploadOfflineRevisionInput
+  type QueueContractDocumentInput
 } from "./contract-document.service";
+import {
+  ContractNegotiationService,
+  type CreateOfflineRevisionPreviewTicketInput,
+  type DisposeContractDifferenceInput,
+  type OpenNegotiationRoundInput,
+  type UploadNegotiationRevisionInput
+} from "./contract-negotiation.service";
 
 @Controller()
 export class ContractDocumentController {
-  constructor(private readonly documents: ContractDocumentService) {}
+  constructor(
+    private readonly documents: ContractDocumentService,
+    private readonly negotiations: ContractNegotiationService
+  ) {}
 
   @Post("contract-workbench/:contractVersionId/documents")
   queue(
@@ -32,9 +41,9 @@ export class ContractDocumentController {
   uploadOfflineRevision(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: UploadOfflineRevisionInput
+    @Body() body: UploadNegotiationRevisionInput
   ) {
-    return this.documents.uploadOfflineRevision(contractVersionId, user.id, body);
+    return this.negotiations.uploadRevision(contractVersionId, user.id, body);
   }
 
   @Get("contract-workbench/:contractVersionId/offline-revisions")
@@ -42,7 +51,58 @@ export class ContractDocumentController {
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.documents.listOfflineRevisions(contractVersionId, user.id);
+    return this.negotiations.listOfflineRevisionHistory(contractVersionId, user.id);
+  }
+
+  @Post("contract-workbench/:contractVersionId/negotiation-rounds")
+  openNegotiationRound(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: OpenNegotiationRoundInput
+  ) {
+    return this.negotiations.openRound(contractVersionId, user.id, body);
+  }
+
+  @Get("contract-workbench/:contractVersionId/negotiation-rounds")
+  listNegotiationRounds(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.negotiations.listRounds(contractVersionId, user.id);
+  }
+
+  @Post("contract-negotiation-rounds/:roundId/close")
+  closeNegotiationRound(
+    @Param("roundId") roundId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.negotiations.closeRound(roundId, user.id);
+  }
+
+  @Post("contract-document-differences/:differenceId/disposition")
+  disposeDifference(
+    @Param("differenceId") differenceId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: DisposeContractDifferenceInput
+  ) {
+    return this.negotiations.disposeDifference(differenceId, user.id, body);
+  }
+
+  @Post("contract-offline-revisions/:revisionId/retry")
+  retryOfflineRevision(
+    @Param("revisionId") revisionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.negotiations.retryRevision(revisionId, user.id);
+  }
+
+  @Post("contract-offline-revisions/:revisionId/preview-download-ticket")
+  createOfflineRevisionPreviewDownloadTicket(
+    @Param("revisionId") revisionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CreateOfflineRevisionPreviewTicketInput
+  ) {
+    return this.negotiations.createPreviewDownloadTicket(revisionId, user.id, body);
   }
 
   @Post("contract-documents/:documentId/retry")

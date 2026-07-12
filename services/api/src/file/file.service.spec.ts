@@ -1700,6 +1700,90 @@ describe("FileService", () => {
     });
   });
 
+  it("authorizes an offline-revision preview by the current contract owner, not the former uploader", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "preview-pdf",
+          bucket: "private-local",
+          objectKey: "uploads/preview-pdf.pdf",
+          originalName: "线下修订预览.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "former-owner"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractOfflineRevision: {
+        findFirst: jest.fn().mockResolvedValue({ contractVersionId: "version-1" })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          ownerUserId: "current-owner",
+          voidedAt: null
+        })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.createDownloadTicket("preview-pdf", {
+        actorUserId: "current-owner",
+        downloadReason: "复核本轮合同差异"
+      })
+    ).resolves.toMatchObject({ fileId: "preview-pdf" });
+    await expect(
+      service.createDownloadTicket("preview-pdf", {
+        actorUserId: "former-owner",
+        downloadReason: "复核本轮合同差异"
+      })
+    ).rejects.toThrow("当前账号无权下载该线下修订稿文件");
+
+    tx.fileObject.findUnique.mockResolvedValue({
+      id: "offline-docx",
+      bucket: "private-local",
+      objectKey: "uploads/offline-docx.docx",
+      originalName: "线下修订稿.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      sizeBytes: 24,
+      uploadedByUserId: "former-owner"
+    });
+    await expect(
+      service.createDownloadTicket("offline-docx", {
+        actorUserId: "current-owner",
+        downloadReason: "复核线下修订原文"
+      })
+    ).resolves.toMatchObject({ fileId: "offline-docx" });
+    await expect(
+      service.createDownloadTicket("offline-docx", {
+        actorUserId: "former-owner",
+        downloadReason: "复核线下修订原文"
+      })
+    ).rejects.toThrow("当前账号无权下载该线下修订稿文件");
+    expect(tx.contractOfflineRevision.findFirst).toHaveBeenLastCalledWith({
+      where: {
+        OR: [{ fileId: "offline-docx" }, { previewPdfFileId: "offline-docx" }]
+      },
+      select: { contractVersionId: true }
+    });
+  });
+
   it("rejects download ticket creation when actor cannot access the file", async () => {
     const tx = {
       fileObject: {

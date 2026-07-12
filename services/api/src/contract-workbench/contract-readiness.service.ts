@@ -10,8 +10,9 @@ import type {
   ContractFieldDefinition,
   ContractValidationRule
 } from "@jiangkong/shared-domain";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { contractDocumentCandidateMatchesLedger } from "../contract-document/contract-document-ledger-candidate";
 
 export interface ContractReadinessResult {
   blocking: Array<{ key: string; section: string; message: string }>;
@@ -85,6 +86,21 @@ type ReadinessClient = {
         pdfFileId?: string | null;
       }>
     >;
+  };
+  contractNegotiationRound: {
+    findMany(input: unknown): Promise<Array<{ id: string; status: string }>>;
+  };
+  contractOfflineRevision: {
+    findMany(input: unknown): Promise<Array<{ id: string; status: string }>>;
+  };
+  contractDocumentComparison: {
+    findMany(input: unknown): Promise<
+      Array<{ id: string; offlineRevisionId: string; status: string }>
+    >;
+  };
+  contractDocumentDifference: {
+    findFirst(input: unknown): Promise<{ id: string } | null>;
+    findMany(input: unknown): Promise<Array<{ id: string; candidate: Prisma.JsonValue | null }>>;
   };
 };
 
@@ -303,6 +319,82 @@ export class ContractReadinessService {
     }
 
     if (requireInternalReviewDocument) {
+      const rounds = await tx.contractNegotiationRound.findMany({
+        where: { contractVersionId: version.id }
+      });
+      if (rounds.some((round) => round.status === "open")) {
+        blocking.push({
+          key: "negotiation.open_round",
+          section: "documents",
+          message: "仍有开放的合同磋商轮次，请完成差异处置并关闭轮次"
+        });
+      }
+      const comparisons = rounds.length
+        ? await tx.contractDocumentComparison.findMany({
+            where: { negotiationRoundId: { in: rounds.map((round) => round.id) } }
+          })
+        : [];
+      const offlineRevisions = rounds.length
+        ? await tx.contractOfflineRevision.findMany({
+            where: { negotiationRoundId: { in: rounds.map((round) => round.id) } },
+            select: { id: true, status: true }
+          })
+        : [];
+      if (
+        offlineRevisions.some(
+          (revision) =>
+            revision.status !== "succeeded" ||
+            !comparisons.some(
+              (comparison) =>
+                comparison.offlineRevisionId === revision.id &&
+                comparison.status === "succeeded"
+            )
+        ) ||
+        comparisons.some((comparison) => comparison.status !== "succeeded")
+      ) {
+        blocking.push({
+          key: "negotiation.incomplete_comparison",
+          section: "documents",
+          message: "仍有未完成、失败或过期的合同文档比较"
+        });
+      }
+      const pendingDifference = comparisons.length
+        ? await tx.contractDocumentDifference.findFirst({
+            where: {
+              comparisonId: { in: comparisons.map((comparison) => comparison.id) },
+              disposition: "pending"
+            },
+            select: { id: true }
+          })
+        : null;
+      if (pendingDifference) {
+        blocking.push({
+          key: "negotiation.pending_difference",
+          section: "documents",
+          message: "仍有待处理的合同文档差异"
+        });
+      }
+      const confirmedCandidates = comparisons.length
+        ? await tx.contractDocumentDifference.findMany({
+            where: {
+              comparisonId: { in: comparisons.map((comparison) => comparison.id) },
+              disposition: "confirmed",
+              candidate: { not: Prisma.JsonNull }
+            },
+            select: { id: true, candidate: true }
+          })
+        : [];
+      if (
+        confirmedCandidates.some(
+          ({ candidate }) => !contractDocumentCandidateMatchesLedger(candidate, version)
+        )
+      ) {
+        blocking.push({
+          key: "negotiation.confirmed_candidate_mismatch",
+          section: "documents",
+          message: "已确认的结构候选与当前合同账本不一致，请先恢复一致后再提交"
+        });
+      }
       const documents = await tx.contractGeneratedDocument.findMany({
         where: {
           contractVersionId: version.id,

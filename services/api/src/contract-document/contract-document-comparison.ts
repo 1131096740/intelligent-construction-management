@@ -17,7 +17,7 @@ export type ContractDocumentChangeType = "insert" | "delete" | "replace";
 
 export type ContractDocumentDifferenceCandidate =
   | { kind: "amount"; label: string; cents: string }
-  | { kind: "date"; label: string; isoDate: string }
+  | { kind: "date"; fieldKey: string; label: string; isoDate: string }
   | {
       kind: "key_clause";
       clauseKey: string;
@@ -47,16 +47,19 @@ export interface ContractDocumentComparisonResult {
 }
 
 type ClauseReference = { key: string; title: string };
+type FieldReference = { key: string; label: string };
 type Anchor = { baseIndex: number; revisionIndex: number };
 
 export function compareContractDocumentSnapshots(
   base: ContractDocxSnapshot,
   revised: ContractDocxSnapshot,
-  clauseSnapshot: unknown = []
+  clauseSnapshot: unknown = [],
+  templateSnapshot: unknown = {}
 ): ContractDocumentComparisonResult {
   assertSnapshot(base);
   assertSnapshot(revised);
   const clauses = clauseReferences(clauseSnapshot);
+  const fields = fieldReferences(templateSnapshot);
   const differences: ContractDocumentDifference[] = [];
   const anchors = uniqueOrderedAnchors(base.blocks, revised.blocks);
   let previousBase = -1;
@@ -67,7 +70,8 @@ export function compareContractDocumentSnapshots(
       base.blocks.slice(previousBase + 1, anchor.baseIndex),
       revised.blocks.slice(previousRevision + 1, anchor.revisionIndex),
       differences,
-      clauses
+      clauses,
+      fields
     );
     previousBase = anchor.baseIndex;
     previousRevision = anchor.revisionIndex;
@@ -85,7 +89,8 @@ function compareGap(
   base: ContractDocxBlock[],
   revised: ContractDocxBlock[],
   differences: ContractDocumentDifference[],
-  clauses: ClauseReference[]
+  clauses: ClauseReference[],
+  fields: FieldReference[]
 ) {
   let baseIndex = 0;
   let revisionIndex = 0;
@@ -98,22 +103,22 @@ function compareGap(
       continue;
     }
     if (before.kind === after.kind) {
-      pushDifference(differences, "replace", before, after, clauses);
+      pushDifference(differences, "replace", before, after, clauses, fields);
       baseIndex += 1;
       revisionIndex += 1;
     } else {
-      pushDifference(differences, "delete", before, null, clauses);
-      pushDifference(differences, "insert", null, after, clauses);
+      pushDifference(differences, "delete", before, null, clauses, fields);
+      pushDifference(differences, "insert", null, after, clauses, fields);
       baseIndex += 1;
       revisionIndex += 1;
     }
   }
   while (baseIndex < base.length) {
-    pushDifference(differences, "delete", base[baseIndex], null, clauses);
+    pushDifference(differences, "delete", base[baseIndex], null, clauses, fields);
     baseIndex += 1;
   }
   while (revisionIndex < revised.length) {
-    pushDifference(differences, "insert", null, revised[revisionIndex], clauses);
+    pushDifference(differences, "insert", null, revised[revisionIndex], clauses, fields);
     revisionIndex += 1;
   }
 }
@@ -123,7 +128,8 @@ function pushDifference(
   changeType: ContractDocumentChangeType,
   before: ContractDocxBlock | null,
   after: ContractDocxBlock | null,
-  clauses: ClauseReference[]
+  clauses: ClauseReference[],
+  fields: FieldReference[]
 ) {
   if (differences.length >= CONTRACT_DOCUMENT_COMPARISON_LIMITS.maxDifferences) {
     throw new BadRequestException("合同文档差异数量超过系统限制");
@@ -145,7 +151,7 @@ function pushDifference(
     revisedPath,
     beforeText,
     afterText,
-    candidate: afterText ? candidateFor(afterText, beforeText, clauses) : null
+    candidate: afterText ? candidateFor(afterText, beforeText, clauses, fields) : null
   });
 }
 
@@ -201,11 +207,12 @@ function longestIncreasingRevisionSubsequence(candidates: Anchor[]) {
 function candidateFor(
   afterText: string,
   beforeText: string | null,
-  clauses: ClauseReference[]
+  clauses: ClauseReference[],
+  fields: FieldReference[]
 ): ContractDocumentDifferenceCandidate | null {
   const amount = explicitAmount(afterText);
   if (amount) return amount;
-  const date = explicitDate(afterText);
+  const date = explicitDate(afterText, fields);
   if (date) return date;
   const clause = clauses.find(({ title }) => hasExactTitlePrefix(afterText, title));
   return clause
@@ -234,11 +241,16 @@ function explicitAmount(text: string): ContractDocumentDifferenceCandidate | nul
   };
 }
 
-function explicitDate(text: string): ContractDocumentDifferenceCandidate | null {
+function explicitDate(
+  text: string,
+  fields: FieldReference[]
+): ContractDocumentDifferenceCandidate | null {
   const match = text.match(
     /(?:^|\s)(签订日期|合同日期|生效日期|开工日期|竣工日期|付款日期)\s*[:：]\s*(\d{4})(?:年|-|\/)(\d{1,2})(?:月|-|\/)(\d{1,2})(?:日|$|\s)/u
   );
   if (!match) return null;
+  const field = fields.find(({ label }) => label === match[1]);
+  if (!field) return null;
   const year = Number(match[2]);
   const month = Number(match[3]);
   const day = Number(match[4]);
@@ -252,6 +264,7 @@ function explicitDate(text: string): ContractDocumentDifferenceCandidate | null 
   }
   return {
     kind: "date",
+    fieldKey: field.key,
     label: match[1],
     isoDate: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
   };
@@ -259,13 +272,37 @@ function explicitDate(text: string): ContractDocumentDifferenceCandidate | null 
 
 function clauseReferences(value: unknown): ClauseReference[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
+  const references = value.flatMap((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const record = item as Record<string, unknown>;
     const key = typeof record["key"] === "string" ? record["key"].trim() : "";
     const title = typeof record["title"] === "string" ? record["title"].normalize("NFKC").trim() : "";
     return key && title.length >= 2 ? [{ key, title }] : [];
   });
+  return references.filter(
+    (reference) =>
+      references.filter(({ key }) => key === reference.key).length === 1 &&
+      references.filter(({ title }) => title === reference.title).length === 1
+  );
+}
+
+function fieldReferences(value: unknown): FieldReference[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const fieldSchema = (value as Record<string, unknown>)["fieldSchema"];
+  if (!Array.isArray(fieldSchema)) return [];
+  const references = fieldSchema.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const key = typeof record["key"] === "string" ? record["key"].trim() : "";
+    const label =
+      typeof record["label"] === "string" ? record["label"].normalize("NFKC").trim() : "";
+    return key && label ? [{ key, label }] : [];
+  });
+  return references.filter(
+    (reference) =>
+      references.filter(({ key }) => key === reference.key).length === 1 &&
+      references.filter(({ label }) => label === reference.label).length === 1
+  );
 }
 
 function hasExactTitlePrefix(text: string, title: string) {

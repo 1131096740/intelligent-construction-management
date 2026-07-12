@@ -109,6 +109,19 @@ describe("ContractReadinessService", () => {
           }
         ])
       },
+      contractNegotiationRound: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractOfflineRevision: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractDocumentComparison: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractDocumentDifference: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
       ...overrides
     };
   }
@@ -283,6 +296,70 @@ describe("ContractReadinessService", () => {
 
     expect(result.blocking).toEqual(
       expect.arrayContaining([expect.objectContaining({ key: "document.internal_review" })])
+    );
+  });
+
+  it("blocks approval for an open round, incomplete comparison, and pending difference", async () => {
+    const result = await new ContractReadinessService().check(
+      tx({
+        contractNegotiationRound: {
+          findMany: jest.fn().mockResolvedValue([{ id: "round-1", status: "open" }])
+        },
+        contractDocumentComparison: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: "comparison-1", offlineRevisionId: "revision-1", status: "processing" },
+            { id: "comparison-2", offlineRevisionId: "revision-2", status: "succeeded" }
+          ])
+        },
+        contractDocumentDifference: {
+          findFirst: jest.fn().mockResolvedValue({ id: "difference-1" }),
+          findMany: jest.fn().mockResolvedValue([])
+        }
+      }) as never,
+      version as never,
+      contract,
+      true
+    );
+
+    expect(result.blocking).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "negotiation.open_round" }),
+        expect.objectContaining({ key: "negotiation.incomplete_comparison" }),
+        expect.objectContaining({ key: "negotiation.pending_difference" })
+      ])
+    );
+  });
+
+  it("blocks approval when a previously confirmed candidate no longer matches the ledger", async () => {
+    const result = await new ContractReadinessService().check(
+      tx({
+        contractNegotiationRound: {
+          findMany: jest.fn().mockResolvedValue([{ id: "round-1", status: "closed" }])
+        },
+        contractDocumentComparison: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: "comparison-1", offlineRevisionId: "revision-1", status: "succeeded" }
+          ])
+        },
+        contractDocumentDifference: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: "difference-1",
+              candidate: { kind: "amount", label: "合同金额", cents: "999" }
+            }
+          ])
+        }
+      }) as never,
+      version as never,
+      contract,
+      true
+    );
+
+    expect(result.blocking).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "negotiation.confirmed_candidate_mismatch" })
+      ])
     );
   });
 

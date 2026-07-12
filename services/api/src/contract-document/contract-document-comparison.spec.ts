@@ -46,15 +46,40 @@ describe("compareContractDocumentSnapshots", () => {
     const result = compareContractDocumentSnapshots(
       paragraphs("合同金额：100元", "签订日期：2026年7月12日", "付款条款：旧付款方式", "备注：100"),
       paragraphs("合同金额：120.50元", "签订日期：2026-07-13", "付款条款：新付款方式", "备注：200"),
-      clauseSnapshot
+      clauseSnapshot,
+      { fieldSchema: [{ key: "signingDate", label: "签订日期" }] }
     );
 
     expect(result.differences.map((difference) => difference.candidate)).toEqual([
       expect.objectContaining({ kind: "amount", cents: "12050", label: "合同金额" }),
-      expect.objectContaining({ kind: "date", isoDate: "2026-07-13", label: "签订日期" }),
+      expect.objectContaining({
+        kind: "date",
+        fieldKey: "signingDate",
+        isoDate: "2026-07-13",
+        label: "签订日期"
+      }),
       expect.objectContaining({ kind: "key_clause", clauseKey: "payment", title: "付款条款" }),
       null
     ]);
+  });
+
+  it("does not create structured candidates for duplicate field labels or clause titles", () => {
+    const result = compareContractDocumentSnapshots(
+      paragraphs("签订日期：2026-07-12", "付款条款：旧内容"),
+      paragraphs("签订日期：2026-07-13", "付款条款：新内容"),
+      [
+        { key: "payment-a", title: "付款条款" },
+        { key: "payment-b", title: "付款条款" }
+      ],
+      {
+        fieldSchema: [
+          { key: "signingDate", label: "签订日期" },
+          { key: "effectiveDate", label: "签订日期" }
+        ]
+      }
+    );
+
+    expect(result.differences.every((difference) => difference.candidate === null)).toBe(true);
   });
 
   it("does not create candidates for ambiguous amounts, invalid dates or unknown clause-like text", () => {

@@ -8,6 +8,8 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { appendDocxImageAttachments } from "./docx-attachment-appender";
+import { extractContractDocx } from "./contract-docx-extractor";
+import { compareContractDocumentSnapshots } from "./contract-document-comparison";
 import { renderContractDocx } from "./contract-docx-renderer";
 import {
   CONTRACT_DOCUMENT_ENGINE_VERSION,
@@ -83,6 +85,11 @@ export class ContractDocumentProcessor
         await this.processPreview(preview);
         return true;
       }
+      const offlineRevision = await this.claimOfflineRevision();
+      if (offlineRevision) {
+        await this.processOfflineRevision(offlineRevision);
+        return true;
+      }
       const document = await this.claimDocument();
       if (!document) return false;
       await this.processDocument(document);
@@ -107,6 +114,30 @@ export class ContractDocumentProcessor
       }
     });
     await this.prisma.contractGeneratedDocument.updateMany({
+      where: {
+        status: "processing",
+        startedAt: { lt: expiredBefore }
+      },
+      data: {
+        status: "queued",
+        startedAt: null,
+        completedAt: null,
+        errorMessage: null
+      }
+    });
+    await this.prisma.contractOfflineRevision.updateMany({
+      where: {
+        status: "processing",
+        startedAt: { lt: expiredBefore }
+      },
+      data: {
+        status: "queued",
+        startedAt: null,
+        completedAt: null,
+        errorMessage: null
+      }
+    });
+    await this.prisma.contractDocumentComparison.updateMany({
       where: {
         status: "processing",
         startedAt: { lt: expiredBefore }
@@ -146,6 +177,221 @@ export class ContractDocumentProcessor
       data: { status: "processing", startedAt, errorMessage: null }
     });
     return claimed.count === 1 ? { ...job, status: "processing", startedAt } : null;
+  }
+
+  private async claimOfflineRevision() {
+    const job = await this.prisma.contractOfflineRevision.findFirst({
+      where: { status: "queued" },
+      orderBy: { createdAt: "asc" }
+    });
+    if (!job) return null;
+    const comparison = await this.prisma.contractDocumentComparison.findUnique({
+      where: { offlineRevisionId: job.id }
+    });
+    if (!comparison || comparison.status !== "queued") {
+      await this.prisma.$transaction(async (tx) => {
+        const errorMessage = "线下修订稿比较记录异常，请联系管理员";
+        const updated = await tx.contractOfflineRevision.updateMany({
+          where: { id: job.id, status: "queued" },
+          data: { status: "failed", errorMessage, completedAt: new Date() }
+        });
+        if (updated.count !== 1) return;
+        await this.audit.record(tx, {
+          actorUserId: job.confirmedByUserId,
+          action: "contract.offline_revision.process_failure",
+          businessType: "contract_offline_revision",
+          businessId: job.id,
+          metadata: {
+            comparisonId: comparison?.id ?? null,
+            errorMessage,
+            sourceRevision: job.sourceRevision
+          }
+        });
+      });
+      return null;
+    }
+    const startedAt = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const revisionClaimed = await tx.contractOfflineRevision.updateMany({
+        where: { id: job.id, status: "queued" },
+        data: { status: "processing", startedAt, errorMessage: null }
+      });
+      if (revisionClaimed.count !== 1) return null;
+      const comparisonClaimed = await tx.contractDocumentComparison.updateMany({
+        where: { id: comparison.id, status: "queued" },
+        data: { status: "processing", startedAt, errorMessage: null }
+      });
+      if (comparisonClaimed.count !== 1) {
+        throw new Error("线下修订稿比较任务状态已变化");
+      }
+      return { ...job, status: "processing", startedAt, comparisonId: comparison.id };
+    });
+  }
+
+  private async processOfflineRevision(job: {
+    id: string;
+    contractVersionId: string;
+    negotiationRoundId: string | null;
+    sourceGeneratedDocumentId: string | null;
+    sourceRevision: number | null;
+    fileId: string;
+    previewPdfFileId: string | null;
+    label: string;
+    confirmedByUserId: string;
+    comparisonId: string;
+  }) {
+    let uploadedPdfFileId: string | null = null;
+    try {
+      if (
+        !job.negotiationRoundId ||
+        !job.sourceGeneratedDocumentId ||
+        job.sourceRevision === null
+      ) {
+        throw new Error("线下修订稿来源记录异常");
+      }
+      const [source, revision, version, round] = await Promise.all([
+        this.prisma.contractGeneratedDocument.findUnique({
+          where: { id: job.sourceGeneratedDocumentId }
+        }),
+        this.files.getFileBuffer(job.fileId),
+        this.prisma.contractVersion.findUnique({ where: { id: job.contractVersionId } }),
+        this.prisma.contractNegotiationRound.findUnique({
+          where: { id: job.negotiationRoundId }
+        })
+      ]);
+      if (
+        !source?.docxFileId ||
+        source.contractVersionId !== job.contractVersionId ||
+        source.sourceRevision !== job.sourceRevision ||
+        !version ||
+        !round ||
+        round.status !== "open" ||
+        round.sourceGeneratedDocumentId !== source.id
+      ) {
+        throw new Error("线下修订稿来源记录异常");
+      }
+      const sourceFile = await this.files.getFileBuffer(source.docxFileId);
+      const baseSnapshot = extractContractDocx(sourceFile.buffer);
+      const revisedSnapshot = extractContractDocx(revision.buffer);
+      const result = compareContractDocumentSnapshots(
+        baseSnapshot,
+        revisedSnapshot,
+        version.clauseSnapshot,
+        version.templateSnapshot
+      );
+      const convertedPdf = await convertDocxToPdf(revision.buffer);
+      const normalizedPdf = await normalizeContractPdf(convertedPdf, []);
+      const preview = await this.files.uploadPrivateFile({
+        originalName: `${job.label.replace(/[\\/\0\r\n]/gu, "_")}.pdf`,
+        mimeType: "application/pdf",
+        sizeBytes: normalizedPdf.buffer.length,
+        uploadedByUserId: job.confirmedByUserId,
+        buffer: normalizedPdf.buffer
+      });
+      uploadedPdfFileId = preview.id;
+      const completedAt = new Date();
+      await this.prisma.$transaction(async (tx) => {
+        const currentRound = await tx.contractNegotiationRound.findUnique({
+          where: { id: job.negotiationRoundId! }
+        });
+        if (!currentRound || currentRound.status !== "open") {
+          const revisionUpdated = await tx.contractOfflineRevision.updateMany({
+            where: { id: job.id, status: "processing" },
+            data: { status: "stale", completedAt, errorMessage: null }
+          });
+          await tx.contractDocumentComparison.updateMany({
+            where: { id: job.comparisonId, status: "processing" },
+            data: { status: "stale", completedAt, errorMessage: null }
+          });
+          if (revisionUpdated.count === 1) {
+            await this.audit.record(tx, {
+              actorUserId: job.confirmedByUserId,
+              action: "contract.offline_revision.process_stale",
+              businessType: "contract_offline_revision",
+              businessId: job.id,
+              metadata: {
+                comparisonId: job.comparisonId,
+                orphanPdfFileId: preview.id,
+                sourceRevision: job.sourceRevision
+              }
+            });
+          }
+          return;
+        }
+        await tx.contractDocumentDifference.deleteMany({
+          where: { comparisonId: job.comparisonId }
+        });
+        if (result.differences.length) {
+          await tx.contractDocumentDifference.createMany({
+            data: result.differences.map((difference) => ({
+              comparisonId: job.comparisonId,
+              differenceKey: difference.differenceKey,
+              sortOrder: difference.sortOrder,
+              changeType: difference.changeType,
+              kind: difference.kind,
+              locationPath: difference.locationPath,
+              basePath: difference.basePath,
+              revisedPath: difference.revisedPath,
+              beforeText: difference.beforeText,
+              afterText: difference.afterText,
+              candidate: difference.candidate
+                ? (difference.candidate as unknown as Prisma.InputJsonValue)
+                : Prisma.JsonNull,
+              disposition: "pending"
+            }))
+          });
+        }
+        const revisionUpdated = await tx.contractOfflineRevision.updateMany({
+          where: { id: job.id, status: "processing" },
+          data: {
+            status: "succeeded",
+            previewPdfFileId: preview.id,
+            completedAt,
+            errorMessage: null
+          }
+        });
+        const comparisonUpdated = await tx.contractDocumentComparison.updateMany({
+          where: { id: job.comparisonId, status: "processing" },
+          data: {
+            status: "succeeded",
+            algorithmVersion: result.algorithmVersion,
+            baseNormalizedSha256: result.baseNormalizedSha256,
+            revisedNormalizedSha256: result.revisionNormalizedSha256,
+            completedAt,
+            errorMessage: null
+          }
+        });
+        if (revisionUpdated.count !== 1 || comparisonUpdated.count !== 1) {
+          throw new Error("线下修订稿处理状态已变化");
+        }
+        if (job.previewPdfFileId) {
+          await this.files.linkFileReplacement(tx, {
+            newFileId: preview.id,
+            oldFileId: job.previewPdfFileId,
+            actorUserId: job.confirmedByUserId
+          });
+        }
+        await this.audit.record(tx, {
+          actorUserId: job.confirmedByUserId,
+          action: "contract.offline_revision.process_success",
+          businessType: "contract_offline_revision",
+          businessId: job.id,
+          metadata: {
+            comparisonId: job.comparisonId,
+            previewPdfFileId: preview.id,
+            previousPreviewPdfFileId: job.previewPdfFileId,
+            replacementKind: job.previewPdfFileId
+              ? "contract_offline_revision_preview_retry"
+              : null,
+            differenceCount: result.differences.length,
+            algorithmVersion: result.algorithmVersion,
+            sourceRevision: job.sourceRevision
+          }
+        });
+      });
+    } catch (cause) {
+      await this.failOfflineRevision(job, cause, uploadedPdfFileId);
+    }
   }
 
   private async processPreview(job: {
@@ -457,6 +703,42 @@ export class ContractDocumentProcessor
         businessType: "contract_generated_document",
         businessId: job.id,
         metadata: { errorMessage, orphanFileIds: uploadedFileIds }
+      });
+    });
+  }
+
+  private async failOfflineRevision(
+    job: {
+      id: string;
+      comparisonId: string;
+      confirmedByUserId: string;
+      sourceRevision: number | null;
+    },
+    _cause: unknown,
+    orphanPdfFileId: string | null
+  ) {
+    const errorMessage = "线下修订稿解析、比较或 PDF 生成失败，请检查 DOCX 后重试";
+    await this.prisma.$transaction(async (tx) => {
+      const revisionUpdated = await tx.contractOfflineRevision.updateMany({
+        where: { id: job.id, status: "processing" },
+        data: { status: "failed", errorMessage, completedAt: new Date() }
+      });
+      if (revisionUpdated.count !== 1) return;
+      await tx.contractDocumentComparison.updateMany({
+        where: { id: job.comparisonId, status: "processing" },
+        data: { status: "failed", errorMessage, completedAt: new Date() }
+      });
+      await this.audit.record(tx, {
+        actorUserId: job.confirmedByUserId,
+        action: "contract.offline_revision.process_failure",
+        businessType: "contract_offline_revision",
+        businessId: job.id,
+        metadata: {
+          comparisonId: job.comparisonId,
+          errorMessage,
+          orphanPdfFileId,
+          sourceRevision: job.sourceRevision
+        }
       });
     });
   }

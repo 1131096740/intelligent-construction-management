@@ -15,8 +15,36 @@ jest.mock("./pdf-normalizer", () => ({
     warnings: []
   }))
 }));
+jest.mock("./contract-docx-extractor", () => ({
+  extractContractDocx: jest.fn((buffer: Buffer) => ({
+    blocks: [{ kind: "paragraph", path: "p:000001", text: buffer.toString() }],
+    normalizedSha256: buffer.toString()
+  }))
+}));
+jest.mock("./contract-document-comparison", () => ({
+  compareContractDocumentSnapshots: jest.fn(() => ({
+    algorithmVersion: "contract-docx-patience-v1",
+    baseNormalizedSha256: "base-hash",
+    revisionNormalizedSha256: "revision-hash",
+    differences: [
+      {
+        differenceKey: "difference-key",
+        sortOrder: 1,
+        changeType: "replace",
+        kind: "paragraph",
+        locationPath: "p:000001",
+        basePath: "p:000001",
+        revisedPath: "p:000001",
+        beforeText: "before",
+        afterText: "after",
+        candidate: null
+      }
+    ]
+  }))
+}));
 
 import { PrismaService } from "../database/prisma.service";
+import { extractContractDocx } from "./contract-docx-extractor";
 import { renderContractDocx } from "./contract-docx-renderer";
 import { appendDocxImageAttachments } from "./docx-attachment-appender";
 import { ContractDocumentProcessor } from "./contract-document.processor";
@@ -30,6 +58,9 @@ const mockedAppendDocxAttachments = appendDocxImageAttachments as jest.MockedFun
 const mockedConvert = convertDocxToPdf as jest.MockedFunction<typeof convertDocxToPdf>;
 const mockedNormalize = normalizeContractPdf as jest.MockedFunction<
   typeof normalizeContractPdf
+>;
+const mockedExtract = extractContractDocx as jest.MockedFunction<
+  typeof extractContractDocx
 >;
 
 describe("ContractDocumentProcessor", () => {
@@ -48,6 +79,10 @@ describe("ContractDocumentProcessor", () => {
       pageSizes: ["A4_portrait", "A4_landscape"],
       warnings: []
     });
+    mockedExtract.mockImplementation((buffer) => ({
+      blocks: [{ kind: "paragraph", path: "p:000001", text: buffer.toString() }],
+      normalizedSha256: buffer.toString()
+    }));
   });
 
   function makePrisma() {
@@ -58,6 +93,20 @@ describe("ContractDocumentProcessor", () => {
       contractGeneratedDocument: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findFirst: jest.fn().mockResolvedValue(null)
+      },
+      contractOfflineRevision: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractDocumentComparison: {
+        findUnique: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractDocumentDifference: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractNegotiationRound: {
+        findUnique: jest.fn().mockResolvedValue({ id: "round-1", status: "open" })
       },
       contractLayoutTemplateVersion: {
         findUnique: jest.fn().mockResolvedValue({ id: "layout-1", status: "draft", draftRevision: 2 })
@@ -79,6 +128,16 @@ describe("ContractDocumentProcessor", () => {
         findFirst: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      contractOfflineRevision: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractDocumentComparison: {
+        findUnique: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractVersion: { findUnique: jest.fn() },
+      contractNegotiationRound: { findUnique: jest.fn() },
       contractLayoutTemplateVersion: { findUnique: jest.fn() },
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
         callback(tx)
@@ -165,6 +224,162 @@ describe("ContractDocumentProcessor", () => {
         errorMessage: null
       }
     });
+  });
+
+  it("converts an offline revision to PDF and persists its deterministic differences", async () => {
+    const prisma = makePrisma();
+    prisma.contractOfflineRevision.findFirst.mockResolvedValue({
+      id: "revision-1",
+      contractVersionId: "version-1",
+      negotiationRoundId: "round-1",
+      sourceGeneratedDocumentId: "document-source",
+      sourceRevision: 7,
+      fileId: "revision-docx",
+      previewPdfFileId: "previous-preview-pdf",
+      label: "第一轮修订稿",
+      confirmedByUserId: "owner-1",
+      status: "queued",
+      createdAt: new Date()
+    });
+    prisma.contractDocumentComparison.findUnique.mockResolvedValue({
+      id: "comparison-1",
+      offlineRevisionId: "revision-1",
+      status: "queued"
+    });
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(null);
+    prisma.contractVersion.findUnique.mockResolvedValue({
+      id: "version-1",
+      clauseSnapshot: []
+    });
+    prisma.contractNegotiationRound.findUnique.mockResolvedValue({
+      id: "round-1",
+      status: "open",
+      sourceGeneratedDocumentId: "document-source"
+    });
+    prisma.tx.contractNegotiationRound.findUnique.mockResolvedValue({
+      id: "round-1",
+      status: "open"
+    });
+    (prisma as unknown as { contractGeneratedDocument: { findUnique: jest.Mock } })
+      .contractGeneratedDocument.findUnique = jest.fn().mockResolvedValue({
+        id: "document-source",
+        contractVersionId: "version-1",
+        sourceRevision: 7,
+        docxFileId: "source-docx"
+      });
+    const files = {
+      getFileBuffer: jest.fn()
+        .mockResolvedValueOnce({ buffer: Buffer.from("revision") })
+        .mockResolvedValueOnce({ buffer: Buffer.from("source") }),
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "revision-preview-pdf" }),
+      linkFileReplacement: jest.fn().mockResolvedValue(undefined)
+    };
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(prisma.tx.contractDocumentDifference.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        comparisonId: "comparison-1",
+        differenceKey: "difference-key",
+        disposition: "pending"
+      })]
+    });
+    expect(prisma.tx.contractOfflineRevision.updateMany).toHaveBeenCalledWith({
+      where: { id: "revision-1", status: "processing" },
+      data: expect.objectContaining({
+        status: "succeeded",
+        previewPdfFileId: "revision-preview-pdf"
+      })
+    });
+    expect(prisma.tx.contractDocumentComparison.updateMany).toHaveBeenCalledWith({
+      where: { id: "comparison-1", status: "processing" },
+      data: expect.objectContaining({
+        status: "succeeded",
+        algorithmVersion: "contract-docx-patience-v1"
+      })
+    });
+    expect(files.linkFileReplacement).toHaveBeenCalledWith(prisma.tx, {
+      newFileId: "revision-preview-pdf",
+      oldFileId: "previous-preview-pdf",
+      actorUserId: "owner-1"
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({ action: "contract.offline_revision.process_success" })
+    );
+  });
+
+  it("fails both the PDF job and comparison closed when an offline DOCX is malformed", async () => {
+    const prisma = makePrisma();
+    prisma.contractOfflineRevision.findFirst.mockResolvedValue({
+      id: "revision-1",
+      contractVersionId: "version-1",
+      negotiationRoundId: "round-1",
+      sourceGeneratedDocumentId: "document-source",
+      sourceRevision: 7,
+      fileId: "revision-docx",
+      label: "坏修订稿",
+      confirmedByUserId: "owner-1",
+      status: "queued",
+      createdAt: new Date()
+    });
+    prisma.contractDocumentComparison.findUnique.mockResolvedValue({
+      id: "comparison-1",
+      offlineRevisionId: "revision-1",
+      status: "queued"
+    });
+    prisma.contractVersion.findUnique.mockResolvedValue({ id: "version-1", clauseSnapshot: [] });
+    prisma.contractNegotiationRound.findUnique.mockResolvedValue({
+      id: "round-1",
+      status: "open",
+      sourceGeneratedDocumentId: "document-source"
+    });
+    (prisma as unknown as { contractGeneratedDocument: { findUnique: jest.Mock } })
+      .contractGeneratedDocument.findUnique = jest.fn().mockResolvedValue({
+        id: "document-source",
+        contractVersionId: "version-1",
+        sourceRevision: 7,
+        docxFileId: "source-docx"
+      });
+    mockedExtract.mockImplementationOnce(() => {
+      throw new Error("/tmp/private/bad.docx");
+    });
+    const files = {
+      getFileBuffer: jest.fn().mockResolvedValue({ buffer: Buffer.from("bad") }),
+      uploadPrivateFile: jest.fn()
+    };
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(prisma.tx.contractOfflineRevision.updateMany).toHaveBeenCalledWith({
+      where: { id: "revision-1", status: "processing" },
+      data: expect.objectContaining({
+        status: "failed",
+        errorMessage: "线下修订稿解析、比较或 PDF 生成失败，请检查 DOCX 后重试"
+      })
+    });
+    expect(prisma.tx.contractDocumentComparison.updateMany).toHaveBeenCalledWith({
+      where: { id: "comparison-1", status: "processing" },
+      data: expect.objectContaining({ status: "failed" })
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({
+        action: "contract.offline_revision.process_failure",
+        metadata: expect.not.objectContaining({ errorMessage: expect.stringContaining("/tmp") })
+      })
+    );
   });
 
   it("renders DOCX, converts PDF, normalizes attachments, uploads both files, and marks success", async () => {
