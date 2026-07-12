@@ -6,17 +6,7 @@ import type {
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 import { formatMoneyCentsAsYuan } from "../money/decimal-money";
-
-const SETTLEMENT_SOURCE_OCCUPANCY_STATUSES = [
-  "draft",
-  "in_approval",
-  "approval_pending",
-  "approved_pending_archive",
-  "pending_archive_confirm",
-  "effective",
-  "partially_paid",
-  "paid"
-] as const;
+import { SETTLEMENT_LINE_OCCUPANCY_STATUSES } from "./settlement-line-occupancy";
 
 interface SourceLineOccupancy {
   amountCents: bigint;
@@ -99,7 +89,7 @@ export class SettlementWorkbenchService {
     const settlementRows = await this.prisma.settlement.findMany({
       where: {
         contractVersionId: version.id,
-        status: { in: [...SETTLEMENT_SOURCE_OCCUPANCY_STATUSES] }
+        status: { in: [...SETTLEMENT_LINE_OCCUPANCY_STATUSES] }
       },
       select: { id: true }
     });

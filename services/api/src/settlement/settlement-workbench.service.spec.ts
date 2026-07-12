@@ -2,7 +2,6 @@ import { Decimal } from "@prisma/client/runtime/library";
 import { SettlementWorkbenchService } from "./settlement-workbench.service";
 
 const ACTIVE_STATUSES = [
-  "draft",
   "in_approval",
   "approval_pending",
   "approved_pending_archive",
@@ -168,6 +167,11 @@ describe("SettlementWorkbenchService", () => {
       where: { contractVersionId: "version-1", status: { in: ACTIVE_STATUSES } },
       select: { id: true }
     });
+    const occupancyStatuses = prisma.settlement.findMany.mock.calls[0]?.[0]?.where?.status?.in;
+    expect(occupancyStatuses).toEqual(ACTIVE_STATUSES);
+    for (const inactiveStatus of ["draft", "approval_rejected", "withdrawn", "voided"]) {
+      expect(occupancyStatuses).not.toContain(inactiveStatus);
+    }
     expect(prisma.settlementLine.findMany).toHaveBeenCalledWith({
       where: {
         settlementId: { in: ["settlement-1", "settlement-2"] },

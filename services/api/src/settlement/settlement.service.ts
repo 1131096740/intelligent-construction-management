@@ -41,6 +41,7 @@ import {
   INVALID_SETTLEMENT_QUANTITY_MESSAGE,
   parseSettlementQuantity
 } from "./settlement-quantity";
+import { SETTLEMENT_LINE_OCCUPANCY_STATUSES } from "./settlement-line-occupancy";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -100,10 +101,6 @@ const SETTLEMENT_ACTIVE_PERIOD_STATUSES = [
   "effective",
   "partially_paid",
   "paid"
-] as const satisfies readonly SettlementStatus[];
-const SETTLEMENT_BILL_ROW_OCCUPANCY_STATUSES = [
-  "in_approval",
-  ...SETTLEMENT_QUOTA_OCCUPANCY_STATUSES
 ] as const satisfies readonly SettlementStatus[];
 const SETTLEMENT_EXCEPTION_USAGE_ACTIVE_STATUSES = ["occupied", "used"] as const;
 const SETTLEMENT_APPROVAL_LATEST_TEMPLATE_KEY = "settlement_approval_latest";
@@ -510,7 +507,7 @@ export class SettlementService {
             (await client.settlement?.findMany({
               where: {
                 id: { in: previousSettlementIds },
-                status: { in: [...SETTLEMENT_BILL_ROW_OCCUPANCY_STATUSES] }
+                status: { in: [...SETTLEMENT_LINE_OCCUPANCY_STATUSES] }
               },
               select: { id: true }
             })) ?? []
