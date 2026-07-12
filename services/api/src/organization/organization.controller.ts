@@ -6,6 +6,7 @@ import { CreateDepartmentDto } from "./dto/create-department.dto";
 import { ApplyRoleRemovalDto } from "./dto/apply-role-removal.dto";
 import { ApplyRoleAdditionDto } from "./dto/apply-role-addition.dto";
 import { PreviewRoleAdditionDto } from "./dto/preview-role-addition.dto";
+import { PreviewRoleRemovalBatchDto } from "./dto/preview-role-removal-batch.dto";
 import { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
 import { UpdateDepartmentDto } from "./dto/update-department.dto";
 import { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
@@ -35,6 +36,11 @@ export class OrganizationController {
   @Post("role-changes/preview")
   previewRoleRemoval(@Body() body: PreviewRoleRemovalDto) {
     return this.permissionImpacts.previewRoleRemoval(body);
+  }
+
+  @Post("role-changes/batch-preview")
+  previewRoleRemovalBatch(@Body() body: PreviewRoleRemovalBatchDto) {
+    return this.permissionImpacts.previewRoleRemovalBatch(body);
   }
 
   @Post("role-changes/apply")

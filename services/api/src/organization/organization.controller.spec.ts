@@ -10,6 +10,7 @@ type OrganizationBodyMethod =
   | "updateDepartment"
   | "updateUser"
   | "previewRoleRemoval"
+  | "previewRoleRemovalBatch"
   | "applyRoleRemoval"
   | "previewRoleAddition"
   | "applyRoleAddition";
@@ -19,6 +20,7 @@ const BODY_INDEX: Record<OrganizationBodyMethod, number> = {
   updateDepartment: 2,
   updateUser: 2,
   previewRoleRemoval: 0,
+  previewRoleRemovalBatch: 0,
   applyRoleRemoval: 1,
   previewRoleAddition: 0,
   applyRoleAddition: 1
@@ -180,6 +182,72 @@ describe("OrganizationController", () => {
 
     await expect(controller.previewRoleRemoval(body)).resolves.toBe(readModel);
     expect(impacts.previewRoleRemoval).toHaveBeenCalledWith(body);
+  });
+
+  it("批量岗位撤销预览使用运行时 DTO 且只调用累计预览", async () => {
+    expect(bodyMetatype("previewRoleRemovalBatch").name).toBe("PreviewRoleRemovalBatchDto");
+    const readModel = {
+      combinedSnapshotHash: `sha256:${"a".repeat(64)}`,
+      canApply: true,
+      simulatedTargets: 2,
+      blockingTarget: null,
+      steps: []
+    };
+    const impacts = { previewRoleRemovalBatch: jest.fn().mockResolvedValue(readModel) };
+    const controller = new OrganizationController({} as never, impacts as never, {} as never) as
+      OrganizationController & { previewRoleRemovalBatch(body: unknown): Promise<unknown> };
+    const body = {
+      targets: [
+        {
+          operation: "remove",
+          userId: "user-1",
+          scope: "project",
+          projectId: "project-1",
+          roleKey: "project_manager"
+        },
+        {
+          operation: "remove",
+          userId: "user-2",
+          scope: "project",
+          projectId: "project-1",
+          roleKey: "project_manager"
+        }
+      ]
+    };
+
+    await expect(controller.previewRoleRemovalBatch(body)).resolves.toBe(readModel);
+    expect(impacts.previewRoleRemovalBatch).toHaveBeenCalledWith(body);
+  });
+
+  it("批量岗位撤销 DTO 限制 2..20 条并拒绝嵌套未知字段", async () => {
+    const target = {
+      operation: "remove",
+      userId: "user-1",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "project_manager"
+    };
+    await expect(
+      validateBody("previewRoleRemovalBatch", { targets: [target, { ...target, userId: "user-2" }] })
+    ).resolves.toMatchObject({ targets: [target, { ...target, userId: "user-2" }] });
+
+    expect((await validationResponse("previewRoleRemovalBatch", { targets: [target] })).errors).toContain(
+      "批量撤销至少需要 2 个目标"
+    );
+    expect(
+      (
+        await validationResponse("previewRoleRemovalBatch", {
+          targets: Array.from({ length: 21 }, (_, index) => ({ ...target, userId: `user-${index}` }))
+        })
+      ).errors
+    ).toContain("批量撤销一次最多 20 个目标");
+    expect(
+      (
+        await validationResponse("previewRoleRemovalBatch", {
+          targets: [target, { ...target, userId: "user-2", assignmentId: "client-id" }]
+        })
+      ).errors
+    ).toContain("targets[1].assignmentId 不是允许提交的字段");
   });
 
   it("岗位新增预览/apply 使用独立运行时 DTO 且 apply actor 只取登录态", async () => {

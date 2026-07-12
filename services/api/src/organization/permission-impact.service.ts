@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ACTION_REQUIRED_ROLES, ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
 import type { PreviewRoleAdditionDto } from "./dto/preview-role-addition.dto";
+import type { PreviewRoleRemovalBatchDto } from "./dto/preview-role-removal-batch.dto";
 import type { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
 import { OrganizationService } from "./organization.service";
 
@@ -202,6 +203,15 @@ export interface RoleRemovalEvaluation {
   } | null;
 }
 
+export interface RoleRemovalBatchImpactPreview {
+  evaluatedAt: string;
+  combinedSnapshotHash: string;
+  canApply: boolean;
+  simulatedTargets: number;
+  blockingTarget: NormalizedRoleRemovalChange | null;
+  steps: Array<RoleRemovalImpactPreview & { sequence: number }>;
+}
+
 export interface RoleAdditionResolution {
   channel: "direct" | "assignment" | "delegation" | null;
   roleKey: RoleKey | null;
@@ -276,6 +286,64 @@ export class PermissionImpactService {
     evaluatedAt: Date = new Date()
   ): Promise<RoleRemovalImpactPreview> {
     return (await this.evaluateRoleRemoval(this.prisma, input, evaluatedAt)).preview;
+  }
+
+  async previewRoleRemovalBatch(
+    input: PreviewRoleRemovalBatchDto,
+    evaluatedAt: Date = new Date()
+  ): Promise<RoleRemovalBatchImpactPreview> {
+    const targets = normalizeBatchRemovalTargets(input.targets);
+    return this.prisma.$transaction(
+      async (tx) => {
+        const snapshotClient = cachedPermissionImpactClient(tx);
+        const excludedUserPositionIds = new Set<string>();
+        const excludedProjectMemberIds = new Set<string>();
+        const evaluatedSteps: Array<{
+          preview: RoleRemovalImpactPreview;
+          targetAssignment: RoleRemovalEvaluation["targetAssignment"];
+        }> = [];
+
+        for (const target of targets) {
+          const client = excludingRoleAssignments(
+            snapshotClient,
+            excludedUserPositionIds,
+            excludedProjectMemberIds
+          );
+          const evaluation = await this.evaluateRoleRemoval(client, target, evaluatedAt);
+          evaluatedSteps.push(evaluation);
+          if (!evaluation.preview.canApply || !evaluation.targetAssignment) break;
+          if (evaluation.targetAssignment.source === "user_position") {
+            excludedUserPositionIds.add(evaluation.targetAssignment.id);
+          } else {
+            excludedProjectMemberIds.add(evaluation.targetAssignment.id);
+          }
+        }
+
+        const firstBlockingStep = evaluatedSteps.find((step) => !step.preview.canApply);
+        const combinedSnapshotHash = hashSnapshot({
+          schemaVersion: 1,
+          targets,
+          steps: evaluatedSteps.map((step, sequence) => ({
+            sequence,
+            change: step.preview.change,
+            snapshotHash: step.preview.snapshotHash,
+            targetAssignment: step.targetAssignment
+          }))
+        });
+
+        return {
+          evaluatedAt: evaluatedAt.toISOString(),
+          combinedSnapshotHash,
+          canApply:
+            evaluatedSteps.length === targets.length &&
+            evaluatedSteps.every((step) => step.preview.canApply),
+          simulatedTargets: evaluatedSteps.length,
+          blockingTarget: firstBlockingStep?.preview.change ?? null,
+          steps: evaluatedSteps.map((step, sequence) => ({ sequence, ...step.preview }))
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+    );
   }
 
   async evaluateRoleRemoval(
@@ -413,13 +481,18 @@ export class PermissionImpactService {
       resolutionIssueCodes.has(blockingIssue.code)
     );
     const relevantInstances = targetResolved
-      ? mappedInstances
-          .filter((instance) => isRelevantInstance(instance, change))
-          .sort((left, right) => compareText(left.id, right.id))
+      ? collectRelevantRemovalNodes(mappedInstances, change).sort(
+          (left, right) =>
+            compareText(left.id, right.id) || left.currentNodeIndex - right.currentNodeIndex
+        )
       : [];
     const impacts = relevantInstances
       .map((instance) => buildImpact(instance, change, users, directFacts, delegations))
-      .sort((left, right) => compareText(left.approvalInstanceId, right.approvalInstanceId));
+      .sort(
+        (left, right) =>
+          compareText(left.approvalInstanceId, right.approvalInstanceId) ||
+          left.currentNodeIndex - right.currentNodeIndex
+      );
     const blockingInstances = impacts.filter((impact) => impact.blocking).length;
 
     const snapshotHash = hashSnapshot({
@@ -806,6 +879,29 @@ function normalizeChange(input: PreviewRoleRemovalDto): NormalizedRoleRemovalCha
   };
 }
 
+function normalizeBatchRemovalTargets(
+  targets: PreviewRoleRemovalDto[]
+): NormalizedRoleRemovalChange[] {
+  if (!Array.isArray(targets) || targets.length < 2) {
+    throw new BadRequestException("批量撤销至少需要 2 个目标");
+  }
+  if (targets.length > 20) {
+    throw new BadRequestException("批量撤销一次最多 20 个目标");
+  }
+  const normalized = targets.map(normalizeChange);
+  const coordinates = new Set<string>();
+  for (const target of normalized) {
+    const coordinate = [target.userId, target.scope, target.projectId ?? "", target.roleKey].join(
+      "\u0000"
+    );
+    if (coordinates.has(coordinate)) {
+      throw new BadRequestException("批量撤销目标不得重复");
+    }
+    coordinates.add(coordinate);
+  }
+  return normalized;
+}
+
 function normalizeAdditionChange(input: PreviewRoleAdditionDto): NormalizedRoleAdditionChange {
   if (input.operation !== "add") {
     throw new BadRequestException("只支持新增岗位");
@@ -1142,6 +1238,42 @@ function collectRelevantAdditionNodes(
   return relevant;
 }
 
+function collectRelevantRemovalNodes(
+  instances: MappedApprovalInstance[],
+  change: NormalizedRoleRemovalChange
+): MappedApprovalInstance[] {
+  const relevant: MappedApprovalInstance[] = [];
+  for (const instance of instances) {
+    if (
+      change.scope === "project" &&
+      instance.projectId &&
+      instance.projectId !== change.projectId
+    ) {
+      continue;
+    }
+    if (
+      !Array.isArray(instance.frozenNodes) ||
+      !Number.isInteger(instance.currentNodeIndex) ||
+      instance.currentNodeIndex < 0 ||
+      instance.currentNodeIndex >= instance.frozenNodes.length
+    ) {
+      relevant.push({ ...instance, parsedNode: null });
+      continue;
+    }
+    for (
+      let nodeIndex = instance.currentNodeIndex;
+      nodeIndex < instance.frozenNodes.length;
+      nodeIndex += 1
+    ) {
+      const parsedNode = parseNodeAt(instance, nodeIndex);
+      if (!parsedNode || parsedNode.pendingRoleKeys.includes(change.roleKey)) {
+        relevant.push({ ...instance, currentNodeIndex: nodeIndex, parsedNode });
+      }
+    }
+  }
+  return relevant;
+}
+
 function approvalRoleSetForBusinessType(
   businessType: string
 ): ReadonlySet<RoleKey> | null {
@@ -1246,14 +1378,6 @@ function resolveUserOnNode(
   return none;
 }
 
-function isRelevantInstance(instance: MappedApprovalInstance, change: NormalizedRoleRemovalChange) {
-  if (change.scope === "project" && instance.projectId && instance.projectId !== change.projectId) {
-    return false;
-  }
-  if (!instance.parsedNode || !instance.projectId) return true;
-  return instance.parsedNode.pendingRoleKeys.includes(change.roleKey);
-}
-
 function hasActiveGlobalSuperAdmin(
   users: UserRow[],
   positions: PositionRow[],
@@ -1269,6 +1393,69 @@ function hasActiveGlobalSuperAdmin(
       adminPositionIds.has(assignment.positionId) &&
       activeIds.has(assignment.userId)
   );
+}
+
+function excludingRoleAssignments(
+  client: PermissionImpactClient,
+  excludedUserPositionIds: ReadonlySet<string>,
+  excludedProjectMemberIds: ReadonlySet<string>
+): PermissionImpactClient {
+  const findUserPositions = client.userPosition.findMany.bind(client.userPosition) as (
+    args: unknown
+  ) => Promise<UserPositionRow[]>;
+  const findProjectMembers = client.projectMember.findMany.bind(client.projectMember) as (
+    args: unknown
+  ) => Promise<ProjectMemberRow[]>;
+  return {
+    user: client.user,
+    position: client.position,
+    userPosition: {
+      findMany: async (args: unknown) =>
+        (await findUserPositions(args)).filter(
+          (assignment) => !excludedUserPositionIds.has(assignment.id)
+        )
+    },
+    projectMember: {
+      findMany: async (args: unknown) =>
+        (await findProjectMembers(args)).filter(
+          (assignment) => !excludedProjectMemberIds.has(assignment.id)
+        )
+    },
+    project: client.project,
+    approvalInstance: client.approvalInstance,
+    approvalDelegation: client.approvalDelegation,
+    contractVersion: client.contractVersion,
+    contract: client.contract,
+    settlement: client.settlement,
+    paymentRequest: client.paymentRequest,
+    projectExpenseRequest: client.projectExpenseRequest
+  } as unknown as PermissionImpactClient;
+}
+
+function cachedPermissionImpactClient(client: PermissionImpactClient): PermissionImpactClient {
+  const cachedDelegate = (delegate: { findMany: (...args: never[]) => unknown }) => {
+    let result: unknown;
+    return {
+      findMany: (...args: never[]) => {
+        result ??= delegate.findMany(...args);
+        return result;
+      }
+    };
+  };
+  return {
+    user: cachedDelegate(client.user),
+    position: cachedDelegate(client.position),
+    userPosition: cachedDelegate(client.userPosition),
+    projectMember: cachedDelegate(client.projectMember),
+    project: cachedDelegate(client.project),
+    approvalInstance: cachedDelegate(client.approvalInstance),
+    approvalDelegation: cachedDelegate(client.approvalDelegation),
+    contractVersion: cachedDelegate(client.contractVersion),
+    contract: cachedDelegate(client.contract),
+    settlement: cachedDelegate(client.settlement),
+    paymentRequest: cachedDelegate(client.paymentRequest),
+    projectExpenseRequest: cachedDelegate(client.projectExpenseRequest)
+  } as unknown as PermissionImpactClient;
 }
 
 function hashSnapshot(value: unknown) {
