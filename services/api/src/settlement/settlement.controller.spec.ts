@@ -23,7 +23,14 @@ const validSettlementCreate = {
   contractVersionId: "contract-version-1",
   code: "JS-2026-001",
   periodLabel: "2026-07",
-  amountCents: "1000000"
+  settlementLines: [
+    {
+      sourceType: "manual_adjustment",
+      name: "签认调整",
+      amountCents: "1000000",
+      reason: "本期现场签认"
+    }
+  ]
 };
 
 const validSettlementBodies = [
@@ -181,15 +188,25 @@ describe("SettlementController authorization wiring", () => {
     }
   );
 
-  it("keeps omitted and explicitly empty settlement lines compatible", async () => {
-    await expect(validateSettlementBody("create", 0, validSettlementCreate)).resolves.toBeDefined();
-    await expect(
-      validateSettlementBody("create", 0, { ...validSettlementCreate, settlementLines: [] })
-    ).resolves.toBeDefined();
+  it("rejects omitted or empty settlement lines before the service can run", async () => {
+    const withoutLines: Record<string, unknown> = { ...validSettlementCreate };
+    delete withoutLines.settlementLines;
+    const omitted = await getSettlementValidationResponse("create", 0, withoutLines);
+    const empty = await getSettlementValidationResponse("create", 0, {
+      ...validSettlementCreate,
+      settlementLines: []
+    });
+
+    expect(omitted.errors).toEqual([
+      "请至少选择一条本期真实发生的合同清单项或填写一条人工调整"
+    ]);
+    expect(empty.errors).toEqual([
+      "请至少选择一条本期真实发生的合同清单项或填写一条人工调整"
+    ]);
   });
 
   it.each([
-    [null, "结算明细必须是数组"],
+    [null, "请至少选择一条本期真实发生的合同清单项或填写一条人工调整"],
     ["lines", "结算明细必须是数组"],
     [{}, "结算明细必须是数组"],
     [[123], "settlementLines[0] 填写不正确"]

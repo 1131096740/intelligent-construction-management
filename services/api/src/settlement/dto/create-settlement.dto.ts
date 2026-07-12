@@ -11,7 +11,6 @@ import {
   IsCanonicalMoneyText,
   IsCanonicalSignedMoneyText,
   IsIntegerInRange,
-  IsOptionalArray,
   IsRequiredText
 } from "../../validation/static-field-validation";
 import {
@@ -31,6 +30,39 @@ function IsSettlementQuantity(): PropertyDecorator {
       validator: {
         validate: isSettlementQuantityInput
       }
+    });
+  };
+}
+
+function IsRequiredSettlementLinesArray(): PropertyDecorator {
+  return (target, propertyKey) => {
+    const propertyName = String(propertyKey);
+    registerDecorator({
+      name: "requiredSettlementLinesPresent",
+      target: target.constructor,
+      propertyName,
+      options: {
+        message: "请至少选择一条本期真实发生的合同清单项或填写一条人工调整"
+      },
+      validator: { validate: (value) => value !== undefined && value !== null }
+    });
+    registerDecorator({
+      name: "requiredSettlementLinesType",
+      target: target.constructor,
+      propertyName,
+      options: { message: "结算明细必须是数组" },
+      validator: {
+        validate: (value) => value === undefined || value === null || Array.isArray(value)
+      }
+    });
+    registerDecorator({
+      name: "requiredSettlementLinesNotEmpty",
+      target: target.constructor,
+      propertyName,
+      options: {
+        message: "请至少选择一条本期真实发生的合同清单项或填写一条人工调整"
+      },
+      validator: { validate: (value) => !Array.isArray(value) || value.length > 0 }
     });
   };
 }
@@ -124,7 +156,7 @@ export class CreateSettlementDto {
   @IsBoolean({ message: "是否最终结算必须是布尔值" })
   isFinal?: boolean;
 
-  @IsOptionalArray({ typeMessage: "结算明细必须是数组" })
+  @IsRequiredSettlementLinesArray()
   @ValidateNested({ each: true, message: "每条结算明细必须是对象" })
   @Type(() => CreateSettlementLineDto)
   settlementLines?: CreateSettlementLineDto[];
