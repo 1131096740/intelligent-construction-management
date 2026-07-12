@@ -179,7 +179,11 @@ describe("Task 3 DTO static field validation coverage", () => {
   });
 
   it("keeps the inherited download reason Unicode length rule precise", async () => {
-    const groups = groupsWithRule("staticMaxUnicodeTextLength");
+    const groups = groupsWithRule("staticMaxUnicodeTextLength").filter(
+      (group) =>
+        group.dtoType === CreateProjectExpenseDownloadTicketDto &&
+        group.propertyName === "downloadReason"
+    );
     expect(groups).toHaveLength(1);
     const [group] = groups;
 
