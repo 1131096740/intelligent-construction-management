@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import { validateContractTemplateSchema, type ContractTemplateSchema } from "@jiangkong/shared-domain";
+import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import type {
@@ -28,6 +29,26 @@ type ContractTemplateTx = {
   standardClause: Pick<Delegate, "create" | "findMany">;
   standardClauseVersion: Pick<Delegate, "create" | "findUnique" | "update">;
 };
+
+const USAGE_FIELD_TYPES = new Set([
+  "text",
+  "long_text",
+  "number",
+  "money",
+  "date",
+  "single_select",
+  "multi_select",
+  "boolean"
+]);
+const USAGE_BILL_AMOUNT_ROLES = new Set([
+  "included",
+  "reference",
+  "non_priced",
+  "provisional"
+]);
+const USAGE_PRICING_MODES = new Set(["tax_inclusive", "tax_exclusive"]);
+const USAGE_COLUMN_TYPES = new Set(["text", "number", "boolean"]);
+const USAGE_VALIDATION_LEVELS = new Set(["block", "warning"]);
 
 @Injectable()
 export class ContractTemplateService {
@@ -100,44 +121,199 @@ export class ContractTemplateService {
     };
   }
 
+  private usagePreview(v: {
+    fieldSchema: unknown;
+    billSchema: unknown;
+    clauseSchema: unknown;
+    attachmentSchema: unknown;
+    validationSchema: unknown;
+  }) {
+    try {
+      const schema = this.versionToSchema(v);
+      validateContractTemplateSchema(schema);
+      const hasText = (value: unknown): value is string =>
+        typeof value === "string" && value.trim().length > 0;
+      if (
+        !Array.isArray(schema.fields) ||
+        !Array.isArray(schema.bills) ||
+        !Array.isArray(schema.clauses) ||
+        !Array.isArray(schema.attachments) ||
+        !Array.isArray(schema.validations) ||
+        !schema.fields.every(
+          (field) =>
+            field !== null &&
+            typeof field === "object" &&
+            hasText(field.label) &&
+            USAGE_FIELD_TYPES.has(field.type) &&
+            (field.required === undefined || typeof field.required === "boolean") &&
+            (field.group === undefined || hasText(field.group))
+        ) ||
+        !schema.bills.every(
+          (bill) =>
+            bill !== null &&
+            typeof bill === "object" &&
+            hasText(bill.name) &&
+            USAGE_BILL_AMOUNT_ROLES.has(bill.amountRole) &&
+            USAGE_PRICING_MODES.has(bill.pricingMode) &&
+            Array.isArray(bill.columns) &&
+            bill.columns.every(
+              (column) =>
+                column !== null &&
+                typeof column === "object" &&
+                hasText(column.label) &&
+                USAGE_COLUMN_TYPES.has(column.type) &&
+                (column.required === undefined || typeof column.required === "boolean")
+            )
+        ) ||
+        !schema.clauses.every(
+          (clause) =>
+            clause !== null &&
+            typeof clause === "object" &&
+            hasText(clause.title) &&
+            (clause.required === undefined || typeof clause.required === "boolean")
+        ) ||
+        !schema.attachments.every(
+          (attachment) =>
+            attachment !== null &&
+            typeof attachment === "object" &&
+            hasText(attachment.name) &&
+            typeof attachment.required === "boolean" &&
+            (attachment.mustBeValid === undefined ||
+              typeof attachment.mustBeValid === "boolean")
+        ) ||
+        !schema.validations.every(
+          (validation) =>
+            validation !== null &&
+            typeof validation === "object" &&
+            USAGE_VALIDATION_LEVELS.has(validation.level) &&
+            hasText(validation.message)
+        )
+      ) {
+        throw new Error("invalid usage preview schema");
+      }
+      return {
+        fields: schema.fields.map((field) => ({
+          label: field.label,
+          type: field.type,
+          required: field.required === true,
+          ...(typeof field.group === "string" && field.group.trim()
+            ? { group: field.group }
+            : {}),
+          conditional: field.visibleWhen !== undefined
+        })),
+        bills: schema.bills.map((bill) => ({
+          name: bill.name,
+          amountRole: bill.amountRole,
+          pricingMode: bill.pricingMode,
+          columns: bill.columns.map((column) => ({
+            label: column.label,
+            type: column.type,
+            required: column.required === true
+          }))
+        })),
+        clauses: schema.clauses.map((clause) => ({
+          title: clause.title,
+          required: clause.required === true
+        })),
+        attachments: schema.attachments.map((attachment) => ({
+          name: attachment.name,
+          required: attachment.required,
+          mustBeValid: attachment.mustBeValid === true
+        })),
+        validations: schema.validations.map((validation) => ({
+          level: validation.level,
+          message: validation.message
+        }))
+      };
+    } catch {
+      throw new BadRequestException("已发布业务模板结构异常，请联系合同部主管处理");
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Business template read
   // ---------------------------------------------------------------------------
 
   async listPublished(contractTypeKey?: string) {
-    const publishedVersions = await this.prisma.contractBusinessTemplateVersion.findMany({
-      where: { status: "published" },
-      select: { id: true, templateId: true, versionNo: true },
-      orderBy: { versionNo: "desc" }
-    });
-    const versionByTemplateId = new Map<
-      string,
-      { id: string; templateId: string; versionNo: number }
-    >();
-    for (const version of publishedVersions as Array<{
-      id: string;
-      templateId: string;
-      versionNo: number;
-    }>) {
-      if (!versionByTemplateId.has(version.templateId)) {
-        versionByTemplateId.set(version.templateId, version);
-      }
-    }
-    const publishedTemplateIds = [...versionByTemplateId.keys()];
-    if (!publishedTemplateIds.length) {
-      return [];
-    }
-    const templates = await this.prisma.contractBusinessTemplate.findMany({
-      where: {
-        id: { in: publishedTemplateIds },
-        ...(contractTypeKey ? { contractTypeKey } : {})
+    return this.prisma.$transaction(
+      async (tx) => {
+        const publishedVersions = await tx.contractBusinessTemplateVersion.findMany({
+          where: { status: "published" },
+          select: {
+            id: true,
+            templateId: true,
+            versionNo: true,
+            fieldSchema: true,
+            billSchema: true,
+            clauseSchema: true,
+            attachmentSchema: true,
+            validationSchema: true
+          },
+          orderBy: { versionNo: "desc" }
+        });
+        const versionByTemplateId = new Map<
+          string,
+          {
+            id: string;
+            templateId: string;
+            versionNo: number;
+            fieldSchema: unknown;
+            billSchema: unknown;
+            clauseSchema: unknown;
+            attachmentSchema: unknown;
+            validationSchema: unknown;
+          }
+        >();
+        for (const version of publishedVersions as Array<{
+          id: string;
+          templateId: string;
+          versionNo: number;
+          fieldSchema: unknown;
+          billSchema: unknown;
+          clauseSchema: unknown;
+          attachmentSchema: unknown;
+          validationSchema: unknown;
+        }>) {
+          if (!versionByTemplateId.has(version.templateId)) {
+            versionByTemplateId.set(version.templateId, version);
+          }
+        }
+        const publishedTemplateIds = [...versionByTemplateId.keys()];
+        if (!publishedTemplateIds.length) {
+          return [];
+        }
+        const templates = await tx.contractBusinessTemplate.findMany({
+          where: {
+            id: { in: publishedTemplateIds },
+            ...(contractTypeKey ? { contractTypeKey } : {})
+          },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            contractTypeKey: true
+          },
+          orderBy: { createdAt: "asc" }
+        });
+        return templates.map((template) => {
+          const version = versionByTemplateId.get(template.id);
+          if (!version) {
+            throw new BadRequestException("已发布业务模板版本数据异常，请联系合同部主管处理");
+          }
+          return {
+            id: template.id,
+            code: template.code,
+            name: template.name,
+            contractTypeKey: template.contractTypeKey,
+            status: "published",
+            versionId: version.id,
+            versionNo: version.versionNo,
+            usagePreview: this.usagePreview(version)
+          };
+        });
       },
-      orderBy: { createdAt: "asc" }
-    });
-    return templates.map((template: { id: string }) => {
-      const version = versionByTemplateId.get(template.id);
-      return { ...template, versionId: version?.id, versionNo: version?.versionNo };
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+    );
   }
 
   async getTemplate(templateId: string) {

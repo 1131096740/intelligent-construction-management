@@ -14,7 +14,9 @@ import {
   mergeContractTemplateSchemaForSave,
   normalizeContractNumberPattern,
   normalizeContractTemplateDetail,
+  normalizePublishedContractTemplates,
   pricingModeOptions,
+  publishedTemplateForSelection,
   quantityScaleOptions,
   templateListActions,
   templateListColumns,
@@ -22,6 +24,70 @@ import {
 } from "./contract-template.config";
 
 describe("contract template center config", () => {
+  const publishedTemplatePayload = {
+    id: "template-1",
+    code: "TPL-MAT",
+    name: "材料采购模板",
+    status: "published",
+    contractTypeKey: "material_purchase",
+    versionId: "version-2",
+    versionNo: 2,
+    usagePreview: {
+      fields: [
+        {
+          label: "供应商名称",
+          type: "text",
+          required: true,
+          group: "主体信息",
+          conditional: true
+        }
+      ],
+      bills: [
+        {
+          name: "材料清单",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          columns: [{ label: "材料名称", type: "text", required: true }]
+        }
+      ],
+      clauses: [{ title: "付款约定", required: true }],
+      attachments: [{ name: "报价单", required: true, mustBeValid: true }],
+      validations: [{ level: "block", message: "请补齐付款约定" }]
+    }
+  };
+
+  it("normalizes the compact published usage preview and binds selection to type and version", () => {
+    const templates = normalizePublishedContractTemplates(
+      [publishedTemplatePayload],
+      "material_purchase"
+    );
+
+    expect(templates).toEqual([publishedTemplatePayload]);
+    expect(
+      publishedTemplateForSelection(templates, "version-2", "material_purchase")
+    ).toEqual(publishedTemplatePayload);
+    expect(
+      publishedTemplateForSelection(templates, "version-2", "labor_subcontract")
+    ).toBeNull();
+    expect(
+      publishedTemplateForSelection(templates, "stale-version", "material_purchase")
+    ).toBeNull();
+  });
+
+  it.each([
+    [[{ ...publishedTemplatePayload, versionNo: 0 }], "模板发布版本数据不完整，请刷新后重试"],
+    [[{ ...publishedTemplatePayload, status: "draft" }], "模板发布状态不正确，请刷新后重试"],
+    [[{ ...publishedTemplatePayload, contractTypeKey: "labor_subcontract" }], "模板合同类型与当前选择不一致，请重新选择"],
+    [[publishedTemplatePayload, { ...publishedTemplatePayload, id: "template-2" }], "模板发布版本数据重复，请刷新后重试"],
+    [[{ ...publishedTemplatePayload, usagePreview: { ...publishedTemplatePayload.usagePreview, previewPdfFileId: "file-secret" } }], "模板结构预览包含未允许的数据，请刷新后重试"],
+    [[{ ...publishedTemplatePayload, usagePreview: { ...publishedTemplatePayload.usagePreview, fields: [{ label: "字段", type: "unknown", required: true, conditional: false }] } }], "模板结构预览数据不完整，请刷新后重试"],
+    [[{ ...publishedTemplatePayload, usagePreview: { ...publishedTemplatePayload.usagePreview, clauses: [{ title: "条款", required: "yes" }] } }], "模板结构预览数据不完整，请刷新后重试"]
+  ])("fails closed for an invalid published usage preview: %p", (value, message) => {
+    expect(() =>
+      normalizePublishedContractTemplates(value, "material_purchase")
+    ).toThrow(message);
+  });
+
   it("按稳定 key 合并五类 schema 且不丢失 UI 未完整表达的元数据", () => {
     const original = {
       fields: [

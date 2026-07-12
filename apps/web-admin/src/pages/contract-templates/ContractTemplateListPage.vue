@@ -78,12 +78,17 @@
             <p>{{ versionLabel(template) }}</p>
           </div>
           <template #actions>
-            <t-button
-              theme="primary"
-              @click="useTemplate(template)"
-            >
-              用此模板建合同
-            </t-button>
+            <t-space size="small">
+              <t-button @click="openPreview(template)">
+                预览模板内容
+              </t-button>
+              <t-button
+                theme="primary"
+                @click="useTemplate(template)"
+              >
+                用此模板建合同
+              </t-button>
+            </t-space>
           </template>
         </t-card>
       </div>
@@ -162,6 +167,14 @@
       </t-card>
     </template>
 
+    <ContractTemplateUsagePreviewDrawer
+      :visible="previewVisible"
+      :template="selectedPreview"
+      :allow-use="true"
+      @close="closePreview"
+      @use="useTemplate"
+    />
+
     <p
       v-if="message"
       :class="['message', tone]"
@@ -176,31 +189,28 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import {
   createContractTemplate,
-  listPublishedContractTemplates
+  listPublishedContractTemplates,
+  type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
 import { useAuthStore } from "../../auth/auth.store";
+import ContractTemplateUsagePreviewDrawer from "../../components/ContractTemplateUsagePreviewDrawer.vue";
 import { contractTypeLabel, templateStatusLabel } from "../contracts/contract-labels";
-import { contractTypeOptions, templateListColumns } from "./contract-template.config";
+import {
+  contractTypeOptions,
+  normalizePublishedContractTemplates,
+  templateListColumns
+} from "./contract-template.config";
 
 const TEMPLATE_CONFIG_ROLE_KEYS = new Set(["contract_director", "super_admin"]);
-
-interface TemplateRow {
-  id: string;
-  name?: string;
-  status?: string;
-  contractTypeKey?: string;
-  versionId?: string;
-  versionNo?: number;
-  publishedByUserId?: string;
-  [key: string]: unknown;
-}
 
 const router = useRouter();
 const auth = useAuthStore();
 const columns = templateListColumns.map((column) => ({ ...column }));
-const templates = ref<TemplateRow[]>([]);
+const templates = ref<PublishedContractTemplateReadModel[]>([]);
 const loading = ref(false);
 const saving = ref(false);
+const previewVisible = ref(false);
+const selectedPreview = ref<PublishedContractTemplateReadModel | null>(null);
 const message = ref("");
 const tone = ref<"success" | "danger">("success");
 const mode = ref<"use" | "config">("use");
@@ -220,22 +230,31 @@ function go(path: string) {
   void router.push(path);
 }
 
-function templateName(template: TemplateRow) {
-  return template.name?.trim() || "未命名业务模板";
+function templateName(template: PublishedContractTemplateReadModel) {
+  return template.name;
 }
 
-function versionLabel(template: TemplateRow) {
-  return template.versionNo ? `当前发布版本 v${template.versionNo}` : "暂无发布版本";
+function versionLabel(template: PublishedContractTemplateReadModel) {
+  return `当前发布版本 v${template.versionNo}`;
 }
 
-function useTemplate(template: TemplateRow) {
-  const contractType = String(template.contractTypeKey ?? "").trim();
-  const templateVersionId = String(template.versionId ?? "").trim();
+function openPreview(template: PublishedContractTemplateReadModel) {
+  selectedPreview.value = template;
+  previewVisible.value = true;
+}
+
+function closePreview() {
+  previewVisible.value = false;
+  selectedPreview.value = null;
+}
+
+function useTemplate(template: PublishedContractTemplateReadModel) {
+  closePreview();
   void router.push({
     path: "/合同工作台",
     query: {
-      ...(contractType ? { contractType } : {}),
-      ...(templateVersionId ? { templateVersionId } : {})
+      contractType: template.contractTypeKey,
+      templateVersionId: template.versionId
     }
   });
 }
@@ -243,7 +262,9 @@ function useTemplate(template: TemplateRow) {
 async function loadTemplates() {
   loading.value = true;
   try {
-    templates.value = (await listPublishedContractTemplates()) as TemplateRow[];
+    templates.value = normalizePublishedContractTemplates(
+      await listPublishedContractTemplates()
+    );
   } catch (error) {
     message.value = error instanceof Error ? error.message : "加载模板失败";
     tone.value = "danger";

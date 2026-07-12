@@ -2,7 +2,9 @@ import type {
   ContractTemplateDetailReadModel,
   ContractTemplateSchemaPayload,
   ContractTemplateVersionReadModel,
-  ContractTemplateVersionStatus
+  ContractTemplateVersionStatus,
+  ContractTemplateUsagePreview,
+  PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
 
 export const templateListColumns = [
@@ -92,6 +94,169 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function hasText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+const usagePreviewKeys = new Set(["fields", "bills", "clauses", "attachments", "validations"]);
+const usageFieldKeys = new Set(["label", "type", "required", "group", "conditional"]);
+const usageBillKeys = new Set(["name", "amountRole", "pricingMode", "columns"]);
+const usageBillColumnKeys = new Set(["label", "type", "required"]);
+const usageClauseKeys = new Set(["title", "required"]);
+const usageAttachmentKeys = new Set(["name", "required", "mustBeValid"]);
+const usageValidationKeys = new Set(["level", "message"]);
+const usageFieldTypes = new Set<string>(fieldTypeOptions.map((option) => option.value));
+const usageBillColumnTypes = new Set<string>(["text", "number", "boolean"]);
+const usageBillAmountRoles = new Set<string>(billAmountRoleOptions.map((option) => option.value));
+const usagePricingModes = new Set<string>(pricingModeOptions.map((option) => option.value));
+const usageValidationLevels = new Set<string>(["block", "warning"]);
+
+function assertUsagePreviewKeys(value: Record<string, unknown>, allowed: Set<string>) {
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    throw new Error("模板结构预览包含未允许的数据，请刷新后重试");
+  }
+}
+
+function normalizeUsagePreview(value: unknown): ContractTemplateUsagePreview {
+  if (!isRecord(value)) {
+    throw new Error("模板结构预览数据不完整，请刷新后重试");
+  }
+  assertUsagePreviewKeys(value, usagePreviewKeys);
+  if (
+    !Array.isArray(value.fields) ||
+    !Array.isArray(value.bills) ||
+    !Array.isArray(value.clauses) ||
+    !Array.isArray(value.attachments) ||
+    !Array.isArray(value.validations)
+  ) {
+    throw new Error("模板结构预览数据不完整，请刷新后重试");
+  }
+
+  for (const field of value.fields) {
+    if (!isRecord(field)) throw new Error("模板结构预览数据不完整，请刷新后重试");
+    assertUsagePreviewKeys(field, usageFieldKeys);
+    if (
+      !hasText(field.label) ||
+      !usageFieldTypes.has(String(field.type)) ||
+      typeof field.required !== "boolean" ||
+      typeof field.conditional !== "boolean" ||
+      (field.group !== undefined && !hasText(field.group))
+    ) {
+      throw new Error("模板结构预览数据不完整，请刷新后重试");
+    }
+  }
+
+  for (const bill of value.bills) {
+    if (!isRecord(bill)) throw new Error("模板结构预览数据不完整，请刷新后重试");
+    assertUsagePreviewKeys(bill, usageBillKeys);
+    if (
+      !hasText(bill.name) ||
+      !usageBillAmountRoles.has(String(bill.amountRole)) ||
+      !usagePricingModes.has(String(bill.pricingMode)) ||
+      !Array.isArray(bill.columns)
+    ) {
+      throw new Error("模板结构预览数据不完整，请刷新后重试");
+    }
+    for (const column of bill.columns) {
+      if (!isRecord(column)) throw new Error("模板结构预览数据不完整，请刷新后重试");
+      assertUsagePreviewKeys(column, usageBillColumnKeys);
+      if (
+        !hasText(column.label) ||
+        !usageBillColumnTypes.has(String(column.type)) ||
+        typeof column.required !== "boolean"
+      ) {
+        throw new Error("模板结构预览数据不完整，请刷新后重试");
+      }
+    }
+  }
+
+  for (const clause of value.clauses) {
+    if (!isRecord(clause)) throw new Error("模板结构预览数据不完整，请刷新后重试");
+    assertUsagePreviewKeys(clause, usageClauseKeys);
+    if (!hasText(clause.title) || typeof clause.required !== "boolean") {
+      throw new Error("模板结构预览数据不完整，请刷新后重试");
+    }
+  }
+
+  for (const attachment of value.attachments) {
+    if (!isRecord(attachment)) throw new Error("模板结构预览数据不完整，请刷新后重试");
+    assertUsagePreviewKeys(attachment, usageAttachmentKeys);
+    if (
+      !hasText(attachment.name) ||
+      typeof attachment.required !== "boolean" ||
+      typeof attachment.mustBeValid !== "boolean"
+    ) {
+      throw new Error("模板结构预览数据不完整，请刷新后重试");
+    }
+  }
+
+  for (const validation of value.validations) {
+    if (!isRecord(validation)) throw new Error("模板结构预览数据不完整，请刷新后重试");
+    assertUsagePreviewKeys(validation, usageValidationKeys);
+    if (
+      !usageValidationLevels.has(String(validation.level)) ||
+      !hasText(validation.message)
+    ) {
+      throw new Error("模板结构预览数据不完整，请刷新后重试");
+    }
+  }
+
+  return value as unknown as ContractTemplateUsagePreview;
+}
+
+export function normalizePublishedContractTemplates(
+  value: unknown,
+  expectedContractTypeKey?: string
+): PublishedContractTemplateReadModel[] {
+  if (!Array.isArray(value)) {
+    throw new Error("模板发布列表数据不完整，请刷新后重试");
+  }
+  const seenTemplateIds = new Set<string>();
+  const seenVersionIds = new Set<string>();
+  return value.map((item) => {
+    if (
+      !isRecord(item) ||
+      !hasText(item.id) ||
+      !hasText(item.name) ||
+      item.status !== "published" ||
+      !hasText(item.contractTypeKey) ||
+      !hasText(item.versionId) ||
+      !Number.isInteger(item.versionNo) ||
+      Number(item.versionNo) < 1
+    ) {
+      if (isRecord(item) && item.status !== "published") {
+        throw new Error("模板发布状态不正确，请刷新后重试");
+      }
+      throw new Error("模板发布版本数据不完整，请刷新后重试");
+    }
+    if (expectedContractTypeKey && item.contractTypeKey !== expectedContractTypeKey) {
+      throw new Error("模板合同类型与当前选择不一致，请重新选择");
+    }
+    if (seenTemplateIds.has(item.id) || seenVersionIds.has(item.versionId)) {
+      throw new Error("模板发布版本数据重复，请刷新后重试");
+    }
+    seenTemplateIds.add(item.id);
+    seenVersionIds.add(item.versionId);
+    return {
+      id: item.id,
+      ...(hasText(item.code) ? { code: item.code } : {}),
+      name: item.name,
+      status: "published",
+      contractTypeKey: item.contractTypeKey,
+      versionId: item.versionId,
+      versionNo: Number(item.versionNo),
+      usagePreview: normalizeUsagePreview(item.usagePreview)
+    };
+  });
+}
+
+export function publishedTemplateForSelection(
+  templates: PublishedContractTemplateReadModel[],
+  versionId: string,
+  contractTypeKey: string
+) {
+  return templates.find(
+    (template) =>
+      template.versionId === versionId && template.contractTypeKey === contractTypeKey
+  ) ?? null;
 }
 
 export function mergeContractTemplateSchemaForSave(

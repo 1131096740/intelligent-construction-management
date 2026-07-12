@@ -262,9 +262,43 @@ export function stopContractNumberRule(ruleId: string) {
 // Templates and template versions
 // ---------------------------------------------------------------------------
 
+export interface ContractTemplateUsagePreview {
+  fields: Array<{
+    label: string;
+    type: "text" | "long_text" | "number" | "money" | "date" | "single_select" | "multi_select" | "boolean";
+    required: boolean;
+    group?: string;
+    conditional: boolean;
+  }>;
+  bills: Array<{
+    name: string;
+    amountRole: "included" | "reference" | "non_priced" | "provisional";
+    pricingMode: "tax_inclusive" | "tax_exclusive";
+    columns: Array<{
+      label: string;
+      type: "text" | "number" | "boolean";
+      required: boolean;
+    }>;
+  }>;
+  clauses: Array<{ title: string; required: boolean }>;
+  attachments: Array<{ name: string; required: boolean; mustBeValid: boolean }>;
+  validations: Array<{ level: "block" | "warning"; message: string }>;
+}
+
+export interface PublishedContractTemplateReadModel {
+  id: string;
+  code?: string;
+  name: string;
+  status: "published";
+  contractTypeKey: string;
+  versionId: string;
+  versionNo: number;
+  usagePreview: ContractTemplateUsagePreview;
+}
+
 export function listPublishedContractTemplates(contractTypeKey?: string) {
   const qs = contractTypeKey ? `?contractTypeKey=${encodeURIComponent(contractTypeKey)}` : "";
-  return readJson<unknown[]>(`/contract-templates${qs}`);
+  return readJson<PublishedContractTemplateReadModel[]>(`/contract-templates${qs}`);
 }
 
 export interface ContractTemplateSchemaPayload {

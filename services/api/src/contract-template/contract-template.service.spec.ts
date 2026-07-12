@@ -1,4 +1,5 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { ContractTemplateService } from "./contract-template.service";
 
@@ -693,18 +694,98 @@ describe("ContractTemplateService", () => {
   });
 
   it("listPublished returns only templates with a published version", async () => {
-    const prisma = {
+    const newestPublishedSchema = {
+      fields: [
+        {
+          key: "supplier_name",
+          label: "供应商名称",
+          type: "text",
+          required: true,
+          defaultValue: "不得下发",
+          group: "主体信息",
+          visibleWhen: { fieldKey: "kind", operator: "eq", value: "supplier" }
+        }
+      ],
+      bills: [
+        {
+          key: "materials",
+          name: "材料清单",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 3,
+          unitPriceScale: 2,
+          columns: [
+            { key: "material_name", label: "材料名称", type: "text", required: true }
+          ]
+        }
+      ],
+      clauses: [
+        {
+          key: "payment",
+          title: "付款约定",
+          numberingMode: "automatic",
+          required: true,
+          standardClauseVersionId: "clause-version-secret",
+          content: { text: "不得下发的条款正文" }
+        }
+      ],
+      attachments: [
+        { key: "quote", name: "报价单", required: true, mustBeValid: true }
+      ],
+      validations: [
+        {
+          key: "payment-check",
+          level: "block",
+          targetClauseKey: "payment",
+          requiredPhrases: ["不得下发"],
+          message: "请补齐付款约定"
+        }
+      ]
+    };
+    const tx = {
       contractBusinessTemplateVersion: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "version-2", templateId: "template-published", versionNo: 2 },
-          { id: "version-1", templateId: "template-published", versionNo: 1 }
+          {
+            id: "version-2",
+            templateId: "template-published",
+            versionNo: 2,
+            fieldSchema: newestPublishedSchema.fields,
+            billSchema: newestPublishedSchema.bills,
+            clauseSchema: newestPublishedSchema.clauses,
+            attachmentSchema: newestPublishedSchema.attachments,
+            validationSchema: newestPublishedSchema.validations
+          },
+          {
+            id: "version-1",
+            templateId: "template-published",
+            versionNo: 1,
+            fieldSchema: [{ key: "old", label: "旧版字段", type: "text" }],
+            billSchema: [],
+            clauseSchema: [],
+            attachmentSchema: [],
+            validationSchema: []
+          }
         ])
       },
       contractBusinessTemplate: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "template-published", code: "TPL-PUB", contractTypeKey: "procurement" }
+          {
+            id: "template-published",
+            code: "TPL-PUB",
+            name: "采购合同模板",
+            contractTypeKey: "procurement",
+            createdByUserId: "internal-user",
+            createdAt: new Date("2026-07-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-07-02T00:00:00.000Z")
+          }
         ])
       }
+    };
+    const prisma = {
+      ...tx,
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)
+      )
     } as unknown as PrismaService;
     const service = new ContractTemplateService(prisma, audit as never);
 
@@ -712,46 +793,137 @@ describe("ContractTemplateService", () => {
 
     // version lookup restricted to published status
     expect(
-      (prisma.contractBusinessTemplateVersion.findMany as jest.Mock)
+      tx.contractBusinessTemplateVersion.findMany
     ).toHaveBeenCalledWith({
       where: { status: "published" },
-      select: { id: true, templateId: true, versionNo: true },
+      select: {
+        id: true,
+        templateId: true,
+        versionNo: true,
+        fieldSchema: true,
+        billSchema: true,
+        clauseSchema: true,
+        attachmentSchema: true,
+        validationSchema: true
+      },
       orderBy: { versionNo: "desc" }
     });
     // template query restricted to the published template ids only
-    expect((prisma.contractBusinessTemplate.findMany as jest.Mock)).toHaveBeenCalledWith({
+    expect(tx.contractBusinessTemplate.findMany).toHaveBeenCalledWith({
       where: { id: { in: ["template-published"] } },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        contractTypeKey: true
+      },
       orderBy: { createdAt: "asc" }
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead
     });
     expect(result.map((t: { id: string }) => t.id)).toEqual(["template-published"]);
     expect(result).toEqual([
       {
         id: "template-published",
         code: "TPL-PUB",
+        name: "采购合同模板",
         contractTypeKey: "procurement",
+        status: "published",
         versionId: "version-2",
-        versionNo: 2
+        versionNo: 2,
+        usagePreview: {
+          fields: [
+            {
+              label: "供应商名称",
+              type: "text",
+              required: true,
+              group: "主体信息",
+              conditional: true
+            }
+          ],
+          bills: [
+            {
+              name: "材料清单",
+              amountRole: "included",
+              pricingMode: "tax_inclusive",
+              columns: [{ label: "材料名称", type: "text", required: true }]
+            }
+          ],
+          clauses: [{ title: "付款约定", required: true }],
+          attachments: [{ name: "报价单", required: true, mustBeValid: true }],
+          validations: [{ level: "block", message: "请补齐付款约定" }]
+        }
       }
     ]);
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("旧版字段");
+    expect(serialized).not.toContain("不得下发");
+    expect(serialized).not.toContain("clause-version-secret");
+    expect(serialized).not.toContain("internal-user");
+    expect(serialized).not.toContain("2026-07-01");
+    expect(audit.record).not.toHaveBeenCalled();
     expect(result.map((t: { id: string }) => t.id)).not.toContain("template-draft");
     expect(result.map((t: { id: string }) => t.id)).not.toContain("template-stopped");
   });
 
-  it("listPublished returns empty when no template has a published version", async () => {
+  it("fails closed with one fixed error when a published schema is malformed", async () => {
+    const tx = {
+      contractBusinessTemplateVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-broken",
+            templateId: "template-broken",
+            versionNo: 1,
+            fieldSchema: { secret: "不得泄漏" },
+            billSchema: [],
+            clauseSchema: [],
+            attachmentSchema: [],
+            validationSchema: []
+          }
+        ])
+      },
+      contractBusinessTemplate: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "template-broken", name: "异常模板", contractTypeKey: "procurement" }
+        ])
+      }
+    };
     const prisma = {
+      ...tx,
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    await expect(service.listPublished()).rejects.toEqual(
+      new BadRequestException("已发布业务模板结构异常，请联系合同部主管处理")
+    );
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("listPublished returns empty when no template has a published version", async () => {
+    const tx = {
       contractBusinessTemplateVersion: {
         findMany: jest.fn().mockResolvedValue([])
       },
       contractBusinessTemplate: {
         findMany: jest.fn()
       }
+    };
+    const prisma = {
+      ...tx,
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)
+      )
     } as unknown as PrismaService;
     const service = new ContractTemplateService(prisma, audit as never);
 
     const result = await service.listPublished();
 
     expect(result).toEqual([]);
-    expect(prisma.contractBusinessTemplate.findMany).not.toHaveBeenCalled();
+    expect(tx.contractBusinessTemplate.findMany).not.toHaveBeenCalled();
   });
 
   it("listPublishedClauses returns latest published version content with clause metadata", async () => {

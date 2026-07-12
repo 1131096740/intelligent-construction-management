@@ -434,9 +434,26 @@ describe("contract workbench API client", () => {
   });
 
   it("listPublishedContractTemplates – GET /contract-templates?contractTypeKey=material_purchase", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson([]));
+    const templates = [
+      {
+        id: "template-1",
+        name: "材料采购模板",
+        status: "published",
+        contractTypeKey: "material_purchase",
+        versionId: "version-2",
+        versionNo: 2,
+        usagePreview: {
+          fields: [],
+          bills: [],
+          clauses: [],
+          attachments: [],
+          validations: []
+        }
+      }
+    ];
+    mockApiFetch.mockReturnValue(makeOkJson(templates));
 
-    await listPublishedContractTemplates("material_purchase");
+    await expect(listPublishedContractTemplates("material_purchase")).resolves.toEqual(templates);
 
     expect(mockApiFetch).toHaveBeenCalledWith(
       "/contract-templates?contractTypeKey=material_purchase"

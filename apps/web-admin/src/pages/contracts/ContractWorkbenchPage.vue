@@ -37,13 +37,22 @@
         </label>
         <label class="field">
           <span class="field-label">业务模板</span>
-          <t-select
-            :value="initializeDraft.businessTemplateVersionId.value"
-            :options="templateOptions"
-            :disabled="!initializeDraft.contractTypeKey.value"
-            placeholder="选择业务模板"
-            @change="(value: string) => initializeDraft.setBusinessTemplateVersionId(value)"
-          />
+          <div class="template-choice">
+            <t-select
+              :value="initializeDraft.businessTemplateVersionId.value"
+              :options="templateOptions"
+              :disabled="!initializeDraft.contractTypeKey.value"
+              placeholder="选择业务模板"
+              @change="onNewTemplateChange"
+            />
+            <t-button
+              variant="outline"
+              :disabled="!selectedTemplate"
+              @click="templatePreviewVisible = true"
+            >
+              预览所选模板
+            </t-button>
+          </div>
         </label>
       </div>
 
@@ -51,7 +60,7 @@
         <t-button
           theme="primary"
           :loading="creating"
-          :disabled="!initializeDraft.canCreate.value"
+          :disabled="!initializeDraft.canCreate.value || !selectedTemplate"
           @click="onCreateDraft"
         >
           创建草稿
@@ -232,6 +241,12 @@
       </div>
     </div>
 
+    <ContractTemplateUsagePreviewDrawer
+      :visible="templatePreviewVisible"
+      :template="selectedTemplate"
+      @close="templatePreviewVisible = false"
+    />
+
     <!-- Revision conflict resolution ---------------------------------------->
     <t-dialog
       :visible="saveState === 'conflict' && conflict !== null"
@@ -310,12 +325,18 @@ import {
   applyContractTypeChange,
   listPublishedContractTemplates,
   previewContractTypeChange,
-  transferContractDraft
+  transferContractDraft,
+  type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
 import {
   fetchApprovalDelegationUserOptions,
   fetchContractCreateProjects
 } from "../../api/core-flow-read.api";
+import ContractTemplateUsagePreviewDrawer from "../../components/ContractTemplateUsagePreviewDrawer.vue";
+import {
+  normalizePublishedContractTemplates,
+  publishedTemplateForSelection
+} from "../contract-templates/contract-template.config";
 import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
@@ -409,12 +430,22 @@ const projectOptions = ref<Array<{ label: string; value: string }>>([]);
 const projectOptionsLoaded = ref(false);
 const contractTypeOptions = ref<Array<{ label: string; value: string }>>([]);
 const templateOptions = ref<Array<{ label: string; value: string }>>([]);
+const templateRecords = ref<PublishedContractTemplateReadModel[]>([]);
+const templatePreviewVisible = ref(false);
+let templateLoadRequestId = 0;
 
 const contractId = computed(() => {
   const value = route.params.contractId;
   return typeof value === "string" ? value : Array.isArray(value) ? value[0] : "";
 });
 const isNewDraft = computed(() => !contractId.value);
+const selectedTemplate = computed(() =>
+  publishedTemplateForSelection(
+    templateRecords.value,
+    initializeDraft.businessTemplateVersionId.value,
+    initializeDraft.contractTypeKey.value
+  )
+);
 
 const editable = computed(() => {
   const status = workbench.value?.version.status;
@@ -494,28 +525,48 @@ const autosaveTone = computed(() => {
 });
 
 async function loadTemplatesForType(contractTypeKey: string) {
+  const requestId = ++templateLoadRequestId;
+  templatePreviewVisible.value = false;
+  templateRecords.value = [];
   templateOptions.value = [];
   if (!contractTypeKey) {
     return;
   }
   try {
-    const templates = (await listPublishedContractTemplates(contractTypeKey)) as Array<
-      Record<string, unknown>
-    >;
+    const templates = normalizePublishedContractTemplates(
+      await listPublishedContractTemplates(contractTypeKey),
+      contractTypeKey
+    );
+    if (requestId !== templateLoadRequestId) return;
+    templateRecords.value = templates;
     templateOptions.value = templates.map((template) => ({
-      label: String(template["name"] ?? template["id"] ?? "模板"),
-      value: String(template["versionId"] ?? template["id"] ?? "")
+      label: template.name,
+      value: template.versionId
     }));
+    if (
+      initializeDraft.businessTemplateVersionId.value &&
+      !publishedTemplateForSelection(
+        templates,
+        initializeDraft.businessTemplateVersionId.value,
+        contractTypeKey
+      )
+    ) {
+      initializeDraft.setBusinessTemplateVersionId("");
+    }
   } catch (error) {
+    if (requestId !== templateLoadRequestId) return;
+    templateRecords.value = [];
+    templateOptions.value = [];
+    initializeDraft.setBusinessTemplateVersionId("");
     errorMessage.value = error instanceof Error ? error.message : "模板加载失败";
   }
 }
 
 async function loadContractTypeOptions() {
   try {
-    const templates = (await listPublishedContractTemplates()) as Array<
-      Record<string, unknown>
-    >;
+    const templates = normalizePublishedContractTemplates(
+      await listPublishedContractTemplates()
+    );
     const typeKeys = [
       ...new Set(
         templates
@@ -552,17 +603,19 @@ async function loadProjectOptions() {
 }
 
 function onContractTypeChange(value: string) {
+  templatePreviewVisible.value = false;
   initializeDraft.setContractTypeKey(value);
   initializeDraft.setBusinessTemplateVersionId("");
   void loadTemplatesForType(value);
 }
 
-function firstTemplateVersionId(templates: Array<Record<string, unknown>>): string {
-  const first = templates[0];
-  if (!first) {
-    return "";
-  }
-  return String(first["versionId"] ?? first["id"] ?? "");
+function onNewTemplateChange(value: string) {
+  templatePreviewVisible.value = false;
+  initializeDraft.setBusinessTemplateVersionId(value);
+}
+
+function firstTemplateVersionId(templates: PublishedContractTemplateReadModel[]): string {
+  return templates[0]?.versionId ?? "";
 }
 
 // Existing loaded draft: changing the contract type opens a migration preview
@@ -578,9 +631,10 @@ async function onExistingTypeChange(value: string) {
   migrationBusy.value = true;
   errorMessage.value = "";
   try {
-    const templates = (await listPublishedContractTemplates(value)) as Array<
-      Record<string, unknown>
-    >;
+    const templates = normalizePublishedContractTemplates(
+      await listPublishedContractTemplates(value),
+      value
+    );
     const targetTemplateVersionId = firstTemplateVersionId(templates);
     if (!targetTemplateVersionId) {
       errorMessage.value = "目标合同类型暂无已发布模板，无法迁移。";
@@ -646,6 +700,10 @@ async function onConfirmMigration() {
 }
 
 async function onCreateDraft() {
+  if (!selectedTemplate.value) {
+    errorMessage.value = "请选择当前合同类型下最新发布的业务模板";
+    return;
+  }
   creating.value = true;
   errorMessage.value = "";
   try {
@@ -734,6 +792,16 @@ watch(contractId, (next, previous) => {
   }
 });
 
+watch(
+  () => [route.query.contractType, route.query.templateVersionId],
+  (next, previous) => {
+    if (!isNewDraft.value || (next[0] === previous?.[0] && next[1] === previous?.[1])) {
+      return;
+    }
+    initializeDraftFromQuery();
+  }
+);
+
 function queryText(value: unknown): string {
   return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
 }
@@ -759,13 +827,10 @@ function initializeDraftFromQuery() {
   }
   const contractTypeKey = queryText(route.query.contractType).trim();
   const templateVersionId = queryText(route.query.templateVersionId).trim();
-  if (contractTypeKey) {
-    initializeDraft.setContractTypeKey(contractTypeKey);
-    void loadTemplatesForType(contractTypeKey);
-  }
-  if (templateVersionId) {
-    initializeDraft.setBusinessTemplateVersionId(templateVersionId);
-  }
+  templatePreviewVisible.value = false;
+  initializeDraft.setContractTypeKey(contractTypeKey);
+  initializeDraft.setBusinessTemplateVersionId(templateVersionId);
+  void loadTemplatesForType(contractTypeKey);
 }
 </script>
 
@@ -808,6 +873,11 @@ function initializeDraftFromQuery() {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
+}
+
+.template-choice {
+  display: grid;
+  gap: var(--jg-space-sm);
 }
 
 .create-actions {
