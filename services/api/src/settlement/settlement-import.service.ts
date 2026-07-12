@@ -1,0 +1,632 @@
+import { createHash } from "node:crypto";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import * as ExcelJS from "exceljs";
+import type { Cell, Row, Worksheet } from "exceljs";
+import PizZip from "pizzip";
+import { AuditService } from "../audit/audit.service";
+import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
+import { parseMoneyCentsInput, parseSignedMoneyCentsInput } from "../money/decimal-money";
+import type { CreateSettlementLineDto } from "./dto/create-settlement.dto";
+import type { PreviewSettlementImportDto } from "./dto/preview-settlement-import.dto";
+import { SettlementService } from "./settlement.service";
+import { parseSettlementQuantity } from "./settlement-quantity";
+import { SettlementWorkbenchService } from "./settlement-workbench.service";
+
+export const SETTLEMENT_IMPORT_XLSX_MIME =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const DATA_SHEET = "本期结算明细";
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_DATA_ROWS = 1_000;
+const MAX_ZIP_ENTRIES = 500;
+const MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
+const MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES = 50 * 1024 * 1024;
+const VISIBLE_COLUMNS = [
+  "清单编码/行号",
+  "清单项名称",
+  "是否本期结算",
+  "本期数量",
+  "本期人工金额(分)",
+  "调整原因",
+  "备注"
+] as const;
+const SYSTEM_COLUMN = "__系统清单项标识";
+const ALL_COLUMNS = [...VISIBLE_COLUMNS, SYSTEM_COLUMN] as const;
+
+export interface SettlementImportError {
+  row: number;
+  column: string;
+  message: string;
+}
+
+interface StoredPreview {
+  selectedCount: number;
+  settlementLines: CreateSettlementLineDto[];
+  canonical: unknown | null;
+  errors: SettlementImportError[];
+  displayRows?: Array<{ contractBillRowId: string | null; sourceKey: string; name: string }>;
+}
+
+@Injectable()
+export class SettlementImportService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly files: FileService,
+    private readonly workbench: SettlementWorkbenchService,
+    private readonly settlements: SettlementService
+  ) {}
+
+  async exportTemplate(contractVersionId: string, actorUserId: string) {
+    const source = await this.workbench.sourceLines(contractVersionId);
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet(DATA_SHEET);
+    sheet.addRow([...ALL_COLUMNS]);
+    sheet.getRow(1).font = { bold: true };
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    sheet.columns = [
+      { width: 38 },
+      { width: 28 },
+      { width: 16 },
+      { width: 16 },
+      { width: 22 },
+      { width: 28 },
+      { width: 28 },
+      { width: 38, hidden: true }
+    ];
+    for (const row of source.rows) {
+      sheet.addRow([this.displaySourceKey(row), row.itemName, "否", "", "", "", "", row.id]);
+    }
+    sheet.getColumn(8).hidden = true;
+    for (let rowNumber = 2; rowNumber <= Math.max(2, source.rows.length + 1); rowNumber += 1) {
+      sheet.getCell(`C${rowNumber}`).dataValidation = {
+        type: "list",
+        allowBlank: false,
+        formulae: ['"是,否"']
+      };
+    }
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    await this.prisma.$transaction((tx) =>
+      this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.import.template.download",
+        businessType: "contract_version",
+        businessId: contractVersionId,
+        metadata: { projectId: source.projectId, sourceRowCount: source.rows.length }
+      })
+    );
+    return { buffer, fileName: "本期结算导入模板.xlsx" };
+  }
+
+  async previewImport(
+    contractVersionId: string,
+    actorUserId: string,
+    input: PreviewSettlementImportDto
+  ) {
+    const fileId = input.fileId?.trim();
+    if (!fileId) throw new BadRequestException("请选择要导入的结算 Excel 文件");
+    const source = await this.workbench.sourceLines(contractVersionId);
+    const { file, buffer } = await this.files.getFileBuffer(fileId);
+    this.assertImportFile(file, buffer, actorUserId);
+    this.assertSafeXlsxArchive(buffer);
+    const sourceRevision = this.sourceRevision(source);
+    const parsed = await this.parseWorkbook(buffer, source.rows);
+    let canonical: unknown | null = null;
+    if (parsed.errors.length === 0 && parsed.settlementLines.length > 0) {
+      try {
+        canonical = await this.settlements.previewLines(contractVersionId, {
+          settlementLines: parsed.settlementLines
+        });
+      } catch (error) {
+        parsed.errors.push({
+          row: 2,
+          column: "后台校验",
+          message: error instanceof Error ? error.message : "结算明细后台校验失败"
+        });
+      }
+    }
+    if (parsed.settlementLines.length === 0 && parsed.errors.length === 0) {
+      parsed.errors.push({
+        row: 2,
+        column: "是否本期结算",
+        message: "请至少明确选择一条本期结算明细"
+      });
+    }
+    const preview: StoredPreview = {
+      selectedCount: parsed.settlementLines.length,
+      settlementLines: parsed.settlementLines,
+      canonical,
+      errors: parsed.errors,
+      displayRows: parsed.displayRows
+    };
+    const fileSha256 = createHash("sha256").update(buffer).digest("hex");
+    const record = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.settlementImport.create({
+        data: {
+          projectId: source.projectId,
+          contractVersionId,
+          fileId,
+          fileSha256,
+          sourceRevision,
+          status: "preview",
+          preview: preview as unknown as Prisma.InputJsonValue,
+          createdByUserId: actorUserId
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.import.preview",
+        businessType: "settlement_import",
+        businessId: created.id,
+        metadata: {
+          projectId: source.projectId,
+          contractVersionId,
+          selectedCount: preview.selectedCount,
+          errorCount: preview.errors.length,
+          fileSha256,
+          sourceRevision
+        }
+      });
+      return created;
+    });
+    return { importId: record.id, sourceRevision, ...preview };
+  }
+
+  async applyImport(projectId: string, importId: string, actorUserId: string) {
+    const record = await this.prisma.settlementImport.findUnique({ where: { id: importId } });
+    if (!record) throw new NotFoundException("结算导入记录不存在");
+    this.assertProject(record.projectId, projectId);
+    if (record.status === "applied") {
+      return { importId: record.id, status: "applied", result: record.result };
+    }
+    if (record.status !== "preview") {
+      throw new BadRequestException("当前结算导入状态不可应用");
+    }
+    const preview = this.storedPreview(record.preview);
+    if (preview.errors.length > 0 || !preview.canonical) {
+      throw new BadRequestException("结算导入预检存在错误，请修正后重新预检");
+    }
+    const source = await this.workbench.sourceLines(record.contractVersionId);
+    if (this.sourceRevision(source) !== record.sourceRevision) {
+      throw new BadRequestException("合同清单或前期结算占用已变化，请重新预检后再应用");
+    }
+    const result = {
+      contractVersionId: record.contractVersionId,
+      sourceRevision: record.sourceRevision,
+      settlementLines: preview.settlementLines,
+      canonical: preview.canonical
+    };
+
+    return this.prisma.$transaction(async (tx) => {
+      const applied = await tx.settlementImport.updateMany({
+        where: { id: importId, projectId, status: "preview" },
+        data: {
+          status: "applied",
+          result: result as unknown as Prisma.InputJsonValue,
+          appliedByUserId: actorUserId,
+          appliedAt: new Date()
+        }
+      });
+      if (applied.count !== 1) {
+        const current = await tx.settlementImport.findUnique({ where: { id: importId } });
+        if (current?.status === "applied") {
+          return { importId, status: "applied", result: current.result };
+        }
+        throw new BadRequestException("结算导入状态已变化，请刷新后重试");
+      }
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.import.apply",
+        businessType: "settlement_import",
+        businessId: importId,
+        metadata: {
+          projectId,
+          contractVersionId: record.contractVersionId,
+          sourceRevision: record.sourceRevision,
+          selectedCount: preview.selectedCount
+        }
+      });
+      return { importId, status: "applied", result };
+    });
+  }
+
+  async exportErrors(projectId: string, importId: string, actorUserId: string) {
+    const record = await this.prisma.settlementImport.findUnique({ where: { id: importId } });
+    if (!record) throw new NotFoundException("结算导入记录不存在");
+    this.assertProject(record.projectId, projectId);
+    const preview = this.storedPreview(record.preview);
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("导入错误");
+    sheet.addRow(["Excel 行号", "字段", "错误原因"]);
+    preview.errors.forEach((error) => sheet.addRow([error.row, error.column, error.message]));
+    sheet.columns = [{ width: 14 }, { width: 24 }, { width: 64 }];
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    await this.prisma.$transaction((tx) =>
+      this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.import.errors.download",
+        businessType: "settlement_import",
+        businessId: importId,
+        metadata: { projectId, errorCount: preview.errors.length }
+      })
+    );
+    return { buffer, fileName: "结算导入错误.xlsx" };
+  }
+
+  async exportResult(projectId: string, importId: string, actorUserId: string) {
+    const record = await this.prisma.settlementImport.findUnique({ where: { id: importId } });
+    if (!record) throw new NotFoundException("结算导入记录不存在");
+    this.assertProject(record.projectId, projectId);
+    const preview = this.storedPreview(record.preview);
+    const canonicalSource =
+      record.status === "applied" && record.result && typeof record.result === "object"
+        ? (record.result as Record<string, unknown>).canonical
+        : preview.canonical;
+    const canonicalRows = this.canonicalRows(canonicalSource);
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("本期结算结果");
+    sheet.addRow([
+      "清单编码/行号",
+      "明细名称",
+      "计算模式",
+      "本期数量",
+      "合同单价",
+      "后台金额(分)",
+      "调整原因",
+      "备注"
+    ]);
+    const displayById = new Map(
+      (preview.displayRows ?? [])
+        .filter((row) => row.contractBillRowId)
+        .map((row) => [row.contractBillRowId as string, row])
+    );
+    for (const row of canonicalRows) {
+      const display = row.contractBillRowId ? displayById.get(row.contractBillRowId) : undefined;
+      sheet.addRow([
+        display?.sourceKey ?? "",
+        row.name ?? "",
+        this.calculationModeLabel(row.calculationMode),
+        row.quantity ?? "",
+        row.unitPrice ?? "",
+        row.amountCents ?? "",
+        row.reason ?? "",
+        row.remark ?? ""
+      ]);
+    }
+    sheet.columns = [
+      { width: 38 },
+      { width: 28 },
+      { width: 20 },
+      { width: 18 },
+      { width: 18 },
+      { width: 24 },
+      { width: 28 },
+      { width: 28 }
+    ];
+    const errorSheet = workbook.addWorksheet("导入错误");
+    errorSheet.addRow(["Excel 行号", "字段", "错误原因"]);
+    preview.errors.forEach((error) =>
+      errorSheet.addRow([error.row, error.column, error.message])
+    );
+    errorSheet.columns = [{ width: 14 }, { width: 24 }, { width: 64 }];
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    await this.prisma.$transaction((tx) =>
+      this.audit.record(tx, {
+        actorUserId,
+        action: "settlement.import.result.download",
+        businessType: "settlement_import",
+        businessId: importId,
+        metadata: {
+          projectId,
+          status: record.status,
+          selectedCount: canonicalRows.length,
+          errorCount: preview.errors.length
+        }
+      })
+    );
+    return { buffer, fileName: "结算导入结果.xlsx" };
+  }
+
+  private async parseWorkbook(
+    buffer: Buffer,
+    sourceRows: Array<{
+      id: string;
+      itemName: string;
+      itemCode: string | null;
+      billKey: string;
+      rowKey: string;
+      calculationMode: "normal_auto" | "manual_amount";
+    }>
+  ): Promise<{
+    settlementLines: CreateSettlementLineDto[];
+    errors: SettlementImportError[];
+    displayRows: Array<{ contractBillRowId: string | null; sourceKey: string; name: string }>;
+  }> {
+    const workbook = new ExcelJS.Workbook();
+    try {
+      await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    } catch {
+      throw new BadRequestException("Excel 文件无法解析，请确认文件完整且格式正确");
+    }
+    const sheet = workbook.getWorksheet(DATA_SHEET);
+    if (!sheet) throw new BadRequestException(`Excel 文件缺少“${DATA_SHEET}”工作表`);
+    if (((sheet.model as unknown as { merges?: string[] }).merges ?? []).length > 0) {
+      throw new BadRequestException("结算导入 Excel 不允许合并单元格");
+    }
+    const headers = ALL_COLUMNS.map((_column, index) => this.cellText(sheet.getRow(1).getCell(index + 1)));
+    if (headers.some((header, index) => header !== ALL_COLUMNS[index])) {
+      throw new BadRequestException("Excel 表头不正确，请重新下载结算导入模板");
+    }
+    const dataRowCount = Math.max(0, sheet.actualRowCount - 1);
+    if (dataRowCount > MAX_DATA_ROWS) {
+      throw new BadRequestException(`结算导入一次最多支持 ${MAX_DATA_ROWS} 行`);
+    }
+    this.assertNoFormulas(sheet);
+
+    const sourceById = new Map(sourceRows.map((row) => [row.id, row]));
+    const sourceByKey = new Map<string, typeof sourceRows>();
+    for (const row of sourceRows) {
+      const key = this.displaySourceKey(row);
+      sourceByKey.set(key, [...(sourceByKey.get(key) ?? []), row]);
+    }
+    const seen = new Set<string>();
+    const errors: SettlementImportError[] = [];
+    const settlementLines: CreateSettlementLineDto[] = [];
+    const displayRows: Array<{ contractBillRowId: string | null; sourceKey: string; name: string }> = [];
+    sheet.eachRow((row: Row, rowNumber: number) => {
+      if (rowNumber === 1 || this.blankRow(row)) return;
+      const selectedText = this.cellText(row.getCell(3));
+      const selected = this.selection(selectedText, rowNumber, errors);
+      if (!selected) return;
+      const visibleSourceKey = this.cellText(row.getCell(1));
+      const systemSourceId = this.cellText(row.getCell(8));
+      const name = this.cellText(row.getCell(2));
+      const quantity = this.cellText(row.getCell(4));
+      const amount = this.moneyCellText(row.getCell(5), rowNumber, errors);
+      const reason = this.cellText(row.getCell(6));
+      const remark = this.cellText(row.getCell(7));
+      if (systemSourceId || visibleSourceKey) {
+        const matchedByKey = sourceByKey.get(visibleSourceKey) ?? [];
+        const source = systemSourceId
+          ? sourceById.get(systemSourceId)
+          : matchedByKey.length === 1
+            ? matchedByKey[0]
+            : undefined;
+        if (!source) {
+          errors.push({
+            row: rowNumber,
+            column: "清单编码/行号",
+            message: matchedByKey.length > 1 ? "清单编码存在歧义，请重新下载模板" : "清单项不属于当前有效合同版本"
+          });
+          return;
+        }
+        const expectedKey = this.displaySourceKey(source);
+        if (visibleSourceKey !== expectedKey) {
+          errors.push({ row: rowNumber, column: "清单编码/行号", message: "清单编码与系统匹配列不一致，请重新下载模板" });
+          return;
+        }
+        if (seen.has(source.id)) {
+          errors.push({ row: rowNumber, column: "清单编码/行号", message: "同一合同清单项不能重复选择" });
+          return;
+        }
+        seen.add(source.id);
+        if (source.calculationMode === "normal_auto" && !quantity) {
+          errors.push({ row: rowNumber, column: "本期数量", message: "正常计价行必须填写本期数量" });
+          return;
+        }
+        if (quantity && !this.validQuantity(quantity, rowNumber, errors)) return;
+        if (source.calculationMode === "manual_amount" && !amount) {
+          errors.push({ row: rowNumber, column: "本期人工金额(分)", message: "非自动计价行必须填写本期人工金额" });
+          return;
+        }
+        if (
+          source.calculationMode === "manual_amount" &&
+          amount &&
+          !this.validMoney(amount, rowNumber, false, errors)
+        ) return;
+        settlementLines.push({
+          sourceType: "contract_bill_row",
+          contractBillRowId: source.id,
+          ...(quantity ? { quantity } : {}),
+          ...(source.calculationMode === "manual_amount" && amount ? { amountCents: amount } : {}),
+          ...(reason ? { reason } : {}),
+          ...(remark ? { remark } : {})
+        });
+        displayRows.push({ contractBillRowId: source.id, sourceKey: expectedKey, name: source.itemName });
+        return;
+      }
+      if (!name) errors.push({ row: rowNumber, column: "清单项名称", message: "手工调整必须填写名称" });
+      if (!amount) errors.push({ row: rowNumber, column: "本期人工金额(分)", message: "手工调整必须填写金额" });
+      if (!reason) errors.push({ row: rowNumber, column: "调整原因", message: "手工调整必须填写原因" });
+      if (!name || !amount || !reason) return;
+      if (!this.validMoney(amount, rowNumber, true, errors)) return;
+      settlementLines.push({
+        sourceType: "manual_adjustment",
+        name,
+        amountCents: amount,
+        reason,
+        ...(remark ? { remark } : {})
+      });
+      displayRows.push({ contractBillRowId: null, sourceKey: "", name });
+    });
+    return { settlementLines, errors, displayRows };
+  }
+
+  private assertImportFile(
+    file: {
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      uploadedByUserId: string;
+      storageStatus: string;
+    },
+    buffer: Buffer,
+    actorUserId: string
+  ) {
+    if (file.storageStatus !== "active") throw new BadRequestException("结算导入文件已失效，请重新上传");
+    if (file.uploadedByUserId !== actorUserId) {
+      throw new BadRequestException("只能预检当前账号上传的结算文件");
+    }
+    if (file.sizeBytes !== buffer.length || buffer.length > MAX_FILE_BYTES) {
+      throw new BadRequestException("结算导入文件大小不正确或超过 10 MB");
+    }
+    if (file.mimeType !== SETTLEMENT_IMPORT_XLSX_MIME || !file.originalName.toLowerCase().endsWith(".xlsx")) {
+      throw new BadRequestException("结算导入只支持 XLSX 文件");
+    }
+  }
+
+  private assertNoFormulas(sheet: Worksheet) {
+    sheet.eachRow((row) =>
+      row.eachCell((cell) => {
+        const value = cell.value;
+        if (
+          value &&
+          typeof value === "object" &&
+          ("formula" in value || "sharedFormula" in value)
+        ) {
+          throw new BadRequestException("Excel 不允许使用公式，请将公式结果粘贴为数值后重新导入");
+        }
+      })
+    );
+  }
+
+  private assertSafeXlsxArchive(buffer: Buffer) {
+    let zip: InstanceType<typeof PizZip>;
+    try {
+      zip = new PizZip(buffer);
+    } catch {
+      throw new BadRequestException("Excel 压缩包结构异常或解压后内容过大，无法导入");
+    }
+    const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+    if (entries.length === 0 || entries.length > MAX_ZIP_ENTRIES) {
+      throw new BadRequestException("Excel 压缩包结构异常或解压后内容过大，无法导入");
+    }
+    let totalUncompressedBytes = 0;
+    for (const entry of entries) {
+      const uncompressedBytes = (
+        entry as unknown as { _data?: { uncompressedSize?: number } }
+      )._data?.uncompressedSize;
+      if (
+        !Number.isSafeInteger(uncompressedBytes) ||
+        (uncompressedBytes ?? -1) < 0 ||
+        (uncompressedBytes ?? 0) > MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES
+      ) {
+        throw new BadRequestException("Excel 压缩包结构异常或解压后内容过大，无法导入");
+      }
+      totalUncompressedBytes += uncompressedBytes ?? 0;
+      if (totalUncompressedBytes > MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES) {
+        throw new BadRequestException("Excel 压缩包结构异常或解压后内容过大，无法导入");
+      }
+    }
+  }
+
+  private blankRow(row: Row): boolean {
+    return ALL_COLUMNS.every((_column, index) => !this.cellText(row.getCell(index + 1)));
+  }
+
+  private selection(value: string, row: number, errors: SettlementImportError[]): boolean {
+    if (["是", "yes", "y", "1", "true"].includes(value.toLowerCase())) return true;
+    if (["", "否", "no", "n", "0", "false"].includes(value.toLowerCase())) return false;
+    errors.push({ row, column: "是否本期结算", message: "只能填写是或否" });
+    return false;
+  }
+
+  private moneyCellText(cell: Cell, row: number, errors: SettlementImportError[]): string {
+    if (typeof cell.value === "number" && !Number.isSafeInteger(cell.value)) {
+      errors.push({ row, column: "本期人工金额(分)", message: "大额金额必须按文本填写，不能使用 Excel 数值" });
+      return "";
+    }
+    return this.cellText(cell);
+  }
+
+  private validQuantity(value: string, row: number, errors: SettlementImportError[]): boolean {
+    try {
+      const quantity = parseSettlementQuantity(value);
+      if (!quantity || quantity.isNegative()) throw new Error();
+      return true;
+    } catch {
+      errors.push({ row, column: "本期数量", message: "本期数量必须是非负数，最多 6 位小数" });
+      return false;
+    }
+  }
+
+  private validMoney(
+    value: string,
+    row: number,
+    signed: boolean,
+    errors: SettlementImportError[]
+  ): boolean {
+    try {
+      if (signed) {
+        parseSignedMoneyCentsInput(value, "本期人工金额");
+      } else {
+        parseMoneyCentsInput(value, "本期人工金额");
+      }
+      return true;
+    } catch {
+      errors.push({
+        row,
+        column: "本期人工金额(分)",
+        message: signed
+          ? "手工调整金额必须按分填写为整数"
+          : "非自动计价金额必须按分填写为非负整数"
+      });
+      return false;
+    }
+  }
+
+  private cellText(cell: Cell): string {
+    const value = cell.value;
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    if (typeof value === "object" && "richText" in value && Array.isArray(value.richText)) {
+      return value.richText.map((part) => String(part.text ?? "")).join("").trim();
+    }
+    return "";
+  }
+
+  private sourceRevision(source: unknown): string {
+    return createHash("sha256").update(JSON.stringify(source)).digest("hex");
+  }
+
+  private storedPreview(value: Prisma.JsonValue): StoredPreview {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new BadRequestException("结算导入预检结果损坏，请重新预检");
+    }
+    const preview = value as unknown as StoredPreview;
+    if (!Array.isArray(preview.errors) || !Array.isArray(preview.settlementLines)) {
+      throw new BadRequestException("结算导入预检结果损坏，请重新预检");
+    }
+    return preview;
+  }
+
+  private canonicalRows(value: unknown): Array<Record<string, string | null>> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const lines = (value as { lines?: unknown }).lines;
+    if (!Array.isArray(lines)) return [];
+    return lines.filter(
+      (line): line is Record<string, string | null> =>
+        !!line && typeof line === "object" && !Array.isArray(line)
+    );
+  }
+
+  private displaySourceKey(row: { itemCode: string | null; billKey: string; rowKey: string }): string {
+    return row.itemCode?.trim() || `${row.billKey}/${row.rowKey}`;
+  }
+
+  private calculationModeLabel(value: string | null | undefined): string {
+    return {
+      normal_auto: "自动计价",
+      manual_amount: "人工金额",
+      manual_adjustment: "人工调整"
+    }[value ?? ""] ?? "历史明细";
+  }
+
+  private assertProject(actualProjectId: string, requestedProjectId: string) {
+    if (actualProjectId !== requestedProjectId) {
+      throw new BadRequestException("结算导入记录不属于当前项目");
+    }
+  }
+}

@@ -315,6 +315,27 @@ model SettlementLine {
   @@index([contractBillRowId])
 }
 
+model SettlementImport {
+  id                String    @id @default(uuid())
+  projectId         String
+  contractVersionId String
+  fileId            String
+  fileSha256        String
+  sourceRevision    String
+  status            String    @default("preview")
+  preview           Json
+  result            Json?
+  createdByUserId   String
+  appliedByUserId   String?
+  appliedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([projectId, createdAt])
+  @@index([contractVersionId, createdAt])
+  @@index([fileId])
+}
+
 model SettlementArchiveFile {
   id                String    @id @default(uuid())
   settlementId      String
