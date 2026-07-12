@@ -4,14 +4,12 @@ import {
   canApplyImport,
   clauseDocumentText,
   clauseReadinessMessages,
-  defaultOfflineRevisionLabel,
   documentsWithStaleFlag,
   documentWarnings,
   importPreviewErrors,
   importPreviewCounts,
   importPreviewRows,
   normalizeClauseDocument,
-  offlineRevisionFormForVersionChange,
   selectedBillForDownload,
   updateRowPreservingKey,
   type WorkbenchBill
@@ -99,25 +97,6 @@ describe("contract bill editor helpers", () => {
       { id: "doc-1", status: "success", sourceRevision: 4, stale: true },
       { id: "doc-2", status: "success", sourceRevision: 5, stale: false }
     ]);
-  });
-
-  it("resets selected offline revision form only when version changes", () => {
-    const selected = {
-      file: { id: "file-1" },
-      label: "业主修订稿",
-      note: "线下沟通后调整",
-      confirmed: true
-    };
-
-    expect(offlineRevisionFormForVersionChange(selected, "version-1", "version-1")).toEqual(
-      selected
-    );
-    expect(offlineRevisionFormForVersionChange(selected, "version-1", "version-2")).toEqual({
-      file: null,
-      label: defaultOfflineRevisionLabel,
-      note: "",
-      confirmed: false
-    });
   });
 
   it("keeps clause content in a constrained JSON document model", () => {

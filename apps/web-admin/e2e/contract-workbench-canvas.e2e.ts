@@ -48,7 +48,7 @@ test("合同工作台以正文为中央画布并在侧栏保留业务与就绪�
   await page.route("**/api/contract-layout-templates*", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route("**/api/contract-workbench/version-1/offline-revisions", (route) =>
+  await page.route("**/api/contract-workbench/version-1/negotiation-rounds", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
   await page.route("**/api/files/**", (route) => {

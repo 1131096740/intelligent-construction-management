@@ -190,85 +190,13 @@
       </div>
     </div>
 
-    <div class="offline-revisions">
-      <div class="offline-title">
-        线下修订稿
-      </div>
-      <div class="offline-form">
-        <label class="file-button">
-          <input
-            type="file"
-            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            :disabled="disabled || busy"
-            @change="uploadOfflineRevisionFile"
-          >
-          上传修订文档
-        </label>
-        <span
-          v-if="offlineRevisionFile"
-          class="file-name"
-        >
-          {{ offlineRevisionFile.originalName }}
-        </span>
-        <label class="field compact-field">
-          <span class="field-label">标签</span>
-          <t-input
-            v-model="offlineRevisionLabel"
-            :disabled="disabled || busy"
-          />
-        </label>
-        <label class="field compact-field note-field">
-          <span class="field-label">备注</span>
-          <t-textarea
-            v-model="offlineRevisionNote"
-            :disabled="disabled || busy"
-            :autosize="{ minRows: 1, maxRows: 3 }"
-          />
-        </label>
-        <label class="confirm-line">
-          <input
-            v-model="offlineRevisionConfirmed"
-            type="checkbox"
-            :disabled="disabled || busy"
-          >
-          我确认该文件为线下修改后的合同稿件，系统不自动解析其中内容
-        </label>
-        <t-button
-          theme="primary"
-          :disabled="disabled || busy || !offlineRevisionFile || !offlineRevisionConfirmed"
-          @click="submitOfflineRevision"
-        >
-          确认上传
-        </t-button>
-      </div>
-
-      <p
-        v-if="offlineRevisions.length === 0"
-        class="empty"
-      >
-        暂无线下修订稿。
-      </p>
-      <div
-        v-for="revision in offlineRevisions"
-        :key="String(revision.id)"
-        class="revision-row"
-      >
-        <div>
-          <div class="document-title">
-            {{ revisionLabel(revision) }}
-          </div>
-          <div class="document-meta">
-            {{ revisionFileText(revision) }} · {{ revisionTimeText(revision) }}
-          </div>
-          <div
-            v-if="revisionNote(revision)"
-            class="document-meta"
-          >
-            {{ revisionNote(revision) }}
-          </div>
-        </div>
-      </div>
-    </div>
+    <ContractNegotiationSection
+      :version-id="versionId"
+      :disabled="disabled"
+      :refresh-token="negotiationRefreshToken"
+      @selection="emit('negotiation-selection', $event)"
+      @changed="onNegotiationChanged"
+    />
 
     <p
       v-if="message"
@@ -283,12 +211,10 @@
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {
-  listContractOfflineRevisions,
   listContractDocuments,
   listPublishedLayoutTemplates,
   queueContractDocument,
-  retryContractDocument,
-  uploadContractOfflineRevision
+  retryContractDocument
 } from "../../../api/contract-workbench.api";
 import {
   createPrivateFileDownloadTicket,
@@ -296,22 +222,30 @@ import {
   type PrivateFileReadModel
 } from "../../../api/core-flow-read.api";
 import {
-  defaultOfflineRevisionFormState,
   documentWarnings,
   documentsWithStaleFlag,
-  offlineRevisionFormForVersionChange,
-  type OfflineRevisionFormState,
   type WorkbenchDocument
 } from "./contract-bill-editor";
+import type {
+  ContractNegotiationRoundReadModel,
+  ContractOfflineRevisionReadModel
+} from "../../../api/contract-negotiation.api";
+import ContractNegotiationSection from "./ContractNegotiationSection.vue";
 import { promptSensitiveActionReason } from "../../confirm-sensitive-action";
 
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
   disabled: boolean;
+  negotiationRefreshToken: number;
 }>();
 
 const emit = defineEmits<{
   (event: "reload"): void;
+  (event: "negotiation-changed"): void;
+  (event: "negotiation-selection", value: {
+    round: ContractNegotiationRoundReadModel;
+    revision: ContractOfflineRevisionReadModel;
+  } | null): void;
 }>();
 
 const purposeOptions = [
@@ -331,11 +265,6 @@ const purpose = ref("draft");
 const confirmationPassword = ref("");
 const rawDocuments = ref<WorkbenchDocument[]>([]);
 const attachments = ref<PrivateFileReadModel[]>([]);
-const offlineRevisions = ref<Array<Record<string, unknown>>>([]);
-const offlineRevisionFile = ref<PrivateFileReadModel | null>(null);
-const offlineRevisionLabel = ref(defaultOfflineRevisionFormState<PrivateFileReadModel>().label);
-const offlineRevisionNote = ref("");
-const offlineRevisionConfirmed = ref(false);
 const busy = ref(false);
 const message = ref("");
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -364,20 +293,9 @@ watch(
       (document) => ({ ...document })
     );
     void loadLayouts();
-    void loadOfflineRevisions();
   },
   { immediate: true }
 );
-
-watch(versionId, (nextVersionId, previousVersionId) => {
-  applyOfflineRevisionFormState(
-    offlineRevisionFormForVersionChange(
-      currentOfflineRevisionFormState(),
-      previousVersionId,
-      nextVersionId
-    )
-  );
-}, { immediate: true });
 
 watch(hasActiveDocument, (active) => {
   if (active) {
@@ -419,42 +337,6 @@ async function refreshDocuments() {
     return;
   }
   rawDocuments.value = (await listContractDocuments(versionId.value)) as WorkbenchDocument[];
-}
-
-async function loadOfflineRevisions() {
-  if (!versionId.value) {
-    offlineRevisions.value = [];
-    return;
-  }
-  const requestVersionId = versionId.value;
-  try {
-    const revisions = (await listContractOfflineRevisions(requestVersionId)) as Array<
-      Record<string, unknown>
-    >;
-    if (versionId.value === requestVersionId) {
-      offlineRevisions.value = revisions;
-    }
-  } catch (error) {
-    if (versionId.value === requestVersionId) {
-      message.value = error instanceof Error ? error.message : "线下修订稿加载失败";
-    }
-  }
-}
-
-function currentOfflineRevisionFormState(): OfflineRevisionFormState<PrivateFileReadModel> {
-  return {
-    file: offlineRevisionFile.value,
-    label: offlineRevisionLabel.value,
-    note: offlineRevisionNote.value,
-    confirmed: offlineRevisionConfirmed.value
-  };
-}
-
-function applyOfflineRevisionFormState(state: OfflineRevisionFormState<PrivateFileReadModel>) {
-  offlineRevisionFile.value = state.file;
-  offlineRevisionLabel.value = state.label;
-  offlineRevisionNote.value = state.note;
-  offlineRevisionConfirmed.value = state.confirmed;
 }
 
 function startPolling() {
@@ -544,57 +426,6 @@ async function uploadIdentityAttachment(
   }
 }
 
-async function uploadOfflineRevisionFile(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  const requestVersionId = versionId.value;
-  busy.value = true;
-  message.value = "";
-  try {
-    const uploadedFile = await uploadPrivateFile(file, file.name);
-    if (versionId.value === requestVersionId) {
-      offlineRevisionFile.value = uploadedFile;
-      message.value = "合同文档已上传，确认后记录线下修订稿";
-    }
-  } catch (error) {
-    if (versionId.value === requestVersionId) {
-      message.value = error instanceof Error ? error.message : "线下修订稿上传失败";
-    }
-  } finally {
-    busy.value = false;
-    (event.target as HTMLInputElement).value = "";
-  }
-}
-
-async function submitOfflineRevision() {
-  if (!offlineRevisionFile.value || !offlineRevisionConfirmed.value) {
-    return;
-  }
-  const requestVersionId = versionId.value;
-  busy.value = true;
-  message.value = "";
-  try {
-    await uploadContractOfflineRevision(requestVersionId, {
-      fileId: offlineRevisionFile.value.id,
-      label: offlineRevisionLabel.value.trim() || "线下修订稿",
-      note: offlineRevisionNote.value.trim() || undefined,
-      confirmationStatementAccepted: true
-    });
-    if (versionId.value === requestVersionId) {
-      applyOfflineRevisionFormState(defaultOfflineRevisionFormState<PrivateFileReadModel>());
-      await loadOfflineRevisions();
-      emit("reload");
-      message.value = "线下修订稿已记录";
-    }
-  } catch (error) {
-    if (versionId.value === requestVersionId) {
-      message.value = error instanceof Error ? error.message : "线下修订稿记录失败";
-    }
-  } finally {
-    busy.value = false;
-  }
-}
-
 function removeAttachment(fileId: string) {
   attachments.value = attachments.value.filter((file) => file.id !== fileId);
 }
@@ -648,32 +479,8 @@ function timeText(value: unknown): string {
   return typeof value === "string" && value ? new Date(value).toLocaleString() : "未完成";
 }
 
-function revisionLabel(revision: Record<string, unknown>): string {
-  return typeof revision["label"] === "string" && revision["label"]
-    ? revision["label"]
-    : "线下修订稿";
-}
-
-function revisionFileText(revision: Record<string, unknown>): string {
-  const file = revision["file"];
-  if (file && typeof file === "object") {
-    const originalName = (file as Record<string, unknown>)["originalName"];
-    if (typeof originalName === "string" && originalName) {
-      return originalName;
-    }
-  }
-  if (typeof revision["originalName"] === "string" && revision["originalName"]) {
-    return revision["originalName"];
-  }
-  return "未读取到文件名";
-}
-
-function revisionTimeText(revision: Record<string, unknown>): string {
-  return timeText(revision["confirmedAt"] ?? revision["createdAt"]);
-}
-
-function revisionNote(revision: Record<string, unknown>): string {
-  return typeof revision["note"] === "string" ? revision["note"] : "";
+function onNegotiationChanged() {
+  emit("negotiation-changed");
 }
 
 function warningsFor(document: WorkbenchDocument) {
@@ -738,8 +545,7 @@ function layoutThumbnailUrl(layout: Record<string, unknown>) {
 
 .layout-preview,
 .attachments,
-.attachment-list,
-.offline-form {
+.attachment-list {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -817,40 +623,6 @@ function layoutThumbnailUrl(layout: Record<string, unknown>) {
   font-size: 12px;
 }
 
-.offline-revisions {
-  display: grid;
-  gap: 10px;
-  padding-top: 4px;
-}
-
-.offline-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #151922;
-}
-
-.compact-field {
-  min-width: 160px;
-}
-
-.note-field {
-  min-width: 220px;
-  flex: 1;
-}
-
-.confirm-line {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #424955;
-  font-size: 12px;
-}
-
-.file-name {
-  color: #424955;
-  font-size: 12px;
-}
-
 .field {
   display: grid;
   gap: 8px;
@@ -870,7 +642,6 @@ function layoutThumbnailUrl(layout: Record<string, unknown>) {
   font-size: 12px;
 }
 
-.revision-row,
 .document-row {
   display: flex;
   align-items: center;

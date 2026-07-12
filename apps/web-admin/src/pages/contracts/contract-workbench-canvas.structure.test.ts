@@ -14,6 +14,7 @@ const canvasSource = fs.readFileSync(
 describe("contract workbench document canvas structure", () => {
   it("uses a central document canvas and one TDesign business sidebar", () => {
     expect(pageSource).toContain("ContractDocumentCanvas");
+    expect(pageSource).toContain("ContractNegotiationCanvas");
     expect(pageSource).toContain('class="document-canvas-slot"');
     expect(pageSource).toContain('class="business-sidebar"');
     expect(pageSource).toMatch(/<t-tabs\s+v-model="activeSection"/u);

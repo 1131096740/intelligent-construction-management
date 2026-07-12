@@ -656,25 +656,3 @@ export function listContractDocuments(contractVersionId: string) {
 export function retryContractDocument(documentId: string) {
   return postJson<unknown>(`/contract-documents/${documentId}/retry`);
 }
-
-export interface UploadContractOfflineRevisionInput {
-  fileId: string;
-  sourceGeneratedDocumentId?: string;
-  label?: string;
-  note?: string;
-  confirmationStatementAccepted: boolean;
-}
-
-export function listContractOfflineRevisions(contractVersionId: string) {
-  return readJson<unknown[]>(`/contract-workbench/${contractVersionId}/offline-revisions`);
-}
-
-export function uploadContractOfflineRevision(
-  contractVersionId: string,
-  body: UploadContractOfflineRevisionInput
-) {
-  return postJson<unknown>(
-    `/contract-workbench/${contractVersionId}/offline-revisions`,
-    body
-  );
-}

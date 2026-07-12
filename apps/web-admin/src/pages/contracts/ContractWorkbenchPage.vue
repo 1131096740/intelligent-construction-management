@@ -144,7 +144,15 @@
             当前状态（{{ contractVersionStatusLabel(workbench.version.status) }}）不可编辑，仅供查看。
           </p>
 
+          <ContractNegotiationCanvas
+            v-if="activeSection === 'documents'"
+            :selected="selectedNegotiation"
+            :readiness="workbench?.readiness"
+            :disabled="!editable"
+            @changed="onNegotiationChanged"
+          />
           <ContractDocumentCanvas
+            v-else
             :contract-name="workbench?.contract.name ?? ''"
             :draft-revision="workbench?.version.draftRevision ?? 0"
             :documents="canvasDocuments"
@@ -252,7 +260,10 @@
                 v-else-if="activeSection === 'documents'"
                 :workbench="workbench"
                 :disabled="!editable"
+                :negotiation-refresh-token="negotiationRefreshToken"
                 @reload="reloadCurrent"
+                @negotiation-selection="selectedNegotiation = $event"
+                @negotiation-changed="onNegotiationChanged"
               />
             </div>
           </section>
@@ -362,6 +373,7 @@ import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
 import ContractDocumentCanvas from "./workbench/ContractDocumentCanvas.vue";
 import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
+import ContractNegotiationCanvas from "./workbench/ContractNegotiationCanvas.vue";
 import ContractOverviewSection from "./workbench/ContractOverviewSection.vue";
 import ContractPartySection from "./workbench/ContractPartySection.vue";
 import ContractPaymentTermsSection from "./workbench/ContractPaymentTermsSection.vue";
@@ -369,6 +381,10 @@ import ContractPricingSection from "./workbench/ContractPricingSection.vue";
 import ContractProfessionalFieldsSection from "./workbench/ContractProfessionalFieldsSection.vue";
 import ContractReadinessPanel from "./workbench/ContractReadinessPanel.vue";
 import type { ContractDocumentCanvasRecord } from "./workbench/contract-document-canvas";
+import type {
+  ContractNegotiationRoundReadModel,
+  ContractOfflineRevisionReadModel
+} from "../../api/contract-negotiation.api";
 import {
   useContractDraft,
   type ContractDraftModel
@@ -437,6 +453,11 @@ const errorMessage = ref("");
 const transferVisible = ref(false);
 const transferUserId = ref("");
 const transferUsers = ref<Array<{ id: string; name: string }>>([]);
+const selectedNegotiation = ref<{
+  round: ContractNegotiationRoundReadModel;
+  revision: ContractOfflineRevisionReadModel;
+} | null>(null);
+const negotiationRefreshToken = ref(0);
 
 // Contract-type migration (existing loaded draft): preview -> confirm -> apply.
 const migrationVisible = ref(false);
@@ -517,6 +538,11 @@ const nextActionText = computed(() => {
   if (!editable.value) return "当前状态不可编辑";
   return `当前步骤：${activeSectionLabel.value}`;
 });
+
+function onNegotiationChanged() {
+  negotiationRefreshToken.value += 1;
+  void reloadCurrent();
+}
 
 // A contract director may view + transfer even when they cannot edit. We allow
 // transfer whenever a contract is loaded; backend enforces the actual role.
