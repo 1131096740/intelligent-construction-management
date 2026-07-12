@@ -679,6 +679,7 @@ export class SettlementService {
         version.contractId,
         settlementAmountCents
       );
+      await this.assertContractBillRowSettlementLimits(tx, settlementLines);
 
       const currentSettlementStage = await tx.paymentTermsStage.findFirst({
         where: {
@@ -815,12 +816,17 @@ export class SettlementService {
       throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
     }
 
-    await tx.$queryRaw(Prisma.sql`
+    const lockedProjects = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id"
       FROM "Project"
       WHERE "id" = ${projectId}
       FOR UPDATE
     `);
+    if (!lockedProjects[0]) {
+      throw new BadRequestException(
+        "未找到结算所属项目，不能创建结算。请刷新项目后重试。"
+      );
+    }
 
     const [
       upstreamSettlements,

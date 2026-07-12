@@ -1059,6 +1059,154 @@ describe("SettlementService", () => {
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
   });
 
+  it("rechecks contract bill row occupancy after locking the project and before every write", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([{ id: "bill-1" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "bill-row-1",
+            contractBillId: "bill-1",
+            itemName: "钢筋材料",
+            unit: "吨",
+            unitPrice: new Decimal("3200"),
+            taxInclusiveAmountCents: 100000n
+          }
+        ])
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({ ratioBps: 8000 })
+      },
+      settlement: {
+        findMany: jest.fn((args: { where?: { id?: { in?: string[] } } }) =>
+          args.where?.id?.in
+            ? Promise.resolve([{ id: "settlement-concurrent" }])
+            : Promise.resolve([])
+        ),
+        create: jest.fn().mockResolvedValue({
+          id: "settlement-new",
+          code: "JS-2026-CONCURRENT"
+        })
+      },
+      settlementLine: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            {
+              contractBillRowId: "bill-row-1",
+              settlementId: "settlement-concurrent",
+              amountCents: 50000n
+            }
+          ]),
+        createMany: jest.fn()
+      },
+      approvalInstance: { create: jest.fn() },
+      ...settlementQuotaTables()
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-CONCURRENT",
+        periodLabel: "2026-07",
+        amountCents: "60000",
+        settlementLines: [
+          {
+            sourceType: "contract_bill_row",
+            contractBillRowId: "bill-row-1",
+            quantity: "1",
+            amountCents: "60000"
+          }
+        ]
+      })
+    ).rejects.toThrow("累计结算金额不能超过合同清单金额");
+
+    expect(tx.settlementLine.findMany).toHaveBeenCalledTimes(2);
+    const [firstReadOrder, secondReadOrder] = tx.settlementLine.findMany.mock.invocationCallOrder;
+    const lockOrder = tx.$queryRaw.mock.invocationCallOrder[0];
+    expect(firstReadOrder).toBeLessThan(lockOrder);
+    expect(lockOrder).toBeLessThan(secondReadOrder);
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
+    expect(tx.projectSettlementExceptionQuotaUsage.createMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without writes when the settlement project row cannot be locked", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "missing-project"
+        })
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        findFirst: jest.fn().mockResolvedValue({ ratioBps: 8000 })
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({ id: "settlement-new", code: "JS-2026-LOCK" })
+      },
+      settlementLine: { findMany: jest.fn(), createMany: jest.fn() },
+      approvalInstance: { create: jest.fn() },
+      ...settlementQuotaTables(),
+      $queryRaw: jest.fn().mockResolvedValue([])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-2026-LOCK",
+        periodLabel: "2026-07",
+        amountCents: "100000"
+      })
+    ).rejects.toThrow("未找到结算所属项目，不能创建结算");
+
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
+    expect(tx.projectSettlementExceptionQuotaUsage.createMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("rejects duplicate contract bill row lines when their current total exceeds the bill row amount", async () => {
     const tx = {
       contractVersion: {
