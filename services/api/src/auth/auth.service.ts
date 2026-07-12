@@ -2,7 +2,8 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
-  BadRequestException
+  BadRequestException,
+  ConflictException
 } from "@nestjs/common";
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import * as bcrypt from "bcryptjs";
@@ -13,6 +14,7 @@ import type { ChangePasswordDto } from "./dto/change-password.dto";
 import type { LoginDto } from "./dto/login.dto";
 import type { LogoutDto } from "./dto/logout.dto";
 import type { RefreshTokenDto } from "./dto/refresh-token.dto";
+import type { UpdateMyProfileDto } from "./dto/update-my-profile.dto";
 import type { WxLoginDto } from "./dto/wx-login.dto";
 import { JwtTokenService } from "./jwt-token.service";
 
@@ -201,21 +203,90 @@ export class AuthService {
       throw new UnauthorizedException("当前密码不正确，请重新输入");
     }
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash: await this.hashPassword(input.newPassword),
-        mustChangePassword: false
-      }
-    });
-    await this.audit.record(this.prisma, {
-      actorUserId: user.id,
-      action: "auth.password.change",
-      businessType: "user",
-      businessId: user.id
+    const name = input.name?.trim();
+    if (storedUser.mustChangePassword && !name) {
+      throw new BadRequestException("首次登录时请输入真实姓名");
+    }
+
+    const passwordHash = await this.hashPassword(input.newPassword);
+    const updatedUser = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id: user.id },
+        data: {
+          ...(name ? { name } : {}),
+          passwordHash,
+          mustChangePassword: false
+        }
+      });
+      await tx.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() }
+      });
+      await this.audit.record(tx, {
+        actorUserId: user.id,
+        action: "auth.password.change",
+        businessType: "user",
+        businessId: user.id,
+        metadata: { nameUpdated: Boolean(name) }
+      });
+      return updated;
     });
 
-    return { ok: true };
+    return {
+      ok: true,
+      user: this.userSummary(updatedUser, await this.loadUserRoleScopes(user.id)),
+      tokens: await this.issueTokens(updatedUser)
+    };
+  }
+
+  async updateMyProfile(user: AuthenticatedUser, input: UpdateMyProfileDto) {
+    const storedUser = await this.prisma.user.findUnique({ where: { id: user.id } });
+    if (!storedUser?.isActive || !storedUser.passwordHash) {
+      throw new UnauthorizedException("当前账号无效，请重新登录");
+    }
+
+    const passwordMatched = await bcrypt.compare(input.currentPassword, storedUser.passwordHash);
+    if (!passwordMatched) {
+      throw new UnauthorizedException("当前密码不正确，请重新输入");
+    }
+
+    const name = input.name.trim();
+    let updatedUser;
+    try {
+      updatedUser = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({
+          where: { id: user.id },
+          data: { name, phone: input.phone }
+        });
+        await tx.refreshToken.updateMany({
+          where: { userId: user.id, revokedAt: null },
+          data: { revokedAt: new Date() }
+        });
+        await this.audit.record(tx, {
+          actorUserId: user.id,
+          action: "auth.profile.update",
+          businessType: "user",
+          businessId: user.id,
+          metadata: {
+            changedFields: [
+              ...(name !== storedUser.name ? ["name"] : []),
+              ...(input.phone !== storedUser.phone ? ["phone"] : [])
+            ]
+          }
+        });
+        return updated;
+      });
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+        throw new ConflictException("该手机号已被其他账号使用");
+      }
+      throw error;
+    }
+
+    return {
+      user: this.userSummary(updatedUser, await this.loadUserRoleScopes(user.id)),
+      tokens: await this.issueTokens(updatedUser)
+    };
   }
 
   async confirmPassword(userId: string, password: string) {

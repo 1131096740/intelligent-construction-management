@@ -6,6 +6,7 @@ import { ChangePasswordDto } from "./dto/change-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { LogoutDto } from "./dto/logout.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
+import { UpdateMyProfileDto } from "./dto/update-my-profile.dto";
 import { WxLoginDto } from "./dto/wx-login.dto";
 import { JwtTokenService } from "./jwt-token.service";
 
@@ -69,7 +70,11 @@ describe("authentication request validation", () => {
     { metatype: LogoutDto, value: { refreshToken: "refresh-token" } },
     {
       metatype: ChangePasswordDto,
-      value: { oldPassword: "old-password", newPassword: "new-password" }
+      value: { oldPassword: "old-password", newPassword: "new-password", name: "李明" }
+    },
+    {
+      metatype: UpdateMyProfileDto,
+      value: { name: "李明", phone: "13800000001", currentPassword: "current-password" }
     },
     { metatype: WxLoginDto, value: { code: "wx-code" } }
   ])("accepts a valid $metatype.name request", async ({ metatype, value }) => {
@@ -139,10 +144,20 @@ describe("authentication request validation", () => {
     expect(result).toBeInstanceOf(ChangePasswordDto);
     expect(result).toEqual(value);
   });
+
+  it("rejects an invalid self-service login phone", async () => {
+    const response = await getValidationResponse(
+      { name: "李明", phone: "123", currentPassword: "current-password" },
+      UpdateMyProfileDto
+    );
+
+    expect(response.errors).toContain("请输入正确的中国大陆手机号");
+  });
 });
 
 describe("AuthService", () => {
   let prisma: {
+    $transaction: jest.Mock;
     user: {
       findUnique: jest.Mock;
       update: jest.Mock;
@@ -151,6 +166,7 @@ describe("AuthService", () => {
       create: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     userPosition: {
       findMany: jest.Mock;
@@ -172,6 +188,7 @@ describe("AuthService", () => {
     process.env.JWT_ACCESS_SECRET = "test-access-secret";
     process.env.JWT_REFRESH_SECRET = "test-refresh-secret";
     prisma = {
+      $transaction: jest.fn(),
       user: {
         findUnique: jest.fn(),
         update: jest.fn()
@@ -179,7 +196,8 @@ describe("AuthService", () => {
       refreshToken: {
         create: jest.fn(),
         findUnique: jest.fn(),
-        update: jest.fn()
+        update: jest.fn(),
+        updateMany: jest.fn()
       },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([])
@@ -194,6 +212,7 @@ describe("AuthService", () => {
         create: jest.fn()
       }
     };
+    prisma.$transaction.mockImplementation(async (callback) => callback(prisma));
     tokens = new JwtTokenService();
     service = new AuthService(prisma as never, tokens);
   });
@@ -375,9 +394,20 @@ describe("AuthService", () => {
   it("changes password and clears mustChangePassword", async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",
-      passwordHash: await bcrypt.hash("old-password", 10)
+      name: "合同部 李工",
+      phone: "13800000001",
+      passwordHash: await bcrypt.hash("old-password", 10),
+      mustChangePassword: false,
+      isActive: true
     });
-    prisma.user.update.mockResolvedValue({});
+    prisma.user.update.mockResolvedValue({
+      id: "user-1",
+      name: "合同部 李工",
+      phone: "13800000001",
+      mustChangePassword: false
+    });
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    prisma.refreshToken.create.mockResolvedValue({});
     prisma.auditLog.create.mockResolvedValue({});
 
     await expect(
@@ -385,7 +415,7 @@ describe("AuthService", () => {
         { id: "user-1", name: "合同部 李工", phone: "13800000001" },
         { oldPassword: "old-password", newPassword: "new-password" }
       )
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual(expect.objectContaining({ ok: true }));
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
       data: {
@@ -399,6 +429,146 @@ describe("AuthService", () => {
         action: "auth.password.change"
       })
     });
+  });
+
+  it("requires and saves the employee's real name on the first password change", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "试运行员工",
+      phone: "13800000001",
+      passwordHash: await bcrypt.hash("old-password", 10),
+      mustChangePassword: true,
+      isActive: true
+    });
+
+    await expect(
+      service.changePassword(
+        { id: "user-1", name: "试运行员工", phone: "13800000001" },
+        { oldPassword: "old-password", newPassword: "new-password" }
+      )
+    ).rejects.toMatchObject({ status: 400, message: "首次登录时请输入真实姓名" });
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it("saves the real name and rotates refresh tokens with the first password change", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "试运行员工",
+      phone: "13800000001",
+      passwordHash: await bcrypt.hash("old-password", 10),
+      mustChangePassword: true,
+      isActive: true
+    });
+    prisma.user.update.mockResolvedValue({
+      id: "user-1",
+      name: "李明",
+      phone: "13800000001",
+      mustChangePassword: false
+    });
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    prisma.refreshToken.create.mockResolvedValue({});
+    prisma.auditLog.create.mockResolvedValue({});
+
+    const result = await service.changePassword(
+      { id: "user-1", name: "试运行员工", phone: "13800000001" },
+      { oldPassword: "old-password", newPassword: "new-password", name: "  李明  " }
+    );
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: {
+        name: "李明",
+        passwordHash: expect.any(String),
+        mustChangePassword: false
+      }
+    });
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", revokedAt: null },
+      data: { revokedAt: expect.any(Date) }
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      user: { name: "李明", phone: "13800000001", mustChangePassword: false },
+      tokens: { accessToken: expect.any(String), refreshToken: expect.any(String) }
+    });
+  });
+
+  it("updates the signed-in user's real name and login phone after password confirmation", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "旧姓名",
+      phone: "13800000001",
+      passwordHash: await bcrypt.hash("current-password", 10),
+      mustChangePassword: false,
+      isActive: true
+    });
+    prisma.user.update.mockResolvedValue({
+      id: "user-1",
+      name: "杨济旭",
+      phone: "13900000001",
+      mustChangePassword: false
+    });
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    prisma.refreshToken.create.mockResolvedValue({});
+    prisma.auditLog.create.mockResolvedValue({});
+
+    const result = await service.updateMyProfile(
+      { id: "user-1", name: "旧姓名", phone: "13800000001" },
+      { name: " 杨济旭 ", phone: "13900000001", currentPassword: "current-password" }
+    );
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { name: "杨济旭", phone: "13900000001" }
+    });
+    expect(result).toMatchObject({
+      user: { name: "杨济旭", phone: "13900000001" },
+      tokens: { accessToken: expect.any(String), refreshToken: expect.any(String) }
+    });
+  });
+
+  it("rejects a duplicate self-service login phone with a fixed Chinese conflict", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "旧姓名",
+      phone: "13800000001",
+      passwordHash: await bcrypt.hash("current-password", 10),
+      mustChangePassword: false,
+      isActive: true
+    });
+    prisma.user.update.mockRejectedValue({ code: "P2002", meta: { target: ["phone"] } });
+
+    await expect(
+      service.updateMyProfile(
+        { id: "user-1", name: "旧姓名", phone: "13800000001" },
+        { name: "杨济旭", phone: "13900000001", currentPassword: "current-password" }
+      )
+    ).rejects.toMatchObject({ status: 409, message: "该手机号已被其他账号使用" });
+
+    expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid profile confirmation password without writing", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "旧姓名",
+      phone: "13800000001",
+      passwordHash: await bcrypt.hash("current-password", 10),
+      mustChangePassword: false,
+      isActive: true
+    });
+
+    await expect(
+      service.updateMyProfile(
+        { id: "user-1", name: "旧姓名", phone: "13800000001" },
+        { name: "杨济旭", phone: "13900000001", currentPassword: "wrong-password" }
+      )
+    ).rejects.toMatchObject({ status: 401, message: "当前密码不正确，请重新输入" });
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it("keeps the existing service rule for a password shorter than eight characters", async () => {

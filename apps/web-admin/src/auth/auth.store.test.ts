@@ -157,13 +157,27 @@ describe("useAuthStore", () => {
     expect(store.refreshToken).toBe("refresh-2");
   });
 
-  it("changes password with the access token and clears the local must-change flag", async () => {
+  it("changes the first-login password, saves the real name, and rotates the local session", async () => {
     const store = await seedSession();
     store.user = { ...store.user!, mustChangePassword: true };
     store.persist();
-    globalThis.fetch = vi.fn(async () => new Response("{}", { status: 200 })) as never;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            user: {
+              ...store.user,
+              name: "杨济旭",
+              mustChangePassword: false
+            },
+            tokens: { accessToken: "access-2", refreshToken: "refresh-2", expiresIn: 900 },
+            ok: true
+          }),
+          { status: 200 }
+        )
+    ) as never;
 
-    await store.changePassword("Jgzg@2026", "Personal@2026");
+    await store.changePassword("Jgzg@2026", "Personal@2026", "杨济旭");
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "/api/auth/change-password",
@@ -174,8 +188,44 @@ describe("useAuthStore", () => {
         })
       })
     );
+    expect(JSON.parse(String((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]?.body))).toEqual({
+      oldPassword: "Jgzg@2026",
+      newPassword: "Personal@2026",
+      name: "杨济旭"
+    });
+    expect(store.accessToken).toBe("access-2");
+    expect(store.refreshToken).toBe("refresh-2");
+    expect(store.user?.name).toBe("杨济旭");
     expect(store.user?.mustChangePassword).toBe(false);
     expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain('"mustChangePassword":false');
+  });
+
+  it("updates the signed-in user's name and login phone with a rotated session", async () => {
+    const store = await seedSession();
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            user: { ...store.user, name: "杨济旭", phone: "13900000001" },
+            tokens: { accessToken: "access-3", refreshToken: "refresh-3", expiresIn: 900 }
+          }),
+          { status: 200 }
+        )
+    ) as never;
+
+    await store.updateProfile("杨济旭", "13900000001", "current-password");
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/auth/profile",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({ Authorization: "Bearer access-1" })
+      })
+    );
+    expect(store.user?.name).toBe("杨济旭");
+    expect(store.user?.phone).toBe("13900000001");
+    expect(store.accessToken).toBe("access-3");
+    expect(localStorage.getItem(AUTH_STORAGE_KEY)).toContain("13900000001");
   });
 
   it("shows a business message when password change fails", async () => {

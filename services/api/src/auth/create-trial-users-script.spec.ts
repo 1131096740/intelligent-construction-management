@@ -1,30 +1,40 @@
-const { buildUserUpdate, resolveTrialProjectName } = jest.requireActual("../../scripts/create-trial-users.cjs") as {
+const { buildUserUpdate, resolveTrialProjectName, trialUsers } = jest.requireActual("../../scripts/create-trial-users.cjs") as {
   buildUserUpdate: (
     user: { name: string; phone: string },
     passwordHash: string,
     resetExistingPassword: boolean
   ) => Record<string, unknown>;
   resolveTrialProjectName: (env: Record<string, string>, projectId: string) => string;
+  trialUsers: Array<{
+    id: string;
+    name: string;
+    positionKey: string;
+    globalPositionKeys?: string[];
+  }>;
 };
 
 describe("create-trial-users script", () => {
   const user = { name: "试运行合同员一", phone: "18800000000" };
 
-  it("preserves existing trial user password and change-password flag when no explicit reset password is provided", () => {
+  it("preserves real self-service profile data and password when no reset is requested", () => {
     expect(buildUserUpdate(user, "new-hash", false)).toEqual({
-      name: "试运行合同员一",
-      phone: "18800000000",
       isActive: true
     });
   });
 
   it("resets trial user password when TRIAL_USER_TEMP_PASSWORD is provided", () => {
     expect(buildUserUpdate(user, "new-hash", true)).toEqual({
-      name: "试运行合同员一",
-      phone: "18800000000",
       passwordHash: "new-hash",
       mustChangePassword: true,
       isActive: true
+    });
+  });
+
+  it("defines Yang Jixu as chairman and global technical administrator without a project super admin", () => {
+    expect(trialUsers.find((user) => user.id === "trial-user-chairman")).toMatchObject({
+      name: "杨济旭",
+      positionKey: "chairman",
+      globalPositionKeys: ["chairman", "super_admin"]
     });
   });
 

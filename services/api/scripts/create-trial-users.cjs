@@ -16,14 +16,21 @@ const ROLE_NAMES = {
   finance_staff: "财务部成员/出纳",
   material_director: "材料部主管",
   project_manager: "项目经理",
-  comprehensive_director: "综合部主管"
+  comprehensive_director: "综合部主管",
+  super_admin: "技术管理员"
 };
 
 const TRIAL_USERS = [
   { id: "trial-user-contract-staff-1", name: "试运行合同员一", phone: "15125127264", positionKey: "contract_staff" },
   { id: "trial-user-contract-staff-2", name: "试运行合同员二", phone: "13888254165", positionKey: "contract_staff" },
   { id: "trial-user-contract-director", name: "试运行合同主管", phone: "17687008506", positionKey: "contract_director" },
-  { id: "trial-user-chairman", name: "试运行老板", phone: "13378716681", positionKey: "chairman" },
+  {
+    id: "trial-user-chairman",
+    name: "杨济旭",
+    phone: "13378716681",
+    positionKey: "chairman",
+    globalPositionKeys: ["chairman", "super_admin"]
+  },
   { id: "trial-user-material-director", name: "试运行物资主管", phone: "18184832343", positionKey: "material_director" },
   { id: "trial-user-finance-director", name: "试运行财务总监", phone: "15987186028", positionKey: "finance_director" },
   { id: "trial-user-project-manager", name: "试运行项目经理", phone: "18669060329", positionKey: "project_manager" },
@@ -70,8 +77,6 @@ async function ensurePosition(prisma, positionKey) {
 
 function buildUserUpdate(user, passwordHash, resetExistingPassword) {
   return {
-    name: user.name,
-    phone: user.phone,
     ...(resetExistingPassword ? { passwordHash, mustChangePassword: true } : {}),
     isActive: true
   };
@@ -82,7 +87,10 @@ function resolveTrialProjectName(env, projectId) {
 }
 
 async function upsertTrialUser(prisma, user, projectId, passwordHash, resetExistingPassword) {
-  const position = await ensurePosition(prisma, user.positionKey);
+  const globalPositionKeys = user.globalPositionKeys || [user.positionKey];
+  const globalPositions = await Promise.all(
+    globalPositionKeys.map((positionKey) => ensurePosition(prisma, positionKey))
+  );
   await prisma.user.upsert({
     where: { id: user.id },
     update: buildUserUpdate(user, passwordHash, resetExistingPassword),
@@ -95,12 +103,14 @@ async function upsertTrialUser(prisma, user, projectId, passwordHash, resetExist
       isActive: true
     }
   });
-  await prisma.userPosition.deleteMany({
-    where: { userId: user.id, positionId: position.id, projectId: null }
-  });
-  await prisma.userPosition.create({
-    data: { userId: user.id, positionId: position.id, projectId: null }
-  });
+  for (const position of globalPositions) {
+    await prisma.userPosition.deleteMany({
+      where: { userId: user.id, positionId: position.id, projectId: null }
+    });
+    await prisma.userPosition.create({
+      data: { userId: user.id, positionId: position.id, projectId: null }
+    });
+  }
   await prisma.projectMember.upsert({
     where: {
       projectId_userId_positionKey: {
@@ -175,4 +185,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildUserUpdate, resolveTrialProjectName };
+module.exports = { buildUserUpdate, resolveTrialProjectName, trialUsers: TRIAL_USERS };

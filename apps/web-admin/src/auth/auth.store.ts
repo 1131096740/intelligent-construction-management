@@ -19,6 +19,11 @@ interface AuthTokens {
   expiresIn: number;
 }
 
+interface AuthenticatedSessionResponse {
+  user: AuthUser;
+  tokens: AuthTokens;
+}
+
 interface PersistedSession {
   accessToken: string;
   refreshToken: string;
@@ -162,7 +167,7 @@ export const useAuthStore = defineStore("auth", {
         return false;
       }
     },
-    async changePassword(oldPassword: string, newPassword: string) {
+    async changePassword(oldPassword: string, newPassword: string, name?: string) {
       if (!this.accessToken) {
         throw new Error("请先登录");
       }
@@ -175,7 +180,7 @@ export const useAuthStore = defineStore("auth", {
             "Content-Type": "application/json",
             Authorization: `Bearer ${this.accessToken}`
           },
-          body: JSON.stringify({ oldPassword, newPassword })
+          body: JSON.stringify({ oldPassword, newPassword, ...(name ? { name } : {}) })
         });
       } catch (error) {
         throw new Error(formatUnknownApiError(error, "修改密码失败"));
@@ -186,13 +191,41 @@ export const useAuthStore = defineStore("auth", {
         throw new Error(formatAuthError(text, response.status, "修改密码失败"));
       }
 
-      if (this.user) {
-        this.user = {
-          ...this.user,
-          mustChangePassword: false
-        };
-        this.persist();
+      const result = (await response.json()) as AuthenticatedSessionResponse;
+      this.accessToken = result.tokens.accessToken;
+      this.refreshToken = result.tokens.refreshToken;
+      this.user = normalizeUser(result.user);
+      this.persist();
+    },
+    async updateProfile(name: string, phone: string, currentPassword: string) {
+      if (!this.accessToken) {
+        throw new Error("请先登录");
       }
+
+      let response: Response;
+      try {
+        response = await fetch("/api/auth/profile", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.accessToken}`
+          },
+          body: JSON.stringify({ name, phone, currentPassword })
+        });
+      } catch (error) {
+        throw new Error(formatUnknownApiError(error, "修改账号资料失败"));
+      }
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(formatAuthError(text, response.status, "修改账号资料失败"));
+      }
+
+      const result = (await response.json()) as AuthenticatedSessionResponse;
+      this.accessToken = result.tokens.accessToken;
+      this.refreshToken = result.tokens.refreshToken;
+      this.user = normalizeUser(result.user);
+      this.persist();
     },
     async logout() {
       const refreshToken = this.refreshToken;

@@ -11,6 +11,12 @@
         @submit.prevent="submitChangePassword"
       >
         <t-input
+          v-model="form.name"
+          label="真实姓名"
+          placeholder="请输入你的真实姓名"
+          autocomplete="name"
+        />
+        <t-input
           v-model="form.oldPassword"
           label="当前密码"
           type="password"
@@ -62,6 +68,7 @@ const auth = useAuthStore();
 const submitting = ref(false);
 const errorMessage = ref("");
 const form = reactive({
+  name: "",
   oldPassword: "",
   newPassword: "",
   confirmPassword: ""
@@ -72,22 +79,37 @@ function redirectPath() {
   return typeof redirect === "string" && redirect.startsWith("/") ? redirect : "/首页";
 }
 
+function clearPasswordFields() {
+  form.oldPassword = "";
+  form.newPassword = "";
+  form.confirmPassword = "";
+}
+
 async function submitChangePassword() {
   errorMessage.value = "";
+  const name = form.name.trim();
+
+  if (!name) {
+    errorMessage.value = "请输入真实姓名";
+    clearPasswordFields();
+    return;
+  }
 
   if (form.newPassword !== form.confirmPassword) {
     errorMessage.value = "两次输入的新密码不一致";
+    clearPasswordFields();
     return;
   }
 
   submitting.value = true;
 
   try {
-    await auth.changePassword(form.oldPassword, form.newPassword);
+    await auth.changePassword(form.oldPassword, form.newPassword, name);
     await router.replace(redirectPath());
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "修改密码失败";
   } finally {
+    clearPasswordFields();
     submitting.value = false;
   }
 }

@@ -1,6 +1,106 @@
 <template>
   <div class="settings-page">
     <t-card
+      title="我的账号"
+      :bordered="true"
+      class="settings-card account-settings-card"
+    >
+      <p class="hint">
+        维护本人真实姓名和登录手机号。保存资料、修改密码都需要当前密码确认，并会记录安全审计。
+      </p>
+      <div class="account-grid">
+        <form
+          class="account-form"
+          @submit.prevent="submitProfile"
+        >
+          <h3>基本资料</h3>
+          <t-input
+            v-model="profileForm.name"
+            label="真实姓名"
+            placeholder="请输入真实姓名"
+            autocomplete="name"
+          />
+          <t-input
+            v-model="profileForm.phone"
+            label="登录手机号"
+            placeholder="请输入中国大陆手机号"
+            autocomplete="tel"
+          />
+          <t-input
+            v-model="profileForm.currentPassword"
+            label="当前密码"
+            type="password"
+            placeholder="用于确认是本人操作"
+            autocomplete="current-password"
+          />
+          <t-alert
+            v-if="profileMessage"
+            :theme="profileTone"
+            :message="profileMessage"
+          />
+          <t-button
+            theme="primary"
+            type="submit"
+            :loading="profileBusy"
+          >
+            保存基本资料
+          </t-button>
+        </form>
+
+        <form
+          class="account-form"
+          @submit.prevent="submitPassword"
+        >
+          <h3>修改登录密码</h3>
+          <t-input
+            v-model="passwordForm.currentPassword"
+            label="当前密码"
+            type="password"
+            placeholder="请输入当前密码"
+            autocomplete="current-password"
+          />
+          <t-input
+            v-model="passwordForm.newPassword"
+            label="新密码"
+            type="password"
+            placeholder="至少 8 位"
+            autocomplete="new-password"
+          />
+          <t-input
+            v-model="passwordForm.confirmPassword"
+            label="确认新密码"
+            type="password"
+            placeholder="请再次输入新密码"
+            autocomplete="new-password"
+          />
+          <t-alert
+            v-if="passwordMessage"
+            :theme="passwordTone"
+            :message="passwordMessage"
+          />
+          <t-button
+            theme="primary"
+            type="submit"
+            :loading="passwordBusy"
+          >
+            保存新密码
+          </t-button>
+        </form>
+      </div>
+      <div class="account-session-actions">
+        <span class="muted">退出后需要使用当前登录手机号和密码重新登录。</span>
+        <t-button
+          theme="danger"
+          variant="outline"
+          :loading="logoutBusy"
+          @click="submitLogout"
+        >
+          退出登录
+        </t-button>
+      </div>
+    </t-card>
+
+    <t-card
       title="个人签名"
       :bordered="true"
       class="settings-card"
@@ -214,6 +314,8 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
+import { useRouter } from "vue-router";
+import { useAuthStore } from "../../auth/auth.store";
 import {
   createCompanyEntity,
   fetchCompanyEntities,
@@ -231,6 +333,8 @@ import {
   readonlyDictionaryGroups
 } from "./system-governance-readonly.config";
 
+const router = useRouter();
+const auth = useAuthStore();
 const companyEntities = ref<CompanyEntityReadModel[]>([]);
 const signatureInput = ref<HTMLInputElement | null>(null);
 const selectedSignature = ref<File | null>(null);
@@ -243,6 +347,20 @@ const entityForm = reactive({ name: "", unifiedSocialCreditCode: "" });
 const entityBusy = ref(false);
 const entityMessage = ref("");
 const entityTone = ref<"success" | "danger">("success");
+
+const profileForm = reactive({
+  name: auth.user?.name ?? "",
+  phone: auth.user?.phone ?? "",
+  currentPassword: ""
+});
+const profileBusy = ref(false);
+const profileMessage = ref("");
+const profileTone = ref<"success" | "error">("success");
+const passwordForm = reactive({ currentPassword: "", newPassword: "", confirmPassword: "" });
+const passwordBusy = ref(false);
+const passwordMessage = ref("");
+const passwordTone = ref<"success" | "error">("success");
+const logoutBusy = ref(false);
 
 function apiDownloadUrl(url: string) {
   return url.startsWith("/files/") ? `/api${url}` : url;
@@ -268,6 +386,95 @@ async function loadEntities() {
 onMounted(async () => {
   await Promise.all([loadSignature(), loadEntities()]);
 });
+
+function clearProfilePassword() {
+  profileForm.currentPassword = "";
+}
+
+function clearPasswordForm() {
+  passwordForm.currentPassword = "";
+  passwordForm.newPassword = "";
+  passwordForm.confirmPassword = "";
+}
+
+async function submitProfile() {
+  profileMessage.value = "";
+  const name = profileForm.name.trim();
+  const phone = profileForm.phone.trim();
+  if (!name) {
+    profileTone.value = "error";
+    profileMessage.value = "请输入真实姓名";
+    clearProfilePassword();
+    return;
+  }
+  if (!/^1[3-9]\d{9}$/u.test(phone)) {
+    profileTone.value = "error";
+    profileMessage.value = "请输入正确的中国大陆手机号";
+    clearProfilePassword();
+    return;
+  }
+  if (!profileForm.currentPassword) {
+    profileTone.value = "error";
+    profileMessage.value = "请输入当前密码";
+    return;
+  }
+
+  profileBusy.value = true;
+  try {
+    await auth.updateProfile(name, phone, profileForm.currentPassword);
+    profileForm.name = auth.user?.name ?? name;
+    profileForm.phone = auth.user?.phone ?? phone;
+    profileTone.value = "success";
+    profileMessage.value = "基本资料已更新，下次请使用新手机号登录。";
+  } catch (error) {
+    profileTone.value = "error";
+    profileMessage.value = error instanceof Error ? error.message : "修改账号资料失败";
+  } finally {
+    clearProfilePassword();
+    profileBusy.value = false;
+  }
+}
+
+async function submitPassword() {
+  passwordMessage.value = "";
+  if (!passwordForm.currentPassword) {
+    passwordTone.value = "error";
+    passwordMessage.value = "请输入当前密码";
+    clearPasswordForm();
+    return;
+  }
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    passwordTone.value = "error";
+    passwordMessage.value = "两次输入的新密码不一致";
+    clearPasswordForm();
+    return;
+  }
+  if (passwordForm.newPassword.length < 8) {
+    passwordTone.value = "error";
+    passwordMessage.value = "新密码至少需要 8 个字符";
+    clearPasswordForm();
+    return;
+  }
+
+  passwordBusy.value = true;
+  try {
+    await auth.changePassword(passwordForm.currentPassword, passwordForm.newPassword);
+    passwordTone.value = "success";
+    passwordMessage.value = "登录密码已更新。";
+  } catch (error) {
+    passwordTone.value = "error";
+    passwordMessage.value = error instanceof Error ? error.message : "修改密码失败";
+  } finally {
+    clearPasswordForm();
+    passwordBusy.value = false;
+  }
+}
+
+async function submitLogout() {
+  logoutBusy.value = true;
+  await auth.logout();
+  await router.replace("/login");
+}
 
 function onSignatureSelected(event: Event) {
   const input = event.target as HTMLInputElement;
@@ -336,6 +543,41 @@ async function submitEntity() {
 
 .settings-card {
   max-width: 720px;
+}
+
+.account-settings-card {
+  max-width: 1120px;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.account-form {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--td-border-level-1-color, #ddd);
+  border-radius: 8px;
+  background: var(--td-bg-color-container-hover, #f7f8fa);
+}
+
+.account-form h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.account-session-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--td-border-level-1-color, #ddd);
 }
 
 .approval-settings-card {
@@ -556,6 +798,15 @@ async function submitEntity() {
 }
 
 @media (max-width: 900px) {
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-session-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .approval-flow-grid,
   .dictionary-grid,
   .config-grid {
