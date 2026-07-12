@@ -89,12 +89,20 @@ export interface ContractValidationRule {
   message: string;
 }
 
+export interface SupplementChangePolicy {
+  version: 1;
+  editableFieldKeys: string[];
+  editableClauseKeys: string[];
+  coreClauseKeys: string[];
+}
+
 export interface ContractTemplateSchema {
   fields: ContractFieldDefinition[];
   bills: ContractBillDefinition[];
   clauses: ContractClauseDefinition[];
   attachments: ContractAttachmentDefinition[];
   validations: ContractValidationRule[];
+  supplementChangePolicy?: SupplementChangePolicy;
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +253,25 @@ export function validateContractTemplateSchema(schema: ContractTemplateSchema): 
   assertNoDuplicateKeys(schema.clauses, "clause");
   assertNoDuplicateKeys(schema.attachments, "attachment");
   assertNoDuplicateKeys(schema.validations, "validation");
+
+  const policy = schema.supplementChangePolicy;
+  if (policy) {
+    if (policy.version !== 1) throw new Error("unsupported supplement change policy version");
+    const fieldKeys = new Set(schema.fields.map((field) => field.key));
+    const clauseKeys = new Set(schema.clauses.map((clause) => clause.key));
+    if (policy.editableFieldKeys.some((key) => !fieldKeys.has(key))) {
+      throw new Error("supplement change policy contains unknown field key");
+    }
+    if (policy.editableFieldKeys.includes("myCompanyEntity")) {
+      throw new Error("myCompanyEntity cannot be editable in supplement changes");
+    }
+    if ([...policy.editableClauseKeys, ...policy.coreClauseKeys].some((key) => !clauseKeys.has(key))) {
+      throw new Error("supplement change policy contains unknown clause key");
+    }
+    if (policy.editableClauseKeys.some((key) => policy.coreClauseKeys.includes(key))) {
+      throw new Error("core clauses cannot be editable in supplement changes");
+    }
+  }
 
   for (const bill of schema.bills) {
     if (bill.quantityScale < 0 || bill.quantityScale > 6) {

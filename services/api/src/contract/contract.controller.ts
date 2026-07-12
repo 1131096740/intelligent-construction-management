@@ -19,6 +19,7 @@ import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archi
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
 import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
+import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
 
 @Controller("contracts")
 export class ContractController {
@@ -37,6 +38,22 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.contracts.createDraft(body, user.id);
+  }
+
+  @Post(":contractVersionId/change-drafts")
+  @RequireProjectRole("contract.create")
+  createChangeDraft(
+    @Param("contractVersionId") contractVersionId: string,
+    @Body() body: CreateContractChangeDraftDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.contracts.createChangeDraft(contractVersionId, body, user.id);
+  }
+
+  @Get(":contractVersionId/change-eligibility")
+  @RequireProjectRole("contract.create")
+  changeEligibility(@Param("contractVersionId") contractVersionId: string) {
+    return this.contracts.changeEligibility(contractVersionId);
   }
 
   @Get()

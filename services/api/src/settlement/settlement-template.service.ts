@@ -605,13 +605,14 @@ export class SettlementTemplateService {
   }
 
   async recommend(projectId: string, contractVersionId: string) {
-    const context = await this.compatibilityContext(contractVersionId, projectId);
+    const run = async (tx: Prisma.TransactionClient) => {
+    const context = await this.compatibilityContext(contractVersionId, projectId, tx);
     const [published, templates] = await Promise.all([
-      this.prisma.settlementTemplateVersion.findMany({
+      tx.settlementTemplateVersion.findMany({
         where: { status: "published" },
         orderBy: [{ publishedAt: "desc" }, { id: "asc" }]
       }),
-      this.prisma.settlementTemplate.findMany({ orderBy: { code: "asc" } })
+      tx.settlementTemplate.findMany({ orderBy: { code: "asc" } })
     ]);
     const templateById = new Map(templates.map((template) => [template.id, template]));
     const choices = published.flatMap((candidate) => {
@@ -647,6 +648,11 @@ export class SettlementTemplateService {
     return choices.length === 1
       ? { selectionMode: "automatic" as const, selected: choices[0], choices }
       : { selectionMode: "choice_required" as const, selected: null, choices };
+    };
+    if (typeof (this.prisma as { $transaction?: unknown }).$transaction !== "function") {
+      return run(this.prisma as unknown as Prisma.TransactionClient);
+    }
+    return this.prisma.$transaction(run);
   }
 
   async assertPublishedCompatible(
@@ -1188,6 +1194,19 @@ export class SettlementTemplateService {
     if (!version) throw new NotFoundException("未找到可结算的合同版本，请刷新后重试");
     if (version.status !== "effective") {
       throw new BadRequestException("合同版本尚未归档生效，不能推荐或绑定结算模板");
+    }
+    const findFirst = (client.contractVersion as {
+      findFirst?: (args: unknown) => Promise<{ id: string } | null>;
+    }).findFirst;
+    if (findFirst) {
+      const latest = await findFirst.call(client.contractVersion, {
+        where: { contractId: version.contractId, status: "effective" },
+        orderBy: { versionNo: "desc" },
+        select: { id: true }
+      });
+      if (latest && latest.id !== contractVersionId) {
+        throw new BadRequestException("所选合同版本已不是当前最新生效版本，请刷新后重试");
+      }
     }
     const [contract, bills] = await Promise.all([
       client.contract.findUnique({

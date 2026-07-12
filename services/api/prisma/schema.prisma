@@ -122,6 +122,15 @@ model ContractVersion {
   changeType                String
   status                    String
   amountCents               BigInt
+  baseVersionId             String?
+  supersedesVersionId       String?
+  changeReason              String?
+  changeDirection           String?
+  changeAmountCents         BigInt?
+  originalBaseAmountCents   BigInt?
+  cumulativeIncreaseCents   BigInt    @default(0)
+  cumulativeDecreaseCents   BigInt    @default(0)
+  amountLimitType           String    @default("capped")
   effectiveAt               DateTime?
   businessTemplateVersionId String?
   layoutTemplateVersionId   String?
@@ -137,6 +146,8 @@ model ContractVersion {
   updatedAt                 DateTime  @updatedAt
 
   @@unique([contractId, versionNo])
+  @@index([baseVersionId])
+  @@index([supersedesVersionId])
 }
 
 model ContractTakeover {
@@ -836,23 +847,24 @@ model ContractBusinessTemplate {
 }
 
 model ContractBusinessTemplateVersion {
-  id                String    @id @default(uuid())
-  templateId        String
-  versionNo         Int
-  status            String    @default("draft")
-  fieldSchema       Json
-  billSchema        Json
-  clauseSchema      Json
-  attachmentSchema  Json
-  validationSchema  Json
-  submittedByUserId String?
-  publishedByUserId String?
-  publishedAt       DateTime?
-  stoppedAt         DateTime?
-  revokedAt         DateTime?
-  changeSummary     String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                     String    @id @default(uuid())
+  templateId             String
+  versionNo              Int
+  status                 String    @default("draft")
+  fieldSchema            Json
+  billSchema             Json
+  clauseSchema           Json
+  attachmentSchema       Json
+  validationSchema       Json
+  supplementChangePolicy Json?
+  submittedByUserId      String?
+  publishedByUserId      String?
+  publishedAt            DateTime?
+  stoppedAt              DateTime?
+  revokedAt              DateTime?
+  changeSummary          String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@unique([templateId, versionNo])
 }

@@ -105,6 +105,7 @@ describe("ContractWorkbenchService", () => {
         update: jest.fn().mockResolvedValue({ id: "terms-1" })
       },
       paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([]),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         createMany: jest.fn().mockResolvedValue({ count: 0 })
       },
@@ -145,6 +146,340 @@ describe("ContractWorkbenchService", () => {
       data: { status: "stale" }
     });
     expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["manual", "1200000"],
+    ["bill_sum", undefined]
+  ] as const)("fails closed when a change draft %s amount drifts from its frozen declaration", async (amountSource, manualAmountCents) => {
+    const tx = ownedVersionTx();
+    tx.contractVersion.findUnique
+      .mockResolvedValueOnce({
+        id: "version-2",
+        contractId: "contract-1",
+        status: "draft",
+        draftRevision: 4,
+        changeType: "supplement",
+        baseVersionId: "version-1",
+        changeDirection: "increase",
+        changeAmountCents: 100_000n,
+        amountCents: 1_100_000n,
+        pricingNature: "fixed_total",
+        amountSource,
+        draftData: { project_name: "旧" },
+        templateSnapshot: {
+          ...TEMPLATE_SNAPSHOT,
+          supplementChangePolicy: {
+            version: 1,
+            editableFieldKeys: ["project_name"],
+            editableClauseKeys: [],
+            coreClauseKeys: ["clause_1"]
+          }
+        },
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      })
+      .mockResolvedValueOnce({
+        id: "version-1",
+        amountCents: 1_000_000n,
+        draftData: { project_name: "旧" },
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      });
+    const service = makeService(tx);
+
+    await expect(service.saveDraft("version-2", "owner-1", {
+      expectedRevision: 4,
+      draftData: { project_name: "新" },
+      clauses: TEMPLATE_SNAPSHOT.clauseSchema,
+      pricingNature: "fixed_total",
+      amountSource,
+      ...(manualAmountCents ? { manualAmountCents } : {})
+    })).rejects.toThrow("合同当前金额必须与已声明的增减金额保持一致");
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("saves an allowed schema child inside draftData.fieldValues", async () => {
+    const changeTemplate = {
+      ...TEMPLATE_SNAPSHOT,
+      fieldSchema: [
+        ...TEMPLATE_SNAPSHOT.fieldSchema,
+        { key: "site_name", label: "项目名称", type: "text" },
+        { key: "site_address", label: "项目地址", type: "text" }
+      ],
+      supplementChangePolicy: {
+        version: 1,
+        editableFieldKeys: ["site_name"],
+        editableClauseKeys: [],
+        coreClauseKeys: ["clause_1"]
+      }
+    };
+    const baseDraftData = {
+      contractName: "原合同",
+      myCompanyEntity: "甲方公司",
+      fieldValues: { site_name: "旧项目", site_address: "旧地址" },
+      partyValues: { party_a: "甲方公司", party_b: "乙方公司" }
+    };
+    const tx = ownedVersionTx();
+    tx.contractVersion.findUnique
+      .mockResolvedValueOnce({
+        id: "version-2",
+        contractId: "contract-1",
+        status: "draft",
+        draftRevision: 4,
+        changeType: "supplement",
+        baseVersionId: "version-1",
+        changeDirection: "increase",
+        changeAmountCents: 100_000n,
+        amountCents: 1_100_000n,
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        amountAdjustmentReason: "冻结声明调整",
+        draftData: baseDraftData,
+        templateSnapshot: changeTemplate,
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      })
+      .mockResolvedValueOnce({
+        id: "version-1",
+        amountCents: 1_000_000n,
+        draftData: baseDraftData,
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      });
+    const service = makeService(tx);
+    const candidateDraftData = {
+      ...baseDraftData,
+      fieldValues: { ...baseDraftData.fieldValues, site_name: "新项目" }
+    };
+
+    await service.saveDraft("version-2", "owner-1", {
+      expectedRevision: 4,
+      draftData: candidateDraftData,
+      clauses: TEMPLATE_SNAPSHOT.clauseSchema,
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1100000",
+      amountAdjustmentReason: "冻结声明调整"
+    });
+
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ draftData: candidateDraftData })
+      })
+    );
+  });
+
+  it("rejects a wrong value type even when the field key is allowed", () => {
+    const service = makeService(ownedVersionTx()) as unknown as {
+      validateDraftAgainstTemplate(
+        draftData: Record<string, unknown>,
+        clauses: unknown[],
+        template: typeof TEMPLATE_SNAPSHOT
+      ): void;
+    };
+
+    expect(() => service.validateDraftAgainstTemplate(
+      { fieldValues: { project_name: 123 } },
+      [],
+      TEMPLATE_SNAPSHOT
+    )).toThrow("字段 project_name 填写类型不正确");
+  });
+
+  it("fails closed when a supplement tries to change any payment settlement basis field", async () => {
+    const tx = ownedVersionTx({
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([{
+          name: "进度款",
+          stageType: "progress",
+          basis: "current_settlement",
+          ratioBps: 8000,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          triggerEvent: "结算归档确认生效",
+          dueDays: 30,
+          advanceDeductionMode: "none",
+          advanceDeductionRatioBps: null,
+          advanceDeductionStartRatioBps: null,
+          requiresInvoice: true,
+          allowsEarlyPayment: false,
+          allowsInstallments: true,
+          retentionBps: null,
+          originalText: "原付款条款"
+        }]),
+        deleteMany: jest.fn(),
+        createMany: jest.fn()
+      }
+    });
+    tx.contractVersion.findUnique
+      .mockResolvedValueOnce({
+        id: "version-2",
+        contractId: "contract-1",
+        status: "draft",
+        draftRevision: 4,
+        changeType: "supplement",
+        baseVersionId: "version-1",
+        changeDirection: "increase",
+        changeAmountCents: 100_000n,
+        amountCents: 1_100_000n,
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        draftData: { project_name: "旧" },
+        templateSnapshot: TEMPLATE_SNAPSHOT,
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      })
+      .mockResolvedValueOnce({
+        id: "version-1",
+        amountCents: 1_000_000n,
+        draftData: { project_name: "旧" },
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      });
+    tx.paymentTermsVersion.findFirst.mockResolvedValue({ id: "terms-2", originalText: "原付款条款" });
+    const service = makeService(tx);
+
+    await expect(service.saveDraft("version-2", "owner-1", {
+      expectedRevision: 4,
+      draftData: { project_name: "旧" },
+      clauses: TEMPLATE_SNAPSHOT.clauseSchema,
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1100000",
+      paymentTermsOriginalText: "原付款条款",
+      paymentStages: [{
+        name: "进度款",
+        basis: "current_settlement",
+        ratioBps: 9000,
+        triggerEvent: "结算归档确认生效",
+        dueDays: 30,
+        requiresInvoice: true,
+        allowsInstallments: true,
+        originalText: "原付款条款"
+      }]
+    })).rejects.toThrow("合同变更不得修改付款条款原文或结算基础规则");
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("treats an unchanged partial payment text payload as a no-op for change drafts", async () => {
+    const tx = ownedVersionTx();
+    tx.contractVersion.findUnique
+      .mockResolvedValueOnce({
+        id: "version-2",
+        contractId: "contract-1",
+        status: "draft",
+        draftRevision: 4,
+        changeType: "supplement",
+        baseVersionId: "version-1",
+        changeDirection: "increase",
+        changeAmountCents: 100_000n,
+        amountCents: 1_100_000n,
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        draftData: { project_name: "旧" },
+        templateSnapshot: TEMPLATE_SNAPSHOT,
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      })
+      .mockResolvedValueOnce({
+        id: "version-1",
+        amountCents: 1_000_000n,
+        draftData: { project_name: "旧" },
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      });
+    tx.paymentTermsVersion.findFirst.mockResolvedValue({
+      id: "terms-2",
+      originalText: "原付款条款"
+    });
+    const service = makeService(tx);
+
+    await service.saveDraft("version-2", "owner-1", {
+      expectedRevision: 4,
+      draftData: { project_name: "旧" },
+      clauses: TEMPLATE_SNAPSHOT.clauseSchema,
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1100000",
+      amountAdjustmentReason: "冻结声明调整",
+      paymentTermsOriginalText: "原付款条款"
+    });
+
+    expect(tx.paymentTermsVersion.update).not.toHaveBeenCalled();
+    expect(tx.paymentTermsStage.deleteMany).not.toHaveBeenCalled();
+    expect(tx.paymentTermsStage.createMany).not.toHaveBeenCalled();
+  });
+
+  it("treats unchanged partial payment stages as a no-op for change drafts", async () => {
+    const storedStage = {
+      name: "进度款",
+      stageType: "progress",
+      basis: "current_settlement",
+      ratioBps: 8000,
+      fixedAmountCents: null,
+      triggerAnchor: "settlement_effective",
+      triggerEvent: "结算归档确认生效",
+      dueDays: 30,
+      advanceDeductionMode: "none",
+      advanceDeductionRatioBps: null,
+      advanceDeductionStartRatioBps: null,
+      requiresInvoice: true,
+      allowsEarlyPayment: false,
+      allowsInstallments: true,
+      retentionBps: null,
+      originalText: "原付款条款"
+    };
+    const tx = ownedVersionTx({
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue([storedStage]),
+        deleteMany: jest.fn(),
+        createMany: jest.fn()
+      }
+    });
+    tx.contractVersion.findUnique
+      .mockResolvedValueOnce({
+        id: "version-2",
+        contractId: "contract-1",
+        status: "draft",
+        draftRevision: 4,
+        changeType: "supplement",
+        baseVersionId: "version-1",
+        changeDirection: "increase",
+        changeAmountCents: 100_000n,
+        amountCents: 1_100_000n,
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        draftData: { project_name: "旧" },
+        templateSnapshot: TEMPLATE_SNAPSHOT,
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      })
+      .mockResolvedValueOnce({
+        id: "version-1",
+        amountCents: 1_000_000n,
+        draftData: { project_name: "旧" },
+        clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema
+      });
+    tx.paymentTermsVersion.findFirst.mockResolvedValue({
+      id: "terms-2",
+      originalText: "原付款条款"
+    });
+    const service = makeService(tx);
+
+    await service.saveDraft("version-2", "owner-1", {
+      expectedRevision: 4,
+      draftData: { project_name: "旧" },
+      clauses: TEMPLATE_SNAPSHOT.clauseSchema,
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1100000",
+      amountAdjustmentReason: "冻结声明调整",
+      paymentStages: [{
+        name: "进度款",
+        basis: "current_settlement",
+        ratioBps: 8000,
+        triggerEvent: "结算归档确认生效",
+        dueDays: 30,
+        requiresInvoice: true,
+        allowsInstallments: true,
+        originalText: "原付款条款"
+      }]
+    });
+
+    expect(tx.paymentTermsVersion.update).not.toHaveBeenCalled();
+    expect(tx.paymentTermsStage.deleteMany).not.toHaveBeenCalled();
+    expect(tx.paymentTermsStage.createMany).not.toHaveBeenCalled();
   });
 
   it("allows an incomplete draft to save", async () => {

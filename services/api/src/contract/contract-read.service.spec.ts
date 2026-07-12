@@ -362,12 +362,12 @@ describe("ContractReadService", () => {
         })
       },
       contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "contract-version-draft-1",
           versionNo: 1,
           status: "draft",
           amountCents: 0n
-        })
+        }])
       },
       paymentTermsVersion: {
         findFirst: jest.fn().mockResolvedValue({
@@ -420,12 +420,12 @@ describe("ContractReadService", () => {
         })
       },
       contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "contract-version-2",
           versionNo: 2,
           status: "effective",
           amountCents: 98650000n
-        })
+        }])
       },
       paymentTermsVersion: {
         findFirst: jest.fn().mockResolvedValue({
@@ -591,13 +591,13 @@ describe("ContractReadService", () => {
         findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "总部综合楼" })
       },
       contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "contract-version-2",
           contractId: "contract-1",
           versionNo: 2,
           status: "pending_archive_confirm",
           amountCents: 98650000n
-        })
+        }])
       },
       paymentTermsVersion: {
         findFirst: jest.fn().mockResolvedValue({
@@ -708,12 +708,12 @@ describe("ContractReadService", () => {
         })
       },
       contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "contract-version-2",
           versionNo: 2,
           status: "effective",
           amountCents: 100000000n
-        })
+        }])
       },
       paymentTermsVersion: {
         findFirst: jest.fn().mockResolvedValue({
@@ -891,12 +891,12 @@ describe("ContractReadService", () => {
         })
       },
       contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "contract-version-1",
           versionNo: 1,
           status: "effective",
           amountCents: 100_000_000n
-        })
+        }])
       },
       paymentTermsVersion: {
         findFirst: jest.fn().mockResolvedValue({
@@ -989,12 +989,12 @@ describe("ContractReadService", () => {
         })
       },
       contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "contract-version-1",
           versionNo: 1,
           status: "effective",
           amountCents: 100000000n
-        })
+        }])
       },
       paymentTermsVersion: {
         findFirst: jest.fn().mockResolvedValue({
@@ -1086,7 +1086,7 @@ describe("ContractReadService", () => {
       new ContractReadService({
         contract: { findFirst: jest.fn().mockResolvedValue(baseContract) },
         project,
-        contractVersion: { findFirst: jest.fn().mockResolvedValue(null) }
+        contractVersion: { findMany: jest.fn().mockResolvedValue([]) }
       } as never).getDetail("HT-2026-009")
     ).rejects.toThrow("未找到合同版本，请刷新合同台账后重试");
 
@@ -1095,7 +1095,7 @@ describe("ContractReadService", () => {
         contract: { findFirst: jest.fn().mockResolvedValue(baseContract) },
         project,
         contractVersion: {
-          findFirst: jest.fn().mockResolvedValue({ id: "version-1", contractId: "contract-1" })
+          findMany: jest.fn().mockResolvedValue([{ id: "version-1", contractId: "contract-1" }])
         },
         paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) }
       } as never).getDetail("HT-2026-009")

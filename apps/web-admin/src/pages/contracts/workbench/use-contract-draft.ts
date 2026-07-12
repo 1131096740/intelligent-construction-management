@@ -74,10 +74,15 @@ export interface InitializeDraftController {
   projectId: Ref<string>;
   contractTypeKey: Ref<string>;
   businessTemplateVersionId: Ref<string>;
+  businessScenarioId: Ref<string>;
+  scenarioTemplateMappingId: Ref<string>;
+  amountLimitType: Ref<"capped" | "unlimited">;
   canCreate: ComputedRef<boolean>;
   setProjectId: (value: string) => void;
   setContractTypeKey: (value: string) => void;
   setBusinessTemplateVersionId: (value: string) => void;
+  setBusinessScenarioSelection: (scenarioId: string, mappingId: string) => void;
+  setAmountLimitType: (value: "capped" | "unlimited") => void;
   /** Creates the draft once all three selections exist, then redirects. */
   commit: () => Promise<void>;
 }
@@ -279,6 +284,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const pausedRef = ref(false);
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let loadRequestId = 0;
   // `dirty` stays true from the first edit until a save RESOLVES successfully.
   const dirtyRef = ref(false);
 
@@ -331,7 +337,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   // -- Loading ----------------------------------------------------------------
 
   async function load(contractId: string): Promise<void> {
+    const requestId = ++loadRequestId;
     const result = (await fetchContractWorkbench(contractId)) as ContractWorkbenchReadModel;
+    if (requestId !== loadRequestId) return;
     workbench.value = result;
     contractVersionId.value = result.version.id;
     currentRevision.value = result.version.draftRevision;
@@ -382,6 +390,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     cancelScheduledSave();
     saveState.value = "saving";
 
+    const changeType = (workbench.value?.version as unknown as { changeType?: unknown })?.changeType;
+    const isChangeDraft = changeType === "change" || changeType === "supplement";
     const payload = {
       expectedRevision: currentRevision.value,
       draftData: draftDataFromModel(model),
@@ -394,8 +404,12 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       ...(model.amountAdjustmentReason
         ? { amountAdjustmentReason: model.amountAdjustmentReason }
         : {}),
-      paymentTermsOriginalText: model.paymentTermsOriginalText,
-      paymentStages: paymentStagesFromModel(model)
+      ...(!isChangeDraft
+        ? {
+            paymentTermsOriginalText: model.paymentTermsOriginalText,
+            paymentStages: paymentStagesFromModel(model)
+          }
+        : {})
     };
 
     try {
@@ -524,12 +538,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const initProjectId = ref("");
   const initContractTypeKey = ref("");
   const initBusinessTemplateVersionId = ref("");
+  const initBusinessScenarioId = ref("");
+  const initScenarioTemplateMappingId = ref("");
+  const initAmountLimitType = ref<"capped" | "unlimited">("capped");
 
   const canCreate = computed(
     () =>
       Boolean(initProjectId.value) &&
       Boolean(initContractTypeKey.value) &&
-      Boolean(initBusinessTemplateVersionId.value)
+      Boolean(initBusinessTemplateVersionId.value) &&
+      Boolean(initBusinessScenarioId.value) === Boolean(initScenarioTemplateMappingId.value)
   );
 
   async function commitDraftCreation(): Promise<void> {
@@ -537,11 +555,21 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       return;
     }
 
-    const created = await createWorkbenchDraft({
+    const basePayload = {
       projectId: initProjectId.value,
       contractTypeKey: initContractTypeKey.value,
-      businessTemplateVersionId: initBusinessTemplateVersionId.value
-    });
+      businessTemplateVersionId: initBusinessTemplateVersionId.value,
+      amountLimitType: initAmountLimitType.value
+    };
+    const created = await createWorkbenchDraft(
+      initBusinessScenarioId.value && initScenarioTemplateMappingId.value
+        ? {
+            ...basePayload,
+            businessScenarioId: initBusinessScenarioId.value,
+            scenarioTemplateMappingId: initScenarioTemplateMappingId.value
+          }
+        : basePayload
+    );
 
     options.replace(`/contracts/${created.contract.id}/workbench`);
   }
@@ -550,6 +578,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     projectId: initProjectId,
     contractTypeKey: initContractTypeKey,
     businessTemplateVersionId: initBusinessTemplateVersionId,
+    businessScenarioId: initBusinessScenarioId,
+    scenarioTemplateMappingId: initScenarioTemplateMappingId,
+    amountLimitType: initAmountLimitType,
     canCreate,
     setProjectId: (value) => {
       initProjectId.value = value;
@@ -559,6 +590,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     },
     setBusinessTemplateVersionId: (value) => {
       initBusinessTemplateVersionId.value = value;
+    },
+    setBusinessScenarioSelection: (scenarioId, mappingId) => {
+      initBusinessScenarioId.value = scenarioId;
+      initScenarioTemplateMappingId.value = mappingId;
+    },
+    setAmountLimitType: (value) => {
+      initAmountLimitType.value = value;
     },
     commit: commitDraftCreation
   };

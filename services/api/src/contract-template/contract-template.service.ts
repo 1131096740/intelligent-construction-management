@@ -108,7 +108,8 @@ export class ContractTemplateService {
       bills: v.billSchema as ContractTemplateSchema["bills"],
       clauses: v.clauseSchema as ContractTemplateSchema["clauses"],
       attachments: v.attachmentSchema as ContractTemplateSchema["attachments"],
-      validations: v.validationSchema as ContractTemplateSchema["validations"]
+      validations: v.validationSchema as ContractTemplateSchema["validations"],
+      supplementChangePolicy: (v as { supplementChangePolicy?: ContractTemplateSchema["supplementChangePolicy"] }).supplementChangePolicy
     };
   }
 
@@ -118,7 +119,8 @@ export class ContractTemplateService {
       billSchema: schema.bills as never,
       clauseSchema: schema.clauses as never,
       attachmentSchema: schema.attachments as never,
-      validationSchema: schema.validations as never
+      validationSchema: schema.validations as never,
+      supplementChangePolicy: schema.supplementChangePolicy as never
     };
   }
 

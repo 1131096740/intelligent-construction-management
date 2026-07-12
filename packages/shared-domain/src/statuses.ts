@@ -7,6 +7,7 @@ export const CONTRACT_VERSION_STATUSES = [
   "seal_approved_pending_archive",
   "pending_archive_confirm",
   "effective",
+  "superseded",
   "voided"
 ] as const;
 

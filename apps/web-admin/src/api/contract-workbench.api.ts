@@ -77,11 +77,17 @@ function saveBlob(blob: Blob, fileName: string): void {
 // Contract workbench (POST /contracts, GET/PATCH/POST /contract-workbench/…)
 // ---------------------------------------------------------------------------
 
-export interface CreateWorkbenchDraftPayload {
+type CreateWorkbenchDraftBasePayload = {
   projectId: string;
   contractTypeKey: string;
   businessTemplateVersionId: string;
-}
+  amountLimitType: "capped" | "unlimited";
+};
+
+export type CreateWorkbenchDraftPayload = CreateWorkbenchDraftBasePayload & (
+  | { businessScenarioId: string; scenarioTemplateMappingId: string }
+  | { businessScenarioId?: never; scenarioTemplateMappingId?: never }
+);
 
 export interface CreateWorkbenchDraftReadModel {
   contract: { id: string };

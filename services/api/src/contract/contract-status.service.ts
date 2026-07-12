@@ -9,7 +9,9 @@ const ALLOWED: Record<ContractVersionStatus, ContractVersionStatus[]> = {
   in_seal: ["seal_approved_pending_archive"],
   seal_approved_pending_archive: ["pending_archive_confirm"],
   pending_archive_confirm: ["effective", "seal_approved_pending_archive"],
-  effective: ["voided"],
+  effective: ["superseded", "voided"],
+  // 已替代版本仍是后续版本的直接历史基版；保持终态才能稳定追溯历史引用。
+  superseded: [],
   voided: []
 };
 

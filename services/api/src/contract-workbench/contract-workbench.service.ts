@@ -5,12 +5,15 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { isDeepStrictEqual } from "node:util";
 import type {
   ContractBillDefinition,
   ContractClauseDefinition,
-  ContractFieldDefinition
+  ContractFieldDefinition,
+  SupplementChangePolicy
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
+import { assertContractChangeContentAllowed } from "../contract/contract-change-policy";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
 import {
@@ -44,6 +47,7 @@ interface TemplateSnapshot {
   clauseSchema: ContractClauseDefinition[];
   attachmentSchema: unknown[];
   validationSchema: unknown[];
+  supplementChangePolicy?: SupplementChangePolicy;
 }
 
 interface BillSnapshot {
@@ -194,9 +198,50 @@ export class ContractWorkbenchService {
           orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
         })
       : [];
+    const baseVersion = version.baseVersionId
+      ? await this.prisma.contractVersion.findUnique({
+          where: { id: version.baseVersionId },
+          select: { id: true, versionNo: true, status: true, amountCents: true }
+        })
+      : null;
+    const isChangeVersion = version.changeType === "change" || version.changeType === "supplement";
+    const changePolicy = isChangeVersion
+      ? this.parseTemplateSnapshot(version.templateSnapshot).supplementChangePolicy ?? null
+      : null;
+    const baseAmount = version.originalBaseAmountCents ?? 0n;
+    const unlimitedTriggered =
+      isChangeVersion &&
+      version.amountLimitType === "unlimited" &&
+      (version.changeAmountCents ?? 0n) > 0n;
+    const thresholdTriggered =
+      isChangeVersion &&
+      baseAmount > 0n &&
+      (version.cumulativeIncreaseCents * 10n > baseAmount ||
+        version.cumulativeDecreaseCents * 10n > baseAmount);
     return this.toReadModel({
       contract,
       version,
+      change: {
+        isChange: isChangeVersion,
+        baseVersion,
+        changeType: version.changeType,
+        changeReason: version.changeReason,
+        changeDirection: version.changeDirection,
+        changeAmountCents: version.changeAmountCents,
+        originalBaseAmountCents: version.originalBaseAmountCents,
+        cumulativeIncreaseCents: version.cumulativeIncreaseCents,
+        cumulativeDecreaseCents: version.cumulativeDecreaseCents,
+        amountLimitType: version.amountLimitType,
+        enhancedApproval: unlimitedTriggered || thresholdTriggered,
+        enhancedApprovalReasons: [
+          ...(unlimitedTriggered ? ["unlimited_amount_change"] : []),
+          ...(thresholdTriggered ? ["cumulative_change_strictly_over_ten_percent"] : [])
+        ],
+        approvalRoute: unlimitedTriggered || thresholdTriggered
+          ? ["budget_director", "finance_director", "contract_director", "chairman_or_general_manager"]
+          : ["chairman_or_general_manager"],
+        changePolicy
+      },
       readiness: this.readinessFromSnapshot(version.readinessSnapshot),
       bills: bills.map((bill) => ({
         ...bill,
@@ -232,7 +277,30 @@ export class ContractWorkbenchService {
       this.assertRevision(version.draftRevision, input.expectedRevision);
 
       const template = this.parseTemplateSnapshot(version.templateSnapshot);
-      this.validateDraftAgainstTemplate(input.draftData, input.clauses, template);
+      const isChangeVersion =
+        version.changeType === "change" || version.changeType === "supplement";
+      const changeBase = isChangeVersion && version.baseVersionId
+        ? await tx.contractVersion.findUnique({ where: { id: version.baseVersionId } })
+        : null;
+      this.validateDraftAgainstTemplate(
+        input.draftData,
+        input.clauses,
+        template,
+        changeBase?.draftData
+      );
+      if (isChangeVersion) {
+        if (!changeBase) {
+          throw new BadRequestException("合同变更直接来源版本不存在，不能保存草稿");
+        }
+        assertContractChangeContentAllowed({
+          baseDraftData: changeBase.draftData,
+          candidateDraftData: input.draftData,
+          baseClauses: changeBase.clauseSnapshot,
+          candidateClauses: input.clauses,
+          template
+        });
+        await this.assertSupplementFixedFactsUnchanged(tx, version, input);
+      }
       const bills = await tx.contractBill.findMany({
         where: { contractVersionId }
       });
@@ -241,6 +309,19 @@ export class ContractWorkbenchService {
         input.amountSource === "bill_sum"
           ? billAmount
           : this.toCents(input.manualAmountCents, "manualAmountCents");
+      if (isChangeVersion) {
+        if (!changeBase || version.changeAmountCents === null || !version.changeDirection) {
+          throw new BadRequestException("合同变更金额声明不完整，不能保存草稿");
+        }
+        const expected = version.changeDirection === "increase"
+          ? changeBase.amountCents + version.changeAmountCents
+          : version.changeDirection === "decrease"
+            ? changeBase.amountCents - version.changeAmountCents
+            : changeBase.amountCents;
+        if (amountCents !== expected) {
+          throw new BadRequestException("合同当前金额必须与已声明的增减金额保持一致");
+        }
+      }
       if (
         input.amountSource === "manual" &&
         amountCents !== billAmount &&
@@ -269,7 +350,10 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
-      if (input.paymentTermsOriginalText !== undefined || input.paymentStages !== undefined) {
+      if (
+        !isChangeVersion &&
+        (input.paymentTermsOriginalText !== undefined || input.paymentStages !== undefined)
+      ) {
         await this.savePaymentTerms(tx, version.id, input);
       }
       await this.markOlderSuccessfulDocumentsStale(
@@ -532,6 +616,9 @@ export class ContractWorkbenchService {
         contractVersionId,
         actorUserId
       );
+      if (version.changeType === "change" || version.changeType === "supplement") {
+        throw new BadRequestException("合同变更不得切换合同类型或业务模板");
+      }
       this.assertRevision(version.draftRevision, input.expectedRevision);
       const target = await this.loadPublishedTemplate(
         tx,
@@ -1121,11 +1208,79 @@ export class ContractWorkbenchService {
   private validateDraftAgainstTemplate(
     draftData: Record<string, unknown>,
     clauses: ContractClauseDefinition[],
-    template: TemplateSnapshot
+    template: TemplateSnapshot,
+    directBaseDraftData?: Prisma.JsonValue
   ) {
     const fieldKeys = new Set(template.fieldSchema.map((field) => field.key));
-    const invalidField = Object.keys(draftData).find((key) => !fieldKeys.has(key));
+    const structuralKeys = new Set([
+      "contractName",
+      "myCompanyEntity",
+      "fieldValues",
+      "partyValues"
+    ]);
+    const directBase = directBaseDraftData &&
+      typeof directBaseDraftData === "object" &&
+      !Array.isArray(directBaseDraftData)
+      ? directBaseDraftData as Prisma.JsonObject
+      : {};
+    const invalidField = Object.keys(draftData).find(
+      (key) =>
+        !fieldKeys.has(key) &&
+        !structuralKeys.has(key) &&
+        !(
+          Object.hasOwn(directBase, key) &&
+          isDeepStrictEqual(directBase[key], draftData[key])
+        )
+    );
     if (invalidField) throw new BadRequestException("合同草稿包含模板外字段，请刷新后重试");
+    const fieldValues = draftData.fieldValues === undefined
+      ? {}
+      : this.requireObject(draftData.fieldValues, "合同专业字段");
+    const unknownNestedField = Object.keys(fieldValues).find((key) => !fieldKeys.has(key));
+    if (unknownNestedField) {
+      throw new BadRequestException(`字段 ${unknownNestedField} 未在合同模板中声明，不能保存`);
+    }
+    if (draftData.partyValues !== undefined) {
+      this.requireObject(draftData.partyValues, "合同主体字段");
+    }
+    const conflictingField = [...fieldKeys].find(
+      (key) =>
+        Object.hasOwn(draftData, key) &&
+        Object.hasOwn(fieldValues, key) &&
+        !isDeepStrictEqual(draftData[key], fieldValues[key])
+    );
+    if (conflictingField) {
+      throw new BadRequestException(`字段 ${conflictingField} 存在冲突值，请保留唯一填写位置`);
+    }
+    if (
+      draftData.contractName !== undefined &&
+      typeof draftData.contractName !== "string"
+    ) {
+      throw new BadRequestException("合同名称必须是文字");
+    }
+    if (
+      draftData.myCompanyEntity !== undefined &&
+      typeof draftData.myCompanyEntity !== "string"
+    ) {
+      throw new BadRequestException("我方签约主体必须是文字");
+    }
+    for (const field of template.fieldSchema) {
+      const value = Object.hasOwn(fieldValues, field.key)
+        ? fieldValues[field.key]
+        : draftData[field.key];
+      if (value === undefined || value === null || value === "") continue;
+      const valid = field.type === "boolean"
+        ? typeof value === "boolean"
+        : field.type === "multi_select"
+          ? Array.isArray(value) && value.every((item) => typeof item === "string")
+          : field.type === "number" || field.type === "money"
+            ? typeof value === "number" ||
+              (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)))
+            : typeof value === "string";
+      if (!valid) {
+        throw new BadRequestException(`字段 ${field.key} 填写类型不正确`);
+      }
+    }
     const clauseKeys = new Set(template.clauseSchema.map((clause) => clause.key));
     const seen = new Set<string>();
     for (const clause of clauses) {
@@ -1160,13 +1315,15 @@ export class ContractWorkbenchService {
     clauseSchema: Prisma.JsonValue;
     attachmentSchema: Prisma.JsonValue;
     validationSchema: Prisma.JsonValue;
+    supplementChangePolicy?: Prisma.JsonValue | null;
   }): TemplateSnapshot {
     return {
       fieldSchema: version.fieldSchema as unknown as ContractFieldDefinition[],
       billSchema: version.billSchema as unknown as ContractBillDefinition[],
       clauseSchema: version.clauseSchema as unknown as ContractClauseDefinition[],
       attachmentSchema: version.attachmentSchema as unknown[],
-      validationSchema: version.validationSchema as unknown[]
+      validationSchema: version.validationSchema as unknown[],
+      supplementChangePolicy: version.supplementChangePolicy as unknown as SupplementChangePolicy
     };
   }
 
@@ -1449,6 +1606,84 @@ export class ContractWorkbenchService {
     return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
       (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key])
     );
+  }
+
+  private async assertSupplementFixedFactsUnchanged(
+    tx: Prisma.TransactionClient,
+    version: {
+      id: string;
+      pricingNature: string;
+    },
+    input: SaveContractDraftDto
+  ) {
+    if (input.pricingNature !== version.pricingNature) {
+      throw new BadRequestException("合同变更不得修改计价性质");
+    }
+    if (input.paymentTermsOriginalText !== undefined || input.paymentStages !== undefined) {
+      const terms = await tx.paymentTermsVersion.findFirst({
+        where: { contractVersionId: version.id },
+        orderBy: { versionNo: "desc" },
+        select: { id: true, originalText: true }
+      });
+      if (!terms) throw new BadRequestException("合同变更付款条款快照缺失，不能保存草稿");
+      if (
+        input.paymentTermsOriginalText !== undefined &&
+        input.paymentTermsOriginalText.trim() !== terms.originalText
+      ) {
+        throw new BadRequestException("合同变更不得修改付款条款原文或结算基础规则");
+      }
+      const stages = terms
+        ? await tx.paymentTermsStage.findMany({
+            where: { paymentTermsVersionId: terms.id },
+            orderBy: { createdAt: "asc" },
+            select: {
+              name: true,
+              stageType: true,
+              basis: true,
+              ratioBps: true,
+              fixedAmountCents: true,
+              triggerAnchor: true,
+              triggerEvent: true,
+              dueDays: true,
+              advanceDeductionMode: true,
+              advanceDeductionRatioBps: true,
+              advanceDeductionStartRatioBps: true,
+              requiresInvoice: true,
+              allowsEarlyPayment: true,
+              allowsInstallments: true,
+              retentionBps: true,
+              originalText: true
+            }
+          })
+        : [];
+      if (input.paymentStages !== undefined) {
+        const incoming = input.paymentStages.map((stage) => ({
+          name: stage.name,
+          stageType: "progress",
+          basis: stage.basis,
+          ratioBps: stage.ratioBps,
+          fixedAmountCents: null,
+          triggerAnchor: "settlement_effective",
+          triggerEvent: stage.triggerEvent,
+          dueDays: stage.dueDays,
+          advanceDeductionMode: "none",
+          advanceDeductionRatioBps: null,
+          advanceDeductionStartRatioBps: null,
+          requiresInvoice: stage.requiresInvoice,
+          allowsEarlyPayment: false,
+          allowsInstallments: stage.allowsInstallments,
+          retentionBps: null,
+          originalText: stage.originalText
+        }));
+        const stored = stages.map((stage) => ({
+          ...stage,
+          fixedAmountCents: stage.fixedAmountCents?.toString() ?? null
+        }));
+        if (JSON.stringify(stored) !== JSON.stringify(incoming)) {
+          throw new BadRequestException("合同变更不得修改付款条款原文或结算基础规则");
+        }
+      }
+    }
   }
 
   private toJson(value: unknown): Prisma.InputJsonValue {

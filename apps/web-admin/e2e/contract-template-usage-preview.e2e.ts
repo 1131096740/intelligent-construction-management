@@ -59,6 +59,7 @@ test("已发布模板结构可预览、精确带入向导且全程零模板写�
   ];
   let templateMutations = 0;
   let layoutOrFileCalls = 0;
+  let templateReadCount = 0;
 
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
@@ -81,7 +82,7 @@ test("已发布模板结构可预览、精确带入向导且全程零模板写�
       contentType: "application/json",
       body: JSON.stringify({
         generatedAt: new Date().toISOString(),
-        visibleProjectCount: 1,
+        visibleProjectCount: 2,
         queues: { pending: [], blocked: [], started: [] },
         approvalCenter: {
           pendingApproval: [],
@@ -93,11 +94,13 @@ test("已发布模板结构可预览、精确带入向导且全程零模板写�
       })
     })
   );
-  await page.route("**/api/contract-templates*", (route) => {
+  await page.route("**/api/contract-templates*", async (route) => {
     if (route.request().method() !== "GET") {
       templateMutations += 1;
       return route.abort();
     }
+    templateReadCount += 1;
+    if (templateReadCount > 1) await new Promise((resolve) => setTimeout(resolve, 400));
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(templates) });
   });
   await page.route("**/api/contract-template-versions/**", (route) => {
@@ -115,8 +118,14 @@ test("已发布模板结构可预览、精确带入向导且全程零模板写�
   await page.route("**/api/projects/contract-create-options", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify([{ id: "project-1", code: "XM-001", name: "科技园项目" }])
+      body: JSON.stringify([
+        { id: "project-1", code: "XM-001", name: "科技园项目" },
+        { id: "project-2", code: "XM-002", name: "产业园项目" }
+      ])
     })
+  );
+  await page.route("**/api/contract-business-scenarios/available*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
   );
   await page.route("**/api/approval-delegations/user-options", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
@@ -142,10 +151,14 @@ test("已发布模板结构可预览、精确带入向导且全程零模板写�
   await drawer.getByRole("button", { name: "用此模板建合同" }).click();
 
   await expect(page.getByRole("heading", { name: "新建合同" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "预览所选模板" })).toBeEnabled();
   const currentUrl = new URL(page.url());
   expect(currentUrl.searchParams.get("contractType")).toBe("material_purchase");
   expect(currentUrl.searchParams.get("templateVersionId")).toBe("version-full-2");
+
+  await page.getByText("项目", { exact: true }).locator("..").locator(".t-select").click();
+  await page.locator(".t-select__dropdown:visible .t-select-option").filter({ hasText: "产业园项目" }).click();
+  await expect(page.getByRole("button", { name: "预览所选模板" })).toBeEnabled();
+  expect(new URL(page.url()).searchParams.get("templateVersionId")).toBe("version-full-2");
 
   await page.getByRole("button", { name: "预览所选模板" }).click();
   await expect(page.locator(".t-drawer").getByText("供应商名称", { exact: true })).toBeVisible();

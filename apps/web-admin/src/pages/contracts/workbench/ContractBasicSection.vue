@@ -9,7 +9,7 @@
         <span class="field-label">合同名称</span>
         <t-input
           :value="model.contractName"
-          :disabled="disabled"
+          :disabled="nameDisabled ?? disabled"
           placeholder="请输入合同名称"
           @change="(value: string) => emit('update', { contractName: value })"
         />
@@ -19,7 +19,7 @@
         <span class="field-label">我方签约主体</span>
         <t-input
           :value="model.myCompanyEntity"
-          :disabled="disabled"
+          :disabled="companyDisabled ?? disabled"
           placeholder="请输入我方公司主体"
           @change="(value: string) => emit('update', { myCompanyEntity: value })"
         />
@@ -34,6 +34,8 @@ import type { ContractDraftModel } from "./use-contract-draft";
 defineProps<{
   model: ContractDraftModel;
   disabled: boolean;
+  nameDisabled?: boolean;
+  companyDisabled?: boolean;
 }>();
 
 const emit = defineEmits<{ (event: "update", patch: Partial<ContractDraftModel>): void }>();

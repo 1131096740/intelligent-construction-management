@@ -56,8 +56,10 @@ describe("final approval OR-sign", () => {
     expect(canPerform("payment.approve", ["general_manager"])).toBe(true);
   });
 
-  it("rejects non-leadership roles from contract final approval", () => {
-    expect(canPerform("contract.approve", ["contract_director"])).toBe(false);
+  it("allows enhanced contract route roles before service-level node checks", () => {
+    expect(canPerform("contract.approve", ["budget_director"])).toBe(true);
+    expect(canPerform("contract.approve", ["finance_director"])).toBe(true);
+    expect(canPerform("contract.approve", ["contract_director"])).toBe(true);
   });
 
   it("allows payment approval route roles before service-level node checks", () => {
@@ -248,6 +250,9 @@ describe("missingRolesFor", () => {
 
   it("lists the accepted roles when the user lacks permission", () => {
     expect(missingRolesFor("contract.approve", ["employee"])).toEqual([
+      "budget_director",
+      "finance_director",
+      "contract_director",
       "chairman",
       "general_manager"
     ]);

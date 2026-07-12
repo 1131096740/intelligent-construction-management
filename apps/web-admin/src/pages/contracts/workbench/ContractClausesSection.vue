@@ -28,7 +28,7 @@
           </span>
           <t-input
             :value="clause.title"
-            :disabled="disabled"
+            :disabled="clauseDisabled(clause.key)"
             @change="(value: string) => updateClause(clause.key, { title: value })"
           />
         </label>
@@ -38,7 +38,7 @@
           <t-select
             :value="clause.numberingMode"
             :options="numberingOptions"
-            :disabled="disabled"
+            :disabled="clauseDisabled(clause.key)"
             @change="(value: 'automatic' | 'fixed') => updateClause(clause.key, { numberingMode: value })"
           />
         </label>
@@ -84,14 +84,14 @@
         <t-select
           :value="selectedClauseIds[clause.key] ?? ''"
           :options="standardClauseOptions"
-          :disabled="disabled || libraryBusy"
+          :disabled="clauseDisabled(clause.key) || libraryBusy"
           placeholder="选择已发布标准条款"
           @change="(value: string) => selectStandardClause(clause.key, value)"
         />
         <t-button
           size="small"
           variant="outline"
-          :disabled="disabled || !selectedClauseIds[clause.key]"
+          :disabled="clauseDisabled(clause.key) || !selectedClauseIds[clause.key]"
           @click="insertStandardClause(clause.key)"
         >
           插入标准条款
@@ -110,19 +110,19 @@
               <label><input
                 type="checkbox"
                 :checked="block.bold"
-                :disabled="disabled"
+                :disabled="clauseDisabled(clause.key)"
                 @change="updateParagraphMark(clause.key, index, 'bold', $event)"
               > 加粗</label>
               <label><input
                 type="checkbox"
                 :checked="block.italic"
-                :disabled="disabled"
+                :disabled="clauseDisabled(clause.key)"
                 @change="updateParagraphMark(clause.key, index, 'italic', $event)"
               > 斜体</label>
             </div>
             <t-textarea
               :value="block.text"
-              :disabled="disabled"
+              :disabled="clauseDisabled(clause.key)"
               :autosize="{ minRows: 2, maxRows: 5 }"
               @change="(value: string) => updateBlock(clause.key, index, { ...block, text: value })"
             />
@@ -131,7 +131,7 @@
           <template v-else-if="block.type === 'list'">
             <t-textarea
               :value="block.items.join('\n')"
-              :disabled="disabled"
+              :disabled="clauseDisabled(clause.key)"
               :autosize="{ minRows: 2, maxRows: 5 }"
               @change="(value: string) => updateBlock(clause.key, index, { type: 'list', items: value.split('\n') })"
             />
@@ -152,7 +152,7 @@
                 >
                   <input
                     :value="cell"
-                    :disabled="disabled"
+                    :disabled="clauseDisabled(clause.key)"
                     @input="updateTableCell(clause.key, index, rowIndex, cellIndex, $event)"
                   >
                 </td>
@@ -163,7 +163,7 @@
           <button
             type="button"
             class="link-button"
-            :disabled="disabled"
+            :disabled="clauseDisabled(clause.key)"
             @click="removeBlock(clause.key, index)"
           >
             删除块
@@ -172,21 +172,21 @@
         <div class="block-actions">
           <button
             type="button"
-            :disabled="disabled"
+            :disabled="clauseDisabled(clause.key)"
             @click="addBlock(clause.key, 'paragraph')"
           >
             段落
           </button>
           <button
             type="button"
-            :disabled="disabled"
+            :disabled="clauseDisabled(clause.key)"
             @click="addBlock(clause.key, 'list')"
           >
             列表
           </button>
           <button
             type="button"
-            :disabled="disabled"
+            :disabled="clauseDisabled(clause.key)"
             @click="addBlock(clause.key, 'table')"
           >
             小表格
@@ -223,12 +223,17 @@ import type { ContractDraftModel } from "./use-contract-draft";
 const props = defineProps<{
   model: ContractDraftModel;
   disabled: boolean;
+  editableKeys?: string[];
   readiness?: unknown;
 }>();
 
 const emit = defineEmits<{
   (event: "update", patch: Partial<ContractDraftModel>): void;
 }>();
+
+function clauseDisabled(key: string) {
+  return props.disabled || (props.editableKeys !== undefined && !props.editableKeys.includes(key));
+}
 
 const numberingOptions = [
   { label: "自动编号", value: "automatic" },

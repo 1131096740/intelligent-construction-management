@@ -19,6 +19,10 @@ export const settlementTemplateAdminRoleKeys = [
   "contract_director",
   "super_admin"
 ] as const satisfies readonly RoleKey[];
+export const contractScenarioAdminRoleKeys = [
+  "contract_director",
+  "super_admin"
+] as const satisfies readonly RoleKey[];
 
 export interface AdminNavigationItem {
   label: string;
@@ -55,6 +59,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
       { label: "合同管理", path: "/合同管理" },
       { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
       { label: "合同模板库", path: "/合同模板库" },
+      {
+        label: "合同业务场景",
+        path: "/合同业务场景",
+        requiredGlobalRoleKeys: contractScenarioAdminRoleKeys
+      },
       { label: "合作单位档案", path: "/合作单位档案" }
     ]
   },
@@ -188,6 +197,14 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/contract-templates/ContractTemplateListPage.vue")
       },
       {
+        path: "合同业务场景",
+        component: () => import("../pages/contract-templates/ContractScenarioGovernancePage.vue"),
+        meta: {
+          requiredGlobalRoleKeys: contractScenarioAdminRoleKeys,
+          title: "合同业务场景"
+        }
+      },
+      {
         path: "合同模板库/:templateId",
         component: () => import("../pages/contract-templates/ContractTemplateEditorPage.vue")
       },
@@ -292,6 +309,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "contracts/:contractId/workbench", redirect: contractWorkbenchRedirect },
       { path: "contracts/:contractId", redirect: contractDetailRedirect },
       { path: "contract-templates", redirect: "/合同模板库" },
+      { path: "contract-business-scenarios", redirect: "/合同业务场景" },
       { path: "contract-templates/:templateId", redirect: templateRedirect },
       { path: "contract-layout-templates/:layoutTemplateId", redirect: layoutTemplateRedirect },
       { path: "standard-clauses", redirect: "/合同模板库/标准条款" },

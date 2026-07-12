@@ -48,7 +48,11 @@ describe("published contract template usage preview structure", () => {
     );
     expect(workbenchSource).not.toContain("listPublishedLayoutTemplates");
     expect(workbenchSource).not.toContain("createPrivateFileDownloadTicket");
-    expect(workbenchSource).not.toContain("推荐理由");
-    expect(workbenchSource).not.toContain("业务场景");
+    expect(workbenchSource).toContain("recommendContractScenarioTemplates");
+    expect(workbenchSource).toContain("从模板库直接选择");
+    expect(workbenchSource).not.toContain("listContractScenarioGovernance");
+    expect(workbenchSource).not.toContain("createdByUserId");
+    expect(workbenchSource).not.toContain("updatedByUserId");
+    expect(workbenchSource).not.toContain("choice.priority");
   });
 });

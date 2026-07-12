@@ -50,6 +50,7 @@ import {
   type SettlementContractSourceRow
 } from "./settlement-line-calculator";
 import { SettlementTemplateService } from "./settlement-template.service";
+import { lockContractAndAssertCurrentEffective } from "../contract/contract-current-version-lock";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -312,14 +313,7 @@ export class SettlementService {
       throw new Error("结算预览服务暂不可用，请稍后重试或联系管理员");
     }
     return this.prisma.$transaction(async (tx) => {
-      const version = await tx.contractVersion.findUnique({
-        where: { id: contractVersionId },
-        select: { id: true, status: true }
-      });
-      if (!version) {
-        throw new BadRequestException("未找到可结算的合同版本，请刷新合同后重试");
-      }
-      this.assertContractVersionEffective(version.status as ContractVersionStatus);
+      const version = await lockContractAndAssertCurrentEffective(tx, contractVersionId);
       const lines = await this.normalizeSettlementLines(
         tx,
         version.id,
@@ -710,15 +704,7 @@ export class SettlementService {
     }
 
     const settlement = await this.prisma.$transaction(async (tx) => {
-      const version = await tx.contractVersion.findUnique({
-        where: { id: input.contractVersionId }
-      });
-
-      if (!version) {
-        throw new Error("未找到可结算的合同版本，请刷新合同后重试");
-      }
-
-      this.assertContractVersionEffective(version.status as ContractVersionStatus);
+      const version = await lockContractAndAssertCurrentEffective(tx, input.contractVersionId, true);
       if (this.settlementTemplates && settlementTemplateVersionId) {
         await this.settlementTemplates.assertPublishedCompatible(
           settlementTemplateVersionId,

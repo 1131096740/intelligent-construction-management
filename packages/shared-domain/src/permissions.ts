@@ -68,7 +68,12 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
 export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> = {
   "contract.create": ["contract_staff", "contract_director"],
   "contract.submit": ["contract_staff", "contract_director"],
-  "contract.approve": FINAL_APPROVAL_ROLES,
+  "contract.approve": [
+    "budget_director",
+    "finance_director",
+    "contract_director",
+    ...FINAL_APPROVAL_ROLES
+  ],
   "contract.seal": ["comprehensive_director"],
   "contract.archive.upload": ["contract_staff"],
   "contract.archive.confirm": ["contract_director"],
@@ -181,9 +186,9 @@ export function missingRolesFor(
 }
 
 /**
- * 该动作是否为仅「董事长 / 总经理或签」可进入的最终审批动作。
- * Service 层可据此做二次校验（Guard 粗放行 + Service 复校）。
+ * 该动作是否包含「董事长 / 总经理或签」最终节点。
+ * Guard 允许增强路由中的前置岗位，Service 仍按冻结节点复校。
  */
 export function isFinalApprovalAction(action: BusinessAction): boolean {
-  return ACTION_REQUIRED_ROLES[action] === FINAL_APPROVAL_ROLES;
+  return action === "contract.approve";
 }

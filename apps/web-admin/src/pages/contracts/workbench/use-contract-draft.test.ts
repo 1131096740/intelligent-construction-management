@@ -97,6 +97,28 @@ afterEach(() => {
 });
 
 describe("useContractDraft", () => {
+  it("ignores a late workbench response after a newer contract load wins", async () => {
+    const draft = makeDraft();
+    let resolveFirst!: (value: ReturnType<typeof makeWorkbench>) => void;
+    let resolveSecond!: (value: ReturnType<typeof makeWorkbench>) => void;
+    mockFetchWorkbench
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve; }));
+
+    const first = draft.load("ct-1");
+    const second = draft.load("ct-2");
+    resolveSecond(makeWorkbench({
+      contract: { ...makeWorkbench().contract, id: "ct-2" },
+      version: { ...makeWorkbench().version, id: "cv-2" }
+    }));
+    await second;
+    resolveFirst(makeWorkbench());
+    await first;
+
+    expect(draft.workbench.value?.contract.id).toBe("ct-2");
+    expect(draft.workbench.value?.version.id).toBe("cv-2");
+  });
+
   it("does not create a draft before project and type are selected", async () => {
     const replace = vi.fn();
     const draft = useContractDraft({ replace });
@@ -124,9 +146,33 @@ describe("useContractDraft", () => {
     expect(mockCreateDraft).toHaveBeenCalledWith({
       projectId: "p-1",
       contractTypeKey: "subcontract",
-      businessTemplateVersionId: "tmpl-1"
+      businessTemplateVersionId: "tmpl-1",
+      amountLimitType: "capped"
     });
     expect(replace).toHaveBeenCalledWith("/contracts/ct-9/workbench");
+  });
+
+  it("carries scenario and exact mapping only as a complete pair", async () => {
+    const replace = vi.fn();
+    const draft = useContractDraft({ replace });
+    mockCreateDraft.mockResolvedValue({ contract: { id: "ct-10" }, version: { id: "cv-10" } });
+    draft.initializeDraft.setProjectId("p-1");
+    draft.initializeDraft.setContractTypeKey("material_purchase");
+    draft.initializeDraft.setBusinessTemplateVersionId("tmpl-1");
+    draft.initializeDraft.setBusinessScenarioSelection("scenario-1", "");
+    await draft.initializeDraft.commit();
+    expect(mockCreateDraft).not.toHaveBeenCalled();
+
+    draft.initializeDraft.setBusinessScenarioSelection("scenario-1", "mapping-1");
+    await draft.initializeDraft.commit();
+    expect(mockCreateDraft).toHaveBeenCalledWith({
+      projectId: "p-1",
+      contractTypeKey: "material_purchase",
+      businessTemplateVersionId: "tmpl-1",
+      amountLimitType: "capped",
+      businessScenarioId: "scenario-1",
+      scenarioTemplateMappingId: "mapping-1"
+    });
   });
 
   it("debounces autosave", async () => {

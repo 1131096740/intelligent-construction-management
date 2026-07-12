@@ -102,7 +102,10 @@ describe("contract workbench API client", () => {
     await createWorkbenchDraft({
       projectId: "project-1",
       contractTypeKey: "material_purchase",
-      businessTemplateVersionId: "template-version-1"
+      businessTemplateVersionId: "template-version-1",
+      businessScenarioId: "scenario-1",
+      scenarioTemplateMappingId: "mapping-1",
+      amountLimitType: "unlimited"
     });
 
     expect(mockApiFetch).toHaveBeenCalledWith("/contracts", {
@@ -111,7 +114,10 @@ describe("contract workbench API client", () => {
       body: JSON.stringify({
         projectId: "project-1",
         contractTypeKey: "material_purchase",
-        businessTemplateVersionId: "template-version-1"
+        businessTemplateVersionId: "template-version-1",
+        businessScenarioId: "scenario-1",
+        scenarioTemplateMappingId: "mapping-1",
+        amountLimitType: "unlimited"
       })
     });
   });

@@ -58,6 +58,8 @@
   --jg-layout-list-filter-field-max-width: 120px;
   --jg-layout-list-filter-keyword-min-width: 150px;
   --jg-layout-template-card-min-width: 240px;
+  --jg-layout-workbench-create-max-width: 960px;
+  --jg-layout-workbench-recommendation-max-width: 880px;
   --jg-layout-form-field-min-width-wide: 160px;
   --jg-layout-form-field-min-width-compact: 140px;
   --jg-layout-control-min-height: 32px;

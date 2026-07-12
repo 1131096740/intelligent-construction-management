@@ -8,6 +8,7 @@ import { PrismaService } from "../database/prisma.service";
 import { formatMoneyCentsAsYuan } from "../money/decimal-money";
 import { SETTLEMENT_LINE_OCCUPANCY_STATUSES } from "./settlement-line-occupancy";
 import { settlementCalculationMode } from "./settlement-line-calculator";
+import { lockContractAndAssertCurrentEffective } from "../contract/contract-current-version-lock";
 
 interface SourceLineOccupancy {
   amountCents: bigint;
@@ -21,23 +22,24 @@ export class SettlementWorkbenchService {
   constructor(private readonly prisma: PrismaService) {}
 
   async sourceLines(contractVersionId: string): Promise<SettlementSourceLinesReadModel> {
-    const version = await this.prisma.contractVersion.findUnique({
-      where: { id: contractVersionId },
-      select: { id: true, contractId: true, status: true, amountCents: true }
-    });
-    if (!version) {
-      throw new NotFoundException("未找到可结算的合同版本，请刷新合同后重试");
+    if (typeof (this.prisma as { $transaction?: unknown }).$transaction !== "function") {
+      return this.sourceLinesLocked(this.prisma as unknown as Prisma.TransactionClient, contractVersionId);
     }
-    if (version.status !== "effective") {
-      throw new BadRequestException("合同尚未归档生效，不能加载结算清单。请先完成合同归档确认。");
-    }
+    return this.prisma.$transaction((tx) => this.sourceLinesLocked(tx, contractVersionId));
+  }
+
+  private async sourceLinesLocked(
+    client: Prisma.TransactionClient,
+    contractVersionId: string
+  ): Promise<SettlementSourceLinesReadModel> {
+    const version = await lockContractAndAssertCurrentEffective(client, contractVersionId);
 
     const [contract, unorderedBills] = await Promise.all([
-      this.prisma.contract.findUnique({
+      client.contract.findUnique({
         where: { id: version.contractId },
         select: { id: true, projectId: true }
       }),
-      this.prisma.contractBill.findMany({
+      client.contractBill.findMany({
         where: { contractVersionId: version.id },
         orderBy: [{ billKey: "asc" }, { id: "asc" }],
         select: {
@@ -62,7 +64,7 @@ export class SettlementWorkbenchService {
     }
 
     const billIds = bills.map((bill) => bill.id);
-    const unorderedRows = await this.prisma.contractBillRow.findMany({
+    const unorderedRows = await client.contractBillRow.findMany({
       where: { contractBillId: { in: billIds } },
       orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
       select: {
@@ -94,7 +96,7 @@ export class SettlementWorkbenchService {
       return this.emptySnapshot(version, contract.projectId);
     }
 
-    const settlementRows = await this.prisma.settlement.findMany({
+    const settlementRows = await client.settlement.findMany({
       where: {
         contractVersionId: version.id,
         status: { in: [...SETTLEMENT_LINE_OCCUPANCY_STATUSES] }
@@ -104,7 +106,7 @@ export class SettlementWorkbenchService {
     const settlementIds = settlementRows.map((settlement) => settlement.id);
     const rowIds = rows.map((row) => row.id);
     const occupiedLines = settlementIds.length
-      ? await this.prisma.settlementLine.findMany({
+      ? await client.settlementLine.findMany({
           where: {
             settlementId: { in: settlementIds },
             contractBillRowId: { in: rowIds }

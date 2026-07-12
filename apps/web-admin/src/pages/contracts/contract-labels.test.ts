@@ -11,6 +11,7 @@ describe("contract labels", () => {
     expect(contractTypeLabel("material_purchase")).toBe("材料采购合同");
     expect(contractTypeLabel("custom_type")).toBe("custom_type");
     expect(contractVersionStatusLabel("in_approval")).toBe("审批中");
+    expect(contractVersionStatusLabel("internal_status")).toBe("未知状态");
     expect(templateStatusLabel("succeeded")).toBe("已完成");
   });
 });

@@ -34,6 +34,7 @@ import {
   toHistoricalContractPaymentBalance
 } from "../payment/contract-takeover-balance";
 import type { HistoricalContractPaymentBalance } from "../payment/settlement-payment-capacity";
+import { contractChangeVersionsReadModel } from "./contract-change-read-model";
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
@@ -405,13 +406,15 @@ export class ContractReadService {
       throw new NotFoundException("未找到合同，请刷新合同台账后重试");
     }
 
-    const [project, version] = await Promise.all([
+    const [project, versions] = await Promise.all([
       this.prisma.project.findUnique({ where: { id: contract.projectId } }),
-      this.prisma.contractVersion.findFirst({
+      this.prisma.contractVersion.findMany({
         where: { contractId: contract.id },
         orderBy: { versionNo: "desc" }
       })
     ]);
+
+    const version = versions[0];
 
     if (!version) {
       throw new NotFoundException("未找到合同版本，请刷新合同台账后重试");
@@ -535,7 +538,8 @@ export class ContractReadService {
         { label: "关联结算", to: latestSettlement ? `/settlements/${latestSettlement.code}` : "/settlements" },
         { label: "归档资料", to: "/archives" },
         { label: "审计日志", to: "/audit" }
-      ]
+      ],
+      changeVersions: contractChangeVersionsReadModel(versions)
     };
   }
 

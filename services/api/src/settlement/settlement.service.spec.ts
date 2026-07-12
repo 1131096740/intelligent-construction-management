@@ -1238,8 +1238,11 @@ describe("SettlementService", () => {
     });
     expect(tx.settlementLine.findMany).toHaveBeenCalledTimes(2);
     const [firstReadOrder, secondReadOrder] = tx.settlementLine.findMany.mock.invocationCallOrder;
-    const lockOrder = tx.$queryRaw.mock.invocationCallOrder[0];
-    const lockQuery = tx.$queryRaw.mock.calls[0]?.[0] as {
+    const lockIndex = tx.$queryRaw.mock.calls.findIndex((call) =>
+      (call[0] as { strings: string[] }).strings.join("?").includes('FROM "Project"')
+    );
+    const lockOrder = tx.$queryRaw.mock.invocationCallOrder[lockIndex];
+    const lockQuery = tx.$queryRaw.mock.calls[lockIndex][0] as {
       strings: string[];
       values: unknown[];
     };

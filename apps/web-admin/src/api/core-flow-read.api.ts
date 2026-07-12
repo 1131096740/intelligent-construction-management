@@ -73,6 +73,57 @@ export function fetchContractDetail(contractId: string) {
   return readJson<ContractDetailReadModel>(`/contracts/${contractId}`);
 }
 
+export interface ContractChangeVersionProjection {
+  id: string;
+  contractId: string;
+  versionNo: number;
+  changeType: string;
+  status: string;
+  amountCents: string;
+  baseVersionId: string | null;
+  supersedesVersionId: string | null;
+  changeReason: string | null;
+  changeDirection: string | null;
+  changeAmountCents: string | null;
+  originalBaseAmountCents: string | null;
+  cumulativeIncreaseCents: string;
+  cumulativeDecreaseCents: string;
+  amountLimitType: "capped" | "unlimited";
+  enhancedApproval: boolean;
+  enhancedApprovalReasons: string[];
+  approvalRoute: Array<{ name: string; mode: string; roleKeys: string[] }>;
+}
+
+export interface ContractChangeEligibilityReadModel {
+  eligible: boolean;
+  reason: string | null;
+  currentEffective: ContractChangeVersionProjection | null;
+  activeChange: ContractChangeVersionProjection | null;
+}
+
+export interface CreateContractChangeDraftPayload {
+  changeType: "change" | "supplement";
+  changeReason: string;
+  changeDirection: "increase" | "decrease" | "unchanged";
+  changeAmountCents: string;
+}
+
+export function fetchContractChangeEligibility(contractVersionId: string) {
+  return readJson<ContractChangeEligibilityReadModel>(
+    `/contracts/${encodeURIComponent(contractVersionId)}/change-eligibility`
+  );
+}
+
+export function createContractChangeDraft(
+  contractVersionId: string,
+  body: CreateContractChangeDraftPayload
+) {
+  return postJson<ContractChangeVersionProjection>(
+    `/contracts/${encodeURIComponent(contractVersionId)}/change-drafts`,
+    body
+  );
+}
+
 export function fetchSettlementDetail(settlementId: string) {
   return readJson<SettlementDetailReadModel>(`/settlements/${settlementId}`);
 }

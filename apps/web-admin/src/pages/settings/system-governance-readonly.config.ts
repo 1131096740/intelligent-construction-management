@@ -50,6 +50,7 @@ const contractStatusLabels = {
   seal_approved_pending_archive: "已用章待归档",
   pending_archive_confirm: "待归档确认",
   effective: "已生效",
+  superseded: "已被新版替代",
   voided: "已作废"
 } satisfies Record<ContractVersionStatus, string>;
 

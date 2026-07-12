@@ -31,21 +31,21 @@
           v-if="field.type === 'single_select'"
           :value="stringValue(field.key)"
           :options="field.options ?? []"
-          :disabled="disabled"
+          :disabled="fieldDisabled(field.key)"
           :placeholder="`选择${field.label}`"
           @change="(value: string) => update(field.key, value)"
         />
         <t-textarea
           v-else-if="field.type === 'long_text'"
           :value="stringValue(field.key)"
-          :disabled="disabled"
+          :disabled="fieldDisabled(field.key)"
           :placeholder="`请输入${field.label}`"
           @change="(value: string) => update(field.key, value)"
         />
         <t-input
           v-else
           :value="stringValue(field.key)"
-          :disabled="disabled"
+          :disabled="fieldDisabled(field.key)"
           :placeholder="`请输入${field.label}`"
           @change="(value: string) => update(field.key, value)"
         />
@@ -63,6 +63,7 @@ const props = defineProps<{
   model: ContractDraftModel;
   workbench: ContractWorkbenchReadModel | null;
   disabled: boolean;
+  editableKeys?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -78,6 +79,10 @@ function stringValue(key: string): string {
 
 function update(key: string, value: unknown) {
   emit("update", { fieldValues: { ...props.model.fieldValues, [key]: value } });
+}
+
+function fieldDisabled(key: string) {
+  return props.disabled || (props.editableKeys !== undefined && !props.editableKeys.includes(key));
 }
 </script>
 

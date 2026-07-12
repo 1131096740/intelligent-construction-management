@@ -7,6 +7,16 @@
       </div>
       <div class="actions">
         <t-button
+          v-if="changeEligibility"
+          variant="outline"
+          :loading="changeEligibilityLoading"
+          :disabled="!changeEligibility?.eligible"
+          :title="changeEligibility?.reason ?? '从当前生效版本发起合同变更'"
+          @click="openChangeDialog"
+        >
+          发起变更/补充协议
+        </t-button>
+        <t-button
           theme="primary"
           @click="reloadContractDetail"
         >
@@ -70,6 +80,41 @@
           {{ link.label }}
         </t-link>
       </div>
+
+      <t-card
+        class="section-card"
+        title="合同版本历史"
+        :bordered="true"
+      >
+        <div
+          v-if="contractChangeVersions.length"
+          class="version-history"
+        >
+          <div
+            v-for="version in contractChangeVersions"
+            :key="version.versionNo"
+            class="version-history-row"
+          >
+            <div>
+              <strong>合同 v{{ version.versionNo }}</strong>
+              <span>{{ version.changeReason || changeTypeLabel(version.changeType) }}</span>
+            </div>
+            <t-tag
+              :theme="version.status === 'effective' ? 'success' : version.status === 'superseded' ? 'default' : 'warning'"
+            >
+              {{ contractVersionStatusLabel(version.status) }}
+            </t-tag>
+            <span>审批：{{ approvalRouteLabel(version.approvalRoute) }}</span>
+            <span>{{ archiveEffectText(version) }}</span>
+          </div>
+        </div>
+        <div
+          v-else
+          class="state-message"
+        >
+          暂无版本历史。
+        </div>
+      </t-card>
 
       <t-card
         id="approval"
@@ -268,6 +313,18 @@
               <strong>主管确认归档</strong>
               <span>确认后合同版本生效</span>
             </div>
+            <t-alert
+              v-if="pendingArchiveEffect"
+              theme="warning"
+              title="合同变更归档生效确认"
+            >
+              <div class="archive-effect-confirmation">
+                <span>合同 v{{ pendingArchiveEffect.versionNo }} 将替代合同 v{{ pendingArchiveEffect.effect.replacesVersionNo }}。</span>
+                <span>替代前金额：¥{{ centsTextToYuanText(pendingArchiveEffect.effect.beforeAmountCents) }}。</span>
+                <span>替代后金额：¥{{ centsTextToYuanText(pendingArchiveEffect.effect.afterAmountCents) }}。</span>
+                <span>历史结算和付款继续引用原合同版本，不会被改写。</span>
+              </div>
+            </t-alert>
             <div class="action-fields">
               <t-select
                 v-model="contractArchiveForm.archiveFileId"
@@ -504,12 +561,78 @@
         </div>
       </t-card>
     </template>
+
+    <t-dialog
+      v-model:visible="changeDialogVisible"
+      header="发起合同变更/补充协议"
+      :confirm-btn="{ content: '创建变更草稿', loading: changeSubmitting }"
+      cancel-btn="取消"
+      :close-on-overlay-click="false"
+      @confirm="submitChangeDraft"
+    >
+      <t-alert
+        theme="info"
+        class="change-dialog-alert"
+      >
+        变更草稿、审批和用章不会改变当前有效合同；只有新版本归档确认后才会替代旧版本生效。
+      </t-alert>
+      <dl
+        v-if="changeEligibility?.currentEffective"
+        class="change-base-summary"
+      >
+        <dt>当前有效基版</dt>
+        <dd>合同 v{{ changeEligibility.currentEffective.versionNo }}</dd>
+        <dt>当前合同金额</dt>
+        <dd>{{ moneyText(changeEligibility.currentEffective.amountCents) }}</dd>
+        <dt>金额上限性质</dt>
+        <dd>{{ changeEligibility.currentEffective.amountLimitType === 'unlimited' ? '无限额框架合同' : '有金额上限' }}（继承且不可修改）</dd>
+      </dl>
+      <div class="change-form-grid">
+        <label class="change-field">
+          <span>办理类型</span>
+          <t-select
+            v-model="changeForm.changeType"
+            :options="changeTypeOptions"
+          />
+        </label>
+        <label class="change-field">
+          <span>金额方向</span>
+          <t-select
+            v-model="changeForm.changeDirection"
+            :options="changeDirectionOptions"
+            @change="onChangeDirection"
+          />
+        </label>
+        <label class="change-field">
+          <span>变更金额（分）</span>
+          <t-input
+            v-model="changeForm.changeAmountCents"
+            :disabled="changeForm.changeDirection === 'unchanged'"
+            :maxlength="19"
+            placeholder="请输入非负整数分"
+          />
+        </label>
+        <label class="change-field change-reason">
+          <span>变更原因</span>
+          <t-textarea
+            v-model="changeForm.changeReason"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+          />
+        </label>
+      </div>
+      <p
+        v-if="changeError"
+        class="state-message danger"
+      >
+        {{ changeError }}
+      </p>
+    </t-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import type { CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
@@ -522,12 +645,14 @@ import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   approveContractSeal,
+  createContractChangeDraft,
   confirmContractArchive,
   createPrivateFileDownloadTicket,
   delegateContractApproval,
   fetchActiveContractNumberRules,
   fetchApprovalDelegationUserOptions,
   fetchContractDetail,
+  fetchContractChangeEligibility,
   generateContractPdfArchive,
   downloadApprovalForm as requestApprovalFormDownload,
   remindContractApproval,
@@ -538,6 +663,7 @@ import {
   uploadContractArchiveFile,
   withdrawContractApproval
 } from "../../api/core-flow-read.api";
+import { centsTextToYuanText } from "../../lib/money";
 import { contractDetailChainLinks } from "../business-chain-links.config";
 import { confirmSensitiveAction, promptSensitiveActionReason } from "../confirm-sensitive-action";
 import type { DetailTone } from "./contract-detail.config";
@@ -553,10 +679,46 @@ import {
   buildContractFlowSummary,
   buildContractFundTimeline
 } from "./contract-detail.config";
+import { contractVersionStatusLabel } from "./contract-labels";
+import {
+  contractApprovalRouteText,
+  contractChangeTypeLabel,
+  isCurrentChangeSubmission,
+  isPostgresBigIntText,
+  normalizeChangeEligibility,
+  normalizeChangeVersion,
+  normalizeContractChangeVersions,
+  type NormalizedChangeEligibility,
+  type NormalizedContractChangeVersion
+} from "./contract-change.state";
 
 const route = useRoute();
 const router = useRouter();
 const contractDetail = ref<ContractDetailReadModel | null>(null);
+const changeEligibility = ref<NormalizedChangeEligibility | null>(null);
+const normalizedChangeVersions = ref<NonNullable<ReturnType<typeof normalizeContractChangeVersions>>>([]);
+const changeEligibilityLoading = ref(false);
+const changeDialogVisible = ref(false);
+const changeSubmitting = ref(false);
+const changeError = ref("");
+let detailRequestId = 0;
+let changeSubmissionToken = 0;
+let changeDialogBaseVersionId = "";
+const changeForm = reactive({
+  changeType: "supplement" as "change" | "supplement",
+  changeDirection: "unchanged" as "increase" | "decrease" | "unchanged",
+  changeAmountCents: "0",
+  changeReason: ""
+});
+const changeTypeOptions = [
+  { label: "合同变更", value: "change" },
+  { label: "补充协议", value: "supplement" }
+];
+const changeDirectionOptions = [
+  { label: "增加金额", value: "increase" },
+  { label: "减少金额", value: "decrease" },
+  { label: "金额不变", value: "unchanged" }
+];
 const contractDetailError = ref("");
 const contractNumberRules = ref<Array<{ id: string; name: string; pattern: string }>>([]);
 const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
@@ -613,6 +775,16 @@ const contractFundTimelineView = computed(() =>
 const contractDetailChainLinksView = computed(
   () => contractDetail.value?.chainLinks ?? contractDetailChainLinks
 );
+const contractChangeVersions = computed(() => normalizedChangeVersions.value);
+const pendingArchiveEffect = computed(() => {
+  const version = normalizedChangeVersions.value[0];
+  const canConfirm = contractDetail.value?.availableActions.some(
+    (action) => action.key === "confirm_archive" && action.enabled
+  );
+  return canConfirm && version?.archiveEffect?.status === "pending"
+    ? { versionNo: version.versionNo, effect: version.archiveEffect }
+    : null;
+});
 const contractArchiveFileOptions = computed(() =>
   (contractDetail.value?.archiveFiles ?? [])
     .filter((file) => file.canDownload)
@@ -694,17 +866,38 @@ function openChainLink(to: string) {
   void router.push(to);
 }
 
+function archiveEffectText(version: NormalizedContractChangeVersion) {
+  const effect = version.archiveEffect;
+  if (!effect) return "尚未产生归档替代效果";
+  const action = effect.status === "pending" ? "归档确认后将替代" : "已完成替代";
+  return `${action}合同 v${effect.replacesVersionNo}；金额由 ¥${centsTextToYuanText(effect.beforeAmountCents)} 调整为 ¥${centsTextToYuanText(effect.afterAmountCents)}；历史结算和付款仍引用原版本`;
+}
+
 function showContractNotice(message: string) {
   contractNotice.value = message;
 }
 
 async function reloadContractDetail() {
+  const requestId = ++detailRequestId;
   const contractId = String(route.params.contractId ?? "HT-2026-001");
   contractDetailError.value = "";
 
   try {
     const detail = await fetchContractDetail(contractId);
+    if (requestId !== detailRequestId || contractId !== routeContractId()) return;
+    const versions = normalizeContractChangeVersions(
+      (detail as unknown as { changeVersions?: unknown }).changeVersions
+    );
+    if (!versions) throw new Error("合同版本历史数据异常，已停止展示");
     contractDetail.value = detail;
+    normalizedChangeVersions.value = versions;
+    changeEligibilityLoading.value = true;
+    const eligibilityPayload = await fetchContractChangeEligibility(detail.contractVersionId).catch(() => null);
+    if (requestId !== detailRequestId || contractId !== routeContractId()) return;
+    changeEligibility.value = eligibilityPayload === null
+      ? null
+      : normalizeChangeEligibility(eligibilityPayload, detail.contractVersionId);
+    changeEligibilityLoading.value = false;
     const archiveFileIds = detail.archiveFiles
       .filter((file) => file.canDownload)
       .map((file) => file.fileId);
@@ -716,8 +909,131 @@ async function reloadContractDetail() {
       contractArchiveForm.downloadFileId = archiveFileIds[0] ?? "";
     }
   } catch {
+    if (requestId !== detailRequestId) return;
     contractDetail.value = null;
+    normalizedChangeVersions.value = [];
+    changeEligibility.value = null;
+    changeEligibilityLoading.value = false;
     contractDetailError.value = "合同详情读取失败，请确认权限或稍后重试。";
+  }
+}
+
+watch(
+  () => route.params.contractId,
+  (next, previous) => {
+    if (next === previous) return;
+    clearChangeTransientState();
+    contractDetail.value = null;
+    normalizedChangeVersions.value = [];
+    void reloadContractDetail();
+  },
+  { flush: "sync" }
+);
+
+function routeContractId() {
+  const value = route.params.contractId;
+  return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
+}
+
+function resetChangeForm() {
+  changeForm.changeType = "supplement";
+  changeForm.changeDirection = "unchanged";
+  changeForm.changeAmountCents = "0";
+  changeForm.changeReason = "";
+}
+
+function clearChangeTransientState() {
+  changeSubmissionToken += 1;
+  changeEligibility.value = null;
+  changeEligibilityLoading.value = false;
+  changeDialogVisible.value = false;
+  changeSubmitting.value = false;
+  changeDialogBaseVersionId = "";
+  changeError.value = "";
+  resetChangeForm();
+}
+
+function moneyText(cents: string) {
+  return `¥${centsTextToYuanText(cents)}`;
+}
+
+function approvalRouteLabel(roleKeys: string[]) {
+  return contractApprovalRouteText(roleKeys);
+}
+
+function changeTypeLabel(value: unknown) {
+  return contractChangeTypeLabel(value);
+}
+
+function onChangeDirection(value: "increase" | "decrease" | "unchanged") {
+  if (value === "unchanged") changeForm.changeAmountCents = "0";
+}
+
+function openChangeDialog() {
+  const current = changeEligibility.value?.currentEffective;
+  if (!changeEligibility.value?.eligible || !current) return;
+  changeDialogBaseVersionId = current.id;
+  resetChangeForm();
+  changeError.value = "";
+  changeDialogVisible.value = true;
+}
+
+async function submitChangeDraft() {
+  if (changeSubmitting.value) return;
+  const reason = changeForm.changeReason.trim();
+  const amount = changeForm.changeAmountCents.trim();
+  if (!reason) return void (changeError.value = "请填写变更原因");
+  if (!isPostgresBigIntText(amount)) return void (changeError.value = "变更金额必须按分填写，且不能超过数据库整数上限");
+  if (changeForm.changeDirection === "unchanged" && amount !== "0") {
+    return void (changeError.value = "金额不变时变更金额必须为 0");
+  }
+  if (changeForm.changeDirection !== "unchanged" && BigInt(amount) <= 0n) {
+    return void (changeError.value = "增减金额必须大于 0");
+  }
+  changeSubmitting.value = true;
+  changeError.value = "";
+  const submissionToken = ++changeSubmissionToken;
+  const capturedRouteContractId = routeContractId();
+  const capturedBaseVersionId = changeDialogBaseVersionId;
+  const capturedBaseContractId = changeEligibility.value?.currentEffective?.contractId ?? "";
+  const capturedChangeType = changeForm.changeType;
+  const capturedChangeDirection = changeForm.changeDirection;
+  const submissionIsCurrent = () => isCurrentChangeSubmission(
+    submissionToken,
+    changeSubmissionToken,
+    capturedRouteContractId,
+    routeContractId()
+  );
+  try {
+    const latestPayload = await fetchContractChangeEligibility(capturedBaseVersionId);
+    if (!submissionIsCurrent()) return;
+    const latest = normalizeChangeEligibility(latestPayload, capturedBaseVersionId);
+    if (!latest || !latest.eligible || latest.currentEffective?.id !== capturedBaseVersionId ||
+      latest.currentEffective.contractId !== capturedBaseContractId) {
+      throw new Error(latest?.reason || "当前有效合同版本已变化，请刷新后重试");
+    }
+    if (!submissionIsCurrent()) return;
+    const createdPayload = await createContractChangeDraft(capturedBaseVersionId, {
+      changeType: capturedChangeType,
+      changeReason: reason,
+      changeDirection: capturedChangeDirection,
+      changeAmountCents: amount
+    });
+    if (!submissionIsCurrent()) return;
+    const created = normalizeChangeVersion(createdPayload);
+    if (!created || created.baseVersionId !== capturedBaseVersionId ||
+      created.contractId !== capturedBaseContractId) {
+      throw new Error("变更草稿响应与当前基版不一致，请刷新合同详情");
+    }
+    if (!submissionIsCurrent()) return;
+    changeDialogVisible.value = false;
+    await router.push(`/contracts/${created.contractId}/workbench?versionId=${created.id}`);
+  } catch (error) {
+    if (submissionIsCurrent()) {
+      changeError.value = error instanceof Error ? error.message : "创建变更草稿失败";
+    }
+  } finally {
+    if (submissionIsCurrent()) changeSubmitting.value = false;
   }
 }
 
@@ -811,9 +1127,13 @@ async function submitContractArchiveConfirmation() {
     archiveActionMessage.value = error instanceof Error ? error.message : "确认归档失败";
     return;
   }
+  const effect = pendingArchiveEffect.value;
+  const confirmationMessage = effect
+    ? `确认归档后，合同 v${effect.versionNo} 将替代合同 v${effect.effect.replacesVersionNo}；金额由 ¥${centsTextToYuanText(effect.effect.beforeAmountCents)} 调整为 ¥${centsTextToYuanText(effect.effect.afterAmountCents)}；历史结算和付款继续引用原合同版本，不会被改写。是否继续？`
+    : "确认归档后，当前合同版本将生效，付款条款锁定，后续结算和付款会以该版本为准。是否继续？";
   if (
     !confirmSensitiveAction(
-      "确认归档后，当前合同版本将生效，付款条款锁定，后续结算和付款会以该版本为准。是否继续？"
+      confirmationMessage
     )
   ) {
     return;
@@ -1215,6 +1535,11 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   gap: var(--jg-space-sm-plus);
 }
 
+.archive-effect-confirmation {
+  display: grid;
+  gap: var(--jg-space-xs);
+}
+
 .action-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -1388,11 +1713,82 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
   background: var(--jg-text-muted);
 }
 
+.version-history {
+  display: grid;
+  gap: var(--jg-space-sm-plus);
+}
+
+.version-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--jg-space-md);
+  padding: var(--jg-space-md);
+  border: var(--jg-border-width-base) solid var(--jg-border);
+  border-radius: var(--jg-radius-md);
+  background: var(--jg-bg-panel);
+}
+
+.version-history-row div,
+.change-base-summary {
+  display: grid;
+  gap: var(--jg-space-xs);
+}
+
+.version-history-row span,
+.change-base-summary dt {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
+}
+
+.change-dialog-alert {
+  margin-bottom: var(--jg-space-md);
+}
+
+.change-base-summary {
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0 0 var(--jg-space-lg);
+  padding: var(--jg-space-md);
+  border-radius: var(--jg-radius-md);
+  background: var(--jg-bg-muted);
+}
+
+.change-base-summary dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.change-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--jg-space-md);
+}
+
+.change-field {
+  display: grid;
+  gap: var(--jg-space-sm);
+}
+
+.change-field > span {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
+  font-weight: 600;
+}
+
+.change-reason {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 980px) {
   .meta-panel,
   .detail-grid,
   .action-grid,
   .action-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .version-history-row,
+  .change-form-grid {
     grid-template-columns: 1fr;
   }
 

@@ -203,7 +203,30 @@ export class ContractTemplateValidationDto {
   message!: string;
 }
 
+export class SupplementChangePolicyDto {
+  @IsIn([1], { message: "合同变更白名单版本不受支持" })
+  version!: 1;
+
+  @IsArray({ message: "合同变更可编辑字段必须是数组" })
+  @IsStringArrayItems("合同变更可编辑字段必须全部是文字")
+  editableFieldKeys!: string[];
+
+  @IsArray({ message: "合同变更可编辑条款必须是数组" })
+  @IsStringArrayItems("合同变更可编辑条款必须全部是文字")
+  editableClauseKeys!: string[];
+
+  @IsArray({ message: "合同核心条款必须是数组" })
+  @IsStringArrayItems("合同核心条款必须全部是文字")
+  coreClauseKeys!: string[];
+}
+
 export class ContractTemplateSchemaDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsObject({ message: "合同变更白名单必须是对象" })
+  @ValidateNested({ message: "合同变更白名单必须是对象" })
+  @Type(() => SupplementChangePolicyDto)
+  supplementChangePolicy?: SupplementChangePolicyDto;
+
   @IsArray({ message: "模板 fields 必须是数组" })
   @ValidateNested({ each: true, message: "每个模板字段必须是对象" })
   @Type(() => ContractTemplateFieldDto)

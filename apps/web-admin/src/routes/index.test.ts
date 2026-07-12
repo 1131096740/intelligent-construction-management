@@ -3,6 +3,7 @@ import { buildRouteDocumentTitle, focusMainContent, resolveRouteAccess } from ".
 import {
   adminNavigationItems,
   adminNavigationGroups,
+  contractScenarioAdminRoleKeys,
   fundsOverviewRoleKeys,
   historicalTakeoverRoleKeys,
   organizationAdminRoleKeys,
@@ -148,6 +149,7 @@ describe("web admin routes", () => {
       { label: "合同管理", path: "/合同管理" },
       { label: "历史合同接管", path: "/历史合同接管" },
       { label: "合同模板库", path: "/合同模板库" },
+      { label: "合同业务场景", path: "/合同业务场景" },
       { label: "合作单位档案", path: "/合作单位档案" },
       { label: "结算模板库", path: "/结算模板库" },
       { label: "结算管理", path: "/结算管理" },
@@ -318,5 +320,33 @@ describe("web admin routes", () => {
         globalRoleKeys: ["contract_director"]
       })
     ).toBe(true);
+  });
+
+  it("exposes contract-scenario governance only to global contract directors or super admins", () => {
+    const governanceRoute = childRoute("合同业务场景");
+    const routeAccessInput = {
+      meta: governanceRoute?.meta ?? {},
+      fullPath: "/合同业务场景"
+    };
+
+    expect(governanceRoute?.meta).toMatchObject({
+      requiredGlobalRoleKeys: contractScenarioAdminRoleKeys
+    });
+    expect(visibleAdminNavigationItems(["contract_director"])).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: "/合同业务场景" })])
+    );
+    expect(
+      visibleAdminNavigationItems(["contract_director"], ["contract_director"])
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ path: "/合同业务场景" })]));
+    expect(resolveRouteAccess(routeAccessInput, {
+      isAuthenticated: true,
+      roleKeys: ["contract_director"],
+      globalRoleKeys: []
+    })).toEqual({ path: "/首页" });
+    expect(resolveRouteAccess(routeAccessInput, {
+      isAuthenticated: true,
+      roleKeys: ["contract_director"],
+      globalRoleKeys: ["contract_director"]
+    })).toBe(true);
   });
 });

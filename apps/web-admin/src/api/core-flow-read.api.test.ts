@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchContractDetail,
+  fetchContractChangeEligibility,
   fetchContractLedger,
   fetchPaymentDetail,
   fetchPaymentLedger,
@@ -42,6 +43,7 @@ import {
   recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
   createContractDraft,
+  createContractChangeDraft,
   createContractTakeover,
   createContractTakeoverDraftsFromImport,
   listContractTakeoverImportBatches,
@@ -119,6 +121,35 @@ describe("core flow read API client", () => {
       "/api/settlements/JS-2026-018",
       "/api/payments/FK-2026-006"
     ]);
+  });
+
+  it("uses contractVersionId routes for contract change eligibility and creation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ eligible: true })
+    } as Response);
+
+    await fetchContractChangeEligibility("version/1");
+    await createContractChangeDraft("version/1", {
+      changeType: "supplement",
+      changeReason: "补充工程量",
+      changeDirection: "increase",
+      changeAmountCents: "100"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/version%2F1/change-eligibility",
+      "/api/contracts/version%2F1/change-drafts"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        changeType: "supplement",
+        changeReason: "补充工程量",
+        changeDirection: "increase",
+        changeAmountCents: "100"
+      })
+    }));
   });
 
   it("rejects detail reads with server error messages", async () => {

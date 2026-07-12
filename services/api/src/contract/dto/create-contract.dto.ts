@@ -133,6 +133,10 @@ export class CreatePaymentTermsStageDto {
 
 /** Minimal payload to seed a workbench draft from a published business template. */
 export class CreateContractDraftDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["capped", "unlimited"], { message: "合同金额上限类型不正确" })
+  amountLimitType?: "capped" | "unlimited";
+
   @IsRequiredText({
     requiredMessage: "项目编号不能为空",
     typeMessage: "项目编号必须是文字",

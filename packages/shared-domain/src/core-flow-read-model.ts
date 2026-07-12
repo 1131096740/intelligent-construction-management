@@ -177,6 +177,24 @@ export interface ContractDetailReadModel {
   primaryAction: string | null;
   disabledReasons: string[];
   chainLinks: BusinessChainLink[];
+  changeVersions?: Array<{
+    versionNo: number;
+    status: string;
+    changeType: string;
+    changeReason: string | null;
+    changeDirection: string | null;
+    changeAmountCents: MoneyCents | null;
+    amountCents: MoneyCents;
+    approvalRoute: string[];
+    archiveEffect: {
+      status: "pending" | "completed";
+      replacesVersionNo: number;
+      beforeAmountCents: MoneyCents;
+      afterAmountCents: MoneyCents;
+      /** 已完成替代不会改写历史业务记录所引用的合同版本。 */
+      historyReferencesStable: true;
+    } | null;
+  }>;
 }
 
 export interface SettlementPaymentRuleReadModel {

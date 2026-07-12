@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
+import { PATH_METADATA } from "@nestjs/common/constants";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
@@ -13,6 +14,7 @@ type RuntimeDto = new () => object;
 
 const contractBodyRoutes = [
   ["contract.create", ContractController, "create", 0],
+  ["contract.createChangeDraft", ContractController, "createChangeDraft", 1],
   ["contract.submitApproval", ContractController, "submitApproval", 2],
   ["contract.reviewApproval", ContractController, "reviewApproval", 2],
   ["contract.transferApproval", ContractController, "transferApproval", 2],
@@ -51,6 +53,12 @@ const validContractDraft = {
 
 const validContractRouteBodies = [
   ["contract.create", ContractController, "create", 0, validContractDraft],
+  ["contract.createChangeDraft", ContractController, "createChangeDraft", 1, {
+    changeType: "supplement",
+    changeReason: "补充工程量",
+    changeDirection: "increase",
+    changeAmountCents: "100"
+  }],
   ["contract.submitApproval", ContractController, "submitApproval", 2, { numberRuleId: "rule-1" }],
   ["contract.reviewApproval", ContractController, "reviewApproval", 2, { decision: "approve" }],
   ["contract.transferApproval", ContractController, "transferApproval", 2, { toUserId: "user-2" }],
@@ -521,6 +529,8 @@ describe("ContractController authorization wiring", () => {
 
   it.each([
     ["create", "contract.create"],
+    ["createChangeDraft", "contract.create"],
+    ["changeEligibility", "contract.create"],
     ["settlementCreateOptions", "settlement.create"],
     ["paymentCreateOptions", "payment.create"],
     ["submitApproval", "contract.submit"],
@@ -537,6 +547,15 @@ describe("ContractController authorization wiring", () => {
 
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler as object)).toBe(action);
   });
+
+  it.each(["createChangeDraft", "changeEligibility"])(
+    "keeps %s on the PermissionGuard contractVersionId route coordinate",
+    (method) => {
+      const handler = (ContractController.prototype as unknown as Record<string, object>)[method];
+      expect(Reflect.getMetadata(PATH_METADATA, handler)).toContain(":contractVersionId");
+      expect(Reflect.getMetadata(PATH_METADATA, handler)).not.toContain(":effectiveVersionId");
+    }
+  );
 
   it.each([["withdrawApproval"], ["remindApproval"]])(
     "allows the approval applicant to %s without project approval action metadata",

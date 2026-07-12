@@ -51,6 +51,22 @@ describe("contract workbench schema", () => {
     ).toBe(true);
   });
 
+  it("permanently rejects myCompanyEntity from supplement edit policies", () => {
+    expect(() => validateContractTemplateSchema({
+      fields: [{ key: "myCompanyEntity", label: "我方主体", type: "text" }],
+      bills: [],
+      clauses: [],
+      attachments: [],
+      validations: [],
+      supplementChangePolicy: {
+        version: 1,
+        editableFieldKeys: ["myCompanyEntity"],
+        editableClauseKeys: [],
+        coreClauseKeys: []
+      }
+    })).toThrow("myCompanyEntity cannot be editable in supplement changes");
+  });
+
   it("rejects input without required properties", () => {
     expect(isContractFieldDefinition(null)).toBe(false);
     expect(isContractFieldDefinition(undefined)).toBe(false);

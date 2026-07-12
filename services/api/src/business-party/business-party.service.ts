@@ -387,6 +387,9 @@ export class BusinessPartyService {
     if (version.status !== "draft") {
       throw new BadRequestException("当前合同版本不是草稿状态，不能变更合作单位");
     }
+    if (version.changeType === "change" || version.changeType === "supplement") {
+      throw new BadRequestException("合同变更不得修改签约主体；如需变更主体请另行办理新合同");
+    }
     const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
     if (!contract) throw new NotFoundException("未找到合同草稿，请刷新后重试");
     if (contract.ownerUserId !== actorUserId) {
