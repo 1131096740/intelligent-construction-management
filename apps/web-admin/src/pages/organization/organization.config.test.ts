@@ -6,6 +6,7 @@ import type {
   PermissionIntegrityIssue,
   PermissionIntegrityReadModel,
   RoleAdditionImpactPreview,
+  RoleRemovalBatchImpactPreview,
   RoleRemovalImpactPreview
 } from "../../api/organization.api";
 import {
@@ -13,9 +14,12 @@ import {
   buildOrganizationRoleAdditionTarget,
   buildRoleAdditionApplyPayload,
   buildOrganizationRoleRemovalTargets,
+  buildOrganizationRoleRemovalBatchTargets,
   buildProjectSuperAdminRemediationTarget,
   isProjectSuperAdminRemediationIssue,
   mergeOrganizationRoleRemovalTargets,
+  normalizeOrganizationRoleRemovalBatchPreview,
+  organizationBatchRoleRemovalOptions,
   buildRoleRemovalApplyPayload,
   buildCreateDepartmentPayload,
   buildDepartmentParentOptions,
@@ -35,6 +39,7 @@ import {
   permissionIntegrityIssueRows,
   roleRemovalBusinessTypeLabel,
   roleRemovalImpactRows,
+  roleRemovalBatchStepViews,
   roleRemovalReasonLabel,
   roleRemovalTargetMatchesPreview,
   canConfirmRoleRemoval,
@@ -246,7 +251,176 @@ const additionPreview: RoleAdditionImpactPreview = {
   ]
 };
 
+const batchRemovalDirectory: OrganizationDirectory = {
+  ...additionDirectory,
+  users: [
+    users[0],
+    {
+      ...users[1],
+      status: "active",
+      globalPositions: [{ key: "budget_director", name: "预算部主管" }],
+      projectPositions: [
+        {
+          projectId: "project-1",
+          projectCode: "XM-001",
+          projectName: "科技园项目",
+          keys: ["project_manager", "super_admin"],
+          names: ["项目经理", "系统管理员"]
+        },
+        {
+          projectId: "project-1",
+          projectCode: "XM-001",
+          projectName: "科技园项目",
+          keys: ["project_manager"],
+          names: ["项目经理"]
+        }
+      ]
+    }
+  ]
+};
+
+const batchRemovalTargets = [
+  {
+    operation: "remove" as const,
+    userId: "user-1",
+    scope: "project" as const,
+    projectId: "project-1",
+    roleKey: "project_manager" as const
+  },
+  {
+    operation: "remove" as const,
+    userId: "user-2",
+    scope: "project" as const,
+    projectId: "project-1",
+    roleKey: "project_manager" as const
+  }
+];
+
+function batchRemovalResponse(): RoleRemovalBatchImpactPreview {
+  return {
+    evaluatedAt: "2026-07-12T08:00:00.000Z",
+    combinedSnapshotHash: `sha256:${"c".repeat(64)}`,
+    canApply: false,
+    simulatedTargets: 2,
+    blockingTarget: { ...batchRemovalTargets[1], projectId: "project-1" },
+    steps: batchRemovalTargets.map((target, sequence) => ({
+      sequence,
+      change: { ...target, projectId: "project-1" },
+      evaluatedAt: "2026-07-12T08:00:00.000Z",
+      snapshotHash: `sha256:${String(sequence + 1).repeat(64)}`,
+      canApply: sequence === 0,
+      summary: { affectedInstances: 1, blockingInstances: sequence },
+      blockingIssues: [],
+      impacts: [
+        {
+          approvalInstanceId: "approval-1",
+          businessType: "payment_request",
+          businessId: "payment-1",
+          projectId: "project-1",
+          currentNodeIndex: sequence + 1,
+          currentNodeName: sequence === 0 ? "合同审批" : "项目经理审批",
+          mode: "any",
+          pendingRoleKeys: ["project_manager"],
+          blocking: sequence === 1,
+          reasonCode: sequence === 1 ? "no_executable_current_approver" : null,
+          roleCoverage: []
+        }
+      ]
+    }))
+  };
+}
+
 describe("organization config", () => {
+  it("builds deduplicated cross-user batch targets and excludes project super-admin remediation", () => {
+    const options = organizationBatchRoleRemovalOptions(batchRemovalDirectory);
+
+    expect(options.map((option) => option.label)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("张三"),
+        expect.stringContaining("李四")
+      ])
+    );
+    expect(options.filter((option) => option.target.userId === "user-2" && option.target.roleKey === "project_manager")).toHaveLength(1);
+    expect(options).not.toContainEqual(
+      expect.objectContaining({
+        target: expect.objectContaining({ scope: "project", roleKey: "super_admin" })
+      })
+    );
+    const selected = batchRemovalTargets.map((target) =>
+      options.find(
+        (option) =>
+          target.userId === option.target.userId &&
+          target.roleKey === option.target.roleKey &&
+          target.scope === option.target.scope
+      )
+    );
+    expect(selected.every(Boolean)).toBe(true);
+    expect(
+      buildOrganizationRoleRemovalBatchTargets(
+        selected.map((option) => (option as (typeof options)[number]).value),
+        options
+      )
+    ).toEqual(batchRemovalTargets);
+  });
+
+  it("enforces 2..20 unique selectable targets and fails closed for injected coordinates", () => {
+    const options = organizationBatchRoleRemovalOptions(batchRemovalDirectory);
+    expect(() => buildOrganizationRoleRemovalBatchTargets([options[0].value], options)).toThrow(
+      "请选择 2 至 20 个待预览撤销的岗位"
+    );
+    expect(() =>
+      buildOrganizationRoleRemovalBatchTargets([options[0].value, "forged-target"], options)
+    ).toThrow("批量撤岗目标不在最新组织目录中");
+    expect(() =>
+      buildOrganizationRoleRemovalBatchTargets([options[0].value, options[0].value], options)
+    ).toThrow("批量撤岗目标不得重复");
+  });
+
+  it("normalizes ordered batch steps and keeps future nodes distinct", () => {
+    const preview = normalizeOrganizationRoleRemovalBatchPreview(
+      batchRemovalResponse(),
+      batchRemovalTargets
+    );
+    const views = roleRemovalBatchStepViews(
+      preview,
+      batchRemovalDirectory,
+      batchRemovalTargets
+    );
+
+    expect(preview.blockingTarget).toEqual(batchRemovalTargets[1]);
+    expect(views.map((view) => view.sequence)).toEqual([0, 1]);
+    expect(views.flatMap((view) => view.impactRows).map((row) => row.key)).toEqual([
+      "approval-1:1",
+      "approval-1:2"
+    ]);
+    expect(views[1]).toMatchObject({
+      targetLabel: expect.stringContaining("李四"),
+      canApply: false
+    });
+  });
+
+  it.each([
+    [
+      { ...batchRemovalResponse(), combinedSnapshotHash: "client-hash" },
+      "批量预览组合校验码无效"
+    ],
+    [
+      { ...batchRemovalResponse(), steps: batchRemovalResponse().steps.map((step) => ({ ...step, sequence: step.sequence + 1 })) },
+      "批量预览步骤顺序不正确"
+    ],
+    [
+      { ...batchRemovalResponse(), steps: [{ ...batchRemovalResponse().steps[0], change: { ...batchRemovalTargets[0], operation: "add" } }, batchRemovalResponse().steps[1]] },
+      "批量预览岗位变更操作不正确"
+    ],
+    [
+      { ...batchRemovalResponse(), steps: [{ ...batchRemovalResponse().steps[0], change: { ...batchRemovalTargets[0], roleKey: "root" } }, batchRemovalResponse().steps[1]] },
+      "批量预览岗位键不正确"
+    ]
+  ])("fails closed for a malformed batch response: %p", (response, message) => {
+    expect(() =>
+      normalizeOrganizationRoleRemovalBatchPreview(response, batchRemovalTargets)
+    ).toThrow(message);
+  });
   it("flattens the department tree with depth, parent and full path", () => {
     expect(flattenDepartmentTree(departments)).toEqual([
       expect.objectContaining({ id: "root", depth: 0, parentName: "—", path: "总部" }),
@@ -727,7 +901,7 @@ describe("organization config", () => {
     expect(roleRemovalReasonLabel("future_reason")).toBe("阻断原因未读取");
     expect(roleRemovalImpactRows(removalPreview.impacts, [])).toEqual([
       expect.objectContaining({
-        key: "approval-1",
+        key: "approval-1:1",
         businessTypeLabel: "付款申请",
         modeLabel: "任一人通过",
         statusLabel: "可继续执行",

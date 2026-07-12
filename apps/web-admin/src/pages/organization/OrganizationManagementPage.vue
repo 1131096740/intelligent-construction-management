@@ -9,14 +9,21 @@
         <t-button
           variant="outline"
           :loading="refreshing"
-          :disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible"
+          :disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"
           @click="refreshPage"
         >
           刷新
         </t-button>
         <t-button
+          variant="outline"
+          :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"
+          @click="openBatchRoleRemovalDrawer"
+        >
+          批量预览撤岗
+        </t-button>
+        <t-button
           theme="primary"
-          :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
+          :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"
           @click="openCreateDepartment"
         >
           新建部门
@@ -26,7 +33,7 @@
 
     <t-alert
       theme="info"
-      title="本页可维护部门、人员归属和启停状态，并逐条预览新增或撤销岗位；固定岗位字典仍为只读，批量变更尚未开放。"
+      title="本页可维护部门、人员归属和启停状态，并支持逐条岗位变更及批量撤岗只读预览；批量预览不会执行撤销。"
       :close="false"
     />
 
@@ -96,7 +103,7 @@
                 size="small"
                 variant="text"
                 theme="primary"
-                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
+                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"
                 @click="openProjectSuperAdminRemediation(row.key)"
               >
                 预览清理
@@ -137,7 +144,7 @@
               size="small"
               variant="text"
               theme="primary"
-              :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
+              :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"
               @click="openEditDepartment(row)"
             >
               编辑
@@ -207,7 +214,7 @@
                 size="small"
                 variant="text"
                 theme="primary"
-                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
+                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"
                 @click="openEditUser(row)"
               >
                 编辑
@@ -216,7 +223,7 @@
                 size="small"
                 variant="text"
                 theme="primary"
-                :disabled="saving || refreshing || roleAdditionDrawerVisible"
+                :disabled="saving || refreshing || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"
                 @click="openRoleDrawer(row)"
               >
                 岗位管理
@@ -241,7 +248,7 @@
                 size="small"
                 variant="text"
                 theme="primary"
-                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible"
+                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"
                 @click="openRoleAdditionDrawer(row)"
               >
                 新增岗位
@@ -379,6 +386,12 @@
       @busy-change="roleAdditionDrawerBusy = $event"
       @applied="handleRoleAdditionApplied"
     />
+    <OrganizationBatchRoleRemovalDrawer
+      :visible="batchRoleRemovalDrawerVisible"
+      :directory="directory"
+      @close="closeBatchRoleRemovalDrawer"
+      @busy-change="batchRoleRemovalDrawerBusy = $event"
+    />
   </section>
 </template>
 
@@ -423,6 +436,7 @@ import {
 } from "./organization.config";
 import OrganizationRoleRemovalDrawer from "./components/OrganizationRoleRemovalDrawer.vue";
 import OrganizationRoleAdditionDrawer from "./components/OrganizationRoleAdditionDrawer.vue";
+import OrganizationBatchRoleRemovalDrawer from "./components/OrganizationBatchRoleRemovalDrawer.vue";
 
 const emptyDirectory = (): OrganizationDirectory => ({
   summary: { departments: 0, activeUsers: 0, inactiveUsers: 0, positions: 0 },
@@ -445,6 +459,8 @@ const roleDrawerRemediationTarget = ref<OrganizationRoleRemovalTargetRow | null>
 const roleAdditionDrawerVisible = ref(false);
 const roleAdditionDrawerBusy = ref(false);
 const roleAdditionDrawerUser = ref<OrganizationDirectoryUser | null>(null);
+const batchRoleRemovalDrawerVisible = ref(false);
+const batchRoleRemovalDrawerBusy = ref(false);
 const directoryMessage = ref("");
 const directoryMessageTone = ref<"success" | "error">("success");
 const integrityMessage = ref("");
@@ -598,7 +614,12 @@ async function loadPermissionIntegrity() {
 }
 
 async function refreshPage() {
-  if (refreshing.value || roleDrawerVisible.value || roleAdditionDrawerVisible.value) return;
+  if (
+    refreshing.value ||
+    roleDrawerVisible.value ||
+    roleAdditionDrawerVisible.value ||
+    batchRoleRemovalDrawerVisible.value
+  ) return;
   refreshing.value = true;
   try {
     await Promise.all([loadDirectory(), loadPermissionIntegrity()]);
@@ -650,7 +671,8 @@ function openRoleDrawer(user: OrganizationDirectoryUser) {
     saving.value ||
     refreshing.value ||
     roleDrawerVisible.value ||
-    roleAdditionDrawerVisible.value
+    roleAdditionDrawerVisible.value ||
+    batchRoleRemovalDrawerVisible.value
   ) return;
   roleDrawerUser.value = user;
   roleDrawerRemediationTarget.value = null;
@@ -666,7 +688,8 @@ function openProjectSuperAdminRemediation(issueKey: string) {
     saving.value ||
     refreshing.value ||
     roleDrawerVisible.value ||
-    roleAdditionDrawerVisible.value
+    roleAdditionDrawerVisible.value ||
+    batchRoleRemovalDrawerVisible.value
   ) return;
   const issue = projectSuperAdminRemediationIssues.value.get(issueKey);
   if (!issue?.userId) return;
@@ -723,7 +746,8 @@ function openRoleAdditionDrawer(user: OrganizationDirectoryUser) {
     saving.value ||
     refreshing.value ||
     roleDrawerVisible.value ||
-    roleAdditionDrawerVisible.value
+    roleAdditionDrawerVisible.value ||
+    batchRoleRemovalDrawerVisible.value
   ) return;
   if (user.status !== "active") {
     directoryMessageTone.value = "error";
@@ -757,6 +781,22 @@ async function handleRoleAdditionApplied() {
   } finally {
     refreshing.value = false;
   }
+}
+
+function openBatchRoleRemovalDrawer() {
+  if (
+    saving.value ||
+    refreshing.value ||
+    roleDrawerVisible.value ||
+    roleAdditionDrawerVisible.value ||
+    batchRoleRemovalDrawerVisible.value
+  ) return;
+  batchRoleRemovalDrawerVisible.value = true;
+}
+
+function closeBatchRoleRemovalDrawer() {
+  if (batchRoleRemovalDrawerBusy.value) return;
+  batchRoleRemovalDrawerVisible.value = false;
 }
 
 function closeDialog() {

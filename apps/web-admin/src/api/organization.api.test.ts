@@ -9,6 +9,7 @@ import {
   ORGANIZATION_ROLE_KEYS,
   OrganizationApiError,
   previewOrganizationRoleAddition,
+  previewOrganizationRoleRemovalBatch,
   previewOrganizationRoleRemoval,
   updateOrganizationDepartment,
   updateOrganizationUser
@@ -88,6 +89,99 @@ describe("organization API client", () => {
         roleKey: "project_manager"
       })
     });
+  });
+
+  it("previews an ordered role-removal batch without sending apply credentials", async () => {
+    mockApiFetch.mockReturnValue(
+      jsonResponse({ combinedSnapshotHash: `sha256:${"a".repeat(64)}`, steps: [] })
+    );
+
+    await previewOrganizationRoleRemovalBatch({
+      targets: [
+        {
+          operation: "remove",
+          userId: "user-1",
+          scope: "global",
+          roleKey: "contract_director"
+        },
+        {
+          operation: "remove",
+          userId: "user-2",
+          scope: "project",
+          projectId: "project-1",
+          roleKey: "project_manager"
+        }
+      ],
+      combinedSnapshotHash: "must-not-be-sent",
+      confirmationPassword: "must-not-be-sent"
+    } as never);
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/organization/role-changes/batch-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        targets: [
+          {
+            operation: "remove",
+            userId: "user-1",
+            scope: "global",
+            roleKey: "contract_director"
+          },
+          {
+            operation: "remove",
+            userId: "user-2",
+            scope: "project",
+            projectId: "project-1",
+            roleKey: "project_manager"
+          }
+        ]
+      })
+    });
+    expect(JSON.stringify(mockApiFetch.mock.calls[0]?.[1])).not.toContain("Password");
+    expect(JSON.stringify(mockApiFetch.mock.calls[0]?.[1])).not.toContain("combinedSnapshotHash");
+  });
+
+  it("fails closed before batch preview for invalid coordinates, roles, duplicates and limits", () => {
+    const global = {
+      operation: "remove" as const,
+      userId: "user-1",
+      scope: "global" as const,
+      roleKey: "contract_director" as const
+    };
+    expect(() => previewOrganizationRoleRemovalBatch({ targets: [global] })).toThrow(
+      "批量撤销至少需要 2 个目标"
+    );
+    expect(() =>
+      previewOrganizationRoleRemovalBatch({ targets: [global, { ...global }] })
+    ).toThrow("批量撤销目标不得重复");
+    expect(() =>
+      previewOrganizationRoleRemovalBatch({
+        targets: [global, { ...global, userId: "user-2", roleKey: "root" as never }]
+      })
+    ).toThrow("岗位键不正确");
+    expect(() =>
+      previewOrganizationRoleRemovalBatch({
+        targets: [
+          global,
+          {
+            ...global,
+            userId: "user-2",
+            scope: "project",
+            projectId: "project-1",
+            roleKey: "super_admin"
+          }
+        ]
+      })
+    ).toThrow("项目岗位不得批量预览系统管理员清理");
+    expect(() =>
+      previewOrganizationRoleRemovalBatch({
+        targets: Array.from({ length: 21 }, (_, index) => ({
+          ...global,
+          userId: `user-${index}`
+        }))
+      })
+    ).toThrow("批量撤销一次最多 20 个目标");
+    expect(mockApiFetch).not.toHaveBeenCalled();
   });
 
   it("applies one role removal with the server hash and password preserved exactly", async () => {

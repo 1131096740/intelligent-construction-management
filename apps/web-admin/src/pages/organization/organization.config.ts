@@ -11,6 +11,7 @@ import type {
   RoleAdditionImpactPreview,
   RoleAdditionImpactReasonCode,
   RoleAdditionResolution,
+  RoleRemovalBatchImpactPreview,
   RoleRemovalImpactPreview,
   RoleRemovalImpactReasonCode,
   OrganizationRoleRemovalTarget,
@@ -89,6 +90,22 @@ export interface RoleRemovalImpactRow {
   statusLabel: string;
   statusTone: "success" | "danger";
   reasonLabel: string;
+}
+
+export interface OrganizationBatchRoleRemovalOption {
+  value: string;
+  label: string;
+  target: OrganizationRoleRemovalTarget;
+}
+
+export interface RoleRemovalBatchStepView {
+  sequence: number;
+  targetLabel: string;
+  canApply: boolean;
+  affectedInstances: number;
+  blockingInstances: number;
+  blockingMessages: string[];
+  impactRows: RoleRemovalImpactRow[];
 }
 
 export interface OrganizationRoleAdditionSelection {
@@ -536,6 +553,272 @@ export function buildOrganizationRoleRemovalTargets(
   return sortOrganizationRoleRemovalTargets([...globalTargets, ...projectTargets]);
 }
 
+export function organizationBatchRoleRemovalOptions(
+  directory: OrganizationDirectory
+): OrganizationBatchRoleRemovalOption[] {
+  const options = new Map<string, OrganizationBatchRoleRemovalOption>();
+  for (const user of directory.users) {
+    for (const row of buildOrganizationRoleRemovalTargets(user, directory.positions)) {
+      if (!isOrganizationRoleKey(row.roleKey)) continue;
+      if (row.scope === "project" && row.roleKey === "super_admin") continue;
+      try {
+        const target = normalizedRoleRemovalTarget(row);
+        const value = roleRemovalCoordinate(target);
+        if (options.has(value)) continue;
+        options.set(value, {
+          value,
+          label: `${user.name} · ${row.scopeLabel} · ${row.projectLabel} · ${row.roleName}`,
+          target
+        });
+      } catch {
+        // Malformed directory assignments are not exposed as selectable batch targets.
+      }
+    }
+  }
+  return [...options.values()].sort((left, right) =>
+    [left.label, left.value]
+      .join("\u0000")
+      .localeCompare([right.label, right.value].join("\u0000"), "zh-CN")
+  );
+}
+
+export function buildOrganizationRoleRemovalBatchTargets(
+  selectedValues: readonly string[],
+  options: readonly OrganizationBatchRoleRemovalOption[]
+): OrganizationRoleRemovalTarget[] {
+  if (selectedValues.length < 2 || selectedValues.length > 20) {
+    throw new Error("请选择 2 至 20 个待预览撤销的岗位");
+  }
+  const uniqueValues = new Set(selectedValues);
+  if (uniqueValues.size !== selectedValues.length) {
+    throw new Error("批量撤岗目标不得重复");
+  }
+  const optionByValue = new Map(options.map((option) => [option.value, option]));
+  const coordinates = new Set<string>();
+  return selectedValues.map((value) => {
+    const option = optionByValue.get(value);
+    if (!option) throw new Error("批量撤岗目标不在最新组织目录中，请刷新后重试");
+    const target = normalizedRoleRemovalTarget(option.target);
+    if (!isOrganizationRoleKey(target.roleKey)) throw new Error("岗位键不正确");
+    if (target.scope === "project" && target.roleKey === "super_admin") {
+      throw new Error("项目岗位不得批量预览系统管理员清理");
+    }
+    const coordinate = roleRemovalCoordinate(target);
+    if (coordinates.has(coordinate)) throw new Error("批量撤岗目标不得重复");
+    coordinates.add(coordinate);
+    return target;
+  });
+}
+
+function roleRemovalCoordinate(target: OrganizationRoleRemovalTarget) {
+  return [
+    target.userId,
+    target.scope,
+    target.scope === "project" ? target.projectId ?? "" : "",
+    target.roleKey
+  ].join("\u0000");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeBatchPreviewChange(
+  value: unknown,
+  label: string
+): RoleRemovalImpactPreview["change"] {
+  if (!isRecord(value) || value.operation !== "remove") {
+    throw new Error(`${label}岗位变更操作不正确`);
+  }
+  if (value.scope !== "global" && value.scope !== "project") {
+    throw new Error(`${label}岗位范围不正确`);
+  }
+  if (typeof value.userId !== "string" || !value.userId.trim()) {
+    throw new Error(`${label}人员标识缺失`);
+  }
+  if (!isOrganizationRoleKey(value.roleKey)) {
+    throw new Error(`${label}岗位键不正确`);
+  }
+  if (value.scope === "global" && value.projectId !== null) {
+    throw new Error(`${label}全局岗位项目坐标不正确`);
+  }
+  if (value.scope === "project" && (typeof value.projectId !== "string" || !value.projectId.trim())) {
+    throw new Error(`${label}项目岗位项目坐标不正确`);
+  }
+  if (value.scope === "project" && value.roleKey === "super_admin") {
+    throw new Error(`${label}不得包含项目系统管理员清理`);
+  }
+  return {
+    operation: "remove",
+    userId: value.userId,
+    scope: value.scope,
+    projectId: value.scope === "project" ? (value.projectId as string) : null,
+    roleKey: value.roleKey
+  };
+}
+
+const roleRemovalReasonCodes = new Set<RoleRemovalImpactReasonCode>([
+  "no_executable_current_approver",
+  "invalid_approval_instance_data",
+  "approval_execution_semantics_not_safe"
+]);
+
+function normalizeBatchPreviewStep(
+  value: unknown,
+  sequence: number,
+  expectedTarget: OrganizationRoleRemovalTarget,
+  evaluatedAt: string
+): RoleRemovalBatchImpactPreview["steps"][number] {
+  if (!isRecord(value) || value.sequence !== sequence) {
+    throw new Error("批量预览步骤顺序不正确");
+  }
+  const change = normalizeBatchPreviewChange(value.change, "批量预览");
+  if (roleRemovalCoordinate(change) !== roleRemovalCoordinate(expectedTarget)) {
+    throw new Error("批量预览步骤目标与请求不一致");
+  }
+  if (
+    value.evaluatedAt !== evaluatedAt ||
+    typeof value.snapshotHash !== "string" ||
+    !/^sha256:[0-9a-f]{64}$/u.test(value.snapshotHash) ||
+    typeof value.canApply !== "boolean" ||
+    !isRecord(value.summary) ||
+    !Number.isInteger(value.summary.affectedInstances) ||
+    Number(value.summary.affectedInstances) < 0 ||
+    !Number.isInteger(value.summary.blockingInstances) ||
+    Number(value.summary.blockingInstances) < 0 ||
+    !Array.isArray(value.blockingIssues) ||
+    !Array.isArray(value.impacts)
+  ) {
+    throw new Error("批量预览步骤数据不完整，请重新预览");
+  }
+  const blockingIssues = value.blockingIssues.map((issue) => {
+    if (!isRecord(issue) || typeof issue.code !== "string" || typeof issue.message !== "string") {
+      throw new Error("批量预览阻断信息不完整，请重新预览");
+    }
+    return issue as unknown as RoleRemovalImpactPreview["blockingIssues"][number];
+  });
+  const impacts = value.impacts.map((impact) => {
+    if (
+      !isRecord(impact) ||
+      typeof impact.approvalInstanceId !== "string" ||
+      typeof impact.businessType !== "string" ||
+      typeof impact.businessId !== "string" ||
+      (impact.projectId !== null && typeof impact.projectId !== "string") ||
+      !Number.isInteger(impact.currentNodeIndex) ||
+      Number(impact.currentNodeIndex) < 0 ||
+      (impact.currentNodeName !== null && typeof impact.currentNodeName !== "string") ||
+      (impact.mode !== null && impact.mode !== "any" && impact.mode !== "all") ||
+      !Array.isArray(impact.pendingRoleKeys) ||
+      !impact.pendingRoleKeys.every(isOrganizationRoleKey) ||
+      typeof impact.blocking !== "boolean" ||
+      (impact.reasonCode !== null &&
+        (typeof impact.reasonCode !== "string" ||
+          !roleRemovalReasonCodes.has(impact.reasonCode as RoleRemovalImpactReasonCode))) ||
+      !Array.isArray(impact.roleCoverage)
+    ) {
+      throw new Error("批量预览审批节点数据不完整，请重新预览");
+    }
+    return impact as unknown as RoleRemovalImpactPreview["impacts"][number];
+  });
+  return {
+    sequence,
+    change,
+    evaluatedAt,
+    snapshotHash: value.snapshotHash,
+    canApply: value.canApply,
+    summary: {
+      affectedInstances: Number(value.summary.affectedInstances),
+      blockingInstances: Number(value.summary.blockingInstances)
+    },
+    blockingIssues,
+    impacts
+  };
+}
+
+export function normalizeOrganizationRoleRemovalBatchPreview(
+  value: unknown,
+  requestedTargets: readonly OrganizationRoleRemovalTarget[]
+): RoleRemovalBatchImpactPreview {
+  if (!isRecord(value)) throw new Error("批量预览响应不完整，请重新预览");
+  if (
+    typeof value.combinedSnapshotHash !== "string" ||
+    !/^sha256:[0-9a-f]{64}$/u.test(value.combinedSnapshotHash)
+  ) {
+    throw new Error("批量预览组合校验码无效，请重新预览");
+  }
+  if (
+    typeof value.evaluatedAt !== "string" ||
+    Number.isNaN(Date.parse(value.evaluatedAt)) ||
+    typeof value.canApply !== "boolean" ||
+    !Number.isInteger(value.simulatedTargets) ||
+    Number(value.simulatedTargets) < 1 ||
+    Number(value.simulatedTargets) > requestedTargets.length ||
+    !Array.isArray(value.steps) ||
+    value.steps.length !== value.simulatedTargets
+  ) {
+    throw new Error("批量预览响应不完整，请重新预览");
+  }
+  const steps = value.steps.map((step, sequence) =>
+    normalizeBatchPreviewStep(step, sequence, requestedTargets[sequence], value.evaluatedAt as string)
+  );
+  const firstBlockingStep = steps.find((step) => !step.canApply) ?? null;
+  if (firstBlockingStep && steps.at(-1) !== firstBlockingStep) {
+    throw new Error("批量预览在阻断步骤后仍包含结果，请重新预览");
+  }
+  const blockingTarget =
+    value.blockingTarget === null
+      ? null
+      : normalizeBatchPreviewChange(value.blockingTarget, "批量预览阻断目标");
+  if (
+    value.canApply !==
+      (steps.length === requestedTargets.length && steps.every((step) => step.canApply)) ||
+    (value.canApply && blockingTarget !== null) ||
+    (!value.canApply &&
+      (!firstBlockingStep ||
+        !blockingTarget ||
+        roleRemovalCoordinate(blockingTarget) !== roleRemovalCoordinate(firstBlockingStep.change)))
+  ) {
+    throw new Error("批量预览组合结论不一致，请重新预览");
+  }
+  return {
+    evaluatedAt: value.evaluatedAt as string,
+    combinedSnapshotHash: value.combinedSnapshotHash,
+    canApply: value.canApply,
+    simulatedTargets: Number(value.simulatedTargets),
+    blockingTarget,
+    steps
+  };
+}
+
+function roleRemovalTargetLabel(
+  target: OrganizationRoleRemovalTarget,
+  directory: OrganizationDirectory
+) {
+  const user = directory.users.find((item) => item.id === target.userId);
+  const role = directory.positions.find((item) => item.key === target.roleKey);
+  const project =
+    target.scope === "project"
+      ? directory.projects.find((item) => item.id === target.projectId)
+      : null;
+  return `${user?.name ?? "人员未读取"} · ${target.scope === "global" ? "全局岗位 · 全公司" : `项目岗位 · ${project ? `${project.name}（${project.code}）` : "项目未读取"}`} · ${role?.name ?? "岗位未读取"}`;
+}
+
+export function roleRemovalBatchStepViews(
+  preview: RoleRemovalBatchImpactPreview,
+  directory: OrganizationDirectory,
+  requestedTargets: readonly OrganizationRoleRemovalTarget[]
+): RoleRemovalBatchStepView[] {
+  return preview.steps.map((step) => ({
+    sequence: step.sequence,
+    targetLabel: roleRemovalTargetLabel(requestedTargets[step.sequence], directory),
+    canApply: step.canApply,
+    affectedInstances: step.summary.affectedInstances,
+    blockingInstances: step.summary.blockingInstances,
+    blockingMessages: step.blockingIssues.map((issue) => issue.message),
+    impactRows: roleRemovalImpactRows(step.impacts, directory.positions)
+  }));
+}
+
 function sortOrganizationRoleRemovalTargets(targets: OrganizationRoleRemovalTargetRow[]) {
   return targets.sort((left, right) =>
     [left.scope, left.projectLabel, left.roleKey, left.key]
@@ -652,11 +935,11 @@ export function roleRemovalImpactRows(
   positions: ReadonlyArray<{ id?: string; key: string; name: string }>
 ): RoleRemovalImpactRow[] {
   return impacts.map((impact) => ({
-    key: impact.approvalInstanceId,
+    key: `${impact.approvalInstanceId}:${impact.currentNodeIndex}`,
     businessTypeLabel: roleRemovalBusinessTypeLabel(impact.businessType),
     businessId: impact.businessId,
     projectId: impact.projectId ?? "项目未读取",
-    currentNodeName: impact.currentNodeName ?? "当前审批节点未读取",
+    currentNodeName: impact.currentNodeName ?? "审批节点未读取",
     modeLabel: impact.mode === "any" ? "任一人通过" : impact.mode === "all" ? "全部通过" : "审批方式未读取",
     pendingRoleNames:
       impact.pendingRoleKeys.map((roleKey) => roleNameByKey(roleKey, positions)).join("、") ||

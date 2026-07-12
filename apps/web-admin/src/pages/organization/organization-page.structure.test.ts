@@ -14,6 +14,31 @@ const additionDrawerSource = readFileSync(
   fileURLToPath(new URL("./components/OrganizationRoleAdditionDrawer.vue", import.meta.url)),
   "utf8"
 );
+const batchRemovalDrawerSource = readFileSync(
+  fileURLToPath(new URL("./components/OrganizationBatchRoleRemovalDrawer.vue", import.meta.url)),
+  "utf8"
+);
+
+describe("organization batch role-removal preview structure", () => {
+  it("uses a separate read-only TDesign drawer without password or apply paths", () => {
+    expect(pageSource).toContain("OrganizationBatchRoleRemovalDrawer");
+    expect(pageSource).toContain("批量预览撤岗");
+    expect(batchRemovalDrawerSource).toContain("<t-drawer");
+    expect(batchRemovalDrawerSource).toContain("multiple");
+    expect(batchRemovalDrawerSource).toContain("previewOrganizationRoleRemovalBatch");
+    expect(batchRemovalDrawerSource).not.toContain("confirmationPassword");
+    expect(batchRemovalDrawerSource).not.toContain("applyOrganizationRoleRemoval");
+    expect(batchRemovalDrawerSource).not.toContain("role-changes/apply");
+  });
+
+  it("never auto-previews, clears preview on selection and warns that apply remains single-role", () => {
+    expect(batchRemovalDrawerSource).not.toMatch(/watch\([\s\S]{0,300}previewOrganizationRoleRemovalBatch\(/u);
+    expect(batchRemovalDrawerSource).toContain("clearPreview");
+    expect(batchRemovalDrawerSource).toContain("实际撤销仍需回到单人岗位管理");
+    expect(batchRemovalDrawerSource).toContain("不得用于撤销接口");
+    expect(batchRemovalDrawerSource).toContain("combinedSnapshotHash");
+  });
+});
 
 describe("organization role removal page structure", () => {
   it("uses an independent drawer and exposes only one-role-at-a-time removal", () => {
@@ -37,7 +62,7 @@ describe("organization role removal page structure", () => {
       /handleRoleRemovalApplied[\s\S]*Promise\.all\(\[loadDirectory\(\), loadPermissionIntegrity\(\)\]\)/u
     );
     expect(pageSource).toContain(
-      ':disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible"'
+      ':disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"'
     );
     expect(pageSource).toMatch(
       /handleRoleRemovalApplied[\s\S]*refreshing\.value = true[\s\S]*finally[\s\S]*refreshing\.value = false/u

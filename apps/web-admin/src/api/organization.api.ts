@@ -175,6 +175,19 @@ export interface RoleRemovalImpactPreview {
   }>;
 }
 
+export interface RoleRemovalBatchImpactPreview {
+  evaluatedAt: string;
+  combinedSnapshotHash: string;
+  canApply: boolean;
+  simulatedTargets: number;
+  blockingTarget: RoleRemovalImpactPreview["change"] | null;
+  steps: Array<RoleRemovalImpactPreview & { sequence: number }>;
+}
+
+export interface PreviewOrganizationRoleRemovalBatchPayload {
+  targets: OrganizationRoleRemovalTarget[];
+}
+
 export interface ApplyOrganizationRoleRemovalPayload extends OrganizationRoleRemovalTarget {
   snapshotHash: string;
   confirmationPassword: string;
@@ -361,6 +374,8 @@ function roleRemovalRequestTarget(payload: OrganizationRoleRemovalTarget) {
   const scope: unknown = payload.scope;
   if (operation !== "remove") throw new Error("岗位变更操作不正确");
   if (scope !== "global" && scope !== "project") throw new Error("岗位范围不正确");
+  if (!payload.userId.trim()) throw new Error("人员标识缺失");
+  if (!isOrganizationRoleKey(payload.roleKey)) throw new Error("岗位键不正确");
   if (payload.scope === "global") {
     if (payload.projectId !== undefined && payload.projectId !== null) {
       throw new Error("全局岗位不得提交项目标识");
@@ -380,6 +395,40 @@ function roleRemovalRequestTarget(payload: OrganizationRoleRemovalTarget) {
     projectId: payload.projectId,
     roleKey: payload.roleKey
   };
+}
+
+function roleRemovalBatchRequestTargets(targets: OrganizationRoleRemovalTarget[]) {
+  if (!Array.isArray(targets) || targets.length < 2) {
+    throw new Error("批量撤销至少需要 2 个目标");
+  }
+  if (targets.length > 20) {
+    throw new Error("批量撤销一次最多 20 个目标");
+  }
+  const coordinates = new Set<string>();
+  return targets.map((target) => {
+    const requestTarget = roleRemovalRequestTarget(target);
+    const normalized = {
+      ...requestTarget,
+      userId: requestTarget.userId.trim(),
+      ...(requestTarget.scope === "project"
+        ? { projectId: requestTarget.projectId.trim() }
+        : {})
+    };
+    if (normalized.scope === "project" && normalized.roleKey === "super_admin") {
+      throw new Error("项目岗位不得批量预览系统管理员清理");
+    }
+    const coordinate = [
+      normalized.userId,
+      normalized.scope,
+      normalized.scope === "project" ? normalized.projectId : "",
+      normalized.roleKey
+    ].join("\u0000");
+    if (coordinates.has(coordinate)) {
+      throw new Error("批量撤销目标不得重复");
+    }
+    coordinates.add(coordinate);
+    return normalized;
+  });
 }
 
 function roleAdditionRequestTarget(payload: OrganizationRoleAdditionTarget) {
@@ -418,6 +467,18 @@ export function previewOrganizationRoleRemoval(payload: OrganizationRoleRemovalT
     "POST",
     target,
     "读取岗位撤销影响失败"
+  );
+}
+
+export function previewOrganizationRoleRemovalBatch(
+  payload: PreviewOrganizationRoleRemovalBatchPayload
+) {
+  const targets = roleRemovalBatchRequestTargets(payload.targets);
+  return sendJson<RoleRemovalBatchImpactPreview>(
+    "/organization/role-changes/batch-preview",
+    "POST",
+    { targets },
+    "读取批量岗位撤销影响失败"
   );
 }
 
