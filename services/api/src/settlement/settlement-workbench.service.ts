@@ -7,6 +7,7 @@ import type {
 import { PrismaService } from "../database/prisma.service";
 import { formatMoneyCentsAsYuan } from "../money/decimal-money";
 import { SETTLEMENT_LINE_OCCUPANCY_STATUSES } from "./settlement-line-occupancy";
+import { settlementCalculationMode } from "./settlement-line-calculator";
 
 interface SourceLineOccupancy {
   amountCents: bigint;
@@ -39,7 +40,13 @@ export class SettlementWorkbenchService {
       this.prisma.contractBill.findMany({
         where: { contractVersionId: version.id },
         orderBy: [{ billKey: "asc" }, { id: "asc" }],
-        select: { id: true, billKey: true, name: true }
+        select: {
+          id: true,
+          billKey: true,
+          name: true,
+          amountRole: true,
+          pricingMode: true
+        }
       })
     ]);
     if (!contract) {
@@ -69,6 +76,7 @@ export class SettlementWorkbenchService {
         unit: true,
         quantity: true,
         unitPrice: true,
+        taxRate: true,
         taxInclusiveAmountCents: true,
         isProvisional: true,
         settlementBasis: true
@@ -180,11 +188,20 @@ export class SettlementWorkbenchService {
       unit: string;
       quantity: Prisma.Decimal;
       unitPrice: Prisma.Decimal;
+      taxRate: Prisma.Decimal;
       taxInclusiveAmountCents: bigint;
       isProvisional: boolean;
       settlementBasis: string | null;
     },
-    bill: { id: string; billKey: string; name: string } | undefined,
+    bill:
+      | {
+          id: string;
+          billKey: string;
+          name: string;
+          amountRole: string;
+          pricingMode: string;
+        }
+      | undefined,
     occupancy: SourceLineOccupancy | undefined
   ): SettlementSourceLineReadModel {
     if (!bill) {
@@ -193,6 +210,17 @@ export class SettlementWorkbenchService {
     const settledAmountCents = occupancy?.amountCents ?? 0n;
     const remainingAmountCents = row.taxInclusiveAmountCents - settledAmountCents;
     const exceededAmountCents = remainingAmountCents < 0n ? -remainingAmountCents : 0n;
+    const previousSettledQuantity =
+      !occupancy || occupancy.count === 0
+        ? new Prisma.Decimal(0)
+        : occupancy.quantityComplete
+          ? occupancy.quantity
+          : null;
+    const remainingQuantity = previousSettledQuantity
+      ? row.quantity.minus(previousSettledQuantity)
+      : null;
+    const amountRole = normalizedAmountRole(bill.amountRole);
+    const pricingMode = normalizedPricingMode(bill.pricingMode);
     return {
       id: row.id,
       billId: bill.id,
@@ -206,19 +234,33 @@ export class SettlementWorkbenchService {
       unit: row.unit,
       quantity: row.quantity.toString(),
       unitPrice: row.unitPrice.toString(),
+      taxRatePercent: row.taxRate.toString(),
+      amountRole,
+      pricingMode,
+      calculationMode: settlementCalculationMode({
+        amountRole,
+        isProvisional: row.isProvisional
+      }),
       contractAmountCents: row.taxInclusiveAmountCents.toString(),
-      settledQuantity:
-        !occupancy || occupancy.count === 0
-          ? "0"
-          : occupancy.quantityComplete
-            ? occupancy.quantity.toString()
-            : null,
+      settledQuantity: previousSettledQuantity?.toString() ?? null,
+      previousSettledQuantity: previousSettledQuantity?.toString() ?? null,
+      remainingQuantity: remainingQuantity?.toString() ?? null,
       settledAmountCents: settledAmountCents.toString(),
       remainingAmountCents: remainingAmountCents.toString(),
       provisional: row.isProvisional,
       settlementBasis: row.settlementBasis,
       exception:
-        remainingAmountCents < 0n
+        previousSettledQuantity === null
+          ? {
+              code: "unknown_previous_quantity",
+              message: "存在未记录数量的历史结算明细，请先完成历史数据核对"
+            }
+          : remainingQuantity?.isNegative()
+            ? {
+                code: "negative_remaining_quantity",
+                message: `累计已结算数量超过合同数量 ${remainingQuantity.abs().toString()}`
+              }
+            : remainingAmountCents < 0n
           ? {
               code: "negative_remaining_amount",
               message: `累计已占用金额超过合同清单金额 ${formatMoneyCentsAsYuan(
@@ -250,4 +292,18 @@ export class SettlementWorkbenchService {
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function normalizedAmountRole(
+  value: string
+): "included" | "reference" | "non_priced" | "provisional" {
+  if (["included", "reference", "non_priced", "provisional"].includes(value)) {
+    return value as "included" | "reference" | "non_priced" | "provisional";
+  }
+  throw new BadRequestException("合同清单金额属性不正确，请联系合同人员核对合同版本。");
+}
+
+function normalizedPricingMode(value: string): "tax_inclusive" | "tax_exclusive" {
+  if (value === "tax_inclusive" || value === "tax_exclusive") return value;
+  throw new BadRequestException("合同清单计价方式不正确，请联系合同人员核对合同版本。");
 }

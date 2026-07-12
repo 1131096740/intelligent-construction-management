@@ -26,8 +26,20 @@ function buildPrisma() {
     },
     contractBill: {
       findMany: jest.fn().mockResolvedValue([
-        { id: "bill-b", billKey: "materials", name: "材料清单" },
-        { id: "bill-a", billKey: "labor", name: "人工清单" }
+        {
+          id: "bill-b",
+          billKey: "materials",
+          name: "材料清单",
+          amountRole: "reference",
+          pricingMode: "tax_exclusive"
+        },
+        {
+          id: "bill-a",
+          billKey: "labor",
+          name: "人工清单",
+          amountRole: "included",
+          pricingMode: "tax_inclusive"
+        }
       ])
     },
     contractBillRow: {
@@ -43,6 +55,7 @@ function buildPrisma() {
           unit: "吨",
           quantity: new Decimal("999999999999999999.123456"),
           unitPrice: new Decimal("3200.125"),
+          taxRate: new Decimal("13"),
           taxInclusiveAmountCents: 9_007_199_254_740_995n,
           isProvisional: true,
           settlementBasis: "按现场验收量"
@@ -58,6 +71,7 @@ function buildPrisma() {
           unit: "工日",
           quantity: new Decimal("12.5"),
           unitPrice: new Decimal("280"),
+          taxRate: new Decimal("3"),
           taxInclusiveAmountCents: 350_000n,
           isProvisional: false,
           settlementBasis: null
@@ -131,6 +145,12 @@ describe("SettlementWorkbenchService", () => {
           unitPrice: "280",
           contractAmountCents: "350000",
           settledQuantity: "3.75",
+          previousSettledQuantity: "3.75",
+          remainingQuantity: "8.75",
+          taxRatePercent: "3",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          calculationMode: "normal_auto",
           settledAmountCents: "30000",
           remainingAmountCents: "320000",
           provisional: false,
@@ -144,13 +164,19 @@ describe("SettlementWorkbenchService", () => {
           unitPrice: "3200.125",
           contractAmountCents: "9007199254740995",
           settledQuantity: null,
+          previousSettledQuantity: null,
+          remainingQuantity: null,
+          taxRatePercent: "13",
+          amountRole: "reference",
+          pricingMode: "tax_exclusive",
+          calculationMode: "manual_amount",
           settledAmountCents: "9007199254741500",
           remainingAmountCents: "-505",
           provisional: true,
           settlementBasis: "按现场验收量",
           exception: {
-            code: "negative_remaining_amount",
-            message: "累计已占用金额超过合同清单金额 5.05 元"
+            code: "unknown_previous_quantity",
+            message: "存在未记录数量的历史结算明细，请先完成历史数据核对"
           }
         })
       ]
@@ -158,7 +184,13 @@ describe("SettlementWorkbenchService", () => {
     expect(prisma.contractBill.findMany).toHaveBeenCalledWith({
       where: { contractVersionId: "version-1" },
       orderBy: [{ billKey: "asc" }, { id: "asc" }],
-      select: { id: true, billKey: true, name: true }
+      select: {
+        id: true,
+        billKey: true,
+        name: true,
+        amountRole: true,
+        pricingMode: true
+      }
     });
     expect(prisma.contractBillRow.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { contractBillId: { in: ["bill-a", "bill-b"] } } })

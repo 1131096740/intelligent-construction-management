@@ -43,6 +43,8 @@ interface SettlementLineStore {
         unit: string | null;
         quantity: { toString(): string } | string | number | null;
         unitPriceCents: bigint | null;
+        unitPriceSnapshot?: { toString(): string } | string | number | null;
+        calculationMode?: string;
         amountCents: bigint;
         reason: string | null;
         remark: string | null;
@@ -80,7 +82,20 @@ export class SettlementReadService {
       name: line.name,
       unit: line.unit ?? "-",
       quantity: this.formatQuantity(line.quantity),
-      unitPrice: line.unitPriceCents === null ? "-" : this.formatMoney(line.unitPriceCents),
+      unitPrice:
+        line.unitPriceSnapshot === null || line.unitPriceSnapshot === undefined
+          ? line.unitPriceCents === null
+            ? "-"
+            : this.formatMoney(line.unitPriceCents)
+          : typeof line.unitPriceSnapshot === "object"
+            ? line.unitPriceSnapshot.toString()
+            : String(line.unitPriceSnapshot),
+      calculationMode:
+        line.calculationMode === "normal_auto" ||
+        line.calculationMode === "manual_amount" ||
+        line.calculationMode === "manual_adjustment"
+          ? line.calculationMode
+          : "legacy",
       amount: this.formatMoney(line.amountCents),
       amountCents: moneyCentsToApi(line.amountCents),
       reason: line.reason ?? "-",
@@ -510,6 +525,7 @@ export class SettlementReadService {
           unit: "吨",
           quantity: "10",
           unitPrice: "¥3,200.00",
+          calculationMode: "normal_auto",
           amount: "¥320,000.00",
           amountCents: "32000000",
           reason: "-",

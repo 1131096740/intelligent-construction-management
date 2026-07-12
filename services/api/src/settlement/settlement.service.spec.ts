@@ -458,7 +458,9 @@ describe("SettlementService", () => {
         })
       },
       contractBill: {
-        findMany: jest.fn().mockResolvedValue([{ id: "bill-1" }])
+        findMany: jest.fn().mockResolvedValue([
+          { id: "bill-1", amountRole: "included", pricingMode: "tax_inclusive" }
+        ])
       },
       contractBillRow: {
         findMany: jest.fn().mockResolvedValue([
@@ -467,7 +469,10 @@ describe("SettlementService", () => {
             contractBillId: "bill-1",
             itemName: "钢筋材料",
             unit: "吨",
+            quantity: new Decimal("100"),
             unitPrice: new Decimal("3200"),
+            taxRate: new Decimal("0"),
+            isProvisional: false,
             taxInclusiveAmountCents: BigInt(1000000)
           }
         ])
@@ -543,6 +548,11 @@ describe("SettlementService", () => {
           unit: "吨",
           quantity: new Decimal("3"),
           unitPriceCents: null,
+          calculationMode: "normal_auto",
+          contractQuantitySnapshot: new Decimal("100"),
+          unitPriceSnapshot: new Decimal("3200"),
+          taxRatePercentSnapshot: new Decimal("0"),
+          pricingModeSnapshot: "tax_inclusive",
           amountCents: 960000n,
           reason: null,
           remark: null,
@@ -556,6 +566,11 @@ describe("SettlementService", () => {
           unit: null,
           quantity: null,
           unitPriceCents: null,
+          calculationMode: "manual_adjustment",
+          contractQuantitySnapshot: null,
+          unitPriceSnapshot: null,
+          taxRatePercentSnapshot: null,
+          pricingModeSnapshot: null,
           amountCents: -10000n,
           reason: "现场扣款确认",
           remark: null,
@@ -575,7 +590,9 @@ describe("SettlementService", () => {
         })
       },
       contractBill: {
-        findMany: jest.fn().mockResolvedValue([{ id: "bill-1" }])
+        findMany: jest.fn().mockResolvedValue([
+          { id: "bill-1", amountRole: "reference", pricingMode: "tax_inclusive" }
+        ])
       },
       contractBillRow: {
         findMany: jest.fn().mockResolvedValue([
@@ -584,7 +601,10 @@ describe("SettlementService", () => {
             contractBillId: "bill-1",
             itemName: "钢筋材料",
             unit: "吨",
+            quantity: new Decimal("100"),
             unitPrice: new Decimal("3200"),
+            taxRate: new Decimal("0"),
+            isProvisional: false,
             taxInclusiveAmountCents: BigInt(1000000)
           }
         ])
@@ -643,7 +663,7 @@ describe("SettlementService", () => {
           }
         ]
       })
-    ).rejects.toThrow("合同清单项结算金额必须大于 0");
+    ).rejects.toThrow("合同清单项结算金额必须按分填写为 0 或更大的整数");
     expect(tx.settlement.create).not.toHaveBeenCalled();
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
   });
@@ -963,7 +983,9 @@ describe("SettlementService", () => {
         })
       },
       contractBill: {
-        findMany: jest.fn().mockResolvedValue([{ id: "bill-1" }])
+        findMany: jest.fn().mockResolvedValue([
+          { id: "bill-1", amountRole: "included", pricingMode: "tax_inclusive" }
+        ])
       },
       contractBillRow: {
         findMany: jest.fn().mockResolvedValue([
@@ -972,7 +994,10 @@ describe("SettlementService", () => {
             contractBillId: "bill-1",
             itemName: "钢筋材料",
             unit: "吨",
-            unitPrice: new Decimal("3200"),
+            quantity: new Decimal("10"),
+            unitPrice: new Decimal("300"),
+            taxRate: new Decimal("0"),
+            isProvisional: false,
             taxInclusiveAmountCents: BigInt(100000)
           }
         ])
@@ -1070,7 +1095,9 @@ describe("SettlementService", () => {
         })
       },
       contractBill: {
-        findMany: jest.fn().mockResolvedValue([{ id: "bill-1" }])
+        findMany: jest.fn().mockResolvedValue([
+          { id: "bill-1", amountRole: "included", pricingMode: "tax_inclusive" }
+        ])
       },
       contractBillRow: {
         findMany: jest.fn().mockResolvedValue([
@@ -1079,8 +1106,11 @@ describe("SettlementService", () => {
             contractBillId: "bill-1",
             itemName: "钢筋材料",
             unit: "吨",
-            unitPrice: new Decimal("3200"),
-            taxInclusiveAmountCents: 100000n
+            quantity: new Decimal("10"),
+            unitPrice: new Decimal("600"),
+            taxRate: new Decimal("0"),
+            isProvisional: false,
+            taxInclusiveAmountCents: 1000000n
           }
         ])
       },
@@ -1115,6 +1145,7 @@ describe("SettlementService", () => {
             {
               contractBillRowId: "bill-row-1",
               settlementId: "settlement-concurrent",
+              quantity: new Decimal("9.5"),
               amountCents: 50000n
             }
           ]),
@@ -1143,7 +1174,9 @@ describe("SettlementService", () => {
           }
         ]
       })
-    ).rejects.toThrow("累计结算金额不能超过合同清单金额");
+    ).rejects.toThrow(
+      "合同清单项“钢筋材料”累计结算数量不能超过合同数量。本期 1，前期 9.5，合同数量 10。"
+    );
 
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
@@ -1228,7 +1261,9 @@ describe("SettlementService", () => {
         })
       },
       contractBill: {
-        findMany: jest.fn().mockResolvedValue([{ id: "bill-1" }])
+        findMany: jest.fn().mockResolvedValue([
+          { id: "bill-1", amountRole: "included", pricingMode: "tax_inclusive" }
+        ])
       },
       contractBillRow: {
         findMany: jest.fn().mockResolvedValue([
@@ -1237,7 +1272,10 @@ describe("SettlementService", () => {
             contractBillId: "bill-1",
             itemName: "钢筋采购",
             unit: "吨",
+            quantity: new Decimal("10"),
             unitPrice: new Decimal("3200"),
+            taxRate: new Decimal("0"),
+            isProvisional: false,
             taxInclusiveAmountCents: BigInt(100000)
           }
         ])
@@ -1295,9 +1333,7 @@ describe("SettlementService", () => {
           }
         ]
       })
-    ).rejects.toThrow(
-      "合同清单项“钢筋采购”累计结算金额不能超过合同清单金额。本次结算 1,100.00"
-    );
+    ).rejects.toThrow("同一合同清单项每期只能生成一条结算明细");
     expect(tx.settlement.create).not.toHaveBeenCalled();
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
   });

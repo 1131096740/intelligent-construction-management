@@ -291,20 +291,25 @@ model Settlement {
 }
 
 model SettlementLine {
-  id                String   @id @default(uuid())
-  settlementId      String
-  contractBillRowId String?
-  sourceType        String
-  name              String
-  unit              String?
-  quantity          Decimal? @db.Decimal(24, 6)
-  unitPriceCents    BigInt?
-  amountCents       BigInt
-  reason            String?
-  remark            String?
-  sortOrder         Int
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                       String   @id @default(uuid())
+  settlementId             String
+  contractBillRowId        String?
+  sourceType               String
+  name                     String
+  unit                     String?
+  quantity                 Decimal? @db.Decimal(24, 6)
+  unitPriceCents           BigInt?
+  calculationMode          String   @default("legacy")
+  contractQuantitySnapshot Decimal? @db.Decimal(24, 6)
+  unitPriceSnapshot        Decimal? @db.Decimal(24, 6)
+  taxRatePercentSnapshot   Decimal? @db.Decimal(9, 6)
+  pricingModeSnapshot      String?
+  amountCents              BigInt
+  reason                   String?
+  remark                   String?
+  sortOrder                Int
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   @@index([settlementId, sortOrder])
   @@index([contractBillRowId])

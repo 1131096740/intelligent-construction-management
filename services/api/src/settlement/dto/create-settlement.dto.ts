@@ -65,12 +65,13 @@ export class CreateSettlementLineDto {
   })
   unitPriceCents?: string;
 
+  @ValidateIf((_object, value) => value !== undefined)
   @IsCanonicalSignedMoneyText({
     typeMessage: "结算明细金额格式不正确",
     formatMessage: "结算明细金额必须按分填写为整数",
     rangeMessage: "结算明细金额超出系统可保存范围"
   })
-  amountCents!: string;
+  amountCents?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "结算明细原因必须是文字" })
@@ -112,11 +113,12 @@ export class CreateSettlementDto {
   })
   periodLabel!: string;
 
+  @ValidateIf((_object, value) => value !== undefined)
   @IsCanonicalMoneyText({
     typeMessage: "结算金额格式不正确",
     formatMessage: "结算金额必须按分填写为 0 或更大的整数"
   })
-  amountCents!: string;
+  amountCents?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsBoolean({ message: "是否最终结算必须是布尔值" })

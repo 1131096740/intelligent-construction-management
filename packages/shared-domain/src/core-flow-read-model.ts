@@ -208,6 +208,7 @@ export interface SettlementLineReadModel {
   unit: string;
   quantity: string;
   unitPrice: string;
+  calculationMode: "legacy" | "normal_auto" | "manual_amount" | "manual_adjustment";
   amount: string;
   amountCents: MoneyCents;
   reason: string;

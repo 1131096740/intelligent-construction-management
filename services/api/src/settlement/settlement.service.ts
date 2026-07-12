@@ -30,6 +30,7 @@ import type {
   SettlementLineSourceType
 } from "./dto/create-settlement.dto";
 import type { GenerateSettlementPdfArchiveDto } from "./dto/generate-settlement-pdf-archive.dto";
+import type { PreviewSettlementLinesDto } from "./dto/preview-settlement-lines.dto";
 import type { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import type { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
 import {
@@ -42,6 +43,11 @@ import {
   parseSettlementQuantity
 } from "./settlement-quantity";
 import { SETTLEMENT_LINE_OCCUPANCY_STATUSES } from "./settlement-line-occupancy";
+import {
+  canonicalSettlementLine,
+  type CanonicalSettlementLine,
+  type SettlementContractSourceRow
+} from "./settlement-line-calculator";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -180,21 +186,17 @@ interface UserLookupClient {
   };
 }
 
-interface SettlementLineContractBillRow {
+interface SettlementLineContractBillRow extends SettlementContractSourceRow {
   id: string;
   contractBillId: string;
-  itemName: string;
-  unit: string;
-  unitPrice: Prisma.Decimal | string | number;
-  taxInclusiveAmountCents: bigint;
 }
 
 interface SettlementLineClient {
   contractBill: {
     findMany(args: {
       where: { contractVersionId: string };
-      select: { id: true };
-    }): Promise<Array<{ id: string }>>;
+      select: { id: true; amountRole: true; pricingMode: true };
+    }): Promise<Array<{ id: string; amountRole: string; pricingMode: string }>>;
   };
   contractBillRow: {
     findMany(args: {
@@ -204,19 +206,35 @@ interface SettlementLineClient {
         contractBillId: true;
         itemName: true;
         unit: true;
+        quantity: true;
         unitPrice: true;
+        taxRate: true;
         taxInclusiveAmountCents: true;
+        isProvisional: true;
       };
-    }): Promise<SettlementLineContractBillRow[]>;
+    }): Promise<
+      Array<{
+        id: string;
+        contractBillId: string;
+        itemName: string;
+        unit: string;
+        quantity: Prisma.Decimal;
+        unitPrice: Prisma.Decimal;
+        taxRate: Prisma.Decimal;
+        taxInclusiveAmountCents: bigint;
+        isProvisional: boolean;
+      }>
+    >;
   };
   settlementLine: {
     findMany?(args: {
       where: { contractBillRowId: { in: string[] } };
-      select: { contractBillRowId: true; settlementId: true; amountCents: true };
+      select: { contractBillRowId: true; settlementId: true; quantity: true; amountCents: true };
     }): Promise<
       Array<{
         contractBillRowId: string | null;
         settlementId: string;
+        quantity?: Prisma.Decimal | null;
         amountCents: bigint;
       }>
     >;
@@ -229,6 +247,11 @@ interface SettlementLineClient {
         unit: string | null;
         quantity: Prisma.Decimal | null;
         unitPriceCents: bigint | null;
+        calculationMode: string;
+        contractQuantitySnapshot: Prisma.Decimal | null;
+        unitPriceSnapshot: Prisma.Decimal | null;
+        taxRatePercentSnapshot: Prisma.Decimal | null;
+        pricingModeSnapshot: string | null;
         amountCents: bigint;
         reason: string | null;
         remark: string | null;
@@ -244,19 +267,7 @@ interface SettlementLineClient {
   };
 }
 
-interface NormalizedSettlementLine {
-  sourceType: SettlementLineSourceType;
-  contractBillRowId: string | null;
-  name: string;
-  unit: string | null;
-  quantity: Prisma.Decimal | null;
-  unitPriceCents: bigint | null;
-  amountCents: bigint;
-  reason: string | null;
-  remark: string | null;
-  sortOrder: number;
-  contractBillRowLimitCents: bigint | null;
-}
+type NormalizedSettlementLine = CanonicalSettlementLine;
 
 interface SettlementDuplicateClient {
   settlement?: {
@@ -292,6 +303,46 @@ export class SettlementService {
     }
   }
 
+  async previewLines(contractVersionId: string, input: PreviewSettlementLinesDto) {
+    if (!this.prisma) {
+      throw new Error("结算预览服务暂不可用，请稍后重试或联系管理员");
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.contractVersion.findUnique({
+        where: { id: contractVersionId },
+        select: { id: true, status: true }
+      });
+      if (!version) {
+        throw new BadRequestException("未找到可结算的合同版本，请刷新合同后重试");
+      }
+      this.assertContractVersionEffective(version.status as ContractVersionStatus);
+      const lines = await this.normalizeSettlementLines(
+        tx,
+        version.id,
+        input.settlementLines
+      );
+      const amountCents = this.settlementAmountFromLines(null, lines);
+      await this.assertContractBillRowSettlementLimits(tx, lines);
+      return {
+        contractVersionId: version.id,
+        amountCents: amountCents.toString(),
+        lines: lines.map((line) => ({
+          sourceType: line.sourceType,
+          calculationMode: line.calculationMode,
+          contractBillRowId: line.contractBillRowId,
+          name: line.name,
+          unit: line.unit,
+          quantity: line.quantity?.toString() ?? null,
+          unitPrice: line.unitPriceSnapshot?.toString() ?? null,
+          amountCents: line.amountCents.toString(),
+          reason: line.reason,
+          remark: line.remark,
+          sortOrder: line.sortOrder
+        }))
+      };
+    });
+  }
+
   private async normalizeSettlementLines(
     tx: unknown,
     contractVersionId: string,
@@ -300,73 +351,27 @@ export class SettlementService {
     if (!lines?.length) return [];
 
     const client = tx as SettlementLineClient;
+    const selectedRowIds = lines
+      .filter((line) => line.sourceType === "contract_bill_row")
+      .map((line) => this.requiredText(line.contractBillRowId, "合同清单项"));
+    if (new Set(selectedRowIds).size !== selectedRowIds.length) {
+      throw new BadRequestException("同一合同清单项每期只能生成一条结算明细。");
+    }
     const contractBillRows = await this.contractBillRowsById(
       client,
       contractVersionId,
-      lines
-        .filter((line) => line.sourceType === "contract_bill_row")
-        .map((line) => this.requiredText(line.contractBillRowId, "合同清单项"))
+      selectedRowIds
     );
 
     return lines.map((line, index) => {
-      const sourceType = line.sourceType;
-      if (sourceType !== "contract_bill_row" && sourceType !== "manual_adjustment") {
-        throw new BadRequestException("结算明细来源类型不正确。");
-      }
-
-      const amountCents = this.requiredMoneyCents(
-        line.amountCents,
-        "结算明细金额",
-        true
+      const rowId = line.sourceType === "contract_bill_row"
+        ? this.requiredText(line.contractBillRowId, "合同清单项")
+        : null;
+      return canonicalSettlementLine(
+        line,
+        rowId ? contractBillRows.get(rowId) : undefined,
+        this.sortOrder(line.sortOrder, index)
       );
-      if (amountCents === 0n) {
-        throw new BadRequestException("结算明细金额不能为 0。");
-      }
-
-      if (sourceType === "manual_adjustment") {
-        const reason = this.requiredText(line.reason, "手工调整原因");
-        return {
-          sourceType,
-          contractBillRowId: null,
-          name: this.requiredText(line.name, "结算明细名称"),
-          unit: this.optionalText(line.unit),
-          quantity: this.optionalDecimal(line.quantity),
-          unitPriceCents: this.optionalMoneyCents(line.unitPriceCents, "结算明细单价"),
-          amountCents,
-          reason,
-          remark: this.optionalText(line.remark),
-          sortOrder: this.sortOrder(line.sortOrder, index),
-          contractBillRowLimitCents: null
-        };
-      }
-
-      const contractBillRowId = this.requiredText(line.contractBillRowId, "合同清单项");
-      if (amountCents < 0n) {
-        throw new BadRequestException(
-          "合同清单项结算金额必须大于 0，扣款或冲减请作为手工调整项填写原因。"
-        );
-      }
-      const billRow = contractBillRows.get(contractBillRowId);
-      if (!billRow) {
-        throw new BadRequestException("结算明细引用的合同清单项不属于当前有效合同版本。");
-      }
-
-      return {
-        sourceType,
-        contractBillRowId,
-        name: this.optionalText(line.name) ?? billRow.itemName,
-        unit: this.optionalText(line.unit) ?? billRow.unit,
-        quantity: this.optionalDecimal(line.quantity),
-        unitPriceCents: this.optionalMoneyCents(line.unitPriceCents, "结算明细单价"),
-        amountCents,
-        reason: this.optionalText(line.reason),
-        remark: this.optionalText(line.remark),
-        sortOrder: this.sortOrder(line.sortOrder, index),
-        contractBillRowLimitCents: dbMoneyToBigInt(
-          billRow.taxInclusiveAmountCents,
-          "合同清单项金额"
-        )
-      };
     });
   }
 
@@ -380,7 +385,7 @@ export class SettlementService {
 
     const bills = await client.contractBill.findMany({
       where: { contractVersionId },
-      select: { id: true }
+      select: { id: true, amountRole: true, pricingMode: true }
     });
     const billIds = bills.map((bill) => bill.id);
     if (!billIds.length) return new Map();
@@ -392,24 +397,49 @@ export class SettlementService {
         contractBillId: true,
         itemName: true,
         unit: true,
+        quantity: true,
         unitPrice: true,
-        taxInclusiveAmountCents: true
+        taxRate: true,
+        taxInclusiveAmountCents: true,
+        isProvisional: true
       }
     });
-
-    return new Map(rows.map((row) => [row.id, row]));
+    const billById = new Map(bills.map((bill) => [bill.id, bill]));
+    return new Map(
+      rows.map((row) => {
+        const bill = billById.get(row.contractBillId);
+        if (!bill) {
+          throw new BadRequestException("合同清单数据不完整，请联系管理员核对合同版本。");
+        }
+        return [
+          row.id,
+          {
+            ...row,
+            contractQuantity: row.quantity,
+            taxRatePercent: row.taxRate,
+            amountRole: bill.amountRole,
+            pricingMode: bill.pricingMode
+          }
+        ];
+      })
+    );
   }
 
   private settlementAmountFromLines(
-    calculatedAmountCents: bigint,
+    calculatedAmountCents: bigint | null,
     lines: NormalizedSettlementLine[]
   ): bigint {
-    if (!lines.length) return calculatedAmountCents;
+    if (!lines.length) {
+      if (calculatedAmountCents === null) {
+        throw new BadRequestException("请至少选择一条本期真实发生的合同清单项或填写一条手工调整。");
+      }
+      return calculatedAmountCents;
+    }
 
     const lineTotal = calculateSettlementLineTotalBigInt(
       lines.map((line) => line.amountCents)
     );
-    if (lineTotal !== dbMoneyToBigInt(calculatedAmountCents, "本次结算金额")) {
+    if (calculatedAmountCents !== null && lineTotal !== calculatedAmountCents) {
       throw new BadRequestException("结算明细合计必须等于本次结算金额，系统不会使用前端合计覆盖后台计算。");
     }
 
@@ -475,7 +505,17 @@ export class SettlementService {
     const client = tx as SettlementLineClient;
     const currentByRowId = new Map<
       string,
-      { currentAmountCents: bigint; previousAmountCents: bigint; limitCents: bigint; name: string }
+      {
+        currentAmountCents: bigint;
+        previousAmountCents: bigint;
+        limitCents: bigint;
+        currentQuantity: Prisma.Decimal;
+        previousQuantity: Prisma.Decimal;
+        limitQuantity: Prisma.Decimal | null;
+        previousQuantityComplete: boolean;
+        enforceAmountLimit: boolean;
+        name: string;
+      }
     >();
 
     for (const line of billRowLines) {
@@ -485,9 +525,15 @@ export class SettlementService {
         currentAmountCents: 0n,
         previousAmountCents: 0n,
         limitCents: line.contractBillRowLimitCents,
+        currentQuantity: new Prisma.Decimal(0),
+        previousQuantity: new Prisma.Decimal(0),
+        limitQuantity: line.contractQuantitySnapshot,
+        previousQuantityComplete: true,
+        enforceAmountLimit: line.calculationMode === "normal_auto",
         name: line.name
       };
       current.currentAmountCents += dbMoneyToBigInt(line.amountCents, "结算明细金额");
+      if (line.quantity !== null) current.currentQuantity = current.currentQuantity.plus(line.quantity);
       currentByRowId.set(rowId, current);
     }
 
@@ -497,7 +543,7 @@ export class SettlementService {
     const previousLines =
       (await client.settlementLine.findMany?.({
         where: { contractBillRowId: { in: rowIds } },
-        select: { contractBillRowId: true, settlementId: true, amountCents: true }
+        select: { contractBillRowId: true, settlementId: true, quantity: true, amountCents: true }
       })) ?? [];
 
     const previousSettlementIds = [...new Set(previousLines.map((line) => line.settlementId))];
@@ -520,11 +566,39 @@ export class SettlementService {
       const current = currentByRowId.get(line.contractBillRowId);
       if (!current) continue;
       current.previousAmountCents += dbMoneyToBigInt(line.amountCents, "前序结算明细金额");
+      if (line.quantity === null) {
+        current.previousQuantityComplete = false;
+      } else if (line.quantity !== undefined) {
+        current.previousQuantity = current.previousQuantity.plus(line.quantity);
+      }
     }
 
-    for (const { currentAmountCents, previousAmountCents, limitCents, name } of currentByRowId.values()) {
+    for (const {
+      currentAmountCents,
+      previousAmountCents,
+      limitCents,
+      currentQuantity,
+      previousQuantity,
+      limitQuantity,
+      previousQuantityComplete,
+      enforceAmountLimit,
+      name
+    } of currentByRowId.values()) {
+      if (limitQuantity !== null && !previousQuantityComplete) {
+        throw new BadRequestException(
+          `合同清单项“${name}”存在未记录数量的历史结算明细，无法校验剩余数量，请先完成历史数据核对。`
+        );
+      }
+      if (
+        limitQuantity !== null &&
+        previousQuantity.plus(currentQuantity).greaterThan(limitQuantity)
+      ) {
+        throw new BadRequestException(
+          `合同清单项“${name}”累计结算数量不能超过合同数量。本期 ${currentQuantity.toString()}，前期 ${previousQuantity.toString()}，合同数量 ${limitQuantity.toString()}。`
+        );
+      }
       const totalAmountCents = currentAmountCents + previousAmountCents;
-      if (totalAmountCents > limitCents) {
+      if (enforceAmountLimit && totalAmountCents > limitCents) {
         const exceededAmountCents = totalAmountCents - limitCents;
         throw new BadRequestException(
           `合同清单项“${name}”累计结算金额不能超过合同清单金额。本次结算 ${formatSettlementAmount(
@@ -554,6 +628,11 @@ export class SettlementService {
         unit: line.unit,
         quantity: line.quantity,
         unitPriceCents: line.unitPriceCents,
+        calculationMode: line.calculationMode,
+        contractQuantitySnapshot: line.contractQuantitySnapshot,
+        unitPriceSnapshot: line.unitPriceSnapshot,
+        taxRatePercentSnapshot: line.taxRatePercentSnapshot,
+        pricingModeSnapshot: line.pricingModeSnapshot,
         amountCents: line.amountCents,
         reason: line.reason,
         remark: line.remark,
@@ -570,11 +649,6 @@ export class SettlementService {
     return text;
   }
 
-  private optionalText(value: string | undefined): string | null {
-    const text = value?.trim();
-    return text || null;
-  }
-
   private requiredInteger(value: number | undefined, label: string): number {
     if (!Number.isSafeInteger(value)) {
       throw new BadRequestException(`${label}必须为整数。`);
@@ -589,11 +663,6 @@ export class SettlementService {
     return signed
       ? parseSignedMoneyCentsInput(value as string, label, `${label}必须为整数。`)
       : parseMoneyCentsInput(value as string, label, `${label}必须为整数。`);
-  }
-
-  private optionalMoneyCents(value: string | undefined, label: string): bigint | null {
-    if (value === undefined || value === null) return null;
-    return this.requiredMoneyCents(value, label);
   }
 
   private optionalDecimal(value: number | string | undefined): Prisma.Decimal | null {
@@ -614,8 +683,11 @@ export class SettlementService {
       throw new Error("结算创建服务暂不可用，请稍后重试或联系管理员");
     }
 
-    const submittedAmountCents = this.requiredMoneyCents(input.amountCents, "结算金额");
-    if (submittedAmountCents <= 0n) {
+    const submittedAmountCents =
+      input.amountCents === undefined
+        ? null
+        : this.requiredMoneyCents(input.amountCents, "结算金额");
+    if (submittedAmountCents !== null && submittedAmountCents <= 0n) {
       throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
     }
     for (const line of input.settlementLines ?? []) {
@@ -661,16 +733,23 @@ export class SettlementService {
 
       const calculatedSettlementAmountCents =
         input.isFinal === true
-          ? await this.calculateFinalSettlementCurrentAmount(
-              tx,
-              version.contractId,
-              submittedAmountCents
-            )
+          ? submittedAmountCents === null
+            ? (() => {
+                throw new BadRequestException("最终结算必须填写审定累计结算金额。");
+              })()
+            : await this.calculateFinalSettlementCurrentAmount(
+                tx,
+                version.contractId,
+                submittedAmountCents
+              )
           : submittedAmountCents;
       const settlementAmountCents = this.settlementAmountFromLines(
         calculatedSettlementAmountCents,
         settlementLines
       );
+      if (settlementAmountCents <= 0n) {
+        throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
+      }
       await this.assertContractBillRowSettlementLimits(tx, settlementLines);
 
       const exceptionQuotaAllocations = await this.reserveSettlementQuota(
@@ -711,7 +790,7 @@ export class SettlementService {
           payableAmountCents,
           paidAmountCents: 0n,
           ...(input.isFinal === true
-            ? { isFinal: true, finalCumulativeAmountCents: submittedAmountCents }
+            ? { isFinal: true, finalCumulativeAmountCents: submittedAmountCents! }
             : {})
         }
       });
