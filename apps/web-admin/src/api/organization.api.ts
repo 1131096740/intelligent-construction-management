@@ -67,6 +67,11 @@ export interface OrganizationDirectoryUser {
     keys: RoleKey[];
     names: string[];
   }>;
+  rosterProjects?: Array<{
+    projectId: string;
+    projectCode: string;
+    projectName: string;
+  }>;
 }
 
 export interface OrganizationDirectory {

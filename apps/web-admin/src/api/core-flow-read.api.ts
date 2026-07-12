@@ -748,6 +748,8 @@ export interface ProjectRosterRowReadModel {
   name: string;
   phone: string;
   positionNames: string[];
+  globalPositionNames: string[];
+  projectPositionNames: string[];
 }
 
 export interface CreateProjectPayload {

@@ -11,11 +11,12 @@ export class ProjectVisibilityService {
   constructor(private readonly prisma: PrismaService) {}
 
   async visibleProjectIds(userId: string): Promise<string[]> {
-    const [globalPositions, projectPositions, projectMembers, activeProjects] =
+    const [globalPositions, projectPositions, projectMembers, rosterMembers, activeProjects] =
       await Promise.all([
         this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
         this.prisma.userPosition.findMany({ where: { userId, projectId: { not: null } } }),
         this.prisma.projectMember.findMany({ where: { userId } }),
+        this.prisma.projectRosterMember.findMany({ where: { userId } }),
         this.prisma.project.findMany({ where: { isActive: true }, select: { id: true } })
       ]);
     const activeProjectIds = activeProjects.map((project) => project.id);
@@ -38,7 +39,8 @@ export class ProjectVisibilityService {
       ...projectPositions
         .map((position) => position.projectId)
         .filter((projectId): projectId is string => typeof projectId === "string"),
-      ...projectMembers.map((member) => member.projectId)
+      ...projectMembers.map((member) => member.projectId),
+      ...rosterMembers.map((member) => member.projectId)
     ]);
 
     return activeProjectIds.filter((projectId) => scopedProjectIds.has(projectId));

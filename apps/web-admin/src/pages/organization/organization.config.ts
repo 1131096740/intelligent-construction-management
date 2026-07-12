@@ -358,6 +358,10 @@ export function projectPositionsText(user: OrganizationDirectoryUser) {
   );
 }
 
+export function rosterProjectsText(user: OrganizationDirectoryUser) {
+  return user.rosterProjects?.map((project) => project.projectName).join("、") || "无";
+}
+
 export function activeOrganizationProjectOptions(projects: OrganizationDirectory["projects"]) {
   return projects
     .filter((project) => project.isActive)

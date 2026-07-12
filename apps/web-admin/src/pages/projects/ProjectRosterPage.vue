@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>项目花名册</h1>
-        <p>查看当前账号可见项目的人员姓名、电话和岗位</p>
+        <p>查看当前账号可见项目的人员、公司岗位和项目业务岗位</p>
       </div>
       <t-button
         theme="primary"
@@ -37,8 +37,11 @@
         :loading="loading"
         empty="暂无可查看的项目人员"
       >
-        <template #positions="{ row }">
-          {{ row.positions }}
+        <template #globalPositions="{ row }">
+          {{ row.globalPositions }}
+        </template>
+        <template #projectPositions="{ row }">
+          {{ row.projectPositions }}
         </template>
       </t-table>
       <p
@@ -58,14 +61,16 @@ import { fetchProjectRoster, type ProjectRosterRowReadModel } from "../../api/co
 type RosterTableRow = ProjectRosterRowReadModel & {
   rowKey: string;
   project: string;
-  positions: string;
+  globalPositions: string;
+  projectPositions: string;
 };
 
 const columns = [
   { colKey: "project", title: "项目", minWidth: 180 },
   { colKey: "name", title: "姓名", width: 120 },
   { colKey: "phone", title: "电话", width: 150 },
-  { colKey: "positions", title: "岗位", minWidth: 180 }
+  { colKey: "globalPositions", title: "公司岗位", minWidth: 180 },
+  { colKey: "projectPositions", title: "项目岗位", minWidth: 180 }
 ];
 const loading = ref(false);
 const message = ref("");
@@ -76,7 +81,8 @@ const tableRows = computed<RosterTableRow[]>(() =>
     ...row,
     rowKey: `${row.projectId}:${row.userId}`,
     project: `${row.projectCode} · ${row.projectName}`,
-    positions: row.positionNames.join("、") || "未设置岗位"
+    globalPositions: row.globalPositionNames.join("、") || "无",
+    projectPositions: row.projectPositionNames.join("、") || "无"
   }))
 );
 const visibleRows = computed(() =>

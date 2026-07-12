@@ -205,6 +205,15 @@ export class OrganizationRoleService {
           if (!assignment) {
             throw new ConflictException("岗位新增目标与范围不一致，请重新预览后再试");
           }
+          if (target.source === "project_member") {
+            await tx.projectRosterMember.upsert({
+              where: {
+                projectId_userId: { projectId: target.projectId, userId: target.userId }
+              },
+              create: { projectId: target.projectId, userId: target.userId },
+              update: {}
+            });
+          }
           const revoked = await tx.refreshToken.updateMany({
             where: { userId: change.userId, revokedAt: null },
             data: { revokedAt: evaluatedAt }

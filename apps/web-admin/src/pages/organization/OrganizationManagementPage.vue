@@ -220,6 +220,9 @@
           <template #projectPositions="{ row }">
             {{ projectPositionsText(row) }}
           </template>
+          <template #rosterProjects="{ row }">
+            {{ rosterProjectsText(row) }}
+          </template>
           <template #operation="{ row }">
             <div class="row-actions">
               <t-button
@@ -453,6 +456,7 @@ import {
   permissionIntegrityReadinessTag,
   permissionIntegritySummaryItems,
   projectPositionsText,
+  rosterProjectsText,
   userStatusText,
   type FlatOrganizationDepartment,
   type OrganizationActionKind,
@@ -529,6 +533,7 @@ const userColumns = [
   { colKey: "status", title: "状态", width: 78 },
   { colKey: "mustChangePassword", title: "首次改密", width: 108 },
   { colKey: "globalPositions", title: "全局岗位", minWidth: 150 },
+  { colKey: "rosterProjects", title: "项目归属", minWidth: 180 },
   { colKey: "projectPositions", title: "项目岗位", minWidth: 200 },
   { colKey: "operation", title: "操作", width: 224, fixed: "right" }
 ];

@@ -10,6 +10,9 @@ function createPrisma(overrides: Record<string, unknown[]> = {}) {
     position: { findMany: jest.fn().mockResolvedValue(overrides.positions ?? []) },
     userPosition: { findMany: jest.fn().mockResolvedValue(overrides.userPositions ?? []) },
     projectMember: { findMany: jest.fn().mockResolvedValue(overrides.projectMembers ?? []) },
+    projectRosterMember: {
+      findMany: jest.fn().mockResolvedValue(overrides.projectRosterMembers ?? [])
+    },
     project: { findMany: jest.fn().mockResolvedValue(overrides.projects ?? []) }
   };
 }
@@ -156,6 +159,7 @@ function createWriteHarness(options?: {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: "project-role-new" })
     },
+    projectRosterMember: { upsert: jest.fn().mockResolvedValue({ id: "roster-member" }) },
     project: {
       findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
     },
@@ -230,6 +234,7 @@ describe("OrganizationService", () => {
           positionKey: "invented_role"
         }
       ],
+      projectRosterMembers: [{ userId: "user-1", projectId: "project-1" }],
       projects: [{ id: "project-1", code: "XM-001", name: "一号项目" }]
     });
     const service = new OrganizationService(prisma as never);
@@ -250,12 +255,16 @@ describe("OrganizationService", () => {
         names: ["合同员"]
       })
     ]);
+    expect(result.users[0].rosterProjects).toEqual([
+      { projectId: "project-1", projectCode: "XM-001", projectName: "一号项目" }
+    ]);
     expect(result.positions).toEqual([
       { id: "position-director", key: "contract_director", name: "合同部主管" },
       { id: "position-staff", key: "contract_staff", name: "合同员" }
     ]);
     expect(prisma.userPosition.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.projectMember.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.projectRosterMember.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("返回启停完整且按 code/name/id 稳定排序的治理项目目录", async () => {
@@ -946,6 +955,11 @@ describe("OrganizationService core writes", () => {
         positionKey: "contract_staff"
       },
       select: { id: true }
+    });
+    expect(harness.tx.projectRosterMember.upsert).toHaveBeenCalledWith({
+      where: { projectId_userId: { projectId: "project-1", userId: "user-new" } },
+      create: { projectId: "project-1", userId: "user-new" },
+      update: {}
     });
     expect(harness.audit.record).toHaveBeenCalledWith(
       harness.tx,

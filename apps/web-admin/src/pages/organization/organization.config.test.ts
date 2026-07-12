@@ -45,6 +45,7 @@ import {
   canConfirmRoleRemoval,
   canConfirmRoleAddition,
   projectPositionsText,
+  rosterProjectsText,
   organizationRoleAdditionOptions,
   roleAdditionImpactRows,
   roleAdditionTargetMatchesPreview,
@@ -474,6 +475,15 @@ describe("organization config", () => {
     expect(globalPositionsText(users[1])).toBe("无");
     expect(projectPositionsText(users[0])).toBe("科技园项目：项目经理");
     expect(projectPositionsText(users[1])).toBe("无");
+    expect(
+      rosterProjectsText({
+        ...users[0],
+        rosterProjects: [
+          { projectId: "project-1", projectCode: "XM-001", projectName: "科技园项目" }
+        ]
+      })
+    ).toBe("科技园项目");
+    expect(rosterProjectsText(users[1])).toBe("无");
   });
 
   it("builds a trimmed create payload while preserving password whitespace", () => {

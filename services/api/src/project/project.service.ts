@@ -276,10 +276,11 @@ export class ProjectService {
   }
 
   async listRoster(userId: string) {
-    const [globalUserPositions, projectUserPositions, projectMembers] = await Promise.all([
+    const [globalUserPositions, projectUserPositions, projectMembers, ownRosterMemberships] = await Promise.all([
       this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
       this.prisma.userPosition.findMany({ where: { userId, projectId: { not: null } } }),
-      this.prisma.projectMember.findMany({ where: { userId } })
+      this.prisma.projectMember.findMany({ where: { userId } }),
+      this.prisma.projectRosterMember.findMany({ where: { userId } })
     ]);
     const positionIds = unique([...globalUserPositions, ...projectUserPositions].map((position) => position.positionId));
     const positions = positionIds.length
@@ -291,7 +292,8 @@ export class ProjectService {
     );
     const scopedProjectIds = unique([
       ...projectUserPositions.map((position) => position.projectId).filter((id): id is string => !!id),
-      ...projectMembers.map((member) => member.projectId)
+      ...projectMembers.map((member) => member.projectId),
+      ...ownRosterMemberships.map((member) => member.projectId)
     ]);
 
     if (!canSeeAllProjects && !scopedProjectIds.length) return [];
@@ -304,8 +306,15 @@ export class ProjectService {
     const projectIds = projects.map((project) => project.id);
     if (!projectIds.length) return [];
 
-    const memberRows = await this.prisma.projectMember.findMany({ where: { projectId: { in: projectIds } } });
-    const userIds = unique(memberRows.map((member) => member.userId));
+    const [memberRows, rosterRows] = await Promise.all([
+      this.prisma.projectMember.findMany({ where: { projectId: { in: projectIds } } }),
+      this.prisma.projectRosterMember.findMany({ where: { projectId: { in: projectIds } } })
+    ]);
+    const rosterKeys = new Set([
+      ...rosterRows.map((member) => `${member.projectId}:${member.userId}`),
+      ...memberRows.map((member) => `${member.projectId}:${member.userId}`)
+    ]);
+    const userIds = unique([...rosterRows, ...memberRows].map((member) => member.userId));
     const users = userIds.length
       ? await this.prisma.user.findMany({
           where: { id: { in: userIds }, isActive: true },
@@ -325,13 +334,38 @@ export class ProjectService {
 
     memberRows.forEach((member) => addRole(member.projectId, member.userId, member.positionKey as RoleKey));
 
-    return Array.from(rolesByProjectUser.entries())
-      .map(([key, roleKeys]) => {
+    const globalAssignments = userIds.length
+      ? await this.prisma.userPosition.findMany({
+          where: { userId: { in: userIds }, projectId: null }
+        })
+      : [];
+    const globalPositionIds = unique(globalAssignments.map((assignment) => assignment.positionId));
+    const globalPositions = globalPositionIds.length
+      ? await this.prisma.position.findMany({ where: { id: { in: globalPositionIds } } })
+      : [];
+    const globalPositionById = new Map(
+      globalPositions.map((position) => [position.id, { key: position.key as RoleKey, name: position.name }])
+    );
+    const globalRolesByUser = new Map<string, Array<{ key: RoleKey; name: string }>>();
+    for (const assignment of globalAssignments) {
+      const position = globalPositionById.get(assignment.positionId);
+      if (!position) continue;
+      const roles = globalRolesByUser.get(assignment.userId) ?? [];
+      if (!roles.some((role) => role.key === position.key)) roles.push(position);
+      globalRolesByUser.set(assignment.userId, roles);
+    }
+
+    return Array.from(rosterKeys)
+      .map((key) => {
         const [projectId, rowUserId] = key.split(":");
         const project = projectById.get(projectId);
         const user = userById.get(rowUserId);
         if (!project || !user) return null;
-        const positions = Array.from(roleKeys);
+        const positions = Array.from(rolesByProjectUser.get(key) ?? []);
+        const globalRoles = (globalRolesByUser.get(rowUserId) ?? []).sort((left, right) =>
+          left.name.localeCompare(right.name, "zh-CN")
+        );
+        const projectPositionNames = positions.map((role) => ROLE_LABELS[role] ?? "未识别项目岗位");
         return {
           projectId: project.id,
           projectCode: project.code,
@@ -340,7 +374,9 @@ export class ProjectService {
           name: user.name,
           phone: user.phone ?? "",
           positionKeys: positions,
-          positionNames: positions.map((role) => ROLE_LABELS[role] ?? role)
+          positionNames: projectPositionNames,
+          globalPositionNames: globalRoles.map((role) => role.name),
+          projectPositionNames
         };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null)

@@ -486,6 +486,15 @@ describe("ProjectService", () => {
           return Promise.resolve([]);
         })
       },
+      projectRosterMember: {
+        findMany: jest.fn(({ where }) => {
+          if (where.userId === "leader") return Promise.resolve([]);
+          return Promise.resolve([
+            { projectId: "project-1", userId: "user-1" },
+            { projectId: "project-2", userId: "user-2" }
+          ]);
+        })
+      },
       position: {
         findMany: jest.fn().mockResolvedValue([{ id: "position-chairman", key: "chairman" }])
       },
@@ -522,7 +531,9 @@ describe("ProjectService", () => {
         name: "孙工",
         phone: "13300000001",
         positionKeys: ["project_manager"],
-        positionNames: ["项目经理"]
+        positionNames: ["项目经理"],
+        globalPositionNames: [],
+        projectPositionNames: ["项目经理"]
       },
       {
         projectId: "project-2",
@@ -532,7 +543,9 @@ describe("ProjectService", () => {
         name: "杨工",
         phone: "13300000002",
         positionKeys: ["employee"],
-        positionNames: ["员工"]
+        positionNames: ["员工"],
+        globalPositionNames: [],
+        projectPositionNames: ["员工"]
       }
     ]);
     expect(prisma.project.findMany).toHaveBeenCalledWith({
@@ -561,6 +574,17 @@ describe("ProjectService", () => {
           ]);
         })
       },
+      projectRosterMember: {
+        findMany: jest.fn(({ where }) => {
+          if (where.userId === "employee") {
+            return Promise.resolve([{ projectId: "project-2", userId: "employee" }]);
+          }
+          return Promise.resolve([
+            { projectId: "project-2", userId: "employee" },
+            { projectId: "project-2", userId: "user-3" }
+          ]);
+        })
+      },
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-2", code: "JG-002", name: "二标段" }])
       },
@@ -582,7 +606,9 @@ describe("ProjectService", () => {
         name: "蒋工",
         phone: "13300000003",
         positionKeys: ["engineering_foreman"],
-        positionNames: ["工长"]
+        positionNames: ["工长"],
+        globalPositionNames: [],
+        projectPositionNames: ["工长"]
       },
       {
         projectId: "project-2",
@@ -592,7 +618,9 @@ describe("ProjectService", () => {
         name: "杨工",
         phone: "13300000002",
         positionKeys: ["employee"],
-        positionNames: ["员工"]
+        positionNames: ["员工"],
+        globalPositionNames: [],
+        projectPositionNames: ["员工"]
       }
     ]);
     expect(prisma.project.findMany).toHaveBeenCalledWith({

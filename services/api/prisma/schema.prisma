@@ -91,6 +91,17 @@ model ProjectMember {
   @@unique([projectId, userId, positionKey])
 }
 
+// 项目花名册归属仅控制人员归属与项目可见性，不授予任何项目业务岗位。
+model ProjectRosterMember {
+  id        String   @id @default(uuid())
+  projectId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
 model Contract {
   id                        String    @id @default(uuid())
   projectId                 String

@@ -68,6 +68,11 @@ export interface OrganizationDirectoryReadModel {
       keys: RoleKey[];
       names: string[];
     }>;
+    rosterProjects: Array<{
+      projectId: string;
+      projectCode: string;
+      projectName: string;
+    }>;
   }>;
   positions: Array<{ id: string; key: RoleKey; name: string }>;
   projects: Array<{ id: string; code: string; name: string; isActive: boolean }>;
@@ -325,6 +330,11 @@ export class OrganizationService {
             const assignment = await tx.projectMember.create({
               data: { userId: user.id, projectId, positionKey: input.initialRoleKey },
               select: { id: true }
+            });
+            await tx.projectRosterMember.upsert({
+              where: { projectId_userId: { projectId, userId: user.id } },
+              create: { projectId, userId: user.id },
+              update: {}
             });
             assignmentId = assignment.id;
           }
@@ -1073,7 +1083,7 @@ export class OrganizationService {
   }
 
   async getDirectory(): Promise<OrganizationDirectoryReadModel> {
-    const [departments, users, rawPositions, userPositions, projectMembers, projects] =
+    const [departments, users, rawPositions, userPositions, projectMembers, rosterMembers, projects] =
       await Promise.all([
         this.prisma.department.findMany({
           select: { id: true, name: true, parentId: true, isActive: true }
@@ -1095,6 +1105,9 @@ export class OrganizationService {
         this.prisma.projectMember.findMany({
           select: { userId: true, projectId: true, positionKey: true }
         }),
+        this.prisma.projectRosterMember.findMany({
+          select: { userId: true, projectId: true }
+        }),
         this.prisma.project.findMany({
           select: { id: true, code: true, name: true, isActive: true }
         })
@@ -1111,6 +1124,13 @@ export class OrganizationService {
       departments.map((department) => [department.id, department] as const)
     );
     const projectById = new Map(projects.map((project) => [project.id, project] as const));
+    const rosterProjectIdsByUser = new Map<string, Set<string>>();
+    for (const member of [...rosterMembers, ...projectMembers]) {
+      if (!projectById.has(member.projectId)) continue;
+      const projectIds = rosterProjectIdsByUser.get(member.userId) ?? new Set<string>();
+      projectIds.add(member.projectId);
+      rosterProjectIdsByUser.set(member.userId, projectIds);
+    }
 
     const globalRolesByUser = new Map<string, Set<RoleKey>>();
     const projectRolesByUserAndProject = new Map<string, Set<RoleKey>>();
@@ -1179,6 +1199,19 @@ export class OrganizationService {
               compareText(left.projectCode, right.projectCode) ||
               compareText(left.projectName, right.projectName)
           );
+        const rosterProjects = [...(rosterProjectIdsByUser.get(user.id) ?? [])]
+          .map((projectId) => projectById.get(projectId))
+          .filter((project): project is NonNullable<typeof project> => Boolean(project))
+          .map((project) => ({
+            projectId: project.id,
+            projectCode: project.code,
+            projectName: project.name
+          }))
+          .sort(
+            (left, right) =>
+              compareText(left.projectCode, right.projectCode) ||
+              compareText(left.projectName, right.projectName)
+          );
 
         return {
           id: user.id,
@@ -1189,7 +1222,8 @@ export class OrganizationService {
           status: user.isActive ? ("active" as const) : ("inactive" as const),
           mustChangePassword: user.mustChangePassword,
           globalPositions,
-          projectPositions
+          projectPositions,
+          rosterProjects
         };
       })
       .sort((left, right) => compareText(left.name, right.name) || compareText(left.id, right.id));

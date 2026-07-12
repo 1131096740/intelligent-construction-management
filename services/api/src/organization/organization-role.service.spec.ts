@@ -101,6 +101,7 @@ function createHarness(input?: {
       delete: jest.fn().mockResolvedValue({ id: "server-project-assignment" }),
       create: jest.fn().mockResolvedValue({ id: "created-project-assignment" })
     },
+    projectRosterMember: { upsert: jest.fn().mockResolvedValue({ id: "roster-member" }) },
     department: { findMany: jest.fn().mockResolvedValue([]) },
     refreshToken: {
       updateMany: jest.fn().mockResolvedValue({ count: 3 })
@@ -494,6 +495,7 @@ describe("OrganizationRoleService", () => {
           select: { id: true }
         });
         expect(tx.projectMember.create).not.toHaveBeenCalled();
+        expect(tx.projectRosterMember.upsert).not.toHaveBeenCalled();
       } else {
         expect(tx.projectMember.create).toHaveBeenCalledWith({
           data: {
@@ -502,6 +504,13 @@ describe("OrganizationRoleService", () => {
             positionKey: "project_manager"
           },
           select: { id: true }
+        });
+        expect(tx.projectRosterMember.upsert).toHaveBeenCalledWith({
+          where: {
+            projectId_userId: { projectId: "project-1", userId: "target-user" }
+          },
+          create: { projectId: "project-1", userId: "target-user" },
+          update: {}
         });
         expect(tx.userPosition.create).not.toHaveBeenCalled();
       }
