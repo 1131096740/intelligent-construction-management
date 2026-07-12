@@ -189,7 +189,7 @@ export class ContractTemplateService {
             hasText(validation.message)
         )
       ) {
-        throw new Error("invalid usage preview schema");
+        throw new Error("模板结构预览数据异常");
       }
       return {
         fields: schema.fields.map((field) => ({
