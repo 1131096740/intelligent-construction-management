@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ContractTemplateService } from "./contract-template.service";
 
@@ -18,6 +18,94 @@ describe("ContractTemplateService", () => {
     attachments: [],
     validations: []
   };
+
+  it("returns template detail with descending versions and complete schemas", async () => {
+    const template = {
+      id: "template-1",
+      code: "TPL-001",
+      name: "钢材采购合同模板",
+      contractTypeKey: "material_purchase",
+      status: "published",
+      createdByUserId: "contract-staff-1",
+      createdAt: new Date("2026-07-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-11T00:00:00.000Z")
+    };
+    const versions = [
+      {
+        id: "version-2",
+        templateId: "template-1",
+        versionNo: 2,
+        status: "draft",
+        fieldSchema: validSchema.fields,
+        billSchema: validSchema.bills,
+        clauseSchema: validSchema.clauses,
+        attachmentSchema: validSchema.attachments,
+        validationSchema: validSchema.validations,
+        submittedByUserId: null,
+        publishedByUserId: null,
+        publishedAt: null,
+        stoppedAt: null,
+        revokedAt: null,
+        changeSummary: "补充字段",
+        createdAt: new Date("2026-07-11T00:00:00.000Z"),
+        updatedAt: new Date("2026-07-11T00:00:00.000Z")
+      },
+      {
+        id: "version-1",
+        templateId: "template-1",
+        versionNo: 1,
+        status: "published",
+        fieldSchema: [],
+        billSchema: [],
+        clauseSchema: [],
+        attachmentSchema: [],
+        validationSchema: [],
+        submittedByUserId: "contract-staff-1",
+        publishedByUserId: "contract-director-1",
+        publishedAt: new Date("2026-07-10T08:00:00.000Z"),
+        stoppedAt: null,
+        revokedAt: null,
+        changeSummary: "首次发布",
+        createdAt: new Date("2026-07-10T00:00:00.000Z"),
+        updatedAt: new Date("2026-07-10T08:00:00.000Z")
+      }
+    ];
+    const prisma = {
+      contractBusinessTemplate: { findUnique: jest.fn().mockResolvedValue(template) },
+      contractBusinessTemplateVersion: { findMany: jest.fn().mockResolvedValue(versions) }
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    await expect(service.getTemplate("template-1")).resolves.toEqual({
+      template,
+      versions: [
+        expect.objectContaining({ id: "version-2", versionNo: 2, schema: validSchema }),
+        expect.objectContaining({
+          id: "version-1",
+          versionNo: 1,
+          schema: { fields: [], bills: [], clauses: [], attachments: [], validations: [] }
+        })
+      ]
+    });
+    expect(prisma.contractBusinessTemplateVersion.findMany).toHaveBeenCalledWith({
+      where: { templateId: "template-1" },
+      orderBy: { versionNo: "desc" }
+    });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("returns a fixed not-found error for missing template detail", async () => {
+    const prisma = {
+      contractBusinessTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
+      contractBusinessTemplateVersion: { findMany: jest.fn() }
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    await expect(service.getTemplate("missing-template")).rejects.toEqual(
+      new NotFoundException("业务模板不存在")
+    );
+    expect(prisma.contractBusinessTemplateVersion.findMany).not.toHaveBeenCalled();
+  });
 
   it("creates version 1 as draft", async () => {
     const tx = {

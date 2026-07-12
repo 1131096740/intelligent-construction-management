@@ -171,6 +171,15 @@ describe("ContractTemplateController authorization wiring", () => {
     "publishClauseVersion"
   ];
 
+  it("delegates the existing template detail route to the read model service", async () => {
+    const detail = { template: { id: "template-1" }, versions: [{ id: "version-1" }] };
+    const templates = { getTemplate: jest.fn().mockResolvedValue(detail) };
+    const controller = new ContractTemplateController(templates as never, {} as never);
+
+    await expect(controller.getTemplate("template-1")).resolves.toBe(detail);
+    expect(templates.getTemplate).toHaveBeenCalledWith("template-1");
+  });
+
   it.each(templateBodyRoutes)("exposes a runtime DTO for %s", (method, bodyIndex) => {
     const metatype = templateBodyMetatype(method, bodyIndex);
 

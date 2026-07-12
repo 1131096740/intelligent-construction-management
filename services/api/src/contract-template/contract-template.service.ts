@@ -140,10 +140,37 @@ export class ContractTemplateService {
     });
   }
 
-  getTemplate(templateId: string) {
-    return this.prisma.contractBusinessTemplate.findUnique({
+  async getTemplate(templateId: string) {
+    const template = await this.prisma.contractBusinessTemplate.findUnique({
       where: { id: templateId }
     });
+    if (!template) {
+      throw new NotFoundException("业务模板不存在");
+    }
+
+    const versions = await this.prisma.contractBusinessTemplateVersion.findMany({
+      where: { templateId },
+      orderBy: { versionNo: "desc" }
+    });
+
+    return {
+      template,
+      versions: versions.map((version) => ({
+        id: version.id,
+        templateId: version.templateId,
+        versionNo: version.versionNo,
+        status: version.status,
+        schema: this.versionToSchema(version),
+        submittedByUserId: version.submittedByUserId,
+        publishedByUserId: version.publishedByUserId,
+        publishedAt: version.publishedAt,
+        stoppedAt: version.stoppedAt,
+        revokedAt: version.revokedAt,
+        changeSummary: version.changeSummary,
+        createdAt: version.createdAt,
+        updatedAt: version.updatedAt
+      }))
+    };
   }
 
   // ---------------------------------------------------------------------------

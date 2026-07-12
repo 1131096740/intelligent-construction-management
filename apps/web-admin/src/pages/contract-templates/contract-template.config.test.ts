@@ -4,12 +4,15 @@ import {
   businessPartyEditPolicy,
   businessTemplateVersionActionsByStatus,
   canPublishLayoutVersion,
+  contractTemplateVersionGovernance,
+  contractTemplateVersionOptions,
   contractTypeOptions,
   displayContractNumberPattern,
   fieldTypeOptions,
   hasOnlyAllowedNumberRuleTokens,
   isValidContractNumberPattern,
   normalizeContractNumberPattern,
+  normalizeContractTemplateDetail,
   pricingModeOptions,
   quantityScaleOptions,
   templateListActions,
@@ -76,6 +79,84 @@ describe("contract template center config", () => {
       "revoke"
     ]);
     expect(businessTemplateVersionActionsByStatus.published).not.toContain("edit");
+  });
+
+  it("selects the latest draft first and exposes status-driven actions", () => {
+    const detail = normalizeContractTemplateDetail({
+      template: {
+        id: "template-1",
+        code: "TPL-1",
+        name: "材料采购模板",
+        contractTypeKey: "material_purchase",
+        status: "published"
+      },
+      versions: [
+        {
+          id: "version-3",
+          templateId: "template-1",
+          versionNo: 3,
+          status: "submitted",
+          schema: { fields: [], bills: [], clauses: [], attachments: [], validations: [] }
+        },
+        {
+          id: "version-2",
+          templateId: "template-1",
+          versionNo: 2,
+          status: "draft",
+          schema: { fields: [], bills: [], clauses: [], attachments: [], validations: [] }
+        },
+        {
+          id: "version-1",
+          templateId: "template-1",
+          versionNo: 1,
+          status: "published",
+          schema: { fields: [], bills: [], clauses: [], attachments: [], validations: [] }
+        }
+      ]
+    });
+
+    expect(detail.defaultVersionId).toBe("version-2");
+    expect(contractTemplateVersionOptions(detail.versions).map((option) => option.label)).toEqual([
+      "V3 · 待发布",
+      "V2 · 草稿",
+      "V1 · 已发布"
+    ]);
+    expect(contractTemplateVersionGovernance(detail.versions[1])).toMatchObject({
+      readOnly: false,
+      canSave: true,
+      canSubmit: true,
+      canPublish: false,
+      canClone: false
+    });
+    expect(contractTemplateVersionGovernance(detail.versions[0])).toMatchObject({
+      readOnly: true,
+      canPublish: true
+    });
+    expect(contractTemplateVersionGovernance(detail.versions[2])).toMatchObject({
+      readOnly: true,
+      canClone: true
+    });
+  });
+
+  it("falls back to the latest published version when no draft exists", () => {
+    const detail = normalizeContractTemplateDetail({
+      template: { id: "template-1", code: "TPL-1", name: "模板", contractTypeKey: "generic_contract", status: "published" },
+      versions: [
+        { id: "submitted-2", templateId: "template-1", versionNo: 2, status: "submitted", schema: { fields: [], bills: [], clauses: [], attachments: [], validations: [] } },
+        { id: "published-1", templateId: "template-1", versionNo: 1, status: "published", schema: { fields: [], bills: [], clauses: [], attachments: [], validations: [] } }
+      ]
+    });
+
+    expect(detail.defaultVersionId).toBe("published-1");
+  });
+
+  it.each([
+    [{ template: {}, versions: [] }, "模板详情数据不完整，请刷新后重试"],
+    [{ template: { id: "t", code: "T", name: "模板", contractTypeKey: "generic", status: "draft" }, versions: [{ id: "v", templateId: "t", versionNo: 1, status: "unknown", schema: { fields: [], bills: [], clauses: [], attachments: [], validations: [] } }] }, "模板版本状态不正确，请刷新后重试"],
+    [{ template: { id: "t", code: "T", name: "模板", contractTypeKey: "generic", status: "draft" }, versions: [{ id: "v", templateId: "t", versionNo: 1, status: "draft", schema: { fields: [] } }] }, "模板版本数据不完整，请刷新后重试"],
+    [{ template: { id: "t", code: "T", name: "模板", contractTypeKey: "generic", status: "draft" }, versions: [{ id: "v", templateId: "t", versionNo: 1, status: "draft", schema: { fields: [null], bills: [], clauses: [], attachments: [], validations: [] } }] }, "模板版本数据不完整，请刷新后重试"]
+  ])("fails closed for invalid template detail: %p", (value, message) => {
+    expect(() => normalizeContractTemplateDetail(value)).toThrow(message);
   });
 
   it("requires inspection success and latest preview PDF before layout publication", () => {

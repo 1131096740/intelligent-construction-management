@@ -6,30 +6,27 @@
         <p>维护字段、条款、清单、附件与版本治理状态</p>
       </div>
       <t-space>
-        <t-button @click="action('clone')">
-          克隆
+        <t-button
+          v-if="governance.canClone"
+          :loading="submitting"
+          @click="cloneVersion"
+        >
+          克隆为新草稿
         </t-button>
-        <t-button @click="action('submit')">
+        <t-button
+          v-if="governance.canSubmit"
+          :loading="submitting"
+          @click="submitVersion"
+        >
           提交
         </t-button>
         <t-button
+          v-if="governance.canPublish"
           theme="primary"
-          @click="action('publish')"
+          :loading="submitting"
+          @click="publishVersion"
         >
           发布
-        </t-button>
-        <t-button
-          theme="danger"
-          variant="outline"
-          @click="action('stop')"
-        >
-          停用
-        </t-button>
-        <t-button
-          variant="outline"
-          @click="action('revoke')"
-        >
-          撤销
         </t-button>
       </t-space>
     </div>
@@ -39,18 +36,24 @@
       class="panel"
     >
       <div class="form-grid">
-        <label><span>当前版本编号</span><t-input
-          v-model="versionId"
-          placeholder="暂无版本时，请先创建或克隆草稿版本"
+        <label><span>模板版本</span><t-select
+          v-model="selectedVersionId"
+          :options="versionOptions"
+          :loading="loading"
+          @change="selectVersion"
         /></label>
-        <label><span>变更摘要</span><t-input v-model="changeSummary" /></label>
-        <label><span>模板状态</span><t-input
-          :value="template?.status ? templateStatusLabel(String(template.status)) : '暂无状态记录'"
+        <label><span>变更摘要</span><t-input
+          v-model="changeSummary"
+          :disabled="!governance.canSave && !governance.canPublish"
+        /></label>
+        <label><span>版本状态</span><t-input
+          :value="selectedVersion ? templateStatusLabel(selectedVersion.status) : '暂无状态记录'"
           readonly
         /></label>
         <t-button
+          v-if="governance.canSave"
           theme="primary"
-          :disabled="!versionId"
+          :loading="submitting"
           @click="saveVersion"
         >
           保存草稿版本
@@ -74,6 +77,7 @@
       v-if="activeTab === 'fields'"
       title="字段"
       :bordered="true"
+      :inert="governance.readOnly"
       class="panel"
     >
       <div
@@ -136,6 +140,7 @@
       v-if="activeTab === 'bills'"
       title="清单"
       :bordered="true"
+      :inert="governance.readOnly"
       class="panel"
     >
       <div
@@ -213,6 +218,7 @@
       v-if="activeTab === 'clauses'"
       title="条款块"
       :bordered="true"
+      :inert="governance.readOnly"
       class="panel"
     >
       <div
@@ -269,6 +275,7 @@
       v-if="activeTab === 'attachments'"
       title="附件要求"
       :bordered="true"
+      :inert="governance.readOnly"
       class="panel"
     >
       <div
@@ -314,6 +321,7 @@
       v-if="activeTab === 'validations'"
       title="校验规则"
       :bordered="true"
+      :inert="governance.readOnly"
       class="panel"
     >
       <div
@@ -372,21 +380,25 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
 import {
   cloneContractTemplateVersion,
   getContractTemplate,
   publishContractTemplateVersion,
-  revokeContractTemplateVersion,
-  stopContractTemplateVersion,
   submitContractTemplateVersion,
+  type ContractTemplateDetailReadModel,
+  type ContractTemplateSchemaPayload,
+  type ContractTemplateVersionReadModel,
   updateContractTemplateVersion
 } from "../../api/contract-workbench.api";
 import { templateStatusLabel } from "../contracts/contract-labels";
 import {
   billAmountRoleOptions,
+  contractTemplateVersionGovernance,
+  contractTemplateVersionOptions,
   fieldTypeOptions,
+  normalizeContractTemplateDetail,
   pricingModeOptions,
   quantityScaleOptions,
   unitPriceScaleOptions
@@ -402,13 +414,23 @@ const tabs: Array<{ key: TabKey; label: string }> = [
 ];
 
 const route = useRoute();
-const template = ref<Record<string, unknown> | null>(null);
+const template = ref<ContractTemplateDetailReadModel["template"] | null>(null);
+const versions = ref<ContractTemplateVersionReadModel[]>([]);
 const templateName = ref("业务模板编辑器");
-const versionId = ref("");
+const selectedVersionId = ref("");
+const lastValidVersionId = ref("");
 const changeSummary = ref("");
 const activeTab = ref<TabKey>("fields");
 const message = ref("");
 const tone = ref<"success" | "danger">("success");
+const loading = ref(false);
+const submitting = ref(false);
+
+const selectedVersion = computed(() =>
+  versions.value.find((version) => version.id === selectedVersionId.value)
+);
+const versionOptions = computed(() => contractTemplateVersionOptions(versions.value));
+const governance = computed(() => contractTemplateVersionGovernance(selectedVersion.value));
 
 const schema = reactive({
   fields: [] as Array<Record<string, unknown>>,
@@ -451,6 +473,127 @@ function addAttachment() {
 
 function addValidation() {
   schema.validations.push({ key: `rule_${schema.validations.length + 1}`, level: "warning", targetClauseKey: "", requiredPhrasesText: "", message: "" });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionsToText(value: unknown) {
+  if (!Array.isArray(value)) return "";
+  return value
+    .filter(isRecord)
+    .map((option) => {
+      const label = String(option.label ?? "");
+      const optionValue = String(option.value ?? label);
+      return label === optionValue ? label : `${label}=${optionValue}`;
+    })
+    .filter(Boolean)
+    .join(",");
+}
+
+function columnsToText(value: unknown) {
+  if (!Array.isArray(value)) return "";
+  return value
+    .filter(isRecord)
+    .map((column) => {
+      const key = String(column.key ?? "");
+      const label = String(column.label ?? key);
+      const type = String(column.type ?? "text");
+      return `${key}:${label}:${type}`;
+    })
+    .filter(Boolean)
+    .join("，");
+}
+
+function applySchema(value: ContractTemplateSchemaPayload) {
+  schema.fields.splice(
+    0,
+    schema.fields.length,
+    ...value.fields.filter(isRecord).map((field) => {
+      const visibleWhen = isRecord(field.visibleWhen) ? field.visibleWhen : null;
+      return {
+        ...field,
+        optionsText: optionsToText(field.options),
+        visibleWhenFieldKey: visibleWhen?.fieldKey ?? "",
+        visibleWhenValue: visibleWhen?.value ?? ""
+      };
+    })
+  );
+  schema.bills.splice(
+    0,
+    schema.bills.length,
+    ...value.bills.filter(isRecord).map((bill) => ({
+      ...bill,
+      columnsText: columnsToText(bill.columns)
+    }))
+  );
+  schema.clauses.splice(
+    0,
+    schema.clauses.length,
+    ...value.clauses.filter(isRecord).map((clause) => ({
+      ...clause,
+      text: isRecord(clause.content) ? clause.content.text ?? "" : ""
+    }))
+  );
+  schema.attachments.splice(
+    0,
+    schema.attachments.length,
+    ...value.attachments.filter(isRecord)
+  );
+  schema.validations.splice(
+    0,
+    schema.validations.length,
+    ...value.validations.filter(isRecord).map((rule) => ({
+      ...rule,
+      requiredPhrasesText: Array.isArray(rule.requiredPhrases)
+        ? rule.requiredPhrases.join(",")
+        : ""
+    }))
+  );
+}
+
+function applyVersion(version: ContractTemplateVersionReadModel) {
+  selectedVersionId.value = version.id;
+  lastValidVersionId.value = version.id;
+  changeSummary.value = version.changeSummary ?? "";
+  applySchema(version.schema);
+}
+
+function selectVersion(value: unknown) {
+  const id = typeof value === "string" ? value : "";
+  const version = versions.value.find((item) => item.id === id);
+  if (!version) {
+    selectedVersionId.value = lastValidVersionId.value;
+    message.value = "模板版本不存在，请刷新后重试";
+    tone.value = "danger";
+    return;
+  }
+  applyVersion(version);
+  message.value = "";
+}
+
+async function loadTemplate(preferredVersionId?: string) {
+  const detail = normalizeContractTemplateDetail(
+    await getContractTemplate(String(route.params.templateId))
+  );
+  const targetId = preferredVersionId ?? detail.defaultVersionId;
+  const version = detail.versions.find((item) => item.id === targetId);
+  if (!version) {
+    throw new Error("模板版本不存在，请刷新后重试");
+  }
+  template.value = detail.template;
+  versions.value = detail.versions;
+  templateName.value = detail.template.name;
+  applyVersion(version);
+}
+
+function requireVersion(action: keyof Omit<ReturnType<typeof contractTemplateVersionGovernance>, "readOnly">) {
+  const version = selectedVersion.value;
+  if (!version || !governance.value[action]) {
+    throw new Error("当前模板版本状态不允许此操作，请刷新后重试");
+  }
+  return version;
 }
 
 function optionTextToOptions(value: unknown) {
@@ -536,96 +679,157 @@ function ensureUniqueColumnKey(key: string, usedKeys: Set<string>, index: number
 
 function buildSchema() {
   return {
-    fields: schema.fields.map((field) => ({
-      key: field.key,
-      label: field.label,
-      type: field.type,
-      required: Boolean(field.required),
-      options: optionTextToOptions(field.optionsText),
-      visibleWhen: field.visibleWhenFieldKey
-        ? { fieldKey: field.visibleWhenFieldKey, operator: "eq", value: field.visibleWhenValue }
-        : undefined
-    })),
-    bills: schema.bills.map((bill) => ({
-      key: bill.key,
-      name: bill.name,
-      amountRole: bill.amountRole,
-      pricingMode: bill.pricingMode,
-      quantityScale: Number(bill.quantityScale),
-      unitPriceScale: Number(bill.unitPriceScale),
-      columns: columnsTextToColumns(bill.columnsText)
-    })),
-    clauses: schema.clauses.map((clause) => ({
-      key: clause.key,
-      title: clause.title,
-      numberingMode: clause.numberingMode,
-      required: Boolean(clause.required),
-      standardClauseVersionId: clause.standardClauseVersionId || undefined,
-      content: { text: clause.text ?? "" }
-    })),
+    fields: schema.fields.map((field) => {
+      const { optionsText, visibleWhenFieldKey, visibleWhenValue, ...persisted } = field;
+      return {
+        ...persisted,
+        key: field.key,
+        label: field.label,
+        type: field.type,
+        required: Boolean(field.required),
+        options: optionTextToOptions(optionsText),
+        visibleWhen: visibleWhenFieldKey
+          ? { fieldKey: visibleWhenFieldKey, operator: "eq", value: visibleWhenValue }
+          : undefined
+      };
+    }),
+    bills: schema.bills.map((bill) => {
+      const { columnsText, ...persisted } = bill;
+      return {
+        ...persisted,
+        key: bill.key,
+        name: bill.name,
+        amountRole: bill.amountRole,
+        pricingMode: bill.pricingMode,
+        quantityScale: Number(bill.quantityScale),
+        unitPriceScale: Number(bill.unitPriceScale),
+        columns: columnsTextToColumns(columnsText)
+      };
+    }),
+    clauses: schema.clauses.map((clause) => {
+      const { text, ...persisted } = clause;
+      return {
+        ...persisted,
+        key: clause.key,
+        title: clause.title,
+        numberingMode: clause.numberingMode,
+        required: Boolean(clause.required),
+        standardClauseVersionId: clause.standardClauseVersionId || undefined,
+        content: {
+          ...(isRecord(clause.content) ? clause.content : {}),
+          text: text ?? ""
+        }
+      };
+    }),
     attachments: schema.attachments.map((attachment) => ({
       key: attachment.key,
       name: attachment.name,
       required: Boolean(attachment.required),
       mustBeValid: Boolean(attachment.mustBeValid)
     })),
-    validations: schema.validations.map((rule) => ({
-      key: rule.key,
-      level: rule.level,
-      targetClauseKey: rule.targetClauseKey,
-      requiredPhrases: String(rule.requiredPhrasesText ?? "").split(",").map((item) => item.trim()).filter(Boolean),
-      message: rule.message
-    }))
+    validations: schema.validations.map((rule) => {
+      const { requiredPhrasesText, ...persisted } = rule;
+      return {
+        ...persisted,
+        key: rule.key,
+        level: rule.level,
+        targetClauseKey: rule.targetClauseKey,
+        requiredPhrases: String(requiredPhrasesText ?? "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+        message: rule.message
+      };
+    })
   };
 }
 
 async function saveVersion() {
+  submitting.value = true;
   try {
-    await updateContractTemplateVersion(versionId.value.trim(), {
+    const version = requireVersion("canSave");
+    await updateContractTemplateVersion(version.id, {
       schema: buildSchema(),
       changeSummary: changeSummary.value.trim() || undefined
     });
+    await loadTemplate(version.id);
     message.value = "草稿版本已保存";
     tone.value = "success";
   } catch (error) {
     message.value = error instanceof Error ? error.message : "保存失败";
     tone.value = "danger";
+  } finally {
+    submitting.value = false;
   }
 }
 
-async function action(kind: "clone" | "submit" | "publish" | "stop" | "revoke") {
-  const id = versionId.value.trim();
-  if (!id) {
-    message.value = "请先填写版本编号";
-    tone.value = "danger";
-    return;
-  }
+async function cloneVersion() {
+  submitting.value = true;
   try {
-    if (kind === "clone") await cloneContractTemplateVersion(id);
-    if (kind === "submit") await submitContractTemplateVersion(id);
-    if (kind === "publish") await publishContractTemplateVersion(id, { changeSummary: changeSummary.value.trim() || "发布" });
-    if (kind === "stop") await stopContractTemplateVersion(id);
-    if (kind === "revoke") await revokeContractTemplateVersion(id);
-    message.value = "操作已提交";
+    const source = requireVersion("canClone");
+    const cloned = await cloneContractTemplateVersion(source.id);
+    if (!cloned || typeof cloned.id !== "string" || cloned.status !== "draft") {
+      throw new Error("克隆结果不正确，请刷新后重试");
+    }
+    await loadTemplate(cloned.id);
+    if (selectedVersion.value?.status !== "draft") {
+      throw new Error("克隆后的草稿版本不存在，请刷新后重试");
+    }
+    message.value = "已克隆并切换到新草稿版本";
     tone.value = "success";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "操作失败";
+    message.value = error instanceof Error ? error.message : "克隆失败";
     tone.value = "danger";
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function submitVersion() {
+  submitting.value = true;
+  try {
+    const version = requireVersion("canSubmit");
+    await submitContractTemplateVersion(version.id);
+    await loadTemplate(version.id);
+    message.value = "模板版本已提交，等待发布";
+    tone.value = "success";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "提交失败";
+    tone.value = "danger";
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function publishVersion() {
+  submitting.value = true;
+  try {
+    const version = requireVersion("canPublish");
+    const summary = changeSummary.value.trim();
+    if (!summary) {
+      throw new Error("请填写模板发布说明");
+    }
+    await publishContractTemplateVersion(version.id, { changeSummary: summary });
+    await loadTemplate(version.id);
+    message.value = "模板版本已发布，后续修改请克隆新草稿";
+    tone.value = "success";
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : "发布失败";
+    tone.value = "danger";
+  } finally {
+    submitting.value = false;
   }
 }
 
 onMounted(async () => {
-  const templateId = String(route.params.templateId);
-  const queryVersionId = Array.isArray(route.query.versionId)
-    ? route.query.versionId[0]
-    : route.query.versionId;
-  versionId.value = String(queryVersionId ?? "");
+  loading.value = true;
   try {
-    template.value = (await getContractTemplate(templateId)) as Record<string, unknown>;
-    templateName.value = String(template.value.name ?? "业务模板编辑器");
+    await loadTemplate();
   } catch (error) {
     message.value = error instanceof Error ? error.message : "加载模板失败";
     tone.value = "danger";
+  } finally {
+    loading.value = false;
   }
 });
 </script>

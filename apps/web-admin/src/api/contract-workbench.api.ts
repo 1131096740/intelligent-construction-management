@@ -267,16 +267,53 @@ export function listPublishedContractTemplates(contractTypeKey?: string) {
   return readJson<unknown[]>(`/contract-templates${qs}`);
 }
 
-export function getContractTemplate(templateId: string) {
-  return readJson<unknown>(`/contract-templates/${templateId}`);
-}
-
 export interface ContractTemplateSchemaPayload {
   fields: unknown[];
   bills: unknown[];
   clauses: unknown[];
   attachments: unknown[];
   validations: unknown[];
+}
+
+export type ContractTemplateVersionStatus =
+  | "draft"
+  | "submitted"
+  | "published"
+  | "stopped"
+  | "revoked";
+
+export interface ContractTemplateVersionReadModel {
+  id: string;
+  templateId: string;
+  versionNo: number;
+  status: ContractTemplateVersionStatus;
+  schema: ContractTemplateSchemaPayload;
+  submittedByUserId?: string | null;
+  publishedByUserId?: string | null;
+  publishedAt?: string | null;
+  stoppedAt?: string | null;
+  revokedAt?: string | null;
+  changeSummary?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ContractTemplateDetailReadModel {
+  template: {
+    id: string;
+    code: string;
+    name: string;
+    contractTypeKey: string;
+    status: string;
+    createdByUserId?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+  versions: ContractTemplateVersionReadModel[];
+}
+
+export function getContractTemplate(templateId: string) {
+  return readJson<ContractTemplateDetailReadModel>(`/contract-templates/${templateId}`);
 }
 
 export interface CreateContractTemplatePayload {
@@ -303,7 +340,9 @@ export function updateContractTemplateVersion(
 }
 
 export function cloneContractTemplateVersion(versionId: string) {
-  return postJson<unknown>(`/contract-template-versions/${versionId}/clone`);
+  return postJson<ContractTemplateVersionReadModel>(
+    `/contract-template-versions/${versionId}/clone`
+  );
 }
 
 export function submitContractTemplateVersion(versionId: string) {
