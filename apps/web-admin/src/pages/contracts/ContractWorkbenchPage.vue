@@ -136,20 +136,7 @@
       </div>
 
       <div class="shell-body">
-        <nav class="section-nav">
-          <button
-            v-for="section in sections"
-            :key="section.key"
-            type="button"
-            :class="['nav-item', { active: activeSection === section.key }]"
-            @click="activeSection = section.key"
-          >
-            <span>{{ section.label }}</span>
-            <small>{{ section.hint }}</small>
-          </button>
-        </nav>
-
-        <main class="section-editor">
+        <main class="document-canvas-slot">
           <p
             v-if="!editable && workbench"
             class="readonly-banner"
@@ -157,87 +144,119 @@
             当前状态（{{ contractVersionStatusLabel(workbench.version.status) }}）不可编辑，仅供查看。
           </p>
 
-          <div
-            v-if="activeSection === 'overview' && workbench"
-            class="migration-control"
-          >
-            <span class="migration-label">变更合同类型</span>
-            <t-select
-              :value="workbench.contract.contractTypeKey"
-              :options="contractTypeOptions"
-              :disabled="!editable || migrationBusy"
-              placeholder="切换合同类型"
-              @change="onExistingTypeChange"
-            />
-            <span class="migration-hint">切换类型前会先生成迁移预览，确认后才会应用。</span>
-          </div>
-
-          <ContractOverviewSection
-            v-if="activeSection === 'overview'"
-            :workbench="workbench"
-            :disabled="!editable"
-            @create-checkpoint="onCreateCheckpoint"
-            @restore-checkpoint="onRestoreCheckpoint"
-          />
-          <ContractBasicSection
-            v-else-if="activeSection === 'basic'"
-            :model="model"
-            :disabled="!editable"
-            @update="applyPatch"
-          />
-          <ContractPartySection
-            v-else-if="activeSection === 'party'"
-            :model="model"
-            :workbench="workbench"
-            :disabled="!editable"
-            @update="applyPatch"
-            @reload="reloadCurrent"
-          />
-          <ContractPricingSection
-            v-else-if="activeSection === 'pricing'"
-            :model="model"
-            :workbench="workbench"
-            :disabled="!editable"
-            @update="applyPatch"
-          />
-          <ContractProfessionalFieldsSection
-            v-else-if="activeSection === 'fields'"
-            :model="model"
-            :workbench="workbench"
-            :disabled="!editable"
-            @update="applyPatch"
-          />
-          <ContractBillsSection
-            v-else-if="activeSection === 'bills'"
-            :workbench="workbench"
-            :disabled="!editable"
-            @reload="reloadCurrent"
-          />
-          <ContractPaymentTermsSection
-            v-else-if="activeSection === 'payment'"
-            :model="model"
-            :disabled="!editable"
-            @update="applyPatch"
-          />
-          <ContractClausesSection
-            v-else-if="activeSection === 'clauses'"
-            :model="model"
-            :readiness="workbench?.readiness"
-            :disabled="!editable"
-            @update="applyPatch"
-          />
-          <ContractDocumentsSection
-            v-else-if="activeSection === 'documents'"
-            :workbench="workbench"
-            :disabled="!editable"
-            @reload="reloadCurrent"
+          <ContractDocumentCanvas
+            :contract-name="workbench?.contract.name ?? ''"
+            :draft-revision="workbench?.version.draftRevision ?? 0"
+            :documents="canvasDocuments"
+            @open-documents="activeSection = 'documents'"
           />
         </main>
 
-        <ContractReadinessPanel
-          class="readiness-slot"
-          :readiness="workbench?.readiness ?? emptyReadiness"
-        />
+        <aside class="business-sidebar">
+          <ContractReadinessPanel
+            class="readiness-slot"
+            :readiness="workbench?.readiness ?? emptyReadiness"
+          />
+
+          <section class="business-editor">
+            <div class="business-editor-head">
+              <div>
+                <h2>业务信息</h2>
+                <p>{{ activeSectionHint }}</p>
+              </div>
+            </div>
+
+            <t-tabs
+              v-model="activeSection"
+              class="business-tabs"
+            >
+              <t-tab-panel
+                v-for="section in sections"
+                :key="section.key"
+                :value="section.key"
+                :label="section.shortLabel"
+              />
+            </t-tabs>
+
+            <div class="section-editor">
+              <div
+                v-if="activeSection === 'overview' && workbench"
+                class="migration-control"
+              >
+                <span class="migration-label">变更合同类型</span>
+                <t-select
+                  :value="workbench.contract.contractTypeKey"
+                  :options="contractTypeOptions"
+                  :disabled="!editable || migrationBusy"
+                  placeholder="切换合同类型"
+                  @change="onExistingTypeChange"
+                />
+                <span class="migration-hint">切换前先预览数据迁移，确认后才会应用。</span>
+              </div>
+
+              <ContractOverviewSection
+                v-if="activeSection === 'overview'"
+                :workbench="workbench"
+                :disabled="!editable"
+                @create-checkpoint="onCreateCheckpoint"
+                @restore-checkpoint="onRestoreCheckpoint"
+              />
+              <ContractBasicSection
+                v-else-if="activeSection === 'basic'"
+                :model="model"
+                :disabled="!editable"
+                @update="applyPatch"
+              />
+              <ContractPartySection
+                v-else-if="activeSection === 'party'"
+                :model="model"
+                :workbench="workbench"
+                :disabled="!editable"
+                @update="applyPatch"
+                @reload="reloadCurrent"
+              />
+              <ContractPricingSection
+                v-else-if="activeSection === 'pricing'"
+                :model="model"
+                :workbench="workbench"
+                :disabled="!editable"
+                @update="applyPatch"
+              />
+              <ContractProfessionalFieldsSection
+                v-else-if="activeSection === 'fields'"
+                :model="model"
+                :workbench="workbench"
+                :disabled="!editable"
+                @update="applyPatch"
+              />
+              <ContractBillsSection
+                v-else-if="activeSection === 'bills'"
+                :workbench="workbench"
+                :disabled="!editable"
+                @reload="reloadCurrent"
+              />
+              <ContractPaymentTermsSection
+                v-else-if="activeSection === 'payment'"
+                :model="model"
+                :disabled="!editable"
+                @update="applyPatch"
+              />
+              <ContractClausesSection
+                v-else-if="activeSection === 'clauses'"
+                :model="model"
+                :readiness="workbench?.readiness"
+                :disabled="!editable"
+                @update="applyPatch"
+              />
+              <ContractDocumentsSection
+                v-else-if="activeSection === 'documents'"
+                :workbench="workbench"
+                :disabled="!editable"
+                @reload="reloadCurrent"
+              />
+            </div>
+          </section>
+        </aside>
       </div>
     </div>
 
@@ -341,6 +360,7 @@ import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
+import ContractDocumentCanvas from "./workbench/ContractDocumentCanvas.vue";
 import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
 import ContractOverviewSection from "./workbench/ContractOverviewSection.vue";
 import ContractPartySection from "./workbench/ContractPartySection.vue";
@@ -348,6 +368,7 @@ import ContractPaymentTermsSection from "./workbench/ContractPaymentTermsSection
 import ContractPricingSection from "./workbench/ContractPricingSection.vue";
 import ContractProfessionalFieldsSection from "./workbench/ContractProfessionalFieldsSection.vue";
 import ContractReadinessPanel from "./workbench/ContractReadinessPanel.vue";
+import type { ContractDocumentCanvasRecord } from "./workbench/contract-document-canvas";
 import {
   useContractDraft,
   type ContractDraftModel
@@ -393,15 +414,15 @@ const emptyReadiness: ContractReadinessResult = {
 };
 
 const sections = [
-  { key: "overview", label: "状态概览", hint: "先看卡点" },
-  { key: "basic", label: "合同信息", hint: "名称与主体" },
-  { key: "party", label: "合作单位", hint: "相对方资料" },
-  { key: "pricing", label: "金额计价", hint: "金额来源" },
-  { key: "fields", label: "专业信息", hint: "模板字段" },
-  { key: "bills", label: "清单明细", hint: "材料/劳务" },
-  { key: "payment", label: "付款条款", hint: "比例与期限" },
-  { key: "clauses", label: "合同条款", hint: "付款与约定" },
-  { key: "documents", label: "文档生成", hint: "合同与预览" }
+  { key: "overview", label: "状态概览", shortLabel: "概览", hint: "先看卡点" },
+  { key: "basic", label: "合同信息", shortLabel: "信息", hint: "名称与主体" },
+  { key: "party", label: "合作单位", shortLabel: "单位", hint: "相对方资料" },
+  { key: "pricing", label: "金额计价", shortLabel: "计价", hint: "金额来源" },
+  { key: "fields", label: "专业信息", shortLabel: "专业", hint: "模板字段" },
+  { key: "bills", label: "清单明细", shortLabel: "清单", hint: "材料/劳务" },
+  { key: "payment", label: "付款条款", shortLabel: "付款", hint: "比例与期限" },
+  { key: "clauses", label: "合同条款", shortLabel: "条款", hint: "付款与约定" },
+  { key: "documents", label: "文档生成", shortLabel: "文档", hint: "合同与预览" }
 ] as const;
 
 type SectionKey = (typeof sections)[number]["key"];
@@ -454,6 +475,15 @@ const editable = computed(() => {
 
 const activeSectionLabel = computed(
   () => sections.find((section) => section.key === activeSection.value)?.label ?? "状态概览"
+);
+const activeSectionHint = computed(
+  () => sections.find((section) => section.key === activeSection.value)?.hint ?? "先看卡点"
+);
+const canvasDocuments = computed(
+  () =>
+    ((workbench.value?.documents ?? []) as unknown as ContractDocumentCanvasRecord[]).map(
+      (document) => ({ ...document })
+    )
 );
 
 const blockingMessages = computed(() => {
@@ -988,60 +1018,63 @@ function initializeDraftFromQuery() {
 
 .shell-body {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 300px;
-  gap: 16px;
-  margin-top: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
+  gap: var(--jg-space-lg);
+  margin-top: var(--jg-space-lg);
 }
 
-.section-nav {
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  padding: 8px;
-  background: var(--jg-bg-panel);
-  border: 1px solid var(--jg-border);
-  border-radius: var(--jg-radius-sm);
-}
-
-.nav-item {
-  display: grid;
-  gap: 2px;
-  width: 100%;
-  min-height: 44px;
-  padding: 6px 12px;
-  text-align: left;
-  font-size: 13px;
-  color: var(--jg-text-main);
-  background: transparent;
-  border: none;
-  border-radius: var(--jg-radius-sm);
-  cursor: pointer;
-}
-
-.nav-item small {
-  color: var(--jg-text-muted);
-  font-size: var(--jg-font-mini);
-}
-
-.nav-item:hover {
-  background: var(--jg-bg-muted);
-}
-
-.nav-item.active {
-  color: var(--jg-brand);
-  background: #eaf2ff;
-  font-weight: 600;
-}
-
+.document-canvas-slot,
+.business-sidebar,
+.business-editor,
 .section-editor {
   display: grid;
   align-content: start;
-  gap: 16px;
+  gap: var(--jg-space-md);
   min-width: 0;
-  padding: 20px;
+}
+
+.business-sidebar {
+  align-self: start;
+}
+
+.business-editor {
   background: var(--jg-bg-panel);
   border: 1px solid var(--jg-border);
   border-radius: var(--jg-radius-sm);
+  overflow: hidden;
+}
+
+.business-editor-head {
+  padding: var(--jg-space-lg) var(--jg-space-lg) 0;
+}
+
+.business-editor-head h2,
+.business-editor-head p {
+  margin: 0;
+}
+
+.business-editor-head h2 {
+  color: var(--jg-text-strong);
+  font-size: var(--jg-font-section-title);
+}
+
+.business-editor-head p {
+  margin-top: var(--jg-space-xs);
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
+}
+
+.business-tabs {
+  min-width: 0;
+  padding: 0 var(--jg-space-sm);
+}
+
+:deep(.business-tabs .t-tabs__nav-item) {
+  font-size: var(--jg-font-meta);
+}
+
+.section-editor {
+  padding: 0 var(--jg-space-lg) var(--jg-space-lg);
 }
 
 .readonly-banner {
@@ -1056,15 +1089,16 @@ function initializeDraftFromQuery() {
 
 .readiness-slot {
   align-self: start;
+  position: sticky;
+  top: calc(var(--jg-layout-header-height) + var(--jg-space-md));
+  z-index: 2;
 }
 
 /* Migration control + preview ----------------------------------------------*/
 .migration-control {
   display: grid;
-  grid-template-columns: auto minmax(180px, 280px) 1fr;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: var(--jg-space-sm);
+  padding: var(--jg-space-md);
   background: var(--jg-bg-muted);
   border: 1px solid var(--jg-border);
   border-radius: var(--jg-radius-sm);
@@ -1127,18 +1161,22 @@ function initializeDraftFromQuery() {
 
 /* Responsive collapse under 1100px -----------------------------------------*/
 @media (max-width: 1100px) {
-  .workbench-summary,
   .shell-body {
     grid-template-columns: 1fr;
   }
 
-  .section-nav {
-    display: flex;
-    flex-wrap: wrap;
+  .workbench-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .nav-item {
-    width: auto;
+  .readiness-slot {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .workbench-summary {
+    grid-template-columns: 1fr;
   }
 }
 </style>
