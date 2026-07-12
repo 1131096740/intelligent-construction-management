@@ -45,6 +45,7 @@ interface SettlementLineStore {
         unitPriceCents: bigint | null;
         unitPriceSnapshot?: { toString(): string } | string | number | null;
         calculationMode?: string;
+        pricingModeSnapshot?: string | null;
         amountCents: bigint;
         reason: string | null;
         remark: string | null;
@@ -87,9 +88,12 @@ export class SettlementReadService {
           ? line.unitPriceCents === null
             ? "-"
             : this.formatMoney(line.unitPriceCents)
-          : typeof line.unitPriceSnapshot === "object"
-            ? line.unitPriceSnapshot.toString()
-            : String(line.unitPriceSnapshot),
+          : this.formatUnitPriceSnapshot(
+              typeof line.unitPriceSnapshot === "object"
+                ? line.unitPriceSnapshot.toString()
+                : String(line.unitPriceSnapshot),
+              line.pricingModeSnapshot
+            ),
       calculationMode:
         line.calculationMode === "normal_auto" ||
         line.calculationMode === "manual_amount" ||
@@ -101,6 +105,24 @@ export class SettlementReadService {
       reason: line.reason ?? "-",
       remark: line.remark ?? "-"
     }));
+  }
+
+  private formatUnitPriceSnapshot(value: string, pricingMode: string | null | undefined) {
+    const match = /^(\d+)(?:\.(\d+))?$/.exec(value);
+    if (!match) return value;
+    const integer = (match[1] ?? "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    const rawFraction = match[2] ?? "";
+    const fraction = rawFraction.padEnd(2, "0").replace(/0+$/, (zeros) =>
+      rawFraction.length <= 2 ? zeros : ""
+    );
+    const normalizedFraction = fraction.length < 2 ? fraction.padEnd(2, "0") : fraction;
+    const pricingLabel =
+      pricingMode === "tax_inclusive"
+        ? "含税"
+        : pricingMode === "tax_exclusive"
+          ? "不含税"
+          : "计价口径未标记";
+    return `¥${integer}.${normalizedFraction}（${pricingLabel}）`;
   }
 
   private async settlementArchiveFilesForSettlement(

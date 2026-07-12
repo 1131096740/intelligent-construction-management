@@ -101,7 +101,13 @@ describe("settlement ledger page configuration", () => {
           exception: {
             code: "negative_remaining_amount",
             message: "已超过 0.01 元"
-          }
+          },
+          exceptions: [
+            {
+              code: "negative_remaining_amount",
+              message: "已超过 0.01 元"
+            }
+          ]
         }
       ])[0]
     ).toMatchObject({

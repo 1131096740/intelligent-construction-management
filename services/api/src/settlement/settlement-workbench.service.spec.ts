@@ -177,7 +177,17 @@ describe("SettlementWorkbenchService", () => {
           exception: {
             code: "unknown_previous_quantity",
             message: "存在未记录数量的历史结算明细，请先完成历史数据核对"
-          }
+          },
+          exceptions: [
+            {
+              code: "unknown_previous_quantity",
+              message: "存在未记录数量的历史结算明细，请先完成历史数据核对"
+            },
+            {
+              code: "negative_remaining_amount",
+              message: "累计已占用金额超过合同清单金额 5.05 元"
+            }
+          ]
         })
       ]
     });

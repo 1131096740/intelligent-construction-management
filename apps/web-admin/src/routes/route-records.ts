@@ -220,6 +220,10 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/settlements/SettlementListPage.vue")
       },
       {
+        path: "结算管理/新建",
+        component: () => import("../pages/settlements/SettlementWorkbenchPage.vue")
+      },
+      {
         path: "结算管理/:settlementId",
         component: () => import("../pages/settlements/SettlementDetailPage.vue")
       },
@@ -269,6 +273,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "business-parties", redirect: "/合作单位档案" },
       { path: "business-parties/:partyId", redirect: partyRedirect },
       { path: "settlements", redirect: "/结算管理" },
+      { path: "settlements/new", redirect: "/结算管理/新建" },
       { path: "settlements/:settlementId", redirect: settlementRedirect },
       { path: "payments", redirect: "/付款管理" },
       { path: "payments/:paymentId", redirect: paymentRedirect },

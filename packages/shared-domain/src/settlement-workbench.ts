@@ -39,6 +39,7 @@ export interface SettlementSourceLineReadModel {
   provisional: boolean;
   settlementBasis: string | null;
   exception: SettlementSourceLineException | null;
+  exceptions: SettlementSourceLineException[];
 }
 
 export interface SettlementSourceLinesReadModel {

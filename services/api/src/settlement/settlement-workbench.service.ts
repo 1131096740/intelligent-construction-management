@@ -221,6 +221,27 @@ export class SettlementWorkbenchService {
       : null;
     const amountRole = normalizedAmountRole(bill.amountRole);
     const pricingMode = normalizedPricingMode(bill.pricingMode);
+    const exceptions: SettlementSourceLineReadModel["exceptions"] = [];
+    if (previousSettledQuantity === null) {
+      exceptions.push({
+        code: "unknown_previous_quantity",
+        message: "存在未记录数量的历史结算明细，请先完成历史数据核对"
+      });
+    }
+    if (remainingQuantity?.isNegative()) {
+      exceptions.push({
+        code: "negative_remaining_quantity",
+        message: `累计已结算数量超过合同数量 ${remainingQuantity.abs().toString()}`
+      });
+    }
+    if (remainingAmountCents < 0n) {
+      exceptions.push({
+        code: "negative_remaining_amount",
+        message: `累计已占用金额超过合同清单金额 ${formatMoneyCentsAsYuan(
+          exceededAmountCents
+        )} 元`
+      });
+    }
     return {
       id: row.id,
       billId: bill.id,
@@ -249,25 +270,8 @@ export class SettlementWorkbenchService {
       remainingAmountCents: remainingAmountCents.toString(),
       provisional: row.isProvisional,
       settlementBasis: row.settlementBasis,
-      exception:
-        previousSettledQuantity === null
-          ? {
-              code: "unknown_previous_quantity",
-              message: "存在未记录数量的历史结算明细，请先完成历史数据核对"
-            }
-          : remainingQuantity?.isNegative()
-            ? {
-                code: "negative_remaining_quantity",
-                message: `累计已结算数量超过合同数量 ${remainingQuantity.abs().toString()}`
-              }
-            : remainingAmountCents < 0n
-          ? {
-              code: "negative_remaining_amount",
-              message: `累计已占用金额超过合同清单金额 ${formatMoneyCentsAsYuan(
-                exceededAmountCents
-              )} 元`
-            }
-          : null
+      exception: exceptions[0] ?? null,
+      exceptions
     };
   }
 

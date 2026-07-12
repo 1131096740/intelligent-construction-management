@@ -6,6 +6,7 @@ import type {
   ProjectExpenseApprovalDetailReadModel,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
+import type { SettlementLineDraftPayload } from "./settlement-workbench.api";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
@@ -388,8 +389,9 @@ export interface CreateSettlementPayload {
   contractVersionId: string;
   code: string;
   periodLabel: string;
-  amountCents: string;
+  amountCents?: string;
   isFinal?: boolean;
+  settlementLines?: SettlementLineDraftPayload[];
 }
 
 export interface CreateSettlementReadModel {

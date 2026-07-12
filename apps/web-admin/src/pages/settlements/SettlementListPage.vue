@@ -7,158 +7,11 @@
       </div>
       <t-button
         theme="primary"
-        @click="showCreateForm = !showCreateForm"
+        @click="openCreateWorkbench"
       >
         新建结算
       </t-button>
     </div>
-
-    <t-card
-      v-if="showCreateForm"
-      class="create-panel"
-      title="新建结算单"
-      :bordered="true"
-    >
-      <div class="create-grid">
-        <label class="create-field">
-          <span>项目</span>
-          <select
-            v-model="createForm.projectId"
-            :disabled="loadingProjects || projects.length === 0"
-            @change="loadSettlementContracts"
-          >
-            <option value="">
-              请选择项目
-            </option>
-            <option
-              v-for="project in projects"
-              :key="project.id"
-              :value="project.id"
-            >
-              {{ project.code }} · {{ project.name }}
-            </option>
-          </select>
-        </label>
-        <label class="create-field span-2">
-          <span>合同</span>
-          <select
-            v-model="createForm.contractOptionValue"
-            :disabled="loadingContracts || contractSelectOptions.length === 0"
-            @change="loadSettlementSourceLines"
-          >
-            <option value="">
-              请选择已生效合同
-            </option>
-            <option
-              v-for="option in contractSelectOptions"
-              :key="option.value"
-              :value="option.value"
-              :disabled="option.disabled"
-            >
-              {{ option.label }}
-            </option>
-          </select>
-          <small>{{ selectedContractHint }}</small>
-        </label>
-        <t-input
-          v-model="createForm.code"
-          label="结算编号"
-          placeholder="JS-2026-019"
-        />
-        <t-input
-          v-model="createForm.periodLabel"
-          label="结算期间"
-          placeholder="2026-06"
-        />
-        <t-input
-          v-model="createForm.amountYuan"
-          label="结算金额（元）"
-          placeholder="320000.00"
-        />
-      </div>
-      <div
-        v-if="selectedContract?.contractVersionId"
-        class="source-preview"
-      >
-        <div class="source-preview-head">
-          <div>
-            <strong>合同清单预览</strong>
-            <span>只读核对有效合同版本的清单和已占用金额，本区域尚不支持编辑。</span>
-          </div>
-          <t-button
-            variant="text"
-            :loading="sourceLinesLoading"
-            @click="loadSettlementSourceLines"
-          >
-            刷新清单
-          </t-button>
-        </div>
-        <t-alert
-          v-if="sourceLinesError"
-          theme="error"
-          :message="sourceLinesError"
-        />
-        <div
-          v-else-if="sourceLinesLoading"
-          class="source-preview-state"
-        >
-          正在加载合同清单……
-        </div>
-        <t-empty
-          v-else-if="sourceLinesSnapshot && sourceLinesSnapshot.rows.length === 0"
-          description="该有效合同版本暂无结构化清单，后续可使用有原因的手工调整项。"
-        />
-        <template v-else-if="sourceLinesSnapshot">
-          <div class="source-summary">
-            <span>清单行 <strong>{{ sourceLinesSnapshot.summary.rowCount }}</strong></span>
-            <span>异常 <strong :class="{ danger: sourceLinesSnapshot.summary.exceptionCount > 0 }">{{ sourceLinesSnapshot.summary.exceptionCount }}</strong></span>
-            <span>清单金额 <strong>{{ sourceLinesSummary.contractAmount }}</strong></span>
-            <span>已占用 <strong>{{ sourceLinesSummary.settledAmount }}</strong></span>
-            <span>剩余 <strong>{{ sourceLinesSummary.remainingAmount }}</strong></span>
-          </div>
-          <t-table
-            row-key="id"
-            :columns="settlementSourceLineColumns"
-            :data="sourceLinePreviewRows"
-            :pagination="{ pageSize: 8 }"
-            table-layout="auto"
-          >
-            <template #statusText="{ row }">
-              <t-tag :theme="row.exception ? 'danger' : row.provisional ? 'warning' : 'success'">
-                {{ row.statusText }}
-              </t-tag>
-            </template>
-          </t-table>
-        </template>
-      </div>
-      <div class="create-actions">
-        <t-tooltip
-          v-if="createSettlementDisabledReason"
-          :content="createSettlementDisabledReason"
-        >
-          <span class="create-disabled-tip">
-            <t-button
-              theme="primary"
-              :loading="createBusy"
-              disabled
-            >
-              创建结算
-            </t-button>
-          </span>
-        </t-tooltip>
-        <t-button
-          v-else
-          theme="primary"
-          :loading="createBusy"
-          @click="submitCreateSettlement"
-        >
-          创建结算
-        </t-button>
-        <t-button @click="showCreateForm = false">
-          取消
-        </t-button>
-      </div>
-    </t-card>
 
     <div class="summary-strip">
       <div
@@ -268,51 +121,28 @@
 </template>
 
 <script setup lang="ts">
-import type {
-  ContractBusinessOptionReadModel,
-  SettlementSourceLinesReadModel
-} from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
-import { fetchSettlementSourceLines } from "../../api/settlement-workbench.api";
-import {
-  createSettlementDraft,
-  fetchProjects,
-  fetchSettlementContractOptions,
-  fetchSettlementLedger,
-  type ProjectOptionReadModel
-} from "../../api/core-flow-read.api";
+import { fetchSettlementLedger } from "../../api/core-flow-read.api";
 import {
   normalizeVisibleColumnKeys,
   readPersonalTablePreferences,
   writePersonalTablePreferences
 } from "../../app/personal-table-preferences";
-import { centsTextToYuanText } from "../../lib/money";
-import {
-  buildSettlementCreatePayload,
-  findContractOption,
-  settlementCreateDisabledReason,
-  toContractSelectOptions
-} from "../contracts/contract-business-options.config";
 import type { SettlementLedgerRow, SettlementTone } from "./settlement-list.config";
 import {
   settlementFilterFields,
   settlementLedgerColumns,
   settlementRules,
-  settlementSourceLineColumns,
   settlementSummaryItems,
   emptySettlementLedgerFilters,
-  filterSettlementLedgerRows,
-  toSettlementSourceLinePreviewRows
+  filterSettlementLedgerRows
 } from "./settlement-list.config";
-import { canApplySettlementSourceResponse } from "./settlement-source-lines.state";
 
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
-const showCreateForm = ref(false);
-const createBusy = ref(false);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
 const settlementLedgerRows = ref<SettlementLedgerRow[]>([]);
@@ -322,14 +152,6 @@ const configurableSettlementColumnKeys = settlementLedgerColumns
   .map((column) => String(column.colKey))
   .filter((key) => key !== "operation");
 const visibleSettlementColumnKeys = ref<string[]>([...configurableSettlementColumnKeys]);
-const projects = ref<ProjectOptionReadModel[]>([]);
-const contracts = ref<ContractBusinessOptionReadModel[]>([]);
-const loadingProjects = ref(false);
-const loadingContracts = ref(false);
-const sourceLinesLoading = ref(false);
-const sourceLinesError = ref("");
-const sourceLinesSnapshot = ref<SettlementSourceLinesReadModel | null>(null);
-let sourceLinesRequestId = 0;
 const ledgerSummary = ref({
   total: 0,
   inApproval: 0,
@@ -366,39 +188,10 @@ const visibleSettlementLedgerColumns = computed(() => {
   const visible = new Set(visibleSettlementColumnKeys.value);
   return settlementLedgerColumns.filter((column) => column.colKey === "operation" || visible.has(String(column.colKey)));
 });
-const createForm = reactive({
-  projectId: "",
-  contractOptionValue: "",
-  code: `JS-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
-  periodLabel: "2026-06",
-  amountYuan: ""
-});
-const contractSelectOptions = computed(() => toContractSelectOptions(contracts.value, "settlement"));
-const selectedContract = computed(() =>
-  findContractOption(contracts.value, createForm.contractOptionValue)
-);
-const selectedContractHint = computed(() => {
-  const contract = selectedContract.value;
-  if (!contract) {
-    return "请先选择项目和合同";
-  }
 
-  return contract.settlementUnavailableReason ?? "合同已生效，可创建结算";
-});
-const sourceLinePreviewRows = computed(() =>
-  toSettlementSourceLinePreviewRows(sourceLinesSnapshot.value?.rows ?? [])
-);
-const sourceLinesSummary = computed(() => {
-  const summary = sourceLinesSnapshot.value?.summary;
-  return {
-    contractAmount: summary ? `¥${centsTextToYuanText(summary.contractAmountCents)}` : "-",
-    settledAmount: summary ? `¥${centsTextToYuanText(summary.settledAmountCents)}` : "-",
-    remainingAmount: summary ? `¥${centsTextToYuanText(summary.remainingAmountCents)}` : "-"
-  };
-});
-const createSettlementDisabledReason = computed(() =>
-  settlementCreateDisabledReason(selectedContract.value, createForm)
-);
+function openCreateWorkbench() {
+  void router.push("/结算管理/新建");
+}
 
 function openDetail(settlementId: string) {
   void router.push(`/settlements/${settlementId}`);
@@ -471,125 +264,6 @@ async function loadSettlementLedger() {
   }
 }
 
-async function loadProjects() {
-  loadingProjects.value = true;
-  try {
-    projects.value = await fetchProjects();
-    if (!createForm.projectId && projects.value[0]) {
-      createForm.projectId = projects.value[0].id;
-      await loadSettlementContracts();
-    }
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载项目失败";
-    messageTone.value = "danger";
-  } finally {
-    loadingProjects.value = false;
-  }
-}
-
-async function loadSettlementContracts() {
-  contracts.value = [];
-  createForm.contractOptionValue = "";
-  resetSettlementSourceLines();
-  if (!createForm.projectId) {
-    return;
-  }
-  loadingContracts.value = true;
-  message.value = "";
-  try {
-    contracts.value = await fetchSettlementContractOptions(createForm.projectId);
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载合同选项失败";
-    messageTone.value = "danger";
-  } finally {
-    loadingContracts.value = false;
-  }
-}
-
-function resetSettlementSourceLines() {
-  sourceLinesRequestId += 1;
-  sourceLinesLoading.value = false;
-  sourceLinesError.value = "";
-  sourceLinesSnapshot.value = null;
-}
-
-async function loadSettlementSourceLines() {
-  const contractVersionId = selectedContract.value?.contractVersionId ?? "";
-  const requestId = ++sourceLinesRequestId;
-  sourceLinesSnapshot.value = null;
-  sourceLinesError.value = "";
-  if (!contractVersionId) {
-    sourceLinesLoading.value = false;
-    return;
-  }
-
-  sourceLinesLoading.value = true;
-  try {
-    const result = await fetchSettlementSourceLines(contractVersionId);
-    const selectedVersionId = selectedContract.value?.contractVersionId ?? "";
-    if (
-      canApplySettlementSourceResponse(
-        requestId,
-        sourceLinesRequestId,
-        contractVersionId,
-        selectedVersionId
-      )
-    ) {
-      sourceLinesSnapshot.value = result;
-    }
-  } catch (error) {
-    const selectedVersionId = selectedContract.value?.contractVersionId ?? "";
-    if (
-      canApplySettlementSourceResponse(
-        requestId,
-        sourceLinesRequestId,
-        contractVersionId,
-        selectedVersionId
-      )
-    ) {
-      sourceLinesError.value = error instanceof Error ? error.message : "加载合同清单失败";
-    }
-  } finally {
-    const selectedVersionId = selectedContract.value?.contractVersionId ?? "";
-    if (
-      canApplySettlementSourceResponse(
-        requestId,
-        sourceLinesRequestId,
-        contractVersionId,
-        selectedVersionId
-      )
-    ) {
-      sourceLinesLoading.value = false;
-    }
-  }
-}
-
-async function submitCreateSettlement() {
-  const disabledReason = createSettlementDisabledReason.value;
-  if (disabledReason) {
-    message.value = disabledReason;
-    messageTone.value = "danger";
-    return;
-  }
-
-  createBusy.value = true;
-  message.value = "";
-
-  try {
-    const settlement = await createSettlementDraft(
-      buildSettlementCreatePayload(selectedContract.value, createForm)
-    );
-    message.value = "结算单已创建。";
-    messageTone.value = "success";
-    await router.push(`/settlements/${settlement.code}`);
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "创建结算失败";
-    messageTone.value = "danger";
-  } finally {
-    createBusy.value = false;
-  }
-}
-
 function statusTagTheme(tone: SettlementTone) {
   const themeByTone = {
     default: "default",
@@ -616,7 +290,6 @@ watch(
 
 onMounted(() => {
   void loadSettlementLedger();
-  void loadProjects();
 });
 </script>
 
@@ -654,114 +327,6 @@ onMounted(() => {
   background: #fff;
   border: 1px solid #dce1e8;
   border-radius: 3px;
-}
-
-.create-panel {
-  margin-bottom: 16px;
-  border-radius: 3px;
-}
-
-.create-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.create-field {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.create-field.span-2 {
-  grid-column: span 2;
-}
-
-.create-field span,
-.create-field small {
-  color: #565f6d;
-  font-size: 12px;
-}
-
-.create-field small {
-  min-height: 16px;
-  color: #767f8d;
-  overflow-wrap: anywhere;
-}
-
-.create-field select {
-  width: 100%;
-  min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid #d2d8e1;
-  border-radius: 3px;
-  background: #fff;
-  color: #151922;
-}
-
-.create-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.source-preview {
-  min-width: 0;
-  margin-top: var(--jg-space-lg);
-  padding-top: var(--jg-space-lg);
-  border-top: 1px solid var(--jg-border);
-}
-
-.source-preview-head,
-.source-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--jg-space-md);
-}
-
-.source-preview-head > div {
-  display: grid;
-  gap: var(--jg-space-xs);
-}
-
-.source-preview-head span,
-.source-preview-state {
-  color: var(--jg-text-subtle);
-  font-size: var(--jg-font-meta);
-}
-
-.source-preview-state {
-  padding: var(--jg-space-xl) 0;
-  text-align: center;
-}
-
-.source-summary {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  margin: var(--jg-space-md) 0;
-  padding: var(--jg-space-sm) var(--jg-space-md);
-  background: var(--jg-bg-muted);
-}
-
-.source-summary span {
-  display: inline-flex;
-  gap: var(--jg-space-xs);
-  color: var(--jg-text-subtle);
-  font-size: var(--jg-font-meta);
-}
-
-.source-summary strong {
-  color: var(--jg-text-strong);
-}
-
-.source-summary strong.danger {
-  color: var(--jg-danger);
-}
-
-.create-disabled-tip {
-  display: inline-flex;
 }
 
 .summary-strip {
@@ -914,17 +479,12 @@ onMounted(() => {
 }
 
 @media (max-width: 980px) {
-  .create-grid,
   .rule-strip,
   .filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .filter-field.keyword {
-    grid-column: span 2;
-  }
-
-  .create-field.span-2 {
     grid-column: span 2;
   }
 }

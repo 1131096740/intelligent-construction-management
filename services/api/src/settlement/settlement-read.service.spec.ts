@@ -1,3 +1,4 @@
+import { Decimal } from "@prisma/client/runtime/library";
 import { SettlementReadService } from "./settlement-read.service";
 
 describe("SettlementReadService", () => {
@@ -209,6 +210,9 @@ describe("SettlementReadService", () => {
             unit: "吨",
             quantity: { toString: () => "10.000000" },
             unitPriceCents: 320000n,
+            unitPriceSnapshot: null,
+            pricingModeSnapshot: null,
+            calculationMode: "normal_auto",
             amountCents: 3200000n,
             reason: null,
             remark: "本期完成量"
@@ -220,6 +224,9 @@ describe("SettlementReadService", () => {
             unit: null,
             quantity: null,
             unitPriceCents: null,
+            unitPriceSnapshot: new Decimal("100.125"),
+            pricingModeSnapshot: "tax_exclusive",
+            calculationMode: "manual_adjustment",
             amountCents: -200000n,
             reason: "项目确认扣款",
             remark: null
@@ -294,6 +301,7 @@ describe("SettlementReadService", () => {
         unit: "吨",
         quantity: "10",
         unitPrice: "¥3,200.00",
+        calculationMode: "normal_auto",
         amount: "¥32,000.00",
         amountCents: "3200000",
         reason: "-",
@@ -306,7 +314,8 @@ describe("SettlementReadService", () => {
         name: "现场扣款",
         unit: "-",
         quantity: "-",
-        unitPrice: "-",
+        unitPrice: "¥100.125（不含税）",
+        calculationMode: "manual_adjustment",
         amount: "¥-2,000.00",
         amountCents: "-200000",
         reason: "项目确认扣款",
