@@ -1,5 +1,9 @@
 import { Injectable } from "@nestjs/common";
-import { resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
+import {
+  GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
+  resolveEffectiveRoleKeys,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 
 @Injectable()
@@ -26,7 +30,7 @@ export class ProjectVisibilityService {
       .map((position) => positionKeyById.get(position.positionId))
       .filter((role): role is RoleKey => Boolean(role));
 
-    if (globalRoleKeys.some((role) => role !== "employee")) {
+    if (globalRoleKeys.some((role) => GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(role))) {
       return activeProjectIds;
     }
 

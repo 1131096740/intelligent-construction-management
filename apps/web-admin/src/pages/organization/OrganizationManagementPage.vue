@@ -7,6 +7,7 @@
       </div>
       <div class="page-actions">
         <t-button
+          v-if="userCreationRoleOptions.length"
           variant="outline"
           :loading="refreshing"
           :disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
@@ -15,6 +16,7 @@
           刷新
         </t-button>
         <t-button
+          v-if="isTechnicalAdmin"
           variant="outline"
           :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
           @click="openUserCreationDrawer"
@@ -29,6 +31,7 @@
           批量预览撤岗
         </t-button>
         <t-button
+          v-if="isTechnicalAdmin"
           theme="primary"
           :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
           @click="openCreateDepartment"
@@ -54,6 +57,7 @@
     <BusinessStatusSummary :items="summaryItems" />
 
     <t-card
+      v-if="isTechnicalAdmin"
       title="岗位数据预检"
       bordered
     >
@@ -148,6 +152,7 @@
           </template>
           <template #operation="{ row }">
             <t-button
+              v-if="isTechnicalAdmin"
               size="small"
               variant="text"
               theme="primary"
@@ -378,6 +383,8 @@
     <OrganizationUserCreationDrawer
       :visible="userCreationDrawerVisible"
       :department-options="activeDepartmentOptions"
+      :role-options="userCreationRoleOptions"
+      :project-options="activeProjectOptions"
       @close="closeUserCreationDrawer"
       @busy-change="userCreationDrawerBusy = $event"
       @created="handleUserCreated"
@@ -411,7 +418,9 @@
 </template>
 
 <script setup lang="ts">
+import type { RoleKey } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
+import { useAuthStore } from "../../auth/auth.store";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
 import {
@@ -463,6 +472,10 @@ const emptyDirectory = (): OrganizationDirectory => ({
 });
 
 const directory = reactive<OrganizationDirectory>(emptyDirectory());
+const auth = useAuthStore();
+const isTechnicalAdmin = computed(
+  () => auth.user?.globalRoleKeys.includes("super_admin") ?? false
+);
 const permissionIntegrity = ref<PermissionIntegrityReadModel | null>(null);
 const directoryLoading = ref(false);
 const integrityLoading = ref(false);
@@ -536,6 +549,42 @@ const userStatusOptions = [
 
 const flatDepartments = computed(() => flattenDepartmentTree(directory.departments));
 const activeDepartmentOptions = computed(() => buildDepartmentParentOptions(directory.departments));
+const activeProjectOptions = computed(() =>
+  directory.projects
+    .filter((project) => project.isActive)
+    .map((project) => ({ label: `${project.name}（${project.code}）`, value: project.id }))
+);
+const subordinateRoles: Partial<Record<RoleKey, readonly RoleKey[]>> = {
+  engineering_department_director: ["engineering_director", "engineering_foreman", "engineering_tech"],
+  finance_director: ["finance_staff"],
+  contract_director: ["contract_staff"],
+  budget_director: ["budget_staff"],
+  material_director: ["material_staff"],
+  comprehensive_director: []
+};
+const userCreationRoleOptions = computed(() => {
+  const actorRoles = auth.user?.globalRoleKeys ?? [];
+  const excluded = new Set<RoleKey>([
+    "super_admin",
+    "engineering_department_member",
+    "engineering_department_director"
+  ]);
+  const allowed = new Set<RoleKey>();
+  if (actorRoles.includes("super_admin")) {
+    for (const position of directory.positions) allowed.add(position.key);
+  } else if (actorRoles.includes("chairman") || actorRoles.includes("general_manager")) {
+    for (const position of directory.positions) {
+      if (!excluded.has(position.key)) allowed.add(position.key);
+    }
+  } else {
+    for (const actorRole of actorRoles) {
+      for (const role of subordinateRoles[actorRole] ?? []) allowed.add(role);
+    }
+  }
+  return directory.positions
+    .filter((position) => allowed.has(position.key) && !excluded.has(position.key))
+    .map((position) => ({ label: position.name, value: position.key }));
+});
 const filterDepartmentOptions = computed(() =>
   flatDepartments.value.map((department) => ({ label: department.path, value: department.id }))
 );
@@ -617,6 +666,11 @@ async function loadDirectory() {
 }
 
 async function loadPermissionIntegrity() {
+  if (!isTechnicalAdmin.value) {
+    permissionIntegrity.value = null;
+    integrityMessage.value = "";
+    return true;
+  }
   integrityLoading.value = true;
   try {
     permissionIntegrity.value = await fetchPermissionIntegrity();

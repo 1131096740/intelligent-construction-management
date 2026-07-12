@@ -7,7 +7,7 @@ import {
   type OnModuleInit
 } from "@nestjs/common";
 import { type FileObject, Prisma } from "@prisma/client";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
@@ -866,6 +866,15 @@ export class FileService {
     file: FileObject,
     actorUserId: string
   ) {
+    if (
+      await this.hasGlobalRole(
+        tx,
+        actorUserId,
+        GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS
+      )
+    ) {
+      return;
+    }
     const projectOwnerContractClient = (tx as unknown as {
       projectOwnerContract?: {
         findFirst: (args: {
@@ -1356,11 +1365,16 @@ export class FileService {
     actorUserId: string,
     allowedRoles: readonly RoleKey[]
   ) {
-    const assignments = await tx.userPosition.findMany({
+    const clients = tx as unknown as {
+      userPosition?: Prisma.TransactionClient["userPosition"];
+      position?: Prisma.TransactionClient["position"];
+    };
+    if (!clients.userPosition || !clients.position) return false;
+    const assignments = await clients.userPosition.findMany({
       where: { userId: actorUserId, projectId: null }
     });
     const positions = assignments.length
-      ? await tx.position.findMany({
+      ? await clients.position.findMany({
           where: { id: { in: assignments.map((assignment) => assignment.positionId) } }
         })
       : [];

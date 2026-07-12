@@ -1,4 +1,7 @@
-import { isOrganizationRoleKey } from "../../api/organization.api";
+import {
+  GLOBAL_ORGANIZATION_ROLE_KEYS,
+  isOrganizationRoleKey
+} from "../../api/organization.api";
 import type {
   ApplyOrganizationRoleAdditionPayload,
   CreateOrganizationDepartmentPayload,
@@ -135,6 +138,8 @@ const PERMISSION_INTEGRITY_ISSUE_LABELS: Record<string, string> = {
   dual_source_project_role: "项目岗位双源重叠",
   invalid_role: "无效岗位",
   project_super_admin: "项目级超级管理员",
+  global_scope_mismatch: "项目岗位误写为全局",
+  project_scope_mismatch: "全局岗位仍在项目范围",
   orphan_user: "人员记录缺失",
   orphan_position: "岗位记录缺失",
   orphan_project: "项目记录缺失"
@@ -367,7 +372,10 @@ export function organizationRoleAdditionOptions(
   return positions
     .filter(
       (position) =>
-        !assigned.has(position.key) && !(scope === "project" && position.key === "super_admin")
+        !assigned.has(position.key) &&
+        (scope === "global"
+          ? GLOBAL_ORGANIZATION_ROLE_KEYS.includes(position.key)
+          : !GLOBAL_ORGANIZATION_ROLE_KEYS.includes(position.key))
     )
     .slice()
     .sort((left, right) => left.key.localeCompare(right.key, "zh-CN"))
@@ -388,6 +396,9 @@ export function buildOrganizationRoleAdditionTarget(
   const position = directory.positions.find((item) => item.key === selection.roleKey);
   if (!position) throw new Error("岗位不在最新固定岗位目录中，请刷新后重试");
   if (selection.scope === "global") {
+    if (!GLOBAL_ORGANIZATION_ROLE_KEYS.includes(position.key)) {
+      throw new Error("该岗位只能按项目新增");
+    }
     if (selection.projectId !== undefined && selection.projectId !== null) {
       throw new Error("全局岗位不得提交项目标识");
     }
@@ -405,7 +416,9 @@ export function buildOrganizationRoleAdditionTarget(
   const project = directory.projects.find((item) => item.id === selection.projectId);
   if (!project) throw new Error("项目不在最新治理目录中，请刷新后重试");
   if (!project.isActive) throw new Error("项目已停用，不能新增岗位");
-  if (position.key === "super_admin") throw new Error("项目岗位不得新增系统管理员");
+  if (GLOBAL_ORGANIZATION_ROLE_KEYS.includes(position.key)) {
+    throw new Error("该岗位只能按全局新增");
+  }
   if (
     latestUser.projectPositions
       .find((item) => item.projectId === project.id)

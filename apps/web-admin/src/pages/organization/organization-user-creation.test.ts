@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildOrganizationUserCreatePayload,
   emptyOrganizationUserCreationForm,
-  generateTemporaryPassword
+  generateTemporaryPassword,
+  type OrganizationUserCreationForm
 } from "./organization-user-creation";
 
 function deterministicCrypto() {
@@ -35,29 +36,32 @@ describe("organization user creation", () => {
     );
   });
 
-  it("builds the five-field payload while preserving both passwords", () => {
+  it("builds the initial project-role payload while preserving both passwords", () => {
     expect(
       buildOrganizationUserCreatePayload({
-        name: " 张三 ",
         phone: " 13800000001 ",
         departmentId: " department-1 ",
+        initialRoleKey: "contract_staff",
+        projectId: " project-1 ",
         temporaryPassword: " temporary-password ",
         confirmationPassword: " current-password ",
         passwordRecorded: true
       })
     ).toEqual({
-      name: "张三",
       phone: "13800000001",
       departmentId: "department-1",
+      initialRoleKey: "contract_staff",
+      projectId: "project-1",
       temporaryPassword: " temporary-password ",
       confirmationPassword: " current-password "
     });
   });
 
   it.each([
-    [{ name: " " }, "请填写人员姓名"],
     [{ phone: "12800000001" }, "手机号格式不正确"],
     [{ departmentId: "" }, "请选择启用部门"],
+    [{ initialRoleKey: "" }, "请选择初始岗位"],
+    [{ projectId: "" }, "项目岗位必须选择项目"],
     [{ temporaryPassword: "1234567" }, "临时密码至少需要 8 个字符"],
     [{ temporaryPassword: "        " }, "临时密码不能全为空白字符"],
     [{ confirmationPassword: "   " }, "请输入当前登录密码"],
@@ -65,22 +69,24 @@ describe("organization user creation", () => {
   ])("rejects unsafe create input %#", (override, message) => {
     expect(() =>
       buildOrganizationUserCreatePayload({
-        name: "张三",
         phone: "13800000001",
         departmentId: "department-1",
+        initialRoleKey: "contract_staff",
+        projectId: "project-1",
         temporaryPassword: "temporary-password",
         confirmationPassword: "current-password",
         passwordRecorded: true,
-        ...override
+        ...(override as Partial<OrganizationUserCreationForm>)
       })
     ).toThrow(message);
   });
 
   it("returns a fresh form with no retained secrets", () => {
     expect(emptyOrganizationUserCreationForm()).toEqual({
-      name: "",
       phone: "",
       departmentId: "",
+      initialRoleKey: "",
+      projectId: "",
       temporaryPassword: "",
       confirmationPassword: "",
       passwordRecorded: false

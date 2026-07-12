@@ -47,6 +47,31 @@ describe("ProjectVisibilityService", () => {
     await expect(service.visibleProjectIds("user-1")).resolves.toEqual(["project-1", "project-2"]);
   });
 
+  it("does not expand visibility for project-only roles stored globally", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([{ projectId: null, positionId: "pos-engineering-member" }])
+          .mockResolvedValueOnce([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ projectId: "project-1" }])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1" }, { id: "project-2" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "pos-engineering-member", key: "engineering_department_member" }
+        ])
+      }
+    };
+    const service = new ProjectVisibilityService(prisma as never);
+
+    await expect(service.visibleProjectIds("user-1")).resolves.toEqual(["project-1"]);
+  });
+
   it("returns effective role keys for one project", async () => {
     const prisma = {
       userPosition: {
@@ -68,7 +93,6 @@ describe("ProjectVisibilityService", () => {
     const service = new ProjectVisibilityService(prisma as never);
 
     await expect(service.effectiveRoleKeys("user-1", "project-1")).resolves.toEqual([
-      "employee",
       "finance_staff",
       "contract_staff"
     ]);

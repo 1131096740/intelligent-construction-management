@@ -14,7 +14,17 @@ export const historicalTakeoverRoleKeys = [
   "contract_director"
 ] as const satisfies readonly RoleKey[];
 
-export const organizationAdminRoleKeys = ["super_admin"] as const satisfies readonly RoleKey[];
+export const organizationAdminRoleKeys = [
+  "chairman",
+  "general_manager",
+  "engineering_department_director",
+  "finance_director",
+  "contract_director",
+  "budget_director",
+  "material_director",
+  "comprehensive_director",
+  "super_admin"
+] as const satisfies readonly RoleKey[];
 export const settlementTemplateAdminRoleKeys = [
   "contract_director",
   "super_admin"

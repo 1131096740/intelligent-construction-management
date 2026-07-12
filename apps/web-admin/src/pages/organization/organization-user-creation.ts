@@ -1,4 +1,8 @@
-import type { CreateOrganizationUserPayload } from "../../api/organization.api";
+import type { RoleKey } from "@jiangkong/shared-domain";
+import {
+  GLOBAL_ORGANIZATION_ROLE_KEYS,
+  type CreateOrganizationUserPayload
+} from "../../api/organization.api";
 
 const TEMPORARY_PASSWORD_LENGTH = 24;
 const PASSWORD_GROUPS = [
@@ -10,9 +14,10 @@ const PASSWORD_GROUPS = [
 const PASSWORD_ALPHABET = PASSWORD_GROUPS.join("");
 
 export interface OrganizationUserCreationForm {
-  name: string;
   phone: string;
   departmentId: string;
+  initialRoleKey: RoleKey | "";
+  projectId: string;
   temporaryPassword: string;
   confirmationPassword: string;
   passwordRecorded: boolean;
@@ -20,9 +25,10 @@ export interface OrganizationUserCreationForm {
 
 export function emptyOrganizationUserCreationForm(): OrganizationUserCreationForm {
   return {
-    name: "",
     phone: "",
     departmentId: "",
+    initialRoleKey: "",
+    projectId: "",
     temporaryPassword: "",
     confirmationPassword: "",
     passwordRecorded: false
@@ -49,13 +55,15 @@ export function generateTemporaryPassword(
 export function buildOrganizationUserCreatePayload(
   form: OrganizationUserCreationForm
 ): CreateOrganizationUserPayload {
-  const name = form.name.trim();
-  if (!name) throw new Error("请填写人员姓名");
-  if ([...name].length > 100) throw new Error("人员姓名不能超过 100 个字符");
   const phone = form.phone.trim();
   if (!/^1[3-9]\d{9}$/u.test(phone)) throw new Error("手机号格式不正确");
   const departmentId = form.departmentId.trim();
   if (!departmentId) throw new Error("请选择启用部门");
+  if (!form.initialRoleKey) throw new Error("请选择初始岗位");
+  const projectId = form.projectId.trim();
+  const globalRole = GLOBAL_ORGANIZATION_ROLE_KEYS.includes(form.initialRoleKey);
+  if (!globalRole && !projectId) throw new Error("项目岗位必须选择项目");
+  if (globalRole && projectId) throw new Error("全局岗位不需要安排项目");
   if (form.temporaryPassword.length < 8) throw new Error("临时密码至少需要 8 个字符");
   if (!/\S/u.test(form.temporaryPassword)) throw new Error("临时密码不能全为空白字符");
   if ([...form.temporaryPassword].length > 256) throw new Error("临时密码不能超过 256 个字符");
@@ -65,9 +73,10 @@ export function buildOrganizationUserCreatePayload(
   }
   if (!form.passwordRecorded) throw new Error("请先通过线下安全渠道记录临时密码");
   return {
-    name,
     phone,
     departmentId,
+    initialRoleKey: form.initialRoleKey,
+    ...(projectId ? { projectId } : {}),
     temporaryPassword: form.temporaryPassword,
     confirmationPassword: form.confirmationPassword
   };

@@ -216,9 +216,9 @@ describe("role-specific gates", () => {
 });
 
 describe("effective role resolution", () => {
-  it("merges global and project roles without duplicates", () => {
+  it("merges allowed global and project roles without duplicates", () => {
     const result = resolveEffectiveRoleKeys(
-      ["finance_staff", "employee"],
+      ["finance_staff", "engineering_tech"],
       ["contract_staff", "employee"]
     );
     expect(result).toEqual(
@@ -227,16 +227,25 @@ describe("effective role resolution", () => {
     expect(result).toHaveLength(3);
   });
 
+  it("does not let erroneous global project roles become effective", () => {
+    expect(
+      resolveEffectiveRoleKeys(["engineering_department_member", "project_manager"], [])
+    ).toEqual([]);
+    expect(
+      resolveEffectiveRoleKeys([], ["engineering_department_member", "project_manager"])
+    ).toEqual(["engineering_department_member", "project_manager"]);
+  });
+
   it("works with only global roles", () => {
     expect(resolveEffectiveRoleKeys(["chairman"])).toEqual(["chairman"]);
   });
 
   it("grants access only when a project role supplies the needed position", () => {
-    const globalOnly = resolveEffectiveRoleKeys(["employee"], []);
+    const globalOnly = resolveEffectiveRoleKeys(["engineering_tech"], []);
     expect(canPerform("contract.archive.confirm", globalOnly)).toBe(false);
 
     const withProjectRole = resolveEffectiveRoleKeys(
-      ["employee"],
+      ["engineering_tech"],
       ["contract_director"]
     );
     expect(canPerform("contract.archive.confirm", withProjectRole)).toBe(true);

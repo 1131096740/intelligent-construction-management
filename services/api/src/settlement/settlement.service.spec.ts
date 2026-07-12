@@ -2071,7 +2071,7 @@ describe("SettlementService", () => {
         frozenNodes: expect.arrayContaining([
           { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
           { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
-          { name: "工程技术部", mode: "any", roleKeys: ["engineering_tech"] }
+          { name: "公司工程技术部部长", mode: "any", roleKeys: ["engineering_department_director"] }
         ])
       })
     });
@@ -2135,7 +2135,7 @@ describe("SettlementService", () => {
         frozenNodes: expect.arrayContaining([
           { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
           { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
-          { name: "工程技术部", mode: "any", roleKeys: ["engineering_tech"] }
+          { name: "公司工程技术部部长", mode: "any", roleKeys: ["engineering_department_director"] }
         ])
       })
     });

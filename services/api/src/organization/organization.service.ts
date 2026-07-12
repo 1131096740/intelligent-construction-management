@@ -5,7 +5,11 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import {
+  GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
+  ROLE_KEYS,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -14,6 +18,12 @@ import type { CreateDepartmentDto } from "./dto/create-department.dto";
 import type { CreateOrganizationUserDto } from "./dto/create-organization-user.dto";
 import type { UpdateDepartmentDto } from "./dto/update-department.dto";
 import type { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
+import {
+  canManageRole,
+  ORGANIZATION_MANAGER_ROLE_KEYS,
+  requiresDepartmentBoundary,
+  roleScope
+} from "./organization-management-policy";
 
 const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 
@@ -69,6 +79,8 @@ export type PermissionIntegrityIssueCode =
   | "dual_source_project_role"
   | "invalid_role"
   | "project_super_admin"
+  | "global_scope_mismatch"
+  | "project_scope_mismatch"
   | "orphan_user"
   | "orphan_position"
   | "orphan_project";
@@ -116,6 +128,8 @@ const PERMISSION_INTEGRITY_MESSAGES: Record<PermissionIntegrityIssueCode, string
   dual_source_project_role: "同一项目岗位同时存在于 UserPosition 和 ProjectMember",
   invalid_role: "岗位键不在系统固定岗位范围内",
   project_super_admin: "super_admin 不允许分配到项目范围",
+  global_scope_mismatch: "项目级岗位被错误写入全局范围，不会获得全项目权限",
+  project_scope_mismatch: "全局岗位仍停留在项目范围，请受控迁移到全局岗位",
   orphan_user: "岗位分配关联的人员不存在",
   orphan_position: "UserPosition 关联的固定岗位不存在",
   orphan_project: "项目岗位分配关联的项目不存在"
@@ -227,7 +241,9 @@ export class OrganizationService {
   ) {}
 
   async createUser(actorUserId: string, input: CreateOrganizationUserDto) {
-    const name = requiredTrimmed(input.name, "请填写人员姓名");
+    const name = input.initialRoleKey
+      ? "待本人确认"
+      : requiredTrimmed(input.name ?? "", "请填写人员姓名");
     const phone = requiredTrimmed(input.phone, "请填写手机号");
     if (!/^1[3-9]\d{9}$/u.test(phone)) {
       throw new BadRequestException("手机号格式不正确");
@@ -242,12 +258,38 @@ export class OrganizationService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          await this.assertActiveGlobalSuperAdmin(tx, actorUserId);
+          const actorRoles = await this.assertOrganizationManager(tx, actorUserId);
           const department = await tx.department.findUnique({
             where: { id: departmentId },
             select: { id: true, isActive: true }
           });
           assertActiveDepartment(department, "部门");
+          await this.assertDepartmentBoundary(tx, actorUserId, actorRoles, departmentId);
+          if (
+            input.initialRoleKey === "super_admin" ||
+            input.initialRoleKey === "engineering_department_member" ||
+            input.initialRoleKey === "engineering_department_director"
+          ) {
+            throw new BadRequestException("该岗位必须通过独立岗位预览与授岗流程办理");
+          }
+          if (input.initialRoleKey && !canManageRole(actorRoles, input.initialRoleKey)) {
+            throw new ForbiddenException("当前岗位不能创建或授予该初始岗位");
+          }
+          const scope = input.initialRoleKey ? roleScope(input.initialRoleKey) : null;
+          const projectId = input.projectId?.trim() || null;
+          if (scope === "global" && projectId) {
+            throw new BadRequestException("全局岗位不需要安排项目");
+          }
+          if (scope === "project" && !projectId) {
+            throw new BadRequestException("项目岗位必须选择项目");
+          }
+          if (projectId) {
+            const project = await tx.project.findUnique({
+              where: { id: projectId },
+              select: { id: true, isActive: true }
+            });
+            if (!project?.isActive) throw new BadRequestException("项目不存在或已停用，请重新选择");
+          }
 
           const user = await tx.user.create({
             data: {
@@ -267,6 +309,25 @@ export class OrganizationService {
               mustChangePassword: true
             }
           });
+          let assignmentId: string | null = null;
+          if (input.initialRoleKey && scope === "global") {
+            const position = await tx.position.findUnique({
+              where: { key: input.initialRoleKey },
+              select: { id: true }
+            });
+            if (!position) throw new BadRequestException("初始岗位不存在，请刷新后重试");
+            const assignment = await tx.userPosition.create({
+              data: { userId: user.id, positionId: position.id, projectId: null },
+              select: { id: true }
+            });
+            assignmentId = assignment.id;
+          } else if (input.initialRoleKey && projectId) {
+            const assignment = await tx.projectMember.create({
+              data: { userId: user.id, projectId, positionKey: input.initialRoleKey },
+              select: { id: true }
+            });
+            assignmentId = assignment.id;
+          }
           await this.audit.record(tx, {
             actorUserId,
             action: "permission.user.create",
@@ -278,7 +339,10 @@ export class OrganizationService {
               departmentId: user.departmentId,
               isActive: user.isActive,
               mustChangePassword: user.mustChangePassword,
-              initialRoleCount: 0
+              initialRoleCount: input.initialRoleKey ? 1 : 0,
+              ...(input.initialRoleKey
+                ? { initialRoleKey: input.initialRoleKey, projectId, assignmentId }
+                : {})
             }
           });
           return user;
@@ -455,6 +519,10 @@ export class OrganizationService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
+          const actorRoles = await this.assertOrganizationManager(tx, actorUserId);
+          if (userId === actorUserId) {
+            throw new ForbiddenException("不能通过组织管理入口修改或停用自己");
+          }
           const before = await tx.user.findUnique({
             where: { id: userId },
             select: { id: true, departmentId: true, isActive: true }
@@ -465,6 +533,27 @@ export class OrganizationService {
 
           const effectiveDepartmentId =
             data.departmentId !== undefined ? data.departmentId : before.departmentId;
+          if (before.departmentId) {
+            await this.assertDepartmentBoundary(
+              tx,
+              actorUserId,
+              actorRoles,
+              before.departmentId
+            );
+          } else if (requiresDepartmentBoundary(actorRoles)) {
+            throw new ForbiddenException("不能管理当前未归属本部门的人员");
+          }
+          if (!effectiveDepartmentId && requiresDepartmentBoundary(actorRoles)) {
+            throw new BadRequestException("人员必须归属启用部门");
+          }
+          if (effectiveDepartmentId) {
+            await this.assertDepartmentBoundary(
+              tx,
+              actorUserId,
+              actorRoles,
+              effectiveDepartmentId
+            );
+          }
           const departmentIdToValidate =
             data.departmentId !== undefined || (data.isActive === true && !before.isActive)
               ? effectiveDepartmentId
@@ -477,7 +566,41 @@ export class OrganizationService {
             assertActiveDepartment(department, "部门");
           }
 
+          const mutationAt = new Date();
           if (data.isActive === false && before.isActive) {
+            const [remainingGlobalRole, remainingProjectRole, activeDelegation, activeApplication] =
+              await Promise.all([
+                tx.userPosition.findFirst({
+                  where: { userId },
+                  select: { id: true }
+                }),
+                tx.projectMember.findFirst({
+                  where: { userId },
+                  select: { id: true }
+                }),
+                tx.approvalDelegation.findFirst({
+                  where: {
+                    enabled: true,
+                    OR: [{ fromUserId: userId }, { toUserId: userId }],
+                    startsAt: { lte: mutationAt },
+                    endsAt: { gte: mutationAt }
+                  },
+                  select: { id: true }
+                }),
+                tx.approvalInstance.findFirst({
+                  where: { applicantUserId: userId, status: "in_progress" },
+                  select: { id: true }
+                })
+              ]);
+            if (remainingGlobalRole || remainingProjectRole) {
+              throw new BadRequestException("该人员仍有全局或项目岗位，请先完成撤岗与交接");
+            }
+            if (activeDelegation) {
+              throw new BadRequestException("该人员仍有生效中的审批委托，请先结束委托");
+            }
+            if (activeApplication) {
+              throw new BadRequestException("该人员仍有审批中的申请，请先完成或转交");
+            }
             const superAdminPosition = await tx.position.findUnique({
               where: { key: "super_admin" },
               select: { id: true }
@@ -509,7 +632,7 @@ export class OrganizationService {
           if (data.isActive === false) {
             await tx.refreshToken.updateMany({
               where: { userId, revokedAt: null },
-              data: { revokedAt: new Date() }
+              data: { revokedAt: mutationAt }
             });
           }
           await this.audit.record(tx, {
@@ -565,6 +688,73 @@ export class OrganizationService {
     });
     if (!assignment) {
       throw new ForbiddenException("当前账号已不具备全局超级管理员权限");
+    }
+  }
+
+  private async assertOrganizationManager(
+    tx: Prisma.TransactionClient,
+    actorUserId: string
+  ): Promise<RoleKey[]> {
+    try {
+      await this.assertActiveGlobalSuperAdmin(tx, actorUserId);
+      return ["super_admin"];
+    } catch (error) {
+      if (!(error instanceof ForbiddenException)) throw error;
+    }
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) throw new ForbiddenException("当前账号已停用，不能管理人员");
+    const assignments = await tx.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null },
+      select: { positionId: true }
+    });
+    const positions = assignments.length
+      ? await tx.position.findMany({
+          where: { id: { in: assignments.map((row) => row.positionId) } },
+          select: { key: true }
+        })
+      : [];
+    const roles = positions
+      .map((position) => position.key)
+      .filter((role): role is RoleKey => ROLE_KEY_SET.has(role));
+    if (!roles.some((role) => ORGANIZATION_MANAGER_ROLE_KEYS.includes(role))) {
+      throw new ForbiddenException("当前账号没有人员账号管理权限");
+    }
+    return roles;
+  }
+
+  private async assertDepartmentBoundary(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    actorRoles: readonly RoleKey[],
+    targetDepartmentId: string
+  ) {
+    if (!requiresDepartmentBoundary(actorRoles)) return;
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { departmentId: true }
+    });
+    if (!actor?.departmentId) {
+      throw new ForbiddenException("当前主管账号未归属部门，不能管理人员");
+    }
+    const departments = await tx.department.findMany({
+      select: { id: true, parentId: true }
+    });
+    const allowed = new Set([actor.departmentId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const department of departments) {
+        if (department.parentId && allowed.has(department.parentId) && !allowed.has(department.id)) {
+          allowed.add(department.id);
+          changed = true;
+        }
+      }
+    }
+    if (!allowed.has(targetDepartmentId)) {
+      throw new ForbiddenException("只能管理本部门及下属部门人员");
     }
   }
 
@@ -693,6 +883,23 @@ export class OrganizationService {
         });
       }
 
+      if (
+        assignment.projectId === null &&
+        position &&
+        isRoleKey(position.key) &&
+        !GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(position.key)
+      ) {
+        addIssue({
+          code: "global_scope_mismatch",
+          severity: "warning",
+          source: "user_position",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          positionId: assignment.positionId,
+          roleKey: position.key
+        });
+      }
+
       if (assignment.projectId === null) continue;
 
       addIssue({
@@ -782,6 +989,17 @@ export class OrganizationService {
         addIssue({
           code: "project_super_admin",
           severity: "blocking",
+          source: "project_member",
+          assignmentIds: [assignment.id],
+          userId: assignment.userId,
+          projectId: assignment.projectId,
+          roleKey: assignment.positionKey
+        });
+      }
+      if (GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(assignment.positionKey)) {
+        addIssue({
+          code: "project_scope_mismatch",
+          severity: "warning",
           source: "project_member",
           assignmentIds: [assignment.id],
           userId: assignment.userId,

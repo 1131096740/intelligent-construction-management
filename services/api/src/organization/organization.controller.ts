@@ -14,6 +14,7 @@ import { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
 import { OrganizationService } from "./organization.service";
 import { OrganizationRoleService } from "./organization-role.service";
 import { PermissionImpactService } from "./permission-impact.service";
+import { ORGANIZATION_MANAGER_ROLE_KEYS } from "./organization-management-policy";
 
 @Controller("organization")
 @RequirePositions("super_admin")
@@ -25,6 +26,7 @@ export class OrganizationController {
   ) {}
 
   @Get("directory")
+  @RequirePositions(...ORGANIZATION_MANAGER_ROLE_KEYS)
   directory() {
     return this.organization.getDirectory();
   }
@@ -35,6 +37,7 @@ export class OrganizationController {
   }
 
   @Post("users")
+  @RequirePositions(...ORGANIZATION_MANAGER_ROLE_KEYS)
   createUser(
     @CurrentUser() actor: AuthenticatedUser,
     @Body() body: CreateOrganizationUserDto
@@ -43,8 +46,12 @@ export class OrganizationController {
   }
 
   @Post("role-changes/preview")
-  previewRoleRemoval(@Body() body: PreviewRoleRemovalDto) {
-    return this.permissionImpacts.previewRoleRemoval(body);
+  @RequirePositions(...ORGANIZATION_MANAGER_ROLE_KEYS)
+  previewRoleRemoval(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() body: PreviewRoleRemovalDto
+  ) {
+    return this.organizationRoles.previewRoleRemoval(actor.id, body);
   }
 
   @Post("role-changes/batch-preview")
@@ -53,6 +60,7 @@ export class OrganizationController {
   }
 
   @Post("role-changes/apply")
+  @RequirePositions(...ORGANIZATION_MANAGER_ROLE_KEYS)
   applyRoleRemoval(
     @CurrentUser() actor: AuthenticatedUser,
     @Body() body: ApplyRoleRemovalDto
@@ -61,11 +69,16 @@ export class OrganizationController {
   }
 
   @Post("role-additions/preview")
-  previewRoleAddition(@Body() body: PreviewRoleAdditionDto) {
-    return this.permissionImpacts.previewRoleAddition(body);
+  @RequirePositions(...ORGANIZATION_MANAGER_ROLE_KEYS)
+  previewRoleAddition(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() body: PreviewRoleAdditionDto
+  ) {
+    return this.organizationRoles.previewRoleAddition(actor.id, body);
   }
 
   @Post("role-additions/apply")
+  @RequirePositions(...ORGANIZATION_MANAGER_ROLE_KEYS)
   applyRoleAddition(
     @CurrentUser() actor: AuthenticatedUser,
     @Body() body: ApplyRoleAdditionDto
@@ -91,6 +104,7 @@ export class OrganizationController {
   }
 
   @Patch("users/:userId")
+  @RequirePositions(...ORGANIZATION_MANAGER_ROLE_KEYS)
   updateUser(
     @Param("userId") userId: string,
     @CurrentUser() actor: AuthenticatedUser,

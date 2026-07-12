@@ -21,10 +21,10 @@ const BODY_INDEX: Record<OrganizationBodyMethod, number> = {
   createDepartment: 1,
   updateDepartment: 2,
   updateUser: 2,
-  previewRoleRemoval: 0,
+  previewRoleRemoval: 1,
   previewRoleRemovalBatch: 0,
   applyRoleRemoval: 1,
-  previewRoleAddition: 0,
+  previewRoleAddition: 1,
   applyRoleAddition: 1
 };
 
@@ -230,12 +230,14 @@ describe("OrganizationController", () => {
     expect(bodyMetatype("previewRoleRemoval").name).toBe("PreviewRoleRemovalDto");
     const readModel = { snapshotHash: "sha256:abc", canApply: true };
     const organization = {};
-    const impacts = { previewRoleRemoval: jest.fn().mockResolvedValue(readModel) };
+    const impacts = {};
+    const roles = { previewRoleRemoval: jest.fn().mockResolvedValue(readModel) };
     const Controller = OrganizationController as unknown as new (
       organizationService: unknown,
-      permissionImpactService: unknown
-    ) => { previewRoleRemoval(body: unknown): Promise<unknown> };
-    const controller = new Controller(organization, impacts);
+      permissionImpactService: unknown,
+      organizationRoleService: unknown
+    ) => { previewRoleRemoval(actor: unknown, body: unknown): Promise<unknown> };
+    const controller = new Controller(organization, impacts, roles);
     const body = {
       operation: "remove",
       userId: "user-1",
@@ -243,8 +245,9 @@ describe("OrganizationController", () => {
       roleKey: "super_admin"
     };
 
-    await expect(controller.previewRoleRemoval(body)).resolves.toBe(readModel);
-    expect(impacts.previewRoleRemoval).toHaveBeenCalledWith(body);
+    const actor = { id: "actor-session" };
+    await expect(controller.previewRoleRemoval(actor, body)).resolves.toBe(readModel);
+    expect(roles.previewRoleRemoval).toHaveBeenCalledWith("actor-session", body);
   });
 
   it("批量岗位撤销预览使用运行时 DTO 且只调用累计预览", async () => {
@@ -318,11 +321,14 @@ describe("OrganizationController", () => {
     expect(bodyMetatype("applyRoleAddition").name).toBe("ApplyRoleAdditionDto");
     const previewResult = { snapshotHash: `sha256:${"a".repeat(64)}`, canApply: true };
     const applyResult = { assignmentId: "assignment-new", source: "project_member" };
-    const impacts = { previewRoleAddition: jest.fn().mockResolvedValue(previewResult) };
-    const roles = { applyRoleAddition: jest.fn().mockResolvedValue(applyResult) };
+    const impacts = {};
+    const roles = {
+      previewRoleAddition: jest.fn().mockResolvedValue(previewResult),
+      applyRoleAddition: jest.fn().mockResolvedValue(applyResult)
+    };
     const controller = new OrganizationController({} as never, impacts as never, roles as never) as
       OrganizationController & {
-        previewRoleAddition(body: unknown): Promise<unknown>;
+        previewRoleAddition(actor: unknown, body: unknown): Promise<unknown>;
         applyRoleAddition(actor: unknown, body: unknown): Promise<unknown>;
       };
     const previewBody = {
@@ -339,9 +345,9 @@ describe("OrganizationController", () => {
     };
     const actor = { id: "actor-session", name: "管理员", phone: null };
 
-    await expect(controller.previewRoleAddition(previewBody)).resolves.toBe(previewResult);
+    await expect(controller.previewRoleAddition(actor, previewBody)).resolves.toBe(previewResult);
     await expect(controller.applyRoleAddition(actor, applyBody)).resolves.toBe(applyResult);
-    expect(impacts.previewRoleAddition).toHaveBeenCalledWith(previewBody);
+    expect(roles.previewRoleAddition).toHaveBeenCalledWith("actor-session", previewBody);
     expect(roles.applyRoleAddition).toHaveBeenCalledWith("actor-session", applyBody);
   });
 

@@ -44,6 +44,8 @@ function fixture(): Fixture {
       { id: "position-manager", key: "project_manager" },
       { id: "position-budget", key: "budget_director" },
       { id: "position-finance", key: "finance_director" },
+      { id: "position-engineering-member", key: "engineering_department_member" },
+      { id: "position-engineering-director", key: "engineering_department_director" },
       { id: "position-chairman", key: "chairman" }
     ],
     userPositions: [],
@@ -125,6 +127,8 @@ async function evaluate(
       | "project_manager"
       | "budget_director"
       | "finance_director"
+      | "engineering_department_member"
+      | "engineering_department_director"
       | "chairman";
   },
   ready = true
@@ -326,6 +330,86 @@ describe("PermissionImpactService role addition", () => {
     expect(notReady.result.preview.blockingIssues).toContainEqual(
       expect.objectContaining({ code: "canonical_role_writes_not_ready" })
     );
+  });
+
+  it("工程技术部成员必须按项目显式加入且已是同项目项目经理", async () => {
+    const missingManager = await evaluate(fixture(), {
+      operation: "add",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "engineering_department_member"
+    });
+    expect(missingManager.result.preview.blockingIssues).toContainEqual(
+      expect.objectContaining({ code: "engineering_member_requires_project_manager" })
+    );
+
+    const eligible = fixture();
+    eligible.projectMembers.push({
+      id: "target-manager",
+      userId: "target",
+      projectId: "project-1",
+      positionKey: "project_manager"
+    });
+    const result = await evaluate(eligible, {
+      operation: "add",
+      userId: "target",
+      scope: "project",
+      projectId: "project-1",
+      roleKey: "engineering_department_member"
+    });
+    expect(result.result.preview).toMatchObject({ canApply: true, blockingIssues: [] });
+  });
+
+  it("公司工程技术部部长必须来自成员且全公司仅一名启用人员", async () => {
+    const eligible = fixture();
+    eligible.projectMembers.push(
+      { id: "target-manager", userId: "target", projectId: "project-1", positionKey: "project_manager" },
+      { id: "target-member", userId: "target", projectId: "project-1", positionKey: "engineering_department_member" }
+    );
+    expect(
+      (await evaluate(eligible, {
+        operation: "add",
+        userId: "target",
+        scope: "global",
+        roleKey: "engineering_department_director"
+      })).result.preview
+    ).toMatchObject({ canApply: true, blockingIssues: [] });
+
+    eligible.userPositions.push({
+      id: "existing-director",
+      userId: "finance",
+      positionId: "position-engineering-director",
+      projectId: null
+    });
+    expect(
+      (await evaluate(eligible, {
+        operation: "add",
+        userId: "target",
+        scope: "global",
+        roleKey: "engineering_department_director"
+      })).result.preview.blockingIssues
+    ).toContainEqual(expect.objectContaining({ code: "engineering_director_already_active" }));
+  });
+
+  it("全局岗位和项目岗位不能写入错误范围", async () => {
+    expect(
+      (await evaluate(fixture(), {
+        operation: "add",
+        userId: "target",
+        scope: "project",
+        projectId: "project-1",
+        roleKey: "finance_director"
+      })).result.preview.blockingIssues
+    ).toContainEqual(expect.objectContaining({ code: "global_role_scope_required" }));
+    expect(
+      (await evaluate(fixture(), {
+        operation: "add",
+        userId: "target",
+        scope: "global",
+        roleKey: "project_manager"
+      })).result.preview.blockingIssues
+    ).toContainEqual(expect.objectContaining({ code: "project_role_scope_required" }));
   });
 
   it("扫描当前到末尾的未完成节点，后续节点 first-role 自审反转也阻断", async () => {
@@ -535,7 +619,8 @@ describe("PermissionImpactService role addition", () => {
     const { result } = await evaluate(data, {
       operation: "add",
       userId: "target",
-      scope: "global",
+      scope: "project",
+      projectId: "project-1",
       roleKey: "project_manager"
     });
 
@@ -573,7 +658,8 @@ describe("PermissionImpactService role addition", () => {
     const { result } = await evaluate(data, {
       operation: "add",
       userId: "target",
-      scope: "global",
+      scope: "project",
+      projectId: "project-1",
       roleKey: "project_manager"
     });
 
@@ -600,7 +686,8 @@ describe("PermissionImpactService role addition", () => {
     const { result } = await evaluate(data, {
       operation: "add",
       userId: "target",
-      scope: "global",
+      scope: "project",
+      projectId: "project-1",
       roleKey: "project_manager"
     });
 
@@ -624,7 +711,8 @@ describe("PermissionImpactService role addition", () => {
     const changed = await evaluate(changedAssignment, {
       operation: "add",
       userId: "target",
-      scope: "global",
+      scope: "project",
+      projectId: "project-1",
       roleKey: "project_manager"
     });
     expect(changed.result.preview.snapshotHash).not.toBe(result.preview.snapshotHash);
@@ -876,14 +964,14 @@ describe("PermissionImpactService role addition", () => {
     const data = fixture();
     data.userPositions.push({ id: "chairman", userId: "target", positionId: "position-chairman", projectId: null });
     data.projectMembers.push({ id: "budget-p1", userId: "target", projectId: "project-1", positionKey: "budget_director" });
-    addProjectExpense(data, { id: "p1", projectId: "project-1", frozenNodes: [{ name: "p1", mode: "any", roleKeys: ["budget_director", "chairman", "finance_director"] }] });
+    addProjectExpense(data, { id: "p1", projectId: "project-1", frozenNodes: [{ name: "p1", mode: "any", roleKeys: ["budget_director", "chairman", "finance_director", "project_manager"] }] });
     addProjectExpense(data, { id: "p2", projectId: "project-2", frozenNodes: [{ name: "p2", mode: "any", roleKeys: ["chairman", "finance_director"] }] });
 
     const global = await evaluate(data, { operation: "add", userId: "target", scope: "global", roleKey: "finance_director" });
     expect(global.result.preview.impacts.map((row) => row.approvalInstanceId)).toEqual(["p1", "p2"]);
     expect(global.result.preview.impacts.find((row) => row.approvalInstanceId === "p1")?.targetBefore).toMatchObject({ roleKey: "budget_director" });
 
-    const project = await evaluate(data, { operation: "add", userId: "target", scope: "project", projectId: "project-1", roleKey: "finance_director" });
+    const project = await evaluate(data, { operation: "add", userId: "target", scope: "project", projectId: "project-1", roleKey: "project_manager" });
     expect(project.result.preview.impacts.map((row) => row.approvalInstanceId)).toEqual(["p1"]);
   });
 

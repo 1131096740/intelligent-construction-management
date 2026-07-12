@@ -88,7 +88,7 @@ const MATERIAL_MECHANICAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
 const LABOR_PROFESSIONAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
   { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
   { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
-  { name: "工程技术部", mode: "any", roleKeys: ["engineering_tech"] },
+  { name: "公司工程技术部部长", mode: "any", roleKeys: ["engineering_department_director"] },
   { name: "合同部主管 + 预算部主管", mode: "all", roleKeys: ["contract_director", "budget_director"] },
   { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
   { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
@@ -134,7 +134,9 @@ const ROLE_LABELS: Record<string, string> = {
   finance_staff: "财务员",
   material_director: "物资主管",
   material_staff: "物资员",
-  engineering_director: "工程部主管",
+  engineering_department_member: "公司工程技术部成员",
+  engineering_department_director: "公司工程技术部部长",
+  engineering_director: "项目总工",
   engineering_foreman: "施工队长",
   engineering_tech: "技术员",
   comprehensive_director: "综合部主管",

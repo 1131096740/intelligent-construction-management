@@ -14,6 +14,8 @@ export const ORGANIZATION_ROLE_KEYS = [
   "finance_staff",
   "material_director",
   "material_staff",
+  "engineering_department_member",
+  "engineering_department_director",
   "engineering_director",
   "engineering_foreman",
   "engineering_tech",
@@ -21,6 +23,19 @@ export const ORGANIZATION_ROLE_KEYS = [
   "employee",
   "super_admin"
 ] as const satisfies readonly RoleKey[];
+
+export const GLOBAL_ORGANIZATION_ROLE_KEYS: readonly RoleKey[] = [
+  "chairman",
+  "general_manager",
+  "engineering_department_director",
+  "finance_staff",
+  "finance_director",
+  "contract_director",
+  "budget_director",
+  "material_director",
+  "comprehensive_director",
+  "super_admin"
+];
 
 const ORGANIZATION_ROLE_KEY_SET = new Set<string>(ORGANIZATION_ROLE_KEYS);
 
@@ -73,6 +88,8 @@ export type PermissionIntegrityIssueCode =
   | "dual_source_project_role"
   | "invalid_role"
   | "project_super_admin"
+  | "global_scope_mismatch"
+  | "project_scope_mismatch"
   | "orphan_user"
   | "orphan_position"
   | "orphan_project";
@@ -311,16 +328,17 @@ export interface OrganizationUserMutationResult {
 }
 
 export interface CreateOrganizationUserPayload {
-  name: string;
   phone: string;
   departmentId: string;
+  initialRoleKey: RoleKey;
+  projectId?: string;
   temporaryPassword: string;
   confirmationPassword: string;
 }
 
 export interface CreateOrganizationUserResult {
   id: string;
-  name: string;
+  name: "待本人确认";
   phone: string;
   departmentId: string;
   isActive: true;
@@ -547,9 +565,10 @@ export function createOrganizationDepartment(payload: CreateOrganizationDepartme
 
 export function createOrganizationUser(payload: CreateOrganizationUserPayload) {
   return sendJson<CreateOrganizationUserResult>("/organization/users", "POST", {
-    name: payload.name,
     phone: payload.phone,
     departmentId: payload.departmentId,
+    initialRoleKey: payload.initialRoleKey,
+    ...(payload.projectId ? { projectId: payload.projectId } : {}),
     temporaryPassword: payload.temporaryPassword,
     confirmationPassword: payload.confirmationPassword
   }, "创建人员失败");

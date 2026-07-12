@@ -10,6 +10,16 @@ import {
   type NormalizedRoleAdditionChange,
   type NormalizedRoleRemovalChange
 } from "./permission-impact.service";
+import type { PreviewRoleAdditionDto } from "./dto/preview-role-addition.dto";
+import type { PreviewRoleRemovalDto } from "./dto/preview-role-removal.dto";
+import {
+  canManageRole,
+  ORGANIZATION_MANAGER_ROLE_KEYS,
+  requiresDepartmentBoundary
+} from "./organization-management-policy";
+import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+
+const ROLE_KEY_SET = new Set<string>(ROLE_KEYS);
 
 export interface ApplyRoleRemovalResult {
   change: NormalizedRoleRemovalChange;
@@ -36,6 +46,16 @@ export class OrganizationRoleService {
     private readonly permissionImpacts: PermissionImpactService
   ) {}
 
+  async previewRoleAddition(actorUserId: string, input: PreviewRoleAdditionDto) {
+    await this.assertCanManageTargetRole(this.prisma, actorUserId, input.userId, input.roleKey);
+    return this.permissionImpacts.previewRoleAddition(input);
+  }
+
+  async previewRoleRemoval(actorUserId: string, input: PreviewRoleRemovalDto) {
+    await this.assertCanManageTargetRole(this.prisma, actorUserId, input.userId, input.roleKey);
+    return this.permissionImpacts.previewRoleRemoval(input);
+  }
+
   async applyRoleRemoval(
     actorUserId: string,
     input: ApplyRoleRemovalDto
@@ -45,7 +65,7 @@ export class OrganizationRoleService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          await this.assertActiveGlobalSuperAdmin(tx, actorUserId);
+          await this.assertCanManageTargetRole(tx, actorUserId, input.userId, input.roleKey);
           const evaluatedAt = new Date();
           const evaluation = await this.permissionImpacts.evaluateRoleRemoval(
             tx,
@@ -130,7 +150,7 @@ export class OrganizationRoleService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          await this.assertActiveGlobalSuperAdmin(tx, actorUserId, "新增");
+          await this.assertCanManageTargetRole(tx, actorUserId, input.userId, input.roleKey, "新增");
           const evaluatedAt = new Date();
           const evaluation = await this.permissionImpacts.evaluateRoleAddition(
             tx,
@@ -257,6 +277,79 @@ export class OrganizationRoleService {
     });
     if (!assignment) {
       throw new ForbiddenException("当前账号已不具备全局超级管理员权限");
+    }
+  }
+
+  private async assertCanManageTargetRole(
+    tx: Prisma.TransactionClient | PrismaService,
+    actorUserId: string,
+    targetUserId: string,
+    roleKey: RoleKey,
+    action: "撤销" | "新增" = "撤销"
+  ) {
+    if (actorUserId === targetUserId) {
+      throw new ForbiddenException("不能通过组织管理入口给自己授岗、撤岗或扩权");
+    }
+    try {
+      await this.assertActiveGlobalSuperAdmin(tx as Prisma.TransactionClient, actorUserId, action);
+      if (
+        roleKey !== "engineering_department_member" &&
+        roleKey !== "engineering_department_director"
+      ) {
+        return;
+      }
+    } catch (error) {
+      if (!(error instanceof ForbiddenException)) throw error;
+    }
+    const [actor, target, assignments] = await Promise.all([
+      tx.user.findUnique({
+        where: { id: actorUserId },
+        select: { id: true, isActive: true, departmentId: true }
+      }),
+      tx.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, isActive: true, departmentId: true }
+      }),
+      tx.userPosition.findMany({
+        where: { userId: actorUserId, projectId: null },
+        select: { positionId: true }
+      })
+    ]);
+    if (!actor?.isActive) throw new ForbiddenException(`当前账号已停用，不能执行岗位${action}`);
+    if (!target) throw new ForbiddenException("待管理人员不存在，请刷新后重试");
+    const positions = assignments.length
+      ? await tx.position.findMany({
+          where: { id: { in: assignments.map((row) => row.positionId) } },
+          select: { key: true }
+        })
+      : [];
+    const actorRoles = positions
+      .map((position) => position.key)
+      .filter((role): role is RoleKey => ROLE_KEY_SET.has(role));
+    if (!actorRoles.some((role) => ORGANIZATION_MANAGER_ROLE_KEYS.includes(role))) {
+      throw new ForbiddenException("当前账号没有岗位管理权限");
+    }
+    if (!canManageRole(actorRoles, roleKey)) {
+      throw new ForbiddenException("当前岗位不能授予或撤销该岗位");
+    }
+    if (!requiresDepartmentBoundary(actorRoles)) return;
+    if (!actor.departmentId || !target.departmentId) {
+      throw new ForbiddenException("主管与待管理人员必须归属部门");
+    }
+    const departments = await tx.department.findMany({ select: { id: true, parentId: true } });
+    const allowed = new Set([actor.departmentId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const department of departments) {
+        if (department.parentId && allowed.has(department.parentId) && !allowed.has(department.id)) {
+          allowed.add(department.id);
+          changed = true;
+        }
+      }
+    }
+    if (!allowed.has(target.departmentId)) {
+      throw new ForbiddenException("只能管理本部门及下属部门人员");
     }
   }
 }

@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { ACTION_REQUIRED_ROLES, ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import {
+  ACTION_REQUIRED_ROLES,
+  GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS,
+  ROLE_KEYS,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
@@ -67,6 +72,11 @@ export type RoleAdditionBlockingIssueCode =
   | "target_assignment_exists"
   | "target_assignment_ambiguous"
   | "project_super_admin_forbidden"
+  | "global_role_scope_required"
+  | "project_role_scope_required"
+  | "engineering_member_requires_project_manager"
+  | "engineering_director_requires_membership"
+  | "engineering_director_already_active"
   | "legacy_shadow_assignment"
   | "canonical_role_writes_not_ready";
 
@@ -79,6 +89,11 @@ const ADDITION_BLOCKING_ISSUE_MESSAGES: Record<RoleAdditionBlockingIssueCode, st
   target_assignment_exists: "该规范岗位事实已存在",
   target_assignment_ambiguous: "该规范岗位事实存在重复",
   project_super_admin_forbidden: "super_admin 不允许新增到项目范围",
+  global_role_scope_required: "该岗位只能新增到全局范围",
+  project_role_scope_required: "该岗位只能新增到项目范围",
+  engineering_member_requires_project_manager: "公司工程技术部成员必须先持有同一项目的项目经理岗位",
+  engineering_director_requires_membership: "公司工程技术部部长必须至少在一个项目同时持有工程技术部成员和项目经理岗位",
+  engineering_director_already_active: "当前已有启用的公司工程技术部部长，请先预览并完成更换",
   legacy_shadow_assignment: "项目范围存在 UserPosition 遗留岗位",
   canonical_role_writes_not_ready: "权限事实完整性未通过，不能新增岗位"
 };
@@ -625,6 +640,65 @@ export class PermissionImpactService {
     if (change.scope === "project" && change.roleKey === "super_admin") {
       issue("project_super_admin_forbidden");
     }
+    if (
+      change.scope === "project" &&
+      GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(change.roleKey)
+    ) {
+      issue("global_role_scope_required");
+    }
+    if (
+      change.scope === "global" &&
+      !GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS.includes(change.roleKey)
+    ) {
+      issue("project_role_scope_required");
+    }
+    if (
+      change.roleKey === "engineering_department_member" &&
+      change.scope === "project" &&
+      !projectMembers.some(
+        (row) =>
+          row.userId === change.userId &&
+          row.projectId === change.projectId &&
+          row.positionKey === "project_manager"
+      )
+    ) {
+      issue("engineering_member_requires_project_manager");
+    }
+    if (change.roleKey === "engineering_department_director" && change.scope === "global") {
+      const projectManagerProjectIds = new Set(
+        projectMembers
+          .filter(
+            (row) => row.userId === change.userId && row.positionKey === "project_manager"
+          )
+          .map((row) => row.projectId)
+      );
+      if (
+        !projectMembers.some(
+          (row) =>
+            row.userId === change.userId &&
+            row.positionKey === "engineering_department_member" &&
+            projectManagerProjectIds.has(row.projectId)
+        )
+      ) {
+        issue("engineering_director_requires_membership");
+      }
+      const directorPosition = positions.find(
+        (row) => row.key === "engineering_department_director"
+      );
+      const activeUserIds = new Set(users.filter((row) => row.isActive).map((row) => row.id));
+      if (
+        directorPosition &&
+        userPositions.some(
+          (row) =>
+            row.positionId === directorPosition.id &&
+            row.projectId === null &&
+            row.userId !== change.userId &&
+            activeUserIds.has(row.userId)
+        )
+      ) {
+        issue("engineering_director_already_active");
+      }
+    }
     if (!integrity.readiness.canonicalRoleWritesReady) {
       issue("canonical_role_writes_not_ready");
     }
@@ -668,6 +742,11 @@ export class PermissionImpactService {
       "target_assignment_exists",
       "target_assignment_ambiguous",
       "project_super_admin_forbidden",
+      "global_role_scope_required",
+      "project_role_scope_required",
+      "engineering_member_requires_project_manager",
+      "engineering_director_requires_membership",
+      "engineering_director_already_active",
       "legacy_shadow_assignment"
     ]);
     const targetResolved = !blockingIssues.some((item) => resolutionIssueCodes.has(item.code));

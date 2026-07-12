@@ -1,4 +1,4 @@
-import { RoleKey } from "./roles";
+import { GLOBAL_BUSINESS_ROLE_KEYS, RoleKey } from "./roles";
 
 /**
  * 受权限保护的业务动作。
@@ -89,6 +89,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
     "engineering_foreman",
     "engineering_director",
     "engineering_tech",
+    "engineering_department_director",
   ],
   "settlement.archive.upload": ["contract_staff"],
   "settlement.archive.confirm": ["contract_director"],
@@ -154,7 +155,10 @@ export function resolveEffectiveRoleKeys(
   globalRoleKeys: readonly RoleKey[],
   projectRoleKeys: readonly RoleKey[] = []
 ): RoleKey[] {
-  return Array.from(new Set([...globalRoleKeys, ...projectRoleKeys]));
+  const allowedGlobalRoles = globalRoleKeys.filter((role) =>
+    GLOBAL_BUSINESS_ROLE_KEYS.includes(role)
+  );
+  return Array.from(new Set([...allowedGlobalRoles, ...projectRoleKeys]));
 }
 
 /**

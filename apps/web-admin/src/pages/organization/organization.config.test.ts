@@ -925,7 +925,7 @@ describe("organization config", () => {
       organizationRoleAdditionOptions(users[0], "global", null, additionDirectory.positions).map(
         (option) => option.value
       )
-    ).toEqual(["budget_director", "finance_director", "project_manager", "super_admin"]);
+    ).toEqual(["budget_director", "finance_director", "super_admin"]);
     expect(
       organizationRoleAdditionOptions(
         users[0],
@@ -933,7 +933,7 @@ describe("organization config", () => {
         "project-1",
         additionDirectory.positions
       ).map((option) => option.value)
-    ).toEqual(["budget_director", "contract_director", "finance_director"]);
+    ).toEqual([]);
     expect(
       organizationRoleAdditionOptions(
         users[0],
@@ -971,7 +971,7 @@ describe("organization config", () => {
         projectId: "project-2",
         roleKey: "super_admin"
       }, additionDirectory)
-    ).toThrow("项目岗位不得新增系统管理员");
+    ).toThrow("该岗位只能按全局新增");
   });
 
   it("requires exact addition change, server canApply, valid hash and current password", () => {

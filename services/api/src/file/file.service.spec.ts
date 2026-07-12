@@ -65,6 +65,41 @@ describe("FileService", () => {
     storage.bucketName.mockReturnValue("private-local");
   });
 
+  it("允许已确认的全局岗位跨项目下载，但仍由外层票据保留密码、原因和审计", async () => {
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const businessLookup = jest.fn();
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([
+          { userId: "global-finance", positionId: "position-finance", projectId: null }
+        ])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-finance", key: "finance_staff" }
+        ])
+      },
+      projectOwnerContract: { findFirst: businessLookup }
+    };
+
+    await expect(
+      (
+        service as unknown as {
+          assertCanDownloadFileObject(
+            client: unknown,
+            file: { id: string },
+            actorUserId: string
+          ): Promise<void>;
+        }
+      ).assertCanDownloadFileObject(tx, { id: "file-other-project" }, "global-finance")
+    ).resolves.toBeUndefined();
+    expect(businessLookup).not.toHaveBeenCalled();
+  });
+
   it("fails closed outside test when file download secret is missing", () => {
     const previous = {
       nodeEnv: process.env.NODE_ENV,

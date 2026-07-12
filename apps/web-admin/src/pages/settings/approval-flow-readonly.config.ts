@@ -29,9 +29,11 @@ export const roleLabels: Record<RoleKey, string> = {
   finance_staff: "财务员",
   material_director: "物资主管",
   material_staff: "物资员",
-  engineering_director: "工程部主管",
+  engineering_department_member: "公司工程技术部成员",
+  engineering_department_director: "公司工程技术部部长",
+  engineering_director: "项目总工",
   engineering_foreman: "工长",
-  engineering_tech: "工程技术部",
+  engineering_tech: "项目工程技术人员",
   comprehensive_director: "综合部主管",
   employee: "员工",
   super_admin: "系统管理员"
@@ -78,7 +80,11 @@ export const approvalFlowRules: ApprovalFlowRule[] = [
     nodes: [
       { name: "工长", mode: "any", roleKeys: ["engineering_foreman"] },
       { name: "项目总工", mode: "any", roleKeys: ["engineering_director"] },
-      { name: "工程技术部", mode: "any", roleKeys: ["engineering_tech"] },
+      {
+        name: "公司工程技术部部长",
+        mode: "any",
+        roleKeys: ["engineering_department_director"]
+      },
       { name: "合同部主管 + 预算部主管", mode: "all", roleKeys: ["contract_director", "budget_director"] },
       { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
       { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }

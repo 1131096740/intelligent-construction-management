@@ -12,7 +12,7 @@
     <div class="user-creation-drawer">
       <t-alert
         theme="info"
-        title="人员创建后默认启用并必须首次改密，但尚未获得任何全局或项目岗位。请创建成功后使用现有“新增岗位”入口逐条授岗。"
+        title="人员创建后姓名固定为“待本人确认”，并获得所选初始岗位；首次登录时由本人填写真实姓名并强制改密。"
         :close="false"
       />
       <t-alert
@@ -28,13 +28,6 @@
       />
 
       <t-form label-align="top">
-        <t-form-item label="姓名">
-          <t-input
-            v-model="form.name"
-            :disabled="submitting"
-            placeholder="请输入真实姓名"
-          />
-        </t-form-item>
         <t-form-item label="手机号">
           <t-input
             v-model="form.phone"
@@ -48,6 +41,25 @@
             :disabled="submitting"
             :options="departmentOptions"
             placeholder="请选择启用部门"
+          />
+        </t-form-item>
+        <t-form-item label="初始岗位">
+          <t-select
+            v-model="form.initialRoleKey"
+            :disabled="submitting"
+            :options="roleOptions"
+            placeholder="请选择允许授予的初始岗位"
+          />
+        </t-form-item>
+        <t-form-item
+          v-if="requiresProject"
+          label="安排项目"
+        >
+          <t-select
+            v-model="form.projectId"
+            :disabled="submitting"
+            :options="projectOptions"
+            placeholder="请选择启用项目"
           />
         </t-form-item>
         <t-form-item label="一次性临时密码">
@@ -122,8 +134,12 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from "vue";
-import { createOrganizationUser } from "../../../api/organization.api";
+import type { RoleKey } from "@jiangkong/shared-domain";
+import { computed, reactive, ref, watch } from "vue";
+import {
+  createOrganizationUser,
+  GLOBAL_ORGANIZATION_ROLE_KEYS
+} from "../../../api/organization.api";
 import {
   buildOrganizationUserCreatePayload,
   emptyOrganizationUserCreationForm,
@@ -133,6 +149,8 @@ import {
 const props = defineProps<{
   visible: boolean;
   departmentOptions: Array<{ label: string; value: string }>;
+  roleOptions: Array<{ label: string; value: RoleKey }>;
+  projectOptions: Array<{ label: string; value: string }>;
 }>();
 
 const emit = defineEmits<{
@@ -145,6 +163,15 @@ const form = reactive(emptyOrganizationUserCreationForm());
 const passwordVisible = ref(false);
 const submitting = ref(false);
 const message = ref("");
+const requiresProject = computed(
+  () =>
+    Boolean(form.initialRoleKey) &&
+    !GLOBAL_ORGANIZATION_ROLE_KEYS.includes(form.initialRoleKey as RoleKey)
+);
+
+watch(requiresProject, (required) => {
+  if (!required) form.projectId = "";
+});
 
 watch(submitting, (busy) => emit("busy-change", busy), { immediate: true });
 watch(

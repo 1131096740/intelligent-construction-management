@@ -84,7 +84,8 @@ function createHarness(input?: {
     position: {
       findUnique: jest.fn().mockResolvedValue(
         input && "adminPosition" in input ? input.adminPosition : { id: "position-admin" }
-      )
+      ),
+      findMany: jest.fn().mockResolvedValue([])
     },
     userPosition: {
       findFirst: jest.fn().mockResolvedValue(
@@ -92,6 +93,7 @@ function createHarness(input?: {
           ? input.actorAdminAssignment
           : { id: "actor-admin-assignment" }
       ),
+      findMany: jest.fn().mockResolvedValue([]),
       delete: jest.fn().mockResolvedValue({ id: "server-global-assignment" }),
       create: jest.fn().mockResolvedValue({ id: "created-global-assignment" })
     },
@@ -99,6 +101,7 @@ function createHarness(input?: {
       delete: jest.fn().mockResolvedValue({ id: "server-project-assignment" }),
       create: jest.fn().mockResolvedValue({ id: "created-project-assignment" })
     },
+    department: { findMany: jest.fn().mockResolvedValue([]) },
     refreshToken: {
       updateMany: jest.fn().mockResolvedValue({ count: 3 })
     },
@@ -166,8 +169,8 @@ describe("OrganizationRoleService", () => {
   it.each([
     ["actor 已停用", { actor: { id: "actor-user", isActive: false } }, "当前账号已停用，不能执行岗位撤销"],
     ["actor 不存在", { actor: null }, "当前账号已停用，不能执行岗位撤销"],
-    ["super_admin 岗位字典缺失", { adminPosition: null }, "当前账号已不具备全局超级管理员权限"],
-    ["actor 已失去规范全局管理员", { actorAdminAssignment: null }, "当前账号已不具备全局超级管理员权限"]
+    ["super_admin 岗位字典缺失", { adminPosition: null }, "当前账号没有岗位管理权限"],
+    ["actor 已失去规范全局管理员", { actorAdminAssignment: null }, "当前账号没有岗位管理权限"]
   ] as const)("%s 时事务内再拒绝且零删除", async (_label, harnessInput, message) => {
     const { service, tx, impacts, audit } = createHarness(harnessInput);
     await expect(service.applyRoleRemoval("actor-user", globalInput)).rejects.toThrow(message);

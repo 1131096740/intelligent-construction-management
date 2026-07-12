@@ -131,22 +131,36 @@ function createWriteHarness(options?: {
     position: {
       findUnique: jest
         .fn()
-        .mockResolvedValue(options?.superAdminPosition ?? { id: "position-super-admin" })
+        .mockResolvedValue(options?.superAdminPosition ?? { id: "position-super-admin" }),
+      findMany: jest.fn().mockResolvedValue([])
     },
     userPosition: {
-      findFirst: jest.fn().mockResolvedValue(
-        Object.prototype.hasOwnProperty.call(settings, "actorGlobalAdminAssignment")
-          ? options?.actorGlobalAdminAssignment
-          : { id: "actor-global-admin" }
+      findFirst: jest.fn().mockImplementation(({ where }: { where: { userId: string } }) =>
+        Promise.resolve(
+          where.userId === "actor-1"
+            ? (Object.prototype.hasOwnProperty.call(settings, "actorGlobalAdminAssignment")
+                ? options?.actorGlobalAdminAssignment
+                : { id: "actor-global-admin" })
+            : null
+        )
       ),
       findMany: jest
         .fn()
         .mockResolvedValue(options?.globalSuperAdminAssignments ?? [
           { userId: "user-2" },
           { userId: "user-other-admin" }
-        ])
+        ]),
+      create: jest.fn().mockResolvedValue({ id: "global-role-new" })
     },
-    projectMember: { create: jest.fn() },
+    projectMember: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: "project-role-new" })
+    },
+    project: {
+      findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+    },
+    approvalDelegation: { findFirst: jest.fn().mockResolvedValue(null) },
+    approvalInstance: { findFirst: jest.fn().mockResolvedValue(null) },
     refreshToken: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
     auditLog: { create: jest.fn() }
   };
@@ -752,6 +766,42 @@ describe("OrganizationService permission integrity", () => {
     ]);
   });
 
+  it("提示全局与项目岗位范围错配且不把警告冒充授权", async () => {
+    const harness = createIntegrityHarness({
+      users: [{ id: "user-1" }],
+      positions: [
+        { id: "position-manager", key: "project_manager" },
+        { id: "position-finance", key: "finance_staff" }
+      ],
+      projects: [{ id: "project-1" }],
+      userPositions: [
+        {
+          id: "wrong-global-manager",
+          userId: "user-1",
+          positionId: "position-manager",
+          projectId: null
+        }
+      ],
+      projectMembers: [
+        {
+          id: "wrong-project-finance",
+          userId: "user-1",
+          projectId: "project-1",
+          positionKey: "finance_staff"
+        }
+      ]
+    });
+
+    const result = await harness.service.getPermissionIntegrity();
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "global_scope_mismatch", severity: "warning" }),
+        expect.objectContaining({ code: "project_scope_mismatch", severity: "warning" })
+      ])
+    );
+    expect(result.readiness.canonicalRoleWritesReady).toBe(true);
+  });
+
   it("识别两种来源的孤儿人员、UserPosition 孤儿岗位和项目范围孤儿项目", async () => {
     const harness = createIntegrityHarness({
       users: [{ id: "user-existing" }],
@@ -875,6 +925,60 @@ describe("OrganizationService permission integrity", () => {
 });
 
 describe("OrganizationService core writes", () => {
+  it("原子创建待本人确认账号与初始项目岗位", async () => {
+    const harness = createWriteHarness();
+
+    await expect(
+      harness.service.createUser("actor-1", {
+        phone: "13800000009",
+        departmentId: "department-1",
+        initialRoleKey: "contract_staff",
+        projectId: "project-1",
+        temporaryPassword: "temporary-password",
+        confirmationPassword: "current-password"
+      })
+    ).resolves.toMatchObject({ name: "待本人确认", mustChangePassword: true });
+
+    expect(harness.tx.projectMember.create).toHaveBeenCalledWith({
+      data: {
+        userId: "user-new",
+        projectId: "project-1",
+        positionKey: "contract_staff"
+      },
+      select: { id: true }
+    });
+    expect(harness.audit.record).toHaveBeenCalledWith(
+      harness.tx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          name: "待本人确认",
+          initialRoleCount: 1,
+          initialRoleKey: "contract_staff",
+          projectId: "project-1",
+          assignmentId: "project-role-new"
+        })
+      })
+    );
+  });
+
+  it.each(["super_admin", "engineering_department_member", "engineering_department_director"] as const)(
+    "初始岗位 %s 必须走独立预览授岗流程",
+    async (initialRoleKey) => {
+      const harness = createWriteHarness();
+      await expect(
+        harness.service.createUser("actor-1", {
+          phone: "13800000009",
+          departmentId: "department-1",
+          initialRoleKey,
+          ...(initialRoleKey === "engineering_department_member" ? { projectId: "project-1" } : {}),
+          temporaryPassword: "temporary-password",
+          confirmationPassword: "current-password"
+        })
+      ).rejects.toThrow("该岗位必须通过独立岗位预览与授岗流程办理");
+      expect(harness.tx.user.create).not.toHaveBeenCalled();
+    }
+  );
+
   it("在 Serializable 事务内创建零岗位人员并写脱敏审计", async () => {
     const harness = createWriteHarness();
 

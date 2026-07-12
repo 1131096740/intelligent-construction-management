@@ -422,11 +422,11 @@ describe("organization API client", () => {
     });
   });
 
-  it("creates a user with only the five allowed fields and never adds roles", async () => {
+  it("creates a pending-name user with one explicit initial project role", async () => {
     mockApiFetch.mockReturnValue(
       jsonResponse({
         id: "user-new",
-        name: "张三",
+        name: "待本人确认",
         phone: "13800000001",
         departmentId: "department-1",
         isActive: true,
@@ -435,9 +435,10 @@ describe("organization API client", () => {
     );
 
     await createOrganizationUser({
-      name: "张三",
       phone: "13800000001",
       departmentId: "department-1",
+      initialRoleKey: "contract_staff",
+      projectId: "project-1",
       temporaryPassword: " temporary-password ",
       confirmationPassword: " current-password ",
       roleKeys: ["super_admin"],
@@ -449,9 +450,10 @@ describe("organization API client", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: "张三",
         phone: "13800000001",
         departmentId: "department-1",
+        initialRoleKey: "contract_staff",
+        projectId: "project-1",
         temporaryPassword: " temporary-password ",
         confirmationPassword: " current-password "
       })
