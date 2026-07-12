@@ -289,6 +289,7 @@ export class MeService {
   }
 
   async getWorkItems(userId: string): Promise<WorkItemsReadModel> {
+    const evaluatedAt = new Date();
     const scopes = await this.loadProjectRoleScopes(userId);
     const projectIds = scopes.map((scope) => scope.projectId);
     const projectNameById = await this.projectNames(projectIds);
@@ -346,7 +347,7 @@ export class MeService {
         "确认后结算生效，可申请付款",
         "warning"
       )),
-      ...(await this.approvalWorkItems(scopes, userId, "pending"))
+      ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt))
     ];
 
     const blocked = await this.contractTakeoverWorkItems(
@@ -364,14 +365,16 @@ export class MeService {
       }
     );
 
-    const started = await this.approvalWorkItems(scopes, userId, "started");
+    const started = await this.approvalWorkItems(scopes, userId, "started", evaluatedAt);
     const handledByMe = await this.handledApprovalWorkItems(scopes, userId);
-    const delegatedToMe = (await this.approvalWorkItems(scopes, userId, "delegated")).filter(
+    const delegatedToMe = (
+      await this.approvalWorkItems(scopes, userId, "delegated", evaluatedAt)
+    ).filter(
       (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index
     );
 
     return {
-      generatedAt: new Date().toISOString(),
+      generatedAt: evaluatedAt.toISOString(),
       visibleProjectCount: scopes.length,
       queues: {
         pending: pending.slice(0, 30),
@@ -669,7 +672,8 @@ export class MeService {
   private async approvalWorkItems(
     scopes: ProjectRoleScope[],
     userId: string,
-    mode: "pending" | "started" | "delegated"
+    mode: "pending" | "started" | "delegated",
+    evaluatedAt: Date
   ): Promise<WorkItem[]> {
     const instances = (await this.prisma.approvalInstance.findMany({
       where: {
@@ -695,9 +699,9 @@ export class MeService {
         ? this.hasDirectRoleTodo(node, roleKeys)
         : this.canActOnApprovalNode(node, roleKeys, userId);
       const hasDelegatedTodo =
-        isProjectExpense || hasDirectTodo
+        mode === "started" || isProjectExpense || hasDirectTodo
           ? false
-          : await this.hasDelegatedApprovalTodo(userId, detail.projectId, node);
+          : await this.hasDelegatedApprovalTodo(userId, detail.projectId, node, evaluatedAt);
       if (mode === "pending" && !hasDirectTodo && !hasDelegatedTodo) {
         continue;
       }
@@ -915,6 +919,7 @@ export class MeService {
   }
 
   private async countApprovalTodos(scopes: ProjectRoleScope[], userId: string) {
+    const evaluatedAt = new Date();
     const roleKeysByProject = new Map(scopes.map((scope) => [scope.projectId, scope.roleKeys]));
     const instances = await this.prisma.approvalInstance.findMany({
       where: {
@@ -945,7 +950,12 @@ export class MeService {
         : this.canActOnApprovalNode(currentNode, roleKeys, userId);
       const hasDelegatedTodo =
         !isProjectExpense && !hasDirectTodo
-          ? await this.hasDelegatedApprovalTodo(userId, projectId, currentNode)
+          ? await this.hasDelegatedApprovalTodo(
+              userId,
+              projectId,
+              currentNode,
+              evaluatedAt
+            )
           : false;
       if (!hasDirectTodo && !hasDelegatedTodo) {
         continue;
@@ -1083,14 +1093,19 @@ export class MeService {
   private async hasDelegatedApprovalTodo(
     userId: string,
     projectId: string,
-    node: ApprovalNode
+    node: ApprovalNode,
+    evaluatedAt: Date
   ): Promise<boolean> {
     const nodeRoleKeys = this.pendingRoleKeys(node);
     if (!nodeRoleKeys.length) {
       return false;
     }
 
-    const delegatorIds = await activeApprovalDelegatorIds(this.prisma, userId, new Date());
+    const delegatorIds = await activeApprovalDelegatorIds(
+      this.prisma,
+      userId,
+      evaluatedAt
+    );
     for (const delegatorId of delegatorIds) {
       const delegatorRoleKeys = await this.roleKeysForUserProject(delegatorId, projectId);
       if (nodeRoleKeys.some((role) => delegatorRoleKeys.includes(role))) {

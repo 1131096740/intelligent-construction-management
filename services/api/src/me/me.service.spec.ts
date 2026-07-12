@@ -411,7 +411,21 @@ describe("MeService", () => {
       },
       approvalInstance: {
         findMany: jest.fn().mockImplementation(({ where }: { where: { applicantUserId?: string } }) => {
-          if (where.applicantUserId) return [];
+          if (where.applicantUserId) {
+            return [
+              {
+                id: "approval-started",
+                businessType: "settlement",
+                businessId: "settlement-1",
+                status: "in_progress",
+                currentNodeIndex: 0,
+                frozenNodes: [{ name: "项目经理审批", roleKeys: ["project_manager"] }],
+                applicantUserId: "delegatee-1",
+                createdAt: new Date("2026-07-07T08:00:00.000Z"),
+                updatedAt: new Date("2026-07-07T08:00:00.000Z")
+              }
+            ];
+          }
           return [
             {
               id: "approval-1",
@@ -468,6 +482,12 @@ describe("MeService", () => {
     );
     expect(result.approvalCenter.pendingApproval[0].id).toBe("approval:approval-1");
     expect(result.approvalCenter.delegatedToMe[0].id).toBe("approval:approval-1");
+    expect(result.approvalCenter.startedByMe[0].id).toBe("approval:approval-started");
+    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledTimes(2);
+    const firstEvaluatedAt = prisma.approvalDelegation.findMany.mock.calls[0]?.[0].where.startsAt.lte;
+    const secondEvaluatedAt = prisma.approvalDelegation.findMany.mock.calls[1]?.[0].where.startsAt.lte;
+    expect(firstEvaluatedAt).toBe(secondEvaluatedAt);
+    expect(result.generatedAt).toBe(firstEvaluatedAt.toISOString());
 
     prisma.user.findMany.mockResolvedValue([
       { id: "delegator-1", isActive: false },
