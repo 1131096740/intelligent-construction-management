@@ -2,12 +2,10 @@ import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import { describe, expect, it } from "vitest";
 import {
   buildPaymentCreatePayload,
-  buildSettlementCreatePayload,
   contractOptionHint,
   contractOptionLabel,
   findContractOption,
   findSettlementOption,
-  settlementCreateDisabledReason,
   toContractSelectOptions,
   toSettlementSelectOptions
 } from "./contract-business-options.config";
@@ -53,43 +51,6 @@ describe("contract business options configuration", () => {
     ]);
   });
 
-  it("builds settlement create payload from selected business contract", () => {
-    expect(
-      buildSettlementCreatePayload(contract(), {
-        code: " JS-002 ",
-        periodLabel: " 2026-07 ",
-        amountYuan: "1234.56"
-      })
-    ).toEqual({
-      contractVersionId: "version-1",
-      code: "JS-002",
-      periodLabel: "2026-07",
-      amountCents: "123456"
-    });
-  });
-
-  it("explains why settlement creation is disabled before submit", () => {
-    const validForm = {
-      code: "JS-002",
-      periodLabel: "2026-07",
-      amountYuan: "1234.56"
-    };
-
-    expect(settlementCreateDisabledReason(null, validForm)).toBe("请先选择已生效合同。");
-    expect(
-      settlementCreateDisabledReason(
-        {
-          ...contract(),
-          canCreateSettlement: false,
-          settlementUnavailableReason: "合同归档确认后才能发起结算"
-        },
-        validForm
-      )
-    ).toBe("合同归档确认后才能发起结算");
-    expect(settlementCreateDisabledReason(contract(), { ...validForm, amountYuan: " " })).toBe("请填写结算金额。");
-    expect(settlementCreateDisabledReason(contract(), validForm)).toBe("");
-  });
-
   it("builds payment payloads without requiring user-entered technical ids", () => {
     const selectedContract = findContractOption([contract()], "version-1");
     const selectedSettlement = findSettlementOption(selectedContract, "settlement-1");
@@ -128,13 +89,6 @@ describe("contract business options configuration", () => {
         requestedAmountYuan: "1"
       })
     ).toThrow("历史余额尚未确认，不能发起付款");
-    expect(() =>
-      buildSettlementCreatePayload({ ...contract(), canCreateSettlement: false }, {
-        code: "JS-003",
-        periodLabel: "2026-07",
-        amountYuan: "1"
-      })
-    ).toThrow("当前合同暂不能发起结算，请先确认合同已归档生效、付款条款已补齐，再重新办理。");
   });
 });
 

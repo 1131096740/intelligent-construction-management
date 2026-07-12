@@ -1,7 +1,6 @@
 import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
 import type {
-  CreatePaymentRequestPayload,
-  CreateSettlementPayload
+  CreatePaymentRequestPayload
 } from "../../api/core-flow-read.api";
 import type { PaymentCreateSourceType } from "../payments/payment-list.config";
 import { centsToYuanText, yuanToCents } from "./contract-takeover.config";
@@ -12,13 +11,6 @@ export interface BusinessSelectOption<T> {
   disabled: boolean;
   hint: string;
   record: T;
-}
-
-export interface SettlementCreateBusinessForm {
-  code: string;
-  periodLabel: string;
-  amountYuan: string;
-  isFinal?: boolean;
 }
 
 export interface PaymentCreateBusinessForm {
@@ -81,58 +73,6 @@ export function findSettlementOption(
   settlementId: string
 ): SettlementBusinessOption | null {
   return contract?.settlements.find((settlement) => settlement.settlementId === settlementId) ?? null;
-}
-
-export function buildSettlementCreatePayload(
-  contract: ContractBusinessOptionReadModel | null,
-  form: SettlementCreateBusinessForm
-): CreateSettlementPayload {
-  if (!contract?.contractVersionId || !contract.canCreateSettlement) {
-    throw new Error(
-      contract?.settlementUnavailableReason ??
-        "当前合同暂不能发起结算，请先确认合同已归档生效、付款条款已补齐，再重新办理。"
-    );
-  }
-
-  return {
-    contractVersionId: contract.contractVersionId,
-    code: requiredText(form.code, "结算编号"),
-    periodLabel: requiredText(form.periodLabel, "结算期间"),
-    amountCents: yuanToCents(form.amountYuan, "结算金额"),
-    ...(form.isFinal ? { isFinal: true } : {})
-  };
-}
-
-export function settlementCreateDisabledReason(
-  contract: ContractBusinessOptionReadModel | null,
-  form: SettlementCreateBusinessForm
-): string {
-  if (!contract?.contractVersionId) {
-    return "请先选择已生效合同。";
-  }
-  if (!contract.canCreateSettlement) {
-    return (
-      contract.settlementUnavailableReason ??
-      "当前合同暂不能发起结算，请先确认合同已归档生效、付款条款已补齐，再重新办理。"
-    );
-  }
-  if (!form.code.trim()) {
-    return "请填写结算编号。";
-  }
-  if (!form.periodLabel.trim()) {
-    return "请填写结算期间。";
-  }
-  if (!form.amountYuan.trim()) {
-    return "请填写结算金额。";
-  }
-
-  try {
-    yuanToCents(form.amountYuan, "结算金额");
-  } catch (error) {
-    return error instanceof Error ? error.message : "请填写正确的结算金额。";
-  }
-
-  return "";
 }
 
 export function buildPaymentCreatePayload(

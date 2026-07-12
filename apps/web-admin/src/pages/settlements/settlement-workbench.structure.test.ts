@@ -25,9 +25,19 @@ describe("settlement creation workbench structure", () => {
 
   it("submits selected settlementLines without a client-owned total", () => {
     expect(page).toContain("settlementLines: currentPayload.value");
+    expect(page).toContain("settlementTemplateVersionId: selectedSettlementTemplateVersionId.value");
     expect(page).not.toContain("amountCents: preview");
     expect(page).not.toContain("form.amountYuan");
     expect(page).toContain("settlement.id");
+  });
+
+  it("fails closed for zero recommendations, auto-selects one and requires a choice for many", () => {
+    expect(page).toContain("SettlementTemplateRecommendationPanel");
+    expect(page).toContain("fetchSettlementTemplateRecommendations");
+    expect(page).toContain("resolveSettlementTemplateRecommendation");
+    expect(page).toContain("blockedSettlementTemplateSelection");
+    expect(page).toContain("templateBlockedReason");
+    expect(page).toContain("settlementTemplateVersionId");
   });
 
   it("keeps Excel import behind upload, preview, guarded apply and authenticated downloads", () => {

@@ -12,7 +12,12 @@ interface DraftLine {
 }
 
 test("结算工作台只提交本期选中明细并以后端核算为准", async ({ page }, testInfo) => {
+  const settlementTemplateVersionId = "settlement-template-version-1";
   const previewBodies: Array<{ settlementLines: DraftLine[] }> = [];
+  const importPreviewBodies: Array<{
+    fileId: string;
+    settlementTemplateVersionId: string;
+  }> = [];
   const frozenImportedLines: DraftLine[] = [
     {
       sourceType: "contract_bill_row",
@@ -271,6 +276,32 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
       })
   );
   await page.route(
+    "**/api/settlement-workbench/projects/project-1/contract-versions/version-1/template-recommendations",
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          selectionMode: "automatic",
+          selected: {
+            templateVersionId: settlementTemplateVersionId,
+            templateName: "材料采购月度结算模板",
+            templateCode: "SETTLEMENT-MATERIAL",
+            versionNo: 2,
+            reasons: ["合同类型匹配", "计价方式匹配"]
+          },
+          choices: [
+            {
+              templateVersionId: settlementTemplateVersionId,
+              templateName: "材料采购月度结算模板",
+              templateCode: "SETTLEMENT-MATERIAL",
+              versionNo: 2,
+              reasons: ["合同类型匹配", "计价方式匹配"]
+            }
+          ]
+        })
+      })
+  );
+  await page.route(
     "**/api/settlement-workbench/contract-versions/version-1/preview",
     async (route) => {
       const body = route.request().postDataJSON() as { settlementLines: DraftLine[] };
@@ -337,7 +368,11 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await page.route(
     "**/api/settlement-workbench/contract-versions/version-1/imports/preview",
     async (route) => {
-      const body = route.request().postDataJSON() as { fileId: string };
+      const body = route.request().postDataJSON() as {
+        fileId: string;
+        settlementTemplateVersionId: string;
+      };
+      importPreviewBodies.push(body);
       if (body.fileId === "file-error") {
         return route.fulfill({
           contentType: "application/json",
@@ -375,6 +410,7 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
           status: "applied",
           result: {
             contractVersionId: "version-1",
+            settlementTemplateVersionId,
             sourceRevision: "revision-clean",
             settlementLines: frozenImportedLines,
             canonical: importedCanonical
@@ -444,6 +480,8 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
     .getByText("HT-2026-001 · 科技园钢材采购合同 · 城建物资公司", { exact: true })
     .last()
     .click();
+  await expect(page.getByText("已自动匹配", { exact: true })).toBeVisible();
+  await expect(page.getByText("材料采购月度结算模板 · V2", { exact: true })).toBeVisible();
 
   const templateDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "下载中文模板" }).click();
@@ -591,8 +629,13 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
     .toBe("/结算管理/settlement-new");
 
   expect(uploadCalls).toBe(2);
+  expect(importPreviewBodies).toEqual([
+    { fileId: "file-error", settlementTemplateVersionId },
+    { fileId: "file-clean", settlementTemplateVersionId }
+  ]);
   expect(createdBody).toEqual(expect.objectContaining({
     contractVersionId: "version-1",
+    settlementTemplateVersionId,
     settlementLines: frozenImportedLines
   }));
   expect(createdBody).not.toHaveProperty("amountCents");

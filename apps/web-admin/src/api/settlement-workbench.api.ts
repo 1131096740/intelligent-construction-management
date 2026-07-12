@@ -50,6 +50,7 @@ export interface SettlementImportPreviewReadModel {
 
 export interface SettlementImportAppliedResultReadModel {
   contractVersionId: string;
+  settlementTemplateVersionId: string;
   sourceRevision: string;
   settlementLines: SettlementLineDraftPayload[];
   canonical: SettlementCanonicalPreviewReadModel;
@@ -112,7 +113,7 @@ export async function previewSettlementLines(
 
 export async function previewSettlementImport(
   contractVersionId: string,
-  body: { fileId: string }
+  body: { fileId: string; settlementTemplateVersionId: string }
 ): Promise<SettlementImportPreviewReadModel> {
   const response = await apiFetch(
     `/settlement-workbench/contract-versions/${encodeURIComponent(contractVersionId)}/imports/preview`,

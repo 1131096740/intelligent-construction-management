@@ -77,13 +77,22 @@ describe("settlement workbench API", () => {
         })
       );
 
-    await previewSettlementImport("version/1", { fileId: "file-1" });
+    await previewSettlementImport("version/1", {
+      fileId: "file-1",
+      settlementTemplateVersionId: "template-version-1"
+    });
     await applySettlementImport("project/1", "import/1");
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       1,
       "/settlement-workbench/contract-versions/version%2F1/imports/preview",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ fileId: "file-1" }) })
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          fileId: "file-1",
+          settlementTemplateVersionId: "template-version-1"
+        })
+      })
     );
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,

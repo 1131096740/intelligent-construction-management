@@ -55,6 +55,11 @@
       />
     </section>
 
+    <SettlementTemplateRecommendationPanel
+      :state="templateSelection"
+      @select="selectSettlementTemplate"
+    />
+
     <t-alert
       v-if="pageMessage"
       :theme="pageMessageTone"
@@ -75,7 +80,7 @@
           <t-button
             variant="outline"
             :loading="importDownloadBusy === 'template'"
-            :disabled="!selectedContractVersionId"
+            :disabled="!templateReady"
             @click="downloadImportTemplate"
           >
             下载中文模板
@@ -87,7 +92,7 @@
             :auto-upload="false"
             :max="1"
             :loading="importBusy"
-            :disabled="!selectedContractVersionId || sourceLoading"
+            :disabled="!templateReady || sourceLoading"
             placeholder="选择 XLSX 并预检"
             @change="selectImportFile"
           />
@@ -201,13 +206,14 @@
         </t-button>
         <t-button
           variant="outline"
-          :disabled="sourceRows.length === 0"
+          :disabled="sourceRows.length === 0 || !templateReady"
           @click="openPasteDialog"
         >
           粘贴多行
         </t-button>
         <t-button
           variant="outline"
+          :disabled="!templateReady"
           @click="addAdjustment"
         >
           新增人工调整
@@ -215,7 +221,7 @@
         <t-button
           variant="outline"
           :loading="previewBusy"
-          :disabled="validationErrors.length > 0"
+          :disabled="validationErrors.length > 0 || !templateReady"
           @click="requestCanonicalPreview"
         >
           后台重新核算
@@ -258,6 +264,7 @@
         <template #selected="{ row }">
           <t-checkbox
             :checked="isSelected(row.id)"
+            :disabled="!templateReady"
             :aria-label="`选择 ${row.itemName}`"
             @change="onSelectionChange(row.id, $event)"
           />
@@ -531,6 +538,7 @@ import {
   type SettlementImportPreviewReadModel,
   type SettlementLineDraftPayload
 } from "../../api/settlement-workbench.api";
+import { fetchSettlementTemplateRecommendations } from "../../api/settlement-template.api";
 import { centsTextToYuanText } from "../../lib/money";
 import {
   findContractOption,
@@ -553,6 +561,14 @@ import {
   type SourceLineDraftMap
 } from "./settlement-workbench.state";
 import { canApplySettlementSourceResponse } from "./settlement-source-lines.state";
+import SettlementTemplateRecommendationPanel from "./components/SettlementTemplateRecommendationPanel.vue";
+import {
+  blockedSettlementTemplateSelection,
+  canApplySettlementTemplateRecommendation,
+  emptySettlementTemplateSelection,
+  resolveSettlementTemplateRecommendation,
+  type SettlementTemplateSelectionState
+} from "../settlement-templates/settlement-template.state";
 
 interface WorkbenchSourceRow extends SettlementSourceLineReadModel {
   contractUnitPrice: string;
@@ -589,10 +605,12 @@ const importApplyBusy = ref(false);
 const importDownloadBusy = ref<"" | "template" | "errors" | "result">("");
 const frozenImport = ref<{
   contractVersionId: string;
+  settlementTemplateVersionId: string;
   importId: string;
   settlementLines: SettlementLineDraftPayload[];
   draftFingerprint: string;
 } | null>(null);
+const templateSelection = ref<SettlementTemplateSelectionState>(emptySettlementTemplateSelection());
 const loadingProjects = ref(false);
 const loadingContracts = ref(false);
 const sourceLoading = ref(false);
@@ -609,6 +627,7 @@ let sourceRequestId = 0;
 let previewRequestId = 0;
 let importRequestId = 0;
 let importApplyRequestId = 0;
+let templateRequestId = 0;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
 const sourceColumns: PrimaryTableCol<WorkbenchSourceRow>[] = [
@@ -651,6 +670,27 @@ const contractOptions = computed(() =>
 );
 const selectedContract = computed(() => findContractOption(contracts.value, form.contractOptionValue));
 const selectedContractVersionId = computed(() => selectedContract.value?.contractVersionId ?? "");
+const selectedSettlementTemplateVersionId = computed(
+  () => templateSelection.value.selectedVersionId
+);
+const templateReady = computed(
+  () =>
+    (templateSelection.value.mode === "automatic" ||
+      templateSelection.value.mode === "choice_required") &&
+    Boolean(selectedSettlementTemplateVersionId.value)
+);
+const templateBlockedReason = computed(() => {
+  if (templateSelection.value.mode === "loading") return "正在匹配结算模板，请稍候。";
+  if (templateSelection.value.mode === "blocked") return templateSelection.value.message;
+  if (templateSelection.value.mode === "choice_required" && !templateReady.value) {
+    return "请先明确选择本期结算模板。";
+  }
+  if (!templateReady.value) return "请先选择有效合同并匹配结算模板。";
+  return "";
+});
+const templateResourceKey = computed(
+  () => `${selectedContractVersionId.value}:${selectedSettlementTemplateVersionId.value}`
+);
 const selectedContractHint = computed(() =>
   selectedContract.value
     ? selectedContract.value.settlementUnavailableReason ?? "合同已生效；清单默认不选，勾选后才进入本期结算。"
@@ -664,6 +704,7 @@ const currentPayload = computed(() => {
   if (validationErrors.value.length) return [];
   if (
     frozenImport.value?.contractVersionId === selectedContractVersionId.value &&
+    frozenImport.value.settlementTemplateVersionId === selectedSettlementTemplateVersionId.value &&
     frozenImport.value.draftFingerprint === currentDraftFingerprint.value
   ) {
     return frozenImport.value.settlementLines;
@@ -671,7 +712,7 @@ const currentPayload = computed(() => {
   return buildSettlementLinePayload(sourceRows.value, drafts.value, adjustments.value);
 });
 const currentFingerprint = computed(() =>
-  settlementPayloadFingerprint(selectedContractVersionId.value, currentPayload.value)
+  settlementPayloadFingerprint(templateResourceKey.value, currentPayload.value)
 );
 const validationErrors = computed(() =>
   validateSettlementWorkbench({
@@ -700,6 +741,7 @@ const importAppliedIsCurrent = computed(
   () =>
     Boolean(frozenImport.value) &&
     frozenImport.value?.contractVersionId === selectedContractVersionId.value &&
+    frozenImport.value?.settlementTemplateVersionId === selectedSettlementTemplateVersionId.value &&
     frozenImport.value?.importId === importPreview.value?.importId &&
     frozenImport.value?.draftFingerprint === currentDraftFingerprint.value
 );
@@ -715,6 +757,7 @@ const importStatusTheme = computed<"success" | "danger" | "warning">(() => {
   return "warning";
 });
 const importApplyDisabledReason = computed(() => {
+  if (templateBlockedReason.value) return templateBlockedReason.value;
   if (!importPreview.value) return "请先选择 XLSX 文件并完成预检。";
   if (importPreview.value.errors.length) return "预检存在错误，不能应用。";
   if (!importPreview.value.canonical) return "预检未返回后端核算结果，不能应用。";
@@ -728,6 +771,7 @@ const importErrorRows = computed<ImportErrorRow[]>(() =>
   }))
 );
 const createDisabledReason = computed(() => {
+  if (templateBlockedReason.value) return templateBlockedReason.value;
   if (validationErrors.value[0]) return validationErrors.value[0];
   if (!previewIsCurrent.value || !preview.value) return "请先完成后台核算。";
   try {
@@ -778,6 +822,7 @@ function draftFor(rowId: string): SourceLineDraft | undefined {
 }
 
 function toggleSelection(rowId: string, selected: boolean) {
+  if (!templateReady.value) return;
   drafts.value = setSourceLineSelection(drafts.value, rowId, selected);
   invalidatePreview();
   schedulePreview();
@@ -843,8 +888,9 @@ async function selectImportFile(files: UploadFile[], context: UploadChangeContex
   const file = context.file?.raw ?? files.at(-1)?.raw;
   if (!file) return;
   const contractVersionId = selectedContractVersionId.value;
-  if (!contractVersionId) {
-    pageMessage.value = "请先选择有效合同。";
+  const settlementTemplateVersionId = selectedSettlementTemplateVersionId.value;
+  if (!contractVersionId || !settlementTemplateVersionId) {
+    pageMessage.value = templateBlockedReason.value || "请先选择有效合同。";
     pageMessageTone.value = "warning";
     return;
   }
@@ -867,10 +913,14 @@ async function selectImportFile(files: UploadFile[], context: UploadChangeContex
     ) {
       return;
     }
-    const result = await previewSettlementImport(contractVersionId, { fileId: uploaded.id });
+    const result = await previewSettlementImport(contractVersionId, {
+      fileId: uploaded.id,
+      settlementTemplateVersionId
+    });
     if (
       requestId === importRequestId &&
-      contractVersionId === selectedContractVersionId.value
+      contractVersionId === selectedContractVersionId.value &&
+      settlementTemplateVersionId === selectedSettlementTemplateVersionId.value
     ) {
       importPreview.value = result;
       pageMessage.value = result.errors.length
@@ -895,7 +945,14 @@ async function confirmApplyImport() {
   const currentImport = importPreview.value;
   const contractVersionId = selectedContractVersionId.value;
   const projectId = form.projectId;
-  if (importApplyDisabledReason.value || !currentImport || !contractVersionId || !projectId) return;
+  const settlementTemplateVersionId = selectedSettlementTemplateVersionId.value;
+  if (
+    importApplyDisabledReason.value ||
+    !currentImport ||
+    !contractVersionId ||
+    !projectId ||
+    !settlementTemplateVersionId
+  ) return;
   const requestId = ++importApplyRequestId;
   const importId = currentImport.importId;
   importApplyBusy.value = true;
@@ -927,6 +984,9 @@ async function confirmApplyImport() {
     if (applied.result.contractVersionId !== contractVersionId) {
       throw new Error("导入结果与当前合同不一致，请重新预检。");
     }
+    if (applied.result.settlementTemplateVersionId !== settlementTemplateVersionId) {
+      throw new Error("导入结果与当前结算模板不一致，请重新预检。");
+    }
     const importedState = applyImportedSettlementLines(
       sourceRows.value,
       applied.result.settlementLines
@@ -939,13 +999,14 @@ async function confirmApplyImport() {
     );
     frozenImport.value = {
       contractVersionId,
+      settlementTemplateVersionId,
       importId,
       settlementLines: applied.result.settlementLines,
       draftFingerprint
     };
     preview.value = applied.result.canonical;
     previewAppliedFingerprint.value = settlementPayloadFingerprint(
-      contractVersionId,
+      `${contractVersionId}:${settlementTemplateVersionId}`,
       applied.result.settlementLines
     );
     previewBusy.value = false;
@@ -1064,14 +1125,18 @@ function schedulePreview() {
 }
 
 async function requestCanonicalPreview() {
-  if (validationErrors.value.length || !selectedContractVersionId.value) {
-    pageMessage.value = validationErrors.value[0] ?? "请选择有效合同。";
+  if (
+    templateBlockedReason.value ||
+    validationErrors.value.length ||
+    !selectedContractVersionId.value
+  ) {
+    pageMessage.value = templateBlockedReason.value || validationErrors.value[0] || "请选择有效合同。";
     pageMessageTone.value = "warning";
     return;
   }
   const contractVersionId = selectedContractVersionId.value;
   const payload = buildSettlementLinePayload(sourceRows.value, drafts.value, adjustments.value);
-  const fingerprint = settlementPayloadFingerprint(contractVersionId, payload);
+  const fingerprint = settlementPayloadFingerprint(templateResourceKey.value, payload);
   const requestId = ++previewRequestId;
   previewBusy.value = true;
   pageMessage.value = "";
@@ -1111,6 +1176,8 @@ function resetSourceState() {
   sourceRows.value = [];
   drafts.value = {};
   adjustments.value = [];
+  templateRequestId += 1;
+  templateSelection.value = emptySettlementTemplateSelection();
 }
 
 function resetImportState() {
@@ -1156,8 +1223,16 @@ async function loadContracts() {
 async function loadSourceLines() {
   resetSourceState();
   const contractVersionId = selectedContractVersionId.value;
+  const projectId = form.projectId;
   const requestId = ++sourceRequestId;
-  if (!contractVersionId) return;
+  const recommendationRequestId = ++templateRequestId;
+  if (!contractVersionId || !projectId) return;
+  templateSelection.value = {
+    mode: "loading",
+    choices: [],
+    selectedVersionId: "",
+    message: "正在匹配已发布结算模板……"
+  };
   sourceLoading.value = true;
   pageMessage.value = "";
   try {
@@ -1172,14 +1247,62 @@ async function loadSourceLines() {
     ) {
       sourceRows.value = result.rows;
     }
+    const recommendation = await fetchSettlementTemplateRecommendations(projectId, contractVersionId);
+    if (
+      canApplySettlementTemplateRecommendation(
+        recommendationRequestId,
+        templateRequestId,
+        projectId,
+        form.projectId,
+        contractVersionId,
+        selectedContractVersionId.value
+      )
+    ) {
+      templateSelection.value = resolveSettlementTemplateRecommendation(recommendation);
+    }
   } catch (error) {
     if (requestId === sourceRequestId) {
-      pageMessage.value = error instanceof Error ? error.message : "加载合同清单失败。";
+      const message = error instanceof Error ? error.message : "加载合同清单或结算模板失败。";
+      if (
+        canApplySettlementTemplateRecommendation(
+          recommendationRequestId,
+          templateRequestId,
+          projectId,
+          form.projectId,
+          contractVersionId,
+          selectedContractVersionId.value
+        )
+      ) {
+        templateSelection.value = blockedSettlementTemplateSelection(message);
+      }
+      pageMessage.value = message;
       pageMessageTone.value = "error";
     }
   } finally {
     if (requestId === sourceRequestId) sourceLoading.value = false;
   }
+}
+
+function selectSettlementTemplate(versionId: string) {
+  const choice = templateSelection.value.choices.find(
+    (item) => item.templateVersionId === versionId
+  );
+  if (!choice || templateSelection.value.mode !== "choice_required") {
+    templateSelection.value = blockedSettlementTemplateSelection(
+      "结算模板选择已失效，请重新选择有效合同。"
+    );
+    resetImportState();
+    invalidatePreview();
+    return;
+  }
+  templateSelection.value = {
+    ...templateSelection.value,
+    selectedVersionId: choice.templateVersionId,
+    message: `已选择“${choice.templateName}”V${choice.versionNo}。`
+  };
+  resetImportState();
+  invalidatePreview();
+  schedulePreview();
 }
 
 async function submitSettlement() {
@@ -1193,6 +1316,7 @@ async function submitSettlement() {
   try {
     const settlement = await createSettlementDraft({
       contractVersionId: selectedContractVersionId.value,
+      settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
       code: form.code.trim(),
       periodLabel: form.periodLabel.trim(),
       settlementLines: currentPayload.value
@@ -1215,6 +1339,7 @@ onBeforeUnmount(() => {
   previewRequestId += 1;
   importRequestId += 1;
   importApplyRequestId += 1;
+  templateRequestId += 1;
 });
 </script>
 

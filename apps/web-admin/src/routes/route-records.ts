@@ -15,6 +15,10 @@ export const historicalTakeoverRoleKeys = [
 ] as const satisfies readonly RoleKey[];
 
 export const organizationAdminRoleKeys = ["super_admin"] as const satisfies readonly RoleKey[];
+export const settlementTemplateAdminRoleKeys = [
+  "contract_director",
+  "super_admin"
+] as const satisfies readonly RoleKey[];
 
 export interface AdminNavigationItem {
   label: string;
@@ -57,6 +61,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "结算付款",
     items: [
+      {
+        label: "结算模板库",
+        path: "/结算模板库",
+        requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys
+      },
       { label: "结算管理", path: "/结算管理" },
       { label: "付款管理", path: "/付款管理" }
     ]
@@ -122,6 +131,8 @@ const templateRedirect = (to: RedirectTarget) => `/合同模板库/${String(to.p
 const layoutTemplateRedirect = (to: RedirectTarget) => `/合同模板库/版式/${String(to.params.layoutTemplateId)}`;
 const partyRedirect = (to: RedirectTarget) => `/合作单位档案/${String(to.params.partyId)}`;
 const settlementRedirect = (to: RedirectTarget) => `/结算管理/${String(to.params.settlementId)}`;
+const settlementTemplateRedirect = (to: RedirectTarget) =>
+  `/结算模板库/${String(to.params.templateId)}`;
 const paymentRedirect = (to: RedirectTarget) => `/付款管理/${String(to.params.paymentId)}`;
 
 export const webAdminRoutes: RouteRecordRaw[] = [
@@ -216,6 +227,21 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: { title: "项目花名册" }
       },
       {
+        path: "结算模板库",
+        component: () => import("../pages/settlement-templates/SettlementTemplateListPage.vue"),
+        meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "结算模板库" }
+      },
+      {
+        path: "结算模板库/新建",
+        component: () => import("../pages/settlement-templates/SettlementTemplateEditorPage.vue"),
+        meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "新建结算模板" }
+      },
+      {
+        path: "结算模板库/:templateId",
+        component: () => import("../pages/settlement-templates/SettlementTemplateEditorPage.vue"),
+        meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "结算模板治理" }
+      },
+      {
         path: "结算管理",
         component: () => import("../pages/settlements/SettlementListPage.vue")
       },
@@ -272,6 +298,9 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "contract-number-rules", redirect: "/合同模板库/编号规则" },
       { path: "business-parties", redirect: "/合作单位档案" },
       { path: "business-parties/:partyId", redirect: partyRedirect },
+      { path: "settlement-templates", redirect: "/结算模板库" },
+      { path: "settlement-templates/new", redirect: "/结算模板库/新建" },
+      { path: "settlement-templates/:templateId", redirect: settlementTemplateRedirect },
       { path: "settlements", redirect: "/结算管理" },
       { path: "settlements/new", redirect: "/结算管理/新建" },
       { path: "settlements/:settlementId", redirect: settlementRedirect },

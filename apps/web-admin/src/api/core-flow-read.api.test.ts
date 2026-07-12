@@ -892,10 +892,16 @@ describe("core flow read API client", () => {
 
     await createSettlementDraft({
       contractVersionId: "seed-contract-version-ht-2026-001-v1",
+      settlementTemplateVersionId: "settlement-template-version-1",
       code: "JS-2026-019",
       periodLabel: "2026-06",
-      amountCents: "32000000",
-      isFinal: true
+      settlementLines: [
+        {
+          sourceType: "contract_bill_row",
+          contractBillRowId: "contract-bill-row-1",
+          quantity: "12.5"
+        }
+      ]
     });
     await createPaymentRequest({
       settlementId: "seed-settlement-js-2026-018",
@@ -922,7 +928,16 @@ describe("core flow read API client", () => {
       "/api/payments"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string).isFinal).toBe(true);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toMatchObject({
+      settlementTemplateVersionId: "settlement-template-version-1",
+      settlementLines: [
+        {
+          sourceType: "contract_bill_row",
+          contractBillRowId: "contract-bill-row-1",
+          quantity: "12.5"
+        }
+      ]
+    });
     expect(JSON.parse(fetchMock.mock.calls[2][1]?.body as string)).toEqual({
       sourceType: "contract_advance",
       contractVersionId: "seed-contract-version-ht-2026-001-v1",

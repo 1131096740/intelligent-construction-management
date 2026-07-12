@@ -387,6 +387,7 @@ export interface RecordContractTakeoverCorrectionPayload {
 
 export interface CreateSettlementPayload {
   contractVersionId: string;
+  settlementTemplateVersionId: string;
   code: string;
   periodLabel: string;
   amountCents?: string;
