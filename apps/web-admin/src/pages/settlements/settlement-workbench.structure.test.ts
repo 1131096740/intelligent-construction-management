@@ -29,4 +29,20 @@ describe("settlement creation workbench structure", () => {
     expect(page).not.toContain("form.amountYuan");
     expect(page).toContain("settlement.id");
   });
+
+  it("keeps Excel import behind upload, preview, guarded apply and authenticated downloads", () => {
+    expect(page).toContain("<t-upload");
+    expect(page).toContain('theme="file-input"');
+    expect(page).toContain(':auto-upload="false"');
+    expect(page).not.toContain("native-file-input");
+    expect(page).toContain("uploadPrivateFile");
+    expect(page).toContain("previewSettlementImport");
+    expect(page).toContain("importApplyDisabledReason");
+    expect(page).toContain("applyImportedSettlementLines");
+    expect(page).toContain("downloadSettlementImportTemplate");
+    expect(page).toContain("downloadSettlementImportErrors");
+    expect(page).toContain("downloadSettlementImportResult");
+    expect(page).not.toContain("{{ importPreview.importId }}");
+    expect(page).not.toContain(":href=");
+  });
 });

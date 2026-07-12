@@ -2,11 +2,14 @@ import type { SettlementSourceLineReadModel } from "@jiangkong/shared-domain";
 import { describe, expect, it } from "vitest";
 import {
   applyBatchRemark,
+  applyImportedSettlementLines,
   applyTsvQuantityPaste,
   buildSettlementLinePayload,
+  canApplySettlementImportResponse,
   canApplySettlementPreviewResponse,
   setSourceLineSelection,
   settlementQuantityProgress,
+  settlementWorkbenchDraftFingerprint,
   validateSettlementWorkbench,
   type ManualAdjustmentDraft,
   type SourceLineDraftMap
@@ -131,6 +134,79 @@ describe("settlement workbench state", () => {
     expect(canApplySettlementPreviewResponse(1, 2, "v-1", "v-1", "hash", "hash")).toBe(false);
     expect(canApplySettlementPreviewResponse(2, 2, "v-1", "v-2", "hash", "hash")).toBe(false);
     expect(canApplySettlementPreviewResponse(2, 2, "v-1", "v-1", "old", "new")).toBe(false);
+  });
+
+  it("maps frozen imported lines back to selected drafts and signed adjustments exactly", () => {
+    const result = applyImportedSettlementLines(
+      [normalRow(), manualRow()],
+      [
+        {
+          sourceType: "contract_bill_row",
+          contractBillRowId: "row-normal",
+          quantity: "2.500000",
+          remark: "现场完成"
+        },
+        {
+          sourceType: "contract_bill_row",
+          contractBillRowId: "row-manual",
+          amountCents: "123456",
+          reason: "签认计价"
+        },
+        {
+          sourceType: "manual_adjustment",
+          name: "质量扣款",
+          amountCents: "-125",
+          reason: "现场复核",
+          remark: "已确认"
+        }
+      ]
+    );
+
+    expect(result).toEqual({
+      drafts: {
+        "row-normal": { quantity: "2.500000", amountYuan: "", remark: "现场完成" },
+        "row-manual": {
+          quantity: "",
+          amountYuan: "1234.56",
+          reason: "签认计价",
+          remark: ""
+        }
+      },
+      adjustments: [
+        {
+          clientId: "import-adjustment-1",
+          name: "质量扣款",
+          amountYuan: "-1.25",
+          reason: "现场复核",
+          remark: "已确认"
+        }
+      ]
+    });
+    expect(settlementWorkbenchDraftFingerprint(result.drafts, result.adjustments)).toContain(
+      "质量扣款"
+    );
+  });
+
+  it("rejects stale import responses and imported rows outside the selected contract", () => {
+    expect(canApplySettlementImportResponse(2, 2, "v-1", "v-1", "i-1", "i-1")).toBe(true);
+    expect(canApplySettlementImportResponse(1, 2, "v-1", "v-1", "i-1", "i-1")).toBe(false);
+    expect(canApplySettlementImportResponse(2, 2, "v-1", "v-2", "i-1", "i-1")).toBe(false);
+    expect(canApplySettlementImportResponse(2, 2, "v-1", "v-1", "i-1", "i-2")).toBe(false);
+    expect(() =>
+      applyImportedSettlementLines([normalRow()], [
+        {
+          sourceType: "contract_bill_row",
+          contractBillRowId: "row-other",
+          quantity: "1"
+        }
+      ])
+    ).toThrow("导入结果中的合同清单已变化");
+    expect(() =>
+      applyImportedSettlementLines(
+        [normalRow()],
+        [{ sourceType: "unknown_import_source" } as never]
+      )
+    ).toThrow("导入结果中的明细来源不正确");
   });
 });
 

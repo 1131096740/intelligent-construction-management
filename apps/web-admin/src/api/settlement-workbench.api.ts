@@ -33,6 +33,34 @@ export interface SettlementCanonicalPreviewReadModel {
   lines: SettlementCanonicalPreviewLineReadModel[];
 }
 
+export interface SettlementImportErrorReadModel {
+  row: number;
+  column: string;
+  message: string;
+}
+
+export interface SettlementImportPreviewReadModel {
+  importId: string;
+  sourceRevision: string;
+  selectedCount: number;
+  settlementLines: SettlementLineDraftPayload[];
+  canonical: SettlementCanonicalPreviewReadModel | null;
+  errors: SettlementImportErrorReadModel[];
+}
+
+export interface SettlementImportAppliedResultReadModel {
+  contractVersionId: string;
+  sourceRevision: string;
+  settlementLines: SettlementLineDraftPayload[];
+  canonical: SettlementCanonicalPreviewReadModel;
+}
+
+export interface SettlementImportApplyReadModel {
+  importId: string;
+  status: "applied";
+  result: SettlementImportAppliedResultReadModel;
+}
+
 export async function fetchSettlementSourceLines(
   contractVersionId: string
 ): Promise<SettlementSourceLinesReadModel> {
@@ -80,4 +108,99 @@ export async function previewSettlementLines(
     throw new Error(message);
   }
   return response.json() as Promise<SettlementCanonicalPreviewReadModel>;
+}
+
+export async function previewSettlementImport(
+  contractVersionId: string,
+  body: { fileId: string }
+): Promise<SettlementImportPreviewReadModel> {
+  const response = await apiFetch(
+    `/settlement-workbench/contract-versions/${encodeURIComponent(contractVersionId)}/imports/preview`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }
+  );
+  await ensureOk(response, "结算 Excel 预检失败");
+  return response.json() as Promise<SettlementImportPreviewReadModel>;
+}
+
+export async function applySettlementImport(
+  projectId: string,
+  importId: string
+): Promise<SettlementImportApplyReadModel> {
+  const response = await apiFetch(
+    `/settlement-workbench/projects/${encodeURIComponent(projectId)}/imports/${encodeURIComponent(importId)}/apply`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    }
+  );
+  await ensureOk(response, "应用结算 Excel 导入失败");
+  return response.json() as Promise<SettlementImportApplyReadModel>;
+}
+
+export function downloadSettlementImportTemplate(contractVersionId: string): Promise<void> {
+  return downloadWorkbook(
+    `/settlement-workbench/contract-versions/${encodeURIComponent(contractVersionId)}/import-template`,
+    "下载结算导入模板失败",
+    "本期结算导入模板.xlsx"
+  );
+}
+
+export function downloadSettlementImportErrors(
+  projectId: string,
+  importId: string
+): Promise<void> {
+  return downloadWorkbook(
+    `/settlement-workbench/projects/${encodeURIComponent(projectId)}/imports/${encodeURIComponent(importId)}/errors.xlsx`,
+    "下载结算导入错误表失败",
+    "结算导入错误.xlsx"
+  );
+}
+
+export function downloadSettlementImportResult(
+  projectId: string,
+  importId: string
+): Promise<void> {
+  return downloadWorkbook(
+    `/settlement-workbench/projects/${encodeURIComponent(projectId)}/imports/${encodeURIComponent(importId)}/result.xlsx`,
+    "下载结算导入结果失败",
+    "结算导入结果.xlsx"
+  );
+}
+
+async function ensureOk(response: Response, fallback: string): Promise<void> {
+  if (response.ok) return;
+  let message = `${fallback}：${response.status}`;
+  try {
+    const data = (await response.clone().json()) as { message?: unknown };
+    if (typeof data.message === "string") {
+      message = formatApiErrorMessage(data.message, response.status, fallback);
+    } else if (Array.isArray(data.message)) {
+      message = formatApiErrorMessage(data.message.join("；"), response.status, fallback);
+    }
+  } catch {
+    // 非 JSON 错误响应保留中文状态码兜底。
+  }
+  throw new Error(message);
+}
+
+async function downloadWorkbook(path: string, fallback: string, fallbackFileName: string) {
+  const response = await apiFetch(path);
+  await ensureOk(response, fallback);
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : fallbackFileName;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

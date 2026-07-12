@@ -1,5 +1,5 @@
 import type { SettlementSourceLineReadModel } from "@jiangkong/shared-domain";
-import { yuanTextToCentsText } from "../../lib/money";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import type { SettlementLineDraftPayload } from "../../api/settlement-workbench.api";
 
 const QUANTITY_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
@@ -9,6 +9,7 @@ export interface SourceLineDraft {
   quantity: string;
   amountYuan: string;
   remark: string;
+  reason?: string;
 }
 
 export type SourceLineDraftMap = Record<string, SourceLineDraft>;
@@ -100,6 +101,7 @@ export function buildSettlementLinePayload(
       sourceType: "contract_bill_row",
       contractBillRowId: row.id,
       ...(draft.quantity.trim() ? { quantity: draft.quantity.trim() } : {}),
+      ...(draft.reason?.trim() ? { reason: draft.reason.trim() } : {}),
       ...(draft.remark.trim() ? { remark: draft.remark.trim() } : {}),
       sortOrder: result.length + 1
     };
@@ -205,6 +207,69 @@ export function canApplySettlementPreviewResponse(
   );
 }
 
+export function applyImportedSettlementLines(
+  rows: readonly SettlementSourceLineReadModel[],
+  settlementLines: readonly SettlementLineDraftPayload[]
+): { drafts: SourceLineDraftMap; adjustments: ManualAdjustmentDraft[] } {
+  const rowById = new Map(rows.map((row) => [row.id, row]));
+  const drafts: SourceLineDraftMap = {};
+  const adjustments: ManualAdjustmentDraft[] = [];
+  for (const line of settlementLines) {
+    if (line.sourceType === "contract_bill_row") {
+      const row = line.contractBillRowId ? rowById.get(line.contractBillRowId) : undefined;
+      if (!row || drafts[row.id]) {
+        throw new Error("导入结果中的合同清单已变化，请重新下载模板并预检。");
+      }
+      drafts[row.id] = {
+        quantity: line.quantity?.trim() ?? "",
+        amountYuan:
+          row.calculationMode === "manual_amount"
+            ? centsTextToInputYuan(line.amountCents)
+            : "",
+        ...(line.reason?.trim() ? { reason: line.reason.trim() } : {}),
+        remark: line.remark?.trim() ?? ""
+      };
+      continue;
+    }
+    if (line.sourceType !== "manual_adjustment") {
+      throw new Error("导入结果中的明细来源不正确，请重新预检。");
+    }
+    if (!line.name?.trim() || !line.amountCents || !line.reason?.trim()) {
+      throw new Error("导入结果中的人工调整不完整，请重新预检。");
+    }
+    adjustments.push({
+      clientId: `import-adjustment-${adjustments.length + 1}`,
+      name: line.name.trim(),
+      amountYuan: centsTextToInputYuan(line.amountCents),
+      reason: line.reason.trim(),
+      remark: line.remark?.trim() ?? ""
+    });
+  }
+  return { drafts, adjustments };
+}
+
+export function settlementWorkbenchDraftFingerprint(
+  drafts: SourceLineDraftMap,
+  adjustments: readonly ManualAdjustmentDraft[]
+): string {
+  return JSON.stringify([drafts, adjustments]);
+}
+
+export function canApplySettlementImportResponse(
+  requestId: number,
+  currentRequestId: number,
+  requestedContractVersionId: string,
+  selectedContractVersionId: string,
+  requestedImportId: string,
+  selectedImportId: string
+): boolean {
+  return (
+    requestId === currentRequestId &&
+    requestedContractVersionId === selectedContractVersionId &&
+    requestedImportId === selectedImportId
+  );
+}
+
 function isNonNegativeYuan(value: string): boolean {
   try {
     yuanTextToCentsText(value);
@@ -227,6 +292,11 @@ function signedYuanTextToCentsText(value: string): string {
   const unsigned = negative ? value.slice(1) : value;
   const cents = yuanTextToCentsText(unsigned);
   return negative && cents !== "0" ? `-${cents}` : cents;
+}
+
+function centsTextToInputYuan(value: string | undefined): string {
+  if (!value) throw new Error("导入结果缺少后端核算金额，请重新预检。");
+  return centsTextToYuanText(value).replace(/,/g, "");
 }
 
 function decimalToScaledBigInt(value: string): bigint | null {

@@ -13,6 +13,76 @@ interface DraftLine {
 
 test("结算工作台只提交本期选中明细并以后端核算为准", async ({ page }, testInfo) => {
   const previewBodies: Array<{ settlementLines: DraftLine[] }> = [];
+  const frozenImportedLines: DraftLine[] = [
+    {
+      sourceType: "contract_bill_row",
+      contractBillRowId: "row-normal",
+      quantity: "3",
+      remark: "Excel 自动计价"
+    },
+    {
+      sourceType: "contract_bill_row",
+      contractBillRowId: "row-manual",
+      amountCents: "40000",
+      reason: "Excel 签认计价"
+    },
+    {
+      sourceType: "manual_adjustment",
+      name: "Excel 质量扣款",
+      amountCents: "-5000",
+      reason: "现场复核"
+    }
+  ];
+  const importedCanonical = {
+    contractVersionId: "version-1",
+    amountCents: "65000",
+    lines: [
+      {
+        sourceType: "contract_bill_row",
+        calculationMode: "normal_auto",
+        contractBillRowId: "row-normal",
+        name: "螺纹钢",
+        unit: "t",
+        quantity: "3",
+        unitPrice: "100.000000",
+        amountCents: "30000",
+        reason: null,
+        remark: "Excel 自动计价",
+        sortOrder: 1
+      },
+      {
+        sourceType: "contract_bill_row",
+        calculationMode: "manual_amount",
+        contractBillRowId: "row-manual",
+        name: "暂定价安装项",
+        unit: "项",
+        quantity: null,
+        unitPrice: null,
+        amountCents: "40000",
+        reason: "Excel 签认计价",
+        remark: null,
+        sortOrder: 2
+      },
+      {
+        sourceType: "manual_adjustment",
+        calculationMode: "manual_adjustment",
+        contractBillRowId: null,
+        name: "Excel 质量扣款",
+        unit: null,
+        quantity: null,
+        unitPrice: null,
+        amountCents: "-5000",
+        reason: "现场复核",
+        remark: null,
+        sortOrder: 3
+      }
+    ]
+  };
+  let uploadCalls = 0;
+  let templateDownloadCalls = 0;
+  let errorDownloadCalls = 0;
+  let resultDownloadCalls = 0;
+  let importApplyCalls = 0;
   let createdBody: Record<string, unknown> | null = null;
 
   await page.route("**/api/auth/login", (route) =>
@@ -243,6 +313,104 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
       });
     }
   );
+  await page.route(
+    "**/api/settlement-workbench/contract-versions/version-1/import-template",
+    (route) => {
+      templateDownloadCalls += 1;
+      return route.fulfill({
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers: {
+          "Content-Disposition":
+            "attachment; filename*=UTF-8''%E6%9C%AC%E6%9C%9F%E7%BB%93%E7%AE%97%E5%AF%BC%E5%85%A5%E6%A8%A1%E6%9D%BF.xlsx"
+        },
+        body: "template-xlsx"
+      });
+    }
+  );
+  await page.route("**/api/files", (route) => {
+    uploadCalls += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ id: uploadCalls === 1 ? "file-error" : "file-clean" })
+    });
+  });
+  await page.route(
+    "**/api/settlement-workbench/contract-versions/version-1/imports/preview",
+    async (route) => {
+      const body = route.request().postDataJSON() as { fileId: string };
+      if (body.fileId === "file-error") {
+        return route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            importId: "import-error",
+            sourceRevision: "revision-error",
+            selectedCount: 1,
+            settlementLines: [],
+            canonical: null,
+            errors: [{ row: 3, column: "本期数量", message: "正常计价行必须填写本期数量" }]
+          })
+        });
+      }
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          importId: "import-clean",
+          sourceRevision: "revision-clean",
+          selectedCount: frozenImportedLines.length,
+          settlementLines: frozenImportedLines,
+          canonical: importedCanonical,
+          errors: []
+        })
+      });
+    }
+  );
+  await page.route(
+    "**/api/settlement-workbench/projects/project-1/imports/import-clean/apply",
+    (route) => {
+      importApplyCalls += 1;
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          importId: "import-clean",
+          status: "applied",
+          result: {
+            contractVersionId: "version-1",
+            sourceRevision: "revision-clean",
+            settlementLines: frozenImportedLines,
+            canonical: importedCanonical
+          }
+        })
+      });
+    }
+  );
+  await page.route(
+    "**/api/settlement-workbench/projects/project-1/imports/import-error/errors.xlsx",
+    (route) => {
+      errorDownloadCalls += 1;
+      return route.fulfill({
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers: {
+          "Content-Disposition":
+            "attachment; filename*=UTF-8''%E7%BB%93%E7%AE%97%E5%AF%BC%E5%85%A5%E9%94%99%E8%AF%AF.xlsx"
+        },
+        body: "error-xlsx"
+      });
+    }
+  );
+  await page.route(
+    "**/api/settlement-workbench/projects/project-1/imports/import-clean/result.xlsx",
+    (route) => {
+      resultDownloadCalls += 1;
+      return route.fulfill({
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers: {
+          "Content-Disposition":
+            "attachment; filename*=UTF-8''%E7%BB%93%E7%AE%97%E5%AF%BC%E5%85%A5%E7%BB%93%E6%9E%9C.xlsx"
+        },
+        body: "result-xlsx"
+      });
+    }
+  );
   await page.route("**/api/settlements", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     createdBody = route.request().postDataJSON() as Record<string, unknown>;
@@ -276,6 +444,11 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
     .getByText("HT-2026-001 · 科技园钢材采购合同 · 城建物资公司", { exact: true })
     .last()
     .click();
+
+  const templateDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载中文模板" }).click();
+  await expect((await templateDownloadPromise).suggestedFilename()).toBe("本期结算导入模板.xlsx");
+  expect(templateDownloadCalls).toBe(1);
 
   const normalCheckbox = page.getByRole("checkbox", { name: "选择 螺纹钢" });
   const manualCheckbox = page.getByRole("checkbox", { name: "选择 暂定价安装项" });
@@ -317,6 +490,60 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await expect(page.getByText("结算异常与待处理项", { exact: true })).toBeVisible();
   await expect(page.getByText("历史结算金额超出该行合同金额，请复核。")).toBeVisible();
   await page.keyboard.press("Escape");
+
+  const manualPreview = previewBodies.at(-1)!;
+  expect(manualPreview.settlementLines).toHaveLength(3);
+  expect(manualPreview.settlementLines.map((line) => line.contractBillRowId)).not.toContain(
+    "row-unselected"
+  );
+  expect(manualPreview.settlementLines[0]).not.toHaveProperty("amountCents");
+
+  const importFileInput = page.locator(".import-panel input[type=file]");
+  await importFileInput.setInputFiles({
+    name: "有错误的本期结算.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from("error-xlsx")
+  });
+  await expect(page.getByText("正常计价行必须填写本期数量", { exact: true })).toBeVisible();
+  await expect(page.getByText("预检未通过", { exact: true })).toBeVisible();
+  await expect(
+    page.locator(".import-panel").getByRole("button", { name: "确认应用导入" })
+  ).toBeDisabled();
+
+  const errorDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载错误表" }).click();
+  await expect((await errorDownloadPromise).suggestedFilename()).toBe("结算导入错误.xlsx");
+  expect(errorDownloadCalls).toBe(1);
+
+  await importFileInput.setInputFiles({
+    name: "通过预检的本期结算.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from("clean-xlsx")
+  });
+  await expect(page.getByText("预检通过，待应用", { exact: true })).toBeVisible();
+  await expect(page.getByText("¥650.00", { exact: true }).first()).toBeVisible();
+  await page.locator(".import-panel").getByRole("button", { name: "确认应用导入" }).click();
+  await expect(page.getByText("已应用冻结结果", { exact: true })).toBeVisible();
+  await expect(normalCheckbox).toBeChecked();
+  await expect(manualCheckbox).toBeChecked();
+  await expect(unselectedCheckbox).not.toBeChecked();
+  await expect(page.getByPlaceholder("本期数量").first()).toHaveValue("3");
+  await expect(page.getByPlaceholder("金额（元）")).toHaveValue("400.00");
+  await expect(page.getByPlaceholder("调整名称")).toHaveValue("Excel 质量扣款");
+  await expect(page.getByPlaceholder("可正可负（元）")).toHaveValue("-50.00");
+  await page
+    .locator(".import-panel")
+    .getByRole("button", { name: "重新应用已冻结结果" })
+    .click();
+  expect(importApplyCalls).toBe(2);
+  await expect(page.getByPlaceholder("本期数量").first()).toHaveValue("3");
+
+  const resultDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载预检结果" }).click();
+  await expect((await resultDownloadPromise).suggestedFilename()).toBe("结算导入结果.xlsx");
+  expect(resultDownloadCalls).toBe(1);
+  await expect(page.getByText("import-clean", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("version-1", { exact: true })).toHaveCount(0);
 
   const tableShell = page.locator(".table-shell");
   const horizontalScroll = await tableShell.evaluate((element) => {
@@ -363,16 +590,10 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
     .poll(() => decodeURIComponent(new URL(page.url()).pathname))
     .toBe("/结算管理/settlement-new");
 
-  expect(previewBodies.length).toBeGreaterThan(0);
-  const finalPreview = previewBodies.at(-1)!;
-  expect(finalPreview.settlementLines).toHaveLength(3);
-  expect(finalPreview.settlementLines.map((line) => line.contractBillRowId)).not.toContain(
-    "row-unselected"
-  );
-  expect(finalPreview.settlementLines[0]).not.toHaveProperty("amountCents");
-  expect(createdBody).toMatchObject({
+  expect(uploadCalls).toBe(2);
+  expect(createdBody).toEqual(expect.objectContaining({
     contractVersionId: "version-1",
-    settlementLines: finalPreview.settlementLines
-  });
+    settlementLines: frozenImportedLines
+  }));
   expect(createdBody).not.toHaveProperty("amountCents");
 });

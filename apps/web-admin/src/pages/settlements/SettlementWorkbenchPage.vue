@@ -63,6 +63,121 @@
     />
 
     <section
+      class="import-panel"
+      aria-label="结算 Excel 导入"
+    >
+      <div class="import-head">
+        <div>
+          <strong>Excel 批量导入</strong>
+          <span>下载当前合同模板，只有明确标记“是”的清单行才会进入本期结算。</span>
+        </div>
+        <div class="import-actions">
+          <t-button
+            variant="outline"
+            :loading="importDownloadBusy === 'template'"
+            :disabled="!selectedContractVersionId"
+            @click="downloadImportTemplate"
+          >
+            下载中文模板
+          </t-button>
+          <t-upload
+            v-model="importFiles"
+            theme="file-input"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            :auto-upload="false"
+            :max="1"
+            :loading="importBusy"
+            :disabled="!selectedContractVersionId || sourceLoading"
+            placeholder="选择 XLSX 并预检"
+            @change="selectImportFile"
+          />
+        </div>
+      </div>
+
+      <div
+        v-if="importFileName || importPreview"
+        class="import-summary"
+      >
+        <div class="import-file-copy">
+          <span>当前文件</span>
+          <strong>{{ importFileName || "已上传结算文件" }}</strong>
+        </div>
+        <div
+          v-if="importPreview"
+          class="import-metrics"
+        >
+          <div>
+            <span>选中明细</span>
+            <strong>{{ importPreview.selectedCount }}</strong>
+          </div>
+          <div>
+            <span>预检错误</span>
+            <strong :class="{ danger: importPreview.errors.length > 0 }">
+              {{ importPreview.errors.length }}
+            </strong>
+          </div>
+          <div>
+            <span>后端核算合计</span>
+            <strong>{{ importCanonicalTotal }}</strong>
+          </div>
+          <t-tag
+            :theme="importStatusTheme"
+            variant="light"
+          >
+            {{ importStatusLabel }}
+          </t-tag>
+        </div>
+        <div
+          v-if="importPreview"
+          class="import-result-actions"
+        >
+          <t-button
+            v-if="importPreview.errors.length"
+            variant="outline"
+            theme="danger"
+            :loading="importDownloadBusy === 'errors'"
+            @click="downloadImportErrors"
+          >
+            下载错误表
+          </t-button>
+          <t-button
+            variant="outline"
+            :loading="importDownloadBusy === 'result'"
+            @click="downloadImportResult"
+          >
+            下载预检结果
+          </t-button>
+          <t-tooltip
+            v-if="importApplyDisabledReason"
+            :content="importApplyDisabledReason"
+          >
+            <span><t-button
+              theme="primary"
+              disabled
+            >确认应用导入</t-button></span>
+          </t-tooltip>
+          <t-button
+            v-else
+            theme="primary"
+            :loading="importApplyBusy"
+            @click="confirmApplyImport"
+          >
+            {{ importAppliedIsCurrent ? "重新应用已冻结结果" : "确认应用导入" }}
+          </t-button>
+        </div>
+      </div>
+
+      <t-table
+        v-if="importPreview?.errors.length"
+        class="import-error-table"
+        row-key="key"
+        size="small"
+        :columns="importErrorColumns"
+        :data="importErrorRows"
+      />
+    </section>
+
+    <section
       class="workbench-toolbar"
       aria-label="结算清单工具栏"
     >
@@ -393,19 +508,28 @@ import type {
   SettlementSourceLineException,
   SettlementSourceLineReadModel
 } from "@jiangkong/shared-domain";
-import type { PrimaryTableCol } from "tdesign-vue-next";
+import type { PrimaryTableCol, UploadChangeContext, UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   createSettlementDraft,
   fetchProjects,
   fetchSettlementContractOptions,
+  uploadPrivateFile,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
 import {
+  applySettlementImport,
+  downloadSettlementImportErrors,
+  downloadSettlementImportResult,
+  downloadSettlementImportTemplate,
   fetchSettlementSourceLines,
+  previewSettlementImport,
   previewSettlementLines,
-  type SettlementCanonicalPreviewReadModel
+  type SettlementCanonicalPreviewReadModel,
+  type SettlementImportErrorReadModel,
+  type SettlementImportPreviewReadModel,
+  type SettlementLineDraftPayload
 } from "../../api/settlement-workbench.api";
 import { centsTextToYuanText } from "../../lib/money";
 import {
@@ -414,12 +538,15 @@ import {
 } from "../contracts/contract-business-options.config";
 import {
   applyBatchRemark,
+  applyImportedSettlementLines,
   applyTsvQuantityPaste,
   buildSettlementLinePayload,
+  canApplySettlementImportResponse,
   canApplySettlementPreviewResponse,
   setSourceLineSelection,
   settlementPayloadFingerprint,
   settlementQuantityProgress,
+  settlementWorkbenchDraftFingerprint,
   validateSettlementWorkbench,
   type ManualAdjustmentDraft,
   type SourceLineDraft,
@@ -436,6 +563,10 @@ interface WorkbenchSourceRow extends SettlementSourceLineReadModel {
   remark: string;
 }
 
+interface ImportErrorRow extends SettlementImportErrorReadModel {
+  key: string;
+}
+
 const router = useRouter();
 const form = reactive({
   projectId: "",
@@ -450,6 +581,18 @@ const drafts = ref<SourceLineDraftMap>({});
 const adjustments = ref<ManualAdjustmentDraft[]>([]);
 const preview = ref<SettlementCanonicalPreviewReadModel | null>(null);
 const previewAppliedFingerprint = ref("");
+const importFiles = ref<UploadFile[]>([]);
+const importFileName = ref("");
+const importPreview = ref<SettlementImportPreviewReadModel | null>(null);
+const importBusy = ref(false);
+const importApplyBusy = ref(false);
+const importDownloadBusy = ref<"" | "template" | "errors" | "result">("");
+const frozenImport = ref<{
+  contractVersionId: string;
+  importId: string;
+  settlementLines: SettlementLineDraftPayload[];
+  draftFingerprint: string;
+} | null>(null);
 const loadingProjects = ref(false);
 const loadingContracts = ref(false);
 const sourceLoading = ref(false);
@@ -464,6 +607,8 @@ const pasteText = ref("");
 const anomalyDrawerVisible = ref(false);
 let sourceRequestId = 0;
 let previewRequestId = 0;
+let importRequestId = 0;
+let importApplyRequestId = 0;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
 const sourceColumns: PrimaryTableCol<WorkbenchSourceRow>[] = [
@@ -488,6 +633,11 @@ const adjustmentColumns: PrimaryTableCol<ManualAdjustmentDraft>[] = [
   { colKey: "remark", title: "备注", minWidth: 180 },
   { colKey: "operation", title: "操作", width: 76, fixed: "right" }
 ];
+const importErrorColumns: PrimaryTableCol<ImportErrorRow>[] = [
+  { colKey: "row", title: "Excel 行", width: 100 },
+  { colKey: "column", title: "字段", width: 180 },
+  { colKey: "message", title: "错误原因", minWidth: 360 }
+];
 
 const projectOptions = computed(() =>
   projects.value.map((project) => ({ label: `${project.code} · ${project.name}`, value: project.id }))
@@ -507,8 +657,17 @@ const selectedContractHint = computed(() =>
     : "请先选择项目和有效合同。"
 );
 const selectedRowIds = computed(() => Object.keys(drafts.value));
+const currentDraftFingerprint = computed(() =>
+  settlementWorkbenchDraftFingerprint(drafts.value, adjustments.value)
+);
 const currentPayload = computed(() => {
   if (validationErrors.value.length) return [];
+  if (
+    frozenImport.value?.contractVersionId === selectedContractVersionId.value &&
+    frozenImport.value.draftFingerprint === currentDraftFingerprint.value
+  ) {
+    return frozenImport.value.settlementLines;
+  }
   return buildSettlementLinePayload(sourceRows.value, drafts.value, adjustments.value);
 });
 const currentFingerprint = computed(() =>
@@ -531,6 +690,42 @@ const canonicalTotal = computed(() =>
   previewIsCurrent.value && preview.value
     ? `¥${centsTextToYuanText(preview.value.amountCents)}`
     : "待后台核算"
+);
+const importCanonicalTotal = computed(() =>
+  importPreview.value?.canonical
+    ? `¥${centsTextToYuanText(importPreview.value.canonical.amountCents)}`
+    : "待预检"
+);
+const importAppliedIsCurrent = computed(
+  () =>
+    Boolean(frozenImport.value) &&
+    frozenImport.value?.contractVersionId === selectedContractVersionId.value &&
+    frozenImport.value?.importId === importPreview.value?.importId &&
+    frozenImport.value?.draftFingerprint === currentDraftFingerprint.value
+);
+const importStatusLabel = computed(() => {
+  if (importAppliedIsCurrent.value) return "已应用冻结结果";
+  if (importPreview.value?.errors.length) return "预检未通过";
+  if (importPreview.value?.canonical) return "预检通过，待应用";
+  return "等待预检";
+});
+const importStatusTheme = computed<"success" | "danger" | "warning">(() => {
+  if (importAppliedIsCurrent.value || importPreview.value?.canonical) return "success";
+  if (importPreview.value?.errors.length) return "danger";
+  return "warning";
+});
+const importApplyDisabledReason = computed(() => {
+  if (!importPreview.value) return "请先选择 XLSX 文件并完成预检。";
+  if (importPreview.value.errors.length) return "预检存在错误，不能应用。";
+  if (!importPreview.value.canonical) return "预检未返回后端核算结果，不能应用。";
+  if (!form.projectId || !selectedContractVersionId.value) return "请重新选择项目和有效合同。";
+  return "";
+});
+const importErrorRows = computed<ImportErrorRow[]>(() =>
+  (importPreview.value?.errors ?? []).map((error, index) => ({
+    ...error,
+    key: `${error.row}-${error.column}-${index}`
+  }))
 );
 const createDisabledReason = computed(() => {
   if (validationErrors.value[0]) return validationErrors.value[0];
@@ -635,6 +830,174 @@ function formatUnitPrice(row: SettlementSourceLineReadModel): string {
 
 function isNegativeQuantity(value: string | null) {
   return Boolean(value?.startsWith("-"));
+}
+
+async function downloadImportTemplate() {
+  const contractVersionId = selectedContractVersionId.value;
+  if (!contractVersionId) return;
+  await runImportDownload("template", () => downloadSettlementImportTemplate(contractVersionId));
+}
+
+async function selectImportFile(files: UploadFile[], context: UploadChangeContext) {
+  if (context.trigger !== "add") return;
+  const file = context.file?.raw ?? files.at(-1)?.raw;
+  if (!file) return;
+  const contractVersionId = selectedContractVersionId.value;
+  if (!contractVersionId) {
+    pageMessage.value = "请先选择有效合同。";
+    pageMessageTone.value = "warning";
+    return;
+  }
+  if (!file.name.toLowerCase().endsWith(".xlsx")) {
+    pageMessage.value = "结算导入只支持 XLSX 文件。";
+    pageMessageTone.value = "warning";
+    return;
+  }
+  const requestId = ++importRequestId;
+  importApplyRequestId += 1;
+  importBusy.value = true;
+  importFileName.value = file.name;
+  importPreview.value = null;
+  pageMessage.value = "";
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    if (
+      requestId !== importRequestId ||
+      contractVersionId !== selectedContractVersionId.value
+    ) {
+      return;
+    }
+    const result = await previewSettlementImport(contractVersionId, { fileId: uploaded.id });
+    if (
+      requestId === importRequestId &&
+      contractVersionId === selectedContractVersionId.value
+    ) {
+      importPreview.value = result;
+      pageMessage.value = result.errors.length
+        ? `Excel 预检完成，发现 ${result.errors.length} 项错误，请修正后重新上传。`
+        : `Excel 预检通过，已选中 ${result.selectedCount} 条本期明细。`;
+      pageMessageTone.value = result.errors.length ? "warning" : "success";
+    }
+  } catch (error) {
+    if (requestId === importRequestId) {
+      pageMessage.value = error instanceof Error ? error.message : "结算 Excel 上传预检失败。";
+      pageMessageTone.value = "error";
+    }
+  } finally {
+    if (requestId === importRequestId) {
+      importBusy.value = false;
+      importFiles.value = [];
+    }
+  }
+}
+
+async function confirmApplyImport() {
+  const currentImport = importPreview.value;
+  const contractVersionId = selectedContractVersionId.value;
+  const projectId = form.projectId;
+  if (importApplyDisabledReason.value || !currentImport || !contractVersionId || !projectId) return;
+  const requestId = ++importApplyRequestId;
+  const importId = currentImport.importId;
+  importApplyBusy.value = true;
+  pageMessage.value = "";
+  try {
+    const applied = await applySettlementImport(projectId, importId);
+    if (
+      !canApplySettlementImportResponse(
+        requestId,
+        importApplyRequestId,
+        contractVersionId,
+        selectedContractVersionId.value,
+        importId,
+        importPreview.value?.importId ?? ""
+      )
+    ) {
+      return;
+    }
+    if (
+      applied.importId !== importId ||
+      !applied.result ||
+      !Array.isArray(applied.result.settlementLines) ||
+      !applied.result.canonical ||
+      !Array.isArray(applied.result.canonical.lines) ||
+      typeof applied.result.canonical.amountCents !== "string"
+    ) {
+      throw new Error("导入冻结结果不完整，请重新预检。");
+    }
+    if (applied.result.contractVersionId !== contractVersionId) {
+      throw new Error("导入结果与当前合同不一致，请重新预检。");
+    }
+    const importedState = applyImportedSettlementLines(
+      sourceRows.value,
+      applied.result.settlementLines
+    );
+    drafts.value = importedState.drafts;
+    adjustments.value = importedState.adjustments;
+    const draftFingerprint = settlementWorkbenchDraftFingerprint(
+      importedState.drafts,
+      importedState.adjustments
+    );
+    frozenImport.value = {
+      contractVersionId,
+      importId,
+      settlementLines: applied.result.settlementLines,
+      draftFingerprint
+    };
+    preview.value = applied.result.canonical;
+    previewAppliedFingerprint.value = settlementPayloadFingerprint(
+      contractVersionId,
+      applied.result.settlementLines
+    );
+    previewBusy.value = false;
+    pageMessage.value = "已应用 Excel 冻结结果，页面明细和后端核算合计已同步。";
+    pageMessageTone.value = "success";
+  } catch (error) {
+    if (requestId === importApplyRequestId) {
+      pageMessage.value = error instanceof Error ? error.message : "应用结算 Excel 导入失败。";
+      pageMessageTone.value = "error";
+    }
+  } finally {
+    if (requestId === importApplyRequestId) importApplyBusy.value = false;
+  }
+}
+
+async function downloadImportErrors() {
+  const importId = importPreview.value?.importId;
+  if (!form.projectId || !importId) return;
+  await runImportDownload("errors", () =>
+    downloadSettlementImportErrors(form.projectId, importId)
+  );
+}
+
+async function downloadImportResult() {
+  const importId = importPreview.value?.importId;
+  if (!form.projectId || !importId) return;
+  await runImportDownload("result", () =>
+    downloadSettlementImportResult(form.projectId, importId)
+  );
+}
+
+async function runImportDownload(
+  action: "template" | "errors" | "result",
+  task: () => Promise<void>
+) {
+  importDownloadBusy.value = action;
+  pageMessage.value = "";
+  try {
+    await task();
+    pageMessage.value =
+      action === "template"
+        ? "结算导入模板已下载。"
+        : action === "errors"
+          ? "结算导入错误表已下载。"
+          : "结算导入结果已下载。";
+    pageMessageTone.value = "success";
+  } catch (error) {
+    pageMessage.value = error instanceof Error ? error.message : "下载结算 Excel 文件失败。";
+    pageMessageTone.value = "error";
+  } finally {
+    importDownloadBusy.value = "";
+  }
 }
 
 function addAdjustment() {
@@ -744,9 +1107,22 @@ function resetSourceState() {
   sourceRequestId += 1;
   sourceLoading.value = false;
   invalidatePreview();
+  resetImportState();
   sourceRows.value = [];
   drafts.value = {};
   adjustments.value = [];
+}
+
+function resetImportState() {
+  importRequestId += 1;
+  importApplyRequestId += 1;
+  importBusy.value = false;
+  importApplyBusy.value = false;
+  importDownloadBusy.value = "";
+  importFileName.value = "";
+  importPreview.value = null;
+  frozenImport.value = null;
+  importFiles.value = [];
 }
 
 async function loadProjects() {
@@ -837,6 +1213,8 @@ onBeforeUnmount(() => {
   if (previewTimer) clearTimeout(previewTimer);
   sourceRequestId += 1;
   previewRequestId += 1;
+  importRequestId += 1;
+  importApplyRequestId += 1;
 });
 </script>
 
@@ -898,6 +1276,75 @@ onBeforeUnmount(() => {
 
 .page-message {
   margin-top: var(--jg-space-md);
+}
+
+.import-panel {
+  margin-top: var(--jg-space-lg);
+  background: var(--jg-bg-panel);
+  border: var(--jg-border-width-base) solid var(--jg-border);
+}
+
+.import-head,
+.import-summary,
+.import-metrics,
+.import-actions,
+.import-result-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--jg-space-md);
+}
+
+.import-head {
+  justify-content: space-between;
+  padding: var(--jg-space-md) var(--jg-space-lg);
+}
+
+.import-head > div:first-child,
+.import-file-copy,
+.import-metrics > div {
+  display: grid;
+  gap: var(--jg-space-xs);
+}
+
+.import-head span,
+.import-file-copy span,
+.import-metrics span {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
+}
+
+.import-actions,
+.import-result-actions {
+  flex-wrap: wrap;
+}
+
+.import-summary {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: var(--jg-space-md) var(--jg-space-lg);
+  background: var(--jg-bg-muted);
+  border-top: var(--jg-border-width-base) solid var(--jg-border);
+}
+
+.import-file-copy {
+  min-width: 220px;
+}
+
+.import-file-copy strong {
+  overflow-wrap: anywhere;
+}
+
+.import-metrics {
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.import-metrics > div {
+  min-width: 96px;
+}
+
+.import-error-table {
+  border-top: var(--jg-border-width-base) solid var(--jg-border);
 }
 
 .workbench-toolbar {
@@ -1035,6 +1482,14 @@ onBeforeUnmount(() => {
 
   .workbench-footer {
     flex-wrap: wrap;
+  }
+
+  .import-head {
+    align-items: flex-start;
+  }
+
+  .import-summary {
+    align-items: flex-start;
   }
 }
 
