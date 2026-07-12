@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildRouteDocumentTitle, focusMainContent, resolveRouteAccess } from "./index";
+import {
+  buildEncodedRouteRedirect,
+  buildRouteDocumentTitle,
+  focusMainContent,
+  resolveRouteAccess
+} from "./index";
 import {
   adminNavigationItems,
   adminNavigationGroups,
@@ -40,6 +45,26 @@ describe("web admin routes", () => {
   it("derives document titles from route metadata or the Chinese path", () => {
     expect(buildRouteDocumentTitle({ path: "/项目经营", meta: { title: "项目经营" } })).toBe("项目经营 - 建工智管");
     expect(buildRouteDocumentTitle({ path: "/付款管理/FK-2026-012", meta: {} })).toBe("FK-2026-012 - 建工智管");
+  });
+
+  it("normalizes an encoded Chinese route before access checks", () => {
+    expect(
+      buildEncodedRouteRedirect({
+        path: "/%E7%BB%84%E7%BB%87%E6%9D%83%E9%99%90",
+        query: { tab: "roles" },
+        hash: "#members"
+      })
+    ).toEqual({
+      path: "/组织权限",
+      query: { tab: "roles" },
+      hash: "#members",
+      replace: true
+    });
+  });
+
+  it("leaves canonical and malformed route paths unchanged", () => {
+    expect(buildEncodedRouteRedirect({ path: "/组织权限", query: {}, hash: "" })).toBeNull();
+    expect(buildEncodedRouteRedirect({ path: "/组织权限%ZZ", query: {}, hash: "" })).toBeNull();
   });
 
   it("focuses the main content landmark after route changes", () => {
@@ -160,6 +185,23 @@ describe("web admin routes", () => {
       { label: "组织权限", path: "/组织权限" },
       { label: "系统配置", path: "/系统配置" }
     ]);
+  });
+
+  it("keeps every sidebar entry backed by a reload-safe route with matching access rules", () => {
+    const shellChildren = webAdminRoutes.find((route) => route.path === "/")?.children ?? [];
+
+    for (const item of adminNavigationItems) {
+      const route = shellChildren.find((candidate) => candidate.path === item.path.slice(1));
+
+      expect(route?.component, `${item.path} 缺少可渲染路由`).toBeDefined();
+      expect(route?.redirect, `${item.path} 不应仅指向兼容重定向`).toBeUndefined();
+      expect(route?.meta?.requiredRoleKeys).toEqual(item.requiredRoleKeys);
+      expect(route?.meta?.requiredGlobalRoleKeys).toEqual(item.requiredGlobalRoleKeys);
+      expect(
+        buildEncodedRouteRedirect({ path: encodeURI(item.path), query: {}, hash: "" })?.path,
+        `${item.path} 硬刷新后必须回到规范路由`
+      ).toBe(item.path);
+    }
   });
 
   it("groups navigation by business process instead of a flat module list", () => {

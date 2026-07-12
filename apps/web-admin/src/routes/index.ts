@@ -26,6 +26,30 @@ interface RouteAccessAuth {
   globalRoleKeys?: readonly RoleKey[];
 }
 
+interface EncodedRouteTarget {
+  path: string;
+  query: Record<string, string | null | (string | null)[]>;
+  hash: string;
+}
+
+export function buildEncodedRouteRedirect(to: EncodedRouteTarget) {
+  try {
+    const decodedPath = decodeURI(to.path);
+    if (decodedPath === to.path) {
+      return null;
+    }
+
+    return {
+      path: decodedPath,
+      query: to.query,
+      hash: to.hash,
+      replace: true
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function resolveRouteAccess(to: RouteAccessTarget, auth: RouteAccessAuth) {
   if (to.meta.public) {
     return true;
@@ -66,6 +90,11 @@ export function focusMainContent(documentRef: Pick<Document, "getElementById">) 
 }
 
 router.beforeEach((to) => {
+  const encodedRouteRedirect = buildEncodedRouteRedirect(to);
+  if (encodedRouteRedirect) {
+    return encodedRouteRedirect;
+  }
+
   const auth = useAuthStore();
   return resolveRouteAccess(to, {
     isAuthenticated: auth.isAuthenticated,
