@@ -287,12 +287,19 @@ export class PaymentReadService {
       )
     ];
     const projectIds = [...new Set(payments.map((payment) => payment.projectId))];
-    const [settlements, projects, executions] = await Promise.all([
+    const contractIds = [...new Set(payments.map((payment) => payment.contractId))];
+    const [settlements, projects, contracts, executions] = await Promise.all([
       settlementIds.length
         ? this.prisma.settlement.findMany({ where: { id: { in: settlementIds } } })
         : Promise.resolve([]),
       projectIds.length
         ? this.prisma.project.findMany({ where: { id: { in: projectIds } } })
+        : Promise.resolve([]),
+      contractIds.length
+        ? this.prisma.contract.findMany({
+            where: { id: { in: contractIds } },
+            select: { id: true, code: true, name: true }
+          })
         : Promise.resolve([]),
       paymentIds.length
         ? this.prisma.paymentExecution.findMany({ where: { paymentRequestId: { in: paymentIds } } })
@@ -300,6 +307,7 @@ export class PaymentReadService {
     ]);
     const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
     const projectById = new Map(projects.map((project) => [project.id, project]));
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const paidByPaymentId = new Map<string, bigint>();
     for (const execution of executions) {
       paidByPaymentId.set(
@@ -315,10 +323,14 @@ export class PaymentReadService {
       const execution = this.executionStatusView(payment.status, paidAmountCents, payableAmountCents);
       const nextAction = this.nextActionLabel(payment.status, execution.complete);
       const pendingOwner = this.currentOwnerLabel(payment.status, execution.complete);
+      const contract = contractById.get(payment.contractId);
 
       return {
         id: payment.code,
         paymentNo: payment.code,
+        contractNo: contract
+          ? [contract.code, contract.name].filter(Boolean).join(" · ")
+          : "合同信息未读取",
         settlementNo: payment.settlementId
           ? (settlementById.get(payment.settlementId)?.code ?? payment.settlementId)
           : this.paymentSourceLabel(payment.sourceType),

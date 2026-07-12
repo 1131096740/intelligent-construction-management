@@ -6,11 +6,22 @@ const routes = readFileSync(new URL("../../routes/route-records.ts", import.meta
 const ledger = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
 
 describe("settlement creation workbench structure", () => {
-  it("uses an independent stable route and keeps the ledger as an entry point", () => {
-    expect(routes).toContain('path: "结算管理/新建"');
+  it("uses an independent workbench route and keeps the ledger as the only created-order entry point", () => {
+    expect(routes).toContain('path: "结算工作台"');
     expect(routes).toContain('SettlementWorkbenchPage.vue');
-    expect(ledger).toContain('router.push("/结算管理/新建")');
+    expect(page).toContain("<h1>结算工作台</h1>");
+    expect(ledger).toMatch(/id="settlement-ledger-title">\s*结算台账\s*<\/h2>/);
+    expect(ledger).toContain('router.push("/结算工作台")');
     expect(ledger).not.toContain("amountYuan");
+  });
+
+  it("requires a selected system contract and does not expose a manual contract field", () => {
+    expect(page).toContain('v-model="form.projectId"');
+    expect(page).toContain('v-model="form.contractOptionValue"');
+    expect(page).toContain('placeholder="请选择已生效合同"');
+    expect(page).toContain("fetchSettlementContractOptions");
+    expect(page).not.toContain('v-model="form.contractNo"');
+    expect(page).not.toContain('v-model="form.contractName"');
   });
 
   it("uses a full-width TDesign table, backend preview, paste, batch remark, anomaly drawer and sticky totals", () => {

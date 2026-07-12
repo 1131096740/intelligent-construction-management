@@ -469,8 +469,8 @@ test("结算工作台只提交本期选中明细并以后端核算为准", async
   await page.getByRole("button", { name: "登录" }).click();
 
   await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.goto("/settlements/new");
-  await expect(page.getByRole("heading", { name: "新建结算" })).toBeVisible();
+  await page.goto("/结算工作台");
+  await expect(page.getByRole("heading", { name: "结算工作台" })).toBeVisible();
 
   const selects = page.locator(".basic-fields .t-select");
   await selects.nth(0).click();

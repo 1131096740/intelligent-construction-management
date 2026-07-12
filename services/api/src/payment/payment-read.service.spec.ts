@@ -16,6 +16,7 @@ describe("PaymentReadService", () => {
           {
             id: "payment-1",
             projectId: "project-1",
+            contractId: "contract-1",
             settlementId: "settlement-1",
             code: "FK-2026-011",
             status: "approved_pending_payment",
@@ -27,6 +28,7 @@ describe("PaymentReadService", () => {
           {
             id: "payment-2",
             projectId: "project-1",
+            contractId: "contract-1",
             settlementId: "settlement-2",
             code: "FK-2026-012",
             status: "paid",
@@ -57,6 +59,11 @@ describe("PaymentReadService", () => {
           }
         ])
       },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-1", code: "HT-2026-001", name: "材料采购合同" }
+        ])
+      },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -78,6 +85,7 @@ describe("PaymentReadService", () => {
       id: "FK-2026-011",
       paymentNo: "FK-2026-011",
       settlementNo: "JS-2026-031",
+      contractNo: "HT-2026-001 · 材料采购合同",
       project: "总部综合楼",
       requestedAmount: "¥493,000.00",
       approvalStatus: "已通过",
@@ -114,6 +122,9 @@ describe("PaymentReadService", () => {
       project: {
         findMany: jest.fn()
       },
+      contract: {
+        findMany: jest.fn()
+      },
       paymentExecution: {
         findMany: jest.fn()
       }
@@ -147,6 +158,7 @@ describe("PaymentReadService", () => {
           {
             id: "payment-advance-1",
             projectId: "project-1",
+            contractId: "contract-advance-1",
             settlementId: null,
             sourceType: "contract_advance",
             code: "FK-YF-2026-001",
@@ -169,6 +181,11 @@ describe("PaymentReadService", () => {
           }
         ])
       },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-advance-1", code: "HT-YF-001", name: "预付款合同" }
+        ])
+      },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([])
       }
@@ -181,6 +198,7 @@ describe("PaymentReadService", () => {
     expect(ledger.rows[0]).toMatchObject({
       paymentNo: "FK-YF-2026-001",
       settlementNo: "合同预付款",
+      contractNo: "HT-YF-001 · 预付款合同",
       project: "总部综合楼",
       requestedAmount: "¥100,000.00",
       approvalStatus: "审批中"

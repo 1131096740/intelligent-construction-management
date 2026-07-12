@@ -2,8 +2,8 @@
   <section class="settlement-workbench-page">
     <header class="workbench-head">
       <div>
-        <h1>新建结算</h1>
-        <p>从有效合同中选择本期真实发生的清单项，金额以后端核算结果为准。</p>
+        <h1>结算工作台</h1>
+        <p>本页只负责新建结算；请从系统内已生效合同选择本期真实发生的清单项，金额以后端核算结果为准。</p>
       </div>
       <div class="head-actions">
         <t-button

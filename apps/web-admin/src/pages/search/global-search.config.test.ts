@@ -89,6 +89,7 @@ function sampleSources(): GlobalSearchSources {
       {
         id: "payment-1",
         paymentNo: "FK-2026-001",
+        contractNo: "HT-2026-001 · 材料采购合同",
         settlementNo: "JS-2026-001",
         project: "项目A",
         requestedAmount: "50,000.00",

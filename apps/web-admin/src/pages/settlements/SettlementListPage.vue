@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>结算管理</h1>
-        <p>按项目、合同、结算期间和归档状态管理结算单</p>
+        <p>统一查看已创建结算的完整台账；新建业务请进入结算工作台。</p>
       </div>
       <t-button
         theme="primary"
@@ -86,37 +86,51 @@
       </label>
     </div>
 
-    <t-card
-      class="ledger-panel"
-      :bordered="true"
+    <section
+      class="ledger-section"
+      aria-labelledby="settlement-ledger-title"
     >
-      <t-table
-        row-key="id"
-        size="small"
-        :columns="visibleSettlementLedgerColumns"
-        :data="filteredSettlementLedgerRows"
-        :loading="ledgerLoading"
-        empty="暂无结算数据"
+      <div class="ledger-heading">
+        <div>
+          <h2 id="settlement-ledger-title">
+            结算台账
+          </h2>
+          <p>集中查询结算编号、关联合同、结算期间、金额、审批归档状态和当前处理人。</p>
+        </div>
+      </div>
+
+      <t-card
+        class="ledger-panel"
+        :bordered="true"
       >
-        <template #currentNode="{ row }">
-          <t-tag
-            size="small"
-            :theme="statusTagTheme(row.nodeTone)"
-            variant="light"
-          >
-            {{ row.currentNode }}
-          </t-tag>
-        </template>
-        <template #operation="{ row }">
-          <t-link
-            theme="primary"
-            @click="openDetail(row.id)"
-          >
-            查看结算 {{ row.settlementNo }}
-          </t-link>
-        </template>
-      </t-table>
-    </t-card>
+        <t-table
+          row-key="id"
+          size="small"
+          :columns="visibleSettlementLedgerColumns"
+          :data="filteredSettlementLedgerRows"
+          :loading="ledgerLoading"
+          empty="暂无结算数据"
+        >
+          <template #currentNode="{ row }">
+            <t-tag
+              size="small"
+              :theme="statusTagTheme(row.nodeTone)"
+              variant="light"
+            >
+              {{ row.currentNode }}
+            </t-tag>
+          </template>
+          <template #operation="{ row }">
+            <t-link
+              theme="primary"
+              @click="openDetail(row.id)"
+            >
+              查看结算 {{ row.settlementNo }}
+            </t-link>
+          </template>
+        </t-table>
+      </t-card>
+    </section>
   </section>
 </template>
 
@@ -190,7 +204,7 @@ const visibleSettlementLedgerColumns = computed(() => {
 });
 
 function openCreateWorkbench() {
-  void router.push("/结算管理/新建");
+  void router.push("/结算工作台");
 }
 
 function openDetail(settlementId: string) {
@@ -414,6 +428,27 @@ onMounted(() => {
 .filter-action {
   width: 76px;
   min-width: 76px;
+}
+
+.ledger-section {
+  min-width: 0;
+}
+
+.ledger-heading {
+  margin-bottom: var(--jg-space-sm);
+}
+
+.ledger-heading h2 {
+  margin: 0 0 var(--jg-space-xs);
+  color: var(--jg-text-strong);
+  font-size: var(--jg-font-section-title);
+  line-height: var(--jg-line-height-tight);
+}
+
+.ledger-heading p {
+  margin: 0;
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
 }
 
 .ledger-panel {

@@ -40,6 +40,7 @@ describe("payment ledger page configuration", () => {
   it("shows approval status and actual payment status as separate ledger columns", () => {
     expect(paymentLedgerColumns.map((column) => column.title)).toEqual([
       "付款编号",
+      "关联合同",
       "付款来源",
       "项目",
       "申请金额",
@@ -268,6 +269,7 @@ function paymentRow(overrides: Partial<PaymentLedgerRow>): PaymentLedgerRow {
   return {
     id: "payment",
     paymentNo: "FK-001",
+    contractNo: "HT-001 · 材料采购合同",
     settlementNo: "JS-001",
     project: "项目",
     requestedAmount: "¥1.00",

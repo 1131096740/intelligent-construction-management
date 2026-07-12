@@ -37,6 +37,7 @@ export interface PaymentCreateSourceOption {
 export interface PaymentLedgerRow {
   id: string;
   paymentNo: string;
+  contractNo: string;
   settlementNo: string;
   project: string;
   requestedAmount: string;
@@ -131,6 +132,7 @@ export const paymentCreateSourceOptions: PaymentCreateSourceOption[] = [
 
 export const paymentLedgerColumns: PrimaryTableCol<PaymentLedgerRow>[] = [
   { colKey: "paymentNo", title: "付款编号", width: 104 },
+  { colKey: "contractNo", title: "关联合同", minWidth: 168 },
   { colKey: "settlementNo", title: "付款来源", width: 104 },
   { colKey: "project", title: "项目", minWidth: 120 },
   { colKey: "requestedAmount", title: "申请金额", width: 96, align: "right" },
@@ -184,6 +186,7 @@ export function filterPaymentLedgerRows(
   return rows.filter((row) => {
     const keywordText = [
       row.paymentNo,
+      row.contractNo,
       row.settlementNo,
       row.project,
       row.approvalStatus,

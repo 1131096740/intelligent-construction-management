@@ -63,7 +63,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     ]
   },
   {
-    label: "合同过程",
+    label: "合同",
     items: [
       { label: "合同工作台", path: "/合同工作台" },
       { label: "合同管理", path: "/合同管理" },
@@ -78,14 +78,21 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     ]
   },
   {
-    label: "结算付款",
+    label: "结算",
     items: [
+      { label: "结算工作台", path: "/结算工作台" },
+      { label: "结算管理", path: "/结算管理" },
       {
         label: "结算模板库",
         path: "/结算模板库",
         requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys
-      },
-      { label: "结算管理", path: "/结算管理" },
+      }
+    ]
+  },
+  {
+    label: "付款",
+    items: [
+      { label: "付款工作台", path: "/付款工作台" },
       { label: "付款管理", path: "/付款管理" }
     ]
   },
@@ -269,20 +276,34 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "结算模板治理" }
       },
       {
+        path: "结算工作台",
+        component: () => import("../pages/settlements/SettlementWorkbenchPage.vue"),
+        meta: { title: "结算工作台" }
+      },
+      {
         path: "结算管理",
         component: () => import("../pages/settlements/SettlementListPage.vue")
       },
       {
         path: "结算管理/新建",
-        component: () => import("../pages/settlements/SettlementWorkbenchPage.vue")
+        redirect: "/结算工作台"
       },
       {
         path: "结算管理/:settlementId",
         component: () => import("../pages/settlements/SettlementDetailPage.vue")
       },
       {
+        path: "付款工作台",
+        component: () => import("../pages/payments/PaymentWorkbenchPage.vue"),
+        meta: { title: "付款工作台" }
+      },
+      {
         path: "付款管理",
         component: () => import("../pages/payments/PaymentListPage.vue")
+      },
+      {
+        path: "付款管理/新建",
+        redirect: "/付款工作台"
       },
       {
         path: "付款管理/:paymentId",
@@ -330,9 +351,10 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       { path: "settlement-templates/new", redirect: "/结算模板库/新建" },
       { path: "settlement-templates/:templateId", redirect: settlementTemplateRedirect },
       { path: "settlements", redirect: "/结算管理" },
-      { path: "settlements/new", redirect: "/结算管理/新建" },
+      { path: "settlements/new", redirect: "/结算工作台" },
       { path: "settlements/:settlementId", redirect: settlementRedirect },
       { path: "payments", redirect: "/付款管理" },
+      { path: "payments/new", redirect: "/付款工作台" },
       { path: "payments/:paymentId", redirect: paymentRedirect },
       { path: "archives", redirect: "/资料库" },
       { path: "project-roster", redirect: "/项目花名册" },

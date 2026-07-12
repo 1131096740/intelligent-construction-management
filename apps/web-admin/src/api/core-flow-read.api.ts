@@ -632,6 +632,7 @@ export interface PaymentLedgerListReadModel {
   rows: Array<{
     id: string;
     paymentNo: string;
+    contractNo: string;
     settlementNo: string;
     project: string;
     requestedAmount: string;

@@ -60,6 +60,16 @@ test("keeps the active navigation inside the sidebar and strengthens group headi
   await expect(activeItem).toHaveCSS("color", "rgb(0, 82, 204)");
   await expect(groupLabel).toHaveCSS("font-size", "13px");
   await expect(groupLabel).toHaveCSS("font-weight", "700");
+  await expect(page.locator(".menu-group-label")).toHaveText([
+    "工作入口",
+    "项目资金链",
+    "合同",
+    "结算",
+    "付款",
+    "资料与治理"
+  ]);
+  await expect(page.getByText("结算工作台", { exact: true })).toBeVisible();
+  await expect(page.getByText("付款工作台", { exact: true })).toBeVisible();
 
   const separator = await groupLabel.evaluate((element) => {
     const style = getComputedStyle(element, "::after");

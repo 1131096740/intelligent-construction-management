@@ -100,7 +100,9 @@ describe("web admin routes", () => {
       "合同工作台",
       "合同工作台/:contractId",
       "合同管理/:contractId",
+      "结算工作台",
       "结算管理",
+      "付款工作台",
       "付款管理",
       "资料库",
       "审批中心",
@@ -127,9 +129,11 @@ describe("web admin routes", () => {
     expect(redirectOf("contract-takeovers")).toBe("/历史合同接管");
     expect(redirectOf("contracts/:contractId/workbench", { contractId: "HT-1" })).toBe("/合同工作台/HT-1");
     expect(redirectOf("settlements")).toBe("/结算管理");
+    expect(redirectOf("settlements/new")).toBe("/结算工作台");
     expect(redirectOf("settlement-templates")).toBe("/结算模板库");
     expect(redirectOf("settlement-templates/:templateId", { templateId: "TPL-1" })).toBe("/结算模板库/TPL-1");
     expect(redirectOf("payments")).toBe("/付款管理");
+    expect(redirectOf("payments/new")).toBe("/付款工作台");
     expect(redirectOf("archives")).toBe("/资料库");
     expect(redirectOf("project-roster")).toBe("/项目花名册");
     expect(redirectOf("search")).toBe("/全局搜索");
@@ -176,8 +180,10 @@ describe("web admin routes", () => {
       { label: "合同模板库", path: "/合同模板库" },
       { label: "合同业务场景", path: "/合同业务场景" },
       { label: "合作单位档案", path: "/合作单位档案" },
-      { label: "结算模板库", path: "/结算模板库" },
+      { label: "结算工作台", path: "/结算工作台" },
       { label: "结算管理", path: "/结算管理" },
+      { label: "结算模板库", path: "/结算模板库" },
+      { label: "付款工作台", path: "/付款工作台" },
       { label: "付款管理", path: "/付款管理" },
       { label: "资料库", path: "/资料库" },
       { label: "委托台账", path: "/委托台账" },
@@ -208,8 +214,9 @@ describe("web admin routes", () => {
     expect(adminNavigationGroups.map((group) => group.label)).toEqual([
       "工作入口",
       "项目资金链",
-      "合同过程",
-      "结算付款",
+      "合同",
+      "结算",
+      "付款",
       "资料与治理"
     ]);
     expect(adminNavigationGroups.flatMap((group) => group.items.map((item) => item.label))).toEqual(
@@ -221,8 +228,24 @@ describe("web admin routes", () => {
     const groupLabels = visibleAdminNavigationGroups(undefined).map((group) => group.label);
 
     expect(groupLabels).toContain("项目资金链");
-    expect(groupLabels).toContain("合同过程");
+    expect(groupLabels).toContain("合同");
     expect(visibleAdminNavigationGroups(["finance_staff"]).map((group) => group.label)).toContain("项目资金链");
+  });
+
+  it("keeps old create routes as redirects to the dedicated workbenches", () => {
+    expect(redirectOf("结算管理/新建")).toBe("/结算工作台");
+    expect(redirectOf("settlements/new")).toBe("/结算工作台");
+    expect(redirectOf("付款管理/新建")).toBe("/付款工作台");
+    expect(redirectOf("payments/new")).toBe("/付款工作台");
+  });
+
+  it("separates create workbenches from settlement and payment ledgers", () => {
+    expect(String(childRoute("结算工作台")?.component)).toContain("SettlementWorkbenchPage.vue");
+    expect(String(childRoute("结算管理")?.component)).toContain("SettlementListPage.vue");
+    expect(String(childRoute("结算管理/:settlementId")?.component)).toContain("SettlementDetailPage.vue");
+    expect(String(childRoute("付款工作台")?.component)).toContain("PaymentWorkbenchPage.vue");
+    expect(String(childRoute("付款管理")?.component)).toContain("PaymentListPage.vue");
+    expect(String(childRoute("付款管理/:paymentId")?.component)).toContain("PaymentDetailPage.vue");
   });
 
   it("hides project operations from nav when the user lacks funds overview roles", () => {
