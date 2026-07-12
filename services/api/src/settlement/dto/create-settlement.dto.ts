@@ -132,6 +132,13 @@ export class CreateSettlementDto {
   contractVersionId!: string;
 
   @IsRequiredText({
+    requiredMessage: "请选择结算模板版本",
+    typeMessage: "结算模板版本编号必须是文字",
+    blankMessage: "请选择结算模板版本"
+  })
+  settlementTemplateVersionId?: string;
+
+  @IsRequiredText({
     requiredMessage: "请填写结算编号",
     typeMessage: "结算编号必须是文字",
     blankMessage: "请填写结算编号"

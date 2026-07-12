@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   CONVERSION_TIMEOUT_MS,
   convertDocxToPdf,
+  convertXlsxToPdf,
   type ExecFileRunner
 } from "./libreoffice-converter";
 
@@ -58,6 +59,22 @@ describe("LibreOffice converter", () => {
       }
     ]);
     await expect(access(tempDir)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("converts an XLSX source through the same isolated LibreOffice path", async () => {
+    let inputPath = "";
+    const runner: ExecFileRunner = async (_command, args) => {
+      inputPath = args[6];
+      expect(inputPath).toMatch(/input\.xlsx$/);
+      expect(await readFile(inputPath)).toEqual(Buffer.from("xlsx"));
+      await writeFile(path.join(args[5], "input.pdf"), Buffer.from("%PDF-xlsx"));
+      return {};
+    };
+
+    await expect(
+      convertXlsxToPdf(Buffer.from("xlsx"), { runner, platform: "darwin" })
+    ).resolves.toEqual(Buffer.from("%PDF-xlsx"));
+    await expect(access(path.dirname(inputPath))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("checks trimmed unique declared fonts with fc-match on Linux", async () => {

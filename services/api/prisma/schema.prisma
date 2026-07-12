@@ -271,23 +271,26 @@ model ContractArchiveFile {
 }
 
 model Settlement {
-  id                         String   @id @default(uuid())
-  projectId                  String
-  contractId                 String
-  contractVersionId          String
-  paymentTermsVersionId      String
-  code                       String   @unique
-  periodLabel                String
-  status                     String
-  amountCents                BigInt
-  finalCumulativeAmountCents BigInt?
-  payableAmountCents         BigInt
-  paidAmountCents            BigInt   @default(0)
-  sourceType                 String   @default("system")
-  sourceTakeoverId           String?  @unique
-  isFinal                    Boolean  @default(false)
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
+  id                          String   @id @default(uuid())
+  projectId                   String
+  contractId                  String
+  contractVersionId           String
+  paymentTermsVersionId       String
+  code                        String   @unique
+  periodLabel                 String
+  status                      String
+  amountCents                 BigInt
+  finalCumulativeAmountCents  BigInt?
+  payableAmountCents          BigInt
+  paidAmountCents             BigInt   @default(0)
+  sourceType                  String   @default("system")
+  sourceTakeoverId            String?  @unique
+  settlementTemplateVersionId String?
+  isFinal                     Boolean  @default(false)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@index([settlementTemplateVersionId])
 }
 
 model SettlementLine {
@@ -316,24 +319,83 @@ model SettlementLine {
 }
 
 model SettlementImport {
-  id                String    @id @default(uuid())
-  projectId         String
-  contractVersionId String
-  fileId            String
-  fileSha256        String
-  sourceRevision    String
-  status            String    @default("preview")
-  preview           Json
-  result            Json?
-  createdByUserId   String
-  appliedByUserId   String?
-  appliedAt         DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                          String    @id @default(uuid())
+  projectId                   String
+  contractVersionId           String
+  settlementTemplateVersionId String?
+  fileId                      String
+  fileSha256                  String
+  sourceRevision              String
+  status                      String    @default("preview")
+  preview                     Json
+  result                      Json?
+  createdByUserId             String
+  appliedByUserId             String?
+  appliedAt                   DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
   @@index([projectId, createdAt])
   @@index([contractVersionId, createdAt])
   @@index([fileId])
+  @@index([settlementTemplateVersionId])
+}
+
+model SettlementTemplate {
+  id              String   @id @default(uuid())
+  name            String
+  code            String   @unique
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SettlementTemplateVersion {
+  id                         String    @id @default(uuid())
+  settlementTemplateId       String
+  versionNo                  Int
+  status                     String    @default("draft")
+  draftRevision              Int       @default(1)
+  xlsxFileId                 String
+  compatibleContractTypeKeys String[]  @default([])
+  compatibleAmountRoles      String[]  @default([])
+  compatiblePricingModes     String[]  @default([])
+  columnSchema               Json
+  printRules                 Json
+  evidenceRules              Json
+  anomalyRules               Json
+  inspectionReport           Json?
+  inspectionRevision         Int?
+  previewXlsxFileId          String?
+  previewPdfFileId           String?
+  submittedByUserId          String?
+  publishedByUserId          String?
+  publishedAt                DateTime?
+  stoppedAt                  DateTime?
+  changeSummary              String?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  @@unique([settlementTemplateId, versionNo])
+  @@index([status, publishedAt])
+}
+
+model SettlementTemplatePreviewJob {
+  id                          String    @id @default(uuid())
+  settlementTemplateVersionId String
+  sourceRevision              Int
+  status                      String    @default("queued")
+  sampleData                  Json
+  previewXlsxFileId           String?
+  previewPdfFileId            String?
+  errorMessage                String?
+  createdByUserId             String
+  startedAt                   DateTime?
+  completedAt                 DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@index([settlementTemplateVersionId, createdAt])
 }
 
 model SettlementArchiveFile {

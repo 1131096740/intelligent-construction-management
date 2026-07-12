@@ -904,6 +904,45 @@ export class FileService {
       throw new Error("当前账号无权下载该资料");
     }
 
+    const settlementTemplateVersionClient = (tx as unknown as {
+      settlementTemplateVersion?: {
+        findFirst(args: { where: { OR: Array<Record<string, string>> }; select: { id: true } }): Promise<{ id: string } | null>;
+      };
+    }).settlementTemplateVersion;
+    const settlementTemplateVersion = settlementTemplateVersionClient
+      ? await settlementTemplateVersionClient.findFirst({
+          where: {
+            OR: [
+              { xlsxFileId: file.id },
+              { previewXlsxFileId: file.id },
+              { previewPdfFileId: file.id }
+            ]
+          },
+          select: { id: true }
+        })
+      : null;
+    const settlementTemplatePreviewClient = (tx as unknown as {
+      settlementTemplatePreviewJob?: {
+        findFirst(args: { where: { OR: Array<Record<string, string>> }; select: { id: true } }): Promise<{ id: string } | null>;
+      };
+    }).settlementTemplatePreviewJob;
+    const settlementTemplatePreview = settlementTemplateVersion || !settlementTemplatePreviewClient
+      ? null
+      : await settlementTemplatePreviewClient.findFirst({
+          where: {
+            OR: [{ previewXlsxFileId: file.id }, { previewPdfFileId: file.id }]
+          },
+          select: { id: true }
+        });
+    if (settlementTemplateVersion || settlementTemplatePreview) {
+      if (
+        await this.hasGlobalRole(tx, actorUserId, ["contract_director", "super_admin"])
+      ) {
+        return;
+      }
+      throw new Error("当前账号无权下载该结算模板文件");
+    }
+
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
       return;
     }
@@ -1277,6 +1316,22 @@ export class FileService {
   ) {
     const roleKeys = await this.loadActorRoleKeys(tx, actorUserId, projectId);
     return roleKeys.some((role) => allowedRoles.includes(role));
+  }
+
+  private async hasGlobalRole(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    allowedRoles: readonly RoleKey[]
+  ) {
+    const assignments = await tx.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null }
+    });
+    const positions = assignments.length
+      ? await tx.position.findMany({
+          where: { id: { in: assignments.map((assignment) => assignment.positionId) } }
+        })
+      : [];
+    return positions.some((position) => allowedRoles.includes(position.key as RoleKey));
   }
 
   private async loadActorRoleKeys(

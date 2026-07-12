@@ -229,6 +229,9 @@ describe("SettlementService", () => {
           status: "effective"
         })
       },
+      settlementTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({ status: "published" })
+      },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -260,16 +263,32 @@ describe("SettlementService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
-    const settlementService = new SettlementService(prisma as never, audit as never);
+    const templateCompatibility = { assertPublishedCompatible: jest.fn() };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      templateCompatibility as never
+    );
 
     const created = await settlementService.create({
       contractVersionId: "contract-version-1",
+      settlementTemplateVersionId: "settlement-template-version-1",
       code: "JS-2026-019",
       periodLabel: "2026-06",
       amountCents: "10000000"
     });
 
     expect(created.code).toBe("JS-2026-019");
+    expect(templateCompatibility.assertPublishedCompatible).toHaveBeenCalledWith(
+      "settlement-template-version-1",
+      "contract-version-1",
+      undefined,
+      tx
+    );
     expect(created).toMatchObject({
       amountCents: "10000000",
       payableAmountCents: "8000000",
@@ -281,6 +300,7 @@ describe("SettlementService", () => {
         contractId: "contract-1",
         contractVersionId: "contract-version-1",
         paymentTermsVersionId: "terms-version-1",
+        settlementTemplateVersionId: "settlement-template-version-1",
         code: "JS-2026-019",
         periodLabel: "2026-06",
         status: "approval_pending",
@@ -289,6 +309,41 @@ describe("SettlementService", () => {
         paidAmountCents: 0n
       }
     });
+  });
+
+  it("writes no settlement when the selected template is incompatible", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ id: "contract-version-1", status: "effective" })
+      },
+      settlement: { create: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const templates = {
+      assertPublishedCompatible: jest
+        .fn()
+        .mockRejectedValue(new BadRequestException("所选结算模板未发布、已停用或与当前合同不兼容"))
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      templates as never
+    );
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        settlementTemplateVersionId: "incompatible-template-version",
+        code: "JS-TEMPLATE-INVALID",
+        periodLabel: "2026-07",
+        amountCents: "1"
+      })
+    ).rejects.toThrow("所选结算模板未发布、已停用或与当前合同不兼容");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
   it("rejects settlement creation when the service is unavailable", async () => {

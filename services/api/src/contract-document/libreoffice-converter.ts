@@ -98,6 +98,23 @@ export async function convertDocxToPdf(
   declaredFonts: readonly string[] = [],
   options: LibreOfficeConverterOptions = {}
 ): Promise<Buffer> {
+  return convertOfficeToPdf(docxBuffer, "docx", declaredFonts, options, "合同");
+}
+
+export async function convertXlsxToPdf(
+  xlsxBuffer: Buffer,
+  options: LibreOfficeConverterOptions = {}
+): Promise<Buffer> {
+  return convertOfficeToPdf(xlsxBuffer, "xlsx", [], options, "结算模板");
+}
+
+async function convertOfficeToPdf(
+  sourceBuffer: Buffer,
+  extension: "docx" | "xlsx",
+  declaredFonts: readonly string[],
+  options: LibreOfficeConverterOptions,
+  documentLabel: "合同" | "结算模板"
+): Promise<Buffer> {
   const runner = options.runner ?? defaultRunner;
   await assertFontsAvailable(
     declaredFonts,
@@ -107,12 +124,12 @@ export async function convertDocxToPdf(
 
   const tempDir = await mkdtemp(path.join(tmpdir(), "contract-doc-"));
   const profilePath = path.join(tempDir, "profile");
-  const inputPath = path.join(tempDir, "input.docx");
+  const inputPath = path.join(tempDir, `input.${extension}`);
   const outputPath = path.join(tempDir, "input.pdf");
 
   try {
     await mkdir(profilePath);
-    await writeFile(inputPath, docxBuffer);
+    await writeFile(inputPath, sourceBuffer);
     try {
       await runner(
         process.env.DOC_CONVERTER_COMMAND ?? "soffice",
@@ -129,18 +146,18 @@ export async function convertDocxToPdf(
       );
     } catch (cause) {
       if (errorProperty(cause, "code") === "ENOENT") {
-        throw new Error("合同 PDF 转换服务不可用，请联系管理员");
+        throw new Error(`${documentLabel} PDF 转换服务不可用，请联系管理员`);
       }
       if (isTimeoutError(cause)) {
-        throw new Error("合同 PDF 转换超时，请稍后重试");
+        throw new Error(`${documentLabel} PDF 转换超时，请稍后重试`);
       }
-      throw new Error("合同 PDF 转换失败，请稍后重试");
+      throw new Error(`${documentLabel} PDF 转换失败，请稍后重试`);
     }
 
     try {
       return await readFile(outputPath);
     } catch {
-      throw new Error("合同 PDF 转换未生成输出文件，请稍后重试");
+      throw new Error(`${documentLabel} PDF 转换未生成输出文件，请稍后重试`);
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true });

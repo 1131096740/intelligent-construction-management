@@ -49,6 +49,7 @@ import {
   type CanonicalSettlementLine,
   type SettlementContractSourceRow
 } from "./settlement-line-calculator";
+import { SettlementTemplateService } from "./settlement-template.service";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -295,7 +296,9 @@ export class SettlementService {
     @Optional()
     private readonly files?: FileService,
     @Optional()
-    private readonly approvalForms?: ApprovalFormService
+    private readonly approvalForms?: ApprovalFormService,
+    @Optional()
+    private readonly settlementTemplates?: SettlementTemplateService
   ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
@@ -698,6 +701,13 @@ export class SettlementService {
     for (const line of input.settlementLines ?? []) {
       this.optionalDecimal(line.quantity);
     }
+    const settlementTemplateVersionId = input.settlementTemplateVersionId?.trim() || null;
+    if (this.settlementTemplates && !settlementTemplateVersionId) {
+      throw new BadRequestException("请选择结算模板版本");
+    }
+    if (!this.settlementTemplates && settlementTemplateVersionId) {
+      throw new Error("结算模板兼容校验服务暂不可用，请稍后重试");
+    }
 
     const settlement = await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
@@ -709,6 +719,14 @@ export class SettlementService {
       }
 
       this.assertContractVersionEffective(version.status as ContractVersionStatus);
+      if (this.settlementTemplates && settlementTemplateVersionId) {
+        await this.settlementTemplates.assertPublishedCompatible(
+          settlementTemplateVersionId,
+          input.contractVersionId,
+          undefined,
+          tx
+        );
+      }
       const periodLabel = this.requiredText(input.periodLabel, "结算期间");
       await this.assertNoDuplicateActiveSettlementPeriod(tx, version.id, periodLabel);
       const settlementLines = await this.normalizeSettlementLines(
@@ -788,6 +806,7 @@ export class SettlementService {
           contractId: version.contractId,
           contractVersionId: version.id,
           paymentTermsVersionId: terms.id,
+          ...(settlementTemplateVersionId ? { settlementTemplateVersionId } : {}),
           code: input.code,
           periodLabel,
           status: "approval_pending",

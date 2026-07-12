@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import * as ExcelJS from "exceljs";
 import type { Cell, Row, Worksheet } from "exceljs";
@@ -13,6 +13,7 @@ import type { PreviewSettlementImportDto } from "./dto/preview-settlement-import
 import { SettlementService } from "./settlement.service";
 import { parseSettlementQuantity } from "./settlement-quantity";
 import { SettlementWorkbenchService } from "./settlement-workbench.service";
+import { SettlementTemplateService } from "./settlement-template.service";
 
 export const SETTLEMENT_IMPORT_XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -55,7 +56,9 @@ export class SettlementImportService {
     private readonly audit: AuditService,
     private readonly files: FileService,
     private readonly workbench: SettlementWorkbenchService,
-    private readonly settlements: SettlementService
+    private readonly settlements: SettlementService,
+    @Optional()
+    private readonly settlementTemplates?: SettlementTemplateService
   ) {}
 
   async exportTemplate(contractVersionId: string, actorUserId: string) {
@@ -106,6 +109,13 @@ export class SettlementImportService {
   ) {
     const fileId = input.fileId?.trim();
     if (!fileId) throw new BadRequestException("请选择要导入的结算 Excel 文件");
+    const settlementTemplateVersionId = input.settlementTemplateVersionId?.trim() || null;
+    if (this.settlementTemplates && !settlementTemplateVersionId) {
+      throw new BadRequestException("请选择结算模板版本");
+    }
+    if (!this.settlementTemplates && settlementTemplateVersionId) {
+      throw new Error("结算模板兼容校验服务暂不可用，请稍后重试");
+    }
     const source = await this.workbench.sourceLines(contractVersionId);
     const { file, buffer } = await this.files.getFileBuffer(fileId);
     this.assertImportFile(file, buffer, actorUserId);
@@ -142,10 +152,19 @@ export class SettlementImportService {
     };
     const fileSha256 = createHash("sha256").update(buffer).digest("hex");
     const record = await this.prisma.$transaction(async (tx) => {
+      if (this.settlementTemplates && settlementTemplateVersionId) {
+        await this.settlementTemplates.assertPublishedCompatible(
+          settlementTemplateVersionId,
+          contractVersionId,
+          source.projectId,
+          tx
+        );
+      }
       const created = await tx.settlementImport.create({
         data: {
           projectId: source.projectId,
           contractVersionId,
+          ...(settlementTemplateVersionId ? { settlementTemplateVersionId } : {}),
           fileId,
           fileSha256,
           sourceRevision,
@@ -194,6 +213,9 @@ export class SettlementImportService {
     const result = {
       contractVersionId: record.contractVersionId,
       sourceRevision: record.sourceRevision,
+      ...(record.settlementTemplateVersionId
+        ? { settlementTemplateVersionId: record.settlementTemplateVersionId }
+        : {}),
       settlementLines: preview.settlementLines,
       canonical: preview.canonical
     };

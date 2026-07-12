@@ -7,4 +7,11 @@ export class PreviewSettlementImportDto {
     blankMessage: "请选择要导入的结算 Excel 文件"
   })
   fileId!: string;
+
+  @IsRequiredText({
+    requiredMessage: "请选择结算模板版本",
+    typeMessage: "结算模板版本编号必须是文字",
+    blankMessage: "请选择结算模板版本"
+  })
+  settlementTemplateVersionId?: string;
 }

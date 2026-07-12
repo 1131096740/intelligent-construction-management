@@ -103,7 +103,12 @@ describe("SettlementImportService", () => {
       settlement: { create: jest.fn() },
       settlementLine: { createMany: jest.fn() }
     };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const prisma = {
+      settlementTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({ status: "published" })
+      },
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
     const audit = { record: jest.fn() };
     const files = {
       getFileBuffer: jest.fn().mockResolvedValue({
@@ -132,11 +137,15 @@ describe("SettlementImportService", () => {
       audit as never,
       files as never,
       workbench as never,
-      settlements as never
+      settlements as never,
+      { assertPublishedCompatible: jest.fn() } as never
     );
 
     await expect(
-      service.previewImport("version-1", "user-1", { fileId: "file-1" })
+      service.previewImport("version-1", "user-1", {
+        fileId: "file-1",
+        settlementTemplateVersionId: "template-version-1"
+      })
     ).resolves.toMatchObject({ importId: "import-1", selectedCount: 1, errors: [] });
     expect(settlements.previewLines).toHaveBeenCalledWith("version-1", {
       settlementLines: [
@@ -150,10 +159,68 @@ describe("SettlementImportService", () => {
     });
     expect(tx.settlement.create).not.toHaveBeenCalled();
     expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
+    expect(tx.settlementImport.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractVersionId: "version-1",
+        settlementTemplateVersionId: "template-version-1"
+      })
+    });
     expect(audit.record).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({ action: "settlement.import.preview" })
     );
+  });
+
+  it("writes no import preview when the selected template is incompatible", async () => {
+    const buffer = await importWorkbook([
+      ["A-1", "自动计价行", "是", "1", "", "", "", "row-1"]
+    ]);
+    const tx = {
+      settlementImport: { create: jest.fn() },
+      settlement: { create: jest.fn() },
+      settlementLine: { createMany: jest.fn() }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const files = {
+      getFileBuffer: jest.fn().mockResolvedValue({
+        file: {
+          originalName: "本期结算.xlsx",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          sizeBytes: buffer.length,
+          uploadedByUserId: "user-1",
+          storageStatus: "active"
+        },
+        buffer
+      })
+    };
+    const templates = {
+      assertPublishedCompatible: jest
+        .fn()
+        .mockRejectedValue(new Error("所选结算模板未发布、已停用或与当前合同不兼容"))
+    };
+    const service = new SettlementImportService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      files as never,
+      { sourceLines: jest.fn().mockResolvedValue(sourceSnapshot) } as never,
+      {
+        previewLines: jest.fn().mockResolvedValue({
+          amountCents: "10000",
+          lines: [{ contractBillRowId: "row-1", amountCents: "10000" }]
+        })
+      } as never,
+      templates as never
+    );
+
+    await expect(
+      service.previewImport("version-1", "user-1", {
+        fileId: "file-1",
+        settlementTemplateVersionId: "incompatible-template-version"
+      })
+    ).rejects.toThrow("所选结算模板未发布、已停用或与当前合同不兼容");
+    expect(tx.settlementImport.create).not.toHaveBeenCalled();
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.settlementLine.createMany).not.toHaveBeenCalled();
   });
 
   it("reports a tampered visible source key instead of trusting the hidden row id", async () => {
