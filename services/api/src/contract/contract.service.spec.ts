@@ -16,6 +16,43 @@ describe("ContractService", () => {
     auth.confirmPassword.mockResolvedValue({ ok: true });
   });
 
+  function installDraftLocks<T extends Record<string, unknown>>(
+    tx: T
+  ): T & { $queryRaw: jest.Mock } {
+    const delegates = tx as T & {
+      contractBusinessTemplateVersion?: { findUnique: jest.Mock };
+      contractBusinessTemplate?: { findUnique: jest.Mock };
+      contractBusinessScenario?: { findUnique: jest.Mock };
+      contractScenarioTemplateMapping?: { findUnique: jest.Mock };
+      $queryRaw?: jest.Mock;
+    };
+    delegates.$queryRaw = jest.fn(async (query: { strings?: string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes('FROM "Project"')) return [{ id: "project-1", isActive: true }];
+      if (sql.includes('FROM "ContractBusinessTemplate"')) {
+        const template = await delegates.contractBusinessTemplate?.findUnique({});
+        if (template === undefined) {
+          return [{ id: "template-1", contractTypeKey: "material_purchase" }];
+        }
+        return template ? [template] : [];
+      }
+      if (sql.includes('FROM "ContractBusinessTemplateVersion"')) {
+        const version = await delegates.contractBusinessTemplateVersion?.findUnique({});
+        return version ? [version] : [];
+      }
+      if (sql.includes('FROM "ContractBusinessScenario"')) {
+        const scenario = await delegates.contractBusinessScenario?.findUnique({});
+        return scenario ? [scenario] : [];
+      }
+      if (sql.includes('FROM "ContractScenarioTemplateMapping"')) {
+        const mapping = await delegates.contractScenarioTemplateMapping?.findUnique({});
+        return mapping ? [mapping] : [];
+      }
+      return [];
+    });
+    return delegates as T & { $queryRaw: jest.Mock };
+  }
+
   it("rejects an invalid fixed payment amount as HTTP 400 before opening a transaction", async () => {
     const prisma = { $transaction: jest.fn() };
     const service = new ContractService(prisma as never, audit as never);
@@ -188,9 +225,10 @@ describe("ContractService", () => {
         create: jest.fn()
       }
     };
+    const lockedTx = installDraftLocks(tx);
     const prisma = {
-      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+      $transaction: jest.fn(async (callback: (transaction: typeof lockedTx) => unknown) =>
+        callback(lockedTx)
       )
     } as unknown as PrismaService;
     const service = new ContractService(prisma, audit as never);
@@ -253,6 +291,210 @@ describe("ContractService", () => {
     expect(result.version.status).toBe("draft");
   });
 
+  it("requires scenario and exact mapping identifiers to appear as a pair before transaction", async () => {
+    const prisma = { $transaction: jest.fn() };
+    const service = new ContractService(prisma as never, audit as never);
+
+    await expect(
+      service.createDraft(
+        {
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          businessTemplateVersionId: "template-version-1",
+          businessScenarioId: "scenario-1"
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("业务场景与场景模板映射必须同时选择或同时留空");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("blocks direct-template draft creation when the project is missing or inactive", async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1", isActive: false }]),
+      contractBusinessTemplateVersion: { findUnique: jest.fn() },
+      contract: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.createDraft(
+        {
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          businessTemplateVersionId: "template-version-1"
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("项目不存在或已停用");
+    expect(tx.contractBusinessTemplateVersion.findUnique).not.toHaveBeenCalled();
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
+
+  it("rechecks an active exact mapping and freezes its configured scenario snapshot", async () => {
+    const tx = {
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-version-1",
+          templateId: "template-1",
+          status: "published",
+          fieldSchema: [],
+          billSchema: [],
+          clauseSchema: [],
+          attachmentSchema: [],
+          validationSchema: []
+        })
+      },
+      contractBusinessTemplate: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-1",
+          contractTypeKey: "material_purchase"
+        })
+      },
+      contractBusinessScenario: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "scenario-1",
+          code: "materials",
+          name: "材料采购",
+          description: "采购主材",
+          active: true,
+          revision: 4
+        })
+      },
+      contractScenarioTemplateMapping: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "mapping-1",
+          businessScenarioId: "scenario-1",
+          contractTypeKey: "material_purchase",
+          businessTemplateVersionId: "template-version-1",
+          reason: "用于材料采购合同",
+          active: true,
+          revision: 6
+        })
+      },
+      contract: {
+        create: jest.fn().mockImplementation(({ data }) => ({ id: "contract-1", ...data }))
+      },
+      contractVersion: {
+        create: jest.fn().mockResolvedValue({ id: "version-1", status: "draft", amountCents: 0n })
+      },
+      contractBill: { createMany: jest.fn() },
+      paymentTermsVersion: {
+        create: jest.fn().mockResolvedValue({ id: "terms-1", status: "draft" })
+      },
+      paymentTermsStage: { createMany: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const scenarioTx = installDraftLocks(tx);
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof scenarioTx) => unknown) =>
+        callback(scenarioTx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await service.createDraft(
+      {
+        projectId: "project-1",
+        contractTypeKey: "material_purchase",
+        businessTemplateVersionId: "template-version-1",
+        businessScenarioId: "scenario-1",
+        scenarioTemplateMappingId: "mapping-1"
+      },
+      "contract-user"
+    );
+
+    expect(tx.contract.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        businessScenarioId: "scenario-1",
+        scenarioTemplateMappingId: "mapping-1",
+        scenarioSnapshot: {
+          scenario: {
+            id: "scenario-1",
+            code: "materials",
+            name: "材料采购",
+            description: "采购主材",
+            revision: 4
+          },
+          mapping: {
+            id: "mapping-1",
+            revision: 6,
+            reason: "用于材料采购合同",
+            contractTypeKey: "material_purchase",
+            businessTemplateVersionId: "template-version-1"
+          }
+        }
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          businessScenarioId: "scenario-1",
+          scenarioTemplateMappingId: "mapping-1"
+        })
+      })
+    );
+    expect(scenarioTx.$queryRaw).toHaveBeenCalledTimes(5);
+    expect(scenarioTx.$queryRaw.mock.invocationCallOrder[4]).toBeLessThan(
+      tx.contract.create.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("does not create a contract when scenario mapping is inactive or not exact", async () => {
+    const tx = {
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-version-1",
+          templateId: "template-1",
+          status: "published"
+        })
+      },
+      contractBusinessTemplate: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-1",
+          contractTypeKey: "material_purchase"
+        })
+      },
+      contractBusinessScenario: {
+        findUnique: jest.fn().mockResolvedValue({ id: "scenario-1", active: true })
+      },
+      contractScenarioTemplateMapping: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "mapping-1",
+          active: true,
+          businessScenarioId: "scenario-1",
+          contractTypeKey: "equipment_rental",
+          businessTemplateVersionId: "template-version-1"
+        })
+      },
+      contract: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(installDraftLocks(tx))
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never);
+
+    await expect(
+      service.createDraft(
+        {
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          businessTemplateVersionId: "template-version-1",
+          businessScenarioId: "scenario-1",
+          scenarioTemplateMappingId: "mapping-1"
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("不是同一精确映射");
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
+
   it("rejects draft creation when selected template type does not match input type", async () => {
     const tx = {
       contractBusinessTemplateVersion: {
@@ -282,7 +524,7 @@ describe("ContractService", () => {
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-        callback(tx)
+        callback(installDraftLocks(tx))
       )
     } as unknown as PrismaService;
     const service = new ContractService(prisma, audit as never);
@@ -336,7 +578,7 @@ describe("ContractService", () => {
       };
       const prisma = {
         $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
-          callback(tx)
+          callback(installDraftLocks(tx))
         )
       } as unknown as PrismaService;
       const service = new ContractService(prisma, audit as never);

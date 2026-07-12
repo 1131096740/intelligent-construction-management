@@ -155,6 +155,22 @@ export class CreateContractDraftDto {
   businessTemplateVersionId!: string;
 
   @ValidateIf((_object, value) => value !== undefined)
+  @IsRequiredText({
+    requiredMessage: "业务场景编号不能为空",
+    typeMessage: "业务场景编号必须是文字",
+    blankMessage: "业务场景编号不能为空白"
+  })
+  businessScenarioId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsRequiredText({
+    requiredMessage: "场景模板映射编号不能为空",
+    typeMessage: "场景模板映射编号必须是文字",
+    blankMessage: "场景模板映射编号不能为空白"
+  })
+  scenarioTemplateMappingId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "付款条款原文必须是文字" })
   paymentTermsOriginalText?: string;
 

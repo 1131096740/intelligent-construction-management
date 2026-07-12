@@ -9,6 +9,7 @@ import type {
   PublishTemplateVersionDto,
   UpdateBusinessTemplateVersionDto
 } from "./dto/contract-template.dto";
+import { lockBusinessTemplateVersion } from "./contract-template-locks";
 
 type Delegate = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -121,7 +122,7 @@ export class ContractTemplateService {
     };
   }
 
-  private usagePreview(v: {
+  publishedUsagePreview(v: {
     fieldSchema: unknown;
     billSchema: unknown;
     clauseSchema: unknown;
@@ -308,7 +309,7 @@ export class ContractTemplateService {
             status: "published",
             versionId: version.id,
             versionNo: version.versionNo,
-            usagePreview: this.usagePreview(version)
+            usagePreview: this.publishedUsagePreview(version)
           };
         });
       },
@@ -538,15 +539,23 @@ export class ContractTemplateService {
   }
 
   async stopVersion(versionId: string, actorUserId: string) {
-    return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
+    return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx as never, actorUserId, "contract_director");
 
-      const version = await tx.contractBusinessTemplateVersion.findUnique({
-        where: { id: versionId }
-      });
-      if (!version) throw new NotFoundException("未找到业务模板版本，请刷新后重试");
+      const lockedTemplate = await lockBusinessTemplateVersion(tx, versionId);
+      const version = lockedTemplate?.version;
+      if (!version || !lockedTemplate.template) {
+        throw new NotFoundException("未找到业务模板版本，请刷新后重试");
+      }
       if (version.status !== "published") {
         throw new BadRequestException("只有已发布的业务模板版本可以停用");
+      }
+      const activeMapping = await tx.contractScenarioTemplateMapping.findFirst({
+        where: { businessTemplateVersionId: version.id, active: true },
+        select: { id: true }
+      });
+      if (activeMapping) {
+        throw new BadRequestException("该模板版本仍有启用的业务场景映射，请先停用映射");
       }
 
       const updated = await tx.contractBusinessTemplateVersion.update({

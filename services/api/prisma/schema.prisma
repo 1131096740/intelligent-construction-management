@@ -92,21 +92,27 @@ model ProjectMember {
 }
 
 model Contract {
-  id                String    @id @default(uuid())
-  projectId         String
-  source            String    @default("system")
-  code              String?   @unique
-  name              String
-  counterparty      String
-  companyEntityId   String?
-  companyEntityName String?
-  contractTypeKey   String?
-  ownerUserId       String?
-  temporaryCode     String?   @unique
-  voidedAt          DateTime?
-  voidedReason      String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                        String    @id @default(uuid())
+  projectId                 String
+  source                    String    @default("system")
+  code                      String?   @unique
+  name                      String
+  counterparty              String
+  companyEntityId           String?
+  companyEntityName         String?
+  contractTypeKey           String?
+  ownerUserId               String?
+  businessScenarioId        String?
+  scenarioTemplateMappingId String?
+  scenarioSnapshot          Json?
+  temporaryCode             String?   @unique
+  voidedAt                  DateTime?
+  voidedReason              String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([businessScenarioId])
+  @@index([scenarioTemplateMappingId])
 }
 
 model ContractVersion {
@@ -849,6 +855,37 @@ model ContractBusinessTemplateVersion {
   updatedAt         DateTime  @updatedAt
 
   @@unique([templateId, versionNo])
+}
+
+model ContractBusinessScenario {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  name            String
+  description     String?
+  active          Boolean  @default(true)
+  revision        Int      @default(1)
+  createdByUserId String
+  updatedByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ContractScenarioTemplateMapping {
+  id                        String   @id @default(uuid())
+  businessScenarioId        String
+  contractTypeKey           String
+  businessTemplateVersionId String
+  reason                    String
+  priority                  Int      @default(0)
+  active                    Boolean  @default(true)
+  revision                  Int      @default(1)
+  createdByUserId           String
+  updatedByUserId           String
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@unique([businessScenarioId, businessTemplateVersionId])
+  @@index([businessScenarioId, contractTypeKey, active])
 }
 
 model StandardClause {

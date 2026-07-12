@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { ContractTemplateController } from "./contract-template.controller";
 
@@ -15,7 +16,11 @@ const templateBodyRoutes = [
   ["updateDraftVersion", 1],
   ["publishVersion", 1],
   ["createClause", 0],
-  ["publishClauseVersion", 1]
+  ["publishClauseVersion", 1],
+  ["createBusinessScenario", 0],
+  ["updateBusinessScenario", 1],
+  ["createScenarioTemplateMapping", 1],
+  ["updateScenarioTemplateMapping", 1]
 ] as const;
 
 const validSchema = {
@@ -110,7 +115,24 @@ const validTemplateBodies = [
       content: { text: "归档后付款", variables: { days: 30 } }
     }
   ],
-  ["publishClauseVersion", 1, { changeSummary: "发布标准条款" }]
+  ["publishClauseVersion", 1, { changeSummary: "发布标准条款" }],
+  [
+    "createBusinessScenario",
+    0,
+    { code: "materials", name: "材料采购", description: "材料采购合同场景" }
+  ],
+  ["updateBusinessScenario", 1, { expectedRevision: 1, active: false }],
+  [
+    "createScenarioTemplateMapping",
+    1,
+    {
+      expectedScenarioRevision: 1,
+      businessTemplateVersionId: "template-version-1",
+      reason: "用于材料采购合同",
+      priority: 10
+    }
+  ],
+  ["updateScenarioTemplateMapping", 1, { expectedRevision: 1, active: false }]
 ] as const;
 
 function templateBodyMetatype(method: string, bodyIndex: number) {
@@ -172,13 +194,18 @@ describe("ContractTemplateController authorization wiring", () => {
     "revokeVersion",
     "createClause",
     "submitClauseVersion",
-    "publishClauseVersion"
+    "publishClauseVersion",
+    "listScenarioGovernance",
+    "createBusinessScenario",
+    "updateBusinessScenario",
+    "createScenarioTemplateMapping",
+    "updateScenarioTemplateMapping"
   ];
 
   it("delegates layout detail with the authenticated actor", async () => {
     const detail = { template: { id: "layout-template-1" }, versions: [] };
     const layouts = { getLayoutTemplate: jest.fn().mockResolvedValue(detail) };
-    const controller = new ContractTemplateController({} as never, layouts as never);
+    const controller = new ContractTemplateController({} as never, layouts as never, {} as never);
 
     await expect(
       controller.getLayoutTemplate("layout-template-1", { id: "staff-1" } as never)
@@ -189,7 +216,7 @@ describe("ContractTemplateController authorization wiring", () => {
   it("delegates the existing template detail route to the read model service", async () => {
     const detail = { template: { id: "template-1" }, versions: [{ id: "version-1" }] };
     const templates = { getTemplate: jest.fn().mockResolvedValue(detail) };
-    const controller = new ContractTemplateController(templates as never, {} as never);
+    const controller = new ContractTemplateController(templates as never, {} as never, {} as never);
 
     await expect(controller.getTemplate("template-1")).resolves.toBe(detail);
     expect(templates.getTemplate).toHaveBeenCalledWith("template-1");
@@ -336,4 +363,12 @@ describe("ContractTemplateController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ContractTemplateController.prototype.listPublishedLayouts)).toBeUndefined();
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ContractTemplateController.prototype.listPublishedClauses)).toBeUndefined();
   });
+
+  it.each(["listAvailableScenarios", "recommendScenarioTemplates"])(
+    "guards ordinary scenario read %s with project contract.create",
+    (method) => {
+      const handler = (ContractTemplateController.prototype as unknown as Record<string, object>)[method];
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe("contract.create");
+    }
+  );
 });

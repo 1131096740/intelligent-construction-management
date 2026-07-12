@@ -306,6 +306,16 @@ describe("ContractTemplateService", () => {
         }),
         update: jest.fn().mockResolvedValue({ id: "version-1", status: "stopped" })
       },
+      contractScenarioTemplateMapping: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "template-1" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          templateId: "template-1",
+          status: "published"
+        }]),
       auditLog: { create: jest.fn() }
     };
     const prisma = {
@@ -322,6 +332,12 @@ describe("ContractTemplateService", () => {
       where: { id: "version-1" },
       data: expect.objectContaining({ status: "stopped" })
     });
+    expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
+      tx.contractScenarioTemplateMapping.findFirst.mock.invocationCallOrder[0]
+    );
+    expect(tx.contractScenarioTemplateMapping.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.contractBusinessTemplateVersion.update.mock.invocationCallOrder[0]
+    );
     // Should NOT touch any contract rows
     expect(Object.keys(tx)).not.toContain("contract");
     expect(audit.record).toHaveBeenCalledWith(
@@ -333,6 +349,36 @@ describe("ContractTemplateService", () => {
         businessId: "version-1"
       })
     );
+  });
+
+  it("refuses to stop a template version while an active scenario mapping references it", async () => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({ templateId: "template-1" }),
+        update: jest.fn()
+      },
+      contractScenarioTemplateMapping: {
+        findFirst: jest.fn().mockResolvedValue({ id: "mapping-1" })
+      },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "template-1" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          templateId: "template-1",
+          status: "published"
+        }])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    await expect(service.stopVersion("version-1", "contract-director-1")).rejects.toThrow(
+      "请先停用映射"
+    );
+    expect(tx.contractBusinessTemplateVersion.update).not.toHaveBeenCalled();
   });
 
   it("revokes a version so new drafts cannot use it", async () => {
@@ -607,6 +653,16 @@ describe("ContractTemplateService", () => {
         }),
         update: jest.fn()
       },
+      contractScenarioTemplateMapping: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "template-1" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          templateId: "template-1",
+          status
+        }]),
       auditLog: { create: jest.fn() }
     });
 

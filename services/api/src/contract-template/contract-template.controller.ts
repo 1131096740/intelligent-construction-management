@@ -9,8 +9,16 @@ import {
 } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractTemplateService } from "./contract-template.service";
+import { ContractScenarioService } from "./contract-scenario.service";
+import {
+  CreateContractBusinessScenarioDto,
+  CreateContractScenarioTemplateMappingDto,
+  UpdateContractBusinessScenarioDto,
+  UpdateContractScenarioTemplateMappingDto
+} from "./dto/contract-scenario.dto";
 import {
   CreateBusinessTemplateDto,
   CreateStandardClauseDto,
@@ -31,8 +39,74 @@ const TEMPLATE_GOVERNANCE_POSITIONS = ["contract_director", "super_admin"] as co
 export class ContractTemplateController {
   constructor(
     private readonly templates: ContractTemplateService,
-    private readonly layouts: LayoutTemplateService
+    private readonly layouts: LayoutTemplateService,
+    private readonly scenarios: ContractScenarioService
   ) {}
+
+  @Get("contract-business-scenarios/available")
+  @RequireProjectRole("contract.create")
+  listAvailableScenarios(
+    @Query("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.scenarios.listAvailable(projectId, user.id);
+  }
+
+  @Get("contract-business-scenarios/recommendations")
+  @RequireProjectRole("contract.create")
+  recommendScenarioTemplates(
+    @Query("projectId") projectId: string,
+    @Query("scenarioId") scenarioId: string,
+    @Query("contractTypeKey") contractTypeKey: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.scenarios.recommend(projectId, user.id, scenarioId, contractTypeKey);
+  }
+
+  @Get("contract-business-scenarios")
+  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  listScenarioGovernance(@CurrentUser() user: AuthenticatedUser) {
+    return this.scenarios.listGovernance(user.id);
+  }
+
+  @Post("contract-business-scenarios")
+  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  createBusinessScenario(
+    @Body() body: CreateContractBusinessScenarioDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.scenarios.createScenario(user.id, body);
+  }
+
+  @Patch("contract-business-scenarios/:scenarioId")
+  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  updateBusinessScenario(
+    @Param("scenarioId") scenarioId: string,
+    @Body() body: UpdateContractBusinessScenarioDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.scenarios.updateScenario(scenarioId, user.id, body);
+  }
+
+  @Post("contract-business-scenarios/:scenarioId/template-mappings")
+  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  createScenarioTemplateMapping(
+    @Param("scenarioId") scenarioId: string,
+    @Body() body: CreateContractScenarioTemplateMappingDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.scenarios.createMapping(scenarioId, user.id, body);
+  }
+
+  @Patch("contract-scenario-template-mappings/:mappingId")
+  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  updateScenarioTemplateMapping(
+    @Param("mappingId") mappingId: string,
+    @Body() body: UpdateContractScenarioTemplateMappingDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.scenarios.updateMapping(mappingId, user.id, body);
+  }
 
   @Get("contract-layout-templates")
   listPublishedLayouts(@Query("contractTypeKey") contractTypeKey?: string) {

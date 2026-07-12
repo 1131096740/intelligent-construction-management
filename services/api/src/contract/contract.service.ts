@@ -8,6 +8,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
 import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
+import { lockBusinessTemplateVersion } from "../contract-template/contract-template-locks";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import {
@@ -98,11 +99,23 @@ export class ContractService {
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
     const normalizedPaymentStages = this.normalizePaymentStages(input.paymentStages);
+    if (Boolean(input.businessScenarioId) !== Boolean(input.scenarioTemplateMappingId)) {
+      throw new BadRequestException("业务场景与场景模板映射必须同时选择或同时留空");
+    }
     return this.prisma.$transaction(async (tx) => {
-      // 校验模板版本：必须已发布才能用于新建草稿。
-      const templateVersion = await tx.contractBusinessTemplateVersion.findUnique({
-        where: { id: input.businessTemplateVersionId }
-      });
+      const [project] = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
+        SELECT "id", "isActive" FROM "Project"
+        WHERE "id" = ${input.projectId}
+        FOR UPDATE
+      `);
+      if (!project?.isActive) {
+        throw new BadRequestException("项目不存在或已停用，不能新建合同草稿");
+      }
+      const lockedTemplate = await lockBusinessTemplateVersion(
+        tx,
+        input.businessTemplateVersionId
+      );
+      const templateVersion = lockedTemplate?.version;
 
       if (!templateVersion) {
         throw new Error("未找到所选合同模板，请重新选择后再新建合同");
@@ -111,14 +124,56 @@ export class ContractService {
       if (templateVersion.status !== "published") {
         throw new Error("所选合同模板尚未发布，不能用于新建合同");
       }
-      const template = await tx.contractBusinessTemplate.findUnique({
-        where: { id: templateVersion.templateId }
-      });
+      const template = lockedTemplate.template;
       if (!template) {
         throw new Error("未找到合同模板主信息，请重新选择模板后重试");
       }
       if (template.contractTypeKey !== input.contractTypeKey) {
         throw new BadRequestException("所选模板与合同类型不一致，请重新选择匹配的模板");
+      }
+
+      let scenarioSnapshot: Prisma.InputJsonValue | undefined;
+      if (input.businessScenarioId && input.scenarioTemplateMappingId) {
+        const [scenario] = await tx.$queryRaw<
+          Array<NonNullable<Awaited<ReturnType<typeof tx.contractBusinessScenario.findUnique>>>>
+        >(Prisma.sql`
+          SELECT * FROM "ContractBusinessScenario"
+          WHERE "id" = ${input.businessScenarioId}
+          FOR UPDATE
+        `);
+        const [mapping] = await tx.$queryRaw<
+          Array<NonNullable<Awaited<ReturnType<typeof tx.contractScenarioTemplateMapping.findUnique>>>>
+        >(Prisma.sql`
+          SELECT * FROM "ContractScenarioTemplateMapping"
+          WHERE "id" = ${input.scenarioTemplateMappingId}
+          FOR UPDATE
+        `);
+        if (!scenario?.active || !mapping?.active) {
+          throw new BadRequestException("所选业务场景或模板映射已停用，请重新选择");
+        }
+        if (
+          mapping.businessScenarioId !== scenario.id ||
+          mapping.contractTypeKey !== input.contractTypeKey ||
+          mapping.businessTemplateVersionId !== templateVersion.id
+        ) {
+          throw new BadRequestException("所选业务场景、合同类型与模板版本不是同一精确映射");
+        }
+        scenarioSnapshot = {
+          scenario: {
+            id: scenario.id,
+            code: scenario.code,
+            name: scenario.name,
+            description: scenario.description,
+            revision: scenario.revision
+          },
+          mapping: {
+            id: mapping.id,
+            revision: mapping.revision,
+            reason: mapping.reason,
+            contractTypeKey: mapping.contractTypeKey,
+            businessTemplateVersionId: mapping.businessTemplateVersionId
+          }
+        } as Prisma.InputJsonValue;
       }
 
       // 模板快照：将模板五类 schema 整体冻结到合同版本中。
@@ -151,6 +206,9 @@ export class ContractService {
           projectId: input.projectId,
           contractTypeKey: input.contractTypeKey,
           ownerUserId: actorUserId,
+          businessScenarioId: input.businessScenarioId ?? null,
+          scenarioTemplateMappingId: input.scenarioTemplateMappingId ?? null,
+          scenarioSnapshot,
           name: "",
           counterparty: "",
           code: null,
@@ -225,7 +283,9 @@ export class ContractService {
           temporaryCode,
           projectId: input.projectId,
           contractTypeKey: input.contractTypeKey,
-          businessTemplateVersionId: input.businessTemplateVersionId
+          businessTemplateVersionId: input.businessTemplateVersionId,
+          businessScenarioId: input.businessScenarioId ?? null,
+          scenarioTemplateMappingId: input.scenarioTemplateMappingId ?? null
         }
       });
 
