@@ -310,6 +310,23 @@ export interface OrganizationUserMutationResult {
   isActive: boolean;
 }
 
+export interface CreateOrganizationUserPayload {
+  name: string;
+  phone: string;
+  departmentId: string;
+  temporaryPassword: string;
+  confirmationPassword: string;
+}
+
+export interface CreateOrganizationUserResult {
+  id: string;
+  name: string;
+  phone: string;
+  departmentId: string;
+  isActive: true;
+  mustChangePassword: true;
+}
+
 export class OrganizationApiError extends Error {
   constructor(
     message: string,
@@ -526,6 +543,16 @@ export function createOrganizationDepartment(payload: CreateOrganizationDepartme
     ...(payload.parentId !== undefined ? { parentId: payload.parentId } : {}),
     confirmationPassword: payload.confirmationPassword
   });
+}
+
+export function createOrganizationUser(payload: CreateOrganizationUserPayload) {
+  return sendJson<CreateOrganizationUserResult>("/organization/users", "POST", {
+    name: payload.name,
+    phone: payload.phone,
+    departmentId: payload.departmentId,
+    temporaryPassword: payload.temporaryPassword,
+    confirmationPassword: payload.confirmationPassword
+  }, "创建人员失败");
 }
 
 export function updateOrganizationDepartment(

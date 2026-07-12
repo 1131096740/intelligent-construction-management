@@ -1,10 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import { ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import type { CreateDepartmentDto } from "./dto/create-department.dto";
+import type { CreateOrganizationUserDto } from "./dto/create-organization-user.dto";
 import type { UpdateDepartmentDto } from "./dto/update-department.dto";
 import type { UpdateOrganizationUserDto } from "./dto/update-organization-user.dto";
 
@@ -146,6 +153,10 @@ function compareText(left: string, right: string) {
   return left.localeCompare(right, "zh-CN");
 }
 
+function maskPhone(phone: string) {
+  return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+}
+
 function findCyclicDepartmentIds(departments: DepartmentRow[]) {
   const departmentsById = new Map(departments.map((department) => [department.id, department]));
   const cyclicIds = new Set<string>();
@@ -214,6 +225,77 @@ export class OrganizationService {
     private readonly auth?: AuthService,
     private readonly audit: AuditService = new AuditService()
   ) {}
+
+  async createUser(actorUserId: string, input: CreateOrganizationUserDto) {
+    const name = requiredTrimmed(input.name, "请填写人员姓名");
+    const phone = requiredTrimmed(input.phone, "请填写手机号");
+    if (!/^1[3-9]\d{9}$/u.test(phone)) {
+      throw new BadRequestException("手机号格式不正确");
+    }
+    const departmentId = requiredTrimmed(input.departmentId, "请选择部门");
+    await this.confirmPassword(actorUserId, input.confirmationPassword);
+    if (!this.auth) {
+      throw new Error("组织写入缺少认证服务");
+    }
+    const passwordHash = await this.auth.hashPassword(input.temporaryPassword);
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await this.assertActiveGlobalSuperAdmin(tx, actorUserId);
+          const department = await tx.department.findUnique({
+            where: { id: departmentId },
+            select: { id: true, isActive: true }
+          });
+          assertActiveDepartment(department, "部门");
+
+          const user = await tx.user.create({
+            data: {
+              name,
+              phone,
+              departmentId,
+              passwordHash,
+              isActive: true,
+              mustChangePassword: true
+            },
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              departmentId: true,
+              isActive: true,
+              mustChangePassword: true
+            }
+          });
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "permission.user.create",
+            businessType: "user",
+            businessId: user.id,
+            metadata: {
+              name: user.name,
+              maskedPhone: maskPhone(phone),
+              departmentId: user.departmentId,
+              isActive: user.isActive,
+              mustChangePassword: user.mustChangePassword,
+              initialRoleCount: 0
+            }
+          });
+          return user;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (error) {
+      const code = prismaErrorCode(error);
+      if (code === "P2002") {
+        throw new ConflictException("该手机号已存在，请核对后重试");
+      }
+      if (code === "P2034") {
+        throw new ConflictException("组织数据已变化，请刷新后重试");
+      }
+      throw error;
+    }
+  }
 
   async createDepartment(actorUserId: string, input: CreateDepartmentDto) {
     const name = requiredTrimmed(input.name, "请填写部门名称");
@@ -457,6 +539,33 @@ export class OrganizationService {
       throw new Error("组织写入缺少认证服务");
     }
     return this.auth.confirmPassword(actorUserId, password);
+  }
+
+  private async assertActiveGlobalSuperAdmin(
+    tx: Prisma.TransactionClient,
+    actorUserId: string
+  ) {
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) {
+      throw new ForbiddenException("当前账号已停用，不能创建人员");
+    }
+    const position = await tx.position.findUnique({
+      where: { key: "super_admin" },
+      select: { id: true }
+    });
+    if (!position) {
+      throw new ForbiddenException("当前账号已不具备全局超级管理员权限");
+    }
+    const assignment = await tx.userPosition.findFirst({
+      where: { userId: actorUserId, positionId: position.id, projectId: null },
+      select: { id: true }
+    });
+    if (!assignment) {
+      throw new ForbiddenException("当前账号已不具备全局超级管理员权限");
+    }
   }
 
   getPermissionIntegrity(): Promise<PermissionIntegrityReadModel> {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyOrganizationRoleAddition,
   applyOrganizationRoleRemoval,
+  createOrganizationUser,
   createOrganizationDepartment,
   fetchOrganizationDirectory,
   fetchPermissionIntegrity,
@@ -419,6 +420,44 @@ describe("organization API client", () => {
         confirmationPassword: "  current password  "
       })
     });
+  });
+
+  it("creates a user with only the five allowed fields and never adds roles", async () => {
+    mockApiFetch.mockReturnValue(
+      jsonResponse({
+        id: "user-new",
+        name: "张三",
+        phone: "13800000001",
+        departmentId: "department-1",
+        isActive: true,
+        mustChangePassword: true
+      })
+    );
+
+    await createOrganizationUser({
+      name: "张三",
+      phone: "13800000001",
+      departmentId: "department-1",
+      temporaryPassword: " temporary-password ",
+      confirmationPassword: " current-password ",
+      roleKeys: ["super_admin"],
+      isActive: false,
+      mustChangePassword: false
+    } as never);
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/organization/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "张三",
+        phone: "13800000001",
+        departmentId: "department-1",
+        temporaryPassword: " temporary-password ",
+        confirmationPassword: " current-password "
+      })
+    });
+    expect(JSON.stringify(mockApiFetch.mock.calls[0]?.[1])).not.toContain("roleKeys");
+    expect(JSON.stringify(mockApiFetch.mock.calls[0]?.[1])).not.toContain("mustChangePassword");
   });
 
   it("updates a department through an encoded path and sends the minimal patch", async () => {

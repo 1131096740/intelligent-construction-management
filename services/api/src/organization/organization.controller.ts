@@ -3,6 +3,7 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { CreateDepartmentDto } from "./dto/create-department.dto";
+import { CreateOrganizationUserDto } from "./dto/create-organization-user.dto";
 import { ApplyRoleRemovalDto } from "./dto/apply-role-removal.dto";
 import { ApplyRoleAdditionDto } from "./dto/apply-role-addition.dto";
 import { PreviewRoleAdditionDto } from "./dto/preview-role-addition.dto";
@@ -31,6 +32,14 @@ export class OrganizationController {
   @Get("permission-integrity")
   permissionIntegrity() {
     return this.organization.getPermissionIntegrity();
+  }
+
+  @Post("users")
+  createUser(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() body: CreateOrganizationUserDto
+  ) {
+    return this.organization.createUser(actor.id, body);
   }
 
   @Post("role-changes/preview")

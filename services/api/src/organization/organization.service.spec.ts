@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { DepartmentTreeNode } from "./organization.service";
 import { OrganizationService } from "./organization.service";
@@ -65,6 +65,8 @@ function createWriteHarness(options?: {
   superAdminPosition?: Record<string, unknown> | null;
   globalSuperAdminAssignments?: Array<{ userId: string }>;
   activeGlobalSuperAdmins?: number;
+  actor?: Record<string, unknown> | null;
+  actorGlobalAdminAssignment?: Record<string, unknown> | null;
 }) {
   const settings = options ?? {};
   const department = Object.prototype.hasOwnProperty.call(settings, "department")
@@ -92,7 +94,17 @@ function createWriteHarness(options?: {
       )
     },
     user: {
-      findUnique: jest.fn().mockResolvedValue(user),
+      findUnique: jest
+        .fn()
+        .mockImplementation(({ where }: { where: { id: string } }) =>
+          Promise.resolve(
+            where.id === "actor-1"
+              ? (Object.prototype.hasOwnProperty.call(settings, "actor")
+                  ? options?.actor
+                  : { id: "actor-1", isActive: true })
+              : user
+          )
+        ),
       count: jest
         .fn()
         .mockImplementation(({ where }: { where: Record<string, unknown> }) =>
@@ -104,6 +116,16 @@ function createWriteHarness(options?: {
         ),
       update: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
         Promise.resolve({ ...user, ...data })
+      ),
+      create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve({
+          id: "user-new",
+          name: data.name,
+          phone: data.phone,
+          departmentId: data.departmentId,
+          isActive: data.isActive,
+          mustChangePassword: data.mustChangePassword
+        })
       )
     },
     position: {
@@ -112,6 +134,11 @@ function createWriteHarness(options?: {
         .mockResolvedValue(options?.superAdminPosition ?? { id: "position-super-admin" })
     },
     userPosition: {
+      findFirst: jest.fn().mockResolvedValue(
+        Object.prototype.hasOwnProperty.call(settings, "actorGlobalAdminAssignment")
+          ? options?.actorGlobalAdminAssignment
+          : { id: "actor-global-admin" }
+      ),
       findMany: jest
         .fn()
         .mockResolvedValue(options?.globalSuperAdminAssignments ?? [
@@ -119,6 +146,7 @@ function createWriteHarness(options?: {
           { userId: "user-other-admin" }
         ])
     },
+    projectMember: { create: jest.fn() },
     refreshToken: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
     auditLog: { create: jest.fn() }
   };
@@ -128,7 +156,10 @@ function createWriteHarness(options?: {
       return callback(tx);
     })
   };
-  const auth = { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) };
+  const auth = {
+    confirmPassword: jest.fn().mockResolvedValue({ ok: true }),
+    hashPassword: jest.fn().mockResolvedValue("bcrypt-temporary-hash")
+  };
   const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
   const service = Reflect.construct(OrganizationService, [prisma, auth, audit]) as OrganizationService &
     Record<string, (...args: unknown[]) => Promise<unknown>>;
@@ -844,6 +875,184 @@ describe("OrganizationService permission integrity", () => {
 });
 
 describe("OrganizationService core writes", () => {
+  it("在 Serializable 事务内创建零岗位人员并写脱敏审计", async () => {
+    const harness = createWriteHarness();
+
+    await expect(
+      harness.service.createUser("actor-1", {
+        name: " 张三 ",
+        phone: "13800000001",
+        departmentId: " department-1 ",
+        temporaryPassword: " temporary-password ",
+        confirmationPassword: " current-password "
+      })
+    ).resolves.toEqual({
+      id: "user-new",
+      name: "张三",
+      phone: "13800000001",
+      departmentId: "department-1",
+      isActive: true,
+      mustChangePassword: true
+    });
+
+    expect(harness.auth.confirmPassword).toHaveBeenCalledWith("actor-1", " current-password ");
+    expect(harness.auth.hashPassword).toHaveBeenCalledWith(" temporary-password ");
+    expect(harness.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+    });
+    expect(harness.tx.user.create).toHaveBeenCalledWith({
+      data: {
+        name: "张三",
+        phone: "13800000001",
+        departmentId: "department-1",
+        passwordHash: "bcrypt-temporary-hash",
+        isActive: true,
+        mustChangePassword: true
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        departmentId: true,
+        isActive: true,
+        mustChangePassword: true
+      }
+    });
+    expect(harness.tx.userPosition.findFirst).toHaveBeenCalledWith({
+      where: {
+        userId: "actor-1",
+        positionId: "position-super-admin",
+        projectId: null
+      },
+      select: { id: true }
+    });
+    expect(harness.tx.projectMember.create).not.toHaveBeenCalled();
+    expect(harness.audit.record).toHaveBeenCalledWith(harness.tx, {
+      actorUserId: "actor-1",
+      action: "permission.user.create",
+      businessType: "user",
+      businessId: "user-new",
+      metadata: {
+        name: "张三",
+        maskedPhone: "138****0001",
+        departmentId: "department-1",
+        isActive: true,
+        mustChangePassword: true,
+        initialRoleCount: 0
+      }
+    });
+    expect(JSON.stringify(harness.audit.record.mock.calls)).not.toContain("temporary-password");
+    expect(JSON.stringify(harness.audit.record.mock.calls)).not.toContain("current-password");
+    expect(JSON.stringify(harness.audit.record.mock.calls)).not.toContain("bcrypt-temporary-hash");
+  });
+
+  it("人员创建当前密码失败时不哈希、不启动事务", async () => {
+    const harness = createWriteHarness();
+    harness.auth.confirmPassword.mockRejectedValue(new BadRequestException("当前密码不正确"));
+
+    await expect(
+      harness.service.createUser("actor-1", {
+        name: "张三",
+        phone: "13800000001",
+        departmentId: "department-1",
+        temporaryPassword: "temporary-password",
+        confirmationPassword: "wrong-password"
+      })
+    ).rejects.toThrow("当前密码不正确");
+    expect(harness.auth.hashPassword).not.toHaveBeenCalled();
+    expect(harness.prisma.$transaction).not.toHaveBeenCalled();
+    expect(harness.tx.user.create).not.toHaveBeenCalled();
+    expect(harness.audit.record).not.toHaveBeenCalled();
+  });
+
+  it("人员创建临时密码哈希失败时不启动事务", async () => {
+    const harness = createWriteHarness();
+    harness.auth.hashPassword.mockRejectedValue(new BadRequestException("新密码至少需要 8 个字符"));
+    await expect(
+      harness.service.createUser("actor-1", {
+        name: "张三",
+        phone: "13800000001",
+        departmentId: "department-1",
+        temporaryPassword: "short",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("新密码至少需要 8 个字符");
+    expect(harness.prisma.$transaction).not.toHaveBeenCalled();
+    expect(harness.tx.user.create).not.toHaveBeenCalled();
+    expect(harness.audit.record).not.toHaveBeenCalled();
+  });
+
+  it("人员创建审计失败时不吞异常且用户与审计使用同一事务", async () => {
+    const harness = createWriteHarness();
+    harness.audit.record.mockRejectedValue(new Error("audit unavailable"));
+    await expect(
+      harness.service.createUser("actor-1", {
+        name: "张三",
+        phone: "13800000001",
+        departmentId: "department-1",
+        temporaryPassword: "temporary-password",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("audit unavailable");
+    expect(harness.tx.user.create).toHaveBeenCalledTimes(1);
+    expect(harness.audit.record).toHaveBeenCalledWith(harness.tx, expect.any(Object));
+  });
+
+  it.each([
+    [null, { id: "actor-global-admin" }],
+    [{ id: "actor-1", isActive: false }, { id: "actor-global-admin" }],
+    [{ id: "actor-1", isActive: true }, null]
+  ])("人员创建事务内拒绝失效的全局管理员 %#", async (actor, assignment) => {
+    const harness = createWriteHarness({ actor, actorGlobalAdminAssignment: assignment });
+    await expect(
+      harness.service.createUser("actor-1", {
+        name: "张三",
+        phone: "13800000001",
+        departmentId: "department-1",
+        temporaryPassword: "temporary-password",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(harness.tx.user.create).not.toHaveBeenCalled();
+    expect(harness.audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [null, "部门不存在，请重新选择"],
+    [{ id: "department-1", isActive: false }, "部门已停用，请重新选择"]
+  ])("人员创建拒绝不可用部门", async (department, message) => {
+    const harness = createWriteHarness({ department });
+    await expect(
+      harness.service.createUser("actor-1", {
+        name: "张三",
+        phone: "13800000001",
+        departmentId: "department-1",
+        temporaryPassword: "temporary-password",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow(message);
+    expect(harness.tx.user.create).not.toHaveBeenCalled();
+    expect(harness.audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["P2002", "该手机号已存在，请核对后重试"],
+    ["P2034", "组织数据已变化，请刷新后重试"]
+  ])("人员创建映射并发错误 %s", async (code, message) => {
+    const harness = createWriteHarness();
+    harness.tx.user.create.mockRejectedValue(Object.assign(new Error(code), { code }));
+    await expect(
+      harness.service.createUser("actor-1", {
+        name: "张三",
+        phone: "13800000001",
+        departmentId: "department-1",
+        temporaryPassword: "temporary-password",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow(message);
+    expect(harness.audit.record).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["createDepartment", ["actor-1", { name: "合同部", confirmationPassword: " secret " }]],
     [

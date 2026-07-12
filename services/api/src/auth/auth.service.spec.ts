@@ -451,6 +451,14 @@ describe("AuthService", () => {
     await expect(bcrypt.compare("abcdefgh", passwordHash)).resolves.toBe(false);
   });
 
+  it("reuses the existing password policy when hashing a temporary password", async () => {
+    await expect(service.hashPassword("1234567")).rejects.toThrow("新密码至少需要 8 个字符");
+    await expect(service.hashPassword("        ")).rejects.toThrow("新密码不能全为空白字符");
+    const hash = await service.hashPassword(" temporary-password ");
+    await expect(bcrypt.compare(" temporary-password ", hash)).resolves.toBe(true);
+    await expect(bcrypt.compare("temporary-password", hash)).resolves.toBe(false);
+  });
+
   it("confirms the current password for sensitive actions", async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",

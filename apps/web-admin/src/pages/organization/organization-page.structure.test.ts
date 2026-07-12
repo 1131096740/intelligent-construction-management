@@ -18,6 +18,33 @@ const batchRemovalDrawerSource = readFileSync(
   fileURLToPath(new URL("./components/OrganizationBatchRoleRemovalDrawer.vue", import.meta.url)),
   "utf8"
 );
+const userCreationDrawerSource = readFileSync(
+  fileURLToPath(new URL("./components/OrganizationUserCreationDrawer.vue", import.meta.url)),
+  "utf8"
+);
+
+describe("organization user creation structure", () => {
+  it("uses an independent drawer without role assignment or persisted secrets", () => {
+    expect(pageSource).toContain("OrganizationUserCreationDrawer");
+    expect(pageSource).toContain("新增人员");
+    expect(userCreationDrawerSource).toContain("createOrganizationUser");
+    expect(userCreationDrawerSource).toContain("generateTemporaryPassword");
+    expect(userCreationDrawerSource).toContain("navigator.clipboard.writeText");
+    expect(userCreationDrawerSource).not.toContain("applyOrganizationRoleAddition");
+    expect(userCreationDrawerSource).not.toContain("localStorage");
+    expect(userCreationDrawerSource).not.toContain("sessionStorage");
+    expect(userCreationDrawerSource).not.toContain("Math.random");
+  });
+
+  it("clears secrets on close, failure and success and refreshes only after success", () => {
+    expect(userCreationDrawerSource).toContain("resetSensitiveFields");
+    expect(userCreationDrawerSource).toMatch(/catch[\s\S]{0,300}resetSensitiveFields/u);
+    expect(userCreationDrawerSource).toMatch(/await createOrganizationUser[\s\S]{0,400}resetSensitiveFields/u);
+    expect(pageSource).toContain('@created="handleUserCreated"');
+    expect(pageSource).toMatch(/handleUserCreated[\s\S]*loadDirectory\(\)/u);
+    expect(pageSource).not.toMatch(/handleUserCreated[\s\S]{0,300}loadPermissionIntegrity\(\)/u);
+  });
+});
 
 describe("organization batch role-removal preview structure", () => {
   it("uses a separate read-only TDesign drawer without password or apply paths", () => {
@@ -62,7 +89,7 @@ describe("organization role removal page structure", () => {
       /handleRoleRemovalApplied[\s\S]*Promise\.all\(\[loadDirectory\(\), loadPermissionIntegrity\(\)\]\)/u
     );
     expect(pageSource).toContain(
-      ':disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible"'
+      ':disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"'
     );
     expect(pageSource).toMatch(
       /handleRoleRemovalApplied[\s\S]*refreshing\.value = true[\s\S]*finally[\s\S]*refreshing\.value = false/u

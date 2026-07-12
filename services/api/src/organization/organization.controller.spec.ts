@@ -6,6 +6,7 @@ import { OrganizationController } from "./organization.controller";
 import type { OrganizationDirectoryReadModel } from "./organization.service";
 
 type OrganizationBodyMethod =
+  | "createUser"
   | "createDepartment"
   | "updateDepartment"
   | "updateUser"
@@ -16,6 +17,7 @@ type OrganizationBodyMethod =
   | "applyRoleAddition";
 
 const BODY_INDEX: Record<OrganizationBodyMethod, number> = {
+  createUser: 1,
   createDepartment: 1,
   updateDepartment: 2,
   updateUser: 2,
@@ -124,14 +126,16 @@ describe("OrganizationController", () => {
     expect(controller.permissionIntegrity).toHaveLength(0);
   });
 
-  it("三个写端点使用运行时 DTO class", () => {
+  it("四个写端点使用运行时 DTO class", () => {
+    expect(bodyMetatype("createUser").name).toBe("CreateOrganizationUserDto");
     expect(bodyMetatype("createDepartment").name).toBe("CreateDepartmentDto");
     expect(bodyMetatype("updateDepartment").name).toBe("UpdateDepartmentDto");
     expect(bodyMetatype("updateUser").name).toBe("UpdateOrganizationUserDto");
   });
 
-  it("三个写端点只把登录态 actor id 传给服务", async () => {
+  it("四个写端点只把登录态 actor id 传给服务", async () => {
     const service = {
+      createUser: jest.fn().mockResolvedValue({ id: "user-new" }),
       createDepartment: jest.fn().mockResolvedValue({ id: "department-new" }),
       updateDepartment: jest.fn().mockResolvedValue({ id: "department-1" }),
       updateUser: jest.fn().mockResolvedValue({ id: "user-2" })
@@ -146,14 +150,23 @@ describe("OrganizationController", () => {
         (...args: unknown[]) => Promise<unknown>
       >;
     const actor = { id: "actor-1", name: "管理员", phone: null };
+    const createUserBody = {
+      name: " 张三 ",
+      phone: "13800000001",
+      departmentId: "department-1",
+      temporaryPassword: " temporary-password ",
+      confirmationPassword: " secret "
+    };
     const createBody = { name: " 合同部 ", confirmationPassword: " secret " };
     const departmentBody = { isActive: false, confirmationPassword: " secret " };
     const userBody = { departmentId: null, confirmationPassword: " secret " };
 
+    await controller.createUser(actor, createUserBody);
     await controller.createDepartment(actor, createBody);
     await controller.updateDepartment("department-1", actor, departmentBody);
     await controller.updateUser("user-2", actor, userBody);
 
+    expect(service.createUser).toHaveBeenCalledWith("actor-1", createUserBody);
     expect(service.createDepartment).toHaveBeenCalledWith("actor-1", createBody);
     expect(service.updateDepartment).toHaveBeenCalledWith(
       "department-1",
@@ -161,6 +174,56 @@ describe("OrganizationController", () => {
       departmentBody
     );
     expect(service.updateUser).toHaveBeenCalledWith("user-2", "actor-1", userBody);
+  });
+
+  it("人员创建 DTO 只允许真实开户字段且不回显密码", async () => {
+    const body = {
+      name: "张三",
+      phone: "13800000001",
+      departmentId: "department-1",
+      temporaryPassword: "temporary-password",
+      confirmationPassword: " current-password "
+    };
+    await expect(validateBody("createUser", body)).resolves.toEqual(body);
+
+    const response = await validationResponse("createUser", {
+      ...body,
+      temporaryPassword: "TOP-SECRET-TEMPORARY",
+      confirmationPassword: "TOP-SECRET-CURRENT",
+      isActive: false,
+      mustChangePassword: false,
+      roleKeys: ["super_admin"],
+      passwordHash: "client-hash"
+    });
+    expect(response.errors).toEqual([
+      "isActive 不是允许提交的字段",
+      "mustChangePassword 不是允许提交的字段",
+      "roleKeys 不是允许提交的字段",
+      "passwordHash 不是允许提交的字段"
+    ]);
+    expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
+    expect(JSON.stringify(response)).not.toContain("client-hash");
+  });
+
+  it.each([
+    [{ name: "   " }, "请填写人员姓名"],
+    [{ name: "人".repeat(101) }, "人员姓名不能超过 100 个字符"],
+    [{ phone: "12800000001" }, "手机号格式不正确"],
+    [{ departmentId: "   " }, "部门标识不能为空白"],
+    [{ temporaryPassword: "1234567" }, "临时密码至少需要 8 个字符"],
+    [{ temporaryPassword: "        " }, "临时密码不能全为空白字符"],
+    [{ temporaryPassword: "密".repeat(257) }, "临时密码不能超过 256 个字符"],
+    [{ confirmationPassword: "   " }, "请输入当前登录密码"]
+  ])("人员创建拒绝非法字段 %#", async (override, message) => {
+    const response = await validationResponse("createUser", {
+      name: "张三",
+      phone: "13800000001",
+      departmentId: "department-1",
+      temporaryPassword: "temporary-password",
+      confirmationPassword: "current-password",
+      ...override
+    });
+    expect(response.errors).toContain(message);
   });
 
   it("岗位撤销影响预览使用运行时 DTO 且只把请求体交给独立预览服务", async () => {

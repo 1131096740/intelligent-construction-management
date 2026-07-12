@@ -185,12 +185,7 @@ export class AuthService {
   }
 
   async changePassword(user: AuthenticatedUser, input: ChangePasswordDto) {
-    if (input.newPassword.length < 8) {
-      throw new BadRequestException("新密码至少需要 8 个字符");
-    }
-    if (!/\S/u.test(input.newPassword)) {
-      throw new BadRequestException("新密码不能全为空白字符");
-    }
+    this.assertPasswordPolicy(input.newPassword);
 
     const storedUser = await this.prisma.user.findUnique({
       where: { id: user.id }
@@ -209,7 +204,7 @@ export class AuthService {
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        passwordHash: await bcrypt.hash(input.newPassword, 10),
+        passwordHash: await this.hashPassword(input.newPassword),
         mustChangePassword: false
       }
     });
@@ -239,6 +234,20 @@ export class AuthService {
     }
 
     return { ok: true };
+  }
+
+  async hashPassword(password: string) {
+    this.assertPasswordPolicy(password);
+    return bcrypt.hash(password, 10);
+  }
+
+  private assertPasswordPolicy(password: string) {
+    if (password.length < 8) {
+      throw new BadRequestException("新密码至少需要 8 个字符");
+    }
+    if (!/\S/u.test(password)) {
+      throw new BadRequestException("新密码不能全为空白字符");
+    }
   }
 
   async wxLogin(input: WxLoginDto) {
