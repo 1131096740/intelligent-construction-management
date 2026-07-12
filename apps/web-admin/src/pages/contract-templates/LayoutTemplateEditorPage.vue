@@ -1,77 +1,137 @@
 <template>
   <section class="page">
-    <div class="page-head">
+    <header class="page-head">
       <div>
-        <h1>版式模板编辑器</h1>
-        <p>合同文档版式只做占位符检查、样张预览和版本治理；固定内容需人工确认跨公司风险</p>
+        <h1>版式模板治理</h1>
+        <p>草稿采用修订号并发保护；源文件变化后，旧检查和旧预览自动失效。</p>
       </div>
-      <t-space>
-        <t-button @click="versionAction('submit')">
-          提交
+      <t-space v-if="currentVersion">
+        <t-button
+          v-if="governance.canSubmit"
+          :disabled="!inspectionCurrent"
+          @click="submitCurrent"
+        >
+          提交审核
         </t-button>
         <t-button
+          v-if="governance.canPublish"
           theme="primary"
           :disabled="!canPublish"
-          @click="versionAction('publish')"
+          @click="publishCurrent"
         >
-          发布
-        </t-button>
-        <t-button @click="versionAction('clone')">
-          克隆
+          发布版式
         </t-button>
         <t-button
-          theme="danger"
-          variant="outline"
-          @click="versionAction('stop')"
+          v-if="governance.canClone"
+          theme="primary"
+          @click="cloneCurrent"
         >
-          停用
-        </t-button>
-        <t-button
-          variant="outline"
-          @click="versionAction('revoke')"
-        >
-          撤销
+          复制为新草稿
         </t-button>
       </t-space>
-    </div>
+    </header>
+
+    <t-alert
+      v-if="message"
+      :theme="tone === 'success' ? 'success' : 'error'"
+      :message="message"
+      class="panel"
+      close
+      @close="message = ''"
+    />
 
     <t-card
-      title="合同文档来源"
+      title="版式与版本"
       :bordered="true"
       class="panel"
     >
       <div class="form-grid">
-        <label><span>版式名称</span><t-input v-model="form.name" /></label>
-        <label><span>合同类型</span><t-select v-model="form.contractTypeKey">
-          <t-option
-            v-for="option in contractTypeOptions"
-            :key="option.value"
-            :label="option.label"
-            :value="option.value"
+        <t-form-item label="版式名称">
+          <t-input
+            v-model="form.name"
+            :readonly="!isCreateMode"
+            placeholder="请输入版式名称"
           />
-        </t-select></label>
-        <label><span>版本编号</span><t-input
-          v-model="versionId"
-          placeholder="创建后自动填入，或粘贴已有版本编号"
-        /></label>
-        <label>
-          <span>合同文档文件</span>
-          <input
-            type="file"
-            accept=".docx"
-            @change="onFileChange"
+        </t-form-item>
+        <t-form-item label="合同类型">
+          <t-select
+            v-model="form.contractTypeKey"
+            :disabled="!isCreateMode"
           >
-        </label>
+            <t-option
+              v-for="option in contractTypeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </t-select>
+        </t-form-item>
+        <t-form-item
+          v-if="!isCreateMode"
+          label="治理版本"
+        >
+          <t-select
+            v-model="selectedVersionId"
+            @change="clearTransientState"
+          >
+            <t-option
+              v-for="version in versions"
+              :key="version.id"
+              :label="`V${version.versionNo} · ${templateStatusLabel(version.status)}`"
+              :value="version.id"
+            />
+          </t-select>
+        </t-form-item>
+        <t-form-item
+          v-if="governance.canPublish"
+          label="发布说明"
+        >
+          <t-input
+            v-model="publicationSummary"
+            placeholder="请填写本次版式发布内容"
+          />
+        </t-form-item>
+        <div
+          v-if="currentVersion"
+          class="revision-summary"
+        >
+          <span>草稿修订</span>
+          <strong>R{{ currentVersion.draftRevision }}</strong>
+          <t-tag :theme="currentVersion.status === 'published' ? 'success' : 'default'">
+            {{ templateStatusLabel(currentVersion.status) }}
+          </t-tag>
+        </div>
+      </div>
+
+      <div class="source-row">
+        <t-upload
+          v-model="sourceFiles"
+          theme="file-input"
+          accept=".docx"
+          :auto-upload="false"
+          :max="1"
+          :disabled="!isCreateMode && !governance.canSave"
+          placeholder="请选择 DOCX 版式源文件"
+        />
         <t-button
+          v-if="isCreateMode"
           theme="primary"
-          :loading="uploading"
+          :loading="saving"
           @click="createLayout"
         >
           创建版式草稿
         </t-button>
+        <t-button
+          v-else-if="governance.canSave"
+          theme="primary"
+          :loading="saving"
+          @click="saveDraftSource"
+        >
+          保存新修订
+        </t-button>
       </div>
       <p class="warning">
-        固定公司名称、联系人、账号等写死在合同文档中会跨公司复用，请改用中文占位符。
+        已发布版本不可覆盖。固定公司名称、联系人、账号等跨公司内容应改用占位符。
       </p>
     </t-card>
 
@@ -89,88 +149,132 @@
     </t-card>
 
     <t-card
+      v-if="currentVersion"
       title="检查与预览"
       :bordered="true"
       class="panel"
     >
+      <t-alert
+        v-if="!inspectionCurrent || previewStale"
+        theme="warning"
+        message="当前草稿已变化，请重新执行检查并生成当前修订的样张。"
+        class="governance-alert"
+      />
       <div class="split">
         <div>
-          <t-button
-            :disabled="!versionId"
-            @click="inspect"
-          >
-            执行文档检查
-          </t-button>
+          <t-space>
+            <t-button
+              :disabled="!governance.canSave"
+              @click="inspect"
+            >
+              执行文档检查
+            </t-button>
+            <t-tag :theme="inspectionCurrent ? 'success' : 'warning'">
+              {{ inspectionCurrent ? `检查对应 R${currentVersion.draftRevision}` : "检查已过期" }}
+            </t-tag>
+          </t-space>
           <pre class="report">{{ inspectionText }}</pre>
         </div>
         <div>
           <p class="hint">
-            样张会使用系统内置的合同名称、草稿编号和水印示例生成。
+            样张使用系统内置示例数据，并明确绑定当前草稿修订。
           </p>
           <t-space class="actions">
             <t-button
-              :disabled="!versionId"
+              :disabled="!governance.canSave"
               @click="queuePreview"
             >
-              生成样张
+              生成当前修订样张
             </t-button>
             <t-button
-              :disabled="!versionId"
+              variant="outline"
               @click="loadPreview"
             >
               刷新预览状态
             </t-button>
           </t-space>
-          <p class="preview-line">
-            最新预览：{{ previewStatus }}
-          </p>
-          <p
-            v-if="latestPreviewPdfFileId"
-            class="preview-line"
-          >
-            预览文件编号：{{ latestPreviewPdfFileId }}
-          </p>
+          <div class="preview-summary">
+            <span>最新预览：{{ previewStatus }}</span>
+            <span v-if="latestPreview">源修订：R{{ latestPreview.sourceRevision }}</span>
+          </div>
         </div>
       </div>
     </t-card>
-
-    <p
-      v-if="message"
-      :class="['message', tone]"
-    >
-      {{ message }}
-    </p>
   </section>
 </template>
 
 <script setup lang="ts">
+import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import {
   cloneLayoutTemplateVersion,
   createLayoutTemplate,
   getLatestLayoutTemplatePreview,
+  getLayoutTemplate,
   inspectLayoutTemplateVersion,
+  type LayoutTemplateDetailReadModel,
+  type LayoutTemplatePreviewReadModel,
   publishLayoutTemplateVersion,
   queueLayoutTemplatePreview,
-  revokeLayoutTemplateVersion,
-  stopLayoutTemplateVersion,
-  submitLayoutTemplateVersion
+  submitLayoutTemplateVersion,
+  updateLayoutTemplateVersion
 } from "../../api/contract-workbench.api";
 import { templateStatusLabel } from "../contracts/contract-labels";
 import { canPublishLayoutVersion, contractTypeOptions } from "./contract-template.config";
 
 const route = useRoute();
+const router = useRouter();
 const form = reactive({ name: "", contractTypeKey: "" });
-const versionId = ref("");
-const docxFile = ref<File | null>(null);
-const uploading = ref(false);
-const inspectionReport = ref<Record<string, unknown> | null>(null);
-const latestPreview = ref<Record<string, unknown> | null>(null);
+const detail = ref<LayoutTemplateDetailReadModel | null>(null);
+const selectedVersionId = ref("");
+const sourceFiles = ref<UploadFile[]>([]);
+const saving = ref(false);
+const publicationSummary = ref("");
 const message = ref("");
 const tone = ref<"success" | "danger">("success");
 const timer = ref<number | undefined>();
+const isCreateMode = computed(() => String(route.params.layoutTemplateId ?? "") === "new");
+const versions = computed(() => detail.value?.versions ?? []);
+const currentVersion = computed(() =>
+  versions.value.find((version) => version.id === selectedVersionId.value) ?? null
+);
+const governance = computed(() => ({
+  canSave: currentVersion.value?.status === "draft",
+  canSubmit: currentVersion.value?.status === "draft",
+  canPublish: currentVersion.value?.status === "submitted",
+  canClone: currentVersion.value?.status === "published"
+}));
+const latestPreview = computed<LayoutTemplatePreviewReadModel | null>(() =>
+  currentVersion.value?.latestPreview ?? null
+);
+const inspectionCurrent = computed(() => Boolean(
+  currentVersion.value?.inspectionReport &&
+  currentVersion.value.inspectionRevision === currentVersion.value.draftRevision
+));
+const previewStale = computed(() => Boolean(
+  latestPreview.value && latestPreview.value.sourceRevision !== currentVersion.value?.draftRevision
+));
+const canPublish = computed(() => canPublishLayoutVersion({
+  draftRevision: currentVersion.value?.draftRevision,
+  inspectionRevision: currentVersion.value?.inspectionRevision,
+  inspectionReport: currentVersion.value?.inspectionReport,
+  latestPreview: latestPreview.value
+}));
+const inspectionText = computed(() => formatInspectionReport(currentVersion.value?.inspectionReport ?? null));
+const previewStatus = computed(() => {
+  if (!latestPreview.value) return "尚未生成";
+  if (previewStale.value || latestPreview.value.status === "stale") return "已过期";
+  const labels: Record<LayoutTemplatePreviewReadModel["status"], string> = {
+    queued: "等待生成",
+    processing: "生成中",
+    succeeded: "生成成功",
+    failed: "生成失败",
+    stale: "已过期"
+  };
+  return labels[latestPreview.value.status];
+});
 const placeholders = [
   "{合同名称}",
   "{草稿编号}",
@@ -180,73 +284,153 @@ const placeholders = [
   "{#材料清单}{名称}{/材料清单}"
 ];
 
-const inspectionText = computed(() => formatInspectionReport(inspectionReport.value));
-const previewStatus = computed(() =>
-  latestPreview.value?.status ? templateStatusLabel(String(latestPreview.value.status)) : "尚未生成"
-);
-const latestPreviewPdfFileId = computed(() => String(latestPreview.value?.previewPdfFileId ?? ""));
-const canPublish = computed(() => canPublishLayoutVersion({ inspectionReport: inspectionReport.value, latestPreview: latestPreview.value }));
-
-function onFileChange(event: Event) {
-  docxFile.value = (event.target as HTMLInputElement).files?.[0] ?? null;
+function selectedFile() {
+  const raw = sourceFiles.value[0]?.raw;
+  return raw instanceof File ? raw : null;
 }
 
 async function createLayout() {
-  if (!docxFile.value) {
-    message.value = "请选择合同文档文件";
-    tone.value = "danger";
-    return;
-  }
-  uploading.value = true;
+  const file = selectedFile();
+  if (!file) return showError("请选择 DOCX 版式源文件");
+  saving.value = true;
   try {
-    const file = await uploadPrivateFile(docxFile.value, docxFile.value.name);
+    const uploaded = await uploadPrivateFile(file, file.name);
     const created = await createLayoutTemplate({
       name: form.name.trim(),
       contractTypeKey: form.contractTypeKey.trim(),
-      docxFileId: file.id,
+      docxFileId: uploaded.id,
       placeholderSchema: { bills: [] }
     });
-    versionId.value = String((created as { version?: { id?: string } }).version?.id ?? versionId.value);
-    message.value = "版式草稿已创建";
-    tone.value = "success";
+    await router.replace(`/合同模板库/版式/${created.template.id}`);
+    detail.value = { template: created.template, versions: [created.version] };
+    selectedVersionId.value = created.version.id;
+    sourceFiles.value = [];
+    showSuccess("版式草稿已创建");
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "创建失败";
-    tone.value = "danger";
+    showError(error instanceof Error ? error.message : "创建失败");
   } finally {
-    uploading.value = false;
+    saving.value = false;
+  }
+}
+
+async function saveDraftSource() {
+  const version = currentVersion.value;
+  const file = selectedFile();
+  if (!version || !file) return showError("请选择新的 DOCX 版式源文件");
+  saving.value = true;
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    await updateLayoutTemplateVersion(version.id, {
+      expectedRevision: version.draftRevision,
+      docxFileId: uploaded.id
+    });
+    sourceFiles.value = [];
+    await refreshDetail(version.id);
+    showSuccess("新修订已保存，旧检查和旧预览已失效");
+  } catch (error) {
+    showError(error instanceof Error ? error.message : "保存失败");
+  } finally {
+    saving.value = false;
   }
 }
 
 async function inspect() {
+  const version = currentVersion.value;
+  if (!version) return;
   try {
-    inspectionReport.value = (await inspectLayoutTemplateVersion(versionId.value.trim())) as Record<string, unknown>;
-    message.value = "检查完成";
-    tone.value = "success";
+    const report = await inspectLayoutTemplateVersion(version.id);
+    version.inspectionReport = report;
+    version.inspectionRevision = report.sourceRevision;
+    showSuccess("检查完成");
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "检查失败";
-    tone.value = "danger";
-  }
-}
-
-async function loadPreview() {
-  try {
-    latestPreview.value = (await getLatestLayoutTemplatePreview(versionId.value.trim())) as Record<string, unknown>;
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "读取预览失败";
-    tone.value = "danger";
+    showError(error instanceof Error ? error.message : "检查失败");
   }
 }
 
 async function queuePreview() {
+  const version = currentVersion.value;
+  if (!version) return;
   try {
-    await queueLayoutTemplatePreview(versionId.value.trim(), {});
-    message.value = "样张已进入队列";
-    tone.value = "success";
+    version.latestPreview = await queueLayoutTemplatePreview(version.id, {});
+    showSuccess("当前修订样张已进入队列");
     startPolling();
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "生成预览失败";
-    tone.value = "danger";
+    showError(error instanceof Error ? error.message : "生成预览失败");
   }
+}
+
+async function loadPreview() {
+  const version = currentVersion.value;
+  if (!version) return;
+  try {
+    version.latestPreview = await getLatestLayoutTemplatePreview(version.id);
+    if (!["queued", "processing"].includes(version.latestPreview?.status ?? "")) {
+      window.clearInterval(timer.value);
+    }
+  } catch (error) {
+    showError(error instanceof Error ? error.message : "读取预览失败");
+  }
+}
+
+async function submitCurrent() {
+  const version = currentVersion.value;
+  if (!version) return;
+  await runVersionAction(() => submitLayoutTemplateVersion(version.id), "版式已提交", version.id);
+}
+
+async function publishCurrent() {
+  const version = currentVersion.value;
+  if (!version) return;
+  const changeSummary = publicationSummary.value.trim();
+  if (!changeSummary) return showError("请填写本次版式发布说明");
+  await runVersionAction(
+    () => publishLayoutTemplateVersion(version.id, { changeSummary }),
+    "版式已发布",
+    version.id
+  );
+}
+
+async function cloneCurrent() {
+  const version = currentVersion.value;
+  if (!version) return;
+  try {
+    const cloned = await cloneLayoutTemplateVersion(version.id);
+    await refreshDetail(cloned.id);
+    showSuccess("已复制为新草稿，请在新草稿中修订");
+  } catch (error) {
+    showError(error instanceof Error ? error.message : "复制失败");
+  }
+}
+
+async function runVersionAction(action: () => Promise<unknown>, success: string, versionId: string) {
+  try {
+    await action();
+    await refreshDetail(versionId);
+    showSuccess(success);
+  } catch (error) {
+    showError(error instanceof Error ? error.message : "操作失败");
+  }
+}
+
+async function refreshDetail(preferredVersionId?: string) {
+  const templateId = String(route.params.layoutTemplateId ?? "");
+  if (!templateId || templateId === "new") return;
+  const result = await getLayoutTemplate(templateId);
+  detail.value = result;
+  form.name = result.template.name;
+  form.contractTypeKey = result.template.contractTypeKey;
+  selectedVersionId.value =
+    result.versions.find((version) => version.id === preferredVersionId)?.id ??
+    result.versions.find((version) => version.status === "draft")?.id ??
+    result.versions.find((version) => version.status === "published")?.id ??
+    result.versions[0]?.id ??
+    "";
+}
+
+function clearTransientState() {
+  sourceFiles.value = [];
+  publicationSummary.value = "";
+  window.clearInterval(timer.value);
 }
 
 function startPolling() {
@@ -254,42 +438,36 @@ function startPolling() {
   timer.value = window.setInterval(() => void loadPreview(), 2000);
 }
 
-async function versionAction(kind: "submit" | "publish" | "clone" | "stop" | "revoke") {
-  const id = versionId.value.trim();
-  if (!id) {
-    message.value = "请先填写版本编号";
-    tone.value = "danger";
-    return;
-  }
-  try {
-    if (kind === "submit") await submitLayoutTemplateVersion(id);
-    if (kind === "publish") await publishLayoutTemplateVersion(id, { changeSummary: "发布版式" });
-    if (kind === "clone") await cloneLayoutTemplateVersion(id);
-    if (kind === "stop") await stopLayoutTemplateVersion(id);
-    if (kind === "revoke") await revokeLayoutTemplateVersion(id);
-    message.value = "操作已提交";
-    tone.value = "success";
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "操作失败";
-    tone.value = "danger";
-  }
+function showSuccess(value: string) {
+  message.value = value;
+  tone.value = "success";
 }
 
-onMounted(() => {
-  versionId.value = String(route.params.layoutTemplateId ?? "");
-  if (versionId.value === "new") versionId.value = "";
+function showError(value: string) {
+  message.value = value;
+  tone.value = "danger";
+}
+
+onMounted(async () => {
+  if (!isCreateMode.value) {
+    try {
+      await refreshDetail();
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "读取版式失败");
+    }
+  }
 });
 onBeforeUnmount(() => window.clearInterval(timer.value));
 
 function formatInspectionReport(report: Record<string, unknown> | null) {
   if (!report) return "尚未检查";
-  const placeholders = toStringList(report.placeholders).map(toChinesePlaceholder);
+  const placeholdersFound = toStringList(report.placeholders).map(toChinesePlaceholder);
   const missing = toStringList(report.missingRequiredPlaceholders).map(toChinesePlaceholder);
   const unknown = toStringList(report.unknownPlaceholders).map(toChinesePlaceholder);
   const blocking = toStringList(report.blockingErrors).map(toChineseInspectionIssue);
   const warnings = toStringList(report.warnings).map(toChineseInspectionIssue);
   return [
-    `识别占位符：${placeholders.length ? placeholders.join("、") : "无"}`,
+    `识别占位符：${placeholdersFound.length ? placeholdersFound.join("、") : "无"}`,
     `清单循环：${report.hasBillLoop ? "已识别" : "未识别"}`,
     `缺少必要项：${missing.length ? missing.join("、") : "无"}`,
     `未登记项：${unknown.length ? unknown.join("、") : "无"}`,
@@ -323,18 +501,10 @@ function toChinesePlaceholder(value: string) {
 }
 
 function toChineseInspectionIssue(value: string) {
-  if (value.startsWith("Unknown placeholders:")) {
-    return `存在未登记占位符：${translateInspectionList(value)}`;
-  }
-  if (value.startsWith("Missing required placeholders:")) {
-    return `缺少必要占位符：${translateInspectionList(value)}`;
-  }
-  if (value.startsWith("Missing bill loop marker for:")) {
-    return `缺少清单循环块：${translateInspectionList(value)}`;
-  }
-  if (value.startsWith("Disallowed fonts:")) {
-    return "存在未允许字体，请改用宋体、仿宋、黑体或系统允许字体";
-  }
+  if (value.startsWith("Unknown placeholders:")) return `存在未登记占位符：${translateInspectionList(value)}`;
+  if (value.startsWith("Missing required placeholders:")) return `缺少必要占位符：${translateInspectionList(value)}`;
+  if (value.startsWith("Missing bill loop marker for:")) return `缺少清单循环块：${translateInspectionList(value)}`;
+  if (value.startsWith("Disallowed fonts:")) return "存在未允许字体，请改用系统允许字体";
   return /[A-Za-z]/.test(value) ? "检查失败，请根据模板规范调整后重试" : value;
 }
 
@@ -348,21 +518,120 @@ function translateInspectionList(value: string) {
 </script>
 
 <style scoped>
-.page { color: #151922; }
-.page-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.page-head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
-.page-head p, label span, .hint { margin: 0; color: #767f8d; font-size: 12px; }
-.panel { margin-bottom: 16px; border-radius: 3px; }
-.form-grid { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)); gap: 12px; align-items: end; }
-label { display: grid; gap: 4px; }
-.warning { margin: 12px 0 0; color: #b95000; font-size: 12px; }
-.reference-list { display: flex; flex-wrap: wrap; gap: 8px; }
-code { background: #f4f6f9; padding: 4px 8px; border-radius: 3px; }
-.split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.report { min-height: 180px; padding: 12px; background: #f6f8fb; white-space: pre-wrap; }
-.actions { margin-top: 8px; }
-.preview-line, .message { font-size: 12px; }
-.success { color: #1b6b3a; }
-.danger { color: #b51d2a; }
-@media (max-width: 1000px) { .page-head, .form-grid, .split { display: grid; grid-template-columns: 1fr; } }
+.page {
+  color: var(--jg-text-strong);
+}
+
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--jg-space-lg);
+  margin-bottom: var(--jg-space-lg);
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: var(--jg-font-page-title);
+}
+
+.page-head p,
+.hint,
+.warning {
+  margin: var(--jg-space-xs) 0 0;
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
+}
+
+.panel {
+  margin-bottom: var(--jg-space-lg);
+  border-radius: var(--jg-radius-sm);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(var(--jg-layout-form-field-min-width-compact), 1fr));
+  gap: var(--jg-space-md);
+  align-items: end;
+}
+
+.revision-summary,
+.source-row,
+.preview-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--jg-space-sm);
+}
+
+.revision-summary {
+  min-height: 40px;
+  color: var(--jg-text-subtle);
+}
+
+.revision-summary strong {
+  color: var(--jg-text-strong);
+}
+
+.source-row {
+  margin-top: var(--jg-space-md);
+}
+
+.source-row :deep(.t-upload) {
+  flex: 1;
+}
+
+.warning {
+  color: var(--jg-warning);
+}
+
+.reference-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm);
+}
+
+code {
+  padding: var(--jg-space-xs) var(--jg-space-sm);
+  border-radius: var(--jg-radius-sm);
+  background: var(--jg-bg-muted);
+}
+
+.governance-alert {
+  margin-bottom: var(--jg-space-md);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--jg-space-lg);
+}
+
+.report {
+  min-height: 180px;
+  margin: var(--jg-space-md) 0 0;
+  padding: var(--jg-space-md);
+  border-radius: var(--jg-radius-sm);
+  background: var(--jg-bg-muted);
+  white-space: pre-wrap;
+}
+
+.actions {
+  margin-top: var(--jg-space-sm);
+}
+
+.preview-summary {
+  align-items: flex-start;
+  flex-direction: column;
+  margin-top: var(--jg-space-md);
+  color: var(--jg-text-subtle);
+  font-size: var(--jg-font-meta);
+}
+
+@media (max-width: 1000px) {
+  .page-head,
+  .form-grid,
+  .split {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
 </style>

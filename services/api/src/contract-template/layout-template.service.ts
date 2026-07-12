@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import PizZip from "pizzip";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -12,7 +12,8 @@ import {
 import { FileService } from "../file/file.service";
 import type {
   CreateLayoutTemplateDto,
-  LayoutTemplatePreviewSampleDataDto
+  LayoutTemplatePreviewSampleDataDto,
+  UpdateLayoutTemplateVersionDto
 } from "./dto/layout-template.dto";
 
 export interface LayoutInspectionReport {
@@ -116,6 +117,108 @@ export class LayoutTemplateService {
     });
   }
 
+  async getLayoutTemplate(templateId: string, actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertAnyGlobalRole(tx, actorUserId, ["contract_staff", "contract_director"]);
+      const template = await tx.contractLayoutTemplate.findUnique({ where: { id: templateId } });
+      if (!template) throw new NotFoundException("未找到合同版式模板，请刷新后重试");
+      const versions = await tx.contractLayoutTemplateVersion.findMany({
+        where: { layoutTemplateId: templateId },
+        orderBy: { versionNo: "desc" }
+      });
+      const jobs = versions.length
+        ? await tx.contractLayoutPreviewJob.findMany({
+            where: {
+              OR: versions.map((version) => ({
+                layoutTemplateVersionId: version.id,
+                sourceRevision: version.draftRevision
+              }))
+            },
+            orderBy: { createdAt: "desc" }
+          })
+        : [];
+      const latestByVersion = new Map<string, (typeof jobs)[number]>();
+      for (const job of jobs) {
+        if (!latestByVersion.has(job.layoutTemplateVersionId)) {
+          latestByVersion.set(job.layoutTemplateVersionId, job);
+        }
+      }
+      return {
+        template,
+        versions: versions.map((version) => ({
+          ...version,
+          latestPreview: latestByVersion.get(version.id) ?? null
+        }))
+      };
+    });
+  }
+
+  async updateDraftVersion(
+    versionId: string,
+    actorUserId: string,
+    input: UpdateLayoutTemplateVersionDto
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertGlobalRole(tx, actorUserId, "contract_staff");
+      const version = await this.findVersion(tx, versionId);
+      if (version.status !== "draft") {
+        throw new BadRequestException("只有草稿状态的合同版式可以修改，请复制已发布版本后再编辑");
+      }
+      if (version.draftRevision !== input.expectedRevision) {
+        throw new BadRequestException("版式草稿已被更新，请刷新后重试");
+      }
+      if (input.docxFileId === undefined && input.placeholderSchema === undefined) {
+        throw new BadRequestException("请至少修改版式源文件或占位符结构");
+      }
+      if (input.docxFileId !== undefined) {
+        await this.assertOwnedDocx(tx, input.docxFileId, actorUserId);
+      }
+      const nextRevision = version.draftRevision + 1;
+      const result = await tx.contractLayoutTemplateVersion.updateMany({
+        where: { id: versionId, status: "draft", draftRevision: input.expectedRevision },
+        data: {
+          draftRevision: { increment: 1 },
+          ...(input.docxFileId !== undefined ? { docxFileId: input.docxFileId } : {}),
+          ...(input.placeholderSchema !== undefined
+            ? { placeholderSchema: input.placeholderSchema as Prisma.InputJsonValue }
+            : {}),
+          inspectionReport: Prisma.DbNull,
+          inspectionRevision: null,
+          previewPdfFileId: null
+        }
+      });
+      if (result.count !== 1) {
+        throw new BadRequestException("版式草稿已被更新，请刷新后重试");
+      }
+      const invalidatedPreviews = await tx.contractLayoutPreviewJob.updateMany({
+        where: {
+          layoutTemplateVersionId: versionId,
+          sourceRevision: input.expectedRevision,
+          status: { in: ["queued", "processing", "succeeded"] }
+        },
+        data: { status: "stale" }
+      });
+      await this.record(tx, actorUserId, "update_draft", versionId, {
+        fromRevision: input.expectedRevision,
+        toRevision: nextRevision,
+        docxFileChanged: input.docxFileId !== undefined,
+        placeholderSchemaChanged: input.placeholderSchema !== undefined,
+        invalidatedPreviewCount: invalidatedPreviews.count
+      });
+      return {
+        ...version,
+        draftRevision: nextRevision,
+        ...(input.docxFileId !== undefined ? { docxFileId: input.docxFileId } : {}),
+        ...(input.placeholderSchema !== undefined
+          ? { placeholderSchema: input.placeholderSchema }
+          : {}),
+        inspectionReport: null,
+        inspectionRevision: null,
+        previewPdfFileId: null
+      };
+    });
+  }
+
   async inspectVersion(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, "contract_staff");
@@ -125,15 +228,19 @@ export class LayoutTemplateService {
       }
       const source = await this.files.getFileBuffer(version.docxFileId);
       const report = this.inspectDocx(source.buffer, version.placeholderSchema);
+      const sourceRevision = version.draftRevision;
       const result = await tx.contractLayoutTemplateVersion.updateMany({
-        where: { id: versionId, status: "draft" },
-        data: { inspectionReport: report as unknown as Prisma.InputJsonValue }
+        where: { id: versionId, status: "draft", draftRevision: sourceRevision },
+        data: {
+          inspectionReport: report as unknown as Prisma.InputJsonValue,
+          inspectionRevision: sourceRevision
+        }
       });
       if (result.count !== 1) {
         throw new BadRequestException("合同版式状态已变化，请刷新后重试");
       }
-      await this.record(tx, actorUserId, "inspect", versionId);
-      return report;
+      await this.record(tx, actorUserId, "inspect", versionId, { sourceRevision });
+      return { ...report, sourceRevision };
     });
   }
 
@@ -149,7 +256,7 @@ export class LayoutTemplateService {
         throw new BadRequestException("只有草稿状态的合同版式可以生成预览");
       }
       const result = await tx.contractLayoutTemplateVersion.updateMany({
-        where: { id: versionId, status: "draft" },
+        where: { id: versionId, status: "draft", draftRevision: version.draftRevision },
         data: { status: "draft" }
       });
       if (result.count !== 1) {
@@ -160,10 +267,14 @@ export class LayoutTemplateService {
           layoutTemplateVersionId: versionId,
           status: "queued",
           sampleData: sampleData as Prisma.InputJsonValue,
+          sourceRevision: version.draftRevision,
           createdByUserId: actorUserId
         }
       });
-      await this.record(tx, actorUserId, "queue_preview", versionId);
+      await this.record(tx, actorUserId, "queue_preview", versionId, {
+        sourceRevision: version.draftRevision,
+        previewJobId: job.id
+      });
       return job;
     });
   }
@@ -186,11 +297,15 @@ export class LayoutTemplateService {
         throw new BadRequestException("只有草稿状态的合同版式可以提交");
       }
       const report = version.inspectionReport as unknown as LayoutInspectionReport | null;
-      if (!report || report.blockingErrors.length) {
+      if (
+        !report ||
+        report.blockingErrors.length ||
+        version.inspectionRevision !== version.draftRevision
+      ) {
         throw new BadRequestException("版式检查仍有阻断项，请处理后再提交或发布");
       }
       const result = await tx.contractLayoutTemplateVersion.updateMany({
-        where: { id: versionId, status: "draft" },
+        where: { id: versionId, status: "draft", draftRevision: version.draftRevision },
         data: { status: "submitted", submittedByUserId: actorUserId }
       });
       if (result.count !== 1) {
@@ -209,11 +324,18 @@ export class LayoutTemplateService {
         throw new BadRequestException("只有已提交的合同版式可以发布");
       }
       const report = version.inspectionReport as unknown as LayoutInspectionReport | null;
-      if (!report || report.blockingErrors.length) {
+      if (
+        !report ||
+        report.blockingErrors.length ||
+        version.inspectionRevision !== version.draftRevision
+      ) {
         throw new BadRequestException("版式检查仍有阻断项，请处理后再提交或发布");
       }
       const preview = await tx.contractLayoutPreviewJob.findFirst({
-        where: { layoutTemplateVersionId: versionId },
+        where: {
+          layoutTemplateVersionId: versionId,
+          sourceRevision: version.draftRevision
+        },
         orderBy: { createdAt: "desc" }
       });
       if (preview?.status !== "succeeded" || !preview.previewPdfFileId) {
@@ -221,7 +343,7 @@ export class LayoutTemplateService {
       }
       const publishedAt = new Date();
       const result = await tx.contractLayoutTemplateVersion.updateMany({
-        where: { id: versionId, status: "submitted" },
+        where: { id: versionId, status: "submitted", draftRevision: version.draftRevision },
         data: {
           status: "published",
           previewPdfFileId: preview.previewPdfFileId,
@@ -470,6 +592,39 @@ export class LayoutTemplateService {
     });
     if (!version) throw new NotFoundException("未找到合同版式版本，请刷新后重试");
     return version;
+  }
+
+  private async assertOwnedDocx(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    actorUserId: string
+  ) {
+    const file = await tx.fileObject.findUnique({ where: { id: fileId } });
+    if (!file) throw new NotFoundException("未找到版式源文件，请重新上传 DOCX 文件");
+    if (file.uploadedByUserId !== actorUserId) {
+      throw new ForbiddenException("只能使用本人上传的版式源文件");
+    }
+    if (!file.originalName.toLowerCase().endsWith(".docx")) {
+      throw new BadRequestException("版式源文件必须是 DOCX 文件");
+    }
+  }
+
+  private async assertAnyGlobalRole(
+    tx: RoleClient,
+    actorUserId: string,
+    roleKeys: Array<"contract_staff" | "contract_director">
+  ) {
+    const assignments = await tx.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null }
+    });
+    const positions = assignments.length
+      ? await tx.position.findMany({
+          where: { id: { in: assignments.map((assignment) => assignment.positionId) } }
+        })
+      : [];
+    if (!positions.some((position) => roleKeys.includes(position.key as typeof roleKeys[number]))) {
+      throw new ForbiddenException("只有合同经办人或合同主管可以查看版式治理详情");
+    }
   }
 
   private async assertGlobalRole(

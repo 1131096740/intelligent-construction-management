@@ -152,6 +152,7 @@ export class ContractDocumentProcessor
     id: string;
     layoutTemplateVersionId: string;
     sampleData: Prisma.JsonValue;
+    sourceRevision: number;
     createdByUserId: string;
   }) {
     try {
@@ -161,6 +162,10 @@ export class ContractDocumentProcessor
       if (!layout) throw new Error("合同版式版本不存在");
       if (!["draft", "submitted"].includes(layout.status)) {
         throw new Error("合同版式版本已不可预览，请刷新后重试");
+      }
+      if (layout.draftRevision !== job.sourceRevision) {
+        await this.markPreviewStale(job);
+        return;
       }
       const values = this.previewValues(job.sampleData);
       const billKeys = declaredBillKeys(
@@ -197,8 +202,15 @@ export class ContractDocumentProcessor
         if (!currentLayout || !["draft", "submitted"].includes(currentLayout.status)) {
           throw new Error("合同版式版本已不可预览，请刷新后重试");
         }
+        if (currentLayout.draftRevision !== job.sourceRevision) {
+          await tx.contractLayoutPreviewJob.updateMany({
+            where: { id: job.id, status: "processing", sourceRevision: job.sourceRevision },
+            data: { status: "stale", completedAt, errorMessage: null }
+          });
+          return;
+        }
         const updated = await tx.contractLayoutPreviewJob.updateMany({
-          where: { id: job.id, status: "processing" },
+          where: { id: job.id, status: "processing", sourceRevision: job.sourceRevision },
           data: {
             status: "succeeded",
             previewPdfFileId: uploaded.id,
@@ -212,12 +224,21 @@ export class ContractDocumentProcessor
           action: "contract.layout_preview.success",
           businessType: "contract_layout_preview_job",
           businessId: job.id,
-          metadata: { previewPdfFileId: uploaded.id }
+          metadata: { previewPdfFileId: uploaded.id, sourceRevision: job.sourceRevision }
         });
       });
     } catch (cause) {
       await this.failPreview(job, cause);
     }
+  }
+
+  private markPreviewStale(job: { id: string; sourceRevision: number }) {
+    return this.prisma.$transaction((tx) =>
+      tx.contractLayoutPreviewJob.updateMany({
+        where: { id: job.id, status: "processing", sourceRevision: job.sourceRevision },
+        data: { status: "stale", completedAt: new Date(), errorMessage: null }
+      })
+    );
   }
 
   private async processDocument(job: {
@@ -392,7 +413,7 @@ export class ContractDocumentProcessor
   }
 
   private async failPreview(
-    job: { id: string; createdByUserId: string },
+    job: { id: string; createdByUserId: string; sourceRevision: number },
     cause: unknown
   ) {
     const errorMessage = this.errorMessage(
@@ -401,7 +422,7 @@ export class ContractDocumentProcessor
     );
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.contractLayoutPreviewJob.updateMany({
-        where: { id: job.id, status: "processing" },
+        where: { id: job.id, status: "processing", sourceRevision: job.sourceRevision },
         data: { status: "failed", errorMessage, completedAt: new Date() }
       });
       if (updated.count !== 1) return;
@@ -410,7 +431,7 @@ export class ContractDocumentProcessor
         action: "contract.layout_preview.failure",
         businessType: "contract_layout_preview_job",
         businessId: job.id,
-        metadata: { errorMessage }
+        metadata: { errorMessage, sourceRevision: job.sourceRevision }
       });
     });
   }

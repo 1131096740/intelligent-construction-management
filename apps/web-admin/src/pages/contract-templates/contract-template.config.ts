@@ -424,15 +424,23 @@ export function contractTemplateVersionGovernance(
 }
 
 export interface LayoutPublishGateInput {
+  draftRevision?: number | null;
+  inspectionRevision?: number | null;
   inspectionReport?: { blockingErrors?: unknown[] } | null;
-  latestPreview?: { status?: string | null; previewPdfFileId?: string | null } | null;
+  latestPreview?: {
+    status?: string | null;
+    sourceRevision?: number | null;
+    previewPdfFileId?: string | null;
+  } | null;
 }
 
 export function canPublishLayoutVersion(input: LayoutPublishGateInput) {
   return Boolean(
     input.inspectionReport &&
+      input.inspectionRevision === input.draftRevision &&
       (input.inspectionReport.blockingErrors?.length ?? 0) === 0 &&
       input.latestPreview?.status === "succeeded" &&
+      input.latestPreview.sourceRevision === input.draftRevision &&
       input.latestPreview.previewPdfFileId
   );
 }

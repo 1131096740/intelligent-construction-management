@@ -410,23 +410,79 @@ export interface CreateLayoutTemplatePayload {
   placeholderSchema: unknown;
 }
 
+export interface LayoutTemplatePreviewReadModel {
+  id: string;
+  status: "queued" | "processing" | "succeeded" | "failed" | "stale";
+  sourceRevision: number;
+  previewPdfFileId?: string | null;
+  errorMessage?: string | null;
+}
+
+export interface LayoutTemplateVersionReadModel {
+  id: string;
+  layoutTemplateId: string;
+  versionNo: number;
+  status: ContractTemplateVersionStatus;
+  docxFileId: string;
+  placeholderSchema: Record<string, unknown>;
+  draftRevision: number;
+  inspectionReport?: Record<string, unknown> | null;
+  inspectionRevision?: number | null;
+  previewPdfFileId?: string | null;
+  latestPreview?: LayoutTemplatePreviewReadModel | null;
+}
+
+export interface LayoutTemplateDetailReadModel {
+  template: {
+    id: string;
+    name: string;
+    contractTypeKey: string;
+  };
+  versions: LayoutTemplateVersionReadModel[];
+}
+
+export interface CreateLayoutTemplateReadModel {
+  template: LayoutTemplateDetailReadModel["template"];
+  version: LayoutTemplateVersionReadModel;
+}
+
 export function createLayoutTemplate(body: CreateLayoutTemplatePayload) {
-  return postJson<unknown>("/contract-layout-templates", body);
+  return postJson<CreateLayoutTemplateReadModel>("/contract-layout-templates", body);
+}
+
+export function getLayoutTemplate(templateId: string) {
+  return readJson<LayoutTemplateDetailReadModel>(`/contract-layout-templates/${templateId}`);
+}
+
+export function updateLayoutTemplateVersion(
+  versionId: string,
+  body: {
+    expectedRevision: number;
+    docxFileId?: string;
+    placeholderSchema?: Record<string, unknown>;
+  }
+) {
+  return patchJson<LayoutTemplateVersionReadModel>(
+    `/contract-layout-template-versions/${versionId}`,
+    body
+  );
 }
 
 export function inspectLayoutTemplateVersion(versionId: string) {
-  return postJson<unknown>(`/contract-layout-template-versions/${versionId}/inspection`);
+  return postJson<Record<string, unknown> & { sourceRevision: number }>(
+    `/contract-layout-template-versions/${versionId}/inspection`
+  );
 }
 
 export function queueLayoutTemplatePreview(versionId: string, sampleData: unknown) {
-  return postJson<unknown>(
+  return postJson<LayoutTemplatePreviewReadModel>(
     `/contract-layout-template-versions/${versionId}/preview-generation`,
     sampleData
   );
 }
 
 export function getLatestLayoutTemplatePreview(versionId: string) {
-  return readJson<unknown>(
+  return readJson<LayoutTemplatePreviewReadModel | null>(
     `/contract-layout-template-versions/${versionId}/preview-generation`
   );
 }
@@ -446,7 +502,9 @@ export function publishLayoutTemplateVersion(
 }
 
 export function cloneLayoutTemplateVersion(versionId: string) {
-  return postJson<unknown>(`/contract-layout-template-versions/${versionId}/clone`);
+  return postJson<LayoutTemplateVersionReadModel>(
+    `/contract-layout-template-versions/${versionId}/clone`
+  );
 }
 
 export function stopLayoutTemplateVersion(versionId: string) {

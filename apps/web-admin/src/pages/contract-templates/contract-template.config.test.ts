@@ -359,20 +359,34 @@ describe("contract template center config", () => {
   it("requires inspection success and latest preview PDF before layout publication", () => {
     expect(
       canPublishLayoutVersion({
+        draftRevision: 3,
+        inspectionRevision: 3,
         inspectionReport: { blockingErrors: [] },
-        latestPreview: { status: "succeeded", previewPdfFileId: "file-1" }
+        latestPreview: { status: "succeeded", sourceRevision: 3, previewPdfFileId: "file-1" }
       })
     ).toBe(true);
     expect(
       canPublishLayoutVersion({
+        draftRevision: 3,
+        inspectionRevision: 3,
         inspectionReport: { blockingErrors: ["missing placeholder"] },
-        latestPreview: { status: "succeeded", previewPdfFileId: "file-1" }
+        latestPreview: { status: "succeeded", sourceRevision: 3, previewPdfFileId: "file-1" }
       })
     ).toBe(false);
     expect(
       canPublishLayoutVersion({
+        draftRevision: 3,
+        inspectionRevision: 3,
         inspectionReport: { blockingErrors: [] },
-        latestPreview: { status: "succeeded" }
+        latestPreview: { status: "succeeded", sourceRevision: 3 }
+      })
+    ).toBe(false);
+    expect(
+      canPublishLayoutVersion({
+        draftRevision: 4,
+        inspectionRevision: 3,
+        inspectionReport: { blockingErrors: [] },
+        latestPreview: { status: "succeeded", sourceRevision: 3, previewPdfFileId: "file-1" }
       })
     ).toBe(false);
   });

@@ -1,4 +1,4 @@
-import { ValidateIf } from "class-validator";
+import { IsInt, Min, ValidateIf } from "class-validator";
 import { IsRequiredText } from "../../validation/static-field-validation";
 import {
   IsJsonPlainRecord,
@@ -43,6 +43,20 @@ export class LayoutTemplatePreviewSampleDataDto extends JsonSafeTemplateBodyDto 
   @ValidateIf((_object, value) => value !== undefined)
   @IsJsonPlainRecord({ message: "预览命名空间 document 必须是 JSON 对象" })
   document?: Record<string, unknown>;
+}
+
+export class UpdateLayoutTemplateVersionDto extends JsonSafeTemplateBodyDto {
+  @IsInt({ message: "版式草稿修订号必须是整数" })
+  @Min(1, { message: "版式草稿修订号必须大于零" })
+  expectedRevision!: number;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsRequiredText({ requiredMessage: "请选择 DOCX 版式源文件", typeMessage: "版式源文件编号必须是文字", blankMessage: "请选择 DOCX 版式源文件" })
+  docxFileId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsJsonPlainRecord({ message: "版式占位符结构必须是 JSON 对象" })
+  placeholderSchema?: Record<string, unknown>;
 }
 
 export class PublishTemplateChangeDto extends JsonSafeTemplateBodyDto {

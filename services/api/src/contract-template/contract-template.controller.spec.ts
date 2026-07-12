@@ -8,6 +8,7 @@ type RuntimeDto = new () => object;
 
 const templateBodyRoutes = [
   ["createLayout", 0],
+  ["updateLayoutDraftVersion", 1],
   ["queueLayoutPreview", 1],
   ["publishLayout", 1],
   ["createTemplate", 0],
@@ -83,6 +84,7 @@ const validTemplateBodies = [
       placeholderSchema: { bills: [{ key: "main_bill" }], dynamicPlaceholders: ["field.custom"] }
     }
   ],
+  ["updateLayoutDraftVersion", 1, { expectedRevision: 2, docxFileId: "file-2" }],
   ["queueLayoutPreview", 1, validPreviewSample],
   ["publishLayout", 1, { changeSummary: "发布材料合同版式" }],
   [
@@ -150,6 +152,8 @@ describe("ContractTemplateController authorization wiring", () => {
   const governancePositions = ["contract_director", "super_admin"];
   const governedMethods = [
     "createLayout",
+    "getLayoutTemplate",
+    "updateLayoutDraftVersion",
     "inspectLayout",
     "queueLayoutPreview",
     "getLayoutPreview",
@@ -170,6 +174,17 @@ describe("ContractTemplateController authorization wiring", () => {
     "submitClauseVersion",
     "publishClauseVersion"
   ];
+
+  it("delegates layout detail with the authenticated actor", async () => {
+    const detail = { template: { id: "layout-template-1" }, versions: [] };
+    const layouts = { getLayoutTemplate: jest.fn().mockResolvedValue(detail) };
+    const controller = new ContractTemplateController({} as never, layouts as never);
+
+    await expect(
+      controller.getLayoutTemplate("layout-template-1", { id: "staff-1" } as never)
+    ).resolves.toBe(detail);
+    expect(layouts.getLayoutTemplate).toHaveBeenCalledWith("layout-template-1", "staff-1");
+  });
 
   it("delegates the existing template detail route to the read model service", async () => {
     const detail = { template: { id: "template-1" }, versions: [{ id: "version-1" }] };

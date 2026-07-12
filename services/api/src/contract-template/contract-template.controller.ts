@@ -20,7 +20,8 @@ import {
 import {
   CreateLayoutTemplateDto,
   LayoutTemplatePreviewSampleDataDto,
-  PublishTemplateChangeDto
+  PublishTemplateChangeDto,
+  UpdateLayoutTemplateVersionDto
 } from "./dto/layout-template.dto";
 import { LayoutTemplateService } from "./layout-template.service";
 
@@ -46,6 +47,25 @@ export class ContractTemplateController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.layouts.createLayout(user.id, body);
+  }
+
+  @Get("contract-layout-templates/:templateId")
+  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  getLayoutTemplate(
+    @Param("templateId") templateId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.getLayoutTemplate(templateId, user.id);
+  }
+
+  @Patch("contract-layout-template-versions/:versionId")
+  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  updateLayoutDraftVersion(
+    @Param("versionId") versionId: string,
+    @Body() body: UpdateLayoutTemplateVersionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.layouts.updateDraftVersion(versionId, user.id, body);
   }
 
   @Post("contract-layout-template-versions/:versionId/inspection")

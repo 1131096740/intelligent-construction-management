@@ -859,22 +859,24 @@ model ContractLayoutTemplate {
 }
 
 model ContractLayoutTemplateVersion {
-  id                String    @id @default(uuid())
-  layoutTemplateId  String
-  versionNo         Int
-  status            String    @default("draft")
-  docxFileId        String
-  placeholderSchema Json
-  previewPdfFileId  String?
-  inspectionReport  Json?
-  submittedByUserId String?
-  publishedByUserId String?
-  publishedAt       DateTime?
-  stoppedAt         DateTime?
-  revokedAt         DateTime?
-  changeSummary     String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                 String    @id @default(uuid())
+  layoutTemplateId   String
+  versionNo          Int
+  status             String    @default("draft")
+  docxFileId         String
+  placeholderSchema  Json
+  draftRevision      Int       @default(1)
+  previewPdfFileId   String?
+  inspectionReport   Json?
+  inspectionRevision Int?
+  submittedByUserId  String?
+  publishedByUserId  String?
+  publishedAt        DateTime?
+  stoppedAt          DateTime?
+  revokedAt          DateTime?
+  changeSummary      String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@unique([layoutTemplateId, versionNo])
 }
@@ -884,6 +886,7 @@ model ContractLayoutPreviewJob {
   layoutTemplateVersionId String
   status                  String    @default("queued")
   sampleData              Json
+  sourceRevision          Int       @default(1)
   previewPdfFileId        String?
   errorMessage            String?
   startedAt               DateTime?

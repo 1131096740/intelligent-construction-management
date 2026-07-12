@@ -20,6 +20,7 @@ import {
   fetchContractWorkbench,
   getBusinessParty,
   getContractTemplate,
+  getLayoutTemplate,
   getLatestLayoutTemplatePreview,
   inspectLayoutTemplateVersion,
   listContractOfflineRevisions,
@@ -50,6 +51,7 @@ import {
   submitStandardClauseVersion,
   submitContractTemplateVersion,
   submitLayoutTemplateVersion,
+  updateLayoutTemplateVersion,
   transferContractDraft,
   updateContractNumberRule,
   updateContractTemplateVersion,
@@ -510,6 +512,11 @@ describe("contract workbench API client", () => {
       docxFileId: "file-1",
       placeholderSchema: { bills: [] }
     });
+    await getLayoutTemplate("layout-template-1");
+    await updateLayoutTemplateVersion("layout-version-1", {
+      expectedRevision: 2,
+      docxFileId: "file-2"
+    });
     await inspectLayoutTemplateVersion("layout-version-1");
     await queueLayoutTemplatePreview("layout-version-1", { contract: { name: "样张" } });
     await getLatestLayoutTemplatePreview("layout-version-1");
@@ -521,6 +528,8 @@ describe("contract workbench API client", () => {
 
     expect(mockApiFetch.mock.calls.map((call) => call[0])).toEqual([
       "/contract-layout-templates",
+      "/contract-layout-templates/layout-template-1",
+      "/contract-layout-template-versions/layout-version-1",
       "/contract-layout-template-versions/layout-version-1/inspection",
       "/contract-layout-template-versions/layout-version-1/preview-generation",
       "/contract-layout-template-versions/layout-version-1/preview-generation",
@@ -530,7 +539,8 @@ describe("contract workbench API client", () => {
       "/contract-layout-template-versions/layout-version-1/stop",
       "/contract-layout-template-versions/layout-version-1/revoke"
     ]);
-    expect((mockApiFetch.mock.calls[3][1] as RequestInit | undefined)?.method).toBeUndefined();
+    expect((mockApiFetch.mock.calls[2][1] as RequestInit).method).toBe("PATCH");
+    expect((mockApiFetch.mock.calls[5][1] as RequestInit | undefined)?.method).toBeUndefined();
   });
 
   it("listPublishedStandardClauses – GET /standard-clauses?category=payment", async () => {

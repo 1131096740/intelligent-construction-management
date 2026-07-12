@@ -60,7 +60,7 @@ describe("ContractDocumentProcessor", () => {
         findFirst: jest.fn().mockResolvedValue(null)
       },
       contractLayoutTemplateVersion: {
-        findUnique: jest.fn().mockResolvedValue({ id: "layout-1", status: "draft" })
+        findUnique: jest.fn().mockResolvedValue({ id: "layout-1", status: "draft", draftRevision: 2 })
       },
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({ id: "version-1", draftRevision: 3 })
@@ -532,6 +532,7 @@ describe("ContractDocumentProcessor", () => {
       id: "preview-1",
       layoutTemplateVersionId: "layout-1",
       status: "queued",
+      sourceRevision: 2,
       sampleData: { contract: { name: "预览合同" } },
       createdByUserId: "staff-1",
       createdAt: new Date()
@@ -543,6 +544,7 @@ describe("ContractDocumentProcessor", () => {
     prisma.contractLayoutTemplateVersion.findUnique.mockResolvedValue({
       id: "layout-1",
       status: "draft",
+      draftRevision: 2,
       docxFileId: "layout-file",
       placeholderSchema: {},
       inspectionReport: {}
@@ -579,7 +581,7 @@ describe("ContractDocumentProcessor", () => {
       ])
     );
     expect(prisma.tx.contractLayoutPreviewJob.updateMany).toHaveBeenCalledWith({
-      where: { id: "preview-1", status: "processing" },
+      where: { id: "preview-1", status: "processing", sourceRevision: 2 },
       data: {
         status: "succeeded",
         previewPdfFileId: "preview-pdf",
@@ -587,6 +589,86 @@ describe("ContractDocumentProcessor", () => {
         errorMessage: null
       }
     });
+  });
+
+  it("marks a preview stale when its source revision no longer matches the draft", async () => {
+    const prisma = makePrisma();
+    prisma.contractLayoutPreviewJob.findFirst.mockResolvedValue({
+      id: "preview-1",
+      layoutTemplateVersionId: "layout-1",
+      status: "queued",
+      sourceRevision: 2,
+      sampleData: {},
+      createdByUserId: "staff-1",
+      createdAt: new Date()
+    });
+    prisma.contractLayoutTemplateVersion.findUnique.mockResolvedValue({
+      id: "layout-1",
+      status: "draft",
+      draftRevision: 3,
+      docxFileId: "layout-file",
+      placeholderSchema: {},
+      inspectionReport: {}
+    });
+    const files = { getFileBuffer: jest.fn(), uploadPrivateFile: jest.fn() };
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(files.getFileBuffer).not.toHaveBeenCalled();
+    expect(prisma.tx.contractLayoutPreviewJob.updateMany).toHaveBeenCalledWith({
+      where: { id: "preview-1", status: "processing", sourceRevision: 2 },
+      data: { status: "stale", completedAt: expect.any(Date), errorMessage: null }
+    });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("does not attach an uploaded preview when the draft changes during rendering", async () => {
+    const prisma = makePrisma();
+    prisma.contractLayoutPreviewJob.findFirst.mockResolvedValue({
+      id: "preview-1",
+      layoutTemplateVersionId: "layout-1",
+      status: "queued",
+      sourceRevision: 2,
+      sampleData: {},
+      createdByUserId: "staff-1",
+      createdAt: new Date()
+    });
+    prisma.contractLayoutTemplateVersion.findUnique.mockResolvedValue({
+      id: "layout-1",
+      status: "draft",
+      draftRevision: 2,
+      docxFileId: "layout-file",
+      placeholderSchema: {},
+      inspectionReport: {}
+    });
+    prisma.tx.contractLayoutTemplateVersion.findUnique.mockResolvedValue({
+      id: "layout-1",
+      status: "draft",
+      draftRevision: 3
+    });
+    const files = {
+      getFileBuffer: jest.fn().mockResolvedValue({ buffer: Buffer.from("template") }),
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "orphan-preview-pdf" })
+    };
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(files.uploadPrivateFile).toHaveBeenCalled();
+    expect(prisma.tx.contractLayoutPreviewJob.updateMany).toHaveBeenCalledWith({
+      where: { id: "preview-1", status: "processing", sourceRevision: 2 },
+      data: { status: "stale", completedAt: expect.any(Date), errorMessage: null }
+    });
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -859,6 +941,7 @@ describe("ContractDocumentProcessor", () => {
       id: "preview-1",
       layoutTemplateVersionId: "layout-1",
       status: "queued",
+      sourceRevision: 2,
       sampleData: { values: { "bill.materials": "not-an-array" } },
       createdByUserId: "staff-1",
       createdAt: new Date()
@@ -866,6 +949,7 @@ describe("ContractDocumentProcessor", () => {
     prisma.contractLayoutTemplateVersion.findUnique.mockResolvedValue({
       id: "layout-1",
       status: "draft",
+      draftRevision: 2,
       docxFileId: "layout-file",
       placeholderSchema: { bills: [{ key: "materials" }] },
       inspectionReport: { placeholders: ["bill.materials"] }
@@ -884,7 +968,7 @@ describe("ContractDocumentProcessor", () => {
 
     expect(mockedRender).not.toHaveBeenCalled();
     expect(prisma.tx.contractLayoutPreviewJob.updateMany).toHaveBeenCalledWith({
-      where: { id: "preview-1", status: "processing" },
+      where: { id: "preview-1", status: "processing", sourceRevision: 2 },
       data: {
         status: "failed",
         errorMessage: "合同版式预览清单数据格式不正确",
