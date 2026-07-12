@@ -25,4 +25,11 @@ describe("contract template editor version governance structure", () => {
     expect(source).not.toContain("stopContractTemplateVersion");
     expect(source).not.toContain("revokeContractTemplateVersion");
   });
+
+  it("保存草稿时把可编辑投影按稳定 key 合并回原版 schema", () => {
+    expect(source).toContain("mergeContractTemplateSchemaForSave");
+    expect(source).toMatch(
+      /schema:\s*mergeContractTemplateSchemaForSave\(version\.schema,\s*buildSchema\(\)\)/u
+    );
+  });
 });

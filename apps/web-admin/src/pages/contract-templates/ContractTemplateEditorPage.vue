@@ -398,6 +398,7 @@ import {
   contractTemplateVersionGovernance,
   contractTemplateVersionOptions,
   fieldTypeOptions,
+  mergeContractTemplateSchemaForSave,
   normalizeContractTemplateDetail,
   pricingModeOptions,
   quantityScaleOptions,
@@ -749,7 +750,7 @@ async function saveVersion() {
   try {
     const version = requireVersion("canSave");
     await updateContractTemplateVersion(version.id, {
-      schema: buildSchema(),
+      schema: mergeContractTemplateSchemaForSave(version.schema, buildSchema()),
       changeSummary: changeSummary.value.trim() || undefined
     });
     await loadTemplate(version.id);

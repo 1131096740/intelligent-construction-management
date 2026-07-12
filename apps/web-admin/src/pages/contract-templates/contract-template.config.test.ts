@@ -11,6 +11,7 @@ import {
   fieldTypeOptions,
   hasOnlyAllowedNumberRuleTokens,
   isValidContractNumberPattern,
+  mergeContractTemplateSchemaForSave,
   normalizeContractNumberPattern,
   normalizeContractTemplateDetail,
   pricingModeOptions,
@@ -21,6 +22,136 @@ import {
 } from "./contract-template.config";
 
 describe("contract template center config", () => {
+  it("按稳定 key 合并五类 schema 且不丢失 UI 未完整表达的元数据", () => {
+    const original = {
+      fields: [
+        {
+          key: "field-1",
+          label: "原字段",
+          type: "text",
+          required: false,
+          defaultValue: "默认值",
+          group: "base",
+          order: 7,
+          visibleWhen: { fieldKey: "kind", operator: "neq", value: "hidden" }
+        }
+      ],
+      bills: [
+        {
+          key: "bill-1",
+          name: "原清单",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          columns: [{ key: "item", label: "原列", type: "text", required: true }]
+        }
+      ],
+      clauses: [
+        {
+          key: "clause-1",
+          title: "原条款",
+          numberingMode: "automatic",
+          required: true,
+          content: { text: "原文", source: "standard" }
+        }
+      ],
+      attachments: [
+        { key: "attachment-1", name: "原附件", required: true, mustBeValid: true }
+      ],
+      validations: [
+        {
+          key: "rule-1",
+          level: "block",
+          targetClauseKey: "clause-1",
+          requiredPhrases: ["原短语"],
+          message: "原提示"
+        }
+      ]
+    };
+    const edited = {
+      fields: [
+        {
+          key: "field-1",
+          label: "新字段",
+          type: "text",
+          required: true,
+          visibleWhen: { fieldKey: "kind", operator: "eq", value: "shown" }
+        }
+      ],
+      bills: [
+        {
+          key: "bill-1",
+          name: "新清单",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 3,
+          unitPriceScale: 2,
+          columns: [{ key: "item", label: "新列", type: "text" }]
+        }
+      ],
+      clauses: [
+        {
+          key: "clause-1",
+          title: "新条款",
+          numberingMode: "automatic",
+          required: true,
+          content: { text: "新文" }
+        }
+      ],
+      attachments: [{ key: "attachment-1", name: "新附件", required: false }],
+      validations: [
+        {
+          key: "rule-1",
+          level: "warning",
+          targetClauseKey: "clause-1",
+          message: "新提示"
+        }
+      ]
+    };
+
+    expect(mergeContractTemplateSchemaForSave(original, edited)).toEqual({
+      fields: [
+        expect.objectContaining({
+          key: "field-1",
+          label: "新字段",
+          required: true,
+          defaultValue: "默认值",
+          group: "base",
+          order: 7,
+          visibleWhen: { fieldKey: "kind", operator: "neq", value: "shown" }
+        })
+      ],
+      bills: [
+        expect.objectContaining({
+          key: "bill-1",
+          name: "新清单",
+          quantityScale: 3,
+          columns: [{ key: "item", label: "新列", type: "text", required: true }]
+        })
+      ],
+      clauses: [
+        expect.objectContaining({
+          key: "clause-1",
+          title: "新条款",
+          content: { text: "新文", source: "standard" }
+        })
+      ],
+      attachments: [
+        { key: "attachment-1", name: "新附件", required: false, mustBeValid: true }
+      ],
+      validations: [
+        {
+          key: "rule-1",
+          level: "warning",
+          targetClauseKey: "clause-1",
+          requiredPhrases: ["原短语"],
+          message: "新提示"
+        }
+      ]
+    });
+  });
+
   it("exposes template list columns and workflow actions", () => {
     expect(templateListColumns.map((column) => column.colKey)).toEqual([
       "name",

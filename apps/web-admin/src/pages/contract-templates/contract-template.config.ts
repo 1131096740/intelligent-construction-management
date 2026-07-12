@@ -1,5 +1,6 @@
 import type {
   ContractTemplateDetailReadModel,
+  ContractTemplateSchemaPayload,
   ContractTemplateVersionReadModel,
   ContractTemplateVersionStatus
 } from "../../api/contract-workbench.api";
@@ -91,6 +92,85 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function hasText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+export function mergeContractTemplateSchemaForSave(
+  original: ContractTemplateSchemaPayload,
+  edited: ContractTemplateSchemaPayload
+): ContractTemplateSchemaPayload {
+  return {
+    fields: mergeSchemaItems(original.fields, edited.fields, (originalItem, editedItem) => {
+      const merged = { ...originalItem, ...editedItem };
+      if (!Object.hasOwn(editedItem, "visibleWhen")) return merged;
+      const originalVisibleWhen = isRecord(originalItem.visibleWhen)
+        ? originalItem.visibleWhen
+        : null;
+      const editedVisibleWhen = isRecord(editedItem.visibleWhen)
+        ? editedItem.visibleWhen
+        : null;
+      if (!editedVisibleWhen) return { ...merged, visibleWhen: editedItem.visibleWhen };
+      return {
+        ...merged,
+        visibleWhen: {
+          ...originalVisibleWhen,
+          ...editedVisibleWhen,
+          ...(originalVisibleWhen?.operator === "eq" || originalVisibleWhen?.operator === "neq"
+            ? { operator: originalVisibleWhen.operator }
+            : {})
+        }
+      };
+    }),
+    bills: mergeSchemaItems(original.bills, edited.bills, (originalItem, editedItem) => ({
+      ...originalItem,
+      ...editedItem,
+      ...(Array.isArray(editedItem.columns)
+        ? {
+            columns: mergeSchemaItems(
+              Array.isArray(originalItem.columns) ? originalItem.columns : [],
+              editedItem.columns
+            )
+          }
+        : {})
+    })),
+    clauses: mergeSchemaItems(original.clauses, edited.clauses, (originalItem, editedItem) => ({
+      ...originalItem,
+      ...editedItem,
+      ...(isRecord(editedItem.content)
+        ? {
+            content: {
+              ...(isRecord(originalItem.content) ? originalItem.content : {}),
+              ...editedItem.content
+            }
+          }
+        : {})
+    })),
+    attachments: mergeSchemaItems(original.attachments, edited.attachments),
+    validations: mergeSchemaItems(original.validations, edited.validations)
+  };
+}
+
+function mergeSchemaItems(
+  originalItems: unknown[],
+  editedItems: unknown[],
+  merge: (
+    originalItem: Record<string, unknown>,
+    editedItem: Record<string, unknown>
+  ) => Record<string, unknown> = (originalItem, editedItem) => ({
+    ...originalItem,
+    ...editedItem
+  })
+) {
+  const originalByKey = new Map(
+    originalItems
+      .filter(isRecord)
+      .filter((item) => hasText(item.key))
+      .map((item) => [item.key, item] as const)
+  );
+  return editedItems.map((editedItem) => {
+    if (!isRecord(editedItem) || !hasText(editedItem.key)) return editedItem;
+    const originalItem = originalByKey.get(editedItem.key);
+    return originalItem ? merge(originalItem, editedItem) : editedItem;
+  });
 }
 
 function normalizeTemplateVersion(
