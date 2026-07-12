@@ -64,6 +64,7 @@
       >
         <router-view />
       </t-content>
+      <SiteFilingFooter />
     </t-layout>
   </t-layout>
 </template>
@@ -72,6 +73,7 @@
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../auth/auth.store";
+import SiteFilingFooter from "../components/SiteFilingFooter.vue";
 import { roleLabels } from "../pages/settings/approval-flow-readonly.config";
 import { visibleAdminNavigationGroups } from "../routes/route-records";
 import {
@@ -274,7 +276,8 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  min-height: calc(100vh - 48px);
+  min-height: 0;
+  flex: 1;
   padding: 24px;
   overflow-x: auto;
   background: #f4f6f9;
@@ -282,6 +285,7 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
 
 .main-shell {
   min-width: 0;
+  min-height: 100vh;
 }
 
 @media (max-width: 900px) {
@@ -331,7 +335,6 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   }
 
   .content {
-    min-height: calc(100vh - 44px);
     padding: 12px;
   }
 }

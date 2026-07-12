@@ -46,6 +46,7 @@
         </t-button>
       </form>
     </section>
+    <SiteFilingFooter />
   </main>
 </template>
 
@@ -53,6 +54,7 @@
 import { reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
+import SiteFilingFooter from "../../components/SiteFilingFooter.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -94,15 +96,16 @@ async function submitChangePassword() {
 <style scoped>
 .password-page {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
   background: #f4f6f9;
   color: #151922;
 }
 
 .password-panel {
-  width: min(420px, 100%);
+  box-sizing: border-box;
+  width: min(420px, calc(100% - var(--jg-space-xxl)));
+  margin: auto;
   padding: 32px;
   background: #fff;
   border: 1px solid #dce1e8;
