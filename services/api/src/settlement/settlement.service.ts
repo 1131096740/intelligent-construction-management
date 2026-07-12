@@ -762,6 +762,8 @@ export class SettlementService {
       }
 
       return settlement;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
     }).catch((error: unknown) => {
       if (this.isDuplicateSettlementPeriodError(error)) {
         throw new BadRequestException(

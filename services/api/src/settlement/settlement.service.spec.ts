@@ -1,5 +1,6 @@
 import * as ExcelJS from "exceljs";
 import { BadRequestException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import {
   calculateFinalSettlementCurrentAmountBigInt,
@@ -1144,9 +1145,19 @@ describe("SettlementService", () => {
       })
     ).rejects.toThrow("累计结算金额不能超过合同清单金额");
 
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
+    });
     expect(tx.settlementLine.findMany).toHaveBeenCalledTimes(2);
     const [firstReadOrder, secondReadOrder] = tx.settlementLine.findMany.mock.invocationCallOrder;
     const lockOrder = tx.$queryRaw.mock.invocationCallOrder[0];
+    const lockQuery = tx.$queryRaw.mock.calls[0]?.[0] as {
+      strings: string[];
+      values: unknown[];
+    };
+    expect(lockQuery.strings.join("?")).toContain('FROM "Project"');
+    expect(lockQuery.strings.join("?")).toContain("FOR UPDATE");
+    expect(lockQuery.values).toEqual(["project-1"]);
     expect(firstReadOrder).toBeLessThan(lockOrder);
     expect(lockOrder).toBeLessThan(secondReadOrder);
     expect(tx.settlement.create).not.toHaveBeenCalled();
