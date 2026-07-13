@@ -107,6 +107,22 @@ describe("createApiFetch", () => {
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
+  it("returns an authenticated password validation error without refreshing or clearing the session", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ message: "当前密码不正确，请重新输入" }), { status: 400 })
+    );
+    const refresh = vi.fn(async () => true);
+    const onUnauthorized = vi.fn();
+    const apiFetch = createApiFetch(bridge({ refresh, onUnauthorized }), fetchImpl);
+
+    const response = await apiFetch("/files/file-1/download-ticket", { method: "POST" });
+
+    expect(response.status).toBe(400);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
   it("notifies the app when the backend requires password change", async () => {
     const fetchImpl = vi.fn(
       async () =>

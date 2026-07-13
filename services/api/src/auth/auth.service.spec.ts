@@ -431,6 +431,28 @@ describe("AuthService", () => {
     });
   });
 
+  it("rejects an incorrect old password as a business validation error", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "合同部 李工",
+      phone: "13800000001",
+      passwordHash: await bcrypt.hash("old-password", 10),
+      mustChangePassword: false,
+      isActive: true
+    });
+
+    await expect(
+      service.changePassword(
+        { id: "user-1", name: "合同部 李工", phone: "13800000001" },
+        { oldPassword: "wrong-password", newPassword: "new-password" }
+      )
+    ).rejects.toMatchObject({ status: 400, message: "当前密码不正确，请重新输入" });
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it("requires and saves the employee's real name on the first password change", async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",
@@ -565,7 +587,7 @@ describe("AuthService", () => {
         { id: "user-1", name: "旧姓名", phone: "13800000001" },
         { name: "杨济旭", phone: "13900000001", currentPassword: "wrong-password" }
       )
-    ).rejects.toMatchObject({ status: 401, message: "当前密码不正确，请重新输入" });
+    ).rejects.toMatchObject({ status: 400, message: "当前密码不正确，请重新输入" });
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.user.update).not.toHaveBeenCalled();
@@ -648,8 +670,9 @@ describe("AuthService", () => {
       isActive: true
     });
 
-    await expect(service.confirmPassword("user-1", "wrong-password")).rejects.toThrow(
-      "当前密码不正确，请重新输入"
-    );
+    await expect(service.confirmPassword("user-1", "wrong-password")).rejects.toMatchObject({
+      status: 400,
+      message: "当前密码不正确，请重新输入"
+    });
   });
 });

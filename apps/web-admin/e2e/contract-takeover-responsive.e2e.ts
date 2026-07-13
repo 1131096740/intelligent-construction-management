@@ -63,7 +63,35 @@ const takeover = {
   updatedAt: "2026-07-13T00:00:00.000Z"
 };
 
-async function loginWithMocks(page: Page) {
+const takeoverWithDownloadableEvidence = {
+  ...takeover,
+  evidenceGapSummary: "历史合同扫描件已补齐。",
+  evidenceChecklist: [
+    {
+      ...takeover.evidenceChecklist[0],
+      uploaded: true,
+      statusLabel: "已补齐",
+      riskText: "历史合同扫描件已归档。"
+    }
+  ],
+  evidenceFiles: [
+    {
+      recordId: "archive-file-1",
+      fileId: "file-downloadable-1",
+      fileName: "建工智管-中文上传验收-20260713.pdf",
+      purpose: "historical_contract_scan",
+      purposeLabel: "历史合同扫描件",
+      mimeType: "application/pdf",
+      sizeBytes: 58_314,
+      uploadedByName: "合同负责人",
+      uploadedAt: "2026-07-13T08:16:34.000Z",
+      canDownload: true,
+      disabledReason: null
+    }
+  ]
+};
+
+async function loginWithMocks(page: Page, takeoverFixture = takeover) {
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -98,8 +126,8 @@ async function loginWithMocks(page: Page) {
     const body = url.pathname.endsWith("/import-batches")
       ? []
       : url.pathname.endsWith("/takeover-responsive")
-        ? takeover
-        : [takeover];
+        ? takeoverFixture
+        : [takeoverFixture];
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
 
@@ -180,4 +208,40 @@ test("stacks takeover evidence controls on a 390px mobile viewport", async ({ pa
     await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
   ).toBe(true);
   expect(runtimeErrors).toEqual([]);
+});
+
+test("keeps the signed-in session when a sensitive download password is incorrect", async ({
+  page
+}) => {
+  let downloadTicketRequests = 0;
+  let refreshRequests = 0;
+  await page.route("**/api/files/file-downloadable-1/download-ticket", (route) => {
+    downloadTicketRequests += 1;
+    return route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "当前密码不正确，请重新输入" })
+    });
+  });
+  await page.route("**/api/auth/refresh", (route) => {
+    refreshRequests += 1;
+    return route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+  });
+  page.once("dialog", (dialog) => dialog.accept());
+
+  await loginWithMocks(page, takeoverWithDownloadableEvidence);
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+  const detail = page.locator(".detail-panel");
+  await detail.getByPlaceholder("下载前需校验当前登录密码").fill("wrong-password");
+  await detail
+    .getByPlaceholder("例如：复核历史付款凭证")
+    .fill("生产验收：错误密码不应退出登录");
+  await detail.getByRole("button", { name: "安全下载资料" }).click();
+
+  await expect(page.getByText("当前密码不正确，请重新输入", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/%E5%8E%86%E5%8F%B2%E5%90%88%E5%90%8C%E6%8E%A5%E7%AE%A1$/u);
+  await expect(page.getByText("合同负责人 · 合同部主管", { exact: true })).toBeVisible();
+  expect(downloadTicketRequests).toBe(1);
+  expect(refreshRequests).toBe(0);
 });

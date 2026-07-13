@@ -200,7 +200,7 @@ export class AuthService {
     const oldPasswordMatched = await bcrypt.compare(input.oldPassword, storedUser.passwordHash);
 
     if (!oldPasswordMatched) {
-      throw new UnauthorizedException("当前密码不正确，请重新输入");
+      throw new BadRequestException("当前密码不正确，请重新输入");
     }
 
     const name = input.name?.trim();
@@ -247,7 +247,7 @@ export class AuthService {
 
     const passwordMatched = await bcrypt.compare(input.currentPassword, storedUser.passwordHash);
     if (!passwordMatched) {
-      throw new UnauthorizedException("当前密码不正确，请重新输入");
+      throw new BadRequestException("当前密码不正确，请重新输入");
     }
 
     const name = input.name.trim();
@@ -301,7 +301,7 @@ export class AuthService {
     const passwordMatched = await bcrypt.compare(password, user.passwordHash);
 
     if (!passwordMatched) {
-      throw new UnauthorizedException("当前密码不正确，请重新输入");
+      throw new BadRequestException("当前密码不正确，请重新输入");
     }
 
     return { ok: true };
