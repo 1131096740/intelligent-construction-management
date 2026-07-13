@@ -455,7 +455,7 @@ describe("FileService", () => {
               Authorization:
                 "q-sign-algorithm=sha1&q-ak=secret-id&q-sign-time=1700000000;1700000600" +
                 "&q-key-time=1700000000;1700000600&q-header-list=host&q-url-param-list=" +
-                "&q-signature=2f3f64220aaf82422875fb3bc0b85f3a1601090a"
+                "&q-signature=02badb510ed63c81d6977c447ee4631fdf0a2e00"
             })
           })
         );
@@ -583,6 +583,7 @@ describe("FileService", () => {
       status: 200,
       arrayBuffer: async () => responseBody.buffer
     } as Response);
+    const dateNowMock = jest.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
 
     try {
       const privateStorage = new PrivateFileStorage();
@@ -608,11 +609,15 @@ describe("FileService", () => {
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
-            Authorization: expect.stringContaining("q-sign-algorithm=sha1")
+            Authorization:
+              "q-sign-algorithm=sha1&q-ak=secret-id&q-sign-time=1700000000;1700000600" +
+              "&q-key-time=1700000000;1700000600&q-header-list=host&q-url-param-list=" +
+              "&q-signature=a69c3d8d01bd4da652ef8cb81548968625404997"
           })
         })
       );
     } finally {
+      dateNowMock.mockRestore();
       fetchMock.mockRestore();
       if (previous.driver === undefined) delete process.env.FILE_STORAGE_DRIVER;
       else process.env.FILE_STORAGE_DRIVER = previous.driver;
@@ -624,6 +629,120 @@ describe("FileService", () => {
       else process.env.COS_BUCKET = previous.bucket;
       if (previous.region === undefined) delete process.env.COS_REGION;
       else process.env.COS_REGION = previous.region;
+    }
+  });
+
+  it("signs the raw Chinese COS path while requesting its encoded URL", async () => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => new ArrayBuffer(0)
+    } as Response);
+    const dateNowMock = jest.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+
+      await privateStorage.write("uploads/合同.pdf", Buffer.from("private-file"));
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://private-bucket.cos.ap-guangzhou.myqcloud.com/uploads/%E5%90%88%E5%90%8C.pdf",
+        expect.objectContaining({
+          method: "PUT",
+          headers: expect.objectContaining({
+            Authorization:
+              "q-sign-algorithm=sha1&q-ak=secret-id&q-sign-time=1700000000;1700000600" +
+              "&q-key-time=1700000000;1700000600&q-header-list=host&q-url-param-list=" +
+              "&q-signature=b539aea8053cb66374f9dae1a857588422bf97af"
+          })
+        })
+      );
+    } finally {
+      dateNowMock.mockRestore();
+      fetchMock.mockRestore();
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("logs sanitized COS diagnostics without exposing credentials or file names", async () => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const objectKey = "uploads/历史接管合同.pdf";
+    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        [
+          "<Error>",
+          "<Code>SignatureDoesNotMatch</Code>",
+          "<Message>敏感上游错误细节</Message>",
+          "<RequestId>NjY4OGQ1YjRfMTIzNDU2Nw==</RequestId>",
+          "</Error>"
+        ].join(""),
+        { status: 403 }
+      )
+    );
+    const loggerError = jest.spyOn(Logger.prototype, "error").mockImplementation();
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+      const action = privateStorage.write(objectKey, Buffer.from("private-file"));
+
+      await expect(action).rejects.toThrow(
+        "私有文件上传到对象存储失败，请稍后重试或联系管理员"
+      );
+      expect(loggerError).toHaveBeenCalledWith({
+        event: "private_file_cos_request_failed",
+        operation: "上传",
+        statusCode: 403,
+        cosErrorCode: "SignatureDoesNotMatch",
+        cosRequestId: "NjY4OGQ1YjRfMTIzNDU2Nw==",
+        objectKeyFingerprint: createHash("sha256").update(objectKey).digest("hex").slice(0, 16)
+      });
+
+      const loggedOutput = JSON.stringify(loggerError.mock.calls);
+      expect(loggedOutput).not.toContain(objectKey);
+      expect(loggedOutput).not.toContain("secret-id");
+      expect(loggedOutput).not.toContain("secret-key");
+      expect(loggedOutput).not.toContain("敏感上游错误细节");
+    } finally {
+      loggerError.mockRestore();
+      fetchMock.mockRestore();
+      restoreStorageEnv(previous);
+    }
+  });
+
+  it("keeps COS transport failures observable without logging the upstream error", async () => {
+    const previous = snapshotStorageEnv();
+    configureCosStorage();
+    const objectKey = "uploads/历史接管合同.pdf";
+    const fetchMock = jest
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error(`socket failure: secret-key ${objectKey}`));
+    const loggerError = jest.spyOn(Logger.prototype, "error").mockImplementation();
+
+    try {
+      const privateStorage = new PrivateFileStorage();
+      const action = privateStorage.read(objectKey);
+
+      await expect(action).rejects.toThrow(
+        "资料文件暂时无法从对象存储读取，请稍后重试或联系管理员"
+      );
+      expect(loggerError).toHaveBeenCalledWith({
+        event: "private_file_cos_request_failed",
+        operation: "读取",
+        failureType: "传输失败",
+        objectKeyFingerprint: createHash("sha256").update(objectKey).digest("hex").slice(0, 16)
+      });
+
+      const loggedOutput = JSON.stringify(loggerError.mock.calls);
+      expect(loggedOutput).not.toContain(objectKey);
+      expect(loggedOutput).not.toContain("secret-key");
+      expect(loggedOutput).not.toContain("socket failure");
+    } finally {
+      loggerError.mockRestore();
+      fetchMock.mockRestore();
+      restoreStorageEnv(previous);
     }
   });
 

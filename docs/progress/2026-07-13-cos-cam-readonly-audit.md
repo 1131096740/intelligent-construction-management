@@ -60,7 +60,16 @@
 
 ## 当前状态
 
-只读诊断已完成；代码修复、CAM 权限修改、生产发布和真实文件 UAT 均未执行，需用户分别授权。
+只读诊断已完成。随后按用户单独授权，仅在候选分支完成以下本地修复：
+
+- 请求 URL 继续使用百分号编码路径，COS 签名 HttpString 改用未编码的原始中文 canonical path；共享入口同时覆盖 GET、PUT、DELETE。
+- COS HTTP 失败只在服务端记录操作、状态码、经过白名单清洗的 COS Code、RequestId 和对象键 SHA-256 短指纹；传输失败记录操作和短指纹。
+- 客户端继续收到固定中文业务错误；日志不记录 SecretId、SecretKey、Authorization、原文件名、文件内容或 COS Message。
+- 更新原有中文 DELETE 签名断言，新增中文 PUT 签名、错误 XML 脱敏诊断和传输失败脱敏回归测试。
+
+验证结果：文件服务 118/118、API 全量 105 套 2,504/2,504、API typecheck、lint 与 `git diff --check` 全部通过。
+
+本次没有推送或部署，没有创建、修改或删除 COS 对象，也没有修改 CAM/COS 权限。CAM `DeleteObject` 最小权限、生产发布和真实中文文件 UAT 仍需分别授权。
 
 ## 官方依据
 

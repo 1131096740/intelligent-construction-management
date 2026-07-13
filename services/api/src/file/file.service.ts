@@ -131,6 +131,7 @@ function hasErrorCode(error: unknown, code: string): boolean {
 
 @Injectable()
 export class PrivateFileStorage implements OnModuleInit {
+  private readonly logger = new Logger(PrivateFileStorage.name);
   private readonly configuredRoot = process.env.FILE_STORAGE_ROOT;
   private readonly root = resolve(
     this.configuredRoot ?? join(process.cwd(), "storage", "private")
@@ -428,27 +429,91 @@ export class PrivateFileStorage implements OnModuleInit {
     const bucket = this.requiredEnv("COS_BUCKET");
     const region = this.requiredEnv("COS_REGION");
     const host = `${bucket}.cos.${region}.myqcloud.com`;
-    const pathname = encodeURI(`/${objectKey}`);
-    const response = await fetch(`https://${host}${pathname}`, {
-      method,
-      headers: {
-        Authorization: this.cosAuthorization(method, pathname, host),
-        Host: host
-      },
-      body: body ? new Uint8Array(body) : undefined
-    });
+    const canonicalPath = `/${objectKey}`;
+    const requestPath = encodeURI(canonicalPath);
+    let response: Response;
+    try {
+      response = await fetch(`https://${host}${requestPath}`, {
+        method,
+        headers: {
+          Authorization: this.cosAuthorization(method, canonicalPath, host),
+          Host: host
+        },
+        body: body ? new Uint8Array(body) : undefined
+      });
+    } catch {
+      this.logger.error({
+        event: "private_file_cos_request_failed",
+        operation: this.cosOperationName(method),
+        failureType: "传输失败",
+        objectKeyFingerprint: this.objectKeyFingerprint(objectKey)
+      });
+      throw new Error(this.cosFailureMessage(method));
+    }
 
     if (!response.ok && !(method === "DELETE" && response.status === 404)) {
-      throw new Error(
-        method === "PUT"
-          ? "私有文件上传到对象存储失败，请稍后重试或联系管理员"
-          : method === "GET"
-            ? "资料文件暂时无法从对象存储读取，请稍后重试或联系管理员"
-            : "私有文件从对象存储删除失败，请稍后重试或联系管理员"
-      );
+      const diagnostics = await this.cosResponseDiagnostics(response);
+      this.logger.error({
+        event: "private_file_cos_request_failed",
+        operation: this.cosOperationName(method),
+        statusCode: response.status,
+        cosErrorCode: diagnostics.errorCode,
+        cosRequestId: diagnostics.requestId,
+        objectKeyFingerprint: this.objectKeyFingerprint(objectKey)
+      });
+      throw new Error(this.cosFailureMessage(method));
     }
 
     return Buffer.from(await response.arrayBuffer());
+  }
+
+  private cosFailureMessage(method: "DELETE" | "GET" | "PUT") {
+    return method === "PUT"
+      ? "私有文件上传到对象存储失败，请稍后重试或联系管理员"
+      : method === "GET"
+        ? "资料文件暂时无法从对象存储读取，请稍后重试或联系管理员"
+        : "私有文件从对象存储删除失败，请稍后重试或联系管理员";
+  }
+
+  private cosOperationName(method: "DELETE" | "GET" | "PUT") {
+    return method === "PUT" ? "上传" : method === "GET" ? "读取" : "删除";
+  }
+
+  private objectKeyFingerprint(objectKey: string) {
+    return createHash("sha256").update(objectKey).digest("hex").slice(0, 16);
+  }
+
+  private async cosResponseDiagnostics(response: Response) {
+    let responseText = "";
+    try {
+      responseText = await response.text();
+    } catch {
+      // Keep the public error stable even when COS returns an unreadable error body.
+    }
+
+    const headerRequestId =
+      typeof response.headers?.get === "function"
+        ? response.headers.get("x-cos-request-id")
+        : undefined;
+    return {
+      errorCode: this.cosDiagnosticValue(responseText, "Code"),
+      requestId:
+        this.sanitizeCosDiagnostic(headerRequestId) ??
+        this.cosDiagnosticValue(responseText, "RequestId")
+    };
+  }
+
+  private cosDiagnosticValue(responseText: string, tag: "Code" | "RequestId") {
+    const match = responseText.match(new RegExp(`<${tag}>\\s*([^<]{1,160})\\s*</${tag}>`, "i"));
+    return this.sanitizeCosDiagnostic(match?.[1]);
+  }
+
+  private sanitizeCosDiagnostic(value: string | null | undefined) {
+    const normalized = value?.trim();
+    if (!normalized || normalized.length > 160 || !/^[A-Za-z0-9._:/+=-]+$/.test(normalized)) {
+      return undefined;
+    }
+    return normalized;
   }
 
   private cosAuthorization(method: "DELETE" | "GET" | "PUT", pathname: string, host: string) {
