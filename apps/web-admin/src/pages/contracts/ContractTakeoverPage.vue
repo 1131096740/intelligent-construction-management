@@ -2486,9 +2486,13 @@ input[type="date"] {
 
 .content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr) minmax(460px, 0.72fr);
   gap: 16px;
   align-items: start;
+}
+
+.content-grid > * {
+  min-width: 0;
 }
 
 .ledger-panel {
@@ -2502,6 +2506,8 @@ input[type="date"] {
 
 .detail-panel {
   min-width: 0;
+  container-name: takeover-detail;
+  container-type: inline-size;
 }
 
 .detail-body {
@@ -2657,7 +2663,7 @@ input[type="date"] {
 
 .evidence-download-panel {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
   gap: 10px;
   align-items: end;
   padding: 10px 12px;
@@ -2721,8 +2727,19 @@ input[type="date"] {
 }
 
 .evidence-uploader input[type="file"] {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   font-size: 12px;
+}
+
+@container takeover-detail (max-width: 720px) {
+  .detail-list.compact,
+  .post-verification-counts,
+  .evidence-uploader,
+  .evidence-download-panel {
+    grid-template-columns: 1fr;
+  }
 }
 
 .correction-form {
@@ -2799,6 +2816,12 @@ input[type="date"] {
   margin: 0;
 }
 
+@media (max-width: 1440px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1180px) {
   .toolbar,
   .form-grid {
@@ -2807,10 +2830,6 @@ input[type="date"] {
 
   .project-picker {
     grid-column: span 2;
-  }
-
-  .content-grid {
-    grid-template-columns: 1fr;
   }
 
   .takeover-flow {
