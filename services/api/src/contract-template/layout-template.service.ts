@@ -86,7 +86,7 @@ export class LayoutTemplateService {
 
   async createLayout(actorUserId: string, input: CreateLayoutTemplateDto) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalRole(tx, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
       const file = await tx.fileObject.findUnique({ where: { id: input.docxFileId } });
       if (!file) throw new NotFoundException("未找到版式源文件，请重新上传 DOCX 文件");
       if (file.uploadedByUserId !== actorUserId) {
@@ -159,7 +159,7 @@ export class LayoutTemplateService {
     input: UpdateLayoutTemplateVersionDto
   ) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalRole(tx, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的合同版式可以修改，请复制已发布版本后再编辑");
@@ -221,7 +221,7 @@ export class LayoutTemplateService {
 
   async inspectVersion(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalRole(tx, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的合同版式可以检查");
@@ -250,7 +250,7 @@ export class LayoutTemplateService {
     sampleData: LayoutTemplatePreviewSampleDataDto
   ) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalRole(tx, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的合同版式可以生成预览");
@@ -281,7 +281,7 @@ export class LayoutTemplateService {
 
   getLatestPreview(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalRole(tx, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
       return tx.contractLayoutPreviewJob.findFirst({
         where: { layoutTemplateVersionId: versionId },
         orderBy: { createdAt: "desc" }
@@ -291,7 +291,7 @@ export class LayoutTemplateService {
 
   async submitVersion(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalRole(tx, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
       const version = await this.findVersion(tx, versionId);
       if (version.status !== "draft") {
         throw new BadRequestException("只有草稿状态的合同版式可以提交");
@@ -369,7 +369,7 @@ export class LayoutTemplateService {
 
   async cloneVersion(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalRole(tx, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx, actorUserId);
       const source = await this.findVersion(tx, versionId);
       if (source.status !== "published") {
         throw new BadRequestException("只有已发布的合同版式可以复制为新草稿");
@@ -623,8 +623,12 @@ export class LayoutTemplateService {
         })
       : [];
     if (!positions.some((position) => roleKeys.includes(position.key as typeof roleKeys[number]))) {
-      throw new ForbiddenException("只有合同经办人或合同主管可以查看版式治理详情");
+      throw new ForbiddenException("只有合同经办人或合同主管可以执行该版式操作");
     }
+  }
+
+  private assertTemplateMaintenanceRole(tx: RoleClient, actorUserId: string) {
+    return this.assertAnyGlobalRole(tx, actorUserId, ["contract_staff", "contract_director"]);
   }
 
   private async assertGlobalRole(

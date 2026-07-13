@@ -8,6 +8,7 @@ import type {
 } from "../../api/contract-workbench.api";
 
 export const templateListColumns = [
+  { colKey: "businessCode", title: "业务编号" },
   { colKey: "name", title: "模板名称" },
   { colKey: "contractTypeKey", title: "类型" },
   { colKey: "status", title: "状态" },
@@ -238,6 +239,7 @@ export function normalizePublishedContractTemplates(
     return {
       id: item.id,
       ...(hasText(item.code) ? { code: item.code } : {}),
+      ...(hasText(item.businessCode) ? { businessCode: item.businessCode } : {}),
       name: item.name,
       status: "published",
       contractTypeKey: item.contractTypeKey,

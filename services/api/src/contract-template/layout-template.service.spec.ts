@@ -38,7 +38,7 @@ describe("LayoutTemplateService", () => {
     return zip.generate({ type: "nodebuffer" });
   }
 
-  function roleTx(role: "contract_staff" | "contract_director") {
+  function roleTx(role: string) {
     return {
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }]) },
       position: { findMany: jest.fn().mockResolvedValue([{ key: role }]) },
@@ -428,9 +428,24 @@ describe("LayoutTemplateService", () => {
     });
   });
 
-  it("rejects preview reads without global contract_staff", async () => {
+  it("allows a contract director to read the latest preview", async () => {
     const tx = {
       ...roleTx("contract_director"),
+      contractLayoutPreviewJob: { findFirst: jest.fn().mockResolvedValue({ id: "job-1" }) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new LayoutTemplateService(prisma, audit as never, files as never);
+
+    await expect(service.getLatestPreview("version-1", "director-1")).resolves.toMatchObject({
+      id: "job-1"
+    });
+  });
+
+  it("rejects preview reads without a contract template role", async () => {
+    const tx = {
+      ...roleTx("finance_staff"),
       contractLayoutPreviewJob: { findFirst: jest.fn() }
     };
     const prisma = {
@@ -438,8 +453,8 @@ describe("LayoutTemplateService", () => {
     } as unknown as PrismaService;
     const service = new LayoutTemplateService(prisma, audit as never, files as never);
 
-    await expect(service.getLatestPreview("version-1", "director-1")).rejects.toThrow(
-      "只有合同经办人可以执行该版式操作"
+    await expect(service.getLatestPreview("version-1", "finance-1")).rejects.toThrow(
+      "只有合同经办人或合同主管可以执行该版式操作"
     );
     expect(tx.contractLayoutPreviewJob.findFirst).not.toHaveBeenCalled();
   });

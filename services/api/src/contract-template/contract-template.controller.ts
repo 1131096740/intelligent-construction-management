@@ -33,7 +33,12 @@ import {
 } from "./dto/layout-template.dto";
 import { LayoutTemplateService } from "./layout-template.service";
 
-const TEMPLATE_GOVERNANCE_POSITIONS = ["contract_director", "super_admin"] as const;
+const TEMPLATE_MAINTENANCE_POSITIONS = [
+  "contract_staff",
+  "contract_director"
+] as const;
+const TEMPLATE_PUBLICATION_POSITIONS = ["contract_director"] as const;
+const TEMPLATE_SCENARIO_GOVERNANCE_POSITIONS = ["contract_director", "super_admin"] as const;
 
 @Controller()
 export class ContractTemplateController {
@@ -64,13 +69,13 @@ export class ContractTemplateController {
   }
 
   @Get("contract-business-scenarios")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_SCENARIO_GOVERNANCE_POSITIONS)
   listScenarioGovernance(@CurrentUser() user: AuthenticatedUser) {
     return this.scenarios.listGovernance(user.id);
   }
 
   @Post("contract-business-scenarios")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_SCENARIO_GOVERNANCE_POSITIONS)
   createBusinessScenario(
     @Body() body: CreateContractBusinessScenarioDto,
     @CurrentUser() user: AuthenticatedUser
@@ -79,7 +84,7 @@ export class ContractTemplateController {
   }
 
   @Patch("contract-business-scenarios/:scenarioId")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_SCENARIO_GOVERNANCE_POSITIONS)
   updateBusinessScenario(
     @Param("scenarioId") scenarioId: string,
     @Body() body: UpdateContractBusinessScenarioDto,
@@ -89,7 +94,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-business-scenarios/:scenarioId/template-mappings")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_SCENARIO_GOVERNANCE_POSITIONS)
   createScenarioTemplateMapping(
     @Param("scenarioId") scenarioId: string,
     @Body() body: CreateContractScenarioTemplateMappingDto,
@@ -99,7 +104,7 @@ export class ContractTemplateController {
   }
 
   @Patch("contract-scenario-template-mappings/:mappingId")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_SCENARIO_GOVERNANCE_POSITIONS)
   updateScenarioTemplateMapping(
     @Param("mappingId") mappingId: string,
     @Body() body: UpdateContractScenarioTemplateMappingDto,
@@ -114,7 +119,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-layout-templates")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   createLayout(
     @Body()
     body: CreateLayoutTemplateDto,
@@ -124,7 +129,7 @@ export class ContractTemplateController {
   }
 
   @Get("contract-layout-templates/:templateId")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   getLayoutTemplate(
     @Param("templateId") templateId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -133,7 +138,7 @@ export class ContractTemplateController {
   }
 
   @Patch("contract-layout-template-versions/:versionId")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   updateLayoutDraftVersion(
     @Param("versionId") versionId: string,
     @Body() body: UpdateLayoutTemplateVersionDto,
@@ -143,7 +148,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-layout-template-versions/:versionId/inspection")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   inspectLayout(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -152,7 +157,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-layout-template-versions/:versionId/preview-generation")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   queueLayoutPreview(
     @Param("versionId") versionId: string,
     @Body() sampleData: LayoutTemplatePreviewSampleDataDto,
@@ -162,7 +167,7 @@ export class ContractTemplateController {
   }
 
   @Get("contract-layout-template-versions/:versionId/preview-generation")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   getLayoutPreview(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -171,7 +176,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-layout-template-versions/:versionId/submission")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   submitLayout(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -180,7 +185,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-layout-template-versions/:versionId/publication")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_PUBLICATION_POSITIONS)
   publishLayout(
     @Param("versionId") versionId: string,
     @Body() body: PublishTemplateChangeDto,
@@ -190,7 +195,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-layout-template-versions/:versionId/clone")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   cloneLayout(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -199,7 +204,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-layout-template-versions/:versionId/stop")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_PUBLICATION_POSITIONS)
   stopLayout(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -208,7 +213,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-layout-template-versions/:versionId/revoke")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_PUBLICATION_POSITIONS)
   revokeLayout(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -226,13 +231,13 @@ export class ContractTemplateController {
   }
 
   @Get("contract-templates/:templateId")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   getTemplate(@Param("templateId") templateId: string) {
     return this.templates.getTemplate(templateId);
   }
 
   @Post("contract-templates")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   createTemplate(
     @Body() body: CreateBusinessTemplateDto,
     @CurrentUser() user: AuthenticatedUser
@@ -241,7 +246,7 @@ export class ContractTemplateController {
   }
 
   @Patch("contract-template-versions/:versionId")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   updateDraftVersion(
     @Param("versionId") versionId: string,
     @Body() body: UpdateBusinessTemplateVersionDto,
@@ -251,7 +256,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-template-versions/:versionId/clone")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   cloneVersion(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -260,7 +265,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-template-versions/:versionId/submission")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   submitVersion(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -269,7 +274,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-template-versions/:versionId/publication")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_PUBLICATION_POSITIONS)
   publishVersion(
     @Param("versionId") versionId: string,
     @Body() body: PublishTemplateVersionDto,
@@ -279,7 +284,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-template-versions/:versionId/stop")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_PUBLICATION_POSITIONS)
   stopVersion(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -288,7 +293,7 @@ export class ContractTemplateController {
   }
 
   @Post("contract-template-versions/:versionId/revoke")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_PUBLICATION_POSITIONS)
   revokeVersion(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -306,7 +311,7 @@ export class ContractTemplateController {
   }
 
   @Post("standard-clauses")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   createClause(
     @Body() body: CreateStandardClauseDto,
     @CurrentUser() user: AuthenticatedUser
@@ -315,7 +320,7 @@ export class ContractTemplateController {
   }
 
   @Post("standard-clause-versions/:versionId/submission")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_MAINTENANCE_POSITIONS)
   submitClauseVersion(
     @Param("versionId") versionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -324,7 +329,7 @@ export class ContractTemplateController {
   }
 
   @Post("standard-clause-versions/:versionId/publication")
-  @RequirePositions(...TEMPLATE_GOVERNANCE_POSITIONS)
+  @RequirePositions(...TEMPLATE_PUBLICATION_POSITIONS)
   publishClauseVersion(
     @Param("versionId") versionId: string,
     @Body() body: PublishTemplateChangeDto,

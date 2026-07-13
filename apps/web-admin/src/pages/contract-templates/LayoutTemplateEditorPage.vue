@@ -114,7 +114,7 @@
           placeholder="请选择 DOCX 版式源文件"
         />
         <t-button
-          v-if="isCreateMode"
+          v-if="isCreateMode && canMaintainTemplates"
           theme="primary"
           :loading="saving"
           @click="createLayout"
@@ -208,6 +208,7 @@ import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { uploadPrivateFile } from "../../api/core-flow-read.api";
+import { useAuthStore } from "../../auth/auth.store";
 import {
   cloneLayoutTemplateVersion,
   createLayoutTemplate,
@@ -223,9 +224,14 @@ import {
 } from "../../api/contract-workbench.api";
 import { templateStatusLabel } from "../contracts/contract-labels";
 import { canPublishLayoutVersion, contractTypeOptions } from "./contract-template.config";
+import {
+  canMaintainContractTemplates,
+  canPublishContractTemplates
+} from "./template-permissions";
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const form = reactive({ name: "", contractTypeKey: "" });
 const detail = ref<LayoutTemplateDetailReadModel | null>(null);
 const selectedVersionId = ref("");
@@ -240,11 +246,13 @@ const versions = computed(() => detail.value?.versions ?? []);
 const currentVersion = computed(() =>
   versions.value.find((version) => version.id === selectedVersionId.value) ?? null
 );
+const canMaintainTemplates = computed(() => canMaintainContractTemplates(auth.user?.roleKeys));
+const canPublishTemplates = computed(() => canPublishContractTemplates(auth.user?.roleKeys));
 const governance = computed(() => ({
-  canSave: currentVersion.value?.status === "draft",
-  canSubmit: currentVersion.value?.status === "draft",
-  canPublish: currentVersion.value?.status === "submitted",
-  canClone: currentVersion.value?.status === "published"
+  canSave: currentVersion.value?.status === "draft" && canMaintainTemplates.value,
+  canSubmit: currentVersion.value?.status === "draft" && canMaintainTemplates.value,
+  canPublish: currentVersion.value?.status === "submitted" && canPublishTemplates.value,
+  canClone: currentVersion.value?.status === "published" && canMaintainTemplates.value
 }));
 const latestPreview = computed<LayoutTemplatePreviewReadModel | null>(() =>
   currentVersion.value?.latestPreview ?? null

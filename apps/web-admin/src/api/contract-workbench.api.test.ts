@@ -473,6 +473,7 @@ describe("contract workbench API client", () => {
     await getContractTemplate("template-1");
     await createContractTemplate({
       code: "TPL-MAT",
+      businessCode: "合同模板-材料采购-V1",
       name: "材料采购模板",
       contractTypeKey: "material_purchase",
       schema

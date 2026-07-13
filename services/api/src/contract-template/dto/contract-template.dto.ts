@@ -257,6 +257,9 @@ export class CreateBusinessTemplateDto extends JsonSafeTemplateBodyDto {
   @IsRequiredText({ requiredMessage: "请填写业务模板编号", typeMessage: "业务模板编号必须是文字", blankMessage: "请填写业务模板编号" })
   code!: string;
 
+  @IsRequiredText({ requiredMessage: "请填写中文业务编号", typeMessage: "中文业务编号必须是文字", blankMessage: "请填写中文业务编号" })
+  businessCode!: string;
+
   @IsRequiredText({ requiredMessage: "请填写业务模板名称", typeMessage: "业务模板名称必须是文字", blankMessage: "请填写业务模板名称" })
   name!: string;
 

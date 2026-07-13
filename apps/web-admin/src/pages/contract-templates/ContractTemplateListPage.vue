@@ -3,16 +3,19 @@
     <div class="page-head">
       <div>
         <h1>合同模板库</h1>
-        <p>一线人员选择模板建合同；合同主管维护字段、条款、版式和编号规则</p>
+        <p>合同部经办人维护模板草稿和版式；合同主管负责发布、停用与编号规则</p>
       </div>
-      <t-space v-if="canConfigureTemplates">
+      <t-space v-if="canMaintainTemplates">
         <t-button @click="go('/合同模板库/版式/new')">
           版式模板
         </t-button>
         <t-button @click="go('/合同模板库/标准条款')">
           标准条款
         </t-button>
-        <t-button @click="go('/合同模板库/编号规则')">
+        <t-button
+          v-if="canPublishTemplates"
+          @click="go('/合同模板库/编号规则')"
+        >
           编号规则
         </t-button>
       </t-space>
@@ -26,7 +29,7 @@
         使用模式
       </t-button>
       <t-button
-        v-if="canConfigureTemplates"
+        v-if="canMaintainTemplates"
         :theme="mode === 'config' ? 'primary' : 'default'"
         @click="mode = 'config'"
       >
@@ -40,7 +43,7 @@
     >
       <div class="mode-note">
         <strong>选择一个已发布模板，新建合同时会自动带入合同类型和模板版本。</strong>
-        <span>{{ canConfigureTemplates ? "如果没有合适模板，可在配置模式维护。" : "如果没有合适模板，请联系合同部主管维护。" }}</span>
+        <span>{{ canMaintainTemplates ? "如果没有合适模板，可在配置模式维护。" : "如果没有合适模板，请联系合同部维护。" }}</span>
       </div>
 
       <div
@@ -72,6 +75,14 @@
               variant="light"
             >
               {{ contractTypeLabel(template.contractTypeKey) }}
+            </t-tag>
+            <t-tag
+              v-if="template.businessCode"
+              size="small"
+              theme="primary"
+              variant="light"
+            >
+              {{ template.businessCode }}
             </t-tag>
           </t-space>
           <div class="template-card-body">
@@ -106,7 +117,10 @@
         class="panel"
       >
         <div class="form-grid">
-          <label><span>编码</span><t-input v-model="form.code" /></label>
+          <label><span>中文业务编号</span><t-input
+            v-model="form.businessCode"
+            placeholder="如：合同模板-材料采购-V1"
+          /></label>
           <label><span>名称</span><t-input v-model="form.name" /></label>
           <label><span>合同类型</span><t-select v-model="form.contractTypeKey">
             <t-option
@@ -116,6 +130,10 @@
               :label="option.label"
             />
           </t-select></label>
+          <label><span>系统稳定键（内部）</span><t-input
+            v-model="form.code"
+            placeholder="如：TPL-MATERIAL"
+          /></label>
           <t-button
             theme="primary"
             :loading="saving"
@@ -148,6 +166,9 @@
           </template>
           <template #contractTypeKey="{ row }">
             {{ contractTypeLabel(row.contractTypeKey) }}
+          </template>
+          <template #businessCode="{ row }">
+            {{ row.businessCode || "待补充" }}
           </template>
           <template #latestVersion="{ row }">
             {{ row.versionNo ? `v${row.versionNo}` : "暂无发布版本" }}
@@ -200,8 +221,10 @@ import {
   normalizePublishedContractTemplates,
   templateListColumns
 } from "./contract-template.config";
-
-const TEMPLATE_CONFIG_ROLE_KEYS = new Set(["contract_director", "super_admin"]);
+import {
+  canMaintainContractTemplates,
+  canPublishContractTemplates
+} from "./template-permissions";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -215,12 +238,16 @@ const message = ref("");
 const tone = ref<"success" | "danger">("success");
 const mode = ref<"use" | "config">("use");
 const emptySchema = { fields: [], bills: [], clauses: [], attachments: [], validations: [] };
-const form = reactive({ code: "", name: "", contractTypeKey: contractTypeOptions[0]?.value ?? "" });
-const canConfigureTemplates = computed(() =>
-  Boolean(auth.user?.roleKeys.some((roleKey) => TEMPLATE_CONFIG_ROLE_KEYS.has(roleKey)))
-);
+const form = reactive({
+  code: "",
+  businessCode: "",
+  name: "",
+  contractTypeKey: contractTypeOptions[0]?.value ?? ""
+});
+const canMaintainTemplates = computed(() => canMaintainContractTemplates(auth.user?.roleKeys));
+const canPublishTemplates = computed(() => canPublishContractTemplates(auth.user?.roleKeys));
 
-watch(canConfigureTemplates, (allowed) => {
+watch(canMaintainTemplates, (allowed) => {
   if (!allowed) {
     mode.value = "use";
   }
@@ -278,6 +305,7 @@ async function createTemplate() {
   try {
     const created = await createContractTemplate({
       code: form.code.trim(),
+      businessCode: form.businessCode.trim(),
       name: form.name.trim(),
       contractTypeKey: form.contractTypeKey.trim(),
       schema: emptySchema

@@ -24,6 +24,7 @@ describe("ContractTemplateService", () => {
     const template = {
       id: "template-1",
       code: "TPL-001",
+      businessCode: "合同模板-钢材采购-V1",
       name: "钢材采购合同模板",
       contractTypeKey: "material_purchase",
       status: "published",
@@ -136,6 +137,7 @@ describe("ContractTemplateService", () => {
 
     const result = await service.createTemplate("contract-staff-1", {
       code: "TPL-001",
+      businessCode: "合同模板-钢材采购-V1",
       name: "钢材采购合同模板",
       contractTypeKey: "procurement",
       schema: validSchema
@@ -149,6 +151,12 @@ describe("ContractTemplateService", () => {
         status: "draft"
       })
     });
+    expect(tx.contractBusinessTemplate.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        code: "TPL-001",
+        businessCode: "合同模板-钢材采购-V1"
+      })
+    });
     expect(audit.record).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
@@ -157,6 +165,33 @@ describe("ContractTemplateService", () => {
         businessType: "contract_business_template"
       })
     );
+  });
+
+  it("allows a contract director to create a template draft", async () => {
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      contractBusinessTemplate: {
+        create: jest.fn().mockResolvedValue({ id: "template-1", code: "TPL-001" })
+      },
+      contractBusinessTemplateVersion: {
+        create: jest.fn().mockResolvedValue({ id: "version-1", versionNo: 1, status: "draft" })
+      }
+    };
+    const service = new ContractTemplateService(
+      { $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)) } as never,
+      audit as never
+    );
+
+    await expect(service.createTemplate("contract-director-1", {
+      code: "TPL-001",
+      businessCode: "合同模板-钢材采购-V1",
+      name: "钢材采购合同模板",
+      contractTypeKey: "procurement",
+      schema: validSchema
+    })).resolves.toEqual(expect.objectContaining({
+      template: expect.objectContaining({ id: "template-1" })
+    }));
   });
 
   it("publishes only after schema validation", async () => {
@@ -828,6 +863,7 @@ describe("ContractTemplateService", () => {
           {
             id: "template-published",
             code: "TPL-PUB",
+            businessCode: "合同模板-采购-V1",
             name: "采购合同模板",
             contractTypeKey: "procurement",
             createdByUserId: "internal-user",
@@ -870,6 +906,7 @@ describe("ContractTemplateService", () => {
       select: {
         id: true,
         code: true,
+        businessCode: true,
         name: true,
         contractTypeKey: true
       },
@@ -883,6 +920,7 @@ describe("ContractTemplateService", () => {
       {
         id: "template-published",
         code: "TPL-PUB",
+        businessCode: "合同模板-采购-V1",
         name: "采购合同模板",
         contractTypeKey: "procurement",
         status: "published",

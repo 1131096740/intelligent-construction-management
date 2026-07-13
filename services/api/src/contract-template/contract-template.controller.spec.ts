@@ -97,6 +97,7 @@ const validTemplateBodies = [
     0,
     {
       code: "TPL-MATERIAL",
+      businessCode: "合同模板-材料采购-V1",
       name: "材料采购合同模板",
       contractTypeKey: "material_purchase",
       schema: validSchema
@@ -171,8 +172,10 @@ async function getTemplateValidationResponse(
 }
 
 describe("ContractTemplateController authorization wiring", () => {
-  const governancePositions = ["contract_director", "super_admin"];
-  const governedMethods = [
+  const maintenancePositions = ["contract_staff", "contract_director"];
+  const publicationPositions = ["contract_director"];
+  const scenarioGovernancePositions = ["contract_director", "super_admin"];
+  const maintenanceMethods = [
     "createLayout",
     "getLayoutTemplate",
     "updateLayoutDraftVersion",
@@ -180,21 +183,25 @@ describe("ContractTemplateController authorization wiring", () => {
     "queueLayoutPreview",
     "getLayoutPreview",
     "submitLayout",
-    "publishLayout",
     "cloneLayout",
-    "stopLayout",
-    "revokeLayout",
     "getTemplate",
     "createTemplate",
     "updateDraftVersion",
     "cloneVersion",
     "submitVersion",
+    "createClause",
+    "submitClauseVersion",
+  ];
+  const publicationMethods = [
+    "publishLayout",
+    "stopLayout",
+    "revokeLayout",
     "publishVersion",
     "stopVersion",
     "revokeVersion",
-    "createClause",
-    "submitClauseVersion",
-    "publishClauseVersion",
+    "publishClauseVersion"
+  ];
+  const scenarioGovernanceMethods = [
     "listScenarioGovernance",
     "createBusinessScenario",
     "updateBusinessScenario",
@@ -260,12 +267,24 @@ describe("ContractTemplateController authorization wiring", () => {
   it.each([null, [], "schema"])("rejects a non-object business schema: %p", async (schema) => {
     const response = await getTemplateValidationResponse("createTemplate", 0, {
       code: "TPL-1",
+      businessCode: "合同模板-材料采购-V1",
       name: "模板",
       contractTypeKey: "material_purchase",
       schema
     });
 
     expect(response.errors).toEqual(["业务模板结构必须是对象"]);
+  });
+
+  it("requires a Chinese business code when creating a template", async () => {
+    const response = await getTemplateValidationResponse("createTemplate", 0, {
+      code: "TPL-1",
+      name: "模板",
+      contractTypeKey: "material_purchase",
+      schema: validSchema
+    });
+
+    expect(response.errors).toEqual(["请填写中文业务编号"]);
   });
 
   it.each(["fields", "bills", "clauses", "attachments", "validations"])(
@@ -352,10 +371,22 @@ describe("ContractTemplateController authorization wiring", () => {
     }
   });
 
-  it.each(governedMethods)("guards %s with template governance positions", (method) => {
+  it.each(maintenanceMethods)("guards %s with contract template maintenance positions", (method) => {
     const handler = (ContractTemplateController.prototype as unknown as Record<string, object>)[method];
 
-    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual(governancePositions);
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual(maintenancePositions);
+  });
+
+  it.each(publicationMethods)("guards %s with contract director publication positions", (method) => {
+    const handler = (ContractTemplateController.prototype as unknown as Record<string, object>)[method];
+
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual(publicationPositions);
+  });
+
+  it.each(scenarioGovernanceMethods)("keeps %s with existing scenario governance positions", (method) => {
+    const handler = (ContractTemplateController.prototype as unknown as Record<string, object>)[method];
+
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual(scenarioGovernancePositions);
   });
 
   it("keeps published template and layout reads open to authenticated users", () => {

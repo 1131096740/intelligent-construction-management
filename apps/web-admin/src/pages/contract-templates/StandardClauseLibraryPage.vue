@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>标准条款库</h1>
-        <p>当前只展示最新已发布条款；草稿创建后请先提交，再用返回的版本编号发布</p>
+        <p>当前只展示最新已发布条款；合同部创建后提交，合同主管可复核并发布</p>
       </div>
       <t-space>
         <t-input
@@ -17,6 +17,7 @@
     </div>
 
     <t-card
+      v-if="canMaintainTemplates"
       title="创建条款草稿"
       :bordered="true"
       class="panel"
@@ -42,6 +43,7 @@
     </t-card>
 
     <t-card
+      v-if="canMaintainTemplates"
       title="提交版本"
       :bordered="true"
       class="panel"
@@ -59,6 +61,7 @@
     </t-card>
 
     <t-card
+      v-if="canPublishTemplates"
       title="发布版本"
       :bordered="true"
       class="panel"
@@ -111,7 +114,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import {
   createStandardClause,
   listPublishedStandardClauses,
@@ -119,6 +122,11 @@ import {
   submitStandardClauseVersion,
   type PublishedStandardClause
 } from "../../api/contract-workbench.api";
+import { useAuthStore } from "../../auth/auth.store";
+import {
+  canMaintainContractTemplates,
+  canPublishContractTemplates
+} from "./template-permissions";
 
 const columns = [
   { colKey: "category", title: "分类", width: 120 },
@@ -130,6 +138,9 @@ const columns = [
 ];
 
 const category = ref("");
+const auth = useAuthStore();
+const canMaintainTemplates = computed(() => canMaintainContractTemplates(auth.user?.roleKeys));
+const canPublishTemplates = computed(() => canPublishContractTemplates(auth.user?.roleKeys));
 const clauses = ref<PublishedStandardClause[]>([]);
 const loading = ref(false);
 const creating = ref(false);

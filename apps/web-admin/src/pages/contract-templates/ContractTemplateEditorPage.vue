@@ -392,6 +392,7 @@ import {
   type ContractTemplateVersionReadModel,
   updateContractTemplateVersion
 } from "../../api/contract-workbench.api";
+import { useAuthStore } from "../../auth/auth.store";
 import { templateStatusLabel } from "../contracts/contract-labels";
 import {
   billAmountRoleOptions,
@@ -404,6 +405,10 @@ import {
   quantityScaleOptions,
   unitPriceScaleOptions
 } from "./contract-template.config";
+import {
+  canMaintainContractTemplates,
+  canPublishContractTemplates
+} from "./template-permissions";
 
 type TabKey = "fields" | "bills" | "clauses" | "attachments" | "validations";
 const tabs: Array<{ key: TabKey; label: string }> = [
@@ -415,6 +420,7 @@ const tabs: Array<{ key: TabKey; label: string }> = [
 ];
 
 const route = useRoute();
+const auth = useAuthStore();
 const template = ref<ContractTemplateDetailReadModel["template"] | null>(null);
 const versions = ref<ContractTemplateVersionReadModel[]>([]);
 const templateName = ref("业务模板编辑器");
@@ -431,7 +437,18 @@ const selectedVersion = computed(() =>
   versions.value.find((version) => version.id === selectedVersionId.value)
 );
 const versionOptions = computed(() => contractTemplateVersionOptions(versions.value));
-const governance = computed(() => contractTemplateVersionGovernance(selectedVersion.value));
+const canMaintainTemplates = computed(() => canMaintainContractTemplates(auth.user?.roleKeys));
+const canPublishTemplates = computed(() => canPublishContractTemplates(auth.user?.roleKeys));
+const governance = computed(() => {
+  const statusGovernance = contractTemplateVersionGovernance(selectedVersion.value);
+  return {
+    readOnly: statusGovernance.readOnly || !canMaintainTemplates.value,
+    canSave: statusGovernance.canSave && canMaintainTemplates.value,
+    canSubmit: statusGovernance.canSubmit && canMaintainTemplates.value,
+    canPublish: statusGovernance.canPublish && canPublishTemplates.value,
+    canClone: statusGovernance.canClone && canMaintainTemplates.value
+  };
+});
 
 const schema = reactive({
   fields: [] as Array<Record<string, unknown>>,
@@ -585,7 +602,7 @@ async function loadTemplate(preferredVersionId?: string) {
   }
   template.value = detail.template;
   versions.value = detail.versions;
-  templateName.value = detail.template.name;
+  templateName.value = detail.template.businessCode ?? detail.template.name;
   applyVersion(version);
 }
 

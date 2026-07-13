@@ -86,6 +86,25 @@ export class ContractTemplateService {
     }
   }
 
+  private async assertTemplateMaintenanceRole(
+    tx: {
+      userPosition: { findMany: (args: { where: Record<string, unknown> }) => Promise<Array<{ positionId: string }>> };
+      position: { findMany: (args: { where: Record<string, unknown> }) => Promise<Array<{ key: string }>> };
+    },
+    actorUserId: string
+  ): Promise<void> {
+    const positions = await tx.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null }
+    });
+    const positionIds = positions.map((p: { positionId: string }) => p.positionId);
+    const positionRows = positionIds.length
+      ? await tx.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    if (!positionRows.some((p: { key: string }) => p.key === "contract_staff" || p.key === "contract_director")) {
+      throw new ForbiddenException("只有合同经办人或合同主管可以执行该模板操作");
+    }
+  }
+
   private roleErrorMessage(roleKey: string) {
     return roleKey === "contract_staff"
       ? "只有合同经办人可以执行该模板操作"
@@ -293,6 +312,7 @@ export class ContractTemplateService {
           select: {
             id: true,
             code: true,
+            businessCode: true,
             name: true,
             contractTypeKey: true
           },
@@ -306,6 +326,7 @@ export class ContractTemplateService {
           return {
             id: template.id,
             code: template.code,
+            businessCode: template.businessCode,
             name: template.name,
             contractTypeKey: template.contractTypeKey,
             status: "published",
@@ -358,13 +379,14 @@ export class ContractTemplateService {
 
   async createTemplate(actorUserId: string, input: CreateBusinessTemplateDto) {
     return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
-      await this.assertGlobalRole(tx as never, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx as never, actorUserId);
 
       validateContractTemplateSchema(input.schema);
 
       const template = await tx.contractBusinessTemplate.create({
         data: {
           code: input.code,
+          businessCode: input.businessCode,
           name: input.name,
           contractTypeKey: input.contractTypeKey,
           status: "draft",
@@ -386,7 +408,7 @@ export class ContractTemplateService {
         action: "contract_template.create",
         businessType: "contract_business_template",
         businessId: template.id,
-        metadata: { code: input.code, name: input.name }
+        metadata: { code: input.code, businessCode: input.businessCode, name: input.name }
       });
 
       return { template, version };
@@ -399,7 +421,7 @@ export class ContractTemplateService {
     input: UpdateBusinessTemplateVersionDto
   ) {
     return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
-      await this.assertGlobalRole(tx as never, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx as never, actorUserId);
 
       const version = await tx.contractBusinessTemplateVersion.findUnique({
         where: { id: versionId }
@@ -430,7 +452,7 @@ export class ContractTemplateService {
 
   async cloneVersion(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
-      await this.assertGlobalRole(tx as never, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx as never, actorUserId);
 
       const source = await tx.contractBusinessTemplateVersion.findUnique({
         where: { id: versionId }
@@ -473,7 +495,7 @@ export class ContractTemplateService {
 
   async submitVersion(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
-      await this.assertGlobalRole(tx as never, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx as never, actorUserId);
 
       const version = await tx.contractBusinessTemplateVersion.findUnique({
         where: { id: versionId }
@@ -662,7 +684,7 @@ export class ContractTemplateService {
 
   async createClause(actorUserId: string, input: CreateStandardClauseDto) {
     return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
-      await this.assertGlobalRole(tx as never, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx as never, actorUserId);
 
       const clause = await tx.standardClause.create({
         data: {
@@ -697,7 +719,7 @@ export class ContractTemplateService {
 
   async submitClauseVersion(versionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
-      await this.assertGlobalRole(tx as never, actorUserId, "contract_staff");
+      await this.assertTemplateMaintenanceRole(tx as never, actorUserId);
 
       const version = await tx.standardClauseVersion.findUnique({
         where: { id: versionId }

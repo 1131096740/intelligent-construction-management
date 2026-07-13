@@ -849,6 +849,7 @@ model AuditLog {
 model ContractBusinessTemplate {
   id              String   @id @default(uuid())
   code            String   @unique
+  businessCode    String?  @unique
   name            String
   contractTypeKey String
   status          String   @default("draft")

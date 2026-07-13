@@ -294,6 +294,7 @@ export interface ContractTemplateUsagePreview {
 export interface PublishedContractTemplateReadModel {
   id: string;
   code?: string;
+  businessCode?: string | null;
   name: string;
   status: "published";
   contractTypeKey: string;
@@ -342,6 +343,7 @@ export interface ContractTemplateDetailReadModel {
   template: {
     id: string;
     code: string;
+    businessCode?: string | null;
     name: string;
     contractTypeKey: string;
     status: string;
@@ -358,6 +360,7 @@ export function getContractTemplate(templateId: string) {
 
 export interface CreateContractTemplatePayload {
   code: string;
+  businessCode: string;
   name: string;
   contractTypeKey: string;
   schema: ContractTemplateSchemaPayload;

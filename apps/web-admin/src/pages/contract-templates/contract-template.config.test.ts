@@ -27,6 +27,7 @@ describe("contract template center config", () => {
   const publishedTemplatePayload = {
     id: "template-1",
     code: "TPL-MAT",
+    businessCode: "合同模板-材料采购-V1",
     name: "材料采购模板",
     status: "published",
     contractTypeKey: "material_purchase",
@@ -220,6 +221,7 @@ describe("contract template center config", () => {
 
   it("exposes template list columns and workflow actions", () => {
     expect(templateListColumns.map((column) => column.colKey)).toEqual([
+      "businessCode",
       "name",
       "contractTypeKey",
       "status",
