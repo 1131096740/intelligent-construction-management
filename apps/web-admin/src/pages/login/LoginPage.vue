@@ -84,23 +84,33 @@ async function submitLogin() {
 </script>
 
 <style scoped>
+:global(body) {
+  margin: 0;
+}
+
 .login-page {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f4f6f9;
-  color: #151922;
+  min-height: 100dvh;
+  position: relative;
+  display: grid;
+  box-sizing: border-box;
+  place-items: center;
+  padding: var(--jg-space-xxl);
+  overflow-x: hidden;
+  background: url("/images/auth-background.png") center / cover no-repeat;
+  color: var(--jg-text-strong);
 }
 
 .login-panel {
   box-sizing: border-box;
   width: min(420px, calc(100% - var(--jg-space-xxl)));
-  margin: auto;
+  z-index: 1;
   padding: 32px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 8px;
-  box-shadow: 0 16px 40px rgb(21 25 34 / 8%);
+  background: rgb(255 255 255 / 92%);
+  border: var(--jg-border-width-base) solid var(--jg-border);
+  border-radius: var(--jg-radius-lg);
+  box-shadow: var(--jg-shadow-overlay);
+  backdrop-filter: blur(8px);
 }
 
 .brand-block {
@@ -122,5 +132,26 @@ async function submitLogin() {
 .login-form {
   display: grid;
   gap: 16px;
+}
+
+.login-page :deep(.site-filing-footer) {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  background: rgb(255 255 255 / 80%);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 480px) {
+  .login-page {
+    padding: var(--jg-space-xl);
+  }
+
+  .login-panel {
+    width: 100%;
+    padding: var(--jg-space-xl);
+  }
 }
 </style>

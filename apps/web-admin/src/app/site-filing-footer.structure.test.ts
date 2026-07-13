@@ -19,4 +19,14 @@ describe("site ICP filing footer", () => {
       expect(shell).toContain("<SiteFilingFooter />");
     }
   });
+
+  it("keeps the authentication forms centered over the shared full-page background", () => {
+    for (const shell of [loginPage, changePasswordPage]) {
+      expect(shell).toContain(":global(body)");
+      expect(shell).toContain('url("/images/auth-background.png") center / cover no-repeat');
+      expect(shell).toContain("place-items: center;");
+      expect(shell).toContain("position: absolute;");
+      expect(shell).toContain(".site-filing-footer");
+    }
+  });
 });
