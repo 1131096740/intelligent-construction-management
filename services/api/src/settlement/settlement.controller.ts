@@ -4,6 +4,7 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
@@ -36,18 +37,7 @@ export class SettlementController {
   }
 
   @Get()
-  @RequirePositions(
-    "chairman",
-    "general_manager",
-    "project_manager",
-    "contract_director",
-    "contract_staff",
-    "budget_director",
-    "budget_staff",
-    "finance_director",
-    "finance_staff",
-    "super_admin"
-  )
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
     return this.settlementRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
   }
@@ -74,17 +64,7 @@ export class SettlementController {
   }
 
   @Get(":settlementId")
-  @RequirePositions(
-    "chairman",
-    "general_manager",
-    "project_manager",
-    "contract_director",
-    "contract_staff",
-    "budget_director",
-    "budget_staff",
-    "finance_director",
-    "finance_staff"
-  )
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async detail(@Param("settlementId") settlementId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.settlementRead.getDetail(
       settlementId,

@@ -2,71 +2,76 @@
   <section class="project-operating-page">
     <div class="page-head">
       <div>
+        <span class="page-eyebrow">项目</span>
         <h1>项目经营</h1>
-        <p>只汇总当前系统已有合同、结算、付款、实际收款和财务出账数据</p>
+        <p>先看项目资金与业务全貌，再按权限进入具体办理事项</p>
       </div>
       <div class="project-tools">
-        <label class="project-picker">
-          <span>项目</span>
-          <select
+        <div class="project-picker">
+          <span>当前项目</span>
+          <t-select
             v-model="selectedProjectId"
             :disabled="loadingProjects || projects.length === 0"
+            :options="projectSelectOptions"
             @change="handleProjectChange"
-          >
-            <option
-              v-for="project in projects"
-              :key="project.id"
-              :value="project.id"
-            >
-              {{ project.code }} · {{ project.name }}
-            </option>
-          </select>
-        </label>
-        <form
+          />
+        </div>
+        <t-collapse
           v-if="canManageProjects"
-          class="project-create-form"
-          @submit.prevent="submitProject"
+          class="project-maintenance"
         >
-          <label>
-            <span>项目编号</span>
-            <input
-              v-model.trim="projectForm.code"
-              required
-            >
-          </label>
-          <label>
-            <span>项目名称</span>
-            <input
-              v-model.trim="projectForm.name"
-              required
-            >
-          </label>
-          <button
-            type="submit"
-            :disabled="projectSubmitting"
+          <t-collapse-panel
+            value="project-maintenance"
+            header="项目维护"
           >
-            {{ projectSubmitting ? "新增中" : "新增项目" }}
-          </button>
-        </form>
-        <form
-          v-if="canManageProjects && selectedProjectId"
-          class="project-name-form"
-          @submit.prevent="submitProjectName"
-        >
-          <label>
-            <span>当前项目名称</span>
-            <input
-              v-model.trim="selectedProjectName"
-              required
-            >
-          </label>
-          <button
-            type="submit"
-            :disabled="projectUpdating"
-          >
-            {{ projectUpdating ? "保存中" : "保存名称" }}
-          </button>
-        </form>
+            <div class="project-maintenance-forms">
+              <form
+                class="project-create-form"
+                @submit.prevent="submitProject"
+              >
+                <label>
+                  <span>项目编号</span>
+                  <input
+                    v-model.trim="projectForm.code"
+                    required
+                  >
+                </label>
+                <label>
+                  <span>项目名称</span>
+                  <input
+                    v-model.trim="projectForm.name"
+                    required
+                  >
+                </label>
+                <button
+                  type="submit"
+                  :disabled="projectSubmitting"
+                >
+                  {{ projectSubmitting ? "新增中" : "新增项目" }}
+                </button>
+              </form>
+              <form
+                v-if="selectedProjectId"
+                class="project-name-form"
+                @submit.prevent="submitProjectName"
+              >
+                <label>
+                  <span>当前项目名称</span>
+                  <input
+                    v-model.trim="selectedProjectName"
+                    required
+                  >
+                </label>
+                <button
+                  type="submit"
+                  :disabled="projectUpdating"
+                >
+                  {{ projectUpdating ? "保存中" : "保存名称" }}
+                </button>
+              </form>
+            </div>
+          </t-collapse-panel>
+        </t-collapse>
       </div>
     </div>
 
@@ -91,737 +96,759 @@
       正在加载项目经营数据
     </div>
 
-    <section
-      v-if="canManageProjects"
-      class="panel executive-panel"
+    <t-tabs
+      v-if="overview || canViewExecutiveOverview"
+      v-model="activeTab"
+      class="project-operating-tabs"
     >
-      <div class="panel-head">
-        <div>
-          <h2>跨项目经营总览</h2>
-          <p>按当前可见项目汇总合同、结算、付款、实收和数据缺口</p>
-        </div>
-        <span
-          v-if="loadingExecutiveOverview"
-          class="executive-loading"
-        >
-          正在汇总
-        </span>
-      </div>
-      <div
-        v-if="executiveMessage"
-        class="receipt-message danger"
+      <t-tab-panel
+        value="overview"
+        label="项目概览"
       >
-        {{ executiveMessage }}
-      </div>
-      <template v-else-if="executiveOverview">
-        <div class="executive-summary-grid">
-          <div
-            v-for="item in executiveSummaryItems"
-            :key="item.label"
-            class="summary-item"
-          >
-            <span>{{ item.label }}</span>
-            <strong>{{ item.value }}</strong>
-          </div>
-        </div>
-        <div class="expense-table-wrap">
-          <table class="executive-table">
-            <thead>
-              <tr>
-                <th>项目</th>
-                <th>生效合同额</th>
-                <th>生效结算额</th>
-                <th>结算可付额</th>
-                <th>实际收款</th>
-                <th>已实付</th>
-                <th>已批待付</th>
-                <th>可用资金</th>
-                <th>数据缺口</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="row in executiveOverview.rows"
-                :key="row.id"
-              >
-                <td>{{ row.code }} · {{ row.name }}</td>
-                <td>{{ formatCents(row.contractAmountCents) }}</td>
-                <td>{{ formatCents(row.settlementAmountCents) }}</td>
-                <td>{{ formatCents(row.payableAmountCents) }}</td>
-                <td>{{ formatCents(row.actualReceiptsCents) }}</td>
-                <td>{{ formatCents(row.actualPaidCents) }}</td>
-                <td>{{ formatCents(row.approvedPendingPaymentCents) }}</td>
-                <td>{{ formatCents(row.availableFundsCents) }}</td>
-                <td>{{ row.dataGapCount ? `${row.dataGapCount} 项` : "无" }}</td>
-                <td>
-                  <button
-                    type="button"
-                    class="table-action"
-                    @click="selectExecutiveProject(row.id)"
-                  >
-                    查看
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </template>
-    </section>
-
-    <template v-if="overview">
-      <div class="summary-strip">
-        <div
-          v-for="item in summaryItems"
-          :key="item.label"
-          class="summary-item"
-        >
-          <span>{{ item.label }}</span>
-          <strong>{{ item.value }}</strong>
-        </div>
-      </div>
-
-      <section class="panel project-entry-panel">
-        <div class="panel-head">
-          <h2>项目业务入口</h2>
-          <p>从当前项目进入合同、结算、付款、资料、审批和审计</p>
-        </div>
-        <div class="project-entry-grid">
-          <button
-            v-for="entry in projectBusinessEntries"
-            :key="entry.label"
-            type="button"
-            class="project-entry"
-            @click="go(entry.path)"
-          >
-            <span>
-              {{ entry.label }}
-              <strong v-if="entry.count !== undefined">{{ entry.count }}</strong>
-            </span>
-            <small>{{ entry.description }}</small>
-          </button>
-        </div>
-      </section>
-
-      <div class="overview-grid">
-        <section class="panel">
-          <h2>现金口径</h2>
-          <dl>
-            <div
-              v-for="item in cashItems"
-              :key="item.label"
-            >
-              <dt>{{ item.label }}</dt>
-              <dd>{{ item.value }}</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section class="panel">
-          <h2>经营口径</h2>
-          <dl>
-            <div
-              v-for="item in businessItems"
-              :key="item.label"
-            >
-              <dt>{{ item.label }}</dt>
-              <dd>{{ item.value }}</dd>
-            </div>
-          </dl>
-        </section>
-      </div>
-
-      <section class="panel receipt-panel">
-        <div class="panel-head">
-          <h2>实际收款登记</h2>
-          <button
-            type="button"
-            :disabled="receiptSubmitting"
-            @click="submitReceipt"
-          >
-            {{ receiptSubmitting ? "提交中" : "登记收款" }}
-          </button>
-        </div>
-        <form
-          class="receipt-form"
-          @submit.prevent="submitReceipt"
-        >
-          <label>
-            <span>收款日期</span>
-            <input
-              v-model="receiptForm.receivedAt"
-              type="date"
-              required
-            >
-          </label>
-          <label>
-            <span>收款金额(元)</span>
-            <input
-              v-model.trim="receiptForm.amountYuan"
-              inputmode="decimal"
-              placeholder="0.00"
-              required
-            >
-          </label>
-          <label>
-            <span>付款单位</span>
-            <input
-              v-model.trim="receiptForm.payerName"
-              required
-            >
-          </label>
-          <label>
-            <span>收款来源类型</span>
-            <select v-model="receiptForm.sourceType">
-              <option value="general_contractor_payment">总包付款</option>
-              <option value="owner_direct_payment">业主直付</option>
-              <option value="other">其他</option>
-            </select>
-          </label>
-          <label>
-            <span>收款凭证</span>
-            <input
-              ref="receiptVoucherInput"
-              type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
-              required
-              @change="selectReceiptVoucher"
-            >
-          </label>
-          <label>
-            <span>当前登录密码</span>
-            <input
-              v-model="receiptForm.confirmationPassword"
-              type="password"
-              autocomplete="current-password"
-              required
-            >
-          </label>
-          <label class="receipt-description">
-            <span>收款说明</span>
-            <input v-model.trim="receiptForm.description">
-          </label>
-        </form>
-        <div
-          v-if="receiptMessage"
-          class="receipt-message"
-          :class="receiptMessageTone"
-        >
-          {{ receiptMessage }}
-        </div>
-      </section>
-
-      <section class="panel receipt-panel">
-        <div class="panel-head">
-          <h2>总包代付登记</h2>
-          <button
-            type="button"
-            :disabled="proxySubmitting"
-            @click="submitProxyPayment"
-          >
-            {{ proxySubmitting ? "提交中" : "登记代付" }}
-          </button>
-        </div>
-        <form
-          class="receipt-form"
-          @submit.prevent="submitProxyPayment"
-        >
-          <label>
-            <span>代付日期</span>
-            <input
-              v-model="proxyForm.paidAt"
-              type="date"
-              required
-            >
-          </label>
-          <label>
-            <span>代付金额(元)</span>
-            <input
-              v-model.trim="proxyForm.amountYuan"
-              inputmode="decimal"
-              placeholder="0.00"
-              required
-            >
-          </label>
-          <label>
-            <span>总包单位</span>
-            <input
-              v-model.trim="proxyForm.generalContractorName"
-              required
-            >
-          </label>
-          <label>
-            <span>代付对象</span>
-            <input
-              v-model.trim="proxyForm.paidTargetName"
-              required
-            >
-          </label>
-          <label>
-            <span>代付类型</span>
-            <select v-model="proxyForm.paymentType">
-              <option value="material">材料</option>
-              <option value="equipment">机械</option>
-              <option value="labor">劳务</option>
-              <option value="professional_subcontract">专业分包</option>
-              <option value="other">其他</option>
-            </select>
-          </label>
-          <label>
-            <span>代付凭证</span>
-            <input
-              ref="proxyVoucherInput"
-              type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
-              required
-              @change="selectProxyVoucher"
-            >
-          </label>
-          <label>
-            <span>关联合同</span>
-            <select
-              v-model="proxyForm.contractOptionValue"
-              :disabled="proxySubmitting || proxyContractSelectOptions.length === 0"
-              @change="proxyForm.settlementId = ''"
-            >
-              <option value="">不关联合同</option>
-              <option
-                v-for="option in proxyContractSelectOptions"
-                :key="option.value"
-                :value="option.value"
-                :disabled="option.disabled"
-              >
-                {{ option.label }}（{{ option.hint }}）
-              </option>
-            </select>
-          </label>
-          <label>
-            <span>关联结算</span>
-            <select
-              v-model="proxyForm.settlementId"
-              :disabled="proxySubmitting || !selectedProxyContract || proxySettlementSelectOptions.length === 0"
-            >
-              <option value="">不关联结算</option>
-              <option
-                v-for="option in proxySettlementSelectOptions"
-                :key="option.value"
-                :value="option.value"
-                :disabled="option.disabled"
-              >
-                {{ option.label }}（{{ option.hint }}）
-              </option>
-            </select>
-          </label>
-          <label>
-            <span>当前登录密码</span>
-            <input
-              v-model="proxyForm.confirmationPassword"
-              type="password"
-              autocomplete="current-password"
-              required
-            >
-          </label>
-          <label class="receipt-description">
-            <span>代付说明</span>
-            <input v-model.trim="proxyForm.description">
-          </label>
-        </form>
-        <div
-          v-if="proxyMessage"
-          class="receipt-message"
-          :class="proxyMessageTone"
-        >
-          {{ proxyMessage }}
-        </div>
-      </section>
-
-      <section class="panel receipt-panel">
-        <div class="panel-head">
-          <h2>支出明细</h2>
-          <button
-            type="button"
-            :disabled="expenseSubmitting"
-            @click="submitProjectExpense"
-          >
-            {{ expenseSubmitting ? "提交中" : "发起支出" }}
-          </button>
-        </div>
-        <div class="expense-summary">
-          <span
-            v-for="item in projectExpenseSummaryItems"
-            :key="item.label"
-          >
-            {{ item.label }}：<strong>{{ item.value }}</strong>
-          </span>
-        </div>
-        <form
-          class="receipt-form"
-          @submit.prevent="submitProjectExpense"
-        >
-          <label>
-            <span>支出单号</span>
-            <input
-              v-model.trim="expenseForm.code"
-              required
-            >
-          </label>
-          <label>
-            <span>一级类型</span>
-            <select
-              v-model="expenseForm.expenseType"
-              @change="syncExpenseSubtype"
-            >
-              <option
-                v-for="option in expenseTypeOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label>
-            <span>明细类型</span>
-            <select v-model="expenseForm.expenseSubtype">
-              <option
-                v-for="option in currentExpenseSubtypeOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label>
-            <span>{{ expenseForm.expenseType === "spot_purchase" ? "采购事项" : "付款主体" }}</span>
-            <input
-              v-model.trim="expenseForm.paymentSubject"
-              required
-            >
-          </label>
-          <label>
-            <span>{{ expenseForm.expenseType === "spot_purchase" ? "预算金额(元)" : "申请金额(元)" }}</span>
-            <input
-              v-model.trim="expenseForm.amountYuan"
-              inputmode="decimal"
-              placeholder="0.00"
-              required
-            >
-          </label>
-          <label>
-            <span>付款方式</span>
-            <select v-model="expenseForm.paymentMethod">
-              <option
-                v-for="option in expensePaymentMethodOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </option>
-            </select>
-          </label>
-          <label>
-            <span>{{ expenseForm.expenseType === "spot_purchase" ? "供应商" : "对方名称" }}</span>
-            <input v-model.trim="expenseForm.counterpartyName">
-          </label>
-          <label>
-            <span>对方户名</span>
-            <input v-model.trim="expenseForm.counterpartyAccountName">
-          </label>
-          <label>
-            <span>开户银行</span>
-            <input v-model.trim="expenseForm.counterpartyBankName">
-          </label>
-          <label>
-            <span>银行账号</span>
-            <input v-model.trim="expenseForm.counterpartyBankAccount">
-          </label>
-          <label>
-            <span>附件/发票</span>
-            <input
-              ref="expenseAttachmentInput"
-              type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
-              @change="selectExpenseAttachment"
-            >
-          </label>
-          <label class="receipt-description">
-            <span>{{ expenseForm.expenseType === "spot_purchase" ? "采购用途" : "付款事由" }}</span>
-            <input
-              v-model.trim="expenseForm.reason"
-              required
-            >
-          </label>
-        </form>
-        <div
-          v-if="expenseMessage"
-          class="receipt-message"
-          :class="expenseMessageTone"
-        >
-          {{ expenseMessage }}
-        </div>
-        <div class="expense-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>支出单号</th>
-                <th>类型</th>
-                <th>付款主体</th>
-                <th>申请金额</th>
-                <th>已批金额</th>
-                <th>已实付</th>
-                <th>付款方式</th>
-                <th>状态</th>
-                <th>附件</th>
-                <th>审批单</th>
-                <th>采购执行</th>
-                <th>收货确认</th>
-                <th>提交时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody v-if="projectExpenseRows.length">
-              <tr
-                v-for="row in projectExpenseRows"
-                :key="row.id"
-              >
-                <td>{{ row.code }}</td>
-                <td>{{ expenseTypeLabel(row.expenseType) }} · {{ expenseSubtypeLabel(row.expenseSubtype) }}</td>
-                <td>{{ row.paymentSubject }}</td>
-                <td>{{ formatCents(row.requestedAmountCents) }}</td>
-                <td>{{ formatCents(row.approvedAmountCents) }}</td>
-                <td>{{ formatCents(row.paidAmountCents) }}</td>
-                <td>{{ expensePaymentMethodLabel(row.paymentMethod) }}</td>
-                <td>{{ expenseStatusLabel(row.status) }}</td>
-                <td>{{ row.hasAttachment ? "已上传" : "未上传" }}</td>
-                <td>{{ row.hasApprovalPdf ? "已生成" : "未生成" }}</td>
-                <td>{{ row.expenseType === "spot_purchase" ? (row.isPurchaseExecuted ? "已执行" : "待执行") : "-" }}</td>
-                <td>{{ row.expenseType === "spot_purchase" ? (row.isReceiptConfirmed ? "已确认" : "待确认") : "-" }}</td>
-                <td>{{ formatDateTime(row.createdAt) }}</td>
-                <td>
-                  <button
-                    type="button"
-                    class="table-action"
-                    @click="selectExpenseRow(row)"
-                  >
-                    处理
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-            <tbody v-else>
-              <tr>
-                <td
-                  class="empty-cell"
-                  colspan="14"
-                >
-                  暂无支出明细
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
         <section
-          v-if="selectedExpenseRow"
-          class="expense-action-panel"
+          v-if="canViewExecutiveOverview"
+          class="panel executive-panel"
         >
-          <div class="expense-action-head">
+          <div class="panel-head">
             <div>
-              <h3>处理支出单：{{ selectedExpenseRow.code }}</h3>
-              <p>
-                {{ expenseTypeLabel(selectedExpenseRow.expenseType) }} ·
-                {{ expenseSubtypeLabel(selectedExpenseRow.expenseSubtype) }} ·
-                {{ expenseStatusLabel(selectedExpenseRow.status) }}
-              </p>
+              <h2>跨项目经营总览</h2>
+              <p>按当前可见项目汇总合同、结算、付款、实收和数据缺口</p>
             </div>
-            <button
-              type="button"
-              class="secondary-button"
-              @click="clearSelectedExpenseRow"
+            <span
+              v-if="loadingExecutiveOverview"
+              class="executive-loading"
             >
-              取消选择
-            </button>
-          </div>
-          <div class="receipt-form">
-            <label>
-              <span>附件下载密码</span>
-              <input
-                v-model="expenseActionForm.downloadPassword"
-                type="password"
-                autocomplete="current-password"
-              >
-            </label>
-            <label>
-              <span>采购执行日期</span>
-              <input
-                v-model="expenseActionForm.purchaseExecutedAt"
-                type="date"
-              >
-            </label>
-            <label>
-              <span>采购执行备注</span>
-              <input v-model.trim="expenseActionForm.purchaseExecutionNote">
-            </label>
-            <label>
-              <span>采购执行确认密码</span>
-              <input
-                v-model="expenseActionForm.purchaseExecutionPassword"
-                type="password"
-                autocomplete="current-password"
-              >
-            </label>
-            <label>
-              <span>实付日期</span>
-              <input
-                v-model="expenseActionForm.executionPaidAt"
-                type="date"
-              >
-            </label>
-            <label>
-              <span>实付金额(元)</span>
-              <input
-                v-model.trim="expenseActionForm.executionAmountYuan"
-                inputmode="decimal"
-                placeholder="0.00"
-              >
-            </label>
-            <label>
-              <span>实付凭证</span>
-              <input
-                ref="expenseExecutionVoucherInput"
-                type="file"
-                accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
-                @change="selectExpenseExecutionVoucher"
-              >
-            </label>
-            <label>
-              <span>实付确认密码</span>
-              <input
-                v-model="expenseActionForm.executionPassword"
-                type="password"
-                autocomplete="current-password"
-              >
-            </label>
-            <label>
-              <span>入账日期</span>
-              <input
-                v-model="expenseActionForm.financeOccurredAt"
-                type="date"
-              >
-            </label>
-            <label>
-              <span>入账金额(元)</span>
-              <input
-                v-model.trim="expenseActionForm.financeAmountYuan"
-                inputmode="decimal"
-                placeholder="0.00"
-              >
-            </label>
-            <label>
-              <span>入账确认密码</span>
-              <input
-                v-model="expenseActionForm.financePassword"
-                type="password"
-                autocomplete="current-password"
-              >
-            </label>
-            <label>
-              <span>收货确认备注</span>
-              <input v-model.trim="expenseActionForm.receiptConfirmationNote">
-            </label>
-            <label>
-              <span>收货确认密码</span>
-              <input
-                v-model="expenseActionForm.receiptConfirmationPassword"
-                type="password"
-                autocomplete="current-password"
-              >
-            </label>
-          </div>
-          <div class="expense-action-buttons">
-            <button
-              v-if="selectedExpenseRow.status === 'approval_pending'"
-              type="button"
-              class="secondary-button"
-              @click="openExpenseApprovalDetail(selectedExpenseRow)"
-            >
-              打开审批详情
-            </button>
-            <button
-              v-if="canRecordPurchaseExecution(selectedExpenseRow)"
-              type="button"
-              :disabled="expenseActionBusy !== ''"
-              @click="submitExpensePurchaseExecution"
-            >
-              登记采购执行
-            </button>
-            <button
-              v-if="canRecordExpenseExecution(selectedExpenseRow)"
-              type="button"
-              :disabled="expenseActionBusy !== ''"
-              @click="submitExpenseExecution"
-            >
-              登记实付
-            </button>
-            <button
-              v-if="canRecordExpenseFinance(selectedExpenseRow)"
-              type="button"
-              :disabled="expenseActionBusy !== ''"
-              @click="submitExpenseFinance"
-            >
-              财务入账
-            </button>
-            <button
-              v-if="canConfirmExpenseReceipt(selectedExpenseRow)"
-              type="button"
-              :disabled="expenseActionBusy !== ''"
-              @click="submitExpenseReceiptConfirmation"
-            >
-              确认收货
-            </button>
-            <button
-              v-if="selectedExpenseRow.hasAttachment"
-              type="button"
-              class="secondary-button"
-              :disabled="expenseActionBusy !== ''"
-              @click="downloadExpenseAttachment"
-            >
-              下载申请附件
-            </button>
-            <button
-              v-if="selectedExpenseRow.hasApprovalPdf"
-              type="button"
-              class="secondary-button"
-              :disabled="expenseActionBusy !== ''"
-              @click="downloadExpenseApprovalPdf"
-            >
-              下载审批单
-            </button>
+              正在汇总
+            </span>
           </div>
           <div
-            v-if="expenseActionMessage"
-            class="receipt-message"
-            :class="expenseActionMessageTone"
+            v-if="executiveMessage"
+            class="receipt-message danger"
           >
-            {{ expenseActionMessage }}
+            {{ executiveMessage }}
           </div>
+          <template v-else-if="executiveOverview">
+            <div class="executive-summary-grid">
+              <div
+                v-for="item in executiveSummaryItems"
+                :key="item.label"
+                class="summary-item"
+              >
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
+            </div>
+            <div class="expense-table-wrap">
+              <table class="executive-table">
+                <thead>
+                  <tr>
+                    <th>项目</th>
+                    <th>生效合同额</th>
+                    <th>生效结算额</th>
+                    <th>结算可付额</th>
+                    <th>实际收款</th>
+                    <th>已实付</th>
+                    <th>已批待付</th>
+                    <th>可用资金</th>
+                    <th>数据缺口</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in executiveOverview.rows"
+                    :key="row.id"
+                  >
+                    <td>{{ row.code }} · {{ row.name }}</td>
+                    <td>{{ formatCents(row.contractAmountCents) }}</td>
+                    <td>{{ formatCents(row.settlementAmountCents) }}</td>
+                    <td>{{ formatCents(row.payableAmountCents) }}</td>
+                    <td>{{ formatCents(row.actualReceiptsCents) }}</td>
+                    <td>{{ formatCents(row.actualPaidCents) }}</td>
+                    <td>{{ formatCents(row.approvedPendingPaymentCents) }}</td>
+                    <td>{{ formatCents(row.availableFundsCents) }}</td>
+                    <td>{{ row.dataGapCount ? `${row.dataGapCount} 项` : "无" }}</td>
+                    <td>
+                      <button
+                        type="button"
+                        class="table-action"
+                        @click="selectExecutiveProject(row.id)"
+                      >
+                        查看
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
         </section>
-      </section>
 
-      <section class="gap-panel">
-        <h2>数据缺口</h2>
-        <ul>
-          <li
-            v-for="gap in overview.dataGaps"
-            :key="gap"
-          >
-            {{ gap }}
-          </li>
-        </ul>
-      </section>
-    </template>
+        <template v-if="overview">
+          <div class="summary-strip">
+            <div
+              v-for="item in summaryItems"
+              :key="item.label"
+              class="summary-item"
+            >
+              <span>{{ item.label }}</span>
+              <strong>{{ item.value }}</strong>
+            </div>
+          </div>
+
+          <section class="panel project-entry-panel">
+            <div class="panel-head">
+              <h2>项目业务入口</h2>
+              <p>从当前项目进入合同、结算、付款、资料、审批和审计</p>
+            </div>
+            <div class="project-entry-grid">
+              <button
+                v-for="entry in projectBusinessEntries"
+                :key="entry.label"
+                type="button"
+                class="project-entry"
+                @click="go(entry.path)"
+              >
+                <span>
+                  {{ entry.label }}
+                  <strong v-if="entry.count !== undefined">{{ entry.count }}</strong>
+                </span>
+                <small>{{ entry.description }}</small>
+              </button>
+            </div>
+          </section>
+
+          <div class="overview-grid">
+            <section class="panel">
+              <h2>现金口径</h2>
+              <dl>
+                <div
+                  v-for="item in cashItems"
+                  :key="item.label"
+                >
+                  <dt>{{ item.label }}</dt>
+                  <dd>{{ item.value }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="panel">
+              <h2>经营口径</h2>
+              <dl>
+                <div
+                  v-for="item in businessItems"
+                  :key="item.label"
+                >
+                  <dt>{{ item.label }}</dt>
+                  <dd>{{ item.value }}</dd>
+                </div>
+              </dl>
+            </section>
+          </div>
+
+          <section class="gap-panel overview-gap-panel">
+            <h2>数据缺口</h2>
+            <p v-if="overview.dataGaps.length === 0">
+              当前项目暂未发现待补齐的数据。
+            </p>
+            <ul v-else>
+              <li
+                v-for="gap in overview.dataGaps"
+                :key="gap"
+              >
+                {{ gap }}
+              </li>
+            </ul>
+          </section>
+        </template>
+      </t-tab-panel>
+
+      <t-tab-panel
+        v-if="canUseFundsOperations && overview"
+        value="operations"
+        label="资金办理"
+      >
+        <template v-if="overview">
+          <section class="panel receipt-panel">
+            <div class="panel-head">
+              <h2>实际收款登记</h2>
+              <button
+                type="button"
+                :disabled="receiptSubmitting"
+                @click="submitReceipt"
+              >
+                {{ receiptSubmitting ? "提交中" : "登记收款" }}
+              </button>
+            </div>
+            <form
+              class="receipt-form"
+              @submit.prevent="submitReceipt"
+            >
+              <label>
+                <span>收款日期</span>
+                <input
+                  v-model="receiptForm.receivedAt"
+                  type="date"
+                  required
+                >
+              </label>
+              <label>
+                <span>收款金额(元)</span>
+                <input
+                  v-model.trim="receiptForm.amountYuan"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                  required
+                >
+              </label>
+              <label>
+                <span>付款单位</span>
+                <input
+                  v-model.trim="receiptForm.payerName"
+                  required
+                >
+              </label>
+              <label>
+                <span>收款来源类型</span>
+                <select v-model="receiptForm.sourceType">
+                  <option value="general_contractor_payment">总包付款</option>
+                  <option value="owner_direct_payment">业主直付</option>
+                  <option value="other">其他</option>
+                </select>
+              </label>
+              <label>
+                <span>收款凭证</span>
+                <input
+                  ref="receiptVoucherInput"
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                  required
+                  @change="selectReceiptVoucher"
+                >
+              </label>
+              <label>
+                <span>当前登录密码</span>
+                <input
+                  v-model="receiptForm.confirmationPassword"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                >
+              </label>
+              <label class="receipt-description">
+                <span>收款说明</span>
+                <input v-model.trim="receiptForm.description">
+              </label>
+            </form>
+            <div
+              v-if="receiptMessage"
+              class="receipt-message"
+              :class="receiptMessageTone"
+            >
+              {{ receiptMessage }}
+            </div>
+          </section>
+
+          <section class="panel receipt-panel">
+            <div class="panel-head">
+              <h2>总包代付登记</h2>
+              <button
+                type="button"
+                :disabled="proxySubmitting"
+                @click="submitProxyPayment"
+              >
+                {{ proxySubmitting ? "提交中" : "登记代付" }}
+              </button>
+            </div>
+            <form
+              class="receipt-form"
+              @submit.prevent="submitProxyPayment"
+            >
+              <label>
+                <span>代付日期</span>
+                <input
+                  v-model="proxyForm.paidAt"
+                  type="date"
+                  required
+                >
+              </label>
+              <label>
+                <span>代付金额(元)</span>
+                <input
+                  v-model.trim="proxyForm.amountYuan"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                  required
+                >
+              </label>
+              <label>
+                <span>总包单位</span>
+                <input
+                  v-model.trim="proxyForm.generalContractorName"
+                  required
+                >
+              </label>
+              <label>
+                <span>代付对象</span>
+                <input
+                  v-model.trim="proxyForm.paidTargetName"
+                  required
+                >
+              </label>
+              <label>
+                <span>代付类型</span>
+                <select v-model="proxyForm.paymentType">
+                  <option value="material">材料</option>
+                  <option value="equipment">机械</option>
+                  <option value="labor">劳务</option>
+                  <option value="professional_subcontract">专业分包</option>
+                  <option value="other">其他</option>
+                </select>
+              </label>
+              <label>
+                <span>代付凭证</span>
+                <input
+                  ref="proxyVoucherInput"
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                  required
+                  @change="selectProxyVoucher"
+                >
+              </label>
+              <label>
+                <span>关联合同</span>
+                <select
+                  v-model="proxyForm.contractOptionValue"
+                  :disabled="proxySubmitting || proxyContractSelectOptions.length === 0"
+                  @change="proxyForm.settlementId = ''"
+                >
+                  <option value="">不关联合同</option>
+                  <option
+                    v-for="option in proxyContractSelectOptions"
+                    :key="option.value"
+                    :value="option.value"
+                    :disabled="option.disabled"
+                  >
+                    {{ option.label }}（{{ option.hint }}）
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>关联结算</span>
+                <select
+                  v-model="proxyForm.settlementId"
+                  :disabled="proxySubmitting || !selectedProxyContract || proxySettlementSelectOptions.length === 0"
+                >
+                  <option value="">不关联结算</option>
+                  <option
+                    v-for="option in proxySettlementSelectOptions"
+                    :key="option.value"
+                    :value="option.value"
+                    :disabled="option.disabled"
+                  >
+                    {{ option.label }}（{{ option.hint }}）
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>当前登录密码</span>
+                <input
+                  v-model="proxyForm.confirmationPassword"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                >
+              </label>
+              <label class="receipt-description">
+                <span>代付说明</span>
+                <input v-model.trim="proxyForm.description">
+              </label>
+            </form>
+            <div
+              v-if="proxyMessage"
+              class="receipt-message"
+              :class="proxyMessageTone"
+            >
+              {{ proxyMessage }}
+            </div>
+          </section>
+
+          <section class="panel receipt-panel">
+            <div class="panel-head">
+              <h2>支出明细</h2>
+              <button
+                type="button"
+                :disabled="expenseSubmitting"
+                @click="submitProjectExpense"
+              >
+                {{ expenseSubmitting ? "提交中" : "发起支出" }}
+              </button>
+            </div>
+            <div class="expense-summary">
+              <span
+                v-for="item in projectExpenseSummaryItems"
+                :key="item.label"
+              >
+                {{ item.label }}：<strong>{{ item.value }}</strong>
+              </span>
+            </div>
+            <form
+              class="receipt-form"
+              @submit.prevent="submitProjectExpense"
+            >
+              <label>
+                <span>支出单号</span>
+                <input
+                  v-model.trim="expenseForm.code"
+                  required
+                >
+              </label>
+              <label>
+                <span>一级类型</span>
+                <select
+                  v-model="expenseForm.expenseType"
+                  @change="syncExpenseSubtype"
+                >
+                  <option
+                    v-for="option in expenseTypeOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>明细类型</span>
+                <select v-model="expenseForm.expenseSubtype">
+                  <option
+                    v-for="option in currentExpenseSubtypeOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>{{ expenseForm.expenseType === "spot_purchase" ? "采购事项" : "付款主体" }}</span>
+                <input
+                  v-model.trim="expenseForm.paymentSubject"
+                  required
+                >
+              </label>
+              <label>
+                <span>{{ expenseForm.expenseType === "spot_purchase" ? "预算金额(元)" : "申请金额(元)" }}</span>
+                <input
+                  v-model.trim="expenseForm.amountYuan"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                  required
+                >
+              </label>
+              <label>
+                <span>付款方式</span>
+                <select v-model="expenseForm.paymentMethod">
+                  <option
+                    v-for="option in expensePaymentMethodOptions"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>{{ expenseForm.expenseType === "spot_purchase" ? "供应商" : "对方名称" }}</span>
+                <input v-model.trim="expenseForm.counterpartyName">
+              </label>
+              <label>
+                <span>对方户名</span>
+                <input v-model.trim="expenseForm.counterpartyAccountName">
+              </label>
+              <label>
+                <span>开户银行</span>
+                <input v-model.trim="expenseForm.counterpartyBankName">
+              </label>
+              <label>
+                <span>银行账号</span>
+                <input v-model.trim="expenseForm.counterpartyBankAccount">
+              </label>
+              <label>
+                <span>附件/发票</span>
+                <input
+                  ref="expenseAttachmentInput"
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                  @change="selectExpenseAttachment"
+                >
+              </label>
+              <label class="receipt-description">
+                <span>{{ expenseForm.expenseType === "spot_purchase" ? "采购用途" : "付款事由" }}</span>
+                <input
+                  v-model.trim="expenseForm.reason"
+                  required
+                >
+              </label>
+            </form>
+            <div
+              v-if="expenseMessage"
+              class="receipt-message"
+              :class="expenseMessageTone"
+            >
+              {{ expenseMessage }}
+            </div>
+            <div class="expense-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>支出单号</th>
+                    <th>类型</th>
+                    <th>付款主体</th>
+                    <th>申请金额</th>
+                    <th>已批金额</th>
+                    <th>已实付</th>
+                    <th>付款方式</th>
+                    <th>状态</th>
+                    <th>附件</th>
+                    <th>审批单</th>
+                    <th>采购执行</th>
+                    <th>收货确认</th>
+                    <th>提交时间</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody v-if="projectExpenseRows.length">
+                  <tr
+                    v-for="row in projectExpenseRows"
+                    :key="row.id"
+                  >
+                    <td>{{ row.code }}</td>
+                    <td>{{ expenseTypeLabel(row.expenseType) }} · {{ expenseSubtypeLabel(row.expenseSubtype) }}</td>
+                    <td>{{ row.paymentSubject }}</td>
+                    <td>{{ formatCents(row.requestedAmountCents) }}</td>
+                    <td>{{ formatCents(row.approvedAmountCents) }}</td>
+                    <td>{{ formatCents(row.paidAmountCents) }}</td>
+                    <td>{{ expensePaymentMethodLabel(row.paymentMethod) }}</td>
+                    <td>{{ expenseStatusLabel(row.status) }}</td>
+                    <td>{{ row.hasAttachment ? "已上传" : "未上传" }}</td>
+                    <td>{{ row.hasApprovalPdf ? "已生成" : "未生成" }}</td>
+                    <td>{{ row.expenseType === "spot_purchase" ? (row.isPurchaseExecuted ? "已执行" : "待执行") : "-" }}</td>
+                    <td>{{ row.expenseType === "spot_purchase" ? (row.isReceiptConfirmed ? "已确认" : "待确认") : "-" }}</td>
+                    <td>{{ formatDateTime(row.createdAt) }}</td>
+                    <td>
+                      <button
+                        type="button"
+                        class="table-action"
+                        @click="selectExpenseRow(row)"
+                      >
+                        处理
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+                <tbody v-else>
+                  <tr>
+                    <td
+                      class="empty-cell"
+                      colspan="14"
+                    >
+                      暂无支出明细
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <section
+              v-if="selectedExpenseRow"
+              class="expense-action-panel"
+            >
+              <div class="expense-action-head">
+                <div>
+                  <h3>处理支出单：{{ selectedExpenseRow.code }}</h3>
+                  <p>
+                    {{ expenseTypeLabel(selectedExpenseRow.expenseType) }} ·
+                    {{ expenseSubtypeLabel(selectedExpenseRow.expenseSubtype) }} ·
+                    {{ expenseStatusLabel(selectedExpenseRow.status) }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="secondary-button"
+                  @click="clearSelectedExpenseRow"
+                >
+                  取消选择
+                </button>
+              </div>
+              <div class="receipt-form">
+                <label>
+                  <span>附件下载密码</span>
+                  <input
+                    v-model="expenseActionForm.downloadPassword"
+                    type="password"
+                    autocomplete="current-password"
+                  >
+                </label>
+                <label>
+                  <span>采购执行日期</span>
+                  <input
+                    v-model="expenseActionForm.purchaseExecutedAt"
+                    type="date"
+                  >
+                </label>
+                <label>
+                  <span>采购执行备注</span>
+                  <input v-model.trim="expenseActionForm.purchaseExecutionNote">
+                </label>
+                <label>
+                  <span>采购执行确认密码</span>
+                  <input
+                    v-model="expenseActionForm.purchaseExecutionPassword"
+                    type="password"
+                    autocomplete="current-password"
+                  >
+                </label>
+                <label>
+                  <span>实付日期</span>
+                  <input
+                    v-model="expenseActionForm.executionPaidAt"
+                    type="date"
+                  >
+                </label>
+                <label>
+                  <span>实付金额(元)</span>
+                  <input
+                    v-model.trim="expenseActionForm.executionAmountYuan"
+                    inputmode="decimal"
+                    placeholder="0.00"
+                  >
+                </label>
+                <label>
+                  <span>实付凭证</span>
+                  <input
+                    ref="expenseExecutionVoucherInput"
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.xlsx,.docx"
+                    @change="selectExpenseExecutionVoucher"
+                  >
+                </label>
+                <label>
+                  <span>实付确认密码</span>
+                  <input
+                    v-model="expenseActionForm.executionPassword"
+                    type="password"
+                    autocomplete="current-password"
+                  >
+                </label>
+                <label>
+                  <span>入账日期</span>
+                  <input
+                    v-model="expenseActionForm.financeOccurredAt"
+                    type="date"
+                  >
+                </label>
+                <label>
+                  <span>入账金额(元)</span>
+                  <input
+                    v-model.trim="expenseActionForm.financeAmountYuan"
+                    inputmode="decimal"
+                    placeholder="0.00"
+                  >
+                </label>
+                <label>
+                  <span>入账确认密码</span>
+                  <input
+                    v-model="expenseActionForm.financePassword"
+                    type="password"
+                    autocomplete="current-password"
+                  >
+                </label>
+                <label>
+                  <span>收货确认备注</span>
+                  <input v-model.trim="expenseActionForm.receiptConfirmationNote">
+                </label>
+                <label>
+                  <span>收货确认密码</span>
+                  <input
+                    v-model="expenseActionForm.receiptConfirmationPassword"
+                    type="password"
+                    autocomplete="current-password"
+                  >
+                </label>
+              </div>
+              <div class="expense-action-buttons">
+                <button
+                  v-if="selectedExpenseRow.status === 'approval_pending'"
+                  type="button"
+                  class="secondary-button"
+                  @click="openExpenseApprovalDetail(selectedExpenseRow)"
+                >
+                  打开审批详情
+                </button>
+                <button
+                  v-if="canRecordPurchaseExecution(selectedExpenseRow)"
+                  type="button"
+                  :disabled="expenseActionBusy !== ''"
+                  @click="submitExpensePurchaseExecution"
+                >
+                  登记采购执行
+                </button>
+                <button
+                  v-if="canRecordExpenseExecution(selectedExpenseRow)"
+                  type="button"
+                  :disabled="expenseActionBusy !== ''"
+                  @click="submitExpenseExecution"
+                >
+                  登记实付
+                </button>
+                <button
+                  v-if="canRecordExpenseFinance(selectedExpenseRow)"
+                  type="button"
+                  :disabled="expenseActionBusy !== ''"
+                  @click="submitExpenseFinance"
+                >
+                  财务入账
+                </button>
+                <button
+                  v-if="canConfirmExpenseReceipt(selectedExpenseRow)"
+                  type="button"
+                  :disabled="expenseActionBusy !== ''"
+                  @click="submitExpenseReceiptConfirmation"
+                >
+                  确认收货
+                </button>
+                <button
+                  v-if="selectedExpenseRow.hasAttachment"
+                  type="button"
+                  class="secondary-button"
+                  :disabled="expenseActionBusy !== ''"
+                  @click="downloadExpenseAttachment"
+                >
+                  下载申请附件
+                </button>
+                <button
+                  v-if="selectedExpenseRow.hasApprovalPdf"
+                  type="button"
+                  class="secondary-button"
+                  :disabled="expenseActionBusy !== ''"
+                  @click="downloadExpenseApprovalPdf"
+                >
+                  下载审批单
+                </button>
+              </div>
+              <div
+                v-if="expenseActionMessage"
+                class="receipt-message"
+                :class="expenseActionMessageTone"
+              >
+                {{ expenseActionMessage }}
+              </div>
+            </section>
+          </section>
+        </template>
+      </t-tab-panel>
+    </t-tabs>
   </section>
 </template>
 
@@ -852,7 +879,7 @@ import {
   type ProjectOperatingOverviewReadModel,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
-import type { ContractBusinessOptionReadModel } from "@jiangkong/shared-domain";
+import type { ContractBusinessOptionReadModel, RoleKey } from "@jiangkong/shared-domain";
 import { useAuthStore } from "../../auth/auth.store";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import {
@@ -881,6 +908,19 @@ import { promptSensitiveActionReason } from "../confirm-sensitive-action";
 type ReceiptSourceType = "general_contractor_payment" | "owner_direct_payment" | "other";
 type ProxyPaymentType = "material" | "equipment" | "labor" | "professional_subcontract" | "other";
 type ProjectExpenseRow = ProjectExpenseRequestListReadModel["rows"][number];
+
+const GLOBAL_PROJECT_OVERVIEW_ROLE_KEYS = new Set<RoleKey>([
+  "chairman",
+  "general_manager",
+  "engineering_department_director",
+  "finance_staff",
+  "finance_director",
+  "contract_director",
+  "budget_director",
+  "material_director",
+  "comprehensive_director",
+  "super_admin"
+]);
 
 interface ReceiptFormState {
   receivedAt: string;
@@ -949,6 +989,7 @@ const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
 const executiveOverview = ref<ExecutiveProjectOverview | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
 const selectedProjectId = ref("");
+const activeTab = ref("overview");
 const loadingProjects = ref(false);
 const loadingOverview = ref(false);
 const loadingExecutiveOverview = ref(false);
@@ -992,6 +1033,13 @@ const summaryItems = computed(() => {
   ];
 });
 
+const projectSelectOptions = computed(() =>
+  projects.value.map((project) => ({
+    label: `${project.code} · ${project.name}`,
+    value: project.id
+  }))
+);
+
 const projectBusinessEntries = computed(() =>
   buildProjectBusinessEntries(overview.value?.project.name ?? selectedProjectName.value, {
     contracts: overview.value?.counts.contracts ?? 0,
@@ -1025,6 +1073,18 @@ const selectedProxySettlement = computed(() =>
 
 const canManageProjects = computed(
   () => auth.user?.roleKeys.some((role) => role === "chairman" || role === "general_manager") ?? false
+);
+
+const canViewExecutiveOverview = computed(
+  () =>
+    auth.user?.globalRoleKeys.some((role) => GLOBAL_PROJECT_OVERVIEW_ROLE_KEYS.has(role)) ?? false
+);
+
+const canUseFundsOperations = computed(
+  () =>
+    auth.user?.roleKeys.some((role) =>
+      ["chairman", "general_manager", "project_manager", "finance_director", "finance_staff"].includes(role)
+    ) ?? false
 );
 
 const cashItems = computed(() => {
@@ -1164,7 +1224,7 @@ function syncSelectedProjectName() {
 }
 
 async function loadExecutiveOverview() {
-  if (!canManageProjects.value || !projects.value.length) {
+  if (!canViewExecutiveOverview.value || !projects.value.length) {
     executiveOverview.value = null;
     executiveMessage.value = "";
     return;
@@ -1206,15 +1266,15 @@ async function loadOverview() {
   try {
     const [nextOverview, nextExpenses, nextProxyContracts] = await Promise.all([
       fetchProjectOperatingOverview(projectId),
-      fetchProjectExpenseRequests(projectId),
-      fetchPaymentContractOptions(projectId)
+      canUseFundsOperations.value ? fetchProjectExpenseRequests(projectId) : Promise.resolve(null),
+      canUseFundsOperations.value ? fetchPaymentContractOptions(projectId) : Promise.resolve([])
     ]);
     if (selectedProjectId.value === projectId) {
       overview.value = nextOverview;
       projectExpenses.value = nextExpenses;
       proxyContractOptions.value = nextProxyContracts;
       selectedExpenseRow.value = selectedExpenseId
-        ? nextExpenses.rows.find((row) => row.id === selectedExpenseId) ?? null
+        ? nextExpenses?.rows.find((row) => row.id === selectedExpenseId) ?? null
         : null;
     }
   } catch (error) {
@@ -1721,14 +1781,14 @@ function formatDateTime(value: string): string {
 <style scoped>
 .project-operating-page {
   display: grid;
-  gap: 16px;
+  gap: var(--jg-space-lg);
 }
 
 .page-head {
   display: flex;
-  align-items: end;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--jg-space-section);
 }
 
 h1,
@@ -1738,11 +1798,21 @@ p {
 }
 
 h1 {
-  font-size: 22px;
+  font-size: var(--jg-font-page-title);
+  line-height: var(--jg-line-height-title);
 }
 
 h2 {
-  font-size: 15px;
+  font-size: var(--jg-font-section-title);
+}
+
+.page-eyebrow {
+  display: inline-flex;
+  margin-bottom: var(--jg-space-xs);
+  color: var(--jg-brand);
+  font-size: var(--jg-font-meta);
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 p,
@@ -1757,13 +1827,33 @@ dt,
 
 .project-tools {
   display: grid;
-  gap: 10px;
-  min-width: min(720px, 100%);
+  gap: var(--jg-space-sm-plus);
+  width: min(480px, 100%);
+  min-width: min(360px, 100%);
 }
 
 .project-picker {
   display: grid;
-  gap: 6px;
+  gap: var(--jg-space-xs);
+}
+
+.project-picker :deep(.t-select) {
+  width: 100%;
+}
+
+.project-maintenance {
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-md);
+  background: var(--jg-bg-muted);
+}
+
+.project-maintenance-forms {
+  display: grid;
+  gap: var(--jg-space-sm-plus);
+}
+
+.project-operating-tabs {
+  min-width: 0;
 }
 
 .project-create-form {
@@ -2090,6 +2180,17 @@ dd {
 .gap-panel ul {
   margin: 12px 0 0;
   padding-left: 18px;
+}
+
+.overview-gap-panel {
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-lg);
+  padding: var(--jg-space-md-plus);
+  background: var(--jg-bg-muted);
+}
+
+.overview-gap-panel p {
+  margin-top: var(--jg-space-sm);
 }
 
 .message {

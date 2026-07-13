@@ -3,6 +3,7 @@ import { BadRequestException } from "@nestjs/common";
 import { PATH_METADATA } from "@nestjs/common/constants";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
+import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import {
@@ -566,21 +567,13 @@ describe("ContractController authorization wiring", () => {
     }
   );
 
-  it("guards the contract ledger with business positions", () => {
+  it("guards contract list and detail with the shared ledger read policy", () => {
     const handler = ContractController.prototype.list;
 
-    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual([
-      "chairman",
-      "general_manager",
-      "project_manager",
-      "contract_director",
-      "contract_staff",
-      "budget_director",
-      "budget_staff",
-      "finance_director",
-      "finance_staff",
-      "super_admin"
-    ]);
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual(LEDGER_READ_POSITION_KEYS);
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ContractController.prototype.detail)).toEqual(
+      LEDGER_READ_POSITION_KEYS
+    );
   });
 
   it("forwards the required numbering body on approval submission", async () => {

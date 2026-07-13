@@ -4,6 +4,7 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AssignPaymentApprovalDto } from "./dto/assign-payment-approval.dto";
 import { CreatePaymentRequestDto } from "./dto/create-payment-request.dto";
 import { GeneratePaymentPdfArchiveDto } from "./dto/generate-payment-pdf-archive.dto";
@@ -35,19 +36,7 @@ export class PaymentController {
   }
 
   @Get()
-  @RequirePositions(
-    "chairman",
-    "general_manager",
-    "comprehensive_director",
-    "project_manager",
-    "contract_director",
-    "contract_staff",
-    "budget_director",
-    "budget_staff",
-    "finance_director",
-    "finance_staff",
-    "super_admin"
-  )
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
     return this.paymentRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
   }
@@ -140,18 +129,7 @@ export class PaymentController {
   }
 
   @Get(":paymentId")
-  @RequirePositions(
-    "chairman",
-    "general_manager",
-    "comprehensive_director",
-    "project_manager",
-    "contract_director",
-    "contract_staff",
-    "budget_director",
-    "budget_staff",
-    "finance_director",
-    "finance_staff"
-  )
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async detail(@Param("paymentId") paymentId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.paymentRead.getDetail(
       paymentId,

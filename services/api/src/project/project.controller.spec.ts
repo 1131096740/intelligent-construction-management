@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
+import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { ProjectController } from "./project.controller";
 
@@ -108,13 +109,6 @@ describe("ProjectController authorization wiring", () => {
     comment?: string;
   };
 
-  const fundsOverviewPositions = [
-    "chairman",
-    "general_manager",
-    "project_manager",
-    "finance_director",
-    "finance_staff"
-  ];
   const projectCreatePositions = ["chairman", "general_manager"];
 
   it.each([
@@ -558,9 +552,9 @@ describe("ProjectController authorization wiring", () => {
     );
   });
 
-  it("guards project overview with funds overview positions so project-scoped roles see :projectId", () => {
+  it("guards project overview with the management read policy so global positions can see every project", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.operatingFundsOverview)).toEqual(
-      fundsOverviewPositions
+      PROJECT_OVERVIEW_READ_POSITION_KEYS
     );
   });
 

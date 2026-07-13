@@ -4,9 +4,15 @@ import type { RoleKey } from "@jiangkong/shared-domain";
 export const fundsOverviewRoleKeys = [
   "chairman",
   "general_manager",
-  "project_manager",
+  "engineering_department_director",
+  "finance_staff",
   "finance_director",
-  "finance_staff"
+  "contract_director",
+  "budget_director",
+  "material_director",
+  "comprehensive_director",
+  "super_admin",
+  "project_manager"
 ] as const satisfies readonly RoleKey[];
 
 export const historicalTakeoverRoleKeys = [
@@ -56,7 +62,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     ]
   },
   {
-    label: "项目资金链",
+    label: "项目",
     items: [
       { label: "项目经营", path: "/项目经营", requiredRoleKeys: fundsOverviewRoleKeys },
       { label: "项目花名册", path: "/项目花名册" }

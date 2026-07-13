@@ -3,6 +3,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
@@ -15,14 +16,6 @@ import { ReviewProjectFinancingQuotaDto } from "./dto/review-project-financing-q
 import { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-exception-quota.dto";
 import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { ProjectService } from "./project.service";
-
-const FUNDS_OVERVIEW_POSITIONS = [
-  "chairman",
-  "general_manager",
-  "project_manager",
-  "finance_director",
-  "finance_staff"
-] as const;
 
 @Controller("projects")
 export class ProjectController {
@@ -60,7 +53,7 @@ export class ProjectController {
   }
 
   @Get(":projectId/operating-funds-overview")
-  @RequirePositions(...FUNDS_OVERVIEW_POSITIONS)
+  @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
   operatingFundsOverview(@Param("projectId") projectId: string) {
     return this.projects.getOperatingFundsOverview(projectId);
   }

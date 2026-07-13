@@ -4,6 +4,7 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { ContractReadService } from "./contract-read.service";
@@ -57,18 +58,7 @@ export class ContractController {
   }
 
   @Get()
-  @RequirePositions(
-    "chairman",
-    "general_manager",
-    "project_manager",
-    "contract_director",
-    "contract_staff",
-    "budget_director",
-    "budget_staff",
-    "finance_director",
-    "finance_staff",
-    "super_admin"
-  )
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
     return this.contractRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
   }
@@ -86,17 +76,7 @@ export class ContractController {
   }
 
   @Get(":contractId")
-  @RequirePositions(
-    "chairman",
-    "general_manager",
-    "project_manager",
-    "contract_director",
-    "contract_staff",
-    "budget_director",
-    "budget_staff",
-    "finance_director",
-    "finance_staff"
-  )
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async detail(@Param("contractId") contractId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.contractRead.getDetail(
       contractId,

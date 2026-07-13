@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
+import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -47,15 +48,8 @@ import type { UpdateProjectDto } from "./dto/update-project.dto";
 const UPSTREAM_SETTLEMENT_GAP =
   "缺少对上结算/业主审定台账，当前经营收入和毛利为实际收款与总包代付发生口径。";
 const FINANCING_LIMIT_GAP = "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。";
-const FUNDS_OVERVIEW_POSITIONS = new Set<RoleKey>([
-  "chairman",
-  "general_manager",
-  "project_manager",
-  "finance_director",
-  "finance_staff"
-]);
 const PROJECT_OPTION_POSITIONS = new Set<RoleKey>([
-  ...FUNDS_OVERVIEW_POSITIONS,
+  ...PROJECT_OVERVIEW_READ_POSITION_KEYS,
   "contract_staff",
   "contract_director",
   "budget_staff",

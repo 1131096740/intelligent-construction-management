@@ -213,7 +213,7 @@ describe("web admin routes", () => {
   it("groups navigation by business process instead of a flat module list", () => {
     expect(adminNavigationGroups.map((group) => group.label)).toEqual([
       "工作入口",
-      "项目资金链",
+      "项目",
       "合同",
       "结算",
       "付款",
@@ -227,9 +227,9 @@ describe("web admin routes", () => {
   it("keeps navigation groups that still contain public business entries after role filtering", () => {
     const groupLabels = visibleAdminNavigationGroups(undefined).map((group) => group.label);
 
-    expect(groupLabels).toContain("项目资金链");
+    expect(groupLabels).toContain("项目");
     expect(groupLabels).toContain("合同");
-    expect(visibleAdminNavigationGroups(["finance_staff"]).map((group) => group.label)).toContain("项目资金链");
+    expect(visibleAdminNavigationGroups(["finance_staff"]).map((group) => group.label)).toContain("项目");
   });
 
   it("keeps old create routes as redirects to the dedicated workbenches", () => {
@@ -251,6 +251,10 @@ describe("web admin routes", () => {
   it("hides project operations from nav when the user lacks funds overview roles", () => {
     expect(visibleAdminNavigationItems(["contract_staff"]).map((item) => item.path)).not.toContain("/项目经营");
     expect(visibleAdminNavigationItems(["finance_staff"]).map((item) => item.path)).toContain("/项目经营");
+    expect(visibleAdminNavigationItems(["engineering_department_director"]).map((item) => item.path)).toContain(
+      "/项目经营"
+    );
+    expect(visibleAdminNavigationItems(["material_director"]).map((item) => item.path)).toContain("/项目经营");
     expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).not.toContain("/项目经营");
     expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).toContain("/项目花名册");
   });
@@ -275,6 +279,12 @@ describe("web admin routes", () => {
       path: "/首页"
     });
     expect(resolveRouteAccess(projectRoute, { isAuthenticated: true, roleKeys: ["finance_director"] })).toBe(true);
+    expect(
+      resolveRouteAccess(projectRoute, {
+        isAuthenticated: true,
+        roleKeys: ["comprehensive_director"]
+      })
+    ).toBe(true);
   });
 
   it("forces temporary-password users to change password before business routes", () => {

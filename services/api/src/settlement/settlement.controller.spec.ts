@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
+import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { SettlementController } from "./settlement.controller";
@@ -437,19 +438,13 @@ describe("SettlementController authorization wiring", () => {
     }
   );
 
-  it("guards the settlement ledger with business positions", () => {
-    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.list)).toEqual([
-      "chairman",
-      "general_manager",
-      "project_manager",
-      "contract_director",
-      "contract_staff",
-      "budget_director",
-      "budget_staff",
-      "finance_director",
-      "finance_staff",
-      "super_admin"
-    ]);
+  it("guards settlement list and detail with the shared ledger read policy", () => {
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.list)).toEqual(
+      LEDGER_READ_POSITION_KEYS
+    );
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.detail)).toEqual(
+      LEDGER_READ_POSITION_KEYS
+    );
   });
 
   it("forwards visible project ids to settlement detail reads", async () => {
