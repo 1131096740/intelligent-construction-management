@@ -16,7 +16,7 @@
           刷新
         </t-button>
         <t-button
-          v-if="isTechnicalAdmin"
+          v-if="userCreationRoleOptions.length"
           variant="outline"
           :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
           @click="openUserCreationDrawer"

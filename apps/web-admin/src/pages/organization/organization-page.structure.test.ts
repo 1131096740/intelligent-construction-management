@@ -31,6 +31,23 @@ describe("organization business-facing language", () => {
 });
 
 describe("organization user creation structure", () => {
+  it("shows user creation to a manager with eligible subordinate roles, while keeping department creation technical-only", () => {
+    const userCreationActionIndex = pageSource.indexOf('@click="openUserCreationDrawer"');
+    const userCreationButtonSource = pageSource.slice(
+      pageSource.lastIndexOf("<t-button", userCreationActionIndex),
+      pageSource.indexOf("</t-button>", userCreationActionIndex)
+    );
+    const departmentCreationActionIndex = pageSource.indexOf('@click="openCreateDepartment"');
+    const departmentCreationButtonSource = pageSource.slice(
+      pageSource.lastIndexOf("<t-button", departmentCreationActionIndex),
+      pageSource.indexOf("</t-button>", departmentCreationActionIndex)
+    );
+
+    expect(userCreationButtonSource).toContain('v-if="userCreationRoleOptions.length"');
+    expect(userCreationButtonSource).not.toContain('v-if="isTechnicalAdmin"');
+    expect(departmentCreationButtonSource).toContain('v-if="isTechnicalAdmin"');
+  });
+
   it("uses an independent drawer without role assignment or persisted secrets", () => {
     expect(pageSource).toContain("OrganizationUserCreationDrawer");
     expect(pageSource).toContain("新增人员");
