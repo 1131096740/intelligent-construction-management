@@ -1,4 +1,18 @@
+import path from "node:path";
 import { expect, test } from "@playwright/test";
+import {
+  expectNoDocumentHorizontalOverflow,
+  expectNoNestedHorizontalScrollers
+} from "./helpers/responsive-assertions";
+
+const responsiveViewports = [
+  { width: 1512, height: 982 },
+  { width: 1440, height: 900 },
+  { width: 1280, height: 800 },
+  { width: 1180, height: 820 },
+  { width: 1024, height: 768 },
+  { width: 900, height: 768 }
+] as const;
 
 test("合同工作台以正文为中央画布并在侧栏保留业务与就绪检查", async ({ page }, testInfo) => {
   let privateFileCalls = 0;
@@ -131,26 +145,30 @@ test("合同工作台以正文为中央画布并在侧栏保留业务与就绪�
   expect(desktopCanvas).not.toBeNull();
   expect(desktopSidebar).not.toBeNull();
   expect(desktopCanvas!.x).toBeLessThan(desktopSidebar!.x);
-  await page.screenshot({
-    path: testInfo.outputPath("contract-workbench-canvas-1440.png"),
-    fullPage: true
-  });
-
   await page.getByRole("button", { name: "安全打开正文" }).click();
   await expect(page.getByRole("heading", { name: "合同文档" })).toBeVisible();
   expect(privateFileCalls).toBe(0);
 
-  await page.setViewportSize({ width: 1100, height: 800 });
-  const compactCanvas = await page.locator(".document-canvas-slot").boundingBox();
-  const compactSidebar = await page.locator(".business-sidebar").boundingBox();
-  expect(compactCanvas).not.toBeNull();
-  expect(compactSidebar).not.toBeNull();
-  expect(compactSidebar!.y).toBeGreaterThan(compactCanvas!.y);
-  await expect(page.getByText("就绪检查", { exact: true })).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("contract-workbench-canvas-1100.png"),
-    fullPage: true
-  });
+  const screenshotDir = process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir;
+  for (const viewport of responsiveViewports) {
+    await page.setViewportSize(viewport);
+    const canvas = await page.locator(".document-canvas-slot").boundingBox();
+    const sidebar = await page.locator(".business-sidebar").boundingBox();
+    expect(canvas).not.toBeNull();
+    expect(sidebar).not.toBeNull();
+    if (viewport.width >= 1440) {
+      expect(canvas!.x).toBeLessThan(sidebar!.x);
+    } else {
+      expect(sidebar!.y).toBeGreaterThan(canvas!.y);
+    }
+    await expect(page.getByText("就绪检查", { exact: true })).toBeVisible();
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
+    await page.screenshot({
+      path: path.join(screenshotDir, `contract-workbench-${viewport.width}x${viewport.height}.png`),
+      fullPage: true
+    });
+  }
 });
 
 test("手工金额可编辑且小型清单可直接新增行", async ({ page }, testInfo) => {

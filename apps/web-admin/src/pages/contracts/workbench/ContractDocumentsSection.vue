@@ -500,6 +500,8 @@ function layoutThumbnailUrl(layout: Record<string, unknown>) {
 .workbench-section {
   display: grid;
   gap: 16px;
+  container-name: contract-documents;
+  container-type: inline-size;
 }
 
 .section-title {
@@ -674,7 +676,7 @@ function layoutThumbnailUrl(layout: Record<string, unknown>) {
   font-size: 12px;
 }
 
-@media (max-width: 900px) {
+@container contract-documents (max-width: 720px) {
   .document-controls,
   .document-row {
     grid-template-columns: 1fr;

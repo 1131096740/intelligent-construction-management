@@ -18,7 +18,7 @@
       </t-tag>
     </header>
 
-    <div class="canvas-stage">
+    <div class="canvas-stage jg-workspace-scroll">
       <article class="document-paper">
         <template v-if="state.kind === 'ready'">
           <p class="document-purpose">
@@ -158,6 +158,8 @@ const generatedAtText = computed(() => {
   border: 1px solid var(--jg-border);
   border-radius: var(--jg-radius-sm);
   overflow: hidden;
+  container-name: contract-document-canvas;
+  container-type: inline-size;
 }
 
 .canvas-toolbar,
@@ -286,7 +288,7 @@ const generatedAtText = computed(() => {
   border-top: 1px solid var(--jg-border);
 }
 
-@media (max-width: 1100px) {
+@container contract-document-canvas (max-width: 720px) {
   .document-canvas {
     grid-template-rows: auto minmax(420px, 1fr) auto;
     min-height: 560px;

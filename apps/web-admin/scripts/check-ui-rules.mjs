@@ -142,7 +142,9 @@ const responsiveGovernedFiles = new Map([
   ["src/pages/contract-templates/ContractTemplateEditorPage.vue", "workspace"],
   ["src/pages/contract-templates/ContractTemplateListPage.vue", "ledger"],
   ["src/pages/contract-templates/LayoutTemplateEditorPage.vue", "workspace"],
-  ["src/pages/contract-templates/StandardClauseLibraryPage.vue", "ledger"]
+  ["src/pages/contract-templates/StandardClauseLibraryPage.vue", "ledger"],
+  ["src/pages/contracts/ContractTakeoverPage.vue", "workspace"],
+  ["src/pages/contracts/ContractWorkbenchPage.vue", "workspace"]
 ]);
 
 const responsiveRootClassByType = {
@@ -165,8 +167,15 @@ export function findResponsiveRuleViolations(relative, source, type = responsive
   if (type === "ledger" && !source.includes("jg-table-region")) {
     violations.push({ file: relative, message: "台账页必须由 jg-table-region 承担表格横向滚动" });
   }
-  if (type === "workspace" && !source.includes("jg-workspace-scroll")) {
-    violations.push({ file: relative, message: "专业工作区必须显式声明 jg-workspace-scroll 滚动所有者" });
+  if (
+    type === "workspace" &&
+    !source.includes("jg-workspace-scroll") &&
+    !source.includes('data-jg-scroll-owner="child"')
+  ) {
+    violations.push({
+      file: relative,
+      message: "专业工作区必须声明本级 jg-workspace-scroll 或显式委托给子工作区"
+    });
   }
   if (/\b100vw\b/.test(source)) {
     violations.push({ file: relative, message: "后台响应式页面禁止使用 100vw 撑宽内容区" });

@@ -419,6 +419,8 @@ async function submitInlineParty() {
 .workbench-section {
   display: grid;
   gap: 16px;
+  container-name: contract-party;
+  container-type: inline-size;
 }
 
 .section-title {
@@ -547,5 +549,18 @@ async function submitInlineParty() {
   margin: 0;
   color: #767f8d;
   font-size: 12px;
+}
+
+@container contract-party (max-width: 620px) {
+  .attachment-upload {
+    grid-template-columns: 1fr;
+  }
+
+  .form-head,
+  .attachment-head,
+  .form-actions {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
 }
 </style>
