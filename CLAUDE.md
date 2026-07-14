@@ -35,11 +35,11 @@ Do not dilute Phase 1 with full material issuing, attendance, HR onboarding/offb
 ## Architecture Decisions
 
 - Web admin is the primary system: `Vue 3 + TypeScript + TDesign Web + Vite`.
-- Mini program is the mobile work client: native WeChat mini program + TDesign mini program.
+- Current repository still contains the legacy native WeChat mini-program skeleton and `/auth/wx-login`, but the approved target architecture is one responsive Web system for desktop and mobile. Retirement must follow the staged plan and production data gate.
 - Backend is the business center: `Node.js + NestJS + PostgreSQL`.
 - Deploy target: Tencent Cloud Lighthouse, HTTPS, PostgreSQL not public, Tencent COS private bucket.
 - Do not use fixed IP allowlists; use strong identity, permissions, private files, audit logs, and backups.
-- Both Web and mini program must call the same backend API. Frontends must not access database or object storage directly.
+- All retained clients must call the same backend API. Frontends must not access database or object storage directly.
 
 ## Core Business Rules
 
@@ -92,7 +92,7 @@ Use real business positions, not old generic roles:
 - File download must go through backend permission checks and short-lived URLs.
 - Audit log required for login, approval, archive upload/confirmation, payment execution, voucher upload, permission changes, document voiding, and sensitive file download.
 - Sensitive actions require second confirmation.
-- Secrets must not be committed or exposed to Web/mini program clients.
+- Secrets must not be committed or exposed to any client.
 
 ## Engineering Discipline
 
@@ -104,6 +104,6 @@ Use real business positions, not old generic roles:
 
 ## 进度跟踪
 
-- 项目实时进度以 `PROGRESS.md` 为唯一真相。
+- 项目实时进度以 `PROGRESS.md` 为唯一登记入口；状态结论仍必须与代码、Schema、迁移、测试、Git/部署和生产只读证据交叉核验。
 - 每完成一个子任务，必须在 `PROGRESS.md` 勾选/更新，并随代码一起 commit。
 - 接手开发（CodeX 或 Claude）第一件事：先读 `PROGRESS.md`。
