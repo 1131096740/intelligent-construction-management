@@ -1,5 +1,5 @@
 <template>
-  <section class="project-operating-page">
+  <section class="project-operating-page jg-responsive-detail">
     <div class="page-head">
       <div>
         <span class="page-eyebrow">项目</span>
@@ -138,7 +138,7 @@
                 <strong>{{ item.value }}</strong>
               </div>
             </div>
-            <div class="expense-table-wrap">
+            <div class="expense-table-wrap jg-workspace-scroll">
               <table class="executive-table">
                 <thead>
                   <tr>
@@ -598,7 +598,7 @@
             >
               {{ expenseMessage }}
             </div>
-            <div class="expense-table-wrap">
+            <div class="expense-table-wrap jg-workspace-scroll">
               <table>
                 <thead>
                   <tr>
@@ -1781,6 +1781,8 @@ function formatDateTime(value: string): string {
 <style scoped>
 .project-operating-page {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: var(--jg-space-lg);
 }
 
@@ -1956,7 +1958,7 @@ button:disabled {
 }
 
 .executive-table {
-  min-width: 1180px;
+  min-width: var(--jg-layout-ledger-table-wide-min-width);
 }
 
 .project-entry-panel {
@@ -2036,7 +2038,7 @@ button:disabled {
 }
 
 .receipt-description {
-  grid-column: span 3;
+  grid-column: 1 / -1;
 }
 
 .receipt-message {
@@ -2066,14 +2068,13 @@ button:disabled {
 }
 
 .expense-table-wrap {
-  overflow-x: auto;
   border: 1px solid #edf0f5;
   border-radius: 6px;
 }
 
 table {
   width: 100%;
-  min-width: 920px;
+  min-width: var(--jg-layout-ledger-table-min-width);
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -2200,10 +2201,17 @@ dd {
   border-radius: 8px;
 }
 
-@media (max-width: 900px) {
+@container jg-page (max-width: 1100px) {
+  .summary-strip,
+  .executive-summary-grid,
+  .project-entry-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container jg-page (max-width: 840px) {
   .page-head,
-  .expense-action-head,
-  dl div {
+  .panel-head {
     display: grid;
   }
 
@@ -2217,20 +2225,32 @@ dd {
     min-width: 0;
   }
 
-  .project-create-form,
-  .project-name-form {
-    grid-template-columns: 1fr;
-  }
-
-  .summary-strip,
-  .executive-summary-grid,
-  .overview-grid,
-  .project-entry-grid {
-    grid-template-columns: 1fr;
+  .project-tools {
+    width: 100%;
   }
 
   .receipt-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overview-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@container jg-page (max-width: 620px) {
+  .project-create-form,
+  .project-name-form,
+  .summary-strip,
+  .executive-summary-grid,
+  .project-entry-grid,
+  .receipt-form {
+    grid-template-columns: 1fr;
+  }
+
+  .expense-action-head,
+  dl div {
+    display: grid;
   }
 
   .receipt-description {

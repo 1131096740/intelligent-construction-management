@@ -148,14 +148,18 @@ const responsiveGovernedFiles = new Map([
   ["src/pages/approval-center/ApprovalCenterPage.vue", "ledger"],
   ["src/pages/archives/ArchiveListPage.vue", "ledger"],
   ["src/pages/audit/AuditLogPage.vue", "ledger"],
+  ["src/pages/business-parties/BusinessPartyEditorPage.vue", "flow"],
   ["src/pages/business-parties/BusinessPartyListPage.vue", "ledger"],
   ["src/pages/delegations/DelegationListPage.vue", "ledger"],
   ["src/pages/organization/OrganizationManagementPage.vue", "workspace"],
+  ["src/pages/projects/ProjectExpenseApprovalDetailPage.vue", "detail"],
+  ["src/pages/projects/ProjectOperatingOverviewPage.vue", "detail"],
   ["src/pages/projects/ProjectRosterPage.vue", "ledger"],
   ["src/pages/search/GlobalSearchPage.vue", "ledger"],
   ["src/pages/settlement-templates/SettlementTemplateEditorPage.vue", "workspace"],
   ["src/pages/settlement-templates/SettlementTemplateListPage.vue", "ledger"],
-  ["src/pages/settlements/SettlementWorkbenchPage.vue", "workspace"]
+  ["src/pages/settlements/SettlementWorkbenchPage.vue", "workspace"],
+  ["src/pages/settings/SettingsPage.vue", "flow"]
 ]);
 
 const responsiveRootClassByType = {
