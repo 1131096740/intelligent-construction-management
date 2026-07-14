@@ -65,6 +65,26 @@ export interface ContractFundTimelineItem {
   tone: DetailTone;
 }
 
+export interface ContractDetailHeaderView {
+  businessCode: string;
+  title: string;
+  status: string;
+  statusTone: DetailTone;
+  owner: string;
+  currentNode: string;
+  nextStep: string;
+  amount: string;
+}
+
+export const contractDetailTabs = [
+  { value: "overview", label: "概览" },
+  { value: "process", label: "流程办理" },
+  { value: "versions", label: "版本与条款" },
+  { value: "evidence", label: "凭证资料" },
+  { value: "funds", label: "结算与付款" },
+  { value: "audit", label: "关联与审计" }
+];
+
 export const contractDetailTitle = "HT-2026-001 · 钢材采购合同";
 
 export const contractDetailMeta: DetailMetaItem[] = [
@@ -143,6 +163,34 @@ export function buildContractFlowSummary(
   ];
 }
 
+export function buildContractDetailHeader(
+  routeCode: string,
+  title: string,
+  meta: readonly DetailMetaItem[],
+  baseInfo: readonly DetailMetaItem[]
+): ContractDetailHeaderView {
+  const businessCode = valueFor(baseInfo, "合同编号", routeCode || "-");
+  const status = valueFor(meta, "当前状态", "状态待读取");
+  const handler = valueFor(meta, "当前处理人", "-");
+  const department = valueFor(meta, "责任部门", "-");
+  return {
+    businessCode,
+    title: compactContractTitle(title, businessCode),
+    status,
+    statusTone: meta.find((item) => item.label === "当前状态")?.tone ?? "default",
+    owner: [handler, department].filter((value, index, values) =>
+      value !== "-" && values.indexOf(value) === index
+    ).join(" · ") || "-",
+    currentNode: status,
+    nextStep: valueFor(meta, "下一步动作", "-"),
+    amount: valueFor(baseInfo, "合同金额", "-")
+  };
+}
+
+export function contractOverviewBaseInfo(items: readonly DetailMetaItem[]) {
+  return items.filter((item) => !["合同编号", "合同金额"].includes(item.label));
+}
+
 export const contractSettlementLedgerColumns: PrimaryTableCol<ContractSettlementLedgerRow>[] = [
   { colKey: "settlementNo", title: "结算编号", width: 150 },
   { colKey: "period", title: "期次", width: 112 },
@@ -217,4 +265,13 @@ function sortableDateTime(value: string): number {
 function pickSummaryItem(items: readonly DetailMetaItem[], label: string): BusinessStatusSummaryItem {
   const item = items.find((candidate) => candidate.label === label);
   return { label, value: item?.value ?? "-", tone: item?.tone };
+}
+
+function valueFor(items: readonly DetailMetaItem[], label: string, fallback: string) {
+  return items.find((item) => item.label === label)?.value ?? fallback;
+}
+
+function compactContractTitle(title: string, businessCode: string) {
+  const prefix = `${businessCode} · `;
+  return title.startsWith(prefix) ? title.slice(prefix.length) : title;
 }

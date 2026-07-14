@@ -97,6 +97,8 @@ const p0VisualFiles = new Set([
   "src/pages/payments/PaymentDetailPage.vue",
   "src/pages/settlements/SettlementListPage.vue",
   "src/pages/settlements/SettlementDetailPage.vue",
+  "src/pages/contracts/ContractListPage.vue",
+  "src/pages/contracts/ContractDetailPage.vue",
   "src/components/BusinessStatusSummary.vue",
   "src/components/BusinessDetailHeader.vue",
   "src/components/PaymentConfirmationSummary.vue"
@@ -118,6 +120,10 @@ const p0BusinessLanguageFiles = new Set([
   "src/pages/settlements/settlement-list.config.ts",
   "src/pages/settlements/SettlementDetailPage.vue",
   "src/pages/settlements/settlement-detail.config.ts",
+  "src/pages/contracts/ContractListPage.vue",
+  "src/pages/contracts/contract-list.config.ts",
+  "src/pages/contracts/ContractDetailPage.vue",
+  "src/pages/contracts/contract-detail.config.ts",
   "src/components/PaymentConfirmationSummary.vue"
 ]);
 

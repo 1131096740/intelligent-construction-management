@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   contractFilterFields,
   contractLedgerColumns,
+  contractLedgerFilterOptions,
+  contractPaginationBlockReason,
   contractSummaryItems,
   emptyContractLedgerFilters,
   filterContractLedgerRows,
@@ -9,6 +12,16 @@ import {
 } from "./contract-list.config";
 
 describe("contract ledger page configuration", () => {
+  it("uses the shared enterprise ledger structure without native controls", () => {
+    const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("<BusinessPageHeader");
+    expect(source).toContain("<BusinessStatusSummary");
+    expect(source).toContain("<BusinessTableToolbar");
+    expect(source).toContain("<BusinessFeedback");
+    expect(source).toContain("<EmptyBusinessState");
+    expect(source).not.toContain("<input");
+  });
+
   it("uses the approved compact enterprise filter fields", () => {
     expect(contractFilterFields.map((field) => field.label)).toEqual([
       "项目",
@@ -27,6 +40,55 @@ describe("contract ledger page configuration", () => {
       "待归档",
       "已生效"
     ]);
+  });
+
+  it("builds stable select options from the currently loaded contract ledger", () => {
+    const rows = [
+      contractRow({
+        project: "乙项目",
+        currentNode: "待归档确认",
+        nextAction: "确认归档",
+        paymentTermsVersion: "条款 v2"
+      }),
+      contractRow({
+        project: "甲项目",
+        currentNode: "审批中",
+        nextAction: "等待审批",
+        paymentTermsVersion: "条款 v1"
+      }),
+      contractRow({
+        project: "甲项目",
+        currentNode: "已生效",
+        nextAction: "发起结算",
+        paymentTermsVersion: "条款 v1"
+      })
+    ];
+
+    expect(contractLedgerFilterOptions(rows)).toEqual({
+      project: [
+        { label: "全部项目", value: "" },
+        { label: "甲项目", value: "甲项目" },
+        { label: "乙项目", value: "乙项目" }
+      ],
+      contractStatus: [
+        { label: "全部合同状态", value: "" },
+        { label: "待归档确认", value: "待归档确认" },
+        { label: "审批中", value: "审批中" },
+        { label: "已生效", value: "已生效" }
+      ],
+      archiveStatus: [
+        { label: "全部归档状态", value: "" },
+        { label: "待归档确认", value: "待归档确认" },
+        { label: "未进入归档", value: "未进入归档" },
+        { label: "已生效", value: "已生效" }
+      ],
+      paymentTermsVersion: [
+        { label: "全部付款条款版本", value: "" },
+        { label: "条款 v1", value: "条款 v1" },
+        { label: "条款 v2", value: "条款 v2" }
+      ]
+    });
+    expect(contractPaginationBlockReason).toContain("暂不支持翻页");
   });
 
   it("shows version, archive, owner, and next-node columns in the ledger", () => {
@@ -72,7 +134,7 @@ describe("contract ledger page configuration", () => {
         ...emptyContractLedgerFilters(),
         project: "E2E",
         contractStatus: "归档",
-        archiveStatus: "确认",
+        archiveStatus: "待归档确认",
         paymentTermsVersion: "v2",
         keyword: "钢材"
       }).map((row) => row.id)

@@ -1,18 +1,63 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { normalizeBusinessStatusSummaryItems } from "../../components/business-status-summary.config";
 import {
+  buildContractDetailHeader,
   buildContractFlowSummary,
   buildContractFundTimeline,
   contractBaseInfo,
   contractDetailMeta,
+  contractDetailTabs,
   contractEffectivenessSteps,
   contractPaymentLedgerColumns,
   contractPaymentTermColumns,
   contractSettlementLedgerColumns,
-  contractSettlementBlockMessage
+  contractSettlementBlockMessage,
+  contractOverviewBaseInfo
 } from "./contract-detail.config";
 
 describe("contract detail page configuration", () => {
+  it("uses the standard detail structure without native sensitive controls", () => {
+    const source = readFileSync(new URL("./ContractDetailPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("<BusinessDetailHeader");
+    expect(source).toContain("<BusinessFeedback");
+    expect(source).toContain("<SensitiveActionDialog");
+    expect(source).toContain("<t-upload");
+    expect(source).not.toContain("<input");
+    expect(source).not.toContain("confirmSensitiveAction");
+    expect(source).not.toContain("promptSensitiveActionReason");
+  });
+
+  it("organizes contract facts by task instead of an infinite card stack", () => {
+    expect(contractDetailTabs.map((tab) => tab.label)).toEqual([
+      "概览",
+      "流程办理",
+      "版本与条款",
+      "凭证资料",
+      "结算与付款",
+      "关联与审计"
+    ]);
+  });
+
+  it("builds a de-duplicated standard contract header", () => {
+    expect(buildContractDetailHeader(
+      "HT-2026-001",
+      "HT-2026-001 · 钢材采购合同",
+      contractDetailMeta,
+      contractBaseInfo
+    )).toEqual({
+      businessCode: "HT-2026-001",
+      title: "钢材采购合同",
+      status: "待用章",
+      statusTone: "warning",
+      owner: "王工 · 合同部",
+      currentNode: "待用章",
+      nextStep: "办理用章",
+      amount: "¥1,200,000.00"
+    });
+    expect(contractOverviewBaseInfo(contractBaseInfo).map((item) => item.label)).not.toContain("合同金额");
+  });
+
   it("shows the approved contract detail metadata fields", () => {
     expect(contractDetailMeta.map((item) => item.label)).toEqual([
       "当前状态",

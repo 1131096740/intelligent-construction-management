@@ -1,22 +1,28 @@
 <template>
   <section class="contract-list-page">
-    <div class="summary-strip">
-      <div
-        v-for="item in summaryValues"
-        :key="item.label"
-        class="summary-item"
-      >
-        <span class="summary-label">{{ item.label }}</span>
-        <strong :class="['summary-value', `tone-${item.tone}`]">
-          {{ item.value }}
-        </strong>
-      </div>
-    </div>
+    <BusinessPageHeader
+      title="合同管理"
+      description="统一查看合同台账、当前草稿和已作废草稿；合同生效仍以审批、用印和归档确认事实为准。"
+    >
+      <template #actions>
+        <t-button
+          variant="outline"
+          @click="goContractTakeover"
+        >
+          历史合同接管
+        </t-button>
+        <t-button
+          theme="primary"
+          @click="goNewContract"
+        >
+          新建合同
+        </t-button>
+      </template>
+    </BusinessPageHeader>
 
-    <!-- Tab bar: ledger / my drafts / voided drafts -->
     <t-tabs
       v-model="activeTab"
-      class="tab-bar"
+      class="contract-tabs"
     >
       <t-tab-panel
         value="ledger"
@@ -32,92 +38,109 @@
       />
     </t-tabs>
 
-    <!-- Ledger tab -->
     <template v-if="activeTab === 'ledger'">
+      <BusinessStatusSummary
+        :items="summaryValues"
+        appearance="metrics"
+      />
+
       <BusinessTableToolbar
-        title="合同台账"
-        description="查看合同状态、责任人、停留时长和下一步动作"
+        title="合同台账筛选"
+        description="筛选作用于当前已加载记录；列设置按当前用户保存在本机。"
+        appearance="plain"
       >
         <template #actions>
-          <t-space size="small">
-            <t-button @click="goContractTakeover">
-              历史合同接管
-            </t-button>
-            <t-button
-              theme="primary"
-              @click="goNewContract"
-            >
-              新建合同
-            </t-button>
-          </t-space>
+          <t-button
+            size="small"
+            variant="text"
+            @click="showColumnSettings = !showColumnSettings"
+          >
+            {{ showColumnSettings ? "收起列设置" : "列设置" }}
+          </t-button>
+          <t-button
+            size="small"
+            variant="text"
+            @click="resetContractFilters"
+          >
+            重置筛选
+          </t-button>
+          <t-button
+            size="small"
+            variant="outline"
+            :loading="ledgerLoading"
+            @click="loadContractLedger"
+          >
+            刷新数据
+          </t-button>
         </template>
 
-        <t-form
-          layout="inline"
-          label-align="top"
-          class="ledger-filter-form"
+        <label
+          v-for="field in contractFilterFields"
+          :key="field.key"
+          :class="['filter-field', { 'filter-field--keyword': field.type === 'keyword' }]"
         >
-          <label
-            v-for="field in contractFilterFields"
-            :key="field.key"
-            :class="['filter-field', { keyword: field.type === 'keyword' }]"
-          >
-            <span>{{ field.label }}</span>
-            <t-input
-              v-model="contractFilters[field.key]"
-              :placeholder="field.placeholder"
-              size="small"
-            />
-          </label>
-
-          <t-space
-            class="ledger-filter-actions"
+          <span>{{ field.label }}</span>
+          <t-input
+            v-if="field.type === 'keyword'"
+            v-model="contractFilters[field.key]"
+            :placeholder="field.placeholder"
             size="small"
-          >
-            <t-button
-              theme="primary"
-              @click="loadContractLedger"
-            >
-              查询
-            </t-button>
-            <t-button @click="resetContractFilters">
-              重置
-            </t-button>
-          </t-space>
-        </t-form>
+            clearable
+          />
+          <t-select
+            v-else
+            v-model="contractFilters[field.key]"
+            :options="optionsForFilter(field.key)"
+            size="small"
+          />
+        </label>
       </BusinessTableToolbar>
 
-      <div
-        v-if="noticeMessage"
-        class="list-message"
+      <section
+        v-if="showColumnSettings"
+        class="column-settings"
+        aria-label="合同台账列设置"
       >
-        {{ noticeMessage }}
-      </div>
-
-      <div class="column-strip">
-        <span>列设置</span>
-        <t-checkbox-group
-          class="column-checkbox-group"
-          :value="visibleContractColumnKeys"
-          @change="updateVisibleContractColumns"
+        <strong>显示列</strong>
+        <t-checkbox
+          v-for="option in contractColumnOptions"
+          :key="option.key"
+          :checked="visibleContractColumnKeys.includes(option.key)"
+          @change="toggleContractColumn(option.key)"
         >
-          <t-checkbox
-            v-for="option in contractColumnOptions"
-            :key="option.key"
-            :value="option.key"
-          >
-            {{ option.title }}
-          </t-checkbox>
-        </t-checkbox-group>
-      </div>
+          {{ option.title }}
+        </t-checkbox>
+      </section>
 
-      <t-card
-        class="ledger-panel"
-        :bordered="true"
+      <section
+        class="data-section"
+        aria-labelledby="contract-ledger-title"
       >
+        <header class="data-heading">
+          <div>
+            <h2 id="contract-ledger-title">
+              合同台账
+            </h2>
+            <p>合同状态、归档状态和付款条款版本分别表达；金额右对齐，操作列固定在右侧。</p>
+          </div>
+          <span>{{ noticeMessage ? "当前记录暂不可用" : `当前显示 ${filteredContractLedgerRows.length} 条` }}</span>
+        </header>
+
+        <BusinessFeedback
+          v-if="noticeMessage"
+          class="data-feedback"
+          state="error"
+          title="合同记录暂时无法读取"
+          :description="noticeMessage"
+          action-label="重新加载"
+          @action="loadContractLedger"
+        />
+
         <t-table
+          v-if="!noticeMessage && (ledgerLoading || filteredContractLedgerRows.length)"
           row-key="id"
           size="small"
+          table-layout="fixed"
           :columns="visibleContractLedgerColumns"
           :data="filteredContractLedgerRows"
           :loading="ledgerLoading"
@@ -136,104 +159,148 @@
               theme="primary"
               @click="openDetail(row.id)"
             >
-              查看合同 {{ row.contractNo }}
+              查看详情
             </t-link>
           </template>
-          <template #empty>
-            <EmptyBusinessState
-              title="暂无合同"
-              description="当前筛选条件下没有合同记录。可以调整筛选，或由合同人员新建合同。"
-              :actions="[{ label: '新建合同', to: '/contracts/new' }]"
-            />
-          </template>
         </t-table>
-      </t-card>
+
+        <EmptyBusinessState
+          v-else-if="!noticeMessage"
+          title="当前条件下暂无合同记录"
+          description="可以调整筛选条件；如需创建合同，请使用页头唯一的“新建合同”入口。"
+        />
+
+        <footer class="data-footer">
+          <span>数据范围</span>
+          <p>
+            {{ noticeMessage
+              ? "数据成功加载后，将在此说明本次展示范围。"
+              : contractPaginationBlockReason }}
+          </p>
+        </footer>
+      </section>
     </template>
 
-    <!-- My drafts tab -->
-    <template v-if="activeTab === 'my'">
-      <div
+    <section
+      v-else-if="activeTab === 'my'"
+      class="data-section"
+      aria-labelledby="contract-draft-title"
+    >
+      <header class="data-heading">
+        <div>
+          <h2 id="contract-draft-title">
+            我的草稿
+          </h2>
+          <p>仅显示当前账号可继续办理的合同草稿；进入工作台后继续使用原自动保存和提交逻辑。</p>
+        </div>
+        <span>{{ draftsError ? "当前草稿暂不可用" : `当前显示 ${myDrafts.length} 条` }}</span>
+      </header>
+
+      <BusinessFeedback
         v-if="draftsError"
-        class="list-message danger"
-      >
-        {{ draftsError }}
-      </div>
-      <t-card
-        class="ledger-panel"
-        :bordered="true"
-      >
-        <t-table
-          row-key="id"
-          size="small"
-          :columns="draftColumns"
-          :data="myDrafts"
-          :loading="draftsLoading"
-          empty="暂无草稿"
-        >
-          <template #contractTypeKey="{ row }">
-            {{ contractTypeLabel(row.contractTypeKey) }}
-          </template>
-          <template #updatedAt="{ row }">
-            {{ formatDraftUpdatedAt(row.updatedAt) }}
-          </template>
-          <template #operation="{ row }">
-            <t-link
-              theme="primary"
-              @click="openWorkbench(row.id)"
-            >
-              进入工作台
-            </t-link>
-          </template>
-        </t-table>
-      </t-card>
-    </template>
+        class="data-feedback"
+        state="error"
+        title="合同草稿暂时无法读取"
+        :description="draftsError"
+        action-label="重新加载"
+        @action="loadMyDrafts"
+      />
 
-    <!-- Voided drafts tab -->
-    <template v-if="activeTab === 'voided'">
-      <div
+      <t-table
+        v-if="!draftsError && (draftsLoading || myDrafts.length)"
+        row-key="id"
+        size="small"
+        table-layout="fixed"
+        :columns="draftColumns"
+        :data="myDrafts"
+        :loading="draftsLoading"
+      >
+        <template #contractTypeKey="{ row }">
+          {{ contractTypeLabel(row.contractTypeKey) }}
+        </template>
+        <template #updatedAt="{ row }">
+          {{ formatDraftUpdatedAt(row.updatedAt) }}
+        </template>
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="openWorkbench(row.id)"
+          >
+            进入工作台
+          </t-link>
+        </template>
+      </t-table>
+
+      <EmptyBusinessState
+        v-else-if="!draftsError"
+        title="暂无可继续办理的合同草稿"
+        description="如需创建合同，请使用页头唯一的“新建合同”入口并选择项目和业务场景。"
+      />
+    </section>
+
+    <section
+      v-else
+      class="data-section"
+      aria-labelledby="voided-draft-title"
+    >
+      <header class="data-heading">
+        <div>
+          <h2 id="voided-draft-title">
+            已作废草稿
+          </h2>
+          <p>只读查看当前账号可见的已作废合同草稿，不改变作废状态和历史记录。</p>
+        </div>
+        <span>{{ voidedError ? "当前记录暂不可用" : `当前显示 ${voidedDrafts.length} 条` }}</span>
+      </header>
+
+      <BusinessFeedback
         v-if="voidedError"
-        class="list-message danger"
+        class="data-feedback"
+        state="error"
+        title="作废草稿暂时无法读取"
+        :description="voidedError"
+        action-label="重新加载"
+        @action="loadVoidedDrafts"
+      />
+
+      <t-table
+        v-if="!voidedError && (voidedLoading || voidedDrafts.length)"
+        row-key="id"
+        size="small"
+        table-layout="fixed"
+        :columns="draftColumns"
+        :data="voidedDrafts"
+        :loading="voidedLoading"
       >
-        {{ voidedError }}
-      </div>
-      <t-card
-        class="ledger-panel"
-        :bordered="true"
-      >
-        <t-table
-          row-key="id"
-          size="small"
-          :columns="draftColumns"
-          :data="voidedDrafts"
-          :loading="voidedLoading"
-          empty="暂无作废草稿"
-        >
-          <template #contractTypeKey="{ row }">
-            {{ contractTypeLabel(row.contractTypeKey) }}
-          </template>
-          <template #updatedAt="{ row }">
-            {{ formatDraftUpdatedAt(row.updatedAt) }}
-          </template>
-          <template #operation="{ row }">
-            <t-link
-              theme="primary"
-              @click="openWorkbench(row.id)"
-            >
-              查看
-            </t-link>
-          </template>
-        </t-table>
-      </t-card>
-    </template>
+        <template #contractTypeKey="{ row }">
+          {{ contractTypeLabel(row.contractTypeKey) }}
+        </template>
+        <template #updatedAt="{ row }">
+          {{ formatDraftUpdatedAt(row.updatedAt) }}
+        </template>
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="openWorkbench(row.id)"
+          >
+            查看
+          </t-link>
+        </template>
+      </t-table>
+
+      <EmptyBusinessState
+        v-else-if="!voidedError"
+        title="暂无已作废草稿"
+        description="当前账号没有可见的已作废合同草稿。"
+        :actions="[]"
+      />
+    </section>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
-import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
-import { useAuthStore } from "../../auth/auth.store";
 import { fetchContractLedger } from "../../api/core-flow-read.api";
 import { listContractDrafts } from "../../api/contract-workbench.api";
 import {
@@ -241,10 +308,22 @@ import {
   readPersonalTablePreferences,
   writePersonalTablePreferences
 } from "../../app/personal-table-preferences";
-import type { ContractLedgerRow, ContractStatusTone } from "./contract-list.config";
+import { useAuthStore } from "../../auth/auth.store";
+import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
+import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
+import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
+import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
+import type {
+  ContractFilterKey,
+  ContractLedgerRow,
+  ContractStatusTone
+} from "./contract-list.config";
 import {
   contractFilterFields,
   contractLedgerColumns,
+  contractLedgerFilterOptions,
+  contractPaginationBlockReason,
   contractSummaryItems,
   emptyContractLedgerFilters,
   filterContractLedgerRows
@@ -259,6 +338,7 @@ const activeTab = ref<"ledger" | "my" | "voided">("my");
 const contractLedgerRows = ref<ContractLedgerRow[]>([]);
 const contractFilters = reactive(emptyContractLedgerFilters());
 const ledgerLoading = ref(false);
+const showColumnSettings = ref(false);
 const configurableContractColumnKeys = contractLedgerColumns
   .map((column) => String(column.colKey))
   .filter((key) => key !== "operation");
@@ -270,6 +350,7 @@ const ledgerSummary = ref({
   pendingArchive: 0,
   effective: 0
 });
+
 const summaryValues = computed(() => {
   const values = [
     ledgerSummary.value.total,
@@ -281,12 +362,13 @@ const summaryValues = computed(() => {
 
   return contractSummaryItems.map((item, index) => ({
     ...item,
-    value: String(values[index] ?? 0)
+    value: noticeMessage.value ? "—" : String(values[index] ?? 0)
   }));
 });
 const filteredContractLedgerRows = computed(() =>
   filterContractLedgerRows(contractLedgerRows.value, contractFilters)
 );
+const filterOptions = computed(() => contractLedgerFilterOptions(contractLedgerRows.value));
 const contractPreferenceStorageKey = computed(() =>
   auth.user?.id ? `jiangkong:web-admin:contract-ledger:${auth.user.id}` : ""
 );
@@ -297,12 +379,11 @@ const contractColumnOptions = computed(() =>
 );
 const visibleContractLedgerColumns = computed(() => {
   const visible = new Set(visibleContractColumnKeys.value);
-  return contractLedgerColumns.filter((column) => column.colKey === "operation" || visible.has(String(column.colKey)));
+  return contractLedgerColumns.filter((column) =>
+    column.colKey === "operation" || visible.has(String(column.colKey))
+  );
 });
 
-// Draft list rows mirror the backend Contract read model fields returned by
-// listDrafts (raw Contract rows): name may be empty for fresh drafts, so
-// temporaryCode is the primary human-readable identifier.
 interface ContractDraftRow {
   id: string;
   name?: string | null;
@@ -312,7 +393,6 @@ interface ContractDraftRow {
   updatedAt?: string | null;
 }
 
-// Draft tables
 const draftColumns = [
   { colKey: "temporaryCode", title: "草稿编号", minWidth: 180 },
   { colKey: "name", title: "合同名称", minWidth: 160 },
@@ -324,7 +404,6 @@ const draftColumns = [
 const myDrafts = ref<ContractDraftRow[]>([]);
 const draftsLoading = ref(false);
 const draftsError = ref("");
-
 const voidedDrafts = ref<ContractDraftRow[]>([]);
 const voidedLoading = ref(false);
 const voidedError = ref("");
@@ -337,13 +416,19 @@ const draftUpdatedAtFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour12: false
 });
 
+function optionsForFilter(key: ContractFilterKey) {
+  if (key === "keyword") return [];
+  return filterOptions.value[key];
+}
+
 async function loadMyDrafts() {
   draftsLoading.value = true;
   draftsError.value = "";
   try {
     myDrafts.value = (await listContractDrafts("my")) as ContractDraftRow[];
   } catch (error) {
-    draftsError.value = error instanceof Error ? error.message : "加载草稿失败";
+    const reason = error instanceof Error ? error.message : "未知错误";
+    draftsError.value = `合同草稿读取失败：${reason}。这不代表已有草稿丢失；当前列表暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     draftsLoading.value = false;
   }
@@ -355,7 +440,8 @@ async function loadVoidedDrafts() {
   try {
     voidedDrafts.value = (await listContractDrafts("voided")) as ContractDraftRow[];
   } catch (error) {
-    voidedError.value = error instanceof Error ? error.message : "加载作废草稿失败";
+    const reason = error instanceof Error ? error.message : "未知错误";
+    voidedError.value = `作废草稿读取失败：${reason}。这不代表没有作废记录；当前列表暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     voidedLoading.value = false;
   }
@@ -369,44 +455,15 @@ async function loadContractLedger() {
     contractLedgerRows.value = result.rows;
     ledgerSummary.value = result.summary;
   } catch (error) {
-    noticeMessage.value = error instanceof Error ? error.message : "加载合同台账失败";
+    const reason = error instanceof Error ? error.message : "未知错误";
+    noticeMessage.value = `合同记录读取失败：${reason}。这不代表当前没有合同记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     ledgerLoading.value = false;
   }
 }
 
-watch(
-  () => route.query.project,
-  applyRouteProjectFilter,
-  { immediate: true }
-);
-
-watch(
-  contractPreferenceStorageKey,
-  loadContractColumnPreferences,
-  { immediate: true }
-);
-
-watch(
-  activeTab,
-  (tab) => {
-    if (tab === "ledger") void loadContractLedger();
-    if (tab === "my") void loadMyDrafts();
-    if (tab === "voided") void loadVoidedDrafts();
-  },
-  { immediate: false }
-);
-
-onMounted(() => {
-  void loadContractLedger();
-  void loadMyDrafts();
-});
-
 function applyRouteProjectFilter(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) {
-    return;
-  }
-
+  if (typeof value !== "string" || !value.trim()) return;
   contractFilters.project = value.trim();
   activeTab.value = "ledger";
 }
@@ -431,8 +488,10 @@ function resetContractFilters() {
   Object.assign(contractFilters, emptyContractLedgerFilters());
 }
 
-function updateVisibleContractColumns(value: unknown) {
-  const next = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+function toggleContractColumn(key: string) {
+  const next = visibleContractColumnKeys.value.includes(key)
+    ? visibleContractColumnKeys.value.filter((item) => item !== key)
+    : [...visibleContractColumnKeys.value, key];
   visibleContractColumnKeys.value = normalizeVisibleColumnKeys(next, configurableContractColumnKeys);
   saveContractColumnPreferences();
 }
@@ -452,9 +511,7 @@ function loadContractColumnPreferences() {
 
 function saveContractColumnPreferences() {
   const storageKey = contractPreferenceStorageKey.value;
-  if (!storageKey) {
-    return;
-  }
+  if (!storageKey) return;
   writePersonalTablePreferences(getPreferenceStorage(), storageKey, {
     query: "",
     visibleColumnKeys: visibleContractColumnKeys.value
@@ -477,176 +534,156 @@ function formatDraftUpdatedAt(value?: string | null) {
 }
 
 function statusTagTheme(tone: ContractStatusTone) {
-  const themeByTone = {
-    default: "default",
-    primary: "primary",
-    warning: "warning",
-    danger: "danger",
-    success: "success"
-  } as const;
-
-  return themeByTone[tone];
+  return tone;
 }
+
+watch(() => route.query.project, applyRouteProjectFilter, { immediate: true });
+watch(contractPreferenceStorageKey, loadContractColumnPreferences, { immediate: true });
+watch(activeTab, (tab) => {
+  if (tab === "ledger") void loadContractLedger();
+  if (tab === "my") void loadMyDrafts();
+  if (tab === "voided") void loadVoidedDrafts();
+});
+
+onMounted(() => {
+  void loadContractLedger();
+  void loadMyDrafts();
+});
 </script>
 
 <style scoped>
 .contract-list-page {
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  background: var(--jg-color-bg-page);
-  color: var(--jg-color-text-secondary);
-}
-
-.summary-strip {
-  min-height: var(--jg-layout-business-summary-strip-min-height);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--jg-space-xs);
-  padding: 0 var(--jg-space-md);
-  margin-bottom: var(--jg-space-lg);
-  background: var(--jg-color-bg-panel);
-  border: 1px solid var(--jg-color-border);
-  border-radius: var(--jg-radius-sm);
-}
-
-.tab-bar {
-  margin-bottom: var(--jg-space-lg);
-}
-
-.list-message {
-  margin-bottom: var(--jg-space-lg);
-  padding: var(--jg-space-sm) var(--jg-space-md);
-  border: 1px solid var(--jg-color-border);
-  border-radius: var(--jg-radius-sm);
-  background: var(--jg-color-bg-panel);
-  color: var(--jg-color-text-secondary);
-  font-size: var(--jg-font-size-meta);
-  font-weight: 600;
-}
-
-.list-message.danger {
-  color: var(--jg-danger);
-}
-
-.column-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--jg-space-xs) var(--jg-space-md);
-  align-items: center;
-  margin-bottom: var(--jg-space-lg);
-  padding: var(--jg-space-sm) var(--jg-space-md);
-  border: 1px solid var(--jg-color-border);
-  border-radius: var(--jg-radius-sm);
-  background: var(--jg-color-bg-panel);
-  color: var(--jg-color-text-tertiary);
-  font-size: var(--jg-font-size-meta);
-}
-
-.column-strip > span {
-  color: var(--jg-color-text-primary);
-  font-weight: 700;
-}
-
-.column-checkbox-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--jg-space-xs) var(--jg-space-md);
-  align-items: center;
-}
-
-.summary-item {
-  display: flex;
-  min-width: var(--jg-layout-summary-item-min-width);
-  gap: var(--jg-space-sm);
-  padding-right: var(--jg-space-lg);
-  margin-right: var(--jg-space-lg);
-  border-right: 1px solid var(--jg-color-border);
-}
-
-.summary-item:last-child {
-  border-right: 0;
-}
-
-.summary-label {
-  color: var(--jg-color-text-tertiary);
-}
-
-.summary-value {
-  color: var(--jg-color-text-primary);
-}
-
-.tone-primary {
-  color: var(--jg-info);
-}
-
-.tone-warning {
-  color: var(--jg-warning);
-}
-
-.tone-success {
-  color: var(--jg-success);
-}
-
-.ledger-filter-form {
   display: grid;
-  grid-template-columns:
-    repeat(
-      4,
-      minmax(
-        var(--jg-layout-list-filter-field-min-width),
-        var(--jg-layout-list-filter-field-max-width)
-      )
-    )
-    minmax(var(--jg-layout-list-filter-keyword-min-width), 1fr)
-    repeat(2, max-content);
-  gap: var(--jg-space-xs) var(--jg-space-md);
-  align-items: end;
-  width: 100%;
+  gap: var(--jg-space-lg);
+  min-width: 0;
+  color: var(--jg-color-text-primary);
+}
+
+.contract-tabs {
+  min-width: 0;
 }
 
 .filter-field {
-  min-width: 0;
   display: grid;
   gap: var(--jg-space-xs);
+  min-width: var(--jg-layout-summary-item-min-width);
 }
 
-.filter-field span {
+.filter-field--keyword {
+  min-width: min(100%, var(--jg-layout-template-card-min-width));
+  flex: 1;
+}
+
+.filter-field > span {
   color: var(--jg-color-text-tertiary);
   font-size: var(--jg-font-size-meta);
-  font-weight: 600;
+  font-weight: var(--jg-font-weight-semibold);
 }
 
-.ledger-filter-actions {
-  grid-column: span 2;
-  justify-self: end;
+.column-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--jg-space-sm) var(--jg-space-lg);
+  padding: var(--jg-space-md) var(--jg-space-lg);
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-surface);
 }
 
-.ledger-panel {
+.column-settings strong {
+  font-size: var(--jg-font-size-body);
+}
+
+.data-section {
   min-width: 0;
   overflow: hidden;
-  margin-top: var(--jg-space-lg);
-  border-radius: var(--jg-radius-sm);
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-surface);
 }
 
-:deep(.t-card__body) {
-  padding: 0;
+.data-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--jg-space-lg);
+  padding: var(--jg-space-lg);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.data-heading h2,
+.data-heading p,
+.data-footer p {
+  margin: 0;
+}
+
+.data-heading h2 {
+  font-size: var(--jg-font-size-section-title);
+  line-height: var(--jg-line-height-title);
+}
+
+.data-heading p,
+.data-heading > span,
+.data-footer {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
+}
+
+.data-heading p {
+  margin-top: var(--jg-space-xs);
+}
+
+.data-feedback {
+  margin: var(--jg-space-md) var(--jg-space-lg);
+}
+
+.data-section :deep(.t-table__content) {
   overflow-x: auto;
 }
 
-:deep(.t-table th) {
-  background: var(--jg-color-bg-page);
-  font-size: var(--jg-font-size-meta);
+.data-section :deep(.t-table th) {
+  height: var(--jg-layout-table-row-height);
+  background: var(--jg-color-bg-muted);
+  font-size: var(--jg-font-size-table-secondary);
 }
 
-@media (max-width: 900px) {
-  .ledger-filter-form {
-    grid-template-columns: repeat(4, minmax(var(--jg-layout-list-filter-field-max-width), 1fr));
-  }
+.data-section :deep(.t-table td) {
+  height: var(--jg-layout-table-row-height);
+  font-size: var(--jg-font-size-table-secondary);
+}
 
-  .filter-field.keyword {
-    grid-column: span 2;
+.data-section :deep(.t-empty) {
+  padding: var(--jg-space-xxl);
+}
+
+.data-footer {
+  display: flex;
+  gap: var(--jg-space-md);
+  padding: var(--jg-space-md) var(--jg-space-lg);
+  border-top: var(--jg-border-width-base) solid var(--jg-color-border);
+  background: var(--jg-color-bg-muted);
+}
+
+.data-footer span {
+  flex: 0 0 auto;
+  color: var(--jg-color-text-secondary);
+  font-weight: var(--jg-font-weight-semibold);
+}
+
+:deep(.t-button:focus-visible),
+:deep(.t-link:focus-visible),
+:deep(.t-input:focus-within),
+:deep(.t-select-input:focus-within) {
+  outline: 2px solid var(--jg-color-focus-outline);
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .data-heading,
+  .data-footer {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>
