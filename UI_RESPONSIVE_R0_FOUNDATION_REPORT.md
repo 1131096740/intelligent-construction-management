@@ -1,7 +1,8 @@
 # 建工智管 Web Admin 响应式治理 R0 基础报告
 
-> 完成日期：2026-07-14  
-> 分支：`codex/ui-responsive-governance`  
+> 完成日期：2026-07-14
+>
+> 分支：`codex/ui-responsive-governance`
 > 范围：阶段 1 响应式公共基础
 
 ## 1. 本阶段结果

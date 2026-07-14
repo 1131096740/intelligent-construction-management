@@ -1,7 +1,8 @@
 # 建工智管 Web Admin 响应式治理 R1 合同模板试点报告
 
-> 完成日期：2026-07-14  
-> 分支：`codex/ui-responsive-governance`  
+> 完成日期：2026-07-14
+>
+> 分支：`codex/ui-responsive-governance`
 > 范围：阶段 2 合同模板管理试点
 
 ## 1. 本阶段结果
