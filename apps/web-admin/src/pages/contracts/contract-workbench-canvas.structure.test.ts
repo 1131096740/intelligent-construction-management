@@ -10,6 +10,14 @@ const canvasSource = fs.readFileSync(
   path.resolve(__dirname, "workbench/ContractDocumentCanvas.vue"),
   "utf8"
 );
+const pricingSource = fs.readFileSync(
+  path.resolve(__dirname, "workbench/ContractPricingSection.vue"),
+  "utf8"
+);
+const billEditorSource = fs.readFileSync(
+  path.resolve(__dirname, "workbench/ContractBillEditor.vue"),
+  "utf8"
+);
 
 describe("contract workbench document canvas structure", () => {
   it("uses a central document canvas and one TDesign business sidebar", () => {
@@ -47,5 +55,21 @@ describe("contract workbench document canvas structure", () => {
     expect(canvasSource).not.toContain("<iframe");
     expect(canvasSource).not.toContain("createPrivateFileDownloadTicket");
     expect(canvasSource).not.toContain("pdfFileId}`");
+  });
+
+  it("keeps manual amount text locally editable before converting it to cents", () => {
+    expect(pricingSource).toContain('v-model="manualAmountYuanText"');
+    expect(pricingSource).not.toContain(':value="manualAmountYuanText"');
+    expect(pricingSource).toContain('@change="onManualAmountChange"');
+    expect(pricingSource).toContain('value: "fixed_total"');
+    expect(pricingSource).toContain('value: "bill_sum"');
+    expect(pricingSource).not.toContain('value: "fixed_price"');
+    expect(pricingSource).not.toContain('value: "cost_plus"');
+  });
+
+  it("adds a local editable bill row before calling the existing create API", () => {
+    expect(billEditorSource).toContain("createUnsavedBillRow");
+    expect(billEditorSource).toContain("isUnsavedBillRow(row)");
+    expect(billEditorSource).toContain("已新增空白行，请填写后保存");
   });
 });

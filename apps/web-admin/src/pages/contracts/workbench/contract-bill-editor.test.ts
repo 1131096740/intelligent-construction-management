@@ -4,12 +4,14 @@ import {
   canApplyImport,
   clauseDocumentText,
   clauseReadinessMessages,
+  createUnsavedBillRow,
   documentsWithStaleFlag,
   documentWarnings,
   importPreviewErrors,
   importPreviewCounts,
   importPreviewRows,
   normalizeClauseDocument,
+  isUnsavedBillRow,
   selectedBillForDownload,
   updateRowPreservingKey,
   type WorkbenchBill
@@ -33,6 +35,23 @@ const bills: WorkbenchBill[] = [
 ];
 
 describe("contract bill editor helpers", () => {
+  it("creates a local blank row before any backend mutation", () => {
+    const row = createUnsavedBillRow("test-1");
+
+    expect(row).toEqual({
+      rowKey: "local-new-test-1",
+      itemName: "",
+      specification: "",
+      unit: "",
+      quantity: "",
+      unitPrice: "",
+      taxRatePercent: "0",
+      customData: {}
+    });
+    expect(isUnsavedBillRow(row)).toBe(true);
+    expect(isUnsavedBillRow(bills[0].rows[0])).toBe(false);
+  });
+
   it("shows one tab per configured bill", () => {
     expect(billTabs(bills)).toEqual([
       { label: "材料清单", value: "materials" },

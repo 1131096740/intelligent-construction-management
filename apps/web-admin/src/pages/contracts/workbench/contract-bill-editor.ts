@@ -94,6 +94,25 @@ export const coreBillColumns: WorkbenchBillColumn[] = [
   { key: "taxRatePercent", label: "税率%", required: true }
 ];
 
+const UNSAVED_BILL_ROW_PREFIX = "local-new-";
+
+export function createUnsavedBillRow(id: string): WorkbenchBillRow {
+  return {
+    rowKey: `${UNSAVED_BILL_ROW_PREFIX}${id}`,
+    itemName: "",
+    specification: "",
+    unit: "",
+    quantity: "",
+    unitPrice: "",
+    taxRatePercent: "0",
+    customData: {}
+  };
+}
+
+export function isUnsavedBillRow(row: Pick<WorkbenchBillRow, "rowKey">): boolean {
+  return row.rowKey.startsWith(UNSAVED_BILL_ROW_PREFIX);
+}
+
 export function billTabs(bills: WorkbenchBill[]) {
   return bills.map((bill) => ({ label: bill.name, value: bill.billKey }));
 }

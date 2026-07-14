@@ -33,7 +33,7 @@
       >
         <span class="field-label">手工金额（元）</span>
         <t-input
-          :value="manualAmountYuanText"
+          v-model="manualAmountYuanText"
           :disabled="disabled"
           placeholder="如 100000.00"
           @change="onManualAmountChange"
@@ -70,7 +70,7 @@
 
 <script setup lang="ts">
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
 import type { ContractDraftModel } from "./use-contract-draft";
 
@@ -83,13 +83,14 @@ const props = defineProps<{
 const emit = defineEmits<{ (event: "update", patch: Partial<ContractDraftModel>): void }>();
 
 const pricingNatureOptions = [
-  { label: "固定总价", value: "fixed_price" },
+  { label: "固定总价", value: "fixed_total" },
+  { label: "暂定总价", value: "provisional_total" },
   { label: "单价计量", value: "unit_price" },
-  { label: "成本加酬金", value: "cost_plus" }
+  { label: "框架协议", value: "framework" }
 ];
 
 const amountSourceOptions = [
-  { label: "由清单汇总", value: "bill" },
+  { label: "由清单汇总", value: "bill_sum" },
   { label: "手工录入", value: "manual" }
 ];
 
@@ -99,7 +100,15 @@ function centsToYuanInput(cents: string | null): string {
   return cents === null ? "" : centsTextToYuanText(cents).replaceAll(",", "");
 }
 
-const manualAmountYuanText = computed(() => centsToYuanInput(props.model.manualAmountCents));
+const manualAmountYuanText = ref("");
+
+watch(
+  () => props.model.manualAmountCents,
+  (amountCents) => {
+    manualAmountYuanText.value = centsToYuanInput(amountCents);
+  },
+  { immediate: true }
+);
 
 const derivedAmountYuanText = computed(() =>
   centsToYuanInput(props.workbench?.version.amountCents ?? null)

@@ -9,6 +9,7 @@
         <t-button
           size="small"
           variant="outline"
+          :disabled="disabled || busy || hasUnsavedRow"
           @click="downloadTemplate"
         >
           下载模板
@@ -17,7 +18,7 @@
           <input
             type="file"
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            :disabled="disabled || busy"
+            :disabled="disabled || busy || hasUnsavedRow"
             @change="previewImport"
           >
           导入预览
@@ -25,7 +26,7 @@
         <t-button
           size="small"
           theme="primary"
-          :disabled="disabled || busy || !canApply"
+          :disabled="disabled || busy || hasUnsavedRow || !canApply"
           @click="applyImport"
         >
           应用导入
@@ -76,7 +77,7 @@
           </t-button>
           <t-button
             theme="primary"
-            :disabled="disabled || busy || !canApply"
+            :disabled="disabled || busy || hasUnsavedRow || !canApply"
             @click="applyImport"
           >
             应用导入
@@ -131,35 +132,35 @@
             <td class="row-actions">
               <button
                 type="button"
-                :disabled="disabled || busy"
+                :disabled="disabled || busy || (hasUnsavedRow && !isUnsavedBillRow(row))"
                 @click="saveRow(row)"
               >
                 保存
               </button>
               <button
                 type="button"
-                :disabled="disabled || busy"
+                :disabled="disabled || busy || hasUnsavedRow"
                 @click="duplicateRow(row)"
               >
                 复制
               </button>
               <button
                 type="button"
-                :disabled="disabled || busy"
+                :disabled="disabled || busy || hasUnsavedRow"
                 @click="moveRow(row.rowKey, -1)"
               >
                 ↑
               </button>
               <button
                 type="button"
-                :disabled="disabled || busy"
+                :disabled="disabled || busy || hasUnsavedRow"
                 @click="moveRow(row.rowKey, 1)"
               >
                 ↓
               </button>
               <button
                 type="button"
-                :disabled="disabled || busy"
+                :disabled="disabled || busy || (hasUnsavedRow && !isUnsavedBillRow(row))"
                 @click="removeRow(row)"
               >
                 删除
@@ -185,7 +186,7 @@
       <t-button
         size="small"
         theme="primary"
-        :disabled="disabled || busy"
+        :disabled="disabled || busy || hasUnsavedRow"
         @click="addEmptyRow"
       >
         新增行
@@ -222,9 +223,11 @@ import { centsTextToYuanText } from "../../../lib/money";
 import {
   billColumns,
   canApplyImport,
+  createUnsavedBillRow,
   importPreviewErrors,
   importPreviewCounts,
   importPreviewRows,
+  isUnsavedBillRow,
   rowValue,
   updateRowPreservingKey,
   type WorkbenchBill,
@@ -259,6 +262,7 @@ const importCounts = computed(() => importPreviewCounts(importPreview.value));
 const previewErrors = computed(() => importPreviewErrors(importPreview.value));
 const previewRows = computed(() => importPreviewRows(importPreview.value));
 const canApply = computed(() => Boolean(importId.value) && canApplyImport(importPreview.value));
+const hasUnsavedRow = computed(() => localRows.value.some(isUnsavedBillRow));
 const importId = computed(() => {
   const value = importPreview.value;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -330,23 +334,19 @@ async function run(action: () => Promise<unknown>, success: string) {
 }
 
 async function saveRow(row: WorkbenchBillRow) {
-  await run(() => updateBillRow(props.bill.id, row.rowKey, payload(row)), "已保存");
-}
-
-async function addEmptyRow() {
   await run(
     () =>
-      addBillRow(props.bill.id, {
-        expectedBillRevision: props.bill.revision,
-        itemName: "未命名",
-        unit: "项",
-        quantity: "0",
-        unitPrice: "0",
-        taxRatePercent: "0",
-        customData: {}
-      }),
-    "已新增"
+      isUnsavedBillRow(row)
+        ? addBillRow(props.bill.id, payload(row))
+        : updateBillRow(props.bill.id, row.rowKey, payload(row)),
+    isUnsavedBillRow(row) ? "已新增并保存" : "已保存"
   );
+}
+
+function addEmptyRow() {
+  const row = createUnsavedBillRow(`${Date.now()}-${localRows.value.length + 1}`);
+  localRows.value = [...localRows.value, row];
+  message.value = "已新增空白行，请填写后保存";
 }
 
 async function duplicateRow(row: WorkbenchBillRow) {
@@ -354,6 +354,11 @@ async function duplicateRow(row: WorkbenchBillRow) {
 }
 
 async function removeRow(row: WorkbenchBillRow) {
+  if (isUnsavedBillRow(row)) {
+    localRows.value = localRows.value.filter((item) => item.rowKey !== row.rowKey);
+    message.value = "已取消新增";
+    return;
+  }
   await run(
     () => deleteBillRow(props.bill.id, row.rowKey, { expectedBillRevision: props.bill.revision }),
     "已删除"
