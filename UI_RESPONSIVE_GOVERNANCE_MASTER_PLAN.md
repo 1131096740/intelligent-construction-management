@@ -8,7 +8,7 @@
 >
 > 技术栈：Vue 3 + TypeScript + TDesign Vue Next
 >
-> 计划状态：阶段 0–6 已完成；阶段 7–8 待依次实施
+> 计划状态：阶段 0–7 已完成；阶段 8 待发布候选审计
 
 ## 1. 目标与范围
 
@@ -104,7 +104,7 @@
 | `ProjectExpenseApprovalDetailPage.vue` | Detail | 低 | 6 | 两列事实区按容器重排 |
 | `ProjectOperatingOverviewPage.vue` | Detail | 极高 | 6 | 1180/920 宽数据区拆分滚动所有权，不隐藏业务字段 |
 | `ProjectRosterPage.vue` | Ledger | 高 | 5B | 筛选与表格建立响应式边界 |
-| `RoutePlaceholderPage.vue` | Flow | 低 | 7 | 无宽内容，只做回归 |
+| `RoutePlaceholderPage.vue` | Flow | 低 | 7 | 当前无活动路由，仅做静态结构复核，不为回归重新接回废弃入口 |
 | `GlobalSearchPage.vue` | Ledger | 中 | 5A | 搜索栏按容器重排，结果表保持局部滚动 |
 | `SettingsPage.vue` | Flow | 中高 | 6 | 两列配置网格按容器降列 |
 | `SettlementTemplateEditorPage.vue` | Workspace | 高 | 4 | 上传/检查/预览和规则编辑区按容器治理 |

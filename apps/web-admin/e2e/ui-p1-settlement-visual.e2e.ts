@@ -1,15 +1,22 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page, type Route } from "@playwright/test";
+import {
+  expectNoDocumentHorizontalOverflow,
+  expectNoNestedHorizontalScrollers
+} from "./helpers/responsive-assertions";
 
 const screenshotDir = process.env.UI_P1_SETTLEMENT_SCREENSHOT_DIR
   ? resolve(process.env.UI_P1_SETTLEMENT_SCREENSHOT_DIR)
   : resolve("test-results/ui-p1-settlement-screenshots");
 
 const desktopViewports = [
+  { width: 1512, height: 982 },
   { width: 1440, height: 900 },
   { width: 1280, height: 800 },
-  { width: 1024, height: 768 }
+  { width: 1180, height: 820 },
+  { width: 1024, height: 768 },
+  { width: 900, height: 768 }
 ];
 
 const ledgerBody = {
@@ -356,6 +363,8 @@ async function captureRequiredViewports(page: Page, compactPrefix: string, wideP
     await page.evaluate(() => new Promise<void>((resolveFrame) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolveFrame()));
     }));
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
     const prefix = viewport.width === 1440 ? widePrefix : compactPrefix;
     await capture(page, `${prefix}-${viewport.width}x${viewport.height}.png`);
   }
