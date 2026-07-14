@@ -302,6 +302,11 @@ function attachmentRequirement(
   gap: var(--jg-space-md);
 }
 
+.usage-preview {
+  container-name: jg-template-preview;
+  container-type: inline-size;
+}
+
 .preview-head,
 .preview-item,
 .preview-actions {
@@ -367,7 +372,7 @@ function attachmentRequirement(
   border-top: 1px solid var(--jg-border);
 }
 
-@media (max-width: 720px) {
+@container jg-template-preview (max-width: 620px) {
   .count-grid,
   .split-list {
     grid-template-columns: 1fr;

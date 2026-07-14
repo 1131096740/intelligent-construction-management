@@ -1,5 +1,5 @@
 <template>
-  <section class="page">
+  <section class="page jg-responsive-ledger">
     <div class="page-head">
       <div>
         <h1>合同编号规则</h1>
@@ -79,7 +79,7 @@
 
     <t-card
       :bordered="true"
-      class="panel"
+      class="panel jg-table-region jg-table-region--wide"
     >
       <t-table
         row-key="id"
@@ -87,6 +87,7 @@
         :columns="columns"
         :data="rules"
         :loading="loading"
+        horizontal-scroll-affixed-bottom
         empty="暂无编号规则"
       >
         <template #pattern="{ row }">
@@ -172,7 +173,7 @@ const columns = [
   { colKey: "contractTypeKey", title: "适用类型", width: 130 },
   { colKey: "next", title: "下一编号", minWidth: 160 },
   { colKey: "isActive", title: "状态", width: 90 },
-  { colKey: "operation", title: "操作", width: 90 }
+  { colKey: "operation", title: "操作", width: 90, fixed: "right" as const }
 ];
 
 const rules = ref<RuleRow[]>([]);

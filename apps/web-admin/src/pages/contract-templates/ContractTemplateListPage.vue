@@ -1,11 +1,14 @@
 <template>
-  <section class="page">
+  <section class="page jg-responsive-ledger">
     <div class="page-head">
       <div>
         <h1>合同模板库</h1>
         <p>合同部经办人维护模板草稿和版式；合同主管负责发布、停用与编号规则</p>
       </div>
-      <t-space v-if="canMaintainTemplates">
+      <t-space
+        v-if="canMaintainTemplates"
+        class="jg-responsive-actions"
+      >
         <t-button @click="go('/合同模板库/版式/new')">
           版式模板
         </t-button>
@@ -146,7 +149,7 @@
 
       <t-card
         :bordered="true"
-        class="panel"
+        class="panel jg-table-region jg-table-region--standard"
       >
         <t-table
           row-key="id"
@@ -154,6 +157,7 @@
           :columns="columns"
           :data="templates"
           :loading="loading"
+          horizontal-scroll-affixed-bottom
           empty="暂无已发布业务模板"
         >
           <template #status="{ row }">
@@ -228,7 +232,10 @@ import {
 
 const router = useRouter();
 const auth = useAuthStore();
-const columns = templateListColumns.map((column) => ({ ...column }));
+const columns = templateListColumns.map((column) => ({
+  ...column,
+  ...(column.colKey === "operation" ? { width: 112, fixed: "right" as const } : {})
+}));
 const templates = ref<PublishedContractTemplateReadModel[]>([]);
 const loading = ref(false);
 const saving = ref(false);

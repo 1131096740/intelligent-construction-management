@@ -1,11 +1,14 @@
 <template>
-  <section class="page">
+  <section class="page jg-responsive-workspace">
     <header class="page-head">
       <div>
         <h1>版式模板治理</h1>
         <p>草稿采用修订号并发保护；源文件变化后，旧检查和旧预览自动失效。</p>
       </div>
-      <t-space v-if="currentVersion">
+      <t-space
+        v-if="currentVersion"
+        class="jg-responsive-actions"
+      >
         <t-button
           v-if="governance.canSubmit"
           :disabled="!inspectionCurrent"
@@ -160,42 +163,44 @@
         message="当前草稿已变化，请重新执行检查并生成当前修订的样张。"
         class="governance-alert"
       />
-      <div class="split">
-        <div>
-          <t-space>
-            <t-button
-              :disabled="!governance.canSave"
-              @click="inspect"
-            >
-              执行文档检查
-            </t-button>
-            <t-tag :theme="inspectionCurrent ? 'success' : 'warning'">
-              {{ inspectionCurrent ? `检查对应 R${currentVersion.draftRevision}` : "检查已过期" }}
-            </t-tag>
-          </t-space>
-          <pre class="report">{{ inspectionText }}</pre>
-        </div>
-        <div>
-          <p class="hint">
-            样张使用系统内置示例数据，并明确绑定当前草稿修订。
-          </p>
-          <t-space class="actions">
-            <t-button
-              :disabled="!governance.canSave"
-              @click="queuePreview"
-            >
-              生成当前修订样张
-            </t-button>
-            <t-button
-              variant="outline"
-              @click="loadPreview"
-            >
-              刷新预览状态
-            </t-button>
-          </t-space>
-          <div class="preview-summary">
-            <span>最新预览：{{ previewStatus }}</span>
-            <span v-if="latestPreview">源修订：R{{ latestPreview.sourceRevision }}</span>
+      <div class="inspection-workspace jg-workspace-scroll">
+        <div class="split jg-workspace-scroll__content--compact">
+          <div>
+            <t-space>
+              <t-button
+                :disabled="!governance.canSave"
+                @click="inspect"
+              >
+                执行文档检查
+              </t-button>
+              <t-tag :theme="inspectionCurrent ? 'success' : 'warning'">
+                {{ inspectionCurrent ? `检查对应 R${currentVersion.draftRevision}` : "检查已过期" }}
+              </t-tag>
+            </t-space>
+            <pre class="report">{{ inspectionText }}</pre>
+          </div>
+          <div>
+            <p class="hint">
+              样张使用系统内置示例数据，并明确绑定当前草稿修订。
+            </p>
+            <t-space class="actions">
+              <t-button
+                :disabled="!governance.canSave"
+                @click="queuePreview"
+              >
+                生成当前修订样张
+              </t-button>
+              <t-button
+                variant="outline"
+                @click="loadPreview"
+              >
+                刷新预览状态
+              </t-button>
+            </t-space>
+            <div class="preview-summary">
+              <span>最新预览：{{ previewStatus }}</span>
+              <span v-if="latestPreview">源修订：R{{ latestPreview.sourceRevision }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -634,10 +639,9 @@ code {
   font-size: var(--jg-font-meta);
 }
 
-@media (max-width: 1000px) {
+@container jg-page (max-width: 840px) {
   .page-head,
-  .form-grid,
-  .split {
+  .form-grid {
     display: grid;
     grid-template-columns: 1fr;
   }

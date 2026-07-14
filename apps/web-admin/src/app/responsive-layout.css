@@ -45,11 +45,16 @@ body {
   overscroll-behavior-inline: contain;
 }
 
-.jg-table-region--standard .t-table {
+.jg-table-region .t-card__body,
+.jg-table-region .t-table {
+  min-width: 0;
+}
+
+.jg-table-region--standard .t-table__content > table {
   min-width: var(--jg-layout-ledger-table-min-width);
 }
 
-.jg-table-region--wide .t-table {
+.jg-table-region--wide .t-table__content > table {
   min-width: var(--jg-layout-ledger-table-wide-min-width);
 }
 

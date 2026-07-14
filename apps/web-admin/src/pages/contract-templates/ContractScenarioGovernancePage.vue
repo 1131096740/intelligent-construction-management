@@ -1,5 +1,5 @@
 <template>
-  <section class="scenario-page">
+  <section class="scenario-page jg-responsive-ledger">
     <header class="page-head">
       <div>
         <h1>合同业务场景</h1>
@@ -21,64 +21,67 @@
       class="message"
     />
 
-    <t-table
-      row-key="id"
-      :columns="scenarioColumns"
-      :data="scenarios"
-      :loading="loading"
-      table-layout="fixed"
-      empty="尚未配置业务场景"
-    >
-      <template #scenarioName="{ row }">
-        <div class="name-cell">
-          <strong>{{ row.name }}</strong>
-          <span>{{ row.code }}</span>
-        </div>
-      </template>
-      <template #active="{ row }">
-        <t-tag
-          :theme="row.active ? 'success' : 'default'"
-          variant="light"
-        >
-          {{ row.active ? "启用" : "停用" }}
-        </t-tag>
-      </template>
-      <template #mappingCount="{ row }">
-        {{ row.mappings.length }} 项
-      </template>
-      <template #updatedAt="{ row }">
-        {{ formatDateTime(row.updatedAt) }}
-      </template>
-      <template #operation="{ row }">
-        <div class="table-actions">
-          <t-link
-            theme="primary"
-            @click="selectScenario(row)"
+    <div class="jg-table-region jg-table-region--standard">
+      <t-table
+        row-key="id"
+        :columns="scenarioColumns"
+        :data="scenarios"
+        :loading="loading"
+        table-layout="fixed"
+        horizontal-scroll-affixed-bottom
+        empty="尚未配置业务场景"
+      >
+        <template #scenarioName="{ row }">
+          <div class="name-cell">
+            <strong>{{ row.name }}</strong>
+            <span>{{ row.code }}</span>
+          </div>
+        </template>
+        <template #active="{ row }">
+          <t-tag
+            :theme="row.active ? 'success' : 'default'"
+            variant="light"
           >
-            管理映射
-          </t-link>
-          <t-link
-            theme="primary"
-            :disabled="!canGovern"
-            @click="openEditScenario(row)"
-          >
-            编辑
-          </t-link>
-          <t-popconfirm
-            :content="row.active ? '停用后普通经办人不再可选，确认停用？' : '确认重新启用该场景？'"
-            :disabled="!canGovern"
-            @confirm="toggleScenario(row)"
-          >
+            {{ row.active ? "启用" : "停用" }}
+          </t-tag>
+        </template>
+        <template #mappingCount="{ row }">
+          {{ row.mappings.length }} 项
+        </template>
+        <template #updatedAt="{ row }">
+          {{ formatDateTime(row.updatedAt) }}
+        </template>
+        <template #operation="{ row }">
+          <div class="table-actions">
             <t-link
-              :theme="row.active ? 'danger' : 'primary'"
-              :disabled="!canGovern"
+              theme="primary"
+              @click="selectScenario(row)"
             >
-              {{ row.active ? "停用" : "启用" }}
+              管理映射
             </t-link>
-          </t-popconfirm>
-        </div>
-      </template>
-    </t-table>
+            <t-link
+              theme="primary"
+              :disabled="!canGovern"
+              @click="openEditScenario(row)"
+            >
+              编辑
+            </t-link>
+            <t-popconfirm
+              :content="row.active ? '停用后普通经办人不再可选，确认停用？' : '确认重新启用该场景？'"
+              :disabled="!canGovern"
+              @confirm="toggleScenario(row)"
+            >
+              <t-link
+                :theme="row.active ? 'danger' : 'primary'"
+                :disabled="!canGovern"
+              >
+                {{ row.active ? "停用" : "启用" }}
+              </t-link>
+            </t-popconfirm>
+          </div>
+        </template>
+      </t-table>
+    </div>
 
     <section
       v-if="selectedScenario"
@@ -98,54 +101,57 @@
         </t-button>
       </header>
 
-      <t-table
-        row-key="id"
-        :columns="mappingColumns"
-        :data="selectedScenario.mappings"
-        table-layout="fixed"
-        empty="该场景尚未配置模板映射"
-      >
-        <template #template="{ row }">
-          <div class="name-cell">
-            <strong>{{ mappingTemplateLabel(row) }}</strong>
-            <span>{{ contractTypeLabel(row.contractTypeKey) }}</span>
-          </div>
-        </template>
-        <template #reason="{ row }">
-          <span class="reason-cell">{{ row.reason }}</span>
-        </template>
-        <template #active="{ row }">
-          <t-tag
-            :theme="row.active ? 'success' : 'default'"
-            variant="light"
-          >
-            {{ row.active ? "启用" : "停用" }}
-          </t-tag>
-        </template>
-        <template #operation="{ row }">
-          <div class="table-actions">
-            <t-link
-              theme="primary"
-              :disabled="!canGovern"
-              @click="openEditMapping(row)"
+      <div class="jg-table-region jg-table-region--standard">
+        <t-table
+          row-key="id"
+          :columns="mappingColumns"
+          :data="selectedScenario.mappings"
+          table-layout="fixed"
+          horizontal-scroll-affixed-bottom
+          empty="该场景尚未配置模板映射"
+        >
+          <template #template="{ row }">
+            <div class="name-cell">
+              <strong>{{ mappingTemplateLabel(row) }}</strong>
+              <span>{{ contractTypeLabel(row.contractTypeKey) }}</span>
+            </div>
+          </template>
+          <template #reason="{ row }">
+            <span class="reason-cell">{{ row.reason }}</span>
+          </template>
+          <template #active="{ row }">
+            <t-tag
+              :theme="row.active ? 'success' : 'default'"
+              variant="light"
             >
-              编辑
-            </t-link>
-            <t-popconfirm
-              :content="row.active ? '确认停用该映射？' : '启用前系统会重新验证精确模板版本，是否继续？'"
-              :disabled="!canGovern"
-              @confirm="toggleMapping(row)"
-            >
+              {{ row.active ? "启用" : "停用" }}
+            </t-tag>
+          </template>
+          <template #operation="{ row }">
+            <div class="table-actions">
               <t-link
-                :theme="row.active ? 'danger' : 'primary'"
+                theme="primary"
                 :disabled="!canGovern"
+                @click="openEditMapping(row)"
               >
-                {{ row.active ? "停用" : "启用" }}
+                编辑
               </t-link>
-            </t-popconfirm>
-          </div>
-        </template>
-      </t-table>
+              <t-popconfirm
+                :content="row.active ? '确认停用该映射？' : '启用前系统会重新验证精确模板版本，是否继续？'"
+                :disabled="!canGovern"
+                @confirm="toggleMapping(row)"
+              >
+                <t-link
+                  :theme="row.active ? 'danger' : 'primary'"
+                  :disabled="!canGovern"
+                >
+                  {{ row.active ? "停用" : "启用" }}
+                </t-link>
+              </t-popconfirm>
+            </div>
+          </template>
+        </t-table>
+      </div>
     </section>
 
     <t-dialog
@@ -266,7 +272,7 @@ const scenarioColumns: PrimaryTableCol<ContractScenarioGovernanceRow>[] = [
   { colKey: "mappingCount", title: "映射", width: 70 },
   { colKey: "revision", title: "修订", width: 64 },
   { colKey: "updatedAt", title: "更新时间", width: 145 },
-  { colKey: "operation", title: "操作", width: 170 }
+  { colKey: "operation", title: "操作", width: 170, fixed: "right" }
 ];
 const mappingColumns: PrimaryTableCol<ContractScenarioGovernanceMapping>[] = [
   { colKey: "template", title: "精确模板", minWidth: 180 },
@@ -274,7 +280,7 @@ const mappingColumns: PrimaryTableCol<ContractScenarioGovernanceMapping>[] = [
   { colKey: "priority", title: "排序值", width: 70 },
   { colKey: "active", title: "状态", width: 76 },
   { colKey: "revision", title: "修订", width: 64 },
-  { colKey: "operation", title: "操作", width: 120 }
+  { colKey: "operation", title: "操作", width: 120, fixed: "right" }
 ];
 
 onMounted(() => {
@@ -548,7 +554,7 @@ function formatDateTime(value: string) {
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 1100px) {
+@container jg-page (max-width: 840px) {
   .page-head,
   .mapping-head {
     flex-direction: column;

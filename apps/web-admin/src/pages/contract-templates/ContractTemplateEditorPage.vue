@@ -1,5 +1,5 @@
 <template>
-  <section class="page">
+  <section class="page jg-responsive-workspace">
     <div class="page-head">
       <div>
         <h1>{{ templateName }}</h1>
@@ -80,56 +80,58 @@
       :inert="governance.readOnly"
       class="panel"
     >
-      <div
-        v-for="(field, index) in schema.fields"
-        :key="String(field.key)"
-        class="row-editor"
-      >
-        <t-input
-          v-model="field.key"
-          placeholder="字段标识"
-        />
-        <t-input
-          v-model="field.label"
-          placeholder="名称"
-        />
-        <select v-model="field.type">
-          <option
-            v-for="option in fieldTypeOptions"
-            :key="option.value"
-            :value="option.value"
+      <div class="row-editor-list jg-workspace-scroll">
+        <div
+          v-for="(field, index) in schema.fields"
+          :key="String(field.key)"
+          class="row-editor jg-workspace-scroll__content--standard"
+        >
+          <t-input
+            v-model="field.key"
+            placeholder="字段标识"
+          />
+          <t-input
+            v-model="field.label"
+            placeholder="名称"
+          />
+          <select v-model="field.type">
+            <option
+              v-for="option in fieldTypeOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <label class="inline"><input
+            v-model="field.required"
+            type="checkbox"
+          > 必填</label>
+          <t-input
+            v-model="field.optionsText"
+            placeholder="选项：是=1，否=0"
+          />
+          <t-input
+            v-model="field.visibleWhenFieldKey"
+            placeholder="可见条件字段"
+          />
+          <t-input
+            v-model="field.visibleWhenValue"
+            placeholder="匹配值"
+          />
+          <t-button
+            size="small"
+            @click="move(schema.fields, index, -1)"
           >
-            {{ option.label }}
-          </option>
-        </select>
-        <label class="inline"><input
-          v-model="field.required"
-          type="checkbox"
-        > 必填</label>
-        <t-input
-          v-model="field.optionsText"
-          placeholder="选项：是=1，否=0"
-        />
-        <t-input
-          v-model="field.visibleWhenFieldKey"
-          placeholder="可见条件字段"
-        />
-        <t-input
-          v-model="field.visibleWhenValue"
-          placeholder="匹配值"
-        />
-        <t-button
-          size="small"
-          @click="move(schema.fields, index, -1)"
-        >
-          上移
-        </t-button>
-        <t-button
-          size="small"
-          @click="move(schema.fields, index, 1)"
-        >
-          下移
-        </t-button>
+            上移
+          </t-button>
+          <t-button
+            size="small"
+            @click="move(schema.fields, index, 1)"
+          >
+            下移
+          </t-button>
+        </div>
       </div>
       <t-button @click="addField">
         新增字段
@@ -143,71 +145,73 @@
       :inert="governance.readOnly"
       class="panel"
     >
-      <div
-        v-for="(bill, index) in schema.bills"
-        :key="String(bill.key)"
-        class="row-editor"
-      >
-        <t-input
-          v-model="bill.key"
-          placeholder="清单标识"
-        />
-        <t-input
-          v-model="bill.name"
-          placeholder="名称"
-        />
-        <select v-model="bill.amountRole">
-          <option
-            v-for="option in billAmountRoleOptions"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </option>
-        </select>
-        <select v-model="bill.pricingMode">
-          <option
-            v-for="option in pricingModeOptions"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </option>
-        </select>
-        <select v-model.number="bill.quantityScale">
-          <option
-            v-for="scale in quantityScaleOptions"
-            :key="scale"
-            :value="scale"
-          >
-            数量 {{ scale }}
-          </option>
-        </select>
-        <select v-model.number="bill.unitPriceScale">
-          <option
-            v-for="scale in unitPriceScaleOptions"
-            :key="scale"
-            :value="scale"
-          >
-            单价 {{ scale }}
-          </option>
-        </select>
-        <t-input
-          v-model="bill.columnsText"
-          placeholder="列：规格=规格型号，品牌=品牌"
-        />
-        <t-button
-          size="small"
-          @click="move(schema.bills, index, -1)"
+      <div class="row-editor-list jg-workspace-scroll">
+        <div
+          v-for="(bill, index) in schema.bills"
+          :key="String(bill.key)"
+          class="row-editor jg-workspace-scroll__content--standard"
         >
-          上移
-        </t-button>
-        <t-button
-          size="small"
-          @click="move(schema.bills, index, 1)"
-        >
-          下移
-        </t-button>
+          <t-input
+            v-model="bill.key"
+            placeholder="清单标识"
+          />
+          <t-input
+            v-model="bill.name"
+            placeholder="名称"
+          />
+          <select v-model="bill.amountRole">
+            <option
+              v-for="option in billAmountRoleOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <select v-model="bill.pricingMode">
+            <option
+              v-for="option in pricingModeOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <select v-model.number="bill.quantityScale">
+            <option
+              v-for="scale in quantityScaleOptions"
+              :key="scale"
+              :value="scale"
+            >
+              数量 {{ scale }}
+            </option>
+          </select>
+          <select v-model.number="bill.unitPriceScale">
+            <option
+              v-for="scale in unitPriceScaleOptions"
+              :key="scale"
+              :value="scale"
+            >
+              单价 {{ scale }}
+            </option>
+          </select>
+          <t-input
+            v-model="bill.columnsText"
+            placeholder="列：规格=规格型号，品牌=品牌"
+          />
+          <t-button
+            size="small"
+            @click="move(schema.bills, index, -1)"
+          >
+            上移
+          </t-button>
+          <t-button
+            size="small"
+            @click="move(schema.bills, index, 1)"
+          >
+            下移
+          </t-button>
+        </div>
       </div>
       <t-button @click="addBill">
         新增清单
@@ -221,50 +225,52 @@
       :inert="governance.readOnly"
       class="panel"
     >
-      <div
-        v-for="(clause, index) in schema.clauses"
-        :key="String(clause.key)"
-        class="row-editor"
-      >
-        <t-input
-          v-model="clause.key"
-          placeholder="条款标识"
-        />
-        <t-input
-          v-model="clause.title"
-          placeholder="标题"
-        />
-        <select v-model="clause.numberingMode">
-          <option value="automatic">
-            自动编号
-          </option><option value="fixed">
-            固定编号
-          </option>
-        </select>
-        <label class="inline"><input
-          v-model="clause.required"
-          type="checkbox"
-        > 必填</label>
-        <t-input
-          v-model="clause.standardClauseVersionId"
-          placeholder="标准条款版本编号"
-        />
-        <t-textarea
-          v-model="clause.text"
-          placeholder="条款正文"
-        />
-        <t-button
-          size="small"
-          @click="move(schema.clauses, index, -1)"
+      <div class="row-editor-list jg-workspace-scroll">
+        <div
+          v-for="(clause, index) in schema.clauses"
+          :key="String(clause.key)"
+          class="row-editor jg-workspace-scroll__content--standard"
         >
-          上移
-        </t-button>
-        <t-button
-          size="small"
-          @click="move(schema.clauses, index, 1)"
-        >
-          下移
-        </t-button>
+          <t-input
+            v-model="clause.key"
+            placeholder="条款标识"
+          />
+          <t-input
+            v-model="clause.title"
+            placeholder="标题"
+          />
+          <select v-model="clause.numberingMode">
+            <option value="automatic">
+              自动编号
+            </option><option value="fixed">
+              固定编号
+            </option>
+          </select>
+          <label class="inline"><input
+            v-model="clause.required"
+            type="checkbox"
+          > 必填</label>
+          <t-input
+            v-model="clause.standardClauseVersionId"
+            placeholder="标准条款版本编号"
+          />
+          <t-textarea
+            v-model="clause.text"
+            placeholder="条款正文"
+          />
+          <t-button
+            size="small"
+            @click="move(schema.clauses, index, -1)"
+          >
+            上移
+          </t-button>
+          <t-button
+            size="small"
+            @click="move(schema.clauses, index, 1)"
+          >
+            下移
+          </t-button>
+        </div>
       </div>
       <t-button @click="addClause">
         新增条款
@@ -278,39 +284,41 @@
       :inert="governance.readOnly"
       class="panel"
     >
-      <div
-        v-for="(attachment, index) in schema.attachments"
-        :key="String(attachment.key)"
-        class="row-editor"
-      >
-        <t-input
-          v-model="attachment.key"
-          placeholder="附件标识"
-        />
-        <t-input
-          v-model="attachment.name"
-          placeholder="名称"
-        />
-        <label class="inline"><input
-          v-model="attachment.required"
-          type="checkbox"
-        > 必填</label>
-        <label class="inline"><input
-          v-model="attachment.mustBeValid"
-          type="checkbox"
-        > 有效期内</label>
-        <t-button
-          size="small"
-          @click="move(schema.attachments, index, -1)"
+      <div class="row-editor-list jg-workspace-scroll">
+        <div
+          v-for="(attachment, index) in schema.attachments"
+          :key="String(attachment.key)"
+          class="row-editor jg-workspace-scroll__content--standard"
         >
-          上移
-        </t-button>
-        <t-button
-          size="small"
-          @click="move(schema.attachments, index, 1)"
-        >
-          下移
-        </t-button>
+          <t-input
+            v-model="attachment.key"
+            placeholder="附件标识"
+          />
+          <t-input
+            v-model="attachment.name"
+            placeholder="名称"
+          />
+          <label class="inline"><input
+            v-model="attachment.required"
+            type="checkbox"
+          > 必填</label>
+          <label class="inline"><input
+            v-model="attachment.mustBeValid"
+            type="checkbox"
+          > 有效期内</label>
+          <t-button
+            size="small"
+            @click="move(schema.attachments, index, -1)"
+          >
+            上移
+          </t-button>
+          <t-button
+            size="small"
+            @click="move(schema.attachments, index, 1)"
+          >
+            下移
+          </t-button>
+        </div>
       </div>
       <t-button @click="addAttachment">
         新增附件
@@ -324,46 +332,48 @@
       :inert="governance.readOnly"
       class="panel"
     >
-      <div
-        v-for="(rule, index) in schema.validations"
-        :key="String(rule.key)"
-        class="row-editor"
-      >
-        <t-input
-          v-model="rule.key"
-          placeholder="规则标识"
-        />
-        <select v-model="rule.level">
-          <option value="block">
-            阻断
-          </option><option value="warning">
-            提醒
-          </option>
-        </select>
-        <t-input
-          v-model="rule.targetClauseKey"
-          placeholder="目标条款标识"
-        />
-        <t-input
-          v-model="rule.requiredPhrasesText"
-          placeholder="必须短语，逗号分隔"
-        />
-        <t-input
-          v-model="rule.message"
-          placeholder="提示"
-        />
-        <t-button
-          size="small"
-          @click="move(schema.validations, index, -1)"
+      <div class="row-editor-list jg-workspace-scroll">
+        <div
+          v-for="(rule, index) in schema.validations"
+          :key="String(rule.key)"
+          class="row-editor jg-workspace-scroll__content--standard"
         >
-          上移
-        </t-button>
-        <t-button
-          size="small"
-          @click="move(schema.validations, index, 1)"
-        >
-          下移
-        </t-button>
+          <t-input
+            v-model="rule.key"
+            placeholder="规则标识"
+          />
+          <select v-model="rule.level">
+            <option value="block">
+              阻断
+            </option><option value="warning">
+              提醒
+            </option>
+          </select>
+          <t-input
+            v-model="rule.targetClauseKey"
+            placeholder="目标条款标识"
+          />
+          <t-input
+            v-model="rule.requiredPhrasesText"
+            placeholder="必须短语，逗号分隔"
+          />
+          <t-input
+            v-model="rule.message"
+            placeholder="提示"
+          />
+          <t-button
+            size="small"
+            @click="move(schema.validations, index, -1)"
+          >
+            上移
+          </t-button>
+          <t-button
+            size="small"
+            @click="move(schema.validations, index, 1)"
+          >
+            下移
+          </t-button>
+        </div>
       </div>
       <t-button @click="addValidation">
         新增校验
@@ -863,11 +873,12 @@ label { display: grid; gap: 4px; }
 .tab-bar { display: flex; gap: 8px; margin-bottom: 12px; }
 .tab-bar button { border: 1px solid #dce1e8; background: #fff; padding: 7px 12px; border-radius: 3px; cursor: pointer; }
 .tab-bar button.active { border-color: #0052d9; color: #0052d9; }
+.row-editor-list { margin-bottom: 10px; }
 .row-editor { display: grid; grid-template-columns: repeat(10, minmax(80px, 1fr)); gap: 8px; align-items: center; margin-bottom: 10px; }
 .row-editor select { height: 32px; border: 1px solid #dcdfe6; border-radius: 3px; }
 .inline { display: flex; align-items: center; gap: 4px; color: #424955; font-size: 12px; }
 .message { font-size: 12px; }
 .success { color: #1b6b3a; }
 .danger { color: #b51d2a; }
-@media (max-width: 1100px) { .page-head, .form-grid, .row-editor { display: grid; grid-template-columns: 1fr; } }
+@container jg-page (max-width: 840px) { .page-head, .form-grid { display: grid; grid-template-columns: 1fr; } }
 </style>

@@ -136,7 +136,14 @@ const p0BusinessLanguagePatterns = [
 
 // Responsive governance is intentionally separate from the legacy visual migration
 // allowlist. Pages are added by phase after they adopt a single scroll owner.
-const responsiveGovernedFiles = new Map();
+const responsiveGovernedFiles = new Map([
+  ["src/pages/contract-templates/ContractNumberRulePage.vue", "ledger"],
+  ["src/pages/contract-templates/ContractScenarioGovernancePage.vue", "ledger"],
+  ["src/pages/contract-templates/ContractTemplateEditorPage.vue", "workspace"],
+  ["src/pages/contract-templates/ContractTemplateListPage.vue", "ledger"],
+  ["src/pages/contract-templates/LayoutTemplateEditorPage.vue", "workspace"],
+  ["src/pages/contract-templates/StandardClauseLibraryPage.vue", "ledger"]
+]);
 
 const responsiveRootClassByType = {
   ledger: "jg-responsive-ledger",
