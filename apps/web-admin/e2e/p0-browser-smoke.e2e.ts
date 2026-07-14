@@ -403,11 +403,13 @@ test("core detail pages expose flow summaries, actions, files, and timelines", a
   await expect(page.getByText("审批通过").first()).toBeVisible();
 
   await page.goto("/settlements/JS-E2E-001");
-  await expect(page.getByRole("heading", { name: "结算详情" })).toBeVisible();
-  await expect(page.locator(".flow-summary-strip").filter({ hasText: "主管确认归档" })).toBeVisible();
-  await expect(page.getByText("当前账号在此单据暂无可办理动作。")).toBeVisible();
-  await expect(page.getByText("E2E-结算签认件.pdf")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "E2E 结算单" })).toBeVisible();
+  await expect(page.locator(".business-detail-header").filter({ hasText: "主管确认归档" })).toBeVisible();
   await expect(page.getByText("剩余可申请")).toBeVisible();
+  await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
+  await expect(page.getByText("当前账号在此单据暂无可办理动作。")).toBeVisible();
+  await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+  await expect(page.getByText("E2E-结算签认件.pdf")).toBeVisible();
 
   await page.goto("/payments/FK-E2E-001");
   await expect(page.getByRole("heading", { name: "E2E 付款申请" })).toBeVisible();

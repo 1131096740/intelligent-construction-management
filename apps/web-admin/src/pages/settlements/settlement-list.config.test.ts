@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   emptySettlementLedgerFilters,
   filterSettlementLedgerRows,
   settlementFilterFields,
   settlementLedgerColumns,
+  settlementLedgerFilterOptions,
+  settlementPaginationBlockReason,
   settlementRules,
   settlementSourceLineColumns,
   settlementSummaryItems,
@@ -12,6 +15,16 @@ import {
 } from "./settlement-list.config";
 
 describe("settlement ledger page configuration", () => {
+  it("uses the shared enterprise ledger structure without native controls", () => {
+    const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("<BusinessPageHeader");
+    expect(source).toContain("<BusinessStatusSummary");
+    expect(source).toContain("<BusinessTableToolbar");
+    expect(source).toContain("<BusinessFeedback");
+    expect(source).toContain("<EmptyBusinessState");
+    expect(source).not.toContain("<input");
+  });
+
   it("uses compact enterprise settlement filter fields", () => {
     expect(settlementFilterFields.map((field) => field.label)).toEqual([
       "项目",
@@ -57,6 +70,40 @@ describe("settlement ledger page configuration", () => {
       "结算未生效前不可创建付款申请",
       "历史结算绑定当时的付款条款版本"
     ]);
+    expect(settlementPaginationBlockReason).toContain("暂不支持翻页");
+  });
+
+  it("builds stable select options from the currently loaded ledger", () => {
+    const rows = [
+      settlementRow({ project: "乙项目", contractNo: "HT-002", currentNode: "待归档确认" }),
+      settlementRow({ project: "甲项目", contractNo: "HT-001", currentNode: "审批中" }),
+      settlementRow({ project: "甲项目", contractNo: "HT-001", currentNode: "已生效" })
+    ];
+
+    expect(settlementLedgerFilterOptions(rows)).toEqual({
+      project: [
+        { label: "全部项目", value: "" },
+        { label: "甲项目", value: "甲项目" },
+        { label: "乙项目", value: "乙项目" }
+      ],
+      contractNo: [
+        { label: "全部合同", value: "" },
+        { label: "HT-001", value: "HT-001" },
+        { label: "HT-002", value: "HT-002" }
+      ],
+      settlementStatus: [
+        { label: "全部结算状态", value: "" },
+        { label: "待归档确认", value: "待归档确认" },
+        { label: "审批中", value: "审批中" },
+        { label: "已生效", value: "已生效" }
+      ],
+      archiveStatus: [
+        { label: "全部归档状态", value: "" },
+        { label: "待归档确认", value: "待归档确认" },
+        { label: "未进入归档", value: "未进入归档" },
+        { label: "已生效", value: "已生效" }
+      ]
+    });
   });
 
   it("formats the read-only contract source lines without losing bigint money", () => {
@@ -145,7 +192,7 @@ describe("settlement ledger page configuration", () => {
         project: "E2E",
         contractNo: "001",
         settlementStatus: "归档",
-        archiveStatus: "确认",
+        archiveStatus: "待归档确认",
         keyword: "2026-06"
       }).map((row) => row.id)
     ).toEqual(["settlement-1"]);

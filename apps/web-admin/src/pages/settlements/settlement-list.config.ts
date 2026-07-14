@@ -143,6 +143,18 @@ export const settlementRules = [
   "历史结算绑定当时的付款条款版本"
 ];
 
+export const settlementPaginationBlockReason =
+  "当前仅显示系统本次返回的记录，暂不支持翻页；请使用筛选缩小范围，避免把当前列表误认为全部记录。";
+
+export function settlementLedgerFilterOptions(rows: readonly SettlementLedgerRow[]) {
+  return {
+    project: ledgerSelectOptions(rows.map((row) => row.project), "全部项目"),
+    contractNo: ledgerSelectOptions(rows.map((row) => row.contractNo), "全部合同"),
+    settlementStatus: ledgerSelectOptions(rows.map((row) => row.currentNode), "全部结算状态"),
+    archiveStatus: ledgerSelectOptions(rows.map(settlementArchiveStatus), "全部归档状态")
+  };
+}
+
 export function emptySettlementLedgerFilters(): SettlementLedgerFilters {
   return {
     project: "",
@@ -173,10 +185,17 @@ export function filterSettlementLedgerRows(
       includesText(row.project, filters.project) &&
       includesText(row.contractNo, filters.contractNo) &&
       includesText(statusText, filters.settlementStatus) &&
-      includesText(statusText, filters.archiveStatus) &&
+      includesText(settlementArchiveStatus(row), filters.archiveStatus) &&
       includesText(keywordText, filters.keyword)
     );
   });
+}
+
+function settlementArchiveStatus(row: SettlementLedgerRow) {
+  const statusText = `${row.currentNode} ${row.nextAction}`;
+  if (/生效|可申请付款/.test(statusText)) return "已生效";
+  if (/归档/.test(statusText)) return "待归档确认";
+  return "未进入归档";
 }
 
 function includesText(value: string, query: string) {
@@ -186,4 +205,11 @@ function includesText(value: string, query: string) {
   }
 
   return value.toLocaleLowerCase().includes(normalized);
+}
+
+function ledgerSelectOptions(values: readonly string[], allLabel: string) {
+  const unique = [...new Set(values.filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right, "zh-CN")
+  );
+  return [{ label: allLabel, value: "" }, ...unique.map((value) => ({ label: value, value }))];
 }

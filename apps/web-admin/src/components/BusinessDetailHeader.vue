@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import type { BusinessSummaryTone } from "./business-status-summary.config";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   businessCode: string;
   title: string;
   status: string;
@@ -11,16 +11,23 @@ const props = defineProps<{
   currentNode: string;
   nextStep: string;
   requestedAmount?: string;
+  amountLabel?: string;
   primaryActionLabel?: string;
   primaryActionDisabled?: boolean;
-}>();
+}>(), {
+  statusTone: "default",
+  requestedAmount: "",
+  amountLabel: "申请金额",
+  primaryActionLabel: "",
+  primaryActionDisabled: false
+});
 
 const emit = defineEmits<{
   "primary-action": [];
 }>();
 
 const visibleFacts = computed(() => [
-  { label: "申请金额", value: props.requestedAmount },
+  { label: props.amountLabel, value: props.requestedAmount },
   { label: "责任人/部门", value: props.owner },
   { label: "当前节点", value: props.currentNode },
   { label: "下一步", value: props.nextStep }

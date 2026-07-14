@@ -47,6 +47,25 @@ export interface SettlementAttachmentTemplateAction {
   label: string;
 }
 
+export interface SettlementDetailHeaderView {
+  businessCode: string;
+  title: string;
+  status: string;
+  statusTone: SettlementDetailTone;
+  owner: string;
+  currentNode: string;
+  nextStep: string;
+  amount: string;
+}
+
+export const settlementDetailTabs = [
+  { value: "overview", label: "概览" },
+  { value: "process", label: "流程办理" },
+  { value: "lines", label: "结算明细" },
+  { value: "evidence", label: "凭证资料" },
+  { value: "audit", label: "关联与审计" }
+];
+
 export const settlementDetailTitle = "JS-2026-018 · 5月材料结算单";
 
 export const settlementDetailMeta: SettlementDetailMetaItem[] = [
@@ -145,10 +164,43 @@ export function buildSettlementFlowSummary(
   ];
 }
 
+export function buildSettlementDetailHeader(
+  routeCode: string,
+  title: string,
+  meta: readonly SettlementDetailMetaItem[],
+  baseInfo: readonly SettlementDetailMetaItem[]
+): SettlementDetailHeaderView {
+  const businessCode = valueFor(baseInfo, "结算编号", routeCode || "-");
+  const status = valueFor(meta, "当前状态", "状态待读取");
+  return {
+    businessCode,
+    title: compactSettlementTitle(title, businessCode),
+    status,
+    statusTone: meta.find((item) => item.label === "当前状态")?.tone ?? "default",
+    owner: valueFor(meta, "责任部门", "-"),
+    currentNode: status,
+    nextStep: valueFor(meta, "下一步动作", "-"),
+    amount: valueFor(baseInfo, "结算金额", "-")
+  };
+}
+
+export function settlementOverviewBaseInfo(items: readonly SettlementDetailMetaItem[]) {
+  return items.filter((item) => !["结算编号", "结算金额"].includes(item.label));
+}
+
 function pickSummaryItem(
   items: readonly SettlementDetailMetaItem[],
   label: string
 ): SettlementFlowSummaryItem {
   const item = items.find((candidate) => candidate.label === label);
   return { label, value: item?.value ?? "-", tone: item?.tone };
+}
+
+function valueFor(items: readonly SettlementDetailMetaItem[], label: string, fallback: string) {
+  return items.find((item) => item.label === label)?.value ?? fallback;
+}
+
+function compactSettlementTitle(title: string, businessCode: string) {
+  const prefix = `${businessCode} · `;
+  return title.startsWith(prefix) ? title.slice(prefix.length) : title;
 }

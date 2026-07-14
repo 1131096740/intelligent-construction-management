@@ -2,7 +2,7 @@
 
 > 版本：P1.1  
 > 日期：2026-07-14  
-> 状态：实施前基线  
+> 状态：已按计划实施并验收
 > 适用范围：结算台账、结算详情及其直接测试与 UI 治理规则
 
 ## 1. 实施目标与边界
@@ -93,7 +93,9 @@
 - `apps/web-admin/src/pages/settlements/SettlementDetailPage.vue`
 - `apps/web-admin/src/pages/settlements/settlement-detail.config.ts`
 - `apps/web-admin/src/pages/settlements/settlement-detail.config.test.ts`
+- `apps/web-admin/src/components/BusinessDetailHeader.vue`：为不同业务单据提供可配置的金额字段名称，默认仍为“申请金额”。
 - `apps/web-admin/scripts/check-ui-rules.mjs`
+- `apps/web-admin/e2e/p0-browser-smoke.e2e.ts`：将结算详情旧结构断言同步为新页头和页签结构，保留原业务事实验证。
 - `PROGRESS.md`
 
 ### 3.3 原则上不修改
@@ -283,4 +285,3 @@ BusinessDetailHeader
 3. 回滚时只反向应用本轮结算提交；不回退 P0/P0.5 公共组件和 token。
 4. 若仅视觉门禁导致阻断，修正迁移页本身，不把结算页重新加入宽泛 allowlist。
 5. 若动作回归，优先恢复原模板动作入口并保留已验证的页头、台账和 token 迁移；禁止通过修改 API、权限或业务状态规避前端问题。
-

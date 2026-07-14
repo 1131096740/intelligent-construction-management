@@ -1,16 +1,32 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   buildSettlementFlowSummary,
+  buildSettlementDetailHeader,
   settlementBaseInfo,
   settlementArchiveResponsibilities,
   settlementAttachmentTemplates,
   settlementDetailMeta,
+  settlementDetailTitle,
   settlementEffectivenessSteps,
   settlementPaymentBlockMessage,
-  settlementPaymentRuleColumns
+  settlementPaymentRuleColumns,
+  settlementDetailTabs,
+  settlementOverviewBaseInfo
 } from "./settlement-detail.config";
 
 describe("settlement detail page configuration", () => {
+  it("uses the shared detail shell, TDesign upload and sensitive dialog", () => {
+    const source = readFileSync(new URL("./SettlementDetailPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("<BusinessDetailHeader");
+    expect(source).toContain("<t-tabs");
+    expect(source).toContain("<t-upload");
+    expect(source).toContain("<SensitiveActionDialog");
+    expect(source).not.toContain("<input");
+    expect(source).not.toContain("confirmSensitiveAction");
+    expect(source).not.toContain("promptSensitiveActionReason");
+  });
+
   it("shows settlement detail metadata tied to contract and terms versions", () => {
     expect(settlementDetailMeta.map((item) => item.label)).toEqual([
       "当前状态",
@@ -29,6 +45,35 @@ describe("settlement detail page configuration", () => {
       { label: "结算金额", value: "¥320,000.00" },
       { label: "责任部门", value: "合同部" },
       { label: "下一步动作", value: "主管确认归档", tone: "primary" }
+    ]);
+  });
+
+  it("builds the standard detail header without repeating code and amount", () => {
+    expect(buildSettlementDetailHeader(
+      "route-code",
+      settlementDetailTitle,
+      settlementDetailMeta,
+      settlementBaseInfo
+    )).toEqual({
+      businessCode: "JS-2026-018",
+      title: "5月材料结算单",
+      status: "待归档确认",
+      statusTone: "primary",
+      owner: "合同部",
+      currentNode: "待归档确认",
+      nextStep: "主管确认归档",
+      amount: "¥320,000.00"
+    });
+    expect(settlementOverviewBaseInfo(settlementBaseInfo).map((item) => item.label)).not.toContain("结算金额");
+  });
+
+  it("organizes settlement detail by business task instead of infinite cards", () => {
+    expect(settlementDetailTabs.map((tab) => tab.label)).toEqual([
+      "概览",
+      "流程办理",
+      "结算明细",
+      "凭证资料",
+      "关联与审计"
     ]);
   });
 

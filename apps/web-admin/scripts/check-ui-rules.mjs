@@ -41,9 +41,7 @@ const allowlistedFiles = new Set([
   "src/pages/projects/ProjectRosterPage.vue",
   "src/pages/route-placeholder/RoutePlaceholderPage.vue",
   "src/pages/search/GlobalSearchPage.vue",
-  "src/pages/settings/SettingsPage.vue",
-  "src/pages/settlements/SettlementDetailPage.vue",
-  "src/pages/settlements/SettlementListPage.vue"
+  "src/pages/settings/SettingsPage.vue"
 ]);
 
 const nativeControlPatterns = [
@@ -97,6 +95,8 @@ const p0VisualFiles = new Set([
   "src/pages/payments/PaymentListPage.vue",
   "src/pages/payments/PaymentWorkbenchPage.vue",
   "src/pages/payments/PaymentDetailPage.vue",
+  "src/pages/settlements/SettlementListPage.vue",
+  "src/pages/settlements/SettlementDetailPage.vue",
   "src/components/BusinessStatusSummary.vue",
   "src/components/BusinessDetailHeader.vue",
   "src/components/PaymentConfirmationSummary.vue"
@@ -114,6 +114,10 @@ const p0BusinessLanguageFiles = new Set([
   "src/pages/payments/payment-list.config.ts",
   "src/pages/payments/PaymentWorkbenchPage.vue",
   "src/pages/payments/PaymentDetailPage.vue",
+  "src/pages/settlements/SettlementListPage.vue",
+  "src/pages/settlements/settlement-list.config.ts",
+  "src/pages/settlements/SettlementDetailPage.vue",
+  "src/pages/settlements/settlement-detail.config.ts",
   "src/components/PaymentConfirmationSummary.vue"
 ]);
 
