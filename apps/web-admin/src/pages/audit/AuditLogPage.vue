@@ -1,5 +1,5 @@
 <template>
-  <section class="audit-page">
+  <section class="audit-page jg-responsive-ledger">
     <div class="page-head">
       <div>
         <h1>审计日志</h1>
@@ -134,28 +134,31 @@
           重置
         </t-button>
       </div>
-      <t-table
-        row-key="id"
-        size="small"
-        :columns="fileDownloadAuditColumns"
-        :data="filteredFileDownloadRows"
-        empty="暂无文件下载审计"
-        :loading="fileDownloadLoading"
-      >
-        <template #action="{ row }">
-          <t-tag
-            size="small"
-            :theme="row.actionKey === 'file.download' ? 'warning' : 'primary'"
-            variant="light"
-          >
-            {{ row.action }}
-          </t-tag>
-        </template>
-      </t-table>
+      <div class="jg-table-region jg-table-region--wide">
+        <t-table
+          row-key="id"
+          size="small"
+          :columns="fileDownloadAuditColumns"
+          :data="filteredFileDownloadRows"
+          empty="暂无文件下载审计"
+          :loading="fileDownloadLoading"
+          :horizontal-scroll-affixed-bottom="true"
+        >
+          <template #action="{ row }">
+            <t-tag
+              size="small"
+              :theme="row.actionKey === 'file.download' ? 'warning' : 'primary'"
+              variant="light"
+            >
+              {{ row.action }}
+            </t-tag>
+          </template>
+        </t-table>
+      </div>
     </t-card>
 
     <t-card
-      class="ledger-panel"
+      class="ledger-panel jg-table-region jg-table-region--wide"
       :bordered="true"
     >
       <t-table
@@ -165,6 +168,7 @@
         :data="auditRows"
         empty="暂无审计日志"
         :loading="loading"
+        :horizontal-scroll-affixed-bottom="true"
       >
         <template #action="{ row }">
           <t-tag
@@ -339,6 +343,7 @@ function statusTagTheme(tone: AuditTone) {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -355,6 +360,7 @@ function statusTagTheme(tone: AuditTone) {
 .summary-strip {
   min-height: 42px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   padding: 0 16px;
   margin-bottom: 12px;
@@ -489,7 +495,6 @@ function statusTagTheme(tone: AuditTone) {
 
 :deep(.t-card__body) {
   padding: 12px;
-  overflow-x: auto;
 }
 
 .ledger-panel :deep(.t-card__body) {
@@ -501,7 +506,7 @@ function statusTagTheme(tone: AuditTone) {
   font-size: 12px;
 }
 
-@media (max-width: 980px) {
+@container jg-page (max-width: 840px) {
   .rule-strip,
   .filter-bar,
   .download-filter-bar {
@@ -510,6 +515,24 @@ function statusTagTheme(tone: AuditTone) {
 
   .filter-field.keyword {
     grid-column: span 2;
+  }
+}
+
+@container jg-page (max-width: 620px) {
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--jg-space-md);
+  }
+
+  .rule-strip,
+  .filter-bar,
+  .download-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-field.keyword {
+    grid-column: auto;
   }
 }
 </style>

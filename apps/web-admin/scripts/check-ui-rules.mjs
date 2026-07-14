@@ -145,6 +145,11 @@ const responsiveGovernedFiles = new Map([
   ["src/pages/contract-templates/StandardClauseLibraryPage.vue", "ledger"],
   ["src/pages/contracts/ContractTakeoverPage.vue", "workspace"],
   ["src/pages/contracts/ContractWorkbenchPage.vue", "workspace"],
+  ["src/pages/approval-center/ApprovalCenterPage.vue", "ledger"],
+  ["src/pages/archives/ArchiveListPage.vue", "ledger"],
+  ["src/pages/audit/AuditLogPage.vue", "ledger"],
+  ["src/pages/delegations/DelegationListPage.vue", "ledger"],
+  ["src/pages/search/GlobalSearchPage.vue", "ledger"],
   ["src/pages/settlement-templates/SettlementTemplateEditorPage.vue", "workspace"],
   ["src/pages/settlement-templates/SettlementTemplateListPage.vue", "ledger"],
   ["src/pages/settlements/SettlementWorkbenchPage.vue", "workspace"]
@@ -167,7 +172,7 @@ export function findResponsiveRuleViolations(relative, source, type = responsive
   if (!rootClass || !source.includes(rootClass)) {
     violations.push({ file: relative, message: `响应式页面必须接入 ${rootClass ?? "已登记的页面类型"}` });
   }
-  if (type === "ledger" && !source.includes("jg-table-region")) {
+  if (type === "ledger" && /<t-table\b/i.test(source) && !source.includes("jg-table-region")) {
     violations.push({ file: relative, message: "台账页必须由 jg-table-region 承担表格横向滚动" });
   }
   if (
@@ -387,7 +392,7 @@ function runSelfTest() {
   const responsiveBad = findResponsiveRuleViolations(
     "src/pages/contracts/ResponsiveBad.vue",
     [
-      '<template><main class="bad-ledger" /></template>',
+      '<template><main class="bad-ledger"><t-table /></main></template>',
       '<style>.bad-ledger { width: 100vw; min-width: 1040px; overflow-x: auto; }</style>'
     ].join("\n"),
     "ledger"

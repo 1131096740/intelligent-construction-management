@@ -1,5 +1,5 @@
 <template>
-  <section class="approval-center-page">
+  <section class="approval-center-page jg-responsive-ledger">
     <div class="page-head">
       <div>
         <h1>审批中心</h1>
@@ -239,9 +239,15 @@ h1 {
   color: #227245;
 }
 
-@media (max-width: 900px) {
+@container jg-page (max-width: 840px) {
   .approval-item {
     grid-template-columns: 1fr;
+  }
+}
+
+@container jg-page (max-width: 620px) {
+  .page-head {
+    flex-direction: column;
   }
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <section class="archive-page">
+  <section class="archive-page jg-responsive-ledger">
     <div class="page-head">
       <div>
         <h1>资料库</h1>
@@ -98,7 +98,7 @@
     </div>
 
     <t-card
-      class="ledger-panel"
+      class="ledger-panel jg-table-region jg-table-region--wide"
       :bordered="true"
     >
       <t-table
@@ -108,6 +108,7 @@
         :data="filteredArchiveRows"
         empty="没有符合条件的资料，请调整筛选条件或回到业务单据补齐附件。"
         :loading="loading"
+        :horizontal-scroll-affixed-bottom="true"
       >
         <template #archiveStatus="{ row }">
           <t-tag
@@ -392,6 +393,7 @@ function statusTagTheme(tone: ArchiveTone) {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -406,6 +408,7 @@ function statusTagTheme(tone: ArchiveTone) {
 .summary-strip {
   min-height: 42px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   padding: 0 16px;
   margin-bottom: 12px;
@@ -519,7 +522,6 @@ function statusTagTheme(tone: ArchiveTone) {
 
 :deep(.t-card__body) {
   padding: 0;
-  overflow-x: auto;
 }
 
 :deep(.t-table th) {
@@ -548,7 +550,7 @@ function statusTagTheme(tone: ArchiveTone) {
   gap: 6px;
 }
 
-@media (max-width: 980px) {
+@container jg-page (max-width: 840px) {
   .rule-strip,
   .filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -556,6 +558,23 @@ function statusTagTheme(tone: ArchiveTone) {
 
   .filter-field.keyword {
     grid-column: span 2;
+  }
+}
+
+@container jg-page (max-width: 620px) {
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--jg-space-md);
+  }
+
+  .rule-strip,
+  .filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-field.keyword {
+    grid-column: auto;
   }
 }
 </style>
