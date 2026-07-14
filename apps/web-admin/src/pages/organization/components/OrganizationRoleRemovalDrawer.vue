@@ -23,36 +23,39 @@
             <p>项目岗位可能包含兼容读取数据，是否能撤销以服务端预览为准。</p>
           </div>
         </div>
-        <t-table
-          row-key="key"
-          size="small"
-          :columns="targetColumns"
-          :data="targetRows"
-          :loading="false"
-          empty="该人员暂无可预览撤销的岗位"
-        >
-          <template #scopeLabel="{ row }">
-            <t-tag
-              size="small"
-              :theme="row.scope === 'global' ? 'primary' : 'default'"
-              variant="light"
-            >
-              {{ row.scopeLabel }}
-            </t-tag>
-          </template>
-          <template #operation="{ row }">
-            <t-button
-              size="small"
-              variant="text"
-              theme="danger"
-              :loading="previewing && selectedTarget?.key === row.key"
-              :disabled="busy && selectedTarget?.key !== row.key"
-              @click="previewTarget(row)"
-            >
-              预览撤销影响
-            </t-button>
-          </template>
-        </t-table>
+        <div class="jg-table-region jg-table-region--standard">
+          <t-table
+            row-key="key"
+            size="small"
+            :columns="targetColumns"
+            :data="targetRows"
+            :loading="false"
+            :horizontal-scroll-affixed-bottom="true"
+            empty="该人员暂无可预览撤销的岗位"
+          >
+            <template #scopeLabel="{ row }">
+              <t-tag
+                size="small"
+                :theme="row.scope === 'global' ? 'primary' : 'default'"
+                variant="light"
+              >
+                {{ row.scopeLabel }}
+              </t-tag>
+            </template>
+            <template #operation="{ row }">
+              <t-button
+                size="small"
+                variant="text"
+                theme="danger"
+                :loading="previewing && selectedTarget?.key === row.key"
+                :disabled="busy && selectedTarget?.key !== row.key"
+                @click="previewTarget(row)"
+              >
+                预览撤销影响
+              </t-button>
+            </template>
+          </t-table>
+        </div>
       </section>
 
       <section
@@ -113,32 +116,35 @@
             />
           </div>
 
-          <t-table
-            row-key="key"
-            size="small"
-            :columns="impactColumns"
-            :data="impactRows"
-            empty="未发现当前在途审批影响"
-          >
-            <template #business="{ row }">
-              <div class="impact-business">
-                <span>{{ row.businessTypeLabel }}</span>
-                <span>{{ row.businessId }}</span>
-              </div>
-            </template>
-            <template #status="{ row }">
-              <div class="impact-status">
-                <t-tag
-                  size="small"
-                  :theme="row.statusTone"
-                  variant="light"
-                >
-                  {{ row.statusLabel }}
-                </t-tag>
-                <span>{{ row.reasonLabel }}</span>
-              </div>
-            </template>
-          </t-table>
+          <div class="jg-table-region jg-table-region--wide">
+            <t-table
+              row-key="key"
+              size="small"
+              :columns="impactColumns"
+              :data="impactRows"
+              :horizontal-scroll-affixed-bottom="true"
+              empty="未发现当前在途审批影响"
+            >
+              <template #business="{ row }">
+                <div class="impact-business">
+                  <span>{{ row.businessTypeLabel }}</span>
+                  <span>{{ row.businessId }}</span>
+                </div>
+              </template>
+              <template #status="{ row }">
+                <div class="impact-status">
+                  <t-tag
+                    size="small"
+                    :theme="row.statusTone"
+                    variant="light"
+                  >
+                    {{ row.statusLabel }}
+                  </t-tag>
+                  <span>{{ row.reasonLabel }}</span>
+                </div>
+              </template>
+            </t-table>
+          </div>
 
           <div class="hash-panel">
             <span>影响版本校验码</span>
@@ -365,6 +371,11 @@ async function applyRemoval() {
   gap: var(--jg-space-lg);
 }
 
+.role-drawer {
+  container-name: organization-drawer;
+  container-type: inline-size;
+}
+
 .role-section {
   padding-top: var(--jg-space-sm);
 }
@@ -426,5 +437,12 @@ async function applyRemoval() {
 
 .confirmation-actions {
   justify-content: flex-end;
+}
+
+@container organization-drawer (max-width: 620px) {
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

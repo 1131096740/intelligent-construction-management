@@ -118,32 +118,35 @@
               :title="blockingMessage"
               :close="false"
             />
-            <t-table
-              row-key="key"
-              size="small"
-              :columns="impactColumns"
-              :data="step.impactRows"
-              empty="该步骤未发现当前或未来审批节点影响"
-            >
-              <template #business="{ row }">
-                <div class="impact-business">
-                  <span>{{ row.businessTypeLabel }}</span>
-                  <span>{{ row.businessId }}</span>
-                </div>
-              </template>
-              <template #status="{ row }">
-                <div class="impact-status">
-                  <t-tag
-                    size="small"
-                    :theme="row.statusTone"
-                    variant="light"
-                  >
-                    {{ row.statusLabel }}
-                  </t-tag>
-                  <span>{{ row.reasonLabel }}</span>
-                </div>
-              </template>
-            </t-table>
+            <div class="jg-table-region jg-table-region--wide">
+              <t-table
+                row-key="key"
+                size="small"
+                :columns="impactColumns"
+                :data="step.impactRows"
+                :horizontal-scroll-affixed-bottom="true"
+                empty="该步骤未发现当前或未来审批节点影响"
+              >
+                <template #business="{ row }">
+                  <div class="impact-business">
+                    <span>{{ row.businessTypeLabel }}</span>
+                    <span>{{ row.businessId }}</span>
+                  </div>
+                </template>
+                <template #status="{ row }">
+                  <div class="impact-status">
+                    <t-tag
+                      size="small"
+                      :theme="row.statusTone"
+                      variant="light"
+                    >
+                      {{ row.statusLabel }}
+                    </t-tag>
+                    <span>{{ row.reasonLabel }}</span>
+                  </div>
+                </template>
+              </t-table>
+            </div>
           </article>
         </section>
       </template>
@@ -275,6 +278,11 @@ const impactColumns = [
   gap: var(--jg-space-md);
 }
 
+.batch-drawer {
+  container-name: organization-drawer;
+  container-type: inline-size;
+}
+
 .selection-actions,
 .preview-summary,
 .step-head,
@@ -321,5 +329,14 @@ const impactColumns = [
   overflow-wrap: anywhere;
   color: var(--jg-color-text-secondary);
   font-size: var(--jg-font-size-meta);
+}
+
+@container organization-drawer (max-width: 620px) {
+  .selection-actions,
+  .step-head,
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

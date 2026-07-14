@@ -1,5 +1,8 @@
 <template>
-  <section class="organization-page">
+  <section
+    class="organization-page jg-responsive-workspace"
+    data-jg-scroll-owner="child"
+  >
     <div class="page-head">
       <div>
         <h1>组织权限</h1>
@@ -85,42 +88,45 @@
             </t-tag>
           </div>
           <BusinessStatusSummary :items="integritySummaryItems" />
-          <t-table
-            row-key="key"
-            size="small"
-            :columns="integrityColumns"
-            :data="integrityIssueRows"
-            :loading="integrityLoading"
-            empty="未发现权限数据问题"
-          >
-            <template #severity="{ row }">
-              <t-tag
-                size="small"
-                :theme="row.severityTone"
-                variant="light"
-              >
-                {{ row.severityLabel }}
-              </t-tag>
-            </template>
-            <template #issue="{ row }">
-              <div class="integrity-issue">
-                <span class="integrity-issue__title">{{ row.issueLabel }}</span>
-                <span class="integrity-issue__message">{{ row.message }}</span>
-              </div>
-            </template>
-            <template #operation="{ row }">
-              <t-button
-                v-if="isProjectSuperAdminRemediationRow(row.key)"
-                size="small"
-                variant="text"
-                theme="primary"
-                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
-                @click="openProjectSuperAdminRemediation(row.key)"
-              >
-                预览清理
-              </t-button>
-            </template>
-          </t-table>
+          <div class="jg-table-region jg-table-region--wide">
+            <t-table
+              row-key="key"
+              size="small"
+              :columns="integrityColumns"
+              :data="integrityIssueRows"
+              :loading="integrityLoading"
+              :horizontal-scroll-affixed-bottom="true"
+              empty="未发现权限数据问题"
+            >
+              <template #severity="{ row }">
+                <t-tag
+                  size="small"
+                  :theme="row.severityTone"
+                  variant="light"
+                >
+                  {{ row.severityLabel }}
+                </t-tag>
+              </template>
+              <template #issue="{ row }">
+                <div class="integrity-issue">
+                  <span class="integrity-issue__title">{{ row.issueLabel }}</span>
+                  <span class="integrity-issue__message">{{ row.message }}</span>
+                </div>
+              </template>
+              <template #operation="{ row }">
+                <t-button
+                  v-if="isProjectSuperAdminRemediationRow(row.key)"
+                  size="small"
+                  variant="text"
+                  theme="primary"
+                  :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
+                  @click="openProjectSuperAdminRemediation(row.key)"
+                >
+                  预览清理
+                </t-button>
+              </template>
+            </t-table>
+          </div>
         </template>
       </div>
     </t-card>
@@ -128,6 +134,7 @@
     <div class="organization-grid">
       <t-card
         title="部门层级"
+        class="jg-table-region jg-table-region--standard"
         bordered
       >
         <t-table
@@ -136,6 +143,7 @@
           :columns="departmentColumns"
           :data="flatDepartments"
           :loading="directoryLoading"
+          :horizontal-scroll-affixed-bottom="true"
           empty="暂无部门"
         >
           <template #name="{ row }">
@@ -167,6 +175,7 @@
 
       <t-card
         title="人员目录"
+        class="jg-table-region jg-table-region--wide"
         bordered
       >
         <div class="filter-bar">
@@ -194,6 +203,7 @@
           :columns="userColumns"
           :data="filteredUsers"
           :loading="directoryLoading"
+          :horizontal-scroll-affixed-bottom="true"
           empty="暂无人员"
         >
           <template #status="{ row }">
@@ -973,6 +983,8 @@ async function submitDialog() {
 .organization-page {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
   gap: var(--jg-space-lg);
   max-width: var(--jg-layout-page-max-width);
   margin: 0 auto;
@@ -991,6 +1003,11 @@ async function submitDialog() {
 
 .page-head {
   justify-content: space-between;
+}
+
+.page-actions,
+.row-actions {
+  flex-wrap: wrap;
 }
 
 .page-head h1 {
@@ -1049,6 +1066,23 @@ async function submitDialog() {
 .integrity-issue__message {
   color: var(--jg-color-text-tertiary);
   font-size: var(--jg-font-size-meta);
+}
+
+@container jg-page (max-width: 1100px) {
+  .organization-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container jg-page (max-width: 840px) {
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .filter-bar {
+    grid-template-columns: 1fr;
+  }
 }
 
 </style>

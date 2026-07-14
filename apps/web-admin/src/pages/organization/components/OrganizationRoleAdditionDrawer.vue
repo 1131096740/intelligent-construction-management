@@ -117,38 +117,41 @@
           />
         </div>
 
-        <t-table
-          row-key="key"
-          size="small"
-          :columns="impactColumns"
-          :data="impactRows"
-          empty="未发现当前在途审批影响"
-        >
-          <template #business="{ row }">
-            <div class="stacked-cell">
-              <span>{{ row.businessTypeLabel }}</span>
-              <span>{{ row.businessId }}</span>
-            </div>
-          </template>
-          <template #resolution="{ row }">
-            <div class="stacked-cell">
-              <span>新增前：{{ row.beforeText }}</span>
-              <span>新增后：{{ row.afterText }}</span>
-            </div>
-          </template>
-          <template #status="{ row }">
-            <div class="stacked-cell">
-              <t-tag
-                size="small"
-                :theme="row.statusTone"
-                variant="light"
-              >
-                {{ row.statusLabel }}
-              </t-tag>
-              <span>{{ row.reasonLabel }}</span>
-            </div>
-          </template>
-        </t-table>
+        <div class="jg-table-region jg-table-region--wide">
+          <t-table
+            row-key="key"
+            size="small"
+            :columns="impactColumns"
+            :data="impactRows"
+            :horizontal-scroll-affixed-bottom="true"
+            empty="未发现当前在途审批影响"
+          >
+            <template #business="{ row }">
+              <div class="stacked-cell">
+                <span>{{ row.businessTypeLabel }}</span>
+                <span>{{ row.businessId }}</span>
+              </div>
+            </template>
+            <template #resolution="{ row }">
+              <div class="stacked-cell">
+                <span>新增前：{{ row.beforeText }}</span>
+                <span>新增后：{{ row.afterText }}</span>
+              </div>
+            </template>
+            <template #status="{ row }">
+              <div class="stacked-cell">
+                <t-tag
+                  size="small"
+                  :theme="row.statusTone"
+                  variant="light"
+                >
+                  {{ row.statusLabel }}
+                </t-tag>
+                <span>{{ row.reasonLabel }}</span>
+              </div>
+            </template>
+          </t-table>
+        </div>
 
         <div class="hash-panel">
           <span>影响版本校验码</span>
@@ -415,6 +418,11 @@ async function applyAddition() {
   gap: var(--jg-space-lg);
 }
 
+.addition-drawer {
+  container-name: organization-drawer;
+  container-type: inline-size;
+}
+
 .addition-section {
   padding-top: var(--jg-space-sm);
 }
@@ -465,5 +473,12 @@ async function applyAddition() {
   border: 1px solid var(--jg-color-border);
   border-radius: var(--jg-radius-md);
   background: var(--jg-color-bg-muted);
+}
+
+@container organization-drawer (max-width: 620px) {
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>
