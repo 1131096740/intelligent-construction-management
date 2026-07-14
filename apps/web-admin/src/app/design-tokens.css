@@ -91,6 +91,14 @@
   --jg-layout-form-field-min-width-compact: 140px;
   --jg-layout-control-min-height: 32px;
   --jg-layout-control-height: 32px;
+  --jg-layout-page-min-width-fallback: 720px;
+  --jg-layout-form-max-width: 960px;
+  --jg-layout-ledger-table-min-width: 960px;
+  --jg-layout-ledger-table-wide-min-width: 1120px;
+  --jg-layout-workspace-min-width-compact: 720px;
+  --jg-layout-workspace-min-width-standard: 1040px;
+  --jg-layout-workspace-min-width-wide: 1680px;
+  --jg-layout-workspace-sidebar-width: 420px;
   --jg-layout-detail-chain-min-height: 40px;
   --jg-layout-detail-info-label-width: 92px;
   --jg-layout-detail-flow-marker-width: 14px;

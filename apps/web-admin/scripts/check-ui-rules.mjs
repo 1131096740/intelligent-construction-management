@@ -134,6 +134,46 @@ const p0BusinessLanguagePatterns = [
   { pattern: /\b(?:limit|offset|total)\b/i, message: "P0 用户文案不得暴露分页参数" }
 ];
 
+// Responsive governance is intentionally separate from the legacy visual migration
+// allowlist. Pages are added by phase after they adopt a single scroll owner.
+const responsiveGovernedFiles = new Map();
+
+const responsiveRootClassByType = {
+  ledger: "jg-responsive-ledger",
+  workspace: "jg-responsive-workspace",
+  flow: "jg-responsive-flow",
+  detail: "jg-responsive-detail"
+};
+
+export function findResponsiveRuleViolations(relative, source, type = responsiveGovernedFiles.get(relative)) {
+  if (!type) return [];
+
+  const violations = [];
+  const rootClass = responsiveRootClassByType[type];
+  const style = source.match(/<style[^>]*>([\s\S]*?)<\/style>/i)?.[1] ?? "";
+
+  if (!rootClass || !source.includes(rootClass)) {
+    violations.push({ file: relative, message: `响应式页面必须接入 ${rootClass ?? "已登记的页面类型"}` });
+  }
+  if (type === "ledger" && !source.includes("jg-table-region")) {
+    violations.push({ file: relative, message: "台账页必须由 jg-table-region 承担表格横向滚动" });
+  }
+  if (type === "workspace" && !source.includes("jg-workspace-scroll")) {
+    violations.push({ file: relative, message: "专业工作区必须显式声明 jg-workspace-scroll 滚动所有者" });
+  }
+  if (/\b100vw\b/.test(source)) {
+    violations.push({ file: relative, message: "后台响应式页面禁止使用 100vw 撑宽内容区" });
+  }
+  if (/overflow-x\s*:\s*(?:auto|scroll)/i.test(style)) {
+    violations.push({ file: relative, message: "页面不得自行声明横向滚动，请使用共享表格或工作区滚动类" });
+  }
+  if (/min-width\s*:\s*(?:[89]\d{2}|[1-9]\d{3,})px/i.test(style)) {
+    violations.push({ file: relative, message: "大型最小宽度必须来自响应式 Design Token 或共享类" });
+  }
+
+  return violations;
+}
+
 function relativePath(filePath) {
   return path.relative(ROOT, filePath).split(path.sep).join("/");
 }
@@ -179,7 +219,8 @@ function hasDisallowedNativeInput(source) {
 
 export function findUiRuleViolations(filePath, source) {
   const relative = relativePath(filePath);
-  if (allowlistedFiles.has(relative)) return [];
+  const responsiveViolations = findResponsiveRuleViolations(relative, source);
+  if (allowlistedFiles.has(relative)) return responsiveViolations;
 
   const violations = [];
 
@@ -201,7 +242,7 @@ export function findUiRuleViolations(filePath, source) {
     }
   }
 
-  return violations;
+  return [...violations, ...responsiveViolations];
 }
 
 function visibleTemplateText(source) {
@@ -316,6 +357,22 @@ function runSelfTest() {
       "</script>"
     ].join("\n")
   );
+  const responsiveGood = findResponsiveRuleViolations(
+    "src/pages/contracts/ResponsiveGood.vue",
+    [
+      '<template><main class="jg-responsive-ledger"><div class="jg-table-region" /></main></template>',
+      '<style>.table { min-width: var(--jg-layout-ledger-table-min-width); }</style>'
+    ].join("\n"),
+    "ledger"
+  );
+  const responsiveBad = findResponsiveRuleViolations(
+    "src/pages/contracts/ResponsiveBad.vue",
+    [
+      '<template><main class="bad-ledger" /></template>',
+      '<style>.bad-ledger { width: 100vw; min-width: 1040px; overflow-x: auto; }</style>'
+    ].join("\n"),
+    "ledger"
+  );
 
   if (
     bad.length < 2 ||
@@ -326,7 +383,9 @@ function runSelfTest() {
     !annotated.some((violation) => violation.message === "阴影必须来自设计 token") ||
     !languageBad.some((violation) => violation.message.includes("Failed to fetch")) ||
     !languageBad.some((violation) => violation.message.includes("snapshot")) ||
-    languageInternal.length !== 0
+    languageInternal.length !== 0 ||
+    responsiveGood.length !== 0 ||
+    responsiveBad.length !== 5
   ) {
     console.error("UI 和业务语言规则自检失败");
     process.exit(1);

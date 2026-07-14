@@ -41,51 +41,59 @@ const visibleFacts = computed(() => [
 
 <template>
   <header class="business-detail-header">
-    <div class="business-detail-header__main">
-      <span class="business-detail-header__code">{{ businessCode }}</span>
-      <div class="business-detail-header__title-row">
-        <div>
-          <h1>{{ title }}</h1>
+    <div class="business-detail-header__layout">
+      <div class="business-detail-header__main">
+        <span class="business-detail-header__code">{{ businessCode }}</span>
+        <div class="business-detail-header__title-row">
+          <div>
+            <h1>{{ title }}</h1>
+          </div>
+          <t-tag
+            :theme="statusTone ?? 'default'"
+            variant="light"
+          >
+            {{ status }}
+          </t-tag>
         </div>
-        <t-tag
-          :theme="statusTone ?? 'default'"
-          variant="light"
-        >
-          {{ status }}
-        </t-tag>
+        <dl class="business-detail-header__facts">
+          <div
+            v-for="fact in visibleFacts"
+            :key="fact.label"
+          >
+            <dt>{{ fact.label }}</dt>
+            <dd>{{ fact.value }}</dd>
+          </div>
+        </dl>
       </div>
-      <dl class="business-detail-header__facts">
-        <div
-          v-for="fact in visibleFacts"
-          :key="fact.label"
+      <div class="business-detail-header__actions">
+        <t-button
+          v-if="primaryActionLabel"
+          theme="primary"
+          :disabled="primaryActionDisabled"
+          @click="emit('primary-action')"
         >
-          <dt>{{ fact.label }}</dt>
-          <dd>{{ fact.value }}</dd>
-        </div>
-      </dl>
-    </div>
-    <div class="business-detail-header__actions">
-      <t-button
-        v-if="primaryActionLabel"
-        theme="primary"
-        :disabled="primaryActionDisabled"
-        @click="emit('primary-action')"
-      >
-        {{ primaryActionLabel }}
-      </t-button>
-      <slot name="actions" />
+          {{ primaryActionLabel }}
+        </t-button>
+        <slot name="actions" />
+      </div>
     </div>
   </header>
 </template>
 
 <style scoped>
 .business-detail-header {
+  min-width: 0;
+  padding-bottom: var(--jg-space-lg);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+  container-name: jg-detail-header;
+  container-type: inline-size;
+}
+
+.business-detail-header__layout {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--jg-space-xl);
-  padding-bottom: var(--jg-space-lg);
-  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
 .business-detail-header__main {
@@ -153,11 +161,12 @@ const visibleFacts = computed(() => [
 .business-detail-header__actions {
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: var(--jg-space-sm);
 }
 
-@media (max-width: 720px) {
-  .business-detail-header {
+@container jg-detail-header (max-width: 760px) {
+  .business-detail-header__layout {
     flex-direction: column;
   }
 }

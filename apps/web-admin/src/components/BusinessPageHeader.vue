@@ -7,20 +7,28 @@ defineProps<{
 
 <template>
   <header class="business-page-header">
-    <div class="business-page-header__copy">
-      <h1>{{ title }}</h1>
-      <p v-if="description">
-        {{ description }}
-      </p>
-    </div>
-    <div class="business-page-header__actions">
-      <slot name="actions" />
+    <div class="business-page-header__layout">
+      <div class="business-page-header__copy">
+        <h1>{{ title }}</h1>
+        <p v-if="description">
+          {{ description }}
+        </p>
+      </div>
+      <div class="business-page-header__actions">
+        <slot name="actions" />
+      </div>
     </div>
   </header>
 </template>
 
 <style scoped>
 .business-page-header {
+  min-width: 0;
+  container-name: jg-page-header;
+  container-type: inline-size;
+}
+
+.business-page-header__layout {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -57,8 +65,8 @@ defineProps<{
   gap: var(--jg-space-sm);
 }
 
-@media (max-width: 720px) {
-  .business-page-header {
+@container jg-page-header (max-width: 720px) {
+  .business-page-header__layout {
     align-items: stretch;
     flex-direction: column;
   }
