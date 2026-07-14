@@ -1,5 +1,5 @@
 <template>
-  <section class="template-list-page">
+  <section class="template-list-page jg-responsive-ledger">
     <header class="page-head">
       <div>
         <h1>结算模板库</h1>
@@ -20,49 +20,52 @@
       class="message"
     />
 
-    <t-table
-      row-key="id"
-      :columns="columns"
-      :data="rows"
-      :loading="loading"
-      table-layout="fixed"
-      empty="尚未创建结算模板"
-    >
-      <template #templateName="{ row }">
-        <div class="name-cell">
-          <strong>{{ row.name }}</strong>
-          <span>{{ row.code }}</span>
-        </div>
-      </template>
-      <template #latestVersion="{ row }">
-        <span v-if="latestVersion(row)">V{{ latestVersion(row)?.versionNo }}</span>
-        <span v-else>尚无版本</span>
-      </template>
-      <template #status="{ row }">
-        <t-tag
-          v-if="latestVersion(row)"
-          :theme="latestVersion(row)?.status === 'published' ? 'success' : 'default'"
-          variant="light"
-        >
-          {{ settlementTemplateStatusLabel(latestVersion(row)!.status) }}
-        </t-tag>
-        <span v-else>—</span>
-      </template>
-      <template #compatibility="{ row }">
-        {{ compatibilitySummary(row) }}
-      </template>
-      <template #updatedAt="{ row }">
-        {{ formatDateTime(row.updatedAt) }}
-      </template>
-      <template #operation="{ row }">
-        <t-link
-          theme="primary"
-          @click="openTemplate(row)"
-        >
-          治理版本
-        </t-link>
-      </template>
-    </t-table>
+    <div class="jg-table-region jg-table-region--standard">
+      <t-table
+        row-key="id"
+        :columns="columns"
+        :data="rows"
+        :loading="loading"
+        table-layout="fixed"
+        :horizontal-scroll-affixed-bottom="true"
+        empty="尚未创建结算模板"
+      >
+        <template #templateName="{ row }">
+          <div class="name-cell">
+            <strong>{{ row.name }}</strong>
+            <span>{{ row.code }}</span>
+          </div>
+        </template>
+        <template #latestVersion="{ row }">
+          <span v-if="latestVersion(row)">V{{ latestVersion(row)?.versionNo }}</span>
+          <span v-else>尚无版本</span>
+        </template>
+        <template #status="{ row }">
+          <t-tag
+            v-if="latestVersion(row)"
+            :theme="latestVersion(row)?.status === 'published' ? 'success' : 'default'"
+            variant="light"
+          >
+            {{ settlementTemplateStatusLabel(latestVersion(row)!.status) }}
+          </t-tag>
+          <span v-else>—</span>
+        </template>
+        <template #compatibility="{ row }">
+          {{ compatibilitySummary(row) }}
+        </template>
+        <template #updatedAt="{ row }">
+          {{ formatDateTime(row.updatedAt) }}
+        </template>
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="openTemplate(row)"
+          >
+            治理版本
+          </t-link>
+        </template>
+      </t-table>
+    </div>
   </section>
 </template>
 
@@ -167,5 +170,12 @@ onMounted(() => void loadTemplates());
 .name-cell {
   display: grid;
   gap: var(--jg-space-xs);
+}
+
+@container jg-page (max-width: 620px) {
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

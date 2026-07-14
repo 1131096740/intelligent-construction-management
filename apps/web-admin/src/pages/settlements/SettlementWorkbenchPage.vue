@@ -1,5 +1,8 @@
 <template>
-  <section class="settlement-workbench-page">
+  <section
+    class="settlement-workbench-page jg-responsive-workspace"
+    data-jg-scroll-owner="child"
+  >
     <header class="workbench-head">
       <div>
         <h1>结算工作台</h1>
@@ -172,14 +175,18 @@
         </div>
       </div>
 
-      <t-table
+      <div
         v-if="importPreview?.errors.length"
-        class="import-error-table"
-        row-key="key"
-        size="small"
-        :columns="importErrorColumns"
-        :data="importErrorRows"
-      />
+        class="import-error-table jg-table-region jg-table-region--standard"
+      >
+        <t-table
+          row-key="key"
+          size="small"
+          :columns="importErrorColumns"
+          :data="importErrorRows"
+          :horizontal-scroll-affixed-bottom="true"
+        />
+      </div>
     </section>
 
     <section
@@ -249,7 +256,7 @@
     />
     <div
       v-else
-      class="table-shell"
+      class="table-shell jg-table-region jg-table-region--workspace-wide"
     >
       <t-table
         row-key="id"
@@ -259,6 +266,7 @@
         :data="workbenchRows"
         :max-height="500"
         :loading="sourceLoading"
+        :horizontal-scroll-affixed-bottom="true"
         empty="请选择有效合同后加载清单"
       >
         <template #selected="{ row }">
@@ -358,7 +366,7 @@
 
     <section
       v-if="adjustments.length"
-      class="adjustment-section"
+      class="adjustment-section jg-table-region jg-table-region--standard"
     >
       <div class="section-title">
         <div>
@@ -371,6 +379,7 @@
         size="small"
         :columns="adjustmentColumns"
         :data="adjustments"
+        :horizontal-scroll-affixed-bottom="true"
       >
         <template #name="{ row }">
           <t-input
@@ -1492,13 +1501,8 @@ onBeforeUnmount(() => {
 
 .table-shell {
   min-width: 0;
-  overflow-x: auto;
   background: var(--jg-bg-panel);
   border: var(--jg-border-width-base) solid var(--jg-border);
-}
-
-.table-shell :deep(.t-table) {
-  min-width: 1680px;
 }
 
 .workbench-state {
@@ -1546,12 +1550,11 @@ onBeforeUnmount(() => {
 }
 
 .workbench-footer {
-  position: fixed;
+  position: sticky;
   z-index: 20;
-  right: var(--jg-space-xl);
   bottom: var(--jg-space-lg);
-  left: calc(var(--jg-layout-sidebar-width) + var(--jg-space-xl));
   min-height: 60px;
+  margin-top: var(--jg-space-lg);
   padding: var(--jg-space-sm) var(--jg-space-lg);
   background: var(--jg-bg-panel);
   border: var(--jg-border-width-base) solid var(--jg-border);
@@ -1600,7 +1603,7 @@ onBeforeUnmount(() => {
   font-size: var(--jg-font-body);
 }
 
-@media (max-width: 1100px) {
+@container jg-page (max-width: 840px) {
   .basic-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1618,9 +1621,22 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (max-width: 900px) {
-  .workbench-footer {
-    left: var(--jg-space-lg);
+@container jg-page (max-width: 620px) {
+  .workbench-head,
+  .workbench-toolbar,
+  .import-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .basic-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .head-actions,
+  .toolbar-actions,
+  .batch-remark {
+    width: 100%;
   }
 }
 </style>

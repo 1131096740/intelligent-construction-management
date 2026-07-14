@@ -144,7 +144,10 @@ const responsiveGovernedFiles = new Map([
   ["src/pages/contract-templates/LayoutTemplateEditorPage.vue", "workspace"],
   ["src/pages/contract-templates/StandardClauseLibraryPage.vue", "ledger"],
   ["src/pages/contracts/ContractTakeoverPage.vue", "workspace"],
-  ["src/pages/contracts/ContractWorkbenchPage.vue", "workspace"]
+  ["src/pages/contracts/ContractWorkbenchPage.vue", "workspace"],
+  ["src/pages/settlement-templates/SettlementTemplateEditorPage.vue", "workspace"],
+  ["src/pages/settlement-templates/SettlementTemplateListPage.vue", "ledger"],
+  ["src/pages/settlements/SettlementWorkbenchPage.vue", "workspace"]
 ]);
 
 const responsiveRootClassByType = {

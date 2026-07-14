@@ -58,6 +58,10 @@ body {
   min-width: var(--jg-layout-ledger-table-wide-min-width);
 }
 
+.jg-table-region--workspace-wide .t-table__content > table {
+  min-width: var(--jg-layout-workspace-min-width-wide);
+}
+
 .jg-workspace-scroll {
   width: 100%;
   max-width: 100%;

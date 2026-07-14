@@ -34,6 +34,16 @@ describe("settlement creation workbench structure", () => {
     expect(page).toContain("后端本期合计");
   });
 
+  it("delegates horizontal overflow to each professional table region", () => {
+    expect(page).toContain("jg-responsive-workspace");
+    expect(page).toContain('data-jg-scroll-owner="child"');
+    expect(page).toContain("jg-table-region--workspace-wide");
+    expect(page).toContain("jg-table-region--standard");
+    expect(page).toContain(':horizontal-scroll-affixed-bottom="true"');
+    expect(page).not.toContain(".table-shell :deep(.t-table)");
+    expect(page).not.toContain("@media (max-width:");
+  });
+
   it("submits selected settlementLines without a client-owned total", () => {
     expect(page).toContain("settlementLines: currentPayload.value");
     expect(page).toContain("settlementTemplateVersionId: selectedSettlementTemplateVersionId.value");
