@@ -10,7 +10,6 @@ const DEFAULT_SOURCE_DIR = path.join(ROOT, "src");
 // migration allowlist
 const allowlistedFiles = new Set([
   "src/app/App.vue",
-  "src/app/AdminLayout.vue",
   "src/app/design-tokens.css",
   "src/components/ApprovalTimeline.vue",
   "src/components/BusinessActionPanel.vue",
@@ -36,11 +35,8 @@ const allowlistedFiles = new Set([
   "src/pages/contracts/workbench/ContractProfessionalFieldsSection.vue",
   "src/pages/contracts/workbench/ContractReadinessPanel.vue",
   "src/pages/delegations/DelegationListPage.vue",
-  "src/pages/home/HomePage.vue",
   "src/pages/login/ChangePasswordPage.vue",
   "src/pages/login/LoginPage.vue",
-  "src/pages/payments/PaymentDetailPage.vue",
-  "src/pages/payments/PaymentListPage.vue",
   "src/pages/projects/ProjectOperatingOverviewPage.vue",
   "src/pages/projects/ProjectRosterPage.vue",
   "src/pages/route-placeholder/RoutePlaceholderPage.vue",
@@ -93,6 +89,39 @@ const businessLanguagePatterns = [
   { pattern: /\bworkflow\b/i, message: "用户可见文案不得出现 workflow，请改为审批进度" },
   { pattern: /\bforceSave\b/i, message: "用户可见文案不得出现 forceSave，请改为保存当前正文" },
   { pattern: /\bbillItem\b/i, message: "用户可见文案不得出现 billItem，请改为合同清单项" }
+];
+
+const p0VisualFiles = new Set([
+  "src/app/AdminLayout.vue",
+  "src/pages/home/HomePage.vue",
+  "src/pages/payments/PaymentListPage.vue",
+  "src/pages/payments/PaymentWorkbenchPage.vue",
+  "src/pages/payments/PaymentDetailPage.vue",
+  "src/components/BusinessStatusSummary.vue",
+  "src/components/BusinessDetailHeader.vue",
+  "src/components/PaymentConfirmationSummary.vue"
+]);
+
+const p0VisualPatterns = [
+  { pattern: /\banimation\s*:/i, message: "P0 样板页禁止自定义动画" },
+  { pattern: /\btransition\s*:/i, message: "P0 样板页禁止自定义过渡动效" },
+  { pattern: /(?:linear|radial)-gradient\s*\(/i, message: "P0 样板页禁止渐变" }
+];
+
+const p0BusinessLanguageFiles = new Set([
+  "src/pages/home/HomePage.vue",
+  "src/pages/payments/PaymentListPage.vue",
+  "src/pages/payments/payment-list.config.ts",
+  "src/pages/payments/PaymentWorkbenchPage.vue",
+  "src/pages/payments/PaymentDetailPage.vue",
+  "src/components/PaymentConfirmationSummary.vue"
+]);
+
+const p0BusinessLanguagePatterns = [
+  { pattern: /读取付款预览/, message: "P0 用户文案应使用校验可付款额度" },
+  { pattern: /当前系统未提供/, message: "P0 缺失值应使用中性占位并集中说明" },
+  { pattern: /(?:后端|前端|读模型|API\s*约束)/i, message: "P0 用户文案不得暴露实现术语" },
+  { pattern: /\b(?:limit|offset|total)\b/i, message: "P0 用户文案不得暴露分页参数" }
 ];
 
 function relativePath(filePath) {
@@ -154,6 +183,14 @@ export function findUiRuleViolations(filePath, source) {
     }
   }
 
+  if (p0VisualFiles.has(relative)) {
+    for (const rule of p0VisualPatterns) {
+      if (rule.pattern.test(source)) {
+        violations.push({ file: relative, message: rule.message });
+      }
+    }
+  }
+
   return violations;
 }
 
@@ -207,8 +244,12 @@ export function findBusinessLanguageViolations(filePath, source) {
     ? [visibleTemplateText(source), ...selectedTemplateAttributes(source), ...scriptUserFacingStrings(relative, source)]
     : scriptUserFacingStrings(relative, source);
 
+  const patterns = p0BusinessLanguageFiles.has(relative)
+    ? [...businessLanguagePatterns, ...p0BusinessLanguagePatterns]
+    : businessLanguagePatterns;
+
   return candidates.flatMap((candidate) =>
-    businessLanguagePatterns.flatMap((rule) =>
+    patterns.flatMap((rule) =>
       rule.pattern.test(candidate) ? [{ file: relative, message: rule.message }] : []
     )
   );

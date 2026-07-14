@@ -21,6 +21,25 @@ export interface PaymentFlowSummaryItem {
   tone?: PaymentDetailTone;
 }
 
+export interface PaymentDetailHeaderViewModel {
+  businessCode: string;
+  title: string;
+  status: string;
+  statusTone: PaymentDetailTone;
+  owner: string;
+  currentNode: string;
+  nextStep: string;
+}
+
+export const paymentDetailTabs = [
+  { value: "overview", label: "概览" },
+  { value: "process", label: "流程" },
+  { value: "evidence", label: "凭证资料" },
+  { value: "execution", label: "实付与入账" },
+  { value: "related", label: "关联记录" },
+  { value: "audit", label: "审计" }
+] as const;
+
 export interface PaymentExecutionAllocationRow {
   id: string;
   executionCode: string;
@@ -94,6 +113,34 @@ export function buildPaymentFlowSummary(
   ];
 }
 
+export function buildPaymentDetailHeader(
+  businessCode: string,
+  title: string,
+  meta: readonly PaymentDetailMetaItem[],
+  executionSteps: readonly PaymentDetailStep[]
+): PaymentDetailHeaderViewModel {
+  const paymentStatus = pickMetaItem(meta, "实付状态");
+  const approvalStatus = pickMetaItem(meta, "审批状态");
+  const nextStep = pickMetaItem(meta, "下一步动作");
+  const owner = pickMetaItem(meta, "责任部门");
+  const currentStep = executionSteps.find((step) =>
+    step.status === "当前状态" || ["warning", "primary"].includes(step.tone)
+  );
+  const normalizedTitle = title.startsWith(`${businessCode} · `)
+    ? title.slice(`${businessCode} · `.length)
+    : title;
+
+  return {
+    businessCode,
+    title: normalizedTitle || "付款详情",
+    status: paymentStatus.value !== "-" ? paymentStatus.value : approvalStatus.value,
+    statusTone: paymentStatus.tone ?? approvalStatus.tone ?? "default",
+    owner: owner.value,
+    currentNode: currentStep?.label ?? nextStep.value,
+    nextStep: nextStep.value
+  };
+}
+
 export const paymentExecutionAllocationColumns: PrimaryTableCol<PaymentExecutionAllocationRow>[] = [
   { colKey: "executionCode", title: "实付记录", width: 128 },
   { colKey: "settlementNo", title: "结算单", width: 128 },
@@ -129,4 +176,8 @@ function pickSummaryItem(
 ): PaymentFlowSummaryItem {
   const item = items.find((candidate) => candidate.label === label);
   return { label, value: item?.value ?? "-", tone: item?.tone };
+}
+
+function pickMetaItem(items: readonly PaymentDetailMetaItem[], label: string) {
+  return items.find((candidate) => candidate.label === label) ?? { label, value: "-" };
 }

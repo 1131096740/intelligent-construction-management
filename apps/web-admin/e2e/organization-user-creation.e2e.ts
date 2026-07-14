@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("全局管理员安全创建零岗位人员并在成功后清空临时密码", async ({ page }) => {
+test("全局管理员安全创建待本人确认人员并在成功后清空临时密码", async ({ page }) => {
   let directoryReads = 0;
   let roleApplyCalls = 0;
   const createBodies: Array<Record<string, unknown>> = [];
@@ -47,13 +47,16 @@ test("全局管理员安全创建零岗位人员并在成功后清空临时密�
           departments: 1,
           activeUsers: directoryReads > 1 ? 2 : 1,
           inactiveUsers: 0,
-          positions: 1
+          positions: 2
         },
         departments: [
           { id: "department-1", name: "合同部", parentId: null, isActive: true, children: [] }
         ],
         projects: [],
-        positions: [{ id: "position-1", key: "super_admin", name: "系统管理员" }],
+        positions: [
+          { id: "position-1", key: "super_admin", name: "系统管理员" },
+          { id: "position-2", key: "finance_staff", name: "财务员" }
+        ],
         users: []
       })
     });
@@ -91,7 +94,7 @@ test("全局管理员安全创建零岗位人员并在成功后清空临时密�
       contentType: "application/json",
       body: JSON.stringify({
         id: "user-new",
-        name: "张三",
+        name: "待本人确认",
         phone: "13800000001",
         departmentId: "department-1",
         isActive: true,
@@ -112,10 +115,11 @@ test("全局管理员安全创建零岗位人员并在成功后清空临时密�
   await expect(page.getByRole("heading", { name: "组织权限" })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "新增人员" }).click();
-  await page.getByPlaceholder("请输入真实姓名").fill(" 张三 ");
   await page.getByPlaceholder("请输入 11 位中国大陆手机号").fill("13800000001");
   await page.getByPlaceholder("请选择启用部门").click();
   await page.locator(".t-select__dropdown:visible").getByText("合同部", { exact: true }).click();
+  await page.getByPlaceholder("请选择允许授予的初始岗位").click();
+  await page.locator(".t-select__dropdown:visible").getByText("财务员", { exact: true }).click();
   await page.getByRole("button", { name: "显示" }).click();
   const temporaryPasswordInput = page.getByPlaceholder("请生成临时密码");
   const temporaryPassword = await temporaryPasswordInput.inputValue();
@@ -129,14 +133,14 @@ test("全局管理员安全创建零岗位人员并在成功后清空临时密�
   expect(roleApplyCalls).toBe(0);
   expect(createBodies).toEqual([
     {
-      name: "张三",
       phone: "13800000001",
       departmentId: "department-1",
+      initialRoleKey: "finance_staff",
       temporaryPassword,
       confirmationPassword: " current-password "
     }
   ]);
-  expect(createBodies[0]).not.toHaveProperty("roleKeys");
+  expect(createBodies[0]).not.toHaveProperty("name");
   expect(createBodies[0]).not.toHaveProperty("mustChangePassword");
   await expect(temporaryPasswordInput).not.toBeVisible();
   await expect(temporaryPasswordInput).toHaveValue("");

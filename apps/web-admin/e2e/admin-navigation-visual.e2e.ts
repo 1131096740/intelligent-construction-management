@@ -56,13 +56,15 @@ test("keeps the active navigation inside the sidebar and strengthens group headi
   expect(activeBox).not.toBeNull();
   expect(activeBox!.x).toBeGreaterThan(asideBox!.x);
   expect(activeBox!.x + activeBox!.width).toBeLessThan(asideBox!.x + asideBox!.width);
-  await expect(activeItem).toHaveCSS("background-color", "rgb(232, 240, 255)");
-  await expect(activeItem).toHaveCSS("color", "rgb(0, 82, 204)");
-  await expect(groupLabel).toHaveCSS("font-size", "13px");
+  await expect(activeItem).toHaveCSS("background-color", "rgb(237, 244, 255)");
+  await expect(activeItem).toHaveCSS("color", "rgb(0, 82, 217)");
+  await expect(activeItem).toHaveCSS("border-left-width", "3px");
+  await expect(activeItem).toHaveCSS("box-shadow", "none");
+  await expect(groupLabel).toHaveCSS("font-size", "14px");
   await expect(groupLabel).toHaveCSS("font-weight", "700");
   await expect(page.locator(".menu-group-label")).toHaveText([
     "工作入口",
-    "项目资金链",
+    "项目",
     "合同",
     "结算",
     "付款",

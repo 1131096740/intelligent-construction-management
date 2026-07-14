@@ -30,7 +30,8 @@ function openAction(to: string) {
         <t-button
           v-for="action in visibleActions"
           :key="action.label"
-          variant="outline"
+          :theme="action.primary ? 'primary' : 'default'"
+          :variant="action.primary ? 'base' : 'outline'"
           @click="openAction(action.to)"
         >
           {{ action.label }}

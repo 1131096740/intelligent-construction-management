@@ -1,14 +1,18 @@
 <script setup lang="ts">
-defineProps<{
+withDefaults(defineProps<{
   title: string;
   description?: string;
-}>();
+  appearance?: "card" | "plain";
+}>(), {
+  description: "",
+  appearance: "card"
+});
 </script>
 
 <template>
   <t-card
-    class="business-table-toolbar"
-    bordered
+    :class="['business-table-toolbar', `business-table-toolbar--${appearance}`]"
+    :bordered="appearance === 'card'"
   >
     <div class="business-table-toolbar__header">
       <div>
@@ -30,6 +34,10 @@ defineProps<{
 <style scoped>
 .business-table-toolbar {
   background: var(--jg-color-bg-panel);
+}
+
+.business-table-toolbar--plain :deep(.t-card__body) {
+  padding: var(--jg-space-sm) 0 0;
 }
 
 .business-table-toolbar__header {

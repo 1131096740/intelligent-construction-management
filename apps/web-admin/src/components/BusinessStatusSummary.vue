@@ -5,16 +5,19 @@ import {
   type BusinessStatusSummaryItem
 } from "./business-status-summary.config";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   items: BusinessStatusSummaryItem[];
-}>();
+  appearance?: "status" | "metrics";
+}>(), {
+  appearance: "status"
+});
 
 const normalizedItems = computed(() => normalizeBusinessStatusSummaryItems(props.items));
 </script>
 
 <template>
   <t-card
-    class="business-status-summary"
+    :class="['business-status-summary', `business-status-summary--${appearance}`]"
     bordered
   >
     <div
@@ -23,7 +26,14 @@ const normalizedItems = computed(() => normalizeBusinessStatusSummaryItems(props
       class="business-status-summary__item"
     >
       <span class="business-status-summary__label">{{ item.label }}</span>
+      <span
+        v-if="appearance === 'metrics'"
+        :class="['business-status-summary__value', `business-status-summary__value--${item.tone ?? 'default'}`]"
+      >
+        {{ item.value }}
+      </span>
       <t-tag
+        v-else
         :theme="item.tone"
         variant="light"
       >
@@ -54,5 +64,50 @@ const normalizedItems = computed(() => normalizeBusinessStatusSummaryItems(props
 .business-status-summary__label {
   color: var(--jg-color-text-tertiary);
   font-size: var(--jg-font-size-meta);
+}
+
+.business-status-summary--metrics :deep(.t-card__body) {
+  grid-template-columns: repeat(auto-fit, minmax(var(--jg-layout-summary-metric-min-width), 1fr));
+  gap: 0;
+  padding: 0;
+}
+
+.business-status-summary--metrics .business-status-summary__item {
+  justify-content: center;
+  min-height: 72px;
+  padding: var(--jg-space-md) var(--jg-space-lg);
+  border-right: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.business-status-summary--metrics .business-status-summary__item:last-child {
+  border-right: 0;
+}
+
+.business-status-summary--metrics .business-status-summary__label {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-summary-label);
+}
+
+.business-status-summary__value {
+  color: var(--jg-color-text-primary);
+  font-size: var(--jg-font-size-summary-value);
+  font-weight: var(--jg-font-weight-semibold);
+  line-height: var(--jg-line-height-tight);
+}
+
+.business-status-summary__value--primary {
+  color: var(--jg-color-brand);
+}
+
+.business-status-summary__value--success {
+  color: var(--jg-color-success);
+}
+
+.business-status-summary__value--warning {
+  color: var(--jg-color-warning);
+}
+
+.business-status-summary__value--danger {
+  color: var(--jg-color-danger);
 }
 </style>

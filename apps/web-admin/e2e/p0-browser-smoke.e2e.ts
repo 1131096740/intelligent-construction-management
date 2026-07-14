@@ -54,6 +54,7 @@ async function routeCoreDetailMocks(page: Page) {
         id: "HT-E2E-001",
         contractVersionId: "contract-version-e2e",
         title: "HT-E2E-001 · E2E 钢材采购合同",
+        changeVersions: [],
         meta: [
           { label: "当前状态", value: "待归档确认", tone: "primary" },
           { label: "当前版本", value: "原合同 v1" },
@@ -260,6 +261,11 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
     amountCents: "100000000",
     paymentTermsOriginalText: "按月结算付款",
     takeoverLevel: "B",
+    suggestedTakeoverLevel: "B",
+    takeoverLevelAdjustmentReason: null,
+    levelRiskText: "B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。",
+    paymentBlockingHint: "尚未完成主管确认，后续付款申请会被系统阻断。",
+    evidenceGapSummary: "历史资料已完成本轮复核。",
     takeoverStatus: "pending_review",
     lifecycleStatus: "in_progress",
     signedAt: "2026-01-01T00:00:00.000Z",
@@ -277,12 +283,23 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
     evidenceSummary: "合同扫描件、历史结算台账、付款凭证",
     takeoverCutoffDate: "2026-06-30T00:00:00.000Z",
     responsibleUserId: "合同部张工",
+    responsibleUserName: "合同部张工",
     reviewComment: "预算和财务已复核历史余额",
     acceptanceConclusion: "可作为 B 级合同接管依据",
     submittedAt: "2026-07-03T10:00:00.000Z",
     confirmedAt: null,
     historicalBalanceConfirmedAt: null,
+    evidenceChecklist: [],
     evidenceFiles: [],
+    corrections: [],
+    postConfirmationVerification: {
+      statusLabel: "未到核验",
+      summaryText: "主管确认后再核验接管后的业务闭环。",
+      newSettlementCount: 0,
+      paymentRequestCount: 0,
+      paymentExecutionCount: 0,
+      financeRecordCount: 0
+    },
     createdAt: "2026-07-03T09:00:00.000Z",
     updatedAt: "2026-07-03T10:00:00.000Z"
   };
@@ -334,21 +351,25 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
   await page.route("**/api/projects/project-1/contract-takeovers", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify([takeover]) })
   );
+  await page.route("**/api/projects/project-1/contract-takeovers/import-batches", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify([]) })
+  );
   await loginWithMockedAuth(page, ["contract_staff"]);
 
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
   await expect(page.getByText("待复核历史合同")).toBeVisible();
-  await expect(page.getByText("合同接管复核 · 已停留 1 天")).toBeVisible();
+  await expect(page.getByText("合同接管复核")).toBeVisible();
+  await expect(page.getByText("已停留 1 天")).toBeVisible();
 
   await page.getByText("历史合同接管").click();
   await expect(page.getByRole("heading", { name: "历史合同接管" })).toBeVisible();
   await expect(page.getByRole("button", { name: "新增接管合同" })).toBeVisible();
-  await expect(page.getByText("接管步骤")).toBeVisible();
-  await expect(page.getByText("主管确认")).toBeVisible();
-  await expect(page.getByText("多部门复核")).toBeVisible();
+  await expect(page.getByText("接管进度概览（只读）")).toBeVisible();
+  await expect(page.getByText("复核确认", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("多部门复核后由主管用当前密码确认")).toBeVisible();
 
   await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
-  await expect(page.getByText("确认前核验摘要")).toBeVisible();
+  await expect(page.locator(".detail-panel").getByRole("heading", { name: "复核确认" })).toBeVisible();
   const confirmationSummary = page.locator(".detail-panel .confirmation-summary");
   await expect(confirmationSummary.getByText("历史累计结算")).toBeVisible();
   await expect(confirmationSummary.getByText("¥600,000.00")).toBeVisible();
@@ -376,24 +397,28 @@ test("core detail pages expose flow summaries, actions, files, and timelines", a
 
   await page.goto("/contracts/HT-E2E-001");
   await expect(page.getByRole("heading", { name: "合同详情" })).toBeVisible();
-  await expect(page.locator(".flow-summary-strip").filter({ hasText: "确认归档" })).toBeVisible();
-  await expect(page.getByText("需要当前处理人操作")).toBeVisible();
+  await expect(page.locator(".contract-detail-summary").filter({ hasText: "确认归档" })).toBeVisible();
+  await expect(page.getByText("当前账号在此单据暂无可办理动作。")).toBeVisible();
   await expect(page.getByText("E2E-盖章合同.pdf")).toBeVisible();
   await expect(page.getByText("审批通过").first()).toBeVisible();
 
   await page.goto("/settlements/JS-E2E-001");
   await expect(page.getByRole("heading", { name: "结算详情" })).toBeVisible();
   await expect(page.locator(".flow-summary-strip").filter({ hasText: "主管确认归档" })).toBeVisible();
-  await expect(page.getByText("需要合同主管确认")).toBeVisible();
+  await expect(page.getByText("当前账号在此单据暂无可办理动作。")).toBeVisible();
   await expect(page.getByText("E2E-结算签认件.pdf")).toBeVisible();
   await expect(page.getByText("剩余可申请")).toBeVisible();
 
   await page.goto("/payments/FK-E2E-001");
-  await expect(page.getByRole("heading", { name: "付款详情" })).toBeVisible();
-  await expect(page.locator(".flow-summary-strip").filter({ hasText: "出纳付款登记" })).toBeVisible();
-  await expect(page.getByText("需要出纳操作")).toBeVisible();
-  await expect(page.getByText("E2E-付款审批单.pdf")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "E2E 付款申请" })).toBeVisible();
+  await expect(page.locator(".business-detail-header").filter({ hasText: "出纳付款登记" })).toBeVisible();
   await expect(page.getByText("审批通过不等于实际付款完成")).toBeVisible();
+  await page.locator(".detail-navigation").getByText("流程", { exact: true }).click();
+  await expect(page.getByText("需要出纳操作")).toBeVisible();
+  await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+  await expect(page.getByText("E2E-付款审批单.pdf")).toBeVisible();
+  await page.locator(".detail-navigation").getByText("审计", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "审批与办理时间线" })).toBeVisible();
 });
 
 test("settlement and payment detail failures do not show static samples", async ({ page }) => {

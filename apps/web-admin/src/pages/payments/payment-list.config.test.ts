@@ -10,6 +10,8 @@ import {
   paymentCreateSourceOptions,
   paymentLedgerColumns,
   paymentRules,
+  paymentPaginationBlockReason,
+  paymentLedgerFilterOptions,
   paymentSummaryItems,
   toPaymentApplicationPreviewRows,
   toPaymentCapacityExplanationItems,
@@ -86,6 +88,23 @@ describe("payment ledger page configuration", () => {
         keyword: "FK-001"
       }).map((row) => row.id)
     ).toEqual(["payment-1"]);
+  });
+
+  it("derives stable select options from the returned ledger facts", () => {
+    const options = paymentLedgerFilterOptions([
+      paymentRow({ project: "项目乙", settlementNo: "JS-002", approvalStatus: "审批中", paymentStatus: "未付款" }),
+      paymentRow({ project: "项目甲", settlementNo: "JS-001", approvalStatus: "已通过", paymentStatus: "已付款" }),
+      paymentRow({ project: "项目乙", settlementNo: "JS-002", approvalStatus: "审批中", paymentStatus: "未付款" })
+    ]);
+
+    expect(options.project.map((option) => option.value)).toEqual(["", "项目甲", "项目乙"]);
+    expect(options.approvalStatus.map((option) => option.value)).toEqual(["", "审批中", "已通过"]);
+  });
+
+  it("records the real server-pagination blocker instead of defining fake pagination", () => {
+    expect(paymentPaginationBlockReason).toContain("暂不支持翻页");
+    expect(paymentPaginationBlockReason).toContain("不要把当前列表误认为全部记录".replace("不要", "避免"));
+    expect(paymentPaginationBlockReason).not.toContain("offset");
   });
 
   it("states the core payment gate and execution rules", () => {

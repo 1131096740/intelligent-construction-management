@@ -8,7 +8,7 @@
     </a>
     <t-aside
       class="aside"
-      width="208px"
+      width="var(--jg-layout-sidebar-width)"
     >
       <div class="brand">
         建工智管
@@ -48,14 +48,16 @@
         aria-label="最近打开的业务单据"
       >
         <span>最近打开</span>
-        <button
+        <t-button
           v-for="item in recentBusinessRoutes"
           :key="item.path"
-          type="button"
+          class="recent-route"
+          size="small"
+          variant="outline"
           @click="go(item.path)"
         >
           {{ item.label }}
-        </button>
+        </t-button>
       </div>
       <t-content
         id="main-content"
@@ -163,7 +165,9 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
 <style scoped>
 .admin-shell {
   min-height: 100vh;
-  color: #151922;
+  background: var(--jg-color-bg-page);
+  color: var(--jg-color-text-primary);
+  font-family: var(--jg-font-family-sans);
 }
 
 .skip-link {
@@ -172,30 +176,33 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   left: 8px;
   z-index: 20;
   padding: 8px 12px;
-  background: #151922;
-  color: #fff;
-  border-radius: 4px;
+  background: var(--jg-color-text-primary);
+  color: var(--jg-color-text-inverse);
+  border-radius: var(--jg-radius-control);
   transform: translateY(-160%);
 }
 
-.skip-link:focus {
+.skip-link:focus-visible {
   transform: translateY(0);
+  outline: var(--jg-border-width-accent) solid var(--jg-color-focus-outline);
+  outline-offset: var(--jg-space-xs);
 }
 
 .aside {
-  flex: 0 0 208px;
-  background: #f9fafc;
-  border-right: 1px solid #dce1e8;
+  flex: 0 0 var(--jg-layout-sidebar-width);
+  background: var(--jg-color-bg-surface);
+  border-right: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
 .brand {
-  height: 48px;
+  box-sizing: border-box;
+  height: var(--jg-layout-header-height);
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  border-bottom: 1px solid #dce1e8;
-  font-size: 17px;
-  font-weight: 700;
+  padding: 0 var(--jg-layout-content-padding-compact);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+  font-size: var(--jg-font-size-section-title);
+  font-weight: var(--jg-font-weight-bold);
 }
 
 .menu {
@@ -214,10 +221,6 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   margin: 1px var(--jg-space-lg) 1px 0;
   border-radius: var(--jg-radius-md);
   color: var(--jg-text-main);
-  transition:
-    background-color 160ms ease,
-    color 160ms ease,
-    box-shadow 160ms ease;
 }
 
 .menu :deep(.t-menu__item:hover) {
@@ -227,9 +230,19 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
 
 .menu :deep(.t-menu__item.t-is-active) {
   background: var(--jg-bg-brand-soft);
-  box-shadow: inset var(--jg-border-width-accent) 0 0 var(--jg-brand);
+  border-left: var(--jg-border-width-accent) solid var(--jg-brand);
   color: var(--jg-brand);
   font-weight: 700;
+}
+
+.menu :deep(.t-menu__item:focus-visible) {
+  outline: var(--jg-border-width-accent) solid var(--jg-color-focus-outline);
+  outline-offset: var(--jg-space-xs);
+}
+
+.menu :deep(.t-menu__item.t-is-disabled) {
+  background: var(--jg-color-bg-disabled);
+  color: var(--jg-color-text-disabled);
 }
 
 .menu-group-label {
@@ -260,14 +273,14 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  height: 48px;
+  height: var(--jg-layout-header-height);
   display: flex;
   align-items: center;
-  padding: 0 24px;
-  background: #fff;
-  border-bottom: 1px solid #dce1e8;
-  color: #424955;
-  font-size: 12px;
+  padding: 0 var(--jg-layout-content-padding);
+  background: var(--jg-color-bg-surface);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
   white-space: nowrap;
 }
 
@@ -280,38 +293,30 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 24px;
-  background: #fff;
-  border-bottom: 1px solid #dce1e8;
+  padding: 0 var(--jg-layout-content-padding);
+  background: var(--jg-color-bg-surface);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
 .recent-strip span {
-  color: #767f8d;
-  font-size: 12px;
-  font-weight: 600;
+  flex: 0 0 auto;
+  color: var(--jg-color-text-muted);
+  font-size: var(--jg-font-size-meta);
+  font-weight: var(--jg-font-weight-semibold);
 }
 
-.recent-strip button {
+.recent-route {
   max-width: 190px;
-  min-height: 26px;
-  padding: 0 10px;
   overflow: hidden;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  background: #f7f9fc;
-  color: #424955;
-  font: inherit;
-  font-size: 12px;
+  border-radius: var(--jg-radius-control);
+  font-size: var(--jg-font-size-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
 }
 
-.recent-strip button:hover,
-.recent-strip button:focus {
-  border-color: #0052cc;
-  color: #0052cc;
-  outline: none;
+.recent-route:focus-visible {
+  outline: var(--jg-border-width-accent) solid var(--jg-color-focus-outline);
+  outline-offset: var(--jg-space-xs);
 }
 
 .content {
@@ -321,9 +326,9 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   min-width: 0;
   min-height: 0;
   flex: 1;
-  padding: 24px;
+  padding: var(--jg-layout-content-padding);
   overflow-x: auto;
-  background: #f4f6f9;
+  background: var(--jg-color-bg-page);
 }
 
 .main-shell {
@@ -339,7 +344,7 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   .aside {
     width: 100% !important;
     border-right: 0;
-    border-bottom: 1px solid #dce1e8;
+    border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
   }
 
   .brand {
@@ -378,7 +383,7 @@ function saveRecentBusinessRoutes(storageKey: string, routes: RecentBusinessRout
   }
 
   .content {
-    padding: 12px;
+    padding: var(--jg-layout-content-padding-compact);
   }
 }
 </style>

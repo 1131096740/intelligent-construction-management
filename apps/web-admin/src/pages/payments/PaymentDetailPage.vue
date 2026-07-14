@@ -1,565 +1,809 @@
 <template>
   <section class="payment-detail-page">
-    <div class="page-head">
-      <div>
-        <h1>付款详情</h1>
-        <p>{{ paymentDetailTitleView }}</p>
-      </div>
-      <div class="actions">
+    <BusinessDetailHeader
+      :business-code="paymentDetailHeaderView.businessCode"
+      :title="paymentDetailHeaderView.title"
+      :status="paymentDetailHeaderView.status"
+      :status-tone="paymentDetailHeaderView.statusTone"
+      :owner="paymentDetailHeaderView.owner"
+      :current-node="paymentDetailHeaderView.currentNode"
+      :next-step="paymentDetailHeaderView.nextStep"
+      :requested-amount="paymentRequestedAmountView"
+      :primary-action-label="paymentHeaderPrimaryActionLabel"
+      :primary-action-disabled="detailLoading"
+      @primary-action="openPrimaryAction"
+    >
+      <template #actions>
         <t-button
-          theme="primary"
+          variant="outline"
+          :disabled="detailLoading"
           @click="reloadPaymentDetail"
         >
           刷新
         </t-button>
-        <t-button @click="openChainLink('/audit')">
-          查看审批记录
+        <t-button
+          variant="text"
+          :disabled="detailLoading || !paymentDetail"
+          @click="openChainLink('/audit')"
+        >
+          审计记录
         </t-button>
-      </div>
-    </div>
+      </template>
+    </BusinessDetailHeader>
 
-    <div
-      v-if="paymentDetailLoadError"
-      class="detail-error"
+    <section
+      v-if="detailLoading && !paymentDetail"
+      class="detail-loading-skeleton"
+      aria-label="正在读取付款详情"
+      aria-busy="true"
     >
-      <strong>付款详情读取失败</strong>
-      <span>{{ paymentDetailLoadError }}</span>
-    </div>
-
-    <div class="meta-panel">
-      <div
-        v-for="item in paymentDetailMetaView"
-        :key="item.label"
-        class="meta-item"
-      >
-        <span>{{ item.label }}</span>
-        <strong :class="item.tone ? `tone-${item.tone}` : undefined">
-          {{ item.value }}
-        </strong>
+      <div class="detail-loading-skeleton__tabs">
+        <span
+          v-for="tab in 6"
+          :key="tab"
+        />
       </div>
-    </div>
-
-    <div class="flow-summary-strip">
-      <div
-        v-for="item in paymentFlowSummaryView"
-        :key="item.label"
-        class="flow-summary-item"
-      >
-        <span>{{ item.label }}</span>
-        <strong :class="item.tone ? `tone-${item.tone}` : undefined">
-          {{ item.value }}
-        </strong>
-      </div>
-    </div>
-
-    <div class="chain-strip">
-      <span>业务链路</span>
-      <t-link
-        v-for="link in paymentDetailChainLinksView"
-        :key="link.to"
-        theme="primary"
-        @click="openChainLink(link.to)"
-      >
-        {{ link.label }}
-      </t-link>
-    </div>
-
-    <t-card
-      id="approval"
-      class="section-card action-card"
-      title="流程动作"
-      :bordered="true"
-    >
-      <BusinessActionPanel :actions="paymentDetail?.availableActions ?? []" />
-      <div class="action-grid">
-        <div
-          v-if="showPaymentApprovalActions"
-          class="action-group"
-        >
-          <div class="action-title">
-            <strong>付款审批</strong>
-            <span>董事长/总经理或签</span>
-          </div>
-          <div
-            v-if="isPaymentActionEnabled('review_approval')"
-            class="action-fields"
-          >
-            <t-input
-              v-model="paymentActionForm.approvedAmountYuan"
-              placeholder="审批金额（元）"
-            />
-            <t-input
-              v-model="paymentActionForm.approvalComment"
-              placeholder="审批意见/备注(可选)"
-            />
-            <ApprovalSelfReviewFields
-              v-model:self-review-reason="paymentActionForm.selfReviewReason"
-              v-model:confirmation-password="paymentActionForm.selfReviewConfirmationPassword"
-              :required="requiresPaymentSelfReviewConfirmation"
-            />
-          </div>
-          <div class="action-buttons">
-            <t-button
-              v-if="isPaymentActionEnabled('review_approval')"
-              theme="primary"
-              :loading="actionBusy === 'approval'"
-              @click="submitApproval('approve')"
-            >
-              通过
-            </t-button>
-            <t-button
-              v-if="isPaymentActionEnabled('review_approval')"
-              theme="danger"
-              variant="outline"
-              :loading="actionBusy === 'approval'"
-              @click="submitApproval('reject')"
-            >
-              驳回
-            </t-button>
-            <t-button
-              v-if="isPaymentActionEnabled('download_approval_form')"
-              theme="default"
-              variant="outline"
-              :loading="actionBusy === 'approvalForm'"
-              @click="downloadApprovalForm"
-            >
-              下载审批单
-            </t-button>
-          </div>
-        </div>
-
-        <div
-          v-if="isPaymentActionEnabled('record_execution')"
-          class="action-group"
-        >
-          <div class="action-title">
-            <strong>出纳实付</strong>
-            <span>可直接上传付款凭证</span>
-          </div>
-          <div class="action-fields">
-            <t-input
-              v-model="paymentActionForm.executionAmountYuan"
-              placeholder="实付金额（元）"
-            />
-            <input
-              v-model="paymentActionForm.paidAt"
-              class="native-input"
-              type="datetime-local"
-              aria-label="付款时间"
-            >
-            <t-input
-              v-model="paymentActionForm.executionConfirmationPassword"
-              type="password"
-              placeholder="当前登录密码确认"
-            />
-            <input
-              ref="paymentVoucherFileInput"
-              class="file-input"
-              type="file"
-              :accept="CORE_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
-              @change="selectPaymentVoucherFile"
-            >
-            <span class="file-hint">
-              {{ paymentVoucherFileSummary }}
-            </span>
-          </div>
-          <t-button
-            theme="primary"
-            :loading="actionBusy === 'execution'"
-            @click="submitExecution"
-          >
-            登记实付
-          </t-button>
-        </div>
-
-        <div
-          v-if="isPaymentActionEnabled('record_finance')"
-          class="action-group"
-        >
-          <div class="action-title">
-            <strong>财务入账</strong>
-            <span>基于已实付金额</span>
-          </div>
-          <div class="action-fields">
-            <t-input
-              v-model="paymentActionForm.financeAmountYuan"
-              placeholder="入账金额（元）"
-            />
-            <input
-              v-model="paymentActionForm.occurredAt"
-              class="native-input"
-              type="datetime-local"
-              aria-label="入账时间"
-            >
-            <t-input
-              v-model="paymentActionForm.financeConfirmationPassword"
-              type="password"
-              placeholder="当前登录密码确认"
-            />
-          </div>
-          <t-button
-            theme="primary"
-            :loading="actionBusy === 'finance'"
-            @click="submitFinance"
-          >
-            确认入账
-          </t-button>
-        </div>
-
-        <div
-          v-if="isPaymentActionEnabled('archive_pdf')"
-          class="action-group"
-        >
-          <div class="action-title">
-            <strong>归档文件</strong>
-            <span>生成或登记财务归档件</span>
-          </div>
-          <div class="action-fields">
-            <input
-              ref="paymentPdfArchiveFileInput"
-              class="file-input"
-              type="file"
-              :accept="PDF_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
-              @change="selectPaymentPdfArchiveFile"
-            >
-            <span class="file-hint">
-              {{ paymentPdfArchiveFileSummary }}
-            </span>
-          </div>
-          <t-button
-            theme="primary"
-            :loading="actionBusy === 'pdfArchive'"
-            @click="submitPdfArchive"
-          >
-            登记归档
-          </t-button>
-          <t-button
-            theme="primary"
-            variant="outline"
-            :loading="actionBusy === 'pdfGenerate'"
-            @click="submitGeneratedPdfArchive"
-          >
-            生成归档文件
-          </t-button>
-        </div>
-
-        <div
-          v-if="showPaymentAssistanceActions"
-          class="action-group"
-        >
-          <div class="action-title">
-            <strong>审批辅助</strong>
-            <span>撤回、催办、转审、委托</span>
-          </div>
-          <div
-            v-if="isPaymentActionEnabled('transfer_approval') || isPaymentActionEnabled('delegate_approval')"
-            class="action-fields"
-          >
-            <t-select
-              v-model="paymentActionForm.assignmentUserId"
-              :options="assignmentUserOptions"
-              placeholder="选择目标处理人"
-            />
-          </div>
-          <div class="action-buttons">
-            <t-button
-              v-if="isPaymentActionEnabled('withdraw_approval')"
-              :loading="actionBusy === 'withdrawApproval'"
-              @click="submitPaymentWithdrawal"
-            >
-              撤回
-            </t-button>
-            <t-button
-              v-if="isPaymentActionEnabled('remind_approval')"
-              :loading="actionBusy === 'remindApproval'"
-              @click="submitPaymentReminder"
-            >
-              催办
-            </t-button>
-            <t-button
-              v-if="isPaymentActionEnabled('transfer_approval')"
-              theme="primary"
-              variant="outline"
-              :loading="actionBusy === 'transferApproval'"
-              @click="submitPaymentAssignment('transfer')"
-            >
-              转审
-            </t-button>
-            <t-button
-              v-if="isPaymentActionEnabled('delegate_approval')"
-              theme="primary"
-              variant="outline"
-              :loading="actionBusy === 'delegateApproval'"
-              @click="submitPaymentAssignment('delegate')"
-            >
-              委托
-            </t-button>
-          </div>
-        </div>
-
-        <div
-          v-if="isPaymentActionEnabled('download_file')"
-          class="action-group"
-        >
-          <div class="action-title">
-            <strong>敏感文件下载</strong>
-            <span>签发短时效票据</span>
-          </div>
-          <div class="action-fields">
-            <t-select
-              v-model="paymentActionForm.downloadFileId"
-              :options="paymentEvidenceFileOptions"
-              placeholder="选择付款文件"
-            />
-            <t-input
-              v-model="paymentActionForm.downloadPassword"
-              type="password"
-              placeholder="当前登录密码确认"
-            />
-          </div>
-          <t-button
-            theme="primary"
-            variant="outline"
-            :loading="actionBusy === 'download'"
-            @click="submitPaymentFileDownload"
-          >
-            下载文件
-          </t-button>
-        </div>
-      </div>
-
-      <div
-        v-if="actionMessage"
-        :class="['action-message', actionMessageTone]"
-      >
-        {{ actionMessage }}
-      </div>
-    </t-card>
-
-    <t-card
-      class="section-card evidence-section"
-      title="凭证与归档资料"
-      :bordered="true"
-    >
-      <EvidenceFileCards :files="paymentEvidenceFilesView" />
-    </t-card>
-
-    <t-card
-      class="section-card"
-      title="审批历史时间线"
-      :bordered="true"
-    >
-      <ApprovalTimeline :items="paymentApprovalTimelineView" />
-    </t-card>
-
-    <div class="detail-grid">
-      <t-card
-        title="基础信息"
-        :bordered="true"
-      >
-        <dl class="info-list">
-          <template
-            v-for="item in paymentBaseInfoView"
-            :key="item.label"
-          >
-            <dt>{{ item.label }}</dt>
-            <dd>{{ item.value }}</dd>
-          </template>
-        </dl>
-      </t-card>
-
-      <t-card
-        title="追溯规则"
-        :bordered="true"
-      >
-        <div class="rule-list">
+      <div class="detail-loading-skeleton__panel">
+        <span class="detail-loading-skeleton__title" />
+        <span class="detail-loading-skeleton__text" />
+        <div class="detail-loading-skeleton__grid">
           <span
-            v-for="rule in paymentTraceRulesView"
-            :key="rule"
-          >
-            {{ rule }}
-          </span>
+            v-for="item in 6"
+            :key="item"
+          />
         </div>
-      </t-card>
-    </div>
-
-    <t-card
-      class="section-card"
-      title="实付与入账覆盖"
-      :bordered="true"
-    >
-      <t-table
-        row-key="id"
-        size="small"
-        :columns="paymentExecutionCoverageColumns"
-        :data="paymentExecutionCoverageRowsView"
-        empty="暂无实付或入账记录"
-      />
-    </t-card>
-
-    <t-card
-      class="section-card"
-      title="实付分摊台账"
-      :bordered="true"
-    >
-      <t-table
-        row-key="id"
-        size="small"
-        :columns="paymentExecutionAllocationColumns"
-        :data="paymentExecutionAllocationRowsView"
-        empty="暂无实付分摊数据"
-      />
-    </t-card>
-
-    <div class="timeline-grid">
-      <t-card
-        title="付款审批链"
-        :bordered="true"
-      >
-        <div class="flow-list">
-          <div
-            v-for="step in paymentApprovalStepsView"
-            :key="step.label"
-            class="flow-row"
-          >
-            <span :class="['flow-dot', `dot-${step.tone}`]" />
-            <span>{{ step.label }}</span>
-            <em>{{ step.owner }}</em>
-            <t-tag
-              size="small"
-              :theme="tagTheme(step.tone)"
-              variant="light"
-            >
-              {{ step.status }}
-            </t-tag>
-          </div>
-        </div>
-      </t-card>
-
-      <t-card
-        title="实际付款执行"
-        :bordered="true"
-      >
-        <div class="flow-list">
-          <div
-            v-for="step in paymentExecutionStepsView"
-            :key="step.label"
-            class="flow-row"
-          >
-            <span :class="['flow-dot', `dot-${step.tone}`]" />
-            <span>{{ step.label }}</span>
-            <em>{{ step.owner }}</em>
-            <t-tag
-              size="small"
-              :theme="tagTheme(step.tone)"
-              variant="light"
-            >
-              {{ step.status }}
-            </t-tag>
-          </div>
-        </div>
-      </t-card>
-    </div>
-
-    <t-card
-      class="section-card"
-      title="实付登记阻断点"
-      :bordered="true"
-    >
-      <div class="block-message">
-        {{ paymentExecutionBlockMessageView }}
       </div>
-    </t-card>
+      <p>正在读取审批、实付、凭证与关联记录，请稍候。</p>
+    </section>
+
+    <BusinessFeedback
+      v-if="paymentDetailLoadError"
+      :state="loadErrorState"
+      :title="loadErrorState === 'permission' ? '当前账号无权查看此付款' : '付款详情读取失败'"
+      :description="paymentDetailLoadError"
+      action-label="重新加载"
+      @action="reloadPaymentDetail"
+    />
+
+    <BusinessFeedback
+      v-if="actionMessage"
+      :state="actionFeedbackState"
+      :title="actionFeedbackState === 'success' ? '操作已完成' : '操作未完成'"
+      :description="actionMessage"
+    />
+
+    <template v-if="paymentDetail">
+      <nav
+        class="detail-navigation"
+        aria-label="付款详情分区"
+      >
+        <t-tabs v-model="activeTab">
+          <t-tab-panel
+            v-for="tab in paymentDetailTabs"
+            :key="tab.value"
+            :value="tab.value"
+            :label="tab.label"
+          />
+        </t-tabs>
+      </nav>
+
+      <section
+        v-if="activeTab === 'overview'"
+        class="tab-content"
+        aria-label="付款概览"
+      >
+        <section class="content-panel content-panel--plain">
+          <header class="section-heading">
+            <div>
+              <h2>审批与版本</h2>
+              <p>审批状态与实际付款状态分开呈现，避免把审批通过误解为已付款。</p>
+            </div>
+          </header>
+          <dl class="meta-grid">
+            <div
+              v-for="item in paymentOverviewMetaView"
+              :key="item.label"
+            >
+              <dt>{{ item.label }}</dt>
+              <dd>
+                <t-tag
+                  v-if="item.tone"
+                  size="small"
+                  :theme="tagTheme(item.tone)"
+                  variant="light"
+                >
+                  {{ item.value }}
+                </t-tag>
+                <span v-else>{{ item.value }}</span>
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="content-panel overview-grid">
+          <div class="overview-section">
+            <header class="section-heading">
+              <div>
+                <h2>基础信息</h2>
+                <p>展示本次申请的来源、金额和经办信息。</p>
+              </div>
+            </header>
+            <dl class="info-list">
+              <template
+                v-for="item in paymentBaseInfoUniqueView"
+                :key="item.label"
+              >
+                <dt>{{ item.label }}</dt>
+                <dd>{{ item.value }}</dd>
+              </template>
+            </dl>
+          </div>
+
+          <div class="overview-section">
+            <header class="section-heading">
+              <div>
+                <h2>追溯规则</h2>
+                <p>用于解释这笔付款为什么能办、如何继续办理。</p>
+              </div>
+            </header>
+            <ul class="rule-list">
+              <li
+                v-for="rule in paymentTraceRulesView"
+                :key="rule"
+              >
+                {{ rule }}
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <div class="execution-boundary">
+          <span aria-hidden="true" />
+          <strong>实付登记边界</strong>
+          <p>{{ paymentExecutionBlockMessageView }}</p>
+        </div>
+      </section>
+
+      <section
+        v-else-if="activeTab === 'process'"
+        class="tab-content"
+        aria-label="付款流程"
+      >
+        <section class="content-panel">
+          <header class="section-heading">
+            <div>
+              <h2>当前办理动作</h2>
+              <p>敏感动作先校验当前输入，再通过统一确认对话框提交。</p>
+            </div>
+          </header>
+
+          <BusinessActionPanel :actions="paymentDetail.availableActions" />
+
+          <t-alert
+            v-if="paymentDetail.disabledReasons.length"
+            theme="info"
+            title="当前不可办理原因"
+            :message="paymentDetail.disabledReasons.join('；')"
+          />
+
+          <div class="action-grid">
+            <div
+              v-if="showPaymentApprovalActions"
+              class="action-group"
+            >
+              <div class="action-title">
+                <strong>付款审批</strong>
+                <span>董事长/总经理或签</span>
+              </div>
+              <div
+                v-if="isPaymentActionEnabled('review_approval')"
+                class="action-fields"
+              >
+                <MoneyInput
+                  v-model="paymentActionForm.approvedAmountYuan"
+                  label="审批金额（可选）"
+                />
+                <label class="action-field action-field--wide">
+                  <span>审批意见</span>
+                  <t-textarea
+                    v-model="paymentActionForm.approvalComment"
+                    :autosize="{ minRows: 2, maxRows: 4 }"
+                    placeholder="驳回时必须填写原因"
+                  />
+                </label>
+                <div
+                  v-if="requiresPaymentSelfReviewConfirmation"
+                  class="self-review-field action-field--wide"
+                >
+                  <t-alert
+                    theme="warning"
+                    title="领导自审二次确认"
+                    message="当前单据由您本人发起，请填写独立自审原因；当前密码将在确认对话框中输入。"
+                  />
+                  <label class="action-field">
+                    <span>自审原因 <b aria-hidden="true">*</b></span>
+                    <t-textarea
+                      v-model="paymentActionForm.selfReviewReason"
+                      :autosize="{ minRows: 2, maxRows: 4 }"
+                      placeholder="请说明独立复核依据"
+                    />
+                  </label>
+                </div>
+              </div>
+              <div class="action-buttons">
+                <t-button
+                  v-if="isPaymentActionEnabled('review_approval')"
+                  :theme="buttonTheme('review_approval')"
+                  :variant="buttonVariant('review_approval')"
+                  :loading="actionBusy === 'approval'"
+                  @click="requestApproval('approve')"
+                >
+                  通过
+                </t-button>
+                <t-button
+                  v-if="isPaymentActionEnabled('review_approval')"
+                  theme="danger"
+                  variant="outline"
+                  :loading="actionBusy === 'approval'"
+                  @click="requestApproval('reject')"
+                >
+                  驳回
+                </t-button>
+                <t-button
+                  v-if="isPaymentActionEnabled('download_approval_form')"
+                  variant="outline"
+                  :loading="actionBusy === 'approvalForm'"
+                  @click="requestApprovalFormDownload"
+                >
+                  下载审批单
+                </t-button>
+              </div>
+            </div>
+
+            <div
+              v-if="isPaymentActionEnabled('record_execution')"
+              class="action-group"
+            >
+              <div class="action-title">
+                <strong>出纳实付</strong>
+                <span>凭证与密码缺一不可</span>
+              </div>
+              <div class="action-fields">
+                <MoneyInput
+                  v-model="paymentActionForm.executionAmountYuan"
+                  label="实付金额"
+                  required
+                />
+                <label class="action-field">
+                  <span>付款时间 <b aria-hidden="true">*</b></span>
+                  <t-date-picker
+                    v-model="paymentActionForm.paidAt"
+                    enable-time-picker
+                    need-confirm
+                    format="YYYY-MM-DD HH:mm"
+                    value-type="YYYY-MM-DD HH:mm:ss"
+                  />
+                </label>
+                <div class="action-field action-field--wide">
+                  <span>付款凭证 <b aria-hidden="true">*</b></span>
+                  <t-upload
+                    v-model="paymentVoucherFiles"
+                    theme="file-input"
+                    :auto-upload="false"
+                    :max="1"
+                    :accept="CORE_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
+                    :size-limit="coreArchiveUploadSizeLimit"
+                    :disabled="actionBusy === 'execution'"
+                    placeholder="选择付款凭证文件"
+                  />
+                  <small>{{ paymentVoucherFileSummary }}</small>
+                </div>
+              </div>
+              <div class="action-buttons action-buttons--end">
+                <t-button
+                  :theme="buttonTheme('record_execution')"
+                  :variant="buttonVariant('record_execution')"
+                  :loading="actionBusy === 'execution'"
+                  @click="requestExecution"
+                >
+                  确认登记实付
+                </t-button>
+              </div>
+            </div>
+
+            <div
+              v-if="isPaymentActionEnabled('record_finance')"
+              class="action-group"
+            >
+              <div class="action-title">
+                <strong>财务入账</strong>
+                <span>基于已实付金额登记</span>
+              </div>
+              <div class="action-fields">
+                <MoneyInput
+                  v-model="paymentActionForm.financeAmountYuan"
+                  label="入账金额"
+                  required
+                />
+                <label class="action-field">
+                  <span>入账时间 <b aria-hidden="true">*</b></span>
+                  <t-date-picker
+                    v-model="paymentActionForm.occurredAt"
+                    enable-time-picker
+                    need-confirm
+                    format="YYYY-MM-DD HH:mm"
+                    value-type="YYYY-MM-DD HH:mm:ss"
+                  />
+                </label>
+              </div>
+              <t-button
+                :theme="buttonTheme('record_finance')"
+                :variant="buttonVariant('record_finance')"
+                :loading="actionBusy === 'finance'"
+                @click="requestFinance"
+              >
+                确认入账
+              </t-button>
+            </div>
+
+            <div
+              v-if="isPaymentActionEnabled('archive_pdf')"
+              class="action-group"
+            >
+              <div class="action-title">
+                <strong>归档文件</strong>
+                <span>上传或生成财务归档件</span>
+              </div>
+              <div class="action-field">
+                <span>财务归档 PDF</span>
+                <t-upload
+                  v-model="paymentPdfArchiveFiles"
+                  theme="file-input"
+                  :auto-upload="false"
+                  :max="1"
+                  :accept="PDF_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
+                  :size-limit="pdfArchiveUploadSizeLimit"
+                  :disabled="actionBusy === 'pdfArchive'"
+                  placeholder="选择财务归档 PDF"
+                />
+                <small>{{ paymentPdfArchiveFileSummary }}</small>
+              </div>
+              <div class="action-buttons">
+                <t-button
+                  :theme="buttonTheme('archive_pdf')"
+                  :variant="buttonVariant('archive_pdf')"
+                  :loading="actionBusy === 'pdfArchive'"
+                  @click="requestPdfArchive"
+                >
+                  登记归档
+                </t-button>
+                <t-button
+                  variant="outline"
+                  :loading="actionBusy === 'pdfGenerate'"
+                  @click="requestGeneratedPdfArchive"
+                >
+                  生成归档文件
+                </t-button>
+              </div>
+            </div>
+
+            <div
+              v-if="showPaymentAssistanceActions"
+              class="action-group"
+            >
+              <div class="action-title">
+                <strong>审批辅助</strong>
+                <span>撤回、催办、转审与委托</span>
+              </div>
+              <label
+                v-if="isPaymentActionEnabled('transfer_approval') || isPaymentActionEnabled('delegate_approval')"
+                class="action-field"
+              >
+                <span>目标处理人</span>
+                <t-select
+                  v-model="paymentActionForm.assignmentUserId"
+                  :options="assignmentUserOptions"
+                  placeholder="请选择"
+                />
+              </label>
+              <div class="action-buttons">
+                <t-button
+                  v-if="isPaymentActionEnabled('withdraw_approval')"
+                  variant="outline"
+                  :loading="actionBusy === 'withdrawApproval'"
+                  @click="requestPaymentWithdrawal"
+                >
+                  撤回
+                </t-button>
+                <t-button
+                  v-if="isPaymentActionEnabled('remind_approval')"
+                  variant="text"
+                  :loading="actionBusy === 'remindApproval'"
+                  @click="submitPaymentReminder"
+                >
+                  催办
+                </t-button>
+                <t-button
+                  v-if="isPaymentActionEnabled('transfer_approval')"
+                  variant="outline"
+                  :loading="actionBusy === 'transferApproval'"
+                  @click="requestPaymentAssignment('transfer')"
+                >
+                  转审
+                </t-button>
+                <t-button
+                  v-if="isPaymentActionEnabled('delegate_approval')"
+                  variant="outline"
+                  :loading="actionBusy === 'delegateApproval'"
+                  @click="requestPaymentAssignment('delegate')"
+                >
+                  委托
+                </t-button>
+              </div>
+            </div>
+
+            <div
+              v-if="isPaymentActionEnabled('download_file')"
+              class="action-group"
+            >
+              <div class="action-title">
+                <strong>敏感文件下载</strong>
+                <span>签发短时效票据并记录审计</span>
+              </div>
+              <label class="action-field">
+                <span>付款文件 <b aria-hidden="true">*</b></span>
+                <t-select
+                  v-model="paymentActionForm.downloadFileId"
+                  :options="paymentEvidenceFileOptions"
+                  placeholder="请选择"
+                />
+              </label>
+              <t-button
+                variant="outline"
+                :loading="actionBusy === 'download'"
+                @click="requestPaymentFileDownload"
+              >
+                下载文件
+              </t-button>
+            </div>
+          </div>
+        </section>
+
+        <div class="timeline-grid">
+          <section class="content-panel">
+            <header class="section-heading">
+              <div><h2>付款审批链</h2></div>
+            </header>
+            <div class="flow-list">
+              <div
+                v-for="step in paymentApprovalStepsView"
+                :key="step.label"
+                class="flow-row"
+              >
+                <span
+                  class="flow-marker"
+                  aria-hidden="true"
+                />
+                <span>{{ step.label }}</span>
+                <em>{{ step.owner }}</em>
+                <t-tag
+                  size="small"
+                  :theme="tagTheme(step.tone)"
+                  variant="light"
+                >
+                  {{ step.status }}
+                </t-tag>
+              </div>
+            </div>
+          </section>
+
+          <section class="content-panel">
+            <header class="section-heading">
+              <div>
+                <h2>实际付款执行</h2>
+              </div>
+            </header>
+            <div class="flow-list">
+              <div
+                v-for="step in paymentExecutionStepsView"
+                :key="step.label"
+                class="flow-row"
+              >
+                <span
+                  class="flow-marker"
+                  aria-hidden="true"
+                />
+                <span>{{ step.label }}</span>
+                <em>{{ step.owner }}</em>
+                <t-tag
+                  size="small"
+                  :theme="tagTheme(step.tone)"
+                  variant="light"
+                >
+                  {{ step.status }}
+                </t-tag>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section
+        v-else-if="activeTab === 'evidence'"
+        class="tab-content"
+        aria-label="付款凭证资料"
+      >
+        <section class="content-panel">
+          <header class="section-heading">
+            <div>
+              <h2>凭证与归档资料</h2>
+              <p>文件下载须校验权限、当前密码和下载原因，并记录审计。</p>
+            </div>
+          </header>
+          <EvidenceFileCards :files="paymentEvidenceFilesView" />
+        </section>
+      </section>
+
+      <section
+        v-else-if="activeTab === 'execution'"
+        class="tab-content"
+        aria-label="付款实付与入账"
+      >
+        <section class="content-panel table-panel">
+          <header class="section-heading">
+            <div>
+              <h2>实付与入账覆盖</h2>
+              <p>按实付记录核对付款凭证、已入账与未入账金额。</p>
+            </div>
+          </header>
+          <t-table
+            row-key="id"
+            size="small"
+            table-layout="fixed"
+            :columns="paymentExecutionCoverageColumns"
+            :data="paymentExecutionCoverageRowsView"
+            empty="暂无实付或入账记录"
+          />
+        </section>
+
+        <section class="content-panel table-panel">
+          <header class="section-heading">
+            <div>
+              <h2>实付分摊台账</h2>
+              <p>按系统台账核对合同累计结算付款的分摊与抵扣。</p>
+            </div>
+          </header>
+          <t-table
+            row-key="id"
+            size="small"
+            table-layout="fixed"
+            :columns="paymentExecutionAllocationColumns"
+            :data="paymentExecutionAllocationRowsView"
+            empty="暂无实付分摊数据"
+          />
+        </section>
+      </section>
+
+      <section
+        v-else-if="activeTab === 'related'"
+        class="tab-content"
+        aria-label="付款关联记录"
+      >
+        <section class="content-panel">
+          <header class="section-heading">
+            <div>
+              <h2>业务链路</h2>
+              <p>查看当前付款关联的合同、结算及其他业务记录。</p>
+            </div>
+          </header>
+          <div class="chain-links">
+            <t-link
+              v-for="link in paymentDetailChainLinksView"
+              :key="link.to"
+              theme="primary"
+              @click="openChainLink(link.to)"
+            >
+              {{ link.label }}
+            </t-link>
+            <EmptyBusinessState
+              v-if="!paymentDetailChainLinksView.length"
+              title="暂无关联记录"
+              description="当前付款暂无可跳转的关联业务记录。"
+            />
+          </div>
+        </section>
+      </section>
+
+      <section
+        v-else
+        class="tab-content"
+        aria-label="付款审计"
+      >
+        <section class="content-panel">
+          <header class="section-heading">
+            <div>
+              <h2>审批与办理时间线</h2>
+              <p>这里展示当前付款详情返回的时间线；全量安全审计请进入审计台账。</p>
+            </div>
+            <t-button
+              variant="outline"
+              @click="openChainLink('/audit')"
+            >
+              打开审计台账
+            </t-button>
+          </header>
+          <ApprovalTimeline :items="paymentApprovalTimelineView" />
+        </section>
+      </section>
+    </template>
+
+    <SensitiveActionDialog
+      v-model="sensitiveAction.visible"
+      :title="sensitiveAction.title"
+      :description="sensitiveAction.description"
+      :confirm-text="sensitiveAction.confirmText"
+      :confirm-theme="sensitiveAction.confirmTheme"
+      :require-reason="sensitiveAction.requireReason"
+      :require-password="sensitiveAction.requirePassword"
+      :reason-label="sensitiveAction.reasonLabel"
+      :loading="Boolean(actionBusy)"
+      :error="sensitiveAction.error"
+      @confirm="executeSensitiveAction"
+      @cancel="sensitiveAction.error = ''"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import type { CoreFlowTone, PaymentDetailReadModel } from "@jiangkong/shared-domain";
+import type { UploadFile } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
-import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
-import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
-import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
-import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
-import { clearSelectedFileInput } from "../../components/file-input-reset.config";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
-import {
-  CORE_ARCHIVE_UPLOAD_POLICY,
-  PDF_ARCHIVE_UPLOAD_POLICY
-} from "../../components/file-upload-policy.config";
-import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import {
   createPrivateFileDownloadTicket,
   delegatePaymentApproval,
+  downloadApprovalForm as downloadApprovalFormRequest,
   fetchApprovalDelegationUserOptions,
   fetchPaymentDetail,
   generatePaymentPdfArchive,
-  downloadApprovalForm as requestApprovalFormDownload,
-  remindPaymentApproval,
   recordPaymentExecution,
   recordPaymentFinance,
   recordPaymentPdfArchive,
+  remindPaymentApproval,
   reviewPaymentApproval,
   transferPaymentApproval,
   uploadPrivateFile,
   withdrawPaymentApproval
 } from "../../api/core-flow-read.api";
-import { confirmSensitiveAction, promptSensitiveActionReason } from "../confirm-sensitive-action";
+import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
+import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
+import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
+import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
+import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import MoneyInput from "../../components/MoneyInput.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
+import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
+import {
+  CORE_ARCHIVE_UPLOAD_POLICY,
+  PDF_ARCHIVE_UPLOAD_POLICY
+} from "../../components/file-upload-policy.config";
+import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import type {
   PaymentDetailTone,
   PaymentExecutionAllocationRow,
   PaymentExecutionCoverageRow
 } from "./payment-detail.config";
 import {
-  buildPaymentFlowSummary,
+  buildPaymentDetailHeader,
+  paymentDetailTabs,
   paymentExecutionAllocationColumns,
   paymentExecutionCoverageColumns
 } from "./payment-detail.config";
 
+type SensitiveActionKind =
+  | "approvalApprove"
+  | "approvalReject"
+  | "approvalFormDownload"
+  | "execution"
+  | "finance"
+  | "pdfArchive"
+  | "pdfGenerate"
+  | "withdrawal"
+  | "transfer"
+  | "delegate"
+  | "fileDownload";
+
+interface SensitiveActionState {
+  visible: boolean;
+  kind: SensitiveActionKind | null;
+  title: string;
+  description: string;
+  confirmText: string;
+  confirmTheme: "primary" | "danger";
+  requireReason: boolean;
+  requirePassword: boolean;
+  reasonLabel: string;
+  error: string;
+}
+
 const route = useRoute();
 const router = useRouter();
 const paymentDetail = ref<PaymentDetailReadModel | null>(null);
+const detailLoading = ref(false);
 const paymentDetailLoadError = ref("");
+const activeTab = ref("overview");
 const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const actionBusy = ref("");
 const actionMessage = ref("");
 const actionMessageTone = ref<"success" | "danger">("success");
-const paymentVoucherFileInput = ref<HTMLInputElement | null>(null);
-const selectedPaymentVoucherFile = ref<File | null>(null);
-const paymentPdfArchiveFileInput = ref<HTMLInputElement | null>(null);
-const selectedPaymentPdfArchiveFile = ref<File | null>(null);
+const paymentVoucherFiles = ref<UploadFile[]>([]);
+const paymentPdfArchiveFiles = ref<UploadFile[]>([]);
+const sensitiveAction = reactive<SensitiveActionState>({
+  visible: false,
+  kind: null,
+  title: "确认操作",
+  description: "请复核本次操作的业务影响。",
+  confirmText: "确认",
+  confirmTheme: "primary",
+  requireReason: false,
+  requirePassword: false,
+  reasonLabel: "操作原因",
+  error: ""
+});
 const paymentActionForm = reactive({
   approvedAmountYuan: "",
   approvalComment: "",
   selfReviewReason: "",
-  selfReviewConfirmationPassword: "",
   executionAmountYuan: "",
-  paidAt: toDatetimeLocalValue(new Date()),
-  executionConfirmationPassword: "",
+  paidAt: toDatetimePickerValue(new Date()),
   financeAmountYuan: "",
-  occurredAt: toDatetimeLocalValue(new Date()),
-  financeConfirmationPassword: "",
+  occurredAt: toDatetimePickerValue(new Date()),
   assignmentUserId: "",
-  downloadFileId: "",
-  downloadPassword: ""
+  downloadFileId: ""
 });
 
-const paymentDetailTitleView = computed(() =>
-  paymentDetail.value?.title ?? (paymentDetailLoadError.value ? "付款详情读取失败" : "正在加载付款详情")
-);
 const paymentDetailMetaView = computed(() => paymentDetail.value?.meta ?? []);
 const paymentBaseInfoView = computed(() => paymentDetail.value?.baseInfo ?? []);
-const paymentFlowSummaryView = computed(() =>
-  buildPaymentFlowSummary(paymentDetailMetaView.value, paymentBaseInfoView.value)
+const paymentOverviewMetaView = computed(() => paymentDetailMetaView.value.filter((item) =>
+  !["实付状态", "责任部门", "下一步动作"].includes(item.label)
+));
+const paymentBaseInfoUniqueView = computed(() => paymentBaseInfoView.value.filter((item) =>
+  !["付款编号", "申请金额"].includes(item.label)
+));
+const paymentRequestedAmountView = computed(() =>
+  paymentBaseInfoView.value.find((item) => item.label === "申请金额")?.value ?? "-"
 );
+const paymentApprovalStepsView = computed(() => paymentDetail.value?.approvalSteps ?? []);
+const paymentExecutionStepsView = computed(() => paymentDetail.value?.executionSteps ?? []);
+const paymentDetailHeaderView = computed(() => {
+  const routeCode = String(route.params.paymentId ?? "").trim() || "-";
+  if (!paymentDetail.value) {
+    return {
+      businessCode: routeCode,
+      title: paymentDetailLoadError.value ? "付款详情暂不可用" : "正在加载付款详情",
+      status: paymentDetailLoadError.value ? "读取失败" : "加载中",
+      statusTone: paymentDetailLoadError.value ? "danger" as const : "default" as const,
+      owner: "-",
+      currentNode: "-",
+      nextStep: "-"
+    };
+  }
+  const businessCode = paymentBaseInfoView.value.find((item) => item.label === "付款编号")?.value
+    ?? paymentDetail.value.id
+    ?? routeCode;
+  return buildPaymentDetailHeader(
+    businessCode,
+    paymentDetail.value.title,
+    paymentDetailMetaView.value,
+    paymentExecutionStepsView.value.map((step) => ({
+      ...step,
+      owner: step.owner ?? "-"
+    }))
+  );
+});
 const paymentTraceRulesView = computed(() => paymentDetail.value?.traceRules ?? []);
-const paymentApprovalStepsView = computed(
-  () => paymentDetail.value?.approvalSteps ?? []
-);
-const paymentExecutionStepsView = computed(
-  () => paymentDetail.value?.executionSteps ?? []
-);
 const paymentExecutionAllocationRowsView = computed<PaymentExecutionAllocationRow[]>(() =>
   (paymentDetail.value?.executionAllocations ?? []).map((allocation) => ({
     id: allocation.id,
@@ -576,9 +820,7 @@ const paymentExecutionCoverageRowsView = computed<PaymentExecutionCoverageRow[]>
 const paymentExecutionBlockMessageView = computed(
   () => paymentDetail.value?.executionBlockMessage ?? "详情读取成功后显示付款执行规则。"
 );
-const paymentDetailChainLinksView = computed(
-  () => paymentDetail.value?.chainLinks ?? []
-);
+const paymentDetailChainLinksView = computed(() => paymentDetail.value?.chainLinks ?? []);
 const paymentEvidenceFilesView = computed(() =>
   (paymentDetail.value?.evidenceFiles ?? []).map((file) => ({
     ...file,
@@ -590,11 +832,20 @@ const paymentApprovalTimelineView = computed(() => paymentDetail.value?.approval
 const paymentEvidenceFileOptions = computed(() =>
   paymentEvidenceFilesView.value
     .filter((file) => file.canDownload)
-    .map((file) => ({
-      label: `${file.fileName}（${file.purpose}）`,
-      value: file.fileId
-    }))
+    .map((file) => ({ label: `${file.fileName}（${file.purpose}）`, value: file.fileId }))
 );
+const selectedPaymentVoucherFile = computed(() => selectedUploadFile(paymentVoucherFiles.value));
+const selectedPaymentPdfArchiveFile = computed(() => selectedUploadFile(paymentPdfArchiveFiles.value));
+const coreArchiveUploadSizeLimit = {
+  size: CORE_ARCHIVE_UPLOAD_POLICY.limitBytes,
+  unit: "B" as const,
+  message: `文件大小不能超过 ${CORE_ARCHIVE_UPLOAD_POLICY.limitText.replace("不超过 ", "")}`
+};
+const pdfArchiveUploadSizeLimit = {
+  size: PDF_ARCHIVE_UPLOAD_POLICY.limitBytes,
+  unit: "B" as const,
+  message: `文件大小不能超过 ${PDF_ARCHIVE_UPLOAD_POLICY.limitText.replace("不超过 ", "")}`
+};
 const paymentVoucherFileSummary = computed(() =>
   buildFileUploadSummary(
     selectedPaymentVoucherFile.value,
@@ -614,6 +865,18 @@ const paymentPdfArchiveFileSummary = computed(() =>
 const paymentActionByKey = computed(
   () => new Map((paymentDetail.value?.availableActions ?? []).map((action) => [action.key, action]))
 );
+const paymentHeaderPrimaryAction = computed(() => {
+  const primaryAction = paymentDetail.value?.primaryAction;
+  if (!primaryAction) return null;
+  const action = paymentActionByKey.value.get(primaryAction);
+  return action?.enabled ? action : null;
+});
+const paymentHeaderPrimaryActionLabel = computed(() => {
+  if (!paymentHeaderPrimaryAction.value) return undefined;
+  return paymentHeaderPrimaryAction.value.key === "record_execution"
+    ? "前往实付登记"
+    : paymentHeaderPrimaryAction.value.label;
+});
 const requiresPaymentSelfReviewConfirmation = computed(
   () => paymentActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
 );
@@ -630,23 +893,46 @@ const showPaymentAssistanceActions = computed(
 const assignmentUserOptions = computed(() =>
   assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
+const loadErrorState = computed<"error" | "permission">(() =>
+  /无权|无权限|403|不可见/.test(paymentDetailLoadError.value) ? "permission" : "error"
+);
+const actionFeedbackState = computed<"success" | "error">(() =>
+  actionMessageTone.value === "success" ? "success" : "error"
+);
 
 function isPaymentActionEnabled(key: string) {
   return paymentActionByKey.value.get(key)?.enabled ?? false;
+}
+
+function buttonTheme(key: string) {
+  return paymentDetail.value?.primaryAction === key ? "primary" : "default";
+}
+
+function buttonVariant(key: string) {
+  return paymentDetail.value?.primaryAction === key ? "base" : "outline";
 }
 
 function openChainLink(to: string) {
   void router.push(to);
 }
 
+function openPrimaryAction() {
+  if (!paymentHeaderPrimaryAction.value) return;
+  activeTab.value = "process";
+  requestAnimationFrame(() => {
+    document.querySelector(".action-grid")?.scrollIntoView({ block: "start" });
+  });
+}
+
 async function reloadPaymentDetail() {
   const paymentId = String(route.params.paymentId ?? "").trim();
   if (!paymentId) {
     paymentDetail.value = null;
-    paymentDetailLoadError.value = "缺少付款编号。";
-    return;
+    paymentDetailLoadError.value = "缺少付款编号，无法定位单据。请返回付款台账重新进入。";
+    return false;
   }
 
+  detailLoading.value = true;
   try {
     paymentDetailLoadError.value = "";
     paymentDetail.value = await fetchPaymentDetail(paymentId);
@@ -654,62 +940,43 @@ async function reloadPaymentDetail() {
     if (!evidenceFileIds.includes(paymentActionForm.downloadFileId)) {
       paymentActionForm.downloadFileId = evidenceFileIds[0] ?? "";
     }
+    return true;
   } catch (error) {
-    paymentDetail.value = null;
-    paymentDetailLoadError.value =
-      error instanceof Error ? error.message : "付款详情读取失败，请确认权限或稍后重试。";
+    const reason = error instanceof Error ? error.message : "未知错误";
+    paymentDetailLoadError.value = `未能读取付款详情：${reason}。请确认账号权限和网络状态后重试。`;
+    return false;
+  } finally {
+    detailLoading.value = false;
   }
 }
 
-onMounted(async () => {
-  const [, users] = await Promise.all([
-    reloadPaymentDetail(),
-    fetchApprovalDelegationUserOptions().catch(() => [])
-  ]);
-  assignmentUsers.value = users;
-});
-
-function toDatetimeLocalValue(date: Date) {
+function toDatetimePickerValue(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
-
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
     date.getHours()
-  )}:${pad(date.getMinutes())}`;
+  )}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function toIsoDatetime(raw: string, label: string) {
   const value = requiredText(raw, label);
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    throw new Error(`${label}格式不正确`);
-  }
-
+  const date = new Date(value.replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) throw new Error(`${label}格式不正确`);
   return date.toISOString();
 }
 
 function parseYuanAmount(raw: string, label: string) {
-  const value = raw.trim();
-
   let amount: string;
   try {
-    amount = yuanTextToCentsText(value);
+    amount = yuanTextToCentsText(raw.trim());
   } catch {
     throw new Error(`${label}必须为正数，最多两位小数`);
   }
-  if (amount === "0") {
-    throw new Error(`${label}必须为正数，最多两位小数`);
-  }
-
+  if (amount === "0") throw new Error(`${label}必须为正数，最多两位小数`);
   return amount;
 }
 
 function optionalYuanAmount(raw: string, label: string) {
-  if (!raw.trim()) {
-    return undefined;
-  }
-
-  return parseYuanAmount(raw, label);
+  return raw.trim() ? parseYuanAmount(raw, label) : undefined;
 }
 
 function formatCents(amountCents: string) {
@@ -718,10 +985,7 @@ function formatCents(amountCents: string) {
 
 function requiredText(raw: string, label: string) {
   const value = raw.trim();
-  if (!value) {
-    throw new Error(`${label}不能为空`);
-  }
-
+  if (!value) throw new Error(`${label}不能为空`);
   return value;
 }
 
@@ -733,639 +997,758 @@ function apiDownloadUrl(url: string) {
   return url.startsWith("/files/") ? `/api${url}` : url;
 }
 
-function selectPaymentVoucherFile(event: Event) {
-  const input = event.target as HTMLInputElement;
-  selectedPaymentVoucherFile.value = input.files?.[0] ?? null;
+function selectedUploadFile(files: UploadFile[]) {
+  const rawFile = files[0]?.raw;
+  return rawFile instanceof File ? rawFile : null;
 }
 
-function selectPaymentPdfArchiveFile(event: Event) {
-  const input = event.target as HTMLInputElement;
-  selectedPaymentPdfArchiveFile.value = input.files?.[0] ?? null;
+function setActionError(error: unknown, fallback: string) {
+  actionMessageTone.value = "danger";
+  actionMessage.value = error instanceof Error ? `${error.message}。请修正后重试。` : fallback;
+}
+
+function openSensitiveAction(
+  kind: SensitiveActionKind,
+  config: Pick<SensitiveActionState, "title" | "description"> &
+    Partial<Pick<SensitiveActionState, "confirmText" | "confirmTheme" | "requireReason" | "requirePassword" | "reasonLabel">>
+) {
+  Object.assign(sensitiveAction, {
+    visible: true,
+    kind,
+    title: config.title,
+    description: config.description,
+    confirmText: config.confirmText ?? "确认提交",
+    confirmTheme: config.confirmTheme ?? "primary",
+    requireReason: config.requireReason ?? false,
+    requirePassword: config.requirePassword ?? false,
+    reasonLabel: config.reasonLabel ?? "操作原因",
+    error: ""
+  });
+}
+
+function requestApproval(decision: "approve" | "reject") {
+  try {
+    currentPaymentId();
+    if (decision === "approve") {
+      optionalYuanAmount(paymentActionForm.approvedAmountYuan, "审批金额");
+    } else {
+      requiredText(paymentActionForm.approvalComment, "驳回原因");
+    }
+    if (requiresPaymentSelfReviewConfirmation.value) {
+      buildApprovalSelfReviewPayload(true, {
+        selfReviewReason: paymentActionForm.selfReviewReason,
+        confirmationPassword: "validation"
+      });
+    }
+  } catch (error) {
+    setActionError(error, "付款审批信息不完整，请修正后重试。");
+    return;
+  }
+
+  openSensitiveAction(decision === "approve" ? "approvalApprove" : "approvalReject", {
+    title: decision === "approve" ? "确认通过付款审批？" : "确认驳回付款审批？",
+    description: decision === "approve"
+      ? "通过后只会进入已批待付，仍需财务或出纳登记实际付款。"
+      : "驳回后本轮审批将终止，驳回原因会写入审批历史。",
+    confirmText: decision === "approve" ? "确认通过" : "确认驳回",
+    confirmTheme: decision === "approve" ? "primary" : "danger",
+    requirePassword: requiresPaymentSelfReviewConfirmation.value
+  });
+}
+
+function requestApprovalFormDownload() {
+  try {
+    currentPaymentId();
+  } catch (error) {
+    setActionError(error, "无法下载审批单，请刷新后重试。");
+    return;
+  }
+  openSensitiveAction("approvalFormDownload", {
+    title: "确认下载付款审批单？",
+    description: "系统将校验当前密码，并记录下载人、单据、原因和下载时间。",
+    confirmText: "确认下载",
+    requireReason: true,
+    requirePassword: true,
+    reasonLabel: "下载原因"
+  });
+}
+
+function requestExecution() {
+  try {
+    currentPaymentId();
+    if (!selectedPaymentVoucherFile.value) throw new Error("付款凭证文件不能为空");
+    parseYuanAmount(paymentActionForm.executionAmountYuan, "实付金额");
+    toIsoDatetime(paymentActionForm.paidAt, "付款时间");
+  } catch (error) {
+    setActionError(error, "实付信息不完整，请修正后重试。");
+    return;
+  }
+  openSensitiveAction("execution", {
+    title: "确认登记实际付款？",
+    description: "提交后将记录实付金额、付款时间、凭证和经办人，并影响结算已付金额。",
+    confirmText: "确认登记实付",
+    requirePassword: true
+  });
+}
+
+function requestFinance() {
+  try {
+    currentPaymentId();
+    parseYuanAmount(paymentActionForm.financeAmountYuan, "入账金额");
+    toIsoDatetime(paymentActionForm.occurredAt, "入账时间");
+  } catch (error) {
+    setActionError(error, "入账信息不完整，请修正后重试。");
+    return;
+  }
+  openSensitiveAction("finance", {
+    title: "确认财务入账？",
+    description: "提交后将记录入账金额、发生时间、经办人和审计日志，用于财务台账核对。",
+    confirmText: "确认入账",
+    requirePassword: true
+  });
+}
+
+function requestPdfArchive() {
+  if (!selectedPaymentPdfArchiveFile.value) {
+    setActionError(new Error("财务归档 PDF 不能为空"), "归档文件不完整，请重试。");
+    return;
+  }
+  openSensitiveAction("pdfArchive", {
+    title: "确认登记财务归档？",
+    description: "系统将上传所选 PDF 并把文件关联到当前付款记录。",
+    confirmText: "确认登记归档"
+  });
+}
+
+function requestGeneratedPdfArchive() {
+  openSensitiveAction("pdfGenerate", {
+    title: "确认生成付款归档文件？",
+    description: "系统将基于当前付款事实生成归档文件，不修改付款业务状态。",
+    confirmText: "确认生成"
+  });
+}
+
+function requestPaymentWithdrawal() {
+  openSensitiveAction("withdrawal", {
+    title: "确认撤回付款审批？",
+    description: "撤回会中止当前待办流转，后续能否再次提交以当前单据状态为准。",
+    confirmText: "确认撤回",
+    confirmTheme: "danger"
+  });
+}
+
+function requestPaymentAssignment(kind: "transfer" | "delegate") {
+  try {
+    requiredText(paymentActionForm.assignmentUserId, "目标处理人");
+  } catch (error) {
+    setActionError(error, "请选择目标处理人后重试。");
+    return;
+  }
+  openSensitiveAction(kind, {
+    title: kind === "transfer" ? "确认转审？" : "确认委托？",
+    description: kind === "transfer"
+      ? "当前审批任务将转交给所选处理人，并写入完整审批历史。"
+      : "当前审批任务将委托给所选处理人，并保留委托关系与审计记录。",
+    confirmText: kind === "transfer" ? "确认转审" : "确认委托"
+  });
+}
+
+function requestPaymentFileDownload() {
+  try {
+    requiredText(paymentActionForm.downloadFileId, "付款文件");
+  } catch (error) {
+    setActionError(error, "请选择付款文件后重试。");
+    return;
+  }
+  openSensitiveAction("fileDownload", {
+    title: "确认下载敏感付款文件？",
+    description: "系统将校验当前密码，签发短时效下载票据，并记录文件、单据和下载原因。",
+    confirmText: "确认下载",
+    requireReason: true,
+    requirePassword: true,
+    reasonLabel: "下载原因"
+  });
+}
+
+async function executeSensitiveAction(values: { reason: string; password: string }) {
+  sensitiveAction.error = "";
+  let succeeded = false;
+  try {
+    switch (sensitiveAction.kind) {
+      case "approvalApprove":
+        succeeded = await performApproval("approve", values.password);
+        break;
+      case "approvalReject":
+        succeeded = await performApproval("reject", values.password);
+        break;
+      case "approvalFormDownload":
+        succeeded = await performApprovalFormDownload(values);
+        break;
+      case "execution":
+        succeeded = await performExecution(values.password);
+        break;
+      case "finance":
+        succeeded = await performFinance(values.password);
+        break;
+      case "pdfArchive":
+        succeeded = await performPdfArchive();
+        break;
+      case "pdfGenerate":
+        succeeded = await runPaymentAction("pdfGenerate", () =>
+          generatePaymentPdfArchive(currentPaymentId())
+        );
+        break;
+      case "withdrawal":
+        succeeded = await runPaymentAction("withdrawApproval", () =>
+          withdrawPaymentApproval(currentPaymentId())
+        );
+        break;
+      case "transfer":
+      case "delegate":
+        succeeded = await performPaymentAssignment(sensitiveAction.kind);
+        break;
+      case "fileDownload":
+        succeeded = await performPaymentFileDownload(values);
+        break;
+      default:
+        throw new Error("未识别的付款操作，请关闭对话框后重试");
+    }
+  } catch (error) {
+    setActionError(error, "操作未完成，请刷新后重试。");
+  }
+
+  if (succeeded) {
+    sensitiveAction.visible = false;
+    sensitiveAction.kind = null;
+    return;
+  }
+  sensitiveAction.error = actionMessage.value || "操作未完成，请核对信息后重试。";
 }
 
 async function runPaymentAction(key: string, action: () => Promise<unknown>) {
   actionBusy.value = key;
   actionMessage.value = "";
-
   try {
     await action();
     await reloadPaymentDetail();
     actionMessageTone.value = "success";
-    actionMessage.value = "操作已提交，详情已刷新。";
+    actionMessage.value = "操作已提交，付款详情已刷新。";
+    return true;
   } catch (error) {
     actionMessageTone.value = "danger";
-    actionMessage.value = error instanceof Error ? error.message : "操作失败";
+    const reason = error instanceof Error ? error.message : "未知错误";
+    actionMessage.value = `操作未完成：${reason}。已保留当前输入，请核对后重试。`;
+    return false;
   } finally {
     actionBusy.value = "";
   }
 }
 
-async function submitApproval(decision: "approve" | "reject") {
-  const paymentId = currentPaymentId();
-  const comment = paymentActionForm.approvalComment.trim() || undefined;
-  let approvedAmountCents: string | undefined;
-  try {
-    approvedAmountCents =
-      decision === "approve"
-        ? optionalYuanAmount(paymentActionForm.approvedAmountYuan, "审批金额")
-        : undefined;
-  } catch (error) {
-    actionMessageTone.value = "danger";
-    actionMessage.value = error instanceof Error ? error.message : "付款审批失败";
-    return;
-  }
-  let selfReviewPayload;
-  try {
-    selfReviewPayload = buildApprovalSelfReviewPayload(
-      requiresPaymentSelfReviewConfirmation.value,
-      {
-        selfReviewReason: paymentActionForm.selfReviewReason,
-        confirmationPassword: paymentActionForm.selfReviewConfirmationPassword
-      }
-    );
-  } catch (error) {
-    actionMessageTone.value = "danger";
-    actionMessage.value = error instanceof Error ? error.message : "自审确认信息不完整";
-    return;
-  }
-  if (decision === "reject" && !comment) {
-    actionMessageTone.value = "danger";
-    actionMessage.value = "驳回付款审批必须填写原因。";
-    return;
-  }
-  if (
-    !confirmSensitiveAction(
-      decision === "approve"
-        ? "确认同意后，付款申请只会进入已批待付款，仍需财务/出纳登记实付。是否继续？"
-        : "确认驳回后，本轮付款审批将终止，原因会写入审批历史。是否继续？"
-    )
-  ) {
-    return;
-  }
-
-  await runPaymentAction("approval", async () => {
-    await reviewPaymentApproval(paymentId, {
-      decision,
-      approvedAmountCents,
-      comment,
-      ...selfReviewPayload
-    });
-    paymentActionForm.selfReviewReason = "";
-    paymentActionForm.selfReviewConfirmationPassword = "";
-  });
-}
-
-async function downloadApprovalForm() {
-  let paymentId = "";
-  let confirmationPassword = "";
-  try {
-    paymentId = currentPaymentId();
-    confirmationPassword = requiredText(paymentActionForm.downloadPassword, "当前登录密码");
-  } catch (error) {
-    actionMessageTone.value = "danger";
-    actionMessage.value = error instanceof Error ? error.message : "下载审批单失败";
-    return;
-  }
-  if (
-    !confirmSensitiveAction(
-      "确认下载后，系统将校验当前密码并记录下载人、审批单和下载原因审计。是否继续？"
-    )
-  ) {
-    return;
-  }
-  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
-  if (!downloadReason) {
-    actionMessageTone.value = "danger";
-    actionMessage.value = "请填写下载原因";
-    return;
-  }
-
-  await runPaymentAction("approvalForm", async () => {
-    await requestApprovalFormDownload("payment_request", paymentId, {
-      confirmationPassword,
-      downloadReason
-    });
-  });
-}
-
-async function submitExecution() {
-  const paymentId = currentPaymentId();
-  const file = selectedPaymentVoucherFile.value;
-  let amountCents = "0";
-  let paidAt = "";
-  let confirmationPassword = "";
-  try {
-    if (!file) {
-      throw new Error("付款凭证文件不能为空");
+async function performApproval(decision: "approve" | "reject", password: string) {
+  const selfReviewPayload = buildApprovalSelfReviewPayload(
+    requiresPaymentSelfReviewConfirmation.value,
+    {
+      selfReviewReason: paymentActionForm.selfReviewReason,
+      confirmationPassword: password
     }
-    amountCents = parseYuanAmount(paymentActionForm.executionAmountYuan, "实付金额");
-    paidAt = toIsoDatetime(paymentActionForm.paidAt, "付款时间");
-    confirmationPassword = requiredText(
-      paymentActionForm.executionConfirmationPassword,
-      "当前登录密码"
-    );
-  } catch (error) {
-    actionMessageTone.value = "danger";
-    actionMessage.value = error instanceof Error ? error.message : "登记实付失败";
-    return;
-  }
-  if (
-    !confirmSensitiveAction(
-      "确认登记实付后，系统将记录付款金额、时间、凭证和经办人，并影响该结算的已付金额。是否继续？"
-    )
-  ) {
-    return;
-  }
-
-  await runPaymentAction("execution", async () => {
-    const uploadedFileId = (await uploadPrivateFile(file, file.name)).id;
-
-    const result = await recordPaymentExecution(paymentId, {
-      amountCents,
-      paidAt,
-      voucherFileId: uploadedFileId,
-      confirmationPassword
-    });
-    clearSelectedFileInput(selectedPaymentVoucherFile, paymentVoucherFileInput.value);
-    return result;
-  });
+  );
+  const succeeded = await runPaymentAction("approval", () =>
+    reviewPaymentApproval(currentPaymentId(), {
+      decision,
+      approvedAmountCents: decision === "approve"
+        ? optionalYuanAmount(paymentActionForm.approvedAmountYuan, "审批金额")
+        : undefined,
+      comment: paymentActionForm.approvalComment.trim() || undefined,
+      ...selfReviewPayload
+    })
+  );
+  if (succeeded) paymentActionForm.selfReviewReason = "";
+  return succeeded;
 }
 
-async function submitFinance() {
-  const paymentId = currentPaymentId();
-  let amountCents = "0";
-  let occurredAt = "";
-  let confirmationPassword = "";
-  try {
-    amountCents = parseYuanAmount(paymentActionForm.financeAmountYuan, "入账金额");
-    occurredAt = toIsoDatetime(paymentActionForm.occurredAt, "入账时间");
-    confirmationPassword = requiredText(
-      paymentActionForm.financeConfirmationPassword,
-      "当前登录密码"
-    );
-  } catch (error) {
-    actionMessageTone.value = "danger";
-    actionMessage.value = error instanceof Error ? error.message : "确认入账失败";
-    return;
-  }
-  if (
-    !confirmSensitiveAction(
-      "确认入账后，系统将记录财务入账金额、发生时间、经办人和审计日志，用于财务台账核对。是否继续？"
-    )
-  ) {
-    return;
-  }
-
-  await runPaymentAction("finance", () =>
-    recordPaymentFinance(paymentId, {
-      amountCents,
-      occurredAt,
-      confirmationPassword
+function performApprovalFormDownload(values: { reason: string; password: string }) {
+  return runPaymentAction("approvalForm", () =>
+    downloadApprovalFormRequest("payment_request", currentPaymentId(), {
+      confirmationPassword: values.password,
+      downloadReason: values.reason
     })
   );
 }
 
-async function submitPdfArchive() {
-  const paymentId = currentPaymentId();
-
-  await runPaymentAction("pdfArchive", async () => {
-    const file = selectedPaymentPdfArchiveFile.value;
-    if (!file) {
-      throw new Error("财务归档 PDF 不能为空");
-    }
-
-    const uploadedFile = await uploadPrivateFile(file, file.name);
-    const result = await recordPaymentPdfArchive(paymentId, {
-      fileId: uploadedFile.id
+function performExecution(password: string) {
+  const file = selectedPaymentVoucherFile.value;
+  if (!file) throw new Error("付款凭证文件不能为空");
+  return runPaymentAction("execution", async () => {
+    const uploadedFileId = (await uploadPrivateFile(file, file.name)).id;
+    const result = await recordPaymentExecution(currentPaymentId(), {
+      amountCents: parseYuanAmount(paymentActionForm.executionAmountYuan, "实付金额"),
+      paidAt: toIsoDatetime(paymentActionForm.paidAt, "付款时间"),
+      voucherFileId: uploadedFileId,
+      confirmationPassword: password
     });
-    clearSelectedFileInput(selectedPaymentPdfArchiveFile, paymentPdfArchiveFileInput.value);
+    paymentVoucherFiles.value = [];
     return result;
   });
 }
 
-async function submitGeneratedPdfArchive() {
-  const paymentId = currentPaymentId();
-
-  await runPaymentAction("pdfGenerate", () => generatePaymentPdfArchive(paymentId));
-}
-
-async function submitPaymentWithdrawal() {
-  const paymentId = currentPaymentId();
-
-  await runPaymentAction("withdrawApproval", () => withdrawPaymentApproval(paymentId));
-}
-
-async function submitPaymentReminder() {
-  const paymentId = currentPaymentId();
-
-  await runPaymentAction("remindApproval", () => remindPaymentApproval(paymentId));
-}
-
-async function submitPaymentAssignment(kind: "transfer" | "delegate") {
-  const paymentId = currentPaymentId();
-  const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标处理人");
-
-  await runPaymentAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
-    kind === "transfer"
-      ? transferPaymentApproval(paymentId, { toUserId })
-      : delegatePaymentApproval(paymentId, { toUserId })
+function performFinance(password: string) {
+  return runPaymentAction("finance", () =>
+    recordPaymentFinance(currentPaymentId(), {
+      amountCents: parseYuanAmount(paymentActionForm.financeAmountYuan, "入账金额"),
+      occurredAt: toIsoDatetime(paymentActionForm.occurredAt, "入账时间"),
+      confirmationPassword: password
+    })
   );
 }
 
-async function submitPaymentFileDownload() {
-  let fileId = "";
-  let confirmationPassword = "";
-  try {
-    fileId = requiredText(paymentActionForm.downloadFileId, "付款文件");
-    confirmationPassword = requiredText(paymentActionForm.downloadPassword, "当前登录密码");
-  } catch (error) {
-    actionMessageTone.value = "danger";
-    actionMessage.value = error instanceof Error ? error.message : "下载付款文件失败";
-    return;
-  }
-  if (
-    !confirmSensitiveAction(
-      "确认下载后，系统将校验当前密码并记录下载人、付款文件、业务单据和下载原因审计。是否继续？"
-    )
-  ) {
-    return;
-  }
-  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
-  if (!downloadReason) {
-    actionMessageTone.value = "danger";
-    actionMessage.value = "请填写下载原因";
-    return;
-  }
+function performPdfArchive() {
+  const file = selectedPaymentPdfArchiveFile.value;
+  if (!file) throw new Error("财务归档 PDF 不能为空");
+  return runPaymentAction("pdfArchive", async () => {
+    const uploadedFile = await uploadPrivateFile(file, file.name);
+    const result = await recordPaymentPdfArchive(currentPaymentId(), { fileId: uploadedFile.id });
+    paymentPdfArchiveFiles.value = [];
+    return result;
+  });
+}
 
-  await runPaymentAction("download", async () => {
+async function submitPaymentReminder() {
+  await runPaymentAction("remindApproval", () => remindPaymentApproval(currentPaymentId()));
+}
+
+function performPaymentAssignment(kind: "transfer" | "delegate") {
+  const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标处理人");
+  return runPaymentAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
+    kind === "transfer"
+      ? transferPaymentApproval(currentPaymentId(), { toUserId })
+      : delegatePaymentApproval(currentPaymentId(), { toUserId })
+  );
+}
+
+function performPaymentFileDownload(values: { reason: string; password: string }) {
+  const fileId = requiredText(paymentActionForm.downloadFileId, "付款文件");
+  return runPaymentAction("download", async () => {
     const ticket = await createPrivateFileDownloadTicket(fileId, {
-      confirmationPassword,
-      downloadReason
+      confirmationPassword: values.password,
+      downloadReason: values.reason
     });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
   });
 }
 
 function tagTheme(tone: PaymentDetailTone | CoreFlowTone) {
-  const themeByTone = {
-    default: "default",
-    primary: "primary",
-    warning: "warning",
-    danger: "danger",
-    success: "success"
-  } as const;
-
-  return themeByTone[tone];
+  return tone;
 }
+
+onMounted(async () => {
+  const [, users] = await Promise.all([
+    reloadPaymentDetail(),
+    fetchApprovalDelegationUserOptions().catch(() => [])
+  ]);
+  assignmentUsers.value = users;
+});
 </script>
 
 <style scoped>
+.payment-detail-page,
+.tab-content {
+  display: grid;
+  gap: var(--jg-space-lg);
+  min-width: 0;
+}
+
 .payment-detail-page {
   width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  color: #151922;
+  color: var(--jg-color-text-primary);
 }
 
-.page-head {
+.content-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-surface);
+}
+
+.detail-navigation {
+  padding: 0 var(--jg-space-lg);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.detail-navigation :deep(.t-tabs__content) {
+  display: none;
+}
+
+.content-panel {
+  padding: var(--jg-space-lg);
+}
+
+.content-panel--plain {
+  padding: var(--jg-space-sm) 0 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+}
+
+.section-heading {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: var(--jg-space-lg);
+  margin-bottom: var(--jg-space-lg);
 }
 
-.page-head h1 {
-  margin: 0 0 8px;
-  font-size: 24px;
-  line-height: 1.2;
-  font-weight: 700;
-}
-
-.page-head p {
+.section-heading h2,
+.section-heading p {
   margin: 0;
-  color: #767f8d;
-  font-size: 12px;
 }
 
-.actions {
-  display: flex;
-  gap: 8px;
+.section-heading h2 {
+  font-size: var(--jg-font-size-section-title);
+  line-height: var(--jg-line-height-title);
 }
 
-.detail-error {
+.section-heading p {
+  margin-top: var(--jg-space-xs);
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
+}
+
+.meta-grid {
   display: grid;
-  gap: 6px;
-  padding: 14px 16px;
-  margin-bottom: 16px;
-  color: #a03a3a;
-  background: #fff4f2;
-  border: 1px solid #f2c8c2;
-  border-radius: 3px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border-top: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-left: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
-.detail-error strong {
-  font-size: 13px;
-}
-
-.detail-error span {
-  font-size: 12px;
-}
-
-.meta-panel {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  padding: 18px 20px;
-  margin-bottom: 20px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-}
-
-.meta-item {
-  display: grid;
-  gap: 10px;
-}
-
-.meta-item span,
-.info-list dt {
-  color: #767f8d;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.meta-item strong {
-  font-size: 13px;
-}
-
-.flow-summary-strip {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 1px;
-  margin-bottom: 20px;
-  overflow: hidden;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  background: #dce1e8;
-}
-
-.flow-summary-item {
-  display: grid;
-  gap: 8px;
+.meta-grid > div {
   min-width: 0;
-  padding: 14px 16px;
-  background: #fff;
+  min-height: 68px;
+  padding: var(--jg-space-md);
+  border-right: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
-.flow-summary-item span {
-  color: #767f8d;
-  font-size: 11px;
-  font-weight: 600;
+.meta-grid dt,
+.info-list dt {
+  color: var(--jg-color-text-muted);
+  font-size: var(--jg-font-size-meta);
+  font-weight: var(--jg-font-weight-semibold);
 }
 
-.flow-summary-item strong {
-  overflow: hidden;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.meta-grid dd {
+  margin: var(--jg-space-sm) 0 0;
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-body);
 }
 
-.chain-strip {
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 0 16px;
-  margin-bottom: 20px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-}
-
-.chain-strip span {
-  color: #767f8d;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.tone-primary {
-  color: #0052cc;
-}
-
-.tone-warning {
-  color: #9f4f06;
-}
-
-.tone-danger {
-  color: #b51d2a;
-}
-
-.tone-success {
-  color: #1b6b3a;
-}
-
-.detail-grid,
+.overview-grid,
 .timeline-grid {
   display: grid;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.detail-grid {
-  grid-template-columns: 1.35fr 1fr;
-}
-
-.timeline-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--jg-space-lg);
+}
+
+.overview-grid {
+  gap: 0;
+  padding: 0;
+}
+
+.overview-section {
+  min-width: 0;
+  padding: var(--jg-space-lg);
+}
+
+.overview-section + .overview-section {
+  border-left: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.execution-boundary {
+  display: grid;
+  grid-template-columns: var(--jg-layout-dot-sm) auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--jg-space-sm);
+  padding: var(--jg-space-sm) 0;
+  border-top: var(--jg-border-width-base) solid var(--jg-color-border);
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-meta);
+}
+
+.execution-boundary > span {
+  width: var(--jg-layout-dot-sm);
+  height: var(--jg-layout-dot-sm);
+  margin-top: var(--jg-space-xs);
+  border-radius: 50%;
+  background: var(--jg-color-warning);
+}
+
+.execution-boundary strong {
+  color: var(--jg-color-text-primary);
+  font-size: var(--jg-font-size-body);
+}
+
+.execution-boundary p {
+  margin: 0;
+  line-height: var(--jg-line-height-body);
+}
+
+.detail-loading-skeleton {
+  display: grid;
+  gap: var(--jg-space-lg);
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
+}
+
+.detail-loading-skeleton p {
+  margin: 0;
+}
+
+.detail-loading-skeleton__tabs {
+  display: flex;
+  gap: var(--jg-space-xl);
+  padding: var(--jg-space-md) var(--jg-space-lg);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.detail-loading-skeleton__tabs span {
+  width: 56px;
+  height: var(--jg-space-md);
+  background: var(--jg-color-bg-muted);
+}
+
+.detail-loading-skeleton__panel {
+  display: grid;
+  gap: var(--jg-space-md);
+  padding: var(--jg-space-lg);
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+}
+
+.detail-loading-skeleton__title {
+  width: 128px;
+  height: var(--jg-space-lg);
+  background: var(--jg-color-bg-muted);
+}
+
+.detail-loading-skeleton__text {
+  width: min(420px, 70%);
+  height: var(--jg-space-md);
+  background: var(--jg-color-bg-muted);
+}
+
+.detail-loading-skeleton__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-left: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.detail-loading-skeleton__grid span {
+  min-height: 68px;
+  border-right: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+  background: var(--jg-color-bg-surface);
 }
 
 .info-list {
   display: grid;
-  grid-template-columns: 104px 1fr;
-  row-gap: 16px;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: var(--jg-space-md) var(--jg-space-lg);
   margin: 0;
 }
 
 .info-list dd {
   margin: 0;
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-body);
+  overflow-wrap: anywhere;
 }
 
 .rule-list {
   display: grid;
-  gap: 12px;
-}
-
-.rule-list span {
-  min-height: 28px;
-  display: flex;
-  align-items: center;
-  color: #424955;
-  font-size: 12px;
-}
-
-.flow-list {
-  display: grid;
-  gap: 12px;
-}
-
-.flow-row {
-  display: grid;
-  grid-template-columns: 14px 1fr 92px auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 28px;
-}
-
-.flow-row em {
-  color: #767f8d;
-  font-size: 12px;
-  font-style: normal;
-}
-
-.flow-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #767f8d;
-}
-
-.dot-primary {
-  background: #0052cc;
-}
-
-.dot-warning {
-  background: #9f4f06;
-}
-
-.dot-danger {
-  background: #b51d2a;
-}
-
-.dot-success {
-  background: #1b6b3a;
-}
-
-.section-card {
-  border-radius: 3px;
-}
-
-.evidence-section {
-  margin-bottom: 20px;
-}
-
-.action-card {
-  margin-bottom: 20px;
-}
-
-:deep(.section-card .t-card__body) {
-  padding: 0;
-}
-
-.action-card :deep(.t-card__body) {
-  padding: 16px;
+  gap: var(--jg-space-sm);
+  margin: 0;
+  padding-left: var(--jg-space-lg);
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-body);
+  line-height: var(--jg-line-height-body);
 }
 
 .action-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--jg-space-md);
+  margin-top: var(--jg-space-lg);
 }
 
 .action-group {
   display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  background: #fff;
+  align-content: start;
+  gap: var(--jg-space-md);
+  padding: var(--jg-space-md);
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-surface);
 }
 
 .action-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--jg-space-md);
 }
 
 .action-title strong {
-  font-size: 13px;
+  font-size: var(--jg-font-size-body);
 }
 
-.action-title span {
-  color: #767f8d;
-  font-size: 12px;
+.action-title span,
+.action-field small {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
 }
 
 .action-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--jg-space-md);
+}
+
+.action-field,
+.self-review-field {
+  display: grid;
+  gap: var(--jg-space-xs);
+  min-width: 0;
+}
+
+.action-field--wide,
+.self-review-field {
+  grid-column: 1 / -1;
+}
+
+.action-field > span {
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-body);
+  font-weight: var(--jg-font-weight-medium);
+}
+
+.action-field b {
+  color: var(--jg-color-danger);
 }
 
 .action-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--jg-space-sm);
 }
 
-.file-input,
-.native-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 32px;
-  padding: 5px 10px;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  background: #fff;
-  color: #424955;
-  font-size: 12px;
+.action-buttons--end {
+  justify-content: flex-end;
 }
 
-.file-hint {
-  display: flex;
+.flow-list {
+  display: grid;
+  gap: var(--jg-space-sm);
+}
+
+.flow-row {
+  display: grid;
+  grid-template-columns: var(--jg-layout-dot-sm) minmax(0, 1fr) 112px auto;
   align-items: center;
-  min-height: 32px;
-  color: #5f6673;
-  font-size: 12px;
+  gap: var(--jg-space-sm);
+  min-height: var(--jg-layout-detail-flow-row-min-height);
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-table-secondary);
 }
 
-.action-message {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  font-size: 12px;
-  font-weight: 600;
+.flow-row em {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
+  font-style: normal;
 }
 
-.action-message.success {
-  color: #1b6b3a;
-  background: #f3faf5;
+.flow-marker {
+  width: var(--jg-layout-dot-sm);
+  height: var(--jg-layout-dot-sm);
+  border-radius: 50%;
+  background: var(--jg-color-border-strong);
 }
 
-.action-message.danger {
-  color: #b51d2a;
-  background: #fff5f5;
+.table-panel {
+  padding: 0;
 }
 
-.block-message {
-  padding: 18px 20px;
-  color: #9f4f06;
-  font-weight: 600;
+.table-panel .section-heading {
+  padding: var(--jg-space-lg);
+  margin: 0;
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
-@media (max-width: 980px) {
-  .meta-panel,
-  .flow-summary-strip,
-  .detail-grid,
-  .timeline-grid,
-  .action-grid,
+.table-panel :deep(.t-table__content) {
+  overflow-x: auto;
+}
+
+.table-panel :deep(.t-table th) {
+  height: var(--jg-layout-table-row-height);
+  background: var(--jg-color-bg-muted);
+  font-size: var(--jg-font-size-table-secondary);
+}
+
+.table-panel :deep(.t-table td) {
+  height: var(--jg-layout-table-row-height);
+  font-size: var(--jg-font-size-table-secondary);
+}
+
+.chain-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-md);
+  align-items: center;
+}
+
+:deep(.t-button:focus-visible),
+:deep(.t-link:focus-visible),
+:deep(.t-input:focus-within),
+:deep(.t-select:focus-within),
+:deep(.t-date-picker:focus-within) {
+  outline: var(--jg-border-width-accent) solid var(--jg-color-focus-outline);
+  outline-offset: var(--jg-space-xs);
+}
+
+@media (max-width: 1100px) {
+  .meta-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .overview-grid,
+  .timeline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-section + .overview-section {
+    border-top: var(--jg-border-width-base) solid var(--jg-color-border);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .meta-grid,
   .action-fields {
     grid-template-columns: 1fr;
   }
 
-  .chain-strip {
-    flex-wrap: wrap;
-    padding: 10px 16px;
+  .action-field--wide,
+  .self-review-field {
+    grid-column: auto;
+  }
+
+  .flow-row {
+    grid-template-columns: var(--jg-layout-dot-sm) minmax(0, 1fr) auto;
+  }
+
+  .flow-row em {
+    display: none;
   }
 }
 </style>

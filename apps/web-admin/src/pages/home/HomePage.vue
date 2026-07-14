@@ -1,106 +1,233 @@
 <template>
   <section class="home-page">
-    <div class="page-head">
-      <div>
-        <h1>工作台</h1>
-        <p>按你的岗位和项目权限汇总当前要处理的接管、审批和付款事项</p>
-      </div>
-      <t-button
-        :loading="loading"
-        @click="loadSummary"
-      >
-        刷新
-      </t-button>
-    </div>
+    <BusinessPageHeader
+      title="工作台"
+      description="按岗位和项目权限汇总当前要处理的接管、审批与付款事项。"
+    >
+      <template #actions>
+        <t-button
+          variant="outline"
+          :loading="loading"
+          @click="loadSummary"
+        >
+          刷新
+        </t-button>
+      </template>
+    </BusinessPageHeader>
 
-    <div
+    <BusinessFeedback
       v-if="errorMessage"
-      class="message error"
-    >
-      {{ errorMessage }}
-    </div>
+      state="error"
+      title="工作台读取失败"
+      :description="errorMessage"
+      action-label="重新加载"
+      @action="loadSummary"
+    />
 
-    <div
+    <BusinessFeedback
       v-if="loading && !workItems"
-      class="message"
-    >
-      正在读取你的工作台...
-    </div>
+      state="loading"
+      title="正在读取工作项"
+      description="系统正在按当前账号的岗位与项目权限汇总事项，请稍候。"
+    />
 
-    <div
-      v-else-if="!hasCards"
-      class="empty-panel"
-    >
-      <h2>暂无可见待办</h2>
-      <p>当前账号没有可汇总的项目业务权限，或暂无需要处理的事项。</p>
-    </div>
+    <EmptyBusinessState
+      v-else-if="!hasPermissionData"
+      title="暂无可见工作项"
+      description="当前账号没有可汇总的项目业务权限，或暂未分配可见项目。"
+    />
 
     <template v-else>
-      <div
-        v-if="!hasOpenItems"
-        class="message success"
-      >
-        当前没有待处理事项。
-      </div>
+      <BusinessStatusSummary
+        :items="summaryItems"
+        appearance="metrics"
+      />
 
-      <div class="queue-grid">
-        <section
-          v-for="queue in queues"
-          :key="queue.id"
-          class="workbench-queue"
+      <EmptyBusinessState
+        v-if="!hasOpenItems"
+        title="当前没有待处理事项"
+        description="工作项已处理完毕；后续新增事项会继续显示在此处。"
+        :actions="[{ label: '进入审批中心', to: '/审批中心', primary: true }]"
+      />
+
+      <template v-else>
+        <BusinessTableToolbar
+          title="工作项"
+          description="筛选与排序作用于当前已加载的工作项。"
+          appearance="plain"
         >
-          <header>
-            <h2>{{ queue.title }}</h2>
-            <p>{{ queue.description }}</p>
-          </header>
-          <div
-            v-if="!queue.items.length"
-            class="queue-empty"
-          >
-            暂无事项
-          </div>
-          <template v-else>
-            <button
-              v-for="item in queue.items"
-              :key="item.id"
-              type="button"
-              class="workbench-card"
-              @click="go(item.targetPath)"
+          <template #actions>
+            <t-button
+              size="small"
+              variant="text"
+              @click="resetFilters"
             >
-              <span class="card-title">{{ item.title }}</span>
-              <strong :class="['card-count', item.toneClass]">{{ item.amountText }}</strong>
-              <span class="card-description">{{ item.projectName }} · {{ item.businessCode }}</span>
-              <span class="card-description">{{ item.currentNode }} · {{ item.stayedText }}</span>
-              <span class="card-action">{{ item.nextAction }}</span>
-            </button>
+              重置筛选
+            </t-button>
           </template>
+
+          <label class="filter-field">
+            <span>项目</span>
+            <t-select
+              v-model="filters.project"
+              :options="filterOptions.project"
+              size="small"
+            />
+          </label>
+          <label class="filter-field">
+            <span>业务类型</span>
+            <t-select
+              v-model="filters.businessType"
+              :options="filterOptions.businessType"
+              size="small"
+            />
+          </label>
+          <label class="filter-field">
+            <span>状态</span>
+            <t-select
+              v-model="filters.status"
+              :options="filterOptions.status"
+              size="small"
+            />
+          </label>
+          <label class="filter-field filter-field--keyword">
+            <span>关键词</span>
+            <t-input
+              v-model="filters.keyword"
+              size="small"
+              clearable
+              placeholder="编号、项目、节点或下一步"
+            />
+          </label>
+          <label class="filter-field">
+            <span>排序</span>
+            <t-select
+              v-model="filters.sort"
+              :options="sortOptions"
+              size="small"
+            />
+          </label>
+        </BusinessTableToolbar>
+
+        <section
+          class="work-items-panel"
+          aria-label="工作项台账"
+        >
+          <t-tabs
+            v-model="activeQueue"
+            class="work-items-tabs"
+          >
+            <t-tab-panel
+              v-for="queue in queues"
+              :key="queue.id"
+              :value="queue.id"
+              :label="queue.title"
+            />
+          </t-tabs>
+
+          <EmptyBusinessState
+            v-if="!visibleRows.length && !loading"
+            title="当前条件下暂无工作项"
+            description="可以切换队列、调整筛选条件，或刷新工作台获取最新事项。"
+          />
+
+          <t-table
+            v-else
+            row-key="id"
+            size="small"
+            :columns="columns"
+            :data="visibleRows"
+            :loading="loading"
+            table-layout="fixed"
+          >
+            <template #statusLabel="{ row }">
+              <t-tag
+                size="small"
+                :theme="row.statusTone"
+                variant="light"
+              >
+                {{ row.statusLabel }}
+              </t-tag>
+            </template>
+            <template #operation="{ row }">
+              <t-link
+                theme="primary"
+                @click="go(row.targetPath)"
+              >
+                {{ row.nextAction }}
+              </t-link>
+            </template>
+          </t-table>
         </section>
-      </div>
+      </template>
     </template>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import type { PrimaryTableCol } from "tdesign-vue-next";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   fetchWorkItems,
   type WorkItemsReadModel
 } from "../../api/core-flow-read.api";
+import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
+import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
+import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
+import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
 import {
+  emptyHomeWorkItemFilters,
+  filterAndSortHomeWorkItemRows,
   hasOpenWorkItems,
   hasWorkItemPermissionData,
-  toWorkItemQueues
+  homeWorkItemFilterOptions,
+  homeWorkItemSummaryItems,
+  toHomeWorkItemRows,
+  toWorkItemQueues,
+  type HomeWorkItemRow
 } from "./home.config";
 
 const router = useRouter();
 const loading = ref(false);
 const errorMessage = ref("");
 const workItems = ref<WorkItemsReadModel | null>(null);
+const activeQueue = ref("pending");
+const filters = reactive(emptyHomeWorkItemFilters());
+
+const columns: PrimaryTableCol<HomeWorkItemRow>[] = [
+  { colKey: "statusLabel", title: "状态", width: 84 },
+  { colKey: "title", title: "工作项", minWidth: 176, ellipsis: true },
+  { colKey: "businessCode", title: "业务编号", width: 112, ellipsis: true },
+  { colKey: "projectName", title: "项目", minWidth: 132, ellipsis: true },
+  { colKey: "businessTypeLabel", title: "业务类型", width: 104 },
+  { colKey: "amountText", title: "金额/数量", width: 112, align: "right" },
+  { colKey: "currentNode", title: "当前节点", minWidth: 128, ellipsis: true },
+  { colKey: "stayedText", title: "停留时间", width: 104 },
+  { colKey: "operation", title: "操作", width: 144, fixed: "right" }
+];
+const sortOptions = [
+  { label: "阻塞优先", value: "blocker" },
+  { label: "超时优先", value: "overdue" },
+  { label: "金额风险优先", value: "amount" },
+  { label: "停留时间优先", value: "stayed" }
+];
 
 const queues = computed(() => toWorkItemQueues(workItems.value));
-const hasCards = computed(() => hasWorkItemPermissionData(workItems.value));
+const allRows = computed(() => toHomeWorkItemRows(queues.value));
+const filterOptions = computed(() => homeWorkItemFilterOptions(allRows.value));
+const summaryItems = computed(() =>
+  homeWorkItemSummaryItems(queues.value, workItems.value?.visibleProjectCount ?? 0)
+);
+const hasPermissionData = computed(() => hasWorkItemPermissionData(workItems.value));
 const hasOpenItems = computed(() => hasOpenWorkItems(queues.value));
+const visibleRows = computed(() =>
+  filterAndSortHomeWorkItemRows(
+    allRows.value.filter((row) => row.queueId === activeQueue.value),
+    filters
+  )
+);
 
 async function loadSummary() {
   loading.value = true;
@@ -108,10 +235,15 @@ async function loadSummary() {
   try {
     workItems.value = await fetchWorkItems();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "读取工作台失败";
+    const reason = error instanceof Error ? error.message : "未知错误";
+    errorMessage.value = `未能刷新工作项：${reason}。当前无法判断是否有新的待办；已加载内容不会被清空，请检查网络与账号权限后重试。`;
   } finally {
     loading.value = false;
   }
+}
+
+function resetFilters() {
+  Object.assign(filters, emptyHomeWorkItemFilters());
 }
 
 function go(path: string) {
@@ -126,178 +258,73 @@ onMounted(() => {
 <style scoped>
 .home-page {
   display: grid;
-  gap: 16px;
-}
-
-.page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-h1,
-h2,
-p {
-  margin: 0;
-}
-
-h1 {
-  font-size: 24px;
-  line-height: 1.25;
-}
-
-.page-head p,
-.empty-panel p,
-.card-description {
-  color: #5f6673;
-}
-
-.page-head p {
-  margin-top: 6px;
-  font-size: 13px;
-}
-
-.message,
-.empty-panel {
-  padding: 14px 16px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 8px;
-  color: #424955;
-}
-
-.message.error {
-  border-color: #f2b8b5;
-  color: #b42318;
-}
-
-.message.success {
-  border-color: #b7dfc4;
-  color: #227245;
-}
-
-.empty-panel {
-  display: grid;
-  gap: 8px;
-}
-
-.empty-panel h2 {
-  font-size: 18px;
-}
-
-.queue-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.workbench-queue {
-  display: grid;
-  align-content: start;
-  gap: 10px;
+  gap: var(--jg-space-lg);
   min-width: 0;
-  padding: 14px;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 8px;
 }
 
-.workbench-queue header {
+.filter-field {
   display: grid;
-  gap: 6px;
+  gap: var(--jg-space-xs);
+  min-width: 150px;
 }
 
-.workbench-queue h2 {
-  font-size: 17px;
+.filter-field--keyword {
+  min-width: 240px;
+  flex: 1;
 }
 
-.workbench-queue header p,
-.queue-empty {
-  color: #5f6673;
-  font-size: 13px;
-  line-height: 1.5;
+.filter-field > span {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
+  font-weight: var(--jg-font-weight-semibold);
 }
 
-.queue-empty {
-  padding: 14px;
-  border: 1px dashed #cbd3df;
-  border-radius: 8px;
-  background: #f8fafc;
+.work-items-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-surface);
 }
 
-.workbench-card {
-  min-height: 142px;
-  display: grid;
-  grid-template-rows: auto auto auto auto 1fr;
-  gap: 8px;
-  padding: 16px;
-  text-align: left;
-  background: #fff;
-  border: 1px solid #dce1e8;
-  border-radius: 8px;
-  color: #151922;
-  cursor: pointer;
+.work-items-tabs {
+  padding: 0 var(--jg-space-lg);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
-.workbench-card:hover {
-  border-color: #2f6fed;
-  box-shadow: 0 8px 20px rgba(21, 25, 34, 0.08);
+.work-items-panel :deep(.t-table__content) {
+  overflow-x: auto;
 }
 
-.card-title {
-  font-size: 14px;
-  font-weight: 600;
+.work-items-panel :deep(.t-table th) {
+  height: var(--jg-layout-table-row-height);
+  background: var(--jg-color-bg-muted);
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-table-secondary);
 }
 
-.card-count {
-  font-size: 20px;
-  line-height: 1.2;
-  word-break: break-word;
+.work-items-panel :deep(.t-table td) {
+  height: var(--jg-layout-table-row-height);
+  font-size: var(--jg-font-size-table-secondary);
 }
 
-.card-description {
-  font-size: 13px;
-  line-height: 1.5;
+.work-items-panel :deep(.t-empty) {
+  padding: var(--jg-space-xxl);
 }
 
-.card-action {
-  font-size: 13px;
-  font-weight: 600;
-  color: #2f6fed;
+:deep(.t-button:focus-visible),
+:deep(.t-link:focus-visible),
+:deep(.t-input:focus-within),
+:deep(.t-select:focus-within) {
+  outline: var(--jg-border-width-accent) solid var(--jg-color-focus-outline);
+  outline-offset: var(--jg-space-xs);
 }
 
-.tone-primary {
-  color: #2f6fed;
-}
-
-.tone-warning {
-  color: #b66b00;
-}
-
-.tone-danger {
-  color: #c9352b;
-}
-
-.tone-success {
-  color: #227245;
-}
-
-.tone-default {
-  color: #424955;
-}
-
-@media (max-width: 640px) {
-  .page-head {
-    display: grid;
-  }
-
-  .queue-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .workbench-card {
-    min-height: 136px;
+@media (max-width: 1100px) {
+  .filter-field,
+  .filter-field--keyword {
+    min-width: 180px;
+    flex: 1 1 180px;
   }
 }
 </style>

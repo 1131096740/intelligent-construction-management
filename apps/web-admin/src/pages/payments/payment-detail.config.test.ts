@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPaymentFlowSummary,
+  buildPaymentDetailHeader,
   paymentApprovalSteps,
   paymentBaseInfo,
   paymentDetailMeta,
   paymentExecutionAllocationColumns,
   paymentExecutionCoverageColumns,
   paymentExecutionSteps,
+  paymentDetailTabs,
   paymentTraceRules
 } from "./payment-detail.config";
 
@@ -106,6 +108,36 @@ describe("payment detail page configuration", () => {
       { label: "申请金额", value: "-" },
       { label: "责任部门", value: "-" },
       { label: "下一步动作", value: "-" }
+    ]);
+  });
+
+  it("builds the standard detail header from existing backend facts", () => {
+    expect(
+      buildPaymentDetailHeader(
+        "FK-2026-006",
+        "FK-2026-006 · 5月材料结算付款申请",
+        paymentDetailMeta,
+        paymentExecutionSteps
+      )
+    ).toEqual({
+      businessCode: "FK-2026-006",
+      title: "5月材料结算付款申请",
+      status: "已批待付",
+      statusTone: "warning",
+      owner: "财务部",
+      currentNode: "已批待付",
+      nextStep: "出纳付款登记"
+    });
+  });
+
+  it("organizes the long detail into the six requested business sections", () => {
+    expect(paymentDetailTabs.map((tab) => tab.label)).toEqual([
+      "概览",
+      "流程",
+      "凭证资料",
+      "实付与入账",
+      "关联记录",
+      "审计"
     ]);
   });
 });

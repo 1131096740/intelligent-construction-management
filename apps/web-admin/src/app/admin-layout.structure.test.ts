@@ -15,9 +15,8 @@ describe("admin navigation visual hierarchy", () => {
     expect(layoutSource).toContain("overflow-x: hidden");
     expect(layoutSource).toContain(".menu :deep(.t-menu__item.t-is-active)");
     expect(layoutSource).toContain("background: var(--jg-bg-brand-soft)");
-    expect(layoutSource).toContain(
-      "box-shadow: inset var(--jg-border-width-accent) 0 0 var(--jg-brand)"
-    );
+    expect(layoutSource).toContain("border-left: var(--jg-border-width-accent) solid var(--jg-brand)");
+    expect(layoutSource).not.toContain("box-shadow:");
   });
 
   it("renders navigation groups as readable headings with separators", () => {

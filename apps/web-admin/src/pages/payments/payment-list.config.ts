@@ -169,6 +169,18 @@ export const paymentRules = [
   "出纳/财务登记实付并上传付款凭证"
 ];
 
+export const paymentPaginationBlockReason =
+  "当前仅显示系统本次返回的记录，暂不支持翻页；请使用筛选缩小范围，避免把当前列表误认为全部记录。";
+
+export function paymentLedgerFilterOptions(rows: readonly PaymentLedgerRow[]) {
+  return {
+    project: ledgerSelectOptions(rows.map((row) => row.project), "全部项目"),
+    settlementNo: ledgerSelectOptions(rows.map((row) => row.settlementNo), "全部来源"),
+    approvalStatus: ledgerSelectOptions(rows.map((row) => row.approvalStatus), "全部审批状态"),
+    paymentStatus: ledgerSelectOptions(rows.map((row) => row.paymentStatus), "全部实付状态")
+  };
+}
+
 export function emptyPaymentLedgerFilters(): PaymentLedgerFilters {
   return {
     project: "",
@@ -213,6 +225,13 @@ function includesText(value: string, query: string) {
   }
 
   return value.toLocaleLowerCase().includes(normalized);
+}
+
+function ledgerSelectOptions(values: readonly string[], allLabel: string) {
+  const unique = [...new Set(values.filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right, "zh-CN")
+  );
+  return [{ label: allLabel, value: "" }, ...unique.map((value) => ({ label: value, value }))];
 }
 
 function formatPaymentCents(amountCents: string) {

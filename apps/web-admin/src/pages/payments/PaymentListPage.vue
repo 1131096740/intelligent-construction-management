@@ -1,140 +1,190 @@
 <template>
   <section class="payment-page">
-    <div class="page-head">
+    <BusinessPageHeader
+      title="付款管理"
+      description="按付款来源、审批状态、实付状态和付款凭证管理已创建申请。"
+    >
+      <template #actions>
+        <t-button
+          variant="outline"
+          :loading="ledgerLoading"
+          @click="loadPaymentLedger"
+        >
+          刷新
+        </t-button>
+        <t-button
+          theme="primary"
+          @click="openCreateWorkbench"
+        >
+          新建付款申请
+        </t-button>
+      </template>
+    </BusinessPageHeader>
+
+    <BusinessStatusSummary
+      :items="summaryValues"
+      appearance="metrics"
+    />
+
+    <section
+      class="payment-rules"
+      aria-label="付款办理规则"
+    >
       <div>
-        <h1>付款管理</h1>
-        <p>完整付款台账：按结算单、审批状态、实付状态和付款凭证管理已创建申请。</p>
+        <strong>付款办理规则</strong>
+        <span>审批通过不等于实际付款。</span>
       </div>
       <t-button
-        theme="primary"
-        @click="openCreateWorkbench"
+        size="small"
+        variant="text"
+        @click="showPaymentRules = !showPaymentRules"
       >
-        新建付款申请
+        {{ showPaymentRules ? "收起规则" : "查看规则" }}
       </t-button>
-    </div>
+      <ul v-if="showPaymentRules">
+        <li
+          v-for="rule in paymentRules"
+          :key="rule"
+        >
+          {{ rule }}
+        </li>
+      </ul>
+    </section>
 
-    <div class="summary-strip">
-      <div
-        v-for="item in summaryValues"
-        :key="item.label"
-        class="summary-item"
-      >
-        <span class="summary-label">{{ item.label }}</span>
-        <strong :class="['summary-value', `tone-${item.tone}`]">
-          {{ item.value }}
-        </strong>
-      </div>
-    </div>
+    <BusinessTableToolbar
+      title="付款台账筛选"
+      description="筛选作用于当前已加载记录；列设置按当前用户保存在本机。"
+      appearance="plain"
+    >
+      <template #actions>
+        <t-button
+          size="small"
+          variant="text"
+          @click="showColumnSettings = !showColumnSettings"
+        >
+          {{ showColumnSettings ? "收起列设置" : "列设置" }}
+        </t-button>
+        <t-button
+          size="small"
+          variant="text"
+          @click="resetPaymentFilters"
+        >
+          重置筛选
+        </t-button>
+      </template>
 
-    <div class="rule-strip">
-      <span
-        v-for="rule in paymentRules"
-        :key="rule"
-      >
-        {{ rule }}
-      </span>
-    </div>
-
-    <div class="filter-bar">
       <label
         v-for="field in paymentFilterFields"
         :key="field.key"
-        :class="['filter-field', { keyword: field.type === 'keyword' }]"
+        :class="['filter-field', { 'filter-field--keyword': field.type === 'keyword' }]"
       >
         <span>{{ field.label }}</span>
         <t-input
+          v-if="field.type === 'keyword'"
           v-model="paymentFilters[field.key]"
           :placeholder="field.placeholder"
           size="small"
+          clearable
+        />
+        <t-select
+          v-else
+          v-model="paymentFilters[field.key]"
+          :options="optionsForFilter(field.key)"
+          size="small"
         />
       </label>
+    </BusinessTableToolbar>
 
-      <t-button
-        class="filter-action"
-        theme="primary"
-        @click="loadPaymentLedger"
-      >
-        查询
-      </t-button>
-      <t-button
-        class="filter-action"
-        @click="resetPaymentFilters"
-      >
-        重置
-      </t-button>
-    </div>
-
-    <div
-      v-if="message"
-      :class="['list-message', messageTone]"
+    <section
+      v-if="showColumnSettings"
+      class="column-settings"
+      aria-label="付款台账列设置"
     >
-      {{ message }}
-    </div>
-
-    <div class="column-strip">
-      <span>列设置</span>
-      <label
+      <strong>显示列</strong>
+      <t-checkbox
         v-for="option in paymentColumnOptions"
         :key="option.key"
+        :checked="visiblePaymentColumnKeys.includes(option.key)"
+        @change="togglePaymentColumn(option.key)"
       >
-        <input
-          type="checkbox"
-          :checked="visiblePaymentColumnKeys.includes(option.key)"
-          @change="togglePaymentColumn(option.key)"
-        >
         {{ option.title }}
-      </label>
-    </div>
+      </t-checkbox>
+    </section>
 
     <section
       class="ledger-section"
       aria-label="付款台账"
     >
-      <div class="ledger-heading">
-        <h2>付款台账</h2>
-        <p>集中查询关联合同、付款来源、申请金额、审批状态、实付状态和当前处理人。</p>
-      </div>
+      <header class="ledger-heading">
+        <div>
+          <h2>付款台账</h2>
+          <p>金额右对齐，操作列固定在右侧；审批通过与实际付款继续分开表达。</p>
+        </div>
+        <span>{{ errorMessage ? "当前记录暂不可用" : `当前显示 ${filteredPaymentLedgerRows.length} 条` }}</span>
+      </header>
 
-      <t-card
-        class="ledger-panel"
-        :bordered="true"
+      <BusinessFeedback
+        v-if="errorMessage"
+        class="ledger-error"
+        state="error"
+        title="付款记录暂时无法读取"
+        :description="errorMessage"
+        action-label="重新加载"
+        @action="loadPaymentLedger"
+      />
+
+      <t-table
+        v-if="!errorMessage && (ledgerLoading || filteredPaymentLedgerRows.length)"
+        row-key="id"
+        size="small"
+        table-layout="fixed"
+        :columns="visiblePaymentLedgerColumns"
+        :data="filteredPaymentLedgerRows"
+        :loading="ledgerLoading"
       >
-        <t-table
-          row-key="id"
-          size="small"
-          :columns="visiblePaymentLedgerColumns"
-          :data="filteredPaymentLedgerRows"
-          :loading="ledgerLoading"
-          empty="暂无付款数据"
-        >
-          <template #approvalStatus="{ row }">
-            <t-tag
-              size="small"
-              :theme="statusTagTheme(row.approvalTone)"
-              variant="light"
-            >
-              {{ row.approvalStatus }}
-            </t-tag>
-          </template>
-          <template #paymentStatus="{ row }">
-            <t-tag
-              size="small"
-              :theme="statusTagTheme(row.paymentTone)"
-              variant="light"
-            >
-              {{ row.paymentStatus }}
-            </t-tag>
-          </template>
-          <template #operation="{ row }">
-            <t-link
-              theme="primary"
-              @click="openDetail(row.id)"
-            >
-              查看付款 {{ row.paymentNo }}
-            </t-link>
-          </template>
-        </t-table>
-      </t-card>
+        <template #approvalStatus="{ row }">
+          <t-tag
+            size="small"
+            :theme="statusTagTheme(row.approvalTone)"
+            variant="light"
+          >
+            {{ row.approvalStatus }}
+          </t-tag>
+        </template>
+        <template #paymentStatus="{ row }">
+          <t-tag
+            size="small"
+            :theme="statusTagTheme(row.paymentTone)"
+            variant="light"
+          >
+            {{ row.paymentStatus }}
+          </t-tag>
+        </template>
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="openDetail(row.id)"
+          >
+            查看详情
+          </t-link>
+        </template>
+      </t-table>
+
+      <EmptyBusinessState
+        v-else-if="!errorMessage"
+        title="当前条件下暂无付款记录"
+        description="可以调整筛选条件；如需发起新申请，请从付款工作台选择有效业务来源。"
+        :actions="[{ label: '新建付款申请', to: '/付款工作台' }]"
+      />
+
+      <footer class="ledger-footer">
+        <span>数据范围</span>
+        <p>
+          {{ errorMessage
+            ? "数据成功加载后，将在此说明本次展示范围。"
+            : paymentPaginationBlockReason }}
+        </p>
+      </footer>
     </section>
   </section>
 </template>
@@ -149,12 +199,23 @@ import {
   writePersonalTablePreferences
 } from "../../app/personal-table-preferences";
 import { useAuthStore } from "../../auth/auth.store";
-import type { PaymentLedgerRow, PaymentTone } from "./payment-list.config";
+import BusinessFeedback from "../../components/BusinessFeedback.vue";
+import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
+import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
+import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
+import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
+import type {
+  PaymentFilterKey,
+  PaymentLedgerRow,
+  PaymentTone
+} from "./payment-list.config";
 import {
   emptyPaymentLedgerFilters,
   filterPaymentLedgerRows,
   paymentFilterFields,
   paymentLedgerColumns,
+  paymentLedgerFilterOptions,
+  paymentPaginationBlockReason,
   paymentRules,
   paymentSummaryItems
 } from "./payment-list.config";
@@ -162,11 +223,12 @@ import {
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
-const message = ref("");
-const messageTone = ref<"danger" | "default">("default");
+const errorMessage = ref("");
 const paymentLedgerRows = ref<PaymentLedgerRow[]>([]);
 const paymentFilters = reactive(emptyPaymentLedgerFilters());
 const ledgerLoading = ref(false);
+const showColumnSettings = ref(false);
+const showPaymentRules = ref(false);
 const configurablePaymentColumnKeys = paymentLedgerColumns
   .map((column) => String(column.colKey))
   .filter((key) => key !== "operation");
@@ -190,12 +252,13 @@ const summaryValues = computed(() => {
 
   return paymentSummaryItems.map((item, index) => ({
     ...item,
-    value: String(values[index] ?? 0)
+    value: errorMessage.value ? "—" : String(values[index] ?? 0)
   }));
 });
 const filteredPaymentLedgerRows = computed(() =>
   filterPaymentLedgerRows(paymentLedgerRows.value, paymentFilters)
 );
+const filterOptions = computed(() => paymentLedgerFilterOptions(paymentLedgerRows.value));
 const paymentPreferenceStorageKey = computed(() =>
   auth.user?.id ? `jiangkong:web-admin:payment-ledger:${auth.user.id}` : ""
 );
@@ -210,6 +273,11 @@ const visiblePaymentLedgerColumns = computed(() => {
     column.colKey === "operation" || visible.has(String(column.colKey))
   );
 });
+
+function optionsForFilter(key: PaymentFilterKey) {
+  if (key === "keyword") return [];
+  return filterOptions.value[key];
+}
 
 function openCreateWorkbench() {
   const project = typeof route.query.project === "string" ? route.query.project.trim() : "";
@@ -249,9 +317,7 @@ function loadPaymentColumnPreferences() {
 
 function savePaymentColumnPreferences() {
   const storageKey = paymentPreferenceStorageKey.value;
-  if (!storageKey) {
-    return;
-  }
+  if (!storageKey) return;
   writePersonalTablePreferences(getPreferenceStorage(), storageKey, {
     query: "",
     visibleColumnKeys: visiblePaymentColumnKeys.value
@@ -267,51 +333,32 @@ function getPreferenceStorage(): Storage | null {
 }
 
 function applyRouteProjectFilter(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) {
-    return;
+  if (typeof value === "string" && value.trim()) {
+    paymentFilters.project = value.trim();
   }
-
-  paymentFilters.project = value.trim();
 }
 
 async function loadPaymentLedger() {
   ledgerLoading.value = true;
-  message.value = "";
+  errorMessage.value = "";
   try {
     const result = await fetchPaymentLedger();
     paymentLedgerRows.value = result.rows;
     ledgerSummary.value = result.summary;
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载付款台账失败";
-    messageTone.value = "danger";
+    const reason = error instanceof Error ? error.message : "未知错误";
+    errorMessage.value = `付款记录读取失败：${reason}。这不代表当前没有付款记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     ledgerLoading.value = false;
   }
 }
 
 function statusTagTheme(tone: PaymentTone) {
-  const themeByTone = {
-    default: "default",
-    primary: "primary",
-    warning: "warning",
-    danger: "danger",
-    success: "success"
-  } as const;
-
-  return themeByTone[tone];
+  return tone;
 }
 
-watch(
-  () => route.query.project,
-  applyRouteProjectFilter,
-  { immediate: true }
-);
-
-watch(
-  paymentPreferenceStorageKey,
-  loadPaymentColumnPreferences,
-  { immediate: true }
-);
+watch(() => route.query.project, applyRouteProjectFilter, { immediate: true });
+watch(paymentPreferenceStorageKey, loadPaymentColumnPreferences, { immediate: true });
 
 onMounted(() => {
   void loadPaymentLedger();
@@ -320,213 +367,169 @@ onMounted(() => {
 
 <style scoped>
 .payment-page {
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--jg-text-strong);
-}
-
-.page-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+  display: grid;
   gap: var(--jg-space-lg);
-  margin-bottom: var(--jg-space-lg);
-}
-
-.page-head h1 {
-  margin: 0 0 var(--jg-space-sm);
-  font-size: var(--jg-font-page-title);
-  line-height: 1.2;
-  font-weight: 700;
-}
-
-.page-head p {
-  margin: 0;
-  color: var(--jg-text-subtle);
-  font-size: var(--jg-font-meta);
-}
-
-.summary-strip,
-.rule-strip,
-.filter-bar {
-  background: var(--jg-bg-panel);
-  border: 1px solid var(--jg-border);
-  border-radius: var(--jg-radius-sm);
-}
-
-.summary-strip {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  padding: 0 var(--jg-space-lg);
-  margin-bottom: var(--jg-space-md);
-}
-
-.summary-item {
-  display: flex;
-  gap: var(--jg-space-sm);
-  padding-right: var(--jg-space-xl);
-  margin-right: var(--jg-space-xl);
-  border-right: 1px solid var(--jg-border);
-}
-
-.summary-item:last-child {
-  border-right: 0;
-}
-
-.summary-label {
-  color: var(--jg-text-subtle);
-}
-
-.summary-value {
-  color: var(--jg-text-strong);
-}
-
-.tone-primary {
-  color: var(--jg-brand);
-}
-
-.tone-warning {
-  color: var(--jg-warning);
-}
-
-.tone-success {
-  color: var(--jg-success);
-}
-
-.rule-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: var(--jg-space-lg);
-}
-
-.rule-strip span {
-  min-height: 36px;
-  display: flex;
-  align-items: center;
-  padding: 0 var(--jg-space-md);
-  border-right: 1px solid var(--jg-border);
-  color: var(--jg-text-main);
-  font-size: var(--jg-font-meta);
-}
-
-.rule-strip span:last-child {
-  border-right: 0;
-}
-
-.filter-bar {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(96px, 120px)) minmax(150px, 1fr) 76px 76px;
-  gap: var(--jg-space-sm) var(--jg-space-md);
-  align-items: end;
-  padding: 10px var(--jg-space-md);
-  margin-bottom: var(--jg-space-lg);
+  min-width: 0;
+  color: var(--jg-color-text-primary);
 }
 
 .filter-field {
-  min-width: 0;
   display: grid;
   gap: var(--jg-space-xs);
+  min-width: 150px;
 }
 
-.filter-field span {
-  color: var(--jg-text-subtle);
-  font-size: var(--jg-font-meta);
-  font-weight: 600;
+.filter-field--keyword {
+  min-width: 240px;
+  flex: 1;
 }
 
-.filter-action {
-  width: 76px;
-  min-width: 76px;
+.filter-field > span {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
+  font-weight: var(--jg-font-weight-semibold);
 }
 
-.list-message {
-  margin-bottom: var(--jg-space-lg);
-  padding: 10px var(--jg-space-md);
-  border: 1px solid var(--jg-border);
-  border-radius: var(--jg-radius-sm);
-  background: var(--jg-bg-panel);
-  color: var(--jg-text-main);
-  font-size: var(--jg-font-meta);
-  font-weight: 600;
-}
-
-.list-message.danger {
-  color: var(--jg-danger);
-  background: var(--jg-bg-danger-soft);
-}
-
-.column-strip {
+.column-settings {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: var(--jg-space-sm) var(--jg-space-lg);
+  padding: var(--jg-space-md) var(--jg-space-lg);
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-surface);
+}
+
+.payment-rules {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--jg-space-sm) var(--jg-space-md);
-  align-items: center;
-  margin-bottom: var(--jg-space-lg);
-  padding: 10px var(--jg-space-md);
-  border: 1px solid var(--jg-border);
-  border-radius: var(--jg-radius-sm);
-  background: var(--jg-bg-panel);
-  color: var(--jg-text-subtle);
-  font-size: var(--jg-font-meta);
+  padding: var(--jg-space-sm) 0;
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
-.column-strip > span {
-  color: var(--jg-text-strong);
-  font-weight: 700;
+.payment-rules > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm);
+  align-items: baseline;
 }
 
-.column-strip label {
-  display: inline-flex;
-  gap: var(--jg-space-xs);
-  align-items: center;
+.payment-rules strong {
+  font-size: var(--jg-font-size-body);
+}
+
+.payment-rules span,
+.payment-rules li {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
+}
+
+.payment-rules ul {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: var(--jg-space-xs) var(--jg-space-xl);
+  margin: 0;
+  padding: var(--jg-space-xs) 0 0 var(--jg-space-lg);
+}
+
+.column-settings strong {
+  font-size: var(--jg-font-size-body);
 }
 
 .ledger-section {
   min-width: 0;
+  overflow: hidden;
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-panel);
+  background: var(--jg-color-bg-surface);
 }
 
 .ledger-heading {
-  margin-bottom: var(--jg-space-sm);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--jg-space-lg);
+  padding: var(--jg-space-lg);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.ledger-heading h2,
+.ledger-heading p,
+.ledger-footer p {
+  margin: 0;
 }
 
 .ledger-heading h2 {
-  margin: 0 0 var(--jg-space-xs);
-  color: var(--jg-text-strong);
-  font-size: var(--jg-font-section-title);
-  line-height: var(--jg-line-height-tight);
+  font-size: var(--jg-font-size-section-title);
+  line-height: var(--jg-line-height-title);
+}
+
+.ledger-heading p,
+.ledger-heading > span,
+.ledger-footer {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
 }
 
 .ledger-heading p {
-  margin: 0;
-  color: var(--jg-text-muted);
-  font-size: var(--jg-font-meta);
+  margin-top: var(--jg-space-xs);
 }
 
-.ledger-panel {
-  min-width: 0;
-  overflow: hidden;
-  border-radius: var(--jg-radius-sm);
+.ledger-error {
+  margin: var(--jg-space-md) var(--jg-space-lg);
 }
 
-:deep(.t-card__body) {
-  padding: 0;
+.ledger-section :deep(.t-table__content) {
   overflow-x: auto;
 }
 
-:deep(.t-table th) {
-  background: var(--jg-bg-muted);
-  font-size: var(--jg-font-meta);
+.ledger-section :deep(.t-table th) {
+  height: var(--jg-layout-table-row-height);
+  background: var(--jg-color-bg-muted);
+  font-size: var(--jg-font-size-table-secondary);
 }
 
-@media (max-width: 980px) {
-  .rule-strip,
-  .filter-bar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.ledger-section :deep(.t-table td) {
+  height: var(--jg-layout-table-row-height);
+  font-size: var(--jg-font-size-table-secondary);
+}
 
-  .filter-field.keyword {
-    grid-column: span 2;
+.ledger-section :deep(.t-empty) {
+  padding: var(--jg-space-xxl);
+}
+
+.ledger-footer {
+  display: flex;
+  gap: var(--jg-space-md);
+  padding: var(--jg-space-md) var(--jg-space-lg);
+  border-top: var(--jg-border-width-base) solid var(--jg-color-border);
+  background: var(--jg-color-bg-muted);
+}
+
+.ledger-footer span {
+  flex: 0 0 auto;
+  color: var(--jg-color-text-secondary);
+  font-weight: var(--jg-font-weight-semibold);
+}
+
+:deep(.t-button:focus-visible),
+:deep(.t-link:focus-visible),
+:deep(.t-input:focus-within),
+:deep(.t-select:focus-within),
+:deep(.t-checkbox:focus-within) {
+  outline: var(--jg-border-width-accent) solid var(--jg-color-focus-outline);
+  outline-offset: var(--jg-space-xs);
+}
+
+@media (max-width: 1100px) {
+  .filter-field,
+  .filter-field--keyword {
+    min-width: 180px;
+    flex: 1 1 180px;
   }
 }
 </style>

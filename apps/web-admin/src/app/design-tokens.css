@@ -1,29 +1,49 @@
 :root {
-  --jg-color-bg-page: #f4f6f9;
+  --jg-color-bg-page: #ffffff;
   --jg-color-bg-panel: #ffffff;
-  --jg-color-bg-muted: #f7f9fc;
-  --jg-color-bg-brand-soft: #e8f0ff;
+  --jg-color-bg-surface: #ffffff;
+  --jg-color-bg-muted: #f5f7fa;
+  --jg-color-bg-subtle: #f5f7fa;
+  --jg-color-bg-hover: #f3f6fb;
+  --jg-color-bg-disabled: #f5f7fa;
+  --jg-color-bg-brand-soft: #edf4ff;
   --jg-color-bg-success-soft: #f3faf5;
   --jg-color-bg-warning-soft: #fff8ed;
   --jg-color-bg-danger-soft: #fff5f5;
-  --jg-color-border: #dce1e8;
-  --jg-color-text-primary: #151922;
-  --jg-color-text-secondary: #424955;
-  --jg-color-text-tertiary: #5f6673;
-  --jg-color-text-muted: #767f8d;
-  --jg-color-brand: #0052cc;
+  --jg-color-border: #dcdfe6;
+  --jg-color-border-strong: #b8bec7;
+  --jg-color-text-primary: #1f2329;
+  --jg-color-text-secondary: #373c43;
+  --jg-color-text-tertiary: #646a73;
+  --jg-color-text-muted: #8f959e;
+  --jg-color-text-disabled: #b8bec7;
+  --jg-color-text-inverse: #ffffff;
+  --jg-color-brand: #0052d9;
+  --jg-color-brand-hover: #266fe8;
+  --jg-color-brand-active: #003cab;
+  --jg-color-focus-outline: #0052d9;
   --jg-color-success: #2ba471;
   --jg-color-warning: #d9822b;
   --jg-color-danger: #c9353f;
   --jg-color-info: #0052cc;
 
   --jg-font-size-page-title: 24px;
+  --jg-font-size-summary-value: 20px;
+  --jg-font-size-summary-label: 13px;
   --jg-font-size-section-title: 16px;
   --jg-font-size-subtitle: 14px;
   --jg-font-size-stat: 15px;
-  --jg-font-size-body: 13px;
+  --jg-font-size-table-secondary: 13px;
+  --jg-font-size-body: 14px;
   --jg-font-size-meta: 12px;
   --jg-font-size-mini: 11px;
+
+  --jg-font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", Arial, sans-serif;
+  --jg-font-weight-regular: 400;
+  --jg-font-weight-medium: 500;
+  --jg-font-weight-semibold: 600;
+  --jg-font-weight-bold: 700;
 
   --jg-line-height-tight: 1.25;
   --jg-line-height-body: 1.6;
@@ -41,20 +61,26 @@
   --jg-space-xl: 24px;
   --jg-space-xxl: 32px;
 
-  --jg-radius-sm: 3px;
-  --jg-radius-md: 6px;
-  --jg-radius-lg: 8px;
+  --jg-radius-control: 4px;
+  --jg-radius-panel: 6px;
+  --jg-radius-overlay: 8px;
+  --jg-radius-sm: var(--jg-radius-control);
+  --jg-radius-md: var(--jg-radius-panel);
+  --jg-radius-lg: var(--jg-radius-overlay);
 
   --jg-shadow-none: none;
-  --jg-shadow-panel: 0 1px 2px rgba(21, 25, 34, 0.06);
+  --jg-shadow-panel: none;
   --jg-shadow-overlay: 0 8px 24px rgba(21, 25, 34, 0.14);
 
   --jg-layout-page-max-width: 1440px;
-  --jg-layout-sidebar-width: 240px;
-  --jg-layout-header-height: 56px;
-  --jg-layout-table-row-height: 46px;
+  --jg-layout-sidebar-width: 208px;
+  --jg-layout-header-height: 48px;
+  --jg-layout-content-padding: 24px;
+  --jg-layout-content-padding-compact: 16px;
+  --jg-layout-table-row-height: 44px;
   --jg-layout-business-summary-strip-min-height: 42px;
   --jg-layout-summary-item-min-width: 150px;
+  --jg-layout-summary-metric-min-width: 120px;
   --jg-layout-list-filter-field-min-width: 96px;
   --jg-layout-list-filter-field-max-width: 120px;
   --jg-layout-list-filter-keyword-min-width: 150px;
@@ -64,6 +90,7 @@
   --jg-layout-form-field-min-width-wide: 160px;
   --jg-layout-form-field-min-width-compact: 140px;
   --jg-layout-control-min-height: 32px;
+  --jg-layout-control-height: 32px;
   --jg-layout-detail-chain-min-height: 40px;
   --jg-layout-detail-info-label-width: 92px;
   --jg-layout-detail-flow-marker-width: 14px;
@@ -76,6 +103,10 @@
   --jg-layout-dot-md: 10px;
   --jg-border-width-base: 1px;
   --jg-border-width-accent: 3px;
+
+  --jg-icon-size-sm: 16px;
+  --jg-icon-size-md: 18px;
+  --jg-icon-size-lg: 20px;
 
   --jg-bg-page: var(--jg-color-bg-page);
   --jg-bg-panel: var(--jg-color-bg-panel);

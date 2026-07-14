@@ -81,6 +81,8 @@ test("separates the payment ledger from the contract-linked creation workbench",
               settlementNo: "JS-2026-001",
               periodLabel: "2026-06",
               amountCents: "5000000",
+              payableAmountCents: "5000000",
+              paidAmountCents: "0",
               status: "effective",
               statusLabel: "已生效",
               canCreatePayment: true,
@@ -123,7 +125,7 @@ test("separates the payment ledger from the contract-linked creation workbench",
 
   await page.goto("/付款管理");
   await expect(page.getByRole("heading", { name: "付款管理" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "付款台账" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "付款台账", exact: true })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("payment-ledger-1440.png"),
     fullPage: true
@@ -146,7 +148,7 @@ test("separates the payment ledger from the contract-linked creation workbench",
   await page.getByText("JS-2026-001 · 2026-06 · ¥50,000.00", { exact: true }).last().click();
 
   await page.getByPlaceholder("FK-2026-007").fill("FK-E2E-001");
-  await page.getByPlaceholder("256000.00").fill("50000.00");
+  await page.getByPlaceholder("请输入申请金额").fill("50000.00");
   await page.screenshot({
     path: testInfo.outputPath("payment-workbench-1440.png"),
     fullPage: true

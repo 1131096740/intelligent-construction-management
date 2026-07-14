@@ -4,6 +4,10 @@ import {
   hasOpenWorkItems,
   hasWorkbenchPermissionData,
   hasWorkItemPermissionData,
+  emptyHomeWorkItemFilters,
+  filterAndSortHomeWorkItemRows,
+  homeWorkItemSummaryItems,
+  toHomeWorkItemRows,
   toWorkbenchCards,
   toWorkbenchQueues,
   toWorkItemQueues
@@ -142,4 +146,106 @@ describe("home workbench card helpers", () => {
       targetPath: "/付款管理/FK-001"
     });
   });
+
+  it("builds compact summary items without changing the three queue meanings", () => {
+    const queues = toWorkItemQueues(workItemsFixture());
+
+    expect(homeWorkItemSummaryItems(queues, 2)).toEqual([
+      { label: "待我处理", value: "2", tone: "primary" },
+      { label: "阻塞事项", value: "1", tone: "danger" },
+      { label: "我发起的进行中", value: "1", tone: "default" },
+      { label: "可见项目", value: "2", tone: "default" }
+    ]);
+  });
+
+  it("filters work items by project, business type, status and keyword", () => {
+    const rows = toHomeWorkItemRows(toWorkItemQueues(workItemsFixture()));
+
+    expect(
+      filterAndSortHomeWorkItemRows(rows, {
+        ...emptyHomeWorkItemFilters(),
+        project: "项目甲",
+        businessType: "付款审批",
+        status: "超时",
+        keyword: "FK-002"
+      }).map((row) => row.id)
+    ).toEqual(["approval:overdue"]);
+  });
+
+  it("supports blocker, overdue, amount-risk and staying-time sorting", () => {
+    const rows = toHomeWorkItemRows(toWorkItemQueues(workItemsFixture()));
+
+    expect(filterAndSortHomeWorkItemRows(rows, { ...emptyHomeWorkItemFilters(), sort: "blocker" })[0].id)
+      .toBe("blocker:1");
+    expect(filterAndSortHomeWorkItemRows(rows, { ...emptyHomeWorkItemFilters(), sort: "overdue" })[0].id)
+      .toBe("approval:overdue");
+    expect(filterAndSortHomeWorkItemRows(rows, { ...emptyHomeWorkItemFilters(), sort: "amount" })[0].id)
+      .toBe("approval:overdue");
+    expect(filterAndSortHomeWorkItemRows(rows, { ...emptyHomeWorkItemFilters(), sort: "stayed" })[0].id)
+      .toBe("blocker:1");
+  });
 });
+
+function workItemsFixture(): WorkItemsReadModel {
+  const base = {
+    type: "approval" as const,
+    projectName: "项目甲",
+    businessCode: "FK-001",
+    businessType: "payment",
+    amountText: "¥1,000.00",
+    currentNode: "财务审批",
+    stayedText: "已停留 2 小时",
+    nextAction: "处理付款审批",
+    targetPath: "/付款管理/FK-001",
+    tone: "warning" as const
+  };
+
+  return {
+    generatedAt: "2026-07-14T08:00:00.000Z",
+    visibleProjectCount: 2,
+    queues: {
+      pending: [
+        { ...base, id: "approval:1", title: "付款审批" },
+        {
+          ...base,
+          id: "approval:overdue",
+          title: "付款审批已超时",
+          businessCode: "FK-002",
+          amountText: "¥500,000.00",
+          stayedText: "已停留 3 天",
+          tone: "danger"
+        }
+      ],
+      blocked: [
+        {
+          ...base,
+          id: "blocker:1",
+          type: "blocker",
+          title: "付款资料阻塞",
+          businessCode: "FK-003",
+          amountText: "¥20,000.00",
+          stayedText: "已停留 5 天",
+          tone: "danger"
+        }
+      ],
+      started: [
+        {
+          ...base,
+          id: "started:1",
+          title: "我发起的付款",
+          businessCode: "FK-004",
+          amountText: "¥5,000.00",
+          stayedText: "已停留 1 小时",
+          tone: "default"
+        }
+      ]
+    },
+    approvalCenter: {
+      pendingApproval: [],
+      startedByMe: [],
+      handledByMe: [],
+      delegatedToMe: [],
+      overdueReminder: []
+    }
+  };
+}

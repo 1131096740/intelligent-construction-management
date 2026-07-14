@@ -1,6 +1,7 @@
 export interface EmptyBusinessStateAction {
   label: string;
   to: string;
+  primary?: boolean;
 }
 
 export function normalizeEmptyBusinessStateActions(
@@ -18,7 +19,7 @@ export function normalizeEmptyBusinessStateActions(
       return [];
     }
 
-    return [{ label, to }];
+    return [{ label, to, ...(action.primary === true ? { primary: true } : {}) }];
   });
 }
 
