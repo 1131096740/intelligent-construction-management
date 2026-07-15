@@ -1,5 +1,5 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
-import { createHmac, createHash } from "node:crypto";
+import { createHmac, createHash, randomUUID } from "node:crypto";
 import type { AuthenticatedUser, JwtPayload } from "./auth.types";
 
 const DEFAULT_SECRET_MARKERS = new Set([
@@ -10,7 +10,17 @@ const DEFAULT_SECRET_MARKERS = new Set([
 const INVALID_TOKEN_MESSAGE = "登录凭证无效，请重新登录";
 const BASE64URL_SEGMENT = /^[A-Za-z0-9_-]+$/u;
 const JWT_HEADER_KEYS = new Set(["alg", "typ"]);
-const JWT_PAYLOAD_KEYS = new Set(["sub", "name", "phone", "type", "iat", "exp"]);
+const JWT_ACCESS_PAYLOAD_KEYS = new Set(["sub", "name", "phone", "type", "iat", "exp"]);
+const JWT_REFRESH_PAYLOAD_KEYS = new Set([
+  "sub",
+  "name",
+  "phone",
+  "type",
+  "jti",
+  "iat",
+  "exp"
+]);
+const JWT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -40,9 +50,13 @@ function isPositiveSafeInteger(value: unknown): value is number {
 }
 
 function isJwtPayload(value: unknown, now: number): value is JwtPayload {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, JWT_PAYLOAD_KEYS)) {
+  if (!isPlainObject(value)) {
     return false;
   }
+  const allowedKeys = value.type === "refresh"
+    ? JWT_REFRESH_PAYLOAD_KEYS
+    : JWT_ACCESS_PAYLOAD_KEYS;
+  if (!hasOnlyKeys(value, allowedKeys)) return false;
 
   return (
     (value.type === "access" || value.type === "refresh") &&
@@ -51,6 +65,9 @@ function isJwtPayload(value: unknown, now: number): value is JwtPayload {
     value.sub.trim() === value.sub &&
     (value.name === undefined || typeof value.name === "string") &&
     (value.phone === undefined || value.phone === null || typeof value.phone === "string") &&
+    (value.type !== "refresh" ||
+      value.jti === undefined ||
+      (typeof value.jti === "string" && JWT_ID.test(value.jti))) &&
     isPositiveSafeInteger(value.iat) &&
     value.iat <= now &&
     isPositiveSafeInteger(value.exp) &&
@@ -99,6 +116,7 @@ export class JwtTokenService {
       name: user.name,
       phone: user.phone,
       type: "refresh",
+      jti: randomUUID(),
       iat: this.nowSeconds(),
       exp: this.nowSeconds() + this.refreshTokenTtlSeconds()
     });

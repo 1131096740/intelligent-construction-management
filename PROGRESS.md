@@ -23,6 +23,7 @@
 
 ## 当前下一步
 
+- [~] 2026-07-15 正式上线 P0 发布候选已完成本地技术收口：修复 refresh token 并发消费与同秒签发冲突，兼容存量 token 一次换新；修复项目岗位聚合台账读取、文件/付款业务错误 HTTP 语义、付款/结算/合同详情同路由陈旧数据、合同变更按元输入转分；新增第 51 个迁移补齐合同与付款条款版本 `superseded` 约束。本地 PostgreSQL 16 空库迁移、custom dump/checksum/隔离恢复、故障注入、生产模式 API 和脱敏真实 HTTP 长链路已通过；长链路编号 `HT-UAT-go-live-20260715l -> JS-UAT-go-live-20260715l -> FK-UAT-go-live-20260715l`。全量验证：typecheck、lint、Prisma validate、API/Web build、Web `check:ui`、E2E typecheck、业务错误扫描、运维自测、3,211 个单测与 P0 Playwright 34 通过/2 条件跳过/0 失败。生产只读复核确认 `c1fcd236...` 健康，HTTPS/证书/安全头、API/Nginx/PostgreSQL、UFW、NTP、Certbot、5 分钟健康检查、成都私有 COS 生产配置正常，24 小时无 API warning。当前仍为 No-Go：数据库日备仅在同一服务器保留 7 天，必须补异机 COS 备份与真实恢复；历史合同、3–5 个活跃合同、母版和普通岗位 UAT/业务签认仍未完成。候选分支未推送、未部署、未写生产；需用户明确批准最终 40 位 SHA 后才能快进 `main` 并部署。详见 `GO_LIVE_P0_RELEASE_CANDIDATE_REPORT.md`。
 - [x] 2026-07-15 完成项目文档事实层审计与 Obsidian 收口：以更新前 823 个跟踪文件、110 份 Markdown 为基线，对 70 个 Prisma model、50 个迁移、Web/API/共享包、测试、部署和公网只读状态做交叉核验；全项目 typecheck/lint、Web `check:ui`、API 业务错误检查、Prisma validate、3,198 个测试、API/Web build、P0 E2E 32 通过/2 条件跳过和 `git diff --check` 通过。本机未运行 PostgreSQL，因此真实试运行 preflight 未形成数据库链路证据；生产依赖审计仍有 5 个中等级别公告待适用性评估。新增 `obsidian-current/建工智管_项目状态报告_20260715.md` 和 `建工智管_文档有效性索引.md`，更新 13 份持续维护笔记，并为 5 份旧状态报告和 1 份上游完整方案增加 `historical`/`upstream-reference` 元数据；仓库 `obsidian-current` 与 iCloud Vault 的 21 份 Markdown 已逐文件 SHA-256 一致。本次只更新文档，不改业务代码、数据库或生产。
 - [x] 2026-07-14 Web Admin 响应式治理阶段 0–8 已完成并停在本地发布候选：阶段 8 已复核分支、提交拓扑、78 个实际修改文件、234 张稳定 Mock 截图、受保护目录和迁移范围；相对基线未修改 `services/api`、`packages/shared-domain`、`apps/web-admin/src/api`、`apps/web-admin/src/routes`，无数据库迁移。最终 typecheck、lint、check:ui、Web 全量 Vitest、build、全量 P0 E2E 与 `git diff --check` 均通过；发布就绪报告见 `UI_RESPONSIVE_RELEASE_READINESS.md`。当前只形成 `codex/ui-responsive-governance` 本地候选，未推送 `main`、未部署、未写生产；必须等待用户对交付回复中的最终目标 SHA 明确批准后，才能另行执行阶段 9。
 - [~] 2026-07-14 Web Admin 响应式治理阶段 7 全站回归已完成：33 个当前有效路由页面均已纳入六档桌面浏览器验证；无活动路由的 `RoutePlaceholderPage.vue` 仅做静态结构复核，未为截图重新接回废弃入口。最终使用稳定 Mock/隔离数据累计生成 234 张截图，覆盖 1512×982、1440×900、1280×800、1180×820、1024×768、900×768；文档根横向溢出、父子嵌套横滚和 pageerror 均为 0。Web 全量 Vitest 84 文件 626/626、build、typecheck、lint、check:ui、全量 Playwright 32/32 通过，另有 2 条按既有配置条件跳过；受保护目录差异为空。内置浏览器会话受首次改密门禁限制，本阶段未使用真实账号或绕过门禁，按计划回退 Playwright；报告见 `UI_RESPONSIVE_GOVERNANCE_FINAL_REPORT.md`。下一步只执行阶段 8 发布候选审计，不推送、不部署、不写生产。
@@ -536,8 +537,8 @@
 - [ ] 合同母版人工逐页验收：合同部/法务打开最新验收包中的 DOCX，不只看 PDF/PNG。
 - [ ] 字体环境：生产/验收服务器安装合同所需中文字体，并用 LibreOffice 实测 DOCX 转 PDF 不发生替换。
 - [ ] 生产配置：确认数据库、JWT/Refresh、文件存储、COS、CORS、API 地址、Web 构建环境变量均为生产值且未提交。
-- [ ] 数据库上线：执行并记录 `prisma migrate deploy`，确认 PostgreSQL 不公网暴露，备份策略和恢复演练通过。
-- [ ] 文件与对象存储：COS 私有桶、后端短时效下载、上传/下载权限、敏感下载二次确认、审计日志在生产环境实测通过。
+- [~] 数据库上线：PostgreSQL 仅本机监听，生产 50 个迁移已最新；候选第 51 个迁移未部署。本机 PostgreSQL 16 已通过 custom dump/checksum/隔离恢复；生产日备仅同机保留 7 天，异机 COS 备份和从远端备份恢复仍为 Go-Live P0 阻断。
+- [~] 文件与对象存储：成都生产业务桶私有/SSE-COS/版本控制/访问日志/最小 CAM/监控已按用户提供证据收口，生产 API 环境与桶名/地域一致；发布后仍需使用真实业务岗位复测中文文件上传、鉴权下载、二次确认和审计日志。
 - [ ] 账号与权限：初始化真实岗位/项目授权，停用或改掉 seed 通用密码，确认合同员/合同部主管能创建草稿并发起审批。
 - [ ] DNSPod 凭据：生产服务器证书续期凭据只允许保存在服务器受限路径，不得提交、截图或外传；如暴露必须立即吊销重建。
 - [ ] 合同工作台上线验收：生产等价环境跑 `verify:contract-workbench`，重新生成合同母版验收包并抽查四类 DOCX/PDF。

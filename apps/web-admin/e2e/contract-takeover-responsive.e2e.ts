@@ -106,7 +106,10 @@ const takeoverWithDownloadableEvidence = {
   ]
 };
 
-async function loginWithMocks(page: Page, takeoverFixture = takeover) {
+async function loginWithMocks(
+  page: Page,
+  takeoverFixture: typeof takeover | typeof takeoverWithDownloadableEvidence = takeover
+) {
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",

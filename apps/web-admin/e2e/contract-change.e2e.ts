@@ -53,9 +53,13 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
       activeChange: null
     })
   }));
-  await page.route("**/api/contracts/v1/change-drafts", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({
+  let submittedChangeAmountCents = "";
+  await page.route("**/api/contracts/v1/change-drafts", (route) => {
+    submittedChangeAmountCents = (route.request().postDataJSON() as { changeAmountCents?: string })
+      .changeAmountCents ?? "";
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
       id: "v2",
       contractId: "contract-1",
       versionNo: 2,
@@ -73,9 +77,10 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
       amountLimitType: "capped",
       enhancedApproval: false,
       enhancedApprovalReasons: [],
-      approvalRoute: [{ name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }]
-    })
-  }));
+        approvalRoute: [{ name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }]
+      })
+    });
+  });
   await page.route("**/api/contracts/contract-1", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -162,9 +167,10 @@ test("合同变更从详情进入新版本工作台并在两档宽度保持规�
   await expect(page.getByText("只有新版本归档确认后才会替代旧版本生效")).toBeVisible();
   await page.getByText("金额方向").locator("..").locator(".t-select").click();
   await page.locator(".t-select__dropdown:visible").getByText("增加金额", { exact: true }).click();
-  await page.getByText("变更金额（分）").locator("..").getByRole("textbox").fill("100000");
+  await page.getByText("变更金额（元）").locator("..").getByRole("textbox").fill("1000.00");
   await page.getByText("变更原因").locator("..").getByRole("textbox").fill("增加现场签证工程量");
   await page.getByRole("button", { name: "创建变更草稿" }).click();
+  await expect.poll(() => submittedChangeAmountCents).toBe("100000");
   await expect(page).toHaveURL(/versionId=v2/u);
   await expect(page.getByText("补充协议草稿", { exact: true })).toBeVisible();
   await expect(page.getByText(/旧文件、审批和归档记录不会复制/u)).toBeVisible();

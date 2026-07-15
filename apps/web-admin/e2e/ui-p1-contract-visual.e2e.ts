@@ -288,7 +288,7 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
   await expect(page.locator(".detail-loading-skeleton")).toBeVisible();
   await expect(page.getByRole("button", { name: "审计记录" })).toBeDisabled();
   await capture(page, "contract-detail-loading-1440x900.png");
-  await pendingLoadingRoute?.fulfill({
+  await (pendingLoadingRoute as Route | null)?.fulfill({
     contentType: "application/json",
     body: JSON.stringify(approvalDetailBody)
   });

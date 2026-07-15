@@ -23,6 +23,7 @@ export interface JwtPayload {
   name?: string;
   phone?: string | null;
   type: "access" | "refresh";
+  jti?: string;
   iat: number;
   exp: number;
 }

@@ -70,8 +70,38 @@ describe("JwtTokenService", () => {
 
     expect(service.verifyRefreshToken(token)).toMatchObject({
       sub: "user-1",
+      type: "refresh",
+      jti: expect.stringMatching(/^[0-9a-f-]{36}$/u)
+    });
+  });
+
+  it("accepts a valid legacy refresh token without jti so it can rotate once after deployment", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const token = tokenWithPayload(
+      { sub: "user-1", type: "refresh", iat: now, exp: now + 60 },
+      "test-refresh-secret"
+    );
+
+    expect(service.verifyRefreshToken(token)).toMatchObject({
+      sub: "user-1",
       type: "refresh"
     });
+  });
+
+  it("issues unique refresh tokens for the same user within one second", () => {
+    const user = {
+      id: "user-1",
+      name: "测试用户",
+      phone: "13800000000"
+    };
+
+    const first = service.signRefreshToken(user);
+    const second = service.signRefreshToken(user);
+
+    expect(second).not.toBe(first);
+    expect(service.verifyRefreshToken(second).jti).not.toBe(
+      service.verifyRefreshToken(first).jti
+    );
   });
 
   it("maps malformed JSON payloads to a fixed 401 without exposing submitted content", () => {

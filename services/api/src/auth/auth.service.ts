@@ -24,6 +24,8 @@ function isRoleKey(value: string): value is RoleKey {
   return ROLE_KEY_SET.has(value);
 }
 
+type RefreshTokenPersistence = Pick<PrismaService, "refreshToken">;
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -134,31 +136,47 @@ export class AuthService {
   async refresh(input: RefreshTokenDto) {
     const payload = this.tokens.verifyRefreshToken(input.refreshToken);
     const tokenHash = this.tokens.hashToken(input.refreshToken);
-    const stored = await this.prisma.refreshToken.findUnique({
-      where: { tokenHash }
-    });
+    const tokens = await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const stored = await tx.refreshToken.findUnique({
+        where: { tokenHash }
+      });
 
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
-      throw new UnauthorizedException("刷新登录凭证无效，请重新登录");
-    }
+      if (
+        !stored ||
+        stored.userId !== payload.sub ||
+        stored.revokedAt ||
+        stored.expiresAt < now
+      ) {
+        throw new UnauthorizedException("刷新登录凭证无效，请重新登录");
+      }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub }
-    });
+      const user = await tx.user.findUnique({
+        where: { id: payload.sub }
+      });
 
-    if (!user?.isActive) {
-      throw new UnauthorizedException("刷新登录凭证无效，请重新登录");
-    }
+      if (!user?.isActive) {
+        throw new UnauthorizedException("刷新登录凭证无效，请重新登录");
+      }
 
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { revokedAt: new Date() }
-    });
+      const consumed = await tx.refreshToken.updateMany({
+        where: {
+          id: stored.id,
+          revokedAt: null,
+          expiresAt: { gt: now }
+        },
+        data: { revokedAt: now }
+      });
 
-    const tokens = await this.issueTokens({
-      id: user.id,
-      name: user.name,
-      phone: user.phone
+      if (consumed.count !== 1) {
+        throw new UnauthorizedException("刷新登录凭证无效，请重新登录");
+      }
+
+      return this.issueTokens({
+        id: user.id,
+        name: user.name,
+        phone: user.phone
+      }, tx);
     });
 
     return { tokens };
@@ -357,12 +375,15 @@ export class AuthService {
     };
   }
 
-  async issueTokens(user: AuthenticatedUser): Promise<AuthTokens> {
+  async issueTokens(
+    user: AuthenticatedUser,
+    persistence: RefreshTokenPersistence = this.prisma
+  ): Promise<AuthTokens> {
     const accessToken = this.tokens.signAccessToken(user);
     const refreshToken = this.tokens.signRefreshToken(user);
     const expiresAt = new Date(Date.now() + this.tokens.refreshTokenTtlSeconds() * 1000);
 
-    await this.prisma.refreshToken.create({
+    await persistence.refreshToken.create({
       data: {
         userId: user.id,
         tokenHash: this.tokens.hashToken(refreshToken),

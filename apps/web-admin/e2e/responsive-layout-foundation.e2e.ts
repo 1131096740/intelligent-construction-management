@@ -76,6 +76,9 @@ test("keeps the application shell and shared page header inside six desktop view
       })
     })
   );
+  await page.route("**/api/approval-delegations/user-options", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify([]) })
+  );
 
   await page.goto("/login");
   await page.getByPlaceholder("请输入手机号").fill("13900000000");

@@ -68,4 +68,13 @@ describe("payment workbench structure", () => {
     expect(detail).toContain(':requested-amount="paymentRequestedAmountView"');
     expect(detail).toContain('["付款编号", "申请金额"].includes(item.label)');
   });
+
+  it("clears stale payment facts and ignores stale responses when the route id changes", () => {
+    expect(detail).toContain("() => route.params.paymentId");
+    expect(detail).toContain("clearPaymentDetailTransientState()");
+    expect(detail).toContain("paymentDetail.value = null");
+    expect(detail).toContain("activeTab.value = \"overview\"");
+    expect(detail).toContain("paymentId !== routePaymentId()");
+    expect(detail).toContain("void reloadPaymentDetail()");
+  });
 });

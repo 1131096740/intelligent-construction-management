@@ -1967,12 +1967,13 @@ describe("FileService", () => {
       storage as unknown as PrivateFileStorage
     );
 
-    await expect(
-      service.createDownloadTicket("file-1", {
-        actorUserId: "finance-1",
-        downloadReason: "资料下载复核"
-      })
-    ).rejects.toThrow("当前账号无权下载该资料");
+    const result = service.createDownloadTicket("file-1", {
+      actorUserId: "finance-1",
+      downloadReason: "资料下载复核"
+    });
+
+    await expect(result).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(result).rejects.toThrow("当前账号无权下载该资料");
     expect(audit.record).not.toHaveBeenCalled();
   });
 
@@ -3952,6 +3953,14 @@ describe("FileService", () => {
     transaction.mockClear();
     audit.record.mockClear();
 
+    await expect(
+      service.readPrivateFile("file-1", {
+        actorUserId: url.searchParams.get("actorUserId") ?? "",
+        expiresAt: url.searchParams.get("expiresAt") ?? "",
+        downloadReason: "篡改下载原因",
+        token: url.searchParams.get("token") ?? ""
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
       service.readPrivateFile("file-1", {
         actorUserId: url.searchParams.get("actorUserId") ?? "",

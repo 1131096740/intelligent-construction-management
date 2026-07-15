@@ -481,7 +481,7 @@ test("captures the UI P0 enterprise sample and reproducible states", async ({ pa
   await page.goto("/付款管理/FK-LOAD-001");
   await expect(page.locator(".detail-loading-skeleton")).toBeVisible();
   await capture(page, "payment-detail-loading-1440x900.png");
-  await pendingLoadingRoute?.fulfill({
+  await (pendingLoadingRoute as Route | null)?.fulfill({
     contentType: "application/json",
     body: JSON.stringify(detailBody)
   });

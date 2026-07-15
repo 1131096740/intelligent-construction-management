@@ -372,7 +372,7 @@ describe("AuthService", () => {
       expiresAt: new Date(Date.now() + 60_000),
       revokedAt: null
     });
-    prisma.refreshToken.update.mockResolvedValue({});
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
     prisma.refreshToken.create.mockResolvedValue({});
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",
@@ -384,10 +384,48 @@ describe("AuthService", () => {
     const result = await service.refresh({ refreshToken });
 
     expect(result.tokens.accessToken).toEqual(expect.any(String));
-    expect(prisma.refreshToken.update).toHaveBeenCalledWith({
-      where: { id: "refresh-1" },
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "refresh-1",
+        revokedAt: null,
+        expiresAt: { gt: expect.any(Date) }
+      },
       data: { revokedAt: expect.any(Date) }
     });
+    expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows only one successor when the same refresh token is consumed concurrently", async () => {
+    const refreshToken = tokens.signRefreshToken({
+      id: "user-1",
+      name: "合同部 李工",
+      phone: "13800000001"
+    });
+    prisma.refreshToken.findUnique.mockResolvedValue({
+      id: "refresh-1",
+      userId: "user-1",
+      tokenHash: tokens.hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null
+    });
+    prisma.refreshToken.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    prisma.refreshToken.create.mockResolvedValue({});
+    prisma.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "合同部 李工",
+      phone: "13800000001",
+      isActive: true
+    });
+
+    const results = await Promise.allSettled([
+      service.refresh({ refreshToken }),
+      service.refresh({ refreshToken })
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1);
   });
 

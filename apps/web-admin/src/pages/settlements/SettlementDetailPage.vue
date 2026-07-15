@@ -662,7 +662,7 @@
 <script setup lang="ts">
 import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   confirmSettlementArchive,
@@ -738,6 +738,7 @@ const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const settlementArchiveUploadFiles = ref<UploadFile[]>([]);
+let settlementDetailRequestId = 0;
 const sensitiveAction = reactive<SensitiveActionState>({
   visible: false,
   kind: null,
@@ -892,19 +893,23 @@ function openPrimaryAction() {
 }
 
 async function reloadSettlementDetail() {
-  const settlementId = String(route.params.settlementId ?? "").trim();
+  const requestId = ++settlementDetailRequestId;
+  const settlementId = routeSettlementId();
   if (!settlementId) {
     settlementDetail.value = null;
     settlementDetailLoadError.value = "缺少结算编号，无法定位单据。请返回结算台账重新进入。";
+    detailLoading.value = false;
     return false;
   }
 
   detailLoading.value = true;
   try {
     settlementDetailLoadError.value = "";
-    settlementDetail.value = await fetchSettlementDetail(settlementId);
-    const archiveRecordIds = settlementDetail.value.archiveFiles.map((file) => file.recordId);
-    const archiveFileIds = settlementDetail.value.archiveFiles.map((file) => file.fileId);
+    const detail = await fetchSettlementDetail(settlementId);
+    if (requestId !== settlementDetailRequestId || settlementId !== routeSettlementId()) return false;
+    settlementDetail.value = detail;
+    const archiveRecordIds = detail.archiveFiles.map((file) => file.recordId);
+    const archiveFileIds = detail.archiveFiles.map((file) => file.fileId);
     if (!archiveRecordIds.includes(settlementArchiveForm.archiveFileId)) {
       settlementArchiveForm.archiveFileId = archiveRecordIds[0] ?? "";
     }
@@ -913,13 +918,46 @@ async function reloadSettlementDetail() {
     }
     return true;
   } catch (error) {
+    if (requestId !== settlementDetailRequestId || settlementId !== routeSettlementId()) return false;
     settlementDetail.value = null;
     const reason = error instanceof Error ? error.message : "未知错误";
     settlementDetailLoadError.value = `未能读取结算详情：${reason}。当前页面数据不能用于业务判断，请确认账号权限和网络状态后重试。`;
     return false;
   } finally {
-    detailLoading.value = false;
+    if (requestId === settlementDetailRequestId) detailLoading.value = false;
   }
+}
+
+watch(
+  () => route.params.settlementId,
+  (next, previous) => {
+    if (next === previous) return;
+    clearSettlementDetailTransientState();
+    void reloadSettlementDetail();
+  },
+  { flush: "sync" }
+);
+
+function routeSettlementId() {
+  const value = route.params.settlementId;
+  return typeof value === "string" ? value.trim() : Array.isArray(value) ? String(value[0] ?? "").trim() : "";
+}
+
+function clearSettlementDetailTransientState() {
+  settlementDetailRequestId += 1;
+  settlementDetail.value = null;
+  settlementDetailLoadError.value = "";
+  activeTab.value = "overview";
+  archiveActionMessage.value = "";
+  settlementArchiveUploadFiles.value = [];
+  sensitiveAction.visible = false;
+  sensitiveAction.kind = null;
+  sensitiveAction.error = "";
+  settlementArchiveForm.archiveFileId = "";
+  settlementArchiveForm.assignmentUserId = "";
+  settlementArchiveForm.downloadFileId = "";
+  settlementArchiveForm.approvalComment = "";
+  settlementArchiveForm.selfReviewReason = "";
 }
 
 function requiredText(raw: string, label: string) {

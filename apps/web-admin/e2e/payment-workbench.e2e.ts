@@ -122,6 +122,7 @@ test("separates the payment ledger from the contract-linked creation workbench",
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Payment@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
 
   await page.goto("/付款管理");
   await expect(page.getByRole("heading", { name: "付款管理" })).toBeVisible();

@@ -81,6 +81,70 @@ describe("createApiFetch", () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
+  it("shares one refresh across concurrent 401 responses", async () => {
+    let token = "stale";
+    let releaseRefresh: (() => void) | undefined;
+    const refreshBarrier = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const fetchImpl = vi.fn(async (...args: Parameters<typeof fetch>) => {
+      const [, init] = args;
+      const authorization = new Headers(init?.headers).get("Authorization");
+      return jsonResponse(authorization === "Bearer fresh" ? 200 : 401);
+    });
+    const refresh = vi.fn(async () => {
+      await refreshBarrier;
+      token = "fresh";
+      return true;
+    });
+    const onUnauthorized = vi.fn();
+    const apiFetch = createApiFetch(
+      bridge({ getAccessToken: () => token, refresh, onUnauthorized }),
+      fetchImpl
+    );
+
+    const requests = [apiFetch("/payments/1"), apiFetch("/settlements/1")];
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    releaseRefresh?.();
+
+    const responses = await Promise.all(requests);
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it("reuses a token refreshed while a slower stale request was still pending", async () => {
+    let token = "stale";
+    let releaseSlowResponse: (() => void) | undefined;
+    const slowResponseBarrier = new Promise<void>((resolve) => {
+      releaseSlowResponse = resolve;
+    });
+    const fetchImpl = vi.fn(async (...args: Parameters<typeof fetch>) => {
+      const [url, init] = args;
+      const authorization = new Headers(init?.headers).get("Authorization");
+      if (authorization === "Bearer fresh") return jsonResponse(200);
+      if (String(url).endsWith("/settlements/1")) await slowResponseBarrier;
+      return jsonResponse(401);
+    });
+    const refresh = vi.fn(async () => {
+      token = "fresh";
+      return true;
+    });
+    const apiFetch = createApiFetch(
+      bridge({ getAccessToken: () => token, refresh }),
+      fetchImpl
+    );
+
+    const fastRequest = apiFetch("/payments/1");
+    const slowRequest = apiFetch("/settlements/1");
+    await expect(fastRequest).resolves.toMatchObject({ status: 200 });
+    releaseSlowResponse?.();
+    await expect(slowRequest).resolves.toMatchObject({ status: 200 });
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
   it("clears the session when refresh fails on a 401", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(401));
     const refresh = vi.fn(async () => false);
