@@ -1,0 +1,34 @@
+[Unit]
+Description=JiangKong production database backup monitor
+Documentation=file:///opt/jiangkong/docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md
+Wants=network-online.target
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=-/etc/jiangkong/healthcheck.env
+Environment=BACKUP_DIR=/srv/jiangkong-backups/db
+Environment=DB_BACKUP_MONITOR_STATE_DIR=/var/lib/jiangkong-db-backup-monitor
+Environment=DB_BACKUP_MONITOR_TIME_ZONE=Asia/Shanghai
+Environment=DB_BACKUP_MONITOR_DAILY_HOUR=3
+Environment=DB_BACKUP_MONITOR_GRACE_MINUTES=15
+Environment=DB_BACKUP_MONITOR_MAX_AGE_HOURS=26
+Environment=DB_BACKUP_MONITOR_EXPECTED_BUCKET=jiangkong-prod-db-backups-1438687719
+Environment=DB_BACKUP_MONITOR_EXPECTED_REGION=ap-chengdu
+ExecStart=/usr/local/lib/jiangkong-offsite-backup/check-production-db-backup.sh
+StateDirectory=jiangkong-db-backup-monitor
+StateDirectoryMode=0700
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadOnlyPaths=-/srv/jiangkong-backups/db
+ReadWritePaths=/var/lib/jiangkong-db-backup-monitor

@@ -122,6 +122,64 @@ qcs::cos:ap-chengdu:uid/1438687719:jiangkong-prod-db-backups-1438687719/database
    30 2 * * * /opt/jiangkong/scripts/ops/run-production-db-backup.sh >> /var/log/jiangkong-backup.log 2>&1
    ```
 
+### 3.1 安装生产原生失败/陈旧告警
+
+本节对应 2026-07-16 形成的独立监控候选。候选只新增只读检查与 systemd unit，不修改 03:00/03:30 cron、备份生成逻辑、数据库、API 或业务数据。形成候选不等于允许安装；必须先由用户批准新的精确 40 位 SHA。
+
+监控契约：
+
+- 每 15 分钟由 root oneshot service 执行，复用 `/etc/jiangkong/healthcheck.env` 已配置的 SMTP/Webhook 通道，不读取或复制备份 CAM 凭据。
+- 03:15 前要求最新收据不超过 26 小时；03:15 后要求当天 03:00（允许提前 10 分钟）之后已有有效日备收据。
+- 首次看到新收据时校验备份目录与三个证据文件的所有者/权限、获批 COS 桶与地域、对象前缀、文件大小、dump/checksum 双 SHA-256、checksum 内容和 `pg_restore --list`。
+- 验证成功后只缓存文件元数据签名；同一收据未变化时不重复读取和哈希大型 dump。新收据仍必须重新做完整检查。
+- 同一故障指纹只通知一次；恢复后通知一次并清除故障状态。通知通道不可用时不写“已送达”状态，下次 timer 会继续尝试。
+- 告警只说明发生了什么、对恢复判断的影响和下一步，不输出数据库连接、CAM Secret、SMTP 密码或文件内容。
+
+在精确候选已经安全出现在 `/opt/jiangkong`、且服务器 HEAD 与获批 SHA 一致后安装：
+
+```bash
+sudo install -o root -g root -m 600 \
+  /opt/jiangkong/scripts/ops/check-production-db-backup.mjs \
+  /usr/local/lib/jiangkong-offsite-backup/check-production-db-backup.mjs
+sudo install -o root -g root -m 700 \
+  /opt/jiangkong/scripts/ops/check-production-db-backup.sh \
+  /usr/local/lib/jiangkong-offsite-backup/check-production-db-backup.sh
+sudo install -o root -g root -m 644 \
+  /opt/jiangkong/scripts/ops/systemd/jiangkong-db-backup-monitor.service \
+  /etc/systemd/system/jiangkong-db-backup-monitor.service
+sudo install -o root -g root -m 644 \
+  /opt/jiangkong/scripts/ops/systemd/jiangkong-db-backup-monitor.timer \
+  /etc/systemd/system/jiangkong-db-backup-monitor.timer
+sudo systemctl daemon-reload
+sudo systemctl start jiangkong-db-backup-monitor.service
+sudo systemctl status jiangkong-db-backup-monitor.service --no-pager
+sudo systemctl enable --now jiangkong-db-backup-monitor.timer
+sudo systemctl list-timers jiangkong-db-backup-monitor.timer --no-pager
+```
+
+首次手工启动必须输出“03:00 异机数据库备份有效”，且不得发送失败告警。随后只检查键是否存在，不打印环境值：
+
+```bash
+sudo stat -c '%a %U:%G %n' /etc/jiangkong/healthcheck.env
+sudo awk -F= '/^(ALERT_WEBHOOK_URL|ALERT_EMAIL_TO|SMTP_USER|SMTP_PASSWORD)=/ { print $1 "=SET" }' \
+  /etc/jiangkong/healthcheck.env
+sudo journalctl -u jiangkong-db-backup-monitor.service -n 30 --no-pager
+```
+
+回滚只移除监控，不触碰备份与业务运行：
+
+```bash
+sudo systemctl disable --now jiangkong-db-backup-monitor.timer
+sudo rm -f \
+  /etc/systemd/system/jiangkong-db-backup-monitor.service \
+  /etc/systemd/system/jiangkong-db-backup-monitor.timer \
+  /usr/local/lib/jiangkong-offsite-backup/check-production-db-backup.sh \
+  /usr/local/lib/jiangkong-offsite-backup/check-production-db-backup.mjs
+sudo systemctl daemon-reload
+```
+
+`/var/lib/jiangkong-db-backup-monitor/` 只含告警指纹和验证缓存，不含 Secret。回滚时默认保留用于审计；确认不再需要后才可单独删除。
+
 ## 4. 上传成功判定
 
 `db-backup.sh` 的执行顺序固定为：
@@ -237,10 +295,12 @@ qcs::cos:ap-chengdu:uid/1438687719:jiangkong-prod-db-backups-1438687719/database
 | 永久调度 | 原 02:30 本地备份保留；新增每日 03:00 异机日备和每月 1 日 03:30 异机月备，共享锁；日志 root `600`，logrotate 保留 30 份 |
 | 手工验证 | 日备/月备均为 254,606 字节、custom dump、`pg_restore --list` 440 项；日/月前缀、checksum 和收据完整 |
 | 无人值守验证 | 22:55 一次性调度调用与永久 cron 相同入口，生成 `jiangkong-20260715-225500.dump`；SHA-256 `4ce66df48cd099c24c1e735a1676b742286719e845742755b70486ec03f5c858`，COS 独立下载、checksum、逐字节比较和结构检查通过 |
+| 首次自然 03:00 收据 | 2026-07-16 03:00:01 由永久 cron 启动，03:00:02 完成；`jiangkong-20260716-030001.dump` 为 254,832 字节、`600 root:root`、`pg_restore --list` 440 项，SHA-256 `ec94505159e7b2932f13ddf49a3e80e182913eb92263ea8d66c06ad40f294650`；checksum 与 `.offsite.json` 齐全，对象位于 `database-backups/daily/2026/07/16/`，专用日志未发现失败、警告、拒绝或陈旧信息 |
+| 失败/陈旧告警候选 | 独立 Node 检查器、root shell 通知/去重包装器和 systemd service/timer 已在本地候选完成；定向测试覆盖正常、缺失、陈旧、坏收据、权限、哈希、结构、缓存、故障去重和恢复通知。当前尚未推送或安装生产，必须批准新的精确 SHA 后再执行 3.1 节 |
 | 候选恢复 | 从上述 COS 对象恢复到 `jiangkong_restore_20260715_225500_434c41a0`，精确绑定洁净候选 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`；50 个原迁移成功升至 51，Prisma status 最新 |
 | 只读核验 | 71 张 public 表；核心表计数与两项 `superseded` CHECK 约束通过，历史非法状态为 0，核验使用 `default_transaction_read_only=on` |
 | 清理 | 隔离数据库、候选 checkout、恢复工具和输入临时目录已删除；生产保持 `c1fcd236...`、50 个迁移和健康状态 |
 
 恢复证据绑定的是运行候选 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`。其后的纯 Markdown 审计提交不改变应用、迁移或运维脚本，也不冒充精确 SHA 恢复；正式部署目标仍应审批该运行候选。若运行代码树变化，必须重新评估恢复演练。
 
-后续运维仍需观察永久 03:00 cron 的首个自然收据，并建立或确认“备份陈旧/失败”告警。生产 API CAM 策略的非当前版本 3 只做上线前复核，未经用户授权不得删除。
+永久 03:00 cron 的首个自然收据已经通过。后续运维只剩批准并安装本手册 3.1 节的“备份陈旧/失败”告警候选，并在首次安装后留存正常、去重与恢复通知证据。生产 API CAM 策略的非当前版本 3 继续保留，未经用户授权不得删除或切换。

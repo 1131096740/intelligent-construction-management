@@ -1,12 +1,20 @@
 # 建工智管 Go-Live P0 发布候选报告
 
 > 审计日期：2026-07-16
-> 候选分支：`codex/go-live-p0`
+> 当前运维候选分支：`codex/production-backup-alerts`
 > 已恢复验证的运行候选 SHA：`434c41a0511b0701fdc8f28e9466dfc959ef4f59`
-> 待批准发布目标候选 SHA：`d5d1454c763ff6331e96ecc97f414fb3d8ca829d`
+> 已批准并部署的运行时 SHA：`b857a4269aa907e0550470cece52c846bcbb7623`
 > 审计文档 HEAD：以交付回复为准；发布目标之后只新增门禁文档提交，不纳入待部署目标
-> 生产基线：`c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`
-> 结论：代码与本地生产等价验证已达到发布候选标准，生产数据库异机备份、无人值守上传、独立下载和候选绑定隔离恢复 P0 已通过，生产工作流 Actions 已固定到完整提交 SHA，非所有者可写协作者已移除；正式 Go-Live 仍为 **No-Go**，剩余门禁是完成真实业务 UAT/签认，并由用户明确批准发布目标候选 SHA。
+> 发布前生产基线：`c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`
+> 结论：2026-07-16 已完成获批 SHA 的生产技术发布、第 51 个迁移和公网只读验证，可进入受控真实试运行；全面业务 Go-Live 仍需完成历史合同、活跃合同长链路、母版/附件和普通岗位权限 UAT。数据库备份失败/陈旧告警已形成新的本地候选，但尚未推送或部署，不能沿用 `b857a426…` 的旧授权。
+
+## 0. 生产发布与后续运维候选
+
+- `origin/main` 与生产服务器 HEAD 均为 `b857a4269aa907e0550470cece52c846bcbb7623`。
+- GitHub Actions 发布运行 `29439598098` 的验证和服务器部署成功；生产成功应用第 51 个迁移。
+- 发布前备份 `/srv/jiangkong-backups/db/jiangkong-20260716-021915.dump` 已通过本地与异机验证；本次发布没有写真实业务数据。
+- 2026-07-16 03:00 永久 cron 首次自然执行成功，生成 254,832 字节、440 项的 `jiangkong-20260716-030001.dump`，checksum、收据、权限和日志均通过。
+- 新增的数据库备份监控候选独立于 API 运行健康检查，每 15 分钟检查收据新鲜度和恢复证据并复用现有 SMTP/Webhook；当前只在本地分支完成，尚未安装到生产。
 
 ## 1. 本轮 P0 收口
 
@@ -50,7 +58,7 @@
 - 本地清理只删除已有异机收据的过期备份；没有收据的本地备份不会因保留策略被清理。
 - 恢复演练脚本只允许连接实际库名为 `jiangkong_restore_*` 的空 `public` schema，并校验 checksum、档案列表、Prisma 迁移和核心表计数；发布候选模式还会在恢复前核对候选检出的精确 40 位 SHA 与洁净工作区，恢复后对同一隔离库执行候选 `migrate deploy/status`，并要求完成迁移数与候选目录完全一致。
 - 部署前先构建和备份，再停 API/迁移/替换运行时；迁移或新运行时失败时恢复旧 API/Web 快照并重新健康检查。数据库迁移不自动逆转。
-- 云端资源、生产 root 配置、日/月调度、无人值守收据及真实恢复已按 `docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md` 完成；永久 03:00 首次自然调度收据和备份陈旧/失败告警继续作为上线运维观察项，不推翻已经通过的同入口无人值守验证。
+- 云端资源、生产 root 配置、日/月调度、无人值守收据、永久 03:00 首次自然收据及真实恢复已按 `docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md` 完成；备份陈旧/失败告警已形成独立本地候选，待新 SHA 审批后安装。
 
 ### 1.6 审批规则收口
 
@@ -71,14 +79,14 @@
 
 ### 2.2 当前生产只读快照
 
-- 生产 SHA：`c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`，与 `origin/main` 一致。
+- 生产 SHA：`b857a4269aa907e0550470cece52c846bcbb7623`，与 `origin/main` 一致。
 - `https://jgzg.site/` 和 `/api/health` 均返回 200/healthy；HSTS、`nosniff`、`DENY` frame policy 等安全响应头存在。
 - Let's Encrypt 证书有效期至 2026-09-29；`certbot.timer` enabled/active。
 - API、Nginx、PostgreSQL 均 active；API 仅监听 `127.0.0.1:3000`，PostgreSQL 仅监听 `127.0.0.1:5432`。
 - UFW active，入站仅放行 SSH/80/443（IPv4/IPv6）。
 - NTP 已同步，时区 `Asia/Shanghai`。
 - 磁盘使用率 17%，可用内存约 2.9 GiB，swap 约 1.9 GiB。
-- 生产库 50 个已部署迁移全部完成；候选的第 51 个迁移尚未执行。
+- 生产库 51 个迁移全部完成；第 51 个迁移 `20260715150000_contract_superseded_status_constraints` 已成功应用。
 - `FILE_STORAGE_DRIVER=cos`，生产 `COS_BUCKET=jiangkong-prod-files-1438687719`、`COS_REGION=ap-chengdu`；数据库、JWT/Refresh、下载签名、COS CAM 和 Web Origin 配置均已设置（未输出密钥值）。
 - 健康检查每 5 分钟执行且连续返回 `runtime health ok`；过去 24 小时 API warning/error 级别日志为空。
 
@@ -96,7 +104,7 @@
 ### 2.4 发布权限边界只读复核
 
 - 2026-07-15 公网 `https://jgzg.site/` 与 `/api/health` 均为 200，TLS 验证通过，证书有效期至 2026-09-29；健康接口不暴露构建 SHA，因此公网健康不能单独证明服务器当前提交。
-- GitHub `origin/main` 与生产仍为 `c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`，生产库保持 50 个已完成迁移；API、Nginx、PostgreSQL、Cron 和公网 `/api/health` 在备份安装、恢复及清理前后均正常。运行候选未部署，第 51 个迁移只在隔离恢复库执行。
+- GitHub `origin/main` 与生产均为 `b857a4269aa907e0550470cece52c846bcbb7623`，生产库已完成 51 个迁移；API、Nginx、PostgreSQL、Cron 和公网 `/api/health` 正常。
 - 仓库为 private，GitHub API 对 main branch protection 返回“需升级方案”，`production` Environment 及其环境级 Secret/Reviewer 当前不可查询；生产 SSH 凭据仍是仓库级 Actions Secrets。
 - 用户选择移除方案后，`jigege9527` 已于 2026-07-16 从直接协作者中删除。GitHub 权限接口回读为 `none`，直接协作者清单只剩所有者 `1131096740`，且没有该账号的待处理邀请；非所有者可写协作者边界已关闭。
 - 生产工作流继续以精确 40 位目标 SHA、固定确认语、`origin/main` 祖先校验、全量验证和服务器 SHA 校验防止误部署；三个官方 Actions 已在 `eaaffee56d1657f98631edc7ef41016baffe9887` 固定到完整提交 SHA。GATE-32 的权限与供应链子项已通过，只剩最终发布目标 SHA 待用户签认。
@@ -109,7 +117,7 @@
 - 使用上述 COS 对象创建隔离库 `jiangkong_restore_20260715_225500_434c41a0`，候选 checkout 精确绑定 `434c41a0511b0701fdc8f28e9466dfc959ef4f59` 且洁净；恢复原始 50 个迁移后应用第 51 个候选迁移，最终为 `51|0|0`，`prisma migrate status` 为最新。
 - 隔离库恢复 71 张 public 表；核心计数为 User 10、Project 1、Contract 4、ContractTakeover 1、FileObject 14、AuditLog 166、ContractVersion 4、PaymentTermsVersion 4。两项新 CHECK 约束存在、允许 `superseded`，历史非法状态均为 0；核验阶段启用 `default_transaction_read_only=on`。
 - 隔离数据库、候选 checkout、恢复工具和输入临时目录均已删除；正式 22:55 本地备份、checksum、offsite receipt 和 COS 对象按策略保留。最终标记为 `offsite_database_restore_drill=completed`、`isolated_restore_and_candidate_migration=passed`、`isolated_restore_readonly_verification=passed`、`isolated_restore_cleanup=passed`。
-- 恢复证据绑定的是运行候选 `434c41a0…`。待批准发布目标 `d5d1454c…` 在其后新增审批节点定义、对应只读展示、UAT 脚本顺序和文档，不新增数据库迁移或生产运维脚本；因此既有异机备份、50 → 51 迁移和恢复能力证据继续覆盖数据库与运维门禁，但不等同于声称对 `d5d1454c…` 做过精确 SHA 恢复。审批规则变更已由完整 API/Web/shared-domain 回归与 P0 浏览器测试覆盖；若数据库迁移或生产运维脚本再次变化，必须重新评估恢复演练，不得沿用本证据。
+- 恢复证据绑定的是运行候选 `434c41a0…`。已发布目标 `b857a426…` 在其后新增审批节点定义、项目经理入口资格、对应只读展示、UAT 脚本顺序和文档，不新增数据库迁移或生产运维脚本；既有异机备份与 50 → 51 恢复能力证据因此继续覆盖该次发布。当前数据库备份监控候选会新增生产运维脚本和 systemd unit，必须单独测试与审批，但不需要重做数据库数据恢复演练，因为它不修改备份生成、数据库 Schema 或迁移。
 
 ## 3. 验证结果
 
@@ -117,7 +125,7 @@
 | --- | --- |
 | `pnpm typecheck` | 通过 |
 | `pnpm lint` | 通过 |
-| 全量单元/结构测试 | 3,214 通过：shared-domain 62 + Web 632 + API 2,520 |
+| 全量单元/结构测试 | 3,215 通过：shared-domain 62 + Web 633 + API 2,520 |
 | API/Web production build | 通过 |
 | Web `check:ui` | 通过 |
 | Web `typecheck:e2e` | 通过 |
@@ -126,6 +134,7 @@
 | 英文业务错误扫描 | 自测通过；213 个生产 TS，51 处精确允许的内部英文哨兵 |
 | COS 传输单测 | 7/7 通过：私密配置解析、签名脱敏、PUT/HEAD/GET、SSE/哈希、超限拒绝、原子下载、不覆盖已有文件 |
 | 运维故障注入自测 | 通过：锁冲突、业务桶复用、配置注入/权限、远端短暂与持续失败、本地证据保留、生产库名/非空库拦截、候选 SHA/洁净度/迁移失败/迁移数量门禁、部署迁移失败恢复、新运行时失败回滚 |
+| 数据库备份监控测试 | 13/13 通过：正常、日/月收据共存、非获批 COS 桶/地域、缺失、陈旧、坏收据、权限、哈希、dump 结构、缓存、故障去重、恢复通知和 Secret 不进入 curl 参数 |
 | Linux/日月备份回归 | 通过：GNU `stat -c` 优先、BSD `stat -f` 回退、收据大小为数值、日/月配置和同一生产入口可切换 |
 | 真实本地备份/恢复 | 通过 |
 | 真实生产异机备份/恢复 | 通过：独立 COS 下载、运行候选 `434c41a0…`、50 → 51 迁移、只读核验和清理 |
@@ -155,7 +164,7 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 - API 认证/权限/文件/付款：`services/api/src/auth/`、`file/file.service.*`、`payment/payment-request.service.*`。
 - 数据库与 UAT：`20260715150000_contract_superseded_status_constraints`、约束验证测试、`verify-trial-run.cjs`。
 - 审批规则：合同变更运行时与读模型、合同工作台读模型、结算冻结路由、Web 只读审批配置、两条 UAT 脚本及对应回归测试。
-- 运维：`db-backup.sh`、`db-restore-drill.sh`、`deploy-production-server.sh`、`go-live-safety-self-test.sh`、`cos-backup-transfer.mjs` 及测试、日/月 root 定时入口和备份环境示例；GNU/BSD `stat` 兼容修复已包含在运行候选。
+- 运维：既有 `db-backup.sh`、`db-restore-drill.sh`、`deploy-production-server.sh`、`cos-backup-transfer.mjs` 与日/月 root 定时入口保持不变；本轮只新增 `check-production-db-backup.mjs/.sh`、定向测试、独立 systemd service/timer，并将测试接入 `go-live-safety-self-test.sh`。
 - 操作手册：`docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md`。
 - 进度与报告：`PROGRESS.md`、本报告。
 
@@ -166,8 +175,8 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 ### P0-1 生产数据库异机备份与恢复已关闭
 
 - 独立桶、最小权限 CAM、root 配置、手工日/月备、同入口无人值守调度、独立 COS 下载、候选绑定隔离恢复、只读核验和清理均已通过。
-- 已恢复验证运行候选为 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`，待批准发布目标候选为 `d5d1454c763ff6331e96ecc97f414fb3d8ca829d`；两者使用相同数据库迁移和生产运维脚本，新候选仅调整应用审批节点和对应展示。生产仍是 `c1fcd236...` 和 50 个迁移，没有部署或业务数据写入。
-- 永久 03:00 cron 首次自然运行收据、备份陈旧/失败告警，以及生产 API CAM 策略非当前版本 3 的上线前复核仍需进入运维清单；当前不得删除该策略版本。这些观察项不否定已完成的恢复能力，但必须在最终 Go/No-Go 中有负责人和结论。
+- 已恢复验证运行候选为 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`，已发布运行时为 `b857a4269aa907e0550470cece52c846bcbb7623`；生产已完成 51 个迁移和运行时切换，本次发布未写真实业务记录。
+- 永久 03:00 cron 首次自然运行收据已经通过；备份陈旧/失败告警候选尚待单独批准和安装。生产 API CAM 策略非当前版本 3 继续保留，当前不得删除或切换。
 
 ### P0-2 真实业务验收未完成
 
@@ -179,27 +188,27 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 2026-07-16 只读预检进一步确认：生产运行、seed 停用、COS、LibreOffice 和必需中文字体技术项已通过；当前只有 4 份合同、1 份历史接管草稿、0 结算、0 付款，附件归档只有历史接管类型，不能替代真实 UAT。预检当时发现生产缺少 `budget_director`；用户随后永久取消重大合同变更和结算中的预算强制审批，新候选不再因该岗位缺失阻断结算，但当前生产旧 SHA 仍运行旧规则，必须先发布新候选再按新规则 UAT。详细证据与材料清单见 `docs/progress/2026-07-16-real-business-uat-preflight.md`。
 
-### P0-3 发布授权未给出
+### P0-3 技术发布已关闭；新运维候选待授权
 
-- 候选分支尚未推送，`origin/main` 和生产仍为 `c1fcd236...`。
-- 当前待批准发布目标候选为 `d5d1454c763ff6331e96ecc97f414fb3d8ca829d`；必须先由用户对该 40 位 SHA 明确批准，才能快进 `main` 并手动触发生产 environment 工作流。
-- 本报告形成前未推送、未部署、未执行第 51 个生产迁移、未写入真实业务数据。
+- 用户已明确批准并完成 `b857a4269aa907e0550470cece52c846bcbb7623` 的推送、部署和第 51 个迁移。
+- `origin/main`、生产服务器 HEAD 和发布工作流 SHA 已核对一致，运行 `29439598098` 成功。
+- 本轮数据库备份监控形成新的候选 SHA；按用户要求暂不推送、暂不部署，必须取得新的精确 SHA 授权后才能安装生产 systemd unit。
 
 ### P0-4 GitHub 发布权限边界已关闭
 
 - private 仓库当前没有可用的 main branch protection 或 production required reviewer 门禁。
 - `jigege9527` 已按用户授权移除，权限为 `none`；直接协作者只剩所有者 `1131096740`，无待处理邀请。
-- 三个生产 Actions 已固定完整 SHA。当前平台方案仍没有强制双人审批能力，但已不存在第二个可修改 main/工作流或触发手工部署的直接协作者；最终目标 SHA 签认继续由 P0-3 管理。
+- 三个生产 Actions 已固定完整 SHA。当前平台方案仍没有强制双人审批能力，但已不存在第二个可修改 main/工作流或触发手工部署的直接协作者；运行时发布 SHA 已完成签认，新运维候选继续由 P0-3 管理。
 
 ## 7. 发布与回滚方案
 
 ### 发布前
 
-1. 观察永久 03:00 首次收据并确认备份陈旧/失败告警，复核但不擅自删除生产 API CAM 策略版本 3。
+1. 永久 03:00 首次自然收据已通过；不得擅自删除或切换生产 API CAM 策略版本 3。
 2. 完成 P0-2 业务 UAT/签认。
-3. 用户明确批准发布目标候选 `d5d1454c763ff6331e96ecc97f414fb3d8ca829d`。
-4. 将候选提交纳入 `origin/main`，再以 `d5d1454c763ff6331e96ecc97f414fb3d8ca829d` 手动启动 `Deploy Production`，输入精确确认语。
-5. 发布脚本先构建、快照旧运行时、创建并验证迁移前备份，任一步失败立即停止。
+3. 对本轮数据库备份监控候选完成代码复核和精确 SHA 签认。
+4. 获批后仅安装监控脚本与 systemd service/timer，先手工健康检查，再启用 timer；不重复执行应用部署或数据库迁移。
+5. 安装后验证正常、故障去重、恢复通知和现有 03:00/03:30 cron 均未改变。
 
 ### 发布后验证
 

@@ -8,6 +8,7 @@ FAKE_LOG="$TEST_ROOT/fake.log"
 REAL_NODE="$(command -v node)"
 
 bash -n \
+  "$SCRIPT_DIR/check-production-db-backup.sh" \
   "$SCRIPT_DIR/db-backup.sh" \
   "$SCRIPT_DIR/db-restore-drill.sh" \
   "$SCRIPT_DIR/deploy-production-server.sh" \
@@ -722,5 +723,6 @@ restart_count="$(grep -c '^systemctl restart jiangkong-api$' "$FAKE_LOG")"
 [[ "$restart_count" -ge 2 ]] || fail "recovery did not restart the restored API runtime"
 
 "$REAL_NODE" --test "$SCRIPT_DIR/cos-backup-transfer.test.mjs" >/dev/null
+"$REAL_NODE" --test "$SCRIPT_DIR/check-production-db-backup.test.mjs" >/dev/null
 
 echo "go-live ops safety self-test passed"
