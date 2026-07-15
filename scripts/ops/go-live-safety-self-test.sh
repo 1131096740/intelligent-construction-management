@@ -36,6 +36,14 @@ assert_no_files() {
   fi
 }
 
+file_mode() {
+  if stat -c '%a' "$1" >/dev/null 2>&1; then
+    stat -c '%a' "$1"
+  else
+    stat -f '%Lp' "$1"
+  fi
+}
+
 mkdir -p "$FAKE_BIN"
 : > "$FAKE_LOG"
 
@@ -77,6 +85,38 @@ cat > "$FAKE_BIN/sha256sum" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%064d  %s\n' 0 "$1"
+FAKE
+
+cat > "$FAKE_BIN/stat" <<'FAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}:${2:-}" in
+  -c:%a)
+    if /usr/bin/stat -c '%a' "$3" >/dev/null 2>&1; then
+      exec /usr/bin/stat -c '%a' "$3"
+    fi
+    exec /usr/bin/stat -f '%Lp' "$3"
+    ;;
+  -c:%u)
+    if /usr/bin/stat -c '%u' "$3" >/dev/null 2>&1; then
+      exec /usr/bin/stat -c '%u' "$3"
+    fi
+    exec /usr/bin/stat -f '%u' "$3"
+    ;;
+  -c:%s)
+    if /usr/bin/stat -c '%s' "$3" >/dev/null 2>&1; then
+      exec /usr/bin/stat -c '%s' "$3"
+    fi
+    exec /usr/bin/stat -f '%z' "$3"
+    ;;
+  -f:*)
+    printf 'mock GNU stat filesystem output\n'
+    exit 1
+    ;;
+  *)
+    exec /usr/bin/stat "$@"
+    ;;
+esac
 FAKE
 
 cat > "$FAKE_BIN/flock" <<'FAKE'
@@ -231,9 +271,9 @@ backup_file="$(
 )"
 assert_file "$backup_file"
 assert_file "$backup_file.sha256"
-[[ "$(stat -f '%Lp' "$backup_file" 2>/dev/null || stat -c '%a' "$backup_file")" == 600 ]] ||
+[[ "$(file_mode "$backup_file")" == 600 ]] ||
   fail "backup mode must be 600"
-[[ "$(stat -f '%Lp' "$backup_file.sha256" 2>/dev/null || stat -c '%a' "$backup_file.sha256")" == 600 ]] ||
+[[ "$(file_mode "$backup_file.sha256")" == 600 ]] ||
   fail "checksum mode must be 600"
 grep -q '^pg_restore --list ' "$FAKE_LOG" || fail "backup was not checked with pg_restore --list"
 grep -q '^pg_dump .*sslmode=require' "$FAKE_LOG" || fail "backup did not preserve libpq parameters"
@@ -287,6 +327,8 @@ offsite_backup_file="$(
 assert_file "$offsite_backup_file"
 assert_file "$offsite_backup_file.sha256"
 assert_file "$offsite_backup_file.offsite.json"
+grep -Eq '^  "backupSize": [0-9]+,$' "$offsite_backup_file.offsite.json" ||
+  fail "offsite receipt backup size must be numeric"
 [[ "$(< "$offsite_success_count")" == 2 ]] || fail "backup did not upload dump and checksum"
 grep -q 'node bucket=jiangkong-prod-db-backups-1438687719 region=ap-chengdu' "$FAKE_LOG" ||
   fail "backup did not use the dedicated COS configuration"

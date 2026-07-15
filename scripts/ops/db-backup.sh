@@ -5,11 +5,27 @@ umask 077
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 file_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+  if stat -c '%a' "$1" >/dev/null 2>&1; then
+    stat -c '%a' "$1"
+  else
+    stat -f '%Lp' "$1"
+  fi
 }
 
 file_owner_uid() {
-  stat -f '%u' "$1" 2>/dev/null || stat -c '%u' "$1"
+  if stat -c '%u' "$1" >/dev/null 2>&1; then
+    stat -c '%u' "$1"
+  else
+    stat -f '%u' "$1"
+  fi
+}
+
+file_size() {
+  if stat -c '%s' "$1" >/dev/null 2>&1; then
+    stat -c '%s' "$1"
+  else
+    stat -f '%z' "$1"
+  fi
 }
 
 validate_env_file() {
@@ -340,7 +356,7 @@ if [[ "$DB_BACKUP_OFFSITE_REQUIRED" == true ]]; then
   upload_to_cos_with_retry "$backup_file" "$backup_object_key" "$checksum"
   upload_to_cos_with_retry "$checksum_file" "$checksum_object_key" "$checksum_sha256"
 
-  backup_size="$(stat -f '%z' "$backup_file" 2>/dev/null || stat -c '%s' "$backup_file")"
+  backup_size="$(file_size "$backup_file")"
   uploaded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '{\n' > "$receipt_temp"
   printf '  "bucket": "%s",\n' "$DB_BACKUP_COS_BUCKET" >> "$receipt_temp"
