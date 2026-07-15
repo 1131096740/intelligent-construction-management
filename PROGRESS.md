@@ -10,7 +10,7 @@
 
 ---
 
-## 快速结论（2026-07-15）
+## 快速结论（2026-07-16）
 
 - [x] P0 本地代码收口已完成：后端核心闭环、企业级合同工作台、历史合同接管、历史余额扣减、真实首页、业务选择器、常用单据、私有文件、PDF、审计、权限和 Web/API 生产部署均已有可验证实现。
 - [x] 阶段 C、D 本地代码与浏览器验收已完成：合同场景推荐、模板/版式治理、Word 往返差异、合同变更版本、全宽结算选行、Excel 预检应用和结算模板治理均已形成后端事实与 Web 闭环。
@@ -23,10 +23,11 @@
 
 ## 当前下一步
 
-> 状态覆盖说明：2026-07-15 早期关于数据库备份桶不存在、生产安装和真实恢复尚待执行的记录，已由下方最终证据取代；恢复证据绑定运行候选 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`，其后的纯 Markdown 审计提交不改变运行代码树，也不冒充精确 SHA 恢复。
+> 状态覆盖说明：2026-07-15 早期关于数据库备份桶不存在、生产安装和真实恢复尚待执行的记录，已由下方最终证据取代；恢复证据绑定运行候选 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`。其后的 Markdown 审计提交及生产工作流供应链加固提交 `eaaffee56d1657f98631edc7ef41016baffe9887` 不改变应用、数据库迁移或生产运维脚本，也不冒充精确 SHA 恢复；待批准发布目标候选更新为 `eaaffee56d1657f98631edc7ef41016baffe9887`。
 
 - [x] 2026-07-15 生产数据库异机备份与候选恢复 P0 已关闭：独立私有桶 `jiangkong-prod-db-backups-1438687719`（成都 `ap-chengdu`）已开启 SSE-COS、版本控制和日备 30 天/月备 365 天生命周期；专用编程子用户仅允许 `database-backups/*` 的 PUT/HEAD/GET，删除、前缀外、业务桶、日志桶和桶级 HEAD 均实测 403。生产 root `600` 日/月配置与固定工具已安装，原 02:30 本地备份保留，新增 03:00 日备和每月 1 日 03:30 月备；GNU/BSD `stat` 兼容缺陷已在 `6a85fd29` 修复并通过故障注入。手工日/月备及 22:55 同入口无人值守日备均生成 254,606 字节、440 项 custom dump，dump/checksum/收据齐全；22:55 对象从 COS 独立下载、哈希和逐字节比较通过。该对象恢复到 `jiangkong_restore_20260715_225500_434c41a0`，精确绑定洁净运行候选 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`，50 个迁移升至 51，Prisma status 最新，71 张表、核心计数、两项 `superseded` CHECK 约束和历史非法状态均只读核验通过。隔离库和全部临时资源已清理，生产保持 `c1fcd236...`、50 个迁移和健康状态；永久 03:00 首次自然收据、备份陈旧/失败告警及 API CAM 策略非当前版本 3 的上线前复核转为运维观察项，当前不得删除该策略版本。
-- [~] 2026-07-15 正式上线 P0 运行候选固定为 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`：refresh token 并发、岗位聚合读取、业务错误语义、详情同路由陈旧数据、合同变更元分转换、第 51 个迁移、响应式治理和生产异机恢复均已有验证证据。全量既有结果为 3,211 个测试、7 个 COS 传输测试、运维故障注入、typecheck/lint/build/check:ui/Prisma/业务错误全部通过，P0 Playwright 34 通过/2 条件跳过/0 失败；本次接收后再次运行运维故障注入、Shell 语法和 7 个 COS 测试均通过。正式 Go-Live 仍为 No-Go：还需完成约 20 个历史合同、3–5 个活跃合同、母版 DOCX/PDF、普通岗位权限矩阵和财务全链路 UAT/签认，处理 GitHub 可写协作者/发布复核门禁，并由用户明确批准运行候选 SHA。候选未推送、未部署，生产未执行第 51 个迁移或候选业务写入。详见 `GO_LIVE_P0_RELEASE_CANDIDATE_REPORT.md`。
+- [~] 2026-07-16 正式上线 P0 已恢复验证运行候选为 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`，待批准发布目标候选为 `eaaffee56d1657f98631edc7ef41016baffe9887`：refresh token 并发、岗位聚合读取、业务错误语义、详情同路由陈旧数据、合同变更元分转换、第 51 个迁移、响应式治理和生产异机恢复均已有验证证据。全量既有结果为 3,211 个测试、7 个 COS 传输测试、运维故障注入、typecheck/lint/build/check:ui/Prisma/业务错误全部通过，P0 Playwright 34 通过/2 条件跳过/0 失败；本次供应链加固将生产工作流中的 `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 固定到当前官方 v4 的完整提交 SHA，YAML 解析、官方引用交叉验证、运维故障注入和差异检查均通过。`434c41a0…` 至 `eaaffee5…` 仅有 Markdown 与 `.github/workflows/deploy-production.yml` 差异，应用、迁移和生产运维脚本未改变。正式 Go-Live 仍为 No-Go：还需完成约 20 个历史合同、3–5 个活跃合同、母版 DOCX/PDF、普通岗位权限矩阵和财务全链路 UAT/签认，关闭 GitHub 可写协作者门禁，并由用户明确批准 40 位发布目标 SHA。候选未推送、未部署，生产未执行第 51 个迁移或候选业务写入。详见 `GO_LIVE_P0_RELEASE_CANDIDATE_REPORT.md`。
+- [~] 2026-07-16 GitHub 发布权限边界复核：用户已明确要求将 `jigege9527` 降为只读，实际调用 GitHub 协作者权限接口后回读仍为 `write`。根因是当前 private 仓库归个人账号 `1131096740` 所有，GitHub 官方规则不支持个人私有仓库的只读协作者；本轮未擅自移除协作者或转移仓库。上线前必须二选一并留证：移除 `jigege9527`，或将仓库迁入 Organization 后授予 `read`；在此之前 GATE-32 继续待验收。
 - [x] 2026-07-15 完成项目文档事实层审计与 Obsidian 收口：以更新前 823 个跟踪文件、110 份 Markdown 为基线，对 70 个 Prisma model、50 个迁移、Web/API/共享包、测试、部署和公网只读状态做交叉核验；全项目 typecheck/lint、Web `check:ui`、API 业务错误检查、Prisma validate、3,198 个测试、API/Web build、P0 E2E 32 通过/2 条件跳过和 `git diff --check` 通过。本机未运行 PostgreSQL，因此真实试运行 preflight 未形成数据库链路证据；生产依赖审计仍有 5 个中等级别公告待适用性评估。新增 `obsidian-current/建工智管_项目状态报告_20260715.md` 和 `建工智管_文档有效性索引.md`，更新 13 份持续维护笔记，并为 5 份旧状态报告和 1 份上游完整方案增加 `historical`/`upstream-reference` 元数据；仓库 `obsidian-current` 与 iCloud Vault 的 21 份 Markdown 已逐文件 SHA-256 一致。本次只更新文档，不改业务代码、数据库或生产。
 - [x] 2026-07-14 Web Admin 响应式治理阶段 0–8 已完成并停在本地发布候选：阶段 8 已复核分支、提交拓扑、78 个实际修改文件、234 张稳定 Mock 截图、受保护目录和迁移范围；相对基线未修改 `services/api`、`packages/shared-domain`、`apps/web-admin/src/api`、`apps/web-admin/src/routes`，无数据库迁移。最终 typecheck、lint、check:ui、Web 全量 Vitest、build、全量 P0 E2E 与 `git diff --check` 均通过；发布就绪报告见 `UI_RESPONSIVE_RELEASE_READINESS.md`。当前只形成 `codex/ui-responsive-governance` 本地候选，未推送 `main`、未部署、未写生产；必须等待用户对交付回复中的最终目标 SHA 明确批准后，才能另行执行阶段 9。
 - [~] 2026-07-14 Web Admin 响应式治理阶段 7 全站回归已完成：33 个当前有效路由页面均已纳入六档桌面浏览器验证；无活动路由的 `RoutePlaceholderPage.vue` 仅做静态结构复核，未为截图重新接回废弃入口。最终使用稳定 Mock/隔离数据累计生成 234 张截图，覆盖 1512×982、1440×900、1280×800、1180×820、1024×768、900×768；文档根横向溢出、父子嵌套横滚和 pageerror 均为 0。Web 全量 Vitest 84 文件 626/626、build、typecheck、lint、check:ui、全量 Playwright 32/32 通过，另有 2 条按既有配置条件跳过；受保护目录差异为空。内置浏览器会话受首次改密门禁限制，本阶段未使用真实账号或绕过门禁，按计划回退 Playwright；报告见 `UI_RESPONSIVE_GOVERNANCE_FINAL_REPORT.md`。下一步只执行阶段 8 发布候选审计，不推送、不部署、不写生产。
