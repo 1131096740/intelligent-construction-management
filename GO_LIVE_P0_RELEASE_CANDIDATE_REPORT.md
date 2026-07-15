@@ -2,9 +2,10 @@
 
 > 审计日期：2026-07-15
 > 候选分支：`codex/go-live-p0`
-> 目标 SHA：以本报告所在的最终候选提交及交付回复为准
+> 已恢复验证的运行候选 SHA：`434c41a0511b0701fdc8f28e9466dfc959ef4f59`
+> 审计文档 HEAD：以交付回复为准；运行候选之后只允许新增文档提交，不得冒充已恢复验证的运行 SHA
 > 生产基线：`c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`
-> 结论：代码与本地生产等价验证已达到发布候选标准，仓库侧异机数据库备份硬门禁已经完成；正式 Go-Live 仍为 **No-Go**，需先在腾讯云完成独立备份桶/CAM、生产安装和真实异机恢复演练，关闭 GitHub 发布权限边界缺口，完成真实业务 UAT/签认，并由用户明确批准目标 SHA。
+> 结论：代码与本地生产等价验证已达到发布候选标准，生产数据库异机备份、无人值守上传、独立下载和候选绑定隔离恢复 P0 已通过；正式 Go-Live 仍为 **No-Go**，剩余门禁是关闭 GitHub 发布权限边界、完成真实业务 UAT/签认，并由用户明确批准运行候选 SHA。
 
 ## 1. 本轮 P0 收口
 
@@ -47,7 +48,7 @@
 - 本地清理只删除已有异机收据的过期备份；没有收据的本地备份不会因保留策略被清理。
 - 恢复演练脚本只允许连接实际库名为 `jiangkong_restore_*` 的空 `public` schema，并校验 checksum、档案列表、Prisma 迁移和核心表计数；发布候选模式还会在恢复前核对候选检出的精确 40 位 SHA 与洁净工作区，恢复后对同一隔离库执行候选 `migrate deploy/status`，并要求完成迁移数与候选目录完全一致。
 - 部署前先构建和备份，再停 API/迁移/替换运行时；迁移或新运行时失败时恢复旧 API/Web 快照并重新健康检查。数据库迁移不自动逆转。
-- 云端资源、生产 root 配置、定时任务替换及真实恢复的操作边界见 `docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md`；这些外部步骤尚未执行，不计为已完成。
+- 云端资源、生产 root 配置、日/月调度、无人值守收据及真实恢复已按 `docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md` 完成；永久 03:00 首次自然调度收据和备份陈旧/失败告警继续作为上线运维观察项，不推翻已经通过的同入口无人值守验证。
 
 ## 2. 生产等价验证
 
@@ -81,14 +82,26 @@
 - 访问日志已实际产生；独立日志桶 `jiangkong-prod-cos-logs-1438687719` 私有/SSE-COS，日志前缀 `cos-access/jiangkong-prod-files/`，365 天删除。
 - 生产 CAM 仅可操作 `uploads/*`；审计账号只看配置、不读文件内容；生产 API 账号不能访问日志桶。
 - 监控告警已绑定，盗刷风险检测 0 个未通过项；未启用 CDN，与后端鉴权下载架构一致。
+- 数据库备份桶 `jiangkong-prod-db-backups-1438687719` 位于成都 `ap-chengdu`，私有、SSE-COS、版本控制；日备当前/历史版本保留 30 天，月备当前版本保留 365 天、历史版本保留 30 天，不开 CDN。
+- 专用子用户 `jiangkong-prod-db-backup` 只有编程访问，策略资源仅为 `database-backups/*`，只允许 `PutObject`、`HeadObject`、`GetObject`；删除、前缀外、业务桶、日志桶和桶级 HEAD 均实测 403。凭据只保存在生产 root `600` 文件中，未进入聊天或仓库。
 
 ### 2.4 发布权限边界只读复核
 
 - 2026-07-15 公网 `https://jgzg.site/` 与 `/api/health` 均为 200，TLS 验证通过，证书有效期至 2026-09-29；健康接口不暴露构建 SHA，因此公网健康不能单独证明服务器当前提交。
-- GitHub `origin/main` 仍为 `c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`，最近一次成功生产工作流 `29306578053` 也以该 SHA 部署，日志显示 50 个迁移、无待应用项和 `runtime health ok`。本机 SSH 公钥当前不能登录生产，故进程、定时备份和服务器 HEAD 的实时复核不能沿用旧证据冒充当前结果。
+- GitHub `origin/main` 与生产仍为 `c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`，生产库保持 50 个已完成迁移；API、Nginx、PostgreSQL、Cron 和公网 `/api/health` 在备份安装、恢复及清理前后均正常。运行候选未部署，第 51 个迁移只在隔离恢复库执行。
 - 仓库为 private，GitHub API 对 main branch protection 返回“需升级方案”，`production` Environment 及其环境级 Secret/Reviewer 当前不可查询；生产 SSH 凭据仍是仓库级 Actions Secrets。
 - 直接协作者共有两名：所有者 `1131096740` 为 admin，`jigege9527` 为 write。在没有 branch protection 和 Environment Reviewer 时，两者都具备修改 main/工作流或触发手工部署的权限。正式上线前必须由用户确认 `jigege9527` 是否为授权发布人；若不是，应降为只读/移除，若是则应纳入双人发布记录。需要平台强制复核时，应升级支持 private repo 保护规则的 GitHub 方案并启用 main protection 与 production required reviewer。
 - 当前生产工作流仍以精确 40 位 SHA、固定确认语、`origin/main` 祖先校验、全量验证和服务器 SHA 校验防止误部署；三个官方 Actions 使用 `@v4` 大版本标签而非固定提交 SHA，属于上线后应优先收口的供应链加固项，若要纳入本次 P0 则需另行确认并重新固定候选 SHA。
+
+### 2.5 生产异机备份与候选绑定恢复
+
+- 生产 root 已安装日备/月备配置和固定工具，配置均为 `600 root:root`；永久工具位于 `/usr/local/lib/jiangkong-offsite-backup/`，未修改生产业务代码。既有每日 02:30 本地备份保留，新增每日 03:00 异机日备和每月 1 日 03:30 异机月备，共享锁防止并发；专用日志为 root `600`，logrotate 每日检查、保留 30 份并压缩。
+- 手工日备和月备均生成 254,606 字节、`600`、`pg_restore --list` 440 项的 custom dump；日备、月备分别进入 `database-backups/daily/` 和 `database-backups/monthly/`，dump/checksum/收据齐全。月备标记 `manual_monthly_offsite_backup=passed`。
+- 一次性 22:55 调度调用与永久 cron 相同的生产入口，自动生成 `jiangkong-20260715-225500.dump`，SHA-256 为 `4ce66df48cd099c24c1e735a1676b742286719e845742755b70486ec03f5c858`，440 项；从 COS 独立下载的 dump/checksum 哈希一致、与本地逐字节相同，证明无人值守能力而非手工冒充定时结果。
+- 使用上述 COS 对象创建隔离库 `jiangkong_restore_20260715_225500_434c41a0`，候选 checkout 精确绑定 `434c41a0511b0701fdc8f28e9466dfc959ef4f59` 且洁净；恢复原始 50 个迁移后应用第 51 个候选迁移，最终为 `51|0|0`，`prisma migrate status` 为最新。
+- 隔离库恢复 71 张 public 表；核心计数为 User 10、Project 1、Contract 4、ContractTakeover 1、FileObject 14、AuditLog 166、ContractVersion 4、PaymentTermsVersion 4。两项新 CHECK 约束存在、允许 `superseded`，历史非法状态均为 0；核验阶段启用 `default_transaction_read_only=on`。
+- 隔离数据库、候选 checkout、恢复工具和输入临时目录均已删除；正式 22:55 本地备份、checksum、offsite receipt 和 COS 对象按策略保留。最终标记为 `offsite_database_restore_drill=completed`、`isolated_restore_and_candidate_migration=passed`、`isolated_restore_readonly_verification=passed`、`isolated_restore_cleanup=passed`。
+- 恢复证据绑定的是运行候选 `434c41a0…`。其后的本报告、门禁和 `PROGRESS.md` 只新增 Markdown 文档，不改变应用、迁移或运维脚本；正式部署目标仍应审批 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`。若运行代码树再次变化，必须重新评估恢复演练，不得沿用本证据。
 
 ## 3. 验证结果
 
@@ -105,7 +118,9 @@
 | 英文业务错误扫描 | 自测通过；213 个生产 TS，51 处精确允许的内部英文哨兵 |
 | COS 传输单测 | 7/7 通过：私密配置解析、签名脱敏、PUT/HEAD/GET、SSE/哈希、超限拒绝、原子下载、不覆盖已有文件 |
 | 运维故障注入自测 | 通过：锁冲突、业务桶复用、配置注入/权限、远端短暂与持续失败、本地证据保留、生产库名/非空库拦截、候选 SHA/洁净度/迁移失败/迁移数量门禁、部署迁移失败恢复、新运行时失败回滚 |
+| Linux/日月备份回归 | 通过：GNU `stat -c` 优先、BSD `stat -f` 回退、收据大小为数值、日/月配置和同一生产入口可切换 |
 | 真实本地备份/恢复 | 通过 |
+| 真实生产异机备份/恢复 | 通过：独立 COS 下载、运行候选 `434c41a0…`、50 → 51 迁移、只读核验和清理 |
 | 真实本地长链路 UAT | 通过 |
 | Workflow YAML / `git diff --check` | 通过 |
 
@@ -131,7 +146,7 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 - Web 浏览器门禁：`apps/web-admin/e2e/`相关用例、`playwright.config.ts`、`tsconfig.e2e.json`、`package.json`。
 - API 认证/权限/文件/付款：`services/api/src/auth/`、`file/file.service.*`、`payment/payment-request.service.*`。
 - 数据库与 UAT：`20260715150000_contract_superseded_status_constraints`、约束验证测试、`verify-trial-run.cjs`。
-- 运维：`db-backup.sh`、`db-restore-drill.sh`、`deploy-production-server.sh`、`go-live-safety-self-test.sh`、`cos-backup-transfer.mjs` 及测试、root 定时入口和备份环境示例。
+- 运维：`db-backup.sh`、`db-restore-drill.sh`、`deploy-production-server.sh`、`go-live-safety-self-test.sh`、`cos-backup-transfer.mjs` 及测试、日/月 root 定时入口和备份环境示例；GNU/BSD `stat` 兼容修复已包含在运行候选。
 - 操作手册：`docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md`。
 - 进度与报告：`PROGRESS.md`、本报告。
 
@@ -139,17 +154,11 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 ## 6. 当前 Go-Live 阻断项
 
-### P0-1 仓库门禁已完成，生产异机闭环尚未执行
+### P0-1 生产数据库异机备份与恢复已关闭
 
-生产当前仍每日 02:30 执行旧的同机备份，整机/磁盘故障会同时损失主库与备份。仓库已经具备独立 COS 上传、全量回读验证、收据、本地保留、并发锁、生产定时入口和部署前硬阻断，但没有生产云资源和真实恢复证据前，不能关闭此 P0。
-
-正式 Go-Live 前必须：
-
-1. 按操作手册创建独立私有数据库备份桶（建议 `jiangkong-prod-db-backups-1438687719`，成都，SSE-COS，版本控制），不复用业务桶或日志桶。
-2. 创建独立 CAM，仅允许备份前缀 `PutObject`、`HeadObject`、`GetObject`；拒绝删除、桶配置、业务桶和日志桶。
-3. 在生产安装 root `600` 的 `/etc/jiangkong/db-backup.env`，手工执行一次并取得 dump、checksum、远端收据。
-4. 将旧 02:30 任务替换为仓库受控 root 入口，再取得一次定时任务收据。
-5. 从异机桶完整下载一份备份，在 `jiangkong_restore_*` 空隔离库绑定最终固定候选 SHA，完成真实恢复、候选迁移部署/status 和精确迁移/核心表校验，记录 RPO、RTO、执行人与复核人。
+- 独立桶、最小权限 CAM、root 配置、手工日/月备、同入口无人值守调度、独立 COS 下载、候选绑定隔离恢复、只读核验和清理均已通过。
+- 运行候选固定为 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`；生产仍是 `c1fcd236...` 和 50 个迁移，没有部署或业务数据写入。
+- 永久 03:00 cron 首次自然运行收据、备份陈旧/失败告警，以及生产 API CAM 策略非当前版本 3 的上线前复核仍需进入运维清单；当前不得删除该策略版本。这些观察项不否定已完成的恢复能力，但必须在最终 Go/No-Go 中有负责人和结论。
 
 ### P0-2 真实业务验收未完成
 
@@ -175,11 +184,12 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 ### 发布前
 
-1. 按异机备份手册完成云端资源、生产安装、定时备份和真实恢复，并完成 P0-2 业务签认。
-2. 关闭或正式接受 P0-4 发布权限边界，记录授权发布人和复核人，固定 Go 结论。
-3. 用户明确批准候选 SHA。
-4. 快进 `main`，再以同一 SHA 手动启动 `Deploy Production`，输入精确确认语。
-5. 发布脚本先构建、快照旧运行时、创建并验证迁移前备份，任一步失败立即停止。
+1. 观察永久 03:00 首次收据并确认备份陈旧/失败告警，复核但不擅自删除生产 API CAM 策略版本 3。
+2. 完成 P0-2 业务 UAT/签认。
+3. 关闭或正式接受 P0-4 发布权限边界，记录授权发布人和复核人，固定 Go 结论。
+4. 用户明确批准运行候选 `434c41a0511b0701fdc8f28e9466dfc959ef4f59`。
+5. 将运行候选纳入 `origin/main`，再以同一 SHA 手动启动 `Deploy Production`，输入精确确认语。
+6. 发布脚本先构建、快照旧运行时、创建并验证迁移前备份，任一步失败立即停止。
 
 ### 发布后验证
 
