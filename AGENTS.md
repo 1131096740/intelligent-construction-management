@@ -64,7 +64,7 @@ Do not dilute Phase 1 with full material issuing, attendance, HR onboarding/offb
 
 - Contract signing and contract changes require chairman/general manager final approval.
 - Chairman and general manager are an OR-sign node: either one may approve.
-- Major contract changes use finance director -> contract director -> chairman/general manager OR-sign; budget director is not a mandatory node.
+- Major contract changes are initiated by the contract handler (contract staff or contract director), then use contract director -> project manager -> finance director -> chairman/general manager OR-sign; budget director is not a mandatory node.
 - Settlement approval does not go through chairman/general manager.
 - Settlement cost-control review is approved by contract director alone; budget roles remain available for optional review but are not mandatory nodes.
 - All payment approvals require chairman/general manager OR-sign approval.

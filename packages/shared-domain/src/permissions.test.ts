@@ -58,6 +58,7 @@ describe("final approval OR-sign", () => {
 
   it("allows enhanced contract route roles before service-level node checks", () => {
     expect(canPerform("contract.approve", ["budget_director"])).toBe(true);
+    expect(canPerform("contract.approve", ["project_manager"])).toBe(true);
     expect(canPerform("contract.approve", ["finance_director"])).toBe(true);
     expect(canPerform("contract.approve", ["contract_director"])).toBe(true);
   });
@@ -260,6 +261,7 @@ describe("missingRolesFor", () => {
   it("lists the accepted roles when the user lacks permission", () => {
     expect(missingRolesFor("contract.approve", ["employee"])).toEqual([
       "budget_director",
+      "project_manager",
       "finance_director",
       "contract_director",
       "chairman",

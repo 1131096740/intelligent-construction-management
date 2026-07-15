@@ -810,8 +810,9 @@ describe("ContractWorkbenchService", () => {
     const result = await service.getDraft("contract-1", "owner-1");
 
     expect(result.change.approvalRoute).toEqual([
-      "finance_director",
       "contract_director",
+      "project_manager",
+      "finance_director",
       "chairman_or_general_manager"
     ]);
     expect(result.change.approvalRoute).not.toContain("budget_director");

@@ -926,7 +926,7 @@ describe("ContractService", () => {
     });
   });
 
-  it("freezes enhanced contract changes without a mandatory budget approval node", () => {
+  it("freezes the confirmed major contract change approval route", () => {
     const service = new ContractService({} as never, {} as never) as unknown as {
       approvalNodesForVersion(version: {
         changeType: string;
@@ -948,8 +948,9 @@ describe("ContractService", () => {
         cumulativeDecreaseCents: 0n
       })
     ).toEqual([
-      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
       { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
       { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
     ]);
   });
@@ -2201,7 +2202,7 @@ describe("ContractService", () => {
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
-  it("当前账号无权处理合同审批节点时不能审批", async () => {
+  it("项目经理不能越过冻结节点处理新签合同终审", async () => {
     const tx = {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -2224,7 +2225,7 @@ describe("ContractService", () => {
           ]
         })
       },
-      ...approvalRoleTables("employee")
+      ...approvalRoleTables("project_manager")
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -2234,7 +2235,7 @@ describe("ContractService", () => {
     const service = new ContractService(prisma, audit as never);
 
     await expect(
-      service.reviewApproval("contract-version-1", "employee-1", {
+      service.reviewApproval("contract-version-1", "project-manager-1", {
         decision: "approve"
       })
     ).rejects.toThrow("当前账号无权处理该合同审批节点");

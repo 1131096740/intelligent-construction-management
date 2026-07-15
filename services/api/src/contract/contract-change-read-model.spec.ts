@@ -46,8 +46,9 @@ describe("contractChangeVersionsReadModel", () => {
       historyReferencesStable: true
     });
     expect(result[0].approvalRoute).toEqual([
-      "finance_director",
       "contract_director",
+      "project_manager",
+      "finance_director",
       "chairman_or_general_manager"
     ]);
     expect(result[0].approvalRoute).not.toContain("budget_director");

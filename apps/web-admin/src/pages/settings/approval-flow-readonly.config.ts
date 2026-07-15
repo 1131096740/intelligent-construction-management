@@ -55,6 +55,24 @@ export const approvalFlowRules: ApprovalFlowRule[] = [
     ]
   },
   {
+    id: "contract_change_major",
+    title: "重大合同变更审批",
+    businessType: "合同变更",
+    status: "readonly",
+    nodes: [
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
+      { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+    ],
+    guardrails: [
+      "合同员或合同部主管作为合同经办人发起",
+      "合同部主管作为申请人时仍禁止自审，应由另一名合格合同部主管处理该节点",
+      "项目经理只能处理冻结实例中的项目经理节点",
+      "预算部主管不是强制节点，董事长/总经理为或签终审节点"
+    ]
+  },
+  {
     id: "settlement_material_mechanical",
     title: "结算审批（材料/机械）",
     businessType: "结算",
