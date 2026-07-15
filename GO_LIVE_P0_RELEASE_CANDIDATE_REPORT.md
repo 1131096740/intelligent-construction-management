@@ -4,7 +4,7 @@
 > 候选分支：`codex/go-live-p0`
 > 目标 SHA：以本报告所在的最终候选提交及交付回复为准
 > 生产基线：`c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`
-> 结论：代码与本地生产等价验证已达到发布候选标准；正式 Go-Live 仍为 **No-Go**，需先完成异机数据库备份、真实业务 UAT/签认，并由用户明确批准目标 SHA。
+> 结论：代码与本地生产等价验证已达到发布候选标准，仓库侧异机数据库备份硬门禁已经完成；正式 Go-Live 仍为 **No-Go**，需先在腾讯云完成独立备份桶/CAM、生产安装和真实异机恢复演练，完成真实业务 UAT/签认，并由用户明确批准目标 SHA。
 
 ## 1. 本轮 P0 收口
 
@@ -41,8 +41,13 @@
 - 只允许部署 `origin/main` 祖先提交，checkout SHA、服务器 HEAD 和最终部署 SHA 必须一致。
 - 生产环境门禁、P0 E2E、E2E TypeScript 校验、失败证据上传已接入发布工作流。
 - 数据库备份改为 custom dump 临时文件写入，通过 `pg_restore --list` 和 SHA-256 后原子发布，权限为 `600`。
+- 新增独立 COS 数据库备份传输器，不复用业务文件桶和 API CAM；备份密钥只允许由 root `600` 配置读取，不进入 API 环境、仓库、GitHub Secrets 或命令参数。
+- 每个 dump 与 checksum 均执行 PUT、HEAD 元数据/SSE-COS 校验和完整 GET 回读 SHA-256；请求有 120 秒硬超时，单对象最多重试 3 次，只有两类对象全部验证后才原子生成 `.offsite.json` 收据。
+- 生产定时入口和发布脚本强制 `DB_BACKUP_OFFSITE_REQUIRED=true`；远端验证失败时保留本地 dump/checksum，但在停止 API 和 Prisma 迁移之前硬停止。备份任务使用 `flock` 防止定时任务与发布前备份并发。
+- 本地清理只删除已有异机收据的过期备份；没有收据的本地备份不会因保留策略被清理。
 - 恢复演练脚本只允许连接实际库名为 `jiangkong_restore_*` 的空 `public` schema，并校验 checksum、档案列表、Prisma 迁移和核心表计数。
 - 部署前先构建和备份，再停 API/迁移/替换运行时；迁移或新运行时失败时恢复旧 API/Web 快照并重新健康检查。数据库迁移不自动逆转。
+- 云端资源、生产 root 配置、定时任务替换及真实恢复的操作边界见 `docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md`；这些外部步骤尚未执行，不计为已完成。
 
 ## 2. 生产等价验证
 
@@ -86,10 +91,11 @@
 | API/Web production build | 通过 |
 | Web `check:ui` | 通过 |
 | Web `typecheck:e2e` | 通过 |
-| P0 Playwright | 34 通过 / 2 条件跳过 / 0 失败；生产 build 预览模式 |
+| P0 Playwright | 34 通过 / 2 条件跳过 / 0 失败；生产 build 预览模式，CI 显式单 worker。首次在本机 9 worker 并发下有 2 条页面循环超时；失败用例单线程 2/2 通过，随后完整 36 条串行复验通过 |
 | Prisma validate | 通过 |
 | 英文业务错误扫描 | 自测通过；213 个生产 TS，51 处精确允许的内部英文哨兵 |
-| 运维故障注入自测 | 通过：备份不完整清理、生产库名拦截、非空库拦截、迁移失败恢复、新运行时失败回滚 |
+| COS 传输单测 | 7/7 通过：私密配置解析、签名脱敏、PUT/HEAD/GET、SSE/哈希、超限拒绝、原子下载、不覆盖已有文件 |
+| 运维故障注入自测 | 通过：锁冲突、业务桶复用、配置注入/权限、远端短暂与持续失败、本地证据保留、生产库名/非空库拦截、迁移失败恢复、新运行时失败回滚 |
 | 真实本地备份/恢复 | 通过 |
 | 真实本地长链路 UAT | 通过 |
 | Workflow YAML / `git diff --check` | 通过 |
@@ -111,28 +117,30 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 ## 5. 实际修改范围
 
 - 发布门禁：`.github/workflows/deploy-production.yml`。
+- 浏览器门禁：`apps/web-admin/playwright.config.ts` 在 CI 显式串行执行，测试内容、断言和单用例超时未弱化。
 - Web 认证与详情：`apps/web-admin/src/api/http.*`、合同/结算/付款详情页及其定向测试。
 - Web 浏览器门禁：`apps/web-admin/e2e/`相关用例、`playwright.config.ts`、`tsconfig.e2e.json`、`package.json`。
 - API 认证/权限/文件/付款：`services/api/src/auth/`、`file/file.service.*`、`payment/payment-request.service.*`。
 - 数据库与 UAT：`20260715150000_contract_superseded_status_constraints`、约束验证测试、`verify-trial-run.cjs`。
-- 运维：`db-backup.sh`、`db-restore-drill.sh`、`deploy-production-server.sh`、`go-live-safety-self-test.sh`。
+- 运维：`db-backup.sh`、`db-restore-drill.sh`、`deploy-production-server.sh`、`go-live-safety-self-test.sh`、`cos-backup-transfer.mjs` 及测试、root 定时入口和备份环境示例。
+- 操作手册：`docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md`。
 - 进度与报告：`PROGRESS.md`、本报告。
 
 `packages/shared-domain` 和 `apps/web-admin/src/routes` 无差异。本轮确有意修改 `services/api` 和 `apps/web-admin/src/api/http.*`，用于修复已证实的上线 P0 问题，不是响应式治理范围外的机械扩张。
 
 ## 6. 当前 Go-Live 阻断项
 
-### P0-1 数据库备份仍与主库同机
+### P0-1 仓库门禁已完成，生产异机闭环尚未执行
 
-生产当前每日 02:30 执行 `/usr/local/bin/jiangkong-backup`，最新 `db-20260715-023001.sql.gz` 为 root `600`，`gzip -t` 通过，本机保留 7 天。但该备份与 PostgreSQL 在同一台轻量服务器，整机/磁盘故障会同时损失主库与备份。
+生产当前仍每日 02:30 执行旧的同机备份，整机/磁盘故障会同时损失主库与备份。仓库已经具备独立 COS 上传、全量回读验证、收据、本地保留、并发锁、生产定时入口和部署前硬阻断，但没有生产云资源和真实恢复证据前，不能关闭此 P0。
 
 正式 Go-Live 前必须：
 
-1. 创建独立私有数据库备份桶（建议 `jiangkong-prod-db-backups-1438687719`，成都，SSE-COS，版本控制），不复用访问日志桶。
-2. 独立 CAM 只允许备份前缀的上传/列举/读取，不授予业务 `uploads/*` 或日志桶权限。
-3. 建议保留：日备 30 天、月备 12 个月；可根据成本确认。
-4. 每次上传 custom dump 与 SHA-256 配对文件，上传成功后再执行本地过期清理。
-5. 从异机桶下载一份备份，在 `jiangkong_restore_*` 隔离库完成真实恢复并记录 RPO/RTO。
+1. 按操作手册创建独立私有数据库备份桶（建议 `jiangkong-prod-db-backups-1438687719`，成都，SSE-COS，版本控制），不复用业务桶或日志桶。
+2. 创建独立 CAM，仅允许备份前缀 `PutObject`、`HeadObject`、`GetObject`；拒绝删除、桶配置、业务桶和日志桶。
+3. 在生产安装 root `600` 的 `/etc/jiangkong/db-backup.env`，手工执行一次并取得 dump、checksum、远端收据。
+4. 将旧 02:30 任务替换为仓库受控 root 入口，再取得一次定时任务收据。
+5. 从异机桶完整下载一份备份，在 `jiangkong_restore_*` 空隔离库完成真实恢复，记录迁移/核心表校验、RPO、RTO、执行人与复核人。
 
 ### P0-2 真实业务验收未完成
 
@@ -152,7 +160,7 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 ### 发布前
 
-1. 完成 P0-1 异机备份闭环和 P0-2 业务签认，固定 Go 结论。
+1. 按异机备份手册完成云端资源、生产安装、定时备份和真实恢复，并完成 P0-2 业务签认，固定 Go 结论。
 2. 用户明确批准候选 SHA。
 3. 快进 `main`，再以同一 SHA 手动启动 `Deploy Production`，输入精确确认语。
 4. 发布脚本先构建、快照旧运行时、创建并验证迁移前备份，任一步失败立即停止。
@@ -169,4 +177,4 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 - 迁移失败：不替换新运行时，重启旧 API。
 - 运行时/健康失败：自动恢复旧 API/Web 快照并重启。
 - 本次数据库迁移只扩展状态 CHECK 约束，对旧运行时向后兼容，回滚代码时保留该迁移，不自动回滚数据库。
-- 如必须回复数据，先将迁移前备份恢复到 `jiangkong_restore_*` 隔离库复核，再由用户单独授权维护窗口；禁止对生产执行 `prisma migrate reset`。
+- 如必须恢复数据，先将迁移前备份恢复到 `jiangkong_restore_*` 隔离库复核，再由用户单独授权维护窗口；禁止对生产执行 `prisma migrate reset`。

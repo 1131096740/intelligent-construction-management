@@ -7,6 +7,7 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: "*.e2e.ts",
   timeout: 30_000,
+  workers: isCI ? 1 : undefined,
   reporter: isCI
     ? [["line"], ["html", { open: "never", outputFolder: "playwright-report" }]]
     : [["list"]],

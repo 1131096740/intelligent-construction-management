@@ -7,11 +7,14 @@ WEB_RUNTIME_DIR="${WEB_RUNTIME_DIR:-/srv/jiangkong/apps/web-admin}"
 API_ENV_FILE="${API_ENV_FILE:-/etc/jiangkong/api.env}"
 API_SERVICE="${API_SERVICE:-jiangkong-api}"
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
+DB_BACKUP_ENV_FILE="${DB_BACKUP_ENV_FILE:-/etc/jiangkong/db-backup.env}"
+BACKUP_RUN_AS_ROOT="${BACKUP_RUN_AS_ROOT:-true}"
 STAGING_PARENT_DIR="${STAGING_PARENT_DIR:-/srv/jiangkong}"
 ROLLBACK_PARENT_DIR="${ROLLBACK_PARENT_DIR:-/srv/jiangkong}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/health}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-15}"
 BACKUP_SCRIPT="${BACKUP_SCRIPT:-$REPO_ROOT/scripts/ops/db-backup.sh}"
+DB_BACKUP_TRANSFER_SCRIPT="${DB_BACKUP_TRANSFER_SCRIPT:-$REPO_ROOT/scripts/ops/cos-backup-transfer.mjs}"
 RUNTIME_HEALTH_SCRIPT="${RUNTIME_HEALTH_SCRIPT:-$REPO_ROOT/scripts/ops/check-runtime-health.sh}"
 STAGING_DIR=""
 ROLLBACK_DIR=""
@@ -19,6 +22,47 @@ STOP_ATTEMPTED=false
 RUNTIME_SNAPSHOT_READY=false
 RUNTIME_REPLACEMENT_STARTED=false
 DEPLOY_SUCCEEDED=false
+
+if [[ -z "${REPO_ROOT_OVERRIDE:-}" ]]; then
+  BACKUP_SCRIPT="$REPO_ROOT/scripts/ops/db-backup.sh"
+  DB_BACKUP_TRANSFER_SCRIPT="$REPO_ROOT/scripts/ops/cos-backup-transfer.mjs"
+  DB_BACKUP_ENV_FILE="/etc/jiangkong/db-backup.env"
+  BACKUP_RUN_AS_ROOT=true
+fi
+
+if [[ "$BACKUP_RUN_AS_ROOT" != true && "$BACKUP_RUN_AS_ROOT" != false ]]; then
+  echo "BACKUP_RUN_AS_ROOT must be true or false" >&2
+  exit 1
+fi
+
+run_pre_migration_backup() {
+  if [[ "$BACKUP_RUN_AS_ROOT" == true ]]; then
+    sudo --non-interactive env \
+      DATABASE_ENV_FILE="$API_ENV_FILE" \
+      DB_BACKUP_ENV_FILE="$DB_BACKUP_ENV_FILE" \
+      DB_BACKUP_OFFSITE_REQUIRED=true \
+      BACKUP_DIR="$BACKUP_DIR" \
+      DB_BACKUP_TRANSFER_SCRIPT="$DB_BACKUP_TRANSFER_SCRIPT" \
+      "$BACKUP_SCRIPT"
+    return
+  fi
+
+  DB_BACKUP_OFFSITE_REQUIRED=true \
+    DB_BACKUP_TRANSFER_SCRIPT="$DB_BACKUP_TRANSFER_SCRIPT" \
+    "$BACKUP_SCRIPT"
+}
+
+verified_backup_artifacts_exist() {
+  local backup_file=$1
+  if [[ "$BACKUP_RUN_AS_ROOT" == true ]]; then
+    sudo --non-interactive test -s "$backup_file" &&
+      sudo --non-interactive test -s "$backup_file.sha256" &&
+      sudo --non-interactive test -s "$backup_file.offsite.json"
+    return
+  fi
+
+  [[ -s "$backup_file" && -s "$backup_file.sha256" && -s "$backup_file.offsite.json" ]]
+}
 
 wait_for_health() {
   local attempt
@@ -123,12 +167,12 @@ set +a
 sudo nginx -t
 sudo systemctl is-active --quiet "$API_SERVICE"
 
-PRE_MIGRATION_BACKUP="$(BACKUP_DIR="$BACKUP_DIR" "$BACKUP_SCRIPT")"
-if [[ ! -f "$PRE_MIGRATION_BACKUP" || ! -f "$PRE_MIGRATION_BACKUP.sha256" ]]; then
-  echo "Pre-migration backup did not produce a verified dump and checksum" >&2
+PRE_MIGRATION_BACKUP="$(run_pre_migration_backup)"
+if ! verified_backup_artifacts_exist "$PRE_MIGRATION_BACKUP"; then
+  echo "Pre-migration backup did not produce a verified local dump, checksum, and offsite receipt" >&2
   exit 1
 fi
-echo "Verified pre-migration backup: $PRE_MIGRATION_BACKUP"
+echo "Verified local and offsite pre-migration backup: $PRE_MIGRATION_BACKUP"
 echo "Only backward-compatible database migrations are allowed; migrations are never rolled back automatically."
 
 STOP_ATTEMPTED=true

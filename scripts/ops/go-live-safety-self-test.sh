@@ -5,6 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEST_ROOT="$(mktemp -d)"
 FAKE_BIN="$TEST_ROOT/bin"
 FAKE_LOG="$TEST_ROOT/fake.log"
+REAL_NODE="$(command -v node)"
+
+bash -n \
+  "$SCRIPT_DIR/db-backup.sh" \
+  "$SCRIPT_DIR/db-restore-drill.sh" \
+  "$SCRIPT_DIR/deploy-production-server.sh" \
+  "$SCRIPT_DIR/run-production-db-backup.sh"
 
 cleanup() {
   rm -rf "$TEST_ROOT"
@@ -72,6 +79,13 @@ set -euo pipefail
 printf '%064d  %s\n' 0 "$1"
 FAKE
 
+cat > "$FAKE_BIN/flock" <<'FAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'flock %s\n' "$*" >> "${FAKE_LOG:?}"
+[[ "${FAKE_FLOCK_FAIL:-false}" != true ]]
+FAKE
+
 cat > "$FAKE_BIN/psql" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -116,6 +130,9 @@ FAKE
 cat > "$FAKE_BIN/sudo" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
+while (( $# > 0 )) && [[ "$1" == --* ]]; do
+  shift
+done
 "$@"
 FAKE
 
@@ -154,6 +171,27 @@ printf 'rsync %s\n' "$*" >> "${FAKE_LOG:?}"
 /usr/bin/rsync "$@"
 FAKE
 
+cat > "$FAKE_BIN/node" <<'FAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'node bucket=%s region=%s %s\n' \
+  "${DB_BACKUP_COS_BUCKET:-missing}" \
+  "${DB_BACKUP_COS_REGION:-missing}" \
+  "$*" >> "${FAKE_LOG:?}"
+count=1
+if [[ -n "${FAKE_NODE_COUNT_FILE:-}" ]]; then
+  if [[ -f "$FAKE_NODE_COUNT_FILE" ]]; then
+    count="$(( $(< "$FAKE_NODE_COUNT_FILE") + 1 ))"
+  fi
+  printf '%s\n' "$count" > "$FAKE_NODE_COUNT_FILE"
+fi
+if [[ "${FAKE_NODE_FAIL_ON:-0}" == "$count" ]] ||
+  { [[ "${FAKE_NODE_FAIL_FROM:-0}" != 0 ]] && (( count >= FAKE_NODE_FAIL_FROM )); }; then
+  exit 1
+fi
+printf '{"verified":true}\n'
+FAKE
+
 chmod +x "$FAKE_BIN"/*
 
 backup_success_dir="$TEST_ROOT/backup-success"
@@ -175,6 +213,184 @@ grep -q '^pg_restore --list ' "$FAKE_LOG" || fail "backup was not checked with p
 grep -q '^pg_dump .*sslmode=require' "$FAKE_LOG" || fail "backup did not preserve libpq parameters"
 if grep -q '^pg_dump .*schema=' "$FAKE_LOG"; then
   fail "backup passed a Prisma-only parameter to pg_dump"
+fi
+grep -q '^flock --nonblock 9$' "$FAKE_LOG" || fail "backup did not acquire its process lock"
+
+: > "$FAKE_LOG"
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  FAKE_FLOCK_FAIL=true \
+  DATABASE_URL="postgresql://local/jiangkong" \
+  BACKUP_DIR="$TEST_ROOT/backup-lock-failure" \
+  "$SCRIPT_DIR/db-backup.sh" >/dev/null 2>&1; then
+  fail "backup must reject a concurrent execution"
+fi
+if grep -q '^pg_dump ' "$FAKE_LOG"; then
+  fail "backup started pg_dump without acquiring the process lock"
+fi
+
+offsite_success_dir="$TEST_ROOT/backup-offsite-success"
+offsite_success_count="$TEST_ROOT/backup-offsite-success.count"
+mkdir -p "$offsite_success_dir"
+old_verified="$offsite_success_dir/jiangkong-20200101-000000.dump"
+old_unverified="$offsite_success_dir/jiangkong-20200101-000001.dump"
+printf 'old verified\n' > "$old_verified"
+printf 'checksum\n' > "$old_verified.sha256"
+printf '{}\n' > "$old_verified.offsite.json"
+printf 'old unverified\n' > "$old_unverified"
+printf 'checksum\n' > "$old_unverified.sha256"
+touch -t 202001010000 "$old_verified" "$old_verified.sha256" "$old_verified.offsite.json" \
+  "$old_unverified" "$old_unverified.sha256"
+: > "$FAKE_LOG"
+offsite_backup_file="$(
+  PATH="$FAKE_BIN:$PATH" \
+    FAKE_LOG="$FAKE_LOG" \
+    FAKE_NODE_COUNT_FILE="$offsite_success_count" \
+    DATABASE_URL="postgresql://local/jiangkong" \
+    COS_BUCKET="jiangkong-prod-files-1438687719" \
+    BACKUP_DIR="$offsite_success_dir" \
+    DB_BACKUP_OFFSITE_REQUIRED=true \
+    DB_BACKUP_COS_SECRET_ID="test-database-backup-secret-id" \
+    DB_BACKUP_COS_SECRET_KEY="database-backup-secret-for-tests-only" \
+    DB_BACKUP_COS_BUCKET="jiangkong-prod-db-backups-1438687719" \
+    DB_BACKUP_COS_REGION="ap-chengdu" \
+    DB_BACKUP_COS_PREFIX="database-backups" \
+    DB_BACKUP_TRANSFER_SCRIPT="$SCRIPT_DIR/cos-backup-transfer.mjs" \
+    "$SCRIPT_DIR/db-backup.sh"
+)"
+assert_file "$offsite_backup_file"
+assert_file "$offsite_backup_file.sha256"
+assert_file "$offsite_backup_file.offsite.json"
+[[ "$(< "$offsite_success_count")" == 2 ]] || fail "backup did not upload dump and checksum"
+grep -q 'node bucket=jiangkong-prod-db-backups-1438687719 region=ap-chengdu' "$FAKE_LOG" ||
+  fail "backup did not use the dedicated COS configuration"
+grep -q 'database-backups/[0-9]\{4\}/[0-9]\{2\}/[0-9]\{2\}/jiangkong-' "$FAKE_LOG" ||
+  fail "backup object key does not contain the date hierarchy"
+[[ ! -e "$old_verified" && ! -e "$old_verified.sha256" && ! -e "$old_verified.offsite.json" ]] ||
+  fail "verified local backups older than the retention window were not cleaned"
+[[ -e "$old_unverified" && -e "$old_unverified.sha256" ]] ||
+  fail "local backup without an offsite receipt was removed"
+
+offsite_retry_dir="$TEST_ROOT/backup-offsite-retry"
+offsite_retry_count="$TEST_ROOT/backup-offsite-retry.count"
+mkdir -p "$offsite_retry_dir"
+offsite_retry_file="$(
+  PATH="$FAKE_BIN:$PATH" \
+    FAKE_LOG="$FAKE_LOG" \
+    FAKE_NODE_COUNT_FILE="$offsite_retry_count" \
+    FAKE_NODE_FAIL_ON=1 \
+    DATABASE_URL="postgresql://local/jiangkong" \
+    BACKUP_DIR="$offsite_retry_dir" \
+    DB_BACKUP_OFFSITE_REQUIRED=true \
+    DB_BACKUP_COS_SECRET_ID="test-database-backup-secret-id" \
+    DB_BACKUP_COS_SECRET_KEY="database-backup-secret-for-tests-only" \
+    DB_BACKUP_COS_BUCKET="jiangkong-prod-db-backups-1438687719" \
+    DB_BACKUP_COS_REGION="ap-chengdu" \
+    DB_BACKUP_TRANSFER_SCRIPT="$SCRIPT_DIR/cos-backup-transfer.mjs" \
+    "$SCRIPT_DIR/db-backup.sh"
+)"
+assert_file "$offsite_retry_file.offsite.json"
+[[ "$(< "$offsite_retry_count")" == 3 ]] || fail "transient COS failure was not retried once"
+
+offsite_failure_dir="$TEST_ROOT/backup-offsite-failure"
+offsite_failure_count="$TEST_ROOT/backup-offsite-failure.count"
+mkdir -p "$offsite_failure_dir"
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  FAKE_NODE_COUNT_FILE="$offsite_failure_count" \
+  FAKE_NODE_FAIL_FROM=2 \
+  DATABASE_URL="postgresql://local/jiangkong" \
+  COS_BUCKET="jiangkong-prod-files-1438687719" \
+  BACKUP_DIR="$offsite_failure_dir" \
+  DB_BACKUP_OFFSITE_REQUIRED=true \
+  DB_BACKUP_COS_SECRET_ID="test-database-backup-secret-id" \
+  DB_BACKUP_COS_SECRET_KEY="database-backup-secret-for-tests-only" \
+  DB_BACKUP_COS_BUCKET="jiangkong-prod-db-backups-1438687719" \
+  DB_BACKUP_COS_REGION="ap-chengdu" \
+  DB_BACKUP_COS_PREFIX="database-backups" \
+  DB_BACKUP_TRANSFER_SCRIPT="$SCRIPT_DIR/cos-backup-transfer.mjs" \
+  "$SCRIPT_DIR/db-backup.sh" >/dev/null 2>&1; then
+  fail "backup must fail when checksum upload fails"
+fi
+find "$offsite_failure_dir" -name '*.dump' -type f | grep -q . ||
+  fail "offsite failure removed the verified local dump"
+find "$offsite_failure_dir" -name '*.dump.sha256' -type f | grep -q . ||
+  fail "offsite failure removed the verified local checksum"
+assert_no_files "$offsite_failure_dir" '*.offsite.json'
+
+insecure_env_file="$TEST_ROOT/insecure-backup.env"
+printf 'DB_BACKUP_COS_BUCKET=jiangkong-prod-db-backups-1438687719\n' > "$insecure_env_file"
+chmod 644 "$insecure_env_file"
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  DATABASE_URL="postgresql://local/jiangkong" \
+  BACKUP_DIR="$TEST_ROOT/insecure-env-backups" \
+  DB_BACKUP_ENV_FILE="$insecure_env_file" \
+  DB_BACKUP_OFFSITE_REQUIRED=true \
+  "$SCRIPT_DIR/db-backup.sh" >/dev/null 2>&1; then
+  fail "backup must reject a group/world-readable credential file"
+fi
+
+database_env_marker="$TEST_ROOT/database-env-command-must-not-run"
+database_env_file="$TEST_ROOT/api.env"
+cat > "$database_env_file" <<DATABASE_ENV
+DATABASE_URL=postgresql://local/jiangkong
+COS_BUCKET=jiangkong-prod-files-1438687719
+UNRELATED_VALUE=\$(touch $database_env_marker)
+DATABASE_ENV
+chmod 600 "$database_env_file"
+database_env_backup_dir="$TEST_ROOT/database-env-backup"
+PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  DATABASE_ENV_FILE="$database_env_file" \
+  BACKUP_DIR="$database_env_backup_dir" \
+  "$SCRIPT_DIR/db-backup.sh" >/dev/null
+[[ ! -e "$database_env_marker" ]] || fail "DATABASE_ENV_FILE was executed as shell code"
+
+database_env_reused_bucket_dir="$TEST_ROOT/database-env-reused-business-bucket"
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  DATABASE_ENV_FILE="$database_env_file" \
+  BACKUP_DIR="$database_env_reused_bucket_dir" \
+  DB_BACKUP_OFFSITE_REQUIRED=true \
+  DB_BACKUP_COS_SECRET_ID="test-database-backup-secret-id" \
+  DB_BACKUP_COS_SECRET_KEY="database-backup-secret-for-tests-only" \
+  DB_BACKUP_COS_BUCKET="jiangkong-prod-files-1438687719" \
+  DB_BACKUP_COS_REGION="ap-chengdu" \
+  "$SCRIPT_DIR/db-backup.sh" >/dev/null 2>&1; then
+  fail "database backup must discover and reject the business bucket from DATABASE_ENV_FILE"
+fi
+
+backup_env_marker="$TEST_ROOT/backup-env-command-must-not-run"
+unsupported_backup_env_file="$TEST_ROOT/unsupported-backup.env"
+cat > "$unsupported_backup_env_file" <<BACKUP_ENV
+DB_BACKUP_COS_SECRET_ID=test-database-backup-secret-id
+UNSUPPORTED_COMMAND=\$(touch $backup_env_marker)
+BACKUP_ENV
+chmod 600 "$unsupported_backup_env_file"
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  DATABASE_URL="postgresql://local/jiangkong" \
+  BACKUP_DIR="$TEST_ROOT/unsupported-env-backups" \
+  DB_BACKUP_ENV_FILE="$unsupported_backup_env_file" \
+  DB_BACKUP_OFFSITE_REQUIRED=true \
+  "$SCRIPT_DIR/db-backup.sh" >/dev/null 2>&1; then
+  fail "backup must reject unsupported credential-file keys"
+fi
+[[ ! -e "$backup_env_marker" ]] || fail "DB_BACKUP_ENV_FILE was executed as shell code"
+
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  DATABASE_URL="postgresql://local/jiangkong" \
+  COS_BUCKET="jiangkong-prod-db-backups-1438687719" \
+  BACKUP_DIR="$TEST_ROOT/reused-business-bucket" \
+  DB_BACKUP_OFFSITE_REQUIRED=true \
+  DB_BACKUP_COS_SECRET_ID="test-database-backup-secret-id" \
+  DB_BACKUP_COS_SECRET_KEY="database-backup-secret-for-tests-only" \
+  DB_BACKUP_COS_BUCKET="jiangkong-prod-db-backups-1438687719" \
+  DB_BACKUP_COS_REGION="ap-chengdu" \
+  "$SCRIPT_DIR/db-backup.sh" >/dev/null 2>&1; then
+  fail "database backups must reject the business file bucket"
 fi
 
 backup_failure_dir="$TEST_ROOT/backup-failure"
@@ -243,6 +459,14 @@ make_deploy_fixture() {
   printf 'old-api\n' > "$fixture/runtime/api/dist/release.txt"
   printf 'old-web\n' > "$fixture/runtime/web-admin/dist/release.txt"
   printf 'DATABASE_URL=postgresql://local/jiangkong\n' > "$fixture/api.env"
+  cat > "$fixture/db-backup.env" <<'BACKUP_ENV'
+DB_BACKUP_COS_SECRET_ID=test-database-backup-secret-id
+DB_BACKUP_COS_SECRET_KEY=database-backup-secret-for-tests-only
+DB_BACKUP_COS_BUCKET=jiangkong-prod-db-backups-1438687719
+DB_BACKUP_COS_REGION=ap-chengdu
+DB_BACKUP_COS_PREFIX=database-backups
+BACKUP_ENV
+  chmod 600 "$fixture/api.env" "$fixture/db-backup.env"
   cat > "$fixture/health.sh" <<'HEALTH'
 #!/usr/bin/env bash
 exit 0
@@ -261,6 +485,10 @@ run_deploy_fixture() {
     API_ENV_FILE="$fixture/api.env" \
     BACKUP_DIR="$fixture/backups" \
     BACKUP_SCRIPT="$SCRIPT_DIR/db-backup.sh" \
+    BACKUP_RUN_AS_ROOT=true \
+    DB_BACKUP_ENV_FILE="$fixture/db-backup.env" \
+    DB_BACKUP_TRANSFER_SCRIPT="$SCRIPT_DIR/cos-backup-transfer.mjs" \
+    FAKE_NODE_COUNT_FILE="$fixture/node-count" \
     RUNTIME_HEALTH_SCRIPT="$fixture/health.sh" \
     STAGING_PARENT_DIR="$fixture/staging-parent" \
     ROLLBACK_PARENT_DIR="$fixture/rollback-parent" \
@@ -282,6 +510,21 @@ grep -q '^systemctl restart jiangkong-api$' "$FAKE_LOG" ||
   fail "migration failure changed the API runtime"
 find "$migration_failure_fixture/backups" -name '*.dump' -type f | grep -q . ||
   fail "deployment did not create a pre-migration backup"
+find "$migration_failure_fixture/backups" -name '*.offsite.json' -type f | grep -q . ||
+  fail "deployment did not require a verified offsite pre-migration backup"
+
+offsite_failure_fixture="$TEST_ROOT/deploy-offsite-failure"
+make_deploy_fixture "$offsite_failure_fixture"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$offsite_failure_fixture" env FAKE_NODE_FAIL_FROM=2 >/dev/null 2>&1; then
+  fail "deployment must fail when the offsite backup cannot be verified"
+fi
+if grep -q '^systemctl stop jiangkong-api$' "$FAKE_LOG"; then
+  fail "deployment stopped the API before the offsite backup was verified"
+fi
+if grep -q ' prisma migrate deploy ' "$FAKE_LOG"; then
+  fail "deployment migrated the database before the offsite backup was verified"
+fi
 
 health_failure_fixture="$TEST_ROOT/deploy-health-failure"
 make_deploy_fixture "$health_failure_fixture"
@@ -295,5 +538,7 @@ fi
   fail "Web runtime snapshot was not restored"
 restart_count="$(grep -c '^systemctl restart jiangkong-api$' "$FAKE_LOG")"
 [[ "$restart_count" -ge 2 ]] || fail "recovery did not restart the restored API runtime"
+
+"$REAL_NODE" --test "$SCRIPT_DIR/cos-backup-transfer.test.mjs" >/dev/null
 
 echo "go-live ops safety self-test passed"

@@ -94,6 +94,9 @@ jobs:
           node services/api/scripts/check-business-errors.self-test.cjs
           pnpm --filter @jiangkong/api check:business-errors
 
+      - name: Verify backup, restore, and deployment safety gates
+        run: bash scripts/ops/go-live-safety-self-test.sh
+
       - name: Test
         run: pnpm test
 
