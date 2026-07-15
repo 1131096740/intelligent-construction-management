@@ -6,7 +6,7 @@
 > 待批准发布目标候选 SHA：`eaaffee56d1657f98631edc7ef41016baffe9887`
 > 审计文档 HEAD：以交付回复为准；发布目标之后只新增门禁文档提交，不纳入待部署目标
 > 生产基线：`c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`
-> 结论：代码与本地生产等价验证已达到发布候选标准，生产数据库异机备份、无人值守上传、独立下载和候选绑定隔离恢复 P0 已通过，生产工作流 Actions 已固定到完整提交 SHA；正式 Go-Live 仍为 **No-Go**，剩余门禁是关闭 GitHub 协作者写权限、完成真实业务 UAT/签认，并由用户明确批准发布目标候选 SHA。
+> 结论：代码与本地生产等价验证已达到发布候选标准，生产数据库异机备份、无人值守上传、独立下载和候选绑定隔离恢复 P0 已通过，生产工作流 Actions 已固定到完整提交 SHA，非所有者可写协作者已移除；正式 Go-Live 仍为 **No-Go**，剩余门禁是完成真实业务 UAT/签认，并由用户明确批准发布目标候选 SHA。
 
 ## 1. 本轮 P0 收口
 
@@ -92,8 +92,8 @@
 - 2026-07-15 公网 `https://jgzg.site/` 与 `/api/health` 均为 200，TLS 验证通过，证书有效期至 2026-09-29；健康接口不暴露构建 SHA，因此公网健康不能单独证明服务器当前提交。
 - GitHub `origin/main` 与生产仍为 `c1fcd2367abb2475a14f6fbb181a5aff9d3ca52e`，生产库保持 50 个已完成迁移；API、Nginx、PostgreSQL、Cron 和公网 `/api/health` 在备份安装、恢复及清理前后均正常。运行候选未部署，第 51 个迁移只在隔离恢复库执行。
 - 仓库为 private，GitHub API 对 main branch protection 返回“需升级方案”，`production` Environment 及其环境级 Secret/Reviewer 当前不可查询；生产 SSH 凭据仍是仓库级 Actions Secrets。
-- 直接协作者共有两名：所有者 `1131096740` 为 admin，`jigege9527` 为 write。用户已明确要求将 `jigege9527` 降为只读；2026-07-16 实际提交 `permission=pull` 后回读仍为 `write`，没有形成降权。原因是该 private 仓库归个人账号所有，GitHub 官方规则明确个人私有仓库的协作者只能获得 write，不能获得 read-only。上线前必须选择“移除该协作者”或“迁入 Organization 后授予 read”，本轮未擅自执行任一扩大影响的操作。官方依据：[Permission levels for a personal account repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/repository-access-and-collaboration/permission-levels-for-a-personal-account-repository)。
-- 生产工作流继续以精确 40 位目标 SHA、固定确认语、`origin/main` 祖先校验、全量验证和服务器 SHA 校验防止误部署；三个官方 Actions 已在 `eaaffee56d1657f98631edc7ef41016baffe9887` 固定到完整提交 SHA。该供应链子项已关闭，协作者写权限仍使 GATE-32 保持待验收。
+- 用户选择移除方案后，`jigege9527` 已于 2026-07-16 从直接协作者中删除。GitHub 权限接口回读为 `none`，直接协作者清单只剩所有者 `1131096740`，且没有该账号的待处理邀请；非所有者可写协作者边界已关闭。
+- 生产工作流继续以精确 40 位目标 SHA、固定确认语、`origin/main` 祖先校验、全量验证和服务器 SHA 校验防止误部署；三个官方 Actions 已在 `eaaffee56d1657f98631edc7ef41016baffe9887` 固定到完整提交 SHA。GATE-32 的权限与供应链子项已通过，只剩最终发布目标 SHA 待用户签认。
 
 ### 2.5 生产异机备份与候选绑定恢复
 
@@ -176,11 +176,11 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 - 当前待批准发布目标候选为 `eaaffee56d1657f98631edc7ef41016baffe9887`；必须先由用户对该 40 位 SHA 明确批准，才能快进 `main` 并手动触发生产 environment 工作流。
 - 本报告形成前未推送、未部署、未执行第 51 个生产迁移、未写入真实业务数据。
 
-### P0-4 GitHub 发布权限边界未签认
+### P0-4 GitHub 发布权限边界已关闭
 
 - private 仓库当前没有可用的 main branch protection 或 production required reviewer 门禁。
-- 除仓库所有者外，`jigege9527` 仍持有 write 权限，可修改 main/工作流并触发手工部署。用户要求的只读降权已尝试，但 GitHub 个人私有仓库不支持只读协作者，回读仍为 write。
-- 上线前必须由用户明确授权二选一：移除 `jigege9527`；或先将仓库迁入 Organization，再授予该账号 read。三个生产 Actions 的完整 SHA 固定已经完成，不再是本项阻断。
+- `jigege9527` 已按用户授权移除，权限为 `none`；直接协作者只剩所有者 `1131096740`，无待处理邀请。
+- 三个生产 Actions 已固定完整 SHA。当前平台方案仍没有强制双人审批能力，但已不存在第二个可修改 main/工作流或触发手工部署的直接协作者；最终目标 SHA 签认继续由 P0-3 管理。
 
 ## 7. 发布与回滚方案
 
@@ -188,10 +188,9 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 
 1. 观察永久 03:00 首次收据并确认备份陈旧/失败告警，复核但不擅自删除生产 API CAM 策略版本 3。
 2. 完成 P0-2 业务 UAT/签认。
-3. 关闭 P0-4 发布权限边界：移除 `jigege9527`，或把仓库迁入 Organization 后授予 read，并记录授权发布人和复核人。
-4. 用户明确批准发布目标候选 `eaaffee56d1657f98631edc7ef41016baffe9887`。
-5. 将候选提交纳入 `origin/main`，再以 `eaaffee56d1657f98631edc7ef41016baffe9887` 手动启动 `Deploy Production`，输入精确确认语。
-6. 发布脚本先构建、快照旧运行时、创建并验证迁移前备份，任一步失败立即停止。
+3. 用户明确批准发布目标候选 `eaaffee56d1657f98631edc7ef41016baffe9887`。
+4. 将候选提交纳入 `origin/main`，再以 `eaaffee56d1657f98631edc7ef41016baffe9887` 手动启动 `Deploy Production`，输入精确确认语。
+5. 发布脚本先构建、快照旧运行时、创建并验证迁移前备份，任一步失败立即停止。
 
 ### 发布后验证
 
