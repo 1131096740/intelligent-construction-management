@@ -45,7 +45,7 @@
 - 每个 dump 与 checksum 均执行 PUT、HEAD 元数据/SSE-COS 校验和完整 GET 回读 SHA-256；请求有 120 秒硬超时，单对象最多重试 3 次，只有两类对象全部验证后才原子生成 `.offsite.json` 收据。
 - 生产定时入口和发布脚本强制 `DB_BACKUP_OFFSITE_REQUIRED=true`；远端验证失败时保留本地 dump/checksum，但在停止 API 和 Prisma 迁移之前硬停止。备份任务使用 `flock` 防止定时任务与发布前备份并发。
 - 本地清理只删除已有异机收据的过期备份；没有收据的本地备份不会因保留策略被清理。
-- 恢复演练脚本只允许连接实际库名为 `jiangkong_restore_*` 的空 `public` schema，并校验 checksum、档案列表、Prisma 迁移和核心表计数。
+- 恢复演练脚本只允许连接实际库名为 `jiangkong_restore_*` 的空 `public` schema，并校验 checksum、档案列表、Prisma 迁移和核心表计数；发布候选模式还会在恢复前核对候选检出的精确 40 位 SHA 与洁净工作区，恢复后对同一隔离库执行候选 `migrate deploy/status`，并要求完成迁移数与候选目录完全一致。
 - 部署前先构建和备份，再停 API/迁移/替换运行时；迁移或新运行时失败时恢复旧 API/Web 快照并重新健康检查。数据库迁移不自动逆转。
 - 云端资源、生产 root 配置、定时任务替换及真实恢复的操作边界见 `docs/superpowers/runbooks/2026-07-15-production-offsite-db-backup-runbook.md`；这些外部步骤尚未执行，不计为已完成。
 
@@ -58,6 +58,7 @@
 - 真实 HTTP 链路已通过：首次改密 → 历史合同接管 → 资料上传/鉴权下载 → 主管确认 → 结算模板检查/预览/发布 → 结算审批/归档/生效 → 付款申请/超额拦截/审批 → 实付/凭证 → 财务入账 → PDF 归档 → 审计日志。
 - 通过编号：`HT-UAT-go-live-20260715l -> JS-UAT-go-live-20260715l -> FK-UAT-go-live-20260715l`。
 - 真实 custom dump 在隔离空库 `jiangkong_restore_go_live` 恢复成功；二次恢复被“目标非空”门禁拒绝。
+- 新增候选迁移真实引擎演练：使用 PostgreSQL 16 隔离容器构造 50 个迁移的源库，生成真实 custom dump 后恢复到 `jiangkong_restore_candidate`；恢复脚本绑定当时固定候选 `c59f1b9deb11bdcea8c5540fd265a843584e302a`，确认迁移前 50，成功应用第 51 个迁移，`prisma migrate status` 最新，最终完成迁移数与候选目录同为 51。临时数据库、容器和 worktree 已清理；这证明仓库控制链可用，但不能替代尚未执行的生产真实数据异机恢复。
 
 ### 2.2 当前生产只读快照
 
@@ -95,7 +96,7 @@
 | Prisma validate | 通过 |
 | 英文业务错误扫描 | 自测通过；213 个生产 TS，51 处精确允许的内部英文哨兵 |
 | COS 传输单测 | 7/7 通过：私密配置解析、签名脱敏、PUT/HEAD/GET、SSE/哈希、超限拒绝、原子下载、不覆盖已有文件 |
-| 运维故障注入自测 | 通过：锁冲突、业务桶复用、配置注入/权限、远端短暂与持续失败、本地证据保留、生产库名/非空库拦截、迁移失败恢复、新运行时失败回滚 |
+| 运维故障注入自测 | 通过：锁冲突、业务桶复用、配置注入/权限、远端短暂与持续失败、本地证据保留、生产库名/非空库拦截、候选 SHA/洁净度/迁移失败/迁移数量门禁、部署迁移失败恢复、新运行时失败回滚 |
 | 真实本地备份/恢复 | 通过 |
 | 真实本地长链路 UAT | 通过 |
 | Workflow YAML / `git diff --check` | 通过 |
@@ -140,7 +141,7 @@ Web 生产构建仍提示主 chunk 约 1.43 MB（gzip 约 384 KB），不阻断�
 2. 创建独立 CAM，仅允许备份前缀 `PutObject`、`HeadObject`、`GetObject`；拒绝删除、桶配置、业务桶和日志桶。
 3. 在生产安装 root `600` 的 `/etc/jiangkong/db-backup.env`，手工执行一次并取得 dump、checksum、远端收据。
 4. 将旧 02:30 任务替换为仓库受控 root 入口，再取得一次定时任务收据。
-5. 从异机桶完整下载一份备份，在 `jiangkong_restore_*` 空隔离库完成真实恢复，记录迁移/核心表校验、RPO、RTO、执行人与复核人。
+5. 从异机桶完整下载一份备份，在 `jiangkong_restore_*` 空隔离库绑定最终固定候选 SHA，完成真实恢复、候选迁移部署/status 和精确迁移/核心表校验，记录 RPO、RTO、执行人与复核人。
 
 ### P0-2 真实业务验收未完成
 

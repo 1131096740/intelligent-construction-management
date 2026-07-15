@@ -5,6 +5,56 @@ set -euo pipefail
 : "${BACKUP_FILE:?BACKUP_FILE is required}"
 : "${RESTORE_DATABASE_NAME_CONFIRMATION:?RESTORE_DATABASE_NAME_CONFIRMATION is required}"
 
+APPLY_CANDIDATE_MIGRATIONS="${APPLY_CANDIDATE_MIGRATIONS:-false}"
+if [[ "$APPLY_CANDIDATE_MIGRATIONS" != true && "$APPLY_CANDIDATE_MIGRATIONS" != false ]]; then
+  echo "APPLY_CANDIDATE_MIGRATIONS must be true or false" >&2
+  exit 1
+fi
+
+CANDIDATE_SHA=""
+EXPECTED_MIGRATION_COUNT=""
+if [[ "$APPLY_CANDIDATE_MIGRATIONS" == true ]]; then
+  : "${CANDIDATE_REPO_ROOT:?CANDIDATE_REPO_ROOT is required when applying candidate migrations}"
+  : "${CANDIDATE_SHA_CONFIRMATION:?CANDIDATE_SHA_CONFIRMATION is required when applying candidate migrations}"
+  if [[ "$CANDIDATE_REPO_ROOT" != /* || ! -d "$CANDIDATE_REPO_ROOT" || -L "$CANDIDATE_REPO_ROOT" ]]; then
+    echo "CANDIDATE_REPO_ROOT must be an absolute, non-symlink directory" >&2
+    exit 1
+  fi
+  if [[ ! "$CANDIDATE_SHA_CONFIRMATION" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "CANDIDATE_SHA_CONFIRMATION must be a 40-character lowercase commit SHA" >&2
+    exit 1
+  fi
+  command -v git >/dev/null 2>&1 || {
+    echo "git is required to verify the release candidate" >&2
+    exit 1
+  }
+  command -v pnpm >/dev/null 2>&1 || {
+    echo "pnpm is required to apply release candidate migrations" >&2
+    exit 1
+  }
+  CANDIDATE_SHA="$(git -C "$CANDIDATE_REPO_ROOT" rev-parse HEAD)"
+  if [[ "$CANDIDATE_SHA" != "$CANDIDATE_SHA_CONFIRMATION" ]]; then
+    echo "Release candidate checkout does not match CANDIDATE_SHA_CONFIRMATION" >&2
+    exit 1
+  fi
+  if [[ -n "$(git -C "$CANDIDATE_REPO_ROOT" status --porcelain --untracked-files=normal)" ]]; then
+    echo "Release candidate checkout must not contain tracked or untracked changes" >&2
+    exit 1
+  fi
+  migrations_directory="$CANDIDATE_REPO_ROOT/services/api/prisma/migrations"
+  if [[ ! -d "$migrations_directory" || -L "$migrations_directory" ]]; then
+    echo "Release candidate Prisma migrations directory is missing or unsafe" >&2
+    exit 1
+  fi
+  EXPECTED_MIGRATION_COUNT="$(
+    find "$migrations_directory" -mindepth 2 -maxdepth 2 -type f -name migration.sql | wc -l | tr -d '[:space:]'
+  )"
+  if [[ ! "$EXPECTED_MIGRATION_COUNT" =~ ^[0-9]+$ || "$EXPECTED_MIGRATION_COUNT" == 0 ]]; then
+    echo "Release candidate contains no Prisma migrations" >&2
+    exit 1
+  fi
+fi
+
 normalize_libpq_url() {
   local raw_url=$1
   if [[ "$raw_url" != *\?* ]]; then
@@ -125,23 +175,60 @@ fi
 pg_restore --list "$BACKUP_FILE" >/dev/null
 pg_restore --exit-on-error --dbname "$PG_RESTORE_DATABASE_URL" "$BACKUP_FILE"
 
-migration_summary="$(
+read_migration_summary() {
   psql "$PG_RESTORE_DATABASE_URL" \
     --no-password \
     --tuples-only \
     --no-align \
     --set=ON_ERROR_STOP=1 \
     --command 'SELECT COUNT(*) FILTER (WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL), COUNT(*) FILTER (WHERE finished_at IS NULL AND rolled_back_at IS NULL), COUNT(*) FILTER (WHERE rolled_back_at IS NOT NULL) FROM "_prisma_migrations";'
-)"
-IFS='|' read -r completed_migrations unfinished_migrations rolled_back_migrations <<< "$migration_summary"
-if [[ ! "$completed_migrations" =~ ^[0-9]+$ || "$completed_migrations" == 0 ]]; then
-  echo "Restored database has no completed Prisma migrations" >&2
-  exit 1
+}
+
+validate_migration_summary() {
+  local summary=$1
+  local stage=$2
+  local completed unfinished rolled_back
+  IFS='|' read -r completed unfinished rolled_back <<< "$summary"
+  if [[ ! "$completed" =~ ^[0-9]+$ || "$completed" == 0 ]]; then
+    echo "$stage database has no completed Prisma migrations" >&2
+    exit 1
+  fi
+  if [[ "$unfinished" != 0 || "$rolled_back" != 0 ]]; then
+    echo "$stage database contains unfinished or rolled-back Prisma migrations" >&2
+    exit 1
+  fi
+  printf '%s' "$completed"
+}
+
+pre_migration_summary="$(read_migration_summary)"
+pre_migration_count="$(validate_migration_summary "$pre_migration_summary" "Restored")"
+completed_migrations="$pre_migration_count"
+
+if [[ "$APPLY_CANDIDATE_MIGRATIONS" == true ]]; then
+  (
+    cd "$CANDIDATE_REPO_ROOT"
+    DATABASE_URL="$PG_RESTORE_DATABASE_URL" \
+      pnpm --filter @jiangkong/api exec prisma migrate deploy
+    DATABASE_URL="$PG_RESTORE_DATABASE_URL" \
+      pnpm --filter @jiangkong/api exec prisma migrate status
+  )
+  post_migration_summary="$(read_migration_summary)"
+  completed_migrations="$(validate_migration_summary "$post_migration_summary" "Migrated restore")"
+  if [[ "$completed_migrations" != "$EXPECTED_MIGRATION_COUNT" ]]; then
+    echo "Migrated restore does not contain the exact release candidate migration set" >&2
+    exit 1
+  fi
 fi
-if [[ "$unfinished_migrations" != 0 || "$rolled_back_migrations" != 0 ]]; then
-  echo "Restored database contains unfinished or rolled-back Prisma migrations" >&2
-  exit 1
+
+printf 'restore_database=%s\n' "$target_database"
+printf 'backup_file=%s\n' "$(basename "$BACKUP_FILE")"
+printf 'backup_sha256=%s\n' "$actual_checksum"
+printf 'pre_migration_count=%s\n' "$pre_migration_count"
+if [[ "$APPLY_CANDIDATE_MIGRATIONS" == true ]]; then
+  printf 'candidate_sha=%s\n' "$CANDIDATE_SHA"
+  printf 'candidate_migration_count=%s\n' "$EXPECTED_MIGRATION_COUNT"
 fi
+printf 'completed_migration_count=%s\n' "$completed_migrations"
 
 for table in User Project Contract ContractTakeover Settlement PaymentRequest ProjectExpenseRequest FileObject AuditLog; do
   psql "$PG_RESTORE_DATABASE_URL" --no-password --tuples-only --no-align --set=ON_ERROR_STOP=1 \

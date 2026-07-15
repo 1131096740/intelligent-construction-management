@@ -172,16 +172,30 @@ qcs::cos:ap-chengdu:uid/1438687719:jiangkong-prod-db-backups-1438687719/database
    jiangkong_restore_YYYYMMDD
    ```
 
-4. 执行恢复门禁：
+4. 使用一个干净的候选代码检出执行恢复门禁，并将恢复库升级到精确候选 SHA。候选检出可以位于受控临时目录，不要求替换当前生产运行时；检出必须没有任何 tracked 或 untracked 修改，并已完成 `pnpm install --frozen-lockfile`。在 root 维护 shell 中交互读取隔离库连接串，避免把密码写入命令历史：
 
    ```bash
-   RESTORE_DATABASE_URL='<隔离库连接串>' \
+   sudo -i
+   umask 077
+   set -o pipefail
+   read -rsp '隔离恢复库连接串: ' RESTORE_DATABASE_URL
+   printf '\n'
+   export RESTORE_DATABASE_URL
+
    RESTORE_DATABASE_NAME_CONFIRMATION='jiangkong_restore_YYYYMMDD' \
    BACKUP_FILE='/srv/jiangkong-restore-download/<dump>' \
-   /opt/jiangkong/scripts/ops/db-restore-drill.sh
+   APPLY_CANDIDATE_MIGRATIONS=true \
+   CANDIDATE_REPO_ROOT='<候选代码绝对路径>' \
+   CANDIDATE_SHA_CONFIRMATION='<待最终批准的固定 40 位候选 SHA>' \
+   '<候选代码绝对路径>/scripts/ops/db-restore-drill.sh' \
+     | tee /srv/jiangkong-restore-download/restore-evidence.txt
+
+   unset RESTORE_DATABASE_URL
    ```
 
-5. 记录但不提交敏感值：候选 SHA、远端对象键、dump 大小、SHA-256、迁移数量、核心表计数、开始/结束时间、RPO、RTO和执行人。
+   脚本会先在任何数据恢复前核对候选检出的精确 SHA 和工作区洁净度；恢复完成后以同一隔离连接执行候选 `prisma migrate deploy` 与 `prisma migrate status`，并要求数据库已完成迁移数与候选目录中的 `migration.sql` 数量完全一致。输出证据包含隔离库名、备份文件名/哈希、迁移前数量、候选 SHA、候选迁移数量、最终迁移数量和核心表计数，不输出数据库连接串。
+
+5. 记录但不提交敏感值：远端对象键、dump 大小、开始/结束时间、RPO、RTO、执行人和复核人；候选 SHA、SHA-256、迁移数量与核心表计数由脚本输出固定证据。
 
 6. 删除隔离库与临时下载文件前，第二人复核恢复记录。不得删除 COS 对象。
 
@@ -207,6 +221,6 @@ qcs::cos:ap-chengdu:uid/1438687719:jiangkong-prod-db-backups-1438687719/database
 - root 凭据文件权限证据。
 - 一次定时任务备份和一次发布前备份的 `.offsite.json` 收据。
 - 从 COS 完整下载并恢复到 `jiangkong_restore_*` 的记录。
-- `pg_restore --list`、Prisma 迁移摘要和核心表计数通过。
+- 恢复脚本绑定最终候选 SHA，`pg_restore --list`、候选 Prisma 迁移部署/status、精确迁移数量和核心表计数全部通过。
 - RPO/RTO 与执行人、复核人记录。
 - 业务、财务、合同、项目和技术最终 Go / No-Go 签认。

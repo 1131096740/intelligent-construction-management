@@ -110,7 +110,11 @@ case "$command_text" in
     printf '%s\n' "${FAKE_PUBLIC_TABLE_COUNT:-0}"
     ;;
   *_prisma_migrations*)
-    printf '%s\n' "${FAKE_MIGRATION_SUMMARY:-51|0|0}"
+    if [[ -n "${FAKE_MIGRATION_APPLIED_MARKER:-}" && -f "$FAKE_MIGRATION_APPLIED_MARKER" ]]; then
+      printf '%s\n' "${FAKE_MIGRATION_SUMMARY_AFTER:-51|0|0}"
+    else
+      printf '%s\n' "${FAKE_MIGRATION_SUMMARY_BEFORE:-${FAKE_MIGRATION_SUMMARY:-51|0|0}}"
+    fi
     ;;
   *)
     printf 'table=0\n'
@@ -125,6 +129,28 @@ printf 'pnpm %s\n' "$*" >> "${FAKE_LOG:?}"
 if [[ " $* " == *" prisma migrate deploy "* && "${FAKE_MIGRATE_FAIL:-false}" == true ]]; then
   exit 1
 fi
+if [[ " $* " == *" prisma migrate deploy "* && -n "${FAKE_MIGRATION_APPLIED_MARKER:-}" ]]; then
+  : > "$FAKE_MIGRATION_APPLIED_MARKER"
+fi
+FAKE
+
+cat > "$FAKE_BIN/git" <<'FAKE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'git %s\n' "$*" >> "${FAKE_LOG:?}"
+case " $* " in
+  *" rev-parse HEAD "*)
+    printf '%s\n' "${FAKE_GIT_HEAD:-0123456789abcdef0123456789abcdef01234567}"
+    ;;
+  *" status --porcelain --untracked-files=normal "*)
+    if [[ "${FAKE_GIT_DIRTY:-false}" == true ]]; then
+      printf '?? unexpected-file\n'
+    fi
+    ;;
+  *)
+    exit 1
+    ;;
+esac
 FAKE
 
 cat > "$FAKE_BIN/sudo" <<'FAKE'
@@ -441,6 +467,120 @@ PATH="$FAKE_BIN:$PATH" \
 grep -q '^pg_restore --list ' "$FAKE_LOG" || fail "restore drill did not validate the archive"
 grep -q 'pg_restore --exit-on-error --dbname ' "$FAKE_LOG" ||
   fail "restore drill did not enable exit-on-error"
+
+candidate_restore_root="$TEST_ROOT/candidate-restore"
+candidate_migrations="$candidate_restore_root/services/api/prisma/migrations"
+mkdir -p "$candidate_migrations"
+for migration_number in $(seq 1 51); do
+  migration_directory="$candidate_migrations/$(printf '%014d_candidate' "$migration_number")"
+  mkdir -p "$migration_directory"
+  : > "$migration_directory/migration.sql"
+done
+candidate_sha=0123456789abcdef0123456789abcdef01234567
+candidate_migration_marker="$TEST_ROOT/candidate-migration-applied"
+: > "$FAKE_LOG"
+candidate_restore_output="$(
+  PATH="$FAKE_BIN:$PATH" \
+    FAKE_LOG="$FAKE_LOG" \
+    FAKE_GIT_HEAD="$candidate_sha" \
+    FAKE_MIGRATION_APPLIED_MARKER="$candidate_migration_marker" \
+    FAKE_MIGRATION_SUMMARY_BEFORE='50|0|0' \
+    FAKE_MIGRATION_SUMMARY_AFTER='51|0|0' \
+    FAKE_DATABASE_NAME=jiangkong_restore_candidate \
+    FAKE_PUBLIC_TABLE_COUNT=0 \
+    RESTORE_DATABASE_URL="postgresql://local/jiangkong_restore_candidate?schema=public" \
+    RESTORE_DATABASE_NAME_CONFIRMATION=jiangkong_restore_candidate \
+    BACKUP_FILE="$backup_file" \
+    APPLY_CANDIDATE_MIGRATIONS=true \
+    CANDIDATE_REPO_ROOT="$candidate_restore_root" \
+    CANDIDATE_SHA_CONFIRMATION="$candidate_sha" \
+    "$SCRIPT_DIR/db-restore-drill.sh"
+)"
+grep -q '^pnpm --filter @jiangkong/api exec prisma migrate deploy$' "$FAKE_LOG" ||
+  fail "candidate restore drill did not apply release candidate migrations"
+grep -q '^pnpm --filter @jiangkong/api exec prisma migrate status$' "$FAKE_LOG" ||
+  fail "candidate restore drill did not verify Prisma migration status"
+grep -q "^candidate_sha=$candidate_sha$" <<< "$candidate_restore_output" ||
+  fail "candidate restore evidence did not bind the exact candidate SHA"
+grep -q '^pre_migration_count=50$' <<< "$candidate_restore_output" ||
+  fail "candidate restore evidence did not record the source migration count"
+grep -q '^completed_migration_count=51$' <<< "$candidate_restore_output" ||
+  fail "candidate restore evidence did not record the final migration count"
+
+: > "$FAKE_LOG"
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  FAKE_GIT_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  FAKE_DATABASE_NAME=jiangkong_restore_candidate \
+  RESTORE_DATABASE_URL="postgresql://local/jiangkong_restore_candidate" \
+  RESTORE_DATABASE_NAME_CONFIRMATION=jiangkong_restore_candidate \
+  BACKUP_FILE="$backup_file" \
+  APPLY_CANDIDATE_MIGRATIONS=true \
+  CANDIDATE_REPO_ROOT="$candidate_restore_root" \
+  CANDIDATE_SHA_CONFIRMATION="$candidate_sha" \
+  "$SCRIPT_DIR/db-restore-drill.sh" >/dev/null 2>&1; then
+  fail "candidate restore drill must reject a checkout at a different SHA"
+fi
+if grep -q '^pg_restore --exit-on-error ' "$FAKE_LOG"; then
+  fail "candidate restore drill restored data before verifying the candidate SHA"
+fi
+
+: > "$FAKE_LOG"
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  FAKE_GIT_HEAD="$candidate_sha" \
+  FAKE_GIT_DIRTY=true \
+  FAKE_DATABASE_NAME=jiangkong_restore_candidate \
+  RESTORE_DATABASE_URL="postgresql://local/jiangkong_restore_candidate" \
+  RESTORE_DATABASE_NAME_CONFIRMATION=jiangkong_restore_candidate \
+  BACKUP_FILE="$backup_file" \
+  APPLY_CANDIDATE_MIGRATIONS=true \
+  CANDIDATE_REPO_ROOT="$candidate_restore_root" \
+  CANDIDATE_SHA_CONFIRMATION="$candidate_sha" \
+  "$SCRIPT_DIR/db-restore-drill.sh" >/dev/null 2>&1; then
+  fail "candidate restore drill must reject a dirty candidate checkout"
+fi
+if grep -q '^pg_restore --exit-on-error ' "$FAKE_LOG"; then
+  fail "candidate restore drill restored data before verifying candidate checkout cleanliness"
+fi
+
+rm -f "$candidate_migration_marker"
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  FAKE_GIT_HEAD="$candidate_sha" \
+  FAKE_MIGRATE_FAIL=true \
+  FAKE_MIGRATION_APPLIED_MARKER="$candidate_migration_marker" \
+  FAKE_MIGRATION_SUMMARY_BEFORE='50|0|0' \
+  FAKE_DATABASE_NAME=jiangkong_restore_candidate \
+  FAKE_PUBLIC_TABLE_COUNT=0 \
+  RESTORE_DATABASE_URL="postgresql://local/jiangkong_restore_candidate" \
+  RESTORE_DATABASE_NAME_CONFIRMATION=jiangkong_restore_candidate \
+  BACKUP_FILE="$backup_file" \
+  APPLY_CANDIDATE_MIGRATIONS=true \
+  CANDIDATE_REPO_ROOT="$candidate_restore_root" \
+  CANDIDATE_SHA_CONFIRMATION="$candidate_sha" \
+  "$SCRIPT_DIR/db-restore-drill.sh" >/dev/null 2>&1; then
+  fail "candidate restore drill must fail when candidate migration deployment fails"
+fi
+
+rm -f "$candidate_migration_marker"
+if PATH="$FAKE_BIN:$PATH" \
+  FAKE_LOG="$FAKE_LOG" \
+  FAKE_GIT_HEAD="$candidate_sha" \
+  FAKE_MIGRATION_APPLIED_MARKER="$candidate_migration_marker" \
+  FAKE_MIGRATION_SUMMARY_BEFORE='50|0|0' \
+  FAKE_MIGRATION_SUMMARY_AFTER='50|0|0' \
+  FAKE_DATABASE_NAME=jiangkong_restore_candidate \
+  FAKE_PUBLIC_TABLE_COUNT=0 \
+  RESTORE_DATABASE_URL="postgresql://local/jiangkong_restore_candidate" \
+  RESTORE_DATABASE_NAME_CONFIRMATION=jiangkong_restore_candidate \
+  BACKUP_FILE="$backup_file" \
+  APPLY_CANDIDATE_MIGRATIONS=true \
+  CANDIDATE_REPO_ROOT="$candidate_restore_root" \
+  CANDIDATE_SHA_CONFIRMATION="$candidate_sha" \
+  "$SCRIPT_DIR/db-restore-drill.sh" >/dev/null 2>&1; then
+  fail "candidate restore drill must reject an incomplete candidate migration set"
+fi
 
 make_deploy_fixture() {
   local fixture=$1
