@@ -926,6 +926,34 @@ describe("ContractService", () => {
     });
   });
 
+  it("freezes enhanced contract changes without a mandatory budget approval node", () => {
+    const service = new ContractService({} as never, {} as never) as unknown as {
+      approvalNodesForVersion(version: {
+        changeType: string;
+        amountLimitType: string;
+        changeAmountCents: bigint | null;
+        originalBaseAmountCents: bigint | null;
+        cumulativeIncreaseCents: bigint;
+        cumulativeDecreaseCents: bigint;
+      }): Array<{ name: string; mode: string; roleKeys: string[] }>;
+    };
+
+    expect(
+      service.approvalNodesForVersion({
+        changeType: "supplement",
+        amountLimitType: "capped",
+        changeAmountCents: 200_000n,
+        originalBaseAmountCents: 1_000_000n,
+        cumulativeIncreaseCents: 200_000n,
+        cumulativeDecreaseCents: 0n
+      })
+    ).toEqual([
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
+      { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+    ]);
+  });
+
   it("blocks approval submission when downstream contracts exceed effective owner contract quota before numbering", async () => {
     const version = {
       id: "contract-version-1",

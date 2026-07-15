@@ -62,13 +62,13 @@ export const approvalFlowRules: ApprovalFlowRule[] = [
     nodes: [
       { name: "物资员", mode: "any", roleKeys: ["material_staff"] },
       { name: "物资主管", mode: "any", roleKeys: ["material_director"] },
-      { name: "合同部主管 + 预算部主管", mode: "all", roleKeys: ["contract_director", "budget_director"] },
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
       { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
       { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
     ],
     guardrails: [
       "结算只能从已生效合同版本发起",
-      "合同部主管与预算部主管为会签节点，两个角色都需通过",
+      "结算成本控制节点由合同部主管单独审批",
       "结算审批不经过董事长/总经理"
     ]
   },
@@ -85,13 +85,13 @@ export const approvalFlowRules: ApprovalFlowRule[] = [
         mode: "any",
         roleKeys: ["engineering_department_director"]
       },
-      { name: "合同部主管 + 预算部主管", mode: "all", roleKeys: ["contract_director", "budget_director"] },
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
       { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
       { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
     ],
     guardrails: [
       "劳务/专业分包结算先经工程现场角色复核",
-      "合同部主管与预算部主管为会签节点，两个角色都需通过",
+      "结算成本控制节点由合同部主管单独审批",
       "结算审批不经过董事长/总经理"
     ]
   },

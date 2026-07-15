@@ -20,7 +20,6 @@ const PHONES = {
   chairman: "13800001001",
   projectManager: "13800001003",
   contractDirector: "13800001004",
-  budgetDirector: "13800001005",
   financeDirector: "13800001007",
   materialStaff: "13800001009",
   materialDirector: "13800001008",
@@ -400,7 +399,7 @@ async function verifyPhase1WriteLoop(tokens) {
   );
   assertEqual(contractVersion.status, "effective", "contract archive confirmation");
 
-  // 结算：创建 → 材料类审批流(物资员 → 物资主管 → 合同/预算会签 → 项目经理 → 财务总监)
+  // 结算：创建 → 材料类审批流(物资员 → 物资主管 → 合同部主管 → 项目经理 → 财务总监)
   // → 归档上传(合同部) → 归档确认(合同部主管) → 生效
   let settlement = await postJson(
     "/settlements",
@@ -428,7 +427,6 @@ async function verifyPhase1WriteLoop(tokens) {
     tokens.materialStaff,
     tokens.materialDirector,
     tokens.contractDirector,
-    tokens.budgetDirector,
     tokens.projectManager,
     tokens.financeDirector
   ]) {

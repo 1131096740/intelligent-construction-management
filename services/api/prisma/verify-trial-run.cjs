@@ -24,7 +24,6 @@ const PHONES = {
   chairman: "13800001001",
   projectManager: "13800001003",
   contractDirector: "13800001004",
-  budgetDirector: "13800001005",
   financeDirector: "13800001007",
   materialStaff: "13800001009",
   materialDirector: "13800001008",
@@ -38,7 +37,6 @@ const ROLE_LABELS = {
   chairman: "董事长",
   projectManager: "项目经理",
   contractDirector: "合同部主管",
-  budgetDirector: "预算部主管",
   financeDirector: "财务总监",
   materialStaff: "物资员",
   materialDirector: "物资主管",
@@ -1035,7 +1033,6 @@ async function createAndConfirmSettlement(contractVersionId, tokens) {
     ["materialStaff", tokens.materialStaff],
     ["materialDirector", tokens.materialDirector],
     ["contractDirector", tokens.contractDirector],
-    ["budgetDirector", tokens.budgetDirector],
     ["projectManager", tokens.projectManager],
     ["financeDirector", tokens.financeDirector]
   ]) {

@@ -65,7 +65,7 @@ export function contractChangeVersionsReadModel(
         : moneyCentsToApi(version.changeAmountCents),
       amountCents: moneyCentsToApi(version.amountCents),
       approvalRoute: enhanced
-        ? ["budget_director", "finance_director", "contract_director", "chairman_or_general_manager"]
+        ? ["finance_director", "contract_director", "chairman_or_general_manager"]
         : ["chairman_or_general_manager"],
       archiveEffect: directBase && (archiveCompleted || archivePending)
         ? {

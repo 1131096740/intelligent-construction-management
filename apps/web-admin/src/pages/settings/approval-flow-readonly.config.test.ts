@@ -34,6 +34,19 @@ describe("approval flow readonly configuration", () => {
     expect(settlementRoleKeys).not.toContain("general_manager");
   });
 
+  it("keeps contract director as the sole cost-control checkpoint for settlements", () => {
+    const settlementRules = approvalFlowRules.filter((rule) => rule.businessType === "结算");
+
+    for (const rule of settlementRules) {
+      expect(rule.nodes).toEqual(
+        expect.arrayContaining([
+          { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] }
+        ])
+      );
+      expect(rule.nodes.flatMap((node) => node.roleKeys)).not.toContain("budget_director");
+    }
+  });
+
   it("shows the confirmed ordinary payment approval route", () => {
     const payment = approvalFlowRules.find((rule) => rule.id === "payment");
 

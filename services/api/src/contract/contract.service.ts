@@ -56,7 +56,6 @@ const CONTRACT_APPROVAL_NODES = [
 ] satisfies ContractApprovalNode[];
 
 const ENHANCED_CONTRACT_CHANGE_APPROVAL_NODES = [
-  { name: "预算部主管", mode: "any", roleKeys: ["budget_director"] },
   { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
   { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
   { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
