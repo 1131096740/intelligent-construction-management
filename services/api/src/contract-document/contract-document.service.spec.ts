@@ -56,6 +56,8 @@ describe("ContractDocumentService", () => {
           status: "draft",
           draftRevision: 7,
           amountCents: 1_000_000n,
+          invoiceType: "vat_special",
+          defaultTaxRatePercent: { toString: () => "13" },
           draftData: { projectName: "建设项目一期", deliveryLocation: "项目现场" },
           clauseSnapshot: [
             { key: "payment", content: { text: "结算后付款" } }
@@ -196,6 +198,8 @@ describe("ContractDocumentService", () => {
           renderInput: {
             values: expect.objectContaining({
               "contract.name": "钢材采购合同",
+              "field.invoiceType": "增值税专用发票",
+              "field.taxRatePercent": "13%",
               "field.projectName": "建设项目一期",
               "field.deliveryLocation": "项目现场",
               "party.owner.name": "建工智管建设有限公司",
@@ -405,13 +409,18 @@ describe("ContractDocumentService", () => {
     expect(snapshot.renderInput.values["bill.materials"][0]).toMatchObject({
       quantity: "2.5",
       unitPrice: "3500.00",
+      taxInclusiveUnitPrice: "3500.00",
+      taxExclusiveUnitPrice: "3097.35",
       taxRatePercent: "13%",
+      taxInclusiveAmount: "8,750.00",
+      taxExclusiveAmount: "7,743.36",
+      taxAmount: "1,006.64",
       isProvisional: "true",
       checked: "false"
     });
   });
 
-  it("renders professional fields saved by the web workbench under fieldValues", async () => {
+  it("uses normative version tax facts instead of stale workbench mirror fields", async () => {
     const tx = makeTx({
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -420,6 +429,8 @@ describe("ContractDocumentService", () => {
           status: "draft",
           draftRevision: 7,
           amountCents: 1_000_000n,
+          invoiceType: "vat_general",
+          defaultTaxRatePercent: { toString: () => "9" },
           draftData: {
             fieldValues: {
               projectName: "前端录入项目",
@@ -444,8 +455,72 @@ describe("ContractDocumentService", () => {
       .inputSnapshot;
     expect(snapshot.renderInput.values).toMatchObject({
       "field.projectName": "前端录入项目",
-      "field.taxRatePercent": "13",
-      "field.invoiceType": "增值税专用发票"
+      "field.taxRatePercent": "9%",
+      "field.invoiceType": "增值税普通发票"
+    });
+  });
+
+  it("renders historical unknown tax and bill facts as dashes without recalculating amounts", async () => {
+    const tx = makeTx({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          draftRevision: 7,
+          amountCents: 1_000_000n,
+          invoiceType: null,
+          defaultTaxRatePercent: null,
+          draftData: {},
+          clauseSnapshot: [],
+          readinessSnapshot: { checkedRevision: 7, blocking: [], warnings: [] }
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    tx.contractBill.findMany.mockResolvedValue([
+      { id: "bill-1", billKey: "materials" }
+    ]);
+    tx.contractBillRow.findMany.mockResolvedValue([
+      {
+        contractBillId: "bill-1",
+        itemCode: null,
+        itemName: "历史未定价项目",
+        specification: null,
+        unit: "项",
+        quantity: null,
+        unitPrice: null,
+        taxRate: null,
+        taxInclusiveAmountCents: null,
+        taxExclusiveAmountCents: null,
+        taxAmountCents: null,
+        isProvisional: false,
+        settlementBasis: null,
+        customData: {}
+      }
+    ]);
+    const { service } = makeService(tx);
+
+    await service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft"
+    });
+
+    const values = tx.contractGeneratedDocument.create.mock.calls[0][0].data
+      .inputSnapshot.renderInput.values;
+    expect(values).toMatchObject({
+      "field.invoiceType": "—",
+      "field.taxRatePercent": "—"
+    });
+    expect(values["bill.materials"][0]).toMatchObject({
+      quantity: "—",
+      unitPrice: "—",
+      taxInclusiveUnitPrice: "—",
+      taxExclusiveUnitPrice: "—",
+      taxRatePercent: "—",
+      taxInclusiveAmount: "—",
+      taxExclusiveAmount: "—",
+      taxAmount: "—"
     });
   });
 

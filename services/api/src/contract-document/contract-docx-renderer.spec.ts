@@ -137,7 +137,9 @@ describe("contract DOCX renderer", () => {
       [
         paragraph("{合同名称}|{草稿编号}|{甲方名称}|{乙方名称}|{交货地点}|{付款条款}"),
         paragraph("{#材料清单}"),
-        paragraph("{名称}|{规格型号}|{数量}|{单价}|{税率}|{含税金额}"),
+        paragraph(
+          "{名称}|{规格型号}|{数量}|{单价}|{含税单价}|{不含税单价}|{税率}|{含税金额}|{不含税金额}|{税额}"
+        ),
         paragraph("{/材料清单}")
       ].join("")
     );
@@ -154,8 +156,12 @@ describe("contract DOCX renderer", () => {
             specification: "HRB400E",
             quantity: "10.000",
             unitPrice: "100.00",
+            taxInclusiveUnitPrice: "100.00",
+            taxExclusiveUnitPrice: "88.50",
             taxRatePercent: "13%",
-            taxInclusiveAmount: "1000.00"
+            taxInclusiveAmount: "1000.00",
+            taxExclusiveAmount: "884.96",
+            taxAmount: "115.04"
           }
         ]
       })
@@ -167,6 +173,9 @@ describe("contract DOCX renderer", () => {
     expect(xml).toContain("云南示例供应商有限公司");
     expect(xml).toContain("项目现场");
     expect(xml).toContain("钢筋");
+    expect(xml).toContain("88.50");
+    expect(xml).toContain("884.96");
+    expect(xml).toContain("115.04");
     expect(xml).not.toContain("field.deliveryLocation");
     expect(xml).not.toContain("bill.materials");
   });

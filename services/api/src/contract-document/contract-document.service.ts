@@ -4,11 +4,17 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
+import {
+  CONTRACT_INVOICE_TYPES,
+  contractInvoiceTypeLabel,
+  type ContractInvoiceType
+} from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { deriveTaxExclusiveUnitPrice } from "../money/decimal-money";
 import {
   formatChineseUppercaseMoney,
   formatMoneyCents
@@ -610,6 +616,8 @@ export class ContractDocumentService {
     },
     version: {
       amountCents: bigint;
+      invoiceType: string | null;
+      defaultTaxRatePercent: Prisma.Decimal | null;
       draftData: Prisma.JsonValue;
       clauseSnapshot: Prisma.JsonValue;
     },
@@ -622,12 +630,12 @@ export class ContractDocumentService {
         itemName: string;
         specification: string | null;
         unit: string;
-        quantity: Prisma.Decimal;
-        unitPrice: Prisma.Decimal;
-        taxRate: Prisma.Decimal;
-        taxInclusiveAmountCents: bigint;
-        taxExclusiveAmountCents: bigint;
-        taxAmountCents: bigint;
+        quantity: Prisma.Decimal | null;
+        unitPrice: Prisma.Decimal | null;
+        taxRate: Prisma.Decimal | null;
+        taxInclusiveAmountCents: bigint | null;
+        taxExclusiveAmountCents: bigint | null;
+        taxAmountCents: bigint | null;
         isProvisional: boolean;
         settlementBasis: string | null;
         customData: Prisma.JsonValue;
@@ -656,6 +664,10 @@ export class ContractDocumentService {
         }
       }
     }
+    values["field.invoiceType"] = this.invoiceTypeText(version.invoiceType);
+    values["field.taxRatePercent"] = version.defaultTaxRatePercent
+      ? `${version.defaultTaxRatePercent.toString()}%`
+      : "—";
     if (Array.isArray(version.clauseSnapshot)) {
       for (const clause of version.clauseSnapshot) {
         if (!this.isObject(clause) || typeof clause.key !== "string") continue;
@@ -691,21 +703,33 @@ export class ContractDocumentService {
       }
     }
     for (const bill of bills) {
-      values[`bill.${bill.billKey}`] = bill.rows.map((row) => ({
-        ...(this.isObject(row.customData) ? row.customData : {}),
-        itemCode: row.itemCode ?? "",
-        itemName: row.itemName,
-        specification: row.specification ?? "",
-        unit: row.unit,
-        quantity: row.quantity.toString(),
-        unitPrice: row.unitPrice.toFixed(2),
-        taxRatePercent: `${row.taxRate.toString()}%`,
-        taxInclusiveAmount: formatMoneyCents(row.taxInclusiveAmountCents),
-        taxExclusiveAmount: formatMoneyCents(row.taxExclusiveAmountCents),
-        taxAmount: formatMoneyCents(row.taxAmountCents),
-        isProvisional: row.isProvisional,
-        settlementBasis: row.settlementBasis ?? ""
-      }));
+      values[`bill.${bill.billKey}`] = bill.rows.map((row) => {
+        const taxInclusiveUnitPrice = row.unitPrice?.toFixed(2) ?? "—";
+        const taxExclusiveUnitPrice =
+          row.unitPrice && row.taxRate
+            ? deriveTaxExclusiveUnitPrice({
+                taxInclusiveUnitPrice: row.unitPrice.toString(),
+                taxRatePercent: row.taxRate.toString()
+              })
+            : "—";
+        return {
+          ...(this.isObject(row.customData) ? row.customData : {}),
+          itemCode: row.itemCode ?? "",
+          itemName: row.itemName,
+          specification: row.specification ?? "",
+          unit: row.unit,
+          quantity: row.quantity?.toString() ?? "—",
+          unitPrice: taxInclusiveUnitPrice,
+          taxInclusiveUnitPrice,
+          taxExclusiveUnitPrice,
+          taxRatePercent: row.taxRate ? `${row.taxRate.toString()}%` : "—",
+          taxInclusiveAmount: this.moneyText(row.taxInclusiveAmountCents),
+          taxExclusiveAmount: this.moneyText(row.taxExclusiveAmountCents),
+          taxAmount: this.moneyText(row.taxAmountCents),
+          isProvisional: row.isProvisional,
+          settlementBasis: row.settlementBasis ?? ""
+        };
+      });
     }
     return Object.fromEntries(
       Object.entries(values).map(([key, value]) => [key, this.jsonSafeRenderValue(value)])
@@ -738,6 +762,16 @@ export class ContractDocumentService {
 
   private isObject(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  }
+
+  private invoiceTypeText(value: string | null): string {
+    return CONTRACT_INVOICE_TYPES.includes(value as ContractInvoiceType)
+      ? contractInvoiceTypeLabel(value as ContractInvoiceType)
+      : "—";
+  }
+
+  private moneyText(value: bigint | null): string {
+    return value === null ? "—" : formatMoneyCents(value);
   }
 }
 

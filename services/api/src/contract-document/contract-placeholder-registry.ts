@@ -56,10 +56,14 @@ export const CONTRACT_BILL_ROW_PLACEHOLDER_ALIASES: Record<string, string> = {
   规格型号: "specification",
   单位: "unit",
   数量: "quantity",
-  单价: "unitPrice",
+  单价: "taxInclusiveUnitPrice",
+  含税单价: "taxInclusiveUnitPrice",
+  不含税单价: "taxExclusiveUnitPrice",
   税率: "taxRatePercent",
   金额: "taxInclusiveAmount",
   含税金额: "taxInclusiveAmount",
+  不含税金额: "taxExclusiveAmount",
+  税额: "taxAmount",
   备注: "remark"
 };
 
@@ -67,6 +71,8 @@ const BILL_ROW_PLACEHOLDERS = new Set([
   ...Object.keys(CONTRACT_BILL_ROW_PLACEHOLDER_ALIASES),
   ...Object.values(CONTRACT_BILL_ROW_PLACEHOLDER_ALIASES),
   "unitPrice",
+  "taxInclusiveUnitPrice",
+  "taxExclusiveUnitPrice",
   "taxRate",
   "taxExclusiveAmount",
   "taxAmount"
