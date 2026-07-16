@@ -53,7 +53,9 @@ export class ContractTaxFactsService {
         orderBy: { revisionNo: "desc" }
       });
       return {
+        contractId: context.contract.id,
         current: this.currentFacts(context.version),
+        rows: this.currentRows(context.bills, context.rows),
         revisions: revisions.map((revision) => this.revisionReadModel(revision))
       };
     });
@@ -640,6 +642,39 @@ export class ContractTaxFactsService {
       evidenceFileId: version.taxFactEvidenceFileId,
       revision: version.taxFactRevision
     };
+  }
+
+  private currentRows(
+    bills: Array<{
+      id: string;
+      name: string;
+    }>,
+    rows: Array<{
+      id: string;
+      contractBillId: string;
+      rowKey: string;
+      itemName: string;
+      specification: string | null;
+      unit: string;
+      unitPrice: Prisma.Decimal | null;
+      taxRate: Prisma.Decimal | null;
+      taxRateSource: string;
+      pricingFactStatus: string;
+    }>
+  ) {
+    const billNameById = new Map(bills.map((bill) => [bill.id, bill.name]));
+    return rows.map((row) => ({
+      contractBillRowId: row.id,
+      billName: billNameById.get(row.contractBillId) ?? "合同清单",
+      rowKey: row.rowKey,
+      itemName: row.itemName,
+      specification: row.specification,
+      unit: row.unit,
+      taxInclusiveUnitPrice: row.unitPrice?.toString() ?? null,
+      taxRatePercent: row.taxRate?.toString() ?? null,
+      taxRateSource: row.taxRateSource,
+      pricingFactStatus: row.pricingFactStatus
+    }));
   }
 
   private rowSnapshot(row: {

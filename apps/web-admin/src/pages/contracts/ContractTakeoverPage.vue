@@ -105,7 +105,7 @@
     >
       <div class="operation-section-title">
         <span>导入预检</span>
-        <small>先定位错误行和风险说明，预检通过后再生成接管草稿。</small>
+        <small>可使用系统 Excel 模板或直接粘贴少量台账；先定位错误行和风险说明，再生成接管草稿。</small>
       </div>
       <div class="form-section">
         <div class="form-grid">
@@ -140,8 +140,69 @@
             />
           </label>
         </div>
+        <div class="excel-import-section">
+          <div>
+            <strong>Excel 批量导入</strong>
+            <p>适合合同较多或需要同时补录历史计价清单的场景，文件仅支持系统模板 XLSX，最大 10 MB。</p>
+          </div>
+          <div class="excel-import-actions">
+            <t-button
+              variant="outline"
+              :loading="templateDownloading"
+              @click="downloadImportTemplate"
+            >
+              下载系统模板
+            </t-button>
+            <t-upload
+              v-model="excelImportFiles"
+              theme="file-input"
+              :auto-upload="false"
+              :max="1"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              :disabled="excelPreviewing || excelApplying"
+              placeholder="选择已填写的 Excel"
+              @change="handleExcelImportFileChange"
+            />
+            <t-button
+              theme="primary"
+              variant="outline"
+              :loading="excelPreviewing"
+              :disabled="!selectedExcelImportFile"
+              @click="previewExcelImport"
+            >
+              上传并预检
+            </t-button>
+            <t-tooltip
+              v-if="excelApplyDisabledReason"
+              :content="excelApplyDisabledReason"
+            >
+              <t-button disabled>
+                生成接管草稿
+              </t-button>
+            </t-tooltip>
+            <t-button
+              v-else
+              theme="primary"
+              :loading="excelApplying"
+              @click="applyExcelImport"
+            >
+              生成接管草稿
+            </t-button>
+          </div>
+          <ul
+            v-if="excelPreviewResult?.errors.length"
+            class="excel-error-list"
+          >
+            <li
+              v-for="issue in excelPreviewResult.errors"
+              :key="`${issue.sheet}-${issue.row}-${issue.column}-${issue.message}`"
+            >
+              {{ issue.sheet }}第 {{ issue.row }} 行“{{ issue.column }}”：{{ issue.message }}
+            </li>
+          </ul>
+        </div>
         <label class="wide-field">
-          <span>导入行</span>
+          <span>少量台账粘贴导入</span>
           <t-textarea
             v-model="importPrecheckText"
             :placeholder="importPrecheckPlaceholder"
@@ -155,7 +216,7 @@
           :loading="prechecking"
           @click="submitImportPrecheck"
         >
-          预检
+          预检粘贴内容
         </t-button>
         <t-button @click="clearImportPrecheck">
           清空
@@ -178,7 +239,7 @@
         </t-button>
       </div>
       <div
-        v-if="importPrecheckResult"
+        v-if="displayedImportPrecheckResult"
         class="precheck-summary"
       >
         <div
@@ -191,7 +252,7 @@
         </div>
       </div>
       <t-table
-        v-if="importPrecheckResult"
+        v-if="displayedImportPrecheckResult"
         row-key="rowNo"
         size="small"
         class="precheck-table"
@@ -415,6 +476,163 @@
       </div>
 
       <div class="form-section">
+        <div class="section-title-with-action">
+          <div>
+            <h2>发票与历史计价</h2>
+            <p>原合同未明确的税务事实可以留空，系统会中性标记并在确认前说明对后续结算的影响。</p>
+          </div>
+          <t-button
+            variant="outline"
+            @click="addPricingItem"
+          >
+            新增计价项目
+          </t-button>
+        </div>
+        <div class="form-grid">
+          <label>
+            <span>发票类型（可选）</span>
+            <t-select
+              v-model="createForm.invoiceType"
+              :options="invoiceTypeOptions"
+              clearable
+              placeholder="原合同未明确"
+            />
+          </label>
+          <label>
+            <span>计税模式</span>
+            <t-select
+              v-model="createForm.taxMode"
+              :options="taxModeOptions"
+            />
+          </label>
+          <label>
+            <span>默认税率（%）（可选）</span>
+            <t-input
+              v-model="createForm.defaultTaxRatePercent"
+              placeholder="如 13.00；原合同未明确可留空"
+            />
+          </label>
+          <label>
+            <span>税务事实来源（可选）</span>
+            <t-select
+              v-model="createForm.taxFactSource"
+              :options="taxFactSourceOptions"
+              clearable
+              placeholder="—"
+            />
+          </label>
+        </div>
+        <label class="wide-field">
+          <span>税务事实确认说明（可选）</span>
+          <t-textarea
+            v-model="createForm.taxFactExplanation"
+            placeholder="说明税率、发票类型或历史清单的核对情况"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+        </label>
+
+        <div
+          v-if="createForm.pricingItems.length"
+          class="pricing-editor"
+        >
+          <div
+            v-for="(item, index) in createForm.pricingItems"
+            :key="item.rowKey"
+            class="pricing-editor-row"
+          >
+            <div class="pricing-editor-head">
+              <strong>计价项目 {{ index + 1 }}</strong>
+              <t-button
+                theme="danger"
+                variant="text"
+                size="small"
+                @click="removePricingItem(index)"
+              >
+                删除
+              </t-button>
+            </div>
+            <div class="form-grid pricing-grid">
+              <label>
+                <span>清单名称</span>
+                <t-input
+                  v-model="item.billName"
+                  placeholder="历史计价清单"
+                />
+              </label>
+              <label>
+                <span>项目编号（可选）</span>
+                <t-input
+                  v-model="item.itemCode"
+                  placeholder="如 CL-001"
+                />
+              </label>
+              <label>
+                <span>项目名称</span>
+                <t-input
+                  v-model="item.itemName"
+                  placeholder="材料、机械或分包项目名称"
+                />
+              </label>
+              <label>
+                <span>规格型号（可选）</span>
+                <t-input
+                  v-model="item.specification"
+                  placeholder="—"
+                />
+              </label>
+              <label>
+                <span>单位</span>
+                <t-input
+                  v-model="item.unit"
+                  placeholder="项、吨、台班等"
+                />
+              </label>
+              <label>
+                <span>预计数量（可选）</span>
+                <t-input
+                  v-model="item.estimatedQuantity"
+                  placeholder="最多 2 位小数"
+                />
+              </label>
+              <label>
+                <span>含税单价（元）（可选）</span>
+                <t-input
+                  v-model="item.taxInclusiveUnitPrice"
+                  placeholder="原合同未明确可留空"
+                />
+              </label>
+              <label v-if="createForm.taxMode === 'multiple_rate'">
+                <span>例外税率（%）（可选）</span>
+                <t-input
+                  v-model="item.taxRatePercentOverride"
+                  placeholder="未填写时使用默认税率"
+                />
+              </label>
+              <label>
+                <span>结算依据（可选）</span>
+                <t-input
+                  v-model="item.settlementBasis"
+                  placeholder="原合同条款或补充核对说明"
+                />
+              </label>
+              <label class="pricing-checkbox">
+                <span>价格性质</span>
+                <t-checkbox v-model="item.isProvisional">
+                  暂定项目
+                </t-checkbox>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div
+          v-else
+          class="empty-hint"
+        >
+          原合同没有清单或当前尚未整理时可暂不新增；后续结算前需补齐影响计价的事实。
+        </div>
+      </div>
+
+      <div class="form-section">
         <h2>历史余额快照</h2>
         <div class="form-grid">
           <label
@@ -624,6 +842,45 @@
             </div>
           </dl>
 
+          <h3>发票与历史计价</h3>
+          <div
+            v-if="selectedPricingRows.length"
+            class="pricing-readonly-list"
+          >
+            <div
+              v-for="item in selectedPricingRows"
+              :key="item.rowKey"
+              class="pricing-readonly-row"
+            >
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.specification }}</span>
+              <span>{{ item.quantity }}</span>
+              <span>{{ item.unitPrice }}</span>
+              <span>{{ item.taxRate }}</span>
+              <small>{{ item.settlementBasis }}</small>
+            </div>
+          </div>
+          <div
+            v-else
+            class="empty-hint"
+          >
+            暂无历史计价项目。
+          </div>
+
+          <ContractTaxFactReviewPanel
+            v-if="selectedTaxFactCurrent"
+            :key="selectedRow.takeover.id"
+            :project-id="selectedProjectId"
+            :takeover-id="selectedRow.takeover.id"
+            :contract-no="selectedRow.contractNo"
+            :current-facts="selectedTaxFactCurrent"
+            :missing-fields="selectedRow.takeover.taxFactMissingFields"
+            :user-id="auth.user?.id || ''"
+            :role-keys="auth.user?.roleKeys || []"
+            @changed="refreshSelectedTaxFacts"
+            @go-contract-change="goToContractChange"
+          />
+
           <h3 id="takeover-step-review">
             复核确认
           </h3>
@@ -644,6 +901,8 @@
             <p>{{ selectedConfirmationSummary.levelReviewText }}</p>
             <p>{{ selectedConfirmationSummary.riskText }}</p>
             <p>付款办理提示：{{ selectedConfirmationSummary.paymentBlockingText }}</p>
+            <p>税务事实缺口：{{ selectedConfirmationSummary.taxGapText }}</p>
+            <p>后续影响：{{ selectedConfirmationSummary.taxImpactText }}</p>
             <p>资料缺口说明：{{ selectedConfirmationSummary.evidenceGapText }}</p>
             <p>资料依据：{{ selectedConfirmationSummary.evidenceText }}</p>
             <p>复核意见：{{ selectedConfirmationSummary.reviewText }}</p>
@@ -1019,6 +1278,8 @@
           <p>{{ confirmSummary.levelReviewText }}</p>
           <p>{{ confirmSummary.riskText }}</p>
           <p>付款办理提示：{{ confirmSummary.paymentBlockingText }}</p>
+          <p>税务事实缺口：{{ confirmSummary.taxGapText }}</p>
+          <p>后续影响：{{ confirmSummary.taxImpactText }}</p>
           <p>资料缺口说明：{{ confirmSummary.evidenceGapText }}</p>
           <p>资料依据：{{ confirmSummary.evidenceText }}</p>
           <p>复核意见：{{ confirmSummary.reviewText }}</p>
@@ -1041,25 +1302,34 @@
 </template>
 
 <script setup lang="ts">
+import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
+import { useRouter } from "vue-router";
 import {
+  applyContractTakeoverExcelImport,
   attachContractTakeoverEvidenceFile,
   confirmContractTakeover,
   createPrivateFileDownloadTicket,
   createContractTakeover,
   createContractTakeoverDraftsFromImport,
+  downloadContractTakeoverImportTemplate,
   fetchApprovalDelegationUserOptions,
   fetchProjects,
   getContractTakeover,
   listContractTakeoverImportBatches,
   listContractTakeovers,
   precheckContractTakeoverImport,
+  previewContractTakeoverExcelImport,
   recordContractTakeoverCorrection,
   reviewContractTakeoverImportBatch,
   submitContractTakeoverReview,
   updateContractTakeover,
   uploadPrivateFile,
+  type ContractInvoiceType,
+  type ContractTaxFactSource,
+  type ContractTaxMode,
   type ContractTakeoverCorrectionType,
+  type ContractTakeoverExcelPreviewReadModel,
   type ContractTakeoverImportBatchReadModel,
   type ContractTakeoverImportBatchReviewStatus,
   type ContractTakeoverImportPrecheckReadModel,
@@ -1070,9 +1340,12 @@ import {
   type ProjectOptionReadModel,
   type UserOptionReadModel
 } from "../../api/core-flow-read.api";
+import type { ContractTaxFactCurrentReadModel } from "../../api/contract-tax-facts.api";
+import { useAuthStore } from "../../auth/auth.store";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import { centsTextToYuanText } from "../../lib/money";
 import { confirmSensitiveAction } from "../confirm-sensitive-action";
+import ContractTaxFactReviewPanel from "./components/ContractTaxFactReviewPanel.vue";
 import {
   buildImportDraftsMessage,
   buildImportPrecheckMessage,
@@ -1085,8 +1358,12 @@ import {
   contractTakeoverColumns,
   formatTakeoverDate,
   importPrecheckRowStatusLabel,
+  invoiceTypeLabel,
+  invoiceTypeOptions,
   lifecycleStatusLabel,
   lifecycleStatusOptions,
+  normalizeHistoricalPricingItems,
+  normalizeOptionalTaxRate,
   parseContractTakeoverImportPrecheckRows,
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
@@ -1106,7 +1383,12 @@ import {
   takeoverLevelOptions,
   toContractTakeoverTableRow,
   takeoverStatusLabel,
+  taxFactSourceLabel,
+  taxFactSourceOptions,
+  taxModeLabel,
+  taxModeOptions,
   yuanToCents,
+  type HistoricalPricingItemDraft,
   type ContractTakeoverTableRow,
   type ContractTakeoverTone
 } from "./contract-takeover.config";
@@ -1129,6 +1411,12 @@ interface CreateFormState extends Record<MoneyFieldKey, string> {
   counterparty: string;
   companyEntityName: string;
   amountYuan: string;
+  invoiceType: ContractInvoiceType | "";
+  taxMode: ContractTaxMode;
+  defaultTaxRatePercent: string;
+  taxFactSource: ContractTaxFactSource | "";
+  taxFactExplanation: string;
+  pricingItems: HistoricalPricingItemDraft[];
   signedAt: string;
   takeoverCutoffDate: string;
   takeoverLevel: ContractTakeoverLevel;
@@ -1170,6 +1458,8 @@ const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
   { key: "otherConfirmedOccupancyYuan", label: "其他确认占用" }
 ];
 
+const router = useRouter();
+const auth = useAuthStore();
 const projects = ref<ProjectOptionReadModel[]>([]);
 const responsibleUsers = ref<UserOptionReadModel[]>([]);
 const takeovers = ref<ContractTakeoverReadModel[]>([]);
@@ -1181,6 +1471,9 @@ const loadingTakeovers = ref(false);
 const creating = ref(false);
 const prechecking = ref(false);
 const generatingImportDrafts = ref(false);
+const templateDownloading = ref(false);
+const excelPreviewing = ref(false);
+const excelApplying = ref(false);
 const reviewingImportBatchAction = ref("");
 const editingTakeoverId = ref("");
 const confirming = ref(false);
@@ -1207,6 +1500,9 @@ const importBatchForm = reactive<ImportBatchFormState>(createEmptyImportBatchFor
 const correctionForm = reactive<CorrectionFormState>(createEmptyCorrectionForm());
 const importPrecheckText = ref("");
 const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>(null);
+const excelImportFiles = ref<UploadFile[]>([]);
+const excelPreviewResult = ref<ContractTakeoverExcelPreviewReadModel | null>(null);
+let pricingItemSequence = 0;
 
 const importPrecheckPlaceholder = [
   "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t申报接管等级\t履约状态\t付款条款\t历史累计结算(元)\t历史审批中付款(元)\t历史已批待付(元)\t历史累计已付(元)\t历史总包代付(元)\t历史预付款已付(元)\t历史预付款已扣回(元)\t历史质保金扣留(元)\t历史质保金释放(元)\t其他确认占用(元)\t余额来源\t证据说明\t资料清单\t问题清单",
@@ -1265,6 +1561,20 @@ const responsibleUserOptions = computed(() =>
 const selectedRow = computed<ContractTakeoverTableRow | null>(
   () => tableRows.value.find((row) => row.id === selectedTakeoverId.value) ?? null
 );
+const selectedTaxFactCurrent = computed<ContractTaxFactCurrentReadModel | null>(() => {
+  const takeover = selectedRow.value?.takeover;
+  if (!takeover) return null;
+  return {
+    invoiceType: takeover.invoiceType,
+    taxMode: takeover.taxMode,
+    defaultTaxRatePercent: takeover.defaultTaxRatePercent,
+    status: normalizeTaxFactStatus(takeover.taxFactStatus),
+    source: takeover.taxFactSource,
+    confirmationExplanation: takeover.taxFactExplanation,
+    evidenceFileId: null,
+    revision: 0
+  };
+});
 const takeoverWorkbenchStepsView = computed(() =>
   takeoverWorkbenchSteps(selectedRow.value?.takeover ?? null)
 );
@@ -1314,6 +1624,13 @@ const createFormLevelDisabledReason = computed(() =>
 const applySuggestionDisabledReason = computed(() =>
   takeoverSuggestionApplyDisabledReason(createForm.takeoverLevel, takeoverLevelSuggestionView.value)
 );
+const selectedExcelImportFile = computed(() => {
+  const raw = excelImportFiles.value[0]?.raw;
+  return raw instanceof File ? raw : null;
+});
+const displayedImportPrecheckResult = computed<
+  ContractTakeoverImportPrecheckReadModel | ContractTakeoverExcelPreviewReadModel | null
+>(() => excelPreviewResult.value ?? importPrecheckResult.value);
 
 const summaryValues = computed(() => {
   const counts = {
@@ -1338,7 +1655,7 @@ const summaryValues = computed(() => {
   ];
 });
 const precheckSummaryValues = computed(() => {
-  const result = importPrecheckResult.value;
+  const result = displayedImportPrecheckResult.value;
   if (!result) {
     return [];
   }
@@ -1351,7 +1668,7 @@ const precheckSummaryValues = computed(() => {
   ];
 });
 const importPrecheckRows = computed(() =>
-  (importPrecheckResult.value?.rows ?? []).map((row) => {
+  (displayedImportPrecheckResult.value?.rows ?? []).map((row) => {
     const hasErrors = row.issues.some((issue) => issue.level === "error");
     return {
       ...row,
@@ -1367,6 +1684,19 @@ const importPrecheckRows = computed(() =>
     };
   })
 );
+const excelApplyDisabledReason = computed(() => {
+  const result = excelPreviewResult.value;
+  if (!result) return "请先选择系统模板文件并完成预检";
+  if (result.errors.length > 0 || result.blockedRows > 0) {
+    return "文件仍有错误，请修正后重新上传预检";
+  }
+  if (result.readyRows <= 0) return "没有可生成草稿的合同";
+  if (!importBatchForm.takeoverCutoffDate.trim()) return "请填写接管截止日";
+  if (!importBatchForm.responsibleUserId.trim()) return "请选择接管责任人";
+  if (!importBatchForm.reviewComment.trim()) return "请填写批次复核意见";
+  if (!importBatchForm.acceptanceConclusion.trim()) return "请填写批次验收结论";
+  return "";
+});
 const canGenerateImportDrafts = computed(
   () =>
     Boolean(importPrecheckResult.value) &&
@@ -1463,6 +1793,22 @@ const selectedBaseInfo = computed(() => {
     { label: "相对方", value: row.counterparty },
     { label: "合同金额", value: row.amount },
     { label: "签订日期", value: row.signedAt },
+    { label: "发票类型", value: invoiceTypeLabel(row.takeover.invoiceType) },
+    { label: "计税模式", value: taxModeLabel(row.takeover.taxMode) },
+    {
+      label: "默认税率",
+      value: row.takeover.defaultTaxRatePercent
+        ? `${row.takeover.defaultTaxRatePercent}%`
+        : "原合同未明确"
+    },
+    { label: "税务事实来源", value: taxFactSourceLabel(row.takeover.taxFactSource) },
+    { label: "税务确认说明", value: row.takeover.taxFactExplanation || "—" },
+    {
+      label: "税务事实缺口",
+      value: row.takeover.taxFactMissingFields.length
+        ? row.takeover.taxFactMissingFields.join("、")
+        : "无"
+    },
     { label: "系统建议等级", value: row.suggestedTakeoverLevelLabel },
     { label: "确认接管等级", value: takeoverLevelLabel(row.takeoverLevel) },
     {
@@ -1475,6 +1821,22 @@ const selectedBaseInfo = computed(() => {
     { label: "履约状态", value: lifecycleStatusLabel(row.lifecycleStatus) }
   ];
 });
+
+const selectedPricingRows = computed(() =>
+  (selectedRow.value?.takeover.pricingItems ?? []).map((item) => ({
+    rowKey: item.rowKey,
+    title: `${item.itemCode ? `${item.itemCode} · ` : ""}${item.itemName}`,
+    specification: `规格型号：${item.specification || "—"}；单位：${item.unit}`,
+    quantity: `预计数量：${item.estimatedQuantity || "—"}`,
+    unitPrice: `含税单价：${
+      item.taxInclusiveUnitPrice ? `¥${item.taxInclusiveUnitPrice}` : "原合同未明确"
+    }`,
+    taxRate: `税率：${item.taxRatePercent ? `${item.taxRatePercent}%` : "原合同未明确"}`,
+    settlementBasis: `结算依据：${item.settlementBasis || "—"}${
+      item.isProvisional ? "；暂定项目" : ""
+    }`
+  }))
+);
 
 const selectedBalanceInfo = computed(() => {
   const takeover = selectedRow.value?.takeover;
@@ -1574,6 +1936,110 @@ async function loadTakeovers() {
   }
 }
 
+async function downloadImportTemplate() {
+  const projectId = selectedProjectId.value;
+  if (!projectId) {
+    setMessage("请先选择项目", "danger");
+    return;
+  }
+
+  templateDownloading.value = true;
+  try {
+    await downloadContractTakeoverImportTemplate(projectId);
+    setMessage("历史合同接管模板已下载，请按模板填写后上传预检", "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "下载历史合同接管模板失败", "danger");
+  } finally {
+    templateDownloading.value = false;
+  }
+}
+
+async function previewExcelImport() {
+  const projectId = selectedProjectId.value;
+  const file = selectedExcelImportFile.value;
+  if (!projectId) {
+    setMessage("请先选择项目", "danger");
+    return;
+  }
+  if (!file) {
+    setMessage("请选择已填写的历史合同接管 Excel", "danger");
+    return;
+  }
+  if (!file.name.toLowerCase().endsWith(".xlsx")) {
+    setMessage("历史合同接管只支持系统模板 XLSX 文件", "danger");
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    setMessage("历史合同接管 Excel 不能超过 10 MB", "danger");
+    return;
+  }
+
+  excelPreviewing.value = true;
+  message.value = "";
+  try {
+    const uploaded = await uploadPrivateFile(file, file.name);
+    excelPreviewResult.value = await previewContractTakeoverExcelImport(projectId, uploaded.id);
+    importPrecheckResult.value = null;
+    const precheckMessage = buildImportPrecheckMessage(excelPreviewResult.value);
+    setMessage(precheckMessage.message, precheckMessage.tone);
+  } catch (error) {
+    excelPreviewResult.value = null;
+    setMessage(error instanceof Error ? error.message : "Excel 预检失败", "danger");
+  } finally {
+    excelPreviewing.value = false;
+  }
+}
+
+function handleExcelImportFileChange() {
+  excelPreviewResult.value = null;
+}
+
+async function applyExcelImport() {
+  const projectId = selectedProjectId.value;
+  const preview = excelPreviewResult.value;
+  if (!projectId) {
+    setMessage("请先选择项目", "danger");
+    return;
+  }
+  if (!preview || excelApplyDisabledReason.value) {
+    setMessage(excelApplyDisabledReason.value || "请重新完成 Excel 预检", "danger");
+    return;
+  }
+
+  excelApplying.value = true;
+  message.value = "";
+  try {
+    const result = await applyContractTakeoverExcelImport(projectId, {
+      fileId: preview.fileId,
+      fileSha256: preview.fileSha256,
+      importFingerprint: preview.importFingerprint,
+      takeoverCutoffDate: requiredText(importBatchForm.takeoverCutoffDate, "接管截止日"),
+      responsibleUserId: requiredText(importBatchForm.responsibleUserId, "接管责任人"),
+      reviewComment: requiredText(importBatchForm.reviewComment, "批次复核意见"),
+      acceptanceConclusion: requiredText(importBatchForm.acceptanceConclusion, "批次验收结论")
+    });
+    setMessage(
+      buildImportDraftsMessage({
+        batchNo: result.batch.batchNo,
+        createdCount: result.createdCount,
+        skippedCount: result.skippedCount,
+        warningRows: result.batch.warningRows
+      }),
+      "success"
+    );
+    excelPreviewResult.value = null;
+    excelImportFiles.value = [];
+    Object.assign(importBatchForm, createEmptyImportBatchForm());
+    showPrecheckPanel.value = false;
+    await loadTakeovers();
+    selectedTakeoverId.value = result.created[0]?.id ?? selectedTakeoverId.value;
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "生成接管草稿失败", "danger");
+  } finally {
+    excelApplying.value = false;
+  }
+}
+
 async function submitImportPrecheck() {
   const projectId = selectedProjectId.value;
   if (!projectId) {
@@ -1586,6 +2052,7 @@ async function submitImportPrecheck() {
   try {
     const rows = parseContractTakeoverImportPrecheckRows(importPrecheckText.value);
     importPrecheckResult.value = await precheckContractTakeoverImport(projectId, { rows });
+    excelPreviewResult.value = null;
     const result = importPrecheckResult.value;
     const precheckMessage = buildImportPrecheckMessage(result);
     setMessage(precheckMessage.message, precheckMessage.tone);
@@ -1644,6 +2111,8 @@ async function generateImportDrafts() {
 function clearImportPrecheck() {
   importPrecheckText.value = "";
   importPrecheckResult.value = null;
+  excelPreviewResult.value = null;
+  excelImportFiles.value = [];
   Object.assign(importBatchForm, createEmptyImportBatchForm());
 }
 
@@ -1701,6 +2170,31 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
   }
 }
 
+async function refreshSelectedTaxFacts() {
+  const projectId = selectedProjectId.value;
+  const takeoverId = selectedRow.value?.takeover.id;
+  if (!projectId || !takeoverId) return;
+  try {
+    const detail = await getContractTakeover(projectId, takeoverId);
+    takeovers.value = takeovers.value.map((item) => (item.id === detail.id ? detail : item));
+  } catch (error) {
+    setMessage(
+      error instanceof Error
+        ? `${error.message}。修订记录已保存，但当前合同事实未能刷新，请稍后重试。`
+        : "修订记录已保存，但当前合同事实未能刷新，请稍后重试。",
+      "danger"
+    );
+  }
+}
+
+async function goToContractChange(contractId: string) {
+  if (!contractId) {
+    setMessage("合同标识尚未读取，请刷新税务事实修订记录后重试", "danger");
+    return;
+  }
+  await router.push(`/contracts/${encodeURIComponent(contractId)}`);
+}
+
 async function submitCreate() {
   const projectId = selectedProjectId.value;
   if (!projectId) {
@@ -1720,6 +2214,23 @@ async function submitCreate() {
       name: requiredText(createForm.name, "合同名称"),
       counterparty: requiredText(createForm.counterparty, "相对方"),
       companyEntityName: createForm.companyEntityName.trim() || undefined,
+      invoiceType: createForm.invoiceType || undefined,
+      taxMode: createForm.taxMode,
+      defaultTaxRatePercent: normalizeOptionalTaxRate(
+        createForm.defaultTaxRatePercent,
+        "默认税率"
+      ),
+      taxFactSource: createForm.taxFactSource || undefined,
+      taxFactExplanation: createForm.taxFactExplanation.trim() || undefined,
+      pricingItems: normalizeHistoricalPricingItems(
+        createForm.pricingItems.map((item) => ({
+          ...item,
+          taxRatePercentOverride:
+            createForm.taxMode === "multiple_rate"
+              ? item.taxRatePercentOverride
+              : ""
+        }))
+      ),
       amountCents: yuanToCents(createForm.amountYuan, "合同金额"),
       signedAt: requiredText(createForm.signedAt, "签订日期"),
       takeoverCutoffDate: createForm.takeoverCutoffDate || undefined,
@@ -1768,6 +2279,14 @@ function startCreate() {
   editingTakeoverId.value = "";
   resetCreateForm();
   showCreateForm.value = true;
+}
+
+function addPricingItem() {
+  createForm.pricingItems.push(createEmptyPricingItem());
+}
+
+function removePricingItem(index: number) {
+  createForm.pricingItems.splice(index, 1);
 }
 
 function startEdit(takeover: ContractTakeoverReadModel) {
@@ -1995,6 +2514,25 @@ function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState 
     counterparty: takeover.counterparty,
     companyEntityName: takeover.companyEntityName ?? "",
     amountYuan: centsToYuanInput(takeover.amountCents),
+    invoiceType: takeover.invoiceType ?? "",
+    taxMode: takeover.taxMode,
+    defaultTaxRatePercent: takeover.defaultTaxRatePercent ?? "",
+    taxFactSource: takeover.taxFactSource ?? "",
+    taxFactExplanation: takeover.taxFactExplanation ?? "",
+    pricingItems: takeover.pricingItems.map((item) => ({
+      billKey: item.billKey,
+      billName: item.billName,
+      rowKey: item.rowKey,
+      itemCode: item.itemCode ?? "",
+      itemName: item.itemName,
+      specification: item.specification ?? "",
+      unit: item.unit,
+      estimatedQuantity: item.estimatedQuantity ?? "",
+      taxInclusiveUnitPrice: item.taxInclusiveUnitPrice ?? "",
+      taxRatePercentOverride: takeover.taxMode === "multiple_rate" ? item.taxRatePercent ?? "" : "",
+      isProvisional: item.isProvisional,
+      settlementBasis: item.settlementBasis ?? ""
+    })),
     signedAt: takeover.signedAt.slice(0, 10),
     takeoverCutoffDate: takeover.takeoverCutoffDate?.slice(0, 10) ?? "",
     takeoverLevel: takeover.takeoverLevel,
@@ -2030,6 +2568,12 @@ function createEmptyForm(): CreateFormState {
     counterparty: "",
     companyEntityName: "",
     amountYuan: "",
+    invoiceType: "",
+    taxMode: "single_rate",
+    defaultTaxRatePercent: "",
+    taxFactSource: "",
+    taxFactExplanation: "",
+    pricingItems: [],
     signedAt: todayText(),
     takeoverCutoffDate: "",
     takeoverLevel: "B",
@@ -2052,6 +2596,42 @@ function createEmptyForm(): CreateFormState {
     reviewComment: "",
     acceptanceConclusion: ""
   };
+}
+
+function createEmptyPricingItem(): HistoricalPricingItemDraft {
+  pricingItemSequence += 1;
+  return {
+    billKey: "main",
+    billName: "历史计价清单",
+    rowKey: `manual-${Date.now()}-${pricingItemSequence}`,
+    itemCode: "",
+    itemName: "",
+    specification: "",
+    unit: "",
+    estimatedQuantity: "",
+    taxInclusiveUnitPrice: "",
+    taxRatePercentOverride: "",
+    isProvisional: false,
+    settlementBasis: ""
+  };
+}
+
+function normalizeTaxFactStatus(
+  value: string
+): ContractTaxFactCurrentReadModel["status"] {
+  if (
+    [
+      "unconfirmed",
+      "draft",
+      "frozen",
+      "pending_finance_review",
+      "pending_contract_confirmation",
+      "confirmed"
+    ].includes(value)
+  ) {
+    return value as ContractTaxFactCurrentReadModel["status"];
+  }
+  return "unconfirmed";
 }
 
 function createEmptyImportBatchForm(): ImportBatchFormState {
@@ -2656,6 +3236,83 @@ input[type="date"] {
   overflow-wrap: anywhere;
 }
 
+.excel-import-section,
+.pricing-editor,
+.pricing-readonly-list {
+  display: grid;
+  gap: var(--jg-space-sm);
+}
+
+.excel-import-section {
+  padding: var(--jg-space-sm);
+  border: 1px solid var(--jg-color-border);
+  background: var(--jg-color-bg-subtle);
+}
+
+.excel-import-section p,
+.section-title-with-action p {
+  margin: 4px 0 0;
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-mini);
+  line-height: 1.6;
+}
+
+.excel-import-actions,
+.section-title-with-action,
+.pricing-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--jg-space-sm);
+}
+
+.excel-import-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.excel-error-list {
+  margin: 0;
+  padding: var(--jg-space-sm) var(--jg-space-sm) var(--jg-space-sm) var(--jg-space-lg);
+  color: var(--jg-color-danger);
+  background: var(--jg-color-bg-panel);
+  border: 1px solid var(--jg-color-border);
+  font-size: var(--jg-font-size-mini);
+  line-height: 1.6;
+}
+
+.section-title-with-action h2 {
+  margin: 0;
+}
+
+.pricing-editor-row,
+.pricing-readonly-row {
+  padding: var(--jg-space-sm);
+  border: 1px solid var(--jg-color-border);
+  background: var(--jg-color-bg-panel);
+}
+
+.pricing-grid {
+  margin-top: var(--jg-space-sm);
+}
+
+.pricing-checkbox {
+  align-content: end;
+}
+
+.pricing-readonly-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(180px, 1fr) repeat(3, minmax(110px, 0.7fr));
+  gap: var(--jg-space-xs) var(--jg-space-sm);
+  align-items: center;
+  font-size: var(--jg-font-size-table-secondary);
+}
+
+.pricing-readonly-row small {
+  grid-column: 1 / -1;
+  color: var(--jg-color-text-secondary);
+}
+
 .evidence-uploader {
   display: grid;
   grid-template-columns: minmax(140px, 0.8fr) minmax(180px, 1fr) auto;
@@ -2822,6 +3479,10 @@ input[type="date"] {
   .content-grid {
     grid-template-columns: 1fr;
   }
+
+  .pricing-readonly-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @container jg-page (max-width: 1080px) {
@@ -2874,6 +3535,18 @@ input[type="date"] {
 
   .form-actions {
     flex-wrap: wrap;
+  }
+
+  .excel-import-actions,
+  .section-title-with-action,
+  .pricing-editor-head,
+  .pricing-readonly-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .pricing-readonly-row small {
+    grid-column: auto;
   }
 }
 </style>

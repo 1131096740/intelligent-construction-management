@@ -10,8 +10,11 @@ import {
   canSubmitTakeoverReview,
   centsToYuanText,
   contractTakeoverColumns,
+  invoiceTypeLabel,
   lifecycleStatusLabel,
   importPrecheckRowStatusLabel,
+  normalizeHistoricalPricingItems,
+  normalizeOptionalTaxRate,
   parseContractTakeoverImportPrecheckRows,
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
@@ -32,6 +35,8 @@ import {
   takeoverLevelLabel,
   takeoverStatusLabel,
   takeoverStatusTone,
+  taxFactSourceLabel,
+  taxModeLabel,
   toContractTakeoverTableRow,
   yuanToCents
 } from "./contract-takeover.config";
@@ -66,6 +71,69 @@ describe("contract takeover page configuration", () => {
     expect(() => yuanToCents("-1", "历史已付")).toThrow("历史已付必须是非负数字");
     expect(() => yuanToCents("1.234", "历史已付")).toThrow("历史已付必须是非负数字");
     expect(() => yuanToCents("abc", "历史已付")).toThrow("历史已付必须是非负数字");
+  });
+
+  it("keeps optional historical tax facts explicit and validates two-decimal pricing", () => {
+    expect(invoiceTypeLabel(null)).toBe("原合同未明确");
+    expect(invoiceTypeLabel("vat_special")).toBe("增值税专用发票");
+    expect(taxModeLabel("single_rate")).toBe("单一税率");
+    expect(taxFactSourceLabel(null)).toBe("—");
+    expect(normalizeOptionalTaxRate("", "默认税率")).toBeUndefined();
+    expect(normalizeOptionalTaxRate("13.00", "默认税率")).toBe("13.00");
+    expect(() => normalizeOptionalTaxRate("0", "默认税率")).toThrow("大于 0 且不超过 100");
+    expect(() => normalizeOptionalTaxRate("13.001", "默认税率")).toThrow("最多保留 2 位小数");
+
+    expect(
+      normalizeHistoricalPricingItems([
+        {
+          billKey: "main",
+          billName: "历史计价清单",
+          rowKey: "row-1",
+          itemCode: "CL-001",
+          itemName: "钢材",
+          specification: "HRB400",
+          unit: "吨",
+          estimatedQuantity: "10.50",
+          taxInclusiveUnitPrice: "4000.00",
+          taxRatePercentOverride: "",
+          isProvisional: false,
+          settlementBasis: "按实际验收量结算"
+        }
+      ])
+    ).toEqual([
+      {
+        billKey: "main",
+        billName: "历史计价清单",
+        rowKey: "row-1",
+        itemCode: "CL-001",
+        itemName: "钢材",
+        specification: "HRB400",
+        unit: "吨",
+        estimatedQuantity: "10.50",
+        taxInclusiveUnitPrice: "4000.00",
+        taxRatePercentOverride: undefined,
+        isProvisional: false,
+        settlementBasis: "按实际验收量结算"
+      }
+    ]);
+    expect(() =>
+      normalizeHistoricalPricingItems([
+        {
+          billKey: "main",
+          billName: "历史计价清单",
+          rowKey: "row-1",
+          itemCode: "",
+          itemName: "钢材",
+          specification: "",
+          unit: "吨",
+          estimatedQuantity: "10.501",
+          taxInclusiveUnitPrice: "",
+          taxRatePercentOverride: "",
+          isProvisional: false,
+          settlementBasis: ""
+        }
+      ])
+    ).toThrow("预计数量必须是非负数字且最多保留 2 位小数");
   });
 
   it("parses pasted takeover import rows without shifting blank leading TSV cells", () => {
@@ -491,6 +559,10 @@ describe("contract takeover page configuration", () => {
       { label: "接管截止日", value: "2026-06-30" },
       { label: "系统建议等级", value: "B级" },
       { label: "确认接管等级", value: "B级" },
+      { label: "发票类型", value: "增值税专用发票" },
+      { label: "计税模式", value: "单一税率" },
+      { label: "默认税率", value: "13%" },
+      { label: "历史计价项目", value: "1 项" },
       { label: "历史累计结算", value: "¥600,000.00" },
       { label: "历史累计已付", value: "¥300,000.00" },
       { label: "历史在途/待付", value: "¥30,000.00" },
@@ -503,11 +575,32 @@ describe("contract takeover page configuration", () => {
     expect(summary.levelReviewText).toContain("确认接管等级与系统建议一致：B级");
     expect(summary.riskText).toBe("B级资料仍需跟踪，付款前需确认影响金额的缺口已补齐。");
     expect(summary.paymentBlockingText).toBe("尚未完成主管确认，后续付款申请会被系统阻断。");
+    expect(summary.taxGapText).toBe("清单项目“钢材”含税单价");
+    expect(summary.taxImpactText).toContain("相关结算不能提交审批");
     expect(summary.evidenceGapText).toBe("缺少：历史付款凭证。补齐前会影响主管确认和后续付款核验。");
     expect(summary.evidenceText).toBe("合同与凭证");
     expect(summary.reviewText).toBe("预算已复核结算口径");
     expect(summary.acceptanceText).toBe("作为 A 级活跃合同继续办理");
     expect(summary.responsibleText).toBe("合同负责人");
+  });
+
+  it("describes missing historical tax facts without treating them as zero", () => {
+    const summary = buildTakeoverConfirmationSummary({
+      ...takeover(),
+      invoiceType: null,
+      defaultTaxRatePercent: null,
+      taxFactSource: null,
+      taxFactExplanation: null,
+      taxFactMissingFields: ["发票类型", "默认税率"],
+      pricingItems: []
+    });
+
+    expect(summary.items).toContainEqual({ label: "发票类型", value: "原合同未明确" });
+    expect(summary.items).toContainEqual({ label: "默认税率", value: "原合同未明确" });
+    expect(summary.items).toContainEqual({ label: "历史计价项目", value: "0 项" });
+    expect(summary.taxGapText).toBe("发票类型、默认税率");
+    expect(summary.taxImpactText).toContain("不会阻断本次历史合同接管");
+    expect(summary.taxImpactText).toContain("相关结算不能提交审批");
   });
 
   it("explains takeover level adjustments with review comment", () => {
@@ -674,6 +767,30 @@ function takeover(): ContractTakeoverReadModel {
     companyEntityName: "建工智管公司",
     amountCents: "100000000",
     paymentTermsOriginalText: "按月结算，归档后付款",
+    invoiceType: "vat_special",
+    taxMode: "single_rate",
+    defaultTaxRatePercent: "13",
+    taxFactStatus: "unconfirmed",
+    taxFactSource: "contract_document",
+    taxFactExplanation: "按原合同签署页核对",
+    taxFactMissingFields: ["清单项目“钢材”含税单价"],
+    pricingItems: [
+      {
+        billKey: "main",
+        billName: "历史计价清单",
+        rowKey: "row-1",
+        itemCode: "CL-001",
+        itemName: "钢材",
+        specification: "HRB400",
+        unit: "吨",
+        estimatedQuantity: "10",
+        taxInclusiveUnitPrice: null,
+        taxRatePercent: "13",
+        pricingFactStatus: "unconfirmed",
+        isProvisional: false,
+        settlementBasis: "按实际验收量结算"
+      }
+    ],
     takeoverLevel: "B",
     suggestedTakeoverLevel: "B",
     takeoverLevelAdjustmentReason: null,

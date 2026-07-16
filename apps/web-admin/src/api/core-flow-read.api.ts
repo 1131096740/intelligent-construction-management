@@ -251,6 +251,29 @@ export interface ContractTakeoverPostConfirmationVerificationReadModel {
   financeRecordCount: number;
 }
 
+export type ContractInvoiceType = "vat_general" | "vat_special";
+export type ContractTaxMode = "single_rate" | "multiple_rate";
+export type ContractTaxFactSource =
+  | "contract_document"
+  | "supplement_evidence"
+  | "business_finance_confirmation";
+
+export interface HistoricalPricingItemReadModel {
+  billKey: string;
+  billName: string;
+  rowKey: string;
+  itemCode: string | null;
+  itemName: string;
+  specification: string | null;
+  unit: string;
+  estimatedQuantity: string | null;
+  taxInclusiveUnitPrice: string | null;
+  taxRatePercent: string | null;
+  pricingFactStatus: string;
+  isProvisional: boolean;
+  settlementBasis: string | null;
+}
+
 export interface ContractTakeoverReadModel {
   id: string;
   batchNo: string | null;
@@ -261,6 +284,14 @@ export interface ContractTakeoverReadModel {
   companyEntityName: string | null;
   amountCents: ContractTakeoverCentsValue;
   paymentTermsOriginalText: string;
+  invoiceType: ContractInvoiceType | null;
+  taxMode: ContractTaxMode;
+  defaultTaxRatePercent: string | null;
+  taxFactStatus: string;
+  taxFactSource: ContractTaxFactSource | null;
+  taxFactExplanation: string | null;
+  taxFactMissingFields: string[];
+  pricingItems: HistoricalPricingItemReadModel[];
   takeoverLevel: ContractTakeoverLevel;
   suggestedTakeoverLevel: ContractTakeoverLevel | null;
   takeoverLevelAdjustmentReason: string | null;
@@ -298,6 +329,21 @@ export interface ContractTakeoverReadModel {
   updatedAt: string;
 }
 
+export interface HistoricalPricingItemPayload {
+  billKey: string;
+  billName: string;
+  rowKey: string;
+  itemCode?: string;
+  itemName: string;
+  specification?: string;
+  unit: string;
+  estimatedQuantity?: string;
+  taxInclusiveUnitPrice?: string;
+  taxRatePercentOverride?: string;
+  isProvisional?: boolean;
+  settlementBasis?: string;
+}
+
 export interface CreateContractTakeoverPayload {
   code: string;
   name: string;
@@ -305,6 +351,13 @@ export interface CreateContractTakeoverPayload {
   contractTypeKey?: string;
   companyEntityId?: string;
   companyEntityName?: string;
+  invoiceType?: ContractInvoiceType;
+  taxMode?: ContractTaxMode;
+  defaultTaxRatePercent?: string;
+  taxFactSource?: ContractTaxFactSource;
+  taxFactExplanation?: string;
+  taxFactEvidenceFileId?: string;
+  pricingItems?: HistoricalPricingItemPayload[];
   amountCents: string;
   signedAt: string;
   takeoverLevel: ContractTakeoverLevel;
@@ -405,6 +458,31 @@ export interface ContractTakeoverImportPrecheckReadModel {
   existingCodes: string[];
   duplicatedCodes: string[];
   rows: ContractTakeoverImportPrecheckRowReadModel[];
+}
+
+export interface ContractTakeoverExcelIssueReadModel {
+  sheet: string;
+  row: number;
+  column: string;
+  message: string;
+}
+
+export interface ContractTakeoverExcelPreviewReadModel
+  extends ContractTakeoverImportPrecheckReadModel {
+  fileId: string;
+  fileSha256: string;
+  importFingerprint: string;
+  errors: ContractTakeoverExcelIssueReadModel[];
+}
+
+export interface ApplyContractTakeoverExcelPayload {
+  fileId: string;
+  fileSha256: string;
+  importFingerprint: string;
+  takeoverCutoffDate: string;
+  responsibleUserId: string;
+  reviewComment: string;
+  acceptanceConclusion: string;
 }
 
 export interface ContractTakeoverImportDraftReadModel {
@@ -1303,6 +1381,16 @@ export function listContractTakeovers(projectId: string) {
   return readJson<ContractTakeoverReadModel[]>(`/projects/${projectId}/contract-takeovers`);
 }
 
+export async function downloadContractTakeoverImportTemplate(projectId: string): Promise<void> {
+  const response = await apiFetch(`/projects/${projectId}/contract-takeovers/import-template`);
+  await ensureOk(response, "下载历史合同接管模板失败");
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : "历史合同接管导入模板.xlsx";
+  saveBlob(blob, fileName);
+}
+
 export function listContractTakeoverImportBatches(projectId: string) {
   return readJson<ContractTakeoverImportBatchReadModel[]>(
     `/projects/${projectId}/contract-takeovers/import-batches`
@@ -1350,6 +1438,23 @@ export function precheckContractTakeoverImport(
 ) {
   return postJson<ContractTakeoverImportPrecheckReadModel>(
     `/projects/${projectId}/contract-takeovers/import-precheck`,
+    body
+  );
+}
+
+export function previewContractTakeoverExcelImport(projectId: string, fileId: string) {
+  return postJson<ContractTakeoverExcelPreviewReadModel>(
+    `/projects/${projectId}/contract-takeovers/imports/preview`,
+    { fileId }
+  );
+}
+
+export function applyContractTakeoverExcelImport(
+  projectId: string,
+  body: ApplyContractTakeoverExcelPayload
+) {
+  return postJson<ContractTakeoverImportDraftReadModel>(
+    `/projects/${projectId}/contract-takeovers/imports/apply`,
     body
   );
 }

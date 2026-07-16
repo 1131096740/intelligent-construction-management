@@ -24,6 +24,9 @@ const rows = [
     id: "row-1",
     contractBillId: "bill-1",
     rowKey: "ROW-1",
+    itemName: "钢筋",
+    specification: "HRB400",
+    unit: "吨",
     sortOrder: 1,
     quantity: new Prisma.Decimal("2"),
     unitPrice: new Prisma.Decimal("10"),
@@ -39,6 +42,9 @@ const rows = [
     id: "row-2",
     contractBillId: "bill-1",
     rowKey: "ROW-2",
+    itemName: "混凝土",
+    specification: "C30",
+    unit: "立方米",
     sortOrder: 2,
     quantity: new Prisma.Decimal("1"),
     unitPrice: new Prisma.Decimal("5"),
@@ -112,6 +118,7 @@ function createPrisma(overrides: Record<string, unknown> = {}) {
         {
           id: "bill-1",
           contractVersionId: "version-1",
+          name: "材料清单",
           amountRole: "included",
           taxInclusiveAmountCents: 2500n
         }
@@ -141,6 +148,40 @@ function createPrisma(overrides: Record<string, unknown> = {}) {
 }
 
 describe("ContractTaxFactsService", () => {
+  it("lists current contract bill row identifiers for the first tax fact supplement", async () => {
+    const { prisma, tx } = createPrisma();
+    tx.contractTaxFactRevision.findMany.mockResolvedValue([]);
+    const service = new ContractTaxFactsService(prisma as never);
+
+    await expect(service.list("project-1", "takeover-1")).resolves.toEqual({
+      contractId: "contract-1",
+      current: expect.objectContaining({
+        invoiceType: null,
+        status: "unconfirmed"
+      }),
+      rows: [
+        expect.objectContaining({
+          contractBillRowId: "row-1",
+          billName: "材料清单",
+          itemName: "钢筋",
+          specification: "HRB400",
+          unit: "吨",
+          taxInclusiveUnitPrice: "10",
+          taxRatePercent: null,
+          pricingFactStatus: "unconfirmed"
+        }),
+        expect.objectContaining({
+          contractBillRowId: "row-2",
+          itemName: "混凝土",
+          taxInclusiveUnitPrice: "5",
+          taxRatePercent: "9",
+          taxRateSource: "row_override"
+        })
+      ],
+      revisions: []
+    });
+  });
+
   it("saves a candidate revision without changing current contract or bill facts", async () => {
     const { prisma, tx } = createPrisma();
     tx.contractTaxFactRevision.findFirst

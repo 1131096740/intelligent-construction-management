@@ -46,9 +46,12 @@ import {
   createContractChangeDraft,
   createContractTakeover,
   createContractTakeoverDraftsFromImport,
+  applyContractTakeoverExcelImport,
+  downloadContractTakeoverImportTemplate,
   listContractTakeoverImportBatches,
   createPaymentRequest,
   precheckContractTakeoverImport,
+  previewContractTakeoverExcelImport,
   createPrivateFileDownloadTicket,
   createSettlementDraft,
   confirmContractTakeover,
@@ -776,6 +779,23 @@ describe("core flow read API client", () => {
       counterparty: "历史供应商",
       companyEntityName: "建工集团",
       amountCents: "100000000",
+      invoiceType: "vat_special" as const,
+      taxMode: "single_rate" as const,
+      defaultTaxRatePercent: "13",
+      taxFactSource: "contract_document" as const,
+      taxFactExplanation: "按原合同签署页和清单核对",
+      pricingItems: [
+        {
+          billKey: "main",
+          billName: "历史计价清单",
+          rowKey: "row-1",
+          itemCode: "CL-001",
+          itemName: "钢材",
+          unit: "吨",
+          estimatedQuantity: "10",
+          taxInclusiveUnitPrice: "4000.00"
+        }
+      ],
       signedAt: "2026-01-01",
       takeoverLevel: "B" as const,
       lifecycleStatus: "in_progress" as const,
@@ -888,6 +908,77 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[10][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password" })
     );
+  });
+
+  it("previews and applies the historical contract Excel import with the checked file facts", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "ok" })
+    } as Response);
+
+    await previewContractTakeoverExcelImport("project-1", "file-1");
+    await applyContractTakeoverExcelImport("project-1", {
+      fileId: "file-1",
+      fileSha256: "sha256-value",
+      importFingerprint: "fingerprint-value",
+      takeoverCutoffDate: "2026-07-17",
+      responsibleUserId: "contract-director-1",
+      reviewComment: "已核对合同主表和历史计价清单。",
+      acceptanceConclusion: "通过预检的合同可以生成接管草稿。"
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project-1/contract-takeovers/imports/preview",
+      "/api/projects/project-1/contract-takeovers/imports/apply"
+    ]);
+    expect(fetchMock.mock.calls.map((call) => call[1]?.method)).toEqual(["POST", "POST"]);
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ fileId: "file-1" }));
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        fileId: "file-1",
+        fileSha256: "sha256-value",
+        importFingerprint: "fingerprint-value",
+        takeoverCutoffDate: "2026-07-17",
+        responsibleUserId: "contract-director-1",
+        reviewComment: "已核对合同主表和历史计价清单。",
+        acceptanceConclusion: "通过预检的合同可以生成接管草稿。"
+      })
+    );
+  });
+
+  it("downloads the historical contract takeover import template", async () => {
+    const click = vi.fn();
+    const anchor = {
+      href: "",
+      download: "",
+      click,
+      remove: vi.fn()
+    } as unknown as HTMLAnchorElement;
+    vi.stubGlobal("document", {
+      createElement: vi.fn().mockReturnValue(anchor),
+      body: { appendChild: vi.fn() }
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn().mockReturnValue("blob:takeover-template"),
+      revokeObjectURL: vi.fn()
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["xlsx"]),
+      headers: new Headers({
+        "Content-Disposition":
+          "attachment; filename*=UTF-8''%E5%8E%86%E5%8F%B2%E5%90%88%E5%90%8C%E6%8E%A5%E7%AE%A1%E5%AF%BC%E5%85%A5%E6%A8%A1%E6%9D%BF.xlsx"
+      })
+    } as Response);
+
+    await downloadContractTakeoverImportTemplate("project-1");
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/projects/project-1/contract-takeovers/import-template"
+    );
+    expect(anchor.download).toBe("历史合同接管导入模板.xlsx");
+    expect(click).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 
   it("submits takeover import batch review results through the backend", async () => {

@@ -1,10 +1,14 @@
 import type { PrimaryTableCol } from "tdesign-vue-next";
 import type {
+  ContractInvoiceType,
   ContractLifecycleStatus,
   ContractTakeoverCentsValue,
   ContractTakeoverLevel,
   ContractTakeoverReadModel,
   ContractTakeoverStatus,
+  ContractTaxFactSource,
+  ContractTaxMode,
+  HistoricalPricingItemPayload,
   PrecheckContractTakeoverImportRowPayload
 } from "../../api/core-flow-read.api";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
@@ -61,6 +65,8 @@ export interface TakeoverConfirmationSummary {
   levelReviewText: string;
   riskText: string;
   paymentBlockingText: string;
+  taxGapText: string;
+  taxImpactText: string;
   evidenceGapText: string;
   evidenceText: string;
   reviewText: string;
@@ -111,6 +117,21 @@ export interface ImportDraftsMessageInput {
   warningRows: number;
 }
 
+export interface HistoricalPricingItemDraft {
+  billKey: string;
+  billName: string;
+  rowKey: string;
+  itemCode: string;
+  itemName: string;
+  specification: string;
+  unit: string;
+  estimatedQuantity: string;
+  taxInclusiveUnitPrice: string;
+  taxRatePercentOverride: string;
+  isProvisional: boolean;
+  settlementBasis: string;
+}
+
 export interface TakeoverCorrectionDraft {
   reason: string;
   responsibleUserId: string;
@@ -153,6 +174,22 @@ export const lifecycleStatusOptions: Array<ContractTakeoverOption<ContractLifecy
   { value: "disputed", label: "争议中" }
 ];
 
+export const invoiceTypeOptions: Array<ContractTakeoverOption<ContractInvoiceType>> = [
+  { value: "vat_general", label: "增值税普通发票" },
+  { value: "vat_special", label: "增值税专用发票" }
+];
+
+export const taxModeOptions: Array<ContractTakeoverOption<ContractTaxMode>> = [
+  { value: "single_rate", label: "单一税率" },
+  { value: "multiple_rate", label: "特殊多税率" }
+];
+
+export const taxFactSourceOptions: Array<ContractTakeoverOption<ContractTaxFactSource>> = [
+  { value: "contract_document", label: "原合同文件" },
+  { value: "supplement_evidence", label: "补充依据" },
+  { value: "business_finance_confirmation", label: "业务与财务共同确认" }
+];
+
 export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[] = [
   { colKey: "contractNo", title: "合同编号", width: 132 },
   { colKey: "contractName", title: "合同名称", minWidth: 180 },
@@ -172,6 +209,65 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
 
 export function takeoverLevelLabel(value: ContractTakeoverLevel | string): string {
   return takeoverLevelOptions.find((option) => option.value === value)?.label.slice(0, 2) ?? "等级未读取";
+}
+
+export function invoiceTypeLabel(value: ContractInvoiceType | string | null): string {
+  if (!value) return "原合同未明确";
+  return invoiceTypeOptions.find((option) => option.value === value)?.label ?? "原合同未明确";
+}
+
+export function taxModeLabel(value: ContractTaxMode | string | null): string {
+  if (!value) return "—";
+  return taxModeOptions.find((option) => option.value === value)?.label ?? "—";
+}
+
+export function taxFactSourceLabel(value: ContractTaxFactSource | string | null): string {
+  if (!value) return "—";
+  return taxFactSourceOptions.find((option) => option.value === value)?.label ?? "—";
+}
+
+export function normalizeHistoricalPricingItems(
+  rows: HistoricalPricingItemDraft[]
+): HistoricalPricingItemPayload[] {
+  return rows.map((row, index) => {
+    const rowNo = index + 1;
+    const billKey = requiredPricingText(row.billKey, `第 ${rowNo} 行清单标识`);
+    const billName = requiredPricingText(row.billName, `第 ${rowNo} 行清单名称`);
+    const rowKey = requiredPricingText(row.rowKey, `第 ${rowNo} 行项目标识`);
+    const itemName = requiredPricingText(row.itemName, `第 ${rowNo} 行项目名称`);
+    const unit = requiredPricingText(row.unit, `第 ${rowNo} 行计量单位`);
+    const estimatedQuantity = optionalTwoDecimal(
+      row.estimatedQuantity,
+      `第 ${rowNo} 行预计数量`
+    );
+    const taxInclusiveUnitPrice = optionalTwoDecimal(
+      row.taxInclusiveUnitPrice,
+      `第 ${rowNo} 行含税单价`
+    );
+    const taxRatePercentOverride = optionalTaxRate(
+      row.taxRatePercentOverride,
+      `第 ${rowNo} 行例外税率`
+    );
+
+    return {
+      billKey,
+      billName,
+      rowKey,
+      itemCode: optionalPricingText(row.itemCode),
+      itemName,
+      specification: optionalPricingText(row.specification),
+      unit,
+      estimatedQuantity,
+      taxInclusiveUnitPrice,
+      taxRatePercentOverride,
+      isProvisional: row.isProvisional,
+      settlementBasis: optionalPricingText(row.settlementBasis)
+    };
+  });
+}
+
+export function normalizeOptionalTaxRate(value: string, label = "默认税率"): string | undefined {
+  return optionalTaxRate(value, label);
 }
 
 export function takeoverSuggestedLevelLabel(takeover: ContractTakeoverReadModel): string {
@@ -549,6 +645,13 @@ export function buildTakeoverConfirmationSummary(
       { label: "接管截止日", value: formatTakeoverDate(takeover.takeoverCutoffDate) },
       { label: "系统建议等级", value: takeoverSuggestedLevelLabel(takeover) },
       { label: "确认接管等级", value: takeoverLevelLabel(takeover.takeoverLevel) },
+      { label: "发票类型", value: invoiceTypeLabel(takeover.invoiceType) },
+      { label: "计税模式", value: taxModeLabel(takeover.taxMode) },
+      {
+        label: "默认税率",
+        value: takeover.defaultTaxRatePercent ? `${takeover.defaultTaxRatePercent}%` : "原合同未明确"
+      },
+      { label: "历史计价项目", value: `${takeover.pricingItems.length} 项` },
       { label: "历史累计结算", value: centsToYuanText(takeover.historicalSettledCents) },
       { label: "历史累计已付", value: centsToYuanText(takeover.historicalPaidCents) },
       { label: "历史在途/待付", value: centsToYuanText(historicalPendingCents) },
@@ -570,12 +673,50 @@ export function buildTakeoverConfirmationSummary(
     levelReviewText: takeoverLevelReviewText(takeover),
     riskText: takeover.levelRiskText || takeoverLevelRiskText(takeover.takeoverLevel),
     paymentBlockingText: takeover.paymentBlockingHint,
+    taxGapText: takeover.taxFactMissingFields.length
+      ? takeover.taxFactMissingFields.join("、")
+      : "无",
+    taxImpactText: takeover.taxFactMissingFields.length
+      ? "缺失税务事实不会阻断本次历史合同接管，但在补齐并确认前，相关结算不能提交审批。"
+      : "税务事实已记录，后续结算仍以合同版本和清单事实为准。",
     evidenceGapText: takeover.evidenceGapSummary,
     evidenceText: takeover.evidenceSummary?.trim() || "未填写",
     reviewText: takeover.reviewComment?.trim() || "未填写",
     acceptanceText: takeover.acceptanceConclusion?.trim() || "未填写",
     responsibleText: takeoverResponsibleUserText(takeover)
   };
+}
+
+function requiredPricingText(value: string, label: string): string {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`请填写${label}`);
+  return normalized;
+}
+
+function optionalPricingText(value: string): string | undefined {
+  return value.trim() || undefined;
+}
+
+function optionalTwoDecimal(value: string, label: string): string | undefined {
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/u.test(normalized)) {
+    throw new Error(`${label}必须是非负数字且最多保留 2 位小数`);
+  }
+  return normalized;
+}
+
+function optionalTaxRate(value: string, label: string): string | undefined {
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/u.test(normalized)) {
+    throw new Error(`${label}必须是大于 0 且不超过 100 的数字，最多保留 2 位小数`);
+  }
+  const rate = Number(normalized);
+  if (rate <= 0 || rate > 100) {
+    throw new Error(`${label}必须是大于 0 且不超过 100 的数字，最多保留 2 位小数`);
+  }
+  return normalized;
 }
 
 export function buildTakeoverPostConfirmationChecklist(
