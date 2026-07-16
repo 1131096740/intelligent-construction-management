@@ -31,6 +31,7 @@ import {
   procurementApprovalNodes,
   type SpotProcurementApprovalNode
 } from "./spot-procurement-approval-nodes";
+import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
 import { calculateSpotProcurementDraft } from "./spot-procurement-money";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import {
@@ -145,7 +146,8 @@ export class SpotProcurementApplicationService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly pilot: SpotProcurementPilotService,
-    private readonly vatRates: VatRateOptionService
+    private readonly vatRates: VatRateOptionService,
+    private readonly balances: SpotProcurementBalanceService
   ) {}
 
   createDraft(actorUserId: string, input: CreateSpotProcurementDto) {
@@ -728,6 +730,16 @@ export class SpotProcurementApplicationService {
             approvedAmountCents: version.totalAmountCents
           }
         });
+        const balanceSuggestion =
+          await this.balances.suggestionWithClient(
+            tx,
+            procurement.projectId,
+            version.supplierKey,
+            version.totalAmountCents
+          );
+        const suggestedBalanceAmountCents = BigInt(
+          balanceSuggestion.suggestedBalanceAmountCents
+        );
         const payment = await tx.spotProcurementPayment.create({
           data: {
             projectId: procurement.projectId,
@@ -736,8 +748,11 @@ export class SpotProcurementApplicationService {
             code: `${procurement.code}-V${version.versionNo}-P001`,
             status: "draft",
             settlementAmountCents: version.totalAmountCents,
-            supplierBalanceAmountCents: 0n,
-            companyPaymentAmountCents: version.totalAmountCents,
+            supplierBalanceAmountCents:
+              suggestedBalanceAmountCents,
+            companyPaymentAmountCents:
+              version.totalAmountCents -
+              suggestedBalanceAmountCents,
             paidAmountCents: 0n,
             executedSupplierBalanceAmountCents: 0n,
             canceledAmountCents: 0n,
@@ -759,7 +774,11 @@ export class SpotProcurementApplicationService {
             procurementId: procurement.id,
             procurementVersionId: version.id,
             paymentCode: payment.code,
-            settlementAmountCents: version.totalAmountCents.toString()
+            settlementAmountCents: version.totalAmountCents.toString(),
+            availableBalanceAmountCents:
+              balanceSuggestion.availableBalanceAmountCents,
+            suggestedBalanceAmountCents:
+              balanceSuggestion.suggestedBalanceAmountCents
           }
         });
         await this.recordReviewAudit(

@@ -380,6 +380,57 @@ describe("PermissionGuard", () => {
     });
   });
 
+  it("resolves zero-procurement payment project scope from the exact payment id before legacy payments", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ positionKey: "material_staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      spotProcurementPayment: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ projectId: "project-spot" })
+      },
+      paymentRequest: {
+        findFirst: jest.fn()
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("spot_procurement.payment.submit")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "material-1" },
+          params: { paymentId: "spot-payment-1" },
+          body: { projectId: "forged-project" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.spotProcurementPayment.findUnique).toHaveBeenCalledWith({
+      where: { id: "spot-payment-1" },
+      select: { projectId: true }
+    });
+    expect(prisma.paymentRequest.findFirst).not.toHaveBeenCalled();
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "material-1", projectId: "project-spot" }
+    });
+  });
+
   it("resolves project-scoped zero-procurement roles from procurement route ids", async () => {
     const prisma = {
       userPosition: {

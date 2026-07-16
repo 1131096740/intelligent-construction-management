@@ -184,6 +184,22 @@ export class PermissionGuard implements CanActivate {
 
     const paymentId = request.params?.paymentId;
     if (paymentId) {
+      const spotPaymentClient = this.prisma as typeof this.prisma & {
+        spotProcurementPayment?: {
+          findUnique(args: {
+            where: { id: string };
+            select: { projectId: true };
+          }): Promise<{ projectId: string } | null>;
+        };
+      };
+      const spotPayment =
+        await spotPaymentClient.spotProcurementPayment?.findUnique({
+          where: { id: paymentId },
+          select: { projectId: true }
+        });
+      if (spotPayment) {
+        return spotPayment.projectId;
+      }
       const payment = await this.prisma.paymentRequest.findFirst({
         where: { OR: [{ id: paymentId }, { code: paymentId }] },
         select: { projectId: true }

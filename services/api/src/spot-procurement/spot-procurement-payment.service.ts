@@ -1,0 +1,1824 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import type { RoleKey } from "@jiangkong/shared-domain";
+import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
+import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
+import { AuditService } from "../audit/audit.service";
+import { PrismaService } from "../database/prisma.service";
+import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
+import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
+import {
+  SPOT_PROCUREMENT_PAYMENT_METHODS,
+  type SpotProcurementPaymentPath,
+  type UpdateSpotProcurementPaymentDraftDto
+} from "./dto/update-spot-procurement-payment-draft.dto";
+import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
+import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
+import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
+
+const HANDLER_ROLES = new Set<RoleKey>([
+  "material_staff",
+  "material_director"
+]);
+const VOID_ROLES = new Set<RoleKey>([
+  "project_manager",
+  "finance_director"
+]);
+const ACTIVE_CAPACITY_STATUSES = new Set([
+  "approval_pending",
+  "approved",
+  "approved_pending_payment",
+  "partially_paid",
+  "paid",
+  "settled"
+]);
+const PLANNED_PAYMENT_STATUSES = new Set([
+  "draft",
+  ...ACTIVE_CAPACITY_STATUSES
+]);
+const NON_VOIDABLE_EXECUTION_STATUSES = new Set([
+  "partially_paid",
+  "paid",
+  "settled"
+]);
+const PAYMENT_METHODS = new Set<string>(
+  SPOT_PROCUREMENT_PAYMENT_METHODS
+);
+
+type VersionLockRow = {
+  id: string;
+  procurementId: string;
+  projectId: string;
+  procurementCode: string;
+  currentVersionId: string | null;
+  rootStatus: string;
+  versionStatus: string;
+  versionNo: number;
+  supplierPartyId: string | null;
+  supplierKey: string;
+  supplierNameSnapshot: string;
+  handlerUserId: string;
+  totalAmountCents: bigint;
+};
+
+type PaymentLockRow = {
+  id: string;
+  projectId: string;
+  procurementId: string;
+  procurementVersionId: string;
+  code: string;
+  status: string;
+  settlementAmountCents: bigint;
+  supplierBalanceAmountCents: bigint;
+  companyPaymentAmountCents: bigint;
+  paidAmountCents: bigint;
+  executedSupplierBalanceAmountCents: bigint;
+  canceledAmountCents: bigint;
+  paymentPath: string | null;
+  paymentMethod: string | null;
+  payeePartyId: string | null;
+  payeeUserId: string | null;
+  payeeNameSnapshot: string;
+  payeeAccountNameSnapshot: string | null;
+  payeeBankNameSnapshot: string | null;
+  payeeBankAccountSnapshot: string | null;
+  expectedPaymentAt: Date | null;
+  paymentNote: string | null;
+  supportingAttachmentFileId: string | null;
+  merchantPaymentProofFileId: string | null;
+  balanceOverrideReason: string | null;
+  handlerUserId: string;
+  createdByUserId: string;
+  submittedAt: Date | null;
+  approvedAt: Date | null;
+  invalidatedAt: Date | null;
+  invalidatedByUserId: string | null;
+  invalidatedReason: string | null;
+};
+
+type ApprovalLockRow = {
+  id: string;
+  status: string;
+  currentNodeIndex: number;
+  frozenNodes: Prisma.JsonValue;
+  applicantUserId: string;
+};
+
+type PaymentApprovalNode = {
+  name: string;
+  mode: "any";
+  roleKeys: RoleKey[];
+  approvedRoleKeys?: RoleKey[];
+};
+
+type PreparedPayment = {
+  settlementAmountCents: bigint;
+  supplierBalanceAmountCents: bigint;
+  companyPaymentAmountCents: bigint;
+  paymentPath: SpotProcurementPaymentPath | null;
+  paymentMethod: string | null;
+  payeePartyId: string | null;
+  payeeUserId: string | null;
+  payeeNameSnapshot: string;
+  payeeAccountNameSnapshot: string | null;
+  payeeBankNameSnapshot: string | null;
+  payeeBankAccountSnapshot: string | null;
+  expectedPaymentAt: Date | null;
+  paymentNote: string | null;
+  supportingAttachmentFileId: string | null;
+  merchantPaymentProofFileId: string | null;
+  balanceOverrideReason: string | null;
+};
+
+const PAYMENT_APPROVAL_NODES: PaymentApprovalNode[] = [
+  {
+    name: "综合部主管审批",
+    mode: "any",
+    roleKeys: ["comprehensive_director"]
+  },
+  {
+    name: "项目经理审批",
+    mode: "any",
+    roleKeys: ["project_manager"]
+  },
+  {
+    name: "财务主管审批",
+    mode: "any",
+    roleKeys: ["finance_director"]
+  },
+  {
+    name: "董事长或总经理审批",
+    mode: "any",
+    roleKeys: ["chairman", "general_manager"]
+  }
+];
+
+@Injectable()
+export class SpotProcurementPaymentService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly pilot: SpotProcurementPilotService,
+    private readonly balances: SpotProcurementBalanceService
+  ) {}
+
+  createNextDraft(procurementId: string, actorUserId: string) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const version = await this.requireLockedCurrentApprovedVersion(
+          tx,
+          procurementId
+        );
+        this.pilot.assertEnabled(version.projectId);
+        const payments = await this.lockProcurementPayments(
+          tx,
+          version.procurementId
+        );
+        await this.requireHandler(tx, version, actorUserId);
+        const occupied = this.settlementTotalForStatuses(
+          payments,
+          version.id,
+          PLANNED_PAYMENT_STATUSES
+        );
+        const remaining = version.totalAmountCents - occupied;
+        if (remaining <= 0n) {
+          throw new ConflictException("当前采购已没有可新建的付款申请金额");
+        }
+        const suggestion = await this.balances.suggestionWithClient(
+          tx,
+          version.projectId,
+          version.supplierKey,
+          remaining
+        );
+        const suggestedBalanceAmountCents = BigInt(
+          suggestion.suggestedBalanceAmountCents
+        );
+        const payment = await this.createDraftFromFacts(
+          tx,
+          version,
+          payments,
+          {
+            settlementAmountCents: remaining,
+            supplierBalanceAmountCents:
+              suggestedBalanceAmountCents,
+            companyPaymentAmountCents:
+              remaining - suggestedBalanceAmountCents,
+            paymentPath: null,
+            paymentMethod: null,
+            payeePartyId: version.supplierPartyId,
+            payeeUserId: null,
+            payeeNameSnapshot: version.supplierNameSnapshot,
+            payeeAccountNameSnapshot: null,
+            payeeBankNameSnapshot: null,
+            payeeBankAccountSnapshot: null,
+            expectedPaymentAt: null,
+            paymentNote: "后续付款草稿，待采购经办人确认",
+            supportingAttachmentFileId: null,
+            merchantPaymentProofFileId: null,
+            balanceOverrideReason: null,
+            handlerUserId: version.handlerUserId
+          },
+          actorUserId
+        );
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.payment.draft.create",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          metadata: {
+            procurementId: version.procurementId,
+            procurementVersionId: version.id,
+            settlementAmountCents: remaining.toString(),
+            suggestedBalanceAmountCents:
+              suggestion.suggestedBalanceAmountCents
+          }
+        });
+        return this.paymentReadModel(payment, suggestion);
+      })
+    );
+  }
+
+  updateDraft(
+    paymentId: string,
+    actorUserId: string,
+    input: UpdateSpotProcurementPaymentDraftDto
+  ) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const version = await this.requireLockedVersionForPayment(
+          tx,
+          paymentId
+        );
+        this.pilot.assertEnabled(version.projectId);
+        const payments = await this.lockProcurementPayments(
+          tx,
+          version.procurementId
+        );
+        const payment = this.requirePayment(payments, paymentId);
+        this.assertDraft(payment);
+        await this.requireHandler(tx, version, actorUserId, payment);
+        const paymentFacts = await this.preparePayment(
+          tx,
+          version,
+          payment,
+          input,
+          actorUserId
+        );
+        const suggestion = await this.balances.suggestionWithClient(
+          tx,
+          version.projectId,
+          version.supplierKey,
+          paymentFacts.settlementAmountCents
+        );
+        const prepared = this.applyBalanceOverridePolicy(
+          payment,
+          paymentFacts,
+          suggestion,
+          false
+        );
+        const updated = await tx.spotProcurementPayment.update({
+          where: { id: payment.id },
+          data: prepared
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.payment.draft.update",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          metadata: {
+            procurementId: version.procurementId,
+            procurementVersionId: version.id,
+            settlementAmountCents:
+              prepared.settlementAmountCents.toString(),
+            supplierBalanceAmountCents:
+              prepared.supplierBalanceAmountCents.toString(),
+            companyPaymentAmountCents:
+              prepared.companyPaymentAmountCents.toString(),
+            paymentPath: prepared.paymentPath,
+            suggestedBalanceAmountCents:
+              suggestion.suggestedBalanceAmountCents,
+            balanceOverrideReason:
+              prepared.balanceOverrideReason
+          }
+        });
+        return this.paymentReadModel(updated, suggestion);
+      })
+    );
+  }
+
+  submit(paymentId: string, actorUserId: string) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const version = await this.requireLockedVersionForPayment(
+          tx,
+          paymentId
+        );
+        this.pilot.assertEnabled(version.projectId);
+        const payments = await this.lockProcurementPayments(
+          tx,
+          version.procurementId
+        );
+        const payment = this.requirePayment(payments, paymentId);
+        this.assertDraft(payment);
+        await this.requireHandler(tx, version, actorUserId, payment);
+        const paymentFacts = await this.preparePayment(
+          tx,
+          version,
+          payment,
+          {},
+          actorUserId,
+          true
+        );
+        const suggestion = await this.balances.suggestionWithClient(
+          tx,
+          version.projectId,
+          version.supplierKey,
+          paymentFacts.settlementAmountCents
+        );
+        const prepared = this.applyBalanceOverridePolicy(
+          payment,
+          paymentFacts,
+          suggestion,
+          true
+        );
+        const occupied = this.activeSettlementTotal(
+          payments.filter((row) => row.id !== payment.id),
+          version.id
+        );
+        if (
+          occupied + prepared.settlementAmountCents >
+          version.totalAmountCents
+        ) {
+          throw new ConflictException(
+            "有效付款申请累计结算金额不能超过当前采购批准金额"
+          );
+        }
+        const reservation = await this.balances.reserve(tx, {
+          projectId: version.projectId,
+          supplierKey: version.supplierKey,
+          paymentId: payment.id,
+          procurementId: version.procurementId,
+          amountCents: prepared.supplierBalanceAmountCents,
+          actorUserId
+        });
+        const now = new Date();
+        const approval = await tx.approvalInstance.create({
+          data: {
+            flowType: "spot_procurement.payment.approve",
+            businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            businessId: payment.id,
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            frozenNodes:
+              PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+            applicantUserId: payment.handlerUserId
+          }
+        });
+        const updated = await tx.spotProcurementPayment.update({
+          where: { id: payment.id },
+          data: {
+            ...prepared,
+            status: "approval_pending",
+            submittedAt: now
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.payment.approval.submit",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          metadata: {
+            approvalInstanceId: approval.id,
+            procurementId: version.procurementId,
+            procurementVersionId: version.id,
+            reservationId: reservation.reservationId,
+            availableBalanceAmountCents:
+              suggestion.availableBalanceAmountCents,
+            suggestedBalanceAmountCents:
+              suggestion.suggestedBalanceAmountCents,
+            ...this.paymentSnapshot(prepared)
+          }
+        });
+        return this.paymentReadModel(updated);
+      })
+    );
+  }
+
+  review(
+    paymentId: string,
+    actorUserId: string,
+    input: ReviewSpotProcurementPaymentDto
+  ) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const version = await this.requireLockedVersionForPayment(
+          tx,
+          paymentId
+        );
+        this.pilot.assertEnabled(version.projectId);
+        const payments = await this.lockProcurementPayments(
+          tx,
+          version.procurementId
+        );
+        const payment = this.requirePayment(payments, paymentId);
+        if (payment.status !== "approval_pending") {
+          throw new ConflictException("当前付款申请不在审批中");
+        }
+        const approval = await this.requireLockedApproval(tx, payment.id);
+        await this.requireActiveUser(
+          tx,
+          actorUserId,
+          "付款审批人不存在或已停用"
+        );
+        const actorRoles = await this.loadActorRoleKeys(
+          tx,
+          actorUserId,
+          version.projectId
+        );
+        const pendingRoles = pendingRoleKeysForFrozenApprovalNode(
+          approval.frozenNodes,
+          approval.currentNodeIndex
+        );
+        const approvedRoleKey = pendingRoles.find((roleKey) =>
+          actorRoles.includes(roleKey)
+        );
+        if (!approvedRoleKey) {
+          throw new ForbiddenException("当前用户不是本付款审批节点处理人");
+        }
+        assertOrdinaryApplicantCannotReview({
+          applicantUserId: approval.applicantUserId,
+          actorUserId,
+          actorRoleKeys: actorRoles,
+          approvedRoleKey
+        });
+        const comment = optionalText(input.comment);
+        const adjustedBalanceText =
+          input.adjustedSupplierBalanceAmountCents;
+        const isFinanceDirectorNode =
+          approvedRoleKey === "finance_director";
+        if (adjustedBalanceText !== undefined) {
+          if (!isFinanceDirectorNode) {
+            throw new BadRequestException(
+              "只有财务主管在退回申请人时可以指定调整后的供应商余额抵扣金额"
+            );
+          }
+          if (input.decision !== "return_to_applicant") {
+            throw new BadRequestException(
+              "财务调整后的供应商余额抵扣金额只能随退回申请人动作提交"
+            );
+          }
+        }
+        if (
+          isFinanceDirectorNode &&
+          input.decision === "return_to_applicant"
+        ) {
+          if (adjustedBalanceText === undefined) {
+            throw new BadRequestException(
+              "财务主管退回付款申请时必须指定调整后的供应商余额抵扣金额"
+            );
+          }
+          if (!comment) {
+            throw new BadRequestException(
+              "财务主管调整供应商余额抵扣时必须填写原因"
+            );
+          }
+        } else if (input.decision !== "approve" && !comment) {
+          throw new BadRequestException(
+            "驳回或退回付款申请时必须填写审批意见"
+          );
+        }
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: approval.id,
+            action: input.decision,
+            actorUserId,
+            comment,
+            metadata: {
+              reviewRoleKey: approvedRoleKey,
+              ...(adjustedBalanceText !== undefined
+                ? {
+                    originalSupplierBalanceAmountCents:
+                      payment.supplierBalanceAmountCents.toString(),
+                    adjustedSupplierBalanceAmountCents:
+                      adjustedBalanceText
+                  }
+                : {})
+            }
+          }
+        });
+
+        if (input.decision === "reject") {
+          await tx.approvalInstance.update({
+            where: { id: approval.id },
+            data: { status: "rejected" }
+          });
+          const updated = await tx.spotProcurementPayment.update({
+            where: { id: payment.id },
+            data: { status: "rejected" }
+          });
+          await this.balances.releaseReservation(
+            tx,
+            payment.id,
+            actorUserId,
+            `付款申请被驳回：${comment}`
+          );
+          await this.recordReviewAudit(
+            tx,
+            actorUserId,
+            payment,
+            approval.id,
+            input.decision,
+            approvedRoleKey
+          );
+          return this.paymentReadModel(updated);
+        }
+
+        if (input.decision === "return_to_applicant") {
+          if (isFinanceDirectorNode) {
+            const adjustedSupplierBalanceAmountCents = parseMoney(
+              adjustedBalanceText,
+              0n
+            );
+            if (
+              adjustedSupplierBalanceAmountCents >
+              payment.settlementAmountCents
+            ) {
+              throw new BadRequestException(
+                "调整后的供应商余额抵扣金额不能超过本次结算金额"
+              );
+            }
+            if (
+              adjustedSupplierBalanceAmountCents >
+              payment.supplierBalanceAmountCents
+            ) {
+              throw new BadRequestException(
+                "财务主管指定的供应商余额抵扣金额不能高于原申请抵扣金额"
+              );
+            }
+            const released =
+              await this.balances.releaseReservation(
+                tx,
+                payment.id,
+                actorUserId,
+                `付款申请退回经办人：${comment}`
+              );
+            const suggestion =
+              await this.balances.suggestionWithClient(
+                tx,
+                version.projectId,
+                version.supplierKey,
+                payment.settlementAmountCents
+              );
+            if (
+              adjustedSupplierBalanceAmountCents >
+              BigInt(suggestion.availableBalanceAmountCents)
+            ) {
+              throw new BadRequestException(
+                "调整后的供应商余额抵扣金额不能超过当前可用供应商余额"
+              );
+            }
+            await tx.approvalInstance.update({
+              where: { id: approval.id },
+              data: { status: "returned_to_applicant" }
+            });
+            const updated = await tx.spotProcurementPayment.update({
+              where: { id: payment.id },
+              data: { status: "returned" }
+            });
+            const newDraft =
+              await this.cloneSubmittedPaymentToDraft(
+                tx,
+                version,
+                payments,
+                payment,
+                actorUserId,
+                {
+                  supplierBalanceAmountCents:
+                    adjustedSupplierBalanceAmountCents,
+                  reason: comment as string
+                }
+              );
+            await this.recordReviewAudit(
+              tx,
+              actorUserId,
+              payment,
+              approval.id,
+              input.decision,
+              approvedRoleKey,
+              {
+                oldPaymentId: payment.id,
+                newDraftPaymentId: newDraft.id,
+                originalSupplierBalanceAmountCents:
+                  payment.supplierBalanceAmountCents.toString(),
+                adjustedSupplierBalanceAmountCents:
+                  adjustedSupplierBalanceAmountCents.toString(),
+                availableBalanceAmountCents:
+                  suggestion.availableBalanceAmountCents,
+                suggestedBalanceAmountCents:
+                  suggestion.suggestedBalanceAmountCents,
+                balanceOverrideReason: comment as string,
+                reservationReleased: released.released,
+                releasedReservationAmountCents:
+                  released.amountCents.toString()
+              }
+            );
+            return this.paymentReadModel(updated, undefined, {
+              newDraftPaymentId: newDraft.id
+            });
+          }
+          await tx.approvalInstance.update({
+            where: { id: approval.id },
+            data: { status: "returned_to_applicant" }
+          });
+          const updated = await tx.spotProcurementPayment.update({
+            where: { id: payment.id },
+            data: { status: "returned" }
+          });
+          await this.balances.releaseReservation(
+            tx,
+            payment.id,
+            actorUserId,
+            `付款申请退回经办人：${comment}`
+          );
+          const newDraft = await this.cloneSubmittedPaymentToDraft(
+            tx,
+            version,
+            payments,
+            payment,
+            actorUserId
+          );
+          await this.recordReviewAudit(
+            tx,
+            actorUserId,
+            payment,
+            approval.id,
+            input.decision,
+            approvedRoleKey,
+            { newDraftPaymentId: newDraft.id }
+          );
+          return this.paymentReadModel(updated, undefined, {
+            newDraftPaymentId: newDraft.id
+          });
+        }
+
+        const nextNodes = this.approveCurrentNode(
+          approval.frozenNodes,
+          approval.currentNodeIndex,
+          approvedRoleKey
+        );
+        const isFinal =
+          approval.currentNodeIndex >= nextNodes.length - 1;
+        if (!isFinal) {
+          await tx.approvalInstance.update({
+            where: { id: approval.id },
+            data: {
+              currentNodeIndex: approval.currentNodeIndex + 1,
+              status: "approval_pending",
+              frozenNodes: nextNodes as unknown as Prisma.InputJsonValue
+            }
+          });
+          await this.recordReviewAudit(
+            tx,
+            actorUserId,
+            payment,
+            approval.id,
+            input.decision,
+            approvedRoleKey
+          );
+          return this.paymentReadModel(payment);
+        }
+
+        const now = new Date();
+        await tx.approvalInstance.update({
+          where: { id: approval.id },
+          data: {
+            status: "approved",
+            frozenNodes: nextNodes as unknown as Prisma.InputJsonValue
+          }
+        });
+        const updated = await tx.spotProcurementPayment.update({
+          where: { id: payment.id },
+          data: {
+            status: "approved_pending_payment",
+            approvedAt: now
+          }
+        });
+        await this.recordReviewAudit(
+          tx,
+          actorUserId,
+          payment,
+          approval.id,
+          input.decision,
+          approvedRoleKey
+        );
+        return this.paymentReadModel(updated);
+      })
+    );
+  }
+
+  withdrawApproval(paymentId: string, actorUserId: string) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const version = await this.requireLockedVersionForPayment(
+          tx,
+          paymentId
+        );
+        this.pilot.assertEnabled(version.projectId);
+        const payments = await this.lockProcurementPayments(
+          tx,
+          version.procurementId
+        );
+        const payment = this.requirePayment(payments, paymentId);
+        if (payment.status !== "approval_pending") {
+          throw new ConflictException("当前付款申请不在审批中，不能撤回");
+        }
+        const approval = await this.requireLockedApproval(tx, payment.id);
+        await this.requireHandler(tx, version, actorUserId, payment);
+        if (
+          actorUserId !== payment.handlerUserId ||
+          actorUserId !== approval.applicantUserId
+        ) {
+          throw new ForbiddenException("只有采购经办人可以撤回付款审批");
+        }
+        await tx.approvalInstance.update({
+          where: { id: approval.id },
+          data: { status: "withdrawn" }
+        });
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: approval.id,
+            action: "withdraw",
+            actorUserId,
+            comment: "采购经办人撤回付款审批"
+          }
+        });
+        const updated = await tx.spotProcurementPayment.update({
+          where: { id: payment.id },
+          data: { status: "withdrawn" }
+        });
+        await this.balances.releaseReservation(
+          tx,
+          payment.id,
+          actorUserId,
+          "采购经办人撤回付款审批"
+        );
+        const newDraft = await this.cloneSubmittedPaymentToDraft(
+          tx,
+          version,
+          payments,
+          payment,
+          actorUserId
+        );
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.payment.approval.withdraw",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          metadata: {
+            approvalInstanceId: approval.id,
+            procurementId: version.procurementId,
+            procurementVersionId: version.id,
+            newDraftPaymentId: newDraft.id
+          }
+        });
+        return this.paymentReadModel(updated, undefined, {
+          newDraftPaymentId: newDraft.id
+        });
+      })
+    );
+  }
+
+  voidPayment(
+    paymentId: string,
+    actorUserId: string,
+    reasonInput: string
+  ) {
+    return this.runWrite(() =>
+      this.runSerializable(async (tx) => {
+        const version = await this.requireLockedVersionForPayment(
+          tx,
+          paymentId
+        );
+        this.pilot.assertEnabled(version.projectId);
+        const payments = await this.lockProcurementPayments(
+          tx,
+          version.procurementId
+        );
+        const payment = this.requirePayment(payments, paymentId);
+        if (NON_VOIDABLE_EXECUTION_STATUSES.has(payment.status)) {
+          throw new ConflictException(
+            "付款申请已发生执行事实，不能直接作废"
+          );
+        }
+        if (["voided", "invalidated"].includes(payment.status)) {
+          throw new ConflictException("付款申请已经终止，不能重复作废");
+        }
+        const actorRoles = await this.loadActorRoleKeys(
+          tx,
+          actorUserId,
+          version.projectId
+        );
+        await this.requireActiveUser(
+          tx,
+          actorUserId,
+          "付款作废操作人不存在或已停用"
+        );
+        this.requireAnyRole(
+          actorRoles,
+          VOID_ROLES,
+          "只有项目经理或财务主管可以作废付款申请"
+        );
+        const reason = requiredText(reasonInput, "请填写付款申请作废原因");
+        if (payment.status === "approval_pending") {
+          const approval = await this.requireLockedApproval(tx, payment.id);
+          await tx.approvalInstance.update({
+            where: { id: approval.id },
+            data: { status: "voided" }
+          });
+          await tx.approvalActionLog.create({
+            data: {
+              approvalInstanceId: approval.id,
+              action: "void",
+              actorUserId,
+              comment: reason
+            }
+          });
+        }
+        await this.balances.releaseReservation(
+          tx,
+          payment.id,
+          actorUserId,
+          `付款申请作废：${reason}`
+        );
+        const now = new Date();
+        const updated = await tx.spotProcurementPayment.update({
+          where: { id: payment.id },
+          data: {
+            status: "voided",
+            invalidatedAt: now,
+            invalidatedByUserId: actorUserId,
+            invalidatedReason: reason
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.payment.void",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          metadata: {
+            procurementId: version.procurementId,
+            procurementVersionId: version.id,
+            fromStatus: payment.status,
+            reason
+          }
+        });
+        return this.paymentReadModel(updated);
+      })
+    );
+  }
+
+  async invalidateForVersionChange(
+    tx: Prisma.TransactionClient,
+    paymentId: string,
+    actorUserId: string,
+    reason: string
+  ) {
+    await this.balances.releaseReservation(
+      tx,
+      paymentId,
+      actorUserId,
+      reason
+    );
+    const now = new Date();
+    const invalidated = await tx.spotProcurementPayment.updateMany({
+      where: {
+        id: paymentId,
+        status: {
+          in: [
+            "draft",
+            "approval_pending",
+            "approved_pending_payment"
+          ]
+        }
+      },
+      data: {
+        status: "invalidated",
+        invalidatedAt: now,
+        invalidatedByUserId: actorUserId,
+        invalidatedReason: reason
+      }
+    });
+    if (invalidated.count === 1) {
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "spot_procurement.payment.invalidate",
+        businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        businessId: paymentId,
+        metadata: { reason }
+      });
+    }
+    return invalidated;
+  }
+
+  private async preparePayment(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    payment: PaymentLockRow,
+    input: UpdateSpotProcurementPaymentDraftDto,
+    actorUserId: string,
+    requireComplete = false
+  ): Promise<PreparedPayment> {
+    const settlementAmountCents = parseMoney(
+      input.settlementAmountCents,
+      payment.settlementAmountCents
+    );
+    const supplierBalanceAmountCents = parseMoney(
+      input.supplierBalanceAmountCents,
+      payment.supplierBalanceAmountCents
+    );
+    const companyPaymentAmountCents = parseMoney(
+      input.companyPaymentAmountCents,
+      payment.companyPaymentAmountCents
+    );
+    if (
+      settlementAmountCents !==
+      supplierBalanceAmountCents + companyPaymentAmountCents
+    ) {
+      throw new BadRequestException(
+        "本次结算金额必须等于供应商余额抵扣金额与公司实际付款金额之和"
+      );
+    }
+    if (settlementAmountCents <= 0n) {
+      throw new BadRequestException("本次结算金额必须大于 0");
+    }
+    if (settlementAmountCents > version.totalAmountCents) {
+      throw new BadRequestException(
+        "本次结算金额不能超过当前采购批准金额"
+      );
+    }
+    const inputPath =
+      input.paymentPath === undefined
+        ? payment.paymentPath
+        : input.paymentPath;
+    const paymentPath: SpotProcurementPaymentPath | null =
+      companyPaymentAmountCents === 0n
+        ? "supplier_direct"
+        : inputPath === "supplier_direct" ||
+            inputPath === "handler_reimbursement"
+          ? inputPath
+          : null;
+    if (
+      requireComplete &&
+      paymentPath !== "supplier_direct" &&
+      paymentPath !== "handler_reimbursement"
+    ) {
+      throw new BadRequestException("请选择付款路径");
+    }
+    const paymentMethod = mergedText(
+      input.paymentMethod,
+      payment.paymentMethod
+    );
+    if (paymentMethod && !PAYMENT_METHODS.has(paymentMethod)) {
+      throw new BadRequestException("付款方式不正确");
+    }
+    const payeeAccountNameSnapshot = mergedText(
+      input.payeeAccountName,
+      payment.payeeAccountNameSnapshot
+    );
+    const payeeBankNameSnapshot = mergedText(
+      input.payeeBankName,
+      payment.payeeBankNameSnapshot
+    );
+    const payeeBankAccountSnapshot = mergedText(
+      input.payeeBankAccount,
+      payment.payeeBankAccountSnapshot
+    );
+    const expectedPaymentAt =
+      input.expectedPaymentAt === undefined
+        ? payment.expectedPaymentAt
+        : input.expectedPaymentAt === null
+          ? null
+          : new Date(input.expectedPaymentAt);
+    const paymentNote = mergedText(
+      input.paymentNote,
+      payment.paymentNote
+    );
+    const supportingAttachmentFileId = mergedText(
+      input.supportingAttachmentFileId,
+      payment.supportingAttachmentFileId
+    );
+    const merchantPaymentProofFileId = mergedText(
+      input.merchantPaymentProofFileId,
+      payment.merchantPaymentProofFileId
+    );
+    if (companyPaymentAmountCents > 0n && requireComplete) {
+      if (!paymentMethod) {
+        throw new BadRequestException("请填写公司付款方式");
+      }
+      if (!expectedPaymentAt) {
+        throw new BadRequestException("请选择预计付款日期");
+      }
+      if (!paymentNote) {
+        throw new BadRequestException("请填写付款说明");
+      }
+      if (
+        paymentMethod === "bank_transfer" &&
+        (!payeeAccountNameSnapshot ||
+          !payeeBankNameSnapshot ||
+          !payeeBankAccountSnapshot)
+      ) {
+        throw new BadRequestException("银行转账必须填写完整收款账户信息");
+      }
+    }
+    const fileIds = [
+      supportingAttachmentFileId,
+      merchantPaymentProofFileId
+    ].filter((fileId): fileId is string => Boolean(fileId));
+    const files = fileIds.length
+      ? await tx.fileObject.findMany({
+          where: { id: { in: [...new Set(fileIds)] } },
+          select: {
+            id: true,
+            storageStatus: true,
+            uploadedByUserId: true
+          }
+        })
+      : [];
+    if (
+      fileIds.some(
+        (fileId) =>
+          !files.some(
+            (file) =>
+              file.id === fileId && file.storageStatus === "active"
+          )
+      )
+    ) {
+      throw new BadRequestException("付款支撑附件不存在或已失效，请重新上传");
+    }
+    const merchantProof = merchantPaymentProofFileId
+      ? files.find((file) => file.id === merchantPaymentProofFileId)
+      : undefined;
+    if (
+      paymentPath === "handler_reimbursement" &&
+      merchantProof &&
+      merchantProof.uploadedByUserId !== payment.handlerUserId
+    ) {
+      throw new ForbiddenException(
+        "商家付款证明必须由采购经办人本人上传"
+      );
+    }
+    if (
+      files.some(
+        (file) =>
+          file.uploadedByUserId !== payment.handlerUserId &&
+          file.uploadedByUserId !== actorUserId
+      )
+    ) {
+      throw new ForbiddenException(
+        "付款支撑附件必须由采购经办人本人上传"
+      );
+    }
+
+    let payeePartyId: string | null;
+    let payeeUserId: string | null;
+    let payeeNameSnapshot: string;
+    if (paymentPath === "handler_reimbursement") {
+      if (requireComplete && !merchantPaymentProofFileId) {
+        throw new BadRequestException("经办人垫付报回必须上传商家付款证明");
+      }
+      if (
+        merchantPaymentProofFileId &&
+        merchantProof?.uploadedByUserId !== payment.handlerUserId
+      ) {
+        throw new ForbiddenException(
+          "商家付款证明必须由采购经办人本人上传"
+        );
+      }
+      const handler = await tx.user.findUnique({
+        where: { id: payment.handlerUserId },
+        select: { id: true, name: true, isActive: true }
+      });
+      if (!handler?.isActive) {
+        throw new BadRequestException("采购经办人不存在或已停用");
+      }
+      payeePartyId = null;
+      payeeUserId = handler.id;
+      payeeNameSnapshot = handler.name;
+    } else {
+      payeePartyId = version.supplierPartyId;
+      payeeUserId = null;
+      payeeNameSnapshot = version.supplierNameSnapshot;
+    }
+    return {
+      settlementAmountCents,
+      supplierBalanceAmountCents,
+      companyPaymentAmountCents,
+      paymentPath,
+      paymentMethod:
+        companyPaymentAmountCents === 0n ? null : paymentMethod,
+      payeePartyId,
+      payeeUserId,
+      payeeNameSnapshot,
+      payeeAccountNameSnapshot:
+        companyPaymentAmountCents === 0n
+          ? null
+          : payeeAccountNameSnapshot,
+      payeeBankNameSnapshot:
+        companyPaymentAmountCents === 0n
+          ? null
+          : payeeBankNameSnapshot,
+      payeeBankAccountSnapshot:
+        companyPaymentAmountCents === 0n
+          ? null
+          : payeeBankAccountSnapshot,
+      expectedPaymentAt:
+        companyPaymentAmountCents === 0n ? null : expectedPaymentAt,
+      paymentNote,
+      supportingAttachmentFileId,
+      merchantPaymentProofFileId:
+        paymentPath === "handler_reimbursement"
+          ? merchantPaymentProofFileId
+          : null,
+      balanceOverrideReason: payment.balanceOverrideReason
+    };
+  }
+
+  private applyBalanceOverridePolicy(
+    payment: PaymentLockRow,
+    prepared: PreparedPayment,
+    suggestion: {
+      availableBalanceAmountCents: string;
+      suggestedBalanceAmountCents: string;
+    },
+    requireComplete: boolean
+  ): PreparedPayment {
+    const suggestedBalanceAmountCents = BigInt(
+      suggestion.suggestedBalanceAmountCents
+    );
+    if (
+      payment.balanceOverrideReason &&
+      prepared.supplierBalanceAmountCents <
+        payment.supplierBalanceAmountCents
+    ) {
+      throw new BadRequestException(
+        "经办人不能把供应商余额抵扣金额降到财务主管指定金额以下，请再次提交财务主管调整"
+      );
+    }
+    if (
+      prepared.supplierBalanceAmountCents >=
+      suggestedBalanceAmountCents
+    ) {
+      return { ...prepared, balanceOverrideReason: null };
+    }
+    if (!payment.balanceOverrideReason) {
+      if (requireComplete) {
+        throw new BadRequestException(
+          "本次供应商余额抵扣低于系统建议，请先由财务主管退回并指定调整金额"
+        );
+      }
+      return { ...prepared, balanceOverrideReason: null };
+    }
+    return {
+      ...prepared,
+      balanceOverrideReason: payment.balanceOverrideReason
+    };
+  }
+
+  private async requireHandler(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    actorUserId: string,
+    payment?: PaymentLockRow
+  ) {
+    const handlerUserId = payment?.handlerUserId ?? version.handlerUserId;
+    if (
+      actorUserId !== handlerUserId ||
+      handlerUserId !== version.handlerUserId
+    ) {
+      throw new ForbiddenException(
+        "只有采购经办人可以确认并提交付款申请"
+      );
+    }
+    const handler = await tx.user.findUnique({
+      where: { id: handlerUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!handler?.isActive) {
+      throw new BadRequestException("采购经办人不存在或已停用");
+    }
+    const roles = await this.loadActorRoleKeys(
+      tx,
+      actorUserId,
+      version.projectId
+    );
+    this.requireAnyRole(
+      roles,
+      HANDLER_ROLES,
+      "采购经办人当前不具备物资员或物资主管岗位"
+    );
+  }
+
+  private async requireLockedCurrentApprovedVersion(
+    tx: Prisma.TransactionClient,
+    procurementId: string
+  ) {
+    const rows = await tx.$queryRaw<Array<VersionLockRow>>(Prisma.sql`
+      SELECT
+        v."id",
+        v."procurementId",
+        p."projectId",
+        p."code" AS "procurementCode",
+        p."currentVersionId",
+        p."status" AS "rootStatus",
+        v."status" AS "versionStatus",
+        v."versionNo",
+        v."supplierPartyId",
+        v."supplierKey",
+        v."supplierNameSnapshot",
+        v."handlerUserId",
+        v."totalAmountCents"
+      FROM "SpotProcurementVersion" v
+      INNER JOIN "SpotProcurement" p
+        ON p."id" = v."procurementId"
+       AND p."currentVersionId" = v."id"
+      WHERE p."id" = ${procurementId}
+      LIMIT 1
+      FOR UPDATE OF v
+    `);
+    return this.assertCurrentApprovedVersion(rows[0]);
+  }
+
+  private async requireLockedVersionForPayment(
+    tx: Prisma.TransactionClient,
+    paymentId: string
+  ) {
+    const rows = await tx.$queryRaw<Array<VersionLockRow>>(Prisma.sql`
+      SELECT
+        v."id",
+        v."procurementId",
+        p."projectId",
+        p."code" AS "procurementCode",
+        p."currentVersionId",
+        p."status" AS "rootStatus",
+        v."status" AS "versionStatus",
+        v."versionNo",
+        v."supplierPartyId",
+        v."supplierKey",
+        v."supplierNameSnapshot",
+        v."handlerUserId",
+        v."totalAmountCents"
+      FROM "SpotProcurementPayment" pay
+      INNER JOIN "SpotProcurementVersion" v
+        ON v."id" = pay."procurementVersionId"
+       AND v."procurementId" = pay."procurementId"
+      INNER JOIN "SpotProcurement" p
+        ON p."id" = v."procurementId"
+      WHERE pay."id" = ${paymentId}
+      LIMIT 1
+      FOR UPDATE OF v
+    `);
+    return this.assertCurrentApprovedVersion(rows[0]);
+  }
+
+  private assertCurrentApprovedVersion(version?: VersionLockRow) {
+    if (!version) {
+      throw new NotFoundException("零星采购付款申请不存在");
+    }
+    if (
+      version.currentVersionId !== version.id ||
+      version.versionStatus !== "approved" ||
+      version.rootStatus !== "approved_in_progress"
+    ) {
+      throw new ConflictException(
+        "付款申请关联的采购版本已失效或不再可用"
+      );
+    }
+    return version;
+  }
+
+  private async lockProcurementPayments(
+    tx: Prisma.TransactionClient,
+    procurementId: string
+  ) {
+    return tx.$queryRaw<Array<PaymentLockRow>>(Prisma.sql`
+      SELECT
+        "id",
+        "projectId",
+        "procurementId",
+        "procurementVersionId",
+        "code",
+        "status",
+        "settlementAmountCents",
+        "supplierBalanceAmountCents",
+        "companyPaymentAmountCents",
+        "paidAmountCents",
+        "executedSupplierBalanceAmountCents",
+        "canceledAmountCents",
+        "paymentPath",
+        "paymentMethod",
+        "payeePartyId",
+        "payeeUserId",
+        "payeeNameSnapshot",
+        "payeeAccountNameSnapshot",
+        "payeeBankNameSnapshot",
+        "payeeBankAccountSnapshot",
+        "expectedPaymentAt",
+        "paymentNote",
+        "supportingAttachmentFileId",
+        "merchantPaymentProofFileId",
+        "balanceOverrideReason",
+        "handlerUserId",
+        "createdByUserId",
+        "submittedAt",
+        "approvedAt",
+        "invalidatedAt",
+        "invalidatedByUserId",
+        "invalidatedReason"
+      FROM "SpotProcurementPayment"
+      WHERE "procurementId" = ${procurementId}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+  }
+
+  private requirePayment(
+    payments: PaymentLockRow[],
+    paymentId: string
+  ) {
+    const payment = payments.find((row) => row.id === paymentId);
+    if (!payment) {
+      throw new NotFoundException("零星采购付款申请不存在");
+    }
+    return payment;
+  }
+
+  private assertDraft(payment: PaymentLockRow) {
+    if (payment.status !== "draft") {
+      throw new ConflictException("当前付款申请不是可编辑草稿");
+    }
+  }
+
+  private activeSettlementTotal(
+    payments: PaymentLockRow[],
+    versionId: string
+  ) {
+    return this.settlementTotalForStatuses(
+      payments,
+      versionId,
+      ACTIVE_CAPACITY_STATUSES
+    );
+  }
+
+  private settlementTotalForStatuses(
+    payments: PaymentLockRow[],
+    versionId: string,
+    statuses: ReadonlySet<string>
+  ) {
+    return payments
+      .filter(
+        (payment) =>
+          payment.procurementVersionId === versionId &&
+          statuses.has(payment.status)
+      )
+      .reduce(
+        (total, payment) => total + payment.settlementAmountCents,
+        0n
+      );
+  }
+
+  private async createDraftFromFacts(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    existingPayments: PaymentLockRow[],
+    facts: {
+      settlementAmountCents: bigint;
+      supplierBalanceAmountCents: bigint;
+      companyPaymentAmountCents: bigint;
+      paymentPath: string | null;
+      paymentMethod: string | null;
+      payeePartyId: string | null;
+      payeeUserId: string | null;
+      payeeNameSnapshot: string;
+      payeeAccountNameSnapshot: string | null;
+      payeeBankNameSnapshot: string | null;
+      payeeBankAccountSnapshot: string | null;
+      expectedPaymentAt: Date | null;
+      paymentNote: string | null;
+      supportingAttachmentFileId: string | null;
+      merchantPaymentProofFileId: string | null;
+      balanceOverrideReason: string | null;
+      handlerUserId: string;
+    },
+    actorUserId: string
+  ) {
+    const versionPaymentCount = existingPayments.filter(
+      (payment) => payment.procurementVersionId === version.id
+    ).length;
+    const suffix = String(versionPaymentCount + 1).padStart(3, "0");
+    return tx.spotProcurementPayment.create({
+      data: {
+        projectId: version.projectId,
+        procurementId: version.procurementId,
+        procurementVersionId: version.id,
+        code: `${version.procurementCode}-V${version.versionNo}-P${suffix}`,
+        status: "draft",
+        settlementAmountCents: facts.settlementAmountCents,
+        supplierBalanceAmountCents:
+          facts.supplierBalanceAmountCents,
+        companyPaymentAmountCents: facts.companyPaymentAmountCents,
+        paidAmountCents: 0n,
+        executedSupplierBalanceAmountCents: 0n,
+        canceledAmountCents: 0n,
+        canceledCompanyPaymentAmountCents: 0n,
+        canceledSupplierBalanceAmountCents: 0n,
+        paymentPath: facts.paymentPath,
+        paymentMethod: facts.paymentMethod,
+        payeePartyId: facts.payeePartyId,
+        payeeUserId: facts.payeeUserId,
+        payeeNameSnapshot: facts.payeeNameSnapshot,
+        payeeAccountNameSnapshot: facts.payeeAccountNameSnapshot,
+        payeeBankNameSnapshot: facts.payeeBankNameSnapshot,
+        payeeBankAccountSnapshot: facts.payeeBankAccountSnapshot,
+        expectedPaymentAt: facts.expectedPaymentAt,
+        paymentNote: facts.paymentNote,
+        supportingAttachmentFileId:
+          facts.supportingAttachmentFileId,
+        merchantPaymentProofFileId:
+          facts.merchantPaymentProofFileId,
+        balanceOverrideReason: facts.balanceOverrideReason,
+        handlerUserId: facts.handlerUserId,
+        createdByUserId: actorUserId
+      }
+    });
+  }
+
+  private cloneSubmittedPaymentToDraft(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    payments: PaymentLockRow[],
+    source: PaymentLockRow,
+    actorUserId: string,
+    balanceAdjustment?: {
+      supplierBalanceAmountCents: bigint;
+      reason: string;
+    }
+  ) {
+    const supplierBalanceAmountCents =
+      balanceAdjustment?.supplierBalanceAmountCents ??
+      source.supplierBalanceAmountCents;
+    const companyPaymentAmountCents =
+      source.settlementAmountCents - supplierBalanceAmountCents;
+    const balanceOnly = companyPaymentAmountCents === 0n;
+    return this.createDraftFromFacts(
+      tx,
+      version,
+      payments,
+      {
+        settlementAmountCents: source.settlementAmountCents,
+        supplierBalanceAmountCents,
+        companyPaymentAmountCents,
+        paymentPath: balanceOnly
+          ? "supplier_direct"
+          : source.paymentPath,
+        paymentMethod: balanceOnly ? null : source.paymentMethod,
+        payeePartyId: balanceOnly
+          ? version.supplierPartyId
+          : source.payeePartyId,
+        payeeUserId: balanceOnly ? null : source.payeeUserId,
+        payeeNameSnapshot: balanceOnly
+          ? version.supplierNameSnapshot
+          : source.payeeNameSnapshot,
+        payeeAccountNameSnapshot:
+          balanceOnly ? null : source.payeeAccountNameSnapshot,
+        payeeBankNameSnapshot: balanceOnly
+          ? null
+          : source.payeeBankNameSnapshot,
+        payeeBankAccountSnapshot:
+          balanceOnly ? null : source.payeeBankAccountSnapshot,
+        expectedPaymentAt: balanceOnly
+          ? null
+          : source.expectedPaymentAt,
+        paymentNote: source.paymentNote,
+        supportingAttachmentFileId:
+          source.supportingAttachmentFileId,
+        merchantPaymentProofFileId:
+          balanceOnly
+            ? null
+            : source.merchantPaymentProofFileId,
+        balanceOverrideReason:
+          balanceAdjustment?.reason ??
+          source.balanceOverrideReason,
+        handlerUserId: source.handlerUserId
+      },
+      actorUserId
+    );
+  }
+
+  private async requireLockedApproval(
+    tx: Prisma.TransactionClient,
+    paymentId: string
+  ) {
+    const rows = await tx.$queryRaw<Array<ApprovalLockRow>>(Prisma.sql`
+      SELECT
+        "id",
+        "status",
+        "currentNodeIndex",
+        "frozenNodes",
+        "applicantUserId"
+      FROM "ApprovalInstance"
+      WHERE "flowType" = 'spot_procurement.payment.approve'
+        AND "businessType" = ${SPOT_PROCUREMENT_BUSINESS_TYPES.payment}
+        AND "businessId" = ${paymentId}
+        AND "status" = 'approval_pending'
+      LIMIT 1
+      FOR UPDATE
+    `);
+    const approval = rows[0];
+    if (!approval) {
+      throw new ConflictException("当前付款审批实例不存在或状态已变化");
+    }
+    return approval;
+  }
+
+  private approveCurrentNode(
+    frozenNodes: Prisma.JsonValue,
+    currentNodeIndex: number,
+    approvedRoleKey: RoleKey
+  ) {
+    if (!Array.isArray(frozenNodes)) {
+      throw new ConflictException("付款审批节点快照损坏");
+    }
+    const nodes = frozenNodes.map((node) => {
+      if (!node || typeof node !== "object" || Array.isArray(node)) {
+        throw new ConflictException("付款审批节点快照损坏");
+      }
+      return { ...node } as unknown as PaymentApprovalNode;
+    });
+    const current = nodes[currentNodeIndex];
+    if (!current) {
+      throw new ConflictException("付款审批当前节点不存在");
+    }
+    current.approvedRoleKeys = [
+      ...new Set([
+        ...(current.approvedRoleKeys ?? []),
+        approvedRoleKey
+      ])
+    ];
+    return nodes;
+  }
+
+  private async recordReviewAudit(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    payment: PaymentLockRow,
+    approvalInstanceId: string,
+    decision: string,
+    approvedRoleKey: RoleKey,
+    extraMetadata: Record<string, Prisma.InputJsonValue> = {}
+  ) {
+    await this.audit.record(tx, {
+      actorUserId,
+      action: `spot_procurement.payment.approval.${decision}`,
+      businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+      businessId: payment.id,
+      metadata: {
+        approvalInstanceId,
+        procurementId: payment.procurementId,
+        procurementVersionId: payment.procurementVersionId,
+        reviewRoleKey: approvedRoleKey,
+        ...extraMetadata
+      }
+    });
+  }
+
+  private paymentSnapshot(payment: PreparedPayment) {
+    return {
+      settlementAmountCents:
+        payment.settlementAmountCents.toString(),
+      supplierBalanceAmountCents:
+        payment.supplierBalanceAmountCents.toString(),
+      companyPaymentAmountCents:
+        payment.companyPaymentAmountCents.toString(),
+      paymentPath: payment.paymentPath,
+      paymentMethod: payment.paymentMethod,
+      payeePartyId: payment.payeePartyId,
+      payeeUserId: payment.payeeUserId,
+      payeeNameSnapshot: payment.payeeNameSnapshot,
+      payeeAccountNameSnapshot:
+        payment.payeeAccountNameSnapshot,
+      payeeBankNameSnapshot: payment.payeeBankNameSnapshot,
+      payeeBankAccountSnapshot:
+        payment.payeeBankAccountSnapshot,
+      expectedPaymentAt:
+        payment.expectedPaymentAt?.toISOString() ?? null,
+      paymentNote: payment.paymentNote,
+      supportingAttachmentFileId:
+        payment.supportingAttachmentFileId,
+      merchantPaymentProofFileId:
+        payment.merchantPaymentProofFileId,
+      balanceOverrideReason: payment.balanceOverrideReason
+    };
+  }
+
+  private paymentReadModel(
+    payment: {
+      id: string;
+      code: string;
+      status: string;
+      projectId: string;
+      procurementId: string;
+      procurementVersionId: string;
+      settlementAmountCents: bigint;
+      supplierBalanceAmountCents: bigint;
+      companyPaymentAmountCents: bigint;
+      paidAmountCents?: bigint;
+      executedSupplierBalanceAmountCents?: bigint;
+      handlerUserId: string;
+      paymentPath?: string | null;
+      payeePartyId?: string | null;
+      payeeUserId?: string | null;
+      payeeNameSnapshot?: string;
+      balanceOverrideReason?: string | null;
+    },
+    suggestion?: {
+      availableBalanceAmountCents: string;
+      suggestedBalanceAmountCents: string;
+    },
+    extra: Record<string, string> = {}
+  ) {
+    return {
+      id: payment.id,
+      code: payment.code,
+      status: payment.status,
+      projectId: payment.projectId,
+      procurementId: payment.procurementId,
+      procurementVersionId: payment.procurementVersionId,
+      settlementAmountCents:
+        payment.settlementAmountCents.toString(),
+      supplierBalanceAmountCents:
+        payment.supplierBalanceAmountCents.toString(),
+      companyPaymentAmountCents:
+        payment.companyPaymentAmountCents.toString(),
+      paidAmountCents: (payment.paidAmountCents ?? 0n).toString(),
+      executedSupplierBalanceAmountCents: (
+        payment.executedSupplierBalanceAmountCents ?? 0n
+      ).toString(),
+      handlerUserId: payment.handlerUserId,
+      paymentPath: payment.paymentPath ?? null,
+      payeePartyId: payment.payeePartyId ?? null,
+      payeeUserId: payment.payeeUserId ?? null,
+      payeeNameSnapshot: payment.payeeNameSnapshot ?? "",
+      balanceOverrideReason:
+        payment.balanceOverrideReason ?? null,
+      ...(suggestion ?? {}),
+      ...extra
+    };
+  }
+
+  private async loadActorRoleKeys(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ): Promise<RoleKey[]> {
+    const [globalPositions, projectPositions, memberPositions] =
+      await Promise.all([
+        tx.userPosition.findMany({
+          where: { userId: actorUserId, projectId: null },
+          select: { positionId: true }
+        }),
+        tx.userPosition.findMany({
+          where: { userId: actorUserId, projectId },
+          select: { positionId: true }
+        }),
+        tx.projectMember.findMany({
+          where: { userId: actorUserId, projectId },
+          select: { positionKey: true }
+        })
+      ]);
+    const positionIds = [
+      ...new Set(
+        [...globalPositions, ...projectPositions].map(
+          (position) => position.positionId
+        )
+      )
+    ];
+    const positions = positionIds.length
+      ? await tx.position.findMany({
+          where: { id: { in: positionIds } },
+          select: { id: true, key: true }
+        })
+      : [];
+    return [
+      ...new Set([
+        ...positions.map((position) => position.key as RoleKey),
+        ...memberPositions.map(
+          (position) => position.positionKey as RoleKey
+        )
+      ])
+    ];
+  }
+
+  private async requireActiveUser(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    message: string
+  ) {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true }
+    });
+    if (!user?.isActive) {
+      throw new BadRequestException(message);
+    }
+  }
+
+  private requireAnyRole(
+    roles: readonly RoleKey[],
+    allowed: ReadonlySet<RoleKey>,
+    message: string
+  ) {
+    if (!roles.some((role) => allowed.has(role))) {
+      throw new ForbiddenException(message);
+    }
+  }
+
+  private runSerializable<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>
+  ) {
+    return this.prisma.$transaction(operation, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
+    });
+  }
+
+  private async runWrite<T>(
+    operation: () => Promise<T>
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const code = prismaErrorCode(error);
+      if (code === "P2034") {
+        throw new ConflictException(
+          "付款或供应商余额已变化，请刷新后重试"
+        );
+      }
+      if (
+        code === "P2002" ||
+        code === "P2003" ||
+        code === "P2025"
+      ) {
+        throw new ConflictException(
+          "零星采购付款数据已变化，请刷新后重试"
+        );
+      }
+      throw error;
+    }
+  }
+}
+
+function parseMoney(input: string | undefined, fallback: bigint) {
+  if (input === undefined) return fallback;
+  if (!/^(0|[1-9]\d*)$/u.test(input)) {
+    throw new BadRequestException("付款金额格式不正确");
+  }
+  const value = BigInt(input);
+  if (!isWithinPostgresBigIntRange(value)) {
+    throw new BadRequestException("付款金额超出系统可保存范围");
+  }
+  return value;
+}
+
+function mergedText(
+  input: string | null | undefined,
+  fallback: string | null
+) {
+  if (input === undefined) return fallback;
+  if (input === null) return null;
+  const value = input.trim();
+  return value || null;
+}
+
+function optionalText(value: string | undefined) {
+  const text = value?.trim();
+  return text || null;
+}
+
+function requiredText(value: string, message: string) {
+  const text = value.trim();
+  if (!text) throw new BadRequestException(message);
+  return text;
+}
+
+function prismaErrorCode(error: unknown) {
+  if (!error || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}

@@ -220,13 +220,28 @@ function harness() {
       sortOrder: 10
     })
   };
+  const balances = {
+    suggestionWithClient: jest.fn().mockResolvedValue({
+      availableBalanceAmountCents: "0",
+      suggestedBalanceAmountCents: "0"
+    })
+  };
   const service = new SpotProcurementApplicationService(
     prisma as never,
     audit as never,
     pilot as never,
-    vatRates as never
+    vatRates as never,
+    balances as never
   );
-  return { service, prisma, tx, audit, pilot, vatRates };
+  return {
+    service,
+    prisma,
+    tx,
+    audit,
+    pilot,
+    vatRates,
+    balances
+  };
 }
 
 describe("SpotProcurementController", () => {
@@ -987,7 +1002,7 @@ describe("SpotProcurementApplicationService", () => {
   });
 
   it("moves to approved states and creates the first payment draft inside the final approval transaction", async () => {
-    const { service, prisma, tx } = harness();
+    const { service, prisma, tx, balances } = harness();
     const pendingRoot = { ...rootLock, status: "approval_pending" };
     const pendingVersion = {
       ...versionLock,
@@ -1009,6 +1024,10 @@ describe("SpotProcurementApplicationService", () => {
         }
       ]);
     role(tx, "project_manager");
+    balances.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "3000",
+      suggestedBalanceAmountCents: "3000"
+    });
 
     const result = await service.review("procurement-1", "manager-1", {
       decision: "approve"
@@ -1032,8 +1051,8 @@ describe("SpotProcurementApplicationService", () => {
         code: "LXCG-001-V1-P001",
         status: "draft",
         settlementAmountCents: 4100n,
-        supplierBalanceAmountCents: 0n,
-        companyPaymentAmountCents: 4100n,
+        supplierBalanceAmountCents: 3000n,
+        companyPaymentAmountCents: 1100n,
         payeeNameSnapshot: "北京 某某商贸",
         handlerUserId: "material-1",
         createdByUserId: "manager-1"

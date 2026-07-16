@@ -1,0 +1,1392 @@
+import "reflect-metadata";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  RequestMethod
+} from "@nestjs/common";
+import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { Prisma } from "@prisma/client";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
+import { createApiValidationPipe } from "../validation/api-validation";
+import { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
+import { UpdateSpotProcurementPaymentDraftDto } from "./dto/update-spot-procurement-payment-draft.dto";
+import { SpotProcurementPaymentController } from "./spot-procurement-payment.controller";
+import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
+
+const version = {
+  id: "version-1",
+  procurementId: "procurement-1",
+  projectId: "project-1",
+  procurementCode: "LXCG-001",
+  currentVersionId: "version-1",
+  rootStatus: "approved_in_progress",
+  versionStatus: "approved",
+  versionNo: 1,
+  supplierPartyId: "party-1",
+  supplierKey: "party:party-1",
+  supplierNameSnapshot: "北京某某商贸",
+  handlerUserId: "material-1",
+  totalAmountCents: 10_000n
+};
+
+const draftPayment = {
+  id: "payment-1",
+  projectId: "project-1",
+  procurementId: "procurement-1",
+  procurementVersionId: "version-1",
+  code: "LXCG-001-V1-P001",
+  status: "draft",
+  settlementAmountCents: 10_000n,
+  supplierBalanceAmountCents: 0n,
+  companyPaymentAmountCents: 10_000n,
+  paidAmountCents: 0n,
+  executedSupplierBalanceAmountCents: 0n,
+  canceledAmountCents: 0n,
+  paymentPath: null,
+  paymentMethod: null,
+  payeePartyId: "party-1",
+  payeeUserId: null,
+  payeeNameSnapshot: "北京某某商贸",
+  payeeAccountNameSnapshot: null,
+  payeeBankNameSnapshot: null,
+  payeeBankAccountSnapshot: null,
+  expectedPaymentAt: null,
+  paymentNote: "自动草稿",
+  supportingAttachmentFileId: null,
+  merchantPaymentProofFileId: null,
+  balanceOverrideReason: null,
+  handlerUserId: "material-1",
+  createdByUserId: "manager-1",
+  submittedAt: null,
+  approvedAt: null,
+  invalidatedAt: null,
+  invalidatedByUserId: null,
+  invalidatedReason: null
+};
+
+function transactionDelegate() {
+  return {
+    $queryRaw: jest.fn(),
+    userPosition: { findMany: jest.fn() },
+    projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+    position: { findMany: jest.fn() },
+    user: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "material-1",
+        name: "张三",
+        isActive: true
+      })
+    },
+    fileObject: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurementPayment: {
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn()
+    },
+    approvalInstance: {
+      create: jest.fn().mockResolvedValue({
+        id: "approval-1",
+        status: "approval_pending",
+        currentNodeIndex: 0
+      }),
+      update: jest.fn()
+    },
+    approvalActionLog: { create: jest.fn() },
+    auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+  };
+}
+
+function role(tx: ReturnType<typeof transactionDelegate>, roleKey: string) {
+  tx.userPosition.findMany
+    .mockResolvedValueOnce([
+      { positionId: `position-${roleKey}`, projectId: null }
+    ])
+    .mockResolvedValueOnce([]);
+  tx.position.findMany.mockResolvedValue([
+    { id: `position-${roleKey}`, key: roleKey }
+  ]);
+}
+
+function harness() {
+  const tx = transactionDelegate();
+  const prisma = {
+    $transaction: jest.fn(
+      async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+    )
+  };
+  const audit = {
+    record: jest.fn((client: typeof tx, input: object) =>
+      client.auditLog.create({ data: input })
+    )
+  };
+  const pilot = { assertEnabled: jest.fn() };
+  const balance = {
+    suggestion: jest.fn().mockResolvedValue({
+      availableBalanceAmountCents: "0",
+      suggestedBalanceAmountCents: "0"
+    }),
+    suggestionWithClient: jest.fn().mockResolvedValue({
+      availableBalanceAmountCents: "0",
+      suggestedBalanceAmountCents: "0"
+    }),
+    reserve: jest.fn().mockResolvedValue({
+      reservationId: null,
+      amountCents: 0n
+    }),
+    releaseReservation: jest.fn().mockResolvedValue({
+      released: false,
+      amountCents: 0n
+    })
+  };
+  const service = new SpotProcurementPaymentService(
+    prisma as never,
+    audit as never,
+    pilot as never,
+    balance as never
+  );
+  return { service, prisma, tx, audit, pilot, balance };
+}
+
+function validDraftInput(): UpdateSpotProcurementPaymentDraftDto {
+  return {
+    settlementAmountCents: "8000",
+    supplierBalanceAmountCents: "3000",
+    companyPaymentAmountCents: "5000",
+    paymentPath: "supplier_direct",
+    paymentMethod: "bank_transfer",
+    payeeAccountName: "北京某某商贸",
+    payeeBankName: "中国建设银行",
+    payeeBankAccount: "622200001",
+    expectedPaymentAt: "2026-07-20T00:00:00.000Z",
+    paymentNote: "第一期付款",
+    supportingAttachmentFileId: "file-support"
+  };
+}
+
+async function validationErrors(
+  value: unknown,
+  metatype:
+    | typeof UpdateSpotProcurementPaymentDraftDto
+    | typeof ReviewSpotProcurementPaymentDto
+) {
+  try {
+    await createApiValidationPipe().transform(value, {
+      type: "body",
+      metatype
+    });
+  } catch (error) {
+    expect(error).toBeInstanceOf(BadRequestException);
+    return (error as BadRequestException).getResponse() as {
+      message: string;
+      errors: string[];
+    };
+  }
+  throw new Error("Expected validation to fail");
+}
+
+describe("SpotProcurementPaymentController", () => {
+  it("exposes independent payment routes with exact project-role actions", () => {
+    expect(
+      Reflect.getMetadata(PATH_METADATA, SpotProcurementPaymentController)
+    ).toBe("spot-procurement-payments");
+    const expectations = [
+      [
+        "createNextDraft",
+        RequestMethod.POST,
+        "procurements/:procurementId",
+        "spot_procurement.payment.submit"
+      ],
+      [
+        "updateDraft",
+        RequestMethod.PATCH,
+        ":paymentId/draft",
+        "spot_procurement.payment.submit"
+      ],
+      [
+        "submit",
+        RequestMethod.POST,
+        ":paymentId/submission",
+        "spot_procurement.payment.submit"
+      ],
+      [
+        "review",
+        RequestMethod.POST,
+        ":paymentId/approval",
+        "spot_procurement.payment.approve"
+      ]
+    ] as const;
+
+    for (const [method, requestMethod, path, action] of expectations) {
+      const target = SpotProcurementPaymentController.prototype[
+        method
+      ] as unknown as object;
+      expect(Reflect.getMetadata(METHOD_METADATA, target)).toBe(requestMethod);
+      expect(Reflect.getMetadata(PATH_METADATA, target)).toBe(path);
+      expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, target)).toBe(
+        action
+      );
+    }
+  });
+});
+
+describe("Spot procurement payment DTOs", () => {
+  it("accepts canonical string cents and rejects unknown or numeric amount fields", async () => {
+    const unknown = await validationErrors(
+      { ...validDraftInput(), unknown: true },
+      UpdateSpotProcurementPaymentDraftDto
+    );
+    const numeric = await validationErrors(
+      { ...validDraftInput(), settlementAmountCents: 8000 },
+      UpdateSpotProcurementPaymentDraftDto
+    );
+
+    expect(unknown.errors).toContain("unknown 不是允许提交的字段");
+    expect(numeric.errors).toContain("本次结算金额格式不正确");
+  });
+
+  it("does not accept a client-authored balance override reason", async () => {
+    const response = await validationErrors(
+      { ...validDraftInput(), balanceOverrideReason: "本次不用余额" },
+      UpdateSpotProcurementPaymentDraftDto
+    );
+    expect(response.errors).toContain(
+      "balanceOverrideReason 不是允许提交的字段"
+    );
+  });
+
+  it("limits payment review decisions and comment shape at runtime", async () => {
+    const response = await validationErrors(
+      { decision: "return_to_previous" },
+      ReviewSpotProcurementPaymentDto
+    );
+    expect(response.errors).toContain("付款审批决定不正确");
+  });
+
+  it("validates the finance-return adjusted balance as canonical string cents", async () => {
+    const numeric = await validationErrors(
+      {
+        decision: "return_to_applicant",
+        comment: "本次减少余额抵扣",
+        adjustedSupplierBalanceAmountCents: 1000
+      },
+      ReviewSpotProcurementPaymentDto
+    );
+    const negative = await validationErrors(
+      {
+        decision: "return_to_applicant",
+        comment: "本次减少余额抵扣",
+        adjustedSupplierBalanceAmountCents: "-1"
+      },
+      ReviewSpotProcurementPaymentDto
+    );
+
+    expect(numeric.errors).toContain("调整后的供应商余额抵扣金额格式不正确");
+    expect(negative.errors).toContain(
+      "调整后的供应商余额抵扣金额必须按分填写为 0 或更大的整数"
+    );
+  });
+});
+
+describe("SpotProcurementPaymentService", () => {
+  it("creates a smaller subsequent draft for the frozen handler without occupying capacity", async () => {
+    const { service, prisma, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approval_pending",
+          settlementAmountCents: 6_000n,
+          companyPaymentAmountCents: 6_000n
+        }
+    ]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "1500",
+      suggestedBalanceAmountCents: "1500"
+    });
+    tx.spotProcurementPayment.create.mockResolvedValue({
+      ...draftPayment,
+      id: "payment-2",
+      code: "LXCG-001-V1-P002",
+      settlementAmountCents: 4_000n,
+      supplierBalanceAmountCents: 1_500n,
+      companyPaymentAmountCents: 2_500n
+    });
+
+    const result = await service.createNextDraft(
+      "procurement-1",
+      "material-1"
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: "payment-2",
+        status: "draft",
+        settlementAmountCents: "4000",
+        supplierBalanceAmountCents: "1500",
+        companyPaymentAmountCents: "2500",
+        handlerUserId: "material-1"
+      })
+    );
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        settlementAmountCents: 4_000n,
+        supplierBalanceAmountCents: 1_500n,
+        companyPaymentAmountCents: 2_500n
+      })
+    });
+    expect(balance.reserve).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  });
+
+  it("updates a supplier-direct draft and locks its payee to the frozen supplier", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([draftPayment]);
+    role(tx, "material_staff");
+    tx.fileObject.findMany.mockResolvedValue([
+      {
+        id: "file-support",
+        storageStatus: "active",
+        uploadedByUserId: "material-1"
+      }
+    ]);
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...draftPayment,
+      ...validDraftInput(),
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents: 3_000n,
+      companyPaymentAmountCents: 5_000n,
+      paymentPath: "supplier_direct",
+      payeePartyId: "party-1",
+      payeeUserId: null,
+      payeeNameSnapshot: "北京某某商贸"
+    });
+
+    await service.updateDraft(
+      "payment-1",
+      "material-1",
+      validDraftInput()
+    );
+
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        payeePartyId: "party-1",
+        payeeUserId: null,
+        payeeNameSnapshot: "北京某某商贸",
+        settlementAmountCents: 8_000n,
+        supplierBalanceAmountCents: 3_000n,
+        companyPaymentAmountCents: 5_000n
+      })
+    });
+  });
+
+  it("locks reimbursement payee to the handler and requires a real merchant proof uploaded by the handler", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([draftPayment]);
+    role(tx, "material_staff");
+    tx.fileObject.findMany.mockResolvedValue([
+      {
+        id: "proof-1",
+        storageStatus: "active",
+        uploadedByUserId: "someone-else"
+      }
+    ]);
+
+    await expect(
+      service.updateDraft("payment-1", "material-1", {
+        ...validDraftInput(),
+        paymentPath: "handler_reimbursement",
+        supportingAttachmentFileId: null,
+        merchantPaymentProofFileId: "proof-1"
+      })
+    ).rejects.toEqual(
+      new ForbiddenException("商家付款证明必须由采购经办人本人上传")
+    );
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("allows a zero-company-payment balance-only draft without bank account but keeps supplier payee", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([draftPayment]);
+    role(tx, "material_staff");
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...draftPayment,
+      settlementAmountCents: 5_000n,
+      supplierBalanceAmountCents: 5_000n,
+      companyPaymentAmountCents: 0n,
+      paymentPath: "supplier_direct",
+      payeePartyId: "party-1",
+      payeeNameSnapshot: "北京某某商贸"
+    });
+
+    await service.updateDraft("payment-1", "material-1", {
+      settlementAmountCents: "5000",
+      supplierBalanceAmountCents: "5000",
+      companyPaymentAmountCents: "0",
+      paymentPath: "supplier_direct",
+      expectedPaymentAt: "2026-07-20T00:00:00.000Z",
+      paymentNote: "全部使用供应商余额"
+    });
+
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        payeePartyId: "party-1",
+        payeeNameSnapshot: "北京某某商贸",
+        payeeBankAccountSnapshot: null
+      })
+    });
+  });
+
+  it("rejects a malformed three-part amount composition before writing", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([draftPayment]);
+    role(tx, "material_staff");
+
+    await expect(
+      service.updateDraft("payment-1", "material-1", {
+        ...validDraftInput(),
+        settlementAmountCents: "8000",
+        supplierBalanceAmountCents: "3000",
+        companyPaymentAmountCents: "4999"
+      })
+    ).rejects.toEqual(
+      new BadRequestException(
+        "本次结算金额必须等于供应商余额抵扣金额与公司实际付款金额之和"
+      )
+    );
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("submits under Serializable after version then stable payment locks, reserves balance and freezes approval facts", async () => {
+    const { service, prisma, tx, balance, audit } = harness();
+    const completeDraft = {
+      ...draftPayment,
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents: 3_000n,
+      companyPaymentAmountCents: 5_000n,
+      paymentPath: "supplier_direct",
+      paymentMethod: "bank_transfer",
+      payeeAccountNameSnapshot: "北京某某商贸",
+      payeeBankNameSnapshot: "中国建设银行",
+      payeeBankAccountSnapshot: "622200001",
+      expectedPaymentAt: new Date("2026-07-20T00:00:00.000Z")
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([completeDraft]);
+    role(tx, "material_staff");
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...completeDraft,
+      status: "approval_pending",
+      submittedAt: new Date()
+    });
+    balance.reserve.mockResolvedValue({
+      reservationId: "reservation-1",
+      amountCents: 3_000n
+    });
+
+    const result = await service.submit("payment-1", "material-1");
+
+    expect(result.status).toBe("approval_pending");
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$queryRaw.mock.invocationCallOrder[1]
+    );
+    expect(balance.reserve).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        paymentId: "payment-1",
+        amountCents: 3_000n
+      })
+    );
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        flowType: "spot_procurement.payment.approve",
+        businessType: "spot_procurement_payment",
+        businessId: "payment-1",
+        applicantUserId: "material-1",
+        frozenNodes: [
+          {
+            name: "综合部主管审批",
+            mode: "any",
+            roleKeys: ["comprehensive_director"]
+          },
+          {
+            name: "项目经理审批",
+            mode: "any",
+            roleKeys: ["project_manager"]
+          },
+          {
+            name: "财务主管审批",
+            mode: "any",
+            roleKeys: ["finance_director"]
+          },
+          {
+            name: "董事长或总经理审批",
+            mode: "any",
+            roleKeys: ["chairman", "general_manager"]
+          }
+        ]
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.payment.approval.submit",
+        metadata: expect.objectContaining({
+          settlementAmountCents: "8000",
+          supplierBalanceAmountCents: "3000",
+          companyPaymentAmountCents: "5000",
+          reservationId: "reservation-1"
+        })
+      })
+    );
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  });
+
+  it("rejects a later submit when active payment settlement would exceed the frozen version", async () => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          settlementAmountCents: 6_000n,
+          companyPaymentAmountCents: 6_000n,
+          paymentPath: "supplier_direct",
+          paymentMethod: "bank_transfer",
+          payeeAccountNameSnapshot: "北京某某商贸",
+          payeeBankNameSnapshot: "中国建设银行",
+          payeeBankAccountSnapshot: "622200001",
+          expectedPaymentAt: new Date("2026-07-20T00:00:00.000Z"),
+          paymentNote: "第一期付款"
+        },
+        {
+          ...draftPayment,
+          id: "payment-2",
+          code: "LXCG-001-V1-P002",
+          status: "approval_pending",
+          settlementAmountCents: 5_000n,
+          companyPaymentAmountCents: 5_000n
+        }
+      ]);
+    role(tx, "material_staff");
+
+    await expect(
+      service.submit("payment-1", "material-1")
+    ).rejects.toEqual(
+      new ConflictException("有效付款申请累计结算金额不能超过当前采购批准金额")
+    );
+    expect(balance.reserve).not.toHaveBeenCalled();
+  });
+
+  it("lets only the frozen handler submit or create payment drafts even when another material role is valid", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([draftPayment]);
+    role(tx, "material_director");
+
+    await expect(
+      service.submit("payment-1", "material-director-1")
+    ).rejects.toEqual(
+      new ForbiddenException("只有采购经办人可以确认并提交付款申请")
+    );
+  });
+
+  it("moves through fixed nodes and final approval stops at approved pending payment", async () => {
+    const { service, tx } = harness();
+    const approval = {
+      id: "approval-1",
+      status: "approval_pending",
+      currentNodeIndex: 3,
+      applicantUserId: "material-1",
+      frozenNodes: [
+        {
+          name: "综合部主管审批",
+          mode: "any",
+          roleKeys: ["comprehensive_director"],
+          approvedRoleKeys: ["comprehensive_director"]
+        },
+        {
+          name: "项目经理审批",
+          mode: "any",
+          roleKeys: ["project_manager"],
+          approvedRoleKeys: ["project_manager"]
+        },
+        {
+          name: "财务主管审批",
+          mode: "any",
+          roleKeys: ["finance_director"],
+          approvedRoleKeys: ["finance_director"]
+        },
+        {
+          name: "董事长或总经理审批",
+          mode: "any",
+          roleKeys: ["chairman", "general_manager"]
+        }
+      ]
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        { ...draftPayment, status: "approval_pending", submittedAt: new Date() }
+      ])
+      .mockResolvedValueOnce([approval]);
+    role(tx, "chairman");
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...draftPayment,
+      status: "approved_pending_payment"
+    });
+
+    const result = await service.review("payment-1", "chairman-1", {
+      decision: "approve"
+    });
+
+    expect(result.status).toBe("approved_pending_payment");
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        status: "approved_pending_payment",
+        approvedAt: expect.any(Date)
+      })
+    });
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ paidAmountCents: expect.anything() })
+      })
+    );
+  });
+
+  it("does not let an ordinary applicant approve their own payment or forge approved roles on rejection", async () => {
+    const { service, tx } = harness();
+    const frozenNodes = [
+      {
+        name: "综合部主管审批",
+        mode: "any",
+        roleKeys: ["comprehensive_director"]
+      }
+    ];
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        { ...draftPayment, status: "approval_pending", submittedAt: new Date() }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: "material-1",
+          frozenNodes
+        }
+      ]);
+    role(tx, "comprehensive_director");
+
+    await expect(
+      service.review("payment-1", "material-1", { decision: "approve" })
+    ).rejects.toThrow("申请人不能审批自己发起的业务");
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["return_to_applicant", "returned"],
+    ["reject", "rejected"]
+  ] as const)(
+    "%s releases the reservation and preserves the submitted payment as a terminal frozen fact",
+    async (decision, expectedStatus) => {
+      const { service, tx, balance } = harness();
+      tx.$queryRaw
+        .mockResolvedValueOnce([version])
+        .mockResolvedValueOnce([
+          {
+            ...draftPayment,
+            status: "approval_pending",
+            submittedAt: new Date()
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            applicantUserId: "material-1",
+            frozenNodes: [
+              {
+                name: "综合部主管审批",
+                mode: "any",
+                roleKeys: ["comprehensive_director"]
+              }
+            ]
+          }
+        ]);
+      role(tx, "comprehensive_director");
+      tx.spotProcurementPayment.update.mockResolvedValue({
+        ...draftPayment,
+        status: expectedStatus
+      });
+      tx.spotProcurementPayment.create.mockResolvedValue({
+        ...draftPayment,
+        id: "payment-2",
+        code: "LXCG-001-V1-P002"
+      });
+
+      await service.review("payment-1", "comprehensive-1", {
+        decision,
+        comment: "请重新确认"
+      });
+
+      expect(balance.releaseReservation).toHaveBeenCalledWith(
+        tx,
+        "payment-1",
+        "comprehensive-1",
+        expect.any(String)
+      );
+      expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+        where: { id: "payment-1" },
+        data: expect.objectContaining({ status: expectedStatus })
+      });
+      if (decision === "return_to_applicant") {
+        expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            status: "draft",
+            procurementId: "procurement-1",
+            procurementVersionId: "version-1",
+            handlerUserId: "material-1"
+          })
+        });
+      } else {
+        expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+      }
+    }
+  );
+
+  it("lets only the finance-director return node specify a lower balance amount and binds it to a new draft", async () => {
+    const { service, tx, balance, audit } = harness();
+    const submitted = {
+      ...draftPayment,
+      status: "approval_pending",
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents: 3_000n,
+      companyPaymentAmountCents: 5_000n,
+      paymentPath: "supplier_direct",
+      submittedAt: new Date("2026-07-17T02:00:00.000Z")
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([submitted])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 2,
+          applicantUserId: "material-1",
+          frozenNodes: [
+            {
+              name: "综合部主管审批",
+              mode: "any",
+              roleKeys: ["comprehensive_director"],
+              approvedRoleKeys: ["comprehensive_director"]
+            },
+            {
+              name: "项目经理审批",
+              mode: "any",
+              roleKeys: ["project_manager"],
+              approvedRoleKeys: ["project_manager"]
+            },
+            {
+              name: "财务主管审批",
+              mode: "any",
+              roleKeys: ["finance_director"]
+            },
+            {
+              name: "董事长或总经理审批",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }
+      ]);
+    role(tx, "finance_director");
+    balance.releaseReservation.mockResolvedValue({
+      released: true,
+      amountCents: 3_000n
+    });
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "5000",
+      suggestedBalanceAmountCents: "5000"
+    });
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...submitted,
+      status: "returned"
+    });
+    tx.spotProcurementPayment.create.mockResolvedValue({
+      ...submitted,
+      id: "payment-2",
+      code: "LXCG-001-V1-P002",
+      status: "draft",
+      supplierBalanceAmountCents: 1_000n,
+      companyPaymentAmountCents: 7_000n,
+      balanceOverrideReason: "项目现金安排需要保留供应商余额",
+      submittedAt: null,
+      approvedAt: null
+    });
+
+    const result = await service.review("payment-1", "finance-1", {
+      decision: "return_to_applicant",
+      comment: "项目现金安排需要保留供应商余额",
+      adjustedSupplierBalanceAmountCents: "1000"
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "returned",
+        newDraftPaymentId: "payment-2"
+      })
+    );
+    expect(balance.releaseReservation).toHaveBeenCalledWith(
+      tx,
+      "payment-1",
+      "finance-1",
+      "付款申请退回经办人：项目现金安排需要保留供应商余额"
+    );
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: { status: "returned" }
+    });
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        code: "LXCG-001-V1-P002",
+        status: "draft",
+        handlerUserId: "material-1",
+        settlementAmountCents: 8_000n,
+        supplierBalanceAmountCents: 1_000n,
+        companyPaymentAmountCents: 7_000n,
+        balanceOverrideReason: "项目现金安排需要保留供应商余额"
+      })
+    });
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ submittedAt: null })
+      })
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.payment.approval.return_to_applicant",
+        metadata: expect.objectContaining({
+          oldPaymentId: "payment-1",
+          newDraftPaymentId: "payment-2",
+          originalSupplierBalanceAmountCents: "3000",
+          adjustedSupplierBalanceAmountCents: "1000",
+          suggestedBalanceAmountCents: "5000",
+          balanceOverrideReason: "项目现金安排需要保留供应商余额",
+          reservationReleased: true,
+          releasedReservationAmountCents: "3000"
+        })
+      })
+    );
+  });
+
+  it("rejects adjusted balance fields outside a finance-director return action", async () => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        { ...draftPayment, status: "approval_pending", submittedAt: new Date() }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: "material-1",
+          frozenNodes: [
+            {
+              name: "综合部主管审批",
+              mode: "any",
+              roleKeys: ["comprehensive_director"]
+            }
+          ]
+        }
+      ]);
+    role(tx, "comprehensive_director");
+
+    await expect(
+      service.review("payment-1", "comprehensive-1", {
+        decision: "return_to_applicant",
+        comment: "尝试修改抵扣",
+        adjustedSupplierBalanceAmountCents: "0"
+      })
+    ).rejects.toEqual(
+      new BadRequestException(
+        "只有财务主管在退回申请人时可以指定调整后的供应商余额抵扣金额"
+      )
+    );
+    expect(balance.releaseReservation).not.toHaveBeenCalled();
+  });
+
+  it.each(["approve", "reject"] as const)(
+    "rejects finance %s with an adjusted balance field",
+    async (decision) => {
+      const { service, tx, balance } = harness();
+      tx.$queryRaw
+        .mockResolvedValueOnce([version])
+        .mockResolvedValueOnce([
+          {
+            ...draftPayment,
+            status: "approval_pending",
+            submittedAt: new Date()
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            applicantUserId: "material-1",
+            frozenNodes: [
+              {
+                name: "财务主管审批",
+                mode: "any",
+                roleKeys: ["finance_director"]
+              }
+            ]
+          }
+        ]);
+      role(tx, "finance_director");
+
+      await expect(
+        service.review("payment-1", "finance-1", {
+          decision,
+          comment: decision === "reject" ? "不同意" : undefined,
+          adjustedSupplierBalanceAmountCents: "0"
+        })
+      ).rejects.toEqual(
+        new BadRequestException(
+          "财务调整后的供应商余额抵扣金额只能随退回申请人动作提交"
+        )
+      );
+      expect(balance.releaseReservation).not.toHaveBeenCalled();
+    }
+  );
+
+  it("requires both adjusted balance amount and reason on a finance-director return", async () => {
+    const makeHarness = () => {
+      const current = harness();
+      current.tx.$queryRaw
+        .mockResolvedValueOnce([version])
+        .mockResolvedValueOnce([
+          {
+            ...draftPayment,
+            status: "approval_pending",
+            submittedAt: new Date()
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            applicantUserId: "material-1",
+            frozenNodes: [
+              {
+                name: "财务主管审批",
+                mode: "any",
+                roleKeys: ["finance_director"]
+              }
+            ]
+          }
+        ]);
+      role(current.tx, "finance_director");
+      return current;
+    };
+    const missingAmount = makeHarness();
+    await expect(
+      missingAmount.service.review("payment-1", "finance-1", {
+        decision: "return_to_applicant",
+        comment: "需要减少抵扣"
+      })
+    ).rejects.toEqual(
+      new BadRequestException("财务主管退回付款申请时必须指定调整后的供应商余额抵扣金额")
+    );
+
+    const missingReason = makeHarness();
+    await expect(
+      missingReason.service.review("payment-1", "finance-1", {
+        decision: "return_to_applicant",
+        adjustedSupplierBalanceAmountCents: "0"
+      })
+    ).rejects.toEqual(
+      new BadRequestException("财务主管调整供应商余额抵扣时必须填写原因")
+    );
+  });
+
+  it("rejects finance adjustment above settlement or the latest available balance after release", async () => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approval_pending",
+          settlementAmountCents: 8_000n,
+          supplierBalanceAmountCents: 3_000n,
+          companyPaymentAmountCents: 5_000n,
+          submittedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: "material-1",
+          frozenNodes: [
+            {
+              name: "财务主管审批",
+              mode: "any",
+              roleKeys: ["finance_director"]
+            }
+          ]
+        }
+      ]);
+    role(tx, "finance_director");
+    balance.releaseReservation.mockResolvedValue({
+      released: true,
+      amountCents: 3_000n
+    });
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "2000",
+      suggestedBalanceAmountCents: "2000"
+    });
+
+    await expect(
+      service.review("payment-1", "finance-1", {
+        decision: "return_to_applicant",
+        comment: "只允许少量抵扣",
+        adjustedSupplierBalanceAmountCents: "2500"
+      })
+    ).rejects.toEqual(
+      new BadRequestException(
+        "调整后的供应商余额抵扣金额不能超过当前可用供应商余额"
+      )
+    );
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks a handler from submitting below the latest suggestion without a finance-bound override reason", async () => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          settlementAmountCents: 8_000n,
+          supplierBalanceAmountCents: 1_000n,
+          companyPaymentAmountCents: 7_000n,
+          paymentPath: "supplier_direct",
+          paymentMethod: "bank_transfer",
+          payeeAccountNameSnapshot: "北京某某商贸",
+          payeeBankNameSnapshot: "中国建设银行",
+          payeeBankAccountSnapshot: "622200001",
+          expectedPaymentAt: new Date(),
+          paymentNote: "申请付款"
+        }
+      ]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "5000",
+      suggestedBalanceAmountCents: "5000"
+    });
+
+    await expect(
+      service.submit("payment-1", "material-1")
+    ).rejects.toEqual(
+      new BadRequestException(
+        "本次供应商余额抵扣低于系统建议，请先由财务主管退回并指定调整金额"
+      )
+    );
+    expect(balance.reserve).not.toHaveBeenCalled();
+  });
+
+  it("allows the handler to submit the finance-adjusted draft unchanged and freezes the reason", async () => {
+    const { service, tx, balance, audit } = harness();
+    const financeDraft = {
+      ...draftPayment,
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents: 1_000n,
+      companyPaymentAmountCents: 7_000n,
+      paymentPath: "supplier_direct",
+      paymentMethod: "bank_transfer",
+      payeeAccountNameSnapshot: "北京某某商贸",
+      payeeBankNameSnapshot: "中国建设银行",
+      payeeBankAccountSnapshot: "622200001",
+      expectedPaymentAt: new Date(),
+      paymentNote: "申请付款",
+      balanceOverrideReason: "项目现金安排需要保留供应商余额"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([financeDraft]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "5000",
+      suggestedBalanceAmountCents: "5000"
+    });
+    balance.reserve.mockResolvedValue({
+      reservationId: "reservation-2",
+      amountCents: 1_000n
+    });
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...financeDraft,
+      status: "approval_pending",
+      submittedAt: new Date()
+    });
+
+    const result = await service.submit("payment-1", "material-1");
+
+    expect(result.status).toBe("approval_pending");
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        status: "approval_pending",
+        supplierBalanceAmountCents: 1_000n,
+        balanceOverrideReason: "项目现金安排需要保留供应商余额"
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.payment.approval.submit",
+        metadata: expect.objectContaining({
+          suggestedBalanceAmountCents: "5000",
+          balanceOverrideReason: "项目现金安排需要保留供应商余额"
+        })
+      })
+    );
+  });
+
+  it("preserves the finance reason when the handler raises but remains below suggestion, and rejects any later decrease", async () => {
+    const { service, tx, balance } = harness();
+    const financeDraft = {
+      ...draftPayment,
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents: 1_000n,
+      companyPaymentAmountCents: 7_000n,
+      paymentPath: "supplier_direct",
+      balanceOverrideReason: "项目现金安排需要保留供应商余额"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([financeDraft]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "5000",
+      suggestedBalanceAmountCents: "5000"
+    });
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...financeDraft,
+      supplierBalanceAmountCents: 2_000n,
+      companyPaymentAmountCents: 6_000n
+    });
+
+    await service.updateDraft("payment-1", "material-1", {
+      supplierBalanceAmountCents: "2000",
+      companyPaymentAmountCents: "6000"
+    });
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        supplierBalanceAmountCents: 2_000n,
+        balanceOverrideReason: "项目现金安排需要保留供应商余额"
+      })
+    });
+
+    const lower = harness();
+    lower.tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...financeDraft,
+          supplierBalanceAmountCents: 2_000n,
+          companyPaymentAmountCents: 6_000n
+        }
+      ]);
+    role(lower.tx, "material_staff");
+    lower.balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "5000",
+      suggestedBalanceAmountCents: "5000"
+    });
+    await expect(
+      lower.service.updateDraft("payment-1", "material-1", {
+        supplierBalanceAmountCents: "1500",
+        companyPaymentAmountCents: "6500"
+      })
+    ).rejects.toEqual(
+      new BadRequestException(
+        "经办人不能把供应商余额抵扣金额降到财务主管指定金额以下，请再次提交财务主管调整"
+      )
+    );
+  });
+
+  it("clears the finance override reason after the handler restores balance use to the latest system suggestion", async () => {
+    const { service, tx, balance } = harness();
+    const financeDraft = {
+      ...draftPayment,
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents: 1_000n,
+      companyPaymentAmountCents: 7_000n,
+      paymentPath: "supplier_direct",
+      balanceOverrideReason: "项目现金安排需要保留供应商余额"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([financeDraft]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "5000",
+      suggestedBalanceAmountCents: "5000"
+    });
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...financeDraft,
+      supplierBalanceAmountCents: 5_000n,
+      companyPaymentAmountCents: 3_000n,
+      balanceOverrideReason: null
+    });
+
+    await service.updateDraft("payment-1", "material-1", {
+      supplierBalanceAmountCents: "5000",
+      companyPaymentAmountCents: "3000"
+    });
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        supplierBalanceAmountCents: 5_000n,
+        balanceOverrideReason: null
+      })
+    });
+  });
+
+  it("applicant withdrawal releases once, keeps old submission immutable and creates a new draft", async () => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        { ...draftPayment, status: "approval_pending", submittedAt: new Date() }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 1,
+          applicantUserId: "material-1",
+          frozenNodes: []
+        }
+      ]);
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...draftPayment,
+      status: "withdrawn"
+    });
+    tx.spotProcurementPayment.create.mockResolvedValue({
+      ...draftPayment,
+      id: "payment-2",
+      code: "LXCG-001-V1-P002"
+    });
+    role(tx, "material_staff");
+
+    await service.withdrawApproval("payment-1", "material-1");
+
+    expect(balance.releaseReservation).toHaveBeenCalledTimes(1);
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({ status: "withdrawn" })
+    });
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ submittedAt: null })
+      })
+    );
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalled();
+  });
+
+  it("voids a non-executed approved payment and releases its balance reservation", async () => {
+    const { service, tx, balance, audit } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approved_pending_payment",
+          submittedAt: new Date(),
+          approvedAt: new Date()
+        }
+      ]);
+    role(tx, "finance_director");
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...draftPayment,
+      status: "voided",
+      invalidatedAt: new Date(),
+      invalidatedByUserId: "finance-1",
+      invalidatedReason: "采购已取消"
+    });
+
+    const result = await service.voidPayment(
+      "payment-1",
+      "finance-1",
+      "采购已取消"
+    );
+
+    expect(result.status).toBe("voided");
+    expect(balance.releaseReservation).toHaveBeenCalledWith(
+      tx,
+      "payment-1",
+      "finance-1",
+      "付款申请作废：采购已取消"
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.payment.void",
+        metadata: expect.objectContaining({
+          fromStatus: "approved_pending_payment",
+          reason: "采购已取消"
+        })
+      })
+    );
+  });
+
+  it.each(["P2002", "P2003", "P2025", "P2034"])(
+    "maps Prisma %s without exposing technical details",
+    async (code) => {
+      const { service, prisma } = harness();
+      prisma.$transaction.mockRejectedValueOnce({ code });
+
+      await expect(
+        service.submit("payment-1", "material-1")
+      ).rejects.toThrow(
+        code === "P2034"
+          ? "付款或供应商余额已变化，请刷新后重试"
+          : "零星采购付款数据已变化，请刷新后重试"
+      );
+    }
+  );
+});
