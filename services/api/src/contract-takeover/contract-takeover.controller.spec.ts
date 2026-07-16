@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
+import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { ContractTakeoverController } from "./contract-takeover.controller";
@@ -16,6 +17,10 @@ const takeoverBodyRoutes = [
   ["updateDraft", 2],
   ["attachEvidence", 2],
   ["recordCorrection", 2],
+  ["createTaxFactRevision", 2],
+  ["updateTaxFactRevision", 3],
+  ["reviewTaxFactsByFinance", 3],
+  ["confirmTaxFactsByContract", 3],
   ["confirm", 3]
 ] as const;
 
@@ -92,6 +97,32 @@ const validTakeoverRouteBodies = [
       currentPassword: "current password"
     }
   ],
+  [
+    "createTaxFactRevision",
+    2,
+    {
+      kind: "supplement",
+      invoiceType: "vat_special",
+      taxMode: "single_rate",
+      defaultTaxRatePercent: "13",
+      source: "business_finance_confirmation",
+      confirmationExplanation: "合同部与财务部已核对原合同"
+    }
+  ],
+  [
+    "updateTaxFactRevision",
+    3,
+    {
+      kind: "supplement",
+      invoiceType: "vat_general",
+      taxMode: "single_rate",
+      defaultTaxRatePercent: "3",
+      source: "contract_document",
+      evidenceFileId: "file-1"
+    }
+  ],
+  ["reviewTaxFactsByFinance", 3, { decision: "approve", comment: "税务事实一致" }],
+  ["confirmTaxFactsByContract", 3, { decision: "approve", comment: "合同事实确认" }],
   ["confirm", 3, { confirmationPassword: "current password" }]
 ] as const;
 
@@ -134,6 +165,30 @@ describe("ContractTakeoverController", () => {
   function expectProjectAction(handler: object, action: string) {
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(action);
   }
+
+  it("allows only the three business positions to read tax fact revisions", () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ContractTakeoverController.prototype.listTaxFactRevisions
+      )
+    ).toEqual(["contract_staff", "finance_director", "contract_director"]);
+  });
+
+  it.each([
+    ["createTaxFactRevision", "contract.tax_fact.supplement"],
+    ["updateTaxFactRevision", "contract.tax_fact.supplement"],
+    ["submitTaxFactFinanceReview", "contract.tax_fact.supplement"],
+    ["reviewTaxFactsByFinance", "contract.tax_fact.finance_review"],
+    ["confirmTaxFactsByContract", "contract.tax_fact.confirm"]
+  ])("protects %s with %s", (method, action) => {
+    expectProjectAction(
+      ContractTakeoverController.prototype[
+        method as keyof ContractTakeoverController
+      ] as object,
+      action
+    );
+  });
 
   it.each(takeoverBodyRoutes)("exposes a runtime DTO for %s", (method, bodyIndex) => {
     const metatype = takeoverBodyMetatype(method, bodyIndex);

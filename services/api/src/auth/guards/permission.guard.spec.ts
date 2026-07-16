@@ -30,6 +30,58 @@ describe("PermissionGuard", () => {
     };
   }
 
+  function buildProjectPrisma(roleKey: string) {
+    return {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: roleKey }])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+  }
+
+  it.each([
+    ["contract.tax_fact.supplement", "contract_staff"],
+    ["contract.tax_fact.finance_review", "finance_director"],
+    ["contract.tax_fact.confirm", "contract_director"]
+  ] as const)("allows %s only for its assigned business position", async (action, roleKey) => {
+    const allowedGuard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce(action)
+      } as never,
+      buildProjectPrisma(roleKey) as never
+    );
+    await expect(
+      allowedGuard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { projectId: "project-1" }
+        })
+      )
+    ).resolves.toBe(true);
+
+    const deniedGuard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce(action)
+      } as never,
+      buildProjectPrisma("super_admin") as never
+    );
+    await expect(
+      deniedGuard.canActivate(
+        contextWithRequest({
+          user: { id: "super-admin-1" },
+          params: { projectId: "project-1" }
+        })
+      )
+    ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
+  });
+
   it("allows a project-scoped position to open a filtered aggregate ledger", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

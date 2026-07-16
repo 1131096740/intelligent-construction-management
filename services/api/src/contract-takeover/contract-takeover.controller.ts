@@ -10,8 +10,14 @@ import {
   StreamableFile
 } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { ContractTaxFactsService } from "../contract-tax-facts/contract-tax-facts.service";
+import {
+  ReviewContractTaxFactRevisionDto,
+  SaveContractTaxFactRevisionDto
+} from "../contract-tax-facts/dto/contract-tax-fact-revision.dto";
 import { ContractTakeoverService } from "./contract-takeover.service";
 import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
 import { AttachContractTakeoverEvidenceDto } from "./dto/attach-contract-takeover-evidence.dto";
@@ -36,7 +42,8 @@ export class ContractTakeoverController {
   constructor(
     private readonly takeovers: ContractTakeoverService,
     @Optional()
-    private readonly excel?: ContractTakeoverExcelService
+    private readonly excel?: ContractTakeoverExcelService,
+    private readonly taxFacts?: ContractTaxFactsService
   ) {}
 
   @Get()
@@ -104,6 +111,96 @@ export class ContractTakeoverController {
     @Param("takeoverId") takeoverId: string
   ) {
     return this.takeovers.detail(projectId, takeoverId);
+  }
+
+  @Get(":takeoverId/tax-fact-revisions")
+  @RequirePositions("contract_staff", "finance_director", "contract_director")
+  listTaxFactRevisions(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string
+  ) {
+    return this.requireTaxFacts().list(projectId, takeoverId);
+  }
+
+  @Post(":takeoverId/tax-fact-revisions")
+  @RequireProjectRole("contract.tax_fact.supplement")
+  createTaxFactRevision(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: SaveContractTaxFactRevisionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.requireTaxFacts().create(projectId, takeoverId, body, user.id);
+  }
+
+  @Patch(":takeoverId/tax-fact-revisions/:revisionId")
+  @RequireProjectRole("contract.tax_fact.supplement")
+  updateTaxFactRevision(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Param("revisionId") revisionId: string,
+    @Body() body: SaveContractTaxFactRevisionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.requireTaxFacts().update(
+      projectId,
+      takeoverId,
+      revisionId,
+      body,
+      user.id
+    );
+  }
+
+  @Post(":takeoverId/tax-fact-revisions/:revisionId/finance-review-submission")
+  @RequireProjectRole("contract.tax_fact.supplement")
+  submitTaxFactFinanceReview(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Param("revisionId") revisionId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.requireTaxFacts().submitFinanceReview(
+      projectId,
+      takeoverId,
+      revisionId,
+      user.id
+    );
+  }
+
+  @Post(":takeoverId/tax-fact-revisions/:revisionId/finance-review")
+  @RequireProjectRole("contract.tax_fact.finance_review")
+  reviewTaxFactsByFinance(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Param("revisionId") revisionId: string,
+    @Body() body: ReviewContractTaxFactRevisionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.requireTaxFacts().financeReview(
+      projectId,
+      takeoverId,
+      revisionId,
+      body,
+      user.id
+    );
+  }
+
+  @Post(":takeoverId/tax-fact-revisions/:revisionId/contract-confirmation")
+  @RequireProjectRole("contract.tax_fact.confirm")
+  confirmTaxFactsByContract(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Param("revisionId") revisionId: string,
+    @Body() body: ReviewContractTaxFactRevisionDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.requireTaxFacts().contractConfirmation(
+      projectId,
+      takeoverId,
+      revisionId,
+      body,
+      user.id
+    );
   }
 
   @Post()
@@ -194,5 +291,12 @@ export class ContractTakeoverController {
       throw new Error("历史合同 Excel 导入服务暂不可用，请稍后重试");
     }
     return this.excel;
+  }
+
+  private requireTaxFacts() {
+    if (!this.taxFacts) {
+      throw new Error("历史合同税务事实复核服务暂不可用，请稍后重试");
+    }
+    return this.taxFacts;
   }
 }
