@@ -32,6 +32,15 @@ type ReserveInput = {
   actorUserId: string;
 };
 
+type ReleaseReservationInput = {
+  paymentId: string;
+  expectedAmountCents: bigint;
+  expectedProjectId: string;
+  expectedSupplierKey: string;
+  actorUserId: string;
+  reason: string;
+};
+
 type BalanceReadClient = Pick<
   PrismaService,
   "supplierBalanceAccount"
@@ -160,23 +169,20 @@ export class SpotProcurementBalanceService {
 
   async releaseReservation(
     tx: Prisma.TransactionClient,
-    paymentId: string,
-    expectedAmountCents: bigint,
-    actorUserId: string,
-    reason: string
+    input: ReleaseReservationInput
   ): Promise<{ released: boolean; amountCents: bigint }> {
     const preflight = await tx.supplierBalanceReservation.findUnique({
-      where: { paymentId },
+      where: { paymentId: input.paymentId },
       select: { accountId: true, status: true }
     });
-    if (expectedAmountCents === 0n) {
+    if (input.expectedAmountCents === 0n) {
       if (preflight) {
         throw new ConflictException(RESERVATION_STATE_ERROR);
       }
       return { released: false, amountCents: 0n };
     }
     if (
-      expectedAmountCents < 0n ||
+      input.expectedAmountCents < 0n ||
       !preflight ||
       preflight.status !== "reserved"
     ) {
@@ -186,21 +192,32 @@ export class SpotProcurementBalanceService {
       tx,
       preflight.accountId
     );
+    if (
+      account.projectId !== input.expectedProjectId ||
+      account.supplierKey !== input.expectedSupplierKey
+    ) {
+      throw new ConflictException(RESERVATION_STATE_ERROR);
+    }
     const payment = await tx.spotProcurementPayment.findUnique({
-      where: { id: paymentId },
+      where: { id: input.paymentId },
       select: { procurementId: true }
     });
-    const reservation = await this.lockReservation(tx, paymentId);
+    const reservation = await this.lockReservation(
+      tx,
+      input.paymentId
+    );
     if (
       !reservation ||
       reservation.status !== "reserved" ||
       reservation.accountId !== preflight.accountId ||
       reservation.accountId !== account.id ||
-      reservation.amountCents !== expectedAmountCents
+      reservation.amountCents !== input.expectedAmountCents
     ) {
       throw new ConflictException(RESERVATION_STATE_ERROR);
     }
-    if (account.reservedAmountCents < expectedAmountCents) {
+    if (
+      account.reservedAmountCents < input.expectedAmountCents
+    ) {
       throw new ConflictException(RESERVATION_STATE_ERROR);
     }
     const released = await tx.supplierBalanceReservation.updateMany({
@@ -208,8 +225,8 @@ export class SpotProcurementBalanceService {
       data: {
         status: "released",
         releasedAt: new Date(),
-        releasedByUserId: actorUserId,
-        releaseReason: reason
+        releasedByUserId: input.actorUserId,
+        releaseReason: input.reason
       }
     });
     if (released.count !== 1) {
@@ -227,28 +244,28 @@ export class SpotProcurementBalanceService {
         accountId: account.id,
         sequenceNo,
         reservationId: reservation.id,
-        paymentId,
+        paymentId: input.paymentId,
         procurementId: payment?.procurementId,
         entryType: "release",
         availableDeltaCents: 0n,
         reservedDeltaCents: -reservation.amountCents,
         availableAmountAfterCents: account.availableAmountCents,
         reservedAmountAfterCents: reservedAfter,
-        actorUserId,
-        reason
+        actorUserId: input.actorUserId,
+        reason: input.reason
       }
     });
     await this.audit.record(tx, {
-      actorUserId,
+      actorUserId: input.actorUserId,
       action: "spot_procurement.balance.release",
       businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
-      businessId: paymentId,
+      businessId: input.paymentId,
       metadata: {
         accountId: account.id,
         reservationId: reservation.id,
         procurementId: payment?.procurementId,
         amountCents: reservation.amountCents.toString(),
-        reason,
+        reason: input.reason,
         reservedAmountAfterCents: reservedAfter.toString()
       }
     });

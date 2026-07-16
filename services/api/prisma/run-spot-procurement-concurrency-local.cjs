@@ -100,6 +100,36 @@ async function waitForPostgres(containerName) {
   throw new Error("临时 PostgreSQL 16 在 30 秒内未就绪");
 }
 
+function createSpotProcurementRunnerCleanup({
+  commandRuntime,
+  command,
+  docker,
+  containerName,
+  temporaryRoot,
+  removeTemporaryRoot = rm,
+  onComplete
+}) {
+  return createRunnerCleanup({
+    stopChildren: () => commandRuntime.stopAll(),
+    removeContainer: () =>
+      command(
+        docker,
+        ["rm", "--force", containerName],
+        { timeoutMs: 60_000 }
+      ).catch((error) => {
+        if (!String(error?.message).includes("No such container")) {
+          throw error;
+        }
+      }),
+    removeTemporaryRoot: () =>
+      removeTemporaryRoot(temporaryRoot, {
+        recursive: true,
+        force: true
+      }),
+    onComplete
+  });
+}
+
 async function main() {
   const databasePort = await freePort();
   const suffix = `${Date.now()}-${process.pid}`;
@@ -122,23 +152,12 @@ async function main() {
   };
   assertDedicatedLocalDatabase(databaseUrl);
 
-  let containerStarted = false;
-  const cleanup = createRunnerCleanup({
-    stopChildren: () => commandRuntime.stopAll(),
-    removeContainer: () =>
-      containerStarted
-        ? command(
-            docker,
-            ["rm", "--force", containerName],
-            { timeoutMs: 60_000 }
-          ).catch((error) => {
-            if (!String(error?.message).includes("No such container")) {
-              throw error;
-            }
-          })
-        : Promise.resolve(),
-    removeTemporaryRoot: () =>
-      rm(temporaryRoot, { recursive: true, force: true }),
+  const cleanup = createSpotProcurementRunnerCleanup({
+    commandRuntime,
+    command,
+    docker,
+    containerName,
+    temporaryRoot,
     onComplete: () =>
       console.log(
         `清理完成：临时容器 ${containerName} 与临时目录已删除`
@@ -201,7 +220,6 @@ async function main() {
           forwardOutput: true
         }
       );
-      containerStarted = true;
       await waitForPostgres(containerName);
       console.log(
         `临时 PostgreSQL 16 已就绪：${containerName}` +
@@ -263,3 +281,7 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
+
+module.exports = {
+  createSpotProcurementRunnerCleanup
+};

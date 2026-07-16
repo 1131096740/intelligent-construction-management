@@ -35,6 +35,19 @@ function assertBigint(actual, expected, label) {
   assert(actual === expected, `${label} 应为 ${expected}，实际为 ${actual}`);
 }
 
+function comparable(value) {
+  return JSON.stringify(value, (_key, item) =>
+    typeof item === "bigint" ? `${item}n` : item
+  );
+}
+
+function assertUnchanged(before, after, label) {
+  assert(
+    comparable(after) === comparable(before),
+    `${label} 在失败释放后发生了变化`
+  );
+}
+
 function errorText(error) {
   if (error && typeof error === "object") {
     if (typeof error.message === "string") return error.message;
@@ -568,10 +581,14 @@ async function verifyBalanceCompetitionAndRelease(servicesA, servicesB) {
         (tx) =>
           servicesA.balances.releaseReservation(
             tx,
-            sequenceInputs[0].paymentId,
-            3_000n,
-            HANDLER_USER_ID,
-            "本地并发释放验收 A"
+            {
+              paymentId: sequenceInputs[0].paymentId,
+              expectedAmountCents: 3_000n,
+              expectedProjectId: PROJECT_ID,
+              expectedSupplierKey: sequenceSupplierKey,
+              actorUserId: HANDLER_USER_ID,
+              reason: "本地并发释放验收 A"
+            }
           ),
         {
           isolationLevel:
@@ -582,10 +599,14 @@ async function verifyBalanceCompetitionAndRelease(servicesA, servicesB) {
         (tx) =>
           servicesB.balances.releaseReservation(
             tx,
-            sequenceInputs[0].paymentId,
-            3_000n,
-            HANDLER_USER_ID,
-            "本地并发释放验收 B"
+            {
+              paymentId: sequenceInputs[0].paymentId,
+              expectedAmountCents: 3_000n,
+              expectedProjectId: PROJECT_ID,
+              expectedSupplierKey: sequenceSupplierKey,
+              actorUserId: HANDLER_USER_ID,
+              reason: "本地并发释放验收 B"
+            }
           ),
         {
           isolationLevel:
@@ -644,6 +665,160 @@ async function verifyBalanceCompetitionAndRelease(servicesA, servicesB) {
   );
   console.log(
     "ok supplier balance concurrency: over-capacity race, continuous sequenceNo, strict one-shot release"
+  );
+}
+
+async function verifyMismatchedReservationReleaseFailsClosed(
+  servicesA
+) {
+  const procurementId = "spot-concurrency-mismatched-payment";
+  const versionId = `${procurementId}-v1`;
+  const expectedSupplierKey =
+    "spot-concurrency-mismatched-supplier-a";
+  const expectedSupplierName = "错账验收供应商 A";
+  const wrongProjectId = "concurrency-project-b";
+  const wrongSupplierKey = "spot-concurrency-mismatched-supplier-b";
+  const wrongSupplierName = "错账验收供应商 B";
+  const amountCents = 2_500n;
+
+  await clientA.project.create({
+    data: {
+      id: wrongProjectId,
+      code: "CONCURRENCY-VERIFY-B",
+      name: "零星采购错账验收临时项目 B"
+    }
+  });
+  await createApprovedProcurement(clientA, {
+    procurementId,
+    versionId,
+    code: "LXCG-CONC-MISMATCH-A",
+    supplierKey: expectedSupplierKey,
+    supplierName: expectedSupplierName,
+    totalAmountCents: 5_000n
+  });
+  const payment = await createPaymentDraft(clientA, {
+    paymentId: `${procurementId}-payment`,
+    procurementId,
+    versionId,
+    code: "LXCG-CONC-MISMATCH-A-P001",
+    supplierName: expectedSupplierName,
+    settlementAmountCents: amountCents,
+    supplierBalanceAmountCents: amountCents
+  });
+  await clientA.spotProcurementPayment.update({
+    where: { id: payment.id },
+    data: { status: "approval_pending", submittedAt: new Date() }
+  });
+  const expectedAccount =
+    await clientA.supplierBalanceAccount.create({
+      data: {
+        id: "spot-concurrency-mismatched-account-a",
+        projectId: PROJECT_ID,
+        supplierKey: expectedSupplierKey,
+        supplierNameSnapshot: expectedSupplierName,
+        availableAmountCents: 5_000n,
+        reservedAmountCents: 0n
+      }
+    });
+  const wrongAccount =
+    await clientA.supplierBalanceAccount.create({
+      data: {
+        id: "spot-concurrency-mismatched-account-b",
+        projectId: wrongProjectId,
+        supplierKey: wrongSupplierKey,
+        supplierNameSnapshot: wrongSupplierName,
+        availableAmountCents: 5_000n,
+        reservedAmountCents: amountCents
+      }
+    });
+  const reservation =
+    await clientA.supplierBalanceReservation.create({
+      data: {
+        id: "spot-concurrency-mismatched-reservation",
+        accountId: wrongAccount.id,
+        paymentId: payment.id,
+        amountCents,
+        status: "reserved",
+        reservedByUserId: HANDLER_USER_ID
+      }
+    });
+  await clientA.supplierBalanceEntry.create({
+    data: {
+      accountId: wrongAccount.id,
+      sequenceNo: 1n,
+      reservationId: reservation.id,
+      paymentId: payment.id,
+      procurementId,
+      entryType: "reserve",
+      availableDeltaCents: 0n,
+      reservedDeltaCents: amountCents,
+      availableAmountAfterCents: 5_000n,
+      reservedAmountAfterCents: amountCents,
+      actorUserId: HANDLER_USER_ID,
+      reason: "构造同金额跨项目跨供应商错账"
+    }
+  });
+
+  const readFacts = () =>
+    Promise.all([
+      clientA.spotProcurementPayment.findUniqueOrThrow({
+        where: { id: payment.id }
+      }),
+      clientA.spotProcurementVersion.findUniqueOrThrow({
+        where: { id: versionId }
+      }),
+      clientA.supplierBalanceReservation.findUniqueOrThrow({
+        where: { paymentId: payment.id }
+      }),
+      clientA.supplierBalanceAccount.findMany({
+        where: {
+          id: { in: [expectedAccount.id, wrongAccount.id] }
+        },
+        orderBy: { id: "asc" }
+      }),
+      clientA.supplierBalanceEntry.findMany({
+        where: { accountId: wrongAccount.id },
+        orderBy: { sequenceNo: "asc" }
+      })
+    ]);
+  const before = await readFacts();
+  const error = await clientA
+    .$transaction(
+      (tx) =>
+        servicesA.balances.releaseReservation(tx, {
+          paymentId: payment.id,
+          expectedAmountCents: amountCents,
+          expectedProjectId: PROJECT_ID,
+          expectedSupplierKey,
+          actorUserId: HANDLER_USER_ID,
+          reason: "错账释放必须失败"
+        }),
+      {
+        isolationLevel:
+          Prisma.TransactionIsolationLevel.Serializable
+      }
+    )
+    .then(
+      () => null,
+      (caught) => caught
+    );
+  assert(
+    typeof error?.getStatus === "function" &&
+      error.getStatus() === 409,
+    `同金额错账释放必须返回 Conflict，实际 ${errorText(error)}`
+  );
+  assert(
+    error.message === "供应商余额预留状态异常，请联系财务处理",
+    `同金额错账释放必须返回固定中文提示，实际 ${errorText(error)}`
+  );
+  const after = await readFacts();
+  assertUnchanged(before[0], after[0], "付款申请 A");
+  assertUnchanged(before[1], after[1], "采购版本 A");
+  assertUnchanged(before[2], after[2], "错误 reservation B");
+  assertUnchanged(before[3], after[3], "供应商余额账户 A/B");
+  assertUnchanged(before[4], after[4], "供应商余额流水");
+  console.log(
+    "ok mismatched reservation fail-closed: payment/version A cannot release same-amount reservation/account B"
   );
 }
 
@@ -728,9 +903,10 @@ async function main() {
   await seedVerificationFacts();
   await verifyCumulativeCapacityCompetition(servicesA, servicesB);
   await verifyBalanceCompetitionAndRelease(servicesA, servicesB);
+  await verifyMismatchedReservationReleaseFailsClosed(servicesA);
   await verifyRawP2034Sentinel();
   console.log(
-    "零星采购真实 PostgreSQL 16 并发验收通过：累计额度、余额竞争、流水序号、严格释放、P2034"
+    "零星采购真实 PostgreSQL 16 并发验收通过：累计额度、余额竞争、流水序号、严格释放、错账阻断、P2034"
   );
 }
 

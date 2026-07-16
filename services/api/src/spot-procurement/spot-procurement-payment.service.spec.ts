@@ -209,6 +209,47 @@ function harness() {
   return { service, prisma, tx, audit, pilot, balance, auth };
 }
 
+function chairmanSelfReviewHarness() {
+  const current = harness();
+  current.tx.$queryRaw
+    .mockResolvedValueOnce([version])
+    .mockResolvedValueOnce([
+      {
+        ...draftPayment,
+        status: "approval_pending",
+        submittedAt: new Date()
+      }
+    ])
+    .mockResolvedValueOnce([
+      {
+        id: "approval-1",
+        status: "approval_pending",
+        currentNodeIndex: 0,
+        applicantUserId: "leader-1",
+        frozenNodes: [
+          {
+            name: "董事长或总经理审批",
+            mode: "any",
+            roleKeys: ["chairman", "general_manager"]
+          }
+        ]
+      }
+    ]);
+  roles(current.tx, { global: ["chairman"] });
+  return current;
+}
+
+function expectNoPaymentReviewWrites(
+  current: ReturnType<typeof harness>
+) {
+  expect(current.balance.releaseReservation).not.toHaveBeenCalled();
+  expect(current.tx.approvalActionLog.create).not.toHaveBeenCalled();
+  expect(current.tx.approvalInstance.update).not.toHaveBeenCalled();
+  expect(current.tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  expect(current.tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+  expect(current.audit.record).not.toHaveBeenCalled();
+}
+
 function validDraftInput(): UpdateSpotProcurementPaymentDraftDto {
   return {
     settlementAmountCents: "8000",
@@ -1160,36 +1201,50 @@ describe("SpotProcurementPaymentService", () => {
     );
   });
 
-  it("does not let an ordinary applicant approve their own payment or forge approved roles on rejection", async () => {
-    const { service, tx } = harness();
-    const frozenNodes = [
-      {
-        name: "综合部主管审批",
-        mode: "any",
-        roleKeys: ["comprehensive_director"]
-      }
-    ];
-    tx.$queryRaw
-      .mockResolvedValueOnce([version])
-      .mockResolvedValueOnce([
-        { ...draftPayment, status: "approval_pending", submittedAt: new Date() }
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: "approval-1",
-          status: "approval_pending",
-          currentNodeIndex: 0,
-          applicantUserId: "material-1",
-          frozenNodes
-        }
-      ]);
-    role(tx, "comprehensive_director");
+  it.each([
+    "approve",
+    "reject",
+    "return_to_applicant"
+  ] as const)(
+    "does not let an ordinary applicant %s their own payment",
+    async (decision) => {
+      const current = harness();
+      current.tx.$queryRaw
+        .mockResolvedValueOnce([version])
+        .mockResolvedValueOnce([
+          {
+            ...draftPayment,
+            status: "approval_pending",
+            submittedAt: new Date()
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            applicantUserId: "material-1",
+            frozenNodes: [
+              {
+                name: "综合部主管审批",
+                mode: "any",
+                roleKeys: ["comprehensive_director"]
+              }
+            ]
+          }
+        ]);
+      role(current.tx, "comprehensive_director");
 
-    await expect(
-      service.review("payment-1", "material-1", { decision: "approve" })
-    ).rejects.toThrow("申请人不能审批自己发起的业务");
-    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
-  });
+      await expect(
+        current.service.review("payment-1", "material-1", {
+          decision,
+          comment:
+            decision === "approve" ? undefined : "申请人不能处理自己的单据"
+        })
+      ).rejects.toThrow("申请人不能审批自己发起的业务");
+      expectNoPaymentReviewWrites(current);
+    }
+  );
 
   it("requires reason and current-password confirmation for chairman or GM approving their own payment", async () => {
     const makeHarness = () => {
@@ -1355,6 +1410,118 @@ describe("SpotProcurementPaymentService", () => {
     expect(JSON.stringify(reviewAudit)).not.toContain("Current@123");
   });
 
+  it.each(["reject", "return_to_applicant"] as const)(
+    "requires full chairman self-review confirmation before %s and writes nothing on failure",
+    async (decision) => {
+      const comment = "本人复核后不同意";
+
+      const missingReason = chairmanSelfReviewHarness();
+      await expect(
+        missingReason.service.review("payment-1", "leader-1", {
+          decision,
+          comment,
+          confirmationPassword: "Current@123"
+        } as ReviewSpotProcurementPaymentDto)
+      ).rejects.toThrow(
+        "董事长或总经理审批自己发起的业务时，请填写自审原因"
+      );
+      expectNoPaymentReviewWrites(missingReason);
+
+      const missingPassword = chairmanSelfReviewHarness();
+      await expect(
+        missingPassword.service.review("payment-1", "leader-1", {
+          decision,
+          comment,
+          selfReviewReason: "  本人复核确认  "
+        } as ReviewSpotProcurementPaymentDto)
+      ).rejects.toThrow(
+        "董事长或总经理自审前，请输入当前密码完成二次确认"
+      );
+      expectNoPaymentReviewWrites(missingPassword);
+
+      const wrongPassword = chairmanSelfReviewHarness();
+      wrongPassword.auth.confirmPassword.mockRejectedValue(
+        new ForbiddenException("当前密码不正确")
+      );
+      const caught = await wrongPassword.service
+        .review("payment-1", "leader-1", {
+          decision,
+          comment,
+          selfReviewReason: "  本人复核确认  ",
+          confirmationPassword: "wrong-password"
+        } as ReviewSpotProcurementPaymentDto)
+        .catch((error: unknown) => error);
+      expect(caught).toBeInstanceOf(ForbiddenException);
+      expect((caught as Error).message).toBe("当前密码不正确");
+      expect(
+        JSON.stringify({
+          message: (caught as Error).message,
+          response: (caught as ForbiddenException).getResponse()
+        })
+      ).not.toContain("wrong-password");
+      expectNoPaymentReviewWrites(wrongPassword);
+    }
+  );
+
+  it.each([
+    ["reject", "rejected"],
+    ["return_to_applicant", "returned"]
+  ] as const)(
+    "records trimmed chairman self-review metadata for %s without persisting the password",
+    async (decision, expectedStatus) => {
+      const { service, tx, balance, audit, auth } =
+        chairmanSelfReviewHarness();
+      tx.spotProcurementPayment.update.mockResolvedValue({
+        ...draftPayment,
+        status: expectedStatus
+      });
+      tx.spotProcurementPayment.create.mockResolvedValue({
+        ...draftPayment,
+        id: "payment-2",
+        code: "LXCG-001-V1-P002",
+        status: "draft"
+      });
+
+      const result = await service.review("payment-1", "leader-1", {
+        decision,
+        comment: "本人复核后不同意",
+        selfReviewReason: "  本人复核确认  ",
+        confirmationPassword: "Current@123"
+      } as ReviewSpotProcurementPaymentDto);
+
+      expect(auth.confirmPassword).toHaveBeenCalledWith(
+        "leader-1",
+        "Current@123"
+      );
+      expect(balance.releaseReservation).toHaveBeenCalled();
+      const actionData =
+        tx.approvalActionLog.create.mock.calls[0]?.[0].data;
+      expect(actionData.metadata).toEqual(
+        expect.objectContaining({
+          reviewRoleKey: "chairman",
+          selfReview: true,
+          selfReviewReason: "本人复核确认"
+        })
+      );
+      const reviewAudit = audit.record.mock.calls.find(
+        ([, input]) =>
+          (input as { action?: string }).action ===
+          `spot_procurement.payment.approval.${decision}`
+      )?.[1];
+      expect(reviewAudit).toEqual(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            selfReview: true,
+            selfReviewReason: "本人复核确认"
+          })
+        })
+      );
+      expect(JSON.stringify(actionData)).not.toContain("Current@123");
+      expect(JSON.stringify(reviewAudit)).not.toContain("Current@123");
+      expect(JSON.stringify(result)).not.toContain("Current@123");
+    }
+  );
+
   it.each([
     ["return_to_applicant", "returned"],
     ["reject", "rejected"]
@@ -1404,10 +1571,14 @@ describe("SpotProcurementPaymentService", () => {
 
       expect(balance.releaseReservation).toHaveBeenCalledWith(
         tx,
-        "payment-1",
-        0n,
-        "comprehensive-1",
-        expect.any(String)
+        expect.objectContaining({
+          paymentId: "payment-1",
+          expectedAmountCents: 0n,
+          expectedProjectId: "project-1",
+          expectedSupplierKey: "party:party-1",
+          actorUserId: "comprehensive-1",
+          reason: expect.any(String)
+        })
       );
       expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
         where: { id: "payment-1" },
@@ -1474,10 +1645,14 @@ describe("SpotProcurementPaymentService", () => {
 
       expect(balance.releaseReservation).toHaveBeenCalledWith(
         tx,
-        "payment-1",
-        3_000n,
-        "comprehensive-1",
-        expect.any(String)
+        expect.objectContaining({
+          paymentId: "payment-1",
+          expectedAmountCents: 3_000n,
+          expectedProjectId: "project-1",
+          expectedSupplierKey: "party:party-1",
+          actorUserId: "comprehensive-1",
+          reason: expect.any(String)
+        })
       );
       expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
       expect(tx.approvalInstance.update).not.toHaveBeenCalled();
@@ -1572,10 +1747,15 @@ describe("SpotProcurementPaymentService", () => {
     );
     expect(balance.releaseReservation).toHaveBeenCalledWith(
       tx,
-      "payment-1",
-      3_000n,
-      "finance-1",
-      "付款申请退回经办人：项目现金安排需要保留供应商余额"
+      {
+        paymentId: "payment-1",
+        expectedAmountCents: 3_000n,
+        expectedProjectId: "project-1",
+        expectedSupplierKey: "party:party-1",
+        actorUserId: "finance-1",
+        reason:
+          "付款申请退回经办人：项目现金安排需要保留供应商余额"
+      }
     );
     expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
       where: { id: "payment-1" },
@@ -2262,10 +2442,14 @@ describe("SpotProcurementPaymentService", () => {
 
     expect(balance.releaseReservation).toHaveBeenCalledWith(
       tx,
-      "payment-1",
-      3_000n,
-      "material-1",
-      "采购经办人撤回付款审批"
+      {
+        paymentId: "payment-1",
+        expectedAmountCents: 3_000n,
+        expectedProjectId: "project-1",
+        expectedSupplierKey: "party:party-1",
+        actorUserId: "material-1",
+        reason: "采购经办人撤回付款审批"
+      }
     );
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
@@ -2309,10 +2493,14 @@ describe("SpotProcurementPaymentService", () => {
     });
     expect(balance.releaseReservation).toHaveBeenCalledWith(
       tx,
-      "payment-1",
-      0n,
-      "finance-1",
-      "付款申请作废：采购已取消"
+      {
+        paymentId: "payment-1",
+        expectedAmountCents: 0n,
+        expectedProjectId: "project-1",
+        expectedSupplierKey: "party:party-1",
+        actorUserId: "finance-1",
+        reason: "付款申请作废：采购已取消"
+      }
     );
     expect(audit.record).toHaveBeenCalledWith(
       tx,
@@ -2353,10 +2541,14 @@ describe("SpotProcurementPaymentService", () => {
 
     expect(balance.releaseReservation).toHaveBeenCalledWith(
       tx,
-      "payment-1",
-      3_000n,
-      "finance-1",
-      "付款申请作废：采购已取消"
+      {
+        paymentId: "payment-1",
+        expectedAmountCents: 3_000n,
+        expectedProjectId: "project-1",
+        expectedSupplierKey: "party:party-1",
+        actorUserId: "finance-1",
+        reason: "付款申请作废：采购已取消"
+      }
     );
     expect(tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
     expect(tx.approvalInstance.updateMany).not.toHaveBeenCalled();
@@ -2404,10 +2596,14 @@ describe("SpotProcurementPaymentService", () => {
     ).rejects.toThrow("付款状态已变化，请重试付款作废");
     expect(paymentRace.balance.releaseReservation).toHaveBeenCalledWith(
       paymentRace.tx,
-      "payment-1",
-      0n,
-      "finance-1",
-      "付款申请作废：并发测试"
+      {
+        paymentId: "payment-1",
+        expectedAmountCents: 0n,
+        expectedProjectId: "project-1",
+        expectedSupplierKey: "party:party-1",
+        actorUserId: "finance-1",
+        reason: "付款申请作废：并发测试"
+      }
     );
 
     const approvalRace = harness();
@@ -2438,10 +2634,14 @@ describe("SpotProcurementPaymentService", () => {
     ).rejects.toThrow("付款审批状态已变化，请重试付款作废");
     expect(approvalRace.balance.releaseReservation).toHaveBeenCalledWith(
       approvalRace.tx,
-      "payment-1",
-      0n,
-      "finance-1",
-      "付款申请作废：并发测试"
+      {
+        paymentId: "payment-1",
+        expectedAmountCents: 0n,
+        expectedProjectId: "project-1",
+        expectedSupplierKey: "party:party-1",
+        actorUserId: "finance-1",
+        reason: "付款申请作废：并发测试"
+      }
     );
   });
 

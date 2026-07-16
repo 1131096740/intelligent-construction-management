@@ -49,17 +49,37 @@ function releaseReservation(
   tx: ReturnType<typeof harness>["tx"],
   expectedAmountCents: bigint,
   actorUserId = "finance-1",
+  reason = "付款申请被退回",
+  expectedProjectId = "project-1",
+  expectedSupplierKey = "party:party-1"
+) {
+  return service.releaseReservation(tx as never, {
+    paymentId: "payment-1",
+    expectedAmountCents,
+    expectedProjectId,
+    expectedSupplierKey,
+    actorUserId,
+    reason
+  });
+}
+
+function releaseReservationWithBusinessCoordinates(
+  service: SpotProcurementBalanceService,
+  tx: ReturnType<typeof harness>["tx"],
+  expectedAmountCents: bigint,
+  expectedProjectId = "project-1",
+  expectedSupplierKey = "party:party-1",
+  actorUserId = "finance-1",
   reason = "付款申请被退回"
 ) {
-  return (
-    service.releaseReservation as unknown as (
-      client: unknown,
-      paymentId: string,
-      expectedAmountCents: bigint,
-      actorUserId: string,
-      reason: string
-    ) => Promise<unknown>
-  )(tx, "payment-1", expectedAmountCents, actorUserId, reason);
+  return service.releaseReservation(tx as never, {
+    paymentId: "payment-1",
+    expectedAmountCents,
+    expectedProjectId,
+    expectedSupplierKey,
+    actorUserId,
+    reason
+  });
 }
 
 describe("SpotProcurementBalanceService", () => {
@@ -268,6 +288,70 @@ describe("SpotProcurementBalanceService", () => {
     );
   });
 
+  it.each([
+    [
+      "project",
+      {
+        projectId: "project-2",
+        supplierKey: "party:party-1"
+      }
+    ],
+    [
+      "supplier",
+      {
+        projectId: "project-1",
+        supplierKey: "party:party-2"
+      }
+    ]
+  ])(
+    "fails closed when the reserved account has the wrong %s coordinate",
+    async (_coordinate, accountCoordinates) => {
+      const { service, tx, audit } = harness();
+      tx.supplierBalanceReservation.findUnique.mockResolvedValue({
+        accountId: "balance-1",
+        status: "reserved"
+      });
+      tx.spotProcurementPayment.findUnique.mockResolvedValue({
+        procurementId: "procurement-1"
+      });
+      tx.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            id: "balance-1",
+            ...accountCoordinates,
+            availableAmountCents: 10_000n,
+            reservedAmountCents: 3_000n
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "reservation-1",
+            accountId: "balance-1",
+            paymentId: "payment-1",
+            amountCents: 3_000n,
+            status: "reserved"
+          }
+        ]);
+      tx.supplierBalanceReservation.updateMany.mockResolvedValue({
+        count: 1
+      });
+
+      await expect(
+        releaseReservationWithBusinessCoordinates(
+          service,
+          tx,
+          3_000n
+        )
+      ).rejects.toEqual(new ConflictException(RESERVATION_STATE_ERROR));
+      expect(
+        tx.supplierBalanceReservation.updateMany
+      ).not.toHaveBeenCalled();
+      expect(tx.supplierBalanceAccount.update).not.toHaveBeenCalled();
+      expect(tx.supplierBalanceEntry.create).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
   it("fails closed when a positive frozen balance amount has no reservation", async () => {
     const { service, tx } = harness();
     tx.supplierBalanceReservation.findUnique.mockResolvedValue(null);
@@ -336,7 +420,7 @@ describe("SpotProcurementBalanceService", () => {
       }
     ],
     [
-      "account mismatch",
+      "same-amount wrong account",
       {
         accountId: "balance-1",
         status: "reserved"
@@ -352,7 +436,7 @@ describe("SpotProcurementBalanceService", () => {
   ])(
     "fails closed on reservation %s before changing the account",
     async (_caseName, preflightReservation, lockedReservation) => {
-      const { service, tx } = harness();
+      const { service, tx, audit } = harness();
       tx.supplierBalanceReservation.findUnique.mockResolvedValue(
         preflightReservation
       );
@@ -377,6 +461,7 @@ describe("SpotProcurementBalanceService", () => {
       expect(tx.supplierBalanceReservation.updateMany).not.toHaveBeenCalled();
       expect(tx.supplierBalanceAccount.update).not.toHaveBeenCalled();
       expect(tx.supplierBalanceEntry.create).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     }
   );
 

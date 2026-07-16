@@ -12,10 +12,7 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
-import {
-  assertOrdinaryApplicantCannotReview,
-  confirmApprovalSelfReview
-} from "../approval/approval-self-review";
+import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -493,28 +490,17 @@ export class SpotProcurementPaymentService {
         if (!approvedRoleKey) {
           throw new ForbiddenException("当前用户不是本付款审批节点处理人");
         }
-        const selfReview =
-          input.decision === "approve"
-            ? await confirmApprovalSelfReview({
-                applicantUserId: approval.applicantUserId,
-                actorUserId,
-                actorRoleKeys: actorRoles,
-                approvedRoleKey,
-                selfReviewReason: input.selfReviewReason,
-                confirmationPassword: input.confirmationPassword,
-                confirmPassword: (password) =>
-                  this.auth.confirmPassword(actorUserId, password)
-              })
-            : null;
-        if (!selfReview) {
-          assertOrdinaryApplicantCannotReview({
-            applicantUserId: approval.applicantUserId,
-            actorUserId,
-            actorRoleKeys: actorRoles,
-            approvedRoleKey
-          });
-        }
-        const selfReviewMetadata = selfReview?.metadata ?? {};
+        const selfReview = await confirmApprovalSelfReview({
+          applicantUserId: approval.applicantUserId,
+          actorUserId,
+          actorRoleKeys: actorRoles,
+          approvedRoleKey,
+          selfReviewReason: input.selfReviewReason,
+          confirmationPassword: input.confirmationPassword,
+          confirmPassword: (password) =>
+            this.auth.confirmPassword(actorUserId, password)
+        });
+        const selfReviewMetadata = selfReview.metadata;
         const comment = optionalText(input.comment);
         const adjustedBalanceText =
           input.adjustedSupplierBalanceAmountCents;
@@ -574,13 +560,15 @@ export class SpotProcurementPaymentService {
           });
 
         if (input.decision === "reject") {
-          await this.balances.releaseReservation(
-            tx,
-            payment.id,
-            payment.supplierBalanceAmountCents,
+          await this.balances.releaseReservation(tx, {
+            paymentId: payment.id,
+            expectedAmountCents:
+              payment.supplierBalanceAmountCents,
+            expectedProjectId: version.projectId,
+            expectedSupplierKey: version.supplierKey,
             actorUserId,
-            `付款申请被驳回：${comment}`
-          );
+            reason: `付款申请被驳回：${comment}`
+          });
           await recordApprovalAction();
           await tx.approvalInstance.update({
             where: { id: approval.id },
@@ -625,13 +613,15 @@ export class SpotProcurementPaymentService {
               );
             }
             const released =
-              await this.balances.releaseReservation(
-                tx,
-                payment.id,
-                payment.supplierBalanceAmountCents,
+              await this.balances.releaseReservation(tx, {
+                paymentId: payment.id,
+                expectedAmountCents:
+                  payment.supplierBalanceAmountCents,
+                expectedProjectId: version.projectId,
+                expectedSupplierKey: version.supplierKey,
                 actorUserId,
-                `付款申请退回经办人：${comment}`
-              );
+                reason: `付款申请退回经办人：${comment}`
+              });
             const suggestion =
               await this.balances.suggestionWithClient(
                 tx,
@@ -698,13 +688,15 @@ export class SpotProcurementPaymentService {
               newDraftPaymentId: newDraft.id
             });
           }
-          await this.balances.releaseReservation(
-            tx,
-            payment.id,
-            payment.supplierBalanceAmountCents,
+          await this.balances.releaseReservation(tx, {
+            paymentId: payment.id,
+            expectedAmountCents:
+              payment.supplierBalanceAmountCents,
+            expectedProjectId: version.projectId,
+            expectedSupplierKey: version.supplierKey,
             actorUserId,
-            `付款申请退回经办人：${comment}`
-          );
+            reason: `付款申请退回经办人：${comment}`
+          });
           await recordApprovalAction();
           await tx.approvalInstance.update({
             where: { id: approval.id },
@@ -820,13 +812,15 @@ export class SpotProcurementPaymentService {
         ) {
           throw new ForbiddenException("只有采购经办人可以撤回付款审批");
         }
-        await this.balances.releaseReservation(
-          tx,
-          payment.id,
-          payment.supplierBalanceAmountCents,
+        await this.balances.releaseReservation(tx, {
+          paymentId: payment.id,
+          expectedAmountCents:
+            payment.supplierBalanceAmountCents,
+          expectedProjectId: version.projectId,
+          expectedSupplierKey: version.supplierKey,
           actorUserId,
-          "采购经办人撤回付款审批"
-        );
+          reason: "采购经办人撤回付款审批"
+        });
         await tx.approvalInstance.update({
           where: { id: approval.id },
           data: { status: "withdrawn" }
@@ -914,15 +908,17 @@ export class SpotProcurementPaymentService {
         if (payment.status === "approval_pending") {
           approval = await this.requireLockedApproval(tx, payment.id);
         }
-        await this.balances.releaseReservation(
-          tx,
-          payment.id,
-          payment.status === "draft"
-            ? 0n
-            : payment.supplierBalanceAmountCents,
+        await this.balances.releaseReservation(tx, {
+          paymentId: payment.id,
+          expectedAmountCents:
+            payment.status === "draft"
+              ? 0n
+              : payment.supplierBalanceAmountCents,
+          expectedProjectId: version.projectId,
+          expectedSupplierKey: version.supplierKey,
           actorUserId,
-          `付款申请作废：${reason}`
-        );
+          reason: `付款申请作废：${reason}`
+        });
         if (approval) {
           const approvalVoided =
             await tx.approvalInstance.updateMany({
