@@ -2541,6 +2541,36 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
+  it("fails closed when the spot-procurement cash delegate is unavailable", async () => {
+    const cashPool = projectCashPoolTables({
+      receiptAmountCents: 100_000n
+    });
+    const tx = {
+      ...cashPool.tables,
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    delete (tx as Partial<typeof tx>).spotProcurementPayment;
+    const service = new PaymentRequestService(
+      new PaymentAmountService(),
+      {} as never
+    );
+    const reserve = (
+      service as unknown as {
+        reserveProjectCashPool: (
+          client: typeof tx,
+          projectId: string,
+          requestedAmountCents: bigint
+        ) => Promise<unknown>;
+      }
+    ).reserveProjectCashPool.bind(service);
+
+    await expect(
+      reserve(tx, "project-1", 1n)
+    ).rejects.toBeInstanceOf(TypeError);
+  });
+
   it("counts linked project proxy payments against remaining settlement capacity", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),

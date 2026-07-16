@@ -388,28 +388,6 @@ export class ProjectService {
       throw new NotFoundException("项目不存在或已停用，请刷新后重试");
     }
 
-    const spotProcurementPaymentClient = (this.prisma as unknown as {
-      spotProcurementPayment?: {
-        findMany: (args: {
-          where: { projectId: string };
-          select: {
-            id: true;
-            status: true;
-            companyPaymentAmountCents: true;
-            canceledCompanyPaymentAmountCents: true;
-            paidAmountCents: true;
-          };
-        }) => Promise<
-          Array<{
-            id: string;
-            status: string;
-            companyPaymentAmountCents: bigint;
-            canceledCompanyPaymentAmountCents: bigint;
-            paidAmountCents: bigint;
-          }>
-        >;
-      };
-    }).spotProcurementPayment;
     const [
       contracts,
       settlements,
@@ -470,18 +448,16 @@ export class ProjectService {
           paidAmountCents: true
         }
       }),
-      spotProcurementPaymentClient
-        ? spotProcurementPaymentClient.findMany({
-            where: { projectId },
-            select: {
-              id: true,
-              status: true,
-              companyPaymentAmountCents: true,
-              canceledCompanyPaymentAmountCents: true,
-              paidAmountCents: true
-            }
-          })
-        : Promise.resolve([])
+      this.prisma.spotProcurementPayment.findMany({
+        where: { projectId },
+        select: {
+          id: true,
+          status: true,
+          companyPaymentAmountCents: true,
+          canceledCompanyPaymentAmountCents: true,
+          paidAmountCents: true
+        }
+      })
     ]);
     const contractIds = contracts.map((contract) => contract.id);
     const paymentIds = payments.map((payment) => payment.id);
@@ -507,17 +483,9 @@ export class ProjectService {
           select: { amountCents: true }
         })
       : [];
-    const spotExecutionClient = (this.prisma as unknown as {
-      spotProcurementPaymentExecution?: {
-        findMany: (args: {
-          where: { paymentId: { in: string[] }; voidedAt: null };
-          select: { amountCents: true };
-        }) => Promise<Array<{ amountCents: bigint }>>;
-      };
-    }).spotProcurementPaymentExecution;
     const spotExecutions =
-      spotPaymentIds.length && spotExecutionClient
-        ? await spotExecutionClient.findMany({
+      spotPaymentIds.length
+        ? await this.prisma.spotProcurementPaymentExecution.findMany({
             where: {
               paymentId: { in: spotPaymentIds },
               voidedAt: null

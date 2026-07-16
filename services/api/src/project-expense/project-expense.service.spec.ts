@@ -1041,6 +1041,29 @@ describe("ProjectExpenseService", () => {
     expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
   });
 
+  it("fails closed when the spot-procurement cash delegate is unavailable", async () => {
+    const tx = cashPoolTables({ receiptAmountCents: 100_000n });
+    delete (tx as Partial<typeof tx>).spotProcurementPayment;
+    const service = new ProjectExpenseService(
+      {} as never,
+      audit as never,
+      auth as never
+    );
+    const reserve = (
+      service as unknown as {
+        reserveProjectCashPool: (
+          client: typeof tx,
+          projectId: string,
+          requestedAmountCents: bigint
+        ) => Promise<unknown>;
+      }
+    ).reserveProjectCashPool.bind(service);
+
+    await expect(
+      reserve(tx, "project-1", 1n)
+    ).rejects.toBeInstanceOf(TypeError);
+  });
+
   it("rejects mismatched project expense type and subtype", async () => {
     const service = new ProjectExpenseService({} as never, audit as never, auth as never);
 

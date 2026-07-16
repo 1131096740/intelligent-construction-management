@@ -833,6 +833,7 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: {
         findMany: jest.fn().mockResolvedValue([{ id: "financing-quota-1", amountCents: BigInt(2000000) }])
       },
@@ -857,6 +858,38 @@ describe("ProjectService", () => {
       where: { quotaId: { in: ["financing-quota-1"] }, status: { in: ["occupied", "used"] } },
       select: { quotaId: true, amountCents: true }
     });
+  });
+
+  it("fails closed when the spot-procurement overview delegate is unavailable", async () => {
+    const prisma = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "project-1",
+          code: "JG-001",
+          name: "总部综合楼"
+        })
+      },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectUpstreamSettlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectFinancingQuota: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(
+      service.getOperatingFundsOverview("project-1")
+    ).rejects.toBeInstanceOf(TypeError);
   });
 
   it("sums only the latest effective contract version per contract", async () => {
@@ -885,6 +918,7 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseExecution: { findMany: jest.fn() }
@@ -921,6 +955,7 @@ describe("ProjectService", () => {
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseExecution: { findMany: jest.fn() }

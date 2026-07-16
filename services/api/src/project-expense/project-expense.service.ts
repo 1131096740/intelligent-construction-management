@@ -1315,26 +1315,6 @@ export class ProjectExpenseService {
       throw new BadRequestException("项目不存在或已停用");
     }
 
-    const spotProcurementPaymentClient = (tx as unknown as {
-      spotProcurementPayment?: {
-        findMany: (args: {
-          where: { projectId: string; status: { in: string[] } };
-          select: {
-            status: true;
-            companyPaymentAmountCents: true;
-            canceledCompanyPaymentAmountCents: true;
-            paidAmountCents: true;
-          };
-        }) => Promise<
-          Array<{
-            status: string;
-            companyPaymentAmountCents: bigint;
-            canceledCompanyPaymentAmountCents: bigint;
-            paidAmountCents: bigint;
-          }>
-        >;
-      };
-    }).spotProcurementPayment;
     const [
       receipts,
       paymentRequests,
@@ -1364,20 +1344,18 @@ export class ProjectExpenseService {
           paidAmountCents: true
         }
       }),
-      spotProcurementPaymentClient
-        ? spotProcurementPaymentClient.findMany({
-            where: {
-              projectId,
-              status: { in: [...SPOT_PROCUREMENT_CASH_POOL_STATUSES] }
-            },
-            select: {
-              status: true,
-              companyPaymentAmountCents: true,
-              canceledCompanyPaymentAmountCents: true,
-              paidAmountCents: true
-            }
-          })
-        : Promise.resolve([]),
+      tx.spotProcurementPayment.findMany({
+        where: {
+          projectId,
+          status: { in: [...SPOT_PROCUREMENT_CASH_POOL_STATUSES] }
+        },
+        select: {
+          status: true,
+          companyPaymentAmountCents: true,
+          canceledCompanyPaymentAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
       tx.projectFinancingQuota.findMany({
         where: { projectId, status: "approved", validUntil: { gte: new Date() } },
         select: { id: true, amountCents: true },

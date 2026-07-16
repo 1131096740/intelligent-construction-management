@@ -1167,27 +1167,6 @@ export class PaymentRequestService {
         }) => Promise<Array<{ quotaId: string; amountCents: bigint }>>;
       };
     }).projectExpenseFinancingQuotaUsage;
-    const spotProcurementPaymentClient = (tx as unknown as {
-      spotProcurementPayment?: {
-        findMany: (args: {
-          where: { projectId: string; status: { in: string[] } };
-          select: {
-            status: true;
-            companyPaymentAmountCents: true;
-            canceledCompanyPaymentAmountCents: true;
-            paidAmountCents: true;
-          };
-        }) => Promise<
-          Array<{
-            status: string;
-            companyPaymentAmountCents: bigint;
-            canceledCompanyPaymentAmountCents: bigint;
-            paidAmountCents: bigint;
-          }>
-        >;
-      };
-    }).spotProcurementPayment;
-
     const [
       projectReceipts,
       projectPayments,
@@ -1226,20 +1205,18 @@ export class PaymentRequestService {
             }
           })
         : Promise.resolve([]),
-      spotProcurementPaymentClient
-        ? spotProcurementPaymentClient.findMany({
-            where: {
-              projectId,
-              status: { in: [...SPOT_PROCUREMENT_CASH_POOL_STATUSES] }
-            },
-            select: {
-              status: true,
-              companyPaymentAmountCents: true,
-              canceledCompanyPaymentAmountCents: true,
-              paidAmountCents: true
-            }
-          })
-        : Promise.resolve([]),
+      tx.spotProcurementPayment.findMany({
+        where: {
+          projectId,
+          status: { in: [...SPOT_PROCUREMENT_CASH_POOL_STATUSES] }
+        },
+        select: {
+          status: true,
+          companyPaymentAmountCents: true,
+          canceledCompanyPaymentAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
       tx.projectFinancingQuota.findMany({
         where: {
           projectId,
