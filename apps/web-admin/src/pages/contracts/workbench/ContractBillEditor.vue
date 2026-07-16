@@ -2,8 +2,9 @@
   <div class="bill-editor">
     <div class="toolbar">
       <div class="total">
-        <span>含税合计</span>
-        <strong>{{ moneyText(bill.taxInclusiveAmountCents) }}</strong>
+        <span>{{ unlimitedFramework ? "预计含税合计" : "含税合计" }}</span>
+        <strong>{{ totalText }}</strong>
+        <small v-if="unlimitedFramework">仅供参考，不作为合同上限</small>
       </div>
       <div class="actions">
         <t-button
@@ -14,15 +15,17 @@
         >
           下载模板
         </t-button>
-        <label class="file-button">
-          <input
-            type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            :disabled="disabled || busy || hasUnsavedRow"
-            @change="previewImport"
-          >
-          导入预览
-        </label>
+        <t-upload
+          v-model="importFiles"
+          theme="file-input"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          :auto-upload="false"
+          :max="1"
+          :loading="busy"
+          :disabled="disabled || busy || hasUnsavedRow"
+          placeholder="选择 XLSX 并预览"
+          @change="previewImport"
+        />
         <t-button
           size="small"
           theme="primary"
@@ -108,63 +111,85 @@
               v-for="column in columns"
               :key="column.key"
             >
-              <select
+              <div
                 v-if="column.key === 'taxRatePercent'"
-                :value="rowValue(row, column.key)"
-                :disabled="disabled || busy"
-                @change="onCellInput(row.rowKey, column.key, $event)"
+                class="tax-rate-cell"
               >
-                <option
-                  v-for="option in taxRateOptions"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </option>
-              </select>
-              <input
+                <t-input
+                  v-if="bill.taxMode !== 'multiple_rate'"
+                  :value="inheritedTaxRateText(bill)"
+                  disabled
+                />
+                <template v-else>
+                  <t-select
+                    :value="row.taxRateSource ?? 'version_default'"
+                    :options="taxRateSourceOptions"
+                    :disabled="disabled || busy"
+                    @change="(value: string) => onTaxSourceChange(row.rowKey, value)"
+                  />
+                  <t-input
+                    v-if="row.taxRateSource === 'row_override'"
+                    :value="rowValue(row, column.key)"
+                    :disabled="disabled || busy"
+                    placeholder="例外税率%"
+                    @change="(value: string) => onCellValue(row.rowKey, column.key, value)"
+                  />
+                  <span
+                    v-else
+                    class="inherited-rate"
+                  >{{ inheritedTaxRateText(bill) }}</span>
+                </template>
+              </div>
+              <t-input
                 v-else
                 :value="rowValue(row, column.key)"
                 :disabled="disabled || busy"
-                @input="onCellInput(row.rowKey, column.key, $event)"
-              >
+                :placeholder="cellPlaceholder(column.key)"
+                @change="(value: string) => onCellValue(row.rowKey, column.key, value)"
+              />
             </td>
             <td class="row-actions">
-              <button
-                type="button"
+              <t-button
+                size="small"
+                variant="text"
                 :disabled="disabled || busy || (hasUnsavedRow && !isUnsavedBillRow(row))"
                 @click="saveRow(row)"
               >
                 保存
-              </button>
-              <button
-                type="button"
+              </t-button>
+              <t-button
+                size="small"
+                variant="text"
                 :disabled="disabled || busy || hasUnsavedRow"
                 @click="duplicateRow(row)"
               >
                 复制
-              </button>
-              <button
-                type="button"
+              </t-button>
+              <t-button
+                size="small"
+                variant="text"
                 :disabled="disabled || busy || hasUnsavedRow"
                 @click="moveRow(row.rowKey, -1)"
               >
-                ↑
-              </button>
-              <button
-                type="button"
+                上移
+              </t-button>
+              <t-button
+                size="small"
+                variant="text"
                 :disabled="disabled || busy || hasUnsavedRow"
                 @click="moveRow(row.rowKey, 1)"
               >
-                ↓
-              </button>
-              <button
-                type="button"
+                下移
+              </t-button>
+              <t-button
+                size="small"
+                variant="text"
+                theme="danger"
                 :disabled="disabled || busy || (hasUnsavedRow && !isUnsavedBillRow(row))"
                 @click="removeRow(row)"
               >
                 删除
-              </button>
+              </t-button>
             </td>
           </tr>
         </tbody>
@@ -173,8 +198,8 @@
             <td :colspan="Math.max(columns.length - 1, 1)">
               合计
             </td>
-            <td>
-              {{ moneyText(bill.taxInclusiveAmountCents) }}
+            <td class="amount-cell">
+              {{ totalText }}
             </td>
             <td />
           </tr>
@@ -193,7 +218,7 @@
       </t-button>
       <span
         v-if="message"
-        class="message"
+        :class="['message', { danger: messageDanger }]"
       >
         {{ message }}
       </span>
@@ -208,6 +233,7 @@
 </template>
 
 <script setup lang="ts">
+import type { UploadFile } from "tdesign-vue-next";
 import { computed, ref, watch } from "vue";
 import {
   addBillRow,
@@ -222,11 +248,14 @@ import { uploadPrivateFile } from "../../../api/core-flow-read.api";
 import { centsTextToYuanText } from "../../../lib/money";
 import {
   billColumns,
+  billRowValidationMessage,
   canApplyImport,
   createUnsavedBillRow,
-  importPreviewErrors,
   importPreviewCounts,
+  importPreviewErrors,
   importPreviewRows,
+  inheritedTaxRateText,
+  isUnlimitedFrameworkBill,
   isUnsavedBillRow,
   rowValue,
   updateRowPreservingKey,
@@ -244,17 +273,15 @@ const emit = defineEmits<{
 }>();
 
 const localRows = ref<WorkbenchBillRow[]>([]);
+const importFiles = ref<UploadFile[]>([]);
 const busy = ref(false);
 const message = ref("");
+const messageDanger = ref(false);
 const importPreview = ref<unknown>(null);
 const previewVisible = ref(false);
-const taxRateOptions = [
-  { label: "0%", value: "0" },
-  { label: "1%", value: "1" },
-  { label: "3%", value: "3" },
-  { label: "6%", value: "6" },
-  { label: "9%", value: "9" },
-  { label: "13%", value: "13" }
+const taxRateSourceOptions = [
+  { label: "使用合同税率", value: "version_default" },
+  { label: "使用例外税率", value: "row_override" }
 ];
 
 const columns = computed(() => billColumns(props.bill));
@@ -263,6 +290,13 @@ const previewErrors = computed(() => importPreviewErrors(importPreview.value));
 const previewRows = computed(() => importPreviewRows(importPreview.value));
 const canApply = computed(() => Boolean(importId.value) && canApplyImport(importPreview.value));
 const hasUnsavedRow = computed(() => localRows.value.some(isUnsavedBillRow));
+const unlimitedFramework = computed(() => isUnlimitedFrameworkBill(props.bill));
+const hasCalculatedRows = computed(() =>
+  props.bill.rows.some((row) => row.taxInclusiveAmountCents !== null && row.taxInclusiveAmountCents !== undefined)
+);
+const totalText = computed(() =>
+  hasCalculatedRows.value ? moneyText(props.bill.taxInclusiveAmountCents) : "—"
+);
 const importId = computed(() => {
   const value = importPreview.value;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -277,18 +311,30 @@ watch(
   (bill) => {
     localRows.value = bill.rows.map((row) => ({
       ...row,
+      taxRateSource: row.taxRateSource ?? "version_default",
+      initialQuantity: row.quantity,
+      initialUnitPrice: row.unitPrice,
       customData: { ...(row.customData ?? {}) }
     }));
+    importFiles.value = [];
     importPreview.value = null;
     previewVisible.value = false;
     message.value = "";
+    messageDanger.value = false;
   },
   { immediate: true }
 );
 
-function onCellInput(rowKey: string, key: string, event: Event) {
-  const value = (event.target as HTMLInputElement).value;
-  const coreKeys = new Set(["itemCode", "itemName", "specification", "unit", "quantity", "unitPrice", "taxRatePercent"]);
+function onCellValue(rowKey: string, key: string, value: string) {
+  const coreKeys = new Set([
+    "itemCode",
+    "itemName",
+    "specification",
+    "unit",
+    "quantity",
+    "unitPrice",
+    "taxRatePercent"
+  ]);
   const current = localRows.value.find((row) => row.rowKey === rowKey);
   if (!current) {
     return;
@@ -299,16 +345,34 @@ function onCellInput(rowKey: string, key: string, event: Event) {
   localRows.value = updateRowPreservingKey(localRows.value, rowKey, patch);
 }
 
+function onTaxSourceChange(rowKey: string, value: string) {
+  const source = value === "row_override" ? "row_override" : "version_default";
+  localRows.value = updateRowPreservingKey(localRows.value, rowKey, {
+    taxRateSource: source,
+    taxRatePercent: source === "version_default" ? props.bill.defaultTaxRatePercent ?? "" : ""
+  });
+}
+
 function payload(row: WorkbenchBillRow) {
+  const quantity = text(row, "quantity").trim();
+  const source: "version_default" | "row_override" =
+    props.bill.taxMode === "multiple_rate" && row.taxRateSource === "row_override"
+      ? "row_override"
+      : "version_default";
+  const taxRatePercent =
+    source === "row_override"
+      ? text(row, "taxRatePercent").trim()
+      : props.bill.defaultTaxRatePercent?.trim() ?? "";
   return {
     expectedBillRevision: props.bill.revision,
     itemCode: text(row, "itemCode"),
-    itemName: text(row, "itemName") || "未命名",
+    itemName: text(row, "itemName").trim(),
     specification: text(row, "specification"),
-    unit: text(row, "unit") || "项",
-    quantity: text(row, "quantity") || "0",
-    unitPrice: text(row, "unitPrice") || "0",
-    taxRatePercent: text(row, "taxRatePercent") || text(row, "taxRate") || "0",
+    unit: text(row, "unit").trim(),
+    ...(quantity ? { quantity } : {}),
+    unitPrice: text(row, "unitPrice").trim(),
+    taxRatePercent,
+    taxRateSource: source,
     isProvisional: Boolean(row.isProvisional),
     settlementBasis: text(row, "settlementBasis"),
     customData: row.customData ?? {}
@@ -322,18 +386,26 @@ function text(row: WorkbenchBillRow, key: string): string {
 async function run(action: () => Promise<unknown>, success: string) {
   busy.value = true;
   message.value = "";
+  messageDanger.value = false;
   try {
     await action();
     message.value = success;
     emit("reload");
   } catch (error) {
     message.value = error instanceof Error ? error.message : "操作失败";
+    messageDanger.value = true;
   } finally {
     busy.value = false;
   }
 }
 
 async function saveRow(row: WorkbenchBillRow) {
+  const validationMessage = billRowValidationMessage(row, props.bill);
+  if (validationMessage) {
+    message.value = validationMessage;
+    messageDanger.value = true;
+    return;
+  }
   await run(
     () =>
       isUnsavedBillRow(row)
@@ -344,12 +416,27 @@ async function saveRow(row: WorkbenchBillRow) {
 }
 
 function addEmptyRow() {
-  const row = createUnsavedBillRow(`${Date.now()}-${localRows.value.length + 1}`);
+  const row = createUnsavedBillRow(
+    `${Date.now()}-${localRows.value.length + 1}`,
+    props.bill.defaultTaxRatePercent ?? ""
+  );
   localRows.value = [...localRows.value, row];
-  message.value = "已新增空白行，请填写后保存";
+  message.value = unlimitedFramework.value
+    ? "已新增空白行；预计数量可不填，含税单价必须填写"
+    : "已新增空白行，请填写后保存";
+  messageDanger.value = false;
 }
 
 async function duplicateRow(row: WorkbenchBillRow) {
+  const validationMessage = billRowValidationMessage(
+    { ...row, precisionPolicy: "two_decimal" },
+    props.bill
+  );
+  if (validationMessage) {
+    message.value = validationMessage;
+    messageDanger.value = true;
+    return;
+  }
   await run(() => addBillRow(props.bill.id, payload(row)), "已复制");
 }
 
@@ -357,6 +444,7 @@ async function removeRow(row: WorkbenchBillRow) {
   if (isUnsavedBillRow(row)) {
     localRows.value = localRows.value.filter((item) => item.rowKey !== row.rowKey);
     message.value = "已取消新增";
+    messageDanger.value = false;
     return;
   }
   await run(
@@ -383,13 +471,15 @@ async function downloadTemplate() {
   await run(() => downloadBillExcelTemplate(props.bill.id), "模板已下载");
 }
 
-async function previewImport(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0];
+async function previewImport(files: UploadFile[]) {
+  const raw = files[0]?.raw ?? importFiles.value[0]?.raw;
+  const file = raw instanceof File ? raw : null;
   if (!file) {
     return;
   }
   busy.value = true;
   message.value = "";
+  messageDanger.value = false;
   try {
     const uploaded = await uploadPrivateFile(file, file.name);
     importPreview.value = await previewBillExcelImport(props.bill.id, {
@@ -400,9 +490,10 @@ async function previewImport(event: Event) {
     message.value = "预览完成";
   } catch (error) {
     message.value = error instanceof Error ? error.message : "导入预览失败";
+    messageDanger.value = true;
   } finally {
     busy.value = false;
-    (event.target as HTMLInputElement).value = "";
+    importFiles.value = [];
   }
 }
 
@@ -414,8 +505,17 @@ async function applyImport() {
   await run(() => applyBillExcelImport(importId.value), "已应用导入");
 }
 
-function moneyText(value: string | undefined): string {
-  return `${centsTextToYuanText(value ?? "0")} 元`;
+function moneyText(value: string | null | undefined): string {
+  return value === null || value === undefined
+    ? "—"
+    : `${centsTextToYuanText(value)} 元`;
+}
+
+function cellPlaceholder(key: string): string {
+  if (key === "quantity" && unlimitedFramework.value) return "可不填";
+  if (key === "unitPrice") return "最多 2 位小数";
+  if (key === "quantity") return "最多 2 位小数";
+  return "";
 }
 
 function previewRowText(row: Record<string, unknown>): string {
@@ -428,7 +528,7 @@ function previewRowText(row: Record<string, unknown>): string {
 <style scoped>
 .bill-editor {
   display: grid;
-  gap: 12px;
+  gap: var(--jg-space-md);
   container-name: contract-bill;
   container-type: inline-size;
 }
@@ -438,91 +538,72 @@ function previewRowText(row: Record<string, unknown>): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--jg-space-md);
 }
 
 .total {
   display: flex;
-  gap: 8px;
-  color: #424955;
-  font-size: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm);
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-meta);
+}
+
+.total strong {
+  color: var(--jg-color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.total small {
+  color: var(--jg-color-text-tertiary);
 }
 
 .actions,
 .row-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.file-button,
-.row-actions button {
-  display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0 8px;
-  color: #0052d9;
-  background: #fff;
-  border: 1px solid #b8c7e6;
-  border-radius: 3px;
-  font-size: 12px;
-  cursor: pointer;
+  flex-wrap: wrap;
+  gap: var(--jg-space-xs);
 }
 
-.file-button {
-  position: relative;
-}
-
-.file-button input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.file-button:focus-within {
-  outline: 2px solid #0052d9;
-  outline-offset: 2px;
+.actions :deep(.t-upload) {
+  max-width: 220px;
 }
 
 .preview-dialog {
   display: grid;
-  gap: 12px;
+  gap: var(--jg-space-md);
 }
 
 .import-summary,
 .message {
-  color: #424955;
-  font-size: 12px;
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-meta);
 }
 
 .preview-list {
   margin: 0;
-  padding-left: 18px;
-  font-size: 12px;
+  padding-left: var(--jg-space-lg-plus);
+  font-size: var(--jg-font-size-meta);
 }
 
 .preview-rows {
   display: grid;
   max-height: 220px;
   overflow: auto;
-  gap: 6px;
-  padding: 8px;
-  background: #f7f9fc;
-  border: 1px solid #dce1e8;
-  border-radius: 3px;
-  font-size: 12px;
+  gap: var(--jg-space-sm);
+  padding: var(--jg-space-sm);
+  background: var(--jg-color-bg-subtle);
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
+  border-radius: var(--jg-radius-control);
+  font-size: var(--jg-font-size-meta);
 }
 
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--jg-space-sm);
 }
 
 .table-wrap {
@@ -531,42 +612,55 @@ function previewRowText(row: Record<string, unknown>): string {
 
 .bill-table {
   width: 100%;
-  min-width: 820px;
+  min-width: 980px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--jg-font-size-table-secondary);
 }
 
 .bill-table th,
 .bill-table td {
-  padding: 8px;
-  border: 1px solid #dce1e8;
+  padding: var(--jg-space-sm);
+  border: var(--jg-border-width-base) solid var(--jg-color-border);
   text-align: left;
+  vertical-align: top;
 }
 
 .bill-table th {
-  color: #424955;
-  background: #f7f9fc;
-  font-weight: 600;
+  color: var(--jg-color-text-secondary);
+  background: var(--jg-color-bg-subtle);
+  font-weight: var(--jg-font-weight-semibold);
 }
 
 .bill-table tfoot td {
-  color: #151922;
-  background: #f7f9fc;
-  font-weight: 700;
+  color: var(--jg-color-text-primary);
+  background: var(--jg-color-bg-subtle);
+  font-weight: var(--jg-font-weight-bold);
 }
 
-.bill-table input,
-.bill-table select {
-  width: 100%;
-  min-width: 80px;
-  height: 28px;
-  padding: 0 6px;
-  border: 1px solid #ccd4df;
-  border-radius: 3px;
+.bill-table :deep(.t-input),
+.bill-table :deep(.t-select) {
+  min-width: 104px;
+}
+
+.tax-rate-cell {
+  display: grid;
+  min-width: 180px;
+  gap: var(--jg-space-xs);
+}
+
+.inherited-rate {
+  color: var(--jg-color-text-tertiary);
+  font-size: var(--jg-font-size-meta);
+  line-height: var(--jg-line-height-body);
+}
+
+.amount-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .danger {
-  color: #b51d2a;
+  color: var(--jg-color-danger);
 }
 
 @container contract-bill (max-width: 520px) {

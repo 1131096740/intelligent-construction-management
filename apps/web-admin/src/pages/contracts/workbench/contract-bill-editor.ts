@@ -1,3 +1,5 @@
+import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
+
 export interface WorkbenchBillColumn {
   key: string;
   label: string;
@@ -15,6 +17,14 @@ export interface WorkbenchBillRow {
   unitPrice?: string | null;
   taxRate?: string | null;
   taxRatePercent?: string | null;
+  taxRateSource?: "version_default" | "row_override" | null;
+  pricingFactStatus?: string | null;
+  precisionPolicy?: string | null;
+  initialQuantity?: string | null;
+  initialUnitPrice?: string | null;
+  taxInclusiveAmountCents?: string | null;
+  taxExclusiveAmountCents?: string | null;
+  taxAmountCents?: string | null;
   settlementBasis?: string | null;
   isProvisional?: boolean;
   customData?: Record<string, unknown>;
@@ -26,7 +36,15 @@ export interface WorkbenchBill {
   billKey: string;
   name: string;
   revision: number;
-  taxInclusiveAmountCents?: string;
+  amountRole?: string;
+  pricingMode?: string;
+  pricingNature?: string;
+  amountLimitType?: string;
+  taxMode?: "single_rate" | "multiple_rate";
+  defaultTaxRatePercent?: string | null;
+  taxInclusiveAmountCents?: string | null;
+  taxExclusiveAmountCents?: string | null;
+  taxAmountCents?: string | null;
   schemaSnapshot?: { columns?: WorkbenchBillColumn[] } | Record<string, unknown>;
   rows: WorkbenchBillRow[];
 }
@@ -90,13 +108,16 @@ export const coreBillColumns: WorkbenchBillColumn[] = [
   { key: "specification", label: "规格" },
   { key: "unit", label: "单位", required: true },
   { key: "quantity", label: "数量", required: true },
-  { key: "unitPrice", label: "单价", required: true },
-  { key: "taxRatePercent", label: "税率%", required: true }
+  { key: "unitPrice", label: "含税单价", required: true },
+  { key: "taxRatePercent", label: "税率", required: true }
 ];
 
 const UNSAVED_BILL_ROW_PREFIX = "local-new-";
 
-export function createUnsavedBillRow(id: string): WorkbenchBillRow {
+export function createUnsavedBillRow(
+  id: string,
+  defaultTaxRatePercent = ""
+): WorkbenchBillRow {
   return {
     rowKey: `${UNSAVED_BILL_ROW_PREFIX}${id}`,
     itemName: "",
@@ -104,7 +125,8 @@ export function createUnsavedBillRow(id: string): WorkbenchBillRow {
     unit: "",
     quantity: "",
     unitPrice: "",
-    taxRatePercent: "0",
+    taxRatePercent: defaultTaxRatePercent,
+    taxRateSource: "version_default",
     customData: {}
   };
 }
@@ -127,9 +149,60 @@ export function billColumns(bill: WorkbenchBill): WorkbenchBillColumn[] {
     : [];
   const coreKeys = new Set(coreBillColumns.map((column) => column.key));
   return [
-    ...coreBillColumns,
+    ...coreBillColumns.map((column) =>
+      column.key === "quantity" && isUnlimitedFrameworkBill(bill)
+        ? { ...column, label: "预计数量", required: false }
+        : column
+    ),
     ...customColumns.filter((column) => !coreKeys.has(column.key))
   ];
+}
+
+export function isUnlimitedFrameworkBill(bill: WorkbenchBill): boolean {
+  return bill.pricingNature === "framework" && bill.amountLimitType === "unlimited";
+}
+
+export function inheritedTaxRateText(bill: WorkbenchBill): string {
+  return bill.defaultTaxRatePercent
+    ? `继承合同税率（${bill.defaultTaxRatePercent}%）`
+    : "合同税率尚未填写";
+}
+
+export function billRowValidationMessage(
+  row: WorkbenchBillRow,
+  bill: WorkbenchBill
+): string {
+  if (!rowValue(row, "itemName").trim()) return "请填写项目名称";
+  if (!rowValue(row, "unit").trim()) return "请填写单位";
+
+  const quantity = rowValue(row, "quantity").trim();
+  if (!quantity && !isUnlimitedFrameworkBill(bill)) return "请填写数量";
+  if (quantity) {
+    const error = positiveTwoDecimalMessage(quantity, "数量");
+    if (error && !legacyValueUnchanged(row, "quantity", quantity)) return error;
+  }
+
+  const unitPrice = rowValue(row, "unitPrice").trim();
+  if (!unitPrice) return "请填写含税单价";
+  const unitPriceError = positiveTwoDecimalMessage(unitPrice, "含税单价");
+  if (unitPriceError && !legacyValueUnchanged(row, "unitPrice", unitPrice)) {
+    return unitPriceError;
+  }
+
+  const source = row.taxRateSource ?? "version_default";
+  const rate =
+    bill.taxMode === "multiple_rate" && source === "row_override"
+      ? rowValue(row, "taxRatePercent").trim()
+      : bill.defaultTaxRatePercent?.trim() ?? "";
+  if (!rate) {
+    return source === "row_override" ? "请填写例外税率" : "请先填写合同税率";
+  }
+  try {
+    normalizeTaxRatePercent(rate);
+  } catch (error) {
+    return error instanceof Error ? error.message : "税率填写不正确";
+  }
+  return "";
 }
 
 export function updateRowPreservingKey(
@@ -328,4 +401,39 @@ function readCount(source: Record<string, unknown>, keys: readonly string[]): nu
     }
   }
   return 0;
+}
+
+function positiveTwoDecimalMessage(value: string, label: string): string {
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/u.test(value)) {
+    return `${label}必须是最多保留 2 位小数的正数`;
+  }
+  if (/^0(?:\.0+)?$/u.test(value)) {
+    return `${label}必须大于 0`;
+  }
+  return "";
+}
+
+function legacyValueUnchanged(
+  row: WorkbenchBillRow,
+  key: "quantity" | "unitPrice",
+  value: string
+): boolean {
+  if (row.precisionPolicy !== "legacy") {
+    return false;
+  }
+  const initial = key === "quantity" ? row.initialQuantity : row.initialUnitPrice;
+  return (
+    initial !== null &&
+    initial !== undefined &&
+    normalizedDecimalComparison(value) === normalizedDecimalComparison(initial)
+  );
+}
+
+function normalizedDecimalComparison(value: string): string {
+  const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/u.exec(value);
+  if (!match) {
+    return value;
+  }
+  const fraction = (match[2] ?? "").replace(/0+$/u, "");
+  return fraction ? `${match[1]}.${fraction}` : match[1];
 }

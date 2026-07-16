@@ -1,5 +1,9 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
+import type {
+  ContractInvoiceType,
+  ContractTaxMode
+} from "@jiangkong/shared-domain";
 
 // ---------------------------------------------------------------------------
 // Local HTTP helpers (built on apiFetch; keep isolated from core-flow client)
@@ -114,6 +118,12 @@ export interface SaveContractDraftPayload {
   pricingNature?: string;
   amountSource?: string;
   manualAmountCents?: string;
+  taxFacts: {
+    invoiceType: ContractInvoiceType | null;
+    taxMode: ContractTaxMode;
+    defaultTaxRatePercent: string | null;
+    source: "contract_document";
+  };
   paymentTermsOriginalText?: string;
   paymentStages?: Array<{
     name: string;
@@ -570,11 +580,16 @@ export function publishStandardClauseVersion(
 
 export interface SaveBillRowPayload {
   expectedBillRevision: number;
+  itemCode?: string;
   itemName?: string;
+  specification?: string;
   unit?: string;
   quantity?: string;
   unitPrice?: string;
   taxRatePercent?: string;
+  taxRateSource?: "version_default" | "row_override";
+  isProvisional?: boolean;
+  settlementBasis?: string;
   customData?: Record<string, unknown>;
   [key: string]: unknown;
 }

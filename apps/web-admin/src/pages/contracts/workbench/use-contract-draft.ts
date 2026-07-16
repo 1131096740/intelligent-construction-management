@@ -1,7 +1,9 @@
 import type {
   ContractClauseDefinition,
+  ContractInvoiceType,
   ContractReadinessResult,
   ContractTemplateSchema,
+  ContractTaxMode,
   ContractWorkbenchReadModel
 } from "@jiangkong/shared-domain";
 import { computed, reactive, ref, type ComputedRef, type Ref } from "vue";
@@ -56,6 +58,9 @@ export interface ContractDraftModel {
   paymentDueDays: number | null;
   paymentRequiresInvoice: boolean;
   paymentAllowsInstallments: boolean;
+  invoiceType: ContractInvoiceType | null;
+  taxMode: ContractTaxMode;
+  defaultTaxRatePercent: string | null;
   /** Professional/dynamic field values keyed by template field key. */
   fieldValues: Record<string, unknown>;
   /** Simple per-party values stored back into draftData on save. */
@@ -128,6 +133,9 @@ function emptyModel(): ContractDraftModel {
     paymentDueDays: null,
     paymentRequiresInvoice: true,
     paymentAllowsInstallments: true,
+    invoiceType: null,
+    taxMode: "single_rate",
+    defaultTaxRatePercent: null,
     fieldValues: {},
     partyValues: {},
     extraDraftData: {},
@@ -174,6 +182,9 @@ function modelFromWorkbench(workbench: ContractWorkbenchReadModel): ContractDraf
     paymentDueDays: currentSettlementStage?.dueDays ?? null,
     paymentRequiresInvoice: currentSettlementStage?.requiresInvoice ?? true,
     paymentAllowsInstallments: currentSettlementStage?.allowsInstallments ?? true,
+    invoiceType: workbench.version.taxFacts.invoiceType,
+    taxMode: workbench.version.taxFacts.taxMode,
+    defaultTaxRatePercent: workbench.version.taxFacts.defaultTaxRatePercent,
     fieldValues: isRecord(draftData["fieldValues"]) ? { ...draftData["fieldValues"] } : {},
     partyValues: isRecord(draftData["partyValues"]) ? { ...draftData["partyValues"] } : {},
     extraDraftData,
@@ -220,6 +231,9 @@ function assignModel(target: ContractDraftModel, source: ContractDraftModel): vo
   target.paymentDueDays = source.paymentDueDays;
   target.paymentRequiresInvoice = source.paymentRequiresInvoice;
   target.paymentAllowsInstallments = source.paymentAllowsInstallments;
+  target.invoiceType = source.invoiceType ?? null;
+  target.taxMode = source.taxMode ?? "single_rate";
+  target.defaultTaxRatePercent = source.defaultTaxRatePercent ?? null;
   target.fieldValues = { ...source.fieldValues };
   target.partyValues = { ...source.partyValues };
   target.extraDraftData = { ...source.extraDraftData };
@@ -398,11 +412,14 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       clauses: model.clauses,
       pricingNature: model.pricingNature,
       amountSource: model.amountSource,
+      taxFacts: {
+        invoiceType: model.invoiceType,
+        taxMode: model.taxMode,
+        defaultTaxRatePercent: model.defaultTaxRatePercent,
+        source: "contract_document" as const
+      },
       ...(model.amountSource === "manual" && model.manualAmountCents !== null
         ? { manualAmountCents: model.manualAmountCents }
-        : {}),
-      ...(model.amountAdjustmentReason
-        ? { amountAdjustmentReason: model.amountAdjustmentReason }
         : {}),
       ...(!isChangeDraft
         ? {

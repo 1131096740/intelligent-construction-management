@@ -61,6 +61,15 @@ function makeWorkbench(overrides: Record<string, unknown> = {}) {
       amountCents: "0",
       pricingNature: "fixed_total",
       amountSource: "manual",
+      taxFacts: {
+        invoiceType: "vat_special",
+        taxMode: "single_rate",
+        defaultTaxRatePercent: "13",
+        status: "draft",
+        source: "contract_document",
+        revision: 1,
+        frozenAt: null
+      },
       draftData: { contractName: "测试合同" },
       clauseSnapshot: [],
       templateSnapshot: {
@@ -233,6 +242,12 @@ describe("useContractDraft", () => {
     await draft.saveNow();
 
     expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({
+      taxFacts: {
+        invoiceType: "vat_special",
+        taxMode: "single_rate",
+        defaultTaxRatePercent: "13",
+        source: "contract_document"
+      },
       paymentTermsOriginalText: "结算归档后20天内付款85%。",
       paymentStages: [
         {
@@ -246,6 +261,51 @@ describe("useContractDraft", () => {
           originalText: "结算归档后20天内付款85%。"
         }
       ]
+    });
+  });
+
+  it("loads and saves normative tax facts outside legacy draft fields", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(
+      makeWorkbench({
+        version: {
+          ...makeWorkbench().version,
+          taxFacts: {
+            ...makeWorkbench().version.taxFacts,
+            invoiceType: "vat_general",
+            taxMode: "multiple_rate",
+            defaultTaxRatePercent: "9"
+          },
+          draftData: {
+            contractName: "测试合同",
+            fieldValues: {
+              invoiceType: "增值税专用发票",
+              taxRatePercent: "13",
+              deliveryAddress: "项目现场"
+            }
+          }
+        }
+      })
+    );
+    mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
+
+    await draft.load("ct-1");
+
+    expect(draft.model).toMatchObject({
+      invoiceType: "vat_general",
+      taxMode: "multiple_rate",
+      defaultTaxRatePercent: "9"
+    });
+
+    await draft.saveNow();
+
+    expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({
+      taxFacts: {
+        invoiceType: "vat_general",
+        taxMode: "multiple_rate",
+        defaultTaxRatePercent: "9",
+        source: "contract_document"
+      }
     });
   });
 

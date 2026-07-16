@@ -57,6 +57,7 @@
 <script setup lang="ts">
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import { computed } from "vue";
+import { contractProfessionalFields } from "./contract-tax-facts.state";
 import type { ContractDraftModel } from "./use-contract-draft";
 
 const props = defineProps<{
@@ -70,7 +71,9 @@ const emit = defineEmits<{
   (event: "update", patch: Partial<ContractDraftModel>): void;
 }>();
 
-const fields = computed(() => props.workbench?.version.templateSnapshot.fieldSchema ?? []);
+const fields = computed(() =>
+  contractProfessionalFields(props.workbench?.version.templateSnapshot.fieldSchema ?? [])
+);
 
 function stringValue(key: string): string {
   const value = props.model.fieldValues[key];

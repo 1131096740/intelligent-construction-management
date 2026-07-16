@@ -170,7 +170,13 @@ describe("contract workbench API client", () => {
       clauses: [],
       pricingNature: "fixed_total",
       amountSource: "manual",
-      manualAmountCents: "1000000"
+      manualAmountCents: "1000000",
+      taxFacts: {
+        invoiceType: "vat_special",
+        taxMode: "single_rate",
+        defaultTaxRatePercent: "13",
+        source: "contract_document"
+      }
     });
 
     const [path, options] = mockApiFetch.mock.calls[0];
@@ -181,7 +187,13 @@ describe("contract workbench API client", () => {
       draftData: { name: "钢材采购合同" },
       pricingNature: "fixed_total",
       amountSource: "manual",
-      manualAmountCents: "1000000"
+      manualAmountCents: "1000000",
+      taxFacts: {
+        invoiceType: "vat_special",
+        taxMode: "single_rate",
+        defaultTaxRatePercent: "13",
+        source: "contract_document"
+      }
     });
   });
 
@@ -602,6 +614,7 @@ describe("contract workbench API client", () => {
       quantity: "10",
       unitPrice: "3500",
       taxRatePercent: "13",
+      taxRateSource: "version_default",
       customData: {}
     });
 
@@ -615,6 +628,7 @@ describe("contract workbench API client", () => {
         quantity: "10",
         unitPrice: "3500",
         taxRatePercent: "13",
+        taxRateSource: "version_default",
         customData: {}
       })
     });

@@ -441,13 +441,23 @@
                 @update="applyPatch"
                 @reload="reloadCurrent"
               />
-              <ContractPricingSection
+              <div
                 v-else-if="activeSection === 'pricing'"
-                :model="model"
-                :workbench="workbench"
-                :disabled="!editable || isChangeVersion"
-                @update="applyPatch"
-              />
+                class="pricing-sections"
+              >
+                <ContractTaxFactsSection
+                  :model="model"
+                  :workbench="workbench"
+                  :disabled="!editable || isChangeVersion"
+                  @update="applyPatch"
+                />
+                <ContractPricingSection
+                  :model="model"
+                  :workbench="workbench"
+                  :disabled="!editable || isChangeVersion"
+                  @update="applyPatch"
+                />
+              </div>
               <ContractProfessionalFieldsSection
                 v-else-if="activeSection === 'fields'"
                 :model="model"
@@ -458,7 +468,7 @@
               />
               <ContractBillsSection
                 v-else-if="activeSection === 'bills'"
-                :workbench="workbench"
+                :workbench="billWorkbench"
                 :disabled="!editable"
                 @reload="reloadCurrent"
               />
@@ -568,7 +578,10 @@
 </template>
 
 <script setup lang="ts">
-import type { ContractReadinessResult } from "@jiangkong/shared-domain";
+import type {
+  ContractReadinessResult,
+  ContractWorkbenchReadModel
+} from "@jiangkong/shared-domain";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -619,6 +632,7 @@ import ContractPaymentTermsSection from "./workbench/ContractPaymentTermsSection
 import ContractPricingSection from "./workbench/ContractPricingSection.vue";
 import ContractProfessionalFieldsSection from "./workbench/ContractProfessionalFieldsSection.vue";
 import ContractReadinessPanel from "./workbench/ContractReadinessPanel.vue";
+import ContractTaxFactsSection from "./workbench/ContractTaxFactsSection.vue";
 import type { ContractDocumentCanvasRecord } from "./workbench/contract-document-canvas";
 import type {
   ContractNegotiationRoundReadModel,
@@ -773,6 +787,24 @@ const canvasDocuments = computed(
       (document) => ({ ...document })
     )
 );
+const billWorkbench = computed(() => {
+  const current = workbench.value;
+  if (!current) {
+    return null;
+  }
+  const version = current.version as unknown as { amountLimitType?: unknown };
+  return {
+    ...current,
+    bills: current.bills.map((bill) => ({
+      ...bill,
+      pricingNature: current.version.pricingNature,
+      amountLimitType:
+        version.amountLimitType === "unlimited" ? "unlimited" : "capped",
+      taxMode: model.taxMode,
+      defaultTaxRatePercent: model.defaultTaxRatePercent
+    }))
+  } as ContractWorkbenchReadModel;
+});
 
 const blockingMessages = computed(() => {
   const readiness = workbench.value?.readiness as StructuredReadiness | undefined;
@@ -1729,6 +1761,11 @@ function initializeDraftFromQuery() {
 
 .section-editor {
   padding: 0 var(--jg-space-lg) var(--jg-space-lg);
+}
+
+.pricing-sections {
+  display: grid;
+  gap: var(--jg-space-section);
 }
 
 .readonly-banner {
