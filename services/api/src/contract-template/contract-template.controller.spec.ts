@@ -41,7 +41,7 @@ const validSchema = {
       name: "主清单",
       amountRole: "included",
       pricingMode: "tax_inclusive",
-      quantityScale: 3,
+      quantityScale: 2,
       unitPriceScale: 2,
       columns: [{ key: "itemName", label: "项目名称", type: "text", required: true }]
     }
@@ -286,6 +286,27 @@ describe("ContractTemplateController authorization wiring", () => {
 
     expect(response.errors).toEqual(["请填写中文业务编号"]);
   });
+
+  it.each([
+    ["quantityScale", 3, "工程量小数位必须为 2"],
+    ["unitPriceScale", 3, "单价小数位必须为 2"]
+  ] as const)(
+    "rejects new template %s above two decimals",
+    async (field, value, message) => {
+      const response = await getTemplateValidationResponse(
+        "updateDraftVersion",
+        1,
+        {
+          schema: {
+            ...validSchema,
+            bills: [{ ...validSchema.bills[0], [field]: value }]
+          }
+        }
+      );
+
+      expect(response.errors).toEqual([message]);
+    }
+  );
 
   it.each(["fields", "bills", "clauses", "attachments", "validations"])(
     "requires schema array %s and rejects non-arrays",

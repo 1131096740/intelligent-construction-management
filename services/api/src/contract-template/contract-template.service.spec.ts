@@ -20,6 +20,29 @@ describe("ContractTemplateService", () => {
     validations: []
   };
 
+  const governedBill = {
+    key: "main_bill",
+    name: "主清单",
+    amountRole: "included" as const,
+    pricingMode: "tax_inclusive" as const,
+    quantityScale: 2,
+    unitPriceScale: 2,
+    columns: [
+      { key: "itemName", label: "项目名称", type: "text" as const, required: true }
+    ]
+  };
+
+  const zeroTaxRateField = {
+    key: "taxRatePercent",
+    label: "税率(%)",
+    type: "single_select" as const,
+    required: true,
+    options: [
+      { label: "0%", value: "0" },
+      { label: "13%", value: "13" }
+    ]
+  };
+
   it("returns template detail with descending versions and complete schemas", async () => {
     const template = {
       id: "template-1",
@@ -109,6 +132,59 @@ describe("ContractTemplateService", () => {
     expect(prisma.contractBusinessTemplateVersion.findMany).not.toHaveBeenCalled();
   });
 
+  it("keeps legacy published precision and zero-percent options readable without rewriting them", async () => {
+    const legacySchema = {
+      fields: [zeroTaxRateField],
+      bills: [{ ...governedBill, quantityScale: 3 }],
+      clauses: [],
+      attachments: [],
+      validations: []
+    };
+    const template = {
+      id: "template-legacy",
+      status: "published"
+    };
+    const version = {
+      id: "version-legacy",
+      templateId: "template-legacy",
+      versionNo: 1,
+      status: "published",
+      fieldSchema: legacySchema.fields,
+      billSchema: legacySchema.bills,
+      clauseSchema: [],
+      attachmentSchema: [],
+      validationSchema: [],
+      submittedByUserId: "contract-staff-1",
+      publishedByUserId: "contract-director-1",
+      publishedAt: new Date("2026-07-01T00:00:00.000Z"),
+      stoppedAt: null,
+      revokedAt: null,
+      changeSummary: "历史模板",
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-01T00:00:00.000Z")
+    };
+    const service = new ContractTemplateService(
+      {
+        contractBusinessTemplate: {
+          findUnique: jest.fn().mockResolvedValue(template)
+        },
+        contractBusinessTemplateVersion: {
+          findMany: jest.fn().mockResolvedValue([version])
+        }
+      } as never,
+      audit as never
+    );
+
+    await expect(service.getTemplate("template-legacy")).resolves.toMatchObject({
+      versions: [
+        {
+          id: "version-legacy",
+          schema: legacySchema
+        }
+      ]
+    });
+  });
+
   it("creates version 1 as draft", async () => {
     const tx = {
       userPosition: {
@@ -192,6 +268,145 @@ describe("ContractTemplateService", () => {
     })).resolves.toEqual(expect.objectContaining({
       template: expect.objectContaining({ id: "template-1" })
     }));
+  });
+
+  it("rejects saving a new template whose quantity precision is not exactly two", async () => {
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+      },
+      contractBusinessTemplate: { create: jest.fn() },
+      contractBusinessTemplateVersion: { create: jest.fn() }
+    };
+    const service = new ContractTemplateService(
+      {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      } as never,
+      audit as never
+    );
+
+    await expect(
+      service.createTemplate("contract-staff-1", {
+        code: "TPL-PRECISION",
+        businessCode: "合同模板-精度治理-V1",
+        name: "精度治理模板",
+        contractTypeKey: "material_purchase",
+        schema: {
+          ...validSchema,
+          bills: [{ ...governedBill, quantityScale: 3 }]
+        }
+      })
+    ).rejects.toThrow("新模板清单数量精度必须为 2 位小数");
+    expect(tx.contractBusinessTemplate.create).not.toHaveBeenCalled();
+    expect(tx.contractBusinessTemplateVersion.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects saving a draft that configures a zero-percent tax-rate option", async () => {
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+      },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          status: "draft"
+        }),
+        update: jest.fn()
+      }
+    };
+    const service = new ContractTemplateService(
+      {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      } as never,
+      audit as never
+    );
+
+    await expect(
+      service.updateDraftVersion("version-1", "contract-staff-1", {
+        schema: {
+          ...validSchema,
+          fields: [zeroTaxRateField],
+          bills: [governedBill]
+        }
+      })
+    ).rejects.toThrow("新模板税率配置不能包含 0%");
+    expect(tx.contractBusinessTemplateVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("rechecks new-template precision before submission", async () => {
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+      },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          status: "draft",
+          fieldSchema: validSchema.fields,
+          billSchema: [{ ...governedBill, quantityScale: 3 }],
+          clauseSchema: [],
+          attachmentSchema: [],
+          validationSchema: []
+        }),
+        update: jest.fn()
+      }
+    };
+    const service = new ContractTemplateService(
+      {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      } as never,
+      audit as never
+    );
+
+    await expect(
+      service.submitVersion("version-1", "contract-staff-1")
+    ).rejects.toThrow("新模板清单数量精度必须为 2 位小数");
+    expect(tx.contractBusinessTemplateVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("rechecks zero-percent tax configuration before publication", async () => {
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+      },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          status: "submitted",
+          fieldSchema: [zeroTaxRateField],
+          billSchema: [governedBill],
+          clauseSchema: [],
+          attachmentSchema: [],
+          validationSchema: []
+        }),
+        update: jest.fn()
+      }
+    };
+    const service = new ContractTemplateService(
+      {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      } as never,
+      audit as never
+    );
+
+    await expect(
+      service.publishVersion("version-1", "contract-director-1", {
+        changeSummary: "发布"
+      })
+    ).rejects.toThrow("新模板税率配置不能包含 0%");
+    expect(tx.contractBusinessTemplateVersion.update).not.toHaveBeenCalled();
   });
 
   it("publishes only after schema validation", async () => {
@@ -323,6 +538,69 @@ describe("ContractTemplateService", () => {
         businessType: "contract_business_template_version"
       })
     );
+  });
+
+  it("normalizes a cloned legacy template into a governed new draft without mutating the source", async () => {
+    const legacyFields = [zeroTaxRateField];
+    const legacyBills = [{ ...governedBill, quantityScale: 3 }];
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-1" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+      },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-legacy",
+          templateId: "template-1",
+          versionNo: 1,
+          status: "published",
+          fieldSchema: legacyFields,
+          billSchema: legacyBills,
+          clauseSchema: [],
+          attachmentSchema: [],
+          validationSchema: []
+        }),
+        findMany: jest.fn().mockResolvedValue([{ versionNo: 1 }]),
+        create: jest.fn().mockResolvedValue({
+          id: "version-2",
+          versionNo: 2,
+          status: "draft"
+        })
+      }
+    };
+    const service = new ContractTemplateService(
+      {
+        $transaction: jest.fn(async (callback) => callback(tx))
+      } as never,
+      audit as never
+    );
+
+    await service.cloneVersion("version-legacy", "contract-staff-1");
+
+    expect(tx.contractBusinessTemplateVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        fieldSchema: [
+          expect.objectContaining({
+            key: "taxRatePercent",
+            options: [{ label: "13%", value: "13" }]
+          })
+        ],
+        billSchema: [
+          expect.objectContaining({
+            key: "main_bill",
+            quantityScale: 2,
+            unitPriceScale: 2
+          })
+        ]
+      })
+    });
+    expect(legacyFields[0].options).toEqual([
+      { label: "0%", value: "0" },
+      { label: "13%", value: "13" }
+    ]);
+    expect(legacyBills[0].quantityScale).toBe(3);
   });
 
   it("stops a version without changing existing contract snapshots", async () => {

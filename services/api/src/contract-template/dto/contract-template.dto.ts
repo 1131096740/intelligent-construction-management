@@ -136,7 +136,7 @@ export class ContractTemplateBillDto {
   @IsIn(["tax_inclusive", "tax_exclusive"], { message: "清单计价方式不正确" })
   pricingMode!: "tax_inclusive" | "tax_exclusive";
 
-  @IsIntegerInRange({ min: 0, max: 6, typeMessage: "工程量小数位必须是整数", rangeMessage: "工程量小数位必须在 0 到 6 之间" })
+  @IsIntegerInRange({ min: 2, max: 2, typeMessage: "工程量小数位必须是整数", rangeMessage: "工程量小数位必须为 2" })
   quantityScale!: number;
 
   @IsIntegerInRange({ min: 2, max: 2, typeMessage: "单价小数位必须是整数", rangeMessage: "单价小数位必须为 2" })

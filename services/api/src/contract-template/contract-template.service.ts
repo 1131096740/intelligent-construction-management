@@ -143,6 +143,75 @@ export class ContractTemplateService {
     };
   }
 
+  private validateNewTemplateSchema(schema: ContractTemplateSchema): void {
+    validateContractTemplateSchema(schema);
+
+    for (const bill of schema.bills) {
+      if (bill.quantityScale !== 2) {
+        throw new BadRequestException("新模板清单数量精度必须为 2 位小数");
+      }
+      if (bill.unitPriceScale !== 2) {
+        throw new BadRequestException("新模板清单含税单价精度必须为 2 位小数");
+      }
+    }
+
+    for (const field of schema.fields) {
+      if (field.key !== "taxRatePercent") continue;
+      if (
+        this.isZeroTaxRateConfig(field.defaultValue) ||
+        field.options?.some(
+          (option) =>
+            this.isZeroTaxRateConfig(option.value) ||
+            this.isZeroTaxRateConfig(option.label)
+        )
+      ) {
+        throw new BadRequestException("新模板税率配置不能包含 0%");
+      }
+    }
+  }
+
+  private isZeroTaxRateConfig(value: unknown): boolean {
+    if (typeof value === "number") return value === 0;
+    if (typeof value !== "string") return false;
+    const normalized = value.trim().replace(/\s+/gu, "").replace(/%$/u, "");
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/u.test(normalized)) {
+      return false;
+    }
+    return Number(normalized) === 0;
+  }
+
+  private normalizeClonedTemplateSchema(
+    schema: ContractTemplateSchema
+  ): ContractTemplateSchema {
+    return {
+      ...schema,
+      fields: schema.fields.map((field) => {
+        if (field.key !== "taxRatePercent") return field;
+        const { defaultValue, options, ...rest } = field;
+        return {
+          ...rest,
+          ...(defaultValue !== undefined && !this.isZeroTaxRateConfig(defaultValue)
+            ? { defaultValue }
+            : {}),
+          ...(options
+            ? {
+                options: options.filter(
+                  (option) =>
+                    !this.isZeroTaxRateConfig(option.value) &&
+                    !this.isZeroTaxRateConfig(option.label)
+                )
+              }
+            : {})
+        };
+      }),
+      bills: schema.bills.map((bill) => ({
+        ...bill,
+        quantityScale: 2,
+        unitPriceScale: 2
+      }))
+    };
+  }
+
   publishedUsagePreview(v: {
     fieldSchema: unknown;
     billSchema: unknown;
@@ -381,7 +450,7 @@ export class ContractTemplateService {
     return this.prisma.$transaction(async (tx: ContractTemplateTx) => {
       await this.assertTemplateMaintenanceRole(tx as never, actorUserId);
 
-      validateContractTemplateSchema(input.schema);
+      this.validateNewTemplateSchema(input.schema);
 
       const template = await tx.contractBusinessTemplate.create({
         data: {
@@ -431,6 +500,8 @@ export class ContractTemplateService {
         throw new BadRequestException("只有草稿状态的业务模板版本可以编辑");
       }
 
+      this.validateNewTemplateSchema(input.schema);
+
       const updated = await tx.contractBusinessTemplateVersion.update({
         where: { id: versionId },
         data: {
@@ -467,17 +538,21 @@ export class ContractTemplateService {
         orderBy: { versionNo: "desc" }
       });
       const nextVersionNo = (existing[0]?.versionNo ?? 0) + 1;
+      const clonedSchema = this.normalizeClonedTemplateSchema(
+        this.versionToSchema(source)
+      );
+      this.validateNewTemplateSchema(clonedSchema);
 
       const newVersion = await tx.contractBusinessTemplateVersion.create({
         data: {
           templateId: source.templateId,
           versionNo: nextVersionNo,
           status: "draft",
-          fieldSchema: source.fieldSchema as never,
-          billSchema: source.billSchema as never,
-          clauseSchema: source.clauseSchema as never,
-          attachmentSchema: source.attachmentSchema as never,
-          validationSchema: source.validationSchema as never
+          fieldSchema: clonedSchema.fields as never,
+          billSchema: clonedSchema.bills as never,
+          clauseSchema: clonedSchema.clauses as never,
+          attachmentSchema: clonedSchema.attachments as never,
+          validationSchema: clonedSchema.validations as never
         }
       });
 
@@ -505,7 +580,7 @@ export class ContractTemplateService {
         throw new BadRequestException("只有草稿状态的业务模板版本可以提交");
       }
 
-      validateContractTemplateSchema(this.versionToSchema(version));
+      this.validateNewTemplateSchema(this.versionToSchema(version));
 
       const updated = await tx.contractBusinessTemplateVersion.update({
         where: { id: versionId },
@@ -538,7 +613,7 @@ export class ContractTemplateService {
         throw new BadRequestException("只有已提交的业务模板版本可以发布");
       }
 
-      validateContractTemplateSchema(this.versionToSchema(version));
+      this.validateNewTemplateSchema(this.versionToSchema(version));
 
       const updated = await tx.contractBusinessTemplateVersion.update({
         where: { id: versionId },
