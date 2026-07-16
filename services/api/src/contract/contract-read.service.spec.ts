@@ -424,7 +424,11 @@ describe("ContractReadService", () => {
           id: "contract-version-2",
           versionNo: 2,
           status: "effective",
-          amountCents: 98650000n
+          amountCents: 98650000n,
+          amountLimitType: "capped",
+          pricingNature: "fixed_total",
+          invoiceType: "vat_special",
+          defaultTaxRatePercent: { toString: () => "13" }
         }])
       },
       paymentTermsVersion: {
@@ -525,6 +529,11 @@ describe("ContractReadService", () => {
     expect(detail.title).toBe("HT-2026-009 · 幕墙分包合同");
     expect(detail.baseInfo).toContainEqual({ label: "项目", value: "总部综合楼" });
     expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥986,500.00" });
+    expect(detail.baseInfo).toContainEqual({
+      label: "发票类型",
+      value: "增值税专用发票"
+    });
+    expect(detail.baseInfo).toContainEqual({ label: "合同税率", value: "13%" });
     expect(detail.paymentTermStages[0]).toMatchObject({
       id: "stage-progress",
       version: "v2",

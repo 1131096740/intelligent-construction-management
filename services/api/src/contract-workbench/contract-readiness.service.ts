@@ -4,11 +4,15 @@ import {
   InternalServerErrorException,
   NotFoundException
 } from "@nestjs/common";
-import type {
-  ContractBillDefinition,
-  ContractClauseDefinition,
-  ContractFieldDefinition,
-  ContractValidationRule
+import {
+  CONTRACT_INVOICE_TYPES,
+  CONTRACT_TAX_MODES,
+  contractPricingPolicy,
+  normalizeTaxRatePercent,
+  type ContractBillDefinition,
+  type ContractClauseDefinition,
+  type ContractFieldDefinition,
+  type ContractValidationRule
 } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
@@ -25,8 +29,17 @@ type ReadinessVersion = {
   contractId: string;
   draftRevision: number;
   amountCents: bigint;
+  amountLimitType: string;
+  pricingNature: string;
   amountSource: string;
   amountAdjustmentReason: string | null;
+  invoiceType: string | null;
+  taxMode: string;
+  defaultTaxRatePercent: Prisma.Decimal | null;
+  taxFactStatus: string;
+  taxFactSource: string | null;
+  taxFactRevision: number;
+  taxFactsFrozenAt: Date | null;
   layoutTemplateVersionId: string | null;
   draftData: Prisma.JsonValue;
   templateSnapshot: Prisma.JsonValue;
@@ -43,6 +56,7 @@ type ReadinessClient = {
       Array<{
         id: string;
         billKey: string;
+        amountRole: string;
         taxInclusiveAmountCents: bigint;
         schemaSnapshot?: Prisma.JsonValue;
       }>
@@ -54,6 +68,14 @@ type ReadinessClient = {
         contractBillId: string;
         itemName: string;
         unit?: string;
+        quantity: Prisma.Decimal | null;
+        unitPrice: Prisma.Decimal | null;
+        taxRate: Prisma.Decimal | null;
+        taxRateSource: string;
+        pricingFactStatus: string;
+        taxInclusiveAmountCents: bigint | null;
+        taxExclusiveAmountCents: bigint | null;
+        taxAmountCents: bigint | null;
         customData: Prisma.JsonValue;
       }>
     >;
@@ -217,6 +239,59 @@ export class ContractReadinessService {
           orderBy: [{ contractBillId: "asc" }]
         })
       : [];
+    if (
+      version.invoiceType == null ||
+      !CONTRACT_INVOICE_TYPES.some((value) => value === version.invoiceType)
+    ) {
+      blocking.push({
+        key: "tax.invoice_type",
+        section: "tax",
+        message: "请选择增值税普通发票或增值税专用发票"
+      });
+    }
+    let normalizedDefaultTaxRate: string | null = null;
+    if (version.defaultTaxRatePercent == null) {
+      blocking.push({
+        key: "tax.default_rate",
+        section: "tax",
+        message: "请填写合同约定的税率"
+      });
+    } else {
+      try {
+        normalizedDefaultTaxRate = normalizeTaxRatePercent(
+          version.defaultTaxRatePercent.toString()
+        );
+      } catch {
+        blocking.push({
+          key: "tax.default_rate",
+          section: "tax",
+          message: "合同税率必须大于 0、不超过 100，且最多保留 3 位小数"
+        });
+      }
+    }
+    if (!CONTRACT_TAX_MODES.some((value) => value === version.taxMode)) {
+      blocking.push({
+        key: "tax.mode",
+        section: "tax",
+        message: "合同税率模式不正确，请返回工作台重新选择"
+      });
+    }
+    const pricedBillIds = new Set(
+      bills
+        .filter((bill) => {
+          const amountRole =
+            bill.amountRole ??
+            template.billSchema.find((definition) => definition.key === bill.billKey)
+              ?.amountRole;
+          return amountRole === "included" || amountRole === "provisional";
+        })
+        .map((bill) => bill.id)
+    );
+    const pricingPolicy = contractPricingPolicy({
+      pricingNature: version.pricingNature,
+      amountLimitType: version.amountLimitType,
+      hasPricedRows: rows.some((row) => pricedBillIds.has(row.contractBillId))
+    });
     const billByKey = new Map(bills.map((bill) => [bill.billKey, bill]));
     for (const definition of template.billSchema) {
       const bill = billByKey.get(definition.key);
@@ -247,17 +322,140 @@ export class ContractReadinessService {
             });
           }
         }
+        if (
+          definition.amountRole === "included" ||
+          definition.amountRole === "provisional"
+        ) {
+          if (row.unitPrice === null) {
+            blocking.push({
+              key: `bill.${definition.key}.row.${index}.unit_price`,
+              section: "bills",
+              message: `${definition.name}第${index + 1}行缺少含税单价`
+            });
+          }
+          if (
+            pricingPolicy.kind !== "unlimited_framework" &&
+            row.quantity === null
+          ) {
+            blocking.push({
+              key: `bill.${definition.key}.row.${index}.quantity`,
+              section: "bills",
+              message: `${definition.name}第${index + 1}行缺少数量`
+            });
+          }
+          if (
+            pricingPolicy.kind !== "unlimited_framework" &&
+            (row.taxInclusiveAmountCents === null ||
+              row.taxExclusiveAmountCents === null ||
+              row.taxAmountCents === null)
+          ) {
+            blocking.push({
+              key: `bill.${definition.key}.row.${index}.amount`,
+              section: "bills",
+              message: `${definition.name}第${index + 1}行金额尚未计算完成`
+            });
+          }
+          if (row.pricingFactStatus !== "confirmed") {
+            blocking.push({
+              key: `bill.${definition.key}.row.${index}.pricing_fact`,
+              section: "bills",
+              message: `${definition.name}第${index + 1}行含税单价尚未确认`
+            });
+          }
+          let rowTaxRate: string | null = null;
+          let rowTaxRateInvalid = false;
+          if (row.taxRate !== null) {
+            try {
+              rowTaxRate = normalizeTaxRatePercent(row.taxRate.toString());
+            } catch {
+              rowTaxRateInvalid = true;
+              blocking.push({
+                key: `bill.${definition.key}.row.${index}.tax_rate`,
+                section: "bills",
+                message: `${definition.name}第${index + 1}行税率不正确`
+              });
+            }
+          }
+          if (
+            version.taxMode === "single_rate" &&
+            !rowTaxRateInvalid &&
+            (row.taxRateSource !== "version_default" ||
+              (rowTaxRate !== null &&
+                normalizedDefaultTaxRate !== null &&
+                rowTaxRate !== normalizedDefaultTaxRate))
+          ) {
+            blocking.push({
+              key: `bill.${definition.key}.row.${index}.tax_rate`,
+              section: "bills",
+              message: `${definition.name}第${index + 1}行税率必须与合同税率一致`
+            });
+          }
+          if (
+            version.taxMode === "multiple_rate" &&
+            !rowTaxRateInvalid &&
+            row.taxRateSource === "row_override" &&
+            rowTaxRate === null
+          ) {
+            blocking.push({
+              key: `bill.${definition.key}.row.${index}.tax_rate`,
+              section: "bills",
+              message: `${definition.name}第${index + 1}行例外税率不能为空`
+            });
+          }
+          if (
+            version.taxMode === "multiple_rate" &&
+            !rowTaxRateInvalid &&
+            row.taxRateSource === "version_default" &&
+            rowTaxRate !== null &&
+            normalizedDefaultTaxRate !== null &&
+            rowTaxRate !== normalizedDefaultTaxRate
+          ) {
+            blocking.push({
+              key: `bill.${definition.key}.row.${index}.tax_rate`,
+              section: "bills",
+              message: `${definition.name}第${index + 1}行未标记为例外税率，必须与合同税率一致`
+            });
+          }
+        }
       }
     }
 
     const includedBillSum = bills
       .filter(
         (bill) =>
-          template.billSchema.find((definition) => definition.key === bill.billKey)
-            ?.amountRole === "included"
+          ["included", "provisional"].includes(
+            bill.amountRole ??
+              template.billSchema.find((definition) => definition.key === bill.billKey)
+                ?.amountRole ??
+              ""
+          )
       )
       .reduce((sum, bill) => sum + bill.taxInclusiveAmountCents, 0n);
-    if (version.amountSource === "bill_sum" && version.amountCents !== includedBillSum) {
+    if (
+      pricingPolicy.kind === "fixed_total_without_bill" &&
+      version.amountSource !== "manual"
+    ) {
+      blocking.push({
+        key: "amount.fixed_total_source",
+        section: "amount",
+        message: "纯固定总价且无计价清单时，请填写合同含税总价"
+      });
+    }
+    if (
+      pricingPolicy.kind === "priced_bill" &&
+      version.amountSource !== "bill_sum"
+    ) {
+      blocking.push({
+        key: "amount.priced_bill_source",
+        section: "amount",
+        message: "存在计价清单时，合同金额必须来自清单合计"
+      });
+    }
+    if (
+      pricingPolicy.kind === "priced_bill" &&
+      version.amountSource === "bill_sum" &&
+      version.amountCents !== includedBillSum
+    ) {
       blocking.push({
         key: "amount.bill_sum",
         section: "amount",
@@ -265,14 +463,13 @@ export class ContractReadinessService {
       });
     }
     if (
-      version.amountSource === "manual" &&
-      version.amountCents !== includedBillSum &&
-      !version.amountAdjustmentReason?.trim()
+      pricingPolicy.kind === "unlimited_framework" &&
+      (version.amountSource !== "bill_sum" || version.amountCents !== 0n)
     ) {
       blocking.push({
-        key: "amount.adjustment_reason",
+        key: "amount.unlimited_framework",
         section: "amount",
-        message: "手工合同金额与清单合计不一致时必须填写调整原因"
+        message: "无总价框架合同不设合同总价，请按实际发生量结算"
       });
     }
 
@@ -461,6 +658,12 @@ export class ContractReadinessService {
       amountCents: version.amountCents.toString(),
       amountSource: version.amountSource,
       amountAdjustmentReason: version.amountAdjustmentReason,
+      taxFacts: {
+        invoiceType: version.invoiceType,
+        taxMode: version.taxMode,
+        defaultTaxRatePercent: version.defaultTaxRatePercent?.toString() ?? null,
+        taxFactRevision: version.taxFactRevision
+      },
       layoutTemplateVersionId: version.layoutTemplateVersionId,
       parties,
       bills: bills.map((bill) => ({

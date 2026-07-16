@@ -1,4 +1,15 @@
-import type { ContractClauseDefinition } from "@jiangkong/shared-domain";
+import type {
+  ContractClauseDefinition,
+  ContractInvoiceType,
+  ContractTaxMode
+} from "@jiangkong/shared-domain";
+
+export interface SaveContractTaxFactsDto {
+  invoiceType: ContractInvoiceType | null;
+  taxMode: ContractTaxMode;
+  defaultTaxRatePercent: string | null;
+  source: "contract_document";
+}
 
 export interface SaveContractDraftDto {
   expectedRevision: number;
@@ -20,6 +31,7 @@ export interface SaveContractDraftDto {
     allowsInstallments: boolean;
     originalText: string;
   }>;
+  taxFacts: SaveContractTaxFactsDto;
 }
 
 export interface CreateDraftCheckpointDto {

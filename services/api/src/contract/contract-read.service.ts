@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import {
+  CONTRACT_INVOICE_TYPES,
   canCreatePaymentFromSettlementStatus,
+  contractInvoiceTypeLabel,
   type SettlementStatus,
   ContractBusinessOptionReadModel,
   ContractDetailReadModel,
@@ -224,7 +226,7 @@ export class ContractReadService {
         name: contract.name,
         project: projectById.get(contract.projectId)?.name ?? contract.projectId,
         counterparty: contract.counterparty,
-        amount: version ? this.formatMoney(version.amountCents) : "-",
+        amount: version ? this.formatContractAmount(version) : "-",
         version: version ? `v${version.versionNo}` : "-",
         currentNode: nextAction,
         nodeTone: status.tone,
@@ -500,7 +502,17 @@ export class ContractReadService {
         { label: "合同名称", value: contract.name },
         { label: "项目", value: project?.name ?? contract.projectId },
         { label: "相对方", value: contract.counterparty },
-        { label: "合同金额", value: this.formatMoney(version.amountCents) },
+        { label: "合同金额", value: this.formatContractAmount(version) },
+        {
+          label: "发票类型",
+          value: this.formatContractInvoiceType(version.invoiceType)
+        },
+        {
+          label: "合同税率",
+          value: version.defaultTaxRatePercent == null
+            ? "未明确"
+            : `${version.defaultTaxRatePercent.toString()}%`
+        },
         { label: "创建人", value: "合同部" }
       ],
       effectivenessSteps: this.effectivenessSteps(version.status),
@@ -562,6 +574,8 @@ export class ContractReadService {
         { label: "项目", value: "建设项目一期" },
         { label: "相对方", value: "钢材供应商" },
         { label: "合同金额", value: "¥1,280,000.00" },
+        { label: "发票类型", value: "增值税专用发票" },
+        { label: "合同税率", value: "13%" },
         { label: "创建人", value: "合同部 李工" }
       ],
       effectivenessSteps: [
@@ -1487,6 +1501,23 @@ export class ContractReadService {
 
   private formatMoney(amountCents: bigint): string {
     return `¥${formatMoneyCentsAsYuan(dbMoneyToBigInt(amountCents, "合同金额"))}`;
+  }
+
+  private formatContractAmount(version: {
+    amountCents: bigint;
+    amountLimitType?: string | null;
+    pricingNature?: string | null;
+  }): string {
+    return version.amountLimitType === "unlimited" &&
+      version.pricingNature === "framework"
+      ? "不设合同总价"
+      : this.formatMoney(version.amountCents);
+  }
+
+  private formatContractInvoiceType(value?: string | null): string {
+    return value && CONTRACT_INVOICE_TYPES.some((item) => item === value)
+      ? contractInvoiceTypeLabel(value as "vat_general" | "vat_special")
+      : "未明确";
   }
 
   private toBigIntCents(amountCents: bigint): bigint {

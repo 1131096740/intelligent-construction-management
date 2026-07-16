@@ -6,11 +6,20 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
-import type {
-  ContractBillDefinition,
-  ContractClauseDefinition,
-  ContractFieldDefinition,
-  SupplementChangePolicy
+import {
+  CONTRACT_INVOICE_TYPES,
+  CONTRACT_TAX_MODES,
+  contractInvoiceTypeLabel,
+  contractPricingPolicy,
+  normalizeTaxRatePercent,
+  type ContractBillDefinition,
+  type ContractClauseDefinition,
+  type ContractFieldDefinition,
+  type ContractInvoiceType,
+  type ContractTaxFactSource,
+  type ContractTaxFactStatus,
+  type ContractTaxMode,
+  type SupplementChangePolicy
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { assertContractChangeContentAllowed } from "../contract/contract-change-policy";
@@ -26,6 +35,7 @@ import type {
   CreateDraftCheckpointDto,
   PreviewContractTypeChangeDto,
   SaveContractDraftDto,
+  SaveContractTaxFactsDto,
   TransferContractDraftDto,
   VoidDraftDto
 } from "./dto/contract-workbench.dto";
@@ -70,13 +80,16 @@ interface BillSnapshot {
     itemName: string;
     specification: string | null;
     unit: string;
-    quantity: string;
-    unitPrice: string;
-    taxRate: string;
-    taxRatePercent?: string;
-    taxInclusiveAmountCents: string;
-    taxExclusiveAmountCents: string;
-    taxAmountCents: string;
+    quantity: string | null;
+    unitPrice: string | null;
+    taxRate: string | null;
+    taxRatePercent?: string | null;
+    taxRateSource?: string;
+    pricingFactStatus?: string;
+    precisionPolicy?: string;
+    taxInclusiveAmountCents: string | null;
+    taxExclusiveAmountCents: string | null;
+    taxAmountCents: string | null;
     isProvisional: boolean;
     settlementBasis: string | null;
     customData: unknown;
@@ -91,6 +104,13 @@ interface CheckpointSnapshot {
   amountCents: string;
   amountAdjustmentReason: string | null;
   layoutTemplateVersionId: string | null;
+  taxFacts?: {
+    invoiceType: ContractInvoiceType | null;
+    taxMode: ContractTaxMode;
+    defaultTaxRatePercent: string | null;
+    status: ContractTaxFactStatus;
+    source: ContractTaxFactSource | null;
+  };
   bills: BillSnapshot[];
 }
 
@@ -220,7 +240,10 @@ export class ContractWorkbenchService {
         version.cumulativeDecreaseCents * 10n > baseAmount);
     return this.toReadModel({
       contract,
-      version,
+      version: {
+        ...version,
+        taxFacts: this.taxFactsReadModel(version)
+      },
       change: {
         isChange: isChangeVersion,
         baseVersion,
@@ -250,7 +273,7 @@ export class ContractWorkbenchService {
           .map((row) => ({
             ...row,
             unitPrice: this.formatUnitPrice(row.unitPrice),
-            taxRatePercent: row.taxRate.toString()
+            taxRatePercent: row.taxRate?.toString() ?? null
           }))
       })),
       checkpoints,
@@ -282,6 +305,7 @@ export class ContractWorkbenchService {
       const changeBase = isChangeVersion && version.baseVersionId
         ? await tx.contractVersion.findUnique({ where: { id: version.baseVersionId } })
         : null;
+      const storedDraftData = this.withTaxFactMirror(input.draftData, input.taxFacts);
       this.validateDraftAgainstTemplate(
         input.draftData,
         input.clauses,
@@ -293,8 +317,8 @@ export class ContractWorkbenchService {
           throw new BadRequestException("合同变更直接来源版本不存在，不能保存草稿");
         }
         assertContractChangeContentAllowed({
-          baseDraftData: changeBase.draftData,
-          candidateDraftData: input.draftData,
+          baseDraftData: this.withoutTaxFactMirror(changeBase.draftData),
+          candidateDraftData: this.withoutTaxFactMirror(input.draftData),
           baseClauses: changeBase.clauseSnapshot,
           candidateClauses: input.clauses,
           template
@@ -304,9 +328,36 @@ export class ContractWorkbenchService {
       const bills = await tx.contractBill.findMany({
         where: { contractVersionId }
       });
+      const pricedBillIds = bills
+        .filter(
+          (bill) =>
+            bill.amountRole === "included" || bill.amountRole === "provisional"
+        )
+        .map((bill) => bill.id);
+      const pricedRows = pricedBillIds.length
+        ? await tx.contractBillRow.findMany({
+            where: { contractBillId: { in: pricedBillIds } },
+            select: { contractBillId: true }
+          })
+        : [];
+      const pricingPolicy = contractPricingPolicy({
+        pricingNature: input.pricingNature,
+        amountLimitType: version.amountLimitType,
+        hasPricedRows: pricedRows.length > 0
+      });
+      if (input.amountSource !== pricingPolicy.amountSource) {
+        throw new BadRequestException(
+          pricingPolicy.kind === "fixed_total_without_bill"
+            ? "纯固定总价且无计价清单时，请填写合同含税总价"
+            : pricingPolicy.kind === "unlimited_framework"
+              ? "无总价框架合同不设合同总价，金额来源必须按清单"
+              : "存在计价清单时，合同金额必须来自清单合计"
+        );
+      }
       const billAmount = this.sumIncludedBills(bills);
-      const amountCents =
-        input.amountSource === "bill_sum"
+      const amountCents = pricingPolicy.kind === "unlimited_framework"
+        ? pricingPolicy.contractAmountCents
+        : pricingPolicy.kind === "priced_bill"
           ? billAmount
           : this.toCents(input.manualAmountCents, "manualAmountCents");
       if (isChangeVersion) {
@@ -322,16 +373,6 @@ export class ContractWorkbenchService {
           throw new BadRequestException("合同当前金额必须与已声明的增减金额保持一致");
         }
       }
-      if (
-        input.amountSource === "manual" &&
-        amountCents !== billAmount &&
-        !input.amountAdjustmentReason?.trim()
-      ) {
-        throw new BadRequestException(
-          "手工合同金额与清单合计不一致时，请填写金额调整说明"
-        );
-      }
-
       const updated = await tx.contractVersion.updateMany({
         where: {
           id: contractVersionId,
@@ -339,12 +380,21 @@ export class ContractWorkbenchService {
           status: { in: [...EDITABLE_STATUSES] }
         },
         data: {
-          draftData: this.toJson(input.draftData),
+          draftData: this.toJson(storedDraftData),
           clauseSnapshot: this.toJson(input.clauses),
           pricingNature: input.pricingNature,
           amountSource: input.amountSource,
           amountCents,
-          amountAdjustmentReason: input.amountAdjustmentReason?.trim() || null,
+          amountAdjustmentReason: null,
+          invoiceType: input.taxFacts.invoiceType,
+          taxMode: input.taxFacts.taxMode,
+          defaultTaxRatePercent: input.taxFacts.defaultTaxRatePercent === null
+            ? null
+            : new Prisma.Decimal(input.taxFacts.defaultTaxRatePercent),
+          taxFactStatus: "draft",
+          taxFactSource: input.taxFacts.source,
+          taxFactRevision: { increment: 1 },
+          taxFactsFrozenAt: null,
           layoutTemplateVersionId: input.layoutTemplateVersionId ?? null,
           draftRevision: { increment: 1 }
         }
@@ -371,10 +421,17 @@ export class ContractWorkbenchService {
         metadata: {
           changedKeys: this.changedKeys(
             version.draftData as Record<string, unknown>,
-            input.draftData
+            storedDraftData
           ),
           amountBeforeCents: version.amountCents.toString(),
           amountAfterCents: amountCents.toString(),
+          taxFactsBefore: this.taxFactsAuditSnapshot(version),
+          taxFactsAfter: {
+            invoiceType: input.taxFacts.invoiceType,
+            taxMode: input.taxFacts.taxMode,
+            defaultTaxRatePercent: input.taxFacts.defaultTaxRatePercent,
+            source: input.taxFacts.source
+          },
           revisionBefore: input.expectedRevision,
           revisionAfter: input.expectedRevision + 1
         }
@@ -416,6 +473,13 @@ export class ContractWorkbenchService {
             amountCents: version.amountCents.toString(),
             amountAdjustmentReason: version.amountAdjustmentReason,
             layoutTemplateVersionId: version.layoutTemplateVersionId,
+            taxFacts: {
+              invoiceType: version.invoiceType,
+              taxMode: version.taxMode,
+              defaultTaxRatePercent: version.defaultTaxRatePercent?.toString() ?? null,
+              status: version.taxFactStatus,
+              source: version.taxFactSource
+            },
             bills
           }),
           createdByUserId: actorUserId
@@ -473,6 +537,20 @@ export class ContractWorkbenchService {
           amountCents: parseMoneyCents(snapshot.amountCents, "合同金额"),
           amountAdjustmentReason: snapshot.amountAdjustmentReason,
           layoutTemplateVersionId: snapshot.layoutTemplateVersionId,
+          ...(snapshot.taxFacts
+            ? {
+                invoiceType: snapshot.taxFacts.invoiceType,
+                taxMode: snapshot.taxFacts.taxMode,
+                defaultTaxRatePercent:
+                  snapshot.taxFacts.defaultTaxRatePercent === null
+                    ? null
+                    : new Prisma.Decimal(snapshot.taxFacts.defaultTaxRatePercent),
+                taxFactStatus: "draft",
+                taxFactSource: snapshot.taxFacts.source,
+                taxFactRevision: { increment: 1 },
+                taxFactsFrozenAt: null
+              }
+            : {}),
           draftRevision: { increment: 1 }
         }
       });
@@ -688,13 +766,13 @@ export class ContractWorkbenchService {
           .filter((row) => row.contractBillId === bill.id)
           .map((row) => ({
             ...row,
-            quantity: row.quantity.toString(),
+            quantity: row.quantity?.toString() ?? null,
             unitPrice: this.formatUnitPrice(row.unitPrice),
-            taxRate: row.taxRate.toString(),
-            taxRatePercent: row.taxRate.toString(),
-            taxInclusiveAmountCents: row.taxInclusiveAmountCents.toString(),
-            taxExclusiveAmountCents: row.taxExclusiveAmountCents.toString(),
-            taxAmountCents: row.taxAmountCents.toString()
+            taxRate: row.taxRate?.toString() ?? null,
+            taxRatePercent: row.taxRate?.toString() ?? null,
+            taxInclusiveAmountCents: row.taxInclusiveAmountCents?.toString() ?? null,
+            taxExclusiveAmountCents: row.taxExclusiveAmountCents?.toString() ?? null,
+            taxAmountCents: row.taxAmountCents?.toString() ?? null
           }))
       }));
       const retainedKeys = new Set(
@@ -985,6 +1063,7 @@ export class ContractWorkbenchService {
     ) {
       throw new BadRequestException("付款条款原文摘要必须是文本。");
     }
+    const taxFacts = this.parseTaxFacts(input.taxFacts);
     return {
       expectedRevision: input.expectedRevision as number,
       draftData: { ...(input.draftData as Record<string, unknown>) },
@@ -1005,7 +1084,52 @@ export class ContractWorkbenchService {
         : { paymentTermsOriginalText: input.paymentTermsOriginalText as string }),
       ...(input.paymentStages === undefined
         ? {}
-        : { paymentStages: this.parsePaymentStages(input.paymentStages) })
+        : { paymentStages: this.parsePaymentStages(input.paymentStages) }),
+      taxFacts
+    };
+  }
+
+  private parseTaxFacts(value: unknown): SaveContractTaxFactsDto {
+    const input = this.requireObject(value, "合同税务事实");
+    if (
+      input.invoiceType !== null &&
+      (typeof input.invoiceType !== "string" ||
+        !CONTRACT_INVOICE_TYPES.includes(input.invoiceType as ContractInvoiceType))
+    ) {
+      throw new BadRequestException("发票类型不正确，请重新选择");
+    }
+    if (
+      typeof input.taxMode !== "string" ||
+      !CONTRACT_TAX_MODES.includes(input.taxMode as ContractTaxMode)
+    ) {
+      throw new BadRequestException("合同税率模式不正确，请重新选择");
+    }
+    if (input.source !== "contract_document") {
+      throw new BadRequestException("新合同税务事实来源必须是合同文件明确");
+    }
+    if (
+      input.defaultTaxRatePercent !== null &&
+      typeof input.defaultTaxRatePercent !== "string"
+    ) {
+      throw new BadRequestException("税率必须填写数字");
+    }
+    let defaultTaxRatePercent: string | null = null;
+    if (typeof input.defaultTaxRatePercent === "string") {
+      try {
+        defaultTaxRatePercent = normalizeTaxRatePercent(
+          input.defaultTaxRatePercent
+        );
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error ? error.message : "税率格式不正确，请重新填写"
+        );
+      }
+    }
+    return {
+      invoiceType: input.invoiceType as ContractInvoiceType | null,
+      taxMode: input.taxMode as ContractTaxMode,
+      defaultTaxRatePercent,
+      source: "contract_document"
     };
   }
 
@@ -1236,7 +1360,10 @@ export class ContractWorkbenchService {
     const fieldValues = draftData.fieldValues === undefined
       ? {}
       : this.requireObject(draftData.fieldValues, "合同专业字段");
-    const unknownNestedField = Object.keys(fieldValues).find((key) => !fieldKeys.has(key));
+    const taxMirrorKeys = new Set(["invoiceType", "taxRatePercent"]);
+    const unknownNestedField = Object.keys(fieldValues).find(
+      (key) => !fieldKeys.has(key) && !taxMirrorKeys.has(key)
+    );
     if (unknownNestedField) {
       throw new BadRequestException(`字段 ${unknownNestedField} 未在合同模板中声明，不能保存`);
     }
@@ -1465,13 +1592,16 @@ export class ContractWorkbenchService {
           itemName: row.itemName,
           specification: row.specification,
           unit: row.unit,
-          quantity: row.quantity.toString(),
+          quantity: row.quantity?.toString() ?? null,
           unitPrice: this.formatUnitPrice(row.unitPrice),
-          taxRate: row.taxRate.toString(),
-          taxRatePercent: row.taxRate.toString(),
-          taxInclusiveAmountCents: row.taxInclusiveAmountCents.toString(),
-          taxExclusiveAmountCents: row.taxExclusiveAmountCents.toString(),
-          taxAmountCents: row.taxAmountCents.toString(),
+          taxRate: row.taxRate?.toString() ?? null,
+          taxRatePercent: row.taxRate?.toString() ?? null,
+          taxRateSource: row.taxRateSource,
+          pricingFactStatus: row.pricingFactStatus,
+          precisionPolicy: row.precisionPolicy,
+          taxInclusiveAmountCents: row.taxInclusiveAmountCents?.toString() ?? null,
+          taxExclusiveAmountCents: row.taxExclusiveAmountCents?.toString() ?? null,
+          taxAmountCents: row.taxAmountCents?.toString() ?? null,
           isProvisional: row.isProvisional,
           settlementBasis: row.settlementBasis,
           customData: row.customData
@@ -1534,20 +1664,34 @@ export class ContractWorkbenchService {
       });
       if (snapshot.rows.length) {
         await tx.contractBillRow.createMany({
-          data: snapshot.rows.map((row) => ({
-            contractBillId: bill.id,
-            ...row,
-            taxInclusiveAmountCents: parseMoneyCents(
-              row.taxInclusiveAmountCents,
-              "清单行含税金额"
-            ),
-            taxExclusiveAmountCents: parseMoneyCents(
-              row.taxExclusiveAmountCents,
-              "清单行不含税金额"
-            ),
-            taxAmountCents: parseMoneyCents(row.taxAmountCents, "清单行税额"),
-            customData: this.toJson(row.customData)
-          }))
+          data: snapshot.rows.map((row) => {
+            const storedRow = { ...row };
+            delete storedRow.taxRatePercent;
+            delete storedRow.taxRateSource;
+            delete storedRow.pricingFactStatus;
+            delete storedRow.precisionPolicy;
+            return {
+              contractBillId: bill.id,
+              ...storedRow,
+              taxRateSource: row.taxRateSource ?? "version_default",
+              pricingFactStatus:
+                row.pricingFactStatus ??
+                (row.unitPrice !== null && row.taxRate !== null
+                  ? "confirmed"
+                  : "unconfirmed"),
+              precisionPolicy: row.precisionPolicy ?? "legacy",
+              taxInclusiveAmountCents: this.parseNullableMoney(
+                row.taxInclusiveAmountCents,
+                "清单行含税金额"
+              ),
+              taxExclusiveAmountCents: this.parseNullableMoney(
+                row.taxExclusiveAmountCents,
+                "清单行不含税金额"
+              ),
+              taxAmountCents: this.parseNullableMoney(row.taxAmountCents, "清单行税额"),
+              customData: this.toJson(row.customData)
+            };
+          })
         });
       }
     }
@@ -1686,6 +1830,78 @@ export class ContractWorkbenchService {
     }
   }
 
+  private withTaxFactMirror(
+    draftData: Record<string, unknown>,
+    taxFacts: SaveContractTaxFactsDto
+  ) {
+    const rest = { ...draftData };
+    delete rest["invoiceType"];
+    delete rest["taxRatePercent"];
+    return {
+      ...rest,
+      fieldValues: {
+        ...this.objectValue(draftData["fieldValues"]),
+        invoiceType:
+          taxFacts.invoiceType === null
+            ? null
+            : contractInvoiceTypeLabel(taxFacts.invoiceType),
+        taxRatePercent: taxFacts.defaultTaxRatePercent
+      }
+    };
+  }
+
+  private withoutTaxFactMirror(value: unknown) {
+    const record = this.objectValue(value);
+    const rest = { ...record };
+    const fieldValues = rest["fieldValues"];
+    delete rest["invoiceType"];
+    delete rest["taxRatePercent"];
+    delete rest["fieldValues"];
+    const otherFieldValues = { ...this.objectValue(fieldValues) };
+    delete otherFieldValues["invoiceType"];
+    delete otherFieldValues["taxRatePercent"];
+    return {
+      ...rest,
+      ...(Object.keys(otherFieldValues).length
+        ? { fieldValues: otherFieldValues }
+        : {})
+    };
+  }
+
+  private taxFactsAuditSnapshot(value: {
+    invoiceType?: string | null;
+    taxMode?: string | null;
+    defaultTaxRatePercent?: { toString(): string } | null;
+    taxFactSource?: string | null;
+  }) {
+    return {
+      invoiceType: value.invoiceType ?? null,
+      taxMode: value.taxMode ?? "single_rate",
+      defaultTaxRatePercent: value.defaultTaxRatePercent?.toString() ?? null,
+      source: value.taxFactSource ?? null
+    };
+  }
+
+  private taxFactsReadModel(value: {
+    invoiceType?: string | null;
+    taxMode?: string | null;
+    defaultTaxRatePercent?: { toString(): string } | null;
+    taxFactStatus?: string | null;
+    taxFactSource?: string | null;
+    taxFactRevision?: number | null;
+    taxFactsFrozenAt?: Date | null;
+  }) {
+    return {
+      invoiceType: (value.invoiceType ?? null) as ContractInvoiceType | null,
+      taxMode: (value.taxMode ?? "single_rate") as ContractTaxMode,
+      defaultTaxRatePercent: value.defaultTaxRatePercent?.toString() ?? null,
+      status: (value.taxFactStatus ?? "unconfirmed") as ContractTaxFactStatus,
+      source: (value.taxFactSource ?? null) as ContractTaxFactSource | null,
+      revision: value.taxFactRevision ?? 0,
+      frozenAt: value.taxFactsFrozenAt?.toISOString() ?? null
+    };
+  }
+
   private toJson(value: unknown): Prisma.InputJsonValue {
     return JSON.parse(
       JSON.stringify(value, (_key, item: unknown) =>
@@ -1694,11 +1910,18 @@ export class ContractWorkbenchService {
     ) as Prisma.InputJsonValue;
   }
 
-  private formatUnitPrice(value: { toFixed?: (scale: number) => string; toString: () => string }) {
+  private formatUnitPrice(
+    value: { toFixed?: (scale: number) => string; toString: () => string } | null
+  ) {
+    if (value === null) return null;
     if (typeof value.toFixed === "function") {
       return value.toFixed(2);
     }
     return new Prisma.Decimal(value.toString()).toFixed(2);
+  }
+
+  private parseNullableMoney(value: string | null, field: string) {
+    return value === null ? null : parseMoneyCents(value, field);
   }
 
   private toReadModel<T>(value: T): T {

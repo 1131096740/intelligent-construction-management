@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { ContractReadinessService } from "./contract-readiness.service";
 
 describe("ContractReadinessService", () => {
@@ -5,8 +6,17 @@ describe("ContractReadinessService", () => {
     id: "version-1",
     draftRevision: 4,
     amountCents: 1_000n,
+    amountLimitType: "capped",
+    pricingNature: "fixed_total",
     amountSource: "bill_sum",
     amountAdjustmentReason: null,
+    invoiceType: "vat_special",
+    taxMode: "single_rate",
+    defaultTaxRatePercent: new Prisma.Decimal("13"),
+    taxFactStatus: "draft",
+    taxFactSource: "contract_document",
+    taxFactRevision: 2,
+    taxFactsFrozenAt: null,
     layoutTemplateVersionId: "layout-1",
     draftData: { project_name: "建设项目" },
     templateSnapshot: {
@@ -70,13 +80,27 @@ describe("ContractReadinessService", () => {
           {
             id: "bill-1",
             billKey: "main_bill",
+            amountRole: "included",
             taxInclusiveAmountCents: 1_000n
           }
         ])
       },
       contractBillRow: {
         findMany: jest.fn().mockResolvedValue([
-          { contractBillId: "bill-1", itemName: "钢材", customData: { item_name: "钢材" } }
+          {
+            contractBillId: "bill-1",
+            itemName: "钢材",
+            unit: "吨",
+            quantity: new Prisma.Decimal("1"),
+            unitPrice: new Prisma.Decimal("1000"),
+            taxRate: new Prisma.Decimal("13"),
+            taxRateSource: "version_default",
+            pricingFactStatus: "confirmed",
+            taxInclusiveAmountCents: 1_000n,
+            taxExclusiveAmountCents: 885n,
+            taxAmountCents: 115n,
+            customData: { item_name: "钢材" }
+          }
         ])
       },
       contractPartySnapshot: {
@@ -391,5 +415,201 @@ describe("ContractReadinessService", () => {
         expect.objectContaining({ key: "party.party_b", message: "缺少乙方信息" })
       ])
     );
+  });
+
+  it.each([
+    ["invoiceType", null, "tax.invoice_type"],
+    ["defaultTaxRatePercent", null, "tax.default_rate"]
+  ] as const)("blocks submission when %s is missing", async (field, value, key) => {
+    const result = await new ContractReadinessService().check(
+      tx() as never,
+      { ...version, [field]: value } as never,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key })])
+    );
+  });
+
+  it("accepts a pure fixed total without priced rows only from a manual amount", async () => {
+    const fixedVersion = {
+      ...version,
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      amountCents: 2_000n,
+      templateSnapshot: {
+        ...version.templateSnapshot,
+        billSchema: []
+      }
+    };
+    const result = await new ContractReadinessService().check(
+      tx({
+        contractBill: { findMany: jest.fn().mockResolvedValue([]) },
+        contractBillRow: { findMany: jest.fn().mockResolvedValue([]) }
+      }) as never,
+      fixedVersion as never,
+      contract,
+      false
+    );
+
+    expect(result.blocking.some((item) => item.section === "amount")).toBe(false);
+  });
+
+  it("blocks a manual override whenever a priced row exists", async () => {
+    const result = await new ContractReadinessService().check(
+      tx() as never,
+      {
+        ...version,
+        amountSource: "manual",
+        amountAdjustmentReason: "旧调整说明"
+      } as never,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "amount.priced_bill_source",
+          message: "存在计价清单时，合同金额必须来自清单合计"
+        })
+      ])
+    );
+  });
+
+  it("blocks a different row rate in single-rate mode but allows it in multiple-rate mode", async () => {
+    const differentRateTx = tx({
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractBillId: "bill-1",
+            itemName: "钢材",
+            unit: "吨",
+            quantity: new Prisma.Decimal("1"),
+            unitPrice: new Prisma.Decimal("1000"),
+            taxRate: new Prisma.Decimal("9"),
+            taxRateSource: "row_override",
+            pricingFactStatus: "confirmed",
+            taxInclusiveAmountCents: 1_000n,
+            taxExclusiveAmountCents: 917n,
+            taxAmountCents: 83n,
+            customData: { item_name: "钢材" }
+          }
+        ])
+      }
+    });
+
+    const single = await new ContractReadinessService().check(
+      differentRateTx as never,
+      version as never,
+      contract,
+      false
+    );
+    const multiple = await new ContractReadinessService().check(
+      differentRateTx as never,
+      { ...version, taxMode: "multiple_rate" } as never,
+      contract,
+      false
+    );
+
+    expect(single.blocking).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "bill.main_bill.row.0.tax_rate" })
+      ])
+    );
+    expect(
+      multiple.blocking.some((item) => item.key === "bill.main_bill.row.0.tax_rate")
+    ).toBe(false);
+  });
+
+  it("blocks an invalid exception rate even in multiple-rate mode", async () => {
+    const result = await new ContractReadinessService().check(
+      tx({
+        contractBillRow: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              contractBillId: "bill-1",
+              itemName: "钢材",
+              unit: "吨",
+              quantity: new Prisma.Decimal("1"),
+              unitPrice: new Prisma.Decimal("1000"),
+              taxRate: new Prisma.Decimal("0"),
+              taxRateSource: "row_override",
+              pricingFactStatus: "confirmed",
+              taxInclusiveAmountCents: 1_000n,
+              taxExclusiveAmountCents: 1_000n,
+              taxAmountCents: 0n,
+              customData: { item_name: "钢材" }
+            }
+          ])
+        }
+      }) as never,
+      { ...version, taxMode: "multiple_rate" } as never,
+      contract,
+      false
+    );
+
+    expect(result.blocking).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "bill.main_bill.row.0.tax_rate",
+          message: "主清单第1行税率不正确"
+        })
+      ])
+    );
+  });
+
+  it("allows an unlimited framework row without an estimated quantity and freezes tax facts", async () => {
+    const frameworkTx = tx({
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractBillId: "bill-1",
+            itemName: "台班",
+            unit: "台班",
+            quantity: null,
+            unitPrice: new Prisma.Decimal("1000"),
+            taxRate: new Prisma.Decimal("13"),
+            taxRateSource: "version_default",
+            pricingFactStatus: "confirmed",
+            taxInclusiveAmountCents: null,
+            taxExclusiveAmountCents: null,
+            taxAmountCents: null,
+            customData: { item_name: "台班" }
+          }
+        ])
+      }
+    });
+    const frameworkVersion = {
+      ...version,
+      pricingNature: "framework",
+      amountLimitType: "unlimited",
+      amountCents: 0n
+    };
+
+    const result = await new ContractReadinessService().check(
+      frameworkTx as never,
+      frameworkVersion as never,
+      contract,
+      false
+    );
+    const snapshot = await new ContractReadinessService().freeze(
+      frameworkTx as never,
+      frameworkVersion as never
+    );
+
+    expect(result.blocking.some((item) => item.section === "amount")).toBe(false);
+    expect(result.blocking.some((item) => item.key.endsWith(".quantity"))).toBe(false);
+    expect(snapshot).toMatchObject({
+      amountCents: "0",
+      taxFacts: {
+        invoiceType: "vat_special",
+        taxMode: "single_rate",
+        defaultTaxRatePercent: "13",
+        taxFactRevision: 2
+      }
+    });
   });
 });

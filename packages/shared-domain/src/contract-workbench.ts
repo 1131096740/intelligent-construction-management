@@ -1,4 +1,10 @@
 import type { MoneyCents } from "./money";
+import type {
+  ContractInvoiceType,
+  ContractTaxFactSource,
+  ContractTaxFactStatus,
+  ContractTaxMode
+} from "./contract-tax-facts";
 
 /**
  * Contract workbench schemas and read models.
@@ -137,6 +143,36 @@ export interface ContractReadinessResult {
   warningMessages: string[];
 }
 
+export type ContractPricingPolicy =
+  | { kind: "fixed_total_without_bill"; amountSource: "manual" }
+  | { kind: "priced_bill"; amountSource: "bill_sum" }
+  | {
+      kind: "unlimited_framework";
+      amountSource: "bill_sum";
+      contractAmountCents: 0n;
+    };
+
+export function contractPricingPolicy(input: {
+  pricingNature: string;
+  amountLimitType: string;
+  hasPricedRows: boolean;
+}): ContractPricingPolicy {
+  if (
+    input.pricingNature === "framework" &&
+    input.amountLimitType === "unlimited"
+  ) {
+    return {
+      kind: "unlimited_framework",
+      amountSource: "bill_sum",
+      contractAmountCents: 0n
+    };
+  }
+  if (input.hasPricedRows || input.pricingNature !== "fixed_total") {
+    return { kind: "priced_bill", amountSource: "bill_sum" };
+  }
+  return { kind: "fixed_total_without_bill", amountSource: "manual" };
+}
+
 export interface ContractWorkbenchReadModel {
   contract: {
     id: string;
@@ -155,6 +191,15 @@ export interface ContractWorkbenchReadModel {
     amountCents: MoneyCents;
     pricingNature: string;
     amountSource: string;
+    taxFacts: {
+      invoiceType: ContractInvoiceType | null;
+      taxMode: ContractTaxMode;
+      defaultTaxRatePercent: string | null;
+      status: ContractTaxFactStatus;
+      source: ContractTaxFactSource | null;
+      revision: number;
+      frozenAt: string | null;
+    };
     draftData: Record<string, unknown>;
     clauseSnapshot: ContractClauseDefinition[];
     templateSnapshot: {

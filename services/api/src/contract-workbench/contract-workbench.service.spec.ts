@@ -6,6 +6,12 @@ describe("ContractWorkbenchService", () => {
   const audit = {
     record: jest.fn()
   };
+  const VALID_TAX_FACTS = {
+    invoiceType: "vat_special",
+    taxMode: "single_rate",
+    defaultTaxRatePercent: "13",
+    source: "contract_document"
+  } as const;
 
   beforeEach(() => {
     audit.record.mockReset();
@@ -48,9 +54,17 @@ describe("ContractWorkbenchService", () => {
           status: "draft",
           draftRevision: 4,
           amountCents: 0n,
+          amountLimitType: "capped",
           pricingNature: "fixed_total",
           amountSource: "manual",
           amountAdjustmentReason: null,
+          invoiceType: null,
+          taxMode: "single_rate",
+          defaultTaxRatePercent: null,
+          taxFactStatus: "unconfirmed",
+          taxFactSource: null,
+          taxFactRevision: 0,
+          taxFactsFrozenAt: null,
           layoutTemplateVersionId: null,
           draftData: { project_name: "旧" },
           templateSnapshot: TEMPLATE_SNAPSHOT,
@@ -124,7 +138,8 @@ describe("ContractWorkbenchService", () => {
       clauses: [],
       pricingNature: "fixed_total",
       amountSource: "manual",
-      manualAmountCents: "1000000"
+      manualAmountCents: "1000000",
+      taxFacts: VALID_TAX_FACTS
     });
 
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
@@ -148,11 +163,138 @@ describe("ContractWorkbenchService", () => {
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
+  it("stores canonical tax facts and mirrors Chinese values into draftData", async () => {
+    const tx = ownedVersionTx();
+    const service = makeService(tx);
+
+    await service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: { project_name: "新名称", fieldValues: {} },
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1000000",
+      taxFacts: {
+        ...VALID_TAX_FACTS,
+        defaultTaxRatePercent: "13.000"
+      }
+    });
+
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: new Prisma.Decimal("13"),
+          taxFactStatus: "draft",
+          taxFactSource: "contract_document",
+          taxFactRevision: { increment: 1 },
+          taxFactsFrozenAt: null,
+          draftData: {
+            project_name: "新名称",
+            fieldValues: {
+              invoiceType: "增值税专用发票",
+              taxRatePercent: "13"
+            }
+          }
+        })
+      })
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          taxFactsBefore: expect.objectContaining({ invoiceType: null }),
+          taxFactsAfter: {
+            invoiceType: "vat_special",
+            taxMode: "single_rate",
+            defaultTaxRatePercent: "13",
+            source: "contract_document"
+          }
+        })
+      })
+    );
+  });
+
+  it.each(["0", "-1", "101", "13.1234"] as const)(
+    "rejects an invalid canonical tax rate %s",
+    async (defaultTaxRatePercent) => {
+      const tx = ownedVersionTx();
+      const service = makeService(tx);
+
+      await expect(service.saveDraft("version-1", "owner-1", {
+        expectedRevision: 4,
+        draftData: {},
+        clauses: [],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: "1000000",
+        taxFacts: {
+          ...VALID_TAX_FACTS,
+          defaultTaxRatePercent
+        }
+      })).rejects.toThrow("税率");
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects a manual amount whenever a priced bill has real rows", async () => {
+    const tx = ownedVersionTx();
+    tx.contractBillRow.findMany.mockResolvedValue([
+      { contractBillId: "bill-1" }
+    ]);
+    const service = makeService(tx);
+
+    await expect(service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: {},
+      clauses: [],
+      pricingNature: "fixed_total",
+      amountSource: "manual",
+      manualAmountCents: "1000000",
+      amountAdjustmentReason: "不再允许覆盖",
+      taxFacts: VALID_TAX_FACTS
+    })).rejects.toThrow("存在计价清单时，合同金额必须来自清单合计");
+  });
+
+  it("stores zero as the internal amount for an unlimited framework contract", async () => {
+    const tx = ownedVersionTx();
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...(await tx.contractVersion.findUnique()),
+      amountLimitType: "unlimited"
+    });
+    tx.contractBillRow.findMany.mockResolvedValue([
+      { contractBillId: "bill-1" }
+    ]);
+    const service = makeService(tx);
+
+    await service.saveDraft("version-1", "owner-1", {
+      expectedRevision: 4,
+      draftData: {},
+      clauses: [],
+      pricingNature: "framework",
+      amountSource: "bill_sum",
+      taxFacts: VALID_TAX_FACTS
+    });
+
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amountSource: "bill_sum",
+          amountCents: 0n
+        })
+      })
+    );
+  });
+
   it.each([
     ["manual", "1200000"],
     ["bill_sum", undefined]
   ] as const)("fails closed when a change draft %s amount drifts from its frozen declaration", async (amountSource, manualAmountCents) => {
     const tx = ownedVersionTx();
+    if (amountSource === "bill_sum") {
+      tx.contractBillRow.findMany.mockResolvedValue([{ contractBillId: "bill-1" }]);
+    }
     tx.contractVersion.findUnique
       .mockResolvedValueOnce({
         id: "version-2",
@@ -192,6 +334,7 @@ describe("ContractWorkbenchService", () => {
       clauses: TEMPLATE_SNAPSHOT.clauseSchema,
       pricingNature: "fixed_total",
       amountSource,
+      taxFacts: VALID_TAX_FACTS,
       ...(manualAmountCents ? { manualAmountCents } : {})
     })).rejects.toThrow("合同当前金额必须与已声明的增减金额保持一致");
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -256,12 +399,21 @@ describe("ContractWorkbenchService", () => {
       pricingNature: "fixed_total",
       amountSource: "manual",
       manualAmountCents: "1100000",
-      amountAdjustmentReason: "冻结声明调整"
+      amountAdjustmentReason: "冻结声明调整",
+      taxFacts: VALID_TAX_FACTS
     });
 
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ draftData: candidateDraftData })
+        data: expect.objectContaining({
+          draftData: expect.objectContaining({
+            fieldValues: expect.objectContaining({
+              site_name: "新项目",
+              invoiceType: "增值税专用发票",
+              taxRatePercent: "13"
+            })
+          })
+        })
       })
     );
   });
@@ -340,6 +492,7 @@ describe("ContractWorkbenchService", () => {
       pricingNature: "fixed_total",
       amountSource: "manual",
       manualAmountCents: "1100000",
+      taxFacts: VALID_TAX_FACTS,
       paymentTermsOriginalText: "原付款条款",
       paymentStages: [{
         name: "进度款",
@@ -394,6 +547,7 @@ describe("ContractWorkbenchService", () => {
       amountSource: "manual",
       manualAmountCents: "1100000",
       amountAdjustmentReason: "冻结声明调整",
+      taxFacts: VALID_TAX_FACTS,
       paymentTermsOriginalText: "原付款条款"
     });
 
@@ -465,6 +619,7 @@ describe("ContractWorkbenchService", () => {
       amountSource: "manual",
       manualAmountCents: "1100000",
       amountAdjustmentReason: "冻结声明调整",
+      taxFacts: VALID_TAX_FACTS,
       paymentStages: [{
         name: "进度款",
         basis: "current_settlement",
@@ -494,12 +649,17 @@ describe("ContractWorkbenchService", () => {
         pricingNature: "fixed_total",
         amountSource: "manual",
         manualAmountCents: "1000000",
-        amountAdjustmentReason: "草稿尚未录完"
+        amountAdjustmentReason: "草稿尚未录完",
+        taxFacts: {
+          ...VALID_TAX_FACTS,
+          invoiceType: null,
+          defaultTaxRatePercent: null
+        }
       })
     ).resolves.toBeDefined();
   });
 
-  it("requires a Chinese adjustment reason when manual amount differs from bill sum", async () => {
+  it("does not require the legacy adjustment reason for a fixed total without priced rows", async () => {
     const tx = ownedVersionTx();
     const service = makeService(tx);
 
@@ -510,11 +670,15 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: "2000000"
+        manualAmountCents: "2000000",
+        taxFacts: VALID_TAX_FACTS
       })
-    ).rejects.toThrow("手工合同金额与清单合计不一致时，请填写金额调整说明");
-
-    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    ).resolves.toBeDefined();
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amountAdjustmentReason: null })
+      })
+    );
   });
 
   it("saves structured payment terms with the draft", async () => {
@@ -537,6 +701,7 @@ describe("ContractWorkbenchService", () => {
       pricingNature: "fixed_total",
       amountSource: "manual",
       manualAmountCents: "1000000",
+      taxFacts: VALID_TAX_FACTS,
       paymentTermsOriginalText: "结算归档后30天内付款80%。",
       paymentStages: [
         {
@@ -591,7 +756,8 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: "1000000"
+        manualAmountCents: "1000000",
+        taxFacts: VALID_TAX_FACTS
       })
     ).rejects.toThrow("stale update failed");
 
@@ -629,7 +795,8 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: "1000000"
+        manualAmountCents: "1000000",
+        taxFacts: VALID_TAX_FACTS
       })
     ).rejects.toThrow("合同草稿已被他人更新，请刷新后重新编辑");
 
@@ -648,7 +815,8 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: "1000000"
+        manualAmountCents: "1000000",
+        taxFacts: VALID_TAX_FACTS
       })
     ).rejects.toThrow();
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -834,6 +1002,13 @@ describe("ContractWorkbenchService", () => {
             status: "draft",
             amountCents: 1_234_500n,
             draftRevision: 2,
+            invoiceType: "vat_general",
+            taxMode: "single_rate",
+            defaultTaxRatePercent: new Prisma.Decimal("9"),
+            taxFactStatus: "draft",
+            taxFactSource: "contract_document",
+            taxFactRevision: 3,
+            taxFactsFrozenAt: new Date("2026-07-17T01:00:00.000Z"),
             readinessSnapshot: {
               blocking: [
                 {
@@ -909,6 +1084,15 @@ describe("ContractWorkbenchService", () => {
 
     expect(() => JSON.stringify(result)).not.toThrow();
     expect(result.version.amountCents).toBe("1234500");
+    expect(result.version.taxFacts).toEqual({
+      invoiceType: "vat_general",
+      taxMode: "single_rate",
+      defaultTaxRatePercent: "9",
+      status: "draft",
+      source: "contract_document",
+      revision: 3,
+      frozenAt: "2026-07-17T01:00:00.000Z"
+    });
     expect(result.bills[0]?.taxInclusiveAmountCents).toBe("1234500");
     expect(result.bills[0]?.rows[0]?.quantity).toBe("2.5");
     expect(result.paymentTerms).toEqual({
@@ -966,6 +1150,13 @@ describe("ContractWorkbenchService", () => {
           amountSource: "manual",
           amountAdjustmentReason: "暂定金额",
           layoutTemplateVersionId: "layout-1",
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: new Prisma.Decimal("13"),
+          taxFactStatus: "draft",
+          taxFactSource: "contract_document",
+          taxFactRevision: 2,
+          taxFactsFrozenAt: null,
           draftData: { project_name: "检查点项目" },
           templateSnapshot: TEMPLATE_SNAPSHOT,
           clauseSnapshot: [
@@ -1021,6 +1212,13 @@ describe("ContractWorkbenchService", () => {
         amountCents: "1250000",
         amountAdjustmentReason: "暂定金额",
         layoutTemplateVersionId: "layout-1",
+        taxFacts: {
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: "13",
+          status: "draft",
+          source: "contract_document"
+        },
         bills: [
           expect.objectContaining({
             billKey: "main_bill",
@@ -1218,6 +1416,64 @@ describe("ContractWorkbenchService", () => {
     expect(checkpoints.update).not.toHaveBeenCalled();
     expect(checkpoints.delete).not.toHaveBeenCalled();
     expect(checkpoints.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("restores nullable historical bill facts without converting unknown values to zero", async () => {
+    const tx = ownedVersionTx();
+    const service = makeService(tx) as unknown as {
+      replaceBillsFromSnapshot(
+        transaction: typeof tx,
+        contractVersionId: string,
+        snapshots: unknown[]
+      ): Promise<void>;
+    };
+
+    await service.replaceBillsFromSnapshot(tx, "version-1", [{
+      billKey: "historical_bill",
+      name: "历史清单",
+      amountRole: "included",
+      pricingMode: "tax_inclusive",
+      quantityScale: 2,
+      unitPriceScale: 2,
+      schemaSnapshot: { columns: [] },
+      sourceExcelFileId: null,
+      revision: 1,
+      taxInclusiveAmountCents: "0",
+      taxExclusiveAmountCents: "0",
+      taxAmountCents: "0",
+      rows: [{
+        rowKey: "historical-row",
+        sortOrder: 1,
+        itemCode: null,
+        itemName: "待补录项目",
+        specification: null,
+        unit: "项",
+        quantity: null,
+        unitPrice: null,
+        taxRate: null,
+        taxInclusiveAmountCents: null,
+        taxExclusiveAmountCents: null,
+        taxAmountCents: null,
+        isProvisional: false,
+        settlementBasis: null,
+        customData: {}
+      }]
+    }]);
+
+    expect(tx.contractBillRow.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          quantity: null,
+          unitPrice: null,
+          taxRate: null,
+          taxInclusiveAmountCents: null,
+          taxExclusiveAmountCents: null,
+          taxAmountCents: null,
+          pricingFactStatus: "unconfirmed",
+          precisionPolicy: "legacy"
+        })
+      ]
+    });
   });
 
   it("voids and restores a draft without physical deletion", async () => {
@@ -1470,10 +1726,21 @@ describe("ContractWorkbenchService", () => {
       service.saveDraft("version-1", "owner-1", {
         expectedRevision: 4,
         draftData: {},
+        clauses: [],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: "1000000"
+      })
+    ).rejects.toThrow("合同税务事实格式不正确");
+    await expect(
+      service.saveDraft("version-1", "owner-1", {
+        expectedRevision: 4,
+        draftData: {},
         clauses: [{ key: "clause_1" }],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: 1n
+        manualAmountCents: 1n,
+        taxFacts: VALID_TAX_FACTS
       })
     ).rejects.toMatchObject({ name: "BadRequestException" });
     await expect(service.voidDraft("contract-1", "owner-1", null)).rejects.toMatchObject({
@@ -1966,7 +2233,8 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: "1000000"
+        manualAmountCents: "1000000",
+        taxFacts: VALID_TAX_FACTS
       })
     ).rejects.toThrow("合同草稿已变化，请刷新后重试");
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
@@ -2045,7 +2313,8 @@ describe("ContractWorkbenchService", () => {
         clauses: [],
         pricingNature: "fixed_total",
         amountSource: "manual",
-        manualAmountCents: "1000000"
+        manualAmountCents: "1000000",
+        taxFacts: VALID_TAX_FACTS
       })
     ).rejects.toThrow("合同草稿已变化，请刷新后重试");
     expect(audit.record).not.toHaveBeenCalled();
