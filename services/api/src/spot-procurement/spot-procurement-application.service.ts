@@ -52,6 +52,11 @@ const ACTIVE_PAYMENT_STATUSES = new Set([
   "paid",
   "settled"
 ]);
+const FROZEN_REVISION_STATUSES = {
+  returned: "returned",
+  withdrawn: "withdrawn"
+} as const;
+const WITHDRAW_REVISION_REASON = "申请人撤回采购审批";
 
 type ProcurementLockRow = {
   id: string;
@@ -94,6 +99,11 @@ type ApprovalInstanceLockRow = {
   currentNodeIndex: number;
   frozenNodes: Prisma.JsonValue;
   applicantUserId: string;
+};
+
+type LockedPaymentRow = {
+  id: string;
+  status: string;
 };
 
 type PreparedLine = {
@@ -245,21 +255,33 @@ export class SpotProcurementApplicationService {
           actorUserId,
           actorRoles
         );
-        const existingAttachments =
-          await tx.spotProcurementAttachment.findMany({
-            where: { versionId: version.id },
-            select: { fileId: true }
-          });
+        const currentDraft = await this.storedDraft(tx, version);
+        const mergedDraft: SpotProcurementDraftDto = {
+          ...input,
+          supplierPartyId:
+            input.supplierPartyId === undefined
+              ? currentDraft.supplierPartyId
+              : input.supplierPartyId,
+          handlerUserId:
+            input.handlerUserId === undefined
+              ? currentDraft.handlerUserId
+              : input.handlerUserId,
+          note: input.note === undefined ? currentDraft.note : input.note,
+          attachments:
+            input.attachments === undefined
+              ? currentDraft.attachments
+              : input.attachments
+        };
         const prepared = await this.prepareDraft(
           tx,
           actorUserId,
-          input,
+          mergedDraft,
           [
             procurement.applicantUserId,
             procurement.handlerUserId,
             actorUserId
           ],
-          existingAttachments.map((attachment) => attachment.fileId)
+          currentDraft.attachments?.map((attachment) => attachment.fileId) ?? []
         );
         await this.requireHandlerRole(
           tx,
@@ -268,6 +290,8 @@ export class SpotProcurementApplicationService {
           actorUserId,
           actorRoles
         );
+        const revisionComparison =
+          await this.recomputeRevisionChangeSummary(tx, version, prepared);
 
         await tx.spotProcurementVersion.update({
           where: { id: version.id },
@@ -278,7 +302,13 @@ export class SpotProcurementApplicationService {
             supplierKey: prepared.supplierKey,
             supplierNameSnapshot: prepared.supplierName,
             handlerUserId: prepared.handlerUserId,
-            totalAmountCents: prepared.totalAmountCents
+            totalAmountCents: prepared.totalAmountCents,
+            ...(revisionComparison
+              ? {
+                  changeSummary:
+                    revisionComparison.changeSummary as Prisma.InputJsonValue
+                }
+              : {})
           }
         });
         await this.replaceVersionFacts(tx, version.id, prepared);
@@ -351,6 +381,18 @@ export class SpotProcurementApplicationService {
           actorUserId,
           actorRoles
         );
+        const revisionComparison =
+          await this.recomputeRevisionChangeSummary(tx, version, prepared);
+        if (
+          revisionComparison &&
+          revisionComparison.changeSummary.changes.length === 0 &&
+          revisionComparison.previousVersion.status !==
+            FROZEN_REVISION_STATUSES.withdrawn
+        ) {
+          throw new BadRequestException(
+            "采购版本没有实际字段变化，不能提交审批"
+          );
+        }
         await this.replaceVersionFacts(tx, version.id, prepared);
 
         const now = new Date();
@@ -371,7 +413,13 @@ export class SpotProcurementApplicationService {
           data: {
             status: "approval_pending",
             submittedAt: now,
-            totalAmountCents: prepared.totalAmountCents
+            totalAmountCents: prepared.totalAmountCents,
+            ...(revisionComparison
+              ? {
+                  changeSummary:
+                    revisionComparison.changeSummary as Prisma.InputJsonValue
+                }
+              : {})
           }
         });
         await tx.spotProcurement.update({
@@ -457,17 +505,17 @@ export class SpotProcurementApplicationService {
             approvalInstanceId: approval.id,
             action: "withdraw",
             actorUserId,
-            comment: "申请人撤回采购审批"
+            comment: WITHDRAW_REVISION_REASON
           }
         });
-        await tx.spotProcurementVersion.update({
-          where: { id: version.id },
-          data: { status: "draft", submittedAt: null }
-        });
-        await tx.spotProcurement.update({
-          where: { id: procurement.id },
-          data: { status: "draft" }
-        });
+        const newVersion = await this.createRevisionDraftFromFrozenVersion(
+          tx,
+          procurement,
+          version,
+          actorUserId,
+          FROZEN_REVISION_STATUSES.withdrawn,
+          WITHDRAW_REVISION_REASON
+        );
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.approval.withdraw",
@@ -475,17 +523,19 @@ export class SpotProcurementApplicationService {
           businessId: version.id,
           metadata: {
             procurementId: procurement.id,
-            approvalInstanceId: approval.id
+            approvalInstanceId: approval.id,
+            sourceVersionId: version.id,
+            newVersionId: newVersion.id
           }
         });
         return this.applicationReadModel(
           procurement.id,
           procurement.projectId,
           "draft",
-          version.id,
-          version.versionNo,
+          newVersion.id,
+          newVersion.versionNo,
           "draft",
-          version.totalAmountCents
+          newVersion.totalAmountCents
         );
       })
     );
@@ -585,30 +635,34 @@ export class SpotProcurementApplicationService {
             where: { id: approval.id },
             data: { status: "returned_to_applicant" }
           });
-          await tx.spotProcurementVersion.update({
-            where: { id: version.id },
-            data: { status: "draft", submittedAt: null }
-          });
-          await tx.spotProcurement.update({
-            where: { id: procurement.id },
-            data: { status: "draft" }
-          });
+          const newVersion = await this.createRevisionDraftFromFrozenVersion(
+            tx,
+            procurement,
+            version,
+            actorUserId,
+            FROZEN_REVISION_STATUSES.returned,
+            comment as string
+          );
           await this.recordReviewAudit(
             tx,
             actorUserId,
             version.id,
             procurement.id,
             input.decision,
-            approvedRoleKey
+            approvedRoleKey,
+            {
+              sourceVersionId: version.id,
+              newVersionId: newVersion.id
+            }
           );
           return this.applicationReadModel(
             procurement.id,
             procurement.projectId,
             "draft",
-            version.id,
-            version.versionNo,
+            newVersion.id,
+            newVersion.versionNo,
             "draft",
-            version.totalAmountCents
+            newVersion.totalAmountCents
           );
         }
 
@@ -944,6 +998,15 @@ export class SpotProcurementApplicationService {
         if (procurement.status === "voided") {
           throw new ConflictException("采购已经撤销，不能重复操作");
         }
+        // 固定锁顺序：采购根单 -> 当前版本 -> 全部付款 -> 在途审批。
+        // Task 5 的付款写路径必须沿用“版本 -> 付款”，不得反向取锁。
+        const version = procurement.currentVersionId
+          ? await this.requireLockedCurrentVersion(tx, procurement)
+          : null;
+        const payments = await this.lockProcurementPayments(
+          tx,
+          procurement.id
+        );
         const actorRoles = await this.loadActorRoleKeys(
           tx,
           actorUserId,
@@ -951,10 +1014,6 @@ export class SpotProcurementApplicationService {
         );
         this.requireAnyRole(actorRoles, VOID_ROLES, "当前用户无权撤销零星采购");
         const reason = requiredText(reasonInput, "请填写采购撤销原因");
-        const payments = await tx.spotProcurementPayment.findMany({
-          where: { procurementId: procurement.id },
-          select: { id: true, status: true }
-        });
         const realExecution =
           await tx.spotProcurementPaymentExecution.findFirst({
             where: {
@@ -973,12 +1032,19 @@ export class SpotProcurementApplicationService {
         ) {
           throw new ConflictException("已有活动付款申请，需先退回或作废后再撤销采购");
         }
+        const approval = version
+          ? await this.lockApprovalInstance(
+              tx,
+              version.id,
+              "approval_pending"
+            )
+          : null;
         const now = new Date();
         const draftPaymentIds = payments
           .filter((payment) => payment.status === "draft")
           .map((payment) => payment.id);
         if (draftPaymentIds.length) {
-          await tx.spotProcurementPayment.updateMany({
+          const invalidated = await tx.spotProcurementPayment.updateMany({
             where: { id: { in: draftPaymentIds }, status: "draft" },
             data: {
               status: "invalidated",
@@ -987,22 +1053,16 @@ export class SpotProcurementApplicationService {
               invalidatedReason: `采购撤销：${reason}`
             }
           });
+          if (invalidated.count !== draftPaymentIds.length) {
+            throw new ConflictException("付款状态已变化，请重试采购撤销");
+          }
         }
-        let version: VersionLockRow | null = null;
-        if (procurement.currentVersionId) {
-          version = await this.requireLockedCurrentVersion(tx, procurement);
+        if (version) {
           await tx.spotProcurementVersion.update({
             where: { id: version.id },
             data: { status: "invalidated" }
           });
         }
-        const approval = version
-          ? await this.lockApprovalInstance(
-              tx,
-              version.id,
-              "approval_pending"
-            )
-          : null;
         if (approval) {
           await tx.approvalInstance.update({
             where: { id: approval.id },
@@ -1137,16 +1197,10 @@ export class SpotProcurementApplicationService {
     tx: Prisma.TransactionClient,
     version: VersionLockRow
   ): Promise<SpotProcurementDraftDto> {
-    const [lines, attachments] = await Promise.all([
-      tx.spotProcurementLine.findMany({
-        where: { versionId: version.id },
-        orderBy: { sortOrder: "asc" }
-      }),
-      tx.spotProcurementAttachment.findMany({
-        where: { versionId: version.id },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
-      })
-    ]);
+    const { lines, attachments } = await this.loadFrozenVersionFacts(
+      tx,
+      version.id
+    );
     return {
       supplierPartyId: version.supplierPartyId,
       supplierName: version.supplierNameSnapshot,
@@ -1175,6 +1229,103 @@ export class SpotProcurementApplicationService {
       })),
       totalAmountCents: version.totalAmountCents.toString()
     };
+  }
+
+  private async loadFrozenVersionFacts(
+    tx: Prisma.TransactionClient,
+    versionId: string
+  ) {
+    const [lines, attachments] = await Promise.all([
+      tx.spotProcurementLine.findMany({
+        where: { versionId },
+        orderBy: { sortOrder: "asc" }
+      }),
+      tx.spotProcurementAttachment.findMany({
+        where: { versionId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      })
+    ]);
+    return { lines, attachments };
+  }
+
+  private async createRevisionDraftFromFrozenVersion(
+    tx: Prisma.TransactionClient,
+    procurement: ProcurementLockRow,
+    sourceVersion: VersionLockRow,
+    actorUserId: string,
+    sourceTerminalStatus:
+      | typeof FROZEN_REVISION_STATUSES.returned
+      | typeof FROZEN_REVISION_STATUSES.withdrawn,
+    changeReason: string
+  ) {
+    const { lines, attachments } = await this.loadFrozenVersionFacts(
+      tx,
+      sourceVersion.id
+    );
+    await tx.spotProcurementVersion.update({
+      where: { id: sourceVersion.id },
+      data: { status: sourceTerminalStatus }
+    });
+    const newVersion = await tx.spotProcurementVersion.create({
+      data: {
+        procurementId: procurement.id,
+        versionNo: sourceVersion.versionNo + 1,
+        status: "draft",
+        reason: sourceVersion.reason,
+        note: sourceVersion.note,
+        supplierPartyId: sourceVersion.supplierPartyId,
+        supplierKey: sourceVersion.supplierKey,
+        supplierNameSnapshot: sourceVersion.supplierNameSnapshot,
+        handlerUserId: sourceVersion.handlerUserId,
+        totalAmountCents: sourceVersion.totalAmountCents,
+        changeReason,
+        changeSummary: { changes: [] },
+        createdByUserId: actorUserId
+      }
+    });
+    if (lines.length) {
+      await tx.spotProcurementLine.createMany({
+        data: lines.map((line) => ({
+          versionId: newVersion.id,
+          sortOrder: line.sortOrder,
+          materialName: line.materialName,
+          specification: line.specification,
+          unit: line.unit,
+          quantity: line.quantity,
+          invoiceMode: line.invoiceMode,
+          invoiceType: line.invoiceType,
+          vatRateOptionId: line.vatRateOptionId,
+          vatRateValueSnapshot: line.vatRateValueSnapshot,
+          vatRateLabelSnapshot: line.vatRateLabelSnapshot,
+          unitPrice: line.unitPrice,
+          amountCents: line.amountCents,
+          usageLocation: line.usageLocation,
+          note: line.note
+        }))
+      });
+    }
+    if (attachments.length) {
+      await tx.spotProcurementAttachment.createMany({
+        data: attachments.map((attachment) => ({
+          versionId: newVersion.id,
+          fileId: attachment.fileId,
+          category: attachment.category,
+          uploadedByUserId: attachment.uploadedByUserId
+        }))
+      });
+    }
+    await tx.spotProcurement.update({
+      where: { id: procurement.id },
+      data: {
+        currentVersionId: newVersion.id,
+        status: "draft",
+        supplierPartyId: sourceVersion.supplierPartyId,
+        supplierKey: sourceVersion.supplierKey,
+        supplierNameSnapshot: sourceVersion.supplierNameSnapshot,
+        handlerUserId: sourceVersion.handlerUserId
+      }
+    });
+    return newVersion;
   }
 
   private async replaceVersionFacts(
@@ -1469,6 +1620,81 @@ export class SpotProcurementApplicationService {
     return version;
   }
 
+  private async requireLockedPreviousVersion(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow
+  ) {
+    if (version.versionNo <= 1) {
+      throw new ConflictException("采购修订版本缺少可比较的前一版本");
+    }
+    const rows = await tx.$queryRaw<Array<VersionLockRow>>(Prisma.sql`
+      SELECT
+        "id",
+        "procurementId",
+        "versionNo",
+        "status",
+        "reason",
+        "note",
+        "supplierPartyId",
+        "supplierKey",
+        "supplierNameSnapshot",
+        "handlerUserId",
+        "totalAmountCents",
+        "changeReason",
+        "changeSummary",
+        "submittedAt",
+        "approvedAt",
+        "createdByUserId"
+      FROM "SpotProcurementVersion"
+      WHERE "procurementId" = ${version.procurementId}
+        AND "versionNo" = ${version.versionNo - 1}
+      LIMIT 1
+      FOR UPDATE
+    `);
+    const previousVersion = rows[0];
+    if (!previousVersion) {
+      throw new ConflictException("采购修订版本缺少前一冻结版本");
+    }
+    return previousVersion;
+  }
+
+  private async recomputeRevisionChangeSummary(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    prepared: PreparedDraft
+  ) {
+    if (version.versionNo <= 1) return null;
+    const previousVersion = await this.requireLockedPreviousVersion(tx, version);
+    const { lines, attachments } = await this.loadFrozenVersionFacts(
+      tx,
+      previousVersion.id
+    );
+    return {
+      previousVersion,
+      changeSummary: this.changeSummary(
+        previousVersion,
+        lines,
+        attachments,
+        prepared
+      )
+    };
+  }
+
+  private async lockProcurementPayments(
+    tx: Prisma.TransactionClient,
+    procurementId: string
+  ) {
+    return tx.$queryRaw<Array<LockedPaymentRow>>(Prisma.sql`
+      SELECT
+        "id",
+        "status"
+      FROM "SpotProcurementPayment"
+      WHERE "procurementId" = ${procurementId}
+      ORDER BY "id"
+      FOR UPDATE
+    `);
+  }
+
   private async requireLockedApprovalInstance(
     tx: Prisma.TransactionClient,
     versionId: string,
@@ -1534,14 +1760,19 @@ export class SpotProcurementApplicationService {
     versionId: string,
     procurementId: string,
     decision: string,
-    approvedRoleKey: RoleKey
+    approvedRoleKey: RoleKey,
+    extraMetadata: Record<string, Prisma.InputJsonValue> = {}
   ) {
     await this.audit.record(tx, {
       actorUserId,
       action: `spot_procurement.approval.${decision}`,
       businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.application,
       businessId: versionId,
-      metadata: { procurementId, reviewRoleKey: approvedRoleKey }
+      metadata: {
+        procurementId,
+        reviewRoleKey: approvedRoleKey,
+        ...extraMetadata
+      }
     });
   }
 

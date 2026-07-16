@@ -43,6 +43,28 @@ const draftInput: CreateSpotProcurementDto = {
   totalAmountCents: "1"
 };
 
+function storedInvoiceLine(
+  unitPrice = invoiceLine.unitPrice,
+  amountCents = 4100n
+) {
+  return {
+    sortOrder: 1,
+    materialName: invoiceLine.materialName,
+    specification: invoiceLine.specification,
+    unit: invoiceLine.unit,
+    quantity: new Prisma.Decimal(invoiceLine.quantity),
+    invoiceMode: invoiceLine.invoiceMode,
+    invoiceType: invoiceLine.invoiceType,
+    vatRateOptionId: invoiceLine.vatRateOptionId,
+    vatRateValueSnapshot: new Prisma.Decimal("13"),
+    vatRateLabelSnapshot: "13%",
+    unitPrice: new Prisma.Decimal(unitPrice),
+    amountCents,
+    usageLocation: invoiceLine.usageLocation,
+    note: invoiceLine.note
+  };
+}
+
 const rootLock = {
   id: "procurement-1",
   projectId: "project-1",
@@ -390,6 +412,119 @@ describe("SpotProcurementApplicationService", () => {
     expect(result.totalAmountCents).toBe("900");
   });
 
+  it("inherits omitted optional draft facts instead of silently replacing the assigned handler", async () => {
+    const { service, tx } = harness();
+    const delegatedRoot = {
+      ...rootLock,
+      applicantUserId: "applicant-a",
+      handlerUserId: "handler-b"
+    };
+    const delegatedVersion = {
+      ...versionLock,
+      handlerUserId: "handler-b"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([delegatedRoot])
+      .mockResolvedValueOnce([delegatedVersion]);
+    role(tx, "material_staff");
+    role(tx, "material_staff");
+    tx.spotProcurementAttachment.findMany.mockResolvedValue([
+      {
+        id: "attachment-b",
+        fileId: "handler-b-quote",
+        category: "merchant_quote",
+        uploadedByUserId: "handler-b",
+        createdAt: new Date("2026-07-17T00:00:00.000Z")
+      }
+    ]);
+    tx.fileObject.findMany.mockResolvedValue([
+      {
+        id: "handler-b-quote",
+        storageStatus: "active",
+        uploadedByUserId: "handler-b"
+      }
+    ]);
+
+    await service.updateDraft("procurement-1", "applicant-a", {
+      supplierName: draftInput.supplierName,
+      reason: draftInput.reason,
+      lines: draftInput.lines
+    });
+
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: expect.objectContaining({
+        supplierPartyId: "party-1",
+        handlerUserId: "handler-b",
+        note: "优先送到北门"
+      })
+    });
+    expect(tx.spotProcurement.update).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      data: expect.objectContaining({ handlerUserId: "handler-b" })
+    });
+    expect(tx.spotProcurementAttachment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          versionId: "version-1",
+          fileId: "handler-b-quote",
+          category: "merchant_quote",
+          uploadedByUserId: "handler-b"
+        }
+      ]
+    });
+  });
+
+  it("recomputes a version draft change summary against the preceding frozen version on update", async () => {
+    const { service, tx } = harness();
+    const previousVersion = {
+      ...versionLock,
+      status: "invalidated"
+    };
+    const currentVersion = {
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      totalAmountCents: 5000n,
+      changeReason: "调整单价",
+      changeSummary: {
+        changes: [{ field: "lines[0].unitPrice", before: "3.28", after: "4" }]
+      }
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          currentVersionId: "version-2",
+          status: "draft"
+        }
+      ])
+      .mockResolvedValueOnce([currentVersion])
+      .mockResolvedValueOnce([previousVersion]);
+    role(tx, "material_staff");
+    tx.spotProcurementLine.findMany
+      .mockResolvedValueOnce([storedInvoiceLine("4", 5000n)])
+      .mockResolvedValueOnce([storedInvoiceLine()]);
+
+    await service.updateDraft("procurement-1", "material-1", {
+      ...draftInput,
+      lines: [{ ...invoiceLine, unitPrice: "5" }]
+    });
+
+    const updateData =
+      tx.spotProcurementVersion.update.mock.calls[0]?.[0].data;
+    expect(updateData.changeSummary.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "lines[0].unitPrice",
+          before: "3.28",
+          after: "5"
+        })
+      ])
+    );
+  });
+
   it("rejects an active private attachment uploaded by an unrelated user", async () => {
     const { service, tx } = harness();
     tx.$queryRaw
@@ -696,6 +831,138 @@ describe("SpotProcurementApplicationService", () => {
     expect(tx.spotProcurement.create).not.toHaveBeenCalled();
   });
 
+  it("recomputes the final submitted change summary from the preceding frozen version", async () => {
+    const { service, tx } = harness();
+    const previousVersion = {
+      ...versionLock,
+      status: "invalidated"
+    };
+    const currentVersion = {
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      totalAmountCents: 6250n,
+      changeReason: "调整单价",
+      changeSummary: {
+        changes: [{ field: "lines[0].unitPrice", before: "3.28", after: "4" }]
+      }
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          currentVersionId: "version-2",
+          status: "draft"
+        }
+      ])
+      .mockResolvedValueOnce([currentVersion])
+      .mockResolvedValueOnce([previousVersion]);
+    role(tx, "material_staff");
+    tx.spotProcurementLine.findMany
+      .mockResolvedValueOnce([storedInvoiceLine("5", 6250n)])
+      .mockResolvedValueOnce([storedInvoiceLine()]);
+
+    await service.submit("procurement-1", "material-1");
+
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-2" },
+      data: expect.objectContaining({
+        status: "approval_pending",
+        totalAmountCents: 6250n,
+        changeSummary: {
+          changes: expect.arrayContaining([
+            expect.objectContaining({
+              field: "lines[0].unitPrice",
+              before: "3.28",
+              after: "5"
+            })
+          ])
+        }
+      })
+    });
+  });
+
+  it.each(["invalidated", "returned"])(
+    "rejects submitting a non-withdrawn revision restored to the previous facts when predecessor is %s",
+    async (previousStatus) => {
+      const { service, tx } = harness();
+      const previousVersion = {
+        ...versionLock,
+        status: previousStatus
+      };
+      const currentVersion = {
+        ...versionLock,
+        id: "version-2",
+        versionNo: 2,
+        status: "draft",
+        changeReason: "普通变更或审批退回",
+        changeSummary: { changes: [] }
+      };
+      tx.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            ...rootLock,
+            currentVersionId: "version-2",
+            status: "draft"
+          }
+        ])
+        .mockResolvedValueOnce([currentVersion])
+        .mockResolvedValueOnce([previousVersion]);
+      role(tx, "material_staff");
+      tx.spotProcurementLine.findMany
+        .mockResolvedValueOnce([storedInvoiceLine()])
+        .mockResolvedValueOnce([storedInvoiceLine()]);
+
+      await expect(
+        service.submit("procurement-1", "material-1")
+      ).rejects.toThrow("采购版本没有实际字段变化，不能提交审批");
+      expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+      expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    }
+  );
+
+  it("allows a withdrawn revision to be resubmitted unchanged while storing an accurate empty summary", async () => {
+    const { service, tx } = harness();
+    const previousVersion = {
+      ...versionLock,
+      status: "withdrawn"
+    };
+    const currentVersion = {
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      changeReason: "申请人撤回采购审批",
+      changeSummary: { changes: [] }
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          currentVersionId: "version-2",
+          status: "draft"
+        }
+      ])
+      .mockResolvedValueOnce([currentVersion])
+      .mockResolvedValueOnce([previousVersion]);
+    role(tx, "material_staff");
+    tx.spotProcurementLine.findMany
+      .mockResolvedValueOnce([storedInvoiceLine()])
+      .mockResolvedValueOnce([storedInvoiceLine()]);
+
+    await service.submit("procurement-1", "material-1");
+
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-2" },
+      data: expect.objectContaining({
+        status: "approval_pending",
+        changeSummary: { changes: [] }
+      })
+    });
+  });
+
   it("exposes only approve/reject/return_to_applicant review decisions and rejects detail mutation", async () => {
     const pipe = createApiValidationPipe();
     for (const decision of ["approve", "reject", "return_to_applicant"]) {
@@ -917,6 +1184,128 @@ describe("SpotProcurementApplicationService", () => {
     });
   });
 
+  it("returns an approval by preserving the submitted version and cloning a revision draft", async () => {
+    const { service, tx, audit, vatRates } = harness();
+    const submittedAt = new Date("2026-07-17T01:00:00.000Z");
+    const submittedVersion = {
+      ...versionLock,
+      status: "approval_pending",
+      submittedAt
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ ...rootLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([submittedVersion])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+          ],
+          applicantUserId: "material-1"
+        }
+      ]);
+    role(tx, "project_manager");
+    tx.spotProcurementVersion.create.mockResolvedValue({
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      changeReason: "请补充运输费用说明",
+      changeSummary: { changes: [] },
+      submittedAt: null,
+      createdByUserId: "manager-1"
+    });
+    tx.spotProcurementAttachment.findMany.mockResolvedValue([
+      {
+        id: "attachment-1",
+        versionId: "version-1",
+        fileId: "quote-1",
+        category: "merchant_quote",
+        uploadedByUserId: "material-1",
+        createdAt: new Date("2026-07-17T00:00:00.000Z")
+      }
+    ]);
+    vatRates.requireEnabledOption.mockRejectedValue(
+      new Error("历史税率已经停用，不应在冻结复制时重新查询")
+    );
+
+    const result = await service.review("procurement-1", "manager-1", {
+      decision: "return_to_applicant",
+      comment: "请补充运输费用说明"
+    });
+
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: { status: "returned_to_applicant" }
+    });
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: { status: "returned" }
+    });
+    expect(tx.spotProcurementVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        procurementId: "procurement-1",
+        versionNo: 2,
+        status: "draft",
+        changeReason: "请补充运输费用说明",
+        changeSummary: { changes: [] },
+        createdByUserId: "manager-1"
+      })
+    });
+    expect(tx.spotProcurementLine.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          versionId: "version-2",
+          vatRateOptionId: "vat-13",
+          vatRateValueSnapshot: new Prisma.Decimal("13"),
+          vatRateLabelSnapshot: "13%"
+        })
+      ]
+    });
+    expect(tx.spotProcurementAttachment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          versionId: "version-2",
+          fileId: "quote-1",
+          category: "merchant_quote",
+          uploadedByUserId: "material-1"
+        }
+      ]
+    });
+    expect(tx.spotProcurement.update).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      data: expect.objectContaining({
+        currentVersionId: "version-2",
+        status: "draft",
+        handlerUserId: "material-1"
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.approval.return_to_applicant",
+        businessId: "version-1",
+        metadata: expect.objectContaining({
+          sourceVersionId: "version-1",
+          newVersionId: "version-2"
+        })
+      })
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        versionId: "version-2",
+        versionNo: 2,
+        versionStatus: "draft"
+      })
+    );
+    expect(submittedVersion.submittedAt).toBe(submittedAt);
+    expect(vatRates.requireEnabledOption).not.toHaveBeenCalled();
+    expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+  });
+
   it("reuses the ordinary-applicant self-review guard at the current frozen node", async () => {
     const { service, tx } = harness();
     const selfApplicantRoot = {
@@ -949,11 +1338,17 @@ describe("SpotProcurementApplicationService", () => {
     expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
   });
 
-  it("lets only the applicant withdraw an in-flight approval and restores the editable draft in one transaction", async () => {
+  it("withdraws approval by preserving the submitted version and cloning a new editable draft", async () => {
     const { service, prisma, tx, audit, pilot } = harness();
+    const submittedAt = new Date("2026-07-17T01:00:00.000Z");
+    const submittedVersion = {
+      ...versionLock,
+      status: "approval_pending",
+      submittedAt
+    };
     tx.$queryRaw
       .mockResolvedValueOnce([{ ...rootLock, status: "approval_pending" }])
-      .mockResolvedValueOnce([{ ...versionLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([submittedVersion])
       .mockResolvedValueOnce([
         {
           id: "approval-1",
@@ -962,7 +1357,45 @@ describe("SpotProcurementApplicationService", () => {
           frozenNodes: procurementApprovalNodes(["material_staff"]),
           applicantUserId: "material-1"
         }
-      ]);
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          currentVersionId: "version-2",
+          status: "draft"
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...versionLock,
+          id: "version-2",
+          versionNo: 2,
+          status: "draft",
+          changeReason: "申请人撤回采购审批",
+          changeSummary: { changes: [] },
+          submittedAt: null
+        }
+      ])
+      .mockResolvedValueOnce([submittedVersion]);
+    tx.spotProcurementVersion.create.mockResolvedValue({
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      changeReason: "申请人撤回采购审批",
+      changeSummary: { changes: [] },
+      submittedAt: null
+    });
+    tx.spotProcurementAttachment.findMany.mockResolvedValue([
+      {
+        id: "attachment-1",
+        versionId: "version-1",
+        fileId: "quote-1",
+        category: "merchant_quote",
+        uploadedByUserId: "material-1",
+        createdAt: new Date("2026-07-17T00:00:00.000Z")
+      }
+    ]);
 
     const result = await service.withdrawApproval(
       "procurement-1",
@@ -985,26 +1418,95 @@ describe("SpotProcurementApplicationService", () => {
     });
     expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
       where: { id: "version-1" },
-      data: { status: "draft", submittedAt: null }
+      data: { status: "withdrawn" }
+    });
+    expect(tx.spotProcurementVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        procurementId: "procurement-1",
+        versionNo: 2,
+        status: "draft",
+        reason: versionLock.reason,
+        note: versionLock.note,
+        supplierPartyId: "party-1",
+        supplierKey: "party:party-1",
+        supplierNameSnapshot: "北京 某某商贸",
+        handlerUserId: "material-1",
+        totalAmountCents: 4100n,
+        changeReason: "申请人撤回采购审批",
+        changeSummary: { changes: [] },
+        createdByUserId: "material-1"
+      })
+    });
+    expect(tx.spotProcurementLine.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          versionId: "version-2",
+          vatRateOptionId: "vat-13",
+          vatRateValueSnapshot: new Prisma.Decimal("13"),
+          vatRateLabelSnapshot: "13%",
+          amountCents: 4100n
+        })
+      ]
+    });
+    expect(tx.spotProcurementAttachment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          versionId: "version-2",
+          fileId: "quote-1",
+          category: "merchant_quote",
+          uploadedByUserId: "material-1"
+        }
+      ]
     });
     expect(tx.spotProcurement.update).toHaveBeenCalledWith({
       where: { id: "procurement-1" },
-      data: { status: "draft" }
+      data: expect.objectContaining({
+        currentVersionId: "version-2",
+        status: "draft",
+        supplierPartyId: "party-1",
+        supplierKey: "party:party-1",
+        supplierNameSnapshot: "北京 某某商贸",
+        handlerUserId: "material-1"
+      })
     });
     expect(audit.record).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
         actorUserId: "material-1",
         action: "spot_procurement.approval.withdraw",
-        businessId: "version-1"
+        businessId: "version-1",
+        metadata: expect.objectContaining({
+          sourceVersionId: "version-1",
+          newVersionId: "version-2"
+        })
       })
     );
     expect(result).toEqual(
       expect.objectContaining({
         status: "draft",
+        versionId: "version-2",
+        versionNo: 2,
         versionStatus: "draft"
       })
     );
+    expect(submittedVersion.submittedAt).toBe(submittedAt);
+    expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+
+    tx.spotProcurementVersion.update.mockClear();
+    role(tx, "material_staff");
+    await service.updateDraft("procurement-1", "material-1", {
+      ...draftInput,
+      lines: [{ ...invoiceLine, unitPrice: "4" }]
+    });
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-2" },
+      data: expect.objectContaining({ totalAmountCents: 5000n })
+    });
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: expect.anything()
+    });
   });
 
   it("rejects approval withdrawal by a non-applicant or outside approval_pending", async () => {
@@ -1570,11 +2072,12 @@ describe("SpotProcurementApplicationService", () => {
         { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
       ])
       .mockResolvedValueOnce([{ ...versionLock, status: "approved" }])
+      .mockResolvedValueOnce([{ id: "payment-draft", status: "draft" }])
       .mockResolvedValueOnce([]);
     role(openHarness.tx, "project_manager");
-    openHarness.tx.spotProcurementPayment.findMany.mockResolvedValue([
-      { id: "payment-draft", status: "draft" }
-    ]);
+    openHarness.tx.spotProcurementPayment.updateMany.mockResolvedValue({
+      count: 1
+    });
 
     const result = await openHarness.service.voidProcurement(
       "procurement-1",
@@ -1594,22 +2097,82 @@ describe("SpotProcurementApplicationService", () => {
     expect(result.status).toBe("voided");
   });
 
+  it("locks the current version before all procurement payments in stable order when voiding", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
+      ])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approved" }])
+      .mockResolvedValueOnce([{ id: "payment-draft", status: "draft" }])
+      .mockResolvedValueOnce([]);
+    role(tx, "project_manager");
+    tx.spotProcurementPayment.updateMany.mockResolvedValue({ count: 1 });
+
+    await service.voidProcurement(
+      "procurement-1",
+      "manager-1",
+      "业务终止"
+    );
+
+    const sqlTexts = tx.$queryRaw.mock.calls.map(
+      ([query]) =>
+        ((query as { strings?: readonly string[] }).strings ?? []).join(" ")
+    );
+    expect(sqlTexts[0]).toContain('FROM "SpotProcurement"');
+    expect(sqlTexts[1]).toContain('FROM "SpotProcurementVersion"');
+    expect(sqlTexts[2]).toContain('FROM "SpotProcurementPayment"');
+    expect(sqlTexts[2]).toContain('ORDER BY "id"');
+    expect(sqlTexts[2]).toContain("FOR UPDATE");
+    expect(sqlTexts[3]).toContain('FROM "ApprovalInstance"');
+    expect(tx.spotProcurementPayment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("stops voiding when locked draft payment invalidation loses its CAS", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
+      ])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approved" }])
+      .mockResolvedValueOnce([{ id: "payment-draft", status: "draft" }])
+      .mockResolvedValueOnce([]);
+    role(tx, "project_manager");
+    tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-draft", status: "draft" }
+    ]);
+    tx.spotProcurementPayment.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.voidProcurement(
+        "procurement-1",
+        "manager-1",
+        "业务终止"
+      )
+    ).rejects.toThrow("付款状态已变化，请重试采购撤销");
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
   it("does not void a procurement that already has real or active payment facts", async () => {
     for (const paymentFact of ["execution", "active_payment"]) {
       const { service, tx } = harness();
-      tx.$queryRaw.mockResolvedValueOnce([
-        { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
-      ]);
+      tx.$queryRaw
+        .mockResolvedValueOnce([
+          { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
+        ])
+        .mockResolvedValueOnce([{ ...versionLock, status: "approved" }])
+        .mockResolvedValueOnce([
+          {
+            id: "payment-1",
+            status:
+              paymentFact === "active_payment"
+                ? "approved_pending_payment"
+                : "draft"
+          }
+        ]);
       role(tx, "project_manager");
-      tx.spotProcurementPayment.findMany.mockResolvedValue([
-        {
-          id: "payment-1",
-          status:
-            paymentFact === "active_payment"
-              ? "approved_pending_payment"
-              : "draft"
-        }
-      ]);
       if (paymentFact === "execution") {
         tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({
           id: "execution-1"
