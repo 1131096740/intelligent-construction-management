@@ -1,0 +1,956 @@
+import "reflect-metadata";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  RequestMethod
+} from "@nestjs/common";
+import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { Prisma } from "@prisma/client";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
+import { createApiValidationPipe } from "../validation/api-validation";
+import type { CreateSpotProcurementDto } from "./dto/create-spot-procurement.dto";
+import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
+import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
+import { procurementApprovalNodes } from "./spot-procurement-approval-nodes";
+import { SpotProcurementController } from "./spot-procurement.controller";
+
+const invoiceLine = {
+  materialName: "免烧砖",
+  specification: "240×115×53",
+  unit: "块",
+  quantity: "12.500000",
+  invoiceMode: "invoice" as const,
+  invoiceType: "vat_special" as const,
+  vatRateOptionId: "vat-13",
+  unitPrice: "3.28",
+  usageLocation: "二次结构",
+  note: "当天送达",
+  amountCents: "1"
+};
+
+const draftInput: CreateSpotProcurementDto = {
+  projectId: "project-1",
+  code: "LXCG-001",
+  supplierPartyId: "party-1",
+  supplierName: "  北京   某某商贸  ",
+  handlerUserId: "material-1",
+  reason: "现场临时补充",
+  note: "优先送到北门",
+  lines: [invoiceLine],
+  attachments: [],
+  totalAmountCents: "1"
+};
+
+const rootLock = {
+  id: "procurement-1",
+  projectId: "project-1",
+  code: "LXCG-001",
+  supplierPartyId: "party-1",
+  supplierKey: "party:party-1",
+  supplierNameSnapshot: "北京 某某商贸",
+  applicantUserId: "material-1",
+  handlerUserId: "material-1",
+  currentVersionId: "version-1",
+  status: "draft",
+  approvedAmountCents: 0n
+};
+
+const versionLock = {
+  id: "version-1",
+  procurementId: "procurement-1",
+  versionNo: 1,
+  status: "draft",
+  reason: "现场临时补充",
+  note: "优先送到北门",
+  supplierPartyId: "party-1",
+  supplierKey: "party:party-1",
+  supplierNameSnapshot: "北京 某某商贸",
+  handlerUserId: "material-1",
+  totalAmountCents: 4100n,
+  changeReason: null,
+  changeSummary: null,
+  submittedAt: null,
+  approvedAt: null,
+  createdByUserId: "material-1"
+};
+
+function transactionDelegate() {
+  return {
+    $queryRaw: jest.fn(),
+    project: {
+      findUnique: jest.fn().mockResolvedValue({ id: "project-1", status: "active" })
+    },
+    userPosition: { findMany: jest.fn() },
+    projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+    position: { findMany: jest.fn() },
+    businessParty: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ id: "party-1", name: "北京某某商贸", status: "active" })
+    },
+    fileObject: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurement: {
+      create: jest.fn().mockResolvedValue({ ...rootLock, currentVersionId: null }),
+      update: jest.fn().mockImplementation(async ({ data }: { data: object }) => ({
+        ...rootLock,
+        ...data
+      }))
+    },
+    spotProcurementVersion: {
+      create: jest.fn().mockResolvedValue(versionLock),
+      update: jest.fn().mockImplementation(async ({ data }: { data: object }) => ({
+        ...versionLock,
+        ...data
+      })),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementLine: {
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          sortOrder: 1,
+          materialName: invoiceLine.materialName,
+          specification: invoiceLine.specification,
+          unit: invoiceLine.unit,
+          quantity: new Prisma.Decimal(invoiceLine.quantity),
+          invoiceMode: invoiceLine.invoiceMode,
+          invoiceType: invoiceLine.invoiceType,
+          vatRateOptionId: invoiceLine.vatRateOptionId,
+          vatRateValueSnapshot: new Prisma.Decimal("13"),
+          vatRateLabelSnapshot: "13%",
+          unitPrice: new Prisma.Decimal(invoiceLine.unitPrice),
+          amountCents: 4100n,
+          usageLocation: invoiceLine.usageLocation,
+          note: invoiceLine.note
+        }
+      ])
+    },
+    spotProcurementAttachment: {
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    approvalInstance: {
+      create: jest.fn().mockResolvedValue({
+        id: "approval-1",
+        status: "approval_pending",
+        currentNodeIndex: 0
+      }),
+      update: jest.fn().mockResolvedValue({ id: "approval-1" })
+    },
+    approvalActionLog: {
+      create: jest.fn().mockResolvedValue({ id: "action-1" })
+    },
+    spotProcurementPayment: {
+      create: jest.fn().mockResolvedValue({
+        id: "payment-1",
+        code: "LXCG-001-V1-P001",
+        status: "draft"
+      }),
+      findMany: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 })
+    },
+    spotProcurementPaymentExecution: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+  };
+}
+
+function role(tx: ReturnType<typeof transactionDelegate>, roleKey: string) {
+  tx.userPosition.findMany
+    .mockResolvedValueOnce([{ positionId: `position-${roleKey}`, projectId: null }])
+    .mockResolvedValueOnce([]);
+  tx.position.findMany.mockResolvedValue([{ id: `position-${roleKey}`, key: roleKey }]);
+}
+
+function harness() {
+  const tx = transactionDelegate();
+  const prisma = {
+    $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+      callback(tx)
+    )
+  };
+  const audit = {
+    record: jest.fn((client: typeof tx, input: object) =>
+      client.auditLog.create({ data: input })
+    )
+  };
+  const pilot = { assertEnabled: jest.fn() };
+  const vatRates = {
+    requireEnabledOption: jest.fn().mockResolvedValue({
+      id: "vat-13",
+      rateValue: "13",
+      label: "13%",
+      enabled: true,
+      sortOrder: 10
+    })
+  };
+  const service = new SpotProcurementApplicationService(
+    prisma as never,
+    audit as never,
+    pilot as never,
+    vatRates as never
+  );
+  return { service, prisma, tx, audit, pilot, vatRates };
+}
+
+describe("SpotProcurementController", () => {
+  it("uses the exact independent route surface and project-role actions", () => {
+    expect(Reflect.getMetadata(PATH_METADATA, SpotProcurementController)).toBe(
+      "spot-procurements"
+    );
+    const expectations = [
+      ["create", RequestMethod.POST, "/", "spot_procurement.create"],
+      [
+        "updateDraft",
+        RequestMethod.PATCH,
+        ":procurementId/draft",
+        "spot_procurement.create"
+      ],
+      [
+        "createVersion",
+        RequestMethod.POST,
+        ":procurementId/versions",
+        "spot_procurement.create"
+      ],
+      [
+        "submit",
+        RequestMethod.POST,
+        ":procurementId/submission",
+        "spot_procurement.create"
+      ],
+      [
+        "review",
+        RequestMethod.POST,
+        ":procurementId/approval",
+        "spot_procurement.approve"
+      ],
+      [
+        "voidProcurement",
+        RequestMethod.POST,
+        ":procurementId/voiding",
+        "spot_procurement.void"
+      ]
+    ] as const;
+    for (const [method, requestMethod, path, action] of expectations) {
+      expect(
+        Reflect.getMetadata(
+          METHOD_METADATA,
+          SpotProcurementController.prototype[method]
+        )
+      ).toBe(requestMethod);
+      expect(
+        Reflect.getMetadata(
+          PATH_METADATA,
+          SpotProcurementController.prototype[method]
+        )
+      ).toBe(path);
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PROJECT_ACTION_KEY,
+          SpotProcurementController.prototype[method]
+        )
+      ).toBe(action);
+    }
+  });
+});
+
+describe("SpotProcurementApplicationService", () => {
+  it.each(["material_staff", "material_director"])(
+    "allows %s to create a draft and recalculates trusted amounts",
+    async (roleKey) => {
+      const { service, tx, pilot } = harness();
+      role(tx, roleKey);
+
+      const result = await service.createDraft("material-1", draftInput);
+
+      expect(pilot.assertEnabled).toHaveBeenCalledWith("project-1");
+      expect(tx.spotProcurement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          supplierNameSnapshot: "北京 某某商贸",
+          supplierKey: "party:party-1",
+          applicantUserId: "material-1",
+          handlerUserId: "material-1",
+          status: "draft"
+        })
+      });
+      expect(tx.spotProcurementVersion.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          supplierNameSnapshot: "北京 某某商贸",
+          totalAmountCents: 4100n,
+          status: "draft"
+        })
+      });
+      expect(tx.spotProcurementLine.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({
+            sortOrder: 1,
+            amountCents: 4100n,
+            vatRateValueSnapshot: new Prisma.Decimal("13"),
+            vatRateLabelSnapshot: "13%"
+          })
+        ]
+      });
+      expect(result.totalAmountCents).toBe("4100");
+    }
+  );
+
+  it("rejects draft creation for roles outside material staff/director", async () => {
+    const { service, tx } = harness();
+    role(tx, "finance_staff");
+
+    await expect(
+      service.createDraft("finance-1", {
+        ...draftInput,
+        handlerUserId: "finance-1"
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.spotProcurement.create).not.toHaveBeenCalled();
+  });
+
+  it("stores exactly one supplier at the root/version header and accepts zero attachments", async () => {
+    const { service, tx } = harness();
+    role(tx, "material_staff");
+
+    await service.createDraft("material-1", draftInput);
+
+    const rootData = tx.spotProcurement.create.mock.calls[0]?.[0].data;
+    const versionData = tx.spotProcurementVersion.create.mock.calls[0]?.[0].data;
+    expect(rootData).toEqual(
+      expect.objectContaining({
+        supplierPartyId: "party-1",
+        supplierNameSnapshot: "北京 某某商贸"
+      })
+    );
+    expect(versionData).toEqual(
+      expect.objectContaining({
+        supplierPartyId: "party-1",
+        supplierNameSnapshot: "北京 某某商贸"
+      })
+    );
+    expect(tx.spotProcurementAttachment.createMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementLine.createMany.mock.calls[0]?.[0].data[0]).not.toHaveProperty(
+      "supplierName"
+    );
+  });
+
+  it("updates only the current draft, replaces optional attachments and recalculates totals", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([rootLock])
+      .mockResolvedValueOnce([versionLock]);
+    role(tx, "material_staff");
+    tx.fileObject.findMany.mockResolvedValue([
+      {
+        id: "quote-1",
+        storageStatus: "active",
+        uploadedByUserId: "uploader-1"
+      }
+    ]);
+
+    const result = await service.updateDraft("procurement-1", "material-1", {
+      ...draftInput,
+      lines: [{ ...invoiceLine, quantity: "2", unitPrice: "4.50" }],
+      attachments: [{ fileId: "quote-1", category: "merchant_quote" }]
+    });
+
+    expect(tx.spotProcurementLine.deleteMany).toHaveBeenCalled();
+    expect(tx.spotProcurementLine.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ amountCents: 900n })]
+    });
+    expect(tx.spotProcurementAttachment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          versionId: "version-1",
+          fileId: "quote-1",
+          category: "merchant_quote",
+          uploadedByUserId: "uploader-1"
+        }
+      ]
+    });
+    expect(result.totalAmountCents).toBe("900");
+  });
+
+  it("freezes only project manager and records node_skipped for a database-resolved material director applicant", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([rootLock])
+      .mockResolvedValueOnce([versionLock]);
+    role(tx, "material_director");
+
+    await service.submit("procurement-1", "material-1");
+
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        frozenNodes: [
+          { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+        ]
+      })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "node_skipped",
+        actorUserId: "material-1"
+      })
+    });
+  });
+
+  it("freezes material director then project manager for a material staff applicant", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([rootLock])
+      .mockResolvedValueOnce([versionLock]);
+    role(tx, "material_staff");
+
+    await service.submit("procurement-1", "material-1");
+
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        frozenNodes: procurementApprovalNodes(["material_staff"])
+      })
+    });
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "node_skipped" })
+    });
+  });
+
+  it("freezes nodes from the database applicant roles rather than a delegated handler submitter", async () => {
+    const { service, tx } = harness();
+    const delegatedRoot = {
+      ...rootLock,
+      applicantUserId: "staff-applicant",
+      handlerUserId: "director-handler"
+    };
+    const delegatedVersion = {
+      ...versionLock,
+      handlerUserId: "director-handler"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([delegatedRoot])
+      .mockResolvedValueOnce([delegatedVersion]);
+    tx.userPosition.findMany.mockImplementation(
+      async ({ where }: { where: { userId: string; projectId: string | null } }) =>
+        where.projectId === null
+          ? [
+              {
+                positionId:
+                  where.userId === "staff-applicant"
+                    ? "position-material_staff"
+                    : "position-material_director",
+                projectId: null
+              }
+            ]
+          : []
+    );
+    tx.position.findMany.mockImplementation(
+      async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.map((id) => ({
+          id,
+          key: id.replace("position-", "")
+        }))
+    );
+
+    await service.submit("procurement-1", "director-handler");
+
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        applicantUserId: "staff-applicant",
+        frozenNodes: procurementApprovalNodes(["material_staff"])
+      })
+    });
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "node_skipped" })
+    });
+  });
+
+  it("exposes only approve/reject/return_to_applicant review decisions and rejects detail mutation", async () => {
+    const pipe = createApiValidationPipe();
+    for (const decision of ["approve", "reject", "return_to_applicant"]) {
+      await expect(
+        pipe.transform(
+          { decision, comment: decision === "approve" ? undefined : "说明" },
+          { type: "body", metatype: ReviewSpotProcurementDto, data: undefined }
+        )
+      ).resolves.toEqual(
+        expect.objectContaining({ decision })
+      );
+    }
+    await expect(
+      pipe.transform(
+        {
+          decision: "approve",
+          lines: [{ materialName: "审批人偷改明细" }]
+        },
+        { type: "body", metatype: ReviewSpotProcurementDto, data: undefined }
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("moves to approved states and creates the first payment draft inside the final approval transaction", async () => {
+    const { service, prisma, tx } = harness();
+    const pendingRoot = { ...rootLock, status: "approval_pending" };
+    const pendingVersion = {
+      ...versionLock,
+      status: "approval_pending",
+      submittedAt: new Date("2026-07-17T00:00:00.000Z")
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([pendingRoot])
+      .mockResolvedValueOnce([pendingVersion])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+          ],
+          applicantUserId: "material-1"
+        }
+      ]);
+    role(tx, "project_manager");
+
+    const result = await service.review("procurement-1", "manager-1", {
+      decision: "approve"
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: expect.objectContaining({ status: "approved", approvedAt: expect.any(Date) })
+    });
+    expect(tx.spotProcurement.update).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      data: expect.objectContaining({
+        status: "approved_in_progress",
+        currentVersionId: "version-1",
+        approvedAmountCents: 4100n
+      })
+    });
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        code: "LXCG-001-V1-P001",
+        status: "draft",
+        settlementAmountCents: 4100n,
+        supplierBalanceAmountCents: 0n,
+        companyPaymentAmountCents: 4100n,
+        payeeNameSnapshot: "北京 某某商贸",
+        handlerUserId: "material-1",
+        createdByUserId: "manager-1"
+      })
+    });
+    expect(result.status).toBe("approved_in_progress");
+  });
+
+  it("advances the material-staff two-node flow without creating payment at the director node", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ ...rootLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: procurementApprovalNodes(["material_staff"]),
+          applicantUserId: "material-1"
+        }
+      ]);
+    role(tx, "material_director");
+
+    const result = await service.review("procurement-1", "director-1", {
+      decision: "approve",
+      comment: "同意"
+    });
+
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: {
+        currentNodeIndex: 1,
+        frozenNodes: [
+          {
+            name: "物资主管审批",
+            mode: "any",
+            roleKeys: ["material_director"],
+            approvedRoleKeys: ["material_director"]
+          },
+          {
+            name: "项目经理审批",
+            mode: "any",
+            roleKeys: ["project_manager"]
+          }
+        ]
+      }
+    });
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: expect.objectContaining({ status: "approved" })
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "approval_pending",
+        versionStatus: "approval_pending"
+      })
+    );
+  });
+
+  it("propagates payment draft failure so final approval cannot commit separately", async () => {
+    const { service, prisma, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ ...rootLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+          ],
+          applicantUserId: "material-1"
+        }
+      ]);
+    role(tx, "project_manager");
+    tx.spotProcurementPayment.create.mockRejectedValue(
+      new Error("simulated payment insert failure")
+    );
+
+    await expect(
+      service.review("procurement-1", "manager-1", { decision: "approve" })
+    ).rejects.toThrow("simulated payment insert failure");
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalled();
+  });
+
+  it("requires comments for reject/return and keeps the frozen version immutable during review", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ ...rootLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+          ],
+          applicantUserId: "material-1"
+        }
+      ]);
+    role(tx, "project_manager");
+
+    await expect(
+      service.review("procurement-1", "manager-1", {
+        decision: "reject"
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("does not mark a node approved when the reviewer rejects the application", async () => {
+    const { service, tx } = harness();
+    const frozenNodes = [
+      { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+    ];
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ ...rootLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes,
+          applicantUserId: "material-1"
+        }
+      ]);
+    role(tx, "project_manager");
+
+    await service.review("procurement-1", "manager-1", {
+      decision: "reject",
+      comment: "采购条件不完整"
+    });
+
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: { status: "rejected" }
+    });
+    expect(frozenNodes[0]).not.toHaveProperty("approvedRoleKeys");
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "reject" })
+    });
+  });
+
+  it("reuses the ordinary-applicant self-review guard at the current frozen node", async () => {
+    const { service, tx } = harness();
+    const selfApplicantRoot = {
+      ...rootLock,
+      applicantUserId: "dual-role-user",
+      status: "approval_pending"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([selfApplicantRoot])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approval_pending" }])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+          ],
+          applicantUserId: "dual-role-user"
+        }
+      ]);
+    role(tx, "project_manager");
+
+    await expect(
+      service.review("procurement-1", "dual-role-user", {
+        decision: "approve"
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+  });
+
+  it("hard-blocks ordinary version changes after a real non-voided payment", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
+      ])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approved" }]);
+    role(tx, "material_staff");
+    tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({
+      id: "execution-1"
+    });
+
+    await expect(
+      service.createVersion("procurement-1", "material-1", {
+        ...draftInput,
+        changeReason: "现场规格发生变化"
+      })
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+  });
+
+  it("does not abandon a draft or in-flight approval by creating another ordinary version", async () => {
+    for (const versionStatus of ["draft", "approval_pending"]) {
+      const { service, tx } = harness();
+      tx.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            ...rootLock,
+            status:
+              versionStatus === "draft" ? "draft" : "approval_pending"
+          }
+        ])
+        .mockResolvedValueOnce([{ ...versionLock, status: versionStatus }]);
+      role(tx, "material_staff");
+
+      await expect(
+        service.createVersion("procurement-1", "material-1", {
+          ...draftInput,
+          changeReason: "不应绕过当前状态"
+        })
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it("blocks active submitted/approved payments but invalidates old drafts with a complete reason tuple", async () => {
+    for (const activeStatus of [
+      "approval_pending",
+      "approved_pending_payment",
+      "partially_paid"
+    ]) {
+      const activeHarness = harness();
+      activeHarness.tx.$queryRaw
+        .mockResolvedValueOnce([
+          { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
+        ])
+        .mockResolvedValueOnce([{ ...versionLock, status: "approved" }]);
+      role(activeHarness.tx, "material_staff");
+      activeHarness.tx.spotProcurementPayment.findMany.mockResolvedValue([
+        { id: "payment-active", status: activeStatus }
+      ]);
+
+      await expect(
+        activeHarness.service.createVersion("procurement-1", "material-1", {
+          ...draftInput,
+          changeReason: "调整单价"
+        })
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(activeHarness.tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+    }
+
+    const draftHarness = harness();
+    draftHarness.tx.$queryRaw
+      .mockResolvedValueOnce([
+        { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
+      ])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approved" }]);
+    role(draftHarness.tx, "material_staff");
+    draftHarness.tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-draft", status: "draft" }
+    ]);
+    draftHarness.tx.spotProcurementVersion.create.mockResolvedValue({
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      changeReason: "调整单价"
+    });
+
+    const result = await draftHarness.service.createVersion(
+      "procurement-1",
+      "material-1",
+      {
+        ...draftInput,
+        lines: [{ ...invoiceLine, unitPrice: "4" }],
+        changeReason: "调整单价"
+      }
+    );
+
+    expect(draftHarness.tx.spotProcurementPayment.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["payment-draft"] }, status: "draft" },
+      data: {
+        status: "invalidated",
+        invalidatedAt: expect.any(Date),
+        invalidatedByUserId: "material-1",
+        invalidatedReason: "采购版本变更：调整单价"
+      }
+    });
+    expect(
+      draftHarness.tx.spotProcurementVersion.create.mock.calls[0]?.[0].data
+        .changeSummary
+    ).toEqual(
+      expect.objectContaining({
+        changes: expect.arrayContaining([
+          expect.objectContaining({ field: "lines[0].unitPrice" })
+        ])
+      })
+    );
+    expect(result.versionNo).toBe(2);
+  });
+
+  it("rejects a new version whose field-by-field change summary is empty", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
+      ])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approved" }]);
+    role(tx, "material_staff");
+
+    await expect(
+      service.createVersion("procurement-1", "material-1", {
+        ...draftInput,
+        changeReason: "仅填写原因但未改字段"
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("allows an authorized pre-closure void but rejects a formally closed procurement", async () => {
+    const closedHarness = harness();
+    closedHarness.tx.$queryRaw.mockResolvedValueOnce([
+      { ...rootLock, status: "closed", closedAt: new Date() }
+    ]);
+    role(closedHarness.tx, "project_manager");
+    await expect(
+      closedHarness.service.voidProcurement(
+        "procurement-1",
+        "manager-1",
+        "业务终止"
+      )
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    const openHarness = harness();
+    openHarness.tx.$queryRaw
+      .mockResolvedValueOnce([
+        { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
+      ])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approved" }])
+      .mockResolvedValueOnce([]);
+    role(openHarness.tx, "project_manager");
+    openHarness.tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-draft", status: "draft" }
+    ]);
+
+    const result = await openHarness.service.voidProcurement(
+      "procurement-1",
+      "manager-1",
+      "业务终止"
+    );
+
+    expect(openHarness.tx.spotProcurement.update).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      data: {
+        status: "voided",
+        voidedAt: expect.any(Date),
+        voidedByUserId: "manager-1",
+        voidReason: "业务终止"
+      }
+    });
+    expect(result.status).toBe("voided");
+  });
+
+  it("does not void a procurement that already has real or active payment facts", async () => {
+    for (const paymentFact of ["execution", "active_payment"]) {
+      const { service, tx } = harness();
+      tx.$queryRaw.mockResolvedValueOnce([
+        { ...rootLock, status: "approved_in_progress", approvedAmountCents: 4100n }
+      ]);
+      role(tx, "project_manager");
+      tx.spotProcurementPayment.findMany.mockResolvedValue([
+        {
+          id: "payment-1",
+          status:
+            paymentFact === "active_payment"
+              ? "approved_pending_payment"
+              : "draft"
+        }
+      ]);
+      if (paymentFact === "execution") {
+        tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({
+          id: "execution-1"
+        });
+      }
+
+      await expect(
+        service.voidProcurement(
+          "procurement-1",
+          "manager-1",
+          "不应覆盖付款事实"
+        )
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(["P2002", "P2003", "P2025", "P2034"])(
+    "maps Prisma write error %s to a controlled Chinese conflict",
+    async (code) => {
+      const { service, prisma } = harness();
+      prisma.$transaction.mockRejectedValue({ code, detail: "sensitive-db-detail" });
+
+      await expect(
+        service.createDraft("material-1", draftInput)
+      ).rejects.toEqual(
+        expect.objectContaining({
+          status: 409,
+          message: expect.not.stringContaining("sensitive-db-detail")
+        })
+      );
+    }
+  );
+});

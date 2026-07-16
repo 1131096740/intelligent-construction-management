@@ -380,6 +380,48 @@ describe("PermissionGuard", () => {
     });
   });
 
+  it("resolves project-scoped zero-procurement roles from procurement route ids", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "material_staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      spotProcurement: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("spot_procurement.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "material-1" },
+          params: { procurementId: "procurement-1" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.spotProcurement.findUnique).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      select: { projectId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "material-1", projectId: "project-1" }
+    });
+  });
+
   it("rejects forged project ids on payment resource routes", async () => {
     const prisma = {
       userPosition: {

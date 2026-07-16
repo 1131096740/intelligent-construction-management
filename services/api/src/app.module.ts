@@ -22,6 +22,7 @@ import { PdfModule } from "./pdf/pdf.module";
 import { ProjectExpenseModule } from "./project-expense/project-expense.module";
 import { ProjectModule } from "./project/project.module";
 import { SettlementModule } from "./settlement/settlement.module";
+import { SpotProcurementModule } from "./spot-procurement/spot-procurement.module";
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { SettlementModule } from "./settlement/settlement.module";
     SettlementModule,
     PaymentModule,
     ProjectExpenseModule,
+    SpotProcurementModule,
     InvoiceLedgerModule,
     ApprovalModule,
     FileModule,

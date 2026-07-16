@@ -172,6 +172,16 @@ export class PermissionGuard implements CanActivate {
   }
 
   private async extractProjectId(request: AuthenticatedRequest) {
+    const procurementId = request.params?.procurementId;
+    if (procurementId) {
+      const procurement = await this.prisma.spotProcurement.findUnique({
+        where: { id: procurementId },
+        select: { projectId: true }
+      });
+
+      return procurement?.projectId;
+    }
+
     const paymentId = request.params?.paymentId;
     if (paymentId) {
       const payment = await this.prisma.paymentRequest.findFirst({
