@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
+import { FileModule } from "../file/file.module";
 import { InvoiceLedgerModule } from "../invoice-ledger/invoice-ledger.module";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
@@ -15,6 +16,7 @@ import { SpotProcurementController } from "./spot-procurement.controller";
     DatabaseModule,
     AuditModule,
     AuthModule,
+    FileModule,
     InvoiceLedgerModule
   ],
   controllers: [

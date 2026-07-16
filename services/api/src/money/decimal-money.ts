@@ -74,6 +74,48 @@ export interface MoneyRequestValue {
   paidAmountCents: bigint;
 }
 
+export interface SpotProcurementPaymentCashValue {
+  status: string;
+  companyPaymentAmountCents: bigint;
+  canceledCompanyPaymentAmountCents: bigint;
+  paidAmountCents: bigint;
+  supplierBalanceAmountCents?: bigint;
+}
+
+export const SPOT_PROCUREMENT_CASH_POOL_STATUSES = [
+  "approval_pending",
+  "approved_pending_payment",
+  "partially_paid",
+  "paid",
+  "settled"
+] as const;
+
+export function spotProcurementPaymentToMoneyRequestValue(
+  payment: SpotProcurementPaymentCashValue
+): MoneyRequestValue {
+  const companyPaymentAmountCents = dbMoneyToBigInt(
+    payment.companyPaymentAmountCents,
+    "零星采购公司付款金额"
+  );
+  const canceledCompanyPaymentAmountCents = dbMoneyToBigInt(
+    payment.canceledCompanyPaymentAmountCents,
+    "零星采购已取消公司付款金额"
+  );
+  const effectiveCompanyPaymentAmountCents =
+    companyPaymentAmountCents > canceledCompanyPaymentAmountCents
+      ? companyPaymentAmountCents - canceledCompanyPaymentAmountCents
+      : 0n;
+  return {
+    status: payment.status,
+    requestedAmountCents: effectiveCompanyPaymentAmountCents,
+    approvedAmountCents: effectiveCompanyPaymentAmountCents,
+    paidAmountCents: dbMoneyToBigInt(
+      payment.paidAmountCents,
+      "零星采购已付金额"
+    )
+  };
+}
+
 export function outstandingMoneyRequestCentsBigInt(
   request: MoneyRequestValue
 ): bigint {
@@ -98,13 +140,18 @@ export function calculateProjectCashPoolBigInt(input: {
   receiptAmountCents: readonly bigint[];
   paymentRequests: readonly MoneyRequestValue[];
   expenseRequests: readonly MoneyRequestValue[];
+  spotProcurementPayments?: readonly MoneyRequestValue[];
 }): {
   actualReceiptsCents: bigint;
   actualPaidCents: bigint;
   occupiedCents: bigint;
   availableCents: bigint;
 } {
-  const requests = [...input.paymentRequests, ...input.expenseRequests];
+  const requests = [
+    ...input.paymentRequests,
+    ...input.expenseRequests,
+    ...(input.spotProcurementPayments ?? [])
+  ];
   const actualReceiptsCents = sumDbMoneyToBigInt(input.receiptAmountCents, "项目实收金额");
   const actualPaidCents = sumDbMoneyToBigInt(
     requests.map((request) => request.paidAmountCents),

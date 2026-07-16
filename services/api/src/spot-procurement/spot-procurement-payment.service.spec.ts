@@ -9,6 +9,7 @@ import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { Prisma } from "@prisma/client";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
+import { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
 import { UpdateSpotProcurementPaymentDraftDto } from "./dto/update-spot-procurement-payment-draft.dto";
 import { SpotProcurementPaymentController } from "./spot-procurement-payment.controller";
@@ -43,6 +44,8 @@ const draftPayment = {
   paidAmountCents: 0n,
   executedSupplierBalanceAmountCents: 0n,
   canceledAmountCents: 0n,
+  canceledCompanyPaymentAmountCents: 0n,
+  canceledSupplierBalanceAmountCents: 0n,
   paymentPath: null,
   paymentMethod: null,
   payeePartyId: "party-1",
@@ -79,6 +82,7 @@ function transactionDelegate() {
       })
     },
     fileObject: {
+      findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([
         {
           id: "file-support",
@@ -88,10 +92,20 @@ function transactionDelegate() {
       ])
     },
     spotProcurementPayment: {
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn()
     },
+    spotProcurementPaymentExecution: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn()
+    },
+    projectReceipt: { findMany: jest.fn() },
+    paymentRequest: { findMany: jest.fn() },
+    projectExpenseRequest: { findMany: jest.fn() },
     approvalInstance: {
       create: jest.fn().mockResolvedValue({
         id: "approval-1",
@@ -170,7 +184,14 @@ function harness() {
     $transaction: jest.fn(
       async (callback: (client: typeof tx) => unknown) =>
         callback(tx)
-    )
+    ),
+    spotProcurementPaymentExecution: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    spotProcurementPayment: {
+      findUnique: jest.fn()
+    }
   };
   const audit = {
     record: jest.fn((client: typeof tx, input: object) =>
@@ -199,14 +220,31 @@ function harness() {
   const auth = {
     confirmPassword: jest.fn().mockResolvedValue(undefined)
   };
+  const files = {
+    assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined),
+    assertCanDownloadFile: jest.fn().mockResolvedValue({
+      id: "file-voucher",
+      storageStatus: "active"
+    })
+  };
   const service = Reflect.construct(SpotProcurementPaymentService, [
     prisma,
     audit,
     pilot,
     balance,
-    auth
+    auth,
+    files
   ]) as SpotProcurementPaymentService;
-  return { service, prisma, tx, audit, pilot, balance, auth };
+  return {
+    service,
+    prisma,
+    tx,
+    audit,
+    pilot,
+    balance,
+    auth,
+    files
+  };
 }
 
 function chairmanSelfReviewHarness() {
@@ -283,10 +321,103 @@ function completePayment(
   };
 }
 
+function approvedExecutionPayment(
+  overrides: Record<string, unknown> = {}
+) {
+  return completePayment({
+    status: "approved_pending_payment",
+    submittedAt: new Date("2026-07-16T00:00:00.000Z"),
+    approvedAt: new Date("2026-07-16T01:00:00.000Z"),
+    ...overrides
+  });
+}
+
+function validExecutionInput(
+  overrides: Partial<RecordSpotProcurementPaymentDto> = {}
+): RecordSpotProcurementPaymentDto {
+  return {
+    amountCents: "4000",
+    paidAt: new Date(Date.now() - 60_000).toISOString(),
+    paymentMethod: "bank_transfer",
+    voucherFileId: "file-voucher",
+    idempotencyKey: "spot-execution-key-1",
+    confirmationPassword: "Current@123",
+    ...overrides
+  };
+}
+
+function executionHarness(
+  options: {
+    payment?: ReturnType<typeof approvedExecutionPayment>;
+    receipts?: bigint[];
+    activeExecutions?: Array<{ id: string; amountCents: bigint }>;
+    projectRoles?: string[];
+    globalRoles?: string[];
+  } = {}
+) {
+  const current = harness();
+  const payment =
+    options.payment ?? approvedExecutionPayment();
+  const activeExecutions = options.activeExecutions ?? [];
+  current.tx.$queryRaw
+    .mockResolvedValueOnce([version])
+    .mockResolvedValueOnce([payment])
+    .mockResolvedValueOnce([
+      { id: "project-1", isActive: true }
+    ])
+    .mockResolvedValueOnce(activeExecutions);
+  roles(current.tx, {
+    project: options.projectRoles ?? ["finance_staff"],
+    global: options.globalRoles ?? []
+  });
+  current.tx.fileObject.findUnique.mockResolvedValue({
+    id: "file-voucher",
+    storageStatus: "active",
+    uploadedByUserId: "other-user"
+  });
+  current.tx.projectReceipt.findMany.mockResolvedValue(
+    (options.receipts ?? [10_000n]).map((amountCents) => ({
+      amountCents
+    }))
+  );
+  current.tx.paymentRequest.findMany.mockResolvedValue([]);
+  current.tx.projectExpenseRequest.findMany.mockResolvedValue([]);
+  current.tx.spotProcurementPayment.findMany.mockResolvedValue([
+    payment
+  ]);
+  current.tx.spotProcurementPaymentExecution.findUnique.mockResolvedValue(
+    null
+  );
+  current.tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue(
+    null
+  );
+  current.tx.spotProcurementPaymentExecution.create.mockResolvedValue({
+    id: "execution-1",
+    paymentId: payment.id,
+    amountCents: 4_000n,
+    paidAt: new Date(
+      validExecutionInput().paidAt
+    ),
+    paymentMethod: "bank_transfer",
+    executedByUserId: "finance-1",
+    voucherFileId: "file-voucher",
+    idempotencyKey: "spot-execution-key-1",
+    voidedAt: null,
+    voidedByUserId: null,
+    voidReason: null,
+    createdAt: new Date()
+  });
+  current.tx.spotProcurementPayment.updateMany.mockResolvedValue({
+    count: 1
+  });
+  return { ...current, payment };
+}
+
 async function validationErrors(
   value: unknown,
   metatype:
     | typeof UpdateSpotProcurementPaymentDraftDto
+    | typeof RecordSpotProcurementPaymentDto
     | typeof ReviewSpotProcurementPaymentDto
 ) {
   try {
@@ -333,6 +464,12 @@ describe("SpotProcurementPaymentController", () => {
         RequestMethod.POST,
         ":paymentId/approval-withdrawal",
         "spot_procurement.payment.submit"
+      ],
+      [
+        "recordExecution",
+        RequestMethod.POST,
+        ":paymentId/executions",
+        "spot_procurement.payment.execute"
       ]
     ] as const;
 
@@ -441,6 +578,83 @@ describe("Spot procurement payment DTOs", () => {
     );
     expect(longReason.errors).toContain("自审原因不能超过 500 个字符");
     expect(longPassword.errors).toContain("当前密码格式不正确");
+  });
+
+  it("validates actual payment facts as a strict canonical DTO", async () => {
+    const paidAt = new Date(Date.now() - 1_000).toISOString();
+    await expect(
+      createApiValidationPipe().transform(
+        {
+          amountCents: "100",
+          paidAt,
+          paymentMethod: "cash",
+          voucherFileId: "file-voucher",
+          idempotencyKey: "spot-execution-1",
+          confirmationPassword: "Current@123"
+        },
+        {
+          type: "body",
+          metatype: RecordSpotProcurementPaymentDto
+        }
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        amountCents: "100",
+        paymentMethod: "cash",
+        idempotencyKey: "spot-execution-1"
+      })
+    );
+
+    const unknown = await validationErrors(
+      {
+        amountCents: "100",
+        paidAt,
+        paymentMethod: "cash",
+        voucherFileId: "file-voucher",
+        idempotencyKey: "spot-execution-1",
+        confirmationPassword: "Current@123",
+        invoiceMode: "no_invoice"
+      },
+      RecordSpotProcurementPaymentDto
+    );
+    const numeric = await validationErrors(
+      {
+        amountCents: 100,
+        paidAt,
+        paymentMethod: "cash",
+        voucherFileId: "file-voucher",
+        idempotencyKey: "spot-execution-1",
+        confirmationPassword: "Current@123"
+      },
+      RecordSpotProcurementPaymentDto
+    );
+    const badMethod = await validationErrors(
+      {
+        amountCents: "100",
+        paidAt,
+        paymentMethod: "invoice",
+        voucherFileId: "file-voucher",
+        idempotencyKey: "spot-execution-1",
+        confirmationPassword: "Current@123"
+      },
+      RecordSpotProcurementPaymentDto
+    );
+    const longPassword = await validationErrors(
+      {
+        amountCents: "100",
+        paidAt,
+        paymentMethod: "cash",
+        voucherFileId: "file-voucher",
+        idempotencyKey: "spot-execution-1",
+        confirmationPassword: "密".repeat(257)
+      },
+      RecordSpotProcurementPaymentDto
+    );
+
+    expect(unknown.errors).toContain("invoiceMode 不是允许提交的字段");
+    expect(numeric.errors).toContain("实付金额格式不正确");
+    expect(badMethod.errors).toContain("实际付款方式不正确");
+    expect(longPassword.errors).toContain("当前密码不能超过 256 个字符");
   });
 });
 
@@ -2656,6 +2870,709 @@ describe("SpotProcurementPaymentService", () => {
     ).toBeUndefined();
   });
 
+  it("records a partial company payment by current-project finance staff and preserves supplier-balance facts", async () => {
+    const current = executionHarness();
+    const input = validExecutionInput();
+
+    const result = await current.service.recordExecution(
+      "payment-1",
+      "finance-1",
+      input
+    );
+
+    expect(current.auth.confirmPassword).toHaveBeenCalledWith(
+      "finance-1",
+      "Current@123"
+    );
+    expect(
+      current.files.assertCanDownloadFileById
+    ).toHaveBeenCalledWith("file-voucher", "finance-1");
+    expect(current.files.assertCanDownloadFile).toHaveBeenCalledWith(
+      current.tx,
+      "file-voucher",
+      "finance-1"
+    );
+    expect(
+      current.tx.spotProcurementPaymentExecution.create
+    ).toHaveBeenCalledWith({
+      data: {
+        paymentId: "payment-1",
+        amountCents: 4_000n,
+        paidAt: new Date(input.paidAt),
+        paymentMethod: "bank_transfer",
+        executedByUserId: "finance-1",
+        voucherFileId: "file-voucher",
+        idempotencyKey: "spot-execution-key-1"
+      }
+    });
+    expect(
+      current.tx.spotProcurementPayment.updateMany
+    ).toHaveBeenCalledWith({
+      where: {
+        id: "payment-1",
+        status: "approved_pending_payment",
+        paidAmountCents: 0n,
+        companyPaymentAmountCents: 10_000n,
+        canceledCompanyPaymentAmountCents: 0n
+      },
+      data: {
+        paidAmountCents: 4_000n,
+        status: "partially_paid"
+      }
+    });
+    expect(
+      current.tx.spotProcurementPayment.updateMany
+    ).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          executedSupplierBalanceAmountCents: expect.anything()
+        })
+      })
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        execution: expect.objectContaining({
+          id: "execution-1",
+          amountCents: "4000",
+          voucherFileId: "file-voucher"
+        }),
+        payment: expect.objectContaining({
+          id: "payment-1",
+          status: "partially_paid",
+          paidAmountCents: "4000",
+          remainingCompanyPaymentAmountCents: "6000"
+        })
+      })
+    );
+    const auditInput = current.audit.record.mock.calls.at(-1)?.[1] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(auditInput.metadata).toEqual(
+      expect.objectContaining({
+        executionId: "execution-1",
+        amountCents: "4000",
+        paymentMethod: "bank_transfer",
+        voucherFileId: "file-voucher",
+        paidAmountCents: "4000",
+        remainingCompanyPaymentAmountCents: "6000",
+        projectCashBefore: expect.any(Object),
+        projectCashAfter: expect.any(Object)
+      })
+    );
+    expect(auditInput.metadata?.projectCashBefore).toEqual({
+      actualReceiptsCents: "10000",
+      actualPaidCents: "0",
+      occupiedCents: "10000",
+      availableCents: "0"
+    });
+    expect(auditInput.metadata?.projectCashAfter).toEqual({
+      actualReceiptsCents: "10000",
+      actualPaidCents: "4000",
+      occupiedCents: "6000",
+      availableCents: "0"
+    });
+    expect(JSON.stringify(auditInput)).not.toContain("Current@123");
+  });
+
+  it("converts the current payment's own outstanding occupation into paid cash and marks company payment fully paid", async () => {
+    const current = executionHarness();
+    current.tx.spotProcurementPaymentExecution.create.mockResolvedValue({
+      id: "execution-full",
+      paymentId: "payment-1",
+      amountCents: 10_000n,
+      paidAt: new Date(),
+      paymentMethod: "cash",
+      executedByUserId: "finance-1",
+      voucherFileId: "file-voucher",
+      idempotencyKey: "spot-execution-full",
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      createdAt: new Date()
+    });
+
+    const result = await current.service.recordExecution(
+      "payment-1",
+      "finance-1",
+      validExecutionInput({
+        amountCents: "10000",
+        paymentMethod: "cash",
+        idempotencyKey: "spot-execution-full"
+      })
+    );
+
+    expect(result.payment.status).toBe("paid");
+    expect(result.payment.status).not.toBe("settled");
+    expect(
+      current.tx.spotProcurementPayment.updateMany
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          paidAmountCents: 10_000n,
+          status: "paid"
+        }
+      })
+    );
+  });
+
+  it("keeps actual payment arithmetic exact above the JavaScript safe-integer boundary", async () => {
+    const amountCents = 9_007_199_254_740_993n;
+    const paidAt = new Date(Date.now() - 60_000);
+    const current = executionHarness({
+      payment: approvedExecutionPayment({
+        settlementAmountCents: amountCents,
+        companyPaymentAmountCents: amountCents
+      }),
+      receipts: [amountCents]
+    });
+    current.tx.spotProcurementPaymentExecution.create.mockResolvedValue({
+      id: "execution-bigint",
+      paymentId: "payment-1",
+      amountCents,
+      paidAt,
+      paymentMethod: "bank_transfer",
+      executedByUserId: "finance-1",
+      voucherFileId: "file-voucher",
+      idempotencyKey: "spot-execution-bigint",
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      createdAt: new Date()
+    });
+
+    const result = await current.service.recordExecution(
+      "payment-1",
+      "finance-1",
+      validExecutionInput({
+        amountCents: amountCents.toString(),
+        paidAt: paidAt.toISOString(),
+        idempotencyKey: "spot-execution-bigint"
+      })
+    );
+
+    expect(
+      current.tx.spotProcurementPayment.updateMany
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          paidAmountCents: amountCents,
+          status: "paid"
+        }
+      })
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        execution: expect.objectContaining({
+          amountCents: amountCents.toString()
+        }),
+        payment: expect.objectContaining({
+          paidAmountCents: amountCents.toString(),
+          remainingCompanyPaymentAmountCents: "0"
+        })
+      })
+    );
+  });
+
+  it("blocks payment when project cash excluding the current payment's own occupation is insufficient and writes nothing", async () => {
+    const current = executionHarness({ receipts: [9_000n] });
+
+    await expect(
+      current.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput({ amountCents: "10000" })
+      )
+    ).rejects.toThrow(
+      "项目现金不足，当前最多可实际支付 9000 分"
+    );
+    expect(
+      current.tx.spotProcurementPaymentExecution.create
+    ).not.toHaveBeenCalled();
+    expect(
+      current.tx.spotProcurementPayment.updateMany
+    ).not.toHaveBeenCalled();
+    expect(current.audit.record).not.toHaveBeenCalled();
+  });
+
+  it("requires project-scoped finance staff and does not grant execution to global finance staff or finance director", async () => {
+    const globalOnly = executionHarness({
+      projectRoles: [],
+      globalRoles: ["finance_staff"]
+    });
+    await expect(
+      globalOnly.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow(
+      "只有当前项目财务人员可以登记零星采购实际付款"
+    );
+
+    const director = executionHarness({
+      projectRoles: ["finance_director"]
+    });
+    await expect(
+      director.service.recordExecution(
+        "payment-1",
+        "finance-director-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow(
+      "只有当前项目财务人员可以登记零星采购实际付款"
+    );
+    expect(
+      director.tx.spotProcurementPaymentExecution.create
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects future dates, zero amounts, inactive vouchers and non-payable statuses before ledger writes", async () => {
+    const future = executionHarness();
+    await expect(
+      future.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput({
+          paidAt: new Date(Date.now() + 60_000).toISOString()
+        })
+      )
+    ).rejects.toThrow("实付日期不能晚于当前时间");
+
+    const zero = executionHarness();
+    await expect(
+      zero.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput({ amountCents: "0" })
+      )
+    ).rejects.toThrow("实付金额必须大于 0");
+
+    const inactiveVoucher = executionHarness();
+    inactiveVoucher.tx.fileObject.findUnique.mockResolvedValue({
+      id: "file-voucher",
+      storageStatus: "replaced",
+      uploadedByUserId: "finance-1"
+    });
+    await expect(
+      inactiveVoucher.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow("付款凭证当前不可用");
+
+    const draft = executionHarness({
+      payment: approvedExecutionPayment({ status: "approval_pending" })
+    });
+    await expect(
+      draft.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow("当前付款申请尚未批准，不能登记实际付款");
+
+    for (const current of [future, zero, inactiveVoucher, draft]) {
+      expect(
+        current.tx.spotProcurementPaymentExecution.create
+      ).not.toHaveBeenCalled();
+      expect(
+        current.tx.spotProcurementPayment.updateMany
+      ).not.toHaveBeenCalled();
+    }
+  });
+
+  it("returns the same execution for an exact idempotent retry and rejects changed facts or actor", async () => {
+    const paidAt = new Date(
+      validExecutionInput().paidAt
+    );
+    const exact = executionHarness();
+    exact.tx.spotProcurementPaymentExecution.findUnique.mockResolvedValue({
+      id: "execution-existing",
+      paymentId: "payment-1",
+      amountCents: 4_000n,
+      paidAt,
+      paymentMethod: "bank_transfer",
+      executedByUserId: "finance-1",
+      voucherFileId: "file-voucher",
+      idempotencyKey: "spot-execution-key-1",
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      createdAt: new Date()
+    });
+    const result = await exact.service.recordExecution(
+      "payment-1",
+      "finance-1",
+      validExecutionInput({ paidAt: paidAt.toISOString() })
+    );
+    expect(result.execution.id).toBe("execution-existing");
+    expect(
+      exact.tx.spotProcurementPaymentExecution.create
+    ).not.toHaveBeenCalled();
+    expect(
+      exact.tx.spotProcurementPayment.updateMany
+    ).not.toHaveBeenCalled();
+    expect(exact.audit.record).not.toHaveBeenCalled();
+
+    const changed = executionHarness();
+    changed.tx.spotProcurementPaymentExecution.findUnique.mockResolvedValue({
+      id: "execution-existing",
+      paymentId: "payment-1",
+      amountCents: 3_000n,
+      paidAt,
+      paymentMethod: "bank_transfer",
+      executedByUserId: "finance-1",
+      voucherFileId: "file-voucher",
+      idempotencyKey: "spot-execution-key-1",
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      createdAt: new Date()
+    });
+    await expect(
+      changed.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput({ paidAt: paidAt.toISOString() })
+      )
+    ).rejects.toThrow("幂等键已用于不同的实际付款事实");
+
+    const actor = executionHarness();
+    actor.tx.spotProcurementPaymentExecution.findUnique.mockResolvedValue({
+      id: "execution-existing",
+      paymentId: "payment-1",
+      amountCents: 4_000n,
+      paidAt,
+      paymentMethod: "bank_transfer",
+      executedByUserId: "other-finance",
+      voucherFileId: "file-voucher",
+      idempotencyKey: "spot-execution-key-1",
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      createdAt: new Date()
+    });
+    await expect(
+      actor.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput({ paidAt: paidAt.toISOString() })
+      )
+    ).rejects.toThrow("幂等键已用于不同的实际付款事实");
+
+    const otherPayment = executionHarness();
+    otherPayment.tx.spotProcurementPaymentExecution.findUnique.mockResolvedValue({
+      id: "execution-existing",
+      paymentId: "payment-2",
+      amountCents: 4_000n,
+      paidAt,
+      paymentMethod: "bank_transfer",
+      executedByUserId: "finance-1",
+      voucherFileId: "file-voucher",
+      idempotencyKey: "spot-execution-key-1",
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      createdAt: new Date()
+    });
+    await expect(
+      otherPayment.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput({ paidAt: paidAt.toISOString() })
+      )
+    ).rejects.toThrow("幂等键已用于不同的实际付款事实");
+  });
+
+  it("rejects a voucher already bound to another active execution and reconciles paid ledger facts before writing", async () => {
+    const duplicateVoucher = executionHarness();
+    duplicateVoucher.tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue(
+      {
+        id: "execution-other",
+        paymentId: "payment-2",
+        voucherFileId: "file-voucher"
+      }
+    );
+    await expect(
+      duplicateVoucher.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow("该付款凭证已绑定其他有效实际付款记录");
+
+    const mismatch = executionHarness({
+      payment: approvedExecutionPayment({
+        status: "partially_paid",
+        paidAmountCents: 2_000n
+      }),
+      activeExecutions: [{ id: "old-execution", amountCents: 1_000n }]
+    });
+    await expect(
+      mismatch.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow(
+      "付款累计已付与实际付款明细不一致，请联系财务核对"
+    );
+    expect(
+      mismatch.tx.spotProcurementPaymentExecution.create
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects execution above the effective company amount after cancellation", async () => {
+    const current = executionHarness({
+      payment: approvedExecutionPayment({
+        companyPaymentAmountCents: 10_000n,
+        canceledCompanyPaymentAmountCents: 3_000n
+      }),
+      receipts: [10_000n]
+    });
+
+    await expect(
+      current.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput({ amountCents: "7001" })
+      )
+    ).rejects.toThrow(
+      "实付金额超过剩余公司付款额度，当前最多可实付 7000 分"
+    );
+    expect(
+      current.tx.spotProcurementPaymentExecution.create
+    ).not.toHaveBeenCalled();
+  });
+
+  it("excludes supplier balance from project cash even when it is most of the settlement", async () => {
+    const current = executionHarness({
+      payment: approvedExecutionPayment({
+        settlementAmountCents: 10_000n,
+        supplierBalanceAmountCents: 9_000n,
+        companyPaymentAmountCents: 1_000n
+      }),
+      receipts: [1_000n]
+    });
+    current.tx.spotProcurementPaymentExecution.create.mockResolvedValue({
+      id: "execution-balance-separated",
+      paymentId: "payment-1",
+      amountCents: 1_000n,
+      paidAt: new Date(),
+      paymentMethod: "cash",
+      executedByUserId: "finance-1",
+      voucherFileId: "file-voucher",
+      idempotencyKey: "balance-separated",
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      createdAt: new Date()
+    });
+
+    const result = await current.service.recordExecution(
+      "payment-1",
+      "finance-1",
+      validExecutionInput({
+        amountCents: "1000",
+        paymentMethod: "cash",
+        idempotencyKey: "balance-separated"
+      })
+    );
+
+    expect(result.payment.status).toBe("paid");
+    expect(
+      current.tx.spotProcurementPayment.updateMany
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          paidAmountCents: 1_000n,
+          status: "paid"
+        }
+      })
+    );
+  });
+
+  it("fails before the transaction when password confirmation or file authorization fails", async () => {
+    const password = executionHarness();
+    password.auth.confirmPassword.mockRejectedValue(
+      new ForbiddenException("当前密码不正确，请重新输入")
+    );
+    await expect(
+      password.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow("当前密码不正确，请重新输入");
+    expect(password.prisma.$transaction).not.toHaveBeenCalled();
+
+    const file = executionHarness();
+    file.files.assertCanDownloadFileById.mockRejectedValue(
+      new ForbiddenException("当前账号无权下载该资料")
+    );
+    await expect(
+      file.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow("当前账号无权下载该资料");
+    expect(file.auth.confirmPassword).not.toHaveBeenCalled();
+    expect(file.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rolls back execution and audit when the payment CAS loses a race", async () => {
+    const current = executionHarness();
+    current.tx.spotProcurementPayment.updateMany.mockResolvedValue({
+      count: 0
+    });
+
+    await expect(
+      current.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow(
+      "付款状态或已付金额已变化，请刷新后重试"
+    );
+    expect(
+      current.tx.spotProcurementPaymentExecution.create
+    ).toHaveBeenCalled();
+    expect(current.audit.record).not.toHaveBeenCalled();
+  });
+
+  it("safely reads back an exact concurrent idempotent winner and distinguishes voucher uniqueness", async () => {
+    const exact = executionHarness();
+    const paidAt = new Date(
+      validExecutionInput().paidAt
+    );
+    exact.prisma.$transaction.mockRejectedValueOnce({
+      code: "P2002"
+    });
+    exact.prisma.spotProcurementPaymentExecution.findUnique.mockResolvedValue(
+      {
+        id: "execution-concurrent",
+        paymentId: "payment-1",
+        amountCents: 4_000n,
+        paidAt,
+        paymentMethod: "bank_transfer",
+        executedByUserId: "finance-1",
+        voucherFileId: "file-voucher",
+        idempotencyKey: "spot-execution-key-1",
+        voidedAt: null,
+        voidedByUserId: null,
+        voidReason: null,
+        createdAt: new Date()
+      }
+    );
+    exact.prisma.spotProcurementPayment.findUnique.mockResolvedValue({
+      id: "payment-1",
+      status: "partially_paid",
+      paidAmountCents: 4_000n,
+      companyPaymentAmountCents: 10_000n,
+      canceledCompanyPaymentAmountCents: 0n
+    });
+
+    await expect(
+      exact.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput({ paidAt: paidAt.toISOString() })
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        execution: expect.objectContaining({
+          id: "execution-concurrent"
+        }),
+        payment: expect.objectContaining({
+          paidAmountCents: "4000"
+        })
+      })
+    );
+
+    const voucher = executionHarness();
+    voucher.prisma.$transaction.mockRejectedValueOnce({
+      code: "P2002"
+    });
+    voucher.prisma.spotProcurementPaymentExecution.findFirst.mockResolvedValue(
+      { id: "execution-other" }
+    );
+    await expect(
+      voucher.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow(
+      "该付款凭证已绑定其他有效实际付款记录"
+    );
+
+    const serializedRetry = executionHarness();
+    serializedRetry.prisma.$transaction.mockRejectedValueOnce({
+      code: "P2034"
+    });
+    serializedRetry.prisma.spotProcurementPaymentExecution.findUnique.mockResolvedValue(
+      {
+        id: "execution-serialized-winner",
+        paymentId: "payment-1",
+        amountCents: 4_000n,
+        paidAt,
+        paymentMethod: "bank_transfer",
+        executedByUserId: "finance-1",
+        voucherFileId: "file-voucher",
+        idempotencyKey: "spot-execution-key-1",
+        voidedAt: null,
+        voidedByUserId: null,
+        voidReason: null,
+        createdAt: new Date()
+      }
+    );
+    serializedRetry.prisma.spotProcurementPayment.findUnique.mockResolvedValue(
+      {
+        id: "payment-1",
+        status: "partially_paid",
+        paidAmountCents: 4_000n,
+        companyPaymentAmountCents: 10_000n,
+        canceledCompanyPaymentAmountCents: 0n
+      }
+    );
+    await expect(
+      serializedRetry.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput({ paidAt: paidAt.toISOString() })
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        execution: expect.objectContaining({
+          id: "execution-serialized-winner"
+        })
+      })
+    );
+  });
+
+  it.each([
+    ["P2003", "实际付款关联数据已变化，请刷新后重试"],
+    ["P2025", "实际付款关联数据已变化，请刷新后重试"],
+    ["P2034", "实际付款并发冲突，请刷新后重试"]
+  ])(
+    "maps actual execution Prisma %s to fixed Chinese errors",
+    async (code, message) => {
+      const current = executionHarness();
+      current.prisma.$transaction.mockRejectedValueOnce({ code });
+
+      await expect(
+        current.service.recordExecution(
+          "payment-1",
+          "finance-1",
+          validExecutionInput()
+        )
+      ).rejects.toThrow(message);
+    }
+  );
+
   it.each(["P2002", "P2003", "P2025", "P2034"])(
     "maps Prisma %s without exposing technical details",
     async (code) => {
@@ -2686,5 +3603,27 @@ describe("SpotProcurementPaymentService", () => {
     await expect(
       service.submit("payment-1", "material-1")
     ).rejects.toThrow("付款或供应商余额已变化，请刷新后重试");
+  });
+
+  it("normalizes actual-payment P2010/40001 to the fixed execution concurrency conflict", async () => {
+    const current = executionHarness();
+    current.prisma.$transaction.mockRejectedValueOnce({
+      code: "P2010",
+      meta: {
+        code: "40001",
+        message:
+          "could not serialize access due to concurrent update"
+      }
+    });
+
+    await expect(
+      current.service.recordExecution(
+        "payment-1",
+        "finance-1",
+        validExecutionInput()
+      )
+    ).rejects.toThrow(
+      "实际付款并发冲突，请刷新后重试"
+    );
   });
 });

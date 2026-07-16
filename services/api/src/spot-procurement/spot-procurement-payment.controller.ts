@@ -8,6 +8,7 @@ import {
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
 import { UpdateSpotProcurementPaymentDraftDto } from "./dto/update-spot-procurement-payment-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
@@ -69,5 +70,15 @@ export class SpotProcurementPaymentController {
       user.id,
       body.reason
     );
+  }
+
+  @Post(":paymentId/executions")
+  @RequireProjectRole("spot_procurement.payment.execute")
+  recordExecution(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordSpotProcurementPaymentDto
+  ) {
+    return this.payments.recordExecution(paymentId, user.id, body);
   }
 }

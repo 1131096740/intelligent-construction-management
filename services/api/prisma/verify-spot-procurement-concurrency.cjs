@@ -9,10 +9,17 @@ const {
 const {
   SpotProcurementPilotService
 } = require("../dist/spot-procurement/spot-procurement-pilot.service");
+const {
+  calculateProjectCashPoolBigInt,
+  spotProcurementPaymentToMoneyRequestValue
+} = require("../dist/money/decimal-money");
 
 const DATABASE_NAME = "jiangkong_spot_procurement_concurrency_verify";
 const PROJECT_ID = "concurrency-project";
+const EXECUTION_PROJECT_ID = "concurrency-execution-project";
+const CASH_SHORT_PROJECT_ID = "concurrency-cash-short-project";
 const HANDLER_USER_ID = "concurrency-material-staff";
+const FINANCE_USER_ID = "concurrency-finance-staff";
 const SUPPORT_FILE_ID = "spot-procurement-concurrency-support";
 const ACTIVE_PAYMENT_STATUSES = new Set([
   "approval_pending",
@@ -137,9 +144,33 @@ function assertLocalRuntime() {
       .filter(Boolean)
   );
   assert(
-    pilotProjectIds.has(PROJECT_ID),
-    "零星采购并发验收未显式开放专用临时项目"
+    [PROJECT_ID, EXECUTION_PROJECT_ID, CASH_SHORT_PROJECT_ID].every(
+      (projectId) => pilotProjectIds.has(projectId)
+    ),
+    "零星采购并发验收未显式开放全部专用临时项目"
   );
+}
+
+function fileAccessFor(prisma) {
+  const assertFile = async (client, fileId, actorUserId) => {
+    const file = await client.fileObject.findUnique({
+      where: { id: fileId }
+    });
+    if (
+      !file ||
+      file.storageStatus !== "active" ||
+      file.uploadedByUserId !== actorUserId
+    ) {
+      throw new Error("并发验收付款凭证不可用或无权访问");
+    }
+    return file;
+  };
+  return {
+    assertCanDownloadFileById: (fileId, actorUserId) =>
+      assertFile(prisma, fileId, actorUserId),
+    assertCanDownloadFile: (tx, fileId, actorUserId) =>
+      assertFile(tx, fileId, actorUserId)
+  };
 }
 
 function servicesFor(prisma) {
@@ -151,21 +182,36 @@ function servicesFor(prisma) {
     new SpotProcurementPilotService(),
     balances,
     {
-      confirmPassword: async () => {
-        throw new Error("并发验收不应进入审批自审密码校验");
+      confirmPassword: async (_actorUserId, password) => {
+        if (password !== "current-password") {
+          throw new Error("当前密码不正确，请重新输入");
+        }
       }
-    }
+    },
+    fileAccessFor(prisma)
   );
   return { balances, payment };
 }
 
 async function seedVerificationFacts() {
-  await clientA.project.create({
-    data: {
-      id: PROJECT_ID,
-      code: "CONCURRENCY-VERIFY",
-      name: "零星采购 PostgreSQL 并发验收临时项目"
-    }
+  await clientA.project.createMany({
+    data: [
+      {
+        id: PROJECT_ID,
+        code: "CONCURRENCY-VERIFY",
+        name: "零星采购 PostgreSQL 并发验收临时项目"
+      },
+      {
+        id: EXECUTION_PROJECT_ID,
+        code: "CONCURRENCY-EXECUTION",
+        name: "零星采购实际付款并发验收项目"
+      },
+      {
+        id: CASH_SHORT_PROJECT_ID,
+        code: "CONCURRENCY-CASH-SHORT",
+        name: "零星采购现金不足验收项目"
+      }
+    ]
   });
   await clientA.user.create({
     data: {
@@ -182,6 +228,28 @@ async function seedVerificationFacts() {
       positionKey: "material_staff"
     }
   });
+  await clientA.user.create({
+    data: {
+      id: FINANCE_USER_ID,
+      name: "并发验收财务人员",
+      isActive: true,
+      mustChangePassword: false
+    }
+  });
+  await clientA.projectMember.createMany({
+    data: [
+      {
+        projectId: EXECUTION_PROJECT_ID,
+        userId: FINANCE_USER_ID,
+        positionKey: "finance_staff"
+      },
+      {
+        projectId: CASH_SHORT_PROJECT_ID,
+        userId: FINANCE_USER_ID,
+        positionKey: "finance_staff"
+      }
+    ]
+  });
   await clientA.fileObject.create({
     data: {
       id: SUPPORT_FILE_ID,
@@ -194,19 +262,32 @@ async function seedVerificationFacts() {
       storageStatus: "active"
     }
   });
+  await clientA.projectReceipt.create({
+    data: {
+      projectId: EXECUTION_PROJECT_ID,
+      receivedAt: new Date(),
+      amountCents: 100_000n,
+      payerName: "并发验收资金来源",
+      sourceType: "general_contractor_payment",
+      voucherFileId: SUPPORT_FILE_ID,
+      recordedByUserId: FINANCE_USER_ID
+    }
+  });
 }
 
 async function createApprovedProcurement(prisma, input) {
+  const projectId = input.projectId ?? PROJECT_ID;
+  const handlerUserId = input.handlerUserId ?? HANDLER_USER_ID;
   await prisma.spotProcurement.create({
     data: {
       id: input.procurementId,
-      projectId: PROJECT_ID,
+      projectId,
       code: input.code,
       supplierPartyId: null,
       supplierKey: input.supplierKey,
       supplierNameSnapshot: input.supplierName,
-      applicantUserId: HANDLER_USER_ID,
-      handlerUserId: HANDLER_USER_ID,
+      applicantUserId: handlerUserId,
+      handlerUserId,
       status: "approved_in_progress",
       approvedAmountCents: input.totalAmountCents
     }
@@ -221,11 +302,11 @@ async function createApprovedProcurement(prisma, input) {
       supplierPartyId: null,
       supplierKey: input.supplierKey,
       supplierNameSnapshot: input.supplierName,
-      handlerUserId: HANDLER_USER_ID,
+      handlerUserId,
       totalAmountCents: input.totalAmountCents,
       submittedAt: new Date(),
       approvedAt: new Date(),
-      createdByUserId: HANDLER_USER_ID
+      createdByUserId: handlerUserId
     }
   });
   await prisma.spotProcurement.update({
@@ -235,14 +316,16 @@ async function createApprovedProcurement(prisma, input) {
 }
 
 async function createPaymentDraft(prisma, input) {
+  const projectId = input.projectId ?? PROJECT_ID;
+  const handlerUserId = input.handlerUserId ?? HANDLER_USER_ID;
   return prisma.spotProcurementPayment.create({
     data: {
       id: input.paymentId,
-      projectId: PROJECT_ID,
+      projectId,
       procurementId: input.procurementId,
       procurementVersionId: input.versionId,
       code: input.code,
-      status: "draft",
+      status: input.status ?? "draft",
       settlementAmountCents: input.settlementAmountCents,
       supplierBalanceAmountCents: input.supplierBalanceAmountCents,
       companyPaymentAmountCents:
@@ -259,10 +342,155 @@ async function createPaymentDraft(prisma, input) {
           : new Date(Date.now() + 24 * 60 * 60 * 1000),
       paymentNote: "本地 PostgreSQL 并发验收",
       supportingAttachmentFileId: SUPPORT_FILE_ID,
-      handlerUserId: HANDLER_USER_ID,
-      createdByUserId: HANDLER_USER_ID
+      handlerUserId,
+      createdByUserId: handlerUserId,
+      submittedAt:
+        input.status === "approved_pending_payment"
+          ? new Date()
+          : undefined,
+      approvedAt:
+        input.status === "approved_pending_payment"
+          ? new Date()
+          : undefined
     }
   });
+}
+
+async function createExecutionVoucher(fileId) {
+  return clientA.fileObject.create({
+    data: {
+      id: fileId,
+      bucket: "local-private",
+      objectKey: `spot-procurement-concurrency/${fileId}.pdf`,
+      originalName: `${fileId}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: 1,
+      uploadedByUserId: FINANCE_USER_ID,
+      storageStatus: "active"
+    }
+  });
+}
+
+async function createExecutionReadyPayment(input) {
+  await createApprovedProcurement(clientA, {
+    projectId: input.projectId ?? EXECUTION_PROJECT_ID,
+    handlerUserId: HANDLER_USER_ID,
+    procurementId: input.procurementId,
+    versionId: input.versionId,
+    code: input.procurementCode,
+    supplierKey: input.supplierKey,
+    supplierName: input.supplierName,
+    totalAmountCents: input.settlementAmountCents
+  });
+  return createPaymentDraft(clientA, {
+    projectId: input.projectId ?? EXECUTION_PROJECT_ID,
+    handlerUserId: HANDLER_USER_ID,
+    paymentId: input.paymentId,
+    procurementId: input.procurementId,
+    versionId: input.versionId,
+    code: input.paymentCode,
+    supplierName: input.supplierName,
+    settlementAmountCents: input.settlementAmountCents,
+    supplierBalanceAmountCents:
+      input.supplierBalanceAmountCents ?? 0n,
+    status: "approved_pending_payment"
+  });
+}
+
+function executionInput({
+  amountCents,
+  voucherFileId,
+  idempotencyKey,
+  paidAt = new Date()
+}) {
+  return {
+    amountCents: amountCents.toString(),
+    paidAt: paidAt.toISOString(),
+    paymentMethod: "bank_transfer",
+    voucherFileId,
+    idempotencyKey,
+    confirmationPassword: "current-password"
+  };
+}
+
+async function readProjectCash(projectId) {
+  const [
+    receipts,
+    paymentRequests,
+    expenseRequests,
+    spotPayments
+  ] = await Promise.all([
+    clientA.projectReceipt.findMany({
+      where: { projectId, voidedAt: null },
+      select: { amountCents: true }
+    }),
+    clientA.paymentRequest.findMany({
+      where: { projectId },
+      select: {
+        status: true,
+        requestedAmountCents: true,
+        approvedAmountCents: true,
+        paidAmountCents: true
+      }
+    }),
+    clientA.projectExpenseRequest.findMany({
+      where: { projectId, voidedAt: null },
+      select: {
+        status: true,
+        requestedAmountCents: true,
+        approvedAmountCents: true,
+        paidAmountCents: true
+      }
+    }),
+    clientA.spotProcurementPayment.findMany({
+      where: {
+        projectId,
+        status: {
+          in: [
+            "approval_pending",
+            "approved_pending_payment",
+            "partially_paid",
+            "paid",
+            "settled"
+          ]
+        }
+      },
+      select: {
+        status: true,
+        companyPaymentAmountCents: true,
+        canceledCompanyPaymentAmountCents: true,
+        paidAmountCents: true
+      }
+    })
+  ]);
+  return calculateProjectCashPoolBigInt({
+    receiptAmountCents: receipts.map((row) => row.amountCents),
+    paymentRequests,
+    expenseRequests,
+    spotProcurementPayments: spotPayments.map(
+      spotProcurementPaymentToMoneyRequestValue
+    )
+  });
+}
+
+async function readExecutionFacts(paymentIds) {
+  return Promise.all([
+    clientA.spotProcurementPayment.findMany({
+      where: { id: { in: paymentIds } },
+      orderBy: { id: "asc" }
+    }),
+    clientA.spotProcurementPaymentExecution.findMany({
+      where: { paymentId: { in: paymentIds } },
+      orderBy: { id: "asc" }
+    }),
+    clientA.auditLog.findMany({
+      where: {
+        action: "spot_procurement.payment.execution.record",
+        businessId: { in: paymentIds }
+      },
+      orderBy: { createdAt: "asc" }
+    })
+  ]);
 }
 
 function deferred() {
@@ -822,6 +1050,399 @@ async function verifyMismatchedReservationReleaseFailsClosed(
   );
 }
 
+async function verifyExecutionRemainingCompetition(
+  servicesA,
+  servicesB
+) {
+  const procurementId = "spot-execution-remaining";
+  const versionId = `${procurementId}-v1`;
+  const payment = await createExecutionReadyPayment({
+    procurementId,
+    versionId,
+    procurementCode: "LXCG-EXEC-REMAIN",
+    paymentId: `${procurementId}-payment`,
+    paymentCode: "LXCG-EXEC-REMAIN-P001",
+    supplierKey: "spot-execution-remaining-supplier",
+    supplierName: "实付剩余额度并发供应商",
+    settlementAmountCents: 10_000n
+  });
+  const voucherIds = [
+    "spot-execution-remaining-voucher-a",
+    "spot-execution-remaining-voucher-b"
+  ];
+  await Promise.all(voucherIds.map(createExecutionVoucher));
+  const results = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurementVersion" WHERE "id" = ${versionId} FOR UPDATE`
+      ),
+    queryNeedle: "SpotProcurementVersion",
+    start: () => [
+      servicesA.payment.recordExecution(
+        payment.id,
+        FINANCE_USER_ID,
+        executionInput({
+          amountCents: 6_000n,
+          voucherFileId: voucherIds[0],
+          idempotencyKey: "spot-execution-remaining-key-a"
+        })
+      ),
+      servicesB.payment.recordExecution(
+        payment.id,
+        FINANCE_USER_ID,
+        executionInput({
+          amountCents: 6_000n,
+          voucherFileId: voucherIds[1],
+          idempotencyKey: "spot-execution-remaining-key-b"
+        })
+      )
+    ]
+  });
+  assertOneWinner(results, "同一付款剩余额度实际付款竞争");
+  const [payments, executions, audits] =
+    await readExecutionFacts([payment.id]);
+  assertBigint(
+    payments[0].paidAmountCents,
+    6_000n,
+    "同一付款并发后的累计已付"
+  );
+  assert(
+    payments[0].status === "partially_paid",
+    "同一付款并发成功方后必须保持部分已付"
+  );
+  assert(
+    executions.length === 1 && audits.length === 1,
+    "同一付款并发失败方不得留下 execution 或 audit 部分写入"
+  );
+  console.log(
+    "ok spot execution remaining competition: one active execution, one rolled-back loser"
+  );
+}
+
+async function verifyExecutionIdempotencyConcurrency(
+  servicesA,
+  servicesB
+) {
+  const procurementId = "spot-execution-idempotency";
+  const versionId = `${procurementId}-v1`;
+  const payment = await createExecutionReadyPayment({
+    procurementId,
+    versionId,
+    procurementCode: "LXCG-EXEC-IDEMP",
+    paymentId: `${procurementId}-payment`,
+    paymentCode: "LXCG-EXEC-IDEMP-P001",
+    supplierKey: "spot-execution-idempotency-supplier",
+    supplierName: "实付幂等并发供应商",
+    settlementAmountCents: 5_000n
+  });
+  const voucherFileId = "spot-execution-idempotency-voucher";
+  await createExecutionVoucher(voucherFileId);
+  const paidAt = new Date();
+  const input = executionInput({
+    amountCents: 2_000n,
+    voucherFileId,
+    idempotencyKey: "spot-execution-idempotency-key",
+    paidAt
+  });
+  const results = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurementVersion" WHERE "id" = ${versionId} FOR UPDATE`
+      ),
+    queryNeedle: "SpotProcurementVersion",
+    start: () => [
+      servicesA.payment.recordExecution(
+        payment.id,
+        FINANCE_USER_ID,
+        input
+      ),
+      servicesB.payment.recordExecution(
+        payment.id,
+        FINANCE_USER_ID,
+        input
+      )
+    ]
+  });
+  assert(
+    results.every((result) => result.status === "fulfilled"),
+    `同一幂等键并发必须都返回原记录，实际 ${results
+      .map((result) => result.status)
+      .join("/")}`
+  );
+  const executionIds = results.map(
+    (result) => result.value.execution.id
+  );
+  assert(
+    new Set(executionIds).size === 1,
+    "同一幂等键并发必须返回同一个 executionId"
+  );
+  const [payments, executions, audits] =
+    await readExecutionFacts([payment.id]);
+  assertBigint(
+    payments[0].paidAmountCents,
+    2_000n,
+    "幂等并发后的累计已付"
+  );
+  assert(
+    executions.length === 1 && audits.length === 1,
+    "同一幂等键并发只能生成一条 execution 和一条 audit"
+  );
+  console.log(
+    "ok spot execution idempotency: concurrent retry returns one original execution"
+  );
+}
+
+async function verifyExecutionVoucherUniqueness(
+  servicesA,
+  servicesB
+) {
+  const voucherFileId = "spot-execution-shared-voucher";
+  await createExecutionVoucher(voucherFileId);
+  const payments = [];
+  for (const suffix of ["a", "b"]) {
+    const procurementId = `spot-execution-voucher-${suffix}`;
+    payments.push(
+      await createExecutionReadyPayment({
+        procurementId,
+        versionId: `${procurementId}-v1`,
+        procurementCode: `LXCG-EXEC-VOUCHER-${suffix.toUpperCase()}`,
+        paymentId: `${procurementId}-payment`,
+        paymentCode: `LXCG-EXEC-VOUCHER-${suffix.toUpperCase()}-P001`,
+        supplierKey: `spot-execution-voucher-supplier-${suffix}`,
+        supplierName: `凭证唯一并发供应商 ${suffix.toUpperCase()}`,
+        settlementAmountCents: 2_000n
+      })
+    );
+  }
+  const results = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "Project" WHERE "id" = ${EXECUTION_PROJECT_ID} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "Project"',
+    start: () => [
+      servicesA.payment.recordExecution(
+        payments[0].id,
+        FINANCE_USER_ID,
+        executionInput({
+          amountCents: 2_000n,
+          voucherFileId,
+          idempotencyKey: "spot-execution-shared-voucher-key-a"
+        })
+      ),
+      servicesB.payment.recordExecution(
+        payments[1].id,
+        FINANCE_USER_ID,
+        executionInput({
+          amountCents: 2_000n,
+          voucherFileId,
+          idempotencyKey: "spot-execution-shared-voucher-key-b"
+        })
+      )
+    ]
+  });
+  assertOneWinner(results, "同一凭证跨付款并发唯一");
+  const [persistedPayments, executions, audits] =
+    await readExecutionFacts(payments.map((payment) => payment.id));
+  assert(
+    executions.length === 1 && audits.length === 1,
+    "同一凭证跨付款只能留下一个 execution 和 audit"
+  );
+  assert(
+    persistedPayments.filter(
+      (payment) => payment.status === "paid"
+    ).length === 1 &&
+      persistedPayments.filter(
+        (payment) =>
+          payment.status === "approved_pending_payment"
+      ).length === 1,
+    "同一凭证竞争失败方付款状态和已付金额必须完整回滚"
+  );
+  assert(
+    persistedPayments.reduce(
+      (sum, payment) => sum + payment.paidAmountCents,
+      0n
+    ) === 2_000n,
+    "同一凭证竞争失败方不得增加累计已付"
+  );
+  console.log(
+    "ok spot execution voucher uniqueness: one active voucher binding across payments"
+  );
+}
+
+async function verifyExecutionProjectSerialization(
+  servicesA,
+  servicesB
+) {
+  const inputs = [];
+  for (const suffix of ["a", "b"]) {
+    const procurementId = `spot-execution-project-lock-${suffix}`;
+    const payment = await createExecutionReadyPayment({
+      procurementId,
+      versionId: `${procurementId}-v1`,
+      procurementCode: `LXCG-EXEC-LOCK-${suffix.toUpperCase()}`,
+      paymentId: `${procurementId}-payment`,
+      paymentCode: `LXCG-EXEC-LOCK-${suffix.toUpperCase()}-P001`,
+      supplierKey: `spot-execution-lock-supplier-${suffix}`,
+      supplierName: `项目锁串行供应商 ${suffix.toUpperCase()}`,
+      settlementAmountCents: 3_000n
+    });
+    const voucherFileId = `spot-execution-project-lock-voucher-${suffix}`;
+    await createExecutionVoucher(voucherFileId);
+    inputs.push({
+      payment,
+      voucherFileId,
+      idempotencyKey: `spot-execution-project-lock-key-${suffix}`
+    });
+  }
+  const before = await readProjectCash(EXECUTION_PROJECT_ID);
+  const results = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient: clientB,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "Project" WHERE "id" = ${EXECUTION_PROJECT_ID} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "Project"',
+    start: () =>
+      inputs.map((input, index) =>
+        [servicesA, servicesB][index].payment.recordExecution(
+          input.payment.id,
+          FINANCE_USER_ID,
+          executionInput({
+            amountCents: 3_000n,
+            voucherFileId: input.voucherFileId,
+            idempotencyKey: input.idempotencyKey
+          })
+        )
+      )
+  });
+  const winnerIndex = assertOneWinner(
+    results,
+    "不同付款同项目 Serializable 串行竞争"
+  );
+  const loserIndex = winnerIndex === 0 ? 1 : 0;
+  const [afterRacePayments, afterRaceExecutions, afterRaceAudits] =
+    await readExecutionFacts(
+      inputs.map((input) => input.payment.id)
+    );
+  assert(
+    afterRaceExecutions.length === 1 &&
+      afterRaceAudits.length === 1 &&
+      afterRacePayments.filter(
+        (payment) => payment.status === "paid"
+      ).length === 1 &&
+      afterRacePayments.filter(
+        (payment) =>
+          payment.status === "approved_pending_payment"
+      ).length === 1,
+    "项目锁竞争失败方必须零 execution、零 audit 且付款状态不变"
+  );
+  await [servicesA, servicesB][
+    loserIndex
+  ].payment.recordExecution(
+    inputs[loserIndex].payment.id,
+    FINANCE_USER_ID,
+    executionInput({
+      amountCents: 3_000n,
+      voucherFileId: inputs[loserIndex].voucherFileId,
+      idempotencyKey: inputs[loserIndex].idempotencyKey
+    })
+  );
+  const after = await readProjectCash(EXECUTION_PROJECT_ID);
+  assertBigint(
+    after.actualPaidCents - before.actualPaidCents,
+    6_000n,
+    "项目锁串行后的实际已付增量"
+  );
+  assertBigint(
+    before.occupiedCents - after.occupiedCents,
+    6_000n,
+    "项目锁串行后的占用释放量"
+  );
+  assertBigint(
+    before.actualPaidCents + before.occupiedCents,
+    after.actualPaidCents + after.occupiedCents,
+    "项目锁串行前后已付加占用守恒"
+  );
+  assert(
+    after.availableCents >= before.availableCents,
+    "项目锁串行后可用资金不得下降"
+  );
+  assert(
+    after.actualPaidCents + after.occupiedCents <=
+      after.actualReceiptsCents,
+    "项目锁串行后总承诺不得超过项目实收"
+  );
+  const paymentIds = inputs.map((input) => input.payment.id);
+  const [payments, executions, audits] =
+    await readExecutionFacts(paymentIds);
+  assert(
+    payments.every(
+      (payment) =>
+        payment.status === "paid" &&
+        payment.paidAmountCents ===
+          payment.companyPaymentAmountCents
+    ) &&
+      executions.length === 2 &&
+      audits.length === 2,
+    "项目锁串行的两笔付款都必须各自不超批准额度且完整留痕"
+  );
+  console.log(
+    "ok spot execution project serialization: one Serializable winner, clean loser retry, occupied-to-paid cash invariant"
+  );
+}
+
+async function verifyExecutionCashShortageZeroWrite(servicesA) {
+  const procurementId = "spot-execution-cash-short";
+  const payment = await createExecutionReadyPayment({
+    projectId: CASH_SHORT_PROJECT_ID,
+    procurementId,
+    versionId: `${procurementId}-v1`,
+    procurementCode: "LXCG-EXEC-CASH-SHORT",
+    paymentId: `${procurementId}-payment`,
+    paymentCode: "LXCG-EXEC-CASH-SHORT-P001",
+    supplierKey: "spot-execution-cash-short-supplier",
+    supplierName: "现金不足验收供应商",
+    settlementAmountCents: 1_000n
+  });
+  const voucherFileId = "spot-execution-cash-short-voucher";
+  await createExecutionVoucher(voucherFileId);
+  const before = await readExecutionFacts([payment.id]);
+  const error = await servicesA.payment
+    .recordExecution(
+      payment.id,
+      FINANCE_USER_ID,
+      executionInput({
+        amountCents: 1_000n,
+        voucherFileId,
+        idempotencyKey: "spot-execution-cash-short-key"
+      })
+    )
+    .then(
+      () => null,
+      (caught) => caught
+    );
+  assert(
+    error?.message ===
+      "项目现金不足，当前最多可实际支付 0 分",
+    `现金不足必须固定中文阻断，实际 ${errorText(error)}`
+  );
+  const after = await readExecutionFacts([payment.id]);
+  assertUnchanged(before[0], after[0], "现金不足付款");
+  assertUnchanged(before[1], after[1], "现金不足 execution");
+  assertUnchanged(before[2], after[2], "现金不足 audit");
+  console.log(
+    "ok spot execution cash shortage: transaction leaves payment/execution/audit unchanged"
+  );
+}
+
 function createBarrier(parties, timeoutMs = 5_000) {
   let arrived = 0;
   const gate = deferred();
@@ -904,9 +1525,26 @@ async function main() {
   await verifyCumulativeCapacityCompetition(servicesA, servicesB);
   await verifyBalanceCompetitionAndRelease(servicesA, servicesB);
   await verifyMismatchedReservationReleaseFailsClosed(servicesA);
+  await verifyExecutionRemainingCompetition(
+    servicesA,
+    servicesB
+  );
+  await verifyExecutionIdempotencyConcurrency(
+    servicesA,
+    servicesB
+  );
+  await verifyExecutionVoucherUniqueness(
+    servicesA,
+    servicesB
+  );
+  await verifyExecutionProjectSerialization(
+    servicesA,
+    servicesB
+  );
+  await verifyExecutionCashShortageZeroWrite(servicesA);
   await verifyRawP2034Sentinel();
   console.log(
-    "零星采购真实 PostgreSQL 16 并发验收通过：累计额度、余额竞争、流水序号、严格释放、错账阻断、P2034"
+    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、余额、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、P2034"
   );
 }
 

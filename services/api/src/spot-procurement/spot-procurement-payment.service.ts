@@ -16,7 +16,16 @@ import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import { FileService } from "../file/file.service";
+import {
+  calculateProjectCashPoolBigInt,
+  dbMoneyToBigInt,
+  outstandingMoneyRequestCentsBigInt,
+  SPOT_PROCUREMENT_CASH_POOL_STATUSES,
+  spotProcurementPaymentToMoneyRequestValue
+} from "../money/decimal-money";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
+import type { RecordSpotProcurementPaymentDto } from "./dto/record-spot-procurement-payment.dto";
 import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
 import {
   SPOT_PROCUREMENT_PAYMENT_METHODS,
@@ -57,6 +66,14 @@ const VOIDABLE_PAYMENT_STATUSES = new Set([
 const PAYMENT_METHODS = new Set<string>(
   SPOT_PROCUREMENT_PAYMENT_METHODS
 );
+const PROJECT_CASH_REQUEST_STATUSES = [
+  "approval_pending",
+  "in_approval",
+  "approved_pending_payment",
+  "partially_paid",
+  "paid",
+  "settled"
+] as const;
 
 type VersionLockRow = {
   id: string;
@@ -87,6 +104,8 @@ type PaymentLockRow = {
   paidAmountCents: bigint;
   executedSupplierBalanceAmountCents: bigint;
   canceledAmountCents: bigint;
+  canceledCompanyPaymentAmountCents: bigint;
+  canceledSupplierBalanceAmountCents: bigint;
   paymentPath: string | null;
   paymentMethod: string | null;
   payeePartyId: string | null;
@@ -115,6 +134,21 @@ type ApprovalLockRow = {
   currentNodeIndex: number;
   frozenNodes: Prisma.JsonValue;
   applicantUserId: string;
+};
+
+type SpotPaymentExecutionRow = {
+  id: string;
+  paymentId: string;
+  amountCents: bigint;
+  paidAt: Date;
+  paymentMethod: string;
+  executedByUserId: string;
+  voucherFileId: string;
+  idempotencyKey: string;
+  voidedAt: Date | null;
+  voidedByUserId: string | null;
+  voidReason: string | null;
+  createdAt: Date;
 };
 
 type PaymentApprovalNode = {
@@ -173,8 +207,371 @@ export class SpotProcurementPaymentService {
     private readonly audit: AuditService,
     private readonly pilot: SpotProcurementPilotService,
     private readonly balances: SpotProcurementBalanceService,
-    private readonly auth: AuthService
+    private readonly auth: AuthService,
+    private readonly files: FileService
   ) {}
+
+  async recordExecution(
+    paymentId: string,
+    actorUserId: string,
+    input: RecordSpotProcurementPaymentDto
+  ): Promise<{
+    execution: {
+      id: string;
+      amountCents: string;
+      voucherFileId: string;
+      paidAt: string;
+      paymentMethod: string;
+      idempotencyKey: string;
+    };
+    payment: {
+      id: string;
+      status: string;
+      paidAmountCents: string;
+      remainingCompanyPaymentAmountCents: string;
+    };
+  }> {
+    const amountCents = parsePositiveExecutionAmount(
+      input.amountCents
+    );
+    const paidAt = new Date(input.paidAt);
+    if (Number.isNaN(paidAt.getTime())) {
+      throw new BadRequestException("实付日期格式不正确");
+    }
+    if (paidAt.getTime() > Date.now()) {
+      throw new BadRequestException("实付日期不能晚于当前时间");
+    }
+    if (!PAYMENT_METHODS.has(input.paymentMethod)) {
+      throw new BadRequestException("实际付款方式不正确");
+    }
+    const voucherFileId = requiredExecutionText(
+      input.voucherFileId,
+      "付款凭证不能为空",
+      128,
+      "付款凭证编号不能超过 128 个字符"
+    );
+    const idempotencyKey = requiredExecutionText(
+      input.idempotencyKey,
+      "幂等键不能为空",
+      128,
+      "幂等键不能超过 128 个字符"
+    );
+    const confirmationPassword = requiredExecutionText(
+      input.confirmationPassword,
+      "请输入当前登录密码",
+      256,
+      "当前密码不能超过 256 个字符"
+    );
+
+    await this.files.assertCanDownloadFileById(
+      voucherFileId,
+      actorUserId
+    );
+    await this.auth.confirmPassword(
+      actorUserId,
+      confirmationPassword
+    );
+
+    try {
+      return await this.runSerializable(async (tx) => {
+        // 与 Task 5 保持同一锁序：冻结采购版本 -> 该采购全部付款。
+        // 随后锁项目行，把不同采购的项目现金检查串行化；实际付款不锁供应商余额。
+        const version = await this.requireLockedVersionForPayment(
+          tx,
+          paymentId
+        );
+        this.pilot.assertEnabled(version.projectId);
+        const procurementPayments =
+          await this.lockProcurementPayments(
+            tx,
+            version.procurementId
+          );
+        const payment = this.requirePayment(
+          procurementPayments,
+          paymentId
+        );
+        await this.requireActiveUser(
+          tx,
+          actorUserId,
+          "实际付款登记人不存在或已停用"
+        );
+        const actorRoles = await this.loadActorRoleScopes(
+          tx,
+          actorUserId,
+          version.projectId
+        );
+        if (
+          !actorRoles.effectiveRoleKeys.includes("finance_staff") ||
+          !actorRoles.projectRoleKeys.includes("finance_staff")
+        ) {
+          throw new ForbiddenException(
+            "只有当前项目财务人员可以登记零星采购实际付款"
+          );
+        }
+
+        const existingByIdempotencyKey =
+          await tx.spotProcurementPaymentExecution.findUnique({
+            where: { idempotencyKey }
+          });
+        if (existingByIdempotencyKey) {
+          this.assertSameExecutionFacts(
+            existingByIdempotencyKey,
+            {
+              paymentId,
+              amountCents,
+              paidAt,
+              paymentMethod: input.paymentMethod,
+              actorUserId,
+              voucherFileId
+            }
+          );
+          return this.executionReadModel(
+            existingByIdempotencyKey,
+            payment
+          );
+        }
+
+        if (
+          !["approved_pending_payment", "partially_paid"].includes(
+            payment.status
+          )
+        ) {
+          throw new ConflictException(
+            payment.status === "approval_pending"
+              ? "当前付款申请尚未批准，不能登记实际付款"
+              : "当前付款申请状态不允许登记实际付款"
+          );
+        }
+
+        const effectiveCompanyPaymentAmountCents =
+          this.effectiveCompanyPaymentAmount(payment);
+        const remainingCompanyPaymentAmountCents =
+          effectiveCompanyPaymentAmountCents -
+          payment.paidAmountCents;
+        if (
+          remainingCompanyPaymentAmountCents <= 0n ||
+          amountCents > remainingCompanyPaymentAmountCents
+        ) {
+          throw new BadRequestException(
+            `实付金额超过剩余公司付款额度，当前最多可实付 ${
+              remainingCompanyPaymentAmountCents > 0n
+                ? remainingCompanyPaymentAmountCents
+                : 0n
+            } 分`
+          );
+        }
+
+        const voucher = await tx.fileObject.findUnique({
+          where: { id: voucherFileId },
+          select: {
+            id: true,
+            storageStatus: true,
+            uploadedByUserId: true
+          }
+        });
+        if (!voucher) {
+          throw new NotFoundException("付款凭证不存在");
+        }
+        if (voucher.storageStatus !== "active") {
+          throw new BadRequestException("付款凭证当前不可用");
+        }
+        await this.files.assertCanDownloadFile(
+          tx,
+          voucherFileId,
+          actorUserId
+        );
+
+        await this.lockProjectForExecution(
+          tx,
+          version.projectId
+        );
+        const activeExecutions =
+          await this.lockActivePaymentExecutions(
+            tx,
+            payment.id
+          );
+        const activeExecutionTotal = activeExecutions.reduce(
+          (total, execution) =>
+            total +
+            dbMoneyToBigInt(
+              execution.amountCents,
+              "零星采购实际付款金额"
+            ),
+          0n
+        );
+        if (activeExecutionTotal !== payment.paidAmountCents) {
+          throw new ConflictException(
+            "付款累计已付与实际付款明细不一致，请联系财务核对"
+          );
+        }
+
+        const existingVoucher =
+          await tx.spotProcurementPaymentExecution.findFirst({
+            where: {
+              voucherFileId,
+              voidedAt: null
+            },
+            select: {
+              id: true,
+              paymentId: true,
+              voucherFileId: true
+            }
+          });
+        if (existingVoucher) {
+          throw new ConflictException(
+            "该付款凭证已绑定其他有效实际付款记录"
+          );
+        }
+
+        const cashPoolBefore =
+          await this.calculateLockedProjectCashPool(
+            tx,
+            version.projectId
+          );
+        const currentOutstanding =
+          outstandingMoneyRequestCentsBigInt(
+            spotProcurementPaymentToMoneyRequestValue(payment)
+          );
+        const availableForCurrentExecution =
+          cashPoolBefore.availableCents + currentOutstanding;
+        if (amountCents > availableForCurrentExecution) {
+          throw new BadRequestException(
+            `项目现金不足，当前最多可实际支付 ${
+              availableForCurrentExecution > 0n
+                ? availableForCurrentExecution
+                : 0n
+            } 分`
+          );
+        }
+
+        const newPaidAmountCents =
+          payment.paidAmountCents + amountCents;
+        const newStatus =
+          newPaidAmountCents ===
+          effectiveCompanyPaymentAmountCents
+            ? "paid"
+            : "partially_paid";
+        const execution =
+          await tx.spotProcurementPaymentExecution.create({
+            data: {
+              paymentId: payment.id,
+              amountCents,
+              paidAt,
+              paymentMethod: input.paymentMethod,
+              executedByUserId: actorUserId,
+              voucherFileId,
+              idempotencyKey
+            }
+          });
+        const updated =
+          await tx.spotProcurementPayment.updateMany({
+            where: {
+              id: payment.id,
+              status: payment.status,
+              paidAmountCents: payment.paidAmountCents,
+              companyPaymentAmountCents:
+                payment.companyPaymentAmountCents,
+              canceledCompanyPaymentAmountCents:
+                payment.canceledCompanyPaymentAmountCents
+            },
+            data: {
+              paidAmountCents: newPaidAmountCents,
+              status: newStatus
+            }
+          });
+        if (updated.count !== 1) {
+          throw new ConflictException(
+            "付款状态或已付金额已变化，请刷新后重试"
+          );
+        }
+
+        const paymentAfter = {
+          ...payment,
+          paidAmountCents: newPaidAmountCents,
+          status: newStatus
+        };
+        const cashPoolAfter =
+          cashPoolWithReplacedSpotPayment(
+            cashPoolBefore,
+            payment,
+            paymentAfter
+          );
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.payment.execution.record",
+          businessType:
+            SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: payment.id,
+          metadata: {
+            executionId: execution.id,
+            paymentId: payment.id,
+            projectId: payment.projectId,
+            amountCents: amountCents.toString(),
+            paidAt: paidAt.toISOString(),
+            paymentMethod: input.paymentMethod,
+            voucherFileId,
+            actorUserId,
+            statusBefore: payment.status,
+            statusAfter: newStatus,
+            paidAmountCents: newPaidAmountCents.toString(),
+            remainingCompanyPaymentAmountCents: (
+              effectiveCompanyPaymentAmountCents -
+              newPaidAmountCents
+            ).toString(),
+            projectCashBefore:
+              cashPoolAuditFacts(cashPoolBefore),
+            projectCashAfter:
+              cashPoolAuditFacts(cashPoolAfter)
+          }
+        });
+        return this.executionReadModel(
+          execution,
+          paymentAfter
+        );
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const code = prismaErrorCode(error);
+      if (code === "P2002") {
+        const concurrentResult =
+          await this.resolveConcurrentExecutionResult({
+            paymentId,
+            actorUserId,
+            amountCents,
+            paidAt,
+            paymentMethod: input.paymentMethod,
+            voucherFileId,
+            idempotencyKey
+          });
+        if (concurrentResult) return concurrentResult;
+        throw new ConflictException(
+          "实际付款唯一事实已变化，请刷新后重试"
+        );
+      }
+      if (code === "P2034") {
+        const concurrentResult =
+          await this.resolveConcurrentExecutionResult({
+            paymentId,
+            actorUserId,
+            amountCents,
+            paidAt,
+            paymentMethod: input.paymentMethod,
+            voucherFileId,
+            idempotencyKey
+          });
+        if (concurrentResult) return concurrentResult;
+        throw new ConflictException(
+          "实际付款并发冲突，请刷新后重试"
+        );
+      }
+      if (code === "P2003" || code === "P2025") {
+        throw new ConflictException(
+          "实际付款关联数据已变化，请刷新后重试"
+        );
+      }
+      throw error;
+    }
+  }
 
   createNextDraft(procurementId: string, actorUserId: string) {
     return this.runWrite(() =>
@@ -1418,6 +1815,8 @@ export class SpotProcurementPaymentService {
         "paidAmountCents",
         "executedSupplierBalanceAmountCents",
         "canceledAmountCents",
+        "canceledCompanyPaymentAmountCents",
+        "canceledSupplierBalanceAmountCents",
         "paymentPath",
         "paymentMethod",
         "payeePartyId",
@@ -1443,6 +1842,254 @@ export class SpotProcurementPaymentService {
       ORDER BY "id"
       FOR UPDATE
     `);
+  }
+
+  private async lockProjectForExecution(
+    tx: Prisma.TransactionClient,
+    projectId: string
+  ) {
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; isActive: boolean }>
+    >(Prisma.sql`
+      SELECT "id", "isActive"
+      FROM "Project"
+      WHERE "id" = ${projectId}
+      FOR UPDATE
+    `);
+    if (!rows[0]?.isActive) {
+      throw new ConflictException(
+        "项目不存在或已停用，不能登记实际付款"
+      );
+    }
+  }
+
+  private lockActivePaymentExecutions(
+    tx: Prisma.TransactionClient,
+    paymentId: string
+  ) {
+    return tx.$queryRaw<Array<SpotPaymentExecutionRow>>(
+      Prisma.sql`
+        SELECT
+          "id",
+          "paymentId",
+          "amountCents",
+          "paidAt",
+          "paymentMethod",
+          "executedByUserId",
+          "voucherFileId",
+          "idempotencyKey",
+          "voidedAt",
+          "voidedByUserId",
+          "voidReason",
+          "createdAt"
+        FROM "SpotProcurementPaymentExecution"
+        WHERE "paymentId" = ${paymentId}
+          AND "voidedAt" IS NULL
+        ORDER BY "id"
+        FOR UPDATE
+      `
+    );
+  }
+
+  private async calculateLockedProjectCashPool(
+    tx: Prisma.TransactionClient,
+    projectId: string
+  ) {
+    const [
+      receipts,
+      paymentRequests,
+      expenseRequests,
+      spotProcurementPayments
+    ] = await Promise.all([
+      tx.projectReceipt.findMany({
+        where: { projectId, voidedAt: null },
+        select: { amountCents: true }
+      }),
+      tx.paymentRequest.findMany({
+        where: {
+          projectId,
+          status: { in: [...PROJECT_CASH_REQUEST_STATUSES] }
+        },
+        select: {
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
+      tx.projectExpenseRequest.findMany({
+        where: {
+          projectId,
+          status: { in: [...PROJECT_CASH_REQUEST_STATUSES] },
+          voidedAt: null
+        },
+        select: {
+          status: true,
+          requestedAmountCents: true,
+          approvedAmountCents: true,
+          paidAmountCents: true
+        }
+      }),
+      tx.spotProcurementPayment.findMany({
+        where: {
+          projectId,
+          status: {
+            in: [...SPOT_PROCUREMENT_CASH_POOL_STATUSES]
+          }
+        },
+        select: {
+          status: true,
+          companyPaymentAmountCents: true,
+          canceledCompanyPaymentAmountCents: true,
+          paidAmountCents: true
+        }
+      })
+    ]);
+    return calculateProjectCashPoolBigInt({
+      receiptAmountCents: receipts.map(
+        (receipt) => receipt.amountCents
+      ),
+      paymentRequests,
+      expenseRequests,
+      spotProcurementPayments: spotProcurementPayments.map(
+        spotProcurementPaymentToMoneyRequestValue
+      )
+    });
+  }
+
+  private effectiveCompanyPaymentAmount(
+    payment: Pick<
+      PaymentLockRow,
+      | "companyPaymentAmountCents"
+      | "canceledCompanyPaymentAmountCents"
+    >
+  ) {
+    const amount =
+      payment.companyPaymentAmountCents -
+      payment.canceledCompanyPaymentAmountCents;
+    return amount > 0n ? amount : 0n;
+  }
+
+  private assertSameExecutionFacts(
+    execution: {
+      paymentId: string;
+      amountCents: bigint;
+      paidAt: Date;
+      paymentMethod: string;
+      executedByUserId: string;
+      voucherFileId: string;
+    },
+    expected: {
+      paymentId: string;
+      amountCents: bigint;
+      paidAt: Date;
+      paymentMethod: string;
+      actorUserId: string;
+      voucherFileId: string;
+    }
+  ) {
+    if (
+      execution.paymentId !== expected.paymentId ||
+      execution.amountCents !== expected.amountCents ||
+      execution.paidAt.getTime() !== expected.paidAt.getTime() ||
+      execution.paymentMethod !== expected.paymentMethod ||
+      execution.executedByUserId !== expected.actorUserId ||
+      execution.voucherFileId !== expected.voucherFileId
+    ) {
+      throw new ConflictException(
+        "幂等键已用于不同的实际付款事实"
+      );
+    }
+  }
+
+  private executionReadModel(
+    execution: {
+      id: string;
+      amountCents: bigint;
+      paidAt: Date;
+      paymentMethod: string;
+      voucherFileId: string;
+      idempotencyKey: string;
+    },
+    payment: Pick<
+      PaymentLockRow,
+      | "id"
+      | "status"
+      | "paidAmountCents"
+      | "companyPaymentAmountCents"
+      | "canceledCompanyPaymentAmountCents"
+    >
+  ) {
+    const remaining =
+      this.effectiveCompanyPaymentAmount(payment) -
+      payment.paidAmountCents;
+    return {
+      execution: {
+        id: execution.id,
+        amountCents: execution.amountCents.toString(),
+        paidAt: execution.paidAt.toISOString(),
+        paymentMethod: execution.paymentMethod,
+        voucherFileId: execution.voucherFileId,
+        idempotencyKey: execution.idempotencyKey
+      },
+      payment: {
+        id: payment.id,
+        status: payment.status,
+        paidAmountCents: payment.paidAmountCents.toString(),
+        remainingCompanyPaymentAmountCents: (
+          remaining > 0n ? remaining : 0n
+        ).toString()
+      }
+    };
+  }
+
+  private async resolveConcurrentExecutionResult(input: {
+    paymentId: string;
+    actorUserId: string;
+    amountCents: bigint;
+    paidAt: Date;
+    paymentMethod: string;
+    voucherFileId: string;
+    idempotencyKey: string;
+  }) {
+    const existing =
+      await this.prisma.spotProcurementPaymentExecution.findUnique({
+        where: { idempotencyKey: input.idempotencyKey }
+      });
+    if (existing) {
+      this.assertSameExecutionFacts(existing, input);
+      const payment =
+        await this.prisma.spotProcurementPayment.findUnique({
+          where: { id: input.paymentId },
+          select: {
+            id: true,
+            status: true,
+            paidAmountCents: true,
+            companyPaymentAmountCents: true,
+            canceledCompanyPaymentAmountCents: true
+          }
+        });
+      if (!payment) {
+        throw new ConflictException(
+          "实际付款关联的付款申请已变化，请刷新后重试"
+        );
+      }
+      return this.executionReadModel(existing, payment);
+    }
+    const voucher =
+      await this.prisma.spotProcurementPaymentExecution.findFirst({
+        where: {
+          voucherFileId: input.voucherFileId,
+          voidedAt: null
+        },
+        select: { id: true }
+      });
+    if (voucher) {
+      throw new ConflictException(
+        "该付款凭证已绑定其他有效实际付款记录"
+      );
+    }
+    return null;
   }
 
   private requirePayment(
@@ -1786,6 +2433,23 @@ export class SpotProcurementPaymentService {
     actorUserId: string,
     projectId: string
   ): Promise<RoleKey[]> {
+    return (
+      await this.loadActorRoleScopes(
+        tx,
+        actorUserId,
+        projectId
+      )
+    ).effectiveRoleKeys;
+  }
+
+  private async loadActorRoleScopes(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ): Promise<{
+    effectiveRoleKeys: RoleKey[];
+    projectRoleKeys: RoleKey[];
+  }> {
     const [globalPositions, projectPositions, memberPositions] =
       await Promise.all([
         tx.userPosition.findMany({
@@ -1833,10 +2497,13 @@ export class SpotProcurementPaymentService {
         (position) => position.positionKey as RoleKey
       )
     ];
-    return resolveEffectiveRoleKeys(
-      globalRoleKeys,
-      projectRoleKeys
-    );
+    return {
+      effectiveRoleKeys: resolveEffectiveRoleKeys(
+        globalRoleKeys,
+        projectRoleKeys
+      ),
+      projectRoleKeys: [...new Set(projectRoleKeys)]
+    };
   }
 
   private async requireActiveUser(
@@ -1929,6 +2596,84 @@ function requiredText(value: string, message: string) {
   const text = value.trim();
   if (!text) throw new BadRequestException(message);
   return text;
+}
+
+function parsePositiveExecutionAmount(value: string) {
+  if (!/^(0|[1-9]\d*)$/u.test(value)) {
+    throw new BadRequestException("实付金额格式不正确");
+  }
+  const amount = BigInt(value);
+  if (!isWithinPostgresBigIntRange(amount)) {
+    throw new BadRequestException("实付金额超出系统可保存范围");
+  }
+  if (amount <= 0n) {
+    throw new BadRequestException("实付金额必须大于 0");
+  }
+  return amount;
+}
+
+function requiredExecutionText(
+  value: string,
+  emptyMessage: string,
+  max: number,
+  longMessage: string
+) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new BadRequestException(emptyMessage);
+  }
+  if ([...normalized].length > max) {
+    throw new BadRequestException(longMessage);
+  }
+  return normalized;
+}
+
+function cashPoolAuditFacts(cashPool: {
+  actualReceiptsCents: bigint;
+  actualPaidCents: bigint;
+  occupiedCents: bigint;
+  availableCents: bigint;
+}) {
+  return {
+    actualReceiptsCents:
+      cashPool.actualReceiptsCents.toString(),
+    actualPaidCents: cashPool.actualPaidCents.toString(),
+    occupiedCents: cashPool.occupiedCents.toString(),
+    availableCents: cashPool.availableCents.toString()
+  };
+}
+
+function cashPoolWithReplacedSpotPayment(
+  cashPool: {
+    actualReceiptsCents: bigint;
+    actualPaidCents: bigint;
+    occupiedCents: bigint;
+    availableCents: bigint;
+  },
+  before: PaymentLockRow,
+  after: PaymentLockRow
+) {
+  const beforeRequest =
+    spotProcurementPaymentToMoneyRequestValue(before);
+  const afterRequest =
+    spotProcurementPaymentToMoneyRequestValue(after);
+  const actualPaidCents =
+    cashPool.actualPaidCents -
+    beforeRequest.paidAmountCents +
+    afterRequest.paidAmountCents;
+  const occupiedCents =
+    cashPool.occupiedCents -
+    outstandingMoneyRequestCentsBigInt(beforeRequest) +
+    outstandingMoneyRequestCentsBigInt(afterRequest);
+  return {
+    actualReceiptsCents: cashPool.actualReceiptsCents,
+    actualPaidCents,
+    occupiedCents,
+    availableCents:
+      cashPool.actualReceiptsCents -
+      actualPaidCents -
+      occupiedCents
+  };
 }
 
 function auditBankAccountFacts(value: string | null) {

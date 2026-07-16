@@ -734,6 +734,37 @@ describe("ProjectService", () => {
       },
       projectExpenseExecution: {
         findMany: jest.fn()
+      },
+      spotProcurementPayment: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "spot-payment-1",
+            status: "approval_pending",
+            companyPaymentAmountCents: 1_000_000n,
+            canceledCompanyPaymentAmountCents: 0n,
+            paidAmountCents: 0n
+          },
+          {
+            id: "spot-payment-2",
+            status: "partially_paid",
+            companyPaymentAmountCents: 3_000_000n,
+            canceledCompanyPaymentAmountCents: 1_000_000n,
+            paidAmountCents: 500_000n
+          },
+          {
+            id: "spot-payment-3",
+            status: "paid",
+            companyPaymentAmountCents: 1_000_000n,
+            canceledCompanyPaymentAmountCents: 0n,
+            paidAmountCents: 1_000_000n
+          }
+        ])
+      },
+      spotProcurementPaymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          { amountCents: 500_000n },
+          { amountCents: 1_000_000n }
+        ])
       }
     };
     const service = new ProjectService(prisma as never);
@@ -742,10 +773,10 @@ describe("ProjectService", () => {
       project: { id: "project-1", code: "JG-001", name: "总部综合楼" },
       cash: {
         actualReceiptsCents: "15000000",
-        availableFundsCents: "3200000",
-        actualPaidCents: "4000000",
-        approvalPendingOccupancyCents: "3000000",
-        approvedPendingPaymentCents: "6800000",
+        availableFundsCents: "-800000",
+        actualPaidCents: "5500000",
+        approvalPendingOccupancyCents: "4000000",
+        approvedPendingPaymentCents: "8300000",
         financeRecordedOutflowCents: "2800000"
       },
       business: {
@@ -753,8 +784,8 @@ describe("ProjectService", () => {
         effectiveSettlementAmountCents: "20000000",
         payableSettlementAmountCents: "16000000",
         operatingIncomeCents: "30000000",
-        operatingCostCents: "6500000",
-        grossProfitCents: "23500000"
+        operatingCostCents: "8000000",
+        grossProfitCents: "22000000"
       },
       counts: { contracts: 2, settlements: 3, payments: 4 },
       dataGaps: []
@@ -774,6 +805,15 @@ describe("ProjectService", () => {
     expect(prisma.projectFinancingQuota.findMany).toHaveBeenCalledWith({
       where: { projectId: "project-1", status: "approved", validUntil: { gte: expect.any(Date) } },
       select: { id: true, amountCents: true }
+    });
+    expect(prisma.spotProcurementPaymentExecution.findMany).toHaveBeenCalledWith({
+      where: {
+        paymentId: {
+          in: ["spot-payment-1", "spot-payment-2", "spot-payment-3"]
+        },
+        voidedAt: null
+      },
+      select: { amountCents: true }
     });
   });
 

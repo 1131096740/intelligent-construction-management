@@ -22,6 +22,8 @@ import {
   moneyCentsToApi,
   parseMoneyCents,
   parseMoneyCentsInput,
+  SPOT_PROCUREMENT_CASH_POOL_STATUSES,
+  spotProcurementPaymentToMoneyRequestValue,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { renderSimplePdf } from "../pdf/simple-pdf";
@@ -1165,8 +1167,34 @@ export class PaymentRequestService {
         }) => Promise<Array<{ quotaId: string; amountCents: bigint }>>;
       };
     }).projectExpenseFinancingQuotaUsage;
+    const spotProcurementPaymentClient = (tx as unknown as {
+      spotProcurementPayment?: {
+        findMany: (args: {
+          where: { projectId: string; status: { in: string[] } };
+          select: {
+            status: true;
+            companyPaymentAmountCents: true;
+            canceledCompanyPaymentAmountCents: true;
+            paidAmountCents: true;
+          };
+        }) => Promise<
+          Array<{
+            status: string;
+            companyPaymentAmountCents: bigint;
+            canceledCompanyPaymentAmountCents: bigint;
+            paidAmountCents: bigint;
+          }>
+        >;
+      };
+    }).spotProcurementPayment;
 
-    const [projectReceipts, projectPayments, projectExpenseRequests, financingQuotas] = await Promise.all([
+    const [
+      projectReceipts,
+      projectPayments,
+      projectExpenseRequests,
+      spotProcurementPayments,
+      financingQuotas
+    ] = await Promise.all([
       tx.projectReceipt.findMany({
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
@@ -1198,6 +1226,20 @@ export class PaymentRequestService {
             }
           })
         : Promise.resolve([]),
+      spotProcurementPaymentClient
+        ? spotProcurementPaymentClient.findMany({
+            where: {
+              projectId,
+              status: { in: [...SPOT_PROCUREMENT_CASH_POOL_STATUSES] }
+            },
+            select: {
+              status: true,
+              companyPaymentAmountCents: true,
+              canceledCompanyPaymentAmountCents: true,
+              paidAmountCents: true
+            }
+          })
+        : Promise.resolve([]),
       tx.projectFinancingQuota.findMany({
         where: {
           projectId,
@@ -1212,7 +1254,10 @@ export class PaymentRequestService {
     const cashPool = calculateProjectCashPoolBigInt({
       receiptAmountCents: projectReceipts.map((receipt) => receipt.amountCents),
       paymentRequests: projectPayments,
-      expenseRequests: projectExpenseRequests
+      expenseRequests: projectExpenseRequests,
+      spotProcurementPayments: spotProcurementPayments.map(
+        spotProcurementPaymentToMoneyRequestValue
+      )
     });
     const cashAvailableForCurrent = cashPool.availableCents > 0n ? cashPool.availableCents : 0n;
     const requestedAmount = dbMoneyToBigInt(requestedAmountCents, "付款申请金额");

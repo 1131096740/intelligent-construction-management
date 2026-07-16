@@ -238,6 +238,7 @@ describe("ProjectExpenseService", () => {
     receiptAmountCents = 100_000n,
     paymentRequests = [],
     expenseRequests = [],
+    spotProcurementPayments = [],
     financingQuotas = []
   }: {
     receiptAmountCents?: bigint;
@@ -251,6 +252,12 @@ describe("ProjectExpenseService", () => {
       status: string;
       requestedAmountCents: bigint;
       approvedAmountCents?: bigint | null;
+      paidAmountCents: bigint;
+    }>;
+    spotProcurementPayments?: Array<{
+      status: string;
+      companyPaymentAmountCents: bigint;
+      canceledCompanyPaymentAmountCents: bigint;
       paidAmountCents: bigint;
     }>;
     financingQuotas?: Array<{ id: string; amountCents: bigint }>;
@@ -267,6 +274,9 @@ describe("ProjectExpenseService", () => {
       },
       projectExpenseRequest: {
         findMany: jest.fn().mockResolvedValue(expenseRequests)
+      },
+      spotProcurementPayment: {
+        findMany: jest.fn().mockResolvedValue(spotProcurementPayments)
       },
       projectFinancingQuota: {
         findMany: jest.fn().mockResolvedValue(financingQuotas)
@@ -983,6 +993,51 @@ describe("ProjectExpenseService", () => {
         paymentMethod: "cash"
       })
     ).rejects.toThrow("项目现金资金池余额不足: 0");
+    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks legacy project expenses when spot procurement company cash is already occupied", async () => {
+    const cashPool = cashPoolTables({
+      receiptAmountCents: 100_000n,
+      spotProcurementPayments: [
+        {
+          status: "partially_paid",
+          companyPaymentAmountCents: 90_000n,
+          canceledCompanyPaymentAmountCents: 10_000n,
+          paidAmountCents: 20_000n
+        }
+      ]
+    });
+    const tx = {
+      ...cashPool,
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectExpenseRequest: {
+        ...cashPool.projectExpenseRequest,
+        create: jest.fn()
+      },
+      approvalInstance: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never
+    );
+
+    await expect(
+      service.create("project-1", "handler-1", {
+        code: "LX-2026-SPOT",
+        expenseType: "loan_reserve",
+        expenseSubtype: "project_reserve",
+        paymentSubject: "建工智管",
+        reason: "项目备用金",
+        requestedAmountCents: "21000",
+        paymentMethod: "cash"
+      })
+    ).rejects.toThrow("项目现金资金池余额不足: 20000");
+    expect(tx.spotProcurementPayment.findMany).toHaveBeenCalled();
     expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
   });
 
