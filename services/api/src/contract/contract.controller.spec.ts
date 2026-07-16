@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
+import { CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { PATH_METADATA } from "@nestjs/common/constants";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
@@ -573,6 +574,39 @@ describe("ContractController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, handler)).toEqual(LEDGER_READ_POSITION_KEYS);
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ContractController.prototype.detail)).toEqual(
       LEDGER_READ_POSITION_KEYS
+    );
+  });
+
+  it("limits contract ledger export to the approved contract, finance and comprehensive positions", () => {
+    expect(
+      Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ContractController.prototype.exportLedger)
+    ).toEqual(CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS);
+  });
+
+  it("forwards visible project ids and the actor to contract ledger export", async () => {
+    const contractRead = {
+      exportLedger: jest.fn().mockResolvedValue({
+        buffer: Buffer.from("xlsx"),
+        fileName: "合同台账.xlsx"
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const response = { set: jest.fn() };
+    const controller = new ContractController(
+      {} as never,
+      contractRead as never,
+      {} as never,
+      projectVisibility as never
+    );
+
+    await controller.exportLedger({ id: "user-1" } as never, response);
+
+    expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
+    expect(contractRead.exportLedger).toHaveBeenCalledWith(["project-1"], "user-1");
+    expect(response.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      })
     );
   });
 

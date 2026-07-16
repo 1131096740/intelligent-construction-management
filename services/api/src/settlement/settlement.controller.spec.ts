@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
+import { CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
@@ -447,6 +448,40 @@ describe("SettlementController authorization wiring", () => {
     );
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.detail)).toEqual(
       LEDGER_READ_POSITION_KEYS
+    );
+  });
+
+  it("limits settlement ledger export to the approved contract, finance and comprehensive positions", () => {
+    expect(
+      Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.exportLedger)
+    ).toEqual(CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS);
+  });
+
+  it("forwards visible project ids and the actor to settlement ledger export", async () => {
+    const settlementRead = {
+      exportLedger: jest.fn().mockResolvedValue({
+        buffer: Buffer.from("xlsx"),
+        fileName: "结算台账.xlsx"
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const response = { set: jest.fn() };
+    const controller = new SettlementController(
+      settlementRead as never,
+      {} as never,
+      {} as never,
+      projectVisibility as never,
+      {} as never
+    );
+
+    await controller.exportLedger({ id: "user-1" } as never, response);
+
+    expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
+    expect(settlementRead.exportLedger).toHaveBeenCalledWith(["project-1"], "user-1");
+    expect(response.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      })
     );
   });
 

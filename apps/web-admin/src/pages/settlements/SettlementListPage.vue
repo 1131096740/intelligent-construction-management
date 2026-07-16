@@ -6,6 +6,14 @@
     >
       <template #actions>
         <t-button
+          v-if="canExportLedger"
+          variant="outline"
+          :loading="exportLoading"
+          @click="exportSettlementLedger"
+        >
+          导出可见台账
+        </t-button>
+        <t-button
           variant="outline"
           :loading="ledgerLoading"
           @click="loadSettlementLedger"
@@ -13,6 +21,7 @@
           刷新
         </t-button>
         <t-button
+          v-if="canManageSettlements"
           theme="primary"
           @click="openCreateWorkbench"
         >
@@ -27,6 +36,7 @@
     />
 
     <section
+      v-if="canManageSettlements"
       class="draft-section"
       aria-labelledby="settlement-draft-title"
     >
@@ -224,8 +234,10 @@
       <EmptyBusinessState
         v-else-if="!errorMessage"
         title="当前条件下暂无结算记录"
-        description="可以调整筛选条件；如需发起新结算，请从结算工作台选择已生效合同。"
-        :actions="[{ label: '新建结算', to: '/结算工作台' }]"
+        :description="canManageSettlements
+          ? '可以调整筛选条件；如需发起新结算，请从结算工作台选择已生效合同。'
+          : '可以调整筛选条件，或刷新后再次查看当前权限范围内的结算记录。'"
+        :actions="canManageSettlements ? [{ label: '新建结算', to: '/结算工作台' }] : []"
       />
 
       <footer class="ledger-footer">
@@ -241,13 +253,15 @@
 </template>
 
 <script setup lang="ts">
+import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { PrimaryTableCol } from "tdesign-vue-next";
 import {
   fetchProjects,
   fetchSettlementContractOptions,
-  fetchSettlementLedger
+  fetchSettlementLedger,
+  downloadSettlementLedgerExport
 } from "../../api/core-flow-read.api";
 import {
   listSettlementDraftRecords,
@@ -265,6 +279,10 @@ import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
+import {
+  canExportContractSettlementLedger,
+  canManageSettlementRecords
+} from "../business-readonly-access";
 import type {
   SettlementFilterKey,
   SettlementLedgerRow,
@@ -284,10 +302,18 @@ import {
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
+const roleKeys = computed(() => auth.user?.roleKeys ?? []);
+const canManageSettlements = computed(() =>
+  canManageSettlementRecords(roleKeys.value)
+);
+const canExportLedger = computed(() =>
+  canExportContractSettlementLedger(roleKeys.value)
+);
 const errorMessage = ref("");
 const settlementLedgerRows = ref<SettlementLedgerRow[]>([]);
 const settlementFilters = reactive(emptySettlementLedgerFilters());
 const ledgerLoading = ref(false);
+const exportLoading = ref(false);
 const showColumnSettings = ref(false);
 const showSettlementRules = ref(false);
 interface SettlementDraftLedgerRow {
@@ -441,7 +467,24 @@ async function loadSettlementLedger() {
   }
 }
 
+async function exportSettlementLedger() {
+  exportLoading.value = true;
+  try {
+    await downloadSettlementLedgerExport();
+    await MessagePlugin.success("结算台账已导出，内容仅包含当前账号可见范围。");
+  } catch (error) {
+    await MessagePlugin.error(
+      error instanceof Error
+        ? `${error.message}。请检查网络与权限后重试。`
+        : "结算台账导出失败，请检查网络与权限后重试。"
+    );
+  } finally {
+    exportLoading.value = false;
+  }
+}
+
 async function loadSettlementDrafts() {
+  if (!canManageSettlements.value) return;
   draftLoading.value = true;
   draftError.value = "";
   try {
@@ -534,7 +577,7 @@ watch(settlementPreferenceStorageKey, loadSettlementColumnPreferences, { immedia
 
 onMounted(() => {
   void loadSettlementLedger();
-  void loadSettlementDrafts();
+  if (canManageSettlements.value) void loadSettlementDrafts();
 });
 </script>
 

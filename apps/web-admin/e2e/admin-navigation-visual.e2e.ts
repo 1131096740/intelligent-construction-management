@@ -12,7 +12,7 @@ test("keeps the active navigation inside the sidebar and strengthens group headi
           name: "导航验收用户",
           phone: "13900000000",
           mustChangePassword: false,
-          roleKeys: ["chairman", "super_admin"],
+          roleKeys: ["chairman", "super_admin", "contract_staff"],
           globalRoleKeys: ["chairman", "super_admin"]
         },
         tokens: {

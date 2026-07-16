@@ -1,10 +1,22 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  StreamableFile
+} from "@nestjs/common";
+import { CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
+import { XLSX_MIME } from "../core-flow/ledger-excel";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { ContractReadService } from "./contract-read.service";
@@ -62,6 +74,25 @@ export class ContractController {
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
     return this.contractRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
+  }
+
+  @Get("ledger-export")
+  @RequirePositions(...CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS)
+  async exportLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.contractRead.exportLedger(
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
+    response.set({
+      "Content-Type": XLSX_MIME,
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`,
+      "Content-Length": String(result.buffer.length)
+    });
+    return new StreamableFile(result.buffer);
   }
 
   @Get("settlement-create-options")

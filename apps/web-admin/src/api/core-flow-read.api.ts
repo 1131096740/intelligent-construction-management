@@ -1322,6 +1322,10 @@ export function fetchContractLedger() {
   return readJson<ContractLedgerListReadModel>("/contracts");
 }
 
+export function downloadContractLedgerExport() {
+  return downloadWorkbook("/contracts/ledger-export", "合同台账.xlsx", "导出合同台账失败");
+}
+
 export function fetchSettlementContractOptions(projectId: string) {
   return readJson<ContractBusinessOptionReadModel[]>(
     `/contracts/settlement-create-options?projectId=${encodeURIComponent(projectId)}`
@@ -1336,6 +1340,14 @@ export function fetchPaymentContractOptions(projectId: string) {
 
 export function fetchSettlementLedger() {
   return readJson<SettlementLedgerListReadModel>("/settlements");
+}
+
+export function downloadSettlementLedgerExport() {
+  return downloadWorkbook(
+    "/settlements/ledger-export",
+    "结算台账.xlsx",
+    "导出结算台账失败"
+  );
 }
 
 export function fetchPaymentLedger() {
@@ -1378,7 +1390,30 @@ export function createContractDraft(body: CreateContractPayload) {
 }
 
 export function listContractTakeovers(projectId: string) {
-  return readJson<ContractTakeoverReadModel[]>(`/projects/${projectId}/contract-takeovers`);
+  return readJson<ContractTakeoverReadModel[]>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers`
+  );
+}
+
+export function downloadContractTakeoverLedgerExport(projectId: string) {
+  return downloadWorkbook(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/ledger-export`,
+    "历史合同接管台账.xlsx",
+    "导出历史合同接管台账失败"
+  );
+}
+
+export function downloadContractTakeoverDetailExport(
+  projectId: string,
+  takeoverId: string
+) {
+  return downloadWorkbook(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/${encodeURIComponent(
+      takeoverId
+    )}/detail-export`,
+    "历史合同接管详情.xlsx",
+    "导出历史合同接管详情失败"
+  );
 }
 
 export async function downloadContractTakeoverImportTemplate(projectId: string): Promise<void> {
@@ -1646,6 +1681,20 @@ function saveBlob(blob: Blob, fileName: string): void {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+async function downloadWorkbook(
+  path: string,
+  fallbackFileName: string,
+  fallbackError: string
+): Promise<void> {
+  const response = await apiFetch(path);
+  await ensureOk(response, fallbackError);
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  const fileName = match ? decodeURIComponent(match[1]) : fallbackFileName;
+  saveBlob(blob, fileName);
 }
 
 // 审批单文件下载：审批通过后后端按下载人动态生成带水印文件，直接以 blob 触发浏览器下载。

@@ -9,6 +9,7 @@ import {
   Res,
   StreamableFile
 } from "@nestjs/common";
+import { HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
@@ -47,7 +48,7 @@ export class ContractTakeoverController {
   ) {}
 
   @Get()
-  @RequireProjectRole("contract.create")
+  @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
   list(@Param("projectId") projectId: string) {
     return this.takeovers.list(projectId);
   }
@@ -104,8 +105,39 @@ export class ContractTakeoverController {
     return this.requireExcel().apply(projectId, user.id, body);
   }
 
+  @Get("ledger-export")
+  @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
+  async exportLedger(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.requireExcel().exportLedger(projectId, user.id);
+    this.setWorkbookHeaders(response, result);
+    return new StreamableFile(result.buffer);
+  }
+
+  @Get(":takeoverId/detail-export")
+  @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
+  async exportDetail(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.requireExcel().exportDetail(
+      projectId,
+      takeoverId,
+      user.id
+    );
+    this.setWorkbookHeaders(response, result);
+    return new StreamableFile(result.buffer);
+  }
+
   @Get(":takeoverId")
-  @RequireProjectRole("contract.create")
+  @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
   detail(
     @Param("projectId") projectId: string,
     @Param("takeoverId") takeoverId: string
@@ -114,7 +146,7 @@ export class ContractTakeoverController {
   }
 
   @Get(":takeoverId/tax-fact-revisions")
-  @RequirePositions("contract_staff", "finance_director", "contract_director")
+  @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
   listTaxFactRevisions(
     @Param("projectId") projectId: string,
     @Param("takeoverId") takeoverId: string
@@ -298,5 +330,16 @@ export class ContractTakeoverController {
       throw new Error("历史合同税务事实复核服务暂不可用，请稍后重试");
     }
     return this.taxFacts;
+  }
+
+  private setWorkbookHeaders(
+    response: { set: (headers: Record<string, string>) => void },
+    result: { buffer: Buffer; fileName: string }
+  ) {
+    response.set({
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`,
+      "Content-Length": String(result.buffer.length)
+    });
   }
 }

@@ -12,10 +12,23 @@
         <t-button @click="loadTakeovers">
           刷新
         </t-button>
-        <t-button @click="showPrecheckPanel = !showPrecheckPanel">
+        <t-button
+          v-if="canExportTakeovers"
+          variant="outline"
+          :loading="ledgerExporting"
+          :disabled="!selectedProjectId"
+          @click="exportTakeoverLedger"
+        >
+          导出接管台账
+        </t-button>
+        <t-button
+          v-if="canManageTakeovers"
+          @click="showPrecheckPanel = !showPrecheckPanel"
+        >
           导入预检
         </t-button>
         <t-button
+          v-if="canManageTakeovers"
           theme="primary"
           @click="startCreate"
         >
@@ -83,7 +96,10 @@
           </t-tag>
         </div>
       </div>
-      <div class="operation-section-nav">
+      <div
+        v-if="canManageTakeovers"
+        class="operation-section-nav"
+      >
         <a
           v-for="section in takeoverOperationSections"
           :key="section.id"
@@ -98,7 +114,7 @@
     </div>
 
     <t-card
-      v-if="showPrecheckPanel"
+      v-if="canManageTakeovers && showPrecheckPanel"
       id="takeover-step-precheck"
       class="panel import-panel jg-table-region jg-table-region--wide"
       :bordered="true"
@@ -278,6 +294,7 @@
     </t-card>
 
     <t-card
+      v-if="canManageTakeovers"
       id="takeover-step-ready"
       class="panel batch-panel jg-table-region jg-table-region--wide"
       :bordered="true"
@@ -301,7 +318,10 @@
         horizontal-scroll-affixed-bottom
       >
         <template #operation="{ row }">
-          <t-space size="small">
+          <t-space
+            v-if="canConfirmTakeovers"
+            size="small"
+          >
             <t-link
               v-if="row.status === 'drafts_generated'"
               theme="primary"
@@ -344,12 +364,18 @@
               已形成批次结论
             </span>
           </t-space>
+          <span
+            v-else
+            class="issue-muted"
+          >
+            仅合同部主管可复核
+          </span>
         </template>
       </t-table>
     </t-card>
 
     <t-card
-      v-if="showCreateForm"
+      v-if="canManageTakeovers && showCreateForm"
       id="takeover-step-evidence-draft"
       class="panel"
       :bordered="true"
@@ -737,7 +763,7 @@
           :data="tableRows"
           :loading="loadingTakeovers"
           horizontal-scroll-affixed-bottom
-          empty="暂无历史合同接管记录，请先选择项目并完成导入预检或新增接管草稿"
+          :empty="takeoverEmptyText"
         >
           <template #takeoverStatusLabel="{ row }">
             <t-tag
@@ -756,60 +782,66 @@
               >
                 详情
               </t-link>
-              <t-link
-                v-if="canEditTakeover(row.takeover)"
-                theme="primary"
-                @click="startEdit(row.takeover)"
-              >
-                编辑
-              </t-link>
-              <t-tooltip
-                v-else
-                :content="takeoverActionDisabledReason(row.takeover, 'edit')"
-              >
+              <template v-if="canManageTakeovers">
                 <t-link
-                  disabled
+                  v-if="canEditTakeover(row.takeover)"
                   theme="primary"
+                  @click="startEdit(row.takeover)"
                 >
                   编辑
                 </t-link>
-              </t-tooltip>
-              <t-link
-                v-if="canSubmitTakeoverReview(row.takeover)"
-                theme="primary"
-                @click="submitReview(row.takeover)"
-              >
-                提交复核
-              </t-link>
-              <t-tooltip
-                v-else
-                :content="takeoverActionDisabledReason(row.takeover, 'submit_review')"
-              >
+                <t-tooltip
+                  v-else
+                  :content="takeoverActionDisabledReason(row.takeover, 'edit')"
+                >
+                  <t-link
+                    disabled
+                    theme="primary"
+                  >
+                    编辑
+                  </t-link>
+                </t-tooltip>
+              </template>
+              <template v-if="canSubmitTakeovers">
                 <t-link
-                  disabled
+                  v-if="canSubmitTakeoverReview(row.takeover)"
                   theme="primary"
+                  @click="submitReview(row.takeover)"
                 >
                   提交复核
                 </t-link>
-              </t-tooltip>
-              <t-link
-                v-if="canConfirmTakeover(row.takeover)"
-                theme="danger"
-                @click="openConfirm(row.takeover)"
-              >
-                确认接管
-              </t-link>
-              <t-tooltip
-                v-else
-                :content="takeoverActionDisabledReason(row.takeover, 'confirm')"
-              >
+                <t-tooltip
+                  v-else
+                  :content="takeoverActionDisabledReason(row.takeover, 'submit_review')"
+                >
+                  <t-link
+                    disabled
+                    theme="primary"
+                  >
+                    提交复核
+                  </t-link>
+                </t-tooltip>
+              </template>
+              <template v-if="canConfirmTakeovers">
                 <t-link
-                  disabled
+                  v-if="canConfirmTakeover(row.takeover)"
                   theme="danger"
+                  @click="openConfirm(row.takeover)"
                 >
                   确认接管
                 </t-link>
-              </t-tooltip>
+                <t-tooltip
+                  v-else
+                  :content="takeoverActionDisabledReason(row.takeover, 'confirm')"
+                >
+                  <t-link
+                    disabled
+                    theme="danger"
+                  >
+                    确认接管
+                  </t-link>
+                </t-tooltip>
+              </template>
             </t-space>
           </template>
         </t-table>
@@ -819,9 +851,20 @@
         class="panel detail-panel"
         :bordered="true"
       >
-        <div class="operation-section-title">
-          <span>资料核验 · 复核确认 · 接管后核验</span>
-          <small>在同一详情页核对资料、确认前摘要、更正记录和接管后的账本闭环。</small>
+        <div class="operation-section-title section-title-with-action">
+          <div>
+            <span>资料核验 · 复核确认 · 接管后核验</span>
+            <small>在同一详情页核对资料、确认前摘要、更正记录和接管后的账本闭环。</small>
+          </div>
+          <t-button
+            v-if="canExportTakeovers && selectedRow"
+            size="small"
+            variant="outline"
+            :loading="detailExporting"
+            @click="exportSelectedTakeover"
+          >
+            导出详情（含税务修订）
+          </t-button>
         </div>
         <div
           v-if="selectedRow"
@@ -970,7 +1013,10 @@
               </t-tag>
             </div>
           </div>
-          <div class="evidence-uploader">
+          <div
+            v-if="canManageTakeovers"
+            class="evidence-uploader"
+          >
             <label>
               <span>资料类型</span>
               <select v-model="evidencePurpose">
@@ -1100,9 +1146,14 @@
               v-else
               class="empty-hint"
             >
-              暂无接管更正记录。已确认金额、付款条款或资料需要调整时，请在下方保存更正原因、责任人和依据附件。
+              {{ canConfirmTakeovers
+                ? "暂无接管更正记录。已确认金额、付款条款或资料需要调整时，请在下方保存更正原因、责任人和依据附件。"
+                : "暂无接管更正记录。" }}
             </div>
-            <div class="form-grid two">
+            <div
+              v-if="canConfirmTakeovers"
+              class="form-grid two"
+            >
               <label>
                 <span>更正事项</span>
                 <select v-model="correctionForm.correctionType">
@@ -1158,7 +1209,10 @@
                 />
               </label>
             </div>
-            <div class="form-actions">
+            <div
+              v-if="canConfirmTakeovers"
+              class="form-actions"
+            >
               <t-tooltip
                 v-if="selectedCorrectionDisabledReason"
                 :content="selectedCorrectionDisabledReason"
@@ -1250,6 +1304,7 @@
     </div>
 
     <t-dialog
+      v-if="canConfirmTakeovers"
       v-model:visible="confirmVisible"
       header="确认历史合同接管"
       :confirm-btn="confirmButtonProps"
@@ -1300,6 +1355,7 @@
     </t-dialog>
 
     <SensitiveActionDialog
+      v-if="canConfirmTakeovers"
       v-model="importBatchReviewVisible"
       title="确认更新接管批次状态"
       :description="pendingImportBatchReviewDescription"
@@ -1334,7 +1390,9 @@ import {
   createPrivateFileDownloadTicket,
   createContractTakeover,
   createContractTakeoverDraftsFromImport,
+  downloadContractTakeoverDetailExport,
   downloadContractTakeoverImportTemplate,
+  downloadContractTakeoverLedgerExport,
   fetchApprovalDelegationUserOptions,
   fetchProjects,
   getContractTakeover,
@@ -1367,6 +1425,12 @@ import { useAuthStore } from "../../auth/auth.store";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../lib/money";
+import {
+  canConfirmHistoricalContractTakeovers,
+  canExportContractSettlementLedger,
+  canManageHistoricalContractTakeovers,
+  canSubmitHistoricalContractTakeovers
+} from "../business-readonly-access";
 import ContractTaxFactReviewPanel from "./components/ContractTaxFactReviewPanel.vue";
 import {
   buildImportDraftsMessage,
@@ -1482,6 +1546,19 @@ const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
 
 const router = useRouter();
 const auth = useAuthStore();
+const roleKeys = computed(() => auth.user?.roleKeys ?? []);
+const canManageTakeovers = computed(() =>
+  canManageHistoricalContractTakeovers(roleKeys.value)
+);
+const canSubmitTakeovers = computed(() =>
+  canSubmitHistoricalContractTakeovers(roleKeys.value)
+);
+const canConfirmTakeovers = computed(() =>
+  canConfirmHistoricalContractTakeovers(roleKeys.value)
+);
+const canExportTakeovers = computed(() =>
+  canExportContractSettlementLedger(roleKeys.value)
+);
 const projects = ref<ProjectOptionReadModel[]>([]);
 const responsibleUsers = ref<UserOptionReadModel[]>([]);
 const takeovers = ref<ContractTakeoverReadModel[]>([]);
@@ -1494,6 +1571,8 @@ const creating = ref(false);
 const prechecking = ref(false);
 const generatingImportDrafts = ref(false);
 const templateDownloading = ref(false);
+const ledgerExporting = ref(false);
+const detailExporting = ref(false);
 const excelPreviewing = ref(false);
 const excelApplying = ref(false);
 const reviewingImportBatchAction = ref("");
@@ -1612,6 +1691,11 @@ const selectedTaxFactCurrent = computed<ContractTaxFactCurrentReadModel | null>(
 });
 const takeoverWorkbenchStepsView = computed(() =>
   takeoverWorkbenchSteps(selectedRow.value?.takeover ?? null)
+);
+const takeoverEmptyText = computed(() =>
+  canManageTakeovers.value
+    ? "暂无历史合同接管记录，请先选择项目并完成导入预检或新增接管草稿"
+    : "当前项目暂无可查看的历史合同接管记录"
 );
 
 async function focusTakeoverSection(sectionId: string) {
@@ -1908,7 +1992,12 @@ const selectedBalanceInfo = computed(() => {
 });
 
 onMounted(async () => {
-  await Promise.all([loadProjects(), loadResponsibleUsers()]);
+  await Promise.all([
+    loadProjects(),
+    canManageTakeovers.value || canConfirmTakeovers.value
+      ? loadResponsibleUsers()
+      : Promise.resolve()
+  ]);
 });
 
 async function loadProjects() {
@@ -1930,6 +2019,7 @@ async function loadProjects() {
 }
 
 async function loadResponsibleUsers() {
+  if (!canManageTakeovers.value && !canConfirmTakeovers.value) return;
   try {
     responsibleUsers.value = await fetchApprovalDelegationUserOptions();
   } catch (error) {
@@ -1952,7 +2042,9 @@ async function loadTakeovers() {
   try {
     const [nextTakeovers, nextImportBatches] = await Promise.all([
       listContractTakeovers(projectId),
-      listContractTakeoverImportBatches(projectId)
+      canManageTakeovers.value
+        ? listContractTakeoverImportBatches(projectId)
+        : Promise.resolve([])
     ]);
     takeovers.value = nextTakeovers;
     importBatches.value = nextImportBatches;
@@ -1971,7 +2063,64 @@ async function loadTakeovers() {
   }
 }
 
+async function exportTakeoverLedger() {
+  if (!canExportTakeovers.value) {
+    setMessage("当前岗位不能导出历史合同接管台账", "danger");
+    return;
+  }
+  const projectId = selectedProjectId.value;
+  if (!projectId) {
+    setMessage("请先选择项目", "danger");
+    return;
+  }
+  ledgerExporting.value = true;
+  try {
+    await downloadContractTakeoverLedgerExport(projectId);
+    setMessage("历史合同接管台账已导出，仅包含当前项目和当前账号可见信息", "success");
+  } catch (error) {
+    setMessage(
+      error instanceof Error
+        ? `${error.message}。请检查网络与权限后重试。`
+        : "历史合同接管台账导出失败，请检查网络与权限后重试。",
+      "danger"
+    );
+  } finally {
+    ledgerExporting.value = false;
+  }
+}
+
+async function exportSelectedTakeover() {
+  if (!canExportTakeovers.value) {
+    setMessage("当前岗位不能导出历史合同接管详情", "danger");
+    return;
+  }
+  const projectId = selectedProjectId.value;
+  const takeoverId = selectedRow.value?.takeover.id;
+  if (!projectId || !takeoverId) {
+    setMessage("请先选择需要导出的历史合同", "danger");
+    return;
+  }
+  detailExporting.value = true;
+  try {
+    await downloadContractTakeoverDetailExport(projectId, takeoverId);
+    setMessage("历史合同接管详情已导出，税务修订记录已包含在文件中", "success");
+  } catch (error) {
+    setMessage(
+      error instanceof Error
+        ? `${error.message}。请检查网络与权限后重试。`
+        : "历史合同接管详情导出失败，请检查网络与权限后重试。",
+      "danger"
+    );
+  } finally {
+    detailExporting.value = false;
+  }
+}
+
 async function downloadImportTemplate() {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位只能查看和导出历史合同接管信息", "danger");
+    return;
+  }
   const projectId = selectedProjectId.value;
   if (!projectId) {
     setMessage("请先选择项目", "danger");
@@ -1990,6 +2139,10 @@ async function downloadImportTemplate() {
 }
 
 async function previewExcelImport() {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位不能上传或导入历史合同接管数据", "danger");
+    return;
+  }
   const projectId = selectedProjectId.value;
   const file = selectedExcelImportFile.value;
   if (!projectId) {
@@ -2030,6 +2183,10 @@ function handleExcelImportFileChange() {
 }
 
 async function applyExcelImport() {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位不能生成历史合同接管草稿", "danger");
+    return;
+  }
   const projectId = selectedProjectId.value;
   const preview = excelPreviewResult.value;
   if (!projectId) {
@@ -2076,6 +2233,10 @@ async function applyExcelImport() {
 }
 
 async function submitImportPrecheck() {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位不能预检或导入历史合同接管数据", "danger");
+    return;
+  }
   const projectId = selectedProjectId.value;
   if (!projectId) {
     setMessage("请先选择项目", "danger");
@@ -2100,6 +2261,10 @@ async function submitImportPrecheck() {
 }
 
 async function generateImportDrafts() {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位不能生成历史合同接管草稿", "danger");
+    return;
+  }
   const projectId = selectedProjectId.value;
   if (!projectId) {
     setMessage("请先选择项目", "danger");
@@ -2155,11 +2320,19 @@ function reviewImportBatch(
   batch: ContractTakeoverImportBatchReadModel,
   status: ContractTakeoverImportBatchReviewStatus
 ) {
+  if (!canConfirmTakeovers.value) {
+    setMessage("仅合同部主管可以复核历史合同接管批次", "danger");
+    return;
+  }
   pendingImportBatchReview.value = { batch, status };
   importBatchReviewVisible.value = true;
 }
 
 async function confirmImportBatchReview() {
+  if (!canConfirmTakeovers.value) {
+    setMessage("仅合同部主管可以复核历史合同接管批次", "danger");
+    return;
+  }
   const pending = pendingImportBatchReview.value;
   if (!pending) return;
   const { batch, status } = pending;
@@ -2237,6 +2410,10 @@ async function goToContractChange(contractId: string) {
 }
 
 async function submitCreate() {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位不能新增或修改历史合同接管记录", "danger");
+    return;
+  }
   const projectId = selectedProjectId.value;
   if (!projectId) {
     setMessage("请先选择项目", "danger");
@@ -2317,6 +2494,7 @@ async function submitCreate() {
 }
 
 function startCreate() {
+  if (!canManageTakeovers.value) return;
   editingTakeoverId.value = "";
   resetCreateForm();
   showCreateForm.value = true;
@@ -2331,6 +2509,10 @@ function removePricingItem(index: number) {
 }
 
 function startEdit(takeover: ContractTakeoverReadModel) {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位不能修改历史合同接管记录", "danger");
+    return;
+  }
   if (!canEditTakeover(takeover)) {
     setMessage("只有草稿或待补充的接管记录可以编辑", "danger");
     return;
@@ -2353,6 +2535,10 @@ function cancelEdit() {
 }
 
 async function submitReview(takeover: ContractTakeoverReadModel) {
+  if (!canSubmitTakeovers.value) {
+    setMessage("当前岗位不能提交历史合同接管复核", "danger");
+    return;
+  }
   const projectId = selectedProjectId.value;
   if (!projectId) {
     setMessage("请先选择项目", "danger");
@@ -2380,6 +2566,10 @@ function onCorrectionFileChange(event: Event) {
 }
 
 async function submitEvidenceFile() {
+  if (!canManageTakeovers.value) {
+    setMessage("当前岗位不能上传历史合同接管资料", "danger");
+    return;
+  }
   const projectId = selectedProjectId.value;
   const takeover = selectedRow.value?.takeover;
   const file = evidenceFile.value;
@@ -2447,6 +2637,10 @@ async function submitEvidenceFileDownload() {
 }
 
 async function submitCorrectionRecord() {
+  if (!canConfirmTakeovers.value) {
+    setMessage("当前岗位不能保存历史合同接管更正记录", "danger");
+    return;
+  }
   const projectId = selectedProjectId.value;
   const takeover = selectedRow.value?.takeover;
   const file = correctionFile.value;
@@ -2485,6 +2679,10 @@ async function submitCorrectionRecord() {
 }
 
 function openConfirm(takeover: ContractTakeoverReadModel) {
+  if (!canConfirmTakeovers.value) {
+    setMessage("当前岗位不能确认历史合同接管", "danger");
+    return;
+  }
   confirmTarget.value = takeover;
   confirmationPassword.value = "";
   confirmVisible.value = true;
@@ -2498,6 +2696,10 @@ function closeConfirm() {
 }
 
 async function confirmSelectedTakeover() {
+  if (!canConfirmTakeovers.value) {
+    setMessage("当前岗位不能确认历史合同接管", "danger");
+    return;
+  }
   const target = confirmTarget.value;
   const projectId = selectedProjectId.value;
   if (!target) {

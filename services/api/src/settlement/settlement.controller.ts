@@ -8,12 +8,14 @@ import {
   Res,
   StreamableFile
 } from "@nestjs/common";
+import { CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
+import { XLSX_MIME } from "../core-flow/ledger-excel";
 import { AssignSettlementApprovalDto } from "./dto/assign-settlement-approval.dto";
 import { ConfirmSettlementArchiveDto } from "./dto/confirm-settlement-archive.dto";
 import { CreateSettlementDto } from "./dto/create-settlement.dto";
@@ -28,8 +30,6 @@ import {
 } from "./settlement-attachment-template.service";
 import { SettlementService } from "./settlement.service";
 import { SettlementSubmissionService } from "./settlement-submission.service";
-
-const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 @Controller("settlements")
 export class SettlementController {
@@ -51,6 +51,25 @@ export class SettlementController {
   @RequirePositions(...LEDGER_READ_POSITION_KEYS)
   async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
     return this.settlementRead.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
+  }
+
+  @Get("ledger-export")
+  @RequirePositions(...CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS)
+  async exportLedger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.settlementRead.exportLedger(
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
+    response.set({
+      "Content-Type": XLSX_MIME,
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`,
+      "Content-Length": String(result.buffer.length)
+    });
+    return new StreamableFile(result.buffer);
   }
 
   @Get(":settlementId/attachment-templates/:templateKey/download")

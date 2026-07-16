@@ -1,10 +1,26 @@
 import { createHash } from "node:crypto";
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import {
+  contractInvoiceTypeLabel,
+  contractTaxFactSourceLabel,
+  contractTaxModeLabel
+} from "@jiangkong/shared-domain";
 import * as ExcelJS from "exceljs";
 import type { CellValue, Worksheet } from "exceljs";
 import PizZip from "pizzip";
+import { AuditService } from "../audit/audit.service";
+import { ContractTaxFactsService } from "../contract-tax-facts/contract-tax-facts.service";
+import {
+  buildLedgerWorkbook,
+  shanghaiDateStamp,
+  XLSX_MIME
+} from "../core-flow/ledger-excel";
+import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { yuanTextToCents } from "../money/decimal-money";
+import {
+  formatMoneyCentsAsYuan,
+  yuanTextToCents
+} from "../money/decimal-money";
 import { ContractTakeoverService } from "./contract-takeover.service";
 import type {
   ApplyContractTakeoverExcelDto,
@@ -14,7 +30,6 @@ import type {
 const MAIN_SHEET = "合同主表";
 const PRICING_SHEET = "计价清单";
 const INSTRUCTIONS_SHEET = "填写说明";
-const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ZIP_ENTRIES = 500;
 const MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
@@ -71,7 +86,13 @@ type ParsedWorkbook = {
 export class ContractTakeoverExcelService {
   constructor(
     private readonly files: FileService,
-    private readonly takeovers: ContractTakeoverService
+    private readonly takeovers: ContractTakeoverService,
+    @Optional()
+    private readonly taxFacts?: ContractTaxFactsService,
+    @Optional()
+    private readonly audit?: AuditService,
+    @Optional()
+    private readonly prisma?: PrismaService
   ) {}
 
   async exportTemplate() {
@@ -106,6 +127,375 @@ export class ContractTakeoverExcelService {
     return {
       buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
       fileName: "历史合同接管导入模板.xlsx"
+    };
+  }
+
+  async exportLedger(projectId: string, actorUserId: string) {
+    const takeovers = await this.takeovers.list(projectId);
+    const rows = takeovers.map((takeover) => ({
+      contractNo: takeover.contractNo,
+      contractName: takeover.contractName,
+      counterparty: takeover.counterparty,
+      companyEntityName: takeover.companyEntityName ?? "—",
+      amount: this.money(takeover.amountCents),
+      signedAt: this.date(takeover.signedAt),
+      takeoverLevel: takeover.takeoverLevel,
+      lifecycleStatus: lifecycleStatusLabel(takeover.lifecycleStatus),
+      takeoverStatus: takeoverStatusLabel(takeover.takeoverStatus),
+      invoiceType: takeover.invoiceType
+        ? safeContractInvoiceTypeLabel(takeover.invoiceType)
+        : "原合同未明确",
+      taxMode: safeContractTaxModeLabel(takeover.taxMode),
+      defaultTaxRate: takeover.defaultTaxRatePercent
+        ? `${takeover.defaultTaxRatePercent}%`
+        : "原合同未明确",
+      taxFactStatus: taxFactStatusLabel(takeover.taxFactStatus),
+      historicalSettled: this.money(takeover.historicalSettledCents),
+      historicalPaid: this.money(takeover.historicalPaidCents),
+      historicalApprovedPendingPayment: this.money(
+        takeover.historicalApprovedPendingPaymentCents
+      ),
+      responsibleUserName: takeover.responsibleUserName ?? "—",
+      cutoffDate: this.date(takeover.takeoverCutoffDate),
+      evidenceGap: takeover.evidenceGapSummary,
+      updatedAt: this.date(takeover.updatedAt)
+    }));
+    const buffer = await buildLedgerWorkbook({
+      sheetName: "接管台账",
+      columns: [
+        { header: "合同编号", key: "contractNo", width: 20 },
+        { header: "合同名称", key: "contractName", width: 28 },
+        { header: "相对方", key: "counterparty", width: 24 },
+        { header: "我方签约主体", key: "companyEntityName", width: 22 },
+        { header: "合同金额", key: "amount", width: 18 },
+        { header: "签订日期", key: "signedAt", width: 14 },
+        { header: "接管等级", key: "takeoverLevel", width: 12 },
+        { header: "履约状态", key: "lifecycleStatus", width: 14 },
+        { header: "接管状态", key: "takeoverStatus", width: 14 },
+        { header: "发票类型", key: "invoiceType", width: 20 },
+        { header: "计税模式", key: "taxMode", width: 16 },
+        { header: "默认税率", key: "defaultTaxRate", width: 14 },
+        { header: "税务事实状态", key: "taxFactStatus", width: 16 },
+        { header: "历史累计结算", key: "historicalSettled", width: 18 },
+        { header: "历史累计已付", key: "historicalPaid", width: 18 },
+        {
+          header: "历史已批待付",
+          key: "historicalApprovedPendingPayment",
+          width: 18
+        },
+        { header: "接管责任人", key: "responsibleUserName", width: 16 },
+        { header: "接管截止日", key: "cutoffDate", width: 14 },
+        { header: "资料缺口", key: "evidenceGap", width: 28 },
+        { header: "更新时间", key: "updatedAt", width: 22 }
+      ],
+      rows
+    });
+
+    await this.recordExportAudit({
+      actorUserId,
+      action: "contract.takeover.ledger.export",
+      businessType: "contract_takeover_ledger",
+      businessId: projectId,
+      metadata: { exportedRows: rows.length }
+    });
+
+    return {
+      buffer,
+      fileName: `历史合同接管台账-${shanghaiDateStamp()}.xlsx`
+    };
+  }
+
+  async exportDetail(
+    projectId: string,
+    takeoverId: string,
+    actorUserId: string
+  ) {
+    const [takeover, taxFacts] = await Promise.all([
+      this.takeovers.detail(projectId, takeoverId),
+      this.requireTaxFacts().list(projectId, takeoverId)
+    ]);
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "建工智管";
+    workbook.created = new Date();
+
+    const detail = workbook.addWorksheet("接管详情");
+    detail.columns = [
+      { header: "字段", key: "label", width: 24 },
+      { header: "内容", key: "value", width: 68 }
+    ];
+    detail.addRows([
+      { label: "合同编号", value: takeover.contractNo },
+      { label: "合同名称", value: takeover.contractName },
+      { label: "相对方", value: takeover.counterparty },
+      { label: "我方签约主体", value: takeover.companyEntityName ?? "—" },
+      { label: "合同金额", value: this.money(takeover.amountCents) },
+      { label: "签订日期", value: this.date(takeover.signedAt) },
+      { label: "接管等级", value: takeover.takeoverLevel },
+      { label: "履约状态", value: lifecycleStatusLabel(takeover.lifecycleStatus) },
+      { label: "接管状态", value: takeoverStatusLabel(takeover.takeoverStatus) },
+      {
+        label: "发票类型",
+        value: takeover.invoiceType
+          ? safeContractInvoiceTypeLabel(takeover.invoiceType)
+          : "原合同未明确"
+      },
+      { label: "计税模式", value: safeContractTaxModeLabel(takeover.taxMode) },
+      {
+        label: "默认税率",
+        value: takeover.defaultTaxRatePercent
+          ? `${takeover.defaultTaxRatePercent}%`
+          : "原合同未明确"
+      },
+      {
+        label: "税务事实来源",
+        value: takeover.taxFactSource
+          ? safeContractTaxFactSourceLabel(takeover.taxFactSource)
+          : "—"
+      },
+      { label: "税务确认说明", value: takeover.taxFactExplanation ?? "—" },
+      {
+        label: "税务事实缺口",
+        value: takeover.taxFactMissingFields.length
+          ? takeover.taxFactMissingFields.join("、")
+          : "无"
+      },
+      { label: "付款条款摘要", value: takeover.paymentTermsOriginalText || "—" },
+      {
+        label: "历史累计结算",
+        value: this.money(takeover.historicalSettledCents)
+      },
+      {
+        label: "历史审批中付款",
+        value: this.money(takeover.historicalApprovalPendingPaymentCents)
+      },
+      {
+        label: "历史已批待付",
+        value: this.money(takeover.historicalApprovedPendingPaymentCents)
+      },
+      { label: "历史累计已付", value: this.money(takeover.historicalPaidCents) },
+      { label: "历史总包代付", value: this.money(takeover.historicalProxyPaidCents) },
+      {
+        label: "历史预付款已付",
+        value: this.money(takeover.historicalAdvancePaidCents)
+      },
+      {
+        label: "历史预付款已扣回",
+        value: this.money(takeover.historicalAdvanceDeductedCents)
+      },
+      {
+        label: "历史质保金扣留",
+        value: this.money(takeover.historicalRetentionWithheldCents)
+      },
+      {
+        label: "历史质保金释放",
+        value: this.money(takeover.historicalRetentionReleasedCents)
+      },
+      {
+        label: "其他确认占用",
+        value: this.money(takeover.otherConfirmedOccupancyCents)
+      },
+      { label: "余额来源", value: takeover.balanceSourceSummary ?? "—" },
+      { label: "证据说明", value: takeover.evidenceSummary ?? "—" },
+      { label: "接管责任人", value: takeover.responsibleUserName ?? "—" },
+      { label: "复核意见", value: takeover.reviewComment ?? "—" },
+      { label: "验收结论", value: takeover.acceptanceConclusion ?? "—" },
+      { label: "接管截止日", value: this.date(takeover.takeoverCutoffDate) },
+      { label: "提交时间", value: this.date(takeover.submittedAt) },
+      { label: "确认时间", value: this.date(takeover.confirmedAt) }
+    ]);
+    this.styleExportSheet(detail);
+
+    const pricing = workbook.addWorksheet("历史计价");
+    pricing.columns = [
+      { header: "清单", key: "billName", width: 22 },
+      { header: "项目编号", key: "itemCode", width: 16 },
+      { header: "名称", key: "itemName", width: 24 },
+      { header: "规格型号", key: "specification", width: 18 },
+      { header: "单位", key: "unit", width: 10 },
+      { header: "预计数量", key: "estimatedQuantity", width: 14 },
+      { header: "含税单价（元）", key: "taxInclusiveUnitPrice", width: 18 },
+      { header: "税率", key: "taxRatePercent", width: 12 },
+      { header: "价格状态", key: "pricingFactStatus", width: 16 },
+      { header: "暂定项目", key: "isProvisional", width: 12 },
+      { header: "结算依据", key: "settlementBasis", width: 30 }
+    ];
+    pricing.addRows(
+      takeover.pricingItems.map((item) => ({
+        billName: item.billName,
+        itemCode: item.itemCode ?? "—",
+        itemName: item.itemName,
+        specification: item.specification ?? "—",
+        unit: item.unit,
+        estimatedQuantity: item.estimatedQuantity ?? "—",
+        taxInclusiveUnitPrice: item.taxInclusiveUnitPrice ?? "—",
+        taxRatePercent: item.taxRatePercent ? `${item.taxRatePercent}%` : "—",
+        pricingFactStatus: pricingFactStatusLabel(item.pricingFactStatus),
+        isProvisional: item.isProvisional ? "是" : "否",
+        settlementBasis: item.settlementBasis ?? "—"
+      }))
+    );
+    this.styleExportSheet(pricing);
+
+    const revisions = workbook.addWorksheet("税务修订");
+    revisions.columns = [
+      { header: "记录类型", key: "recordType", width: 14 },
+      { header: "修订号", key: "revisionNo", width: 10 },
+      { header: "修订性质", key: "kind", width: 12 },
+      { header: "状态", key: "status", width: 18 },
+      { header: "发票类型", key: "invoiceType", width: 20 },
+      { header: "计税模式", key: "taxMode", width: 16 },
+      { header: "默认税率", key: "defaultTaxRate", width: 14 },
+      { header: "事实来源", key: "source", width: 20 },
+      { header: "确认说明", key: "explanation", width: 34 },
+      { header: "清单价格事实", key: "rowFactCount", width: 14 },
+      { header: "提交时间", key: "submittedAt", width: 22 },
+      { header: "财务复核时间", key: "financeReviewedAt", width: 22 },
+      { header: "财务意见", key: "financeComment", width: 28 },
+      { header: "合同部确认时间", key: "confirmedAt", width: 22 },
+      { header: "合同部意见", key: "contractComment", width: 28 }
+    ];
+    revisions.addRow({
+      recordType: "当前事实",
+      revisionNo: taxFacts.current.revision,
+      kind: "—",
+      status: taxFactStatusLabel(taxFacts.current.status),
+      invoiceType: taxFacts.current.invoiceType
+        ? safeContractInvoiceTypeLabel(taxFacts.current.invoiceType)
+        : "原合同未明确",
+      taxMode: safeContractTaxModeLabel(taxFacts.current.taxMode),
+      defaultTaxRate: taxFacts.current.defaultTaxRatePercent
+        ? `${taxFacts.current.defaultTaxRatePercent}%`
+        : "—",
+      source: taxFacts.current.source
+        ? safeContractTaxFactSourceLabel(taxFacts.current.source)
+        : "—",
+      explanation: taxFacts.current.confirmationExplanation ?? "—",
+      rowFactCount: taxFacts.rows.length,
+      submittedAt: "—",
+      financeReviewedAt: "—",
+      financeComment: "—",
+      confirmedAt: "—",
+      contractComment: "—"
+    });
+    revisions.addRows(
+      taxFacts.revisions.map((revision) => ({
+        recordType: "修订记录",
+        revisionNo: revision.revisionNo,
+        kind: revision.kind === "correction" ? "更正" : "补录",
+        status: revisionStatusLabel(revision.status),
+        invoiceType: revision.invoiceType
+          ? safeContractInvoiceTypeLabel(revision.invoiceType)
+          : "—",
+        taxMode: revision.taxMode ? safeContractTaxModeLabel(revision.taxMode) : "—",
+        defaultTaxRate: revision.defaultTaxRatePercent
+          ? `${revision.defaultTaxRatePercent}%`
+          : "—",
+        source: revision.source ? safeContractTaxFactSourceLabel(revision.source) : "—",
+        explanation: revision.confirmationExplanation ?? "—",
+        rowFactCount: revision.rowFacts.length,
+        submittedAt: this.date(revision.submittedAt),
+        financeReviewedAt: this.date(revision.financeReviewedAt),
+        financeComment: revision.financeReviewComment ?? "—",
+        confirmedAt: this.date(revision.confirmedAt),
+        contractComment: revision.contractReviewComment ?? "—"
+      }))
+    );
+    this.styleExportSheet(revisions);
+
+    const currentTaxRowById = new Map(
+      taxFacts.rows.map((row) => [row.contractBillRowId, row])
+    );
+    const taxRevisionDetailRows = taxFacts.revisions.flatMap((revision) => {
+      const beforeRows = taxFactBeforeRows(revision.beforeSnapshot);
+      const beforeRowById = new Map(
+        beforeRows.map((row) => [row.contractBillRowId, row])
+      );
+      return revision.rowFacts.map((rowFact) => {
+        const currentRow = currentTaxRowById.get(rowFact.contractBillRowId);
+        const beforeRow = beforeRowById.get(rowFact.contractBillRowId);
+        return {
+          revisionNo: revision.revisionNo,
+          revisionKind: revision.kind === "correction" ? "更正" : "补录",
+          revisionStatus: revisionStatusLabel(revision.status),
+          billName: currentRow?.billName ?? "合同清单",
+          itemName: currentRow?.itemName ?? "清单项目未读取",
+          specification: currentRow?.specification ?? "—",
+          unit: currentRow?.unit ?? "—",
+          beforeUnitPrice: beforeRow?.taxInclusiveUnitPrice ?? "—",
+          afterUnitPrice: rowFact.taxInclusiveUnitPrice ?? "—",
+          beforeTaxRate: beforeRow?.taxRatePercent
+            ? `${beforeRow.taxRatePercent}%`
+            : "—",
+          afterTaxRate: rowFact.taxRatePercentOverride
+            ? `${rowFact.taxRatePercentOverride}%`
+            : "继承默认税率"
+        };
+      });
+    });
+    const revisionDetails = workbook.addWorksheet("税务修订明细");
+    revisionDetails.columns = [
+      { header: "修订号", key: "revisionNo", width: 10 },
+      { header: "修订性质", key: "revisionKind", width: 12 },
+      { header: "状态", key: "revisionStatus", width: 18 },
+      { header: "清单", key: "billName", width: 22 },
+      { header: "项目名称", key: "itemName", width: 24 },
+      { header: "规格型号", key: "specification", width: 18 },
+      { header: "单位", key: "unit", width: 10 },
+      { header: "修订前含税单价（元）", key: "beforeUnitPrice", width: 20 },
+      { header: "修订后含税单价（元）", key: "afterUnitPrice", width: 20 },
+      { header: "修订前税率", key: "beforeTaxRate", width: 16 },
+      { header: "修订后税率", key: "afterTaxRate", width: 16 }
+    ];
+    revisionDetails.addRows(taxRevisionDetailRows);
+    this.styleExportSheet(revisionDetails);
+
+    const evidence = workbook.addWorksheet("资料与更正");
+    evidence.columns = [
+      { header: "记录类型", key: "recordType", width: 16 },
+      { header: "名称/事项", key: "name", width: 28 },
+      { header: "状态/类型", key: "status", width: 18 },
+      { header: "责任人/上传人", key: "operator", width: 18 },
+      { header: "时间", key: "occurredAt", width: 22 },
+      { header: "说明", key: "description", width: 58 }
+    ];
+    evidence.addRows([
+      ...takeover.evidenceFiles.map((file) => ({
+        recordType: "接管资料",
+        name: file.fileName,
+        status: file.purposeLabel,
+        operator: file.uploadedByName,
+        occurredAt: this.date(file.uploadedAt),
+        description: `文件类型：${file.mimeType}；大小：${file.sizeBytes} 字节`
+      })),
+      ...takeover.corrections.map((correction) => ({
+        recordType: "更正记录",
+        name: correction.correctionTypeLabel,
+        status: correction.reason,
+        operator: correction.createdByName,
+        occurredAt: this.date(correction.createdAt),
+        description: `更正前：${correction.beforeSummary}；更正后：${correction.afterSummary}；责任人：${correction.responsibleUserName}；依据附件：${correction.attachmentFileName}`
+      }))
+    ]);
+    this.styleExportSheet(evidence);
+
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    await this.recordExportAudit({
+      actorUserId,
+      action: "contract.takeover.detail.export",
+      businessType: "contract_takeover",
+      businessId: takeoverId,
+      metadata: {
+        pricingRows: takeover.pricingItems.length,
+        taxRevisionRows: taxFacts.revisions.length,
+        taxRevisionDetailRows: taxRevisionDetailRows.length,
+        evidenceRows: takeover.evidenceFiles.length,
+        correctionRows: takeover.corrections.length
+      }
+    });
+
+    return {
+      buffer,
+      fileName: `${safeFileName(takeover.contractNo)}-历史接管详情-${shanghaiDateStamp()}.xlsx`
     };
   }
 
@@ -190,6 +580,74 @@ export class ContractTakeoverExcelService {
       throw new BadRequestException("历史合同导入只支持不超过 10 MB 的 XLSX 文件");
     }
     return result;
+  }
+
+  private requireTaxFacts() {
+    if (!this.taxFacts) {
+      throw new Error("税务事实修订服务暂不可用，请稍后重试");
+    }
+    return this.taxFacts;
+  }
+
+  private async recordExportAudit(input: {
+    actorUserId: string;
+    action: string;
+    businessType: string;
+    businessId: string;
+    metadata: Record<string, string | number>;
+  }) {
+    if (!this.audit || !this.prisma) {
+      throw new Error("导出审计服务暂不可用，请稍后重试");
+    }
+    await this.audit.record(this.prisma, input);
+  }
+
+  private styleExportSheet(sheet: Worksheet) {
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    if (sheet.columnCount > 0) {
+      sheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: 1, column: sheet.columnCount }
+      };
+    }
+    const header = sheet.getRow(1);
+    header.height = 24;
+    header.font = { bold: true, color: { argb: "FF1F2329" } };
+    header.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFF2F3F5" }
+    };
+    header.alignment = { vertical: "middle", horizontal: "center" };
+    sheet.eachRow((row) => {
+      row.alignment = { vertical: "middle", wrapText: true };
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFDCDCDC" } },
+          left: { style: "thin", color: { argb: "FFDCDCDC" } },
+          bottom: { style: "thin", color: { argb: "FFDCDCDC" } },
+          right: { style: "thin", color: { argb: "FFDCDCDC" } }
+        };
+      });
+    });
+  }
+
+  private money(value: string | bigint) {
+    try {
+      return `¥${formatMoneyCentsAsYuan(BigInt(value))}`;
+    } catch {
+      return "—";
+    }
+  }
+
+  private date(value: string | Date | null | undefined) {
+    if (!value) return "—";
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString("zh-CN", {
+      hour12: false,
+      timeZone: "Asia/Shanghai"
+    });
   }
 
   private async parseWorkbook(buffer: Buffer): Promise<ParsedWorkbook> {
@@ -427,6 +885,119 @@ function taxFactSourceValue(value: CellValue): string | undefined {
     return "business_finance_confirmation";
   }
   return raw;
+}
+
+function lifecycleStatusLabel(value: string) {
+  const labels: Record<string, string> = {
+    signed_not_started: "已签未开工",
+    in_progress: "履约中",
+    suspended: "暂停履约",
+    completed: "已完工",
+    terminated: "已终止",
+    disputed: "存在争议"
+  };
+  return labels[value] ?? "状态未读取";
+}
+
+function takeoverStatusLabel(value: string) {
+  const labels: Record<string, string> = {
+    draft: "草稿",
+    pending_review: "待复核",
+    confirmed: "已接管",
+    needs_supplement: "待补充",
+    voided: "已作废"
+  };
+  return labels[value] ?? "状态未读取";
+}
+
+function taxFactStatusLabel(value: string) {
+  const labels: Record<string, string> = {
+    unconfirmed: "未明确",
+    draft: "草稿",
+    frozen: "随审批冻结",
+    pending_finance_review: "待财务复核",
+    pending_contract_confirmation: "待合同部确认",
+    confirmed: "已确认"
+  };
+  return labels[value] ?? "状态未读取";
+}
+
+function safeContractInvoiceTypeLabel(value: string) {
+  if (value === "vat_general" || value === "vat_special") {
+    return contractInvoiceTypeLabel(value);
+  }
+  return "发票类型未读取";
+}
+
+function safeContractTaxModeLabel(value: string) {
+  if (value === "single_rate" || value === "multiple_rate") {
+    return contractTaxModeLabel(value);
+  }
+  return "计税模式未读取";
+}
+
+function safeContractTaxFactSourceLabel(value: string) {
+  if (
+    value === "contract_document" ||
+    value === "supplement_evidence" ||
+    value === "business_finance_confirmation"
+  ) {
+    return contractTaxFactSourceLabel(value);
+  }
+  return "事实来源未读取";
+}
+
+function pricingFactStatusLabel(value: string) {
+  const labels: Record<string, string> = {
+    unconfirmed: "未明确",
+    confirmed: "已确认",
+    provisional: "暂定"
+  };
+  return labels[value] ?? value;
+}
+
+function revisionStatusLabel(value: string) {
+  const labels: Record<string, string> = {
+    draft: "草稿",
+    pending_finance_review: "待财务复核",
+    pending_contract_confirmation: "待合同部确认",
+    confirmed: "已确认",
+    rejected: "已退回"
+  };
+  return labels[value] ?? "状态未读取";
+}
+
+interface TaxFactBeforeRow {
+  contractBillRowId: string;
+  taxInclusiveUnitPrice: string | null;
+  taxRatePercent: string | null;
+}
+
+function taxFactBeforeRows(snapshot: Record<string, unknown>): TaxFactBeforeRow[] {
+  const rows = snapshot["rows"];
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const value = row as Record<string, unknown>;
+    if (typeof value["contractBillRowId"] !== "string") return [];
+    return [
+      {
+        contractBillRowId: value["contractBillRowId"],
+        taxInclusiveUnitPrice:
+          typeof value["taxInclusiveUnitPrice"] === "string"
+            ? value["taxInclusiveUnitPrice"]
+            : null,
+        taxRatePercent:
+          typeof value["taxRatePercent"] === "string"
+            ? value["taxRatePercent"]
+            : null
+      }
+    ];
+  });
+}
+
+function safeFileName(value: string) {
+  return value.replace(/[\\/:*?"<>|]/gu, "_").trim() || "历史合同";
 }
 
 function fingerprint(rows: Record<string, unknown>[]): string {

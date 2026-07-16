@@ -8,11 +8,13 @@ import {
 import {
   adminNavigationItems,
   adminNavigationGroups,
+  contractMaintenanceRoleKeys,
   contractScenarioAdminRoleKeys,
   fundsOverviewRoleKeys,
   historicalTakeoverRoleKeys,
   organizationAdminRoleKeys,
   settlementTemplateAdminRoleKeys,
+  settlementMaintenanceRoleKeys,
   visibleAdminNavigationGroups,
   visibleAdminNavigationItems,
   webAdminRoutes
@@ -259,10 +261,70 @@ describe("web admin routes", () => {
     expect(visibleAdminNavigationItems(undefined).map((item) => item.path)).toContain("/项目花名册");
   });
 
-  it("hides historical contract takeover from nav when the user lacks contract department roles", () => {
-    expect(visibleAdminNavigationItems(["finance_staff"]).map((item) => item.path)).not.toContain("/历史合同接管");
+  it("shows historical contract takeover to the approved contract, finance and comprehensive readers", () => {
+    expect(visibleAdminNavigationItems(["finance_staff"]).map((item) => item.path)).toContain("/历史合同接管");
+    expect(visibleAdminNavigationItems(["finance_director"]).map((item) => item.path)).toContain("/历史合同接管");
+    expect(visibleAdminNavigationItems(["comprehensive_director"]).map((item) => item.path)).toContain("/历史合同接管");
     expect(visibleAdminNavigationItems(["contract_staff"]).map((item) => item.path)).toContain("/历史合同接管");
     expect(visibleAdminNavigationItems(["contract_director"]).map((item) => item.path)).toContain("/历史合同接管");
+    expect(visibleAdminNavigationItems(["budget_staff"]).map((item) => item.path)).not.toContain("/历史合同接管");
+  });
+
+  it("keeps read-only ledger users out of contract and settlement write workbenches", () => {
+    const readOnlyRoles = [
+      "finance_staff",
+      "finance_director",
+      "comprehensive_director"
+    ] as const;
+
+    for (const role of readOnlyRoles) {
+      const visiblePaths = visibleAdminNavigationItems([role]).map((item) => item.path);
+      expect(visiblePaths).not.toContain("/合同工作台");
+      expect(visiblePaths).not.toContain("/结算工作台");
+      expect(
+        resolveRouteAccess(
+          {
+            meta: childRoute("合同工作台")?.meta ?? {},
+            fullPath: "/合同工作台"
+          },
+          { isAuthenticated: true, roleKeys: [role] }
+        )
+      ).toEqual({ path: "/首页" });
+      expect(
+        resolveRouteAccess(
+          {
+            meta: childRoute("结算工作台")?.meta ?? {},
+            fullPath: "/结算工作台"
+          },
+          { isAuthenticated: true, roleKeys: [role] }
+        )
+      ).toEqual({ path: "/首页" });
+    }
+
+    expect(childRoute("合同工作台")?.meta?.requiredRoleKeys).toEqual(
+      contractMaintenanceRoleKeys
+    );
+    expect(childRoute("结算工作台")?.meta?.requiredRoleKeys).toEqual(
+      settlementMaintenanceRoleKeys
+    );
+    expect(
+      resolveRouteAccess(
+        {
+          meta: childRoute("合同工作台")?.meta ?? {},
+          fullPath: "/合同工作台"
+        },
+        { isAuthenticated: true, roleKeys: ["contract_staff"] }
+      )
+    ).toBe(true);
+    expect(
+      resolveRouteAccess(
+        {
+          meta: childRoute("结算工作台")?.meta ?? {},
+          fullPath: "/结算工作台"
+        },
+        { isAuthenticated: true, roleKeys: ["budget_staff"] }
+      )
+    ).toBe(true);
   });
 
   it("redirects authenticated users without funds overview roles away from project operations", () => {
@@ -311,7 +373,7 @@ describe("web admin routes", () => {
     ).toBe(true);
   });
 
-  it("redirects authenticated users without contract department roles away from historical takeover", () => {
+  it("allows approved readers and redirects other authenticated users away from historical takeover", () => {
     const takeoverRoute = {
       meta: childRoute("历史合同接管")?.meta ?? {},
       fullPath: "/历史合同接管"
@@ -321,10 +383,18 @@ describe("web admin routes", () => {
       path: "/login",
       query: { redirect: "/历史合同接管" }
     });
-    expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: true, roleKeys: ["finance_staff"] })).toEqual({
+    expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: true, roleKeys: ["finance_staff"] })).toBe(true);
+    expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: true, roleKeys: ["finance_director"] })).toBe(true);
+    expect(
+      resolveRouteAccess(takeoverRoute, {
+        isAuthenticated: true,
+        roleKeys: ["comprehensive_director"]
+      })
+    ).toBe(true);
+    expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: true, roleKeys: ["contract_director"] })).toBe(true);
+    expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: true, roleKeys: ["budget_staff"] })).toEqual({
       path: "/首页"
     });
-    expect(resolveRouteAccess(takeoverRoute, { isAuthenticated: true, roleKeys: ["contract_director"] })).toBe(true);
   });
 
   it("exposes organization governance only to the global super admin", () => {

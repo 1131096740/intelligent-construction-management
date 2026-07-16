@@ -174,7 +174,7 @@ async function loginWithMocks(
   options: TaxReviewMockOptions = {}
 ) {
   const userId = options.userId ?? "contract-director";
-  const roleKeys = options.roleKeys ?? ["contract_director"];
+  const roleKeys = options.roleKeys ?? ["contract_staff", "contract_director"];
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -464,7 +464,7 @@ test("keeps the signed-in session when a sensitive download password is incorrec
 
   await expect(page.getByText("当前密码不正确，请重新输入", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/%E5%8E%86%E5%8F%B2%E5%90%88%E5%90%8C%E6%8E%A5%E7%AE%A1$/u);
-  await expect(page.getByText("合同负责人 · 合同部主管", { exact: true })).toBeVisible();
+  await expect(page.getByText("合同负责人 · 合同员、合同部主管", { exact: true })).toBeVisible();
   expect(downloadTicketRequests).toBe(1);
   expect(refreshRequests).toBe(0);
 });

@@ -42,3 +42,31 @@ export const GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS: readonly RoleKey[] = [
   ...GLOBAL_BUSINESS_ROLE_KEYS,
   "super_admin"
 ];
+
+/**
+ * 历史合同接管的读取与导出岗位。
+ *
+ * 合同部保留原有办理范围；财务人员、财务主管和综合部主管只获得
+ * 接管台账、详情、税务修订及导出能力，不因此获得任何写动作。
+ */
+export const HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS = [
+  "contract_staff",
+  "contract_director",
+  "finance_staff",
+  "finance_director",
+  "comprehensive_director"
+] as const satisfies readonly RoleKey[];
+
+/**
+ * 合同与结算台账导出岗位。
+ *
+ * 列表与详情仍沿用更广的台账只读策略；导出作为单独的敏感读取能力，
+ * 仅开放给合同部及本次明确授权的财务、综合部岗位。
+ */
+export const CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS = [
+  "contract_staff",
+  "contract_director",
+  "finance_staff",
+  "finance_director",
+  "comprehensive_director"
+] as const satisfies readonly RoleKey[];

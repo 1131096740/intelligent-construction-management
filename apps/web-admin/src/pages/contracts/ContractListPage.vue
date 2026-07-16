@@ -6,12 +6,14 @@
     >
       <template #actions>
         <t-button
+          v-if="canReadTakeovers"
           variant="outline"
           @click="goContractTakeover"
         >
           历史合同接管
         </t-button>
         <t-button
+          v-if="canManageContracts"
           theme="primary"
           @click="goNewContract"
         >
@@ -29,10 +31,12 @@
         label="合同台账"
       />
       <t-tab-panel
+        v-if="canManageContracts"
         value="my"
         label="我的草稿"
       />
       <t-tab-panel
+        v-if="canManageContracts"
         value="voided"
         label="已作废草稿"
       />
@@ -50,6 +54,15 @@
         appearance="plain"
       >
         <template #actions>
+          <t-button
+            v-if="canExportLedger"
+            size="small"
+            variant="outline"
+            :loading="exportLoading"
+            @click="exportContractLedger"
+          >
+            导出可见台账
+          </t-button>
           <t-button
             size="small"
             variant="text"
@@ -167,7 +180,9 @@
         <EmptyBusinessState
           v-else-if="!noticeMessage"
           title="当前条件下暂无合同记录"
-          description="可以调整筛选条件；如需创建合同，请使用页头唯一的“新建合同”入口。"
+          :description="canManageContracts
+            ? '可以调整筛选条件；如需创建合同，请使用页头唯一的“新建合同”入口。'
+            : '可以调整筛选条件，或刷新后再次查看当前权限范围内的合同记录。'"
         />
 
         <footer class="data-footer">
@@ -182,7 +197,7 @@
     </template>
 
     <section
-      v-else-if="activeTab === 'my'"
+      v-else-if="canManageContracts && activeTab === 'my'"
       class="data-section"
       aria-labelledby="contract-draft-title"
     >
@@ -239,7 +254,7 @@
     </section>
 
     <section
-      v-else
+      v-else-if="canManageContracts"
       class="data-section"
       aria-labelledby="voided-draft-title"
     >
@@ -299,9 +314,13 @@
 </template>
 
 <script setup lang="ts">
+import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { fetchContractLedger } from "../../api/core-flow-read.api";
+import {
+  downloadContractLedgerExport,
+  fetchContractLedger
+} from "../../api/core-flow-read.api";
 import { listContractDrafts } from "../../api/contract-workbench.api";
 import {
   normalizeVisibleColumnKeys,
@@ -314,6 +333,11 @@ import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import BusinessTableToolbar from "../../components/BusinessTableToolbar.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
+import {
+  canExportContractSettlementLedger,
+  canManageContractRecords,
+  canReadHistoricalContractTakeovers
+} from "../business-readonly-access";
 import type {
   ContractFilterKey,
   ContractLedgerRow,
@@ -333,11 +357,22 @@ import { contractTypeLabel } from "./contract-labels";
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
+const roleKeys = computed(() => auth.user?.roleKeys ?? []);
+const canManageContracts = computed(() => canManageContractRecords(roleKeys.value));
+const canReadTakeovers = computed(() =>
+  canReadHistoricalContractTakeovers(roleKeys.value)
+);
+const canExportLedger = computed(() =>
+  canExportContractSettlementLedger(roleKeys.value)
+);
 const noticeMessage = ref("");
-const activeTab = ref<"ledger" | "my" | "voided">("my");
+const activeTab = ref<"ledger" | "my" | "voided">(
+  canManageContracts.value ? "my" : "ledger"
+);
 const contractLedgerRows = ref<ContractLedgerRow[]>([]);
 const contractFilters = reactive(emptyContractLedgerFilters());
 const ledgerLoading = ref(false);
+const exportLoading = ref(false);
 const showColumnSettings = ref(false);
 const configurableContractColumnKeys = contractLedgerColumns
   .map((column) => String(column.colKey))
@@ -422,6 +457,7 @@ function optionsForFilter(key: ContractFilterKey) {
 }
 
 async function loadMyDrafts() {
+  if (!canManageContracts.value) return;
   draftsLoading.value = true;
   draftsError.value = "";
   try {
@@ -435,6 +471,7 @@ async function loadMyDrafts() {
 }
 
 async function loadVoidedDrafts() {
+  if (!canManageContracts.value) return;
   voidedLoading.value = true;
   voidedError.value = "";
   try {
@@ -459,6 +496,22 @@ async function loadContractLedger() {
     noticeMessage.value = `合同记录读取失败：${reason}。这不代表当前没有合同记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     ledgerLoading.value = false;
+  }
+}
+
+async function exportContractLedger() {
+  exportLoading.value = true;
+  try {
+    await downloadContractLedgerExport();
+    await MessagePlugin.success("合同台账已导出，内容仅包含当前账号可见范围。");
+  } catch (error) {
+    await MessagePlugin.error(
+      error instanceof Error
+        ? `${error.message}。请检查网络与权限后重试。`
+        : "合同台账导出失败，请检查网络与权限后重试。"
+    );
+  } finally {
+    exportLoading.value = false;
   }
 }
 
@@ -541,13 +594,19 @@ watch(() => route.query.project, applyRouteProjectFilter, { immediate: true });
 watch(contractPreferenceStorageKey, loadContractColumnPreferences, { immediate: true });
 watch(activeTab, (tab) => {
   if (tab === "ledger") void loadContractLedger();
-  if (tab === "my") void loadMyDrafts();
-  if (tab === "voided") void loadVoidedDrafts();
+  if (canManageContracts.value && tab === "my") void loadMyDrafts();
+  if (canManageContracts.value && tab === "voided") void loadVoidedDrafts();
+});
+watch(canManageContracts, (allowed) => {
+  if (allowed || activeTab.value === "ledger") return;
+  activeTab.value = "ledger";
+  myDrafts.value = [];
+  voidedDrafts.value = [];
 });
 
 onMounted(() => {
   void loadContractLedger();
-  void loadMyDrafts();
+  if (canManageContracts.value) void loadMyDrafts();
 });
 </script>
 

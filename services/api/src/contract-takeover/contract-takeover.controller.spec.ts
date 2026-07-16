@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
+import { HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
@@ -166,13 +167,19 @@ describe("ContractTakeoverController", () => {
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(action);
   }
 
-  it("allows only the three business positions to read tax fact revisions", () => {
+  it.each([
+    ["list"],
+    ["detail"],
+    ["listTaxFactRevisions"],
+    ["exportLedger"],
+    ["exportDetail"]
+  ] as const)("allows the approved read-only positions to use %s", (method) => {
     expect(
       Reflect.getMetadata(
         REQUIRED_POSITIONS_KEY,
-        ContractTakeoverController.prototype.listTaxFactRevisions
+        ContractTakeoverController.prototype[method]
       )
-    ).toEqual(["contract_staff", "finance_director", "contract_director"]);
+    ).toEqual(HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS);
   });
 
   it.each([
@@ -394,6 +401,31 @@ describe("ContractTakeoverController", () => {
     expectProjectAction(ContractTakeoverController.prototype.applyExcelImport, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.attachEvidence, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.submitReview, "contract.submit");
+  });
+
+  it("does not reuse read-only access for any takeover write endpoint", () => {
+    for (const method of [
+      "create",
+      "updateDraft",
+      "previewExcelImport",
+      "applyExcelImport",
+      "attachEvidence",
+      "recordCorrection",
+      "createTaxFactRevision",
+      "updateTaxFactRevision",
+      "submitTaxFactFinanceReview",
+      "reviewTaxFactsByFinance",
+      "confirmTaxFactsByContract",
+      "submitReview",
+      "confirm"
+    ] as const) {
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_POSITIONS_KEY,
+          ContractTakeoverController.prototype[method]
+        )
+      ).toBeUndefined();
+    }
   });
 
   it("protects confirmation with contract archive confirmation role", () => {

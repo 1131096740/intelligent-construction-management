@@ -1,3 +1,4 @@
+import * as ExcelJS from "exceljs";
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
@@ -37,6 +38,105 @@ describe("ContractReadService", () => {
     expect(service.paymentApprovalStatusLabel("internal_payment_status")).toBe(
       "付款审批状态未读取"
     );
+  });
+
+  it("exports only the visible contract ledger rows and records the export audit", async () => {
+    jest.useRealTimers();
+    const prisma = {};
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    const service = new ContractReadService(
+      prisma as never,
+      undefined,
+      audit as never
+    );
+    jest.spyOn(service, "listRecent").mockResolvedValue({
+      rows: [
+        {
+          id: "HT-2026-009",
+          contractNo: "HT-2026-009",
+          name: "幕墙分包合同",
+          project: "总部综合楼",
+          counterparty: "幕墙分包单位",
+          amount: "¥986,500.00",
+          version: "v2",
+          currentNode: "可发起结算",
+          nodeTone: "success",
+          ownerDepartment: "合同部",
+          pendingOwner: "合同部",
+          stalledFor: "1 天",
+          returnReason: "-",
+          nextAction: "可发起结算",
+          updatedAt: "2026/7/8 08:00:00",
+          paymentTermsVersion: "v2"
+        }
+      ],
+      summary: {
+        total: 1,
+        inApproval: 0,
+        pendingSeal: 0,
+        pendingArchive: 0,
+        effective: 1
+      }
+    });
+
+    const result = await service.exportLedger(["project-1"], "finance-user");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+
+    expect(service.listRecent).toHaveBeenCalledWith(undefined, ["project-1"], {
+      unbounded: true
+    });
+    expect(result.fileName).toMatch(/^合同台账-\d{8}\.xlsx$/);
+    expect(workbook.getWorksheet("合同台账")?.getRow(2).getCell(1).value).toBe(
+      "HT-2026-009"
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        actorUserId: "finance-user",
+        action: "contract.ledger.export",
+        businessType: "contract_ledger"
+      })
+    );
+  });
+
+  it("fails closed when the contract ledger export audit service is unavailable", async () => {
+    jest.useRealTimers();
+    const service = new ContractReadService({} as never);
+    jest.spyOn(service, "listRecent").mockResolvedValue({
+      rows: [],
+      summary: {
+        total: 0,
+        inApproval: 0,
+        pendingSeal: 0,
+        pendingArchive: 0,
+        effective: 0
+      }
+    });
+
+    await expect(service.exportLedger(["project-1"], "finance-user")).rejects.toThrow(
+      "合同台账导出审计服务暂不可用"
+    );
+  });
+
+  it("does not expose contract PDF generation to read-only ledger users", () => {
+    const service = new ContractReadService({} as never) as unknown as {
+      contractActions(
+        status: string,
+        roleKeys: string[],
+        approvalReviewAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
+        archiveFiles: []
+      ): Array<{ key: string; enabled: boolean }>;
+    };
+
+    const actions = service.contractActions(
+      "effective",
+      ["finance_staff"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
+      []
+    );
+
+    expect(actions.find((action) => action.key === "generate_pdf_archive")?.enabled).toBe(false);
   });
 
   it("builds contract ledger rows and summary from persisted contracts", async () => {

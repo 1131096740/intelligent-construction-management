@@ -1,5 +1,6 @@
 import {
   canPerform,
+  HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
   type ContractInvoiceType,
   type ContractTaxFactSource,
   type ContractTaxMode,
@@ -54,8 +55,8 @@ export function buildContractTaxFactReviewState(input: {
 }) {
   const activeRevision =
     input.data.revisions.find((revision) => ACTIVE_STATUSES.includes(revision.status)) ?? null;
-  const canRead = input.roleKeys.some((role) =>
-    ["contract_staff", "finance_director", "contract_director"].includes(role)
+  const canRead = HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS.some((role) =>
+    input.roleKeys.includes(role)
   );
   const canSupplement = canPerform("contract.tax_fact.supplement", input.roleKeys);
   const canFinance = canPerform("contract.tax_fact.finance_review", input.roleKeys);
@@ -66,6 +67,7 @@ export function buildContractTaxFactReviewState(input: {
 
   return {
     canRead,
+    canGoContractChange: canPerform("contract.create", input.roleKeys),
     activeRevision,
     canCreate: canRead && canSupplement && !activeRevision,
     createKind:

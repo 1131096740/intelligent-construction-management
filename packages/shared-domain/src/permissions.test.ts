@@ -140,6 +140,25 @@ describe("role-specific gates", () => {
     expect(canPerform("settlement.create", ["finance_staff"])).toBe(false);
   });
 
+  it.each([
+    "finance_staff",
+    "finance_director",
+    "comprehensive_director"
+  ] as const)(
+    "does not turn historical-contract and ledger readers into contract or settlement writers: %s",
+    (role) => {
+      expect(canPerform("contract.create", [role])).toBe(false);
+      expect(canPerform("contract.submit", [role])).toBe(false);
+      expect(canPerform("contract.archive.upload", [role])).toBe(false);
+      expect(canPerform("contract.archive.confirm", [role])).toBe(false);
+      expect(canPerform("contract.tax_fact.supplement", [role])).toBe(false);
+      expect(canPerform("contract.tax_fact.confirm", [role])).toBe(false);
+      expect(canPerform("settlement.create", [role])).toBe(false);
+      expect(canPerform("settlement.archive.upload", [role])).toBe(false);
+      expect(canPerform("settlement.archive.confirm", [role])).toBe(false);
+    }
+  );
+
   it("requires finance_staff (cashier) to record actual payment execution", () => {
     expect(canPerform("payment.execution", ["finance_staff"])).toBe(true);
     expect(canPerform("payment.execution", ["finance_director"])).toBe(false);

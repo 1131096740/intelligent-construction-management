@@ -47,7 +47,11 @@ import {
   createContractTakeover,
   createContractTakeoverDraftsFromImport,
   applyContractTakeoverExcelImport,
+  downloadContractLedgerExport,
+  downloadContractTakeoverDetailExport,
   downloadContractTakeoverImportTemplate,
+  downloadContractTakeoverLedgerExport,
+  downloadSettlementLedgerExport,
   listContractTakeoverImportBatches,
   createPaymentRequest,
   precheckContractTakeoverImport,
@@ -978,6 +982,45 @@ describe("core flow read API client", () => {
     );
     expect(anchor.download).toBe("历史合同接管导入模板.xlsx");
     expect(click).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("downloads contract, settlement and historical takeover exports from authenticated endpoints", async () => {
+    const click = vi.fn();
+    const anchor = {
+      href: "",
+      download: "",
+      click,
+      remove: vi.fn()
+    } as unknown as HTMLAnchorElement;
+    vi.stubGlobal("document", {
+      createElement: vi.fn().mockReturnValue(anchor),
+      body: { appendChild: vi.fn() }
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn().mockReturnValue("blob:ledger-export"),
+      revokeObjectURL: vi.fn()
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["xlsx"]),
+      headers: new Headers({
+        "Content-Disposition": "attachment; filename*=UTF-8''ledger.xlsx"
+      })
+    } as Response);
+
+    await downloadContractLedgerExport();
+    await downloadSettlementLedgerExport();
+    await downloadContractTakeoverLedgerExport("project/1");
+    await downloadContractTakeoverDetailExport("project/1", "takeover/1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/ledger-export",
+      "/api/settlements/ledger-export",
+      "/api/projects/project%2F1/contract-takeovers/ledger-export",
+      "/api/projects/project%2F1/contract-takeovers/takeover%2F1/detail-export"
+    ]);
+    expect(click).toHaveBeenCalledTimes(4);
     vi.unstubAllGlobals();
   });
 

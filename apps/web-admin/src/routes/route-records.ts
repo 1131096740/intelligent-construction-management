@@ -1,5 +1,9 @@
 import type { RouteRecordRaw } from "vue-router";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import {
+  ACTION_REQUIRED_ROLES,
+  HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 
 export const fundsOverviewRoleKeys = [
   "chairman",
@@ -15,10 +19,12 @@ export const fundsOverviewRoleKeys = [
   "project_manager"
 ] as const satisfies readonly RoleKey[];
 
-export const historicalTakeoverRoleKeys = [
-  "contract_staff",
-  "contract_director"
-] as const satisfies readonly RoleKey[];
+export const historicalTakeoverRoleKeys =
+  HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS;
+export const contractMaintenanceRoleKeys =
+  ACTION_REQUIRED_ROLES["contract.create"];
+export const settlementMaintenanceRoleKeys =
+  ACTION_REQUIRED_ROLES["settlement.create"];
 
 export const organizationAdminRoleKeys = [
   "chairman",
@@ -71,7 +77,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "合同",
     items: [
-      { label: "合同工作台", path: "/合同工作台" },
+      {
+        label: "合同工作台",
+        path: "/合同工作台",
+        requiredRoleKeys: contractMaintenanceRoleKeys
+      },
       { label: "合同管理", path: "/合同管理" },
       { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
       { label: "合同模板库", path: "/合同模板库" },
@@ -86,7 +96,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "结算",
     items: [
-      { label: "结算工作台", path: "/结算工作台" },
+      {
+        label: "结算工作台",
+        path: "/结算工作台",
+        requiredRoleKeys: settlementMaintenanceRoleKeys
+      },
       { label: "结算管理", path: "/结算管理" },
       {
         label: "结算模板库",
@@ -200,11 +214,13 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       {
         path: "合同工作台",
-        component: () => import("../pages/contracts/ContractWorkbenchPage.vue")
+        component: () => import("../pages/contracts/ContractWorkbenchPage.vue"),
+        meta: { requiredRoleKeys: contractMaintenanceRoleKeys, title: "合同工作台" }
       },
       {
         path: "合同工作台/:contractId",
-        component: () => import("../pages/contracts/ContractWorkbenchPage.vue")
+        component: () => import("../pages/contracts/ContractWorkbenchPage.vue"),
+        meta: { requiredRoleKeys: contractMaintenanceRoleKeys, title: "合同工作台" }
       },
       {
         path: "合同管理/:contractId",
@@ -284,7 +300,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "结算工作台",
         component: () => import("../pages/settlements/SettlementWorkbenchPage.vue"),
-        meta: { title: "结算工作台" }
+        meta: { requiredRoleKeys: settlementMaintenanceRoleKeys, title: "结算工作台" }
       },
       {
         path: "结算管理",

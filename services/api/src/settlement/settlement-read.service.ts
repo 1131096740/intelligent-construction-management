@@ -16,6 +16,7 @@ import {
   pendingRoleKeysForFrozenApprovalNode
 } from "../approval/approval-node-access";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import {
   detailAction,
@@ -23,6 +24,10 @@ import {
   primaryActionKey
 } from "../core-flow/detail-actions";
 import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read";
+import {
+  buildLedgerWorkbook,
+  shanghaiDateStamp
+} from "../core-flow/ledger-excel";
 import { PrismaService } from "../database/prisma.service";
 import {
   dbMoneyToBigInt,
@@ -68,7 +73,9 @@ export class SettlementReadService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional()
-    private readonly projectVisibility?: ProjectVisibilityService
+    private readonly projectVisibility?: ProjectVisibilityService,
+    @Optional()
+    private readonly audit?: AuditService
   ) {}
 
   private async settlementLinesForSettlement(
@@ -350,11 +357,15 @@ export class SettlementReadService {
     };
   }
 
-  async listRecent(rawLimit?: string | number, visibleProjectIds?: string[]) {
-    const take = this.limit(rawLimit);
+  async listRecent(
+    rawLimit?: string | number,
+    visibleProjectIds?: string[],
+    internalOptions?: { unbounded?: boolean }
+  ) {
+    const take = internalOptions?.unbounded ? undefined : this.limit(rawLimit);
     const settlements = await this.prisma.settlement.findMany({
       ...(visibleProjectIds ? { where: { projectId: { in: visibleProjectIds } } } : {}),
-      take,
+      ...(take === undefined ? {} : { take }),
       orderBy: { updatedAt: "desc" }
     });
     const contractIds = [...new Set(settlements.map((settlement) => settlement.contractId))];
@@ -412,6 +423,63 @@ export class SettlementReadService {
         effective: settlements.filter((settlement) => settlement.status === "effective").length,
         payable: settlements.filter((settlement) => settlement.status === "effective").length
       }
+    };
+  }
+
+  async exportLedger(visibleProjectIds: string[], actorUserId: string) {
+    const ledger = await this.listRecent(undefined, visibleProjectIds, {
+      unbounded: true
+    });
+    const rows = ledger.rows.map((row) => ({
+      settlementNo: row.settlementNo,
+      contractNo: row.contractNo,
+      project: row.project,
+      period: row.period,
+      amount: row.amount,
+      paymentTermsVersion: row.paymentTermsVersion,
+      currentNode: row.currentNode,
+      pendingOwner: row.pendingOwner,
+      stalledFor: row.stalledFor,
+      returnReason: row.returnReason,
+      nextAction: row.nextAction,
+      updatedAt: row.updatedAt
+    }));
+    const buffer = await buildLedgerWorkbook({
+      sheetName: "结算台账",
+      columns: [
+        { header: "结算编号", key: "settlementNo", width: 20 },
+        { header: "合同编号", key: "contractNo", width: 20 },
+        { header: "项目", key: "project", width: 24 },
+        { header: "结算期间", key: "period", width: 14 },
+        { header: "结算金额", key: "amount", width: 18 },
+        { header: "付款条款版本", key: "paymentTermsVersion", width: 16 },
+        { header: "当前节点", key: "currentNode", width: 18 },
+        { header: "当前责任人", key: "pendingOwner", width: 18 },
+        { header: "停留时间", key: "stalledFor", width: 14 },
+        { header: "退回原因", key: "returnReason", width: 28 },
+        { header: "下一步", key: "nextAction", width: 22 },
+        { header: "更新时间", key: "updatedAt", width: 22 }
+      ],
+      rows
+    });
+
+    if (!this.audit) {
+      throw new Error("结算台账导出审计服务暂不可用，请稍后重试");
+    }
+    await this.audit.record(this.prisma, {
+      actorUserId,
+      action: "settlement.ledger.export",
+      businessType: "settlement_ledger",
+      metadata: {
+        exportedRows: rows.length,
+        visibleProjectCount: visibleProjectIds.length,
+        scope: "all_visible_records"
+      }
+    });
+
+    return {
+      buffer,
+      fileName: `结算台账-${shanghaiDateStamp()}.xlsx`
     };
   }
 
@@ -908,6 +976,7 @@ export class SettlementReadService {
         label: "生成 PDF 归档",
         kind: "normal",
         roleKeys,
+        requiredAction: "settlement.archive.upload",
         enabled: Boolean(status)
       })
     ];

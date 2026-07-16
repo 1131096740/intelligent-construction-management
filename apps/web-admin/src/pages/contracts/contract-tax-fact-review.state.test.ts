@@ -58,6 +58,25 @@ describe("contract tax fact review state", () => {
     expect(contractDirector.canFinanceReview).toBe(false);
   });
 
+  it.each([
+    "finance_staff",
+    "comprehensive_director"
+  ] as const)("grants %s read-only tax revision access without any write action", (roleKey) => {
+    const state = buildContractTaxFactReviewState({
+      data: list({ revisions: [revision({ status: "pending_finance_review" })] }),
+      missingFields: ["默认税率"],
+      userId: "reader-1",
+      roleKeys: [roleKey]
+    });
+
+    expect(state.canRead).toBe(true);
+    expect(state.canCreate).toBe(false);
+    expect(state.canEdit).toBe(false);
+    expect(state.canSubmitFinance).toBe(false);
+    expect(state.canFinanceReview).toBe(false);
+    expect(state.canContractConfirm).toBe(false);
+  });
+
   it("explains the settlement release condition without treating missing facts as zero", () => {
     const blocked = buildContractTaxFactReviewState({
       data: list(),

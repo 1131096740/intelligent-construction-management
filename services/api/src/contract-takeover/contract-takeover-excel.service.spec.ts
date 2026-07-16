@@ -194,4 +194,288 @@ describe("ContractTakeoverExcelService", () => {
       })
     ).rejects.toThrow("导入文件已发生变化，请重新预检后再生成接管草稿");
   });
+
+  it("exports the historical takeover ledger and records an audit without attachment bodies", async () => {
+    const takeovers = {
+      list: jest.fn().mockResolvedValue([takeoverReadModel()])
+    };
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    const service = new ContractTakeoverExcelService(
+      {} as never,
+      takeovers as never,
+      undefined,
+      audit as never,
+      {} as never
+    );
+
+    const result = await service.exportLedger("project-1", "finance-user");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+
+    expect(takeovers.list).toHaveBeenCalledWith("project-1");
+    expect(result.fileName).toMatch(/^历史合同接管台账-\d{8}\.xlsx$/);
+    expect(workbook.getWorksheet("接管台账")?.getRow(2).getCell(1).value).toBe(
+      "HT-HIS-001"
+    );
+    expect(JSON.stringify(workbook.model)).not.toContain("objectKey");
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actorUserId: "finance-user",
+        action: "contract.takeover.ledger.export",
+        businessType: "contract_takeover_ledger",
+        businessId: "project-1"
+      })
+    );
+  });
+
+  it("fails closed when historical takeover export auditing is unavailable", async () => {
+    const takeovers = {
+      list: jest.fn().mockResolvedValue([])
+    };
+    const service = new ContractTakeoverExcelService(
+      {} as never,
+      takeovers as never
+    );
+
+    await expect(
+      service.exportLedger("project-1", "finance-user")
+    ).rejects.toThrow("导出审计服务暂不可用");
+  });
+
+  it("exports one takeover detail with pricing, evidence metadata and tax revision history", async () => {
+    const takeovers = {
+      detail: jest.fn().mockResolvedValue(takeoverReadModel())
+    };
+    const taxFacts = {
+      list: jest.fn().mockResolvedValue({
+        contractId: "contract-1",
+        current: {
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: "13",
+          status: "confirmed",
+          source: "contract_document",
+          confirmationExplanation: "按原合同核对",
+          evidenceFileId: "file-tax-1",
+          revision: 1
+        },
+        rows: [
+          {
+            contractBillRowId: "bill-row-internal-1",
+            billName: "材料清单",
+            rowKey: "row-1",
+            itemName: "钢材",
+            specification: "HRB400",
+            unit: "吨",
+            taxInclusiveUnitPrice: "108.00",
+            taxRatePercent: "13",
+            taxRateSource: "default",
+            pricingFactStatus: "confirmed"
+          }
+        ],
+        revisions: [
+          {
+            id: "revision-1",
+            revisionNo: 1,
+            kind: "supplement",
+            status: "confirmed",
+            invoiceType: "vat_special",
+            taxMode: "single_rate",
+            defaultTaxRatePercent: "13",
+            source: "contract_document",
+            confirmationExplanation: "按原合同核对",
+            evidenceFileId: "file-tax-1",
+            rowFacts: [
+              {
+                contractBillRowId: "bill-row-internal-1",
+                taxInclusiveUnitPrice: "108.00",
+                taxRatePercentOverride: null
+              }
+            ],
+            beforeSnapshot: {
+              rows: [
+                {
+                  contractBillRowId: "bill-row-internal-1",
+                  taxInclusiveUnitPrice: "100.00",
+                  taxRatePercent: "13"
+                }
+              ]
+            },
+            createdByUserId: "contract-user",
+            submittedByUserId: "contract-user",
+            submittedAt: "2026-07-16T08:00:00.000Z",
+            financeReviewedByUserId: "finance-director",
+            financeReviewedAt: "2026-07-16T09:00:00.000Z",
+            financeReviewComment: "财务核对通过",
+            confirmedByUserId: "contract-director",
+            confirmedAt: "2026-07-16T10:00:00.000Z",
+            contractReviewComment: "合同部确认完成",
+            createdAt: "2026-07-16T07:00:00.000Z",
+            updatedAt: "2026-07-16T10:00:00.000Z"
+          }
+        ]
+      })
+    };
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    const service = new ContractTakeoverExcelService(
+      {} as never,
+      takeovers as never,
+      taxFacts as never,
+      audit as never,
+      {} as never
+    );
+
+    const result = await service.exportDetail(
+      "project-1",
+      "takeover-1",
+      "comprehensive-user"
+    );
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+
+    expect(takeovers.detail).toHaveBeenCalledWith("project-1", "takeover-1");
+    expect(taxFacts.list).toHaveBeenCalledWith("project-1", "takeover-1");
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual([
+      "接管详情",
+      "历史计价",
+      "税务修订",
+      "税务修订明细",
+      "资料与更正"
+    ]);
+    expect(workbook.getWorksheet("税务修订")?.getRow(2).getCell(2).value).toBe(1);
+    expect(
+      workbook.getWorksheet("税务修订明细")?.getRow(2).values
+    ).toEqual(
+      expect.arrayContaining(["材料清单", "钢材", "100.00", "108.00"])
+    );
+    expect(JSON.stringify(workbook.model)).not.toContain("file-tax-1");
+    expect(JSON.stringify(workbook.model)).not.toContain("bill-row-internal-1");
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actorUserId: "comprehensive-user",
+        action: "contract.takeover.detail.export",
+        businessType: "contract_takeover",
+        businessId: "takeover-1"
+      })
+    );
+  });
 });
+
+function takeoverReadModel() {
+  return {
+    id: "takeover-1",
+    batchNo: "BATCH-001",
+    importRowNo: 1,
+    contractNo: "HT-HIS-001",
+    contractName: "历史材料合同",
+    counterparty: "供应商甲",
+    companyEntityName: "甲公司",
+    amountCents: "1000000",
+    paymentTermsOriginalText: "按月结算",
+    invoiceType: "vat_special",
+    taxMode: "single_rate",
+    defaultTaxRatePercent: "13",
+    taxFactStatus: "confirmed",
+    taxFactSource: "contract_document",
+    taxFactExplanation: "按原合同核对",
+    taxFactMissingFields: [],
+    pricingItems: [
+      {
+        billKey: "main",
+        billName: "材料清单",
+        rowKey: "row-1",
+        itemCode: "CL-001",
+        itemName: "钢材",
+        specification: "HRB400",
+        unit: "吨",
+        estimatedQuantity: "2",
+        taxInclusiveUnitPrice: "100.00",
+        taxRatePercent: "13",
+        pricingFactStatus: "confirmed",
+        isProvisional: false,
+        settlementBasis: "现场核量"
+      }
+    ],
+    takeoverLevel: "B",
+    suggestedTakeoverLevel: "B",
+    takeoverLevelAdjustmentReason: null,
+    levelRiskText: "资料完整",
+    paymentBlockingHint: "可按规则办理",
+    evidenceGapSummary: "资料已齐",
+    takeoverStatus: "confirmed",
+    lifecycleStatus: "in_progress",
+    signedAt: "2026-01-10T00:00:00.000Z",
+    historicalSettledCents: "600000",
+    historicalApprovalPendingPaymentCents: "0",
+    historicalApprovedPendingPaymentCents: "10000",
+    historicalPaidCents: "300000",
+    historicalProxyPaidCents: "0",
+    historicalAdvancePaidCents: "0",
+    historicalAdvanceDeductedCents: "0",
+    historicalRetentionWithheldCents: "10000",
+    historicalRetentionReleasedCents: "0",
+    otherConfirmedOccupancyCents: "0",
+    balanceSourceSummary: "财务台账",
+    evidenceSummary: "合同扫描件和付款凭证",
+    takeoverCutoffDate: "2026-06-30T00:00:00.000Z",
+    responsibleUserId: "contract-user",
+    responsibleUserName: "合同员",
+    reviewComment: "已复核",
+    acceptanceConclusion: "允许接管",
+    submittedAt: "2026-07-15T08:00:00.000Z",
+    confirmedAt: "2026-07-16T08:00:00.000Z",
+    historicalBalanceConfirmedAt: "2026-07-16T08:00:00.000Z",
+    evidenceChecklist: [
+      {
+        purpose: "historical_contract_scan",
+        purposeLabel: "历史合同扫描件",
+        required: true,
+        uploaded: true,
+        statusLabel: "已上传",
+        riskText: "资料已齐"
+      }
+    ],
+    evidenceFiles: [
+      {
+        recordId: "record-1",
+        fileId: "file-1",
+        fileName: "历史合同.pdf",
+        purpose: "historical_contract_scan",
+        purposeLabel: "历史合同扫描件",
+        mimeType: "application/pdf",
+        sizeBytes: 1024,
+        uploadedByName: "合同员",
+        uploadedAt: "2026-07-15T07:00:00.000Z",
+        canDownload: true,
+        disabledReason: null
+      }
+    ],
+    corrections: [
+      {
+        id: "correction-1",
+        correctionType: "evidence",
+        correctionTypeLabel: "资料更正",
+        reason: "补齐付款凭证",
+        beforeSummary: "缺少凭证",
+        afterSummary: "已补齐",
+        responsibleUserName: "合同员",
+        createdByName: "合同部主管",
+        attachmentFileId: "file-correction-1",
+        attachmentFileName: "付款凭证.pdf",
+        createdAt: "2026-07-16T07:00:00.000Z"
+      }
+    ],
+    postConfirmationVerification: {
+      statusLabel: "已核验",
+      summaryText: "账本一致",
+      newSettlementCount: 0,
+      paymentRequestCount: 0,
+      paymentExecutionCount: 0,
+      financeRecordCount: 0
+    },
+    createdAt: "2026-07-15T07:00:00.000Z",
+    updatedAt: "2026-07-16T08:00:00.000Z"
+  };
+}

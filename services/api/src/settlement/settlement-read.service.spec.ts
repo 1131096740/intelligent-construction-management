@@ -1,4 +1,5 @@
 import { Decimal } from "@prisma/client/runtime/library";
+import * as ExcelJS from "exceljs";
 import { SettlementReadService } from "./settlement-read.service";
 
 describe("SettlementReadService", () => {
@@ -8,6 +9,104 @@ describe("SettlementReadService", () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it("exports only the visible settlement ledger rows and records the export audit", async () => {
+    jest.useRealTimers();
+    const prisma = {};
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    const service = new SettlementReadService(
+      prisma as never,
+      undefined,
+      audit as never
+    );
+    jest.spyOn(service, "listRecent").mockResolvedValue({
+      rows: [
+        {
+          id: "JS-2026-031",
+          settlementNo: "JS-2026-031",
+          contractNo: "HT-2026-009",
+          project: "总部综合楼",
+          period: "2026-06",
+          amount: "¥580,000.00",
+          paymentTermsVersion: "v2",
+          currentNode: "待归档确认",
+          nodeTone: "primary",
+          ownerDepartment: "合同部",
+          pendingOwner: "合同部",
+          stalledFor: "1 天",
+          returnReason: "-",
+          nextAction: "确认归档",
+          updatedAt: "2026/7/8 08:00:00"
+        }
+      ],
+      summary: {
+        total: 1,
+        inApproval: 0,
+        pendingArchive: 1,
+        effective: 0,
+        payable: 0
+      }
+    });
+
+    const result = await service.exportLedger(["project-1"], "finance-user");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+
+    expect(service.listRecent).toHaveBeenCalledWith(undefined, ["project-1"], {
+      unbounded: true
+    });
+    expect(result.fileName).toMatch(/^结算台账-\d{8}\.xlsx$/);
+    expect(workbook.getWorksheet("结算台账")?.getRow(2).getCell(1).value).toBe(
+      "JS-2026-031"
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        actorUserId: "finance-user",
+        action: "settlement.ledger.export",
+        businessType: "settlement_ledger"
+      })
+    );
+  });
+
+  it("fails closed when the settlement ledger export audit service is unavailable", async () => {
+    jest.useRealTimers();
+    const service = new SettlementReadService({} as never);
+    jest.spyOn(service, "listRecent").mockResolvedValue({
+      rows: [],
+      summary: {
+        total: 0,
+        inApproval: 0,
+        pendingArchive: 0,
+        effective: 0,
+        payable: 0
+      }
+    });
+
+    await expect(service.exportLedger(["project-1"], "finance-user")).rejects.toThrow(
+      "结算台账导出审计服务暂不可用"
+    );
+  });
+
+  it("does not expose settlement PDF generation to read-only ledger users", () => {
+    const service = new SettlementReadService({} as never) as unknown as {
+      settlementActions(
+        status: string,
+        roleKeys: string[],
+        approvalReviewAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
+        archiveFiles: []
+      ): Array<{ key: string; enabled: boolean }>;
+    };
+
+    const actions = service.settlementActions(
+      "effective",
+      ["finance_staff"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
+      []
+    );
+
+    expect(actions.find((action) => action.key === "generate_pdf_archive")?.enabled).toBe(false);
   });
 
   it("builds settlement ledger rows and summary from persisted settlements", async () => {

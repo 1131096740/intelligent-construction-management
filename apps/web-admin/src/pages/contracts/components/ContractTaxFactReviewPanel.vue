@@ -159,7 +159,11 @@ async function load() {
         revision.status
       )
     );
-    if (active?.status === "draft" && active.createdByUserId === props.userId) {
+    if (
+      active?.status === "draft" &&
+      active.createdByUserId === props.userId &&
+      state.value.canEdit
+    ) {
       resetDraft(data.value.current, active);
       editing.value = true;
     } else {
@@ -176,6 +180,10 @@ async function load() {
 }
 
 function startDraft() {
+  if (!state.value.canCreate) {
+    setMessage("当前岗位不能新建税务事实修订", "error");
+    return;
+  }
   resetDraft(effectiveData.value.current, null);
   draft.kind = state.value.createKind;
   editing.value = true;
@@ -194,6 +202,10 @@ function cancelDraft() {
 }
 
 async function saveDraft() {
+  if (!state.value.canEdit && !state.value.canCreate) {
+    setMessage("当前岗位不能保存税务事实修订", "error");
+    return;
+  }
   return runAction("save", async () => {
     const payload = await prepareDraftPayload();
     const active = activeRevision.value;
@@ -212,6 +224,10 @@ async function saveDraft() {
 }
 
 async function submitFinanceReview() {
+  if (!state.value.canSubmitFinance && !state.value.canCreate) {
+    setMessage("当前岗位不能提交税务事实财务复核", "error");
+    return;
+  }
   if (submissionDisabledReason.value) {
     setMessage(submissionDisabledReason.value, "error");
     return;
@@ -229,6 +245,13 @@ async function submitFinanceReview() {
 }
 
 function openReview(stage: "finance" | "contract") {
+  if (
+    (stage === "finance" && !state.value.canFinanceReview) ||
+    (stage === "contract" && !state.value.canContractConfirm)
+  ) {
+    setMessage("当前岗位不能处理该税务事实复核节点", "error");
+    return;
+  }
   reviewStage.value = stage;
   reviewDecision.value = "approve";
   reviewComment.value = "";
@@ -378,6 +401,7 @@ function currentStatusLabel(value: string) {
           刷新修订记录
         </t-button>
         <t-button
+          v-if="state.canGoContractChange"
           variant="outline"
           :disabled="!effectiveData.contractId"
           @click="emit('go-contract-change', effectiveData.contractId)"
@@ -421,7 +445,7 @@ function currentStatusLabel(value: string) {
       v-if="!state.canRead"
       theme="warning"
       title="当前岗位只可查看合同事实"
-      message="税务事实修订记录仅供合同员、财务主管和合同部主管查看与处理；技术管理员不代办业务节点。"
+      message="当前岗位不能读取税务事实修订记录；技术管理员不代办业务节点。"
     />
 
     <template v-else>
@@ -493,7 +517,7 @@ function currentStatusLabel(value: string) {
       </div>
 
       <div
-        v-if="editing"
+        v-if="editing && (state.canEdit || state.canCreate)"
         class="revision-editor"
       >
         <div class="editor-heading">

@@ -395,7 +395,7 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
   await page.route("**/api/projects/project-1/contract-takeovers/import-batches", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify([]) })
   );
-  await loginWithMockedAuth(page, ["contract_staff"]);
+  await loginWithMockedAuth(page, ["contract_staff", "contract_director"]);
 
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
   await expect(page.getByText("待复核历史合同")).toBeVisible();
