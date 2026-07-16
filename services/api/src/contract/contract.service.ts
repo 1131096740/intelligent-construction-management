@@ -234,6 +234,7 @@ export class ContractService {
           versionNo: 1,
           changeType: "original",
           status: "draft",
+          taxFactStatus: "draft",
           amountCents: 0n,
           amountLimitType: input.amountLimitType ?? "capped",
           businessTemplateVersionId: input.businessTemplateVersionId,
@@ -261,9 +262,9 @@ export class ContractService {
             billKey: bill.key,
             name: bill.name,
             amountRole: bill.amountRole,
-            pricingMode: bill.pricingMode,
-            quantityScale: bill.quantityScale,
-            unitPriceScale: bill.unitPriceScale,
+            pricingMode: "tax_inclusive",
+            quantityScale: 2,
+            unitPriceScale: 2,
             schemaSnapshot: { columns: bill.columns } as never
           }))
         });
@@ -431,6 +432,15 @@ export class ContractService {
           pricingNature: latest.pricingNature,
           amountSource: latest.amountSource,
           amountAdjustmentReason: latest.amountAdjustmentReason,
+          invoiceType: latest.invoiceType,
+          taxMode: latest.taxMode,
+          defaultTaxRatePercent: latest.defaultTaxRatePercent,
+          taxFactStatus: "draft",
+          taxFactSource: latest.taxFactSource,
+          taxFactExplanation: latest.taxFactExplanation,
+          taxFactEvidenceFileId: latest.taxFactEvidenceFileId,
+          taxFactRevision: latest.taxFactRevision,
+          taxFactsFrozenAt: null,
           draftData: preparedSource.templateSnapshotSynthesized
             ? { historicalTakeover: true }
             : latest.draftData as Prisma.InputJsonValue,
@@ -488,6 +498,9 @@ export class ContractService {
               quantity: row.quantity,
               unitPrice: row.unitPrice,
               taxRate: row.taxRate,
+              taxRateSource: row.taxRateSource,
+              pricingFactStatus: row.pricingFactStatus,
+              precisionPolicy: row.precisionPolicy,
               taxInclusiveAmountCents: row.taxInclusiveAmountCents,
               taxExclusiveAmountCents: row.taxExclusiveAmountCents,
               taxAmountCents: row.taxAmountCents,
@@ -1028,6 +1041,8 @@ export class ContractService {
           },
           data: {
             status: "in_approval",
+            taxFactStatus: "frozen",
+            taxFactsFrozenAt: new Date(),
             ...(input
               ? {
                   readinessSnapshot: readinessSnapshot as Prisma.InputJsonValue,
@@ -1398,7 +1413,11 @@ export class ContractService {
       if (input.decision === "return_to_applicant") {
         const updated = await tx.contractVersion.update({
           where: { id: version.id },
-          data: { status: "draft" }
+          data: {
+            status: "draft",
+            taxFactStatus: "draft",
+            taxFactsFrozenAt: null
+          }
         });
 
         await tx.approvalInstance.update({
@@ -1440,7 +1459,14 @@ export class ContractService {
         : "approval_rejected";
       const updated = await tx.contractVersion.update({
         where: { id: version.id },
-        data: { status: nextStatus }
+        data:
+          nextStatus === "approval_rejected"
+            ? {
+                status: nextStatus,
+                taxFactStatus: "draft",
+                taxFactsFrozenAt: null
+              }
+            : { status: nextStatus }
       });
 
       await tx.approvalInstance.update({
@@ -1543,7 +1569,11 @@ export class ContractService {
 
       const updated = await tx.contractVersion.update({
         where: { id: version.id },
-        data: { status: "draft" }
+        data: {
+          status: "draft",
+          taxFactStatus: "draft",
+          taxFactsFrozenAt: null
+        }
       });
 
       await tx.approvalInstance.update({
@@ -1781,6 +1811,7 @@ export class ContractService {
         where: { id: version.id },
         data: {
           status: "effective",
+          taxFactStatus: "confirmed",
           effectiveAt: confirmedAt,
           ...(supersededVersionId ? { supersedesVersionId: supersededVersionId } : {})
         }

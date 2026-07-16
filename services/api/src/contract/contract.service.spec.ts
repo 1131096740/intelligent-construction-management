@@ -267,6 +267,23 @@ describe("ContractService", () => {
         code: null
       })
     });
+    expect(tx.contractVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractId: "contract-1",
+        status: "draft",
+        taxFactStatus: "draft"
+      })
+    });
+    expect(tx.contractBill.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          contractVersionId: "version-1",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2
+        })
+      ]
+    });
     expect(tx.paymentTermsVersion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         contractId: "contract-1",
@@ -860,6 +877,8 @@ describe("ContractService", () => {
       },
       data: expect.objectContaining({
         status: "in_approval",
+        taxFactStatus: "frozen",
+        taxFactsFrozenAt: expect.any(Date),
         readinessSnapshot: {
           blocking: [],
           warnings: [],
@@ -2039,6 +2058,14 @@ describe("ContractService", () => {
     });
 
     expect(result.status).toBe("approval_rejected");
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "contract-version-1" },
+      data: {
+        status: "approval_rejected",
+        taxFactStatus: "draft",
+        taxFactsFrozenAt: null
+      }
+    });
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
       where: { id: "approval-instance-1" },
       data: {
@@ -2432,7 +2459,11 @@ describe("ContractService", () => {
     expect(result.status).toBe("draft");
     expect(tx.contractVersion.update).toHaveBeenCalledWith({
       where: { id: "contract-version-1" },
-      data: { status: "draft" }
+      data: {
+        status: "draft",
+        taxFactStatus: "draft",
+        taxFactsFrozenAt: null
+      }
     });
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
       where: { id: "approval-instance-1" },
@@ -2958,6 +2989,7 @@ describe("ContractService", () => {
       where: { id: "contract-version-1" },
       data: {
         status: "effective",
+        taxFactStatus: "confirmed",
         effectiveAt: expect.any(Date)
       }
     });
@@ -3659,7 +3691,11 @@ describe("ContractService", () => {
     expect(result.status).toBe("draft");
     expect(tx.contractVersion.update).toHaveBeenCalledWith({
       where: { id: "contract-version-1" },
-      data: { status: "draft" }
+      data: {
+        status: "draft",
+        taxFactStatus: "draft",
+        taxFactsFrozenAt: null
+      }
     });
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
       where: { id: "approval-instance-1" },
