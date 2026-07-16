@@ -4,6 +4,8 @@ import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { FileModule } from "../file/file.module";
 import { SettlementController } from "./settlement.controller";
+import { SettlementDraftController } from "./settlement-draft.controller";
+import { SettlementDraftService } from "./settlement-draft.service";
 import { SettlementImportController } from "./settlement-import.controller";
 import {
   SettlementTemplateGovernanceController,
@@ -16,11 +18,13 @@ import { SettlementReadService } from "./settlement-read.service";
 import { SettlementImportService } from "./settlement-import.service";
 import { SettlementTemplateService } from "./settlement-template.service";
 import { SettlementService } from "./settlement.service";
+import { SettlementSubmissionService } from "./settlement-submission.service";
 
 @Module({
   imports: [ApprovalModule, AuditModule, AuthModule, FileModule],
   controllers: [
     SettlementController,
+    SettlementDraftController,
     SettlementWorkbenchController,
     SettlementImportController,
     SettlementTemplateGovernanceController,
@@ -28,12 +32,18 @@ import { SettlementService } from "./settlement.service";
   ],
   providers: [
     SettlementService,
+    SettlementDraftService,
+    SettlementSubmissionService,
     SettlementReadService,
     SettlementAttachmentTemplateService,
     SettlementWorkbenchService,
     SettlementImportService,
     SettlementTemplateService
   ],
-  exports: [SettlementService, SettlementReadService]
+  exports: [
+    SettlementService,
+    SettlementSubmissionService,
+    SettlementReadService
+  ]
 })
 export class SettlementModule {}

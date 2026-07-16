@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query, Res, StreamableFile } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Res,
+  StreamableFile
+} from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -18,6 +27,7 @@ import {
   SettlementAttachmentTemplateService
 } from "./settlement-attachment-template.service";
 import { SettlementService } from "./settlement.service";
+import { SettlementSubmissionService } from "./settlement-submission.service";
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -27,13 +37,14 @@ export class SettlementController {
     private readonly settlementRead: SettlementReadService,
     private readonly attachmentTemplates: SettlementAttachmentTemplateService,
     private readonly settlements: SettlementService,
-    private readonly projectVisibility: ProjectVisibilityService
+    private readonly projectVisibility: ProjectVisibilityService,
+    private readonly submissions: SettlementSubmissionService
   ) {}
 
   @Post()
   @RequireProjectRole("settlement.create")
   create(@Body() body: CreateSettlementDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.settlements.create(body, user.id);
+    return this.submissions.submit(body, user.id);
   }
 
   @Get()

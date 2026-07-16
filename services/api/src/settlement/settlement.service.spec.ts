@@ -72,7 +72,7 @@ describe("SettlementService", () => {
     "Infinity",
     "-Infinity",
     "1e100",
-    "0.0000001",
+    "0.001",
     "1000000000000000000",
     "-1000000000000000000",
     {}
@@ -100,7 +100,9 @@ describe("SettlementService", () => {
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(BadRequestException);
-    expect((error as Error).message).toBe("结算明细工程量超出系统可保存范围");
+    expect((error as Error).message).toBe(
+      "本期结算数量最多保留 2 位小数，请修改后重试。"
+    );
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(createMany).not.toHaveBeenCalled();
   });
@@ -461,6 +463,111 @@ describe("SettlementService", () => {
     expect(tx.settlement.create).not.toHaveBeenCalled();
   });
 
+  it("blocks approval submission when the effective contract invoice type is still missing", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective",
+          invoiceType: null,
+          defaultTaxRatePercent: new Decimal("13"),
+          taxFactStatus: "confirmed",
+          taxFactRevision: 1
+        })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never
+    );
+
+    const error = await settlementService
+      .create({
+        contractVersionId: "contract-version-1",
+        code: "JS-TAX-BLOCKED",
+        periodLabel: "2026-07",
+        settlementLines: [
+          {
+            sourceType: "manual_adjustment",
+            name: "本期签认",
+            amountCents: "100",
+            reason: "现场签认"
+          }
+        ]
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as Error).message).toBe(
+      "合同发票类型尚未确认，暂不能提交结算审批。请先在合同工作台补录并完成复核。"
+    );
+    expect((error as BadRequestException).getResponse()).toEqual({
+      message:
+        "合同发票类型尚未确认，暂不能提交结算审批。请先在合同工作台补录并完成复核。",
+      code: "missing_invoice_type",
+      contractBillRowId: null,
+      remedyPath: "/合同工作台/contract-1"
+    });
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts frozen new-contract tax facts as ready for settlement submission", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "effective",
+          invoiceType: "vat_special",
+          defaultTaxRatePercent: new Decimal("13"),
+          taxFactStatus: "frozen",
+          taxFactRevision: 1
+        })
+      },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never
+    );
+
+    await expect(
+      settlementService.create({
+        contractVersionId: "contract-version-1",
+        code: "JS-TAX-FROZEN",
+        periodLabel: "2026-07",
+        settlementLines: [
+          {
+            sourceType: "manual_adjustment",
+            name: "本期签认",
+            amountCents: "100",
+            reason: "现场签认"
+          }
+        ]
+      })
+    ).rejects.toThrow("未找到结算关联合同");
+  });
+
   it("rejects zero amount settlement creation with a Chinese business reason", async () => {
     const tx = {
       contractVersion: {
@@ -526,7 +633,7 @@ describe("SettlementService", () => {
             unit: "吨",
             quantity: new Decimal("100"),
             unitPrice: new Decimal("3200"),
-            taxRate: new Decimal("0"),
+            taxRate: new Decimal("13"),
             isProvisional: false,
             taxInclusiveAmountCents: BigInt(1000000)
           }
@@ -606,7 +713,7 @@ describe("SettlementService", () => {
           calculationMode: "normal_auto",
           contractQuantitySnapshot: new Decimal("100"),
           unitPriceSnapshot: new Decimal("3200"),
-          taxRatePercentSnapshot: new Decimal("0"),
+          taxRatePercentSnapshot: new Decimal("13"),
           pricingModeSnapshot: "tax_inclusive",
           amountCents: 960000n,
           reason: null,
@@ -658,7 +765,7 @@ describe("SettlementService", () => {
             unit: "吨",
             quantity: new Decimal("100"),
             unitPrice: new Decimal("3200"),
-            taxRate: new Decimal("0"),
+            taxRate: new Decimal("13"),
             isProvisional: false,
             taxInclusiveAmountCents: BigInt(1000000)
           }
@@ -1051,7 +1158,7 @@ describe("SettlementService", () => {
             unit: "吨",
             quantity: new Decimal("10"),
             unitPrice: new Decimal("300"),
-            taxRate: new Decimal("0"),
+            taxRate: new Decimal("13"),
             isProvisional: false,
             taxInclusiveAmountCents: BigInt(100000)
           }
@@ -1163,7 +1270,7 @@ describe("SettlementService", () => {
             unit: "吨",
             quantity: new Decimal("10"),
             unitPrice: new Decimal("600"),
-            taxRate: new Decimal("0"),
+            taxRate: new Decimal("13"),
             isProvisional: false,
             taxInclusiveAmountCents: 1000000n
           }
@@ -1332,7 +1439,7 @@ describe("SettlementService", () => {
             unit: "吨",
             quantity: new Decimal("10"),
             unitPrice: new Decimal("3200"),
-            taxRate: new Decimal("0"),
+            taxRate: new Decimal("13"),
             isProvisional: false,
             taxInclusiveAmountCents: BigInt(100000)
           }

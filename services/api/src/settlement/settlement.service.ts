@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type Settlement } from "@prisma/client";
 import {
   approvalElapsedHours,
   canCreateSettlementFromContractStatus,
@@ -46,6 +46,8 @@ import {
 import { SETTLEMENT_LINE_OCCUPANCY_STATUSES } from "./settlement-line-occupancy";
 import {
   canonicalSettlementLine,
+  settlementCalculationMode,
+  settlementSubmissionBlocker,
   type CanonicalSettlementLine,
   type SettlementContractSourceRow
 } from "./settlement-line-calculator";
@@ -216,6 +218,7 @@ interface SettlementLineClient {
         taxRate: true;
         taxInclusiveAmountCents: true;
         isProvisional: true;
+        pricingFactStatus: true;
       };
     }): Promise<
       Array<{
@@ -223,11 +226,12 @@ interface SettlementLineClient {
         contractBillId: string;
         itemName: string;
         unit: string;
-        quantity: Prisma.Decimal;
-        unitPrice: Prisma.Decimal;
-        taxRate: Prisma.Decimal;
-        taxInclusiveAmountCents: bigint;
+        quantity: Prisma.Decimal | null;
+        unitPrice: Prisma.Decimal | null;
+        taxRate: Prisma.Decimal | null;
+        taxInclusiveAmountCents: bigint | null;
         isProvisional: boolean;
+        pricingFactStatus: string;
       }>
     >;
   };
@@ -273,6 +277,22 @@ interface SettlementLineClient {
 }
 
 type NormalizedSettlementLine = CanonicalSettlementLine;
+type PreviewSettlementLine = Omit<CanonicalSettlementLine, "amountCents"> & {
+  amountCents: bigint | null;
+};
+
+export interface PreviewSettlementSubmissionBlocker {
+  code: "missing_invoice_type" | "missing_tax_rate" | "missing_unit_price";
+  contractBillRowId: string | null;
+  message: string;
+  remedyPath: string;
+}
+
+export interface PreparedSettlementSubmission {
+  input: CreateSettlementDto;
+  submittedAmountCents: bigint | null;
+  settlementTemplateVersionId: string | null;
+}
 
 interface SettlementDuplicateClient {
   settlement?: {
@@ -316,17 +336,27 @@ export class SettlementService {
     }
     return this.prisma.$transaction(async (tx) => {
       const version = await lockContractAndAssertCurrentEffective(tx, contractVersionId);
-      const lines = await this.normalizeSettlementLines(
+      const preview = await this.previewSettlementLines(
         tx,
-        version.id,
-        input.settlementLines
+        version,
+        input.settlementLines ?? []
       );
-      const amountCents = this.settlementAmountFromLines(null, lines);
-      await this.assertContractBillRowSettlementLimits(tx, lines);
+      const amountCents = preview.submissionBlockers.length
+        ? null
+        : this.settlementAmountFromLines(
+            null,
+            preview.lines as NormalizedSettlementLine[]
+          );
+      if (!preview.submissionBlockers.length) {
+        await this.assertContractBillRowSettlementLimits(
+          tx,
+          preview.lines as NormalizedSettlementLine[]
+        );
+      }
       return {
         contractVersionId: version.id,
-        amountCents: amountCents.toString(),
-        lines: lines.map((line) => ({
+        amountCents: amountCents?.toString() ?? null,
+        lines: preview.lines.map((line) => ({
           sourceType: line.sourceType,
           calculationMode: line.calculationMode,
           contractBillRowId: line.contractBillRowId,
@@ -334,13 +364,92 @@ export class SettlementService {
           unit: line.unit,
           quantity: line.quantity?.toString() ?? null,
           unitPrice: line.unitPriceSnapshot?.toString() ?? null,
-          amountCents: line.amountCents.toString(),
+          amountCents: line.amountCents?.toString() ?? null,
           reason: line.reason,
           remark: line.remark,
           sortOrder: line.sortOrder
-        }))
+        })),
+        submissionBlockers: preview.submissionBlockers
       };
     });
+  }
+
+  private async previewSettlementLines(
+    tx: Prisma.TransactionClient,
+    version: Awaited<ReturnType<typeof lockContractAndAssertCurrentEffective>>,
+    lines: CreateSettlementLineDto[]
+  ): Promise<{
+    lines: PreviewSettlementLine[];
+    submissionBlockers: PreviewSettlementSubmissionBlocker[];
+  }> {
+    const selectedRowIds = lines
+      .filter((line) => line.sourceType === "contract_bill_row")
+      .map((line) => this.requiredText(line.contractBillRowId, "合同清单项"));
+    if (new Set(selectedRowIds).size !== selectedRowIds.length) {
+      throw new BadRequestException("同一合同清单项每期只能生成一条结算明细。");
+    }
+    const rows = await this.contractBillRowsById(
+      tx as unknown as SettlementLineClient,
+      version.id,
+      selectedRowIds
+    );
+    const submissionBlockers: PreviewSettlementSubmissionBlocker[] = [];
+    const normalized = lines.map((line, index): PreviewSettlementLine => {
+      if (line.sourceType !== "contract_bill_row") {
+        return canonicalSettlementLine(
+          line,
+          undefined,
+          this.sortOrder(line.sortOrder, index)
+        );
+      }
+
+      const rowId = this.requiredText(line.contractBillRowId, "合同清单项");
+      const row = rows.get(rowId);
+      if (!row) {
+        return canonicalSettlementLine(
+          line,
+          undefined,
+          this.sortOrder(line.sortOrder, index)
+        );
+      }
+      const blocker = settlementSubmissionBlocker(row, {
+        invoiceType: version.invoiceType,
+        taxFactStatus: version.taxFactStatus,
+        remedyPath: `/合同工作台/${version.contractId}`
+      });
+      if (!blocker) {
+        return canonicalSettlementLine(
+          line,
+          row,
+          this.sortOrder(line.sortOrder, index)
+        );
+      }
+
+      submissionBlockers.push({
+        ...blocker,
+        contractBillRowId: row.id
+      });
+      return {
+        sourceType: "contract_bill_row",
+        calculationMode: settlementCalculationMode(row),
+        contractBillRowId: row.id,
+        name: row.itemName,
+        unit: row.unit,
+        quantity: this.optionalDecimal(line.quantity),
+        unitPriceCents: null,
+        contractQuantitySnapshot: row.contractQuantity,
+        unitPriceSnapshot: row.unitPrice,
+        taxRatePercentSnapshot: row.taxRatePercent,
+        pricingModeSnapshot: row.pricingMode,
+        amountCents: null,
+        reason: line.reason?.trim() || null,
+        remark: line.remark?.trim() || null,
+        sortOrder: this.sortOrder(line.sortOrder, index),
+        contractBillRowLimitCents: row.taxInclusiveAmountCents
+      };
+    });
+
+    return { lines: normalized, submissionBlockers };
   }
 
   private async normalizeSettlementLines(
@@ -401,7 +510,8 @@ export class SettlementService {
         unitPrice: true,
         taxRate: true,
         taxInclusiveAmountCents: true,
-        isProvisional: true
+        isProvisional: true,
+        pricingFactStatus: true
       }
     });
     const billById = new Map(bills.map((bill) => [bill.id, bill]));
@@ -419,11 +529,95 @@ export class SettlementService {
             contractQuantity: row.quantity,
             taxRatePercent: row.taxRate,
             amountRole: bill.amountRole,
-            pricingMode: bill.pricingMode
+            pricingMode: bill.pricingMode,
+            pricingFactStatus:
+              row.pricingFactStatus === "confirmed"
+                ? "confirmed"
+                : row.pricingFactStatus === "unconfirmed"
+                  ? "unconfirmed"
+                  : undefined
           }
         ];
       })
     );
+  }
+
+  private async assertTaxFactsReadyForSubmission(
+    tx: Prisma.TransactionClient,
+    version: Awaited<ReturnType<typeof lockContractAndAssertCurrentEffective>>,
+    requestedLines: CreateSettlementLineDto[] | undefined
+  ): Promise<void> {
+    const taxFactsArePresentInReadModel =
+      version.invoiceType !== undefined ||
+      version.defaultTaxRatePercent !== undefined ||
+      version.taxFactStatus !== undefined;
+    if (!taxFactsArePresentInReadModel) {
+      // Older isolated unit-test doubles predate the persisted tax-fact columns.
+      // Prisma always returns these columns in production, including explicit null.
+      return;
+    }
+
+    const remedyPath = `/合同工作台/${version.contractId}`;
+    if (version.invoiceType === null) {
+      this.throwSubmissionBlocker({
+        code: "missing_invoice_type",
+        contractBillRowId: null,
+        message:
+          "合同发票类型尚未确认，暂不能提交结算审批。请先在合同工作台补录并完成复核。",
+        remedyPath
+      });
+    }
+    if (
+      !["frozen", "confirmed"].includes(version.taxFactStatus) ||
+      version.defaultTaxRatePercent === null ||
+      (version.defaultTaxRatePercent !== undefined &&
+        version.defaultTaxRatePercent.lessThanOrEqualTo(0))
+    ) {
+      this.throwSubmissionBlocker({
+        code: "missing_tax_rate",
+        contractBillRowId: null,
+        message:
+          "合同税务事实尚未确认，暂不能提交结算审批。请先完成财务复核和合同确认。",
+        remedyPath
+      });
+    }
+
+    const rowIds = (requestedLines ?? [])
+      .filter((line) => line.sourceType === "contract_bill_row")
+      .map((line) => this.requiredText(line.contractBillRowId, "合同清单项"));
+    if (!rowIds.length) return;
+
+    const rows = await this.contractBillRowsById(
+      tx as unknown as SettlementLineClient,
+      version.id,
+      rowIds
+    );
+    for (const rowId of rowIds) {
+      const row = rows.get(rowId);
+      if (!row) continue;
+      const blocker = settlementSubmissionBlocker(row, {
+        invoiceType: version.invoiceType,
+        taxFactStatus: version.taxFactStatus,
+        remedyPath
+      });
+      if (blocker) {
+        this.throwSubmissionBlocker({
+          ...blocker,
+          contractBillRowId: row.id
+        });
+      }
+    }
+  }
+
+  private throwSubmissionBlocker(
+    blocker: PreviewSettlementSubmissionBlocker
+  ): never {
+    throw new BadRequestException({
+      message: blocker.message,
+      code: blocker.code,
+      contractBillRowId: blocker.contractBillRowId,
+      remedyPath: blocker.remedyPath
+    });
   }
 
   private settlementAmountFromLines(
@@ -687,6 +881,18 @@ export class SettlementService {
       throw new Error("结算创建服务暂不可用，请稍后重试或联系管理员");
     }
 
+    const prepared = this.prepareSubmission(input);
+    const settlement = await this.prisma.$transaction(
+      (tx) => this.submitInTransaction(tx, prepared, applicantUserId),
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
+      }
+    ).catch((error: unknown) => this.rethrowSubmissionError(error));
+
+    return this.finalizeSubmission(settlement, applicantUserId);
+  }
+
+  prepareSubmission(input: CreateSettlementDto): PreparedSettlementSubmission {
     const submittedAmountCents =
       input.amountCents === undefined
         ? null
@@ -704,169 +910,188 @@ export class SettlementService {
     if (!this.settlementTemplates && settlementTemplateVersionId) {
       throw new Error("结算模板兼容校验服务暂不可用，请稍后重试");
     }
+    return { input, submittedAmountCents, settlementTemplateVersionId };
+  }
 
-    const settlement = await this.prisma.$transaction(async (tx) => {
-      const version = await lockContractAndAssertCurrentEffective(tx, input.contractVersionId, true);
-      if (this.settlementTemplates && settlementTemplateVersionId) {
-        await this.settlementTemplates.assertPublishedCompatible(
-          settlementTemplateVersionId,
-          input.contractVersionId,
-          undefined,
-          tx
-        );
-      }
-      const periodLabel = this.requiredText(input.periodLabel, "结算期间");
-      await this.assertNoDuplicateActiveSettlementPeriod(tx, version.id, periodLabel);
-      const settlementLines = await this.normalizeSettlementLines(
-        tx,
-        version.id,
-        input.settlementLines
+  async submitInTransaction(
+    tx: Prisma.TransactionClient,
+    prepared: PreparedSettlementSubmission,
+    applicantUserId?: string
+  ): Promise<Settlement> {
+    const { input, submittedAmountCents, settlementTemplateVersionId } = prepared;
+    const version = await lockContractAndAssertCurrentEffective(
+      tx,
+      input.contractVersionId,
+      true
+    );
+    if (this.settlementTemplates && settlementTemplateVersionId) {
+      await this.settlementTemplates.assertPublishedCompatible(
+        settlementTemplateVersionId,
+        input.contractVersionId,
+        undefined,
+        tx
       );
+    }
+    const periodLabel = this.requiredText(input.periodLabel, "结算期间");
+    await this.assertNoDuplicateActiveSettlementPeriod(tx, version.id, periodLabel);
+    await this.assertTaxFactsReadyForSubmission(tx, version, input.settlementLines);
+    const settlementLines = await this.normalizeSettlementLines(
+      tx,
+      version.id,
+      input.settlementLines
+    );
 
-      const [contract, terms] = await Promise.all([
-        tx.contract.findUnique({ where: { id: version.contractId } }),
-        tx.paymentTermsVersion.findFirst({
-          where: {
-            contractVersionId: version.id,
-            status: "effective"
-          },
-          orderBy: { versionNo: "desc" }
-        })
-      ]);
-
-      if (!contract) {
-        throw new Error("未找到结算关联合同，请刷新合同台账后重试");
-      }
-
-      if (!terms) {
-        throw new Error("合同缺少已生效的结构化付款条款，不能创建结算。请先补齐并确认合同付款条款。");
-      }
-
-      const calculatedSettlementAmountCents =
-        input.isFinal === true
-          ? submittedAmountCents === null
-            ? (() => {
-                throw new BadRequestException("最终结算必须填写审定累计结算金额。");
-              })()
-            : await this.calculateFinalSettlementCurrentAmount(
-                tx,
-                version.contractId,
-                submittedAmountCents
-              )
-          : submittedAmountCents;
-      const settlementAmountCents = this.settlementAmountFromLines(
-        calculatedSettlementAmountCents,
-        settlementLines
-      );
-      if (settlementAmountCents <= 0n) {
-        throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
-      }
-      await this.assertContractBillRowSettlementLimits(tx, settlementLines);
-
-      const exceptionQuotaAllocations = await this.reserveSettlementQuota(
-        tx,
-        contract.projectId,
-        version.contractId,
-        settlementAmountCents
-      );
-      await this.assertContractBillRowSettlementLimits(tx, settlementLines);
-
-      const currentSettlementStage = await tx.paymentTermsStage.findFirst({
+    const [contract, terms] = await Promise.all([
+      tx.contract.findUnique({ where: { id: version.contractId } }),
+      tx.paymentTermsVersion.findFirst({
         where: {
-          paymentTermsVersionId: terms.id,
-          basis: "current_settlement"
+          contractVersionId: version.id,
+          status: "effective"
         },
-        orderBy: { createdAt: "asc" }
-      });
-      if (!currentSettlementStage) {
-        throw new BadRequestException(
-          "合同付款条款缺少结算款阶段，不能创建结算。请先补齐结构化付款条款后再办理。"
-        );
-      }
-      const payableAmountCents = this.calculatePayableAmount(
-        settlementAmountCents,
-        currentSettlementStage.ratioBps
-      );
+        orderBy: { versionNo: "desc" }
+      })
+    ]);
 
-      const settlement = await tx.settlement.create({
-        data: {
+    if (!contract) {
+      throw new Error("未找到结算关联合同，请刷新合同台账后重试");
+    }
+
+    if (!terms) {
+      throw new Error(
+        "合同缺少已生效的结构化付款条款，不能创建结算。请先补齐并确认合同付款条款。"
+      );
+    }
+
+    const calculatedSettlementAmountCents =
+      input.isFinal === true
+        ? submittedAmountCents === null
+          ? (() => {
+              throw new BadRequestException("最终结算必须填写审定累计结算金额。");
+            })()
+          : await this.calculateFinalSettlementCurrentAmount(
+              tx,
+              version.contractId,
+              submittedAmountCents
+            )
+        : submittedAmountCents;
+    const settlementAmountCents = this.settlementAmountFromLines(
+      calculatedSettlementAmountCents,
+      settlementLines
+    );
+    if (settlementAmountCents <= 0n) {
+      throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
+    }
+    await this.assertContractBillRowSettlementLimits(tx, settlementLines);
+
+    const exceptionQuotaAllocations = await this.reserveSettlementQuota(
+      tx,
+      contract.projectId,
+      version.contractId,
+      settlementAmountCents
+    );
+    await this.assertContractBillRowSettlementLimits(tx, settlementLines);
+
+    const currentSettlementStage = await tx.paymentTermsStage.findFirst({
+      where: {
+        paymentTermsVersionId: terms.id,
+        basis: "current_settlement"
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    if (!currentSettlementStage) {
+      throw new BadRequestException(
+        "合同付款条款缺少结算款阶段，不能创建结算。请先补齐结构化付款条款后再办理。"
+      );
+    }
+    const payableAmountCents = this.calculatePayableAmount(
+      settlementAmountCents,
+      currentSettlementStage.ratioBps
+    );
+
+    const settlement = await tx.settlement.create({
+      data: {
+        projectId: contract.projectId,
+        contractId: version.contractId,
+        contractVersionId: version.id,
+        paymentTermsVersionId: terms.id,
+        ...(settlementTemplateVersionId ? { settlementTemplateVersionId } : {}),
+        code: input.code,
+        periodLabel,
+        status: "approval_pending",
+        amountCents: settlementAmountCents,
+        payableAmountCents,
+        paidAmountCents: 0n,
+        invoiceTypeSnapshot: version.invoiceType,
+        taxFactRevisionSnapshot: version.taxFactRevision,
+        ...(input.isFinal === true
+          ? { isFinal: true, finalCumulativeAmountCents: submittedAmountCents! }
+          : {})
+      }
+    });
+    await this.createSettlementLines(tx, settlement.id, settlementLines);
+
+    if (exceptionQuotaAllocations.length) {
+      await tx.projectSettlementExceptionQuotaUsage.createMany({
+        data: exceptionQuotaAllocations.map((allocation) => ({
+          quotaId: allocation.quotaId,
+          settlementId: settlement.id,
           projectId: contract.projectId,
           contractId: version.contractId,
-          contractVersionId: version.id,
-          paymentTermsVersionId: terms.id,
-          ...(settlementTemplateVersionId ? { settlementTemplateVersionId } : {}),
-          code: input.code,
-          periodLabel,
-          status: "approval_pending",
-          amountCents: settlementAmountCents,
-          payableAmountCents,
-          paidAmountCents: 0n,
-          ...(input.isFinal === true
-            ? { isFinal: true, finalCumulativeAmountCents: submittedAmountCents! }
-            : {})
-        }
+          amountCents: allocation.amountCents,
+          status: "occupied"
+        }))
       });
-      await this.createSettlementLines(tx, settlement.id, settlementLines);
-
-      if (exceptionQuotaAllocations.length) {
-        await tx.projectSettlementExceptionQuotaUsage.createMany({
-          data: exceptionQuotaAllocations.map((allocation) => ({
-            quotaId: allocation.quotaId,
-            settlementId: settlement.id,
-            projectId: contract.projectId,
-            contractId: version.contractId,
-            amountCents: allocation.amountCents,
-            status: "occupied"
-          }))
-        });
-
-        if (applicantUserId) {
-          await this.audit.record(tx, {
-            actorUserId: applicantUserId,
-            action: "settlement.exception_quota.occupy",
-            businessType: "settlement",
-            businessId: settlement.id,
-            metadata: {
-              projectId: contract.projectId,
-              contractId: version.contractId,
-              allocations: exceptionQuotaAllocations.map((allocation) => ({
-                quotaId: allocation.quotaId,
-                amountCents: allocation.amountCents.toString()
-              }))
-            }
-          });
-        }
-      }
 
       if (applicantUserId) {
-        await tx.approvalInstance.create({
-          data: {
-            flowType: "settlement.approve",
-            businessType: "settlement",
-            businessId: settlement.id,
-            status: "in_progress",
-            currentNodeIndex: 0,
-            frozenNodes: this.settlementApprovalNodesFor(contract) as unknown as Prisma.InputJsonValue,
-            applicantUserId
+        await this.audit.record(tx, {
+          actorUserId: applicantUserId,
+          action: "settlement.exception_quota.occupy",
+          businessType: "settlement",
+          businessId: settlement.id,
+          metadata: {
+            projectId: contract.projectId,
+            contractId: version.contractId,
+            allocations: exceptionQuotaAllocations.map((allocation) => ({
+              quotaId: allocation.quotaId,
+              amountCents: allocation.amountCents.toString()
+            }))
           }
         });
       }
+    }
 
-      return settlement;
-    }, {
-      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
-    }).catch((error: unknown) => {
-      if (this.isDuplicateSettlementPeriodError(error)) {
-        throw new BadRequestException(
-          "同一合同版本和结算期间已存在结算单，不能重复创建。请打开原结算单继续处理；如确需重做，请先退回或作废原结算单。"
-        );
-      }
-      if (this.isDuplicateSettlementCodeError(error)) {
-        throw new BadRequestException("结算编号已存在，请更换编号后重新提交。");
-      }
-      throw error;
-    });
+    if (applicantUserId) {
+      await tx.approvalInstance.create({
+        data: {
+          flowType: "settlement.approve",
+          businessType: "settlement",
+          businessId: settlement.id,
+          status: "in_progress",
+          currentNodeIndex: 0,
+          frozenNodes: this.settlementApprovalNodesFor(
+            contract
+          ) as unknown as Prisma.InputJsonValue,
+          applicantUserId
+        }
+      });
+    }
 
+    return settlement;
+  }
+
+  rethrowSubmissionError(error: unknown): never {
+    if (this.isDuplicateSettlementPeriodError(error)) {
+      throw new BadRequestException(
+        "同一合同版本和结算期间已存在结算单，不能重复创建。请打开原结算单继续处理；如确需重做，请先退回或作废原结算单。"
+      );
+    }
+    if (this.isDuplicateSettlementCodeError(error)) {
+      throw new BadRequestException("结算编号已存在，请更换编号后重新提交。");
+    }
+    throw error;
+  }
+
+  async finalizeSubmission(settlement: Settlement, applicantUserId?: string) {
     if (applicantUserId) {
       await this.tryRefreshSettlementApprovalPdf(settlement.id, applicantUserId);
     }

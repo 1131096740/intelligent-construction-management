@@ -6,6 +6,7 @@ import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { SettlementController } from "./settlement.controller";
+import { SettlementDraftController } from "./settlement-draft.controller";
 
 type RuntimeDto = new () => object;
 
@@ -268,7 +269,7 @@ describe("SettlementController authorization wiring", () => {
     await expect(validateSettlementBody("create", 0, value)).resolves.toEqual(value);
   });
 
-  it.each(["", "999999999999999999.999999", "-999999999999999999.999999", "1e3", 1e3])(
+  it.each(["", "999999999999999999.99", "-999999999999999999.99", "1e3", 1e3])(
     "keeps a storable settlement quantity compatible: %p",
     async (quantity) => {
       await expect(
@@ -297,7 +298,7 @@ describe("SettlementController authorization wiring", () => {
     "Infinity",
     "-Infinity",
     "1e100",
-    "0.0000001",
+    "0.001",
     "1000000000000000000",
     "-1000000000000000000",
     {}
@@ -322,7 +323,9 @@ describe("SettlementController authorization wiring", () => {
     );
 
     expect(service).not.toHaveBeenCalled();
-    expect(response.errors).toEqual(["结算明细工程量超出系统可保存范围"]);
+    expect(response.errors).toEqual([
+      "本期结算数量最多保留 2 位小数，请修改后重试。"
+    ]);
   });
 
   it("lets the service enforce the contract-bill-row positive business condition", async () => {
@@ -454,7 +457,8 @@ describe("SettlementController authorization wiring", () => {
       settlementRead as never,
       {} as never,
       {} as never,
-      projectVisibility as never
+      projectVisibility as never,
+      {} as never
     );
 
     await controller.detail("JS-2026-031", { id: "user-1" } as never);
@@ -462,4 +466,39 @@ describe("SettlementController authorization wiring", () => {
     expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
     expect(settlementRead.getDetail).toHaveBeenCalledWith("JS-2026-031", ["project-1"], "user-1");
   });
+
+  it("keeps POST /settlements compatible while delegating to the single submission service", async () => {
+    const legacy = { create: jest.fn() };
+    const submissions = {
+      submit: jest.fn().mockResolvedValue({ id: "settlement-1" })
+    };
+    const controller = new SettlementController(
+      {} as never,
+      {} as never,
+      legacy as never,
+      {} as never,
+      submissions as never
+    );
+
+    await expect(
+      controller.create(validSettlementCreate as never, { id: "user-1" } as never)
+    ).resolves.toEqual({ id: "settlement-1" });
+    expect(submissions.submit).toHaveBeenCalledWith(
+      validSettlementCreate,
+      "user-1"
+    );
+    expect(legacy.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["create", "list", "detail", "update", "submit"] as const)(
+    "protects settlement draft %s with settlement.create",
+    (method) => {
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PROJECT_ACTION_KEY,
+          SettlementDraftController.prototype[method]
+        )
+      ).toBe("settlement.create");
+    }
+  );
 });
