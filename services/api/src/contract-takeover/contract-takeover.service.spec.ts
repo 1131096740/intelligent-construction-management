@@ -394,6 +394,31 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("returns a Chinese business error for an invalid historical contract tax rate", async () => {
+    const prisma = {
+      $transaction: jest.fn()
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await expect(
+      service.create(
+        "project-1",
+        {
+          code: "HT-HIS-TAX-INVALID",
+          name: "历史税率异常合同",
+          counterparty: "历史供应商",
+          amountCents: "100",
+          signedAt: "2026-01-10",
+          takeoverLevel: "B",
+          lifecycleStatus: "in_progress",
+          defaultTaxRatePercent: "13.1234"
+        },
+        "contract-user"
+      )
+    ).rejects.toThrow("默认税率必须是大于 0 且不超过 100 的数字，最多保留 3 位小数");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects negative historical balance values before writing", async () => {
     const tx = {
       project: {

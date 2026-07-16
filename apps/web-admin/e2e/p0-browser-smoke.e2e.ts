@@ -271,6 +271,14 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
     companyEntityName: "建工智管公司",
     amountCents: "100000000",
     paymentTermsOriginalText: "按月结算付款",
+    invoiceType: null,
+    taxMode: "single_rate",
+    defaultTaxRatePercent: null,
+    taxFactStatus: "unconfirmed",
+    taxFactSource: null,
+    taxFactExplanation: null,
+    taxFactMissingFields: ["发票类型", "默认税率"],
+    pricingItems: [],
     takeoverLevel: "B",
     suggestedTakeoverLevel: "B",
     takeoverLevelAdjustmentReason: null,
@@ -358,6 +366,28 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
   );
   await page.route("**/api/projects/project-1/contract-takeovers/takeover-1", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(takeover) })
+  );
+  await page.route(
+    "**/api/projects/project-1/contract-takeovers/takeover-1/tax-fact-revisions",
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          contractId: "contract-takeover-1",
+          current: {
+            invoiceType: null,
+            taxMode: "single_rate",
+            defaultTaxRatePercent: null,
+            status: "unconfirmed",
+            source: null,
+            confirmationExplanation: null,
+            evidenceFileId: null,
+            revision: 0
+          },
+          rows: [],
+          revisions: []
+        })
+      })
   );
   await page.route("**/api/projects/project-1/contract-takeovers", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify([takeover]) })

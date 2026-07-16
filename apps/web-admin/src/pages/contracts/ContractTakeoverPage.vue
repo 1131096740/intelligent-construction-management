@@ -1068,7 +1068,7 @@
               v-else
               variant="outline"
               :loading="evidenceDownloading"
-              @click="submitEvidenceFileDownload"
+              @click="openEvidenceDownloadConfirmation"
             >
               安全下载资料
             </t-button>
@@ -1298,6 +1298,28 @@
         </label>
       </div>
     </t-dialog>
+
+    <SensitiveActionDialog
+      v-model="importBatchReviewVisible"
+      title="确认更新接管批次状态"
+      :description="pendingImportBatchReviewDescription"
+      confirm-text="确认更新"
+      :confirm-theme="pendingImportBatchReview?.status === 'disputed' ? 'danger' : 'primary'"
+      :loading="Boolean(reviewingImportBatchAction)"
+      @confirm="confirmImportBatchReview"
+      @cancel="pendingImportBatchReview = null"
+    />
+
+    <SensitiveActionDialog
+      v-model="evidenceDownloadConfirmVisible"
+      title="确认安全下载资料"
+      description="系统将校验当前登录密码，并记录下载人、接管合同、资料和下载原因。"
+      confirm-text="确认下载"
+      :loading="evidenceDownloading"
+      :error="evidenceDownloadConfirmError"
+      @confirm="submitEvidenceFileDownload"
+      @cancel="evidenceDownloadConfirmError = ''"
+    />
   </section>
 </template>
 
@@ -1343,8 +1365,8 @@ import {
 import type { ContractTaxFactCurrentReadModel } from "../../api/contract-tax-facts.api";
 import { useAuthStore } from "../../auth/auth.store";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../lib/money";
-import { confirmSensitiveAction } from "../confirm-sensitive-action";
 import ContractTaxFactReviewPanel from "./components/ContractTaxFactReviewPanel.vue";
 import {
   buildImportDraftsMessage,
@@ -1483,7 +1505,14 @@ const correctionSubmitting = ref(false);
 const showCreateForm = ref(false);
 const showPrecheckPanel = ref(false);
 const confirmVisible = ref(false);
+const importBatchReviewVisible = ref(false);
+const evidenceDownloadConfirmVisible = ref(false);
+const evidenceDownloadConfirmError = ref("");
 const confirmTarget = ref<ContractTakeoverReadModel | null>(null);
+const pendingImportBatchReview = ref<{
+  batch: ContractTakeoverImportBatchReadModel;
+  status: ContractTakeoverImportBatchReviewStatus;
+} | null>(null);
 const confirmationPassword = ref("");
 const evidencePurpose = ref<ContractTakeoverEvidencePurpose>("historical_contract_scan");
 const evidenceFile = ref<File | null>(null);
@@ -1503,6 +1532,12 @@ const importPrecheckResult = ref<ContractTakeoverImportPrecheckReadModel | null>
 const excelImportFiles = ref<UploadFile[]>([]);
 const excelPreviewResult = ref<ContractTakeoverExcelPreviewReadModel | null>(null);
 let pricingItemSequence = 0;
+const pendingImportBatchReviewDescription = computed(() => {
+  const pending = pendingImportBatchReview.value;
+  return pending
+    ? importBatchReviewConsequence(pending.status)
+    : "请确认本次接管批次状态变更。";
+});
 
 const importPrecheckPlaceholder = [
   "合同编号\t合同名称\t相对方\t我方主体\t合同金额(元)\t签订日期\t申报接管等级\t履约状态\t付款条款\t历史累计结算(元)\t历史审批中付款(元)\t历史已批待付(元)\t历史累计已付(元)\t历史总包代付(元)\t历史预付款已付(元)\t历史预付款已扣回(元)\t历史质保金扣留(元)\t历史质保金释放(元)\t其他确认占用(元)\t余额来源\t证据说明\t资料清单\t问题清单",
@@ -2116,17 +2151,21 @@ function clearImportPrecheck() {
   Object.assign(importBatchForm, createEmptyImportBatchForm());
 }
 
-async function reviewImportBatch(
+function reviewImportBatch(
   batch: ContractTakeoverImportBatchReadModel,
   status: ContractTakeoverImportBatchReviewStatus
 ) {
+  pendingImportBatchReview.value = { batch, status };
+  importBatchReviewVisible.value = true;
+}
+
+async function confirmImportBatchReview() {
+  const pending = pendingImportBatchReview.value;
+  if (!pending) return;
+  const { batch, status } = pending;
   const projectId = selectedProjectId.value;
   if (!projectId) {
     setMessage("请先选择项目", "danger");
-    return;
-  }
-  const consequence = importBatchReviewConsequence(status);
-  if (typeof globalThis.confirm === "function" && !globalThis.confirm(consequence)) {
     return;
   }
 
@@ -2140,6 +2179,8 @@ async function reviewImportBatch(
     importBatches.value = importBatches.value.map((item) =>
       item.id === updated.id ? updated : item
     );
+    importBatchReviewVisible.value = false;
+    pendingImportBatchReview.value = null;
     setMessage(`接管批次已更新为“${updated.statusLabel}”`, "success");
   } catch (error) {
     setMessage(error instanceof Error ? error.message : "接管批次复核失败", "danger");
@@ -2374,20 +2415,19 @@ async function submitEvidenceFile() {
   }
 }
 
-async function submitEvidenceFileDownload() {
+function openEvidenceDownloadConfirmation() {
   const disabledReason = selectedEvidenceDownloadDisabledReason.value;
   if (disabledReason) {
     setMessage(disabledReason, "danger");
     return;
   }
-  if (
-    !confirmSensitiveAction(
-      "确认下载后，系统将校验当前密码并记录下载人、接管资料、接管合同和下载原因审计。是否继续？"
-    )
-  ) {
-    return;
-  }
+  evidenceDownloadConfirmError.value = "";
+  evidenceDownloadConfirmVisible.value = true;
+}
+
+async function submitEvidenceFileDownload() {
   evidenceDownloading.value = true;
+  evidenceDownloadConfirmError.value = "";
   try {
     const ticket = await createPrivateFileDownloadTicket(evidenceDownloadFileId.value, {
       confirmationPassword: requiredText(evidenceDownloadPassword.value, "当前登录密码"),
@@ -2396,9 +2436,11 @@ async function submitEvidenceFileDownload() {
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
     evidenceDownloadPassword.value = "";
     evidenceDownloadReason.value = "";
+    evidenceDownloadConfirmVisible.value = false;
     setMessage("已生成短时效下载链接，请在新窗口完成下载。", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "生成接管资料下载链接失败", "danger");
+    evidenceDownloadConfirmError.value =
+      error instanceof Error ? error.message : "生成接管资料下载链接失败";
   } finally {
     evidenceDownloading.value = false;
   }

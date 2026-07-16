@@ -3,6 +3,14 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [vue()],
+  optimizeDeps: {
+    include: ["@jiangkong/shared-domain"]
+  },
+  build: {
+    commonjsOptions: {
+      include: [/node_modules/, /packages\/shared-domain/]
+    }
+  },
   server: {
     proxy: {
       "/api": {

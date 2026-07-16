@@ -1564,6 +1564,7 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
   baselineDraftSnapshot.value = workbenchSnapshot();
   pageMessage.value = "已恢复结算草稿；保存草稿不会发起审批，提交前仍需通过后台核算。";
   pageMessageTone.value = "info";
+  schedulePreview();
 }
 
 async function initializeWorkbench() {

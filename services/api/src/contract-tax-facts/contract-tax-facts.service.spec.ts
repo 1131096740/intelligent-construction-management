@@ -228,6 +228,28 @@ describe("ContractTaxFactsService", () => {
     expect(tx.contractBillRow.update).not.toHaveBeenCalled();
   });
 
+  it("returns a Chinese business error for an invalid tax fact rate", async () => {
+    const { prisma, tx } = createPrisma();
+    const service = new ContractTaxFactsService(prisma as never);
+
+    await expect(
+      service.create(
+        "project-1",
+        "takeover-1",
+        {
+          kind: "supplement",
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: "101",
+          source: "business_finance_confirmation",
+          confirmationExplanation: "合同部与财务部已核对原合同"
+        },
+        "contract-staff-1"
+      )
+    ).rejects.toThrow("默认税率必须是大于 0 且不超过 100 的数字，最多保留 3 位小数");
+    expect(tx.contractTaxFactRevision.create).not.toHaveBeenCalled();
+  });
+
   it("keeps the draft intact when evidence and confirmation explanation are both absent", async () => {
     const { prisma, tx } = createPrisma();
     tx.contractTaxFactRevision.findUnique.mockResolvedValue(

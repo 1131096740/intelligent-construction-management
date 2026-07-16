@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import {
+  expectHorizontalScrollOwner,
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
@@ -150,6 +151,98 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
     contentType: "application/json",
     body: JSON.stringify([{ id: "delegate-user", name: "预算员 李工" }])
   }));
+  await page.route("**/api/projects", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify([{ id: "project-1", code: "P001", name: "科技园项目" }])
+  }));
+  await page.route("**/api/projects/project-1/settlement-drafts", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify([
+      {
+        id: "draft-tax-gap",
+        projectId: "project-1",
+        contractId: "contract-1",
+        contractVersionId: "version-1",
+        paymentTermsVersionId: "payment-terms-version-1",
+        settlementTemplateVersionId: "settlement-template-version-1",
+        code: "JS-DRAFT-001",
+        periodLabel: "2026年7月",
+        isFinal: false,
+        finalCumulativeAmountCents: null,
+        lines: [
+          {
+            sourceType: "contract_bill_row",
+            contractBillRowId: "row-tax-gap",
+            quantity: "1",
+            sortOrder: 1
+          }
+        ],
+        revision: 1,
+        status: "draft",
+        ownerUserId: "ui-p1-settlement-user",
+        submittedSettlementId: null,
+        submittedAt: null,
+        createdAt: "2026-07-17T08:00:00.000Z",
+        updatedAt: "2026-07-17T09:30:00.000Z"
+      }
+    ])
+  }));
+  await page.route("**/api/contracts/settlement-create-options?*", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify([
+      {
+        contractId: "contract-1",
+        contractVersionId: "version-1",
+        contractNo: "HT-UI-001",
+        contractName: "科技园钢材采购合同",
+        counterparty: "城建物资公司",
+        amountCents: "32000000",
+        versionLabel: "v1",
+        contractStatus: "effective",
+        contractStatusLabel: "已生效",
+        source: "system",
+        sourceLabel: "系统合同",
+        takeoverLevel: null,
+        takeoverStatus: null,
+        takeoverStatusLabel: null,
+        historicalBalanceConfirmedAt: null,
+        canCreateSettlement: true,
+        settlementUnavailableReason: null,
+        canCreatePayment: false,
+        paymentUnavailableReason: "尚无生效结算",
+        settlements: []
+      }
+    ])
+  }));
+  await page.route(
+    "**/api/settlement-workbench/contract-versions/version-1/source-lines",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        contractVersionId: "version-1",
+        contractId: "contract-1",
+        projectId: "project-1",
+        contractAmountCents: "32000000",
+        summary: {
+          rowCount: 1,
+          exceptionCount: 1,
+          contractAmountCents: "32000000",
+          settledAmountCents: "0",
+          remainingAmountCents: "32000000"
+        },
+        rows: [
+          {
+            id: "row-tax-gap",
+            itemName: "钢筋材料",
+            submissionBlocker: {
+              code: "missing_unit_price",
+              message: "钢筋材料含税单价待确认"
+            }
+          }
+        ]
+      })
+    })
+  );
   await page.route("**/api/settlements/JS-UI-001", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify(approvalDetailBody)
@@ -185,6 +278,10 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
 
   await page.goto("/结算管理");
   await expect(page.getByRole("heading", { name: "结算管理" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "我的草稿" })).toBeVisible();
+  await expect(page.getByText("JS-DRAFT-001", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 项", { exact: true })).toBeVisible();
+  await expect(page.getByText("继续填写", { exact: true })).toBeVisible();
   await expect(page.getByText(/暂不支持翻页/)).toBeVisible();
   await expect(page.locator(".ledger-section .t-link").filter({ hasText: "查看详情" })).toHaveCount(3);
   await captureRequiredViewports(page, "settlement-ledger", "settlement-ledger-normal");
@@ -212,7 +309,22 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
   await expect(page.locator(".overview-section").first()).not.toContainText("结算金额");
   await captureRequiredViewports(page, "settlement-detail", "settlement-detail-overview");
 
+  await page.getByText("结算明细", { exact: true }).click();
+  await expect(page.getByText("¥2,831.86", { exact: true })).toBeVisible();
+  await expect(page.getByText("¥36,814.16", { exact: true })).toBeVisible();
+  for (const viewport of desktopViewports) {
+    await page.setViewportSize(viewport);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoNestedHorizontalScrollers(page);
+    await expectHorizontalScrollOwner(page.locator(".table-panel .t-table__content"));
+    await capture(
+      page,
+      `settlement-detail-tax-lines-${viewport.width}x${viewport.height}.png`
+    );
+  }
+
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByText("流程办理", { exact: true }).click();
   await page.getByRole("button", { name: "处理结算审批" }).click();
   await expect(page.getByText("当前办理动作")).toBeVisible();
   await expect(page.getByText("当前不可办理原因")).toBeVisible();
@@ -264,6 +376,12 @@ function settlementDetail(input: {
       { label: "结算金额", value: "¥320,000.00" },
       { label: "创建人", value: "项目经理 张工" }
     ],
+    taxFactSummary: [
+      { label: "发票类型", value: "增值税专用发票" },
+      { label: "税率模式", value: "单一税率" },
+      { label: "默认税率", value: "13%" },
+      { label: "税务事实修订号", value: "第 3 版" }
+    ],
     effectivenessSteps: [
       { label: "结算审批", status: input.status === "审批中" ? "处理中" : "已通过", tone: input.status === "审批中" ? "primary" : "success" },
       { label: "签字盖章归档上传", status: input.status === "审批中" ? "待开始" : "待上传", tone: input.status === "审批中" ? "default" : "warning" },
@@ -296,9 +414,16 @@ function settlementDetail(input: {
         unit: "吨",
         quantity: "100",
         unitPrice: "¥3,200.00（含税）",
+        taxInclusiveUnitPrice: "¥3,200.00",
+        taxExclusiveUnitPrice: "¥2,831.86",
+        taxRate: "13%",
         calculationMode: "normal_auto",
         amount: "¥320,000.00",
         amountCents: "32000000",
+        taxInclusiveAmount: "¥320,000.00",
+        taxExclusiveAmount: "¥283,185.84",
+        taxAmount: "¥36,814.16",
+        taxBreakdownNote: "按提交时冻结的合同税务事实计算",
         reason: "按验收数量结算",
         remark: "-"
       }

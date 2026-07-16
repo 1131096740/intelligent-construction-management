@@ -2400,9 +2400,9 @@ function normalizeHistoricalPricingItems(
 function normalizeTakeoverTaxRate(value: string, label: string): string {
   try {
     return normalizeTaxRatePercent(value);
-  } catch (error) {
+  } catch {
     throw new BadRequestException(
-      `${label}${error instanceof Error ? error.message.replace(/^税率/u, "") : "格式不正确"}`
+      `${label}必须是大于 0 且不超过 100 的数字，最多保留 3 位小数`
     );
   }
 }

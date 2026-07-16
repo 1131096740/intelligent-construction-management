@@ -559,6 +559,15 @@
       </div>
     </t-dialog>
 
+    <SensitiveActionDialog
+      v-model="checkpointEvictionVisible"
+      title="确认创建新检查点"
+      description="当前已保留 5 个手工检查点。继续后系统将移除最早的检查点，再创建本次检查点。"
+      confirm-text="确认创建"
+      :loading="checkpointBusy"
+      @confirm="confirmCheckpointEviction"
+    />
+
     <!-- Ownership transfer --------------------------------------------------->
     <t-dialog
       v-model:visible="transferVisible"
@@ -600,6 +609,7 @@ import {
   recommendContractScenarioTemplates
 } from "../../api/contract-scenario.api";
 import ContractTemplateUsagePreviewDrawer from "../../components/ContractTemplateUsagePreviewDrawer.vue";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import {
   normalizePublishedContractTemplates,
   publishedTemplateForSelection
@@ -645,6 +655,8 @@ import {
 
 const route = useRoute();
 const router = useRouter();
+const checkpointEvictionVisible = ref(false);
+const checkpointBusy = ref(false);
 
 const draft = useContractDraft({
   replace: (to) => {
@@ -1314,10 +1326,24 @@ async function reloadCurrent() {
 }
 
 async function onCreateCheckpoint() {
-  await createCheckpoint({
-    confirmEviction: () =>
-      window.confirm("已有 5 个检查点，创建新检查点将移除最早的一个，是否继续？")
-  });
+  if ((workbench.value?.checkpoints.length ?? 0) >= 5) {
+    checkpointEvictionVisible.value = true;
+    return;
+  }
+  await createCheckpoint();
+}
+
+async function confirmCheckpointEviction() {
+  checkpointBusy.value = true;
+  errorMessage.value = "";
+  try {
+    await createCheckpoint({ confirmEviction: () => true });
+    checkpointEvictionVisible.value = false;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "创建检查点失败";
+  } finally {
+    checkpointBusy.value = false;
+  }
 }
 
 async function onRestoreCheckpoint(checkpointId: string) {

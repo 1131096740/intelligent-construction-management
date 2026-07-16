@@ -25,6 +25,30 @@ const takeover = {
   companyEntityName: "建工智管公司",
   amountCents: "3000000",
   paymentTermsOriginalText: "按月结算，归档后付款",
+  invoiceType: null,
+  taxMode: "single_rate",
+  defaultTaxRatePercent: null,
+  taxFactStatus: "unconfirmed",
+  taxFactSource: null,
+  taxFactExplanation: null,
+  taxFactMissingFields: ["发票类型", "默认税率", "清单项目“基础劳务”含税单价"],
+  pricingItems: [
+    {
+      billKey: "main",
+      billName: "劳务分包价格清单",
+      rowKey: "labor-1",
+      itemCode: "LW-001",
+      itemName: "基础劳务",
+      specification: null,
+      unit: "项",
+      estimatedQuantity: "1",
+      taxInclusiveUnitPrice: null,
+      taxRatePercent: null,
+      pricingFactStatus: "unconfirmed",
+      isProvisional: false,
+      settlementBasis: "按现场确认工程量结算"
+    }
+  ],
   takeoverLevel: "A",
   suggestedTakeoverLevel: "A",
   takeoverLevelAdjustmentReason: null,
@@ -106,21 +130,62 @@ const takeoverWithDownloadableEvidence = {
   ]
 };
 
+const pendingTaxRevision = {
+  id: "tax-revision-1",
+  revisionNo: 1,
+  kind: "supplement",
+  status: "pending_finance_review",
+  invoiceType: "vat_special",
+  taxMode: "single_rate",
+  defaultTaxRatePercent: "13",
+  source: "business_finance_confirmation",
+  confirmationExplanation: "已按原合同签署页和财务台账核对",
+  evidenceFileId: null,
+  rowFacts: [
+    {
+      contractBillRowId: "contract-bill-row-1",
+      taxInclusiveUnitPrice: "100.00",
+      taxRatePercentOverride: null
+    }
+  ],
+  beforeSnapshot: {},
+  createdByUserId: "contract-staff-1",
+  submittedByUserId: "contract-staff-1",
+  submittedAt: "2026-07-17T08:00:00.000Z",
+  financeReviewedByUserId: null,
+  financeReviewedAt: null,
+  financeReviewComment: null,
+  confirmedByUserId: null,
+  confirmedAt: null,
+  contractReviewComment: null,
+  createdAt: "2026-07-17T07:30:00.000Z",
+  updatedAt: "2026-07-17T08:00:00.000Z"
+};
+
+interface TaxReviewMockOptions {
+  userId?: string;
+  roleKeys?: string[];
+  revisions?: Array<Record<string, unknown>>;
+}
+
 async function loginWithMocks(
   page: Page,
-  takeoverFixture: typeof takeover | typeof takeoverWithDownloadableEvidence = takeover
+  takeoverFixture: typeof takeover | typeof takeoverWithDownloadableEvidence = takeover,
+  options: TaxReviewMockOptions = {}
 ) {
+  const userId = options.userId ?? "contract-director";
+  const roleKeys = options.roleKeys ?? ["contract_director"];
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         user: {
-          id: "contract-director",
+          id: userId,
           name: "合同负责人",
           phone: "13900000000",
           mustChangePassword: false,
-          roleKeys: ["contract_director"],
-          globalRoleKeys: ["contract_director"]
+          roleKeys,
+          globalRoleKeys: roleKeys
         },
         tokens: {
           accessToken: "e2e-access-token",
@@ -158,7 +223,36 @@ async function loginWithMocks(
   );
   await page.route("**/api/projects/project-1/contract-takeovers**", (route) => {
     const url = new URL(route.request().url());
-    const body = url.pathname.endsWith("/import-batches")
+    const body = url.pathname.endsWith("/tax-fact-revisions")
+      ? {
+          contractId: "contract-responsive",
+          current: {
+            invoiceType: takeoverFixture.invoiceType,
+            taxMode: takeoverFixture.taxMode,
+            defaultTaxRatePercent: takeoverFixture.defaultTaxRatePercent,
+            status: takeoverFixture.taxFactStatus,
+            source: takeoverFixture.taxFactSource,
+            confirmationExplanation: takeoverFixture.taxFactExplanation,
+            evidenceFileId: null,
+            revision: 0
+          },
+          rows: [
+            {
+              contractBillRowId: "contract-bill-row-1",
+              billName: "劳务分包价格清单",
+              rowKey: "labor-1",
+              itemName: "基础劳务",
+              specification: null,
+              unit: "项",
+              taxInclusiveUnitPrice: null,
+              taxRatePercent: null,
+              taxRateSource: "version_default",
+              pricingFactStatus: "unconfirmed"
+            }
+          ],
+          revisions: options.revisions ?? []
+        }
+      : url.pathname.endsWith("/import-batches")
       ? []
       : url.pathname.endsWith("/takeover-responsive")
         ? takeoverFixture
@@ -284,6 +378,61 @@ test("keeps takeover evidence controls reachable through the final 390px page fa
   expect(runtimeErrors).toEqual([]);
 });
 
+test("shows the finance review action only for a pending finance tax revision", async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await loginWithMocks(page, takeover, {
+    userId: "finance-director-1",
+    roleKeys: ["contract_staff", "finance_director"],
+    revisions: [pendingTaxRevision]
+  });
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+
+  const reviewPanel = page.locator(".tax-review-panel");
+  await expect(reviewPanel.getByText("待财务复核", { exact: true })).toBeVisible();
+  await expect(reviewPanel.getByRole("button", { name: "财务复核" })).toBeVisible();
+  await expect(reviewPanel.getByRole("button", { name: "合同部确认" })).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "contract-tax-review-pending-finance-1440x900.png"),
+    fullPage: true
+  });
+});
+
+test("shows the contract confirmation action only after finance review passed", async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await loginWithMocks(page, takeover, {
+    userId: "contract-director",
+    roleKeys: ["contract_director"],
+    revisions: [
+      {
+        ...pendingTaxRevision,
+        status: "pending_contract_confirmation",
+        financeReviewedByUserId: "finance-director-1",
+        financeReviewedAt: "2026-07-17T09:00:00.000Z",
+        financeReviewComment: "票种、税率和含税单价核对无误",
+        updatedAt: "2026-07-17T09:00:00.000Z"
+      }
+    ]
+  });
+  await page.goto("/历史合同接管");
+  await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
+
+  const reviewPanel = page.locator(".tax-review-panel");
+  await expect(reviewPanel.getByText("待合同部确认", { exact: true })).toBeVisible();
+  await expect(reviewPanel.getByRole("button", { name: "合同部确认" })).toBeVisible();
+  await expect(reviewPanel.getByRole("button", { name: "财务复核" })).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await page.screenshot({
+    path: path.join(testInfo.outputDir, "contract-tax-review-pending-contract-1440x900.png"),
+    fullPage: true
+  });
+});
+
 test("keeps the signed-in session when a sensitive download password is incorrect", async ({
   page
 }) => {
@@ -301,7 +450,6 @@ test("keeps the signed-in session when a sensitive download password is incorrec
     refreshRequests += 1;
     return route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
   });
-  page.once("dialog", (dialog) => dialog.accept());
 
   await loginWithMocks(page, takeoverWithDownloadableEvidence);
   await page.goto("/历史合同接管");
@@ -312,6 +460,7 @@ test("keeps the signed-in session when a sensitive download password is incorrec
     .getByPlaceholder("例如：复核历史付款凭证")
     .fill("生产验收：错误密码不应退出登录");
   await detail.getByRole("button", { name: "安全下载资料" }).click();
+  await page.getByRole("button", { name: "确认下载", exact: true }).click();
 
   await expect(page.getByText("当前密码不正确，请重新输入", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/%E5%8E%86%E5%8F%B2%E5%90%88%E5%90%8C%E6%8E%A5%E7%AE%A1$/u);
