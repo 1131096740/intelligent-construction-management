@@ -58,6 +58,7 @@ export class SpotProcurementPaymentController {
   }
 
   @Post(":paymentId/approval-withdrawal")
+  @RequireProjectRole("spot_procurement.payment.submit")
   withdrawApproval(
     @Param("paymentId") paymentId: string,
     @CurrentUser() user: AuthenticatedUser

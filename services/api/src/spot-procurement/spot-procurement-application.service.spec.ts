@@ -224,7 +224,8 @@ function harness() {
     suggestionWithClient: jest.fn().mockResolvedValue({
       availableBalanceAmountCents: "0",
       suggestedBalanceAmountCents: "0"
-    })
+    }),
+    releaseReservation: jest.fn()
   };
   const service = new SpotProcurementApplicationService(
     prisma as never,
@@ -1055,7 +1056,8 @@ describe("SpotProcurementApplicationService", () => {
         companyPaymentAmountCents: 1100n,
         payeeNameSnapshot: "北京 某某商贸",
         handlerUserId: "material-1",
-        createdByUserId: "manager-1"
+        createdByUserId: "manager-1",
+        paymentNote: null
       })
     });
     expect(result.status).toBe("approved_in_progress");
@@ -1693,6 +1695,9 @@ describe("SpotProcurementApplicationService", () => {
       status: "draft",
       changeReason: "调整单价"
     });
+    draftHarness.tx.spotProcurementPayment.updateMany.mockResolvedValue({
+      count: 1
+    });
 
     const result = await draftHarness.service.createVersion(
       "procurement-1",
@@ -1724,6 +1729,76 @@ describe("SpotProcurementApplicationService", () => {
       })
     );
     expect(result.versionNo).toBe(2);
+    expect(
+      draftHarness.balances.releaseReservation
+    ).not.toHaveBeenCalled();
+  });
+
+  it("stops a version switch when draft invalidation loses its status CAS", async () => {
+    const { service, tx, balances } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          approvedAmountCents: 4100n
+        }
+      ])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approved" }]);
+    role(tx, "material_staff");
+    tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-draft", status: "draft" }
+    ]);
+    tx.spotProcurementPayment.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.createVersion("procurement-1", "material-1", {
+        ...draftInput,
+        lines: [{ ...invoiceLine, unitPrice: "4" }],
+        changeReason: "调整单价"
+      })
+    ).rejects.toThrow("付款状态已变化，请重试采购版本变更");
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+    expect(balances.releaseReservation).not.toHaveBeenCalled();
+  });
+
+  it("allows version switching only after an active payment has already reached a released terminal state", async () => {
+    const { service, tx, balances } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          approvedAmountCents: 4100n
+        }
+      ])
+      .mockResolvedValueOnce([{ ...versionLock, status: "approved" }]);
+    role(tx, "material_staff");
+    tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-returned", status: "returned" }
+    ]);
+    tx.spotProcurementVersion.create.mockResolvedValue({
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      changeReason: "付款已退回后调整采购事实"
+    });
+
+    const result = await service.createVersion(
+      "procurement-1",
+      "material-1",
+      {
+        ...draftInput,
+        lines: [{ ...invoiceLine, unitPrice: "4" }],
+        changeReason: "付款已退回后调整采购事实"
+      }
+    );
+
+    expect(result.versionNo).toBe(2);
+    expect(tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
+    expect(balances.releaseReservation).not.toHaveBeenCalled();
   });
 
   it("rejects a new version whose field-by-field change summary is empty", async () => {

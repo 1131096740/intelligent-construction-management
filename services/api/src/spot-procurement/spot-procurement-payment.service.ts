@@ -48,6 +48,11 @@ const NON_VOIDABLE_EXECUTION_STATUSES = new Set([
   "paid",
   "settled"
 ]);
+const VOIDABLE_PAYMENT_STATUSES = new Set([
+  "draft",
+  "approval_pending",
+  "approved_pending_payment"
+]);
 const PAYMENT_METHODS = new Set<string>(
   SPOT_PROCUREMENT_PAYMENT_METHODS
 );
@@ -219,7 +224,7 @@ export class SpotProcurementPaymentService {
             payeeBankNameSnapshot: null,
             payeeBankAccountSnapshot: null,
             expectedPaymentAt: null,
-            paymentNote: "后续付款草稿，待采购经办人确认",
+            paymentNote: null,
             supportingAttachmentFileId: null,
             merchantPaymentProofFileId: null,
             balanceOverrideReason: null,
@@ -283,10 +288,41 @@ export class SpotProcurementPaymentService {
           suggestion,
           false
         );
+        const systemAdjustedBalance =
+          Boolean(payment.balanceOverrideReason) &&
+          paymentFacts.settlementAmountCents ===
+            payment.settlementAmountCents &&
+          paymentFacts.supplierBalanceAmountCents <
+            payment.supplierBalanceAmountCents &&
+          paymentFacts.supplierBalanceAmountCents ===
+            BigInt(suggestion.suggestedBalanceAmountCents) &&
+          prepared.balanceOverrideReason === null;
         const updated = await tx.spotProcurementPayment.update({
           where: { id: payment.id },
           data: prepared
         });
+        if (systemAdjustedBalance) {
+          await this.audit.record(tx, {
+            actorUserId,
+            action:
+              "spot_procurement.payment.balance.system_adjust",
+            businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            businessId: payment.id,
+            metadata: {
+              actorUserId,
+              procurementId: version.procurementId,
+              procurementVersionId: version.id,
+              oldSupplierBalanceAmountCents:
+                payment.supplierBalanceAmountCents.toString(),
+              financeFloorAmountCents:
+                payment.supplierBalanceAmountCents.toString(),
+              latestSuggestedBalanceAmountCents:
+                suggestion.suggestedBalanceAmountCents,
+              reason:
+                "供应商可用余额变化，按最新系统建议同步降低抵扣金额"
+            }
+          });
+        }
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.payment.draft.update",
@@ -817,8 +853,8 @@ export class SpotProcurementPaymentService {
             "付款申请已发生执行事实，不能直接作废"
           );
         }
-        if (["voided", "invalidated"].includes(payment.status)) {
-          throw new ConflictException("付款申请已经终止，不能重复作废");
+        if (!VOIDABLE_PAYMENT_STATUSES.has(payment.status)) {
+          throw new ConflictException("当前付款申请状态不允许作废");
         }
         const actorRoles = await this.loadActorRoleKeys(
           tx,
@@ -836,12 +872,43 @@ export class SpotProcurementPaymentService {
           "只有项目经理或财务主管可以作废付款申请"
         );
         const reason = requiredText(reasonInput, "请填写付款申请作废原因");
+        let approval: ApprovalLockRow | null = null;
         if (payment.status === "approval_pending") {
-          const approval = await this.requireLockedApproval(tx, payment.id);
-          await tx.approvalInstance.update({
-            where: { id: approval.id },
+          approval = await this.requireLockedApproval(tx, payment.id);
+          const approvalVoided =
+            await tx.approvalInstance.updateMany({
+            where: {
+              id: approval.id,
+              status: "approval_pending"
+            },
             data: { status: "voided" }
           });
+          if (approvalVoided.count !== 1) {
+            throw new ConflictException(
+              "付款审批状态已变化，请重试付款作废"
+            );
+          }
+        }
+        const now = new Date();
+        const paymentVoided =
+          await tx.spotProcurementPayment.updateMany({
+          where: {
+            id: payment.id,
+            status: payment.status
+          },
+          data: {
+            status: "voided",
+            invalidatedAt: now,
+            invalidatedByUserId: actorUserId,
+            invalidatedReason: reason
+          }
+        });
+        if (paymentVoided.count !== 1) {
+          throw new ConflictException(
+            "付款状态已变化，请重试付款作废"
+          );
+        }
+        if (approval) {
           await tx.approvalActionLog.create({
             data: {
               approvalInstanceId: approval.id,
@@ -857,16 +924,6 @@ export class SpotProcurementPaymentService {
           actorUserId,
           `付款申请作废：${reason}`
         );
-        const now = new Date();
-        const updated = await tx.spotProcurementPayment.update({
-          where: { id: payment.id },
-          data: {
-            status: "voided",
-            invalidatedAt: now,
-            invalidatedByUserId: actorUserId,
-            invalidatedReason: reason
-          }
-        });
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.payment.void",
@@ -879,52 +936,12 @@ export class SpotProcurementPaymentService {
             reason
           }
         });
-        return this.paymentReadModel(updated);
+        return this.paymentReadModel({
+          ...payment,
+          status: "voided"
+        });
       })
     );
-  }
-
-  async invalidateForVersionChange(
-    tx: Prisma.TransactionClient,
-    paymentId: string,
-    actorUserId: string,
-    reason: string
-  ) {
-    await this.balances.releaseReservation(
-      tx,
-      paymentId,
-      actorUserId,
-      reason
-    );
-    const now = new Date();
-    const invalidated = await tx.spotProcurementPayment.updateMany({
-      where: {
-        id: paymentId,
-        status: {
-          in: [
-            "draft",
-            "approval_pending",
-            "approved_pending_payment"
-          ]
-        }
-      },
-      data: {
-        status: "invalidated",
-        invalidatedAt: now,
-        invalidatedByUserId: actorUserId,
-        invalidatedReason: reason
-      }
-    });
-    if (invalidated.count === 1) {
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "spot_procurement.payment.invalidate",
-        businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
-        businessId: paymentId,
-        metadata: { reason }
-      });
-    }
-    return invalidated;
   }
 
   private async preparePayment(
@@ -988,17 +1005,28 @@ export class SpotProcurementPaymentService {
     if (paymentMethod && !PAYMENT_METHODS.has(paymentMethod)) {
       throw new BadRequestException("付款方式不正确");
     }
+    const paymentPathChanged = paymentPath !== payment.paymentPath;
+    const paymentMethodChanged =
+      paymentMethod !== payment.paymentMethod;
+    const resetPayeeAccountSnapshots =
+      paymentPathChanged || paymentMethodChanged;
     const payeeAccountNameSnapshot = mergedText(
       input.payeeAccountName,
-      payment.payeeAccountNameSnapshot
+      resetPayeeAccountSnapshots
+        ? null
+        : payment.payeeAccountNameSnapshot
     );
     const payeeBankNameSnapshot = mergedText(
       input.payeeBankName,
-      payment.payeeBankNameSnapshot
+      resetPayeeAccountSnapshots
+        ? null
+        : payment.payeeBankNameSnapshot
     );
     const payeeBankAccountSnapshot = mergedText(
       input.payeeBankAccount,
-      payment.payeeBankAccountSnapshot
+      resetPayeeAccountSnapshots
+        ? null
+        : payment.payeeBankAccountSnapshot
     );
     const expectedPaymentAt =
       input.expectedPaymentAt === undefined
@@ -1018,18 +1046,26 @@ export class SpotProcurementPaymentService {
       input.merchantPaymentProofFileId,
       payment.merchantPaymentProofFileId
     );
-    if (companyPaymentAmountCents > 0n && requireComplete) {
+    if (requireComplete && !paymentNote) {
+      throw new BadRequestException("请填写真实付款说明");
+    }
+    if (requireComplete && !supportingAttachmentFileId) {
+      throw new BadRequestException("请上传付款申请支撑附件");
+    }
+    if (companyPaymentAmountCents > 0n) {
       if (!paymentMethod) {
-        throw new BadRequestException("请填写公司付款方式");
+        if (requireComplete) {
+          throw new BadRequestException("请填写公司付款方式");
+        }
       }
-      if (!expectedPaymentAt) {
+      if (requireComplete && !expectedPaymentAt) {
         throw new BadRequestException("请选择预计付款日期");
-      }
-      if (!paymentNote) {
-        throw new BadRequestException("请填写付款说明");
       }
       if (
         paymentMethod === "bank_transfer" &&
+        (requireComplete ||
+          paymentPathChanged ||
+          paymentMethodChanged) &&
         (!payeeAccountNameSnapshot ||
           !payeeBankNameSnapshot ||
           !payeeBankAccountSnapshot)
@@ -1127,15 +1163,18 @@ export class SpotProcurementPaymentService {
       payeeUserId,
       payeeNameSnapshot,
       payeeAccountNameSnapshot:
-        companyPaymentAmountCents === 0n
+        companyPaymentAmountCents === 0n ||
+        paymentMethod !== "bank_transfer"
           ? null
           : payeeAccountNameSnapshot,
       payeeBankNameSnapshot:
-        companyPaymentAmountCents === 0n
+        companyPaymentAmountCents === 0n ||
+        paymentMethod !== "bank_transfer"
           ? null
           : payeeBankNameSnapshot,
       payeeBankAccountSnapshot:
-        companyPaymentAmountCents === 0n
+        companyPaymentAmountCents === 0n ||
+        paymentMethod !== "bank_transfer"
           ? null
           : payeeBankAccountSnapshot,
       expectedPaymentAt:
@@ -1162,20 +1201,39 @@ export class SpotProcurementPaymentService {
     const suggestedBalanceAmountCents = BigInt(
       suggestion.suggestedBalanceAmountCents
     );
+    const matchesLatestSuggestion =
+      prepared.supplierBalanceAmountCents ===
+      suggestedBalanceAmountCents;
+    const isSystemConstrainedDecrease =
+      Boolean(payment.balanceOverrideReason) &&
+      prepared.settlementAmountCents ===
+        payment.settlementAmountCents &&
+      prepared.supplierBalanceAmountCents <
+        payment.supplierBalanceAmountCents &&
+      matchesLatestSuggestion &&
+      suggestedBalanceAmountCents <
+        payment.supplierBalanceAmountCents;
     if (
       payment.balanceOverrideReason &&
       prepared.supplierBalanceAmountCents <
-        payment.supplierBalanceAmountCents
+        payment.supplierBalanceAmountCents &&
+      !isSystemConstrainedDecrease
     ) {
       throw new BadRequestException(
         "经办人不能把供应商余额抵扣金额降到财务主管指定金额以下，请再次提交财务主管调整"
       );
     }
-    if (
-      prepared.supplierBalanceAmountCents >=
-      suggestedBalanceAmountCents
-    ) {
+    if (matchesLatestSuggestion) {
       return { ...prepared, balanceOverrideReason: null };
+    }
+    if (
+      requireComplete &&
+      prepared.supplierBalanceAmountCents >
+        suggestedBalanceAmountCents
+    ) {
+      throw new BadRequestException(
+        "供应商可用余额已变化，请将抵扣金额调整为最新系统建议后重新提交"
+      );
     }
     if (!payment.balanceOverrideReason) {
       if (requireComplete) {
@@ -1599,6 +1657,9 @@ export class SpotProcurementPaymentService {
   }
 
   private paymentSnapshot(payment: PreparedPayment) {
+    const bankAccount = auditBankAccountFacts(
+      payment.payeeBankAccountSnapshot
+    );
     return {
       settlementAmountCents:
         payment.settlementAmountCents.toString(),
@@ -1614,8 +1675,7 @@ export class SpotProcurementPaymentService {
       payeeAccountNameSnapshot:
         payment.payeeAccountNameSnapshot,
       payeeBankNameSnapshot: payment.payeeBankNameSnapshot,
-      payeeBankAccountSnapshot:
-        payment.payeeBankAccountSnapshot,
+      ...bankAccount,
       expectedPaymentAt:
         payment.expectedPaymentAt?.toISOString() ?? null,
       paymentNote: payment.paymentNote,
@@ -1815,6 +1875,15 @@ function requiredText(value: string, message: string) {
   const text = value.trim();
   if (!text) throw new BadRequestException(message);
   return text;
+}
+
+function auditBankAccountFacts(value: string | null) {
+  const normalized = value?.replace(/\s+/gu, "") ?? "";
+  return {
+    bankAccountProvided: normalized.length > 0,
+    bankAccountLast4:
+      normalized.length > 0 ? normalized.slice(-4) : null
+  };
 }
 
 function prismaErrorCode(error: unknown) {

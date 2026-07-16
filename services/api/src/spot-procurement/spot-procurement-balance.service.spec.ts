@@ -157,7 +157,9 @@ describe("SpotProcurementBalanceService", () => {
         actorUserId: "material-1"
       })
     ).rejects.toEqual(
-      new ConflictException("供应商可用余额不足，请刷新付款草稿后重试")
+      new ConflictException(
+        "供应商可用余额已变化，请将抵扣金额调整为最新系统建议后重新提交"
+      )
     );
     expect(tx.supplierBalanceReservation.create).not.toHaveBeenCalled();
   });

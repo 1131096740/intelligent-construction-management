@@ -762,7 +762,7 @@ export class SpotProcurementApplicationService {
             payeeNameSnapshot: version.supplierNameSnapshot,
             handlerUserId: version.handlerUserId,
             createdByUserId: actorUserId,
-            paymentNote: "采购申请最终审批通过后自动生成，待采购经办人确认"
+            paymentNote: null
           }
         });
         await this.audit.record(tx, {
@@ -931,7 +931,7 @@ export class SpotProcurementApplicationService {
           .filter((payment) => payment.status === "draft")
           .map((payment) => payment.id);
         if (draftPaymentIds.length) {
-          await tx.spotProcurementPayment.updateMany({
+          const invalidated = await tx.spotProcurementPayment.updateMany({
             where: { id: { in: draftPaymentIds }, status: "draft" },
             data: {
               status: "invalidated",
@@ -940,6 +940,11 @@ export class SpotProcurementApplicationService {
               invalidatedReason: `采购版本变更：${changeReason}`
             }
           });
+          if (invalidated.count !== draftPaymentIds.length) {
+            throw new ConflictException(
+              "付款状态已变化，请重试采购版本变更"
+            );
+          }
         }
         await tx.spotProcurementVersion.update({
           where: { id: previousVersion.id },

@@ -52,7 +52,7 @@ const draftPayment = {
   payeeBankNameSnapshot: null,
   payeeBankAccountSnapshot: null,
   expectedPaymentAt: null,
-  paymentNote: "自动草稿",
+  paymentNote: null,
   supportingAttachmentFileId: null,
   merchantPaymentProofFileId: null,
   balanceOverrideReason: null,
@@ -78,7 +78,15 @@ function transactionDelegate() {
         isActive: true
       })
     },
-    fileObject: { findMany: jest.fn().mockResolvedValue([]) },
+    fileObject: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: "file-support",
+          storageStatus: "active",
+          uploadedByUserId: "material-1"
+        }
+      ])
+    },
     spotProcurementPayment: {
       create: jest.fn(),
       update: jest.fn(),
@@ -90,7 +98,8 @@ function transactionDelegate() {
         status: "approval_pending",
         currentNodeIndex: 0
       }),
-      update: jest.fn()
+      update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     approvalActionLog: { create: jest.fn() },
     auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
@@ -165,6 +174,23 @@ function validDraftInput(): UpdateSpotProcurementPaymentDraftDto {
   };
 }
 
+function completePayment(
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    ...draftPayment,
+    paymentPath: "supplier_direct",
+    paymentMethod: "bank_transfer",
+    payeeAccountNameSnapshot: "北京某某商贸",
+    payeeBankNameSnapshot: "中国建设银行",
+    payeeBankAccountSnapshot: "622200001",
+    expectedPaymentAt: new Date("2026-07-20T00:00:00.000Z"),
+    paymentNote: "第一期付款",
+    supportingAttachmentFileId: "file-support",
+    ...overrides
+  };
+}
+
 async function validationErrors(
   value: unknown,
   metatype:
@@ -215,6 +241,12 @@ describe("SpotProcurementPaymentController", () => {
         RequestMethod.POST,
         ":paymentId/approval",
         "spot_procurement.payment.approve"
+      ],
+      [
+        "withdrawApproval",
+        RequestMethod.POST,
+        ":paymentId/approval-withdrawal",
+        "spot_procurement.payment.submit"
       ]
     ] as const;
 
@@ -335,7 +367,9 @@ describe("SpotProcurementPaymentService", () => {
       data: expect.objectContaining({
         settlementAmountCents: 4_000n,
         supplierBalanceAmountCents: 1_500n,
-        companyPaymentAmountCents: 2_500n
+        companyPaymentAmountCents: 2_500n,
+        paymentNote: null,
+        supportingAttachmentFileId: null
       })
     });
     expect(balance.reserve).not.toHaveBeenCalled();
@@ -451,6 +485,141 @@ describe("SpotProcurementPaymentService", () => {
     });
   });
 
+  it.each([
+    {
+      name: "供应商直付",
+      payment: completePayment(),
+      missing: {
+        paymentNote: null,
+        supportingAttachmentFileId: "file-support"
+      },
+      message: "请填写真实付款说明"
+    },
+    {
+      name: "经办人垫付报回",
+      payment: completePayment({
+        paymentPath: "handler_reimbursement",
+        merchantPaymentProofFileId: "file-support"
+      }),
+      missing: {
+        paymentNote: "垫付报回",
+        supportingAttachmentFileId: null
+      },
+      message: "请上传付款申请支撑附件"
+    },
+    {
+      name: "全额余额抵扣",
+      payment: completePayment({
+        settlementAmountCents: 5_000n,
+        supplierBalanceAmountCents: 5_000n,
+        companyPaymentAmountCents: 0n,
+        paymentMethod: null,
+        payeeAccountNameSnapshot: null,
+        payeeBankNameSnapshot: null,
+        payeeBankAccountSnapshot: null,
+        expectedPaymentAt: null
+      }),
+      missing: {
+        paymentNote: null,
+        supportingAttachmentFileId: "file-support"
+      },
+      message: "请填写真实付款说明"
+    }
+  ])("提交$name仍要求真实说明和支撑附件", async ({ payment, missing, message }) => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([{ ...payment, ...missing }]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents:
+        payment.supplierBalanceAmountCents.toString(),
+      suggestedBalanceAmountCents:
+        payment.supplierBalanceAmountCents.toString()
+    });
+
+    await expect(
+      service.submit("payment-1", "material-1")
+    ).rejects.toThrow(message);
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(balance.reserve).not.toHaveBeenCalled();
+  });
+
+  it("allows one active handler-uploaded file to serve both support and merchant-proof semantic fields", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([draftPayment]);
+    role(tx, "material_staff");
+    tx.spotProcurementPayment.update.mockResolvedValue(
+      completePayment({
+        paymentPath: "handler_reimbursement",
+        merchantPaymentProofFileId: "file-support"
+      })
+    );
+
+    await service.updateDraft("payment-1", "material-1", {
+      ...validDraftInput(),
+      paymentPath: "handler_reimbursement",
+      merchantPaymentProofFileId: "file-support"
+    });
+
+    expect(tx.fileObject.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["file-support"] } },
+      select: {
+        id: true,
+        storageStatus: true,
+        uploadedByUserId: true
+      }
+    });
+  });
+
+  it("clears stale payee accounts when the payment path changes and requires fresh bank details", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([completePayment()]);
+    role(tx, "material_staff");
+
+    await expect(
+      service.updateDraft("payment-1", "material-1", {
+        paymentPath: "handler_reimbursement",
+        merchantPaymentProofFileId: "file-support"
+      })
+    ).rejects.toThrow("银行转账必须填写完整收款账户信息");
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+  });
+
+  it("clears bank-only snapshots when payment method changes away from bank transfer", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([completePayment()]);
+    role(tx, "material_staff");
+    tx.spotProcurementPayment.update.mockResolvedValue(
+      completePayment({
+        paymentMethod: "cash",
+        payeeAccountNameSnapshot: null,
+        payeeBankNameSnapshot: null,
+        payeeBankAccountSnapshot: null
+      })
+    );
+
+    await service.updateDraft("payment-1", "material-1", {
+      paymentMethod: "cash"
+    });
+
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        paymentMethod: "cash",
+        payeeAccountNameSnapshot: null,
+        payeeBankNameSnapshot: null,
+        payeeBankAccountSnapshot: null
+      })
+    });
+  });
+
   it("rejects a malformed three-part amount composition before writing", async () => {
     const { service, tx } = harness();
     tx.$queryRaw
@@ -475,18 +644,11 @@ describe("SpotProcurementPaymentService", () => {
 
   it("submits under Serializable after version then stable payment locks, reserves balance and freezes approval facts", async () => {
     const { service, prisma, tx, balance, audit } = harness();
-    const completeDraft = {
-      ...draftPayment,
+    const completeDraft = completePayment({
       settlementAmountCents: 8_000n,
       supplierBalanceAmountCents: 3_000n,
-      companyPaymentAmountCents: 5_000n,
-      paymentPath: "supplier_direct",
-      paymentMethod: "bank_transfer",
-      payeeAccountNameSnapshot: "北京某某商贸",
-      payeeBankNameSnapshot: "中国建设银行",
-      payeeBankAccountSnapshot: "622200001",
-      expectedPaymentAt: new Date("2026-07-20T00:00:00.000Z")
-    };
+      companyPaymentAmountCents: 5_000n
+    });
     tx.$queryRaw
       .mockResolvedValueOnce([version])
       .mockResolvedValueOnce([completeDraft]);
@@ -499,6 +661,10 @@ describe("SpotProcurementPaymentService", () => {
     balance.reserve.mockResolvedValue({
       reservationId: "reservation-1",
       amountCents: 3_000n
+    });
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "3000",
+      suggestedBalanceAmountCents: "3000"
     });
 
     const result = await service.submit("payment-1", "material-1");
@@ -552,13 +718,99 @@ describe("SpotProcurementPaymentService", () => {
           settlementAmountCents: "8000",
           supplierBalanceAmountCents: "3000",
           companyPaymentAmountCents: "5000",
-          reservationId: "reservation-1"
+          reservationId: "reservation-1",
+          bankAccountProvided: true,
+          bankAccountLast4: "0001"
         })
       })
+    );
+    const submitAudit = audit.record.mock.calls.find(
+      ([, input]) =>
+        (input as { action?: string }).action ===
+        "spot_procurement.payment.approval.submit"
+    )?.[1] as { metadata?: Record<string, unknown> };
+    expect(submitAudit.metadata).not.toHaveProperty(
+      "payeeBankAccountSnapshot"
     );
     expect(prisma.$transaction).toHaveBeenCalledWith(
       expect.any(Function),
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+  });
+
+  it.each([
+    {
+      account: "12",
+      companyPaymentAmountCents: 5_000n,
+      supplierBalanceAmountCents: 3_000n,
+      expectedProvided: true,
+      expectedLast4: "12"
+    },
+    {
+      account: null,
+      companyPaymentAmountCents: 0n,
+      supplierBalanceAmountCents: 8_000n,
+      expectedProvided: false,
+      expectedLast4: null
+    }
+  ])("stores only safe bank-account audit facts for short or absent accounts", async ({
+    account,
+    companyPaymentAmountCents,
+    supplierBalanceAmountCents,
+    expectedProvided,
+    expectedLast4
+  }) => {
+    const { service, tx, balance, audit } = harness();
+    const completeDraft = completePayment({
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents,
+      companyPaymentAmountCents,
+      paymentMethod:
+        companyPaymentAmountCents === 0n ? null : "bank_transfer",
+      payeeAccountNameSnapshot:
+        companyPaymentAmountCents === 0n ? null : "北京某某商贸",
+      payeeBankNameSnapshot:
+        companyPaymentAmountCents === 0n ? null : "中国建设银行",
+      payeeBankAccountSnapshot: account,
+      expectedPaymentAt:
+        companyPaymentAmountCents === 0n
+          ? null
+          : new Date("2026-07-20T00:00:00.000Z")
+    });
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([completeDraft]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents:
+        supplierBalanceAmountCents.toString(),
+      suggestedBalanceAmountCents:
+        supplierBalanceAmountCents.toString()
+    });
+    balance.reserve.mockResolvedValue({
+      reservationId: "reservation-safe-audit",
+      amountCents: supplierBalanceAmountCents
+    });
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...completeDraft,
+      status: "approval_pending"
+    });
+
+    await service.submit("payment-1", "material-1");
+
+    const submitAudit = audit.record.mock.calls.find(
+      ([, input]) =>
+        (input as { action?: string }).action ===
+        "spot_procurement.payment.approval.submit"
+    )?.[1] as { metadata?: Record<string, unknown> };
+    expect(submitAudit.metadata).toEqual(
+      expect.objectContaining({
+        bankAccountProvided: expectedProvided,
+        bankAccountLast4: expectedLast4
+      })
+    );
+    expect(submitAudit.metadata).not.toHaveProperty(
+      "payeeBankAccountSnapshot"
     );
   });
 
@@ -567,18 +819,10 @@ describe("SpotProcurementPaymentService", () => {
     tx.$queryRaw
       .mockResolvedValueOnce([version])
       .mockResolvedValueOnce([
-        {
-          ...draftPayment,
+        completePayment({
           settlementAmountCents: 6_000n,
-          companyPaymentAmountCents: 6_000n,
-          paymentPath: "supplier_direct",
-          paymentMethod: "bank_transfer",
-          payeeAccountNameSnapshot: "北京某某商贸",
-          payeeBankNameSnapshot: "中国建设银行",
-          payeeBankAccountSnapshot: "622200001",
-          expectedPaymentAt: new Date("2026-07-20T00:00:00.000Z"),
-          paymentNote: "第一期付款"
-        },
+          companyPaymentAmountCents: 6_000n
+        }),
         {
           ...draftPayment,
           id: "payment-2",
@@ -1098,19 +1342,12 @@ describe("SpotProcurementPaymentService", () => {
     tx.$queryRaw
       .mockResolvedValueOnce([version])
       .mockResolvedValueOnce([
-        {
-          ...draftPayment,
+        completePayment({
           settlementAmountCents: 8_000n,
           supplierBalanceAmountCents: 1_000n,
           companyPaymentAmountCents: 7_000n,
-          paymentPath: "supplier_direct",
-          paymentMethod: "bank_transfer",
-          payeeAccountNameSnapshot: "北京某某商贸",
-          payeeBankNameSnapshot: "中国建设银行",
-          payeeBankAccountSnapshot: "622200001",
-          expectedPaymentAt: new Date(),
           paymentNote: "申请付款"
-        }
+        })
       ]);
     role(tx, "material_staff");
     balance.suggestionWithClient.mockResolvedValue({
@@ -1130,20 +1367,13 @@ describe("SpotProcurementPaymentService", () => {
 
   it("allows the handler to submit the finance-adjusted draft unchanged and freezes the reason", async () => {
     const { service, tx, balance, audit } = harness();
-    const financeDraft = {
-      ...draftPayment,
+    const financeDraft = completePayment({
       settlementAmountCents: 8_000n,
       supplierBalanceAmountCents: 1_000n,
       companyPaymentAmountCents: 7_000n,
-      paymentPath: "supplier_direct",
-      paymentMethod: "bank_transfer",
-      payeeAccountNameSnapshot: "北京某某商贸",
-      payeeBankNameSnapshot: "中国建设银行",
-      payeeBankAccountSnapshot: "622200001",
-      expectedPaymentAt: new Date(),
       paymentNote: "申请付款",
       balanceOverrideReason: "项目现金安排需要保留供应商余额"
-    };
+    });
     tx.$queryRaw
       .mockResolvedValueOnce([version])
       .mockResolvedValueOnce([financeDraft]);
@@ -1286,6 +1516,210 @@ describe("SpotProcurementPaymentService", () => {
     });
   });
 
+  it("allows only an exact latest-suggestion decrease when availability falls below the finance floor and audits the system adjustment", async () => {
+    const { service, tx, balance, audit } = harness();
+    const financeDraft = completePayment({
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents: 1_000n,
+      companyPaymentAmountCents: 7_000n,
+      balanceOverrideReason: "财务指定保留现金"
+    });
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([financeDraft]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "500",
+      suggestedBalanceAmountCents: "500"
+    });
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...financeDraft,
+      supplierBalanceAmountCents: 500n,
+      companyPaymentAmountCents: 7_500n,
+      balanceOverrideReason: null
+    });
+
+    await service.updateDraft("payment-1", "material-1", {
+      supplierBalanceAmountCents: "500",
+      companyPaymentAmountCents: "7500"
+    });
+
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        supplierBalanceAmountCents: 500n,
+        balanceOverrideReason: null
+      })
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.payment.balance.system_adjust",
+        businessId: "payment-1",
+        metadata: expect.objectContaining({
+          procurementVersionId: "version-1",
+          oldSupplierBalanceAmountCents: "1000",
+          financeFloorAmountCents: "1000",
+          latestSuggestedBalanceAmountCents: "500",
+          reason: "供应商可用余额变化，按最新系统建议同步降低抵扣金额"
+        })
+      })
+    );
+  });
+
+  it("does not treat a handler-driven settlement reduction as a system-constrained floor adjustment", async () => {
+    const { service, tx, balance, audit } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        completePayment({
+          settlementAmountCents: 8_000n,
+          supplierBalanceAmountCents: 1_000n,
+          companyPaymentAmountCents: 7_000n,
+          balanceOverrideReason: "财务指定保留现金"
+        })
+      ]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "500",
+      suggestedBalanceAmountCents: "500"
+    });
+
+    await expect(
+      service.updateDraft("payment-1", "material-1", {
+        settlementAmountCents: "500",
+        supplierBalanceAmountCents: "500",
+        companyPaymentAmountCents: "0"
+      })
+    ).rejects.toThrow(
+      "经办人不能把供应商余额抵扣金额降到财务主管指定金额以下，请再次提交财务主管调整"
+    );
+    expect(audit.record).not.toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.payment.balance.system_adjust"
+      })
+    );
+  });
+
+  it("does not clear a finance override merely because the handler raises above the latest suggestion, preventing a two-step decrease", async () => {
+    const raised = harness();
+    const financeDraft = completePayment({
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents: 1_000n,
+      companyPaymentAmountCents: 7_000n,
+      balanceOverrideReason: "财务指定保留现金"
+    });
+    raised.tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([financeDraft]);
+    role(raised.tx, "material_staff");
+    raised.balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "500",
+      suggestedBalanceAmountCents: "500"
+    });
+    raised.tx.spotProcurementPayment.update.mockResolvedValue({
+      ...financeDraft,
+      supplierBalanceAmountCents: 1_500n,
+      companyPaymentAmountCents: 6_500n
+    });
+
+    await raised.service.updateDraft("payment-1", "material-1", {
+      supplierBalanceAmountCents: "1500",
+      companyPaymentAmountCents: "6500"
+    });
+    expect(raised.tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        balanceOverrideReason: "财务指定保留现金"
+      })
+    });
+
+    const lowered = harness();
+    lowered.tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...financeDraft,
+          supplierBalanceAmountCents: 1_500n,
+          companyPaymentAmountCents: 6_500n
+        }
+      ]);
+    role(lowered.tx, "material_staff");
+    lowered.balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "500",
+      suggestedBalanceAmountCents: "500"
+    });
+    await expect(
+      lowered.service.updateDraft("payment-1", "material-1", {
+        supplierBalanceAmountCents: "700",
+        companyPaymentAmountCents: "7300"
+      })
+    ).rejects.toThrow(
+      "经办人不能把供应商余额抵扣金额降到财务主管指定金额以下，请再次提交财务主管调整"
+    );
+  });
+
+  it("keeps the finance override when the handler only edits the payment note", async () => {
+    const { service, tx, balance } = harness();
+    const financeDraft = completePayment({
+      settlementAmountCents: 8_000n,
+      supplierBalanceAmountCents: 1_000n,
+      companyPaymentAmountCents: 7_000n,
+      balanceOverrideReason: "财务指定保留现金"
+    });
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([financeDraft]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "500",
+      suggestedBalanceAmountCents: "500"
+    });
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...financeDraft,
+      paymentNote: "只修改付款备注"
+    });
+
+    await service.updateDraft("payment-1", "material-1", {
+      paymentNote: "只修改付款备注"
+    });
+
+    expect(tx.spotProcurementPayment.update).toHaveBeenCalledWith({
+      where: { id: "payment-1" },
+      data: expect.objectContaining({
+        supplierBalanceAmountCents: 1_000n,
+        balanceOverrideReason: "财务指定保留现金"
+      })
+    });
+  });
+
+  it("rejects submit with a fixed re-adjust message when the latest suggestion changed again", async () => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        completePayment({
+          settlementAmountCents: 8_000n,
+          supplierBalanceAmountCents: 500n,
+          companyPaymentAmountCents: 7_500n,
+          balanceOverrideReason: null
+        })
+      ]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "400",
+      suggestedBalanceAmountCents: "400"
+    });
+
+    await expect(
+      service.submit("payment-1", "material-1")
+    ).rejects.toThrow(
+      "供应商可用余额已变化，请将抵扣金额调整为最新系统建议后重新提交"
+    );
+    expect(balance.reserve).not.toHaveBeenCalled();
+  });
+
   it("applicant withdrawal releases once, keeps old submission immutable and creates a new draft", async () => {
     const { service, tx, balance } = harness();
     tx.$queryRaw
@@ -1341,13 +1775,7 @@ describe("SpotProcurementPaymentService", () => {
         }
       ]);
     role(tx, "finance_director");
-    tx.spotProcurementPayment.update.mockResolvedValue({
-      ...draftPayment,
-      status: "voided",
-      invalidatedAt: new Date(),
-      invalidatedByUserId: "finance-1",
-      invalidatedReason: "采购已取消"
-    });
+    tx.spotProcurementPayment.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await service.voidPayment(
       "payment-1",
@@ -1356,6 +1784,17 @@ describe("SpotProcurementPaymentService", () => {
     );
 
     expect(result.status).toBe("voided");
+    expect(tx.spotProcurementPayment.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "payment-1",
+        status: "approved_pending_payment"
+      },
+      data: expect.objectContaining({
+        status: "voided",
+        invalidatedByUserId: "finance-1",
+        invalidatedReason: "采购已取消"
+      })
+    });
     expect(balance.releaseReservation).toHaveBeenCalledWith(
       tx,
       "payment-1",
@@ -1372,6 +1811,86 @@ describe("SpotProcurementPaymentService", () => {
         })
       })
     );
+  });
+
+  it.each([
+    "returned",
+    "rejected",
+    "withdrawn",
+    "voided",
+    "invalidated"
+  ])("keeps terminal payment status %s immutable during void", async (status) => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([{ ...draftPayment, status }]);
+    role(tx, "finance_director");
+
+    await expect(
+      service.voidPayment("payment-1", "finance-1", "不得覆盖终态")
+    ).rejects.toThrow("当前付款申请状态不允许作废");
+    expect(balance.releaseReservation).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("stops voiding when the payment or approval state CAS loses a concurrent race", async () => {
+    const paymentRace = harness();
+    paymentRace.tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        { ...draftPayment, status: "approved_pending_payment" }
+      ]);
+    role(paymentRace.tx, "finance_director");
+    paymentRace.tx.spotProcurementPayment.updateMany.mockResolvedValue({
+      count: 0
+    });
+    await expect(
+      paymentRace.service.voidPayment(
+        "payment-1",
+        "finance-1",
+        "并发测试"
+      )
+    ).rejects.toThrow("付款状态已变化，请重试付款作废");
+    expect(paymentRace.balance.releaseReservation).not.toHaveBeenCalled();
+
+    const approvalRace = harness();
+    approvalRace.tx.approvalInstance.updateMany.mockResolvedValue({
+      count: 0
+    });
+    approvalRace.tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        { ...draftPayment, status: "approval_pending" }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: "material-1",
+          frozenNodes: []
+        }
+      ]);
+    role(approvalRace.tx, "finance_director");
+    await expect(
+      approvalRace.service.voidPayment(
+        "payment-1",
+        "finance-1",
+        "并发测试"
+      )
+    ).rejects.toThrow("付款审批状态已变化，请重试付款作废");
+    expect(approvalRace.balance.releaseReservation).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a direct version-invalidation shortcut for active payments", () => {
+    const { service } = harness();
+    expect(
+      (
+        service as unknown as {
+          invalidateForVersionChange?: unknown;
+        }
+      ).invalidateForVersionChange
+    ).toBeUndefined();
   });
 
   it.each(["P2002", "P2003", "P2025", "P2034"])(

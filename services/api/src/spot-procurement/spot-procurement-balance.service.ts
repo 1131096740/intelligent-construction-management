@@ -99,7 +99,7 @@ export class SpotProcurementBalanceService {
       account.availableAmountCents - account.reservedAmountCents;
     if (usable < input.amountCents) {
       throw new ConflictException(
-        "供应商可用余额不足，请刷新付款草稿后重试"
+        "供应商可用余额已变化，请将抵扣金额调整为最新系统建议后重新提交"
       );
     }
     const reservedAfter =
