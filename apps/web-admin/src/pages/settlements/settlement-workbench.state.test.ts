@@ -4,9 +4,11 @@ import {
   applyBatchRemark,
   applyImportedSettlementLines,
   applyTsvQuantityPaste,
+  buildSettlementDraftLinePayload,
   buildSettlementLinePayload,
   canApplySettlementImportResponse,
   canApplySettlementPreviewResponse,
+  restoreSettlementDraftLines,
   setSourceLineSelection,
   settlementQuantityProgress,
   settlementWorkbenchDraftFingerprint,
@@ -66,6 +68,67 @@ describe("settlement workbench state", () => {
     expect(JSON.stringify(buildSettlementLinePayload(rows, drafts, adjustments))).not.toContain(
       "row-unselected"
     );
+  });
+
+  it("saves and restores incomplete draft lines without creating a formal amount", () => {
+    const rows = [normalRow(), manualRow()];
+    const draftLines = buildSettlementDraftLinePayload(
+      rows,
+      {
+        "row-normal": { quantity: "", amountYuan: "", remark: "待补数量" },
+        "row-manual": { quantity: "1", amountYuan: "", remark: "待补金额" }
+      },
+      [
+        {
+          clientId: "adjustment-1",
+          name: "",
+          amountYuan: "",
+          reason: "",
+          remark: "待补调整依据"
+        }
+      ]
+    );
+
+    expect(draftLines).toEqual([
+      {
+        sourceType: "contract_bill_row",
+        contractBillRowId: "row-normal",
+        remark: "待补数量",
+        sortOrder: 1
+      },
+      {
+        sourceType: "contract_bill_row",
+        contractBillRowId: "row-manual",
+        quantity: "1",
+        remark: "待补金额",
+        sortOrder: 2
+      },
+      {
+        sourceType: "manual_adjustment",
+        remark: "待补调整依据",
+        sortOrder: 3
+      }
+    ]);
+
+    expect(restoreSettlementDraftLines(rows, draftLines)).toEqual({
+      drafts: {
+        "row-normal": { quantity: "", amountYuan: "", remark: "待补数量" },
+        "row-manual": {
+          quantity: "1",
+          amountYuan: "",
+          remark: "待补金额"
+        }
+      },
+      adjustments: [
+        {
+          clientId: "draft-adjustment-1",
+          name: "",
+          amountYuan: "",
+          reason: "",
+          remark: "待补调整依据"
+        }
+      ]
+    });
   });
 
   it("validates normal, special and adjustment inputs with Chinese reasons", () => {

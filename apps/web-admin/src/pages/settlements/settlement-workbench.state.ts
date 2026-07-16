@@ -124,6 +124,44 @@ export function buildSettlementLinePayload(
   return result;
 }
 
+export function buildSettlementDraftLinePayload(
+  rows: readonly SettlementSourceLineReadModel[],
+  drafts: SourceLineDraftMap,
+  adjustments: readonly ManualAdjustmentDraft[]
+): SettlementLineDraftPayload[] {
+  const result: SettlementLineDraftPayload[] = [];
+  for (const row of rows) {
+    const draft = drafts[row.id];
+    if (!draft) continue;
+    const line: SettlementLineDraftPayload = {
+      sourceType: "contract_bill_row",
+      contractBillRowId: row.id,
+      ...(draft.quantity.trim() ? { quantity: draft.quantity.trim() } : {}),
+      ...(draft.reason?.trim() ? { reason: draft.reason.trim() } : {}),
+      ...(draft.remark.trim() ? { remark: draft.remark.trim() } : {}),
+      sortOrder: result.length + 1
+    };
+    if (row.calculationMode === "manual_amount" && isNonNegativeYuan(draft.amountYuan.trim())) {
+      line.amountCents = yuanTextToCentsText(draft.amountYuan.trim());
+    }
+    result.push(line);
+  }
+  for (const adjustment of adjustments) {
+    const amountCents = isSignedNonZeroYuan(adjustment.amountYuan.trim())
+      ? signedYuanTextToCentsText(adjustment.amountYuan.trim())
+      : undefined;
+    result.push({
+      sourceType: "manual_adjustment",
+      ...(adjustment.name.trim() ? { name: adjustment.name.trim() } : {}),
+      ...(amountCents ? { amountCents } : {}),
+      ...(adjustment.reason.trim() ? { reason: adjustment.reason.trim() } : {}),
+      ...(adjustment.remark.trim() ? { remark: adjustment.remark.trim() } : {}),
+      sortOrder: result.length + 1
+    });
+  }
+  return result;
+}
+
 export function validateSettlementWorkbench(
   input: SettlementWorkbenchValidationInput
 ): string[] {
@@ -247,6 +285,42 @@ export function applyImportedSettlementLines(
       name: line.name.trim(),
       amountYuan: centsTextToInputYuan(line.amountCents),
       reason: line.reason.trim(),
+      remark: line.remark?.trim() ?? ""
+    });
+  }
+  return { drafts, adjustments };
+}
+
+export function restoreSettlementDraftLines(
+  rows: readonly SettlementSourceLineReadModel[],
+  settlementLines: readonly SettlementLineDraftPayload[]
+): { drafts: SourceLineDraftMap; adjustments: ManualAdjustmentDraft[] } {
+  const rowById = new Map(rows.map((row) => [row.id, row]));
+  const drafts: SourceLineDraftMap = {};
+  const adjustments: ManualAdjustmentDraft[] = [];
+  for (const line of settlementLines) {
+    if (line.sourceType === "contract_bill_row") {
+      const row = line.contractBillRowId
+        ? rowById.get(line.contractBillRowId)
+        : undefined;
+      if (!row || drafts[row.id]) continue;
+      drafts[row.id] = {
+        quantity: line.quantity?.trim() ?? "",
+        amountYuan:
+          row.calculationMode === "manual_amount" && line.amountCents
+            ? centsTextToInputYuan(line.amountCents)
+            : "",
+        ...(line.reason?.trim() ? { reason: line.reason.trim() } : {}),
+        remark: line.remark?.trim() ?? ""
+      };
+      continue;
+    }
+    if (line.sourceType !== "manual_adjustment") continue;
+    adjustments.push({
+      clientId: `draft-adjustment-${adjustments.length + 1}`,
+      name: line.name?.trim() ?? "",
+      amountYuan: line.amountCents ? centsTextToInputYuan(line.amountCents) : "",
+      reason: line.reason?.trim() ?? "",
       remark: line.remark?.trim() ?? ""
     });
   }

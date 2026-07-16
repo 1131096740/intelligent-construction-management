@@ -44,9 +44,14 @@ describe("settlement creation workbench structure", () => {
     expect(page).not.toContain("@media (max-width:");
   });
 
-  it("submits selected settlementLines without a client-owned total", () => {
-    expect(page).toContain("settlementLines: currentPayload.value");
+  it("saves a draft first and submits it without a client-owned total", () => {
+    expect(page).toContain("settlementLines: draftPayload.value");
     expect(page).toContain("settlementTemplateVersionId: selectedSettlementTemplateVersionId.value");
+    expect(page).toContain("createSettlementDraftRecord");
+    expect(page).toContain("updateSettlementDraftRecord");
+    expect(page).toContain("submitSettlementDraftRecord");
+    expect(page).toContain("提交结算审批");
+    expect(page).toContain("onBeforeRouteLeave");
     expect(page).not.toContain("amountCents: preview");
     expect(page).not.toContain("form.amountYuan");
     expect(page).toContain("settlement.id");

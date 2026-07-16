@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { SettlementSourceLineReadModel } from "@jiangkong/shared-domain";
 import { describe, expect, it } from "vitest";
 import {
   emptySettlementLedgerFilters,
@@ -23,6 +24,15 @@ describe("settlement ledger page configuration", () => {
     expect(source).toContain("<BusinessFeedback");
     expect(source).toContain("<EmptyBusinessState");
     expect(source).not.toContain("<input");
+  });
+
+  it("shows the current user's saved drafts without changing formal ledger statistics", () => {
+    const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("我的草稿");
+    expect(source).toContain("listSettlementDraftRecords");
+    expect(source).toContain("继续填写");
+    expect(source).toContain("draftId: row.id");
+    expect(source).toContain("税务缺口");
   });
 
   it("uses compact enterprise settlement filter fields", () => {
@@ -134,6 +144,10 @@ describe("settlement ledger page configuration", () => {
           quantity: "1",
           unitPrice: "90071992547409.93",
           taxRatePercent: "0",
+          taxExclusiveUnitPrice: "90071992547409.93",
+          pricingFactStatus: "confirmed",
+          calculationAvailable: true,
+          submissionBlocker: null,
           amountRole: "included",
           pricingMode: "tax_inclusive",
           calculationMode: "normal_auto",
@@ -163,6 +177,21 @@ describe("settlement ledger page configuration", () => {
       settledAmount: "¥90,071,992,547,409.94",
       remainingAmount: "¥-0.01",
       statusText: "已超过 0.01 元"
+    });
+  });
+
+  it("shows unknown contract amounts as neutral missing values instead of zero", () => {
+    expect(
+      toSettlementSourceLinePreviewRows([
+        {
+          ...sourceLine(),
+          contractAmountCents: null,
+          remainingAmountCents: null
+        }
+      ])[0]
+    ).toMatchObject({
+      contractAmount: "—",
+      remainingAmount: "—"
     });
   });
 
@@ -217,5 +246,44 @@ function settlementRow(overrides: Partial<SettlementLedgerRow>): SettlementLedge
     nextAction: "待处理",
     updatedAt: "2026-07-08",
     ...overrides
+  };
+}
+
+function sourceLine(): SettlementSourceLineReadModel {
+  return {
+    id: "row-1",
+    billId: "bill-1",
+    billKey: "main",
+    billName: "主清单",
+    rowKey: "1",
+    sortOrder: 1,
+    itemCode: null,
+    itemName: "待确认清单项",
+    specification: null,
+    unit: "项",
+    quantity: null,
+    unitPrice: null,
+    taxRatePercent: null,
+    taxExclusiveUnitPrice: null,
+    pricingFactStatus: "unconfirmed",
+    calculationAvailable: false,
+    submissionBlocker: {
+      code: "missing_unit_price",
+      message: "含税单价待确认",
+      remedyPath: "/合同工作台"
+    },
+    amountRole: "included",
+    pricingMode: "tax_inclusive",
+    calculationMode: "normal_auto",
+    contractAmountCents: null,
+    settledQuantity: null,
+    previousSettledQuantity: null,
+    remainingQuantity: null,
+    settledAmountCents: "0",
+    remainingAmountCents: null,
+    provisional: false,
+    settlementBasis: null,
+    exception: null,
+    exceptions: []
   };
 }

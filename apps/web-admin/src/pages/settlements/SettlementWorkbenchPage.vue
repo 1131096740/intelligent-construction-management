@@ -11,9 +11,30 @@
       <div class="head-actions">
         <t-button
           variant="outline"
-          @click="router.push('/结算管理')"
+          @click="requestBackToLedger"
         >
           返回结算台账
+        </t-button>
+        <t-tooltip
+          v-if="saveDisabledReason"
+          :content="saveDisabledReason"
+        >
+          <span>
+            <t-button
+              variant="outline"
+              disabled
+            >
+              保存草稿
+            </t-button>
+          </span>
+        </t-tooltip>
+        <t-button
+          v-else
+          variant="outline"
+          :loading="saveBusy"
+          @click="saveDraft"
+        >
+          保存草稿
         </t-button>
         <t-button
           theme="primary"
@@ -21,7 +42,7 @@
           :disabled="Boolean(createDisabledReason)"
           @click="submitSettlement"
         >
-          提交结算
+          提交结算审批
         </t-button>
       </div>
     </header>
@@ -281,6 +302,14 @@
           <div class="item-cell">
             <strong>{{ row.itemName }}</strong>
             <span>{{ row.itemCode || '无编码' }} · {{ row.billName }}</span>
+            <t-tag
+              v-if="row.submissionBlocker"
+              size="small"
+              theme="warning"
+              variant="light"
+            >
+              {{ row.submissionBlocker.code === "missing_unit_price" ? "含税单价待确认" : "税务事实待确认" }}
+            </t-tag>
           </div>
         </template>
         <template #calculationMode="{ row }">
@@ -438,23 +467,6 @@
         <strong>{{ canonicalTotal }}</strong>
       </div>
       <span class="footer-note">页面不提交自算总额；创建时后端会再次核算并锁内复核。</span>
-      <t-tooltip
-        v-if="createDisabledReason"
-        :content="createDisabledReason"
-      >
-        <span><t-button
-          theme="primary"
-          disabled
-        >提交结算</t-button></span>
-      </t-tooltip>
-      <t-button
-        v-else
-        theme="primary"
-        :loading="createBusy"
-        @click="submitSettlement"
-      >
-        提交结算
-      </t-button>
     </footer>
 
     <t-dialog
@@ -515,6 +527,16 @@
         description="当前没有异常"
       />
     </t-drawer>
+
+    <SensitiveActionDialog
+      v-model="leaveDialogVisible"
+      title="离开未保存的结算草稿？"
+      description="离开后，本页尚未保存的合同、模板、清单数量、人工调整和备注不会保留。"
+      confirm-text="放弃并离开"
+      confirm-theme="danger"
+      @confirm="confirmLeave"
+      @cancel="pendingNavigationPath = ''"
+    />
   </section>
 </template>
 
@@ -526,14 +548,22 @@ import type {
 } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol, UploadChangeContext, UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import {
-  createSettlementDraft,
   fetchProjects,
   fetchSettlementContractOptions,
   uploadPrivateFile,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
+import {
+  createSettlementDraftRecord,
+  fetchSettlementDraftRecord,
+  listSettlementDraftRecords,
+  submitSettlementDraftRecord,
+  updateSettlementDraftRecord,
+  type SaveSettlementDraftPayload,
+  type SettlementDraftReadModel
+} from "../../api/settlement-drafts.api";
 import {
   applySettlementImport,
   downloadSettlementImportErrors,
@@ -557,9 +587,11 @@ import {
   applyBatchRemark,
   applyImportedSettlementLines,
   applyTsvQuantityPaste,
+  buildSettlementDraftLinePayload,
   buildSettlementLinePayload,
   canApplySettlementImportResponse,
   canApplySettlementPreviewResponse,
+  restoreSettlementDraftLines,
   setSourceLineSelection,
   settlementPayloadFingerprint,
   settlementQuantityProgress,
@@ -570,6 +602,7 @@ import {
   type SourceLineDraftMap
 } from "./settlement-workbench.state";
 import { canApplySettlementSourceResponse } from "./settlement-source-lines.state";
+import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import SettlementTemplateRecommendationPanel from "./components/SettlementTemplateRecommendationPanel.vue";
 import {
   blockedSettlementTemplateSelection,
@@ -580,7 +613,7 @@ import {
 } from "../settlement-templates/settlement-template.state";
 
 interface WorkbenchSourceRow extends SettlementSourceLineReadModel {
-  contractUnitPrice: string;
+  contractUnitPrice: string | null;
   currentQuantity: string;
   cumulativeQuantity: string;
   remainingQuantityView: string;
@@ -593,6 +626,7 @@ interface ImportErrorRow extends SettlementImportErrorReadModel {
 }
 
 const router = useRouter();
+const route = useRoute();
 const form = reactive({
   projectId: "",
   contractOptionValue: "",
@@ -625,6 +659,7 @@ const loadingContracts = ref(false);
 const sourceLoading = ref(false);
 const previewBusy = ref(false);
 const createBusy = ref(false);
+const saveBusy = ref(false);
 const pageMessage = ref("");
 const pageMessageTone = ref<"info" | "success" | "warning" | "error">("info");
 const batchRemark = ref("");
@@ -632,6 +667,11 @@ const pasteDialogVisible = ref(false);
 const pasteStartRowId = ref("");
 const pasteText = ref("");
 const anomalyDrawerVisible = ref(false);
+const activeDraft = ref<SettlementDraftReadModel | null>(null);
+const baselineDraftSnapshot = ref("");
+const leaveDialogVisible = ref(false);
+const pendingNavigationPath = ref("");
+const allowNavigation = ref(false);
 let sourceRequestId = 0;
 let previewRequestId = 0;
 let importRequestId = 0;
@@ -720,6 +760,9 @@ const currentPayload = computed(() => {
   }
   return buildSettlementLinePayload(sourceRows.value, drafts.value, adjustments.value);
 });
+const draftPayload = computed(() =>
+  buildSettlementDraftLinePayload(sourceRows.value, drafts.value, adjustments.value)
+);
 const currentFingerprint = computed(() =>
   settlementPayloadFingerprint(templateResourceKey.value, currentPayload.value)
 );
@@ -736,13 +779,15 @@ const validationErrors = computed(() =>
 const previewIsCurrent = computed(
   () => Boolean(preview.value) && previewAppliedFingerprint.value === currentFingerprint.value
 );
-const canonicalTotal = computed(() =>
-  previewIsCurrent.value && preview.value
-    ? `¥${centsTextToYuanText(preview.value.amountCents)}`
-    : "待后台核算"
-);
+const canonicalTotal = computed(() => {
+  const current = preview.value;
+  return previewIsCurrent.value && current && current.amountCents !== null
+    ? `¥${centsTextToYuanText(current.amountCents)}`
+    : "待后台核算";
+});
 const importCanonicalTotal = computed(() =>
-  importPreview.value?.canonical
+  importPreview.value?.canonical?.amountCents !== null &&
+  importPreview.value?.canonical?.amountCents !== undefined
     ? `¥${centsTextToYuanText(importPreview.value.canonical.amountCents)}`
     : "待预检"
 );
@@ -783,6 +828,12 @@ const createDisabledReason = computed(() => {
   if (templateBlockedReason.value) return templateBlockedReason.value;
   if (validationErrors.value[0]) return validationErrors.value[0];
   if (!previewIsCurrent.value || !preview.value) return "请先完成后台核算。";
+  if (preview.value.submissionBlockers[0]) {
+    return preview.value.submissionBlockers[0].message;
+  }
+  if (preview.value.amountCents === null) {
+    return "当前存在未确认的税务或价格事实，暂不能提交结算审批。";
+  }
   try {
     if (BigInt(preview.value.amountCents) <= 0n) return "结算合计必须大于 0。";
   } catch {
@@ -790,6 +841,18 @@ const createDisabledReason = computed(() => {
   }
   return "";
 });
+const saveDisabledReason = computed(() => {
+  if (!form.projectId) return "请选择项目。";
+  if (!selectedContractVersionId.value) return "请选择已生效合同。";
+  if (templateBlockedReason.value) return templateBlockedReason.value;
+  if (!form.code.trim()) return "请填写结算编号。";
+  if (!form.periodLabel.trim()) return "请填写结算期间。";
+  return "";
+});
+const isDirty = computed(() =>
+  Boolean(baselineDraftSnapshot.value) &&
+  workbenchSnapshot() !== baselineDraftSnapshot.value
+);
 const workbenchRows = computed<WorkbenchSourceRow[]>(() =>
   sourceRows.value.map((row) => ({
     ...row,
@@ -811,6 +874,13 @@ const anomalyItems = computed(() => {
     message
   }));
   for (const row of sourceRows.value) {
+    if (row.submissionBlocker) {
+      items.push({
+        key: `${row.id}-${row.submissionBlocker.code}`,
+        title: row.itemName,
+        message: row.submissionBlocker.message
+      });
+    }
     sourceExceptions(row).forEach((exception, index) => {
       items.push({
         key: `${row.id}-${exception.code}-${index}`,
@@ -875,10 +945,13 @@ function sourceExceptions(row: SettlementSourceLineReadModel): SettlementSourceL
 function previewAmount(rowId: string): string {
   if (!previewIsCurrent.value || !preview.value) return "";
   const line = preview.value.lines.find((item) => item.contractBillRowId === rowId);
-  return line ? `¥${centsTextToYuanText(line.amountCents)}` : "";
+  return line?.amountCents !== null && line?.amountCents !== undefined
+    ? `¥${centsTextToYuanText(line.amountCents)}`
+    : "";
 }
 
 function formatUnitPrice(row: SettlementSourceLineReadModel): string {
+  if (row.unitPrice === null) return "待确认";
   return `${row.unitPrice} 元（${row.pricingMode === "tax_inclusive" ? "含税" : "不含税"}）`;
 }
 
@@ -986,7 +1059,10 @@ async function confirmApplyImport() {
       !Array.isArray(applied.result.settlementLines) ||
       !applied.result.canonical ||
       !Array.isArray(applied.result.canonical.lines) ||
-      typeof applied.result.canonical.amountCents !== "string"
+      (
+        applied.result.canonical.amountCents !== null &&
+        typeof applied.result.canonical.amountCents !== "string"
+      )
     ) {
       throw new Error("导入冻结结果不完整，请重新预检。");
     }
@@ -1314,6 +1390,68 @@ function selectSettlementTemplate(versionId: string) {
   schedulePreview();
 }
 
+function settlementDraftPayload(): SaveSettlementDraftPayload {
+  return {
+    contractVersionId: selectedContractVersionId.value,
+    settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
+    code: form.code.trim(),
+    periodLabel: form.periodLabel.trim(),
+    settlementLines: draftPayload.value
+  };
+}
+
+async function persistDraft(showSuccessMessage: boolean) {
+  if (saveDisabledReason.value) {
+    pageMessage.value = saveDisabledReason.value;
+    pageMessageTone.value = "warning";
+    return null;
+  }
+  saveBusy.value = true;
+  pageMessage.value = "";
+  try {
+    const payload = settlementDraftPayload();
+    const saved =
+      activeDraft.value &&
+      activeDraft.value.projectId === form.projectId &&
+      activeDraft.value.status === "draft"
+        ? await updateSettlementDraftRecord(
+            form.projectId,
+            activeDraft.value.id,
+            {
+              ...payload,
+              expectedRevision: activeDraft.value.revision
+            }
+          )
+        : await createSettlementDraftRecord(form.projectId, payload);
+    activeDraft.value = saved;
+    baselineDraftSnapshot.value = workbenchSnapshot();
+    await router.replace({
+      path: route.path,
+      query: {
+        ...route.query,
+        draftId: saved.id,
+        project: saved.projectId
+      }
+    });
+    if (showSuccessMessage) {
+      pageMessage.value = "结算草稿已保存；尚未占用合同额度，也未发起审批。";
+      pageMessageTone.value = "success";
+    }
+    return saved;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "未知错误";
+    pageMessage.value = `结算草稿未能保存：${reason}。本页已填写内容仍然保留，请修正后重试。`;
+    pageMessageTone.value = "error";
+    return null;
+  } finally {
+    saveBusy.value = false;
+  }
+}
+
+async function saveDraft() {
+  await persistDraft(true);
+}
+
 async function submitSettlement() {
   if (createDisabledReason.value || !previewIsCurrent.value) {
     pageMessage.value = createDisabledReason.value || "请先完成后台核算。";
@@ -1323,26 +1461,142 @@ async function submitSettlement() {
   createBusy.value = true;
   pageMessage.value = "";
   try {
-    const settlement = await createSettlementDraft({
-      contractVersionId: selectedContractVersionId.value,
-      settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
-      code: form.code.trim(),
-      periodLabel: form.periodLabel.trim(),
-      settlementLines: currentPayload.value
-    });
-    pageMessage.value = "结算单已创建。";
+    const saved = await persistDraft(false);
+    if (!saved) return;
+    const settlement = await submitSettlementDraftRecord(
+      saved.projectId,
+      saved.id,
+      saved.revision
+    );
+    allowNavigation.value = true;
+    pageMessage.value = "结算审批已发起。";
     pageMessageTone.value = "success";
     await router.push(`/结算管理/${encodeURIComponent(settlement.id)}`);
   } catch (error) {
-    pageMessage.value = error instanceof Error ? error.message : "创建结算失败。";
+    const reason = error instanceof Error ? error.message : "未知错误";
+    pageMessage.value =
+      `结算草稿已保存，不受本次失败影响；审批尚未发起：${reason}。` +
+      "请按提示补齐合同税务或价格事实后，再打开本草稿提交。";
     pageMessageTone.value = "error";
   } finally {
     createBusy.value = false;
   }
 }
 
-onMounted(() => void loadProjects());
+function workbenchSnapshot() {
+  return JSON.stringify({
+    form: { ...form },
+    settlementTemplateVersionId: selectedSettlementTemplateVersionId.value,
+    drafts: drafts.value,
+    adjustments: adjustments.value
+  });
+}
+
+function requestBackToLedger() {
+  void router.push("/结算管理");
+}
+
+function confirmLeave() {
+  const path = pendingNavigationPath.value || "/结算管理";
+  allowNavigation.value = true;
+  leaveDialogVisible.value = false;
+  pendingNavigationPath.value = "";
+  void router.push(path);
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  if (!isDirty.value || allowNavigation.value) return;
+  event.preventDefault();
+  event.returnValue = "";
+}
+
+async function findRequestedDraft(draftId: string) {
+  const requestedProject =
+    typeof route.query.project === "string" ? route.query.project.trim() : "";
+  const orderedProjects = [...projects.value].sort((left, right) => {
+    const leftPreferred = [left.id, left.code, left.name].includes(requestedProject);
+    const rightPreferred = [right.id, right.code, right.name].includes(requestedProject);
+    return Number(rightPreferred) - Number(leftPreferred);
+  });
+  for (const project of orderedProjects) {
+    try {
+      const listed = await listSettlementDraftRecords(project.id);
+      if (listed.some((draft) => draft.id === draftId)) {
+        return fetchSettlementDraftRecord(project.id, draftId);
+      }
+    } catch {
+      // 当前账号可能只在部分项目具有结算创建权限，继续检查其余可见项目。
+    }
+  }
+  throw new Error("未找到本人可继续填写的结算草稿，请从结算台账重新进入。");
+}
+
+async function restoreDraft(draft: SettlementDraftReadModel) {
+  form.projectId = draft.projectId;
+  await loadContracts();
+  const contract = contracts.value.find(
+    (item) => item.contractVersionId === draft.contractVersionId
+  );
+  if (!contract) {
+    throw new Error("草稿关联合同当前不可用于结算，请核对合同状态。");
+  }
+  form.contractOptionValue = contract.contractVersionId ?? contract.contractId;
+  await loadSourceLines();
+  if (
+    draft.settlementTemplateVersionId &&
+    selectedSettlementTemplateVersionId.value !== draft.settlementTemplateVersionId
+  ) {
+    const choice = templateSelection.value.choices.find(
+      (item) => item.templateVersionId === draft.settlementTemplateVersionId
+    );
+    if (!choice) {
+      throw new Error("草稿使用的结算模板当前不可用，请重新选择已发布模板。");
+    }
+    selectSettlementTemplate(choice.templateVersionId);
+  }
+  form.code = draft.code;
+  form.periodLabel = draft.periodLabel;
+  const restored = restoreSettlementDraftLines(sourceRows.value, draft.lines);
+  drafts.value = restored.drafts;
+  adjustments.value = restored.adjustments;
+  activeDraft.value = draft;
+  invalidatePreview();
+  baselineDraftSnapshot.value = workbenchSnapshot();
+  pageMessage.value = "已恢复结算草稿；保存草稿不会发起审批，提交前仍需通过后台核算。";
+  pageMessageTone.value = "info";
+}
+
+async function initializeWorkbench() {
+  await loadProjects();
+  const draftId = typeof route.query.draftId === "string"
+    ? route.query.draftId.trim()
+    : "";
+  if (draftId) {
+    try {
+      await restoreDraft(await findRequestedDraft(draftId));
+    } catch (error) {
+      pageMessage.value = error instanceof Error ? error.message : "恢复结算草稿失败。";
+      pageMessageTone.value = "error";
+    }
+  }
+  if (!baselineDraftSnapshot.value) {
+    baselineDraftSnapshot.value = workbenchSnapshot();
+  }
+}
+
+onBeforeRouteLeave((to) => {
+  if (!isDirty.value || allowNavigation.value) return true;
+  pendingNavigationPath.value = to.fullPath;
+  leaveDialogVisible.value = true;
+  return false;
+});
+
+onMounted(() => {
+  window.addEventListener("beforeunload", handleBeforeUnload);
+  void initializeWorkbench();
+});
 onBeforeUnmount(() => {
+  window.removeEventListener("beforeunload", handleBeforeUnload);
   if (previewTimer) clearTimeout(previewTimer);
   sourceRequestId += 1;
   previewRequestId += 1;

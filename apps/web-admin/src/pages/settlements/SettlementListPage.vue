@@ -27,6 +27,64 @@
     />
 
     <section
+      class="draft-section"
+      aria-labelledby="settlement-draft-title"
+    >
+      <header class="draft-heading">
+        <div>
+          <h2 id="settlement-draft-title">
+            我的草稿
+          </h2>
+          <p>草稿未占用合同额度，也未发起审批；继续填写后仍需通过后台核算。</p>
+        </div>
+        <t-button
+          size="small"
+          variant="text"
+          :loading="draftLoading"
+          @click="loadSettlementDrafts"
+        >
+          刷新草稿
+        </t-button>
+      </header>
+
+      <BusinessFeedback
+        v-if="draftError"
+        state="error"
+        title="结算草稿暂时无法读取"
+        :description="draftError"
+        action-label="重新加载"
+        @action="loadSettlementDrafts"
+      />
+
+      <t-table
+        v-else-if="draftLoading || settlementDraftRows.length"
+        row-key="id"
+        size="small"
+        table-layout="fixed"
+        :columns="settlementDraftColumns"
+        :data="settlementDraftRows"
+        :loading="draftLoading"
+      >
+        <template #taxGapCount="{ row }">
+          <span>{{ row.taxGapCount === null ? "暂不可用" : `${row.taxGapCount} 项` }}</span>
+        </template>
+        <template #operation="{ row }">
+          <t-link
+            theme="primary"
+            @click="continueDraft(row)"
+          >
+            继续填写
+          </t-link>
+        </template>
+      </t-table>
+
+      <t-empty
+        v-else
+        description="当前没有未提交的结算草稿"
+      />
+    </section>
+
+    <section
       class="settlement-rules"
       aria-label="结算办理规则"
     >
@@ -185,7 +243,17 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { fetchSettlementLedger } from "../../api/core-flow-read.api";
+import type { PrimaryTableCol } from "tdesign-vue-next";
+import {
+  fetchProjects,
+  fetchSettlementContractOptions,
+  fetchSettlementLedger
+} from "../../api/core-flow-read.api";
+import {
+  listSettlementDraftRecords,
+  type SettlementDraftReadModel
+} from "../../api/settlement-drafts.api";
+import { fetchSettlementSourceLines } from "../../api/settlement-workbench.api";
 import {
   normalizeVisibleColumnKeys,
   readPersonalTablePreferences,
@@ -222,6 +290,29 @@ const settlementFilters = reactive(emptySettlementLedgerFilters());
 const ledgerLoading = ref(false);
 const showColumnSettings = ref(false);
 const showSettlementRules = ref(false);
+interface SettlementDraftLedgerRow {
+  id: string;
+  projectId: string;
+  code: string;
+  project: string;
+  contract: string;
+  period: string;
+  taxGapCount: number | null;
+  updatedAt: string;
+  updatedAtRaw: string;
+}
+const settlementDraftRows = ref<SettlementDraftLedgerRow[]>([]);
+const draftLoading = ref(false);
+const draftError = ref("");
+const settlementDraftColumns: PrimaryTableCol<SettlementDraftLedgerRow>[] = [
+  { colKey: "code", title: "结算编号", width: 128 },
+  { colKey: "project", title: "项目", minWidth: 150 },
+  { colKey: "contract", title: "合同", minWidth: 190 },
+  { colKey: "period", title: "结算期间", width: 112 },
+  { colKey: "taxGapCount", title: "税务缺口", width: 104 },
+  { colKey: "updatedAt", title: "最近保存", width: 150 },
+  { colKey: "operation", title: "操作", width: 96, fixed: "right" }
+];
 const configurableSettlementColumnKeys = settlementLedgerColumns
   .map((column) => String(column.colKey))
   .filter((key) => key !== "operation");
@@ -278,6 +369,13 @@ function openCreateWorkbench() {
 
 function openDetail(settlementId: string) {
   void router.push(`/settlements/${settlementId}`);
+}
+
+function continueDraft(row: SettlementDraftLedgerRow) {
+  void router.push({
+    path: "/结算工作台",
+    query: { draftId: row.id, project: row.projectId }
+  });
 }
 
 function resetSettlementFilters() {
@@ -343,6 +441,90 @@ async function loadSettlementLedger() {
   }
 }
 
+async function loadSettlementDrafts() {
+  draftLoading.value = true;
+  draftError.value = "";
+  try {
+    const projects = await fetchProjects();
+    const projectRows = await Promise.all(
+      projects.map(async (project) => {
+        try {
+          const [drafts, contracts] = await Promise.all([
+            listSettlementDraftRecords(project.id),
+            fetchSettlementContractOptions(project.id)
+          ]);
+          const contractByVersion = new Map(
+            contracts.map((contract) => [
+              contract.contractVersionId,
+              `${contract.contractNo} · ${contract.contractName}`
+            ])
+          );
+          return Promise.all(
+            drafts
+              .filter((draft) => draft.status === "draft")
+              .map(async (draft) => ({
+                id: draft.id,
+                projectId: project.id,
+                code: draft.code,
+                project: `${project.code} · ${project.name}`,
+                contract:
+                  contractByVersion.get(draft.contractVersionId) ??
+                  `合同版本 ${draft.contractVersionId}`,
+                period: draft.periodLabel,
+                taxGapCount: await draftTaxGapCount(draft),
+                updatedAt: formatDraftTime(draft.updatedAt),
+                updatedAtRaw: draft.updatedAt
+              }))
+          );
+        } catch {
+          return [];
+        }
+      })
+    );
+    settlementDraftRows.value = projectRows
+      .flat()
+      .sort((left, right) => right.updatedAtRaw.localeCompare(left.updatedAtRaw));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "未知错误";
+    draftError.value =
+      `结算草稿读取失败：${reason}。这不会影响已经发起审批的正式结算；请检查网络与项目权限后重试。`;
+  } finally {
+    draftLoading.value = false;
+  }
+}
+
+async function draftTaxGapCount(draft: SettlementDraftReadModel) {
+  try {
+    const source = await fetchSettlementSourceLines(draft.contractVersionId);
+    const selectedIds = new Set(
+      draft.lines
+        .filter((line) => line.sourceType === "contract_bill_row")
+        .map((line) => line.contractBillRowId)
+        .filter((value): value is string => Boolean(value))
+    );
+    const messages = source.rows
+      .filter((row) => selectedIds.has(row.id) && row.submissionBlocker)
+      .map((row) => row.submissionBlocker!.message);
+    return new Set(messages).size;
+  } catch {
+    return null;
+  }
+}
+
+function formatDraftTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString("zh-CN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      });
+}
+
 function statusTagTheme(tone: SettlementTone) {
   return tone;
 }
@@ -352,6 +534,7 @@ watch(settlementPreferenceStorageKey, loadSettlementColumnPreferences, { immedia
 
 onMounted(() => {
   void loadSettlementLedger();
+  void loadSettlementDrafts();
 });
 </script>
 
@@ -427,6 +610,7 @@ onMounted(() => {
   padding: var(--jg-space-xs) 0 0 var(--jg-space-lg);
 }
 
+.draft-section,
 .ledger-section {
   min-width: 0;
   overflow: hidden;
@@ -435,6 +619,7 @@ onMounted(() => {
   background: var(--jg-color-bg-surface);
 }
 
+.draft-heading,
 .ledger-heading {
   display: flex;
   align-items: flex-end;
@@ -444,17 +629,26 @@ onMounted(() => {
   border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
 }
 
+.draft-heading {
+  padding: var(--jg-space-md) var(--jg-space-lg);
+  border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+}
+
+.draft-heading h2,
+.draft-heading p,
 .ledger-heading h2,
 .ledger-heading p,
 .ledger-footer p {
   margin: 0;
 }
 
+.draft-heading h2,
 .ledger-heading h2 {
   font-size: var(--jg-font-size-section-title);
   line-height: var(--jg-line-height-title);
 }
 
+.draft-heading p,
 .ledger-heading p,
 .ledger-heading > span,
 .ledger-footer {
@@ -462,8 +656,13 @@ onMounted(() => {
   font-size: var(--jg-font-size-meta);
 }
 
+.draft-heading p,
 .ledger-heading p {
   margin-top: var(--jg-space-xs);
+}
+
+.draft-section :deep(.t-empty) {
+  padding: var(--jg-space-xl);
 }
 
 .ledger-error {
@@ -512,6 +711,7 @@ onMounted(() => {
 }
 
 @media (max-width: 720px) {
+  .draft-heading,
   .ledger-heading,
   .ledger-footer {
     align-items: flex-start;

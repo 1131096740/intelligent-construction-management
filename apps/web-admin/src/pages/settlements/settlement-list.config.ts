@@ -129,9 +129,15 @@ export function toSettlementSourceLinePreviewRows(
   return rows.map((row) => ({
     ...row,
     itemCode: row.itemCode ?? "-",
-    contractAmount: `¥${centsTextToYuanText(row.contractAmountCents)}`,
+    contractAmount:
+      row.contractAmountCents === null
+        ? "—"
+        : `¥${centsTextToYuanText(row.contractAmountCents)}`,
     settledAmount: `¥${centsTextToYuanText(row.settledAmountCents)}`,
-    remainingAmount: `¥${centsTextToYuanText(row.remainingAmountCents)}`,
+    remainingAmount:
+      row.remainingAmountCents === null
+        ? "—"
+        : `¥${centsTextToYuanText(row.remainingAmountCents)}`,
     statusText: row.exception?.message ?? (row.provisional ? "暂估项，结算时需重点核对" : "可用")
   }));
 }
