@@ -11,17 +11,15 @@ import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { calculateBillRow, moneyCentsToApi } from "../money/decimal-money";
+import { moneyCentsToApi } from "../money/decimal-money";
+import { resolveContractBillRowFacts } from "./contract-bill-row-rules";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
 
-const CANONICAL_DECIMAL = /^(0|[1-9]\d*)(\.\d+)?$/;
 const DATA_SHEET = "清单数据";
 const INSTRUCTION_SHEET = "填写说明";
 const ROW_KEY_CODE = "__rowKey";
 const HEADER_ROWS = 2;
-const COMPANY_UNIT_PRICE_SCALE = 2;
-type DecimalFieldCode = "quantity" | "unitPrice" | "taxRatePercent";
 
 export type ImportMode = "replace" | "update" | "append";
 
@@ -34,6 +32,7 @@ interface CoreFieldDef {
   code: string;
   label: string;
   required: boolean;
+  readonly?: boolean;
 }
 
 // 固定核心字段（字段码与行 CRUD 字段一致），顺序即导出列顺序。
@@ -43,7 +42,13 @@ const CORE_FIELDS: CoreFieldDef[] = [
   { code: "specification", label: "规格型号", required: false },
   { code: "unit", label: "单位", required: true },
   { code: "quantity", label: "数量", required: true },
-  { code: "unitPrice", label: "单价(元)", required: true },
+  { code: "unitPrice", label: "含税单价(元)", required: true },
+  {
+    code: "taxExclusiveUnitPrice",
+    label: "不含税单价(元)",
+    required: false,
+    readonly: true
+  },
   { code: "taxRatePercent", label: "税率(%)", required: true },
   { code: "isProvisional", label: "是否暂定", required: false },
   { code: "settlementBasis", label: "结算依据", required: false }
@@ -86,15 +91,18 @@ interface ResolvedRow {
   itemName: string;
   specification: string | null;
   unit: string;
-  quantity: string;
-  unitPrice: string;
-  taxRatePercent: string;
+  quantity: string | null;
+  unitPrice: string | null;
+  taxRatePercent: string | null;
+  taxRateSource: "version_default" | "row_override";
+  pricingFactStatus: "confirmed" | "unconfirmed";
+  precisionPolicy: "legacy" | "two_decimal";
   isProvisional: boolean;
   settlementBasis: string | null;
   customData: Prisma.InputJsonValue;
-  taxInclusiveAmountCents: bigint;
-  taxExclusiveAmountCents: bigint;
-  taxAmountCents: bigint;
+  taxInclusiveAmountCents: bigint | null;
+  taxExclusiveAmountCents: bigint | null;
+  taxAmountCents: bigint | null;
 }
 
 @Injectable()
@@ -116,19 +124,30 @@ export class ContractBillExcelService {
     instructions.addRow(["合同清单导入模板填写说明"]);
     instructions.addRow(["1. 仅在『清单数据』工作表中填写，第 1 行为中文表头，请勿修改。"]);
     instructions.addRow(["2. 系统识别用字段行和内部列已隐藏，请不要取消隐藏或改动。"]);
-    instructions.addRow(["3. 数量、单价、税率请填写数字；含公式时以原始填写值为准。"]);
+    instructions.addRow(["3. 数量、含税单价最多保留 2 位小数；税率必须大于 0。"]);
+    instructions.addRow(["4. 不含税单价为系统只读计算列，导入时不读取该列。"]);
+    instructions.addRow([
+      bill.taxMode === "single_rate"
+        ? `5. 本合同默认税率为 ${bill.defaultTaxRatePercent?.toString() ?? "未明确"}%，税率留空时自动继承。`
+        : "5. 多税率合同可在税率列填写例外税率；留空时继承合同默认税率。"
+    ]);
     instructions.getColumn(1).width = 80;
 
     const sheet = workbook.addWorksheet(DATA_SHEET);
     sheet.addRow(columns.map((column) => column.label));
     sheet.addRow(columns.map((column) => column.code));
+    sheet.addRow(
+      columns.map((column) =>
+        column.code === "taxRatePercent"
+          ? (bill.defaultTaxRatePercent?.toString() ?? null)
+          : null
+      )
+    );
     sheet.getRow(HEADER_ROWS).hidden = true;
     sheet.views = [{ state: "frozen", ySplit: HEADER_ROWS }];
 
-    const quantityFormat = this.numberFormat(bill.quantityScale);
-    const unitPriceFormat = this.numberFormat(
-      Math.min(bill.unitPriceScale, COMPANY_UNIT_PRICE_SCALE)
-    );
+    const quantityFormat = this.numberFormat(2);
+    const unitPriceFormat = this.numberFormat(2);
     columns.forEach((column, index) => {
       const sheetColumn = sheet.getColumn(index + 1);
       sheetColumn.width = 18;
@@ -138,6 +157,9 @@ export class ContractBillExcelService {
         sheetColumn.numFmt = quantityFormat;
       } else if (column.code === "unitPrice") {
         sheetColumn.numFmt = unitPriceFormat;
+      } else if (column.code === "taxExclusiveUnitPrice") {
+        sheetColumn.numFmt = unitPriceFormat;
+        sheetColumn.protection = { locked: true };
       } else if (column.code === "taxRatePercent") {
         sheetColumn.numFmt = "0.######";
       }
@@ -315,7 +337,7 @@ export class ContractBillExcelService {
   ): Promise<BillImportPreview> {
     const plan = await this.buildResolvedPlan(bill, mode, buffer, existingRows);
     const beforeAmountCents = existingRows.reduce(
-      (sum, row) => sum + row.taxInclusiveAmountCents,
+      (sum, row) => sum + (row.taxInclusiveAmountCents ?? 0n),
       0n
     );
     const removeKeys = new Set(plan.removeKeys);
@@ -325,10 +347,12 @@ export class ContractBillExcelService {
       if (removeKeys.has(row.rowKey)) continue;
       const update = updateByKey.get(row.rowKey);
       afterAmountCents += update
-        ? update.taxInclusiveAmountCents
-        : row.taxInclusiveAmountCents;
+        ? (update.taxInclusiveAmountCents ?? 0n)
+        : (row.taxInclusiveAmountCents ?? 0n);
     }
-    for (const row of plan.adds) afterAmountCents += row.taxInclusiveAmountCents;
+    for (const row of plan.adds) {
+      afterAmountCents += row.taxInclusiveAmountCents ?? 0n;
+    }
 
     return {
       added: plan.adds.length,
@@ -377,7 +401,7 @@ export class ContractBillExcelService {
 
     sheet.eachRow((excelRow: Row, rowNumber: number) => {
       if (rowNumber <= HEADER_ROWS) return;
-      if (this.isBlankRow(excelRow, codes.length)) return;
+      if (this.isBlankRow(excelRow, codes)) return;
 
       const rowErrorsBefore = errors.length;
       this.assertNoMergedCells(sheet, rowNumber, codes.length, errors);
@@ -398,7 +422,10 @@ export class ContractBillExcelService {
         raw,
         customColumns,
         rowNumber,
-        errors
+        errors,
+        mode === "update" && sheetRowKey
+          ? existingRows.find((row) => row.rowKey === sheetRowKey)
+          : undefined
       );
 
       if (errors.length !== rowErrorsBefore || !resolved) {
@@ -473,7 +500,8 @@ export class ContractBillExcelService {
     raw: Record<string, unknown>,
     customColumns: Array<{ key: string; required: boolean }>,
     rowNumber: number,
-    errors: PreviewError[]
+    errors: PreviewError[],
+    existing?: ExistingRow
   ): ResolvedRow | null {
     const before = errors.length;
     const itemName = this.asString(raw.itemName);
@@ -488,21 +516,6 @@ export class ContractBillExcelService {
     const quantity = this.asString(raw.quantity);
     const unitPrice = this.asString(raw.unitPrice);
     const taxRatePercent = this.asString(raw.taxRatePercent);
-    this.validateDecimal(quantity, "quantity", bill.quantityScale, 18, rowNumber, errors);
-    this.validateDecimal(
-      unitPrice,
-      "unitPrice",
-      Math.min(bill.unitPriceScale, COMPANY_UNIT_PRICE_SCALE),
-      18,
-      rowNumber,
-      errors
-    );
-    this.validateDecimal(taxRatePercent, "taxRatePercent", 6, 3, rowNumber, errors);
-    if (CANONICAL_DECIMAL.test(taxRatePercent) && new Prisma.Decimal(taxRatePercent).gt(100)) {
-      errors.push(
-        this.fieldError(rowNumber, "taxRatePercent", "税率必须在 0 到 100 之间")
-      );
-    }
 
     const isProvisional = this.parseBoolean(raw.isProvisional, rowNumber, errors);
 
@@ -517,14 +530,36 @@ export class ContractBillExcelService {
       }
     }
 
-    if (errors.length !== before) return null;
-
-    const amounts = calculateBillRow({
-      quantity,
-      unitPrice,
-      taxRatePercent,
-      pricingMode: bill.pricingMode
-    });
+    let facts: ReturnType<typeof resolveContractBillRowFacts> | null = null;
+    if (errors.length === before) {
+      try {
+        const defaultRate = bill.defaultTaxRatePercent?.toString() ?? null;
+        facts = resolveContractBillRowFacts(
+          {
+            ...(quantity ? { quantity } : {}),
+            unitPrice,
+            ...(taxRatePercent ? { taxRatePercent } : {}),
+            taxRateSource:
+              bill.taxMode === "multiple_rate" &&
+              this.isTaxRateOverride(taxRatePercent, defaultRate)
+                ? "row_override"
+                : "version_default"
+          },
+          bill,
+          existing
+        );
+      } catch (error) {
+        const message =
+          error instanceof BadRequestException ? error.message : "合同清单行计价信息无效";
+        const column = message.startsWith("数量")
+          ? "quantity"
+          : message.startsWith("含税单价")
+            ? "unitPrice"
+            : "taxRatePercent";
+        errors.push(this.fieldError(rowNumber, column, message));
+      }
+    }
+    if (errors.length !== before || !facts) return null;
 
     return {
       rowKey: randomUUID(),
@@ -533,13 +568,18 @@ export class ContractBillExcelService {
       itemName,
       specification: this.asString(raw.specification) || null,
       unit,
-      quantity,
-      unitPrice,
-      taxRatePercent,
+      quantity: facts.quantity,
+      unitPrice: facts.unitPrice,
+      taxRatePercent: facts.taxRatePercent,
+      taxRateSource: facts.taxRateSource,
+      pricingFactStatus: facts.pricingFactStatus,
+      precisionPolicy: facts.precisionPolicy,
       isProvisional,
       settlementBasis: this.asString(raw.settlementBasis) || null,
       customData: this.toJson(customData),
-      ...amounts
+      taxInclusiveAmountCents: facts.taxInclusiveAmountCents,
+      taxExclusiveAmountCents: facts.taxExclusiveAmountCents,
+      taxAmountCents: facts.taxAmountCents
     };
   }
 
@@ -552,6 +592,9 @@ export class ContractBillExcelService {
       quantity: row.quantity,
       unitPrice: row.unitPrice,
       taxRate: row.taxRatePercent,
+      taxRateSource: row.taxRateSource,
+      pricingFactStatus: row.pricingFactStatus,
+      precisionPolicy: row.precisionPolicy,
       taxInclusiveAmountCents: row.taxInclusiveAmountCents,
       taxExclusiveAmountCents: row.taxExclusiveAmountCents,
       taxAmountCents: row.taxAmountCents,
@@ -668,8 +711,15 @@ export class ContractBillExcelService {
     });
   }
 
-  private isBlankRow(row: Row, columnCount: number): boolean {
-    for (let column = 1; column <= columnCount; column += 1) {
+  private isBlankRow(row: Row, codes: string[]): boolean {
+    for (let column = 1; column <= codes.length; column += 1) {
+      if (
+        codes[column - 1] === "taxRatePercent" ||
+        codes[column - 1] === "taxExclusiveUnitPrice" ||
+        codes[column - 1] === ROW_KEY_CODE
+      ) {
+        continue;
+      }
       if (this.rawCellText(row.getCell(column))) return false;
     }
     return true;
@@ -704,40 +754,6 @@ export class ContractBillExcelService {
     return codes;
   }
 
-  // ── Validation primitives ─────────────────────────────────────────────
-
-  private validateDecimal(
-    value: string,
-    field: DecimalFieldCode,
-    scale: number,
-    integerDigits: number,
-    rowNumber: number,
-    errors: PreviewError[]
-  ) {
-    if (!CANONICAL_DECIMAL.test(value)) {
-      errors.push(
-        this.fieldError(rowNumber, field, `${this.fieldLabel(field)}必须是规范的非负数字`)
-      );
-      return;
-    }
-    const [integer, fraction = ""] = value.split(".");
-    if (integer.length > integerDigits) {
-      errors.push(
-        this.fieldError(
-          rowNumber,
-          field,
-          `${this.fieldLabel(field)}整数位数不能超过 ${integerDigits} 位`
-        )
-      );
-      return;
-    }
-    if (fraction.length > scale) {
-      errors.push(
-        this.fieldError(rowNumber, field, `${this.fieldLabel(field)}小数位数不能超过 ${scale} 位`)
-      );
-    }
-  }
-
   private parseBoolean(value: unknown, rowNumber: number, errors: PreviewError[]): boolean {
     const text = this.asString(value).toLowerCase();
     if (!text) return false;
@@ -751,18 +767,19 @@ export class ContractBillExcelService {
     return { sheet: DATA_SHEET, row: rowNumber, column, message };
   }
 
-  private fieldLabel(field: DecimalFieldCode): string {
-    const labels: Record<DecimalFieldCode, string> = {
-      quantity: "数量",
-      unitPrice: "单价",
-      taxRatePercent: "税率"
-    };
-    return labels[field];
-  }
-
   private asString(value: unknown): string {
     if (value === null || value === undefined) return "";
     return String(value).trim();
+  }
+
+  private isTaxRateOverride(value: string, defaultRate: string | null) {
+    if (!value) return false;
+    if (defaultRate === null) return true;
+    try {
+      return !new Prisma.Decimal(value).eq(defaultRate);
+    } catch {
+      return true;
+    }
   }
 
   // ── Shared loaders ────────────────────────────────────────────────────
@@ -783,12 +800,18 @@ export class ContractBillExcelService {
         pricingMode: bill.pricingMode as "tax_inclusive" | "tax_exclusive",
         quantityScale: bill.quantityScale,
         unitPriceScale: bill.unitPriceScale,
-        schemaSnapshot: bill.schemaSnapshot
+        schemaSnapshot: bill.schemaSnapshot,
+        pricingNature: version.pricingNature,
+        amountLimitType: version.amountLimitType,
+        taxMode: version.taxMode,
+        defaultTaxRatePercent: version.defaultTaxRatePercent
       },
       version: {
         id: version.id,
         contractId: version.contractId,
         amountSource: version.amountSource,
+        pricingNature: version.pricingNature,
+        amountLimitType: version.amountLimitType,
         draftRevision: version.draftRevision
       }
     };
@@ -946,11 +969,23 @@ interface BillContext {
   quantityScale: number;
   unitPriceScale: number;
   schemaSnapshot: Prisma.JsonValue;
+  pricingNature: string;
+  amountLimitType: string;
+  taxMode: string;
+  defaultTaxRatePercent: Prisma.Decimal | null;
 }
 
 interface ExistingRow {
   rowKey: string;
-  taxInclusiveAmountCents: bigint;
+  quantity: Prisma.Decimal | null;
+  unitPrice: Prisma.Decimal | null;
+  taxRate: Prisma.Decimal | null;
+  taxRateSource: string;
+  pricingFactStatus: string;
+  precisionPolicy: string;
+  taxInclusiveAmountCents: bigint | null;
+  taxExclusiveAmountCents: bigint | null;
+  taxAmountCents: bigint | null;
 }
 
 interface ResolvedPlan {

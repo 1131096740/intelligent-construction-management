@@ -1,5 +1,4 @@
 const CONTRACT_TAX_RATE_OPTIONS = [
-  { label: "0%", value: "0" },
   { label: "1%", value: "1" },
   { label: "3%", value: "3" },
   { label: "6%", value: "6" },
@@ -235,7 +234,7 @@ export const coreFlowSeedData = {
         name: "材料价格清单",
         amountRole: "included",
         pricingMode: "tax_inclusive",
-        quantityScale: 3,
+        quantityScale: 2,
         unitPriceScale: 2,
         columns: [
           { key: "itemName", label: "材料名称", type: "text", required: true },
@@ -351,7 +350,7 @@ export const coreFlowSeedData = {
                 itemName: "钢筋",
                 specification: "HRB400E 直径18",
                 unit: "吨",
-                quantity: "10.000",
+                quantity: "10.00",
                 unitPrice: "4200.00",
                 taxRatePercent: "13",
                 taxInclusiveAmount: "42000.00"
@@ -420,7 +419,7 @@ export const coreFlowSeedData = {
         name: "工程机械设备租赁明细表",
         amountRole: "included",
         pricingMode: "tax_inclusive",
-        quantityScale: 3,
+        quantityScale: 2,
         unitPriceScale: 2,
         columns: [
           { key: "itemName", label: "机械设备名称或费用名称", type: "text", required: true },
@@ -507,7 +506,7 @@ export const coreFlowSeedData = {
                 itemName: "挖掘机",
                 specification: "神钢350",
                 unit: "台/小时",
-                quantity: "1.000",
+                quantity: "1.00",
                 unitPrice: "430.00",
                 taxRatePercent: "1",
                 taxInclusiveAmount: "430.00"
@@ -567,7 +566,7 @@ export const coreFlowSeedData = {
         name: "劳务分包价格清单",
         amountRole: "included",
         pricingMode: "tax_inclusive",
-        quantityScale: 3,
+        quantityScale: 2,
         unitPriceScale: 2,
         columns: [
           { key: "itemName", label: "项目名称", type: "text", required: true },
@@ -669,7 +668,7 @@ export const coreFlowSeedData = {
             safety: { text: "乙方应遵守甲方项目安全生产管理制度。" },
             wageCommitment: { text: "乙方承诺及时足额发放农民工工资。" }
           },
-          bill: { laborItems: [{ itemName: "劳务作业", unit: "项", quantity: "1.000", unitPrice: "10000.00", taxInclusiveAmount: "10000.00" }] }
+          bill: { laborItems: [{ itemName: "劳务作业", unit: "项", quantity: "1.00", unitPrice: "10000.00", taxInclusiveAmount: "10000.00" }] }
         }
       },
       inspectionReport: {
@@ -737,7 +736,7 @@ export const coreFlowSeedData = {
         name: "合同清单",
         amountRole: "included",
         pricingMode: "tax_inclusive",
-        quantityScale: 3,
+        quantityScale: 2,
         unitPriceScale: 2,
         columns: [
           { key: "itemName", label: "项目名称", type: "text", required: true },
@@ -829,7 +828,7 @@ export const coreFlowSeedData = {
                 itemName: "服务项目",
                 specification: "按现场要求",
                 unit: "项",
-                quantity: "1.000",
+                quantity: "1.00",
                 unitPrice: "10000.00",
                 taxInclusiveAmount: "10000.00"
               }

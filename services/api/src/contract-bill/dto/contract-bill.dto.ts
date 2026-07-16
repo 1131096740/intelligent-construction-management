@@ -4,9 +4,10 @@ export interface SaveBillRowDto {
   itemName: string;
   specification?: string;
   unit: string;
-  quantity: string;
+  quantity?: string;
   unitPrice: string;
-  taxRatePercent: string;
+  taxRatePercent?: string;
+  taxRateSource?: "version_default" | "row_override";
   isProvisional?: boolean;
   settlementBasis?: string;
   customData: Record<string, unknown>;

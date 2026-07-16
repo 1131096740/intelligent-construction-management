@@ -215,6 +215,19 @@ describe("coreFlowSeedData", () => {
         ...coreFlowSeedData.genericContractWorkbench.bills
       ].every((bill) => bill.unitPriceScale === 2)
     ).toBe(true);
+    expect(
+      [
+        ...coreFlowSeedData.materialPurchaseWorkbench.bills,
+        ...coreFlowSeedData.equipmentRentalWorkbench.bills,
+        ...coreFlowSeedData.laborSubcontractWorkbench.bills,
+        ...coreFlowSeedData.genericContractWorkbench.bills
+      ].every((bill) => bill.quantityScale === 2)
+    ).toBe(true);
+    expect(
+      coreFlowSeedData.materialPurchaseWorkbench.fields
+        .find((field) => field.key === "taxRatePercent")
+        ?.options?.map((option) => option.value)
+    ).not.toContain("0");
     expect(coreFlowSeedData.equipmentRentalWorkbench.fields.map((field) => field.key)).toEqual([
       "rentalStartDate",
       "rentalEndDate",

@@ -13,6 +13,10 @@ describe("ContractBillService", () => {
     amountSource?: string;
     quantityScale?: number;
     unitPriceScale?: number;
+    pricingNature?: string;
+    amountLimitType?: string;
+    taxMode?: string;
+    defaultTaxRatePercent?: string | null;
     schemaSnapshot?: unknown;
     rows?: Array<Record<string, unknown>>;
     otherBills?: Array<Record<string, unknown>>;
@@ -36,6 +40,13 @@ describe("ContractBillService", () => {
       status: "draft",
       draftRevision: 5,
       amountSource: options.amountSource ?? "bill_sum",
+      pricingNature: options.pricingNature ?? "fixed_total",
+      amountLimitType: options.amountLimitType ?? "capped",
+      taxMode: options.taxMode ?? "single_rate",
+      defaultTaxRatePercent:
+        options.defaultTaxRatePercent === null
+          ? null
+          : new Prisma.Decimal(options.defaultTaxRatePercent ?? "13"),
       amountCents: 0n
     };
     const contract = {
@@ -134,7 +145,7 @@ describe("ContractBillService", () => {
     expectedBillRevision: 2,
     itemName: "钢筋",
     unit: "t",
-    quantity: "3.333",
+    quantity: "3.33",
     unitPrice: "100.12",
     taxRatePercent: "13",
     customData: {}
@@ -149,13 +160,17 @@ describe("ContractBillService", () => {
       data: expect.objectContaining({
         contractBillId: "bill-1",
         rowKey: expect.any(String),
-        taxInclusiveAmountCents: 33370n,
-        taxExclusiveAmountCents: 29531n,
-        taxAmountCents: 3839n
+        taxInclusiveAmountCents: 33340n,
+        taxExclusiveAmountCents: 29504n,
+        taxAmountCents: 3836n,
+        taxRate: "13",
+        taxRateSource: "version_default",
+        pricingFactStatus: "confirmed",
+        precisionPolicy: "two_decimal"
       })
     });
-    expect(result.bill!.taxInclusiveAmountCents).toBe("33370");
-    expect(result.rows[0].quantity).toBe("3.333");
+    expect(result.bill!.taxInclusiveAmountCents).toBe("33340");
+    expect(result.rows[0].quantity).toBe("3.33");
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {
         contractVersionId: "version-1",
@@ -215,17 +230,38 @@ describe("ContractBillService", () => {
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
-  it("allows different row tax rates in the same bill", async () => {
+  it("inherits the version tax rate in single-rate mode and rejects a forged rate", async () => {
     const { service, rows } = fixture();
 
-    await service.addRow("bill-1", "owner-1", { ...rowInput, taxRatePercent: "13" });
     await service.addRow("bill-1", "owner-1", {
       ...rowInput,
-      expectedBillRevision: 3,
-      taxRatePercent: "6"
+      taxRatePercent: undefined
+    });
+    await expect(
+      service.addRow("bill-1", "owner-1", {
+        ...rowInput,
+        expectedBillRevision: 3,
+        taxRatePercent: "6"
+      })
+    ).rejects.toThrow("单一税率合同的清单税率必须与合同默认税率一致");
+
+    expect(rows.map((row) => String(row.taxRate))).toEqual(["13"]);
+  });
+
+  it("allows an explicit row override only in multiple-rate mode", async () => {
+    const { service, rows } = fixture({ taxMode: "multiple_rate" });
+
+    await service.addRow("bill-1", "owner-1", {
+      ...rowInput,
+      taxRatePercent: "6",
+      taxRateSource: "row_override"
     });
 
-    expect(rows.map((row) => String(row.taxRate))).toEqual(["13", "6"]);
+    expect(rows[0]).toMatchObject({
+      taxRate: "6",
+      taxRateSource: "row_override",
+      pricingFactStatus: "confirmed"
+    });
   });
 
   it("reorders rows without changing row keys", async () => {
@@ -312,7 +348,7 @@ describe("ContractBillService", () => {
 
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, quantity: "1.001" })
-    ).rejects.toThrow("数量小数位数不能超过 2 位");
+    ).rejects.toThrow("数量最多保留 2 位小数");
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
@@ -321,7 +357,7 @@ describe("ContractBillService", () => {
 
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, unitPrice: "100.123" })
-    ).rejects.toThrow("单价小数位数不能超过 2 位");
+    ).rejects.toThrow("含税单价最多保留 2 位小数");
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
   });
 
@@ -335,19 +371,88 @@ describe("ContractBillService", () => {
     }
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, taxRatePercent: "100.000001" })
-    ).rejects.toThrow("税率必须在 0 到 100 之间");
+    ).rejects.toThrow("税率不能超过 100");
+    await expect(
+      service.addRow("bill-1", "owner-1", { ...rowInput, taxRatePercent: "0" })
+    ).rejects.toThrow("税率必须大于 0");
   });
 
-  it("allows zero quantity for provisional or not-yet-priced draft rows", async () => {
-    const { service, rows } = fixture();
+  it("requires positive quantity for ordinary contracts", async () => {
+    const { service } = fixture();
+
+    await expect(
+      service.addRow("bill-1", "owner-1", {
+        ...rowInput,
+        quantity: "0"
+      })
+    ).rejects.toThrow("数量必须大于 0");
+  });
+
+  it("allows an unlimited framework row without estimated quantity", async () => {
+    const { service, tx, rows, version } = fixture({
+      pricingNature: "framework",
+      amountLimitType: "unlimited"
+    });
 
     await service.addRow("bill-1", "owner-1", {
       ...rowInput,
-      quantity: "0",
-      unitPrice: "0"
+      quantity: ""
     });
 
-    expect(rows[0].taxInclusiveAmountCents).toBe(0n);
+    expect(rows[0]).toMatchObject({
+      quantity: null,
+      taxInclusiveAmountCents: null,
+      taxExclusiveAmountCents: null,
+      taxAmountCents: null,
+      pricingFactStatus: "confirmed"
+    });
+    expect(version.amountCents).toBe(0n);
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("preserves an unchanged legacy value but requires two decimals when pricing changes", async () => {
+    const existing = {
+      id: "row-1",
+      contractBillId: "bill-1",
+      rowKey: "legacy",
+      sortOrder: 0,
+      quantity: new Prisma.Decimal("1.123"),
+      unitPrice: new Prisma.Decimal("2.345"),
+      taxRate: new Prisma.Decimal("13"),
+      taxRateSource: "version_default",
+      pricingFactStatus: "confirmed",
+      precisionPolicy: "legacy",
+      taxInclusiveAmountCents: 264n,
+      taxExclusiveAmountCents: 234n,
+      taxAmountCents: 30n,
+      customData: {}
+    };
+    const { service, rows } = fixture({ rows: [existing] });
+
+    await service.updateRow("bill-1", "legacy", "owner-1", {
+      ...rowInput,
+      quantity: "1.123",
+      unitPrice: "2.345",
+      itemName: "仅修改名称"
+    });
+    expect(rows[0].precisionPolicy).toBe("legacy");
+
+    await expect(
+      service.updateRow("bill-1", "legacy", "owner-1", {
+        ...rowInput,
+        expectedBillRevision: 3,
+        quantity: "1.123",
+        unitPrice: "2.35"
+      })
+    ).rejects.toThrow("数量最多保留 2 位小数");
+
+    await service.updateRow("bill-1", "legacy", "owner-1", {
+      ...rowInput,
+      expectedBillRevision: 3,
+      quantity: "1.12",
+      unitPrice: "2.35"
+    });
+    expect(rows[0].precisionPolicy).toBe("two_decimal");
   });
 
   it("requires plain customData and required non-empty custom columns", async () => {
@@ -362,6 +467,45 @@ describe("ContractBillService", () => {
     await expect(
       service.addRow("bill-1", "owner-1", { ...rowInput, customData: [] as never })
     ).rejects.toThrow("自定义字段数据必须是普通对象");
+  });
+
+  it("sums complete rows but does not publish a contract amount while priced rows are incomplete", async () => {
+    const { service, tx, bill } = fixture({
+      rows: [
+        {
+          id: "row-complete",
+          contractBillId: "bill-1",
+          rowKey: "complete",
+          sortOrder: 0,
+          pricingFactStatus: "confirmed",
+          taxInclusiveAmountCents: 100n,
+          taxExclusiveAmountCents: 88n,
+          taxAmountCents: 12n
+        },
+        {
+          id: "row-incomplete",
+          contractBillId: "bill-1",
+          rowKey: "incomplete",
+          sortOrder: 1,
+          pricingFactStatus: "unconfirmed",
+          taxInclusiveAmountCents: null,
+          taxExclusiveAmountCents: null,
+          taxAmountCents: null
+        }
+      ]
+    });
+
+    await service.reorderRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      rowKeys: ["incomplete", "complete"]
+    });
+
+    expect(bill).toMatchObject({
+      taxInclusiveAmountCents: 100n,
+      taxExclusiveAmountCents: 88n,
+      taxAmountCents: 12n
+    });
+    expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
   it("不向用户暴露 not JSON 内部哨兵", async () => {
@@ -388,7 +532,7 @@ describe("ContractBillService", () => {
       ...rowInput,
       quantity: "1",
       unitPrice: "1",
-      taxRatePercent: "0"
+      taxRatePercent: undefined
     });
 
     expect(version.amountCents).toBe(300n);

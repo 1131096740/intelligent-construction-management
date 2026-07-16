@@ -8,16 +8,14 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
-import { calculateBillRow, moneyCentsToApi } from "../money/decimal-money";
+import { moneyCentsToApi } from "../money/decimal-money";
+import { resolveContractBillRowFacts } from "./contract-bill-row-rules";
 import { recalculateBillAndContractAmount } from "./contract-bill-totals";
 import { loadOwnedEditableBill } from "./contract-bill-guards";
 import type {
   ReorderBillRowsDto,
   SaveBillRowDto
 } from "./dto/contract-bill.dto";
-
-const CANONICAL_DECIMAL = /^(0|[1-9]\d*)(\.\d+)?$/;
-const COMPANY_UNIT_PRICE_SCALE = 2;
 
 @Injectable()
 export class ContractBillService {
@@ -29,7 +27,7 @@ export class ContractBillService {
   addRow(billId: string, actorUserId: string, rawInput: unknown) {
     return this.prisma.$transaction(async (tx) => {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
-      const input = this.parseRowInput(rawInput, bill);
+      const input = this.parseRowInput(rawInput, bill, version);
       const newRevision = await this.lockMutation(
         tx,
         bill,
@@ -37,12 +35,6 @@ export class ContractBillService {
         actorUserId,
         input.expectedBillRevision
       );
-      const amounts = calculateBillRow({
-        quantity: input.quantity,
-        unitPrice: input.unitPrice,
-        taxRatePercent: input.taxRatePercent,
-        pricingMode: bill.pricingMode as "tax_inclusive" | "tax_exclusive"
-      });
       const sortOrder = await tx.contractBillRow.count({ where: { contractBillId: billId } });
       const row = await tx.contractBillRow.create({
         data: {
@@ -53,10 +45,15 @@ export class ContractBillService {
           itemName: input.itemName.trim(),
           specification: input.specification?.trim() || null,
           unit: input.unit.trim(),
-          quantity: input.quantity,
-          unitPrice: input.unitPrice,
-          taxRate: input.taxRatePercent,
-          ...amounts,
+          quantity: input.facts.quantity,
+          unitPrice: input.facts.unitPrice,
+          taxRate: input.facts.taxRatePercent,
+          taxRateSource: input.facts.taxRateSource,
+          pricingFactStatus: input.facts.pricingFactStatus,
+          precisionPolicy: input.facts.precisionPolicy,
+          taxInclusiveAmountCents: input.facts.taxInclusiveAmountCents,
+          taxExclusiveAmountCents: input.facts.taxExclusiveAmountCents,
+          taxAmountCents: input.facts.taxAmountCents,
           isProvisional: input.isProvisional ?? false,
           settlementBasis: input.settlementBasis?.trim() || null,
           customData: this.toJson(input.customData)
@@ -82,8 +79,8 @@ export class ContractBillService {
   ) {
     return this.prisma.$transaction(async (tx) => {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
-      const input = this.parseRowInput(rawInput, bill);
       const row = await this.findRow(tx, billId, rowKey);
+      const input = this.parseRowInput(rawInput, bill, version, row);
       const newRevision = await this.lockMutation(
         tx,
         bill,
@@ -91,12 +88,6 @@ export class ContractBillService {
         actorUserId,
         input.expectedBillRevision
       );
-      const amounts = calculateBillRow({
-        quantity: input.quantity,
-        unitPrice: input.unitPrice,
-        taxRatePercent: input.taxRatePercent,
-        pricingMode: bill.pricingMode as "tax_inclusive" | "tax_exclusive"
-      });
       const updated = await tx.contractBillRow.updateMany({
         where: { id: row.id, contractBillId: billId, rowKey },
         data: {
@@ -104,10 +95,15 @@ export class ContractBillService {
           itemName: input.itemName.trim(),
           specification: input.specification?.trim() || null,
           unit: input.unit.trim(),
-          quantity: input.quantity,
-          unitPrice: input.unitPrice,
-          taxRate: input.taxRatePercent,
-          ...amounts,
+          quantity: input.facts.quantity,
+          unitPrice: input.facts.unitPrice,
+          taxRate: input.facts.taxRatePercent,
+          taxRateSource: input.facts.taxRateSource,
+          pricingFactStatus: input.facts.pricingFactStatus,
+          precisionPolicy: input.facts.precisionPolicy,
+          taxInclusiveAmountCents: input.facts.taxInclusiveAmountCents,
+          taxExclusiveAmountCents: input.facts.taxExclusiveAmountCents,
+          taxAmountCents: input.facts.taxAmountCents,
           isProvisional: input.isProvisional ?? false,
           settlementBasis: input.settlementBasis?.trim() || null,
           customData: this.toJson(input.customData)
@@ -244,7 +240,12 @@ export class ContractBillService {
   private async finishMutation(
     tx: Prisma.TransactionClient,
     bill: { id: string; contractVersionId: string },
-    version: { id: string; amountSource: string },
+    version: {
+      id: string;
+      amountSource: string;
+      pricingNature: string;
+      amountLimitType: string;
+    },
     actorUserId: string,
     action: "create" | "update" | "delete" | "reorder",
     rowKey: string | null,
@@ -277,11 +278,29 @@ export class ContractBillService {
   private parseRowInput(
     rawInput: unknown,
     bill: {
-      quantityScale: number;
-      unitPriceScale: number;
+      pricingMode: string;
       schemaSnapshot: Prisma.JsonValue;
+    },
+    version: {
+      pricingNature: string;
+      amountLimitType: string;
+      taxMode: string;
+      defaultTaxRatePercent: Prisma.Decimal | null;
+    },
+    existing?: {
+      quantity: Prisma.Decimal | null;
+      unitPrice: Prisma.Decimal | null;
+      taxRate: Prisma.Decimal | null;
+      taxRateSource: string;
+      pricingFactStatus: string;
+      precisionPolicy: string;
+      taxInclusiveAmountCents: bigint | null;
+      taxExclusiveAmountCents: bigint | null;
+      taxAmountCents: bigint | null;
     }
-  ): SaveBillRowDto {
+  ): SaveBillRowDto & {
+    facts: ReturnType<typeof resolveContractBillRowFacts>;
+  } {
     const input = this.requireObject(rawInput, "合同清单行提交内容");
     this.assertExpectedRevision(input.expectedBillRevision);
     this.assertRequiredString(input.itemName, "项目名称");
@@ -289,16 +308,21 @@ export class ContractBillService {
     this.assertOptionalString(input.itemCode, "项目编号");
     this.assertOptionalString(input.specification, "规格型号");
     this.assertOptionalString(input.settlementBasis, "结算依据");
-    this.assertDecimal(input.quantity, "数量", bill.quantityScale, 18);
-    this.assertDecimal(
-      input.unitPrice,
-      "单价",
-      Math.min(bill.unitPriceScale, COMPANY_UNIT_PRICE_SCALE),
-      18
-    );
-    this.assertDecimal(input.taxRatePercent, "税率", 6, 3);
-    if (new Prisma.Decimal(input.taxRatePercent as string).gt(100)) {
-      throw new BadRequestException("税率必须在 0 到 100 之间");
+    if (input.quantity !== undefined && typeof input.quantity !== "string") {
+      throw new BadRequestException("数量必须是文本数字");
+    }
+    if (typeof input.unitPrice !== "string") {
+      throw new BadRequestException("含税单价不能为空");
+    }
+    if (input.taxRatePercent !== undefined && typeof input.taxRatePercent !== "string") {
+      throw new BadRequestException("税率必须是文本数字");
+    }
+    if (
+      input.taxRateSource !== undefined &&
+      input.taxRateSource !== "version_default" &&
+      input.taxRateSource !== "row_override"
+    ) {
+      throw new BadRequestException("税率来源无效");
     }
     if (input.isProvisional !== undefined && typeof input.isProvisional !== "boolean") {
       throw new BadRequestException("是否暂定必须为布尔值");
@@ -307,6 +331,30 @@ export class ContractBillService {
       throw new BadRequestException("自定义字段数据必须是普通对象");
     }
     const customData = this.toJson(input.customData) as Record<string, unknown>;
+    const facts = resolveContractBillRowFacts(
+      {
+        ...(input.quantity === undefined ? {} : { quantity: input.quantity as string }),
+        unitPrice: input.unitPrice,
+        ...(input.taxRatePercent === undefined
+          ? {}
+          : { taxRatePercent: input.taxRatePercent as string }),
+        ...(input.taxRateSource === undefined
+          ? {}
+          : {
+              taxRateSource: input.taxRateSource as
+                | "version_default"
+                | "row_override"
+            })
+      },
+      {
+        pricingMode: bill.pricingMode,
+        pricingNature: version.pricingNature,
+        amountLimitType: version.amountLimitType,
+        taxMode: version.taxMode,
+        defaultTaxRatePercent: version.defaultTaxRatePercent
+      },
+      existing
+    );
     const columns = this.schemaColumns(bill.schemaSnapshot);
     for (const column of columns) {
       const value = customData[column.key];
@@ -324,10 +372,20 @@ export class ContractBillService {
       expectedBillRevision: input.expectedBillRevision as number,
       itemName: input.itemName as string,
       unit: input.unit as string,
-      quantity: input.quantity as string,
+      ...(input.quantity === undefined ? {} : { quantity: input.quantity as string }),
       unitPrice: input.unitPrice as string,
-      taxRatePercent: input.taxRatePercent as string,
+      ...(input.taxRatePercent === undefined
+        ? {}
+        : { taxRatePercent: input.taxRatePercent as string }),
+      ...(input.taxRateSource === undefined
+        ? {}
+        : {
+            taxRateSource: input.taxRateSource as
+              | "version_default"
+              | "row_override"
+          }),
       customData,
+      facts,
       ...(input.itemCode === undefined ? {} : { itemCode: input.itemCode as string }),
       ...(input.specification === undefined
         ? {}
@@ -376,26 +434,6 @@ export class ContractBillService {
   private assertExpectedRevision(value: unknown) {
     if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
       throw new BadRequestException("清单版本号必须为正整数");
-    }
-  }
-
-  private assertDecimal(
-    value: unknown,
-    field: string,
-    scale: number,
-    integerDigits: number
-  ) {
-    if (typeof value !== "string" || !CANONICAL_DECIMAL.test(value)) {
-      throw new BadRequestException(
-        `${field}必须是规范的非负数字`
-      );
-    }
-    const [integer, fraction = ""] = value.split(".");
-    if (integer.length > integerDigits) {
-      throw new BadRequestException(`${field}整数位数不能超过 ${integerDigits} 位`);
-    }
-    if (fraction.length > scale) {
-      throw new BadRequestException(`${field}小数位数不能超过 ${scale} 位`);
     }
   }
 

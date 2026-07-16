@@ -1,5 +1,6 @@
 import * as ExcelJS from "exceljs";
 import type { Cell } from "exceljs";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { ContractBillExcelService } from "./contract-bill-excel.service";
@@ -73,6 +74,10 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
     status: "draft",
     draftRevision: 5,
     amountSource: "bill_sum",
+    pricingNature: "fixed_total",
+    amountLimitType: "capped",
+    taxMode: "single_rate",
+    defaultTaxRatePercent: new Prisma.Decimal("13"),
     amountCents: 0n
   };
   const contract = { id: "contract-1", ownerUserId: "owner-1", voidedAt: null };
@@ -247,6 +252,29 @@ describe("ContractBillExcelService", () => {
     expect(labels).not.toContain("brand");
   });
 
+  it("uses explicit inclusive and read-only exclusive unit price labels", async () => {
+    const { service } = billFixture();
+
+    const result = await service.exportTemplate("bill-1", "owner-1");
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
+    const labels: string[] = [];
+    workbook
+      .getWorksheet(DATA_SHEET)!
+      .getRow(1)
+      .eachCell((cell: Cell) => labels.push(String(cell.value)));
+    expect(labels).toContain("含税单价(元)");
+    expect(labels).toContain("不含税单价(元)");
+    expect(labels).not.toContain("单价(元)");
+    const codes: string[] = [];
+    const sheet = workbook.getWorksheet(DATA_SHEET)!;
+    sheet.getRow(2).eachCell((cell: Cell) => codes.push(String(cell.value)));
+    expect(
+      sheet.getRow(3).getCell(codes.indexOf("taxRatePercent") + 1).value
+    ).toBe("13");
+  });
+
   it("recalculates formulas from raw quantity, price, and tax cells", async () => {
     const { service, rows, fileService } = billFixture();
     const buffer = await buildWorkbookBuffer({
@@ -290,7 +318,7 @@ describe("ContractBillExcelService", () => {
             unit: "项",
             quantity: "1",
             unitPrice: "90071992547409.93",
-            taxRatePercent: "0"
+            taxRatePercent: ""
           }
         }
       ]
@@ -358,7 +386,7 @@ describe("ContractBillExcelService", () => {
             unit: "t",
             quantity: "1",
             unitPrice: "1",
-            taxRatePercent: "0"
+            taxRatePercent: ""
           }
         }
       ]
@@ -406,7 +434,7 @@ describe("ContractBillExcelService", () => {
               unit: "t",
               quantity: "1",
               unitPrice: "1",
-              taxRatePercent: "0"
+              taxRatePercent: ""
             }
           }
         ]
@@ -441,7 +469,7 @@ describe("ContractBillExcelService", () => {
             unit: "t",
             quantity: "1",
             unitPrice: "1",
-            taxRatePercent: "0"
+            taxRatePercent: ""
           }
         }
       ]
@@ -465,6 +493,12 @@ describe("ContractBillExcelService", () => {
 
     expect(tx.contractBillRow.create).toHaveBeenCalledTimes(1);
     expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      taxRate: "13",
+      taxRateSource: "version_default",
+      pricingFactStatus: "confirmed",
+      precisionPolicy: "two_decimal"
+    });
     expect(imports[0].status).toBe("applied");
     expect(imports[0].appliedByUserId).toBe("owner-1");
     expect(version.draftRevision).toBe(6);
@@ -488,7 +522,7 @@ describe("ContractBillExcelService", () => {
             unit: "t",
             quantity: "1",
             unitPrice: "1",
-            taxRatePercent: "0"
+            taxRatePercent: ""
           }
         }
       ]
@@ -520,7 +554,7 @@ describe("ContractBillExcelService", () => {
             unit: "t",
             quantity: "1",
             unitPrice: "1",
-            taxRatePercent: "0"
+            taxRatePercent: ""
           }
         }
       ]
@@ -573,7 +607,7 @@ describe("ContractBillExcelService", () => {
             unit: "t",
             quantity: { formula: "1+", result: 1 },
             unitPrice: "1",
-            taxRatePercent: "0"
+            taxRatePercent: ""
           }
         }
       ]
@@ -600,9 +634,9 @@ describe("ContractBillExcelService", () => {
     { field: "itemName", value: "", message: "项目名称不能为空" },
     { field: "unit", value: "", message: "单位不能为空" },
     { field: "quantity", value: "1234567890123456789", message: "数量整数位数不能超过 18 位" },
-    { field: "quantity", value: "1.0001", message: "数量小数位数不能超过 3 位" },
-    { field: "unitPrice", value: "1.001", message: "单价小数位数不能超过 2 位" },
-    { field: "taxRatePercent", value: "101", message: "税率必须在 0 到 100 之间" },
+    { field: "quantity", value: "1.001", message: "数量最多保留 2 位小数" },
+    { field: "unitPrice", value: "1.001", message: "含税单价最多保留 2 位小数" },
+    { field: "taxRatePercent", value: "101", message: "税率不能超过 100" },
     { field: "isProvisional", value: "maybe", message: "是否暂定格式无效" }
   ])("预检 $field 时返回中文业务错误", async ({ field, value, message }) => {
     const { service, fileService } = billFixture();
@@ -614,7 +648,7 @@ describe("ContractBillExcelService", () => {
             unit: "t",
             quantity: "1",
             unitPrice: "1",
-            taxRatePercent: "0",
+            taxRatePercent: "",
             [field]: value
           }
         }
@@ -635,6 +669,221 @@ describe("ContractBillExcelService", () => {
     );
   });
 
+  it("rejects zero tax and permits an explicit multiple-rate override", async () => {
+    const zero = billFixture();
+    const zeroBuffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "钢筋",
+            unit: "t",
+            quantity: "1",
+            unitPrice: "1",
+            taxRatePercent: "0"
+          }
+        }
+      ]
+    });
+    (zero.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-zero-rate", originalName: "bill.xlsx" },
+      buffer: zeroBuffer
+    });
+    const zeroPreview = await zero.service.previewImport("bill-1", "owner-1", {
+      fileId: "file-zero-rate",
+      mode: "append"
+    });
+    expect(zeroPreview.errors).toContainEqual(
+      expect.objectContaining({
+        column: "taxRatePercent",
+        message: "税率必须大于 0"
+      })
+    );
+
+    const multiple = billFixture();
+    multiple.version.taxMode = "multiple_rate";
+    const overrideBuffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "例外税率项目",
+            unit: "项",
+            quantity: "1",
+            unitPrice: "100",
+            taxRatePercent: "6"
+          }
+        }
+      ]
+    });
+    (multiple.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-override-rate", originalName: "bill.xlsx" },
+      buffer: overrideBuffer
+    });
+    const preview = await multiple.service.previewImport("bill-1", "owner-1", {
+      fileId: "file-override-rate",
+      mode: "append"
+    });
+    expect(preview.errors).toEqual([]);
+    await multiple.service.applyImport(preview.importId, "owner-1");
+    expect(multiple.rows[0]).toMatchObject({
+      taxRate: "6",
+      taxRateSource: "row_override"
+    });
+  });
+
+  it("rejects a different tax rate in single-rate Excel imports", async () => {
+    const fixture = billFixture();
+    const buffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "错误税率项目",
+            unit: "项",
+            quantity: "1",
+            unitPrice: "100",
+            taxRatePercent: "6"
+          }
+        }
+      ]
+    });
+    (fixture.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-wrong-single-rate", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await fixture.service.previewImport("bill-1", "owner-1", {
+      fileId: "file-wrong-single-rate",
+      mode: "append"
+    });
+
+    expect(preview.errors).toContainEqual(
+      expect.objectContaining({
+        column: "taxRatePercent",
+        message: "单一税率合同的清单税率必须与合同默认税率一致"
+      })
+    );
+  });
+
+  it("preserves unchanged legacy precision in update imports and rejects partial conversion", async () => {
+    const existing = {
+      id: "row-legacy",
+      contractBillId: "bill-1",
+      rowKey: "legacy",
+      sortOrder: 0,
+      itemName: "旧项目",
+      unit: "项",
+      quantity: new Prisma.Decimal("1.123"),
+      unitPrice: new Prisma.Decimal("2.345"),
+      taxRate: new Prisma.Decimal("13"),
+      taxRateSource: "version_default",
+      precisionPolicy: "legacy",
+      pricingFactStatus: "confirmed",
+      taxInclusiveAmountCents: 264n,
+      taxExclusiveAmountCents: 234n,
+      taxAmountCents: 30n
+    };
+    const fixture = billFixture({ rows: [existing] });
+    const unchanged = await buildWorkbookBuffer({
+      rows: [
+        {
+          rowKey: "legacy",
+          values: {
+            itemName: "仅修改名称",
+            unit: "项",
+            quantity: "1.123",
+            unitPrice: "2.345",
+            taxRatePercent: ""
+          }
+        }
+      ]
+    });
+    (fixture.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-legacy-unchanged", originalName: "bill.xlsx" },
+      buffer: unchanged
+    });
+    const accepted = await fixture.service.previewImport("bill-1", "owner-1", {
+      fileId: "file-legacy-unchanged",
+      mode: "update"
+    });
+    expect(accepted.errors).toEqual([]);
+
+    const partiallyChanged = await buildWorkbookBuffer({
+      rows: [
+        {
+          rowKey: "legacy",
+          values: {
+            itemName: "修改价格",
+            unit: "项",
+            quantity: "1.123",
+            unitPrice: "2.35",
+            taxRatePercent: ""
+          }
+        }
+      ]
+    });
+    (fixture.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-legacy-changed", originalName: "bill.xlsx" },
+      buffer: partiallyChanged
+    });
+    const blocked = await fixture.service.previewImport("bill-1", "owner-1", {
+      fileId: "file-legacy-changed",
+      mode: "update"
+    });
+    expect(blocked.errors).toContainEqual(
+      expect.objectContaining({
+        column: "quantity",
+        message: "数量最多保留 2 位小数"
+      })
+    );
+  });
+
+  it("allows blank estimated quantity only for unlimited framework imports", async () => {
+    const ordinary = billFixture();
+    const buffer = await buildWorkbookBuffer({
+      rows: [
+        {
+          values: {
+            itemName: "框架项目",
+            unit: "项",
+            quantity: "",
+            unitPrice: "100",
+            taxRatePercent: ""
+          }
+        }
+      ]
+    });
+    (ordinary.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-blank-quantity", originalName: "bill.xlsx" },
+      buffer
+    });
+    const blocked = await ordinary.service.previewImport("bill-1", "owner-1", {
+      fileId: "file-blank-quantity",
+      mode: "append"
+    });
+    expect(blocked.errors).toContainEqual(
+      expect.objectContaining({ column: "quantity", message: "数量不能为空" })
+    );
+
+    const framework = billFixture();
+    framework.version.pricingNature = "framework";
+    framework.version.amountLimitType = "unlimited";
+    (framework.fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-framework", originalName: "bill.xlsx" },
+      buffer
+    });
+    const preview = await framework.service.previewImport("bill-1", "owner-1", {
+      fileId: "file-framework",
+      mode: "append"
+    });
+    expect(preview.errors).toEqual([]);
+    await framework.service.applyImport(preview.importId, "owner-1");
+    expect(framework.rows[0]).toMatchObject({
+      quantity: null,
+      taxInclusiveAmountCents: null,
+      taxExclusiveAmountCents: null,
+      taxAmountCents: null
+    });
+  });
+
   it("必填自定义字段缺失时返回中文预检错误", async () => {
     const { service, bill, fileService } = billFixture();
     bill.schemaSnapshot = {
@@ -649,7 +898,7 @@ describe("ContractBillExcelService", () => {
             unit: "t",
             quantity: "1",
             unitPrice: "1",
-            taxRatePercent: "0",
+            taxRatePercent: "",
             brand: ""
           }
         }
@@ -697,7 +946,7 @@ describe("ContractBillExcelService", () => {
           unit: "t",
           quantity: "1",
           unitPrice: "1",
-          taxRatePercent: "0"
+          taxRatePercent: ""
         }
       }))
     });
