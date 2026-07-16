@@ -2,7 +2,8 @@ import type { SettlementSourceLineReadModel } from "@jiangkong/shared-domain";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import type { SettlementLineDraftPayload } from "../../api/settlement-workbench.api";
 
-const QUANTITY_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
+const QUANTITY_INPUT_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/;
+const STORED_QUANTITY_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
 const SIGNED_YUAN_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d{1,2})?$/;
 
 export interface SourceLineDraft {
@@ -137,11 +138,15 @@ export function validateSettlementWorkbench(
       errors.push("合同清单已变化，请刷新后重新选择本期清单项。");
       continue;
     }
+    if (row.submissionBlocker) {
+      errors.push(row.submissionBlocker.message);
+      continue;
+    }
     const quantity = draft.quantity.trim();
     if (row.calculationMode === "normal_auto" && !quantity) {
       errors.push(`合同清单项“${row.itemName}”必须填写本期数量。`);
-    } else if (quantity && !QUANTITY_PATTERN.test(quantity)) {
-      errors.push(`合同清单项“${row.itemName}”本期数量必须是非负数字，最多保留 6 位小数。`);
+    } else if (quantity && !QUANTITY_INPUT_PATTERN.test(quantity)) {
+      errors.push(`合同清单项“${row.itemName}”本期数量必须是非负数字，最多保留 2 位小数。`);
     }
     if (
       row.calculationMode === "manual_amount" &&
@@ -165,23 +170,23 @@ export function validateSettlementWorkbench(
 }
 
 export function settlementQuantityProgress(
-  contractQuantity: string,
+  contractQuantity: string | null,
   previousQuantity: string | null,
   currentQuantity: string
 ): { cumulative: string | null; remaining: string | null } {
-  if (previousQuantity === null || !QUANTITY_PATTERN.test(currentQuantity.trim())) {
+  if (previousQuantity === null || !QUANTITY_INPUT_PATTERN.test(currentQuantity.trim())) {
     return { cumulative: null, remaining: null };
   }
-  const contract = decimalToScaledBigInt(contractQuantity);
   const previous = decimalToScaledBigInt(previousQuantity);
   const current = decimalToScaledBigInt(currentQuantity.trim());
-  if (contract === null || previous === null || current === null) {
+  if (previous === null || current === null) {
     return { cumulative: null, remaining: null };
   }
   const cumulative = previous + current;
+  const contract = contractQuantity === null ? null : decimalToScaledBigInt(contractQuantity);
   return {
     cumulative: scaledBigIntToDecimal(cumulative),
-    remaining: scaledBigIntToDecimal(contract - cumulative)
+    remaining: contract === null ? null : scaledBigIntToDecimal(contract - cumulative)
   };
 }
 
@@ -301,7 +306,7 @@ function centsTextToInputYuan(value: string | undefined): string {
 
 function decimalToScaledBigInt(value: string): bigint | null {
   const normalized = value.trim();
-  if (!QUANTITY_PATTERN.test(normalized)) return null;
+  if (!STORED_QUANTITY_PATTERN.test(normalized)) return null;
   const [integer, fraction = ""] = normalized.split(".");
   return BigInt(`${integer}${fraction.padEnd(6, "0")}`);
 }

@@ -1,4 +1,7 @@
-import type { SettlementSourceLinesReadModel } from "@jiangkong/shared-domain";
+import type {
+  SettlementSourceLinesReadModel,
+  SettlementSubmissionBlocker
+} from "@jiangkong/shared-domain";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
@@ -21,16 +24,22 @@ export interface SettlementCanonicalPreviewLineReadModel {
   unit: string | null;
   quantity: string | null;
   unitPrice: string | null;
-  amountCents: string;
+  amountCents: string | null;
   reason: string | null;
   remark: string | null;
   sortOrder: number;
 }
 
+export interface SettlementCanonicalSubmissionBlocker
+  extends SettlementSubmissionBlocker {
+  contractBillRowId: string | null;
+}
+
 export interface SettlementCanonicalPreviewReadModel {
   contractVersionId: string;
-  amountCents: string;
+  amountCents: string | null;
   lines: SettlementCanonicalPreviewLineReadModel[];
+  submissionBlockers: SettlementCanonicalSubmissionBlocker[];
 }
 
 export interface SettlementImportErrorReadModel {

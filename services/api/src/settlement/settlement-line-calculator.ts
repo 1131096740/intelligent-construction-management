@@ -1,11 +1,15 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import type { SettlementSubmissionBlocker } from "@jiangkong/shared-domain";
 import { calculateBillRow, parseMoneyCentsInput, parseSignedMoneyCentsInput } from "../money/decimal-money";
 import type {
   CreateSettlementLineDto,
   SettlementLineSourceType
 } from "./dto/create-settlement.dto";
-import { parseSettlementQuantity } from "./settlement-quantity";
+import {
+  INVALID_SETTLEMENT_QUANTITY_MESSAGE,
+  parseSettlementQuantity
+} from "./settlement-quantity";
 
 export type SettlementCalculationMode =
   | "normal_auto"
@@ -16,13 +20,20 @@ export interface SettlementContractSourceRow {
   id: string;
   itemName: string;
   unit: string;
-  contractQuantity: Prisma.Decimal;
-  unitPrice: Prisma.Decimal;
-  taxRatePercent: Prisma.Decimal;
-  taxInclusiveAmountCents: bigint;
+  contractQuantity: Prisma.Decimal | null;
+  unitPrice: Prisma.Decimal | null;
+  taxRatePercent: Prisma.Decimal | null;
+  taxInclusiveAmountCents: bigint | null;
   amountRole: string;
   pricingMode: string;
   isProvisional: boolean;
+  pricingFactStatus?: "confirmed" | "unconfirmed";
+}
+
+export interface SettlementSubmissionFactContext {
+  invoiceType?: string | null;
+  taxFactStatus?: string | null;
+  remedyPath?: string;
 }
 
 export interface CanonicalSettlementLine {
@@ -53,6 +64,46 @@ export function settlementCalculationMode(
   return row.amountRole === "included" && !row.isProvisional
     ? "normal_auto"
     : "manual_amount";
+}
+
+export function settlementSubmissionBlocker(
+  row: SettlementContractSourceRow,
+  context: SettlementSubmissionFactContext = {}
+): SettlementSubmissionBlocker | null {
+  const remedyPath = context.remedyPath ?? "/合同工作台";
+  if (context.invoiceType === null) {
+    return {
+      code: "missing_invoice_type",
+      message: "合同发票类型尚未确认，暂不能提交结算审批。请先在合同工作台补录并完成复核。",
+      remedyPath
+    };
+  }
+  const contractTaxFactsReady =
+    context.taxFactStatus === undefined ||
+    context.taxFactStatus === "frozen" ||
+    context.taxFactStatus === "confirmed";
+  if (
+    !contractTaxFactsReady ||
+    row.taxRatePercent === null ||
+    row.taxRatePercent.lessThanOrEqualTo(0)
+  ) {
+    return {
+      code: "missing_tax_rate",
+      message:
+        !contractTaxFactsReady
+          ? "合同税务事实尚未确认，暂不能提交结算审批。请先完成财务复核和合同确认。"
+          : `合同清单项“${row.itemName}”的税率尚未确认，暂不能提交结算审批。请先补录并完成复核。`,
+      remedyPath
+    };
+  }
+  if (row.unitPrice === null || row.pricingFactStatus === "unconfirmed") {
+    return {
+      code: "missing_unit_price",
+      message: `合同清单项“${row.itemName}”的含税单价尚未确认，暂不能提交结算审批。请先补录并完成复核。`,
+      remedyPath
+    };
+  }
+  return null;
 }
 
 export function canonicalSettlementLine(
@@ -91,6 +142,10 @@ export function canonicalSettlementLine(
   if (!sourceRow) {
     throw new BadRequestException("结算明细引用的合同清单项不属于当前有效合同版本。");
   }
+  const submissionBlocker = settlementSubmissionBlocker(sourceRow);
+  if (submissionBlocker) {
+    throw new BadRequestException(submissionBlocker.message);
+  }
 
   const calculationMode = settlementCalculationMode(sourceRow);
   let quantity: Prisma.Decimal | null;
@@ -128,6 +183,12 @@ function calculateNormalAmount(
   row: SettlementContractSourceRow,
   quantity: Prisma.Decimal
 ): bigint {
+  if (row.unitPrice === null || row.taxRatePercent === null) {
+    const blocker = settlementSubmissionBlocker(row);
+    throw new BadRequestException(
+      blocker?.message ?? `合同清单项“${row.itemName}”的计价事实不完整。`
+    );
+  }
   const calculated = calculateBillRow({
     quantity: quantity.toString(),
     unitPrice: row.unitPrice.toString(),
@@ -169,7 +230,10 @@ function parseQuantity(value: unknown, label: string): Prisma.Decimal | null {
   let quantity: Prisma.Decimal | null;
   try {
     quantity = parseSettlementQuantity(value);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === INVALID_SETTLEMENT_QUANTITY_MESSAGE) {
+      throw new BadRequestException(error.message);
+    }
     throw new BadRequestException(`${label}格式不正确。`);
   }
   if (quantity?.isNegative()) {

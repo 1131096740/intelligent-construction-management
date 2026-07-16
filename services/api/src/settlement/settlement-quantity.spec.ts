@@ -4,15 +4,15 @@ import {
   parseSettlementQuantity
 } from "./settlement-quantity";
 
-describe("settlement quantity Decimal(24,6) boundary", () => {
+describe("settlement quantity input boundary", () => {
   it.each([
     [undefined, null],
     ["", null],
-    ["999999999999999999.999999", "999999999999999999.999999"],
-    ["-999999999999999999.999999", "-999999999999999999.999999"],
+    ["999999999999999999.99", "999999999999999999.99"],
+    ["-999999999999999999.99", "-999999999999999999.99"],
     ["1e3", "1000"],
     [1e3, "1000"],
-    ["1.2300000", "1.23"]
+    ["1.2300", "1.23"]
   ])("parses compatible quantity %p", (value, expected) => {
     const result = parseSettlementQuantity(value);
 
@@ -34,14 +34,14 @@ describe("settlement quantity Decimal(24,6) boundary", () => {
     "Infinity",
     "-Infinity",
     "1e100",
-    "0.0000001",
-    "999999999999999999.9999999",
+    "0.001",
+    "999999999999999999.999",
     "1000000000000000000",
     "-1000000000000000000",
     {}
-  ])("rejects quantity outside Decimal(24,6): %p", (value) => {
+  ])("rejects an invalid new quantity input: %p", (value) => {
     expect(() => parseSettlementQuantity(value)).toThrow(
-      "结算明细工程量超出系统可保存范围"
+      "本期结算数量最多保留 2 位小数，请修改后重试。"
     );
     expect(isSettlementQuantityInput(value)).toBe(false);
   });

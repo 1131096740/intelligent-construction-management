@@ -37,17 +37,53 @@ describe("settlement workbench API", () => {
 
   it("posts selected lines to the canonical preview resource", async () => {
     mockApiFetch.mockResolvedValue(
-      new Response(JSON.stringify({ contractVersionId: "version-1", amountCents: "100", lines: [] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      })
+      new Response(
+        JSON.stringify({
+          contractVersionId: "version-1",
+          amountCents: null,
+          lines: [
+            {
+              sourceType: "contract_bill_row",
+              calculationMode: "normal_auto",
+              contractBillRowId: "row-1",
+              name: "钢筋",
+              unit: "吨",
+              quantity: "1",
+              unitPrice: null,
+              amountCents: null,
+              reason: null,
+              remark: null,
+              sortOrder: 1
+            }
+          ],
+          submissionBlockers: [
+            {
+              code: "missing_unit_price",
+              contractBillRowId: "row-1",
+              message: "合同清单项“钢筋”的含税单价尚未确认",
+              remedyPath: "/合同工作台/contract-1"
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
     );
     const settlementLines = [
       { sourceType: "contract_bill_row" as const, contractBillRowId: "row-1", quantity: "1" }
     ];
 
     await expect(previewSettlementLines("version-1", { settlementLines })).resolves.toMatchObject({
-      amountCents: "100"
+      amountCents: null,
+      lines: [expect.objectContaining({ amountCents: null })],
+      submissionBlockers: [
+        expect.objectContaining({
+          code: "missing_unit_price",
+          contractBillRowId: "row-1"
+        })
+      ]
     });
     expect(mockApiFetch).toHaveBeenCalledWith(
       "/settlement-workbench/contract-versions/version-1/preview",

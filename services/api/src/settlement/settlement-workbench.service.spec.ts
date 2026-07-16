@@ -18,7 +18,10 @@ function buildPrisma() {
         id: "version-1",
         contractId: "contract-1",
         status: "effective",
-        amountCents: 9_007_199_254_740_993n
+        amountCents: 9_007_199_254_740_993n,
+        invoiceType: "vat_special",
+        defaultTaxRatePercent: new Decimal("13"),
+        taxFactStatus: "frozen"
       })
     },
     contract: {
@@ -57,6 +60,7 @@ function buildPrisma() {
           unitPrice: new Decimal("3200.125"),
           taxRate: new Decimal("13"),
           taxInclusiveAmountCents: 9_007_199_254_740_995n,
+          pricingFactStatus: "confirmed",
           isProvisional: true,
           settlementBasis: "按现场验收量"
         },
@@ -73,6 +77,7 @@ function buildPrisma() {
           unitPrice: new Decimal("280"),
           taxRate: new Decimal("3"),
           taxInclusiveAmountCents: 350_000n,
+          pricingFactStatus: "confirmed",
           isProvisional: false,
           settlementBasis: null
         }
@@ -148,6 +153,10 @@ describe("SettlementWorkbenchService", () => {
           previousSettledQuantity: "3.75",
           remainingQuantity: "8.75",
           taxRatePercent: "3",
+          taxExclusiveUnitPrice: "271.84",
+          pricingFactStatus: "confirmed",
+          calculationAvailable: true,
+          submissionBlocker: null,
           amountRole: "included",
           pricingMode: "tax_inclusive",
           calculationMode: "normal_auto",
@@ -167,6 +176,10 @@ describe("SettlementWorkbenchService", () => {
           previousSettledQuantity: null,
           remainingQuantity: null,
           taxRatePercent: "13",
+          taxExclusiveUnitPrice: "3200.125",
+          pricingFactStatus: "confirmed",
+          calculationAvailable: true,
+          submissionBlocker: null,
           amountRole: "reference",
           pricingMode: "tax_exclusive",
           calculationMode: "manual_amount",
@@ -260,5 +273,84 @@ describe("SettlementWorkbenchService", () => {
     expect(prisma.contractBillRow.findMany).not.toHaveBeenCalled();
     expect(prisma.settlement.findMany).not.toHaveBeenCalled();
     expect(prisma.settlementLine.findMany).not.toHaveBeenCalled();
+  });
+
+  it("marks a missing invoice type as one contract-level blocker on every row", async () => {
+    const prisma = buildPrisma();
+    prisma.contractVersion.findUnique.mockResolvedValue({
+      id: "version-1",
+      contractId: "contract-1",
+      status: "effective",
+      amountCents: 1n,
+      invoiceType: null,
+      defaultTaxRatePercent: null,
+      taxFactStatus: "unconfirmed"
+    });
+    const service = new SettlementWorkbenchService(prisma as never);
+
+    const result = await service.sourceLines("version-1");
+
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows.map((row) => row.submissionBlocker)).toEqual([
+      {
+        code: "missing_invoice_type",
+        message: "合同发票类型尚未确认，暂不能提交结算审批。请先在合同工作台补录并完成复核。",
+        remedyPath: "/合同工作台/contract-1"
+      },
+      {
+        code: "missing_invoice_type",
+        message: "合同发票类型尚未确认，暂不能提交结算审批。请先在合同工作台补录并完成复核。",
+        remedyPath: "/合同工作台/contract-1"
+      }
+    ]);
+    expect(result.rows.every((row) => row.calculationAvailable === false)).toBe(true);
+  });
+
+  it("keeps unknown source facts null and blocks only the row missing its unit price", async () => {
+    const prisma = buildPrisma();
+    const [missingPrice, complete] = await prisma.contractBillRow.findMany();
+    prisma.contractBillRow.findMany.mockResolvedValue([
+      {
+        ...missingPrice,
+        quantity: null,
+        unitPrice: null,
+        taxInclusiveAmountCents: null,
+        pricingFactStatus: "unconfirmed"
+      },
+      complete
+    ]);
+    const service = new SettlementWorkbenchService(prisma as never);
+
+    const result = await service.sourceLines("version-1");
+    const blocked = result.rows.find((row) => row.id === "row-b");
+    const available = result.rows.find((row) => row.id === "row-a");
+
+    expect(blocked).toMatchObject({
+      quantity: null,
+      unitPrice: null,
+      contractAmountCents: null,
+      remainingAmountCents: null,
+      taxRatePercent: "13",
+      taxExclusiveUnitPrice: null,
+      pricingFactStatus: "unconfirmed",
+      calculationAvailable: false,
+      submissionBlocker: {
+        code: "missing_unit_price",
+        remedyPath: "/合同工作台/contract-1"
+      }
+    });
+    expect(blocked).not.toMatchObject({
+      quantity: "0",
+      unitPrice: "0",
+      taxRatePercent: "0"
+    });
+    expect(available).toMatchObject({
+      calculationAvailable: true,
+      submissionBlocker: null
+    });
+    expect(result.summary).toMatchObject({
+      contractAmountCents: null,
+      remainingAmountCents: null
+    });
   });
 });

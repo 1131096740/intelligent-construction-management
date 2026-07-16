@@ -2,20 +2,22 @@ import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
   canonicalSettlementLine,
-  settlementCalculationMode
+  settlementCalculationMode,
+  settlementSubmissionBlocker
 } from "./settlement-line-calculator";
 
 const normalRow = {
   id: "row-normal",
   itemName: "混凝土浇筑",
   unit: "m³",
-  contractQuantity: new Prisma.Decimal("10.500000"),
+  contractQuantity: new Prisma.Decimal("10.50"),
   unitPrice: new Prisma.Decimal("123.456789"),
   taxRatePercent: new Prisma.Decimal("9"),
   taxInclusiveAmountCents: 129630n,
   amountRole: "included",
   pricingMode: "tax_inclusive",
-  isProvisional: false
+  isProvisional: false,
+  pricingFactStatus: "confirmed"
 } as const;
 
 describe("canonicalSettlementLine", () => {
@@ -43,7 +45,7 @@ describe("canonicalSettlementLine", () => {
       {
         sourceType: "contract_bill_row",
         contractBillRowId: normalRow.id,
-        quantity: "2.500000",
+        quantity: "2.50",
         amountCents: "30864",
         unitPriceCents: "1",
         name: "伪造名称"
@@ -141,5 +143,90 @@ describe("canonicalSettlementLine", () => {
         0
       )
     ).toMatchObject({ calculationMode: "manual_adjustment", amountCents: -100n });
+  });
+
+  it("keeps manual adjustments but blocks only selected contract rows with missing facts", () => {
+    expect(
+      settlementSubmissionBlocker(normalRow, {
+        invoiceType: "vat_special",
+        taxFactStatus: "frozen",
+        remedyPath: "/合同工作台/contract-1"
+      })
+    ).toBeNull();
+
+    expect(
+      settlementSubmissionBlocker(
+        { ...normalRow, taxRatePercent: null },
+        {
+          invoiceType: "vat_special",
+          taxFactStatus: "confirmed",
+          remedyPath: "/合同工作台/contract-1"
+        }
+      )
+    ).toEqual({
+      code: "missing_tax_rate",
+      message: "合同清单项“混凝土浇筑”的税率尚未确认，暂不能提交结算审批。请先补录并完成复核。",
+      remedyPath: "/合同工作台/contract-1"
+    });
+
+    expect(
+      settlementSubmissionBlocker(
+        { ...normalRow, unitPrice: null, pricingFactStatus: "unconfirmed" },
+        {
+          invoiceType: "vat_special",
+          taxFactStatus: "confirmed",
+          remedyPath: "/合同工作台/contract-1"
+        }
+      )
+    ).toEqual({
+      code: "missing_unit_price",
+      message: "合同清单项“混凝土浇筑”的含税单价尚未确认，暂不能提交结算审批。请先补录并完成复核。",
+      remedyPath: "/合同工作台/contract-1"
+    });
+
+    expect(() =>
+      canonicalSettlementLine(
+        {
+          sourceType: "contract_bill_row",
+          contractBillRowId: normalRow.id,
+          quantity: "2"
+        },
+        { ...normalRow, unitPrice: null, pricingFactStatus: "unconfirmed" },
+        0
+      )
+    ).toThrow("含税单价尚未确认");
+
+    expect(() =>
+      canonicalSettlementLine(
+        {
+          sourceType: "contract_bill_row",
+          contractBillRowId: normalRow.id,
+          quantity: "1.001"
+        },
+        normalRow,
+        0
+      )
+    ).toThrow("本期结算数量最多保留 2 位小数，请修改后重试。");
+  });
+
+  it("allows a framework row without estimated quantity to settle its current actual quantity", () => {
+    const line = canonicalSettlementLine(
+      {
+        sourceType: "contract_bill_row",
+        contractBillRowId: normalRow.id,
+        quantity: "2.25"
+      },
+      {
+        ...normalRow,
+        contractQuantity: null,
+        taxInclusiveAmountCents: null
+      },
+      0
+    );
+
+    expect(line.quantity?.toString()).toBe("2.25");
+    expect(line.contractQuantitySnapshot).toBeNull();
+    expect(line.contractBillRowLimitCents).toBeNull();
+    expect(line.amountCents).toBe(27778n);
   });
 });

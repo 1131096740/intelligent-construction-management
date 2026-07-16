@@ -84,7 +84,7 @@ describe("settlement workbench state", () => {
         ]
       })
     ).toEqual([
-      "合同清单项“钢筋”本期数量必须是非负数字，最多保留 6 位小数。",
+      "合同清单项“钢筋”本期数量必须是非负数字，最多保留 2 位小数。",
       "合同清单项“暂定项目”本期金额必须是非负数字，最多保留两位小数。",
       "第 1 条人工调整必须填写原因。"
     ]);
@@ -115,9 +115,9 @@ describe("settlement workbench state", () => {
   });
 
   it("calculates quantity progress without Number precision loss", () => {
-    expect(settlementQuantityProgress("9007199254740993.123456", "1.5", "2.25")).toEqual({
-      cumulative: "3.75",
-      remaining: "9007199254740989.373456"
+    expect(settlementQuantityProgress("9007199254740993.123456", "1.123456", "2.25")).toEqual({
+      cumulative: "3.373456",
+      remaining: "9007199254740989.75"
     });
     expect(settlementQuantityProgress("10", null, "1")).toEqual({
       cumulative: null,
@@ -126,6 +126,10 @@ describe("settlement workbench state", () => {
     expect(settlementQuantityProgress("10", "2", "0")).toEqual({
       cumulative: "2",
       remaining: "8"
+    });
+    expect(settlementQuantityProgress(null, "1.5", "2.25")).toEqual({
+      cumulative: "3.75",
+      remaining: null
     });
   });
 
@@ -143,7 +147,7 @@ describe("settlement workbench state", () => {
         {
           sourceType: "contract_bill_row",
           contractBillRowId: "row-normal",
-          quantity: "2.500000",
+          quantity: "2.50",
           remark: "现场完成"
         },
         {
@@ -164,7 +168,7 @@ describe("settlement workbench state", () => {
 
     expect(result).toEqual({
       drafts: {
-        "row-normal": { quantity: "2.500000", amountYuan: "", remark: "现场完成" },
+        "row-normal": { quantity: "2.50", amountYuan: "", remark: "现场完成" },
         "row-manual": {
           quantity: "",
           amountYuan: "1234.56",
@@ -185,6 +189,45 @@ describe("settlement workbench state", () => {
     expect(settlementWorkbenchDraftFingerprint(result.drafts, result.adjustments)).toContain(
       "质量扣款"
     );
+  });
+
+  it("preserves selected input while reporting a precise source fact blocker", () => {
+    const blocked = normalRow({
+      unitPrice: null,
+      taxExclusiveUnitPrice: null,
+      pricingFactStatus: "unconfirmed",
+      calculationAvailable: false,
+      submissionBlocker: {
+        code: "missing_unit_price",
+        message: "合同清单项“钢筋”的含税单价尚未确认，暂不能提交结算审批。请先补录并完成复核。",
+        remedyPath: "/合同工作台/contract-1"
+      }
+    });
+    const drafts = {
+      "row-normal": { quantity: "2.25", amountYuan: "", remark: "本期实际量" }
+    };
+
+    expect(
+      validateSettlementWorkbench({
+        contractVersionId: "version-1",
+        code: "JS-001",
+        periodLabel: "2026-07",
+        rows: [blocked],
+        drafts,
+        adjustments: []
+      })
+    ).toEqual([
+      "合同清单项“钢筋”的含税单价尚未确认，暂不能提交结算审批。请先补录并完成复核。"
+    ]);
+    expect(buildSettlementLinePayload([blocked], drafts, [])).toEqual([
+      {
+        sourceType: "contract_bill_row",
+        contractBillRowId: "row-normal",
+        quantity: "2.25",
+        remark: "本期实际量",
+        sortOrder: 1
+      }
+    ]);
   });
 
   it("rejects stale import responses and imported rows outside the selected contract", () => {
@@ -244,6 +287,10 @@ function sourceRow(overrides: Partial<SettlementSourceLineReadModel>): Settlemen
     quantity: "10",
     unitPrice: "100",
     taxRatePercent: "0",
+    taxExclusiveUnitPrice: "100",
+    pricingFactStatus: "confirmed",
+    calculationAvailable: true,
+    submissionBlocker: null,
     amountRole: "included",
     pricingMode: "tax_inclusive",
     calculationMode: "normal_auto",

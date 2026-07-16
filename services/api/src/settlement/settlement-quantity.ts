@@ -1,9 +1,10 @@
 import { Prisma } from "@prisma/client";
 
-export const INVALID_SETTLEMENT_QUANTITY_MESSAGE = "结算明细工程量超出系统可保存范围";
+export const INVALID_SETTLEMENT_QUANTITY_MESSAGE =
+  "本期结算数量最多保留 2 位小数，请修改后重试。";
 
 const SETTLEMENT_QUANTITY_ABSOLUTE_LIMIT = new Prisma.Decimal("1e18");
-const SETTLEMENT_QUANTITY_MAX_DECIMAL_PLACES = 6;
+const SETTLEMENT_QUANTITY_MAX_DECIMAL_PLACES = 2;
 
 export function parseSettlementQuantity(value: unknown): Prisma.Decimal | null {
   if (value === undefined || value === "") return null;

@@ -13,6 +13,17 @@ export interface SettlementSourceLineException {
   message: string;
 }
 
+export type SettlementSubmissionBlockerCode =
+  | "missing_invoice_type"
+  | "missing_tax_rate"
+  | "missing_unit_price";
+
+export interface SettlementSubmissionBlocker {
+  code: SettlementSubmissionBlockerCode;
+  message: string;
+  remedyPath: string;
+}
+
 export interface SettlementSourceLineReadModel {
   id: string;
   billId: string;
@@ -24,18 +35,22 @@ export interface SettlementSourceLineReadModel {
   itemName: string;
   specification: string | null;
   unit: string;
-  quantity: string;
-  unitPrice: string;
-  taxRatePercent: string;
+  quantity: string | null;
+  unitPrice: string | null;
+  taxRatePercent: string | null;
+  taxExclusiveUnitPrice: string | null;
+  pricingFactStatus: "confirmed" | "unconfirmed";
+  calculationAvailable: boolean;
+  submissionBlocker: SettlementSubmissionBlocker | null;
   amountRole: "included" | "reference" | "non_priced" | "provisional";
   pricingMode: "tax_inclusive" | "tax_exclusive";
   calculationMode: Exclude<SettlementCalculationMode, "manual_adjustment">;
-  contractAmountCents: string;
+  contractAmountCents: string | null;
   settledQuantity: string | null;
   previousSettledQuantity: string | null;
   remainingQuantity: string | null;
   settledAmountCents: string;
-  remainingAmountCents: string;
+  remainingAmountCents: string | null;
   provisional: boolean;
   settlementBasis: string | null;
   exception: SettlementSourceLineException | null;
@@ -50,9 +65,9 @@ export interface SettlementSourceLinesReadModel {
   summary: {
     rowCount: number;
     exceptionCount: number;
-    contractAmountCents: string;
+    contractAmountCents: string | null;
     settledAmountCents: string;
-    remainingAmountCents: string;
+    remainingAmountCents: string | null;
   };
   rows: SettlementSourceLineReadModel[];
 }
