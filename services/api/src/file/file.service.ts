@@ -84,7 +84,16 @@ const PROJECT_EXPENSE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "chairman",
   "general_manager"
 ];
-const ALLOWED_EXTENSIONS = new Set([".docx", ".xlsx", ".pdf", ".png", ".jpg", ".jpeg"]);
+const ALLOWED_EXTENSIONS = new Set([
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".pdf",
+  ".png",
+  ".jpg",
+  ".jpeg"
+]);
 const INVALID_PRIVATE_FILE_PATH_MESSAGE = "私有文件路径无效，系统已阻止本次文件读取。";
 
 class InvalidPrivateFilePathError extends Error {

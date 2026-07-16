@@ -6,7 +6,10 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import {
+  resolveEffectiveRoleKeys,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import {
   pendingRoleKeysForFrozenApprovalNode
 } from "../approval/approval-node-access";
@@ -1605,14 +1608,26 @@ export class SpotProcurementApplicationService {
           select: { id: true, key: true }
         })
       : [];
-    return [
-      ...new Set([
-        ...positions.map((position) => position.key as RoleKey),
-        ...memberPositions.map(
-          (position) => position.positionKey as RoleKey
-        )
+    const roleKeyByPositionId = new Map(
+      positions.map((position) => [
+        position.id,
+        position.key as RoleKey
       ])
+    );
+    const globalRoleKeys = globalPositions.flatMap((position) => {
+      const roleKey = roleKeyByPositionId.get(position.positionId);
+      return roleKey ? [roleKey] : [];
+    });
+    const projectRoleKeys = [
+      ...projectPositions.flatMap((position) => {
+        const roleKey = roleKeyByPositionId.get(position.positionId);
+        return roleKey ? [roleKey] : [];
+      }),
+      ...memberPositions.map(
+        (position) => position.positionKey as RoleKey
+      )
     ];
+    return resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys);
   }
 
   private async requireLockedProcurement(

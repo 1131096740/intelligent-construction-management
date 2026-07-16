@@ -191,11 +191,96 @@ function transactionDelegate() {
   };
 }
 
-function role(tx: ReturnType<typeof transactionDelegate>, roleKey: string) {
+const CANONICAL_GLOBAL_ROLES = new Set([
+  "chairman",
+  "general_manager",
+  "engineering_department_director",
+  "finance_staff",
+  "finance_director",
+  "contract_director",
+  "budget_director",
+  "material_director",
+  "comprehensive_director"
+]);
+
+function roles(
+  tx: ReturnType<typeof transactionDelegate>,
+  input: {
+    global?: string[];
+    project?: string[];
+    member?: string[];
+  }
+) {
+  const global = input.global ?? [];
+  const project = input.project ?? [];
   tx.userPosition.findMany
-    .mockResolvedValueOnce([{ positionId: `position-${roleKey}`, projectId: null }])
-    .mockResolvedValueOnce([]);
-  tx.position.findMany.mockResolvedValue([{ id: `position-${roleKey}`, key: roleKey }]);
+    .mockResolvedValueOnce(
+      global.map((roleKey) => ({
+        positionId: `position-global-${roleKey}`,
+        projectId: null
+      }))
+    )
+    .mockResolvedValueOnce(
+      project.map((roleKey) => ({
+        positionId: `position-project-${roleKey}`,
+        projectId: "project-1"
+      }))
+    );
+  tx.projectMember.findMany.mockResolvedValue(
+    (input.member ?? []).map((positionKey) => ({ positionKey }))
+  );
+  tx.position.findMany.mockResolvedValue([
+    ...global.map((key) => ({
+      id: `position-global-${key}`,
+      key
+    })),
+    ...project.map((key) => ({
+      id: `position-project-${key}`,
+      key
+    }))
+  ]);
+}
+
+function role(tx: ReturnType<typeof transactionDelegate>, roleKey: string) {
+  roles(tx, {
+    [CANONICAL_GLOBAL_ROLES.has(roleKey) ? "global" : "project"]: [
+      roleKey
+    ]
+  });
+}
+
+function rolesByUser(
+  tx: ReturnType<typeof transactionDelegate>,
+  assignments: Record<
+    string,
+    { global?: string[]; project?: string[]; member?: string[] }
+  >
+) {
+  const positionKeyById = new Map<string, string>();
+  tx.userPosition.findMany.mockImplementation(
+    async ({ where }: { where: { userId: string; projectId: string | null } }) => {
+      const scope = where.projectId === null ? "global" : "project";
+      const roleKeys = assignments[where.userId]?.[scope] ?? [];
+      return roleKeys.map((roleKey) => {
+        const positionId = `position-${scope}-${where.userId}-${roleKey}`;
+        positionKeyById.set(positionId, roleKey);
+        return { positionId, projectId: where.projectId };
+      });
+    }
+  );
+  tx.projectMember.findMany.mockImplementation(
+    async ({ where }: { where: { userId: string } }) =>
+      (assignments[where.userId]?.member ?? []).map((positionKey) => ({
+        positionKey
+      }))
+  );
+  tx.position.findMany.mockImplementation(
+    async ({ where }: { where: { id: { in: string[] } } }) =>
+      where.id.in.flatMap((id) => {
+        const key = positionKeyById.get(id);
+        return key ? [{ id, key }] : [];
+      })
+  );
 }
 
 function harness() {
@@ -256,6 +341,9 @@ describe("SpotProcurementController", () => {
       "spot-procurements"
     );
     const expectations = [
+      ["capabilities", RequestMethod.GET, "capabilities", undefined],
+      ["list", RequestMethod.GET, "/", undefined],
+      ["detail", RequestMethod.GET, ":procurementId", undefined],
       ["create", RequestMethod.POST, "/", "spot_procurement.create"],
       [
         "updateDraft",
@@ -381,6 +469,46 @@ describe("SpotProcurementApplicationService", () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(tx.spotProcurement.create).not.toHaveBeenCalled();
   });
+
+  it("rejects assigning another user who only has a global material_staff position", async () => {
+    const { service, tx } = harness();
+    rolesByUser(tx, {
+      "material-1": { project: ["material_staff"] },
+      "global-material-staff": { global: ["material_staff"] }
+    });
+
+    await expect(
+      service.createDraft("material-1", {
+        ...draftInput,
+        handlerUserId: "global-material-staff"
+      })
+    ).rejects.toThrow("采购经办人必须是本项目物资员或物资主管");
+    expect(tx.spotProcurement.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["project material_staff", "project-material-staff", { project: ["material_staff"] }],
+    ["global material_director", "global-material-director", { global: ["material_director"] }]
+  ])(
+    "allows assigning another user with an effective %s position",
+    async (_label, handlerUserId, handlerRoles) => {
+      const { service, tx } = harness();
+      rolesByUser(tx, {
+        "material-1": { project: ["material_staff"] },
+        [handlerUserId]: handlerRoles
+      });
+
+      await expect(
+        service.createDraft("material-1", {
+          ...draftInput,
+          handlerUserId
+        })
+      ).resolves.toEqual(expect.objectContaining({ status: "draft" }));
+      expect(tx.spotProcurement.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ handlerUserId })
+      });
+    }
+  );
 
   it("stores exactly one supplier at the root/version header and accepts zero attachments", async () => {
     const { service, tx } = harness();
@@ -690,27 +818,10 @@ describe("SpotProcurementApplicationService", () => {
     tx.$queryRaw
       .mockResolvedValueOnce([delegatedRoot])
       .mockResolvedValueOnce([delegatedVersion]);
-    tx.userPosition.findMany.mockImplementation(
-      async ({ where }: { where: { userId: string; projectId: string | null } }) =>
-        where.projectId === null
-          ? [
-              {
-                positionId:
-                  where.userId === "active-handler"
-                    ? "position-material_staff"
-                    : "position-employee",
-                projectId: null
-              }
-            ]
-          : []
-    );
-    tx.position.findMany.mockImplementation(
-      async ({ where }: { where: { id: { in: string[] } } }) =>
-        where.id.in.map((id) => ({
-          id,
-          key: id.replace("position-", "")
-        }))
-    );
+    rolesByUser(tx, {
+      "active-handler": { project: ["material_staff"] },
+      "former-applicant": { global: ["employee"] }
+    });
 
     await expect(
       service.updateDraft("procurement-1", "active-handler", {
@@ -846,27 +957,10 @@ describe("SpotProcurementApplicationService", () => {
     tx.$queryRaw
       .mockResolvedValueOnce([delegatedRoot])
       .mockResolvedValueOnce([delegatedVersion]);
-    tx.userPosition.findMany.mockImplementation(
-      async ({ where }: { where: { userId: string; projectId: string | null } }) =>
-        where.projectId === null
-          ? [
-              {
-                positionId:
-                  where.userId === "staff-applicant"
-                    ? "position-material_staff"
-                    : "position-material_director",
-                projectId: null
-              }
-            ]
-          : []
-    );
-    tx.position.findMany.mockImplementation(
-      async ({ where }: { where: { id: { in: string[] } } }) =>
-        where.id.in.map((id) => ({
-          id,
-          key: id.replace("position-", "")
-        }))
-    );
+    rolesByUser(tx, {
+      "staff-applicant": { project: ["material_staff"] },
+      "director-handler": { global: ["material_director"] }
+    });
 
     await service.submit("procurement-1", "director-handler");
 
@@ -2000,19 +2094,10 @@ describe("SpotProcurementApplicationService", () => {
         }
       ])
       .mockResolvedValueOnce([previousWithHandler]);
-    tx.userPosition.findMany.mockImplementation(
-      async ({ where }: { where: { userId: string; projectId: string | null } }) =>
-        where.projectId === null
-          ? [{ positionId: `position-${where.userId}`, projectId: null }]
-          : []
-    );
-    tx.position.findMany.mockImplementation(
-      async ({ where }: { where: { id: { in: string[] } } }) =>
-        where.id.in.map((id) => ({
-          id,
-          key: "material_staff"
-        }))
-    );
+    rolesByUser(tx, {
+      "material-1": { project: ["material_staff"] },
+      "old-handler": { project: ["material_staff"] }
+    });
     tx.spotProcurementAttachment.findMany.mockResolvedValue([
       {
         id: "attachment-old",
@@ -2110,24 +2195,11 @@ describe("SpotProcurementApplicationService", () => {
           handlerUserId: "handler-c"
         }
       ]);
-    tx.userPosition.findMany.mockImplementation(
-      async ({ where }: { where: { userId: string; projectId: string | null } }) =>
-        where.projectId === null
-          ? [
-              {
-                positionId: `position-${where.userId}`,
-                projectId: null
-              }
-            ]
-          : []
-    );
-    tx.position.findMany.mockImplementation(
-      async ({ where }: { where: { id: { in: string[] } } }) =>
-        where.id.in.map((id) => ({
-          id,
-          key: "material_staff"
-        }))
-    );
+    rolesByUser(tx, {
+      "applicant-a": { project: ["material_staff"] },
+      "handler-b": { project: ["material_staff"] },
+      "handler-c": { project: ["material_staff"] }
+    });
     tx.spotProcurementAttachment.findMany.mockResolvedValue([
       {
         id: "attachment-b",

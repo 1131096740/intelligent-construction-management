@@ -446,6 +446,8 @@ describe("SpotProcurementPaymentController", () => {
       Reflect.getMetadata(PATH_METADATA, SpotProcurementPaymentController)
     ).toBe("spot-procurement-payments");
     const expectations = [
+      ["list", RequestMethod.GET, "/", undefined],
+      ["detail", RequestMethod.GET, ":paymentId", undefined],
       [
         "updateDraft",
         RequestMethod.PATCH,

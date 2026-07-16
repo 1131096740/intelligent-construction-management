@@ -10,7 +10,9 @@ const businessRouteLabels = new Map([
   ["合同管理", "合同"],
   ["合同工作台", "合同工作台"],
   ["结算管理", "结算"],
-  ["付款管理", "付款"]
+  ["付款管理", "付款"],
+  ["零星采购", "零星采购"],
+  ["零星材料付款", "零星材料付款"]
 ]);
 
 export function recentBusinessStorageKey(userId: string): string {

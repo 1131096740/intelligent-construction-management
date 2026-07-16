@@ -25,4 +25,11 @@ describe("admin navigation visual hierarchy", () => {
     expect(layoutSource).toContain(".menu-group-label::after");
     expect(layoutSource).toContain("background: var(--jg-border)");
   });
+
+  it("honors an explicit workbench menu target for non-prefix detail routes", () => {
+    expect(layoutSource).toContain("route.meta.activeNavigationPath");
+    expect(layoutSource).toContain(
+      "items.some((item) => item.path === explicitPath)"
+    );
+  });
 });

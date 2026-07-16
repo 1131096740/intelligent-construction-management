@@ -17,7 +17,7 @@ describe("recent business routes", () => {
     expect(recentBusinessRouteFromPath("/资料库")).toBeNull();
   });
 
-  it("tracks the four supported business detail route types only", () => {
+  it("tracks supported business detail route types only", () => {
     expect(recentBusinessRouteFromPath("/合同工作台/HT-001", "2026-07-08T08:00:00.000Z")?.label).toBe(
       "合同工作台 HT-001"
     );
@@ -27,6 +27,18 @@ describe("recent business routes", () => {
     expect(recentBusinessRouteFromPath("/付款管理/FK-001", "2026-07-08T08:00:00.000Z")?.label).toBe(
       "付款 FK-001"
     );
+    expect(
+      recentBusinessRouteFromPath(
+        "/零星采购/LXCG-001",
+        "2026-07-08T08:00:00.000Z"
+      )?.label
+    ).toBe("零星采购 LXCG-001");
+    expect(
+      recentBusinessRouteFromPath(
+        "/零星材料付款/LXFK-001",
+        "2026-07-08T08:00:00.000Z"
+      )?.label
+    ).toBe("零星材料付款 LXFK-001");
     expect(recentBusinessRouteFromPath("/合同模板库/TPL-1", "2026-07-08T08:00:00.000Z")).toBeNull();
     expect(recentBusinessRouteFromPath("/合作单位档案/P-1", "2026-07-08T08:00:00.000Z")).toBeNull();
   });

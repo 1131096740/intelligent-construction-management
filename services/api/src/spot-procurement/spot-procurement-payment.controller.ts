@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Get,
   Param,
   Patch,
-  Post
+  Post,
+  Query
 } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
@@ -13,12 +15,36 @@ import { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-p
 import { UpdateSpotProcurementPaymentDraftDto } from "./dto/update-spot-procurement-payment-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
+import { SpotProcurementReadService } from "./spot-procurement-read.service";
 
 @Controller("spot-procurement-payments")
 export class SpotProcurementPaymentController {
   constructor(
-    private readonly payments: SpotProcurementPaymentService
+    private readonly payments: SpotProcurementPaymentService,
+    private readonly reads: SpotProcurementReadService
   ) {}
+
+  @Get()
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("projectId") projectId?: string,
+    @Query("status") status?: string,
+    @Query("keyword") keyword?: string
+  ) {
+    return this.reads.listPayments(user.id, {
+      projectId,
+      status,
+      keyword
+    });
+  }
+
+  @Get(":paymentId")
+  detail(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.reads.getPayment(paymentId, user.id);
+  }
 
   @Patch(":paymentId/draft")
   @RequireProjectRole("spot_procurement.payment.submit")

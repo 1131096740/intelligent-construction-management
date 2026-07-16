@@ -24,6 +24,10 @@ const PAYMENT_PROJECT_ROLES = new Set<RoleKey>([
   "project_manager",
   "finance_director"
 ]);
+const PAYMENT_EXECUTOR_VISIBLE_STATUSES = new Set([
+  "approved_pending_payment",
+  "partially_paid"
+]);
 const FINAL_OR_ROLES = new Set<RoleKey>(["chairman", "general_manager"]);
 const REVIEW_ACTIONS = [
   "approve",
@@ -87,6 +91,344 @@ export class SpotProcurementAccessService {
     // a project from request payloads while the real resource cannot be read.
     void receiptId;
     throw new ForbiddenException(RESOURCE_FORBIDDEN_MESSAGE);
+  }
+
+  async accessibleProcurementIds(
+    procurementIds: readonly string[],
+    actorUserId: string,
+    client: AccessClient = this.prisma
+  ): Promise<Set<string>> {
+    const requestedIds = [...new Set(procurementIds)];
+    if (!requestedIds.length) return new Set();
+
+    const procurements = await client.spotProcurement.findMany({
+      where: { id: { in: requestedIds } },
+      select: {
+        id: true,
+        projectId: true,
+        applicantUserId: true,
+        handlerUserId: true
+      }
+    });
+    if (!procurements.length) return new Set();
+
+    const existingIds = procurements.map((procurement) => procurement.id);
+    const versions = await client.spotProcurementVersion.findMany({
+      where: { procurementId: { in: existingIds } },
+      select: { id: true, procurementId: true, handlerUserId: true }
+    });
+    const approvals = versions.length
+      ? await client.approvalInstance.findMany({
+          where: {
+            OR: versions.map((version) => ({
+              businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.application,
+              businessId: version.id
+            }))
+          },
+          select: {
+            id: true,
+            businessType: true,
+            businessId: true,
+            status: true,
+            currentNodeIndex: true,
+            frozenNodes: true,
+            applicantUserId: true
+          }
+        })
+      : [];
+    const actions = approvals.length
+      ? await client.approvalActionLog.findMany({
+          where: {
+            approvalInstanceId: { in: approvals.map((approval) => approval.id) },
+            actorUserId
+          },
+          select: { approvalInstanceId: true, actorUserId: true, action: true }
+        })
+      : [];
+
+    const allowedIds = new Set<string>();
+    for (const procurement of procurements) {
+      if (
+        procurement.applicantUserId === actorUserId ||
+        procurement.handlerUserId === actorUserId
+      ) {
+        allowedIds.add(procurement.id);
+      }
+    }
+    for (const version of versions) {
+      if (version.handlerUserId === actorUserId) {
+        allowedIds.add(version.procurementId);
+      }
+    }
+
+    const procurementIdByVersionId = new Map(
+      versions.map((version) => [version.id, version.procurementId])
+    );
+    const approvalById = new Map(approvals.map((approval) => [approval.id, approval]));
+    for (const action of actions) {
+      const approval = approvalById.get(action.approvalInstanceId);
+      const procurementId = approval
+        ? procurementIdByVersionId.get(approval.businessId)
+        : undefined;
+      if (procurementId) allowedIds.add(procurementId);
+    }
+
+    const requiredRolesByProcurementId = new Map<string, Set<RoleKey>>();
+    for (const approval of approvals) {
+      const procurementId = procurementIdByVersionId.get(approval.businessId);
+      if (!procurementId) continue;
+      const requiredRoles = requiredRolesByProcurementId.get(procurementId) ?? new Set<RoleKey>();
+      for (const roleKey of frozenNodeRoleKeys(approval.frozenNodes)) {
+        if (APPLICATION_PROJECT_ROLES.has(roleKey)) requiredRoles.add(roleKey);
+      }
+      requiredRolesByProcurementId.set(procurementId, requiredRoles);
+    }
+
+    const effectiveRolesByProjectId = await this.loadEffectiveRoleKeysByProject(
+      client,
+      actorUserId,
+      procurements.map((procurement) => procurement.projectId)
+    );
+    for (const procurement of procurements) {
+      const requiredRoles = requiredRolesByProcurementId.get(procurement.id);
+      if (
+        requiredRoles?.size &&
+        (effectiveRolesByProjectId.get(procurement.projectId) ?? []).some((roleKey) =>
+          requiredRoles.has(roleKey)
+        )
+      ) {
+        allowedIds.add(procurement.id);
+      }
+    }
+
+    return allowedIds;
+  }
+
+  async accessiblePaymentIds(
+    paymentIds: readonly string[],
+    actorUserId: string,
+    client: AccessClient = this.prisma
+  ): Promise<Set<string>> {
+    const requestedIds = [...new Set(paymentIds)];
+    if (!requestedIds.length) return new Set();
+
+    const payments = await client.spotProcurementPayment.findMany({
+      where: { id: { in: requestedIds } },
+      select: {
+        id: true,
+        procurementId: true,
+        projectId: true,
+        handlerUserId: true,
+        invalidatedByUserId: true,
+        status: true
+      }
+    });
+    if (!payments.length) return new Set();
+
+    const procurementIds = [...new Set(payments.map((payment) => payment.procurementId))];
+    const procurements = await client.spotProcurement.findMany({
+      where: { id: { in: procurementIds } },
+      select: {
+        id: true,
+        projectId: true,
+        applicantUserId: true,
+        handlerUserId: true
+      }
+    });
+    const procurementById = new Map(
+      procurements.map((procurement) => [procurement.id, procurement])
+    );
+    const validPayments = payments.filter((payment) => {
+      const procurement = procurementById.get(payment.procurementId);
+      return procurement?.projectId === payment.projectId;
+    });
+    if (!validPayments.length) return new Set();
+
+    const validPaymentIds = validPayments.map((payment) => payment.id);
+    const [approvals, executions, reservations, balanceEntries] = await Promise.all([
+      client.approvalInstance.findMany({
+        where: {
+          OR: validPaymentIds.map((paymentId) => ({
+            businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            businessId: paymentId
+          }))
+        },
+        select: {
+          id: true,
+          businessType: true,
+          businessId: true,
+          status: true,
+          currentNodeIndex: true,
+          frozenNodes: true,
+          applicantUserId: true
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+      }),
+      client.spotProcurementPaymentExecution.findMany({
+        where: { paymentId: { in: validPaymentIds } },
+        select: {
+          paymentId: true,
+          executedByUserId: true,
+          voidedByUserId: true
+        }
+      }),
+      client.supplierBalanceReservation.findMany({
+        where: { paymentId: { in: validPaymentIds } },
+        select: {
+          paymentId: true,
+          reservedByUserId: true,
+          executedByUserId: true,
+          releasedByUserId: true
+        }
+      }),
+      client.supplierBalanceEntry.findMany({
+        where: { paymentId: { in: validPaymentIds } },
+        select: { paymentId: true, actorUserId: true }
+      })
+    ]);
+    const actions = approvals.length
+      ? await client.approvalActionLog.findMany({
+          where: {
+            approvalInstanceId: { in: approvals.map((approval) => approval.id) },
+            actorUserId
+          },
+          select: { approvalInstanceId: true, actorUserId: true, action: true }
+        })
+      : [];
+
+    const allowedIds = new Set<string>();
+    for (const payment of validPayments) {
+      const procurement = procurementById.get(payment.procurementId)!;
+      if (
+        procurement.applicantUserId === actorUserId ||
+        procurement.handlerUserId === actorUserId ||
+        payment.handlerUserId === actorUserId ||
+        payment.invalidatedByUserId === actorUserId
+      ) {
+        allowedIds.add(payment.id);
+      }
+    }
+    for (const execution of executions) {
+      if (
+        execution.executedByUserId === actorUserId ||
+        execution.voidedByUserId === actorUserId
+      ) {
+        allowedIds.add(execution.paymentId);
+      }
+    }
+    for (const reservation of reservations) {
+      if (
+        reservation.reservedByUserId === actorUserId ||
+        reservation.executedByUserId === actorUserId ||
+        reservation.releasedByUserId === actorUserId
+      ) {
+        allowedIds.add(reservation.paymentId);
+      }
+    }
+    for (const entry of balanceEntries) {
+      if (entry.paymentId && entry.actorUserId === actorUserId) {
+        allowedIds.add(entry.paymentId);
+      }
+    }
+
+    const approvalById = new Map(approvals.map((approval) => [approval.id, approval]));
+    for (const action of actions) {
+      const approval = approvalById.get(action.approvalInstanceId);
+      if (approval) allowedIds.add(approval.businessId);
+    }
+
+    const requiredRolesByPaymentId = new Map<string, Set<RoleKey>>();
+    for (const approval of approvals) {
+      const requiredRoles = requiredRolesByPaymentId.get(approval.businessId) ?? new Set<RoleKey>();
+      for (const roleKey of frozenNodeRoleKeys(approval.frozenNodes)) {
+        if (PAYMENT_PROJECT_ROLES.has(roleKey)) requiredRoles.add(roleKey);
+      }
+      requiredRolesByPaymentId.set(approval.businessId, requiredRoles);
+    }
+
+    const projectIds = validPayments.map((payment) => payment.projectId);
+    const globalRoleKeys = await this.loadPositionRoleKeys(client, actorUserId, null);
+    const projectRolesByProjectId = new Map<string, RoleKey[]>();
+    const effectiveRolesByProjectId = await this.loadEffectiveRoleKeysByProject(
+      client,
+      actorUserId,
+      projectIds,
+      globalRoleKeys,
+      projectRolesByProjectId
+    );
+    for (const payment of validPayments) {
+      const requiredRoles = requiredRolesByPaymentId.get(payment.id);
+      if (
+        requiredRoles?.size &&
+        (effectiveRolesByProjectId.get(payment.projectId) ?? []).some((roleKey) =>
+          requiredRoles.has(roleKey)
+        )
+      ) {
+        allowedIds.add(payment.id);
+      }
+      if (
+        PAYMENT_EXECUTOR_VISIBLE_STATUSES.has(payment.status) &&
+        (projectRolesByProjectId.get(payment.projectId) ?? []).includes(
+          "finance_staff"
+        )
+      ) {
+        allowedIds.add(payment.id);
+      }
+    }
+
+    const latestApprovalByBusinessId = new Map<
+      string,
+      (typeof approvals)[number]
+    >();
+    for (const approval of approvals) {
+      if (!latestApprovalByBusinessId.has(approval.businessId)) {
+        latestApprovalByBusinessId.set(
+          approval.businessId,
+          approval
+        );
+      }
+    }
+    const actorFinalRoles = globalRoleKeys.filter((roleKey) => FINAL_OR_ROLES.has(roleKey));
+    if (actorFinalRoles.length) {
+      for (const approval of latestApprovalByBusinessId.values()) {
+        if (
+          approval.status === "approval_pending" &&
+          currentNodeRoleKeys(approval.frozenNodes, approval.currentNodeIndex).some((roleKey) =>
+            actorFinalRoles.includes(roleKey)
+          )
+        ) {
+          allowedIds.add(approval.businessId);
+        }
+      }
+    }
+
+    return allowedIds;
+  }
+
+  async resolveProcurementViewAccess(
+    procurementId: string,
+    actorUserId: string,
+    client: AccessClient = this.prisma
+  ): Promise<SpotProcurementBusinessAccessDecision> {
+    const accessibleIds = await this.accessibleProcurementIds(
+      [procurementId],
+      actorUserId,
+      client
+    );
+    return accessibleIds.has(procurementId) ? "allowed" : "denied";
+  }
+
+  async resolvePaymentViewAccess(
+    paymentId: string,
+    actorUserId: string,
+    client: AccessClient = this.prisma
+  ): Promise<SpotProcurementBusinessAccessDecision> {
+    const accessibleIds = await this.accessiblePaymentIds(
+      [paymentId],
+      actorUserId,
+      client
+    );
+    return accessibleIds.has(paymentId) ? "allowed" : "denied";
   }
 
   async resolveBusinessDownloadAccess(
@@ -472,5 +814,43 @@ export class SpotProcurementAccessService {
       select: { key: true }
     });
     return positions.map((position) => position.key as RoleKey);
+  }
+
+  private async loadEffectiveRoleKeysByProject(
+    client: AccessClient,
+    actorUserId: string,
+    projectIds: readonly string[],
+    loadedGlobalRoleKeys?: readonly RoleKey[],
+    projectRolesByProjectId?: Map<string, RoleKey[]>
+  ): Promise<Map<string, RoleKey[]>> {
+    const uniqueProjectIds = [...new Set(projectIds)];
+    const globalRoleKeys = loadedGlobalRoleKeys
+      ? [...loadedGlobalRoleKeys]
+      : await this.loadPositionRoleKeys(client, actorUserId, null);
+    const effectiveRolesByProjectId = new Map<string, RoleKey[]>();
+    for (const projectId of uniqueProjectIds) {
+      const [positionRoleKeys, memberships] = await Promise.all([
+        this.loadPositionRoleKeys(client, actorUserId, projectId),
+        client.projectMember.findMany({
+          where: { userId: actorUserId, projectId },
+          select: { positionKey: true }
+        })
+      ]);
+      const projectRoleKeys = [
+        ...positionRoleKeys,
+        ...memberships.map(
+          (membership) => membership.positionKey as RoleKey
+        )
+      ];
+      projectRolesByProjectId?.set(
+        projectId,
+        [...new Set(projectRoleKeys)]
+      );
+      effectiveRolesByProjectId.set(
+        projectId,
+        resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys)
+      );
+    }
+    return effectiveRolesByProjectId;
   }
 }

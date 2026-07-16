@@ -99,6 +99,14 @@ const p0VisualFiles = new Set([
   "src/pages/settlements/SettlementDetailPage.vue",
   "src/pages/contracts/ContractListPage.vue",
   "src/pages/contracts/ContractDetailPage.vue",
+  "src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+  "src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+  "src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue",
+  "src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+  "src/pages/spot-procurement/SpotProcurementReceiptWorkbenchPage.vue",
+  "src/pages/spot-procurement/components/ProcurementLineEditor.vue",
+  "src/pages/spot-procurement/components/ProcurementStatusSummary.vue",
+  "src/pages/spot-procurement/components/PaymentCompositionCard.vue",
   "src/components/BusinessStatusSummary.vue",
   "src/components/BusinessDetailHeader.vue",
   "src/components/PaymentConfirmationSummary.vue"
@@ -124,6 +132,14 @@ const p0BusinessLanguageFiles = new Set([
   "src/pages/contracts/contract-list.config.ts",
   "src/pages/contracts/ContractDetailPage.vue",
   "src/pages/contracts/contract-detail.config.ts",
+  "src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+  "src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+  "src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue",
+  "src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+  "src/pages/spot-procurement/SpotProcurementReceiptWorkbenchPage.vue",
+  "src/pages/spot-procurement/components/ProcurementLineEditor.vue",
+  "src/pages/spot-procurement/components/ProcurementStatusSummary.vue",
+  "src/pages/spot-procurement/components/PaymentCompositionCard.vue",
   "src/components/PaymentConfirmationSummary.vue"
 ]);
 

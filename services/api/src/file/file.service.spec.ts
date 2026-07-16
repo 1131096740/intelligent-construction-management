@@ -1737,7 +1737,7 @@ describe("FileService", () => {
     }
   });
 
-  it("rejects extensions outside DOCX XLSX PDF PNG JPEG", async () => {
+  it("rejects extensions outside controlled Word Excel PDF and image types", async () => {
     const service = new FileService({} as PrismaService, audit as never, storage as never);
 
     await expect(
@@ -1751,6 +1751,49 @@ describe("FileService", () => {
     ).rejects.toThrow("文件格式不支持，请上传 PDF、Word、Excel 或图片资料");
     expect(storage.write).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["旧版报价.doc", "application/msword"],
+    ["旧版清单.xls", "application/vnd.ms-excel"]
+  ])(
+    "accepts the controlled legacy Office file %s",
+    async (originalName, mimeType) => {
+      const tx = {
+        fileObject: {
+          create: jest.fn().mockResolvedValue({
+            id: "file-legacy",
+            bucket: "private-local",
+            objectKey: `uploads/${originalName}`,
+            originalName,
+            mimeType,
+            sizeBytes: 12,
+            uploadedByUserId: "material-1"
+          })
+        }
+      };
+      const prisma = {
+        $transaction: jest.fn(
+          async (callback: (transaction: typeof tx) => unknown) =>
+            callback(tx)
+        )
+      } as unknown as PrismaService;
+      const service = new FileService(
+        prisma,
+        audit as never,
+        storage as never
+      );
+
+      await expect(
+        service.uploadPrivateFile({
+          originalName,
+          mimeType,
+          sizeBytes: 12,
+          uploadedByUserId: "material-1",
+          buffer: Buffer.from("legacy-file")
+        })
+      ).resolves.toMatchObject({ id: "file-legacy" });
+    }
+  );
 
   it("rejects DOCM and XLSM macro files", async () => {
     const service = new FileService({} as PrismaService, audit as never, storage as never);

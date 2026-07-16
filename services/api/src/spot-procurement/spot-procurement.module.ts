@@ -6,10 +6,12 @@ import { DatabaseModule } from "../database/database.module";
 import { FileModule } from "../file/file.module";
 import { InvoiceLedgerModule } from "../invoice-ledger/invoice-ledger.module";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
+import { SpotProcurementAccessModule } from "./spot-procurement-access.module";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
 import { SpotProcurementPaymentController } from "./spot-procurement-payment.controller";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
+import { SpotProcurementReadService } from "./spot-procurement-read.service";
 import { SpotProcurementController } from "./spot-procurement.controller";
 
 @Module({
@@ -19,7 +21,8 @@ import { SpotProcurementController } from "./spot-procurement.controller";
     AuditModule,
     AuthModule,
     FileModule,
-    InvoiceLedgerModule
+    InvoiceLedgerModule,
+    SpotProcurementAccessModule
   ],
   controllers: [
     SpotProcurementController,
@@ -29,13 +32,15 @@ import { SpotProcurementController } from "./spot-procurement.controller";
     SpotProcurementApplicationService,
     SpotProcurementBalanceService,
     SpotProcurementPaymentService,
-    SpotProcurementPilotService
+    SpotProcurementPilotService,
+    SpotProcurementReadService
   ],
   exports: [
     SpotProcurementApplicationService,
     SpotProcurementBalanceService,
     SpotProcurementPaymentService,
-    SpotProcurementPilotService
+    SpotProcurementPilotService,
+    SpotProcurementReadService
   ]
 })
 export class SpotProcurementModule {}

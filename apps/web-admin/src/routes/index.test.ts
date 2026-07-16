@@ -104,6 +104,11 @@ describe("web admin routes", () => {
       "结算管理",
       "付款工作台",
       "付款管理",
+      "零星采购工作台",
+      "零星采购/:procurementId",
+      "零星材料付款工作台",
+      "零星材料付款/:paymentId",
+      "收货确认工作台",
       "资料库",
       "审批中心",
       "审计日志",
@@ -134,6 +139,23 @@ describe("web admin routes", () => {
     expect(redirectOf("settlement-templates/:templateId", { templateId: "TPL-1" })).toBe("/结算模板库/TPL-1");
     expect(redirectOf("payments")).toBe("/付款管理");
     expect(redirectOf("payments/new")).toBe("/付款工作台");
+    expect(redirectOf("spot-procurements")).toBe("/零星采购工作台");
+    expect(
+      redirectOf("spot-procurements/:procurementId", {
+        procurementId: "LXCG-1"
+      })
+    ).toBe("/零星采购/LXCG-1");
+    expect(redirectOf("spot-procurement-payments")).toBe(
+      "/零星材料付款工作台"
+    );
+    expect(
+      redirectOf("spot-procurement-payments/:paymentId", {
+        paymentId: "LXFK-1"
+      })
+    ).toBe("/零星材料付款/LXFK-1");
+    expect(redirectOf("spot-procurement-receipts")).toBe(
+      "/收货确认工作台"
+    );
     expect(redirectOf("archives")).toBe("/资料库");
     expect(redirectOf("project-roster")).toBe("/项目花名册");
     expect(redirectOf("search")).toBe("/全局搜索");
@@ -185,6 +207,12 @@ describe("web admin routes", () => {
       { label: "结算模板库", path: "/结算模板库" },
       { label: "付款工作台", path: "/付款工作台" },
       { label: "付款管理", path: "/付款管理" },
+      { label: "零星采购工作台", path: "/零星采购工作台" },
+      {
+        label: "零星材料付款工作台",
+        path: "/零星材料付款工作台"
+      },
+      { label: "收货确认工作台", path: "/收货确认工作台" },
       { label: "资料库", path: "/资料库" },
       { label: "委托台账", path: "/委托台账" },
       { label: "审计日志", path: "/审计日志" },
@@ -217,6 +245,7 @@ describe("web admin routes", () => {
       "合同",
       "结算",
       "付款",
+      "零星采购",
       "资料与治理"
     ]);
     expect(adminNavigationGroups.flatMap((group) => group.items.map((item) => item.label))).toEqual(
@@ -237,6 +266,15 @@ describe("web admin routes", () => {
     expect(redirectOf("settlements/new")).toBe("/结算工作台");
     expect(redirectOf("付款管理/新建")).toBe("/付款工作台");
     expect(redirectOf("payments/new")).toBe("/付款工作台");
+  });
+
+  it("keeps spot procurement detail routes highlighted under their workbenches", () => {
+    expect(childRoute("零星采购/:procurementId")?.meta).toMatchObject({
+      activeNavigationPath: "/零星采购工作台"
+    });
+    expect(childRoute("零星材料付款/:paymentId")?.meta).toMatchObject({
+      activeNavigationPath: "/零星材料付款工作台"
+    });
   });
 
   it("separates create workbenches from settlement and payment ledgers", () => {

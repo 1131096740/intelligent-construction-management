@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { centsTextToYuanText, yuanTextToCentsText } from "./money";
+import {
+  calculateSpotProcurementLineAmountCents,
+  centsTextToYuanText,
+  yuanTextToCentsText
+} from "./money";
 
 describe("yuanTextToCentsText", () => {
   it("converts values above 21 million yuan without number coercion", () => {
@@ -35,4 +39,53 @@ describe("centsTextToYuanText", () => {
   it.each(["", " ", "1.2", "1e3", "abc"])("rejects invalid cents input %p", (value) => {
     expect(() => centsTextToYuanText(value)).toThrow("金额分值必须是十进制整数字符串");
   });
+});
+
+describe("calculateSpotProcurementLineAmountCents", () => {
+  it("multiplies decimal strings exactly without floating-point coercion", () => {
+    expect(calculateSpotProcurementLineAmountCents("12.500000", "3.28")).toBe(
+      "4100"
+    );
+    expect(calculateSpotProcurementLineAmountCents("1.234567", "8.765432")).toBe(
+      "1082"
+    );
+  });
+
+  it("rounds a half cent away from zero for the non-negative procurement domain", () => {
+    expect(calculateSpotProcurementLineAmountCents("0.000001", "5000")).toBe(
+      "1"
+    );
+    expect(
+      calculateSpotProcurementLineAmountCents("0.000001", "4999.999999")
+    ).toBe("0");
+  });
+
+  it("keeps the PostgreSQL bigint boundary exact", () => {
+    expect(
+      calculateSpotProcurementLineAmountCents("92233720368547758.07", "1")
+    ).toBe(
+      "9223372036854775807"
+    );
+    expect(() =>
+      calculateSpotProcurementLineAmountCents("92233720368547758.08", "1")
+    ).toThrow("采购明细金额超出系统可保存范围");
+  });
+
+  it.each(["0", "01", "1.0000000", "-1", "1e3", ""])(
+    "rejects invalid quantity %p",
+    (quantity) => {
+      expect(() => calculateSpotProcurementLineAmountCents(quantity, "1")).toThrow(
+        "采购数量必须是大于 0、最多 6 位小数且可保存的普通十进制字符串"
+      );
+    }
+  );
+
+  it.each(["01", "1.0000000", "-1", "1e3", ""])(
+    "rejects invalid unit price %p",
+    (unitPrice) => {
+      expect(() => calculateSpotProcurementLineAmountCents("1", unitPrice)).toThrow(
+        "采购单价必须是大于等于 0、最多 6 位小数且可保存的普通十进制字符串"
+      );
+    }
+  );
 });
