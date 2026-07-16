@@ -430,6 +430,7 @@ describe("SpotProcurementApplicationService", () => {
       .mockResolvedValueOnce([delegatedRoot])
       .mockResolvedValueOnce([delegatedVersion]);
     role(tx, "material_staff");
+    role(tx, "material_staff");
     tx.fileObject.findMany.mockResolvedValue([
       {
         id: "applicant-file",
@@ -472,6 +473,86 @@ describe("SpotProcurementApplicationService", () => {
         }
       ]
     });
+  });
+
+  it("rejects an active handler updating a draft whose root applicant is inactive before replacing facts", async () => {
+    const { service, tx } = harness();
+    const delegatedRoot = {
+      ...rootLock,
+      applicantUserId: "inactive-applicant",
+      handlerUserId: "active-handler"
+    };
+    const delegatedVersion = {
+      ...versionLock,
+      handlerUserId: "active-handler"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([delegatedRoot])
+      .mockResolvedValueOnce([delegatedVersion]);
+    role(tx, "material_staff");
+    tx.user.findUnique.mockImplementation(
+      async ({ where }: { where: { id: string } }) => ({
+        id: where.id,
+        isActive: where.id !== "inactive-applicant"
+      })
+    );
+
+    await expect(
+      service.updateDraft("procurement-1", "active-handler", {
+        ...draftInput,
+        handlerUserId: "active-handler"
+      })
+    ).rejects.toThrow("采购申请人不存在或已停用");
+    expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects draft updates when the active root applicant has lost the procurement role", async () => {
+    const { service, tx } = harness();
+    const delegatedRoot = {
+      ...rootLock,
+      applicantUserId: "former-applicant",
+      handlerUserId: "active-handler"
+    };
+    const delegatedVersion = {
+      ...versionLock,
+      handlerUserId: "active-handler"
+    };
+    tx.$queryRaw
+      .mockResolvedValueOnce([delegatedRoot])
+      .mockResolvedValueOnce([delegatedVersion]);
+    tx.userPosition.findMany.mockImplementation(
+      async ({ where }: { where: { userId: string; projectId: string | null } }) =>
+        where.projectId === null
+          ? [
+              {
+                positionId:
+                  where.userId === "active-handler"
+                    ? "position-material_staff"
+                    : "position-employee",
+                projectId: null
+              }
+            ]
+          : []
+    );
+    tx.position.findMany.mockImplementation(
+      async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.map((id) => ({
+          id,
+          key: id.replace("position-", "")
+        }))
+    );
+
+    await expect(
+      service.updateDraft("procurement-1", "active-handler", {
+        ...draftInput,
+        handlerUserId: "active-handler"
+      })
+    ).rejects.toThrow("采购申请人当前不具备物资员或物资主管岗位");
+    expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
   });
 
   it("freezes only project manager and records node_skipped for a database-resolved material director applicant", async () => {
@@ -979,6 +1060,51 @@ describe("SpotProcurementApplicationService", () => {
     expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
   });
 
+  it("rejects an active handler creating a version for an inactive root applicant before invalidating facts", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          applicantUserId: "inactive-applicant",
+          handlerUserId: "active-handler",
+          approvedAmountCents: 4100n
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...versionLock,
+          status: "approved",
+          handlerUserId: "active-handler"
+        }
+      ]);
+    role(tx, "material_staff");
+    tx.user.findUnique.mockImplementation(
+      async ({ where }: { where: { id: string } }) => ({
+        id: where.id,
+        isActive: where.id !== "inactive-applicant"
+      })
+    );
+    tx.spotProcurementPayment.findMany.mockResolvedValue([
+      { id: "payment-draft", status: "draft" }
+    ]);
+
+    await expect(
+      service.createVersion("procurement-1", "active-handler", {
+        ...draftInput,
+        handlerUserId: "active-handler",
+        lines: [{ ...invoiceLine, unitPrice: "4" }],
+        changeReason: "调整采购单价"
+      })
+    ).rejects.toThrow("采购申请人不存在或已停用");
+    expect(tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+  });
+
   it("does not abandon a draft or in-flight approval by creating another ordinary version", async () => {
     for (const versionStatus of ["draft", "approval_pending"]) {
       const { service, tx } = harness();
@@ -1241,6 +1367,106 @@ describe("SpotProcurementApplicationService", () => {
         })
       ])
     );
+  });
+
+  it("inherits a previously frozen attachment after the uploader is replaced as procurement handler", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          applicantUserId: "applicant-a",
+          handlerUserId: "handler-b"
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...versionLock,
+          handlerUserId: "handler-b"
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          applicantUserId: "applicant-a",
+          handlerUserId: "handler-c",
+          approvedAmountCents: 4100n
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...versionLock,
+          status: "approved",
+          handlerUserId: "handler-c"
+        }
+      ]);
+    tx.userPosition.findMany.mockImplementation(
+      async ({ where }: { where: { userId: string; projectId: string | null } }) =>
+        where.projectId === null
+          ? [
+              {
+                positionId: `position-${where.userId}`,
+                projectId: null
+              }
+            ]
+          : []
+    );
+    tx.position.findMany.mockImplementation(
+      async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.map((id) => ({
+          id,
+          key: "material_staff"
+        }))
+    );
+    tx.spotProcurementAttachment.findMany.mockResolvedValue([
+      {
+        id: "attachment-b",
+        fileId: "handler-b-quote",
+        category: "merchant_quote",
+        uploadedByUserId: "handler-b",
+        createdAt: new Date("2026-07-17T00:00:00.000Z")
+      }
+    ]);
+    tx.fileObject.findMany.mockResolvedValue([
+      {
+        id: "handler-b-quote",
+        storageStatus: "active",
+        uploadedByUserId: "handler-b"
+      }
+    ]);
+    tx.spotProcurementVersion.create.mockResolvedValue({
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      handlerUserId: "handler-c"
+    });
+
+    await service.updateDraft("procurement-1", "handler-b", {
+      ...draftInput,
+      handlerUserId: "handler-c",
+      attachments: [
+        { fileId: "handler-b-quote", category: "merchant_quote" }
+      ]
+    });
+    await service.createVersion("procurement-1", "handler-c", {
+      supplierName: draftInput.supplierName,
+      reason: draftInput.reason,
+      lines: [{ ...invoiceLine, unitPrice: "4" }],
+      changeReason: "调整单价，沿用原报价"
+    });
+
+    expect(tx.spotProcurementAttachment.createMany).toHaveBeenLastCalledWith({
+      data: [
+        {
+          versionId: "version-2",
+          fileId: "handler-b-quote",
+          category: "merchant_quote",
+          uploadedByUserId: "handler-b"
+        }
+      ]
+    });
   });
 
   it("accepts null and empty-list clears for new-version optional facts and records them in changeSummary", async () => {

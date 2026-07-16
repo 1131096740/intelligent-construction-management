@@ -154,7 +154,8 @@ export class SpotProcurementApplicationService {
           tx,
           actorUserId,
           input,
-          [actorUserId]
+          [actorUserId],
+          []
         );
         await this.requireHandlerRole(
           tx,
@@ -238,6 +239,17 @@ export class SpotProcurementApplicationService {
           procurement,
           actorUserId
         );
+        await this.requireActiveApplicantRole(
+          tx,
+          procurement,
+          actorUserId,
+          actorRoles
+        );
+        const existingAttachments =
+          await tx.spotProcurementAttachment.findMany({
+            where: { versionId: version.id },
+            select: { fileId: true }
+          });
         const prepared = await this.prepareDraft(
           tx,
           actorUserId,
@@ -246,7 +258,8 @@ export class SpotProcurementApplicationService {
             procurement.applicantUserId,
             procurement.handlerUserId,
             actorUserId
-          ]
+          ],
+          existingAttachments.map((attachment) => attachment.fileId)
         );
         await this.requireHandlerRole(
           tx,
@@ -313,23 +326,11 @@ export class SpotProcurementApplicationService {
           procurement,
           actorUserId
         );
-        await this.requireActiveUser(
+        const applicantRoles = await this.requireActiveApplicantRole(
           tx,
-          procurement.applicantUserId,
-          "采购申请人不存在或已停用"
-        );
-        const applicantRoles =
-          procurement.applicantUserId === actorUserId
-            ? actorRoles
-            : await this.loadActorRoleKeys(
-                tx,
-                procurement.applicantUserId,
-                procurement.projectId
-              );
-        this.requireAnyRole(
-          applicantRoles,
-          CREATE_ROLES,
-          "采购申请人当前不具备物资员或物资主管岗位"
+          procurement,
+          actorUserId,
+          actorRoles
         );
         const storedDraft = await this.storedDraft(tx, version);
         const prepared = await this.prepareDraft(
@@ -340,7 +341,8 @@ export class SpotProcurementApplicationService {
             procurement.applicantUserId,
             procurement.handlerUserId,
             actorUserId
-          ]
+          ],
+          storedDraft.attachments?.map((attachment) => attachment.fileId) ?? []
         );
         await this.requireHandlerRole(
           tx,
@@ -758,6 +760,12 @@ export class SpotProcurementApplicationService {
           procurement,
           actorUserId
         );
+        await this.requireActiveApplicantRole(
+          tx,
+          procurement,
+          actorUserId,
+          actorRoles
+        );
         const changeReason = requiredText(
           input.changeReason,
           "请填写采购版本变更原因"
@@ -814,7 +822,8 @@ export class SpotProcurementApplicationService {
             procurement.applicantUserId,
             procurement.handlerUserId,
             actorUserId
-          ]
+          ],
+          previousDraft.attachments?.map((attachment) => attachment.fileId) ?? []
         );
         await this.requireHandlerRole(
           tx,
@@ -1040,7 +1049,8 @@ export class SpotProcurementApplicationService {
     tx: Prisma.TransactionClient,
     actorUserId: string,
     input: SpotProcurementDraftDto,
-    allowedAttachmentUploaderUserIds: readonly string[]
+    allowedAttachmentUploaderUserIds: readonly string[],
+    preauthorizedAttachmentFileIds: readonly string[]
   ): Promise<PreparedDraft> {
     const calculation = calculateSpotProcurementDraft(input);
     const supplierPartyId = optionalId(input.supplierPartyId);
@@ -1066,7 +1076,8 @@ export class SpotProcurementApplicationService {
         ...allowedAttachmentUploaderUserIds,
         actorUserId,
         handlerUserId
-      ])
+      ]),
+      new Set(preauthorizedAttachmentFileIds)
     );
     const lines: PreparedLine[] = [];
     for (const [index, line] of input.lines.entries()) {
@@ -1193,7 +1204,8 @@ export class SpotProcurementApplicationService {
   private async requireActiveFiles(
     tx: Prisma.TransactionClient,
     attachments: SpotProcurementAttachmentDto[],
-    allowedUploaderUserIds: ReadonlySet<string>
+    allowedUploaderUserIds: ReadonlySet<string>,
+    preauthorizedFileIds: ReadonlySet<string>
   ) {
     const fileIds = attachments.map((attachment) => attachment.fileId);
     if (new Set(fileIds).size !== fileIds.length) {
@@ -1214,7 +1226,9 @@ export class SpotProcurementApplicationService {
     }
     if (
       files.some(
-        (file) => !allowedUploaderUserIds.has(file.uploadedByUserId)
+        (file) =>
+          !preauthorizedFileIds.has(file.id) &&
+          !allowedUploaderUserIds.has(file.uploadedByUserId)
       )
     ) {
       throw new ForbiddenException(
@@ -1275,6 +1289,33 @@ export class SpotProcurementApplicationService {
     if (!user?.isActive) {
       throw new BadRequestException(message);
     }
+  }
+
+  private async requireActiveApplicantRole(
+    tx: Prisma.TransactionClient,
+    procurement: ProcurementLockRow,
+    actorUserId: string,
+    actorRoles: RoleKey[]
+  ) {
+    await this.requireActiveUser(
+      tx,
+      procurement.applicantUserId,
+      "采购申请人不存在或已停用"
+    );
+    const applicantRoles =
+      procurement.applicantUserId === actorUserId
+        ? actorRoles
+        : await this.loadActorRoleKeys(
+            tx,
+            procurement.applicantUserId,
+            procurement.projectId
+          );
+    this.requireAnyRole(
+      applicantRoles,
+      CREATE_ROLES,
+      "采购申请人当前不具备物资员或物资主管岗位"
+    );
+    return applicantRoles;
   }
 
   private async requireDraftOwnerRole(
