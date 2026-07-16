@@ -11,4 +11,5 @@ export * from "./money";
 export * from "./core-flow-read-model";
 export * from "./permissions";
 export * from "./contract-workbench";
+export * from "./contract-tax-facts";
 export * from "./settlement-workbench";

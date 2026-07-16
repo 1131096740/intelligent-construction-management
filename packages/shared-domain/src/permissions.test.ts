@@ -93,6 +93,19 @@ describe("final approval OR-sign", () => {
 });
 
 describe("role-specific gates", () => {
+  it("separates contract tax fact supplement, finance review, and contract confirmation", () => {
+    expect(canPerform("contract.tax_fact.supplement", ["contract_staff"])).toBe(true);
+    expect(canPerform("contract.tax_fact.finance_review", ["finance_director"])).toBe(true);
+    expect(canPerform("contract.tax_fact.confirm", ["contract_director"])).toBe(true);
+
+    expect(canPerform("contract.tax_fact.finance_review", ["contract_staff"])).toBe(false);
+    expect(canPerform("contract.tax_fact.confirm", ["finance_director"])).toBe(false);
+    expect(canPerform("contract.tax_fact.supplement", ["contract_director"])).toBe(false);
+    expect(canPerform("contract.tax_fact.supplement", ["super_admin"])).toBe(false);
+    expect(canPerform("contract.tax_fact.finance_review", ["super_admin"])).toBe(false);
+    expect(canPerform("contract.tax_fact.confirm", ["super_admin"])).toBe(false);
+  });
+
   it("allows contract staff and directors to create and submit contract drafts", () => {
     expect(canPerform("contract.create", ["contract_staff"])).toBe(true);
     expect(canPerform("contract.submit", ["contract_staff"])).toBe(true);
