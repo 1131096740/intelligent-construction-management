@@ -149,6 +149,15 @@ model ContractVersion {
   pricingNature             String    @default("fixed_total")
   amountSource              String    @default("manual")
   amountAdjustmentReason    String?
+  invoiceType               String?
+  taxMode                   String    @default("single_rate")
+  defaultTaxRatePercent     Decimal?  @db.Decimal(9, 6)
+  taxFactStatus             String    @default("unconfirmed")
+  taxFactSource             String?
+  taxFactExplanation        String?
+  taxFactEvidenceFileId     String?
+  taxFactRevision           Int       @default(0)
+  taxFactsFrozenAt          DateTime?
   draftData                 Json
   templateSnapshot          Json
   clauseSnapshot            Json
@@ -159,6 +168,39 @@ model ContractVersion {
   @@unique([contractId, versionNo])
   @@index([baseVersionId])
   @@index([supersedesVersionId])
+}
+
+model ContractTaxFactRevision {
+  id                      String    @id @default(uuid())
+  projectId               String
+  contractId              String
+  contractVersionId       String
+  revisionNo              Int
+  kind                    String
+  status                  String    @default("draft")
+  invoiceType             String?
+  taxMode                 String?
+  defaultTaxRatePercent   Decimal?  @db.Decimal(9, 6)
+  source                  String?
+  confirmationExplanation String?
+  evidenceFileId          String?
+  rowFacts                Json
+  beforeSnapshot          Json
+  createdByUserId         String
+  submittedByUserId       String?
+  submittedAt             DateTime?
+  financeReviewedByUserId String?
+  financeReviewedAt       DateTime?
+  financeReviewComment    String?
+  confirmedByUserId       String?
+  confirmedAt             DateTime?
+  contractReviewComment   String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([contractVersionId, revisionNo])
+  @@index([projectId, status])
+  @@index([contractVersionId, status])
 }
 
 model ContractTakeover {
@@ -298,6 +340,30 @@ model ContractArchiveFile {
   createdAt         DateTime  @default(now())
 }
 
+model SettlementDraft {
+  id                          String    @id @default(uuid())
+  projectId                   String
+  contractId                  String
+  contractVersionId           String
+  paymentTermsVersionId       String
+  settlementTemplateVersionId String?
+  code                        String
+  periodLabel                 String
+  isFinal                     Boolean   @default(false)
+  finalCumulativeAmountCents  BigInt?
+  lines                       Json
+  revision                    Int       @default(1)
+  status                      String    @default("draft")
+  ownerUserId                 String
+  submittedSettlementId       String?   @unique
+  submittedAt                 DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@index([projectId, ownerUserId, status, updatedAt])
+  @@index([contractVersionId, status])
+}
+
 model Settlement {
   id                          String   @id @default(uuid())
   projectId                   String
@@ -315,6 +381,8 @@ model Settlement {
   sourceTakeoverId            String?  @unique
   settlementTemplateVersionId String?
   isFinal                     Boolean  @default(false)
+  invoiceTypeSnapshot         String?
+  taxFactRevisionSnapshot     Int?
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
@@ -336,6 +404,8 @@ model SettlementLine {
   taxRatePercentSnapshot   Decimal? @db.Decimal(9, 6)
   pricingModeSnapshot      String?
   amountCents              BigInt
+  taxExclusiveAmountCents  BigInt?
+  taxAmountCents           BigInt?
   reason                   String?
   remark                   String?
   sortOrder                Int
@@ -1076,12 +1146,15 @@ model ContractBillRow {
   itemName                String
   specification           String?
   unit                    String
-  quantity                Decimal  @db.Decimal(24, 6)
-  unitPrice               Decimal  @db.Decimal(24, 6)
-  taxRate                 Decimal  @db.Decimal(9, 6)
-  taxInclusiveAmountCents BigInt
-  taxExclusiveAmountCents BigInt
-  taxAmountCents          BigInt
+  quantity                Decimal? @db.Decimal(24, 6)
+  unitPrice               Decimal? @db.Decimal(24, 6)
+  taxRate                 Decimal? @db.Decimal(9, 6)
+  taxRateSource           String   @default("version_default")
+  pricingFactStatus       String   @default("unconfirmed")
+  precisionPolicy         String   @default("two_decimal")
+  taxInclusiveAmountCents BigInt?
+  taxExclusiveAmountCents BigInt?
+  taxAmountCents          BigInt?
   isProvisional           Boolean  @default(false)
   settlementBasis         String?
   customData              Json
