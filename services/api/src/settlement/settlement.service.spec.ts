@@ -228,7 +228,11 @@ describe("SettlementService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "effective"
+          status: "effective",
+          invoiceType: "vat_special",
+          defaultTaxRatePercent: new Decimal("13"),
+          taxFactStatus: "frozen",
+          taxFactRevision: 3
         })
       },
       settlementTemplateVersion: {
@@ -308,7 +312,9 @@ describe("SettlementService", () => {
         status: "approval_pending",
         amountCents: 10000000n,
         payableAmountCents: 8000000n,
-        paidAmountCents: 0n
+        paidAmountCents: 0n,
+        invoiceTypeSnapshot: "vat_special",
+        taxFactRevisionSnapshot: 3
       }
     });
   });
@@ -390,7 +396,11 @@ describe("SettlementService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "effective"
+          status: "effective",
+          invoiceType: "vat_special",
+          defaultTaxRatePercent: new Decimal("13"),
+          taxFactStatus: "frozen",
+          taxFactRevision: 3
         })
       },
       contract: {
@@ -616,7 +626,11 @@ describe("SettlementService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "effective"
+          status: "effective",
+          invoiceType: "vat_special",
+          defaultTaxRatePercent: new Decimal("13"),
+          taxFactStatus: "frozen",
+          taxFactRevision: 3
         })
       },
       contractBill: {
@@ -635,7 +649,8 @@ describe("SettlementService", () => {
             unitPrice: new Decimal("3200"),
             taxRate: new Decimal("13"),
             isProvisional: false,
-            taxInclusiveAmountCents: BigInt(1000000)
+            taxInclusiveAmountCents: BigInt(1000000),
+            pricingFactStatus: "confirmed"
           }
         ])
       },
@@ -697,7 +712,9 @@ describe("SettlementService", () => {
     expect(tx.settlement.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         amountCents: 950000n,
-        payableAmountCents: 760000n
+        payableAmountCents: 760000n,
+        invoiceTypeSnapshot: "vat_special",
+        taxFactRevisionSnapshot: 3
       })
     });
     expect(tx.settlementLine.createMany).toHaveBeenCalledWith({
@@ -716,6 +733,8 @@ describe("SettlementService", () => {
           taxRatePercentSnapshot: new Decimal("13"),
           pricingModeSnapshot: "tax_inclusive",
           amountCents: 960000n,
+          taxExclusiveAmountCents: 849558n,
+          taxAmountCents: 110442n,
           reason: null,
           remark: null,
           sortOrder: 1
@@ -734,6 +753,8 @@ describe("SettlementService", () => {
           taxRatePercentSnapshot: null,
           pricingModeSnapshot: null,
           amountCents: -10000n,
+          taxExclusiveAmountCents: null,
+          taxAmountCents: null,
           reason: "现场扣款确认",
           remark: null,
           sortOrder: 2
@@ -4458,6 +4479,8 @@ describe("SettlementService", () => {
           payableAmountCents: 800_000n,
           paidAmountCents: 0n,
           isFinal: false,
+          invoiceTypeSnapshot: "vat_special",
+          taxFactRevisionSnapshot: 3,
           createdAt: new Date("2026-07-01T00:00:00.000Z")
         }),
         findMany: jest.fn().mockResolvedValue([
@@ -4479,6 +4502,41 @@ describe("SettlementService", () => {
           name: "总部综合楼"
         })
       },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          invoiceType: "vat_general",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: new Decimal("9"),
+          taxFactRevision: 4
+        })
+      },
+      contractTaxFactRevision: {
+        findFirst: jest.fn().mockResolvedValue({
+          revisionNo: 3,
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: new Decimal("13")
+        })
+      },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            sourceType: "contract_bill_row",
+            name: "钢筋材料",
+            unit: "吨",
+            quantity: new Decimal("1.23"),
+            unitPriceCents: null,
+            unitPriceSnapshot: new Decimal("4.56"),
+            taxRatePercentSnapshot: new Decimal("13"),
+            pricingModeSnapshot: "tax_inclusive",
+            amountCents: 561n,
+            taxExclusiveAmountCents: 496n,
+            taxAmountCents: 65n,
+            remark: "本期完成"
+          }
+        ])
+      },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue(null)
       }
@@ -4495,6 +4553,21 @@ describe("SettlementService", () => {
     expect(result.fileName).toBe("JS-2026-019-结算单-草稿.xlsx");
     expect(workbook.getWorksheet("结算单")?.getCell("A2").value).toBe("草稿 DRAFT");
     expect(workbook.getWorksheet("结算单")?.pageSetup.orientation).toBe("landscape");
+    expect(workbook.getWorksheet("结算单")?.getRow(10).values).toEqual([
+      undefined,
+      1,
+      "合同清单项",
+      "钢筋材料",
+      "吨",
+      "1.23",
+      "4.56",
+      "4.04",
+      "13%",
+      "5.61",
+      "4.96",
+      "0.65",
+      "本期完成"
+    ]);
   });
 
   it("rejects draft settlement Excel export when the export service is unavailable", async () => {

@@ -1,9 +1,14 @@
 import { Injectable, NotFoundException, Optional } from "@nestjs/common";
-import type {
-  CoreFlowTone,
-  DetailActionReadModel,
-  RoleKey,
-  SettlementDetailReadModel
+import { Prisma } from "@prisma/client";
+import {
+  contractInvoiceTypeLabel,
+  contractTaxModeLabel,
+  type ContractInvoiceType,
+  type ContractTaxMode,
+  type CoreFlowTone,
+  type DetailActionReadModel,
+  type RoleKey,
+  type SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import {
   approvalReviewAccessOnFrozenNode,
@@ -21,6 +26,7 @@ import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read
 import { PrismaService } from "../database/prisma.service";
 import {
   dbMoneyToBigInt,
+  deriveTaxExclusiveUnitPrice,
   formatMoneyCentsAsYuan,
   moneyCentsToApi,
   sumDbMoneyToBigInt
@@ -44,9 +50,12 @@ interface SettlementLineStore {
         quantity: { toString(): string } | string | number | null;
         unitPriceCents: bigint | null;
         unitPriceSnapshot?: { toString(): string } | string | number | null;
+        taxRatePercentSnapshot?: { toString(): string } | string | number | null;
         calculationMode?: string;
         pricingModeSnapshot?: string | null;
         amountCents: bigint;
+        taxExclusiveAmountCents?: bigint | null;
+        taxAmountCents?: bigint | null;
         reason: string | null;
         remark: string | null;
       }>
@@ -75,36 +84,87 @@ export class SettlementReadService {
       orderBy: { sortOrder: "asc" }
     });
 
-    return lines.map((line) => ({
-      id: line.id,
-      sourceType:
-        line.sourceType === "manual_adjustment" ? "manual_adjustment" : "contract_bill_row",
-      sourceLabel: line.sourceType === "manual_adjustment" ? "手工调整项" : "合同清单项",
-      name: line.name,
-      unit: line.unit ?? "-",
-      quantity: this.formatQuantity(line.quantity),
-      unitPrice:
-        line.unitPriceSnapshot === null || line.unitPriceSnapshot === undefined
+    return lines.map((line) => {
+      const manualAdjustment = line.sourceType === "manual_adjustment";
+      const unitPriceSnapshot = decimalText(line.unitPriceSnapshot);
+      const taxRatePercent = decimalText(line.taxRatePercentSnapshot);
+      const unitPrices = manualAdjustment
+        ? { inclusive: null, exclusive: null }
+        : this.taxUnitPrices(
+            unitPriceSnapshot,
+            taxRatePercent,
+            line.pricingModeSnapshot
+          );
+      const legacyUnitPrice =
+        unitPriceSnapshot === null
           ? line.unitPriceCents === null
             ? "-"
             : this.formatMoney(line.unitPriceCents)
-          : this.formatUnitPriceSnapshot(
-              typeof line.unitPriceSnapshot === "object"
-                ? line.unitPriceSnapshot.toString()
-                : String(line.unitPriceSnapshot),
-              line.pricingModeSnapshot
-            ),
-      calculationMode:
-        line.calculationMode === "normal_auto" ||
-        line.calculationMode === "manual_amount" ||
-        line.calculationMode === "manual_adjustment"
-          ? line.calculationMode
-          : "legacy",
-      amount: this.formatMoney(line.amountCents),
-      amountCents: moneyCentsToApi(line.amountCents),
-      reason: line.reason ?? "-",
-      remark: line.remark ?? "-"
-    }));
+          : this.formatUnitPriceSnapshot(unitPriceSnapshot, line.pricingModeSnapshot);
+
+      return {
+        id: line.id,
+        sourceType: manualAdjustment ? "manual_adjustment" : "contract_bill_row",
+        sourceLabel: manualAdjustment ? "手工调整项" : "合同清单项",
+        name: line.name,
+        unit: line.unit ?? "-",
+        quantity: this.formatQuantity(line.quantity),
+        unitPrice: manualAdjustment ? "-" : legacyUnitPrice,
+        taxInclusiveUnitPrice: this.formatUnitPriceValue(unitPrices.inclusive),
+        taxExclusiveUnitPrice: this.formatUnitPriceValue(unitPrices.exclusive),
+        taxRate: taxRatePercent === null || manualAdjustment ? "-" : `${taxRatePercent}%`,
+        calculationMode:
+          line.calculationMode === "normal_auto" ||
+          line.calculationMode === "manual_amount" ||
+          line.calculationMode === "manual_adjustment"
+            ? line.calculationMode
+            : "legacy",
+        amount: this.formatMoney(line.amountCents),
+        amountCents: moneyCentsToApi(line.amountCents),
+        taxInclusiveAmount: this.formatMoney(line.amountCents),
+        taxExclusiveAmount:
+          manualAdjustment || line.taxExclusiveAmountCents == null
+            ? "-"
+            : this.formatMoney(line.taxExclusiveAmountCents),
+        taxAmount:
+          manualAdjustment || line.taxAmountCents == null
+            ? "-"
+            : this.formatMoney(line.taxAmountCents),
+        taxBreakdownNote: manualAdjustment
+          ? "人工调整，不适用合同单价税额拆分"
+          : "-",
+        reason: line.reason ?? "-",
+        remark: line.remark ?? "-"
+      };
+    });
+  }
+
+  private taxUnitPrices(
+    unitPrice: string | null,
+    taxRatePercent: string | null,
+    pricingMode: string | null | undefined
+  ): { inclusive: string | null; exclusive: string | null } {
+    if (unitPrice === null) return { inclusive: null, exclusive: null };
+    if (pricingMode === "tax_exclusive") {
+      if (taxRatePercent === null) return { inclusive: null, exclusive: unitPrice };
+      const inclusive = new Prisma.Decimal(unitPrice)
+        .mul(new Prisma.Decimal(taxRatePercent).div(100).add(1))
+        .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+        .toFixed(2);
+      return { inclusive, exclusive: unitPrice };
+    }
+    if (taxRatePercent === null) return { inclusive: unitPrice, exclusive: null };
+    return {
+      inclusive: unitPrice,
+      exclusive: deriveTaxExclusiveUnitPrice({
+        taxInclusiveUnitPrice: unitPrice,
+        taxRatePercent
+      })
+    };
+  }
+
+  private formatUnitPriceValue(value: string | null): string {
+    return value === null ? "-" : `¥${formatDecimalYuan(value)}`;
   }
 
   private formatUnitPriceSnapshot(value: string, pricingMode: string | null | undefined) {
@@ -431,6 +491,11 @@ export class SettlementReadService {
       approvalReviewAccess,
       archiveFiles
     );
+    const taxFactSummary = await this.taxFactSummary(
+      settlement,
+      contractVersion,
+      settlementLines
+    );
 
     return {
       id: settlement.code,
@@ -452,6 +517,7 @@ export class SettlementReadService {
         { label: "结算金额", value: this.formatMoney(settlement.amountCents) },
         { label: "创建人", value: "项目经理" }
       ],
+      taxFactSummary,
       effectivenessSteps: this.effectivenessSteps(settlement.status),
       archiveResponsibilities: [
         "结算审批不经过董事长/总经理",
@@ -506,6 +572,12 @@ export class SettlementReadService {
         { label: "结算金额", value: "¥320,000.00" },
         { label: "创建人", value: "项目经理 张工" }
       ],
+      taxFactSummary: [
+        { label: "发票类型", value: "增值税专用发票" },
+        { label: "税率模式", value: "单一税率" },
+        { label: "默认税率", value: "13%" },
+        { label: "税务事实修订号", value: "1" }
+      ],
       effectivenessSteps: [
         { label: "结算审批", status: "已通过", tone: "success" },
         { label: "签字盖章归档上传", status: "已上传", tone: "success" },
@@ -547,9 +619,16 @@ export class SettlementReadService {
           unit: "吨",
           quantity: "10",
           unitPrice: "¥3,200.00",
+          taxInclusiveUnitPrice: "¥3,200.00",
+          taxExclusiveUnitPrice: "¥2,831.86",
+          taxRate: "13%",
           calculationMode: "normal_auto",
           amount: "¥320,000.00",
           amountCents: "32000000",
+          taxInclusiveAmount: "¥320,000.00",
+          taxExclusiveAmount: "¥283,185.84",
+          taxAmount: "¥36,814.16",
+          taxBreakdownNote: "-",
           reason: "-",
           remark: "-"
         }
@@ -578,6 +657,82 @@ export class SettlementReadService {
         { label: "审计日志", to: "/audit" }
       ]
     };
+  }
+
+  private async taxFactSummary(
+    settlement: {
+      contractVersionId: string;
+      invoiceTypeSnapshot?: string | null;
+      taxFactRevisionSnapshot?: number | null;
+    },
+    contractVersion: {
+      invoiceType?: string | null;
+      taxMode?: string | null;
+      defaultTaxRatePercent?: { toString(): string } | string | number | null;
+      taxFactRevision?: number | null;
+    },
+    lines: SettlementDetailReadModel["settlementLines"]
+  ): Promise<SettlementDetailReadModel["taxFactSummary"]> {
+    const snapshotRevision = settlement.taxFactRevisionSnapshot ?? null;
+    const revisionClient = (this.prisma as unknown as {
+      contractTaxFactRevision?: {
+        findFirst(args: {
+          where: {
+            contractVersionId: string;
+            revisionNo: number;
+            status: string;
+          };
+        }): Promise<{
+          invoiceType: string | null;
+          taxMode: string | null;
+          defaultTaxRatePercent: { toString(): string } | string | number | null;
+        } | null>;
+      };
+    }).contractTaxFactRevision;
+    const frozenRevision =
+      snapshotRevision !== null && revisionClient
+        ? await revisionClient.findFirst({
+            where: {
+              contractVersionId: settlement.contractVersionId,
+              revisionNo: snapshotRevision,
+              status: "confirmed"
+            }
+          })
+        : null;
+    const currentFactsStillMatch =
+      snapshotRevision !== null &&
+      snapshotRevision === (contractVersion.taxFactRevision ?? null);
+    const lineRates = Array.from(
+      new Set(
+        lines
+          .map((line) => line.taxRate.replace(/%$/u, ""))
+          .filter((rate) => rate !== "-")
+      )
+    );
+    const invoiceType =
+      settlement.invoiceTypeSnapshot ??
+      frozenRevision?.invoiceType ??
+      (currentFactsStillMatch ? contractVersion.invoiceType ?? null : null);
+    const taxMode =
+      frozenRevision?.taxMode ??
+      (currentFactsStillMatch ? contractVersion.taxMode ?? null : null) ??
+      (lineRates.length > 1 ? "multiple_rate" : lineRates.length === 1 ? "single_rate" : null);
+    const defaultTaxRate =
+      decimalText(frozenRevision?.defaultTaxRatePercent) ??
+      (currentFactsStillMatch
+        ? decimalText(contractVersion.defaultTaxRatePercent)
+        : null) ??
+      (lineRates.length === 1 ? lineRates[0] : null);
+
+    return [
+      { label: "发票类型", value: invoiceTypeLabel(invoiceType) },
+      { label: "税率模式", value: taxModeLabel(taxMode) },
+      { label: "默认税率", value: defaultTaxRate === null ? "—" : `${defaultTaxRate}%` },
+      {
+        label: "税务事实修订号",
+        value: snapshotRevision === null ? "历史结算未保存" : String(snapshotRevision)
+      }
+    ];
   }
 
   private payableCalculation(
@@ -981,4 +1136,32 @@ export class SettlementReadService {
   private date(value: Date) {
     return value.toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" });
   }
+}
+
+function decimalText(
+  value: { toString(): string } | string | number | null | undefined
+): string | null {
+  if (value === null || value === undefined) return null;
+  return String(typeof value === "object" ? value.toString() : value)
+    .replace(/(\.\d*?)0+$/u, "$1")
+    .replace(/\.$/u, "");
+}
+
+function formatDecimalYuan(value: string): string {
+  const [integer = "0", fraction = ""] = value.split(".");
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
+  const normalizedFraction = fraction.padEnd(2, "0").replace(/0+$/u, "");
+  return `${grouped}.${normalizedFraction.padEnd(2, "0")}`;
+}
+
+function invoiceTypeLabel(value: string | null): string {
+  return value === "vat_general" || value === "vat_special"
+    ? contractInvoiceTypeLabel(value as ContractInvoiceType)
+    : "—";
+}
+
+function taxModeLabel(value: string | null): string {
+  return value === "single_rate" || value === "multiple_rate"
+    ? contractTaxModeLabel(value as ContractTaxMode)
+    : "—";
 }

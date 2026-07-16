@@ -19,10 +19,42 @@ const baseInput: SettlementDocumentInput = {
   counterparty: "上海示例劳务有限公司",
   companyEntityName: "建工智管工程有限公司",
   amountCents: 1_000_000n,
+  invoiceType: "增值税专用发票",
+  taxMode: "单一税率",
+  defaultTaxRatePercent: "13",
+  taxFactRevision: 3,
   payableAmountCents: 800_000n,
   previousEffectiveSettlementCents: 300_000n,
   isFinal: false,
   generatedAt: new Date("2026-07-03T00:00:00.000Z"),
+  lines: [
+    {
+      sourceType: "contract_bill_row",
+      name: "钢筋材料",
+      unit: "吨",
+      quantity: "1.23",
+      taxInclusiveUnitPrice: "4.56",
+      taxExclusiveUnitPrice: "4.04",
+      taxRatePercent: "13",
+      taxInclusiveAmountCents: 561n,
+      taxExclusiveAmountCents: 496n,
+      taxAmountCents: 65n,
+      remark: "本期完成"
+    },
+    {
+      sourceType: "manual_adjustment",
+      name: "现场扣款",
+      unit: null,
+      quantity: null,
+      taxInclusiveUnitPrice: null,
+      taxExclusiveUnitPrice: null,
+      taxRatePercent: null,
+      taxInclusiveAmountCents: -100n,
+      taxExclusiveAmountCents: null,
+      taxAmountCents: null,
+      remark: "现场确认"
+    }
+  ],
   approvalRows: [
     {
       nodeName: "合同部主管 + 预算部主管",
@@ -44,19 +76,54 @@ describe("settlement document renderer", () => {
     expect(sheet).toBeDefined();
     expect(sheet?.pageSetup.orientation).toBe("landscape");
     expect(sheet?.pageSetup.paperSize).toBe(9);
-    expect(sheet?.pageSetup.printTitlesRow).toBe("1:8");
+    expect(sheet?.pageSetup.printTitlesRow).toBe("1:9");
     expect(sheet?.headerFooter.oddHeader).toContain("草稿 DRAFT");
     expect(sheet?.getCell("A1").value).toBe("工程结算单");
     expect(sheet?.getCell("A2").value).toBe("草稿 DRAFT");
-    expect(sheet?.getRow(8).values).toEqual([
+    expect(sheet?.getRow(9).values).toEqual([
       undefined,
       "序号",
       "来源",
-      "期前累计结算金额",
-      "本期结算金额",
-      "期后累计结算金额",
-      "本期可付金额",
+      "名称",
+      "单位",
+      "数量",
+      "含税单价",
+      "不含税单价",
+      "税率",
+      "含税金额",
+      "不含税金额",
+      "税额",
       "备注"
+    ]);
+    expect(sheet?.getRow(10).values).toEqual([
+      undefined,
+      1,
+      "合同清单项",
+      "钢筋材料",
+      "吨",
+      "1.23",
+      "4.56",
+      "4.04",
+      "13%",
+      "5.61",
+      "4.96",
+      "0.65",
+      "本期完成"
+    ]);
+    expect(sheet?.getRow(11).values).toEqual([
+      undefined,
+      2,
+      "人工调整",
+      "现场扣款",
+      "-",
+      "-",
+      "-",
+      "-",
+      "-",
+      "-1.00",
+      "-",
+      "-",
+      "人工调整，不适用合同单价税额拆分；现场确认"
     ]);
   });
 

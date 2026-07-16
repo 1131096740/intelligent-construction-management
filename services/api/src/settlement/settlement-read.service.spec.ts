@@ -144,7 +144,9 @@ describe("SettlementReadService", () => {
           status: "effective",
           sourceType: "historical_takeover",
           amountCents: 58000000n,
-          payableAmountCents: 46400000n
+          payableAmountCents: 46400000n,
+          invoiceTypeSnapshot: "vat_special",
+          taxFactRevisionSnapshot: 3
         })
       },
       contract: {
@@ -157,7 +159,19 @@ describe("SettlementReadService", () => {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-2",
-          versionNo: 2
+          versionNo: 2,
+          invoiceType: "vat_general",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: new Decimal("9"),
+          taxFactRevision: 4
+        })
+      },
+      contractTaxFactRevision: {
+        findFirst: jest.fn().mockResolvedValue({
+          revisionNo: 3,
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: new Decimal("13")
         })
       },
       paymentTermsVersion: {
@@ -208,12 +222,15 @@ describe("SettlementReadService", () => {
             sourceType: "contract_bill_row",
             name: "钢筋材料",
             unit: "吨",
-            quantity: { toString: () => "10.000000" },
-            unitPriceCents: 320000n,
-            unitPriceSnapshot: null,
-            pricingModeSnapshot: null,
+            quantity: { toString: () => "1.230000" },
+            unitPriceCents: null,
+            unitPriceSnapshot: new Decimal("4.56"),
+            taxRatePercentSnapshot: new Decimal("13"),
+            pricingModeSnapshot: "tax_inclusive",
             calculationMode: "normal_auto",
-            amountCents: 3200000n,
+            amountCents: 561n,
+            taxExclusiveAmountCents: 496n,
+            taxAmountCents: 65n,
             reason: null,
             remark: "本期完成量"
           },
@@ -224,10 +241,13 @@ describe("SettlementReadService", () => {
             unit: null,
             quantity: null,
             unitPriceCents: null,
-            unitPriceSnapshot: new Decimal("100.125"),
-            pricingModeSnapshot: "tax_exclusive",
+            unitPriceSnapshot: null,
+            taxRatePercentSnapshot: null,
+            pricingModeSnapshot: null,
             calculationMode: "manual_adjustment",
             amountCents: -200000n,
+            taxExclusiveAmountCents: null,
+            taxAmountCents: null,
             reason: "项目确认扣款",
             remark: null
           }
@@ -276,6 +296,12 @@ describe("SettlementReadService", () => {
     expect(detail.baseInfo).toContainEqual({ label: "关联合同", value: "HT-2026-009 · 幕墙分包合同" });
     expect(detail.baseInfo).toContainEqual({ label: "结算性质", value: "历史接管期初结算" });
     expect(detail.baseInfo).toContainEqual({ label: "结算金额", value: "¥580,000.00" });
+    expect(detail.taxFactSummary).toEqual([
+      { label: "发票类型", value: "增值税专用发票" },
+      { label: "税率模式", value: "单一税率" },
+      { label: "默认税率", value: "13%" },
+      { label: "税务事实修订号", value: "3" }
+    ]);
     expect(detail.paymentRules[0]).toMatchObject({
       id: "stage-progress",
       stage: "进度款",
@@ -299,11 +325,18 @@ describe("SettlementReadService", () => {
         sourceLabel: "合同清单项",
         name: "钢筋材料",
         unit: "吨",
-        quantity: "10",
-        unitPrice: "¥3,200.00",
+        quantity: "1.23",
+        unitPrice: "¥4.56（含税）",
+        taxInclusiveUnitPrice: "¥4.56",
+        taxExclusiveUnitPrice: "¥4.04",
+        taxRate: "13%",
         calculationMode: "normal_auto",
-        amount: "¥32,000.00",
-        amountCents: "3200000",
+        amount: "¥5.61",
+        amountCents: "561",
+        taxInclusiveAmount: "¥5.61",
+        taxExclusiveAmount: "¥4.96",
+        taxAmount: "¥0.65",
+        taxBreakdownNote: "-",
         reason: "-",
         remark: "本期完成量"
       },
@@ -314,10 +347,17 @@ describe("SettlementReadService", () => {
         name: "现场扣款",
         unit: "-",
         quantity: "-",
-        unitPrice: "¥100.125（不含税）",
+        unitPrice: "-",
+        taxInclusiveUnitPrice: "-",
+        taxExclusiveUnitPrice: "-",
+        taxRate: "-",
         calculationMode: "manual_adjustment",
         amount: "¥-2,000.00",
         amountCents: "-200000",
+        taxInclusiveAmount: "¥-2,000.00",
+        taxExclusiveAmount: "-",
+        taxAmount: "-",
+        taxBreakdownNote: "人工调整，不适用合同单价税额拆分",
         reason: "项目确认扣款",
         remark: "-"
       }
@@ -668,6 +708,47 @@ describe("SettlementReadService", () => {
         expect.objectContaining({ key: "delegate_approval", enabled: true })
       ])
     );
+  });
+
+  it("does not borrow current contract tax facts for a legacy settlement without snapshots", async () => {
+    const service = new SettlementReadService({} as never) as unknown as {
+      taxFactSummary(
+        settlement: {
+          contractVersionId: string;
+          invoiceTypeSnapshot: string | null;
+          taxFactRevisionSnapshot: number | null;
+        },
+        contractVersion: {
+          invoiceType: string | null;
+          taxMode: string | null;
+          defaultTaxRatePercent: Decimal | null;
+          taxFactRevision: number;
+        },
+        lines: []
+      ): Promise<Array<{ label: string; value: string }>>;
+    };
+
+    await expect(
+      service.taxFactSummary(
+        {
+          contractVersionId: "contract-version-1",
+          invoiceTypeSnapshot: null,
+          taxFactRevisionSnapshot: null
+        },
+        {
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: new Decimal("13"),
+          taxFactRevision: 4
+        },
+        []
+      )
+    ).resolves.toEqual([
+      { label: "发票类型", value: "—" },
+      { label: "税率模式", value: "—" },
+      { label: "默认税率", value: "—" },
+      { label: "税务事实修订号", value: "历史结算未保存" }
+    ]);
   });
 
   it.each([

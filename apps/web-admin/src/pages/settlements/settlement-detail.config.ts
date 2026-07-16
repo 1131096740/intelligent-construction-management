@@ -31,7 +31,14 @@ export interface SettlementLineRow {
   unit: string;
   quantity: string;
   unitPrice: string;
+  taxInclusiveUnitPrice: string;
+  taxExclusiveUnitPrice: string;
+  taxRate: string;
   amount: string;
+  taxInclusiveAmount: string;
+  taxExclusiveAmount: string;
+  taxAmount: string;
+  taxBreakdownNote: string;
   reason: string;
   remark: string;
 }
@@ -117,12 +124,16 @@ export const settlementPaymentRuleColumns: PrimaryTableCol<SettlementPaymentRule
 ];
 
 export const settlementLineColumns: PrimaryTableCol<SettlementLineRow>[] = [
-  { colKey: "sourceLabel", title: "来源", width: 120 },
-  { colKey: "name", title: "结算内容", minWidth: 180 },
-  { colKey: "unit", title: "单位", width: 80 },
-  { colKey: "quantity", title: "本期工程量", width: 120 },
-  { colKey: "unitPrice", title: "单价", width: 120 },
-  { colKey: "amount", title: "本期金额", width: 132 },
+  { colKey: "sourceLabel", title: "来源", width: 104 },
+  { colKey: "name", title: "结算内容", minWidth: 168 },
+  { colKey: "unit", title: "单位", width: 72 },
+  { colKey: "quantity", title: "本期工程量", width: 112, align: "right" },
+  { colKey: "taxInclusiveUnitPrice", title: "含税单价", width: 120, align: "right" },
+  { colKey: "taxExclusiveUnitPrice", title: "不含税单价", width: 120, align: "right" },
+  { colKey: "taxRate", title: "税率", width: 80, align: "right" },
+  { colKey: "taxInclusiveAmount", title: "含税金额", width: 132, align: "right" },
+  { colKey: "taxExclusiveAmount", title: "不含税金额", width: 132, align: "right" },
+  { colKey: "taxAmount", title: "税额", width: 120, align: "right" },
   { colKey: "reason", title: "依据/原因", minWidth: 160 },
   { colKey: "remark", title: "备注", minWidth: 160 }
 ];

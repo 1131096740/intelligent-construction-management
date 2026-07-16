@@ -25,12 +25,31 @@ export interface SettlementDocumentInput {
   counterparty: string;
   companyEntityName: string;
   amountCents: bigint;
+  invoiceType: string;
+  taxMode: string;
+  defaultTaxRatePercent: string | null;
+  taxFactRevision: number | null;
   finalCumulativeAmountCents?: bigint | null;
   payableAmountCents: bigint;
   previousEffectiveSettlementCents: bigint;
   isFinal: boolean;
   generatedAt: Date;
+  lines: SettlementDocumentLine[];
   approvalRows: SettlementApprovalSignatureRow[];
+}
+
+export interface SettlementDocumentLine {
+  sourceType: "contract_bill_row" | "manual_adjustment";
+  name: string;
+  unit: string | null;
+  quantity: string | null;
+  taxInclusiveUnitPrice: string | null;
+  taxExclusiveUnitPrice: string | null;
+  taxRatePercent: string | null;
+  taxInclusiveAmountCents: bigint;
+  taxExclusiveAmountCents: bigint | null;
+  taxAmountCents: bigint | null;
+  remark: string | null;
 }
 
 export interface SettlementDocumentRow {
@@ -115,44 +134,63 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
       }
     }
   });
-  sheet.pageSetup.printTitlesRow = "1:8";
+  sheet.pageSetup.printTitlesRow = "1:9";
   sheet.headerFooter.oddHeader = '&C&"Arial,Bold"&24草稿 DRAFT';
-  sheet.views = [{ state: "frozen", ySplit: 8 }];
+  sheet.views = [{ state: "frozen", ySplit: 9 }];
   sheet.columns = [
+    { width: 6 },
+    { width: 12 },
+    { width: 20 },
+    { width: 7 },
+    { width: 10 },
+    { width: 12 },
+    { width: 12 },
     { width: 8 },
-    { width: 24 },
-    { width: 20 },
-    { width: 20 },
-    { width: 20 },
-    { width: 18 },
-    { width: 32 }
+    { width: 13 },
+    { width: 13 },
+    { width: 12 },
+    { width: 24 }
   ];
 
-  sheet.mergeCells("A1:G1");
+  sheet.mergeCells("A1:L1");
   sheet.getCell("A1").value = "工程结算单";
   sheet.getCell("A1").font = { size: 18, bold: true };
   sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
   sheet.getRow(1).height = 28;
 
-  sheet.mergeCells("A2:G2");
+  sheet.mergeCells("A2:L2");
   sheet.getCell("A2").value = "草稿 DRAFT";
   sheet.getCell("A2").font = { size: 22, bold: true, color: { argb: "FFBFBFBF" } };
   sheet.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
   sheet.getRow(2).height = 32;
 
   const infoRows = [
-    ["项目名称", input.projectName, "结算编号", input.settlementCode, "结算期次", input.periodLabel, ""],
-    ["合同名称", input.contractName, "合同编号", input.contractCode, "相对方", input.counterparty, ""],
-    ["我方主体", input.companyEntityName, "结算类型", input.isFinal ? "最终结算" : "过程结算", "生成日期", formatDate(input.generatedAt), ""],
-    ["状态", input.status, "", "", "", "", ""]
+    ["项目名称", input.projectName, "", "结算编号", input.settlementCode, "", "结算期次", input.periodLabel, "", "", "", ""],
+    ["合同名称", input.contractName, "", "合同编号", input.contractCode, "", "相对方", input.counterparty, "", "", "", ""],
+    ["我方主体", input.companyEntityName, "", "结算类型", input.isFinal ? "最终结算" : "过程结算", "", "生成日期", formatDate(input.generatedAt), "", "", "", ""],
+    ["状态", input.status, "", "", "", "", "", "", "", "", "", ""]
   ];
   for (const values of infoRows) {
     sheet.addRow(values);
   }
 
+  sheet.addRow([
+    "税务事实",
+    "发票类型",
+    input.invoiceType,
+    "税率模式",
+    input.taxMode,
+    "默认税率",
+    input.defaultTaxRatePercent ? `${input.defaultTaxRatePercent}%` : "—",
+    "税务修订",
+    input.taxFactRevision ?? "—",
+    "",
+    "",
+    ""
+  ]);
   sheet.addRow([]);
-  sheet.addRow(["序号", "来源", "期前累计结算金额", "本期结算金额", "期后累计结算金额", "本期可付金额", "备注"]);
-  const headerRow = sheet.getRow(8);
+  sheet.addRow(["序号", "来源", "名称", "单位", "数量", "含税单价", "不含税单价", "税率", "含税金额", "不含税金额", "税额", "备注"]);
+  const headerRow = sheet.getRow(9);
   headerRow.font = { bold: true };
   headerRow.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
   headerRow.eachCell((cell) => {
@@ -160,9 +198,49 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
     cell.border = thinBorder();
   });
 
-  settlementDocumentRows(input).forEach((row, index) => {
+  input.lines.forEach((line, index) => {
+    const manualAdjustment = line.sourceType === "manual_adjustment";
     const excelRow = sheet.addRow([
       index + 1,
+      manualAdjustment ? "人工调整" : "合同清单项",
+      line.name,
+      line.unit ?? "-",
+      line.quantity ?? "-",
+      line.taxInclusiveUnitPrice ?? "-",
+      line.taxExclusiveUnitPrice ?? "-",
+      line.taxRatePercent === null ? "-" : `${line.taxRatePercent}%`,
+      centsToYuanText(line.taxInclusiveAmountCents),
+      line.taxExclusiveAmountCents === null
+        ? "-"
+        : centsToYuanText(line.taxExclusiveAmountCents),
+      line.taxAmountCents === null ? "-" : centsToYuanText(line.taxAmountCents),
+      manualAdjustment
+        ? `人工调整，不适用合同单价税额拆分${line.remark ? `；${line.remark}` : ""}`
+        : line.remark ?? ""
+    ]);
+    excelRow.eachCell((cell, columnNumber) => {
+      cell.border = thinBorder();
+      cell.alignment = {
+        horizontal:
+          (columnNumber >= 5 && columnNumber <= 11) ? "right" : "center",
+        vertical: "middle",
+        wrapText: true
+      };
+    });
+  });
+
+  sheet.addRow([]);
+  const summaryHeader = sheet.addRow([
+    "来源",
+    "期前累计结算金额",
+    "本期结算金额",
+    "期后累计结算金额",
+    "本期可付金额",
+    "备注"
+  ]);
+  summaryHeader.font = { bold: true };
+  settlementDocumentRows(input).forEach((row) => {
+    sheet.addRow([
       row.source,
       centsToYuanText(row.previousCumulativeCents),
       centsToYuanText(row.currentSettlementCents),
@@ -170,16 +248,7 @@ export async function renderSettlementDraftExcel(input: SettlementDocumentInput)
       centsToYuanText(row.payableAmountCents),
       row.remark
     ]);
-    excelRow.eachCell((cell, columnNumber) => {
-      cell.border = thinBorder();
-      cell.alignment = {
-        horizontal: columnNumber >= 3 && columnNumber <= 6 ? "right" : "center",
-        vertical: "middle",
-        wrapText: true
-      };
-    });
   });
-
   sheet.addRow([]);
   const signTitle = sheet.addRow(["审批签字栏"]);
   signTitle.font = { bold: true };
@@ -248,6 +317,63 @@ export async function renderSettlementArchivePdf(input: SettlementDocumentInput)
   );
 
   y += 12;
+  y = drawPdfTable(
+    doc,
+    margin,
+    y,
+    [[
+      "发票类型",
+      input.invoiceType,
+      "税率模式",
+      input.taxMode,
+      "默认税率",
+      input.defaultTaxRatePercent ? `${input.defaultTaxRatePercent}%` : "—",
+      "税务修订",
+      input.taxFactRevision === null ? "—" : String(input.taxFactRevision)
+    ]],
+    [58, 110, 58, 92, 58, 78, 58, contentWidth - 512],
+    24
+  );
+
+  y += 10;
+  y = drawPdfTable(
+    doc,
+    margin,
+    y,
+    [
+      ["序号", "来源", "名称", "单位", "数量", "含税单价", "不含税单价", "税率", "含税金额", "不含税金额", "税额", "备注"],
+      ...input.lines.map((line, index) => {
+        const manualAdjustment = line.sourceType === "manual_adjustment";
+        return [
+          String(index + 1),
+          manualAdjustment ? "人工调整" : "合同清单项",
+          line.name,
+          line.unit ?? "-",
+          line.quantity ?? "-",
+          line.taxInclusiveUnitPrice ?? "-",
+          line.taxExclusiveUnitPrice ?? "-",
+          line.taxRatePercent === null ? "-" : `${line.taxRatePercent}%`,
+          formatYuan(line.taxInclusiveAmountCents),
+          line.taxExclusiveAmountCents === null
+            ? "-"
+            : formatYuan(line.taxExclusiveAmountCents),
+          line.taxAmountCents === null ? "-" : formatYuan(line.taxAmountCents),
+          manualAdjustment
+            ? `人工调整，不适用合同单价税额拆分${line.remark ? `；${line.remark}` : ""}`
+            : line.remark ?? ""
+        ];
+      })
+    ],
+    [24, 52, 82, 30, 42, 54, 54, 36, 66, 66, 54, contentWidth - 560],
+    28,
+    {
+      bottomReserved: signatureBoardHeight + 12,
+      repeatHeader: true,
+      rightAlignedColumns: [4, 5, 6, 8, 9, 10]
+    }
+  );
+
+  y += 10;
   y = drawPdfTable(
     doc,
     margin,
@@ -360,6 +486,7 @@ function drawPdfTable(
     imageColumn?: number;
     rowImages?: Array<Buffer | null | undefined>;
     repeatHeader?: boolean;
+    rightAlignedColumns?: number[];
   } = {}
 ) {
   let currentY = y;
@@ -394,7 +521,9 @@ function drawPdfTable(
         doc.fontSize(rowIndex === 0 ? 9 : 8).text(value, currentX + 4, currentY + 6, {
           width: width - 8,
           height: rowHeight - 8,
-          align: columnIndex >= 2 && columnIndex <= 5 ? "right" : "center"
+          align: (options.rightAlignedColumns ?? [2, 3, 4, 5]).includes(columnIndex)
+            ? "right"
+            : "center"
         });
       }
       currentX += width;

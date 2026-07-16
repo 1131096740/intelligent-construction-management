@@ -226,9 +226,16 @@ export interface SettlementLineReadModel {
   unit: string;
   quantity: string;
   unitPrice: string;
+  taxInclusiveUnitPrice: string;
+  taxExclusiveUnitPrice: string;
+  taxRate: string;
   calculationMode: "legacy" | "normal_auto" | "manual_amount" | "manual_adjustment";
   amount: string;
   amountCents: MoneyCents;
+  taxInclusiveAmount: string;
+  taxExclusiveAmount: string;
+  taxAmount: string;
+  taxBreakdownNote: string;
   reason: string;
   remark: string;
 }
@@ -239,6 +246,7 @@ export interface SettlementDetailReadModel {
   title: string;
   meta: DetailMetaItem[];
   baseInfo: DetailMetaItem[];
+  taxFactSummary: DetailMetaItem[];
   effectivenessSteps: DetailStep[];
   archiveResponsibilities: string[];
   paymentRules: SettlementPaymentRuleReadModel[];

@@ -173,6 +173,24 @@
         <section class="content-panel">
           <header class="section-heading">
             <div>
+              <h2>税务事实快照</h2>
+              <p>展示结算提交时冻结的发票类型、税率模式和税务修订，不跟随合同后续更正变化。</p>
+            </div>
+          </header>
+          <dl class="meta-grid">
+            <div
+              v-for="item in settlementTaxFactSummaryView"
+              :key="item.label"
+            >
+              <dt>{{ item.label }}</dt>
+              <dd>{{ item.value }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="content-panel">
+          <header class="section-heading">
+            <div>
               <h2>可付金额关系</h2>
               <p>仅展示系统已核定的结算与付款事实，不在本页重新计算额度。</p>
             </div>
@@ -395,7 +413,7 @@
           <header class="section-heading">
             <div>
               <h2>结算明细账本</h2>
-              <p>合同清单项追溯有效合同版本，手工调整项必须保留原因。</p>
+              <p>金额直接读取提交时冻结的含税、不含税和税额快照；人工调整不虚构税额拆分。</p>
             </div>
           </header>
           <t-table
@@ -789,6 +807,7 @@ const settlementDetailHeaderView = computed(() => {
   );
 });
 const settlementEffectivenessStepsView = computed(() => settlementDetail.value?.effectivenessSteps ?? []);
+const settlementTaxFactSummaryView = computed(() => settlementDetail.value?.taxFactSummary ?? []);
 const settlementArchiveResponsibilitiesView = computed(() => settlementDetail.value?.archiveResponsibilities ?? []);
 const settlementPaymentRulesView = computed(() => settlementDetail.value?.paymentRules ?? []);
 const settlementPayableCalculationView = computed(() => settlementDetail.value?.payableCalculation ?? {

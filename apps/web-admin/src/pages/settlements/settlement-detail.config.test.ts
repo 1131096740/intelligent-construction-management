@@ -11,6 +11,7 @@ import {
   settlementEffectivenessSteps,
   settlementPaymentBlockMessage,
   settlementPaymentRuleColumns,
+  settlementLineColumns,
   settlementDetailTabs,
   settlementOverviewBaseInfo
 } from "./settlement-detail.config";
@@ -121,6 +122,39 @@ describe("settlement detail page configuration", () => {
       "触发条件",
       "付款申请状态"
     ]);
+  });
+
+  it("shows the frozen inclusive, exclusive and tax amount columns", () => {
+    expect(settlementLineColumns.map((column) => column.title)).toEqual([
+      "来源",
+      "结算内容",
+      "单位",
+      "本期工程量",
+      "含税单价",
+      "不含税单价",
+      "税率",
+      "含税金额",
+      "不含税金额",
+      "税额",
+      "依据/原因",
+      "备注"
+    ]);
+    expect(
+      settlementLineColumns
+        .filter((column) =>
+          ["含税单价", "不含税单价", "税率", "含税金额", "不含税金额", "税额"].includes(
+            String(column.title)
+          )
+        )
+        .every((column) => column.align === "right")
+    ).toBe(true);
+  });
+
+  it("renders the frozen tax fact summary once in the overview", () => {
+    const source = readFileSync(new URL("./SettlementDetailPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("税务事实快照");
+    expect(source).toContain("settlementTaxFactSummaryView");
+    expect(source.match(/税务事实快照/gu)).toHaveLength(1);
   });
 
   it("blocks payment request creation before settlement effectiveness", () => {

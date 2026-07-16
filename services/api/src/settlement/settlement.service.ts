@@ -4,8 +4,12 @@ import {
   approvalElapsedHours,
   canCreateSettlementFromContractStatus,
   canRemindApproval,
+  contractInvoiceTypeLabel,
+  contractTaxModeLabel,
   ContractVersionStatus,
   SettlementStatus,
+  type ContractInvoiceType,
+  type ContractTaxMode,
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { ApprovalDelegationService } from "../approval/approval-delegation.service";
@@ -17,7 +21,9 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import {
+  calculateBillRow,
   dbMoneyToBigInt,
+  deriveTaxExclusiveUnitPrice,
   mapBigIntMoneyFieldsToApi,
   parseMoneyCentsInput,
   parseSignedMoneyCentsInput,
@@ -262,6 +268,8 @@ interface SettlementLineClient {
         taxRatePercentSnapshot: Prisma.Decimal | null;
         pricingModeSnapshot: string | null;
         amountCents: bigint;
+        taxExclusiveAmountCents: bigint | null;
+        taxAmountCents: bigint | null;
         reason: string | null;
         remark: string | null;
         sortOrder: number;
@@ -304,6 +312,52 @@ interface SettlementDuplicateClient {
       };
       select: { id: true; code: true };
     }): Promise<{ id: string; code: string } | null>;
+  };
+}
+
+interface SettlementDocumentSnapshotClient {
+  contractVersion?: {
+    findUnique(args: {
+      where: { id: string };
+    }): Promise<{
+      invoiceType: string | null;
+      taxMode: string | null;
+      defaultTaxRatePercent: Prisma.Decimal | null;
+      taxFactRevision: number;
+    } | null>;
+  };
+  contractTaxFactRevision?: {
+    findFirst(args: {
+      where: {
+        contractVersionId: string;
+        revisionNo: number;
+        status: string;
+      };
+    }): Promise<{
+      invoiceType: string | null;
+      taxMode: string | null;
+      defaultTaxRatePercent: Prisma.Decimal | null;
+    } | null>;
+  };
+  settlementLine?: {
+    findMany(args: {
+      where: { settlementId: string };
+      orderBy: { sortOrder: "asc" };
+    }): Promise<
+      Array<{
+        sourceType: string;
+        name: string;
+        unit: string | null;
+        quantity: Prisma.Decimal | null;
+        unitPriceSnapshot: Prisma.Decimal | null;
+        taxRatePercentSnapshot: Prisma.Decimal | null;
+        pricingModeSnapshot: string | null;
+        amountCents: bigint;
+        taxExclusiveAmountCents: bigint | null;
+        taxAmountCents: bigint | null;
+        remark: string | null;
+      }>
+    >;
   };
 }
 
@@ -818,25 +872,81 @@ export class SettlementService {
 
     const client = tx as SettlementLineClient;
     await client.settlementLine.createMany({
-      data: lines.map((line) => ({
-        settlementId,
-        contractBillRowId: line.contractBillRowId,
-        sourceType: line.sourceType,
-        name: line.name,
-        unit: line.unit,
-        quantity: line.quantity,
-        unitPriceCents: line.unitPriceCents,
-        calculationMode: line.calculationMode,
-        contractQuantitySnapshot: line.contractQuantitySnapshot,
-        unitPriceSnapshot: line.unitPriceSnapshot,
-        taxRatePercentSnapshot: line.taxRatePercentSnapshot,
-        pricingModeSnapshot: line.pricingModeSnapshot,
-        amountCents: line.amountCents,
-        reason: line.reason,
-        remark: line.remark,
-        sortOrder: line.sortOrder
-      }))
+      data: lines.map((line) => {
+        const taxAmounts = this.settlementLineTaxAmounts(line);
+        return {
+          settlementId,
+          contractBillRowId: line.contractBillRowId,
+          sourceType: line.sourceType,
+          name: line.name,
+          unit: line.unit,
+          quantity: line.quantity,
+          unitPriceCents: line.unitPriceCents,
+          calculationMode: line.calculationMode,
+          contractQuantitySnapshot: line.contractQuantitySnapshot,
+          unitPriceSnapshot: line.unitPriceSnapshot,
+          taxRatePercentSnapshot: line.taxRatePercentSnapshot,
+          pricingModeSnapshot: line.pricingModeSnapshot,
+          amountCents: line.amountCents,
+          ...taxAmounts,
+          reason: line.reason,
+          remark: line.remark,
+          sortOrder: line.sortOrder
+        };
+      })
     });
+  }
+
+  private settlementLineTaxAmounts(line: NormalizedSettlementLine): {
+    taxExclusiveAmountCents: bigint | null;
+    taxAmountCents: bigint | null;
+  } {
+    if (
+      line.sourceType === "manual_adjustment" ||
+      line.taxRatePercentSnapshot === null
+    ) {
+      return {
+        taxExclusiveAmountCents: null,
+        taxAmountCents: null
+      };
+    }
+
+    if (
+      line.calculationMode === "normal_auto" &&
+      line.quantity !== null &&
+      line.unitPriceSnapshot !== null &&
+      line.pricingModeSnapshot !== null
+    ) {
+      const calculated = calculateBillRow({
+        quantity: line.quantity.toString(),
+        unitPrice: line.unitPriceSnapshot.toString(),
+        taxRatePercent: line.taxRatePercentSnapshot.toString(),
+        pricingMode:
+          line.pricingModeSnapshot === "tax_exclusive"
+            ? "tax_exclusive"
+            : "tax_inclusive"
+      });
+      if (calculated.taxInclusiveAmountCents !== line.amountCents) {
+        throw new Error(`结算清单项“${line.name}”税额快照与含税金额不一致`);
+      }
+      return {
+        taxExclusiveAmountCents: calculated.taxExclusiveAmountCents,
+        taxAmountCents: calculated.taxAmountCents
+      };
+    }
+
+    const hundred = new Prisma.Decimal(100);
+    const divisor = line.taxRatePercentSnapshot.div(hundred).add(1);
+    const taxExclusiveAmountCents = BigInt(
+      new Prisma.Decimal(line.amountCents.toString())
+        .div(divisor)
+        .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
+        .toFixed(0)
+    );
+    return {
+      taxExclusiveAmountCents,
+      taxAmountCents: line.amountCents - taxExclusiveAmountCents
+    };
   }
 
   private requiredText(value: string | undefined, label: string): string {
@@ -2338,7 +2448,8 @@ export class SettlementService {
       throw new Error("未找到该结算单，请刷新结算台账后重试");
     }
 
-    const [contract, project, previousSettlements, approvalInstance] = await Promise.all([
+    const documentSnapshotClient = tx as unknown as SettlementDocumentSnapshotClient;
+    const [contract, project, previousSettlements, approvalInstance, contractVersion, settlementLines, frozenTaxRevision] = await Promise.all([
       tx.contract.findUnique({
         where: { id: settlement.contractId },
         select: {
@@ -2368,7 +2479,24 @@ export class SettlementService {
           flowType: "settlement.approve"
         },
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
-      })
+      }),
+      documentSnapshotClient.contractVersion?.findUnique({
+        where: { id: settlement.contractVersionId }
+      }) ?? Promise.resolve(null),
+      documentSnapshotClient.settlementLine?.findMany({
+        where: { settlementId: settlement.id },
+        orderBy: { sortOrder: "asc" }
+      }) ?? Promise.resolve([]),
+      settlement.taxFactRevisionSnapshot !== null &&
+      documentSnapshotClient.contractTaxFactRevision
+        ? documentSnapshotClient.contractTaxFactRevision.findFirst({
+            where: {
+              contractVersionId: settlement.contractVersionId,
+              revisionNo: settlement.taxFactRevisionSnapshot,
+              status: "confirmed"
+            }
+          })
+        : Promise.resolve(null)
     ]);
 
     if (!contract) {
@@ -2385,6 +2513,34 @@ export class SettlementService {
           orderBy: [{ createdAt: "asc" }, { id: "asc" }]
         })
       : [];
+    const currentTaxFactsStillMatch =
+      settlement.taxFactRevisionSnapshot !== null &&
+      settlement.taxFactRevisionSnapshot === (contractVersion?.taxFactRevision ?? null);
+    const lineTaxRates = Array.from(
+      new Set(
+        settlementLines
+          .map((line) => decimalSnapshotText(line.taxRatePercentSnapshot))
+          .filter((rate): rate is string => rate !== null)
+      )
+    );
+    const invoiceType =
+      settlement.invoiceTypeSnapshot ??
+      frozenTaxRevision?.invoiceType ??
+      (currentTaxFactsStillMatch ? contractVersion?.invoiceType ?? null : null);
+    const taxMode =
+      frozenTaxRevision?.taxMode ??
+      (currentTaxFactsStillMatch ? contractVersion?.taxMode ?? null : null) ??
+      (lineTaxRates.length > 1
+        ? "multiple_rate"
+        : lineTaxRates.length === 1
+          ? "single_rate"
+          : null);
+    const defaultTaxRatePercent =
+      decimalSnapshotText(frozenTaxRevision?.defaultTaxRatePercent) ??
+      (currentTaxFactsStillMatch
+        ? decimalSnapshotText(contractVersion?.defaultTaxRatePercent)
+        : null) ??
+      (lineTaxRates.length === 1 ? lineTaxRates[0] : null);
 
     return {
       settlementId: settlement.id,
@@ -2397,6 +2553,10 @@ export class SettlementService {
       counterparty: contract.counterparty,
       companyEntityName: contract.companyEntityName ?? "我方主体",
       amountCents: settlement.amountCents,
+      invoiceType: settlementInvoiceTypeLabel(invoiceType),
+      taxMode: settlementTaxModeLabel(taxMode),
+      defaultTaxRatePercent,
+      taxFactRevision: settlement.taxFactRevisionSnapshot,
       finalCumulativeAmountCents: settlement.finalCumulativeAmountCents,
       payableAmountCents: settlement.payableAmountCents,
       previousEffectiveSettlementCents: previousSettlements.reduce<bigint>(
@@ -2405,6 +2565,33 @@ export class SettlementService {
       ),
       isFinal: settlement.isFinal,
       generatedAt: new Date(),
+      lines: settlementLines.map((line) => {
+        const manualAdjustment = line.sourceType === "manual_adjustment";
+        const unitPrices = manualAdjustment
+          ? { inclusive: null, exclusive: null }
+          : settlementDocumentUnitPrices(
+              decimalSnapshotText(line.unitPriceSnapshot),
+              decimalSnapshotText(line.taxRatePercentSnapshot),
+              line.pricingModeSnapshot
+            );
+        return {
+          sourceType: manualAdjustment ? "manual_adjustment" : "contract_bill_row",
+          name: line.name,
+          unit: line.unit,
+          quantity: manualAdjustment ? null : decimalSnapshotText(line.quantity),
+          taxInclusiveUnitPrice: unitPrices.inclusive,
+          taxExclusiveUnitPrice: unitPrices.exclusive,
+          taxRatePercent: manualAdjustment
+            ? null
+            : decimalSnapshotText(line.taxRatePercentSnapshot),
+          taxInclusiveAmountCents: line.amountCents,
+          taxExclusiveAmountCents: manualAdjustment
+            ? null
+            : line.taxExclusiveAmountCents,
+          taxAmountCents: manualAdjustment ? null : line.taxAmountCents,
+          remark: line.remark
+        };
+      }),
       approvalRows: await this.buildSettlementApprovalRows(
         tx,
         settlement.projectId,
@@ -2796,6 +2983,64 @@ function requireApprovalCommentForReturn(decision: ReviewSettlementApprovalDto["
 
 function sumBigInt(values: Array<bigint>): bigint {
   return sumDbMoneyToBigInt(values, "结算金额");
+}
+
+function decimalSnapshotText(
+  value: Prisma.Decimal | string | number | null | undefined
+): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return String(typeof value === "object" ? value.toString() : value)
+    .replace(/(\.\d*?)0+$/u, "$1")
+    .replace(/\.$/u, "");
+}
+
+function settlementDocumentUnitPrices(
+  unitPrice: string | null,
+  taxRatePercent: string | null,
+  pricingMode: string | null
+): { inclusive: string | null; exclusive: string | null } {
+  if (unitPrice === null) {
+    return { inclusive: null, exclusive: null };
+  }
+  if (pricingMode === "tax_exclusive") {
+    if (taxRatePercent === null) {
+      return { inclusive: null, exclusive: unitPrice };
+    }
+    return {
+      inclusive: new Prisma.Decimal(unitPrice)
+        .mul(new Prisma.Decimal(taxRatePercent).div(100).add(1))
+        .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+        .toFixed(2),
+      exclusive: unitPrice
+    };
+  }
+  if (pricingMode !== "tax_inclusive") {
+    return { inclusive: null, exclusive: null };
+  }
+  if (taxRatePercent === null) {
+    return { inclusive: unitPrice, exclusive: null };
+  }
+  return {
+    inclusive: unitPrice,
+    exclusive: deriveTaxExclusiveUnitPrice({
+      taxInclusiveUnitPrice: unitPrice,
+      taxRatePercent
+    })
+  };
+}
+
+function settlementInvoiceTypeLabel(value: string | null): string {
+  return value === "vat_general" || value === "vat_special"
+    ? contractInvoiceTypeLabel(value as ContractInvoiceType)
+    : "—";
+}
+
+function settlementTaxModeLabel(value: string | null): string {
+  return value === "single_rate" || value === "multiple_rate"
+    ? contractTaxModeLabel(value as ContractTaxMode)
+    : "—";
 }
 
 export function calculateSettlementLineTotalBigInt(
