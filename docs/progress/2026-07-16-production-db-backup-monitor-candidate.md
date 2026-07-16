@@ -1,12 +1,12 @@
-# 生产数据库异机备份失败/陈旧告警候选
+# 生产数据库异机备份失败/陈旧告警实施与安装记录
 
 日期：2026-07-16
 
-状态：本地实现和测试完成；未推送、未部署、未修改生产配置或业务数据。候选 SHA 以本轮交付回复为准。
+状态：获批来源 `48b5ec3fc91efd9f73cfa7a5eb6d4cde48e6c096` 已推送并完成监控生产安装；未部署 Web/API、未执行迁移、未修改业务数据。
 
 ## 1. 目标与基线
 
-- 生产运行时与 `origin/main` 当前均为 `b857a4269aa907e0550470cece52c846bcbb7623`，生产数据库已完成 51 个迁移。
+- 生产应用运行时保持 `b857a4269aa907e0550470cece52c846bcbb7623`；`origin/main` 已快进到监控来源 `48b5ec3fc91efd9f73cfa7a5eb6d4cde48e6c096`，生产数据库仍为 51 个完成迁移。
 - 永久每日 03:00 异机日备与每月 1 日 03:30 异机月备保持原样。
 - 2026-07-16 首次自然 03:00 日备已经通过：`jiangkong-20260716-030001.dump` 为 254,832 字节、440 项，dump/checksum/收据均为 `600 root:root`，上传时间为 03:00:02，日志无失败词。
 - 现有 `/etc/jiangkong/healthcheck.env` 已配置生产告警通道，但此前没有数据库备份专用失败、陈旧、完整性和恢复通知。
@@ -52,10 +52,18 @@
 - `bash -n scripts/ops/check-production-db-backup.sh`：通过。
 - 新测试已接入 `scripts/ops/go-live-safety-self-test.sh`，最终全量门禁结果在本轮交付回复中记录。
 
-## 6. 生产安装与回滚门禁
+## 6. 生产安装与回滚
 
-- 本候选形成后立即停止在发布候选状态，不推送 `main`、不执行应用部署、不安装 systemd unit。
-- 后续必须先由用户批准交付回复中的精确 40 位 SHA，再按运行手册 3.1 节只安装监控脚本和 unit。
-- 安装前后都要核对现有 03:00/03:30 cron 文本未变化；首次手工 service 检查必须健康后才能启用 timer。
+- 用户已明确批准精确 40 位 SHA，并按运行手册 3.1 节只安装监控脚本和 unit。
+- 安装前后现有 03:00/03:30 cron SHA-256 均为 `6ddd44e76250b73c62f0e05f9a96ba4b41a5b69c64d4c26d3b056c906da22c95`。
 - 回滚只禁用并移除监控 timer/service 与两个监控脚本；不删除备份、收据、COS 对象，不修改 cron、API 或数据库。
 - 状态目录默认保留审计；确认不再需要后才单独删除。
+
+## 7. 生产安装证据
+
+- 生产服务器从获批 Git 对象创建临时安装树，未切换应用工作树；临时树复跑 Node 监控测试 13/13，shell/Node 语法和 systemd unit 校验通过。
+- 2026-07-16 11:36:04 首次手工 service 成功读取 `jiangkong-20260716-030001.dump`，输出“03:00 异机数据库备份有效”，`Result=success`、`ExecMainStatus=0`，没有活动告警指纹。
+- `jiangkong-db-backup-monitor.timer` 为 enabled/active，按每 15 分钟调度；首次自然 timer 于 11:45:51 成功执行，重新确认同一 03:00 恢复点有效，下一次排期为 12:00:22。
+- 安装文件 SHA-256：检查器 `9a5f8720…`、包装器 `1beedac3…`、service `f5cade9d…`、timer `e1f9c493…`，均与获批 Git 临时树逐文件一致。
+- 生产应用仍为 `b857a426…`、tracked diff 为空；API/Nginx/PostgreSQL/Cron active，公网 `/api/health` 正常，数据库迁移为 `51|0`。
+- 为避免制造未经通知的生产假故障，本轮未向真实收件人强制发送测试失败邮件；SMTP/Webhook Secret 不进入参数、故障去重和恢复通知由生产服务器上的隔离 fake-channel 测试覆盖。
