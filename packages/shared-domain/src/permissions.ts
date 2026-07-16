@@ -37,7 +37,22 @@ export const BUSINESS_ACTIONS = [
   "project_expense.execution",
   "project_expense.finance_record",
   "project_expense.receipt_confirm",
-  "project_expense.void"
+  "project_expense.void",
+  "spot_procurement.create",
+  "spot_procurement.approve",
+  "spot_procurement.payment.submit",
+  "spot_procurement.payment.approve",
+  "spot_procurement.payment.execute",
+  "spot_procurement.receipt.confirm",
+  "spot_procurement.receipt.review",
+  "spot_procurement.receipt.review_revoke",
+  "spot_procurement.discrepancy.create",
+  "spot_procurement.refund.record",
+  "spot_procurement.balance.execute",
+  "spot_procurement.invoice.manage",
+  "spot_procurement.invoice_exception.confirm",
+  "spot_procurement.vat_rate.manage",
+  "spot_procurement.void"
 ] as const;
 
 export type BusinessAction = (typeof BUSINESS_ACTIONS)[number];
@@ -140,7 +155,38 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "project_expense.execution": ["finance_staff"],
   "project_expense.finance_record": ["finance_staff", "finance_director"],
   "project_expense.receipt_confirm": ["employee", "material_staff", "project_manager"],
-  "project_expense.void": ["finance_director", "project_manager"]
+  "project_expense.void": ["finance_director", "project_manager"],
+  "spot_procurement.create": ["material_staff", "material_director"],
+  "spot_procurement.approve": ["material_director", "project_manager"],
+  "spot_procurement.payment.submit": ["material_staff", "material_director"],
+  "spot_procurement.payment.approve": [
+    "comprehensive_director",
+    "project_manager",
+    "finance_director",
+    "chairman",
+    "general_manager"
+  ],
+  "spot_procurement.payment.execute": ["finance_staff"],
+  "spot_procurement.receipt.confirm": [
+    "employee",
+    "material_staff",
+    "material_director",
+    "project_manager"
+  ],
+  "spot_procurement.receipt.review": ["material_director"],
+  "spot_procurement.receipt.review_revoke": ["material_director"],
+  "spot_procurement.discrepancy.create": ["material_staff", "material_director"],
+  "spot_procurement.refund.record": ["finance_staff"],
+  "spot_procurement.balance.execute": ["finance_director"],
+  "spot_procurement.invoice.manage": [
+    "material_staff",
+    "material_director",
+    "finance_staff",
+    "finance_director"
+  ],
+  "spot_procurement.invoice_exception.confirm": ["finance_director"],
+  "spot_procurement.vat_rate.manage": ["finance_director"],
+  "spot_procurement.void": ["project_manager", "finance_director"]
 };
 
 /**

@@ -196,7 +196,7 @@ POST   /spot-procurements/:procurementId/receipt-pdf-download-ticket
 - Create: `packages/shared-domain/src/spot-procurement.ts`
 - Modify: `packages/shared-domain/src/index.ts`
 - Modify: `packages/shared-domain/src/permissions.ts`
-- Modify: `packages/shared-domain/src/permissions.spec.ts`
+- Modify: `packages/shared-domain/src/permissions.test.ts`
 - Create: `services/api/src/spot-procurement/spot-procurement.constants.ts`
 - Create: `services/api/src/spot-procurement/spot-procurement-pilot.service.ts`
 - Create: `services/api/src/spot-procurement/spot-procurement-pilot.service.spec.ts`
@@ -206,7 +206,7 @@ POST   /spot-procurements/:procurementId/receipt-pdf-download-ticket
 
 - [ ] **Step 1：先写共享状态和权限的失败测试**
 
-在 `permissions.spec.ts` 增加：
+在 `permissions.test.ts` 增加：
 
 ```ts
 it("maps spot procurement write actions to the confirmed business roles", () => {
@@ -231,7 +231,7 @@ it("maps spot procurement write actions to the confirmed business roles", () => 
 - [ ] **Step 2：运行共享测试并确认 RED**
 
 ```bash
-pnpm --filter @jiangkong/shared-domain test -- permissions.spec.ts
+pnpm --filter @jiangkong/shared-domain test -- permissions.test.ts
 ```
 
 Expected: FAIL，动作尚不存在。
@@ -321,7 +321,7 @@ SPOT_PROCUREMENT_PILOT_PROJECT_IDS=project-id-1,project-id-2
 - [ ] **Step 5：运行定向测试并确认 GREEN**
 
 ```bash
-pnpm --filter @jiangkong/shared-domain test -- permissions.spec.ts
+pnpm --filter @jiangkong/shared-domain test -- permissions.test.ts
 pnpm --filter @jiangkong/api test -- spot-procurement/spot-procurement-pilot.service.spec.ts --runInBand
 ```
 
