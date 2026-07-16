@@ -150,7 +150,12 @@ export class SpotProcurementApplicationService {
         );
         this.requireAnyRole(actorRoles, CREATE_ROLES, "只有物资员或物资主管可以创建零星采购");
 
-        const prepared = await this.prepareDraft(tx, actorUserId, input);
+        const prepared = await this.prepareDraft(
+          tx,
+          actorUserId,
+          input,
+          [actorUserId]
+        );
         await this.requireHandlerRole(
           tx,
           prepared.handlerUserId,
@@ -233,7 +238,16 @@ export class SpotProcurementApplicationService {
           procurement,
           actorUserId
         );
-        const prepared = await this.prepareDraft(tx, actorUserId, input);
+        const prepared = await this.prepareDraft(
+          tx,
+          actorUserId,
+          input,
+          [
+            procurement.applicantUserId,
+            procurement.handlerUserId,
+            actorUserId
+          ]
+        );
         await this.requireHandlerRole(
           tx,
           prepared.handlerUserId,
@@ -299,18 +313,11 @@ export class SpotProcurementApplicationService {
           procurement,
           actorUserId
         );
-        const storedDraft = await this.storedDraft(tx, version);
-        const prepared = await this.prepareDraft(tx, actorUserId, storedDraft);
-        await this.requireHandlerRole(
+        await this.requireActiveUser(
           tx,
-          prepared.handlerUserId,
-          procurement.projectId,
-          actorUserId,
-          actorRoles
+          procurement.applicantUserId,
+          "采购申请人不存在或已停用"
         );
-        await this.replaceVersionFacts(tx, version.id, prepared);
-
-        const now = new Date();
         const applicantRoles =
           procurement.applicantUserId === actorUserId
             ? actorRoles
@@ -324,6 +331,27 @@ export class SpotProcurementApplicationService {
           CREATE_ROLES,
           "采购申请人当前不具备物资员或物资主管岗位"
         );
+        const storedDraft = await this.storedDraft(tx, version);
+        const prepared = await this.prepareDraft(
+          tx,
+          actorUserId,
+          storedDraft,
+          [
+            procurement.applicantUserId,
+            procurement.handlerUserId,
+            actorUserId
+          ]
+        );
+        await this.requireHandlerRole(
+          tx,
+          prepared.handlerUserId,
+          procurement.projectId,
+          actorUserId,
+          actorRoles
+        );
+        await this.replaceVersionFacts(tx, version.id, prepared);
+
+        const now = new Date();
         const frozenNodes = procurementApprovalNodes(applicantRoles);
         const approval = await tx.approvalInstance.create({
           data: {
@@ -389,6 +417,73 @@ export class SpotProcurementApplicationService {
           version.versionNo,
           "approval_pending",
           prepared.totalAmountCents
+        );
+      })
+    );
+  }
+
+  withdrawApproval(procurementId: string, actorUserId: string) {
+    return this.runWrite(() =>
+      this.prisma.$transaction(async (tx) => {
+        const procurement = await this.requireLockedProcurement(tx, procurementId);
+        this.pilot.assertEnabled(procurement.projectId);
+        const version = await this.requireLockedCurrentVersion(tx, procurement);
+        if (
+          procurement.status !== "approval_pending" ||
+          version.status !== "approval_pending"
+        ) {
+          throw new ConflictException("当前采购申请不在审批中，不能撤回");
+        }
+        const approval = await this.requireLockedApprovalInstance(
+          tx,
+          version.id,
+          "approval_pending"
+        );
+        if (
+          actorUserId !== procurement.applicantUserId ||
+          actorUserId !== approval.applicantUserId
+        ) {
+          throw new ForbiddenException("只有采购申请人可以撤回审批");
+        }
+
+        await tx.approvalInstance.update({
+          where: { id: approval.id },
+          data: { status: "withdrawn" }
+        });
+        await tx.approvalActionLog.create({
+          data: {
+            approvalInstanceId: approval.id,
+            action: "withdraw",
+            actorUserId,
+            comment: "申请人撤回采购审批"
+          }
+        });
+        await tx.spotProcurementVersion.update({
+          where: { id: version.id },
+          data: { status: "draft", submittedAt: null }
+        });
+        await tx.spotProcurement.update({
+          where: { id: procurement.id },
+          data: { status: "draft" }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.approval.withdraw",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.application,
+          businessId: version.id,
+          metadata: {
+            procurementId: procurement.id,
+            approvalInstanceId: approval.id
+          }
+        });
+        return this.applicationReadModel(
+          procurement.id,
+          procurement.projectId,
+          "draft",
+          version.id,
+          version.versionNo,
+          "draft",
+          version.totalAmountCents
         );
       })
     );
@@ -694,7 +789,33 @@ export class SpotProcurementApplicationService {
           );
         }
 
-        const prepared = await this.prepareDraft(tx, actorUserId, input);
+        const previousDraft = await this.storedDraft(tx, previousVersion);
+        const mergedDraft: SpotProcurementDraftDto = {
+          ...input,
+          supplierPartyId:
+            input.supplierPartyId === undefined
+              ? previousDraft.supplierPartyId
+              : input.supplierPartyId,
+          handlerUserId:
+            input.handlerUserId === undefined
+              ? previousDraft.handlerUserId
+              : input.handlerUserId,
+          note: input.note === undefined ? previousDraft.note : input.note,
+          attachments:
+            input.attachments === undefined
+              ? previousDraft.attachments
+              : input.attachments
+        };
+        const prepared = await this.prepareDraft(
+          tx,
+          actorUserId,
+          mergedDraft,
+          [
+            procurement.applicantUserId,
+            procurement.handlerUserId,
+            actorUserId
+          ]
+        );
         await this.requireHandlerRole(
           tx,
           prepared.handlerUserId,
@@ -918,7 +1039,8 @@ export class SpotProcurementApplicationService {
   private async prepareDraft(
     tx: Prisma.TransactionClient,
     actorUserId: string,
-    input: SpotProcurementDraftDto
+    input: SpotProcurementDraftDto,
+    allowedAttachmentUploaderUserIds: readonly string[]
   ): Promise<PreparedDraft> {
     const calculation = calculateSpotProcurementDraft(input);
     const supplierPartyId = optionalId(input.supplierPartyId);
@@ -936,9 +1058,15 @@ export class SpotProcurementApplicationService {
     }
     const supplierName = normalizeSupplierName(input.supplierName);
     const attachments = input.attachments ?? [];
+    const handlerUserId = optionalId(input.handlerUserId) ?? actorUserId;
     const attachmentUploaderByFileId = await this.requireActiveFiles(
       tx,
-      attachments
+      attachments,
+      new Set([
+        ...allowedAttachmentUploaderUserIds,
+        actorUserId,
+        handlerUserId
+      ])
     );
     const lines: PreparedLine[] = [];
     for (const [index, line] of input.lines.entries()) {
@@ -976,7 +1104,6 @@ export class SpotProcurementApplicationService {
         note: optionalText(line.note)
       });
     }
-    const handlerUserId = optionalId(input.handlerUserId) ?? actorUserId;
     return {
       supplierPartyId,
       supplierName,
@@ -1010,11 +1137,11 @@ export class SpotProcurementApplicationService {
       })
     ]);
     return {
-      supplierPartyId: version.supplierPartyId ?? undefined,
+      supplierPartyId: version.supplierPartyId,
       supplierName: version.supplierNameSnapshot,
       handlerUserId: version.handlerUserId,
       reason: version.reason,
-      note: version.note ?? undefined,
+      note: version.note,
       lines: lines.map((line) => ({
         materialName: line.materialName,
         specification: line.specification ?? undefined,
@@ -1065,7 +1192,8 @@ export class SpotProcurementApplicationService {
 
   private async requireActiveFiles(
     tx: Prisma.TransactionClient,
-    attachments: SpotProcurementAttachmentDto[]
+    attachments: SpotProcurementAttachmentDto[],
+    allowedUploaderUserIds: ReadonlySet<string>
   ) {
     const fileIds = attachments.map((attachment) => attachment.fileId);
     if (new Set(fileIds).size !== fileIds.length) {
@@ -1083,6 +1211,15 @@ export class SpotProcurementApplicationService {
     );
     if (fileIds.some((fileId) => !activeIds.has(fileId))) {
       throw new BadRequestException("采购附件不存在或已失效，请重新上传");
+    }
+    if (
+      files.some(
+        (file) => !allowedUploaderUserIds.has(file.uploadedByUserId)
+      )
+    ) {
+      throw new ForbiddenException(
+        "采购附件必须由申请人、采购经办人或本次操作人上传"
+      );
     }
     return new Map(files.map((file) => [file.id, file.uploadedByUserId]));
   }
@@ -1110,6 +1247,11 @@ export class SpotProcurementApplicationService {
     actorUserId: string,
     actorRoles: RoleKey[]
   ) {
+    await this.requireActiveUser(
+      tx,
+      handlerUserId,
+      "采购经办人不存在或已停用"
+    );
     const handlerRoles =
       handlerUserId === actorUserId
         ? actorRoles
@@ -1119,6 +1261,20 @@ export class SpotProcurementApplicationService {
       CREATE_ROLES,
       "采购经办人必须是本项目物资员或物资主管"
     );
+  }
+
+  private async requireActiveUser(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    message: string
+  ) {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true }
+    });
+    if (!user?.isActive) {
+      throw new BadRequestException(message);
+    }
   }
 
   private async requireDraftOwnerRole(
@@ -1391,10 +1547,7 @@ export class SpotProcurementApplicationService {
         usageLocation: line.usageLocation,
         note: line.note
       })),
-      attachments: previousAttachments.map((attachment) => ({
-        fileId: attachment.fileId,
-        category: attachment.category
-      }))
+      attachments: this.sortedAttachmentFacts(previousAttachments)
     };
     const next = {
       supplierPartyId: prepared.supplierPartyId,
@@ -1418,10 +1571,7 @@ export class SpotProcurementApplicationService {
         usageLocation: line.usageLocation,
         note: line.note
       })),
-      attachments: prepared.attachments.map((attachment) => ({
-        fileId: attachment.fileId,
-        category: attachment.category
-      }))
+      attachments: this.sortedAttachmentFacts(prepared.attachments)
     };
     const changes: Array<{
       field: string;
@@ -1430,6 +1580,21 @@ export class SpotProcurementApplicationService {
     }> = [];
     this.collectChanges("", previous, next, changes);
     return { changes };
+  }
+
+  private sortedAttachmentFacts(
+    attachments: ReadonlyArray<{ fileId: string; category: string }>
+  ) {
+    return attachments
+      .map((attachment) => ({
+        fileId: attachment.fileId,
+        category: attachment.category
+      }))
+      .sort((left, right) => {
+        const leftKey = `${left.category}\u0000${left.fileId}`;
+        const rightKey = `${right.category}\u0000${right.fileId}`;
+        return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+      });
   }
 
   private collectChanges(

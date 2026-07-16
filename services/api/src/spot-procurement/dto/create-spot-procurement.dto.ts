@@ -64,6 +64,37 @@ function IsSpotProcurementUnitPrice(): PropertyDecorator {
   };
 }
 
+function IsOptionalNullableNonBlankText(messages: {
+  typeMessage: string;
+  blankMessage: string;
+}): PropertyDecorator {
+  return (target, propertyKey) => {
+    registerDecorator({
+      name: "spotProcurementOptionalNullableTextType",
+      target: target.constructor,
+      propertyName: String(propertyKey),
+      options: { message: messages.typeMessage },
+      validator: {
+        validate: (value: unknown) =>
+          value === undefined || value === null || typeof value === "string"
+      }
+    });
+    registerDecorator({
+      name: "spotProcurementOptionalNullableTextBlank",
+      target: target.constructor,
+      propertyName: String(propertyKey),
+      options: { message: messages.blankMessage },
+      validator: {
+        validate: (value: unknown) =>
+          value === undefined ||
+          value === null ||
+          typeof value !== "string" ||
+          value.trim().length > 0
+      }
+    });
+  };
+}
+
 function IsValidInvoiceFieldCombination(): PropertyDecorator {
   return (target, propertyKey) => {
     registerDecorator({
@@ -180,11 +211,11 @@ export class SpotProcurementAttachmentDto {
 }
 
 export class SpotProcurementDraftDto {
-  @IsOptionalNonBlankText({
+  @IsOptionalNullableNonBlankText({
     typeMessage: "合作单位编号必须是文字",
     blankMessage: "合作单位编号不能为空白"
   })
-  supplierPartyId?: string;
+  supplierPartyId?: string | null;
 
   @IsRequiredText({
     requiredMessage: "请填写供应商名称",
@@ -206,11 +237,11 @@ export class SpotProcurementDraftDto {
   })
   reason!: string;
 
-  @IsOptionalNonBlankText({
+  @IsOptionalNullableNonBlankText({
     typeMessage: "采购备注必须是文字",
     blankMessage: "采购备注不能为空白"
   })
-  note?: string;
+  note?: string | null;
 
   @IsArray({ message: "采购明细必须是数组" })
   @ArrayMinSize(1, { message: "请至少填写一条采购明细" })

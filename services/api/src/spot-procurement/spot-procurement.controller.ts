@@ -69,6 +69,14 @@ export class SpotProcurementController {
     return this.applications.review(procurementId, user.id, body);
   }
 
+  @Post(":procurementId/approval-withdrawal")
+  withdrawApproval(
+    @Param("procurementId") procurementId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.applications.withdrawApproval(procurementId, user.id);
+  }
+
   @Post(":procurementId/voiding")
   @RequireProjectRole("spot_procurement.void")
   voidProcurement(
