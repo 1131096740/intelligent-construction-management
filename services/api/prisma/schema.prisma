@@ -501,6 +501,225 @@ model PaymentExecutionAllocation {
   @@index([contractId, settlementId, stageId], map: "PaymentExecutionAllocation_contract_settlement_stage_idx")
 }
 
+model SpotProcurement {
+  id                   String    @id @default(uuid())
+  projectId            String
+  code                 String    @unique
+  supplierPartyId      String?
+  supplierKey          String
+  supplierNameSnapshot String
+  applicantUserId      String
+  handlerUserId        String
+  currentVersionId     String?
+  status               String
+  approvedAmountCents  BigInt    @default(0)
+  actualCostCents      BigInt?
+  closedAt             DateTime?
+  voidedAt             DateTime?
+  voidedByUserId       String?
+  voidReason           String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([projectId, id])
+  @@index([projectId, status])
+  @@index([projectId, supplierKey])
+}
+
+model SpotProcurementVersion {
+  id                   String    @id @default(uuid())
+  procurementId        String
+  versionNo            Int
+  status               String
+  reason               String
+  note                 String?
+  supplierPartyId      String?
+  supplierKey          String
+  supplierNameSnapshot String
+  handlerUserId        String
+  totalAmountCents     BigInt
+  changeReason         String?
+  changeSummary        Json?
+  submittedAt          DateTime?
+  approvedAt           DateTime?
+  createdByUserId      String
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([procurementId, versionNo])
+  @@unique([procurementId, id])
+  @@index([procurementId, status])
+}
+
+model SpotProcurementLine {
+  id                   String   @id @default(uuid())
+  versionId            String
+  sortOrder            Int
+  materialName         String
+  specification        String?
+  unit                 String
+  quantity             Decimal  @db.Decimal(24, 6)
+  invoiceMode          String
+  invoiceType          String?
+  vatRateOptionId      String?
+  vatRateValueSnapshot Decimal? @db.Decimal(9, 6)
+  vatRateLabelSnapshot String?
+  unitPrice            Decimal  @db.Decimal(24, 6)
+  amountCents          BigInt
+  usageLocation        String?
+  note                 String?
+  createdAt            DateTime @default(now())
+
+  @@unique([versionId, sortOrder])
+  @@index([versionId])
+}
+
+model SpotProcurementAttachment {
+  id               String   @id @default(uuid())
+  versionId        String
+  fileId           String
+  category         String
+  uploadedByUserId String
+  createdAt        DateTime @default(now())
+
+  @@unique([versionId, fileId])
+  @@index([fileId])
+}
+
+model SpotProcurementPayment {
+  id                                 String    @id @default(uuid())
+  projectId                          String
+  procurementId                      String
+  procurementVersionId               String
+  code                               String    @unique
+  status                             String    @default("draft")
+  settlementAmountCents              BigInt    @default(0)
+  supplierBalanceAmountCents         BigInt    @default(0)
+  companyPaymentAmountCents          BigInt    @default(0)
+  paidAmountCents                    BigInt    @default(0)
+  executedSupplierBalanceAmountCents BigInt    @default(0)
+  canceledAmountCents                BigInt    @default(0)
+  canceledCompanyPaymentAmountCents  BigInt    @default(0)
+  canceledSupplierBalanceAmountCents BigInt    @default(0)
+  paymentPath                        String?
+  paymentMethod                      String?
+  payeePartyId                       String?
+  payeeUserId                        String?
+  payeeNameSnapshot                  String
+  payeeAccountNameSnapshot           String?
+  payeeBankNameSnapshot              String?
+  payeeBankAccountSnapshot           String?
+  expectedPaymentAt                  DateTime?
+  paymentNote                        String?
+  supportingAttachmentFileId         String?
+  merchantPaymentProofFileId         String?
+  balanceOverrideReason              String?
+  handlerUserId                      String
+  createdByUserId                    String
+  submittedAt                        DateTime?
+  approvedAt                         DateTime?
+  invalidatedAt                      DateTime?
+  invalidatedByUserId                String?
+  invalidatedReason                  String?
+  createdAt                          DateTime  @default(now())
+  updatedAt                          DateTime  @updatedAt
+
+  @@index([projectId, status])
+  @@index([procurementId, status])
+  @@index([procurementVersionId])
+  @@index([supportingAttachmentFileId])
+  @@index([merchantPaymentProofFileId])
+}
+
+model SpotProcurementPaymentExecution {
+  id               String    @id @default(uuid())
+  paymentId        String
+  amountCents      BigInt
+  paidAt           DateTime
+  paymentMethod    String
+  executedByUserId String
+  voucherFileId    String
+  idempotencyKey   String    @unique
+  voidedAt         DateTime?
+  voidedByUserId   String?
+  voidReason       String?
+  createdAt        DateTime  @default(now())
+
+  @@index([paymentId])
+  @@index([voucherFileId])
+}
+
+model SupplierBalanceAccount {
+  id                   String   @id @default(uuid())
+  projectId            String
+  supplierPartyId      String?
+  supplierKey          String
+  supplierNameSnapshot String
+  availableAmountCents BigInt   @default(0)
+  reservedAmountCents  BigInt   @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([projectId, supplierKey])
+  @@index([supplierPartyId])
+}
+
+model SupplierBalanceReservation {
+  id               String    @id @default(uuid())
+  accountId        String
+  paymentId        String
+  amountCents      BigInt
+  status           String    @default("reserved")
+  reservedByUserId String
+  releasedAt       DateTime?
+  releasedByUserId String?
+  releaseReason    String?
+  executedAt       DateTime?
+  executedByUserId String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([paymentId])
+  @@index([accountId, status])
+}
+
+model SupplierBalanceEntry {
+  id                        String   @id @default(uuid())
+  accountId                 String
+  sequenceNo                BigInt
+  reservationId             String?
+  paymentId                 String?
+  procurementId             String?
+  entryType                 String
+  availableDeltaCents       BigInt
+  reservedDeltaCents        BigInt
+  availableAmountAfterCents BigInt
+  reservedAmountAfterCents  BigInt
+  actorUserId               String
+  reason                    String?
+  createdAt                 DateTime @default(now())
+
+  @@unique([accountId, sequenceNo])
+  @@index([accountId, createdAt])
+  @@index([reservationId])
+  @@index([paymentId])
+  @@index([procurementId])
+}
+
+model VatRateOption {
+  id              String   @id @default(uuid())
+  rateValue       Decimal  @db.Decimal(9, 6)
+  label           String
+  enabled         Boolean  @default(true)
+  sortOrder       Int
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([rateValue, label])
+  @@index([enabled, sortOrder])
+}
+
 model FinanceRecord {
   id                      String   @id @default(uuid())
   projectId               String
