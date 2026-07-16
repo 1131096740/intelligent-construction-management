@@ -17,6 +17,7 @@ import {
   type ActiveApprovalDelegationClient
 } from "../../approval/active-approval-delegations";
 import { PrismaService } from "../../database/prisma.service";
+import { SpotProcurementAccessService } from "../../spot-procurement/spot-procurement-access.service";
 import type { AuthenticatedRequest } from "../auth.types";
 import { REQUIRED_POSITIONS_KEY } from "../decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../decorators/require-project-role.decorator";
@@ -25,7 +26,9 @@ import { REQUIRED_PROJECT_ACTION_KEY } from "../decorators/require-project-role.
 export class PermissionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly spotAccess: SpotProcurementAccessService =
+      new SpotProcurementAccessService(prisma)
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -174,38 +177,32 @@ export class PermissionGuard implements CanActivate {
   private async extractProjectId(request: AuthenticatedRequest) {
     const procurementId = request.params?.procurementId;
     if (procurementId) {
-      const procurement = await this.prisma.spotProcurement.findUnique({
-        where: { id: procurementId },
-        select: { projectId: true }
-      });
+      return this.spotAccess.requireProcurementProjectId(procurementId);
+    }
 
-      return procurement?.projectId;
+    const procurementPaymentId = request.params?.procurementPaymentId;
+    if (procurementPaymentId) {
+      return this.spotAccess.requirePaymentProjectId(procurementPaymentId);
+    }
+
+    const receiptId = request.params?.receiptId;
+    if (receiptId) {
+      return this.spotAccess.requireReceiptProjectId(receiptId);
     }
 
     const paymentId = request.params?.paymentId;
     if (paymentId) {
-      const spotPaymentClient = this.prisma as typeof this.prisma & {
-        spotProcurementPayment?: {
-          findUnique(args: {
-            where: { id: string };
-            select: { projectId: true };
-          }): Promise<{ projectId: string } | null>;
-        };
-      };
-      const spotPayment =
-        await spotPaymentClient.spotProcurementPayment?.findUnique({
-          where: { id: paymentId },
-          select: { projectId: true }
-        });
-      if (spotPayment) {
-        return spotPayment.projectId;
-      }
+      const spotProjectId = await this.spotAccess.findPaymentProjectId(paymentId);
+      if (spotProjectId) return spotProjectId;
       const payment = await this.prisma.paymentRequest.findFirst({
         where: { OR: [{ id: paymentId }, { code: paymentId }] },
         select: { projectId: true }
       });
 
-      return payment?.projectId;
+      if (!payment) {
+        throw new ForbiddenException("付款资源不存在或当前账号无权访问");
+      }
+      return payment.projectId;
     }
 
     const settlementIdFromParams = request.params?.settlementId;

@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService, PrivateFileStorage } from "./file.service";
+import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 
 const STORAGE_ENV_KEYS = [
   "FILE_STORAGE_DRIVER",
@@ -63,6 +64,13 @@ describe("FileService", () => {
     storage.delete.mockReset();
     storage.bucketName.mockReset();
     storage.bucketName.mockReturnValue("private-local");
+    jest
+      .spyOn(SpotProcurementAccessService.prototype, "resolveFileDownloadAccess")
+      .mockResolvedValue("not_spot");
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it("允许已确认的全局岗位跨项目下载，但仍由外层票据保留密码、原因和审计", async () => {
@@ -98,6 +106,45 @@ describe("FileService", () => {
       ).assertCanDownloadFileObject(tx, { id: "file-other-project" }, "global-finance")
     ).resolves.toBeUndefined();
     expect(businessLookup).not.toHaveBeenCalled();
+  });
+
+  it("checks spot ownership before global-role and uploader shortcuts", async () => {
+    const access = {
+      resolveFileDownloadAccess: jest.fn().mockResolvedValue("denied")
+    };
+    const globalLookup = jest.fn();
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage,
+      access as unknown as SpotProcurementAccessService
+    );
+    const tx = {
+      userPosition: { findMany: globalLookup },
+      position: { findMany: jest.fn() }
+    };
+
+    await expect(
+      (
+        service as unknown as {
+          assertCanDownloadFileObject(
+            client: unknown,
+            file: { id: string; uploadedByUserId: string },
+            actorUserId: string
+          ): Promise<void>;
+        }
+      ).assertCanDownloadFileObject(
+        tx,
+        { id: "spot-pending-pdf", uploadedByUserId: "global-uploader" },
+        "global-uploader"
+      )
+    ).rejects.toThrow("当前账号无权下载该零星采购资料");
+    expect(access.resolveFileDownloadAccess).toHaveBeenCalledWith(
+      "spot-pending-pdf",
+      "global-uploader",
+      tx
+    );
+    expect(globalLookup).not.toHaveBeenCalled();
   });
 
   it("fails closed outside test when file download secret is missing", () => {

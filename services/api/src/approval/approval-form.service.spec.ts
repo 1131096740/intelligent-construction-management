@@ -347,6 +347,49 @@ describe("ApprovalFormService", () => {
     );
   });
 
+  it("authorizes a Spot business before attempting any PDF repair write", async () => {
+    const prisma = buildPrisma();
+    const files = {
+      uploadPrivateFile: jest.fn(),
+      assertCanDownloadFileById: jest.fn()
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) };
+    const spotAccess = {
+      resolveBusinessDownloadAccess: jest.fn().mockResolvedValue("denied")
+    };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      { record: jest.fn() } as never,
+      auth as never,
+      spotAccess as never
+    );
+    const repair = jest.spyOn(service, "getOrCreateByBusiness");
+
+    await expect(
+      service.renderForDownload(
+        "spot_procurement_version",
+        "version-1",
+        "unrelated-user",
+        "current-password",
+        "采购审批复核"
+      )
+    ).rejects.toThrow("当前账号无权下载该零星采购审批单");
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith(
+      "unrelated-user",
+      "current-password"
+    );
+    expect(spotAccess.resolveBusinessDownloadAccess).toHaveBeenCalledWith(
+      "spot_procurement_version",
+      "version-1",
+      "unrelated-user"
+    );
+    expect(repair).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(files.assertCanDownloadFileById).not.toHaveBeenCalled();
+  });
+
   it("does not expose internal user accounts in approval form names or watermark", async () => {
     const prisma = buildPrisma({
       pdfDocument: {
@@ -478,5 +521,997 @@ describe("ApprovalFormService", () => {
 
     expect(result).toBeNull();
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("为零星采购申请和付款组装共享审批单摘要", async () => {
+    const prisma = {
+      spotProcurementVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-spot-1",
+          procurementId: "procurement-1",
+          versionNo: 1,
+          reason: "临时增加砌筑作业面",
+          supplierNameSnapshot: "利民建材店",
+          totalAmountCents: 1350n,
+          status: "approval_pending"
+        })
+      },
+      spotProcurement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "procurement-1",
+          projectId: "project-1",
+          code: "LXCG-001",
+          supplierNameSnapshot: "利民建材店"
+        })
+      },
+      spotProcurementLine: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            sortOrder: 1,
+            materialName: "免烧砖",
+            specification: "240×115×53",
+            unit: "块",
+            quantity: { toString: () => "3" },
+            invoiceMode: "invoice",
+            invoiceType: "vat_special",
+            vatRateLabelSnapshot: "13%",
+            unitPrice: { toString: () => "4.5" },
+            amountCents: 1350n,
+            note: "现场急用"
+          },
+          {
+            sortOrder: 2,
+            materialName: "水泥",
+            specification: "P.O 42.5",
+            unit: "袋",
+            quantity: { toString: () => "2" },
+            invoiceMode: "invoice",
+            invoiceType: "vat_general",
+            vatRateLabelSnapshot: "3%",
+            unitPrice: { toString: () => "20" },
+            amountCents: 4000n,
+            note: null
+          },
+          {
+            sortOrder: 3,
+            materialName: "手套",
+            specification: null,
+            unit: "包",
+            quantity: { toString: () => "1" },
+            invoiceMode: "no_invoice",
+            invoiceType: null,
+            vatRateLabelSnapshot: null,
+            unitPrice: { toString: () => "8" },
+            amountCents: 800n,
+            note: null
+          }
+        ])
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "一号项目" })
+      },
+      spotProcurementPayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "spot-payment-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-spot-1",
+          projectId: "project-1",
+          code: "LXCG-001-V1-P001",
+          settlementAmountCents: 1350n,
+          supplierBalanceAmountCents: 300n,
+          companyPaymentAmountCents: 1050n,
+          paidAmountCents: 500n,
+          canceledAmountCents: 0n,
+          status: "partially_paid"
+        })
+      },
+      spotProcurementPaymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            amountCents: 500n,
+            paidAt: new Date("2026-07-17T08:00:00.000Z"),
+            paymentMethod: "bank_transfer",
+            voucherFileId: "voucher-1"
+          }
+        ])
+      }
+    };
+    const service = new ApprovalFormService(prisma as never);
+    const resolveSummary = (
+      service as unknown as {
+        resolveBusinessSummary(
+          client: unknown,
+          businessType: string,
+          businessId: string,
+          context: { applicantName: string; companyName: string }
+        ): Promise<Array<{ label: string; value: string }>>;
+      }
+    ).resolveBusinessSummary.bind(service);
+
+    const procurementRows = await resolveSummary(
+      prisma,
+      "spot_procurement_version",
+      "version-spot-1",
+      { applicantName: "物资员甲", companyName: "" }
+    );
+    const paymentRows = await resolveSummary(
+      prisma,
+      "spot_procurement_payment",
+      "spot-payment-1",
+      { applicantName: "经办人乙", companyName: "" }
+    );
+
+    expect(procurementRows).toEqual(
+      expect.arrayContaining([
+        { label: "项目名称", value: "一号项目" },
+        { label: "采购原因", value: "临时增加砌筑作业面" },
+        expect.objectContaining({
+          label: "材料明细 1",
+          value: expect.stringContaining("增值税专用发票、13%、含税单价 4.5 元")
+        }),
+        expect.objectContaining({
+          label: "材料明细 2",
+          value: expect.stringContaining("增值税普通发票、3%、含税单价 20 元")
+        }),
+        expect.objectContaining({
+          label: "材料明细 3",
+          value: expect.stringContaining("无票、无票单价 8 元")
+        })
+      ])
+    );
+    expect(paymentRows).toEqual(
+      expect.arrayContaining([
+        { label: "结算申请金额", value: "13.50 元" },
+        { label: "供应商余额抵扣", value: "3.00 元" },
+        { label: "公司付款申请", value: "10.50 元" },
+        { label: "累计实际付款", value: "5.00 元" },
+        { label: "付款申请状态", value: "部分已付款" },
+        { label: "公司实际付款事实", value: "部分已付" }
+      ])
+    );
+  });
+
+  it("零星采购最新审批 PDF 失败只记录可重试审计", async () => {
+    const prisma: Record<string, unknown> = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-1",
+          businessType: "spot_procurement_version",
+          businessId: "version-spot-1",
+          status: "approval_pending",
+          applicantUserId: "material-1",
+          frozenNodes: [],
+          updatedAt: new Date("2026-07-17T08:00:00.000Z")
+        })
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      spotProcurementVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-spot-1",
+          procurementId: "procurement-1",
+          updatedAt: new Date("2026-07-17T08:00:00.000Z")
+        })
+      },
+      spotProcurement: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-1", code: "LXCG-001" })
+      },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "一号项目" }) },
+      spotProcurementLine: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    prisma.pdfDocument = { findFirst: jest.fn().mockResolvedValue(null) };
+    prisma.auditLog = { findFirst: jest.fn().mockResolvedValue(null) };
+    prisma.$transaction = jest.fn(async (callback: (tx: unknown) => unknown) => callback(prisma));
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const files = {
+      uploadPrivateFile: jest.fn().mockRejectedValue(new Error("cos://private/secret-token"))
+    };
+    const service = new ApprovalFormService(prisma as never, files as never, audit as never);
+    const tryRefresh = (
+      service as unknown as {
+        tryRefreshLatestForBusiness(
+          businessType: string,
+          businessId: string,
+          actorUserId: string,
+          trigger: string
+        ): Promise<void>;
+      }
+    ).tryRefreshLatestForBusiness.bind(service);
+
+    await expect(
+      tryRefresh(
+        "spot_procurement_version",
+        "version-spot-1",
+        "material-1",
+        "approval.submit"
+      )
+    ).resolves.toBeUndefined();
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        action: "approval.form.refresh_failed",
+        metadata: expect.objectContaining({
+          retryable: true,
+          status: "retryable",
+          errorSummary: "审批单生成失败，可稍后重试"
+        })
+      })
+    );
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("secret-token");
+  });
+
+  it("付款审批单只按未作废执行明细判断已付事实", async () => {
+    const executions = { findMany: jest.fn().mockResolvedValue([]) };
+    const prisma = {
+      spotProcurementPayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          procurementId: "procurement-1",
+          projectId: "project-1",
+          code: "LXCG-001-P001",
+          settlementAmountCents: 1000n,
+          supplierBalanceAmountCents: 0n,
+          companyPaymentAmountCents: 1000n,
+          paidAmountCents: 999n,
+          executedSupplierBalanceAmountCents: 0n,
+          canceledAmountCents: 0n,
+          canceledCompanyPaymentAmountCents: 0n,
+          payeeNameSnapshot: "利民建材店"
+        })
+      },
+      spotProcurement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "procurement-1",
+          code: "LXCG-001",
+          supplierNameSnapshot: "利民建材店"
+        })
+      },
+      project: { findUnique: jest.fn().mockResolvedValue({ name: "一号项目" }) },
+      spotProcurementPaymentExecution: executions
+    };
+    const service = new ApprovalFormService(prisma as never) as unknown as {
+      resolveBusinessSummary(
+        client: unknown,
+        businessType: string,
+        businessId: string,
+        context: { applicantName: string; companyName: string }
+      ): Promise<Array<{ label: string; value: string }>>;
+    };
+
+    const rows = await service.resolveBusinessSummary(
+      prisma,
+      "spot_procurement_payment",
+      "payment-1",
+      { applicantName: "经办人", companyName: "" }
+    );
+
+    expect(executions.findMany).toHaveBeenCalledWith({
+      where: { paymentId: "payment-1", voidedAt: null },
+      orderBy: [{ paidAt: "asc" }, { id: "asc" }]
+    });
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { label: "累计实际付款", value: "0.00 元" },
+        { label: "付款申请状态", value: "状态未读取" },
+        { label: "公司实际付款事实", value: "未付款" }
+      ])
+    );
+  });
+
+  it.each([
+    ["draft", "草稿", 0n, "未付款"],
+    ["approval_pending", "审批中", 0n, "未付款"],
+    ["approved_pending_payment", "已审批待付款", 0n, "未付款"],
+    ["returned", "已退回", 0n, "未付款"],
+    ["rejected", "已驳回", 0n, "未付款"],
+    ["withdrawn", "已撤回", 0n, "未付款"],
+    ["voided", "已作废", 0n, "未付款"],
+    ["partially_paid", "部分已付款", 400n, "部分已付"],
+    ["paid", "已付款", 1000n, "已付款"],
+    ["settled", "已结清", 1000n, "已付款"],
+    ["invalidated", "已失效", 0n, "未付款"]
+  ])(
+    "付款审批单分开表达业务状态 %s 与有效实付事实",
+    async (status, expectedStatus, executionAmountCents, expectedExecutionFact) => {
+      const prisma = {
+        spotProcurementPayment: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "payment-status-1",
+            procurementId: "procurement-1",
+            projectId: "project-1",
+            code: "LXCG-STATUS-P001",
+            status,
+            settlementAmountCents: 1000n,
+            supplierBalanceAmountCents: 0n,
+            companyPaymentAmountCents: 1000n,
+            executedSupplierBalanceAmountCents: 0n,
+            canceledAmountCents: 0n,
+            canceledCompanyPaymentAmountCents: 0n,
+            payeeNameSnapshot: "利民建材店"
+          })
+        },
+        spotProcurement: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "procurement-1",
+            code: "LXCG-STATUS",
+            supplierNameSnapshot: "利民建材店"
+          })
+        },
+        project: { findUnique: jest.fn().mockResolvedValue({ name: "一号项目" }) },
+        spotProcurementPaymentExecution: {
+          findMany: jest.fn().mockResolvedValue(
+            executionAmountCents > 0n
+              ? [
+                  {
+                    id: "execution-1",
+                    amountCents: executionAmountCents,
+                    paidAt: new Date("2026-07-17T08:00:00.000Z"),
+                    paymentMethod: "bank_transfer",
+                    voucherFileId: "voucher-1"
+                  }
+                ]
+              : []
+          )
+        }
+      };
+      const service = new ApprovalFormService(prisma as never) as unknown as {
+        resolveBusinessSummary(
+          client: unknown,
+          businessType: string,
+          businessId: string,
+          context: { applicantName: string; companyName: string }
+        ): Promise<Array<{ label: string; value: string }>>;
+      };
+
+      const rows = await service.resolveBusinessSummary(
+        prisma,
+        "spot_procurement_payment",
+        "payment-status-1",
+        { applicantName: "经办人", companyName: "" }
+      );
+
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          { label: "付款申请状态", value: expectedStatus },
+          { label: "公司实际付款事实", value: expectedExecutionFact }
+        ])
+      );
+    }
+  );
+
+  it("零星采购审批未完成时即使已有内部 PDF 也不开放正式下载", async () => {
+    const prisma = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({ id: "approval-1", status: "approval_pending" })
+      },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: "pdf-1", fileId: "file-1" })
+      }
+    };
+    const service = new ApprovalFormService(prisma as never);
+
+    await expect(
+      service.getOrCreateByBusiness(
+        "spot_procurement_version",
+        "version-1",
+        "material-1"
+      )
+    ).rejects.toThrow("当前业务尚未完成审批，暂不能生成审批单");
+    expect(prisma.pdfDocument.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("在业务行锁后切换最新 PDF 指针并保留文件替换链", async () => {
+    const updatedAt = new Date("2026-07-17T08:00:00.000Z");
+    const instance = {
+      id: "approval-1",
+      businessType: "spot_procurement_version",
+      businessId: "version-1",
+      status: "approved",
+      applicantUserId: "material-1",
+      frozenNodes: [],
+      updatedAt
+    };
+    const sourceTx = {
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
+      spotProcurementVersion: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue({ id: "pdf-1", fileId: "old-file" }) },
+      auditLog: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const associationTx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
+      spotProcurementVersion: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: "pdf-1", fileId: "old-file" }),
+        update: jest.fn().mockResolvedValue({ id: "pdf-1", fileId: "new-file" }),
+        create: jest.fn()
+      },
+      auditLog: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(sourceTx))
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(associationTx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "new-file" }),
+      linkFileReplacement: jest.fn().mockResolvedValue(undefined)
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new ApprovalFormService(prisma as never, files as never, audit as never);
+    const internal = service as unknown as {
+      buildRenderInput: jest.Mock;
+      renderPdf: jest.Mock;
+    };
+    internal.buildRenderInput = jest.fn().mockResolvedValue({
+      title: "项目零星材料采购申请单",
+      companyName: "",
+      businessCode: "LXCG-001",
+      applicantName: "物资员",
+      summary: [],
+      nodes: [],
+      logs: []
+    });
+    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-test"));
+
+    await service.refreshLatestForBusiness(
+      "spot_procurement_version",
+      "version-1",
+      "material-1",
+      "approval.approve"
+    );
+
+    expect(associationTx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      associationTx.pdfDocument.findFirst.mock.invocationCallOrder[0]
+    );
+    expect(files.linkFileReplacement).toHaveBeenCalledWith(associationTx, {
+      newFileId: "new-file",
+      oldFileId: "old-file",
+      actorUserId: "material-1"
+    });
+    expect(associationTx.pdfDocument.update).toHaveBeenCalledWith({
+      where: { id: "pdf-1" },
+      data: { fileId: "new-file" }
+    });
+    expect(associationTx.pdfDocument.create).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      associationTx,
+      expect.objectContaining({
+        action: "approval.form.refresh",
+        metadata: expect.objectContaining({
+          pdfDocumentId: "pdf-1",
+          newFileId: "new-file",
+          oldFileId: "old-file",
+          trigger: "approval.approve",
+          sourceSnapshotToken: expect.objectContaining({
+            approvalInstanceId: "approval-1",
+            latestActionLogId: "log-1",
+            businessUpdatedAt: updatedAt.toISOString()
+          })
+        })
+      })
+    );
+  });
+
+  it("实付并发变化时旧快照 PDF 不能覆盖新付款事实", async () => {
+    const updatedAt = new Date("2026-07-17T08:00:00.000Z");
+    const instance = {
+      id: "approval-payment-1",
+      businessType: "spot_procurement_payment",
+      businessId: "payment-1",
+      status: "approved",
+      applicantUserId: "material-1",
+      frozenNodes: [],
+      updatedAt
+    };
+    const sourceTx = {
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
+      spotProcurementPayment: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      spotProcurementPaymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: { findFirst: jest.fn() }
+    };
+    const associationTx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "payment-1" }]),
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
+      spotProcurementPayment: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      spotProcurementPaymentExecution: {
+        findMany: jest.fn().mockResolvedValue([{ id: "execution-new", amountCents: 500n }])
+      },
+      pdfDocument: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
+      auditLog: { findFirst: jest.fn() }
+    };
+    const cleanupTx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "payment-1" }]),
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      fileObject: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(sourceTx))
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(associationTx))
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(cleanupTx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "stale-file" }),
+      linkFileReplacement: jest.fn()
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new ApprovalFormService(prisma as never, files as never, audit as never);
+    const internal = service as unknown as {
+      buildRenderInput: jest.Mock;
+      renderPdf: jest.Mock;
+    };
+    internal.buildRenderInput = jest.fn().mockResolvedValue({
+      title: "项目零星材料付款审批单",
+      companyName: "",
+      businessCode: "LXCG-001-P001",
+      applicantName: "经办人",
+      summary: [],
+      nodes: [],
+      logs: []
+    });
+    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-stale"));
+
+    await expect(
+      service.refreshLatestForBusiness(
+        "spot_procurement_payment",
+        "payment-1",
+        "finance-1",
+        "payment.execution.record"
+      )
+    ).rejects.toThrow("审批或付款事实已变化");
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+    expect(associationTx.pdfDocument.update).not.toHaveBeenCalled();
+    expect(associationTx.pdfDocument.create).not.toHaveBeenCalled();
+    expect(cleanupTx.pdfDocument.findFirst).toHaveBeenCalledWith({
+      where: { fileId: "stale-file" },
+      select: { id: true, businessType: true, businessId: true }
+    });
+    expect(cleanupTx.fileObject.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "stale-file",
+        uploadedByUserId: "finance-1",
+        storageStatus: "active",
+        supersedesFileObjectId: null
+      },
+      data: { storageStatus: "quarantined" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      cleanupTx,
+      expect.objectContaining({
+        action: "approval.form.orphan_file",
+        metadata: expect.objectContaining({
+          orphanFileId: "stale-file",
+          reason: "stale_snapshot",
+          cleanupStatus: "quarantined"
+        })
+      })
+    );
+  });
+
+  it("上传后发现同一事实已有当前 PDF 时隔离未关联派生文件", async () => {
+    const updatedAt = new Date("2026-07-17T08:00:00.000Z");
+    const snapshotToken = {
+      approvalInstanceId: "approval-1",
+      approvalInstanceUpdatedAt: updatedAt.toISOString(),
+      latestActionLogId: "log-1",
+      businessUpdatedAt: updatedAt.toISOString(),
+      activeExecutionFingerprint: null
+    };
+    const instance = {
+      id: "approval-1",
+      businessType: "spot_procurement_version",
+      businessId: "version-1",
+      status: "approved",
+      applicantUserId: "material-1",
+      frozenNodes: [],
+      updatedAt
+    };
+    const sourceTx = {
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
+      spotProcurementVersion: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: { findFirst: jest.fn() }
+    };
+    const associationTx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
+      spotProcurementVersion: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: "pdf-current", fileId: "file-current" })
+      },
+      auditLog: {
+        findFirst: jest.fn().mockResolvedValue({
+          metadata: {
+            pdfDocumentId: "pdf-current",
+            newFileId: "file-current",
+            sourceSnapshotToken: snapshotToken
+          }
+        })
+      }
+    };
+    const cleanupTx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      fileObject: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(sourceTx))
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(associationTx))
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(cleanupTx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-orphan" }),
+      linkFileReplacement: jest.fn()
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new ApprovalFormService(prisma as never, files as never, audit as never);
+    const internal = service as unknown as { buildRenderInput: jest.Mock; renderPdf: jest.Mock };
+    internal.buildRenderInput = jest.fn().mockResolvedValue({
+      title: "项目零星材料采购申请单",
+      companyName: "",
+      businessCode: "LXCG-001",
+      applicantName: "物资员",
+      summary: [],
+      nodes: [],
+      logs: []
+    });
+    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-orphan"));
+
+    await expect(
+      service.refreshLatestForBusiness(
+        "spot_procurement_version",
+        "version-1",
+        "material-1",
+        "approval.approve"
+      )
+    ).resolves.toEqual({ id: "pdf-current", fileId: "file-current" });
+    expect(cleanupTx.fileObject.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { storageStatus: "quarantined" } })
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      cleanupTx,
+      expect.objectContaining({
+        action: "approval.form.orphan_file",
+        metadata: expect.objectContaining({
+          orphanFileId: "file-orphan",
+          reason: "already_current",
+          cleanupStatus: "quarantined"
+        })
+      })
+    );
+  });
+
+  it("关联事务失败时隔离确认未绑定的派生 PDF 并保留原异常", async () => {
+    const updatedAt = new Date("2026-07-17T08:00:00.000Z");
+    const instance = {
+      id: "approval-1",
+      businessType: "spot_procurement_version",
+      businessId: "version-1",
+      applicantUserId: "material-1",
+      frozenNodes: [],
+      updatedAt
+    };
+    const sourceTx = {
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
+      spotProcurementVersion: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: { findFirst: jest.fn() }
+    };
+    const associationError = new Error("association failed with private details");
+    const associationTx = {
+      $queryRaw: jest.fn().mockRejectedValue(associationError)
+    };
+    const cleanupTx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      fileObject: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(sourceTx))
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(associationTx))
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(cleanupTx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-orphan" }),
+      linkFileReplacement: jest.fn()
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new ApprovalFormService(prisma as never, files as never, audit as never);
+    const internal = service as unknown as { buildRenderInput: jest.Mock; renderPdf: jest.Mock };
+    internal.buildRenderInput = jest.fn().mockResolvedValue({
+      title: "项目零星材料采购申请单",
+      companyName: "",
+      businessCode: "LXCG-001",
+      applicantName: "物资员",
+      summary: [],
+      nodes: [],
+      logs: []
+    });
+    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-orphan"));
+
+    await expect(
+      service.refreshLatestForBusiness(
+        "spot_procurement_version",
+        "version-1",
+        "material-1",
+        "approval.approve"
+      )
+    ).rejects.toBe(associationError);
+    expect(cleanupTx.fileObject.updateMany).toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      cleanupTx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          orphanFileId: "file-orphan",
+          reason: "association_failed",
+          cleanupStatus: "quarantined"
+        })
+      })
+    );
+    expect(JSON.stringify(audit.record.mock.calls)).not.toContain("private details");
+  });
+
+  it("关联提交结果不明时若 PDF 已绑定则绝不隔离当前文件", async () => {
+    const updatedAt = new Date("2026-07-17T08:00:00.000Z");
+    const instance = {
+      id: "approval-1",
+      businessType: "spot_procurement_version",
+      businessId: "version-1",
+      applicantUserId: "material-1",
+      frozenNodes: [],
+      updatedAt
+    };
+    const sourceTx = {
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
+      spotProcurementVersion: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: { findFirst: jest.fn() }
+    };
+    const associationError = new Error("commit outcome unknown");
+    const cleanupTx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-current",
+          businessType: "spot_procurement_version",
+          businessId: "version-1"
+        })
+      },
+      fileObject: { updateMany: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(sourceTx))
+        .mockRejectedValueOnce(associationError)
+        .mockImplementationOnce(async (callback: (tx: unknown) => unknown) => callback(cleanupTx))
+    };
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-maybe-current" }),
+      linkFileReplacement: jest.fn()
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new ApprovalFormService(prisma as never, files as never, audit as never);
+    const internal = service as unknown as { buildRenderInput: jest.Mock; renderPdf: jest.Mock };
+    internal.buildRenderInput = jest.fn().mockResolvedValue({
+      title: "项目零星材料采购申请单",
+      companyName: "",
+      businessCode: "LXCG-001",
+      applicantName: "物资员",
+      summary: [],
+      nodes: [],
+      logs: []
+    });
+    internal.renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-current"));
+
+    await expect(
+      service.refreshLatestForBusiness(
+        "spot_procurement_version",
+        "version-1",
+        "material-1",
+        "approval.approve"
+      )
+    ).rejects.toBe(associationError);
+    expect(cleanupTx.fileObject.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      cleanupTx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          orphanFileId: "file-maybe-current",
+          cleanupStatus: "bound_pdf_preserved",
+          boundPdfDocumentId: "pdf-current"
+        })
+      })
+    );
+  });
+
+  it("关联结果不明且已被下一版替换时保留合法历史 PDF", async () => {
+    const cleanupTx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
+      // 当前指针已指向下一版，所以本文件不再直接绑定 PdfDocument。
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      fileObject: {
+        // 下一版 FileObject 已把它作为被替换前驱，证明它是合法历史件。
+        findFirst: jest.fn().mockResolvedValue({ id: "file-next" }),
+        updateMany: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(cleanupTx))
+    };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new ApprovalFormService(
+      prisma as never,
+      { uploadPrivateFile: jest.fn() } as never,
+      audit as never
+    ) as unknown as {
+      handleUnlinkedApprovalFormFile(input: {
+        businessType: string;
+        businessId: string;
+        actorUserId: string;
+        trigger: string;
+        orphanFileId: string;
+        reason: "association_failed";
+      }): Promise<void>;
+    };
+
+    await service.handleUnlinkedApprovalFormFile({
+      businessType: "spot_procurement_version",
+      businessId: "version-1",
+      actorUserId: "material-1",
+      trigger: "approval.approve",
+      orphanFileId: "file-previous-current",
+      reason: "association_failed"
+    });
+
+    expect(cleanupTx.fileObject.findFirst).toHaveBeenCalledWith({
+      where: { supersedesFileObjectId: "file-previous-current" },
+      select: { id: true }
+    });
+    expect(cleanupTx.fileObject.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      cleanupTx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          orphanFileId: "file-previous-current",
+          cleanupStatus: "bound_replacement_preserved",
+          successorFileId: "file-next"
+        })
+      })
+    );
+  });
+
+  it("Read Committed 交错下不把旧 PDF 指针与新刷新审计拼成当前件", async () => {
+    const updatedAt = new Date("2026-07-17T08:00:00.000Z");
+    const snapshotToken = {
+      approvalInstanceId: "approval-1",
+      approvalInstanceUpdatedAt: updatedAt.toISOString(),
+      latestActionLogId: "log-1",
+      businessUpdatedAt: updatedAt.toISOString(),
+      activeExecutionFingerprint: null
+    };
+    const client = {
+      pdfDocument: {
+        // 第一条 SELECT 读到并发事务提交前的旧指针。
+        findFirst: jest.fn().mockResolvedValue({
+          id: "pdf-current",
+          fileId: "file-old"
+        })
+      },
+      auditLog: {
+        // 第二条 SELECT 读到并发事务已提交的新审计。
+        findFirst: jest.fn().mockResolvedValue({
+          metadata: {
+            pdfDocumentId: "pdf-current",
+            newFileId: "file-new",
+            sourceSnapshotToken: snapshotToken
+          }
+        })
+      }
+    };
+    const service = new ApprovalFormService({} as never) as unknown as {
+      findCurrentPdfForSnapshot(
+        client: unknown,
+        businessType: string,
+        businessId: string,
+        token: typeof snapshotToken
+      ): Promise<unknown>;
+    };
+
+    await expect(
+      service.findCurrentPdfForSnapshot(
+        client,
+        "spot_procurement_version",
+        "version-1",
+        snapshotToken
+      )
+    ).resolves.toBeNull();
+  });
+
+  it("同一事实的幂等重试直接复用当前 PDF，不重复替换文件", async () => {
+    const updatedAt = new Date("2026-07-17T08:00:00.000Z");
+    const snapshotToken = {
+      approvalInstanceId: "approval-1",
+      approvalInstanceUpdatedAt: updatedAt.toISOString(),
+      latestActionLogId: "log-1",
+      businessUpdatedAt: updatedAt.toISOString(),
+      activeExecutionFingerprint: null
+    };
+    const tx = {
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-1",
+          updatedAt,
+          businessType: "spot_procurement_version",
+          businessId: "version-1"
+        })
+      },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
+      spotProcurementVersion: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      pdfDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: "pdf-current", fileId: "file-current" })
+      },
+      auditLog: {
+        findFirst: jest.fn().mockResolvedValue({
+          metadata: {
+            pdfDocumentId: "pdf-current",
+            newFileId: "file-current",
+            sourceSnapshotToken: snapshotToken
+          }
+        })
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: unknown) => unknown) => callback(tx))
+    };
+    const files = { uploadPrivateFile: jest.fn(), linkFileReplacement: jest.fn() };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(
+      service.refreshLatestForBusiness(
+        "spot_procurement_version",
+        "version-1",
+        "material-1",
+        "approval.submit"
+      )
+    ).resolves.toEqual({ id: "pdf-current", fileId: "file-current" });
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });

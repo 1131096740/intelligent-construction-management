@@ -14,6 +14,7 @@ import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 
 export interface UploadPrivateFileInput {
   originalName: string;
@@ -594,7 +595,9 @@ export class FileService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService = new AuditService(),
-    private readonly storage: PrivateFileStorage = new PrivateFileStorage()
+    private readonly storage: PrivateFileStorage = new PrivateFileStorage(),
+    private readonly spotAccess: SpotProcurementAccessService =
+      new SpotProcurementAccessService(prisma)
   ) {
     this.assertDownloadSecret();
   }
@@ -931,6 +934,16 @@ export class FileService {
     file: FileObject,
     actorUserId: string
   ) {
+    const spotDecision = await this.spotAccess.resolveFileDownloadAccess(
+      file.id,
+      actorUserId,
+      tx
+    );
+    if (spotDecision === "allowed") return;
+    if (spotDecision === "denied") {
+      throw new Error("当前账号无权下载该零星采购资料");
+    }
+
     if (
       await this.hasGlobalRole(
         tx,

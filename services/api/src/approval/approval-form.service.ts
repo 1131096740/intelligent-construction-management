@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Optional
+} from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { resolve } from "node:path";
 import type { RoleKey } from "@jiangkong/shared-domain";
 import PDFDocument = require("pdfkit");
@@ -7,9 +13,46 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
+import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
 
 const APPROVAL_FORM_TEMPLATE_KEY = "approval_form";
+const SPOT_PROCUREMENT_APPROVAL_TYPES = new Set([
+  "spot_procurement_version",
+  "spot_procurement_payment"
+]);
 const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf");
+
+type ApprovalFormClient = Pick<
+  Prisma.TransactionClient,
+  | "$queryRaw"
+  | "approvalInstance"
+  | "approvalActionLog"
+  | "pdfDocument"
+  | "paymentRequest"
+  | "project"
+  | "settlement"
+  | "contract"
+  | "contractVersion"
+  | "user"
+  | "userPosition"
+  | "projectMember"
+  | "position"
+  | "spotProcurement"
+  | "spotProcurementVersion"
+  | "spotProcurementLine"
+  | "spotProcurementPayment"
+  | "spotProcurementPaymentExecution"
+  | "fileObject"
+  | "auditLog"
+>;
+
+interface ApprovalFormSnapshotToken {
+  approvalInstanceId: string;
+  approvalInstanceUpdatedAt: string;
+  latestActionLogId: string | null;
+  businessUpdatedAt: string;
+  activeExecutionFingerprint: string | null;
+}
 
 // 审批路线节点（与各业务 service 的 frozenNodes 形态一致：name/mode/roleKeys）
 interface FrozenNode {
@@ -47,13 +90,16 @@ const ACTION_LABELS: Record<string, string> = {
   withdraw: "撤回",
   transfer: "转交",
   delegate: "委托",
-  remind: "催办"
+  remind: "催办",
+  node_skipped: "自动跳过"
 };
 
 const BUSINESS_TYPE_LABELS: Record<string, string> = {
   contract_version: "合同审批单",
   settlement: "结算审批单",
-  payment_request: "项目付款审批表"
+  payment_request: "项目付款审批表",
+  spot_procurement_version: "项目零星材料采购申请单",
+  spot_procurement_payment: "项目零星材料付款审批单"
 };
 
 const roleLabel = (key: string) => ROLE_LABELS[key] ?? key;
@@ -159,6 +205,58 @@ function formatOptionalYuan(cents?: bigint | null): string {
   return cents == null ? "—" : formatYuan(cents);
 }
 
+function decimalText(value: unknown): string {
+  if (value && typeof value === "object" && "toString" in value) {
+    return String((value as { toString(): string }).toString());
+  }
+  return String(value ?? "—");
+}
+
+function invoiceTypeLabel(value?: string | null): string {
+  if (value === "vat_general") return "增值税普通发票";
+  if (value === "vat_special") return "增值税专用发票";
+  return "发票类型未读取";
+}
+
+function paymentMethodLabel(value?: string | null): string {
+  if (value === "bank_transfer") return "银行转账";
+  if (value === "cash") return "现金";
+  return value?.trim() || "未读取";
+}
+
+function spotPaymentBusinessStatusLabel(value?: string | null): string {
+  if (value === "draft") return "草稿";
+  if (value === "approval_pending") return "审批中";
+  if (value === "approved_pending_payment") return "已审批待付款";
+  if (value === "partially_paid") return "部分已付款";
+  if (value === "paid") return "已付款";
+  if (value === "settled") return "已结清";
+  if (value === "returned") return "已退回";
+  if (value === "rejected") return "已驳回";
+  if (value === "withdrawn") return "已撤回";
+  if (value === "voided") return "已作废";
+  if (value === "invalidated") return "已失效";
+  return "状态未读取";
+}
+
+function spotPaymentExecutionFactLabel(
+  actualPaidCents: bigint,
+  companyPayableCents: bigint
+): string {
+  if (companyPayableCents <= 0n) return "无需公司付款";
+  if (actualPaidCents <= 0n) return "未付款";
+  if (actualPaidCents < companyPayableCents) return "部分已付";
+  return "已付款";
+}
+
+function safeRefreshErrorType(error: unknown): string {
+  const name =
+    typeof error === "object" && error !== null && "name" in error
+      ? String((error as { name?: unknown }).name ?? "")
+      : "";
+  return /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(name) ? name : "UnknownError";
+}
+
 export function buildProjectPaymentApprovalRows(
   input: ProjectPaymentApprovalRowsInput
 ): ApprovalFormRow[] {
@@ -197,7 +295,11 @@ function sumCents(rows: Array<{ amountCents?: bigint; paidAmountCents?: bigint }
 }
 
 function approvalFileName(input: Pick<RenderInput, "title" | "businessCode">): string {
-  const prefix = input.title === "项目付款审批表" ? "项目付款审批表" : "审批单";
+  const prefix = input.title.startsWith("项目零星材料")
+    ? input.title
+    : input.title === "项目付款审批表"
+      ? "项目付款审批表"
+      : "审批单";
   return `${prefix}-${input.businessCode}.pdf`;
 }
 
@@ -322,7 +424,9 @@ export class ApprovalFormService {
     @Optional()
     private readonly audit: AuditService = new AuditService(),
     @Optional()
-    private readonly auth?: AuthService
+    private readonly auth?: AuthService,
+    @Optional()
+    private readonly spotAccess?: SpotProcurementAccessService
   ) {}
 
   // 审批通过后由各业务流程事务外调用，best-effort 生成审批单 PDF 并归档。幂等。
@@ -381,6 +485,180 @@ export class ApprovalFormService {
     return pdfDocument;
   }
 
+  /**
+   * 零星采购业务动作提交后的 best-effort 刷新入口。
+   * 生成失败只留可重试审计，不把 PDF 派生失败传回主业务。
+   */
+  async tryRefreshLatestForBusiness(
+    businessType: string,
+    businessId: string,
+    actorUserId: string,
+    trigger: string
+  ): Promise<void> {
+    try {
+      await this.refreshLatestForBusiness(businessType, businessId, actorUserId, trigger);
+    } catch (error) {
+      await this.recordRefreshFailure(
+        businessType,
+        businessId,
+        actorUserId,
+        trigger,
+        error
+      ).catch(() => undefined);
+    }
+  }
+
+  /** 生成并切换一个零星采购单据的当前最新 PDF。 */
+  async refreshLatestForBusiness(
+    businessType: string,
+    businessId: string,
+    actorUserId: string,
+    trigger: string
+  ) {
+    if (!this.prisma || !this.files) {
+      throw new Error("审批单刷新依赖未正确配置");
+    }
+    if (!SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType)) {
+      throw new Error("当前业务类型不支持最新审批单刷新");
+    }
+
+    const source = await this.prisma.$transaction(async (tx) => {
+      const instance = await this.loadLatestApprovalInstance(tx, businessType, businessId);
+      const token = await this.loadSnapshotToken(tx, instance, businessType, businessId);
+      const currentPdf = await this.findCurrentPdfForSnapshot(
+        tx,
+        businessType,
+        businessId,
+        token
+      );
+      if (currentPdf) {
+        return { currentPdf };
+      }
+      return {
+        instance,
+        snapshotToken: token
+      };
+    });
+    if ("currentPdf" in source) {
+      return source.currentPdf;
+    }
+    const { instance, snapshotToken } = source;
+    // 签名图读取、PDF 渲染与私有文件上传全部在数据库事务外执行。
+    const input = await this.buildRenderInput(instance);
+    const buffer = await this.renderPdf(input);
+    const file = await this.files.uploadPrivateFile({
+      buffer,
+      originalName: approvalFileName(input),
+      mimeType: "application/pdf",
+      sizeBytes: buffer.length,
+      uploadedByUserId: actorUserId
+    });
+
+    let orphanReason: "stale_snapshot" | "association_failed" = "association_failed";
+    let associationResult;
+    try {
+      associationResult = await this.prisma.$transaction(async (tx) => {
+        await this.lockSpotBusiness(tx, businessType, businessId);
+        const currentInstance = await this.loadLatestApprovalInstance(tx, businessType, businessId);
+        const currentToken = await this.loadSnapshotToken(
+          tx,
+          currentInstance,
+          businessType,
+          businessId
+        );
+        if (!this.sameSnapshotToken(snapshotToken, currentToken)) {
+          orphanReason = "stale_snapshot";
+          throw new Error("审批或付款事实已变化，本次 PDF 不再关联");
+        }
+
+        const alreadyCurrent = await this.findCurrentPdfForSnapshot(
+          tx,
+          businessType,
+          businessId,
+          currentToken
+        );
+        if (alreadyCurrent) {
+          return { pdfDocument: alreadyCurrent, uploadedFileLinked: false as const };
+        }
+
+        const existing = await tx.pdfDocument.findFirst({
+          where: {
+            businessType,
+            businessId,
+            templateKey: APPROVAL_FORM_TEMPLATE_KEY
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+        });
+        const oldFileId = existing?.fileId ?? null;
+        let pdfDocument;
+        if (existing) {
+          await this.files!.linkFileReplacement(tx, {
+            newFileId: file.id,
+            oldFileId: existing.fileId,
+            actorUserId
+          });
+          pdfDocument = await tx.pdfDocument.update({
+            where: { id: existing.id },
+            data: { fileId: file.id }
+          });
+        } else {
+          pdfDocument = await tx.pdfDocument.create({
+            data: {
+              businessType,
+              businessId,
+              fileId: file.id,
+              templateKey: APPROVAL_FORM_TEMPLATE_KEY
+            }
+          });
+        }
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "approval.form.refresh",
+          businessType,
+          businessId,
+          metadata: {
+            pdfDocumentId: pdfDocument.id,
+            newFileId: file.id,
+            oldFileId,
+            trigger,
+            templateKey: APPROVAL_FORM_TEMPLATE_KEY,
+            sourceSnapshotToken: {
+              approvalInstanceId: snapshotToken.approvalInstanceId,
+              approvalInstanceUpdatedAt: snapshotToken.approvalInstanceUpdatedAt,
+              latestActionLogId: snapshotToken.latestActionLogId,
+              businessUpdatedAt: snapshotToken.businessUpdatedAt,
+              activeExecutionFingerprint: snapshotToken.activeExecutionFingerprint
+            }
+          }
+        });
+        return { pdfDocument, uploadedFileLinked: true as const };
+      });
+    } catch (error) {
+      await this.handleUnlinkedApprovalFormFile({
+        businessType,
+        businessId,
+        actorUserId,
+        trigger,
+        orphanFileId: file.id,
+        reason: orphanReason
+      });
+      throw error;
+    }
+
+    if (!associationResult.uploadedFileLinked) {
+      await this.handleUnlinkedApprovalFormFile({
+        businessType,
+        businessId,
+        actorUserId,
+        trigger,
+        orphanFileId: file.id,
+        reason: "already_current"
+      });
+    }
+    return associationResult.pdfDocument;
+  }
+
   // 下载时按下载人动态生成带水印审批单（谁下的+时间+公司名，可追溯防泄露）。
   async renderForDownload(
     businessType: string,
@@ -403,6 +681,19 @@ export class ApprovalFormService {
     }
 
     await this.auth.confirmPassword(downloaderUserId, confirmationPassword);
+    if (SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType)) {
+      if (!this.spotAccess) {
+        throw new Error("零星采购审批单下载授权依赖未正确配置");
+      }
+      const access = await this.spotAccess.resolveBusinessDownloadAccess(
+        businessType,
+        businessId,
+        downloaderUserId
+      );
+      if (access !== "allowed") {
+        throw new ForbiddenException("当前账号无权下载该零星采购审批单");
+      }
+    }
 
     // 复用归档 PdfDocument 做权限锚点与幂等；其字节为无水印存档件，下载件按下载人重渲染。
     const pdfDocument = await this.getOrCreateByBusiness(businessType, businessId, downloaderUserId);
@@ -446,8 +737,8 @@ export class ApprovalFormService {
     businessId: string;
     applicantUserId: string;
     frozenNodes: unknown;
-  }): Promise<RenderInput> {
-    const prisma = this.prisma!;
+  }, client?: ApprovalFormClient): Promise<RenderInput> {
+    const prisma = client ?? (this.prisma as ApprovalFormClient);
     const logs = await prisma.approvalActionLog.findMany({
       where: { approvalInstanceId: instance.id },
       orderBy: { createdAt: "asc" }
@@ -523,6 +814,22 @@ export class ApprovalFormService {
       throw new Error("Prisma service is required to load approval form");
     }
 
+    if (SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType)) {
+      const latestInstance = await this.prisma.approvalInstance.findFirst({
+        where: { businessType, businessId },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+      });
+      if (!latestInstance || latestInstance.status !== "approved") {
+        throw new Error("当前业务尚未完成审批，暂不能生成审批单");
+      }
+      return this.refreshLatestForBusiness(
+        businessType,
+        businessId,
+        actorUserId,
+        "download.repair"
+      );
+    }
+
     const existing = await this.prisma.pdfDocument.findFirst({
       where: { businessType, businessId, templateKey: APPROVAL_FORM_TEMPLATE_KEY }
     });
@@ -539,6 +846,302 @@ export class ApprovalFormService {
     }
 
     return this.generateForInstance(instance.id, actorUserId);
+  }
+
+  private async loadLatestApprovalInstance(
+    client: ApprovalFormClient,
+    businessType: string,
+    businessId: string
+  ) {
+    const instance = await client.approvalInstance.findFirst({
+      where: { businessType, businessId },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
+    if (!instance) {
+      throw new Error("未找到对应审批实例，无法生成审批单");
+    }
+    return instance;
+  }
+
+  private async loadSnapshotToken(
+    client: ApprovalFormClient,
+    instance: { id: string; updatedAt: Date },
+    businessType: string,
+    businessId: string
+  ): Promise<ApprovalFormSnapshotToken> {
+    const [latestAction, businessSnapshot] = await Promise.all([
+      client.approvalActionLog.findFirst({
+        where: { approvalInstanceId: instance.id },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { id: true }
+      }),
+      businessType === "spot_procurement_version"
+        ? client.spotProcurementVersion
+            .findUnique({
+              where: { id: businessId },
+              select: { updatedAt: true }
+            })
+            .then((business) => ({
+              updatedAt: business?.updatedAt ?? null,
+              executionFingerprint: null
+            }))
+        : Promise.all([
+            client.spotProcurementPayment.findUnique({
+              where: { id: businessId },
+              select: { updatedAt: true }
+            }),
+            client.spotProcurementPaymentExecution.findMany({
+              where: { paymentId: businessId, voidedAt: null },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+              select: { id: true, amountCents: true }
+            })
+          ]).then(([business, executions]) => ({
+            updatedAt: business?.updatedAt ?? null,
+            executionFingerprint: `${executions.length}:${executions.at(-1)?.id ?? "-"}:${executions
+              .reduce(
+                (total, execution) =>
+                  total + dbMoneyToBigInt(execution.amountCents, "零星采购实际付款"),
+                0n
+              )
+              .toString()}`
+          }))
+    ]);
+    if (!businessSnapshot.updatedAt) {
+      throw new Error("审批单对应业务不存在");
+    }
+    return {
+      approvalInstanceId: instance.id,
+      approvalInstanceUpdatedAt: instance.updatedAt.toISOString(),
+      latestActionLogId: latestAction?.id ?? null,
+      businessUpdatedAt: businessSnapshot.updatedAt.toISOString(),
+      activeExecutionFingerprint: businessSnapshot.executionFingerprint
+    };
+  }
+
+  private sameSnapshotToken(
+    left: ApprovalFormSnapshotToken,
+    right: ApprovalFormSnapshotToken
+  ): boolean {
+    return (
+      left.approvalInstanceId === right.approvalInstanceId &&
+      left.approvalInstanceUpdatedAt === right.approvalInstanceUpdatedAt &&
+      left.latestActionLogId === right.latestActionLogId &&
+      left.businessUpdatedAt === right.businessUpdatedAt &&
+      left.activeExecutionFingerprint === right.activeExecutionFingerprint
+    );
+  }
+
+  private async findCurrentPdfForSnapshot(
+    client: ApprovalFormClient,
+    businessType: string,
+    businessId: string,
+    snapshotToken: ApprovalFormSnapshotToken
+  ) {
+    const existing = await client.pdfDocument.findFirst({
+      where: {
+        businessType,
+        businessId,
+        templateKey: APPROVAL_FORM_TEMPLATE_KEY
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+    if (!existing) return null;
+    const latestRefresh = await client.auditLog.findFirst({
+      where: {
+        action: "approval.form.refresh",
+        businessType,
+        businessId
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { metadata: true }
+    });
+    const metadata =
+      latestRefresh?.metadata &&
+      typeof latestRefresh.metadata === "object" &&
+      !Array.isArray(latestRefresh.metadata)
+        ? (latestRefresh.metadata as Record<string, unknown>)
+        : null;
+    // Read Committed 下两次 SELECT 之间可能有并发刷新提交。
+    // 快照 token 一致还不够：审计必须明确指向第一次读到的同一 PdfDocument/file。
+    if (
+      metadata?.pdfDocumentId !== existing.id ||
+      metadata?.newFileId !== existing.fileId
+    ) {
+      return null;
+    }
+    const rawToken = metadata?.sourceSnapshotToken;
+    if (!rawToken || typeof rawToken !== "object" || Array.isArray(rawToken)) {
+      return null;
+    }
+    const token = rawToken as Record<string, unknown>;
+    const storedToken: ApprovalFormSnapshotToken = {
+      approvalInstanceId: String(token.approvalInstanceId ?? ""),
+      approvalInstanceUpdatedAt: String(token.approvalInstanceUpdatedAt ?? ""),
+      latestActionLogId:
+        token.latestActionLogId === null ? null : String(token.latestActionLogId ?? ""),
+      businessUpdatedAt: String(token.businessUpdatedAt ?? ""),
+      activeExecutionFingerprint:
+        token.activeExecutionFingerprint === null
+          ? null
+          : String(token.activeExecutionFingerprint ?? "")
+    };
+    return this.sameSnapshotToken(snapshotToken, storedToken) ? existing : null;
+  }
+
+  private async lockSpotBusiness(
+    client: ApprovalFormClient,
+    businessType: string,
+    businessId: string
+  ): Promise<void> {
+    const rows =
+      businessType === "spot_procurement_version"
+        ? await client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+            SELECT "id" FROM "SpotProcurementVersion"
+            WHERE "id" = ${businessId}
+            FOR UPDATE
+          `)
+        : await client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+            SELECT "id" FROM "SpotProcurementPayment"
+            WHERE "id" = ${businessId}
+            FOR UPDATE
+          `);
+    if (!rows[0]) {
+      throw new Error("审批单对应业务不存在，无法关联最新 PDF");
+    }
+  }
+
+  /**
+   * 处置已上传但没有成为当前审批单的专用派生 PDF。
+   * 先与当前指针关联共用业务行锁，再确认文件没有绑定任何 PdfDocument；
+   * 提交结果不明且已绑定时只记录审计，绝不修改文件状态。
+   */
+  private async handleUnlinkedApprovalFormFile(input: {
+    businessType: string;
+    businessId: string;
+    actorUserId: string;
+    trigger: string;
+    orphanFileId: string;
+    reason: "stale_snapshot" | "already_current" | "association_failed";
+  }): Promise<void> {
+    if (!this.prisma) return;
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.lockSpotBusiness(tx, input.businessType, input.businessId);
+        const binding = await tx.pdfDocument.findFirst({
+          where: { fileId: input.orphanFileId },
+          select: { id: true, businessType: true, businessId: true }
+        });
+        if (binding) {
+          await this.audit.record(tx, {
+            actorUserId: input.actorUserId,
+            action: "approval.form.orphan_file",
+            businessType: input.businessType,
+            businessId: input.businessId,
+            metadata: {
+              orphanFileId: input.orphanFileId,
+              reason: input.reason,
+              trigger: input.trigger,
+              cleanupStatus: "bound_pdf_preserved",
+              retryable: false,
+              boundPdfDocumentId: binding.id,
+              boundBusinessType: binding.businessType,
+              boundBusinessId: binding.businessId
+            }
+          });
+          return;
+        }
+
+        const successor = await tx.fileObject.findFirst({
+          where: { supersedesFileObjectId: input.orphanFileId },
+          select: { id: true }
+        });
+        if (successor) {
+          await this.audit.record(tx, {
+            actorUserId: input.actorUserId,
+            action: "approval.form.orphan_file",
+            businessType: input.businessType,
+            businessId: input.businessId,
+            metadata: {
+              orphanFileId: input.orphanFileId,
+              reason: input.reason,
+              trigger: input.trigger,
+              cleanupStatus: "bound_replacement_preserved",
+              retryable: false,
+              successorFileId: successor.id
+            }
+          });
+          return;
+        }
+
+        const quarantined = await tx.fileObject.updateMany({
+          where: {
+            id: input.orphanFileId,
+            uploadedByUserId: input.actorUserId,
+            storageStatus: "active",
+            supersedesFileObjectId: null
+          },
+          data: { storageStatus: "quarantined" }
+        });
+        await this.audit.record(tx, {
+          actorUserId: input.actorUserId,
+          action: "approval.form.orphan_file",
+          businessType: input.businessType,
+          businessId: input.businessId,
+          metadata: {
+            orphanFileId: input.orphanFileId,
+            reason: input.reason,
+            trigger: input.trigger,
+            cleanupStatus: quarantined.count === 1 ? "quarantined" : "not_quarantined",
+            retryable: quarantined.count !== 1
+          }
+        });
+      });
+    } catch (cleanupError) {
+      // 补偿不得覆盖原业务/关联结果；回退为一条不含底层错误文本的可重试审计。
+      await this.audit
+        .record(this.prisma, {
+          actorUserId: input.actorUserId,
+          action: "approval.form.orphan_file",
+          businessType: input.businessType,
+          businessId: input.businessId,
+          metadata: {
+            orphanFileId: input.orphanFileId,
+            reason: input.reason,
+            trigger: input.trigger,
+            cleanupStatus: "cleanup_failed",
+            retryable: true,
+            errorType: safeRefreshErrorType(cleanupError)
+          }
+        })
+        .catch(() => undefined);
+    }
+  }
+
+  private async recordRefreshFailure(
+    businessType: string,
+    businessId: string,
+    actorUserId: string,
+    trigger: string,
+    error: unknown
+  ): Promise<void> {
+    if (!this.prisma) return;
+    await this.prisma.$transaction((tx) =>
+      this.audit.record(tx, {
+        actorUserId,
+        action: "approval.form.refresh_failed",
+        businessType,
+        businessId,
+        metadata: {
+          retryable: true,
+          status: "retryable",
+          trigger,
+          templateKey: APPROVAL_FORM_TEMPLATE_KEY,
+          errorType: safeRefreshErrorType(error),
+          errorSummary: "审批单生成失败，可稍后重试"
+        }
+      })
+    );
   }
 
   private async renderPdf(input: RenderInput): Promise<Buffer> {
@@ -671,10 +1274,30 @@ export class ApprovalFormService {
   }
 
   private async resolveProjectId(
-    prisma: PrismaService,
+    prisma: ApprovalFormClient,
     businessType: string,
     businessId: string
   ): Promise<string | null> {
+    if (businessType === "spot_procurement_version") {
+      const version = await prisma.spotProcurementVersion.findUnique({
+        where: { id: businessId },
+        select: { procurementId: true }
+      });
+      const procurement = version
+        ? await prisma.spotProcurement.findUnique({
+            where: { id: version.procurementId },
+            select: { projectId: true }
+          })
+        : null;
+      return procurement?.projectId ?? null;
+    }
+    if (businessType === "spot_procurement_payment") {
+      const payment = await prisma.spotProcurementPayment.findUnique({
+        where: { id: businessId },
+        select: { projectId: true }
+      });
+      return payment?.projectId ?? null;
+    }
     if (businessType === "settlement") {
       const settlement = await prisma.settlement.findUnique({ where: { id: businessId } });
       return settlement?.projectId ?? null;
@@ -694,10 +1317,30 @@ export class ApprovalFormService {
   }
 
   private async resolveBusinessCode(
-    prisma: PrismaService,
+    prisma: ApprovalFormClient,
     businessType: string,
     businessId: string
   ): Promise<string> {
+    if (businessType === "spot_procurement_version") {
+      const version = await prisma.spotProcurementVersion.findUnique({
+        where: { id: businessId },
+        select: { procurementId: true }
+      });
+      const procurement = version
+        ? await prisma.spotProcurement.findUnique({
+            where: { id: version.procurementId },
+            select: { code: true }
+          })
+        : null;
+      return procurement?.code ?? businessId;
+    }
+    if (businessType === "spot_procurement_payment") {
+      const payment = await prisma.spotProcurementPayment.findUnique({
+        where: { id: businessId },
+        select: { code: true }
+      });
+      return payment?.code ?? businessId;
+    }
     if (businessType === "settlement") {
       const settlement = await prisma.settlement.findUnique({ where: { id: businessId } });
       return settlement?.code ?? businessId;
@@ -718,7 +1361,7 @@ export class ApprovalFormService {
 
   // 我方公司主体名（审批单抬头）：三类业务均回溯到合同上的 companyEntityName 快照。
   private async resolveCompanyName(
-    prisma: PrismaService,
+    prisma: ApprovalFormClient,
     businessType: string,
     businessId: string
   ): Promise<string> {
@@ -742,11 +1385,110 @@ export class ApprovalFormService {
 
   // 业务信息栏：按业务类型取关键字段（金额/对方/事由等）。查不到的字段直接略过。
   private async resolveBusinessSummary(
-    prisma: PrismaService,
+    prisma: ApprovalFormClient,
     businessType: string,
     businessId: string,
     context: { applicantName: string; companyName: string }
   ): Promise<Array<{ label: string; value: string }>> {
+    if (businessType === "spot_procurement_version") {
+      const version = await prisma.spotProcurementVersion.findUnique({
+        where: { id: businessId }
+      });
+      if (!version) return [];
+      const [procurement, lines] = await Promise.all([
+        prisma.spotProcurement.findUnique({ where: { id: version.procurementId } }),
+        prisma.spotProcurementLine.findMany({
+          where: { versionId: version.id },
+          orderBy: { sortOrder: "asc" }
+        })
+      ]);
+      const project = procurement
+        ? await prisma.project.findUnique({ where: { id: procurement.projectId } })
+        : null;
+      const rows: ApprovalFormRow[] = [
+        { label: "项目名称", value: project?.name ?? "—" },
+        { label: "采购编号", value: procurement?.code ?? businessId },
+        {
+          label: "供应商",
+          value: version.supplierNameSnapshot || procurement?.supplierNameSnapshot || "—"
+        },
+        { label: "采购原因", value: version.reason || "—" },
+        { label: "采购金额合计", value: formatYuan(version.totalAmountCents) },
+        { label: "采购版本", value: `第 ${version.versionNo} 版` }
+      ];
+      for (const line of lines) {
+        const quantity = `${decimalText(line.quantity)} ${line.unit}`;
+        const invoice =
+          line.invoiceMode === "invoice"
+            ? `${invoiceTypeLabel(line.invoiceType)}、${line.vatRateLabelSnapshot ?? "税率未读取"}、含税单价 ${decimalText(line.unitPrice)} 元`
+            : `无票、无票单价 ${decimalText(line.unitPrice)} 元`;
+        const detail = [
+          line.materialName,
+          line.specification ? `规格 ${line.specification}` : null,
+          `数量 ${quantity}`,
+          invoice,
+          `金额 ${formatYuan(line.amountCents)}`,
+          line.note ? `备注 ${line.note}` : null
+        ]
+          .filter(Boolean)
+          .join("；");
+        rows.push({ label: `材料明细 ${line.sortOrder}`, value: detail });
+      }
+      return rows;
+    }
+
+    if (businessType === "spot_procurement_payment") {
+      const payment = await prisma.spotProcurementPayment.findUnique({
+        where: { id: businessId }
+      });
+      if (!payment) return [];
+      const [procurement, project, executions] = await Promise.all([
+        prisma.spotProcurement.findUnique({ where: { id: payment.procurementId } }),
+        prisma.project.findUnique({ where: { id: payment.projectId } }),
+        prisma.spotProcurementPaymentExecution.findMany({
+          where: { paymentId: payment.id, voidedAt: null },
+          orderBy: [{ paidAt: "asc" }, { id: "asc" }]
+        })
+      ]);
+      const actualPaidCents = executions.reduce(
+        (total, execution) => total + dbMoneyToBigInt(execution.amountCents, "零星采购实际付款"),
+        0n
+      );
+      const companyPayableCents =
+        dbMoneyToBigInt(payment.companyPaymentAmountCents, "零星采购公司付款金额") -
+        dbMoneyToBigInt(payment.canceledCompanyPaymentAmountCents ?? 0n, "零星采购取消付款金额");
+      const rows: ApprovalFormRow[] = [
+        { label: "项目名称", value: project?.name ?? "—" },
+        { label: "采购编号", value: procurement?.code ?? payment.procurementId },
+        { label: "付款申请编号", value: payment.code },
+        { label: "收款方", value: payment.payeeNameSnapshot || procurement?.supplierNameSnapshot || "—" },
+        { label: "结算申请金额", value: formatYuan(payment.settlementAmountCents) },
+        { label: "供应商余额抵扣", value: formatYuan(payment.supplierBalanceAmountCents) },
+        {
+          label: "已执行供应商余额抵扣",
+          value: formatYuan(payment.executedSupplierBalanceAmountCents ?? 0n)
+        },
+        { label: "公司付款申请", value: formatYuan(payment.companyPaymentAmountCents) },
+        { label: "未执行取消额度", value: formatYuan(payment.canceledAmountCents ?? 0n) },
+        { label: "累计实际付款", value: formatYuan(actualPaidCents) },
+        {
+          label: "付款申请状态",
+          value: spotPaymentBusinessStatusLabel(payment.status)
+        },
+        {
+          label: "公司实际付款事实",
+          value: spotPaymentExecutionFactLabel(actualPaidCents, companyPayableCents)
+        }
+      ];
+      executions.forEach((execution, index) => {
+        rows.push({
+          label: `实际付款明细 ${index + 1}`,
+          value: `${formatYuan(execution.amountCents)}；${formatDate(execution.paidAt)}；${paymentMethodLabel(execution.paymentMethod)}；凭证 ${execution.voucherFileId}`
+        });
+      });
+      return rows;
+    }
+
     if (businessType === "payment_request") {
       const payment = await prisma.paymentRequest.findUnique({ where: { id: businessId } });
       if (!payment) return [];
@@ -818,7 +1560,7 @@ export class ApprovalFormService {
 
   // 与各业务 service 的岗位解析一致：全局/项目岗位 + 项目成员岗位。
   private async loadActorRoleKeys(
-    prisma: PrismaService,
+    prisma: ApprovalFormClient,
     actorUserId: string,
     projectId: string
   ): Promise<RoleKey[]> {

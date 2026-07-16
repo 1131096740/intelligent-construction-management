@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { ApprovalModule } from "../approval/approval.module";
 import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { FileModule } from "../file/file.module";
@@ -14,6 +15,7 @@ import { SpotProcurementController } from "./spot-procurement.controller";
 @Module({
   imports: [
     DatabaseModule,
+    ApprovalModule,
     AuditModule,
     AuthModule,
     FileModule,

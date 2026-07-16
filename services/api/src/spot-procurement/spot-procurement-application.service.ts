@@ -10,6 +10,7 @@ import type { RoleKey } from "@jiangkong/shared-domain";
 import {
   pendingRoleKeysForFrozenApprovalNode
 } from "../approval/approval-node-access";
+import { ApprovalFormService } from "../approval/approval-form.service";
 import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
@@ -147,7 +148,8 @@ export class SpotProcurementApplicationService {
     private readonly audit: AuditService,
     private readonly pilot: SpotProcurementPilotService,
     private readonly vatRates: VatRateOptionService,
-    private readonly balances: SpotProcurementBalanceService
+    private readonly balances: SpotProcurementBalanceService,
+    private readonly approvalForms: ApprovalFormService
   ) {}
 
   createDraft(actorUserId: string, input: CreateSpotProcurementDto) {
@@ -347,11 +349,13 @@ export class SpotProcurementApplicationService {
   }
 
   submit(procurementId: string, actorUserId: string) {
-    return this.runWrite(() =>
-      this.prisma.$transaction(async (tx) => {
+    return this.runWrite(async () => {
+      let approvalBusinessId: string | null = null;
+      const result = await this.prisma.$transaction(async (tx) => {
         const procurement = await this.requireLockedProcurement(tx, procurementId);
         this.pilot.assertEnabled(procurement.projectId);
         const version = await this.requireLockedCurrentVersion(tx, procurement);
+        approvalBusinessId = version.id;
         this.assertEditableDraft(procurement, version);
         const actorRoles = await this.requireDraftOwnerRole(
           tx,
@@ -475,16 +479,27 @@ export class SpotProcurementApplicationService {
           "approval_pending",
           prepared.totalAmountCents
         );
-      })
-    );
+      });
+      if (approvalBusinessId) {
+        await this.approvalForms.tryRefreshLatestForBusiness(
+          SPOT_PROCUREMENT_BUSINESS_TYPES.application,
+          approvalBusinessId,
+          actorUserId,
+          "approval.submit"
+        );
+      }
+      return result;
+    });
   }
 
   withdrawApproval(procurementId: string, actorUserId: string) {
-    return this.runWrite(() =>
-      this.prisma.$transaction(async (tx) => {
+    return this.runWrite(async () => {
+      let approvalBusinessId: string | null = null;
+      const result = await this.prisma.$transaction(async (tx) => {
         const procurement = await this.requireLockedProcurement(tx, procurementId);
         this.pilot.assertEnabled(procurement.projectId);
         const version = await this.requireLockedCurrentVersion(tx, procurement);
+        approvalBusinessId = version.id;
         if (
           procurement.status !== "approval_pending" ||
           version.status !== "approval_pending"
@@ -544,8 +559,17 @@ export class SpotProcurementApplicationService {
           "draft",
           newVersion.totalAmountCents
         );
-      })
-    );
+      });
+      if (approvalBusinessId) {
+        await this.approvalForms.tryRefreshLatestForBusiness(
+          SPOT_PROCUREMENT_BUSINESS_TYPES.application,
+          approvalBusinessId,
+          actorUserId,
+          "approval.withdraw"
+        );
+      }
+      return result;
+    });
   }
 
   review(
@@ -553,11 +577,13 @@ export class SpotProcurementApplicationService {
     actorUserId: string,
     input: ReviewSpotProcurementDto
   ) {
-    return this.runWrite(() =>
-      this.prisma.$transaction(async (tx) => {
+    return this.runWrite(async () => {
+      let approvalBusinessId: string | null = null;
+      const result = await this.prisma.$transaction(async (tx) => {
         const procurement = await this.requireLockedProcurement(tx, procurementId);
         this.pilot.assertEnabled(procurement.projectId);
         const version = await this.requireLockedCurrentVersion(tx, procurement);
+        approvalBusinessId = version.id;
         if (
           procurement.status !== "approval_pending" ||
           version.status !== "approval_pending"
@@ -803,8 +829,17 @@ export class SpotProcurementApplicationService {
           "approved",
           version.totalAmountCents
         );
-      })
-    );
+      });
+      if (approvalBusinessId) {
+        await this.approvalForms.tryRefreshLatestForBusiness(
+          SPOT_PROCUREMENT_BUSINESS_TYPES.application,
+          approvalBusinessId,
+          actorUserId,
+          `approval.${input.decision}`
+        );
+      }
+      return result;
+    });
   }
 
   createVersion(

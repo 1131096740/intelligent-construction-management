@@ -227,13 +227,17 @@ function harness() {
       storageStatus: "active"
     })
   };
+  const approvalForms = {
+    tryRefreshLatestForBusiness: jest.fn().mockResolvedValue(undefined)
+  };
   const service = Reflect.construct(SpotProcurementPaymentService, [
     prisma,
     audit,
     pilot,
     balance,
     auth,
-    files
+    files,
+    approvalForms
   ]) as SpotProcurementPaymentService;
   return {
     service,
@@ -243,7 +247,8 @@ function harness() {
     pilot,
     balance,
     auth,
-    files
+    files,
+    approvalForms
   };
 }
 
@@ -1012,7 +1017,7 @@ describe("SpotProcurementPaymentService", () => {
   });
 
   it("submits under Serializable after version then stable payment locks, reserves balance and freezes approval facts", async () => {
-    const { service, prisma, tx, balance, audit } = harness();
+    const { service, prisma, tx, balance, audit, approvalForms } = harness();
     const completeDraft = completePayment({
       settlementAmountCents: 8_000n,
       supplierBalanceAmountCents: 3_000n,
@@ -1092,6 +1097,15 @@ describe("SpotProcurementPaymentService", () => {
           bankAccountLast4: "0001"
         })
       })
+    );
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_payment",
+      "payment-1",
+      "material-1",
+      "approval.submit"
+    );
+    expect(prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
+      approvalForms.tryRefreshLatestForBusiness.mock.invocationCallOrder[0]
     );
     const submitAudit = audit.record.mock.calls.find(
       ([, input]) =>
@@ -1226,7 +1240,7 @@ describe("SpotProcurementPaymentService", () => {
   });
 
   it("moves through fixed nodes and final approval stops at approved pending payment", async () => {
-    const { service, tx } = harness();
+    const { service, tx, approvalForms } = harness();
     const approval = {
       id: "approval-1",
       status: "approval_pending",
@@ -1286,6 +1300,12 @@ describe("SpotProcurementPaymentService", () => {
       expect.objectContaining({
         data: expect.objectContaining({ paidAmountCents: expect.anything() })
       })
+    );
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_payment",
+      "payment-1",
+      "chairman-1",
+      "approval.approve"
     );
   });
 
@@ -1370,6 +1390,12 @@ describe("SpotProcurementPaymentService", () => {
       )
     ).resolves.toEqual(
       expect.objectContaining({ status: "approval_pending" })
+    );
+    expect(validProject.approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_payment",
+      "payment-1",
+      "project-manager-1",
+      "approval.approve"
     );
 
     const validGlobal = harness();
@@ -1742,7 +1768,7 @@ describe("SpotProcurementPaymentService", () => {
   ] as const)(
     "%s releases the reservation and preserves the submitted payment as a terminal frozen fact",
     async (decision, expectedStatus) => {
-      const { service, tx, balance } = harness();
+      const { service, tx, balance, approvalForms } = harness();
       tx.$queryRaw
         .mockResolvedValueOnce([version])
         .mockResolvedValueOnce([
@@ -1810,6 +1836,12 @@ describe("SpotProcurementPaymentService", () => {
       } else {
         expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
       }
+      expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+        "spot_procurement_payment",
+        "payment-1",
+        "comprehensive-1",
+        `approval.${decision}`
+      );
     }
   );
 
@@ -2580,7 +2612,7 @@ describe("SpotProcurementPaymentService", () => {
   });
 
   it("applicant withdrawal releases once, keeps old submission immutable and creates a new draft", async () => {
-    const { service, tx, balance } = harness();
+    const { service, tx, balance, approvalForms } = harness();
     tx.$queryRaw
       .mockResolvedValueOnce([version])
       .mockResolvedValueOnce([
@@ -2619,6 +2651,12 @@ describe("SpotProcurementPaymentService", () => {
       })
     );
     expect(tx.spotProcurementPayment.create).toHaveBeenCalled();
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_payment",
+      "payment-1",
+      "material-1",
+      "approval.withdraw"
+    );
   });
 
   it("aborts withdrawal before writing any approval or payment fact when balance release fails", async () => {
@@ -2673,7 +2711,7 @@ describe("SpotProcurementPaymentService", () => {
   });
 
   it("voids a non-executed approved payment and releases its balance reservation", async () => {
-    const { service, tx, balance, audit } = harness();
+    const { service, tx, balance, audit, approvalForms } = harness();
     tx.$queryRaw
       .mockResolvedValueOnce([version])
       .mockResolvedValueOnce([
@@ -2715,6 +2753,12 @@ describe("SpotProcurementPaymentService", () => {
         actorUserId: "finance-1",
         reason: "付款申请作废：采购已取消"
       }
+    );
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_payment",
+      "payment-1",
+      "finance-1",
+      "approval.void"
     );
     expect(audit.record).toHaveBeenCalledWith(
       tx,
@@ -2972,6 +3016,15 @@ describe("SpotProcurementPaymentService", () => {
       availableCents: "0"
     });
     expect(JSON.stringify(auditInput)).not.toContain("Current@123");
+    expect(current.approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_payment",
+      "payment-1",
+      "finance-1",
+      "payment.execution.record"
+    );
+    expect(current.prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
+      current.approvalForms.tryRefreshLatestForBusiness.mock.invocationCallOrder[0]
+    );
   });
 
   it("converts the current payment's own outstanding occupation into paid cash and marks company payment fully paid", async () => {

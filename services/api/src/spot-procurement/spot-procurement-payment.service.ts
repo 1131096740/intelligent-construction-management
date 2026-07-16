@@ -12,6 +12,7 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
+import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -208,7 +209,8 @@ export class SpotProcurementPaymentService {
     private readonly pilot: SpotProcurementPilotService,
     private readonly balances: SpotProcurementBalanceService,
     private readonly auth: AuthService,
-    private readonly files: FileService
+    private readonly files: FileService,
+    private readonly approvalForms: ApprovalFormService
   ) {}
 
   async recordExecution(
@@ -273,7 +275,7 @@ export class SpotProcurementPaymentService {
     );
 
     try {
-      return await this.runSerializable(async (tx) => {
+      const result = await this.runSerializable(async (tx) => {
         // 与 Task 5 保持同一锁序：冻结采购版本 -> 该采购全部付款。
         // 随后锁项目行，把不同采购的项目现金检查串行化；实际付款不锁供应商余额。
         const version = await this.requireLockedVersionForPayment(
@@ -529,6 +531,13 @@ export class SpotProcurementPaymentService {
           paymentAfter
         );
       });
+      await this.approvalForms.tryRefreshLatestForBusiness(
+        SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        paymentId,
+        actorUserId,
+        "payment.execution.record"
+      );
+      return result;
     } catch (error) {
       if (error instanceof HttpException) throw error;
       const code = prismaErrorCode(error);
@@ -543,7 +552,15 @@ export class SpotProcurementPaymentService {
             voucherFileId,
             idempotencyKey
           });
-        if (concurrentResult) return concurrentResult;
+        if (concurrentResult) {
+          await this.approvalForms.tryRefreshLatestForBusiness(
+            SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            paymentId,
+            actorUserId,
+            "payment.execution.record"
+          );
+          return concurrentResult;
+        }
         throw new ConflictException(
           "实际付款唯一事实已变化，请刷新后重试"
         );
@@ -559,7 +576,15 @@ export class SpotProcurementPaymentService {
             voucherFileId,
             idempotencyKey
           });
-        if (concurrentResult) return concurrentResult;
+        if (concurrentResult) {
+          await this.approvalForms.tryRefreshLatestForBusiness(
+            SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            paymentId,
+            actorUserId,
+            "payment.execution.record"
+          );
+          return concurrentResult;
+        }
         throw new ConflictException(
           "实际付款并发冲突，请刷新后重试"
         );
@@ -749,8 +774,8 @@ export class SpotProcurementPaymentService {
   }
 
   submit(paymentId: string, actorUserId: string) {
-    return this.runWrite(() =>
-      this.runSerializable(async (tx) => {
+    return this.runWrite(async () => {
+      const result = await this.runSerializable(async (tx) => {
         const version = await this.requireLockedVersionForPayment(
           tx,
           paymentId
@@ -842,8 +867,15 @@ export class SpotProcurementPaymentService {
           }
         });
         return this.paymentReadModel(updated);
-      })
-    );
+      });
+      await this.approvalForms.tryRefreshLatestForBusiness(
+        SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        paymentId,
+        actorUserId,
+        "approval.submit"
+      );
+      return result;
+    });
   }
 
   review(
@@ -851,8 +883,8 @@ export class SpotProcurementPaymentService {
     actorUserId: string,
     input: ReviewSpotProcurementPaymentDto
   ) {
-    return this.runWrite(() =>
-      this.runSerializable(async (tx) => {
+    return this.runWrite(async () => {
+      const result = await this.runSerializable(async (tx) => {
         const version = await this.requireLockedVersionForPayment(
           tx,
           paymentId
@@ -1181,13 +1213,20 @@ export class SpotProcurementPaymentService {
           selfReviewMetadata
         );
         return this.paymentReadModel(updated);
-      })
-    );
+      });
+      await this.approvalForms.tryRefreshLatestForBusiness(
+        SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        paymentId,
+        actorUserId,
+        `approval.${input.decision}`
+      );
+      return result;
+    });
   }
 
   withdrawApproval(paymentId: string, actorUserId: string) {
-    return this.runWrite(() =>
-      this.runSerializable(async (tx) => {
+    return this.runWrite(async () => {
+      const result = await this.runSerializable(async (tx) => {
         const version = await this.requireLockedVersionForPayment(
           tx,
           paymentId
@@ -1256,8 +1295,15 @@ export class SpotProcurementPaymentService {
         return this.paymentReadModel(updated, undefined, {
           newDraftPaymentId: newDraft.id
         });
-      })
-    );
+      });
+      await this.approvalForms.tryRefreshLatestForBusiness(
+        SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        paymentId,
+        actorUserId,
+        "approval.withdraw"
+      );
+      return result;
+    });
   }
 
   voidPayment(
@@ -1265,8 +1311,9 @@ export class SpotProcurementPaymentService {
     actorUserId: string,
     reasonInput: string
   ) {
-    return this.runWrite(() =>
-      this.runSerializable(async (tx) => {
+    return this.runWrite(async () => {
+      let shouldRefreshApprovalForm = false;
+      const result = await this.runSerializable(async (tx) => {
         const version = await this.requireLockedVersionForPayment(
           tx,
           paymentId
@@ -1277,6 +1324,7 @@ export class SpotProcurementPaymentService {
           version.procurementId
         );
         const payment = this.requirePayment(payments, paymentId);
+        shouldRefreshApprovalForm = payment.status !== "draft";
         if (NON_VOIDABLE_EXECUTION_STATUSES.has(payment.status)) {
           throw new ConflictException(
             "付款申请已发生执行事实，不能直接作废"
@@ -1376,8 +1424,17 @@ export class SpotProcurementPaymentService {
           ...payment,
           status: "voided"
         });
-      })
-    );
+      });
+      if (shouldRefreshApprovalForm) {
+        await this.approvalForms.tryRefreshLatestForBusiness(
+          SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          paymentId,
+          actorUserId,
+          "approval.void"
+        );
+      }
+      return result;
+    });
   }
 
   private async preparePayment(

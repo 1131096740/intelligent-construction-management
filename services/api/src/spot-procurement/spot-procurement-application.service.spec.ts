@@ -227,13 +227,17 @@ function harness() {
     }),
     releaseReservation: jest.fn()
   };
-  const service = new SpotProcurementApplicationService(
-    prisma as never,
-    audit as never,
-    pilot as never,
-    vatRates as never,
-    balances as never
-  );
+  const approvalForms = {
+    tryRefreshLatestForBusiness: jest.fn().mockResolvedValue(undefined)
+  };
+  const service = Reflect.construct(SpotProcurementApplicationService, [
+    prisma,
+    audit,
+    pilot,
+    vatRates,
+    balances,
+    approvalForms
+  ]) as SpotProcurementApplicationService;
   return {
     service,
     prisma,
@@ -241,7 +245,8 @@ function harness() {
     audit,
     pilot,
     vatRates,
-    balances
+    balances,
+    approvalForms
   };
 }
 
@@ -800,7 +805,7 @@ describe("SpotProcurementApplicationService", () => {
   });
 
   it("freezes material director then project manager for a material staff applicant", async () => {
-    const { service, tx } = harness();
+    const { service, prisma, tx, approvalForms } = harness();
     tx.$queryRaw
       .mockResolvedValueOnce([rootLock])
       .mockResolvedValueOnce([versionLock]);
@@ -816,6 +821,15 @@ describe("SpotProcurementApplicationService", () => {
     expect(tx.approvalActionLog.create).not.toHaveBeenCalledWith({
       data: expect.objectContaining({ action: "node_skipped" })
     });
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_version",
+      "version-1",
+      "material-1",
+      "approval.submit"
+    );
+    expect(prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
+      approvalForms.tryRefreshLatestForBusiness.mock.invocationCallOrder[0]
+    );
   });
 
   it("freezes nodes from the database applicant roles rather than a delegated handler submitter", async () => {
@@ -1072,7 +1086,7 @@ describe("SpotProcurementApplicationService", () => {
   });
 
   it("moves to approved states and creates the first payment draft inside the final approval transaction", async () => {
-    const { service, prisma, tx, balances } = harness();
+    const { service, prisma, tx, balances, approvalForms } = harness();
     const pendingRoot = { ...rootLock, status: "approval_pending" };
     const pendingVersion = {
       ...versionLock,
@@ -1130,10 +1144,16 @@ describe("SpotProcurementApplicationService", () => {
       })
     });
     expect(result.status).toBe("approved_in_progress");
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_version",
+      "version-1",
+      "manager-1",
+      "approval.approve"
+    );
   });
 
   it("advances the material-staff two-node flow without creating payment at the director node", async () => {
-    const { service, tx } = harness();
+    const { service, tx, approvalForms } = harness();
     tx.$queryRaw
       .mockResolvedValueOnce([{ ...rootLock, status: "approval_pending" }])
       .mockResolvedValueOnce([{ ...versionLock, status: "approval_pending" }])
@@ -1182,6 +1202,12 @@ describe("SpotProcurementApplicationService", () => {
         status: "approval_pending",
         versionStatus: "approval_pending"
       })
+    );
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_version",
+      "version-1",
+      "director-1",
+      "approval.approve"
     );
   });
 
@@ -1241,7 +1267,7 @@ describe("SpotProcurementApplicationService", () => {
   });
 
   it("does not mark a node approved when the reviewer rejects the application", async () => {
-    const { service, tx } = harness();
+    const { service, tx, approvalForms } = harness();
     const frozenNodes = [
       { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
     ];
@@ -1272,10 +1298,16 @@ describe("SpotProcurementApplicationService", () => {
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ action: "reject" })
     });
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_version",
+      "version-1",
+      "manager-1",
+      "approval.reject"
+    );
   });
 
   it("returns an approval by preserving the submitted version and cloning a revision draft", async () => {
-    const { service, tx, audit, vatRates } = harness();
+    const { service, tx, audit, vatRates, approvalForms } = harness();
     const submittedAt = new Date("2026-07-17T01:00:00.000Z");
     const submittedVersion = {
       ...versionLock,
@@ -1394,6 +1426,12 @@ describe("SpotProcurementApplicationService", () => {
     expect(vatRates.requireEnabledOption).not.toHaveBeenCalled();
     expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
     expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_version",
+      "version-1",
+      "manager-1",
+      "approval.return_to_applicant"
+    );
   });
 
   it("reuses the ordinary-applicant self-review guard at the current frozen node", async () => {
@@ -1429,7 +1467,7 @@ describe("SpotProcurementApplicationService", () => {
   });
 
   it("withdraws approval by preserving the submitted version and cloning a new editable draft", async () => {
-    const { service, prisma, tx, audit, pilot } = harness();
+    const { service, prisma, tx, audit, pilot, approvalForms } = harness();
     const submittedAt = new Date("2026-07-17T01:00:00.000Z");
     const submittedVersion = {
       ...versionLock,
@@ -1582,6 +1620,12 @@ describe("SpotProcurementApplicationService", () => {
     expect(submittedVersion.submittedAt).toBe(submittedAt);
     expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
     expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+    expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
+      "spot_procurement_version",
+      "version-1",
+      "material-1",
+      "approval.withdraw"
+    );
 
     tx.spotProcurementVersion.update.mockClear();
     role(tx, "material_staff");

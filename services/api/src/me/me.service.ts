@@ -7,6 +7,7 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import { requiresApprovalSelfReviewConfirmation } from "../approval/approval-self-review";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
@@ -97,12 +98,14 @@ interface ApprovalAssignment {
   fromRoleKey?: unknown;
 }
 
-const RELEVANT_APPROVAL_TYPES = [
+const LEGACY_APPROVAL_TYPES = [
   "contract_version",
   "settlement",
   "payment_request",
   "project_expense_request"
 ] as const;
+const SPOT_APPROVAL_TYPES = ["spot_procurement_version", "spot_procurement_payment"] as const;
+const RELEVANT_APPROVAL_TYPES = [...LEGACY_APPROVAL_TYPES, ...SPOT_APPROVAL_TYPES] as const;
 
 const activeTakeoverStatuses = ["draft", "pending_review", "confirmed", "needs_supplement"];
 
@@ -213,7 +216,9 @@ export class MeService {
       "contract.approve",
       "settlement.approve",
       "payment.approve",
-      "project_expense.approve"
+      "project_expense.approve",
+      "spot_procurement.approve",
+      "spot_procurement.payment.approve"
     ]);
     if (approvalProjects.length) {
       const approvalCounts = await this.countApprovalTodos(scopes, userId);
@@ -221,7 +226,11 @@ export class MeService {
         id: "approval_todo",
         title: "待审批",
         count: approvalCounts.total,
-        description: `合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}`,
+        description: `合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
+          approvalCounts.spotProcurement || approvalCounts.spotPayment
+            ? ` · 零星采购 ${approvalCounts.spotProcurement} · 零星付款 ${approvalCounts.spotPayment}`
+            : ""
+        }`,
         targetPath: this.approvalTargetPath(approvalCounts),
         actionText: "去处理",
         tone: "primary"
@@ -677,8 +686,7 @@ export class MeService {
   ): Promise<WorkItem[]> {
     const instances = (await this.prisma.approvalInstance.findMany({
       where: {
-        status: "in_progress",
-        businessType: { in: [...RELEVANT_APPROVAL_TYPES] },
+        ...this.activeApprovalWhere(),
         ...(mode === "started" ? { applicantUserId: userId } : {})
       },
       orderBy: { updatedAt: "desc" },
@@ -694,12 +702,15 @@ export class MeService {
         continue;
       }
       const roleKeys = roleKeysByProject.get(detail.projectId) ?? [];
-      const isProjectExpense = instance.businessType === "project_expense_request";
-      const hasDirectTodo = isProjectExpense
-        ? this.hasDirectRoleTodo(node, roleKeys)
-        : this.canActOnApprovalNode(node, roleKeys, userId);
+      const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
+      const hasRoleTodo = supportsIndirect
+        ? this.canActOnApprovalNode(node, roleKeys, userId)
+        : this.hasDirectRoleTodo(node, roleKeys);
+      const hasDirectTodo =
+        hasRoleTodo &&
+        this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
       const hasDelegatedTodo =
-        mode === "started" || isProjectExpense || hasDirectTodo
+        mode === "started" || !supportsIndirect || hasDirectTodo
           ? false
           : await this.hasDelegatedApprovalTodo(userId, detail.projectId, node, evaluatedAt);
       if (mode === "pending" && !hasDirectTodo && !hasDelegatedTodo) {
@@ -708,7 +719,7 @@ export class MeService {
       if (mode === "delegated" && !this.hasAssignmentTodo(node, userId) && !hasDelegatedTodo) {
         continue;
       }
-      if (mode === "delegated" && isProjectExpense) {
+      if (mode === "delegated" && !supportsIndirect) {
         continue;
       }
 
@@ -777,7 +788,10 @@ export class MeService {
         type: "approval",
         title: detail.title,
         projectName: detail.projectName,
+        projectId: detail.projectId,
         businessCode: detail.businessCode,
+        businessType: instance.businessType,
+        businessId: instance.businessId,
         amountText: this.amountText(detail.amountCents),
         currentNode: `已处理：${this.approvalActionLabel(log.action)}`,
         stayedText: this.stayedText(log.createdAt),
@@ -807,8 +821,14 @@ export class MeService {
     const expenseIds = instances
       .filter((instance) => instance.businessType === "project_expense_request")
       .map((instance) => instance.businessId);
+    const spotVersionIds = instances
+      .filter((instance) => instance.businessType === "spot_procurement_version")
+      .map((instance) => instance.businessId);
+    const spotPaymentIds = instances
+      .filter((instance) => instance.businessType === "spot_procurement_payment")
+      .map((instance) => instance.businessId);
 
-    const [versions, settlements, payments, expenses] = await Promise.all([
+    const [versions, settlements, payments, expenses, spotVersions, spotPayments] = await Promise.all([
       contractVersionIds.length
         ? this.prisma.contractVersion.findMany({
             where: { id: { in: contractVersionIds } },
@@ -839,6 +859,30 @@ export class MeService {
               requestedAmountCents: true
             }
           })
+        : Promise.resolve([]),
+      spotVersionIds.length
+        ? this.prisma.spotProcurementVersion.findMany({
+            where: { id: { in: spotVersionIds } },
+            select: {
+              id: true,
+              procurementId: true,
+              totalAmountCents: true,
+              supplierNameSnapshot: true
+            }
+          })
+        : Promise.resolve([]),
+      spotPaymentIds.length
+        ? this.prisma.spotProcurementPayment.findMany({
+            where: { id: { in: spotPaymentIds } },
+            select: {
+              id: true,
+              projectId: true,
+              procurementId: true,
+              code: true,
+              settlementAmountCents: true,
+              payeeNameSnapshot: true
+            }
+          })
         : Promise.resolve([])
     ]);
     const contractIds = [
@@ -853,11 +897,29 @@ export class MeService {
         })
       : [];
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const spotProcurementIds = [
+      ...spotVersions.map((version) => version.procurementId),
+      ...spotPayments.map((payment) => payment.procurementId)
+    ];
+    const spotProcurements = spotProcurementIds.length
+      ? await this.prisma.spotProcurement.findMany({
+          where: { id: { in: [...new Set(spotProcurementIds)] } },
+          select: {
+            id: true,
+            projectId: true,
+            code: true,
+            supplierNameSnapshot: true
+          }
+        })
+      : [];
+    const spotProcurementById = new Map(spotProcurements.map((row) => [row.id, row]));
     const projectNames = await this.projectNames([
       ...contracts.map((contract) => contract.projectId),
       ...settlements.map((settlement) => settlement.projectId),
       ...payments.map((payment) => payment.projectId),
-      ...expenses.map((expense) => expense.projectId)
+      ...expenses.map((expense) => expense.projectId),
+      ...spotProcurements.map((procurement) => procurement.projectId),
+      ...spotPayments.map((payment) => payment.projectId)
     ]);
 
     for (const version of versions) {
@@ -905,6 +967,29 @@ export class MeService {
         targetPath: `/项目支出/${expense.projectId}/${expense.id}`
       });
     }
+    for (const version of spotVersions) {
+      const procurement = spotProcurementById.get(version.procurementId);
+      if (!procurement) continue;
+      result.set(`spot_procurement_version:${version.id}`, {
+        projectId: procurement.projectId,
+        projectName: projectNames.get(procurement.projectId) ?? procurement.projectId,
+        businessCode: procurement.code,
+        title: `零星采购审批：${version.supplierNameSnapshot || procurement.supplierNameSnapshot}`,
+        amountCents: version.totalAmountCents,
+        targetPath: `/零星采购/${procurement.id}`
+      });
+    }
+    for (const payment of spotPayments) {
+      const procurement = spotProcurementById.get(payment.procurementId);
+      result.set(`spot_procurement_payment:${payment.id}`, {
+        projectId: payment.projectId,
+        projectName: projectNames.get(payment.projectId) ?? payment.projectId,
+        businessCode: payment.code,
+        title: `零星材料付款审批：${payment.payeeNameSnapshot || procurement?.supplierNameSnapshot || payment.code}`,
+        amountCents: payment.settlementAmountCents,
+        targetPath: `/零星材料付款/${payment.id}`
+      });
+    }
 
     return result;
   }
@@ -923,12 +1008,19 @@ export class MeService {
     const roleKeysByProject = new Map(scopes.map((scope) => [scope.projectId, scope.roleKeys]));
     const instances = await this.prisma.approvalInstance.findMany({
       where: {
-        status: "in_progress",
-        businessType: { in: [...RELEVANT_APPROVAL_TYPES] }
+        ...this.activeApprovalWhere()
       }
     });
     const businessProjectIds = await this.approvalBusinessProjectIds(instances);
-    const counts = { contract: 0, settlement: 0, payment: 0, expense: 0, total: 0 };
+    const counts = {
+      contract: 0,
+      settlement: 0,
+      payment: 0,
+      expense: 0,
+      spotProcurement: 0,
+      spotPayment: 0,
+      total: 0
+    };
 
     for (const instance of instances) {
       const projectId = businessProjectIds.get(`${instance.businessType}:${instance.businessId}`);
@@ -944,12 +1036,15 @@ export class MeService {
       if (!currentNode) {
         continue;
       }
-      const isProjectExpense = instance.businessType === "project_expense_request";
-      const hasDirectTodo = isProjectExpense
-        ? this.hasDirectRoleTodo(currentNode, roleKeys)
-        : this.canActOnApprovalNode(currentNode, roleKeys, userId);
+      const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
+      const hasRoleTodo = supportsIndirect
+        ? this.canActOnApprovalNode(currentNode, roleKeys, userId)
+        : this.hasDirectRoleTodo(currentNode, roleKeys);
+      const hasDirectTodo =
+        hasRoleTodo &&
+        this.canShowSpotApplicantTodo(instance, currentNode, roleKeys, userId);
       const hasDelegatedTodo =
-        !isProjectExpense && !hasDirectTodo
+        supportsIndirect && !hasDirectTodo
           ? await this.hasDelegatedApprovalTodo(
               userId,
               projectId,
@@ -965,6 +1060,8 @@ export class MeService {
       if (instance.businessType === "settlement") counts.settlement += 1;
       if (instance.businessType === "payment_request") counts.payment += 1;
       if (instance.businessType === "project_expense_request") counts.expense += 1;
+      if (instance.businessType === "spot_procurement_version") counts.spotProcurement += 1;
+      if (instance.businessType === "spot_procurement_payment") counts.spotPayment += 1;
       counts.total += 1;
     }
 
@@ -987,8 +1084,14 @@ export class MeService {
     const expenseIds = instances
       .filter((instance) => instance.businessType === "project_expense_request")
       .map((instance) => instance.businessId);
+    const spotVersionIds = instances
+      .filter((instance) => instance.businessType === "spot_procurement_version")
+      .map((instance) => instance.businessId);
+    const spotPaymentIds = instances
+      .filter((instance) => instance.businessType === "spot_procurement_payment")
+      .map((instance) => instance.businessId);
 
-    const [versions, settlements, payments, expenses] = await Promise.all([
+    const [versions, settlements, payments, expenses, spotVersions, spotPayments] = await Promise.all([
       contractVersionIds.length
         ? this.prisma.contractVersion.findMany({
             where: { id: { in: contractVersionIds } },
@@ -1012,15 +1115,40 @@ export class MeService {
             where: { id: { in: expenseIds } },
             select: { id: true, projectId: true }
           })
+        : Promise.resolve([]),
+      spotVersionIds.length
+        ? this.prisma.spotProcurementVersion.findMany({
+            where: { id: { in: spotVersionIds } },
+            select: { id: true, procurementId: true }
+          })
+        : Promise.resolve([]),
+      spotPaymentIds.length
+        ? this.prisma.spotProcurementPayment.findMany({
+            where: { id: { in: spotPaymentIds } },
+            select: { id: true, projectId: true }
+          })
         : Promise.resolve([])
     ]);
-    const contracts = versions.length
-      ? await this.prisma.contract.findMany({
-          where: { id: { in: [...new Set(versions.map((version) => version.contractId))] } },
-          select: { id: true, projectId: true }
-        })
-      : [];
+    const [contracts, spotProcurements] = await Promise.all([
+      versions.length
+        ? this.prisma.contract.findMany({
+            where: { id: { in: [...new Set(versions.map((version) => version.contractId))] } },
+            select: { id: true, projectId: true }
+          })
+        : Promise.resolve([]),
+      spotVersions.length
+        ? this.prisma.spotProcurement.findMany({
+            where: {
+              id: { in: [...new Set(spotVersions.map((version) => version.procurementId))] }
+            },
+            select: { id: true, projectId: true }
+          })
+        : Promise.resolve([])
+    ]);
     const projectIdByContractId = new Map(contracts.map((contract) => [contract.id, contract.projectId]));
+    const projectIdBySpotProcurementId = new Map(
+      spotProcurements.map((procurement) => [procurement.id, procurement.projectId])
+    );
 
     for (const version of versions) {
       const projectId = projectIdByContractId.get(version.contractId);
@@ -1030,6 +1158,13 @@ export class MeService {
     for (const payment of payments) ids.set(`payment_request:${payment.id}`, payment.projectId);
     for (const expense of expenses) {
       ids.set(`project_expense_request:${expense.id}`, expense.projectId);
+    }
+    for (const version of spotVersions) {
+      const projectId = projectIdBySpotProcurementId.get(version.procurementId);
+      if (projectId) ids.set(`spot_procurement_version:${version.id}`, projectId);
+    }
+    for (const payment of spotPayments) {
+      ids.set(`spot_procurement_payment:${payment.id}`, payment.projectId);
     }
 
     return ids;
@@ -1042,6 +1177,51 @@ export class MeService {
 
     const node = frozenNodes[index] as ApprovalNode | undefined;
     return node ?? null;
+  }
+
+  private activeApprovalWhere(): Prisma.ApprovalInstanceWhereInput {
+    return {
+      OR: [
+        {
+          status: "in_progress",
+          businessType: { in: [...LEGACY_APPROVAL_TYPES] }
+        },
+        {
+          status: "approval_pending",
+          businessType: { in: [...SPOT_APPROVAL_TYPES] }
+        }
+      ]
+    };
+  }
+
+  private supportsIndirectApproval(businessType: string) {
+    return (
+      businessType !== "project_expense_request" &&
+      businessType !== "spot_procurement_version" &&
+      businessType !== "spot_procurement_payment"
+    );
+  }
+
+  private canShowSpotApplicantTodo(
+    instance: Pick<ApprovalInstanceForWorkItem, "businessType" | "applicantUserId">,
+    node: ApprovalNode,
+    roleKeys: RoleKey[],
+    userId: string
+  ) {
+    if (
+      !SPOT_APPROVAL_TYPES.includes(
+        instance.businessType as (typeof SPOT_APPROVAL_TYPES)[number]
+      ) ||
+      instance.applicantUserId !== userId
+    ) {
+      return true;
+    }
+    return requiresApprovalSelfReviewConfirmation({
+      applicantUserId: instance.applicantUserId,
+      actorUserId: userId,
+      actorRoleKeys: roleKeys,
+      nodeRoleKeys: this.stringArray(node.roleKeys) as RoleKey[]
+    });
   }
 
   private canActOnApprovalNode(node: ApprovalNode, roleKeys: RoleKey[], userId: string) {
@@ -1187,10 +1367,14 @@ export class MeService {
     settlement: number;
     payment: number;
     expense: number;
+    spotProcurement: number;
+    spotPayment: number;
   }) {
     if (counts.payment > 0) return "/付款管理";
     if (counts.settlement > 0) return "/结算管理";
     if (counts.expense > 0) return "/项目经营";
+    if (counts.spotPayment > 0) return "/零星材料付款工作台";
+    if (counts.spotProcurement > 0) return "/零星采购工作台";
     return "/合同管理";
   }
 }

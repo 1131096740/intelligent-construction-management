@@ -1,5 +1,6 @@
 import { ForbiddenException } from "@nestjs/common";
 import type { ExecutionContext } from "@nestjs/common";
+import { SpotProcurementAccessService } from "../../spot-procurement/spot-procurement-access.service";
 import { PermissionGuard } from "./permission.guard";
 
 function contextWithRequest(request: unknown): ExecutionContext {
@@ -13,6 +14,16 @@ function contextWithRequest(request: unknown): ExecutionContext {
 }
 
 describe("PermissionGuard", () => {
+  beforeEach(() => {
+    jest
+      .spyOn(SpotProcurementAccessService.prototype, "findPaymentProjectId")
+      .mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   function buildPrisma(roleKey: string) {
     return {
       userPosition: {
@@ -402,6 +413,9 @@ describe("PermissionGuard", () => {
         findFirst: jest.fn()
       }
     };
+    const access = {
+      findPaymentProjectId: jest.fn().mockResolvedValue("project-spot")
+    };
     const guard = new PermissionGuard(
       {
         getAllAndOverride: jest
@@ -409,7 +423,8 @@ describe("PermissionGuard", () => {
           .mockReturnValueOnce(undefined)
           .mockReturnValueOnce("spot_procurement.payment.submit")
       } as never,
-      prisma as never
+      prisma as never,
+      access as never
     );
 
     await expect(
@@ -421,10 +436,7 @@ describe("PermissionGuard", () => {
         })
       )
     ).resolves.toBe(true);
-    expect(prisma.spotProcurementPayment.findUnique).toHaveBeenCalledWith({
-      where: { id: "spot-payment-1" },
-      select: { projectId: true }
-    });
+    expect(access.findPaymentProjectId).toHaveBeenCalledWith("spot-payment-1");
     expect(prisma.paymentRequest.findFirst).not.toHaveBeenCalled();
     expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
       where: { userId: "material-1", projectId: "project-spot" }
@@ -1223,5 +1235,96 @@ describe("PermissionGuard", () => {
     expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
       where: { userId: "user-1", projectId: "project-a" }
     });
+  });
+
+  it("resolves procurementPaymentId aliases from the real spot payment", async () => {
+    const access = {
+      requirePaymentProjectId: jest.fn().mockResolvedValue("project-real")
+    };
+    const prisma = buildPrisma("material_director");
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("spot_procurement.payment.submit")
+      } as never,
+      prisma as never,
+      access as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "material-1" },
+          params: { procurementPaymentId: "spot-payment-1" },
+          body: { projectId: "forged-project" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(access.requirePaymentProjectId).toHaveBeenCalledWith("spot-payment-1");
+  });
+
+  it.each([
+    ["procurementId", "missing-procurement"],
+    ["procurementPaymentId", "missing-payment"],
+    ["receiptId", "future-receipt"]
+  ])("fails closed for a missing %s without using a forged projectId", async (parameter, id) => {
+    const access = {
+      requireProcurementProjectId: jest.fn().mockRejectedValue(new ForbiddenException()),
+      requirePaymentProjectId: jest.fn().mockRejectedValue(new ForbiddenException()),
+      requireReceiptProjectId: jest.fn().mockRejectedValue(new ForbiddenException())
+    };
+    const prisma = buildPrisma("project_manager");
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("spot_procurement.approve")
+      } as never,
+      prisma as never,
+      access as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { [parameter]: id },
+          body: { projectId: "forged-project" }
+        })
+      )
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.userPosition.findMany).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for an unknown paymentId instead of falling back to body projectId", async () => {
+    const access = { findPaymentProjectId: jest.fn().mockResolvedValue(null) };
+    const prisma = {
+      ...buildPrisma("project_manager"),
+      paymentRequest: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("payment.approve")
+      } as never,
+      prisma as never,
+      access as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { paymentId: "missing-payment" },
+          body: { projectId: "forged-project" }
+        })
+      )
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.userPosition.findMany).not.toHaveBeenCalled();
   });
 });
