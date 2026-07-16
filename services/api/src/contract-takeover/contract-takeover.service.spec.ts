@@ -270,6 +270,130 @@ describe("ContractTakeoverService", () => {
     });
   });
 
+  it("preserves historical tax gaps and creates unconfirmed pricing facts without guessing", async () => {
+    const tx = {
+      project: {
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      contract: {
+        create: jest.fn().mockResolvedValue({ id: "contract-1" })
+      },
+      contractVersion: {
+        create: jest.fn().mockResolvedValue({ id: "contract-version-1" })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: "bill-1" })
+      },
+      contractBillRow: {
+        deleteMany: jest.fn(),
+        createMany: jest.fn().mockResolvedValue({ count: 2 })
+      },
+      paymentTermsVersion: {
+        create: jest.fn().mockResolvedValue({ id: "terms-version-1" })
+      },
+      paymentTermsStage: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractTakeover: {
+        create: jest.fn().mockResolvedValue(takeoverRecord())
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never, auth as never);
+
+    await service.create(
+      "project-1",
+      {
+        code: "HT-HIS-TAX-001",
+        name: "历史含税计价合同",
+        counterparty: "历史供应商",
+        amountCents: "0",
+        signedAt: "2026-01-10",
+        takeoverLevel: "B",
+        lifecycleStatus: "in_progress",
+        taxMode: "single_rate",
+        defaultTaxRatePercent: "13",
+        pricingItems: [
+          {
+            billKey: "main",
+            billName: "历史清单",
+            rowKey: "row-complete",
+            itemName: "已知项目",
+            unit: "项",
+            estimatedQuantity: "2",
+            taxInclusiveUnitPrice: "100"
+          },
+          {
+            billKey: "main",
+            billName: "历史清单",
+            rowKey: "row-missing",
+            itemName: "原合同未明确价格的项目",
+            unit: "项"
+          }
+        ]
+      },
+      "contract-user"
+    );
+
+    expect(tx.contractVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        invoiceType: null,
+        taxMode: "single_rate",
+        defaultTaxRatePercent: "13",
+        taxFactStatus: "unconfirmed",
+        pricingNature: "framework",
+        amountLimitType: "unlimited",
+        amountSource: "bill_sum"
+      })
+    });
+    expect(tx.contractBill.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractVersionId: "contract-version-1",
+        billKey: "main",
+        pricingMode: "tax_inclusive",
+        quantityScale: 2,
+        unitPriceScale: 2,
+        taxInclusiveAmountCents: 20_000n,
+        taxExclusiveAmountCents: 17_699n,
+        taxAmountCents: 2_301n
+      })
+    });
+    expect(tx.contractBillRow.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          contractBillId: "bill-1",
+          rowKey: "row-complete",
+          quantity: "2",
+          unitPrice: "100",
+          taxRate: "13",
+          taxRateSource: "version_default",
+          pricingFactStatus: "unconfirmed",
+          precisionPolicy: "two_decimal",
+          taxInclusiveAmountCents: 20_000n,
+          taxExclusiveAmountCents: 17_699n,
+          taxAmountCents: 2_301n
+        }),
+        expect.objectContaining({
+          contractBillId: "bill-1",
+          rowKey: "row-missing",
+          quantity: null,
+          unitPrice: null,
+          taxRate: "13",
+          pricingFactStatus: "unconfirmed",
+          taxInclusiveAmountCents: null,
+          taxExclusiveAmountCents: null,
+          taxAmountCents: null
+        })
+      ]
+    });
+  });
+
   it("rejects negative historical balance values before writing", async () => {
     const tx = {
       project: {
@@ -469,7 +593,7 @@ describe("ContractTakeoverService", () => {
       totalRows: 4,
       readyRows: 1,
       blockedRows: 3,
-      warningRows: 2,
+      warningRows: 4,
       existingCodes: ["HT-HIS-EXISTING"],
       duplicatedCodes: ["HT-HIS-DUP"]
     });
@@ -548,7 +672,7 @@ describe("ContractTakeoverService", () => {
         }),
         expect.objectContaining({
           field: "amountCents",
-          message: "合同金额必须填写大于 0 的金额"
+          message: "合同金额必须大于 0；无总价框架合同可填写 0，但必须提供计价清单"
         })
       ])
     );
@@ -1730,7 +1854,12 @@ describe("ContractTakeoverService", () => {
     });
     expect(tx.contractVersion.update).toHaveBeenCalledWith({
       where: { id: "contract-version-1" },
-      data: { amountCents: BigInt(1_200_000) }
+      data: {
+        amountCents: BigInt(1_200_000),
+        pricingNature: "fixed_total",
+        amountLimitType: "capped",
+        amountSource: "manual"
+      }
     });
     expect(tx.paymentTermsVersion.update).toHaveBeenCalledWith({
       where: { id: "terms-version-1" },

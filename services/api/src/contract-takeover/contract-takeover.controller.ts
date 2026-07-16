@@ -1,10 +1,25 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Optional,
+  Param,
+  Patch,
+  Post,
+  Res,
+  StreamableFile
+} from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractTakeoverService } from "./contract-takeover.service";
+import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
 import { AttachContractTakeoverEvidenceDto } from "./dto/attach-contract-takeover-evidence.dto";
 import { ConfirmContractTakeoverDto } from "./dto/confirm-contract-takeover.dto";
+import {
+  ApplyContractTakeoverExcelDto,
+  PreviewContractTakeoverExcelDto
+} from "./dto/contract-takeover-excel.dto";
 import {
   CreateContractTakeoverDto,
   UpdateContractTakeoverDto
@@ -18,7 +33,11 @@ import { ReviewContractTakeoverImportBatchDto } from "./dto/review-contract-take
 
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
-  constructor(private readonly takeovers: ContractTakeoverService) {}
+  constructor(
+    private readonly takeovers: ContractTakeoverService,
+    @Optional()
+    private readonly excel?: ContractTakeoverExcelService
+  ) {}
 
   @Get()
   @RequireProjectRole("contract.create")
@@ -41,6 +60,41 @@ export class ContractTakeoverController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.takeovers.reviewImportBatch(projectId, batchId, body, user.id);
+  }
+
+  @Get("import-template")
+  @RequireProjectRole("contract.create")
+  async exportImportTemplate(
+    @Res({ passthrough: true })
+    response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.requireExcel().exportTemplate();
+    response.set({
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.fileName)}`,
+      "Content-Length": String(result.buffer.length)
+    });
+    return new StreamableFile(result.buffer);
+  }
+
+  @Post("imports/preview")
+  @RequireProjectRole("contract.create")
+  previewExcelImport(
+    @Param("projectId") projectId: string,
+    @Body() body: PreviewContractTakeoverExcelDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.requireExcel().preview(projectId, user.id, body);
+  }
+
+  @Post("imports/apply")
+  @RequireProjectRole("contract.create")
+  applyExcelImport(
+    @Param("projectId") projectId: string,
+    @Body() body: ApplyContractTakeoverExcelDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.requireExcel().apply(projectId, user.id, body);
   }
 
   @Get(":takeoverId")
@@ -133,5 +187,12 @@ export class ContractTakeoverController {
     @Body() body: ConfirmContractTakeoverDto
   ) {
     return this.takeovers.confirm(projectId, takeoverId, user.id, body);
+  }
+
+  private requireExcel() {
+    if (!this.excel) {
+      throw new Error("历史合同 Excel 导入服务暂不可用，请稍后重试");
+    }
+    return this.excel;
   }
 }

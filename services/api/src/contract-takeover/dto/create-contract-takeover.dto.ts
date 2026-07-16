@@ -1,4 +1,18 @@
-import { IsIn, ValidateIf } from "class-validator";
+import { Type } from "class-transformer";
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  ValidateIf,
+  ValidateNested
+} from "class-validator";
+import type {
+  ContractInvoiceType,
+  ContractTaxFactSource,
+  ContractTaxMode
+} from "@jiangkong/shared-domain";
 import {
   IsCanonicalMoneyText,
   IsOptionalNonBlankText,
@@ -15,6 +29,83 @@ export type ContractLifecycleStatus =
   | "completed"
   | "terminated"
   | "disputed";
+
+export class HistoricalPricingItemDto {
+  @IsRequiredText({
+    requiredMessage: "请填写清单标识",
+    typeMessage: "清单标识必须是文字",
+    blankMessage: "请填写清单标识"
+  })
+  billKey!: string;
+
+  @IsRequiredText({
+    requiredMessage: "请填写清单名称",
+    typeMessage: "清单名称必须是文字",
+    blankMessage: "请填写清单名称"
+  })
+  billName!: string;
+
+  @IsRequiredText({
+    requiredMessage: "请填写项目标识",
+    typeMessage: "项目标识必须是文字",
+    blankMessage: "请填写项目标识"
+  })
+  rowKey!: string;
+
+  @IsOptionalNonBlankText({
+    typeMessage: "项目编码必须是文字",
+    blankMessage: "项目编码不能为空白"
+  })
+  itemCode?: string;
+
+  @IsRequiredText({
+    requiredMessage: "请填写项目名称",
+    typeMessage: "项目名称必须是文字",
+    blankMessage: "请填写项目名称"
+  })
+  itemName!: string;
+
+  @IsOptionalNonBlankText({
+    typeMessage: "规格型号必须是文字",
+    blankMessage: "规格型号不能为空白"
+  })
+  specification?: string;
+
+  @IsRequiredText({
+    requiredMessage: "请填写计量单位",
+    typeMessage: "计量单位必须是文字",
+    blankMessage: "请填写计量单位"
+  })
+  unit!: string;
+
+  @IsOptionalNonBlankText({
+    typeMessage: "预计数量必须是文字",
+    blankMessage: "预计数量不能为空白"
+  })
+  estimatedQuantity?: string;
+
+  @IsOptionalNonBlankText({
+    typeMessage: "含税单价必须是文字",
+    blankMessage: "含税单价不能为空白"
+  })
+  taxInclusiveUnitPrice?: string;
+
+  @IsOptionalNonBlankText({
+    typeMessage: "例外税率必须是文字",
+    blankMessage: "例外税率不能为空白"
+  })
+  taxRatePercentOverride?: string;
+
+  @IsOptional()
+  @IsBoolean({ message: "暂定项标记必须是布尔值" })
+  isProvisional?: boolean;
+
+  @IsOptionalNonBlankText({
+    typeMessage: "结算依据必须是文字",
+    blankMessage: "结算依据不能为空白"
+  })
+  settlementBasis?: string;
+}
 
 export class CreateContractTakeoverDto {
   @IsRequiredText({
@@ -55,6 +146,50 @@ export class CreateContractTakeoverDto {
     blankMessage: "签约主体名称不能为空白"
   })
   companyEntityName?: string;
+
+  @IsOptional()
+  @IsIn(["vat_general", "vat_special"], {
+    message: "发票类型请选择增值税普通发票或增值税专用发票"
+  })
+  invoiceType?: ContractInvoiceType;
+
+  @IsOptional()
+  @IsIn(["single_rate", "multiple_rate"], {
+    message: "计税模式请选择单一税率或特殊多税率"
+  })
+  taxMode?: ContractTaxMode;
+
+  @IsOptionalNonBlankText({
+    typeMessage: "默认税率必须是文字",
+    blankMessage: "默认税率不能为空白"
+  })
+  defaultTaxRatePercent?: string;
+
+  @IsOptional()
+  @IsIn(
+    ["contract_document", "supplement_evidence", "business_finance_confirmation"],
+    { message: "税务事实来源不在系统支持范围内" }
+  )
+  taxFactSource?: ContractTaxFactSource;
+
+  @IsOptionalNonBlankText({
+    typeMessage: "税务事实确认说明必须是文字",
+    blankMessage: "税务事实确认说明不能为空白"
+  })
+  taxFactExplanation?: string;
+
+  @IsOptionalNonBlankText({
+    typeMessage: "税务事实依据文件标识必须是文字",
+    blankMessage: "税务事实依据文件标识不能为空白"
+  })
+  taxFactEvidenceFileId?: string;
+
+  @IsOptional()
+  @IsArray({ message: "历史计价清单必须是数组" })
+  @ArrayMaxSize(2000, { message: "单份历史合同最多导入 2000 条计价项目" })
+  @ValidateNested({ each: true, message: "每条历史计价项目必须是对象" })
+  @Type(() => HistoricalPricingItemDto)
+  pricingItems?: HistoricalPricingItemDto[];
 
   @IsCanonicalMoneyText({
     typeMessage: "合同金额格式不正确",

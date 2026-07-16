@@ -11,6 +11,8 @@ const takeoverBodyRoutes = [
   ["create", 1],
   ["precheckImport", 1],
   ["createDraftsFromImport", 1],
+  ["previewExcelImport", 1],
+  ["applyExcelImport", 1],
   ["updateDraft", 2],
   ["attachEvidence", 2],
   ["recordCorrection", 2],
@@ -51,6 +53,20 @@ const validTakeoverRouteBodies = [
   ],
   ["create", 1, validTakeover],
   ["precheckImport", 1, { rows: [validImportRow] }],
+  ["previewExcelImport", 1, { fileId: "file-1" }],
+  [
+    "applyExcelImport",
+    1,
+    {
+      fileId: "file-1",
+      fileSha256: "sha256-value",
+      importFingerprint: "fingerprint",
+      takeoverCutoffDate: "2026-07-10",
+      responsibleUserId: "director-1",
+      reviewComment: "完成批次复核",
+      acceptanceConclusion: "待主管确认后接管"
+    }
+  ],
   [
     "createDraftsFromImport",
     1,
@@ -318,6 +334,9 @@ describe("ContractTakeoverController", () => {
     expectProjectAction(ContractTakeoverController.prototype.updateDraft, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.precheckImport, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.createDraftsFromImport, "contract.create");
+    expectProjectAction(ContractTakeoverController.prototype.exportImportTemplate, "contract.create");
+    expectProjectAction(ContractTakeoverController.prototype.previewExcelImport, "contract.create");
+    expectProjectAction(ContractTakeoverController.prototype.applyExcelImport, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.attachEvidence, "contract.create");
     expectProjectAction(ContractTakeoverController.prototype.submitReview, "contract.submit");
   });

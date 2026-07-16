@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import {
+  calculateBillRow,
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
   parseMoneyCents,
@@ -20,6 +22,7 @@ import type {
   ContractLifecycleStatus,
   ContractTakeoverLevel,
   CreateContractTakeoverDto,
+  HistoricalPricingItemDto,
   UpdateContractTakeoverDto
 } from "./dto/create-contract-takeover.dto";
 import type { PrecheckContractTakeoverImportDto } from "./dto/precheck-contract-takeover-import.dto";
@@ -91,6 +94,25 @@ const MONEY_FIELD_LABELS: Record<(typeof MONEY_FIELDS)[number], string> = {
 const IMPORT_PRECHECK_MAX_ROWS = 200;
 
 type TakeoverClient = Pick<Prisma.TransactionClient, "contractTakeover">;
+
+type HistoricalPricingItem = {
+  billKey: string;
+  billName: string;
+  rowKey: string;
+  itemCode: string | null;
+  itemName: string;
+  specification: string | null;
+  unit: string;
+  quantity: string | null;
+  unitPrice: string | null;
+  taxRatePercent: string | null;
+  taxRateSource: "version_default" | "row_override";
+  isProvisional: boolean;
+  settlementBasis: string | null;
+  taxInclusiveAmountCents: bigint | null;
+  taxExclusiveAmountCents: bigint | null;
+  taxAmountCents: bigint | null;
+};
 type TakeoverReadClient = Pick<
   Prisma.TransactionClient,
   | "contract"
@@ -109,6 +131,39 @@ type TakeoverReadClient = Pick<
 
 type ReadClientFindMany<T> = {
   findMany(args: unknown): Promise<T[]>;
+};
+
+type HistoricalContractVersionFacts = {
+  id: string;
+  amountCents: bigint;
+  invoiceType?: string | null;
+  taxMode?: string | null;
+  defaultTaxRatePercent?: Prisma.Decimal | null;
+  taxFactStatus?: string | null;
+  taxFactSource?: string | null;
+  taxFactExplanation?: string | null;
+};
+
+type HistoricalContractBillRecord = {
+  id: string;
+  contractVersionId: string;
+  billKey: string;
+  name: string;
+};
+
+type HistoricalContractBillRowRecord = {
+  contractBillId: string;
+  rowKey: string;
+  itemCode: string | null;
+  itemName: string;
+  specification: string | null;
+  unit: string;
+  quantity: Prisma.Decimal | null;
+  unitPrice: Prisma.Decimal | null;
+  taxRate: Prisma.Decimal | null;
+  pricingFactStatus: string;
+  isProvisional: boolean;
+  settlementBasis: string | null;
 };
 
 type PostConfirmationSettlementRecord = {
@@ -189,6 +244,14 @@ export interface ContractTakeoverBusinessReadModel {
   companyEntityName: string | null;
   amountCents: string;
   paymentTermsOriginalText: string;
+  invoiceType: string | null;
+  taxMode: string;
+  defaultTaxRatePercent: string | null;
+  taxFactStatus: string;
+  taxFactSource: string | null;
+  taxFactExplanation: string | null;
+  taxFactMissingFields: string[];
+  pricingItems: HistoricalPricingItemReadModel[];
   takeoverLevel: string;
   suggestedTakeoverLevel: string | null;
   takeoverLevelAdjustmentReason: string | null;
@@ -224,6 +287,22 @@ export interface ContractTakeoverBusinessReadModel {
   postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface HistoricalPricingItemReadModel {
+  billKey: string;
+  billName: string;
+  rowKey: string;
+  itemCode: string | null;
+  itemName: string;
+  specification: string | null;
+  unit: string;
+  estimatedQuantity: string | null;
+  taxInclusiveUnitPrice: string | null;
+  taxRatePercent: string | null;
+  pricingFactStatus: string;
+  isProvisional: boolean;
+  settlementBasis: string | null;
 }
 
 export interface ContractTakeoverPostConfirmationVerificationReadModel {
@@ -395,11 +474,29 @@ export class ContractTakeoverService {
           changeType: "historical_takeover",
           status: "draft",
           amountCents: dbMoneyToBigInt(data.amountCents, "合同金额"),
+          pricingNature: data.pricingNature,
+          amountLimitType: data.amountLimitType,
+          amountSource: data.amountSource,
+          invoiceType: data.invoiceType,
+          taxMode: data.taxMode,
+          defaultTaxRatePercent: data.defaultTaxRatePercent,
+          taxFactStatus: "unconfirmed",
+          taxFactSource: data.taxFactSource,
+          taxFactExplanation: data.taxFactExplanation,
+          taxFactEvidenceFileId: data.taxFactEvidenceFileId,
           draftData: { historicalTakeover: true } as Prisma.InputJsonValue,
           templateSnapshot: { historicalTakeover: true } as Prisma.InputJsonValue,
           clauseSnapshot: [] as Prisma.InputJsonValue
         }
       });
+
+      if (data.pricingItems.length) {
+        await this.replaceHistoricalPricingItems(
+          tx,
+          version.id,
+          data.pricingItems
+        );
+      }
 
       const terms = await tx.paymentTermsVersion.create({
         data: {
@@ -529,8 +626,31 @@ export class ContractTakeoverService {
       });
       await tx.contractVersion.update({
         where: { id: takeover.contractVersionId },
-        data: { amountCents: dbMoneyToBigInt(data.amountCents, "合同金额") }
+        data: {
+          amountCents: dbMoneyToBigInt(data.amountCents, "合同金额"),
+          pricingNature: data.pricingNature,
+          amountLimitType: data.amountLimitType,
+          amountSource: data.amountSource,
+          ...(data.taxFactsProvided
+            ? {
+                invoiceType: data.invoiceType,
+                taxMode: data.taxMode,
+                defaultTaxRatePercent: data.defaultTaxRatePercent,
+                taxFactStatus: "unconfirmed",
+                taxFactSource: data.taxFactSource,
+                taxFactExplanation: data.taxFactExplanation,
+                taxFactEvidenceFileId: data.taxFactEvidenceFileId
+              }
+            : {})
+        }
       });
+      if (data.pricingItemsProvided) {
+        await this.replaceHistoricalPricingItems(
+          tx,
+          takeover.contractVersionId,
+          data.pricingItems
+        );
+      }
       await tx.paymentTermsVersion.update({
         where: { id: takeover.paymentTermsVersionId },
         data: { originalText: data.paymentTermsOriginalText ?? "" }
@@ -1164,6 +1284,10 @@ export class ContractTakeoverService {
       paymentExecution?: ReadClientFindMany<PostConfirmationPaymentExecutionRecord>;
       financeRecord?: ReadClientFindMany<PostConfirmationFinanceRecord>;
     };
+    const pricingClient = client as unknown as {
+      contractBill?: ReadClientFindMany<HistoricalContractBillRecord>;
+      contractBillRow?: ReadClientFindMany<HistoricalContractBillRowRecord>;
+    };
     const paymentTermsVersionIds = unique(takeovers.map((takeover) => takeover.paymentTermsVersionId));
     const batchIds = unique(
       takeovers
@@ -1184,7 +1308,16 @@ export class ContractTakeoverService {
       }),
       client.contractVersion.findMany({
         where: { id: { in: contractVersionIds } },
-        select: { id: true, amountCents: true }
+        select: {
+          id: true,
+          amountCents: true,
+          invoiceType: true,
+          taxMode: true,
+          defaultTaxRatePercent: true,
+          taxFactStatus: true,
+          taxFactSource: true,
+          taxFactExplanation: true
+        }
       }),
       typeof paymentTermsClient?.findMany === "function"
         ? paymentTermsClient.findMany({
@@ -1211,6 +1344,40 @@ export class ContractTakeoverService {
           })
         : Promise.resolve([])
     ]);
+    const contractBills =
+      typeof pricingClient.contractBill?.findMany === "function"
+        ? await pricingClient.contractBill.findMany({
+            where: { contractVersionId: { in: contractVersionIds } },
+            orderBy: [{ contractVersionId: "asc" }, { billKey: "asc" }],
+            select: {
+              id: true,
+              contractVersionId: true,
+              billKey: true,
+              name: true
+            }
+          })
+        : [];
+    const contractBillRows =
+      typeof pricingClient.contractBillRow?.findMany === "function" && contractBills.length
+        ? await pricingClient.contractBillRow.findMany({
+            where: { contractBillId: { in: contractBills.map((bill) => bill.id) } },
+            orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
+            select: {
+              contractBillId: true,
+              rowKey: true,
+              itemCode: true,
+              itemName: true,
+              specification: true,
+              unit: true,
+              quantity: true,
+              unitPrice: true,
+              taxRate: true,
+              pricingFactStatus: true,
+              isProvisional: true,
+              settlementBasis: true
+            }
+          })
+        : [];
     const responsibleUserIds = unique(
       takeovers
         .map((takeover) => takeover.responsibleUserId)
@@ -1280,6 +1447,30 @@ export class ContractTakeoverService {
 
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const versionById = new Map(versions.map((version) => [version.id, version]));
+    const billById = new Map(contractBills.map((bill) => [bill.id, bill]));
+    const pricingItemsByVersionId = new Map<string, HistoricalPricingItemReadModel[]>();
+    for (const row of contractBillRows) {
+      const bill = billById.get(row.contractBillId);
+      if (!bill) continue;
+      pricingItemsByVersionId.set(bill.contractVersionId, [
+        ...(pricingItemsByVersionId.get(bill.contractVersionId) ?? []),
+        {
+          billKey: bill.billKey,
+          billName: bill.name,
+          rowKey: row.rowKey,
+          itemCode: row.itemCode,
+          itemName: row.itemName,
+          specification: row.specification,
+          unit: row.unit,
+          estimatedQuantity: row.quantity?.toString() ?? null,
+          taxInclusiveUnitPrice: row.unitPrice?.toString() ?? null,
+          taxRatePercent: row.taxRate?.toString() ?? null,
+          pricingFactStatus: row.pricingFactStatus,
+          isProvisional: row.isProvisional,
+          settlementBasis: row.settlementBasis
+        }
+      ]);
+    }
     const termsById = new Map(terms.map((term) => [term.id, term]));
     const batchById = new Map(batches.map((batch) => [batch.id, batch]));
     const fileById = new Map(files.map((file) => [file.id, file]));
@@ -1315,6 +1506,8 @@ export class ContractTakeoverService {
         counterparty: contractById.get(takeover.contractId)?.counterparty ?? "未读取相对方",
         companyEntityName: contractById.get(takeover.contractId)?.companyEntityName ?? null,
         amountCents: versionById.get(takeover.contractVersionId)?.amountCents ?? 0n,
+        contractVersion: versionById.get(takeover.contractVersionId) ?? null,
+        pricingItems: pricingItemsByVersionId.get(takeover.contractVersionId) ?? [],
         paymentTermsOriginalText: termsById.get(takeover.paymentTermsVersionId)?.originalText ?? "",
         batchNo: takeover.takeoverBatchId
           ? batchById.get(takeover.takeoverBatchId)?.batchNo ?? null
@@ -1386,6 +1579,8 @@ export class ContractTakeoverService {
       counterparty: string;
       companyEntityName: string | null;
       amountCents: bigint;
+      contractVersion?: HistoricalContractVersionFacts | null;
+      pricingItems?: HistoricalPricingItemReadModel[];
       paymentTermsOriginalText: string;
       batchNo?: string | null;
       responsibleUserName?: string | null;
@@ -1395,6 +1590,10 @@ export class ContractTakeoverService {
     }
   ): ContractTakeoverBusinessReadModel {
     const evidenceChecklist = takeoverEvidenceChecklist(takeover, contract.evidenceFiles);
+    const invoiceType = contract.contractVersion?.invoiceType ?? null;
+    const defaultTaxRatePercent =
+      contract.contractVersion?.defaultTaxRatePercent?.toString() ?? null;
+    const pricingItems = contract.pricingItems ?? [];
 
     return {
       id: takeover.id,
@@ -1406,6 +1605,20 @@ export class ContractTakeoverService {
       companyEntityName: contract.companyEntityName,
       amountCents: moneyString(contract.amountCents),
       paymentTermsOriginalText: contract.paymentTermsOriginalText,
+      invoiceType,
+      taxMode: contract.contractVersion?.taxMode ?? "single_rate",
+      defaultTaxRatePercent,
+      taxFactStatus: contract.contractVersion?.taxFactStatus ?? "unconfirmed",
+      taxFactSource: contract.contractVersion?.taxFactSource ?? null,
+      taxFactExplanation: contract.contractVersion?.taxFactExplanation ?? null,
+      taxFactMissingFields: [
+        ...(invoiceType ? [] : ["发票类型"]),
+        ...(defaultTaxRatePercent ? [] : ["默认税率"]),
+        ...pricingItems
+          .filter((item) => item.taxInclusiveUnitPrice === null)
+          .map((item) => `清单项目“${item.itemName}”含税单价`)
+      ],
+      pricingItems,
       takeoverLevel: takeover.takeoverLevel,
       suggestedTakeoverLevel: takeover.suggestedTakeoverLevel ?? null,
       takeoverLevelAdjustmentReason: takeover.takeoverLevelAdjustmentReason ?? null,
@@ -1614,8 +1827,17 @@ export class ContractTakeoverService {
     if (!counterparty) {
       issues.push(issue(rowNo, "counterparty", "error", "相对方不能为空"));
     }
-    if (amountValue === null || amountValue <= 0n) {
-      issues.push(issue(rowNo, "amountCents", "error", "合同金额必须填写大于 0 的金额"));
+    const rawPricingItems = Array.isArray(row["pricingItems"]) ? row["pricingItems"] : [];
+    const unlimitedFramework = amountValue === 0n && rawPricingItems.length > 0;
+    if (amountValue === null || amountValue < 0n || (amountValue === 0n && !unlimitedFramework)) {
+      issues.push(
+        issue(
+          rowNo,
+          "amountCents",
+          "error",
+          "合同金额必须大于 0；无总价框架合同可填写 0，但必须提供计价清单"
+        )
+      );
     }
     if (!isStrictDateText(signedAt)) {
       issues.push(issue(rowNo, "signedAt", "error", dateInputMessage("签订日期")));
@@ -1644,6 +1866,85 @@ export class ContractTakeoverService {
     }
     if (!stringValue(row["evidenceSummary"])) {
       issues.push(issue(rowNo, "evidenceSummary", "warning", "未填写证据说明"));
+    }
+    const invoiceType = stringValue(row["invoiceType"]);
+    const taxMode = stringValue(row["taxMode"]) || "single_rate";
+    const defaultTaxRatePercent = stringValue(row["defaultTaxRatePercent"]);
+    if (invoiceType && !["vat_general", "vat_special"].includes(invoiceType)) {
+      issues.push(
+        issue(
+          rowNo,
+          "invoiceType",
+          "error",
+          "发票类型请选择增值税普通发票或增值税专用发票"
+        )
+      );
+    } else if (!invoiceType) {
+      issues.push(
+        issue(
+          rowNo,
+          "invoiceType",
+          "warning",
+          "原合同未明确发票类型；允许接管，但后续结算提交前必须补录并确认"
+        )
+      );
+    }
+    if (!["single_rate", "multiple_rate"].includes(taxMode)) {
+      issues.push(issue(rowNo, "taxMode", "error", "计税模式请选择单一税率或特殊多税率"));
+    }
+    let normalizedDefaultRate: string | null = null;
+    if (defaultTaxRatePercent) {
+      try {
+        normalizedDefaultRate = normalizeTakeoverTaxRate(defaultTaxRatePercent, "默认税率");
+      } catch (error) {
+        issues.push(
+          issue(
+            rowNo,
+            "defaultTaxRatePercent",
+            "error",
+            error instanceof Error ? error.message : "默认税率格式不正确"
+          )
+        );
+      }
+    } else {
+      issues.push(
+        issue(
+          rowNo,
+          "defaultTaxRatePercent",
+          "warning",
+          "原合同未明确税率；允许接管，但后续结算提交前必须补录并确认"
+        )
+      );
+    }
+    const pricingItems = rawPricingItems as HistoricalPricingItemDto[];
+    try {
+      const normalizedPricingItems = normalizeHistoricalPricingItems(
+        pricingItems,
+        taxMode === "multiple_rate" ? "multiple_rate" : "single_rate",
+        normalizedDefaultRate
+      );
+      const missingPriceCount = normalizedPricingItems.filter(
+        (item) => item.unitPrice === null
+      ).length;
+      if (missingPriceCount) {
+        issues.push(
+          issue(
+            rowNo,
+            "pricingItems",
+            "warning",
+            `${missingPriceCount} 条历史清单项目含税单价未明确；只阻断包含这些项目的结算提交`
+          )
+        );
+      }
+    } catch (error) {
+      issues.push(
+        issue(
+          rowNo,
+          "pricingItems",
+          "error",
+          error instanceof Error ? error.message : "历史计价清单格式不正确"
+        )
+      );
     }
     if (!evidenceChecklist) {
       issues.push(
@@ -1726,7 +2027,15 @@ export class ContractTakeoverService {
       "合同金额",
       "合同金额必须大于 0"
     );
-    if (amountCents <= 0n) throw new BadRequestException("合同金额必须大于 0");
+    const inferredUnlimitedFramework =
+      amountCents === 0n &&
+      Array.isArray(input.pricingItems) &&
+      input.pricingItems.length > 0;
+    if (amountCents < 0n || (amountCents === 0n && !inferredUnlimitedFramework)) {
+      throw new BadRequestException(
+        "合同金额必须大于 0；无总价框架合同可填写 0，但必须提供计价清单"
+      );
+    }
     if (!TAKEOVER_LEVELS.includes(takeoverLevel as ContractTakeoverLevel)) {
       throw new Error("接管等级不正确，请重新选择");
     }
@@ -1771,11 +2080,23 @@ export class ContractTakeoverService {
     if (takeoverLevel !== suggestedLevel && !takeoverLevelAdjustmentReason && !reviewComment) {
       throw new Error("接管等级与系统建议不一致，请填写等级调整说明");
     }
+    const defaultTaxRatePercent = input.defaultTaxRatePercent?.trim()
+      ? normalizeTakeoverTaxRate(input.defaultTaxRatePercent, "默认税率")
+      : null;
+    const taxMode = input.taxMode ?? "single_rate";
+    const pricingItems = normalizeHistoricalPricingItems(
+      input.pricingItems ?? [],
+      taxMode,
+      defaultTaxRatePercent
+    );
 
     return {
       ...input,
       ...money,
       amountCents,
+      pricingNature: inferredUnlimitedFramework ? "framework" : "fixed_total",
+      amountLimitType: inferredUnlimitedFramework ? "unlimited" : "capped",
+      amountSource: inferredUnlimitedFramework ? "bill_sum" : "manual",
       code: input.code.trim(),
       name: input.name.trim(),
       counterparty: input.counterparty.trim(),
@@ -1784,11 +2105,117 @@ export class ContractTakeoverService {
       takeoverLevelAdjustmentReason:
         takeoverLevel === suggestedLevel ? null : takeoverLevelAdjustmentReason ?? reviewComment,
       signedAt,
+      invoiceType: input.invoiceType ?? null,
+      taxMode,
+      defaultTaxRatePercent,
+      taxFactSource: input.taxFactSource ?? null,
+      taxFactExplanation: input.taxFactExplanation?.trim() || null,
+      taxFactEvidenceFileId: input.taxFactEvidenceFileId?.trim() || null,
+      taxFactsProvided: [
+        input.invoiceType,
+        input.taxMode,
+        input.defaultTaxRatePercent,
+        input.taxFactSource,
+        input.taxFactExplanation,
+        input.taxFactEvidenceFileId,
+        input.pricingItems
+      ].some((value) => value !== undefined),
+      pricingItemsProvided: input.pricingItems !== undefined,
+      pricingItems,
       takeoverCutoffDate,
       responsibleUserId: input.responsibleUserId?.trim() || null,
       reviewComment,
       acceptanceConclusion: input.acceptanceConclusion?.trim() || null
     };
+  }
+
+  private async replaceHistoricalPricingItems(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    items: HistoricalPricingItem[]
+  ) {
+    const existingBills = await tx.contractBill.findMany({
+      where: { contractVersionId },
+      select: { id: true }
+    });
+    if (existingBills.length) {
+      await tx.contractBillRow.deleteMany({
+        where: { contractBillId: { in: existingBills.map((bill) => bill.id) } }
+      });
+      await tx.contractBill.deleteMany({ where: { contractVersionId } });
+    }
+    if (!items.length) return;
+
+    const bills = new Map<string, HistoricalPricingItem[]>();
+    for (const item of items) {
+      bills.set(item.billKey, [...(bills.get(item.billKey) ?? []), item]);
+    }
+    for (const [billKey, rows] of bills) {
+      const totals = rows.reduce(
+        (sum, row) => ({
+          taxInclusiveAmountCents:
+            sum.taxInclusiveAmountCents + (row.taxInclusiveAmountCents ?? 0n),
+          taxExclusiveAmountCents:
+            sum.taxExclusiveAmountCents + (row.taxExclusiveAmountCents ?? 0n),
+          taxAmountCents: sum.taxAmountCents + (row.taxAmountCents ?? 0n)
+        }),
+        {
+          taxInclusiveAmountCents: 0n,
+          taxExclusiveAmountCents: 0n,
+          taxAmountCents: 0n
+        }
+      );
+      const bill = await tx.contractBill.create({
+        data: {
+          contractVersionId,
+          billKey,
+          name: rows[0]?.billName ?? billKey,
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          schemaSnapshot: {
+            historicalTakeover: true,
+            columns: [
+              "itemCode",
+              "itemName",
+              "specification",
+              "unit",
+              "quantity",
+              "unitPrice",
+              "taxRate"
+            ]
+          } as Prisma.InputJsonValue,
+          ...totals
+        }
+      });
+      await tx.contractBillRow.createMany({
+        data: rows.map((row, index) => ({
+          contractBillId: bill.id,
+          rowKey: row.rowKey,
+          sortOrder: index + 1,
+          itemCode: row.itemCode,
+          itemName: row.itemName,
+          specification: row.specification,
+          unit: row.unit,
+          quantity: row.quantity,
+          unitPrice: row.unitPrice,
+          taxRate: row.taxRatePercent,
+          taxRateSource: row.taxRateSource,
+          pricingFactStatus: "unconfirmed",
+          precisionPolicy: "two_decimal",
+          taxInclusiveAmountCents: row.taxInclusiveAmountCents,
+          taxExclusiveAmountCents: row.taxExclusiveAmountCents,
+          taxAmountCents: row.taxAmountCents,
+          isProvisional: row.isProvisional,
+          settlementBasis: row.settlementBasis,
+          customData: {
+            historicalTakeover: true,
+            pricingFactStatus: "unconfirmed"
+          } as Prisma.InputJsonValue
+        }))
+      });
+    }
   }
 
   private importRowToCreateInput(row: Record<string, unknown>): CreateContractTakeoverDto {
@@ -1798,6 +2225,14 @@ export class ContractTakeoverService {
       counterparty: stringValue(row["counterparty"]),
       contractTypeKey: stringValue(row["contractTypeKey"]) || undefined,
       companyEntityName: stringValue(row["companyEntityName"]) || undefined,
+      invoiceType: optionalInvoiceType(row["invoiceType"]),
+      taxMode: optionalTaxMode(row["taxMode"]),
+      defaultTaxRatePercent: stringValue(row["defaultTaxRatePercent"]) || undefined,
+      taxFactSource: optionalTaxFactSource(row["taxFactSource"]),
+      taxFactExplanation: stringValue(row["taxFactExplanation"]) || undefined,
+      pricingItems: Array.isArray(row["pricingItems"])
+        ? row["pricingItems"] as HistoricalPricingItemDto[]
+        : undefined,
       amountCents: moneyTextValue(row["amountCents"]) ?? "0",
       signedAt: stringValue(row["signedAt"]),
       takeoverLevel: takeoverLevelInputValue(row["takeoverLevel"]) as ContractTakeoverLevel,
@@ -1879,6 +2314,144 @@ export class ContractTakeoverService {
       }
     });
   }
+}
+
+function normalizeHistoricalPricingItems(
+  items: CreateContractTakeoverDto["pricingItems"],
+  taxMode: "single_rate" | "multiple_rate",
+  defaultTaxRatePercent: string | null
+): HistoricalPricingItem[] {
+  const normalized: HistoricalPricingItem[] = [];
+  const rowKeys = new Set<string>();
+  const billNames = new Map<string, string>();
+  for (const [index, item] of (items ?? []).entries()) {
+    const rowNo = index + 1;
+    const billKey = requiredPricingText(item.billKey, `第 ${rowNo} 条清单标识`);
+    const billName = requiredPricingText(item.billName, `第 ${rowNo} 条清单名称`);
+    const rowKey = requiredPricingText(item.rowKey, `第 ${rowNo} 条项目标识`);
+    const uniqueRowKey = `${billKey}\u0000${rowKey}`;
+    if (rowKeys.has(uniqueRowKey)) {
+      throw new BadRequestException(`清单“${billName}”中的项目标识“${rowKey}”重复`);
+    }
+    rowKeys.add(uniqueRowKey);
+    const existingBillName = billNames.get(billKey);
+    if (existingBillName && existingBillName !== billName) {
+      throw new BadRequestException(`清单标识“${billKey}”不能对应多个清单名称`);
+    }
+    billNames.set(billKey, billName);
+
+    const quantity = normalizeHistoricalDecimal(
+      item.estimatedQuantity,
+      `第 ${rowNo} 条预计数量`,
+      { required: false, positive: true }
+    );
+    const unitPrice = normalizeHistoricalDecimal(
+      item.taxInclusiveUnitPrice,
+      `第 ${rowNo} 条含税单价`,
+      { required: false, positive: false }
+    );
+    const overrideRate = item.taxRatePercentOverride?.trim()
+      ? normalizeTakeoverTaxRate(
+          item.taxRatePercentOverride,
+          `第 ${rowNo} 条例外税率`
+        )
+      : null;
+    if (taxMode === "single_rate" && overrideRate) {
+      if (!defaultTaxRatePercent || !new Prisma.Decimal(overrideRate).eq(defaultTaxRatePercent)) {
+        throw new BadRequestException(
+          `第 ${rowNo} 条为单一税率合同，例外税率必须与合同默认税率一致`
+        );
+      }
+    }
+    const taxRatePercent = overrideRate ?? defaultTaxRatePercent;
+    const amounts =
+      quantity !== null && unitPrice !== null && taxRatePercent !== null
+        ? calculateBillRow({
+            quantity,
+            unitPrice,
+            taxRatePercent,
+            pricingMode: "tax_inclusive"
+          })
+        : {
+            taxInclusiveAmountCents: null,
+            taxExclusiveAmountCents: null,
+            taxAmountCents: null
+          };
+    normalized.push({
+      billKey,
+      billName,
+      rowKey,
+      itemCode: item.itemCode?.trim() || null,
+      itemName: requiredPricingText(item.itemName, `第 ${rowNo} 条项目名称`),
+      specification: item.specification?.trim() || null,
+      unit: requiredPricingText(item.unit, `第 ${rowNo} 条计量单位`),
+      quantity,
+      unitPrice,
+      taxRatePercent,
+      taxRateSource: overrideRate ? "row_override" : "version_default",
+      isProvisional: item.isProvisional ?? false,
+      settlementBasis: item.settlementBasis?.trim() || null,
+      ...amounts
+    });
+  }
+  return normalized;
+}
+
+function normalizeTakeoverTaxRate(value: string, label: string): string {
+  try {
+    return normalizeTaxRatePercent(value);
+  } catch (error) {
+    throw new BadRequestException(
+      `${label}${error instanceof Error ? error.message.replace(/^税率/u, "") : "格式不正确"}`
+    );
+  }
+}
+
+function normalizeHistoricalDecimal(
+  value: string | undefined,
+  label: string,
+  options: { required: boolean; positive: boolean }
+): string | null {
+  const text = value?.trim() ?? "";
+  if (!text) {
+    if (options.required) throw new BadRequestException(`${label}不能为空`);
+    return null;
+  }
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/u.test(text)) {
+    throw new BadRequestException(`${label}必须是非负数字且最多保留 2 位小数`);
+  }
+  const decimal = new Prisma.Decimal(text);
+  if (options.positive && decimal.lte(0)) {
+    throw new BadRequestException(`${label}必须大于 0`);
+  }
+  return text;
+}
+
+function requiredPricingText(value: string, label: string): string {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) throw new BadRequestException(`${label}不能为空`);
+  return text;
+}
+
+function optionalInvoiceType(value: unknown): CreateContractTakeoverDto["invoiceType"] {
+  const text = stringValue(value);
+  return text === "vat_general" || text === "vat_special" ? text : undefined;
+}
+
+function optionalTaxMode(value: unknown): CreateContractTakeoverDto["taxMode"] {
+  const text = stringValue(value);
+  return text === "single_rate" || text === "multiple_rate" ? text : undefined;
+}
+
+function optionalTaxFactSource(value: unknown): CreateContractTakeoverDto["taxFactSource"] {
+  const text = stringValue(value);
+  return [
+    "contract_document",
+    "supplement_evidence",
+    "business_finance_confirmation"
+  ].includes(text)
+    ? text as NonNullable<CreateContractTakeoverDto["taxFactSource"]>
+    : undefined;
 }
 
 function unique<T>(values: T[]): T[] {
