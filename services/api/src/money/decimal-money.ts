@@ -11,6 +11,23 @@ function yuanToCents(value: Prisma.Decimal): bigint {
   return BigInt(value.mul(HUNDRED).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toFixed(0));
 }
 
+function assertBillRowAmountsWithinStorageRange(amounts: readonly bigint[]): void {
+  if (amounts.some((amount) => !isWithinPostgresBigIntRange(amount))) {
+    throw new Error("合同清单行金额超出系统可保存范围");
+  }
+}
+
+export function deriveTaxExclusiveUnitPrice(input: {
+  taxInclusiveUnitPrice: string;
+  taxRatePercent: string;
+}): string {
+  const rate = new Prisma.Decimal(input.taxRatePercent).div(HUNDRED);
+  return new Prisma.Decimal(input.taxInclusiveUnitPrice)
+    .div(rate.add(1))
+    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+    .toFixed(2);
+}
+
 export function calculateBillRow(input: {
   quantity: string;
   unitPrice: string;
@@ -29,10 +46,12 @@ export function calculateBillRow(input: {
         .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
         .toFixed(0)
     );
+    const tax = inclusive - exclusive;
+    assertBillRowAmountsWithinStorageRange([inclusive, exclusive, tax]);
     return {
       taxInclusiveAmountCents: inclusive,
       taxExclusiveAmountCents: exclusive,
-      taxAmountCents: inclusive - exclusive
+      taxAmountCents: tax
     };
   }
 
@@ -43,8 +62,10 @@ export function calculateBillRow(input: {
       .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
       .toFixed(0)
   );
+  const inclusive = exclusive + tax;
+  assertBillRowAmountsWithinStorageRange([inclusive, exclusive, tax]);
   return {
-    taxInclusiveAmountCents: exclusive + tax,
+    taxInclusiveAmountCents: inclusive,
     taxExclusiveAmountCents: exclusive,
     taxAmountCents: tax
   };

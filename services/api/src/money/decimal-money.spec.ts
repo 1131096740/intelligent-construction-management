@@ -3,6 +3,7 @@ import {
   calculateBillRow,
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
+  deriveTaxExclusiveUnitPrice,
   formatMoneyCentsAsYuan,
   mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
@@ -15,6 +16,21 @@ import {
 } from "./decimal-money";
 
 describe("calculateBillRow", () => {
+  it("calculates the approved two-decimal tax-inclusive example", () => {
+    expect(
+      calculateBillRow({
+        quantity: "1.23",
+        unitPrice: "4.56",
+        taxRatePercent: "13",
+        pricingMode: "tax_inclusive"
+      })
+    ).toEqual({
+      taxInclusiveAmountCents: 561n,
+      taxExclusiveAmountCents: 496n,
+      taxAmountCents: 65n
+    });
+  });
+
   it("calculates a tax-inclusive row and keeps the cent relationship exact", () => {
     expect(
       calculateBillRow({
@@ -43,6 +59,76 @@ describe("calculateBillRow", () => {
       taxExclusiveAmountCents: 9999n,
       taxAmountCents: 600n
     });
+  });
+
+  it("rounds every row to cents before summing instead of rounding an aggregate", () => {
+    const rows = [
+      calculateBillRow({
+        quantity: "0.01",
+        unitPrice: "0.50",
+        taxRatePercent: "13",
+        pricingMode: "tax_inclusive"
+      }),
+      calculateBillRow({
+        quantity: "0.01",
+        unitPrice: "0.50",
+        taxRatePercent: "13",
+        pricingMode: "tax_inclusive"
+      })
+    ];
+    const rowTotal = rows.reduce(
+      (total, row) => total + row.taxInclusiveAmountCents,
+      0n
+    );
+    const aggregate = calculateBillRow({
+      quantity: "0.02",
+      unitPrice: "0.50",
+      taxRatePercent: "13",
+      pricingMode: "tax_inclusive"
+    });
+
+    expect(rowTotal).toBe(2n);
+    expect(aggregate.taxInclusiveAmountCents).toBe(1n);
+  });
+
+  it("rejects calculated row amounts outside the PostgreSQL BIGINT range", () => {
+    expect(
+      calculateBillRow({
+        quantity: "1",
+        unitPrice: "92233720368547758.07",
+        taxRatePercent: "13",
+        pricingMode: "tax_inclusive"
+      }).taxInclusiveAmountCents
+    ).toBe(9_223_372_036_854_775_807n);
+
+    expect(() =>
+      calculateBillRow({
+        quantity: "1",
+        unitPrice: "92233720368547758.08",
+        taxRatePercent: "13",
+        pricingMode: "tax_inclusive"
+      })
+    ).toThrow("合同清单行金额超出系统可保存范围");
+
+    expect(() =>
+      calculateBillRow({
+        quantity: "1",
+        unitPrice: "92233720368547758.07",
+        taxRatePercent: "1",
+        pricingMode: "tax_exclusive"
+      })
+    ).toThrow("合同清单行金额超出系统可保存范围");
+  });
+});
+
+describe("deriveTaxExclusiveUnitPrice", () => {
+  it("derives the read-only tax-exclusive unit price with half-up rounding", () => {
+    expect(
+      deriveTaxExclusiveUnitPrice({
+        taxInclusiveUnitPrice: "4.56",
+        taxRatePercent: "13"
+      })
+    ).toBe("4.04");
   });
 });
 
