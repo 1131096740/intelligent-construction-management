@@ -9,7 +9,8 @@
     "test": "node scripts/pnpm-workspace.mjs -r test",
     "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck",
     "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight",
-    "verify:money-bigint:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:money-bigint:local"
+    "verify:money-bigint:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:money-bigint:local",
+    "verify:spot-procurement-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:spot-procurement-concurrency:local"
   },
   "engines": {
     "node": ">=20.0.0",

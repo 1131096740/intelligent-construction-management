@@ -19,15 +19,6 @@ export class SpotProcurementPaymentController {
     private readonly payments: SpotProcurementPaymentService
   ) {}
 
-  @Post("procurements/:procurementId")
-  @RequireProjectRole("spot_procurement.payment.submit")
-  createNextDraft(
-    @Param("procurementId") procurementId: string,
-    @CurrentUser() user: AuthenticatedUser
-  ) {
-    return this.payments.createNextDraft(procurementId, user.id);
-  }
-
   @Patch(":paymentId/draft")
   @RequireProjectRole("spot_procurement.payment.submit")
   updateDraft(

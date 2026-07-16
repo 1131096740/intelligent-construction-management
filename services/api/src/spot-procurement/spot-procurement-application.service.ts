@@ -383,6 +383,11 @@ export class SpotProcurementApplicationService {
           actorUserId,
           actorRoles
         );
+        if (prepared.totalAmountCents <= 0n) {
+          throw new BadRequestException(
+            "采购申请合计金额必须大于 0，不能提交审批"
+          );
+        }
         const revisionComparison =
           await this.recomputeRevisionChangeSummary(tx, version, prepared);
         if (

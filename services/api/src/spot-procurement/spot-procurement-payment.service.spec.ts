@@ -106,15 +106,62 @@ function transactionDelegate() {
   };
 }
 
-function role(tx: ReturnType<typeof transactionDelegate>, roleKey: string) {
+const CANONICAL_GLOBAL_ROLES = new Set([
+  "chairman",
+  "general_manager",
+  "engineering_department_director",
+  "finance_staff",
+  "finance_director",
+  "contract_director",
+  "budget_director",
+  "material_director",
+  "comprehensive_director"
+]);
+
+function roles(
+  tx: ReturnType<typeof transactionDelegate>,
+  input: {
+    global?: string[];
+    project?: string[];
+    member?: string[];
+  }
+) {
+  const global = input.global ?? [];
+  const project = input.project ?? [];
   tx.userPosition.findMany
-    .mockResolvedValueOnce([
-      { positionId: `position-${roleKey}`, projectId: null }
-    ])
-    .mockResolvedValueOnce([]);
+    .mockResolvedValueOnce(
+      global.map((roleKey) => ({
+        positionId: `position-global-${roleKey}`,
+        projectId: null
+      }))
+    )
+    .mockResolvedValueOnce(
+      project.map((roleKey) => ({
+        positionId: `position-project-${roleKey}`,
+        projectId: "project-1"
+      }))
+    );
+  tx.projectMember.findMany.mockResolvedValue(
+    (input.member ?? []).map((positionKey) => ({ positionKey }))
+  );
   tx.position.findMany.mockResolvedValue([
-    { id: `position-${roleKey}`, key: roleKey }
+    ...global.map((key) => ({
+      id: `position-global-${key}`,
+      key
+    })),
+    ...project.map((key) => ({
+      id: `position-project-${key}`,
+      key
+    }))
   ]);
+}
+
+function role(tx: ReturnType<typeof transactionDelegate>, roleKey: string) {
+  roles(tx, {
+    [CANONICAL_GLOBAL_ROLES.has(roleKey) ? "global" : "project"]: [
+      roleKey
+    ]
+  });
 }
 
 function harness() {
@@ -149,13 +196,17 @@ function harness() {
       amountCents: 0n
     })
   };
-  const service = new SpotProcurementPaymentService(
-    prisma as never,
-    audit as never,
-    pilot as never,
-    balance as never
-  );
-  return { service, prisma, tx, audit, pilot, balance };
+  const auth = {
+    confirmPassword: jest.fn().mockResolvedValue(undefined)
+  };
+  const service = Reflect.construct(SpotProcurementPaymentService, [
+    prisma,
+    audit,
+    pilot,
+    balance,
+    auth
+  ]) as SpotProcurementPaymentService;
+  return { service, prisma, tx, audit, pilot, balance, auth };
 }
 
 function validDraftInput(): UpdateSpotProcurementPaymentDraftDto {
@@ -218,12 +269,6 @@ describe("SpotProcurementPaymentController", () => {
       Reflect.getMetadata(PATH_METADATA, SpotProcurementPaymentController)
     ).toBe("spot-procurement-payments");
     const expectations = [
-      [
-        "createNextDraft",
-        RequestMethod.POST,
-        "procurements/:procurementId",
-        "spot_procurement.payment.submit"
-      ],
       [
         "updateDraft",
         RequestMethod.PATCH,
@@ -319,6 +364,43 @@ describe("Spot procurement payment DTOs", () => {
       "调整后的供应商余额抵扣金额必须按分填写为 0 或更大的整数"
     );
   });
+
+  it("accepts controlled self-review confirmation fields and enforces Unicode limits", async () => {
+    const valid = await createApiValidationPipe().transform(
+      {
+        decision: "approve",
+        selfReviewReason: "  项目紧急且由本人发起  ",
+        confirmationPassword: "Current@123"
+      },
+      {
+        type: "body",
+        metatype: ReviewSpotProcurementPaymentDto
+      }
+    );
+    expect(valid).toEqual(
+      expect.objectContaining({
+        selfReviewReason: "  项目紧急且由本人发起  ",
+        confirmationPassword: "Current@123"
+      })
+    );
+
+    const longReason = await validationErrors(
+      {
+        decision: "approve",
+        selfReviewReason: "原".repeat(501)
+      },
+      ReviewSpotProcurementPaymentDto
+    );
+    const longPassword = await validationErrors(
+      {
+        decision: "approve",
+        confirmationPassword: "密".repeat(257)
+      },
+      ReviewSpotProcurementPaymentDto
+    );
+    expect(longReason.errors).toContain("自审原因不能超过 500 个字符");
+    expect(longPassword.errors).toContain("当前密码格式不正确");
+  });
 });
 
 describe("SpotProcurementPaymentService", () => {
@@ -377,6 +459,38 @@ describe("SpotProcurementPaymentService", () => {
       expect.any(Function),
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
+  });
+
+  it("does not count other drafts when suggesting the next draft amount", async () => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          settlementAmountCents: 10_000n,
+          status: "draft"
+        }
+      ]);
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "0",
+      suggestedBalanceAmountCents: "0"
+    });
+    tx.spotProcurementPayment.create.mockResolvedValue({
+      ...draftPayment,
+      id: "payment-2",
+      code: "LXCG-001-V1-P002"
+    });
+
+    await service.createNextDraft("procurement-1", "material-1");
+
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        settlementAmountCents: 10_000n,
+        companyPaymentAmountCents: 10_000n
+      })
+    });
   });
 
   it("updates a supplier-direct draft and locks its payee to the frozen supplier", async () => {
@@ -920,6 +1034,132 @@ describe("SpotProcurementPaymentService", () => {
     );
   });
 
+  it("uses canonical global/project role resolution at the current project-manager node", async () => {
+    const invalidGlobal = harness();
+    invalidGlobal.tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approval_pending",
+          submittedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: "material-1",
+          frozenNodes: [
+            {
+              name: "项目经理审批",
+              mode: "any",
+              roleKeys: ["project_manager"]
+            }
+          ]
+        }
+      ]);
+    roles(invalidGlobal.tx, {
+      global: ["finance_director", "project_manager"]
+    });
+
+    await expect(
+      invalidGlobal.service.review(
+        "payment-1",
+        "finance-director-1",
+        { decision: "approve" }
+      )
+    ).rejects.toThrow("当前用户不是本付款审批节点处理人");
+    expect(
+      invalidGlobal.tx.approvalActionLog.create
+    ).not.toHaveBeenCalled();
+
+    const validProject = harness();
+    validProject.tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approval_pending",
+          submittedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: "material-1",
+          frozenNodes: [
+            {
+              name: "项目经理审批",
+              mode: "any",
+              roleKeys: ["project_manager"]
+            },
+            {
+              name: "财务主管审批",
+              mode: "any",
+              roleKeys: ["finance_director"]
+            }
+          ]
+        }
+      ]);
+    roles(validProject.tx, { project: ["project_manager"] });
+
+    await expect(
+      validProject.service.review(
+        "payment-1",
+        "project-manager-1",
+        { decision: "approve" }
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({ status: "approval_pending" })
+    );
+
+    const validGlobal = harness();
+    validGlobal.tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approval_pending",
+          submittedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: "material-1",
+          frozenNodes: [
+            {
+              name: "财务主管审批",
+              mode: "any",
+              roleKeys: ["finance_director"]
+            },
+            {
+              name: "董事长或总经理审批",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }
+      ]);
+    roles(validGlobal.tx, { global: ["finance_director"] });
+
+    await expect(
+      validGlobal.service.review(
+        "payment-1",
+        "finance-director-1",
+        { decision: "approve" }
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({ status: "approval_pending" })
+    );
+  });
+
   it("does not let an ordinary applicant approve their own payment or forge approved roles on rejection", async () => {
     const { service, tx } = harness();
     const frozenNodes = [
@@ -949,6 +1189,170 @@ describe("SpotProcurementPaymentService", () => {
       service.review("payment-1", "material-1", { decision: "approve" })
     ).rejects.toThrow("申请人不能审批自己发起的业务");
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+  });
+
+  it("requires reason and current-password confirmation for chairman or GM approving their own payment", async () => {
+    const makeHarness = () => {
+      const current = harness();
+      current.tx.$queryRaw
+        .mockResolvedValueOnce([version])
+        .mockResolvedValueOnce([
+          {
+            ...draftPayment,
+            status: "approval_pending",
+            submittedAt: new Date()
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            applicantUserId: "leader-1",
+            frozenNodes: [
+              {
+                name: "董事长或总经理审批",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"]
+              }
+            ]
+          }
+        ]);
+      roles(current.tx, { global: ["chairman"] });
+      current.tx.spotProcurementPayment.update.mockResolvedValue({
+        ...draftPayment,
+        status: "approved_pending_payment"
+      });
+      return current;
+    };
+
+    const missingReason = makeHarness();
+    await expect(
+      missingReason.service.review(
+        "payment-1",
+        "leader-1",
+        {
+          decision: "approve",
+          confirmationPassword: "Current@123"
+        } as ReviewSpotProcurementPaymentDto
+      )
+    ).rejects.toThrow(
+      "董事长或总经理审批自己发起的业务时，请填写自审原因"
+    );
+    expect(
+      missingReason.tx.approvalActionLog.create
+    ).not.toHaveBeenCalled();
+
+    const missingPassword = makeHarness();
+    await expect(
+      missingPassword.service.review(
+        "payment-1",
+        "leader-1",
+        {
+          decision: "approve",
+          selfReviewReason: "项目紧急"
+        } as ReviewSpotProcurementPaymentDto
+      )
+    ).rejects.toThrow(
+      "董事长或总经理自审前，请输入当前密码完成二次确认"
+    );
+    expect(
+      missingPassword.tx.approvalActionLog.create
+    ).not.toHaveBeenCalled();
+
+    const wrongPassword = makeHarness();
+    wrongPassword.auth.confirmPassword.mockRejectedValue(
+      new ForbiddenException("当前密码不正确")
+    );
+    await expect(
+      wrongPassword.service.review(
+        "payment-1",
+        "leader-1",
+        {
+          decision: "approve",
+          selfReviewReason: "项目紧急",
+          confirmationPassword: "wrong-password"
+        } as ReviewSpotProcurementPaymentDto
+      )
+    ).rejects.toThrow("当前密码不正确");
+    expect(
+      wrongPassword.tx.approvalActionLog.create
+    ).not.toHaveBeenCalled();
+    expect(
+      wrongPassword.tx.spotProcurementPayment.update
+    ).not.toHaveBeenCalled();
+  });
+
+  it("records only trimmed self-review reason after successful password confirmation", async () => {
+    const { service, tx, audit, auth } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approval_pending",
+          submittedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: "leader-1",
+          frozenNodes: [
+            {
+              name: "董事长或总经理审批",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }
+      ]);
+    roles(tx, { global: ["chairman"] });
+    tx.spotProcurementPayment.update.mockResolvedValue({
+      ...draftPayment,
+      status: "approved_pending_payment"
+    });
+
+    await service.review(
+      "payment-1",
+      "leader-1",
+      {
+        decision: "approve",
+        selfReviewReason: "  项目紧急且由本人发起  ",
+        confirmationPassword: "Current@123"
+      } as ReviewSpotProcurementPaymentDto
+    );
+
+    expect(auth.confirmPassword).toHaveBeenCalledWith(
+      "leader-1",
+      "Current@123"
+    );
+    const actionData =
+      tx.approvalActionLog.create.mock.calls[0]?.[0].data;
+    expect(actionData.metadata).toEqual(
+      expect.objectContaining({
+        reviewRoleKey: "chairman",
+        selfReview: true,
+        selfReviewReason: "项目紧急且由本人发起"
+      })
+    );
+    const reviewAudit = audit.record.mock.calls.find(
+      ([, input]) =>
+        (input as { action?: string }).action ===
+        "spot_procurement.payment.approval.approve"
+    )?.[1];
+    expect(reviewAudit).toEqual(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          selfReview: true,
+          selfReviewReason: "项目紧急且由本人发起"
+        })
+      })
+    );
+    expect(JSON.stringify(actionData)).not.toContain("Current@123");
+    expect(JSON.stringify(reviewAudit)).not.toContain("Current@123");
   });
 
   it.each([
@@ -1001,6 +1405,7 @@ describe("SpotProcurementPaymentService", () => {
       expect(balance.releaseReservation).toHaveBeenCalledWith(
         tx,
         "payment-1",
+        0n,
         "comprehensive-1",
         expect.any(String)
       );
@@ -1020,6 +1425,65 @@ describe("SpotProcurementPaymentService", () => {
       } else {
         expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
       }
+    }
+  );
+
+  it.each(["reject", "return_to_applicant"] as const)(
+    "aborts %s before writing any approval or payment terminal fact when balance release fails",
+    async (decision) => {
+      const { service, tx, balance, audit } = harness();
+      tx.$queryRaw
+        .mockResolvedValueOnce([version])
+        .mockResolvedValueOnce([
+          {
+            ...draftPayment,
+            status: "approval_pending",
+            supplierBalanceAmountCents: 3_000n,
+            companyPaymentAmountCents: 7_000n,
+            submittedAt: new Date()
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            applicantUserId: "material-1",
+            frozenNodes: [
+              {
+                name: "综合部主管审批",
+                mode: "any",
+                roleKeys: ["comprehensive_director"]
+              }
+            ]
+          }
+        ]);
+      role(tx, "comprehensive_director");
+      balance.releaseReservation.mockRejectedValue(
+        new ConflictException(
+          "供应商余额预留状态异常，请联系财务处理"
+        )
+      );
+
+      await expect(
+        service.review("payment-1", "comprehensive-1", {
+          decision,
+          comment: "冻结事实异常，停止终止付款"
+        })
+      ).rejects.toThrow("供应商余额预留状态异常，请联系财务处理");
+
+      expect(balance.releaseReservation).toHaveBeenCalledWith(
+        tx,
+        "payment-1",
+        3_000n,
+        "comprehensive-1",
+        expect.any(String)
+      );
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     }
   );
 
@@ -1109,6 +1573,7 @@ describe("SpotProcurementPaymentService", () => {
     expect(balance.releaseReservation).toHaveBeenCalledWith(
       tx,
       "payment-1",
+      3_000n,
       "finance-1",
       "付款申请退回经办人：项目现金安排需要保留供应商余额"
     );
@@ -1762,6 +2227,53 @@ describe("SpotProcurementPaymentService", () => {
     expect(tx.spotProcurementPayment.create).toHaveBeenCalled();
   });
 
+  it("aborts withdrawal before writing any approval or payment fact when balance release fails", async () => {
+    const { service, tx, balance, audit } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approval_pending",
+          supplierBalanceAmountCents: 3_000n,
+          companyPaymentAmountCents: 7_000n,
+          submittedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 1,
+          applicantUserId: "material-1",
+          frozenNodes: []
+        }
+      ]);
+    role(tx, "material_staff");
+    balance.releaseReservation.mockRejectedValue(
+      new ConflictException(
+        "供应商余额预留状态异常，请联系财务处理"
+      )
+    );
+
+    await expect(
+      service.withdrawApproval("payment-1", "material-1")
+    ).rejects.toThrow("供应商余额预留状态异常，请联系财务处理");
+
+    expect(balance.releaseReservation).toHaveBeenCalledWith(
+      tx,
+      "payment-1",
+      3_000n,
+      "material-1",
+      "采购经办人撤回付款审批"
+    );
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("voids a non-executed approved payment and releases its balance reservation", async () => {
     const { service, tx, balance, audit } = harness();
     tx.$queryRaw
@@ -1798,6 +2310,7 @@ describe("SpotProcurementPaymentService", () => {
     expect(balance.releaseReservation).toHaveBeenCalledWith(
       tx,
       "payment-1",
+      0n,
       "finance-1",
       "付款申请作废：采购已取消"
     );
@@ -1811,6 +2324,44 @@ describe("SpotProcurementPaymentService", () => {
         })
       })
     );
+  });
+
+  it("aborts voiding before writing any terminal fact when balance release fails", async () => {
+    const { service, tx, balance, audit } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approved_pending_payment",
+          supplierBalanceAmountCents: 3_000n,
+          companyPaymentAmountCents: 7_000n,
+          submittedAt: new Date(),
+          approvedAt: new Date()
+        }
+      ]);
+    role(tx, "finance_director");
+    balance.releaseReservation.mockRejectedValue(
+      new ConflictException(
+        "供应商余额预留状态异常，请联系财务处理"
+      )
+    );
+
+    await expect(
+      service.voidPayment("payment-1", "finance-1", "采购已取消")
+    ).rejects.toThrow("供应商余额预留状态异常，请联系财务处理");
+
+    expect(balance.releaseReservation).toHaveBeenCalledWith(
+      tx,
+      "payment-1",
+      3_000n,
+      "finance-1",
+      "付款申请作废：采购已取消"
+    );
+    expect(tx.spotProcurementPayment.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1851,7 +2402,13 @@ describe("SpotProcurementPaymentService", () => {
         "并发测试"
       )
     ).rejects.toThrow("付款状态已变化，请重试付款作废");
-    expect(paymentRace.balance.releaseReservation).not.toHaveBeenCalled();
+    expect(paymentRace.balance.releaseReservation).toHaveBeenCalledWith(
+      paymentRace.tx,
+      "payment-1",
+      0n,
+      "finance-1",
+      "付款申请作废：并发测试"
+    );
 
     const approvalRace = harness();
     approvalRace.tx.approvalInstance.updateMany.mockResolvedValue({
@@ -1879,7 +2436,13 @@ describe("SpotProcurementPaymentService", () => {
         "并发测试"
       )
     ).rejects.toThrow("付款审批状态已变化，请重试付款作废");
-    expect(approvalRace.balance.releaseReservation).not.toHaveBeenCalled();
+    expect(approvalRace.balance.releaseReservation).toHaveBeenCalledWith(
+      approvalRace.tx,
+      "payment-1",
+      0n,
+      "finance-1",
+      "付款申请作废：并发测试"
+    );
   });
 
   it("does not expose a direct version-invalidation shortcut for active payments", () => {
@@ -1908,4 +2471,20 @@ describe("SpotProcurementPaymentService", () => {
       );
     }
   );
+
+  it("normalizes raw PostgreSQL serialization failure P2010/40001 to the same concurrency conflict", async () => {
+    const { service, prisma } = harness();
+    prisma.$transaction.mockRejectedValueOnce({
+      code: "P2010",
+      meta: {
+        code: "40001",
+        message:
+          "could not serialize access due to concurrent update"
+      }
+    });
+
+    await expect(
+      service.submit("payment-1", "material-1")
+    ).rejects.toThrow("付款或供应商余额已变化，请刷新后重试");
+  });
 });

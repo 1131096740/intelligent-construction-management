@@ -37,6 +37,9 @@ type BalanceReadClient = Pick<
   "supplierBalanceAccount"
 >;
 
+const RESERVATION_STATE_ERROR =
+  "供应商余额预留状态异常，请联系财务处理";
+
 @Injectable()
 export class SpotProcurementBalanceService {
   constructor(
@@ -158,6 +161,7 @@ export class SpotProcurementBalanceService {
   async releaseReservation(
     tx: Prisma.TransactionClient,
     paymentId: string,
+    expectedAmountCents: bigint,
     actorUserId: string,
     reason: string
   ): Promise<{ released: boolean; amountCents: bigint }> {
@@ -165,8 +169,18 @@ export class SpotProcurementBalanceService {
       where: { paymentId },
       select: { accountId: true, status: true }
     });
-    if (!preflight || preflight.status !== "reserved") {
+    if (expectedAmountCents === 0n) {
+      if (preflight) {
+        throw new ConflictException(RESERVATION_STATE_ERROR);
+      }
       return { released: false, amountCents: 0n };
+    }
+    if (
+      expectedAmountCents < 0n ||
+      !preflight ||
+      preflight.status !== "reserved"
+    ) {
+      throw new ConflictException(RESERVATION_STATE_ERROR);
     }
     const account = await this.requireLockedAccountById(
       tx,
@@ -177,11 +191,17 @@ export class SpotProcurementBalanceService {
       select: { procurementId: true }
     });
     const reservation = await this.lockReservation(tx, paymentId);
-    if (!reservation || reservation.status !== "reserved") {
-      return { released: false, amountCents: 0n };
+    if (
+      !reservation ||
+      reservation.status !== "reserved" ||
+      reservation.accountId !== preflight.accountId ||
+      reservation.accountId !== account.id ||
+      reservation.amountCents !== expectedAmountCents
+    ) {
+      throw new ConflictException(RESERVATION_STATE_ERROR);
     }
-    if (account.reservedAmountCents < reservation.amountCents) {
-      throw new ConflictException("供应商余额预留账本不一致，请联系财务处理");
+    if (account.reservedAmountCents < expectedAmountCents) {
+      throw new ConflictException(RESERVATION_STATE_ERROR);
     }
     const released = await tx.supplierBalanceReservation.updateMany({
       where: { id: reservation.id, status: "reserved" },
@@ -193,7 +213,7 @@ export class SpotProcurementBalanceService {
       }
     });
     if (released.count !== 1) {
-      return { released: false, amountCents: 0n };
+      throw new ConflictException(RESERVATION_STATE_ERROR);
     }
     const reservedAfter =
       account.reservedAmountCents - reservation.amountCents;
@@ -280,7 +300,7 @@ export class SpotProcurementBalanceService {
     `);
     const account = rows[0];
     if (!account) {
-      throw new ConflictException("供应商余额账户不存在或已失效");
+      throw new ConflictException(RESERVATION_STATE_ERROR);
     }
     return account;
   }

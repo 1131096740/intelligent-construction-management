@@ -7,10 +7,17 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import {
+  resolveEffectiveRoleKeys,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
-import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
+import {
+  assertOrdinaryApplicantCannotReview,
+  confirmApprovalSelfReview
+} from "../approval/approval-self-review";
 import { AuditService } from "../audit/audit.service";
+import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import type { ReviewSpotProcurementPaymentDto } from "./dto/review-spot-procurement-payment.dto";
@@ -39,10 +46,7 @@ const ACTIVE_CAPACITY_STATUSES = new Set([
   "paid",
   "settled"
 ]);
-const PLANNED_PAYMENT_STATUSES = new Set([
-  "draft",
-  ...ACTIVE_CAPACITY_STATUSES
-]);
+const PLANNED_PAYMENT_STATUSES = ACTIVE_CAPACITY_STATUSES;
 const NON_VOIDABLE_EXECUTION_STATUSES = new Set([
   "partially_paid",
   "paid",
@@ -171,7 +175,8 @@ export class SpotProcurementPaymentService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly pilot: SpotProcurementPilotService,
-    private readonly balances: SpotProcurementBalanceService
+    private readonly balances: SpotProcurementBalanceService,
+    private readonly auth: AuthService
   ) {}
 
   createNextDraft(procurementId: string, actorUserId: string) {
@@ -488,12 +493,28 @@ export class SpotProcurementPaymentService {
         if (!approvedRoleKey) {
           throw new ForbiddenException("当前用户不是本付款审批节点处理人");
         }
-        assertOrdinaryApplicantCannotReview({
-          applicantUserId: approval.applicantUserId,
-          actorUserId,
-          actorRoleKeys: actorRoles,
-          approvedRoleKey
-        });
+        const selfReview =
+          input.decision === "approve"
+            ? await confirmApprovalSelfReview({
+                applicantUserId: approval.applicantUserId,
+                actorUserId,
+                actorRoleKeys: actorRoles,
+                approvedRoleKey,
+                selfReviewReason: input.selfReviewReason,
+                confirmationPassword: input.confirmationPassword,
+                confirmPassword: (password) =>
+                  this.auth.confirmPassword(actorUserId, password)
+              })
+            : null;
+        if (!selfReview) {
+          assertOrdinaryApplicantCannotReview({
+            applicantUserId: approval.applicantUserId,
+            actorUserId,
+            actorRoleKeys: actorRoles,
+            approvedRoleKey
+          });
+        }
+        const selfReviewMetadata = selfReview?.metadata ?? {};
         const comment = optionalText(input.comment);
         const adjustedBalanceText =
           input.adjustedSupplierBalanceAmountCents;
@@ -530,27 +551,37 @@ export class SpotProcurementPaymentService {
             "驳回或退回付款申请时必须填写审批意见"
           );
         }
-        await tx.approvalActionLog.create({
-          data: {
-            approvalInstanceId: approval.id,
-            action: input.decision,
-            actorUserId,
-            comment,
-            metadata: {
-              reviewRoleKey: approvedRoleKey,
-              ...(adjustedBalanceText !== undefined
-                ? {
-                    originalSupplierBalanceAmountCents:
-                      payment.supplierBalanceAmountCents.toString(),
-                    adjustedSupplierBalanceAmountCents:
-                      adjustedBalanceText
-                  }
-                : {})
+        const recordApprovalAction = () =>
+          tx.approvalActionLog.create({
+            data: {
+              approvalInstanceId: approval.id,
+              action: input.decision,
+              actorUserId,
+              comment,
+              metadata: {
+                reviewRoleKey: approvedRoleKey,
+                ...(adjustedBalanceText !== undefined
+                  ? {
+                      originalSupplierBalanceAmountCents:
+                        payment.supplierBalanceAmountCents.toString(),
+                      adjustedSupplierBalanceAmountCents:
+                        adjustedBalanceText
+                    }
+                  : {}),
+                ...selfReviewMetadata
+              }
             }
-          }
-        });
+          });
 
         if (input.decision === "reject") {
+          await this.balances.releaseReservation(
+            tx,
+            payment.id,
+            payment.supplierBalanceAmountCents,
+            actorUserId,
+            `付款申请被驳回：${comment}`
+          );
+          await recordApprovalAction();
           await tx.approvalInstance.update({
             where: { id: approval.id },
             data: { status: "rejected" }
@@ -559,19 +590,14 @@ export class SpotProcurementPaymentService {
             where: { id: payment.id },
             data: { status: "rejected" }
           });
-          await this.balances.releaseReservation(
-            tx,
-            payment.id,
-            actorUserId,
-            `付款申请被驳回：${comment}`
-          );
           await this.recordReviewAudit(
             tx,
             actorUserId,
             payment,
             approval.id,
             input.decision,
-            approvedRoleKey
+            approvedRoleKey,
+            selfReviewMetadata
           );
           return this.paymentReadModel(updated);
         }
@@ -602,6 +628,7 @@ export class SpotProcurementPaymentService {
               await this.balances.releaseReservation(
                 tx,
                 payment.id,
+                payment.supplierBalanceAmountCents,
                 actorUserId,
                 `付款申请退回经办人：${comment}`
               );
@@ -620,6 +647,7 @@ export class SpotProcurementPaymentService {
                 "调整后的供应商余额抵扣金额不能超过当前可用供应商余额"
               );
             }
+            await recordApprovalAction();
             await tx.approvalInstance.update({
               where: { id: approval.id },
               data: { status: "returned_to_applicant" }
@@ -662,13 +690,22 @@ export class SpotProcurementPaymentService {
                 balanceOverrideReason: comment as string,
                 reservationReleased: released.released,
                 releasedReservationAmountCents:
-                  released.amountCents.toString()
+                  released.amountCents.toString(),
+                ...selfReviewMetadata
               }
             );
             return this.paymentReadModel(updated, undefined, {
               newDraftPaymentId: newDraft.id
             });
           }
+          await this.balances.releaseReservation(
+            tx,
+            payment.id,
+            payment.supplierBalanceAmountCents,
+            actorUserId,
+            `付款申请退回经办人：${comment}`
+          );
+          await recordApprovalAction();
           await tx.approvalInstance.update({
             where: { id: approval.id },
             data: { status: "returned_to_applicant" }
@@ -677,12 +714,6 @@ export class SpotProcurementPaymentService {
             where: { id: payment.id },
             data: { status: "returned" }
           });
-          await this.balances.releaseReservation(
-            tx,
-            payment.id,
-            actorUserId,
-            `付款申请退回经办人：${comment}`
-          );
           const newDraft = await this.cloneSubmittedPaymentToDraft(
             tx,
             version,
@@ -697,13 +728,17 @@ export class SpotProcurementPaymentService {
             approval.id,
             input.decision,
             approvedRoleKey,
-            { newDraftPaymentId: newDraft.id }
+            {
+              newDraftPaymentId: newDraft.id,
+              ...selfReviewMetadata
+            }
           );
           return this.paymentReadModel(updated, undefined, {
             newDraftPaymentId: newDraft.id
           });
         }
 
+        await recordApprovalAction();
         const nextNodes = this.approveCurrentNode(
           approval.frozenNodes,
           approval.currentNodeIndex,
@@ -726,7 +761,8 @@ export class SpotProcurementPaymentService {
             payment,
             approval.id,
             input.decision,
-            approvedRoleKey
+            approvedRoleKey,
+            selfReviewMetadata
           );
           return this.paymentReadModel(payment);
         }
@@ -752,7 +788,8 @@ export class SpotProcurementPaymentService {
           payment,
           approval.id,
           input.decision,
-          approvedRoleKey
+          approvedRoleKey,
+          selfReviewMetadata
         );
         return this.paymentReadModel(updated);
       })
@@ -783,6 +820,13 @@ export class SpotProcurementPaymentService {
         ) {
           throw new ForbiddenException("只有采购经办人可以撤回付款审批");
         }
+        await this.balances.releaseReservation(
+          tx,
+          payment.id,
+          payment.supplierBalanceAmountCents,
+          actorUserId,
+          "采购经办人撤回付款审批"
+        );
         await tx.approvalInstance.update({
           where: { id: approval.id },
           data: { status: "withdrawn" }
@@ -799,12 +843,6 @@ export class SpotProcurementPaymentService {
           where: { id: payment.id },
           data: { status: "withdrawn" }
         });
-        await this.balances.releaseReservation(
-          tx,
-          payment.id,
-          actorUserId,
-          "采购经办人撤回付款审批"
-        );
         const newDraft = await this.cloneSubmittedPaymentToDraft(
           tx,
           version,
@@ -875,6 +913,17 @@ export class SpotProcurementPaymentService {
         let approval: ApprovalLockRow | null = null;
         if (payment.status === "approval_pending") {
           approval = await this.requireLockedApproval(tx, payment.id);
+        }
+        await this.balances.releaseReservation(
+          tx,
+          payment.id,
+          payment.status === "draft"
+            ? 0n
+            : payment.supplierBalanceAmountCents,
+          actorUserId,
+          `付款申请作废：${reason}`
+        );
+        if (approval) {
           const approvalVoided =
             await tx.approvalInstance.updateMany({
             where: {
@@ -918,12 +967,6 @@ export class SpotProcurementPaymentService {
             }
           });
         }
-        await this.balances.releaseReservation(
-          tx,
-          payment.id,
-          actorUserId,
-          `付款申请作废：${reason}`
-        );
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.payment.void",
@@ -1775,14 +1818,29 @@ export class SpotProcurementPaymentService {
           select: { id: true, key: true }
         })
       : [];
-    return [
-      ...new Set([
-        ...positions.map((position) => position.key as RoleKey),
-        ...memberPositions.map(
-          (position) => position.positionKey as RoleKey
-        )
+    const roleKeyByPositionId = new Map(
+      positions.map((position) => [
+        position.id,
+        position.key as RoleKey
       ])
+    );
+    const globalRoleKeys = globalPositions.flatMap((position) => {
+      const roleKey = roleKeyByPositionId.get(position.positionId);
+      return roleKey ? [roleKey] : [];
+    });
+    const projectRoleKeys = [
+      ...projectPositions.flatMap((position) => {
+        const roleKey = roleKeyByPositionId.get(position.positionId);
+        return roleKey ? [roleKey] : [];
+      }),
+      ...memberPositions.map(
+        (position) => position.positionKey as RoleKey
+      )
     ];
+    return resolveEffectiveRoleKeys(
+      globalRoleKeys,
+      projectRoleKeys
+    );
   }
 
   private async requireActiveUser(
@@ -1889,5 +1947,14 @@ function auditBankAccountFacts(value: string | null) {
 function prismaErrorCode(error: unknown) {
   if (!error || typeof error !== "object") return undefined;
   const code = (error as { code?: unknown }).code;
+  if (code === "P2010") {
+    const meta = (error as { meta?: unknown }).meta;
+    if (meta && typeof meta === "object") {
+      const postgresCode = (meta as { code?: unknown }).code;
+      if (String(postgresCode) === "40001") {
+        return "P2034";
+      }
+    }
+  }
   return typeof code === "string" ? code : undefined;
 }

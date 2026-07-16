@@ -431,7 +431,7 @@ describe("PermissionGuard", () => {
     });
   });
 
-  it("resolves project-scoped zero-procurement roles from procurement route ids", async () => {
+  it("resolves the official subsequent-payment route from procurementId without trusting a client project", async () => {
     const prisma = {
       userPosition: {
         findMany: jest.fn().mockResolvedValue([])
@@ -451,7 +451,7 @@ describe("PermissionGuard", () => {
         getAllAndOverride: jest
           .fn()
           .mockReturnValueOnce(undefined)
-          .mockReturnValueOnce("spot_procurement.create")
+          .mockReturnValueOnce("spot_procurement.payment.submit")
       } as never,
       prisma as never
     );
@@ -460,7 +460,8 @@ describe("PermissionGuard", () => {
       guard.canActivate(
         contextWithRequest({
           user: { id: "material-1" },
-          params: { procurementId: "procurement-1" }
+          params: { procurementId: "procurement-1" },
+          body: { projectId: "forged-project" }
         })
       )
     ).resolves.toBe(true);

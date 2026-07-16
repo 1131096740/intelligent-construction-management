@@ -1,6 +1,9 @@
 import { ConflictException } from "@nestjs/common";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
 
+const RESERVATION_STATE_ERROR =
+  "供应商余额预留状态异常，请联系财务处理";
+
 function harness() {
   const tx = {
     $queryRaw: jest.fn(),
@@ -39,6 +42,24 @@ function harness() {
     audit as never
   );
   return { service, prisma, tx, audit };
+}
+
+function releaseReservation(
+  service: SpotProcurementBalanceService,
+  tx: ReturnType<typeof harness>["tx"],
+  expectedAmountCents: bigint,
+  actorUserId = "finance-1",
+  reason = "付款申请被退回"
+) {
+  return (
+    service.releaseReservation as unknown as (
+      client: unknown,
+      paymentId: string,
+      expectedAmountCents: bigint,
+      actorUserId: string,
+      reason: string
+    ) => Promise<unknown>
+  )(tx, "payment-1", expectedAmountCents, actorUserId, reason);
 }
 
 describe("SpotProcurementBalanceService", () => {
@@ -216,12 +237,7 @@ describe("SpotProcurementBalanceService", () => {
     tx.supplierBalanceEntry.create.mockResolvedValue({ id: "entry-2" });
 
     await expect(
-      service.releaseReservation(
-        tx as never,
-        "payment-1",
-        "finance-1",
-        "付款申请被退回"
-      )
+      releaseReservation(service, tx, 3_000n)
     ).resolves.toEqual({ released: true, amountCents: 3_000n });
     expect(tx.supplierBalanceReservation.updateMany).toHaveBeenCalledWith({
       where: { id: "reservation-1", status: "reserved" },
@@ -252,23 +268,119 @@ describe("SpotProcurementBalanceService", () => {
     );
   });
 
-  it("treats an absent or already-terminal reservation as an idempotent no-op", async () => {
+  it("fails closed when a positive frozen balance amount has no reservation", async () => {
     const { service, tx } = harness();
     tx.supplierBalanceReservation.findUnique.mockResolvedValue(null);
 
     await expect(
-      service.releaseReservation(
-        tx as never,
-        "payment-1",
-        "finance-1",
-        "重复释放"
-      )
-    ).resolves.toEqual({ released: false, amountCents: 0n });
+      releaseReservation(service, tx, 3_000n, "finance-1", "重复释放")
+    ).rejects.toEqual(new ConflictException(RESERVATION_STATE_ERROR));
     expect(tx.supplierBalanceAccount.update).not.toHaveBeenCalled();
     expect(tx.supplierBalanceEntry.create).not.toHaveBeenCalled();
   });
 
-  it("does not decrement the account or append a duplicate ledger entry when release loses its status CAS", async () => {
+  it("allows a zero frozen balance amount only when no reservation exists", async () => {
+    const { service, tx } = harness();
+    tx.supplierBalanceReservation.findUnique.mockResolvedValue(null);
+
+    await expect(
+      releaseReservation(service, tx, 0n, "finance-1", "零余额付款终止")
+    ).resolves.toEqual({ released: false, amountCents: 0n });
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.supplierBalanceAccount.update).not.toHaveBeenCalled();
+    expect(tx.supplierBalanceEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a zero frozen balance amount unexpectedly has a reservation", async () => {
+    const { service, tx } = harness();
+    tx.supplierBalanceReservation.findUnique.mockResolvedValue({
+      accountId: "balance-1",
+      status: "reserved"
+    });
+
+    await expect(
+      releaseReservation(service, tx, 0n, "finance-1", "零余额付款终止")
+    ).rejects.toEqual(new ConflictException(RESERVATION_STATE_ERROR));
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.supplierBalanceAccount.update).not.toHaveBeenCalled();
+    expect(tx.supplierBalanceEntry.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "terminal status",
+      {
+        accountId: "balance-1",
+        status: "released"
+      },
+      {
+        id: "reservation-1",
+        accountId: "balance-1",
+        paymentId: "payment-1",
+        amountCents: 3_000n,
+        status: "released"
+      }
+    ],
+    [
+      "amount mismatch",
+      {
+        accountId: "balance-1",
+        status: "reserved"
+      },
+      {
+        id: "reservation-1",
+        accountId: "balance-1",
+        paymentId: "payment-1",
+        amountCents: 2_999n,
+        status: "reserved"
+      }
+    ],
+    [
+      "account mismatch",
+      {
+        accountId: "balance-1",
+        status: "reserved"
+      },
+      {
+        id: "reservation-1",
+        accountId: "balance-2",
+        paymentId: "payment-1",
+        amountCents: 3_000n,
+        status: "reserved"
+      }
+    ]
+  ])(
+    "fails closed on reservation %s before changing the account",
+    async (_caseName, preflightReservation, lockedReservation) => {
+      const { service, tx } = harness();
+      tx.supplierBalanceReservation.findUnique.mockResolvedValue(
+        preflightReservation
+      );
+      tx.spotProcurementPayment.findUnique.mockResolvedValue({
+        procurementId: "procurement-1"
+      });
+      tx.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            id: "balance-1",
+            projectId: "project-1",
+            supplierKey: "party:party-1",
+            availableAmountCents: 10_000n,
+            reservedAmountCents: 3_000n
+          }
+        ])
+        .mockResolvedValueOnce([lockedReservation]);
+
+      await expect(
+        releaseReservation(service, tx, 3_000n)
+      ).rejects.toEqual(new ConflictException(RESERVATION_STATE_ERROR));
+      expect(tx.supplierBalanceReservation.updateMany).not.toHaveBeenCalled();
+      expect(tx.supplierBalanceAccount.update).not.toHaveBeenCalled();
+      expect(tx.supplierBalanceEntry.create).not.toHaveBeenCalled();
+    }
+  );
+
+  it("fails closed without decrementing the account when release loses its status CAS", async () => {
     const { service, tx } = harness();
     tx.supplierBalanceReservation.findUnique.mockResolvedValue({
       accountId: "balance-1",
@@ -299,13 +411,14 @@ describe("SpotProcurementBalanceService", () => {
     tx.supplierBalanceReservation.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
-      service.releaseReservation(
-        tx as never,
-        "payment-1",
+      releaseReservation(
+        service,
+        tx,
+        3_000n,
         "finance-1",
         "并发重复释放"
       )
-    ).resolves.toEqual({ released: false, amountCents: 0n });
+    ).rejects.toEqual(new ConflictException(RESERVATION_STATE_ERROR));
     expect(tx.supplierBalanceAccount.update).not.toHaveBeenCalled();
     expect(tx.supplierBalanceEntry.create).not.toHaveBeenCalled();
   });

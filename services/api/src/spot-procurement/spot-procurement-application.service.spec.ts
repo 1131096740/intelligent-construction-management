@@ -265,6 +265,12 @@ describe("SpotProcurementController", () => {
         "spot_procurement.create"
       ],
       [
+        "createPaymentDraft",
+        RequestMethod.POST,
+        ":procurementId/payments",
+        "spot_procurement.payment.submit"
+      ],
+      [
         "submit",
         RequestMethod.POST,
         ":procurementId/submission",
@@ -290,22 +296,28 @@ describe("SpotProcurementController", () => {
       ]
     ] as const;
     for (const [method, requestMethod, path, action] of expectations) {
+      const target = (
+        SpotProcurementController.prototype as unknown as Record<
+          string,
+          object
+        >
+      )[method];
       expect(
         Reflect.getMetadata(
           METHOD_METADATA,
-          SpotProcurementController.prototype[method]
+          target
         )
       ).toBe(requestMethod);
       expect(
         Reflect.getMetadata(
           PATH_METADATA,
-          SpotProcurementController.prototype[method]
+          target
         )
       ).toBe(path);
       expect(
         Reflect.getMetadata(
           REQUIRED_PROJECT_ACTION_KEY,
-          SpotProcurementController.prototype[method]
+          target
         )
       ).toBe(action);
     }
@@ -704,6 +716,63 @@ describe("SpotProcurementApplicationService", () => {
     expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
     expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
     expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a zero-total procurement before replacing facts or creating approval records", async () => {
+    const { service, tx, audit } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([rootLock])
+      .mockResolvedValueOnce([versionLock]);
+    role(tx, "material_staff");
+    tx.spotProcurementLine.findMany.mockResolvedValue([
+      storedInvoiceLine("0", 0n)
+    ]);
+
+    await expect(
+      service.submit("procurement-1", "material-1")
+    ).rejects.toThrow("采购申请合计金额必须大于 0，不能提交审批");
+
+    expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementLine.createMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurementAttachment.createMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("allows zero-priced lines when the procurement total remains positive", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([rootLock])
+      .mockResolvedValueOnce([versionLock]);
+    role(tx, "material_staff");
+    tx.spotProcurementLine.findMany.mockResolvedValue([
+      storedInvoiceLine("0", 0n),
+      {
+        ...storedInvoiceLine("3.28", 4100n),
+        sortOrder: 2,
+        materialName: "配套砂浆"
+      }
+    ]);
+
+    await expect(
+      service.submit("procurement-1", "material-1")
+    ).resolves.toEqual(
+      expect.objectContaining({
+        status: "approval_pending",
+        totalAmountCents: "4100"
+      })
+    );
+    expect(tx.approvalInstance.create).toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: expect.objectContaining({
+        status: "approval_pending",
+        totalAmountCents: 4100n
+      })
+    });
   });
 
   it("freezes only project manager and records node_skipped for a database-resolved material director applicant", async () => {
