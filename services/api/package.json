@@ -21,6 +21,7 @@
     "preverify:trial-run:preflight": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:trial-run:preflight": "node prisma/verify-trial-run.cjs --preflight",
     "verify:production-readiness": "node scripts/verify-production-readiness.cjs",
+    "inspect:contract-tax-facts": "node scripts/inspect-contract-tax-facts-readiness.cjs",
     "create:trial-users": "node scripts/create-trial-users.cjs",
     "contract-master:review-pack": "node scripts/generate-contract-master-review-pack.cjs",
     "check:business-errors": "node scripts/check-business-errors.cjs",
