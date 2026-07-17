@@ -10,7 +10,7 @@
       :next-step="contractDetailHeaderView.nextStep"
       :requested-amount="contractDetailHeaderView.amount"
       amount-label="合同金额"
-      :primary-action-label="contractHeaderPrimaryAction?.label"
+      :primary-action-label="contractHeaderPrimaryActionLabel"
       :primary-action-disabled="detailLoading"
       @primary-action="openPrimaryAction"
     >
@@ -223,17 +223,6 @@
                 class="action-fields"
               >
                 <label
-                  v-if="isContractActionEnabled('submit_approval')"
-                  class="action-field action-field--wide"
-                >
-                  <span>合同编号规则 <b aria-hidden="true">*</b></span>
-                  <t-select
-                    v-model="contractArchiveForm.numberRuleId"
-                    :options="contractNumberRuleOptions"
-                    placeholder="选择合同编号规则"
-                  />
-                </label>
-                <label
                   v-if="isContractActionEnabled('review_approval')"
                   class="action-field action-field--wide"
                 >
@@ -259,12 +248,10 @@
               <div class="action-buttons action-buttons--end">
                 <t-button
                   v-if="isContractActionEnabled('submit_approval')"
-                  :theme="buttonTheme('submit_approval')"
-                  :variant="buttonVariant('submit_approval')"
-                  :loading="archiveActionBusy === 'submitApproval'"
-                  @click="submitContractApprovalAction"
+                  theme="primary"
+                  @click="goToContractWorkbenchSubmission"
                 >
-                  提交审批
+                  前往合同工作台提交
                 </t-button>
                 <t-button
                   v-if="isContractActionEnabled('review_approval')"
@@ -861,14 +848,12 @@ import {
   createPrivateFileDownloadTicket,
   delegateContractApproval,
   downloadApprovalForm as requestApprovalFormDownload,
-  fetchActiveContractNumberRules,
   fetchApprovalDelegationUserOptions,
   fetchContractChangeEligibility,
   fetchContractDetail,
   generateContractPdfArchive,
   remindContractApproval,
   reviewContractApproval,
-  submitContractApproval,
   transferContractApproval,
   uploadContractArchiveFile,
   uploadPrivateFile,
@@ -968,7 +953,6 @@ const changeDirectionOptions = [
   { label: "减少金额", value: "decrease" },
   { label: "金额不变", value: "unchanged" }
 ];
-const contractNumberRules = ref<Array<{ id: string; name: string; pattern: string }>>([]);
 const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
 const archiveActionMessage = ref("");
@@ -993,7 +977,6 @@ const contractArchiveForm = reactive({
   downloadFileId: "",
   approvalComment: "",
   selfReviewReason: "",
-  numberRuleId: ""
 });
 
 const contractDetailMetaView = computed(() => contractDetail.value?.meta ?? contractDetailMeta);
@@ -1098,6 +1081,11 @@ const contractHeaderPrimaryAction = computed(() => {
   const action = contractActionByKey.value.get(primaryAction);
   return action?.enabled ? action : null;
 });
+const contractHeaderPrimaryActionLabel = computed(() =>
+  contractHeaderPrimaryAction.value?.key === "submit_approval"
+    ? "前往合同工作台提交"
+    : contractHeaderPrimaryAction.value?.label
+);
 const requiresContractSelfReviewConfirmation = computed(
   () => contractActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
 );
@@ -1119,12 +1107,6 @@ const showContractEvidenceActions = computed(
   () => isContractActionEnabled("upload_archive") ||
     isContractActionEnabled("confirm_archive") ||
     isContractActionEnabled("download_archive")
-);
-const contractNumberRuleOptions = computed(() =>
-  contractNumberRules.value.map((rule) => ({
-    label: `${rule.name}（${rule.pattern}）`,
-    value: rule.id
-  }))
 );
 const assignmentUserOptions = computed(() =>
   assignmentUsers.value.map((user) => ({ label: user.name, value: user.id }))
@@ -1172,6 +1154,10 @@ function openAuditTab() {
 function openPrimaryAction() {
   const action = contractHeaderPrimaryAction.value;
   if (!action) return;
+  if (action.key === "submit_approval") {
+    goToContractWorkbenchSubmission();
+    return;
+  }
   activeTab.value = ["upload_archive", "confirm_archive", "download_archive"].includes(action.key)
     ? "evidence"
     : "process";
@@ -1474,11 +1460,12 @@ function requestContractArchiveConfirmation() {
   });
 }
 
-async function submitContractApprovalAction() {
-  await runArchiveAction("submitApproval", () => submitContractApproval(
-    currentContractVersionId(),
-    { numberRuleId: requiredText(contractArchiveForm.numberRuleId, "合同编号规则") }
-  ));
+function goToContractWorkbenchSubmission() {
+  const versionId = currentContractVersionId();
+  void router.push({
+    path: `/contracts/${routeContractId()}/workbench`,
+    query: { versionId }
+  });
 }
 
 function requestContractReview(decision: ContractReviewDecision) {
@@ -1679,14 +1666,11 @@ function tagTheme(tone: DetailTone | CoreFlowTone) {
 }
 
 onMounted(async () => {
-  const [, rules, users] = await Promise.all([
+  const [, users] = await Promise.all([
     reloadContractDetail(),
-    fetchActiveContractNumberRules().catch(() => []),
     fetchApprovalDelegationUserOptions().catch(() => [])
   ]);
-  contractNumberRules.value = rules;
   assignmentUsers.value = users;
-  contractArchiveForm.numberRuleId ||= rules[0]?.id ?? "";
 });
 </script>
 

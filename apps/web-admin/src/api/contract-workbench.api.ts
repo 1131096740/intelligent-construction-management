@@ -107,6 +107,65 @@ export function fetchContractWorkbench(contractId: string) {
   return readJson<unknown>(`/contract-workbench/${contractId}`);
 }
 
+export type ContractAuthorizationSide = "first_party" | "counterparty";
+
+export interface SetContractAuthorizationPayload {
+  side: ContractAuthorizationSide;
+  expectedRevision: number;
+  required: boolean;
+  upload?: {
+    fileId: string;
+    grantorName: string;
+    agentName: string;
+    scopeSummary: string;
+  };
+  reuse?: {
+    authorizationId: string;
+    sourceContractVersionId: string;
+    agentName: string;
+  };
+}
+
+export interface UploadContractFormalApprovalFilePayload {
+  fileId: string;
+  sourceRevision: number;
+  counterpartySigned: boolean;
+  counterpartyStamped: boolean;
+  crossPageSealCompleted: boolean;
+  documentOrderConfirmed: boolean;
+  authorizationsBeforeSignaturePageConfirmed: boolean;
+}
+
+export interface SubmitContractFromWorkbenchPayload {
+  numberRuleId: string;
+  formalCodeOverride?: string;
+}
+
+export function setContractAuthorization(
+  contractVersionId: string,
+  body: SetContractAuthorizationPayload
+) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/authorizations`, body);
+}
+
+export function uploadContractFormalApprovalFile(
+  contractVersionId: string,
+  body: UploadContractFormalApprovalFilePayload
+) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/formal-files/approval`, body);
+}
+
+export function checkContractSubmissionReadiness(contractVersionId: string) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/readiness`);
+}
+
+export function submitContractFromWorkbench(
+  contractVersionId: string,
+  body: SubmitContractFromWorkbenchPayload
+) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/approval-submission`, body);
+}
+
 export function listContractDrafts(scope: "my" | "voided") {
   return readJson<unknown[]>(`/contract-workbench?scope=${scope}`);
 }

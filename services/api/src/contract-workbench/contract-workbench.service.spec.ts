@@ -1015,6 +1015,112 @@ describe("ContractWorkbenchService", () => {
     );
   });
 
+  it("returns only safe same-contract authorization reuse candidates", async () => {
+    const version = {
+      id: "version-2",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 3,
+      contractGovernanceVersion: 1,
+      amountCents: 0n,
+      amountLimitType: "capped",
+      changeType: "supplement",
+      baseVersionId: null,
+      originalBaseAmountCents: 0n,
+      cumulativeIncreaseCents: 0n,
+      cumulativeDecreaseCents: 0n,
+      draftData: {},
+      templateSnapshot: TEMPLATE_SNAPSHOT,
+      clauseSnapshot: []
+    };
+    const prisma = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1"
+        })
+      },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue(version),
+        findMany: jest.fn().mockResolvedValue([
+          { id: "version-1", versionNo: 1, status: "effective" }
+        ])
+      },
+      contractBill: { findMany: jest.fn().mockResolvedValue([]) },
+      contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersionAuthorizationLink: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            {
+              contractVersionId: "version-1",
+              side: "first_party",
+              required: true,
+              authorizationId: "authorization-1"
+            },
+            {
+              contractVersionId: "version-other",
+              side: "counterparty",
+              required: true,
+              authorizationId: "authorization-other"
+            }
+          ])
+      },
+      contractAuthorization: {
+        findMany: jest.fn()
+          .mockResolvedValue([
+            {
+              id: "authorization-1",
+              originContractVersionId: "version-1",
+              side: "first_party",
+              grantorName: "我方公司",
+              agentName: "张三",
+              scopeSummary: "签署、履行、变更及补充协议",
+              fileId: "file-1",
+              contentSha256: "a".repeat(64),
+              pageCount: 1,
+              status: "active"
+            }
+          ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-1",
+            storageStatus: "active",
+            contentSha256: "a".repeat(64)
+          }
+        ])
+      }
+    } as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    const result = await service.getDraft("contract-1", "owner-1");
+
+    expect(result.governance?.authorizationReuseCandidates).toEqual([
+      {
+        authorizationId: "authorization-1",
+        sourceContractVersionId: "version-1",
+        sourceVersionNo: 1,
+        sourceVersionStatus: "effective",
+        side: "first_party",
+        grantorName: "我方公司",
+        agentName: "张三",
+        scopeSummary: "签署、履行、变更及补充协议",
+        contentSha256: "a".repeat(64),
+        pageCount: 1,
+        fileStatus: "active"
+      }
+    ]);
+    expect(result.governance?.authorizationReuseCandidates[0]).not.toHaveProperty("fileId");
+    expect(result.governance?.authorizationReuseCandidates[0]).not.toHaveProperty("objectKey");
+  });
+
   it("stales drifted company documents in the first workbench read and returns no success", async () => {
     let documentStatus = "success";
     const version = {

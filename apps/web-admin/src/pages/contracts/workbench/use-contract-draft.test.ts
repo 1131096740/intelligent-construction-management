@@ -274,6 +274,55 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({ expectedRevision: 3 });
   });
 
+  it("treats a clean flush as a successful no-op and reports dirty save failures", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    await draft.load("ct-1");
+
+    await expect(draft.saveNow()).resolves.toBe(true);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+
+    draft.model.contractName = "待保存修改";
+    draft.markDirty();
+    mockSaveDraft.mockRejectedValueOnce(new Error("网络异常"));
+    await expect(draft.saveNow()).resolves.toBe(false);
+    expect(draft.saveState.value).toBe("failed");
+    expect(draft.model.contractName).toBe("待保存修改");
+  });
+
+  it("coalesces an in-flight autosave and preserves edits made during the request", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    let resolveFirst!: (value: unknown) => void;
+    mockSaveDraft
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce({ version: { draftRevision: 5 } });
+    await draft.load("ct-1");
+
+    draft.model.contractName = "第一次修改";
+    draft.markDirty();
+    const autosave = draft.saveNow();
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+    expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({ expectedRevision: 3 });
+
+    draft.model.contractName = "请求期间的新修改";
+    draft.markDirty();
+    const governanceFlush = draft.saveNow();
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+
+    resolveFirst({ version: { draftRevision: 4 } });
+    await Promise.all([autosave, governanceFlush]);
+
+    expect(mockSaveDraft).toHaveBeenCalledTimes(2);
+    expect(mockSaveDraft.mock.calls[1]?.[1]).toMatchObject({
+      expectedRevision: 4,
+      draftData: { contractName: "请求期间的新修改" }
+    });
+    expect(draft.saveState.value).toBe("saved");
+    await expect(draft.saveNow()).resolves.toBe(true);
+    expect(mockSaveDraft).toHaveBeenCalledTimes(2);
+  });
+
   it("saves structured payment terms with the draft payload", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(
@@ -304,6 +353,7 @@ describe("useContractDraft", () => {
     draft.model.paymentRequiresInvoice = true;
     draft.model.paymentAllowsInstallments = false;
     draft.model.paymentTermsOriginalText = "结算归档后20天内付款85%。";
+    draft.markDirty();
     await draft.saveNow();
 
     expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({
@@ -351,6 +401,7 @@ describe("useContractDraft", () => {
     mockSaveDraft.mockResolvedValue({ version: { draftRevision: 4 } });
 
     await draft.load("ct-1");
+    draft.markDirty();
     await draft.saveNow();
 
     const payload = mockSaveDraft.mock.calls[0]?.[1];
@@ -392,6 +443,7 @@ describe("useContractDraft", () => {
       defaultTaxRatePercent: "9"
     });
 
+    draft.markDirty();
     await draft.saveNow();
 
     expect(mockSaveDraft.mock.calls[0]?.[1]).toMatchObject({
@@ -417,6 +469,8 @@ describe("useContractDraft", () => {
         resolveSave = resolve;
       })
     );
+    draft.model.contractName = "改名";
+    draft.markDirty();
     const firstSave = draft.saveNow();
     expect(draft.saveState.value).toBe("saving");
     resolveSave({ version: { draftRevision: 4 } });
@@ -425,6 +479,8 @@ describe("useContractDraft", () => {
 
     // failed (non-conflict error)
     mockSaveDraft.mockRejectedValueOnce(new Error("网络异常"));
+    draft.model.contractName = "再改名";
+    draft.markDirty();
     await draft.saveNow();
     expect(draft.saveState.value).toBe("failed");
 
@@ -433,6 +489,8 @@ describe("useContractDraft", () => {
     mockFetchWorkbench.mockResolvedValue(
       makeWorkbench({ version: { ...makeWorkbench().version, draftRevision: 7 } })
     );
+    draft.model.contractName = "冲突改名";
+    draft.markDirty();
     await draft.saveNow();
     expect(draft.saveState.value).toBe("conflict");
   });

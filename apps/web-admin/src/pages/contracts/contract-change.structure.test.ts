@@ -35,7 +35,7 @@ describe("contract change Web closure", () => {
     expect(workbench).toContain("initializeDraft.amountLimitType.value");
     expect(draft).toContain("amountLimitType: initAmountLimitType.value");
     expect(draft).toContain("...(!isChangeDraft");
-    expect(workbench).toContain(":disabled=\"!editable || isChangeVersion\"");
+    expect(workbench).toContain(":disabled=\"editorDisabled || isChangeVersion\"");
   });
 
   it("shows structured archive replacement facts only for the current pending effect", () => {

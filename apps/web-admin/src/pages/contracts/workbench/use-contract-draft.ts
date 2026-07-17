@@ -139,7 +139,8 @@ export interface UseContractDraft {
   initializeDraft: InitializeDraftController;
   load: (contractId: string) => Promise<void>;
   markDirty: () => void;
-  saveNow: () => Promise<void>;
+  /** Flushes dirty draft data. Clean state is a successful no-op. */
+  saveNow: () => Promise<boolean>;
   createCheckpoint: (options?: {
     name?: string;
     confirmEviction?: () => boolean | Promise<boolean>;
@@ -351,6 +352,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let loadRequestId = 0;
+  let editGeneration = 0;
+  let activeSave: Promise<boolean> | null = null;
   // `dirty` stays true from the first edit until a save RESOLVES successfully.
   const dirtyRef = ref(false);
 
@@ -409,6 +412,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     workbench.value = result;
     contractVersionId.value = result.version.id;
     currentRevision.value = result.version.draftRevision;
+    editGeneration += 1;
     conflict.value = null;
     pausedRef.value = false;
     dirtyRef.value = false;
@@ -427,6 +431,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   // -- Dirty tracking + debounced autosave ------------------------------------
 
   function markDirty(): void {
+    editGeneration += 1;
     dirtyRef.value = true;
     writeBackup();
 
@@ -448,13 +453,19 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   // -- Save -------------------------------------------------------------------
 
-  async function performSave(): Promise<void> {
-    if (!contractVersionId.value) {
-      return;
+  async function performSave(): Promise<boolean> {
+    const savingVersionId = contractVersionId.value;
+    if (!savingVersionId) {
+      return false;
+    }
+    if (!dirtyRef.value) {
+      cancelScheduledSave();
+      return true;
     }
 
     cancelScheduledSave();
     saveState.value = "saving";
+    const savingGeneration = editGeneration;
 
     const changeType = (workbench.value?.version as unknown as { changeType?: unknown })?.changeType;
     const isChangeDraft = changeType === "change" || changeType === "supplement";
@@ -483,27 +494,63 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     };
 
     try {
-      const result = await saveContractDraft(contractVersionId.value, payload);
+      const result = await saveContractDraft(savingVersionId, payload);
+      // A late response from another route must never mutate the newly loaded
+      // contract's revision, dirty state, backup, or conflict UI.
+      if (contractVersionId.value !== savingVersionId) return true;
       // Only now is it safe to clear dirty state + the backup (brief rule).
       const nextRevision = readRevision(result);
       if (nextRevision !== null) {
         currentRevision.value = nextRevision;
       }
-      dirtyRef.value = false;
-      clearBackup();
-      saveState.value = "saved";
+      if (editGeneration === savingGeneration) {
+        dirtyRef.value = false;
+        clearBackup();
+        saveState.value = "saved";
+      } else {
+        // The request only persisted its start-of-flight snapshot. Preserve
+        // edits made while it was in flight so the serialized next save can
+        // flush them against the returned revision.
+        dirtyRef.value = true;
+        writeBackup();
+        saveState.value = "saving";
+      }
+      return true;
     } catch (error) {
+      if (contractVersionId.value !== savingVersionId) return true;
       if (isConflictError(error)) {
         await enterConflict();
       } else {
         // Non-conflict failure: keep local edits + backup, do NOT pause.
         saveState.value = "failed";
       }
+      return false;
     }
   }
 
-  async function saveNow(): Promise<void> {
-    await performSave();
+  async function saveNow(): Promise<boolean> {
+    cancelScheduledSave();
+    while (dirtyRef.value || activeSave) {
+      if (pausedRef.value) return false;
+      if (activeSave) {
+        const saved = await activeSave;
+        if (!saved) return false;
+        if (!dirtyRef.value) return true;
+        continue;
+      }
+      if (!dirtyRef.value) return true;
+      const pending = performSave();
+      activeSave = pending;
+      let saved = false;
+      try {
+        saved = await pending;
+      } finally {
+        if (activeSave === pending) activeSave = null;
+      }
+      if (!saved) return false;
+      if (!dirtyRef.value) return true;
+    }
+    return true;
   }
 
   // -- Conflict handling ------------------------------------------------------
@@ -548,7 +595,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     dirtyRef.value = true;
     writeBackup();
     resumeAfterConflict();
-    await performSave();
+    await saveNow();
   }
 
   async function loadServerAfterConflict(): Promise<void> {

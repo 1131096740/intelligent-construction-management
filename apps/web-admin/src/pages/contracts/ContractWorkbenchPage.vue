@@ -280,18 +280,29 @@
             v-if="canTransfer"
             size="small"
             variant="outline"
+            :disabled="writeLocked"
             @click="transferVisible = true"
           >
             转移负责人
           </t-button>
           <t-button
             size="small"
-            theme="primary"
-            :disabled="!editable"
+            variant="outline"
+            :disabled="editorDisabled"
             :loading="saveState === 'saving'"
             @click="onSave"
           >
             保存
+          </t-button>
+          <t-button
+            v-if="editable"
+            size="small"
+            theme="primary"
+            :loading="submissionBusy"
+            :disabled="writeLocked"
+            @click="requestSubmission"
+          >
+            提交审批
           </t-button>
         </div>
       </header>
@@ -364,7 +375,7 @@
             v-if="activeSection === 'documents'"
             :selected="selectedNegotiation"
             :readiness="workbench?.readiness"
-            :disabled="!editable"
+            :disabled="editorDisabled"
             @changed="onNegotiationChanged"
           />
           <ContractDocumentCanvas
@@ -411,7 +422,7 @@
                 <t-select
                   :value="workbench.contract.contractTypeKey"
                   :options="contractTypeOptions"
-                  :disabled="!editable || migrationBusy"
+                  :disabled="editorDisabled || migrationBusy"
                   placeholder="切换合同类型"
                   @change="onExistingTypeChange"
                 />
@@ -421,23 +432,23 @@
               <ContractOverviewSection
                 v-if="activeSection === 'overview'"
                 :workbench="workbench"
-                :disabled="!editable"
+                :disabled="editorDisabled"
                 @create-checkpoint="onCreateCheckpoint"
                 @restore-checkpoint="onRestoreCheckpoint"
               />
               <ContractBasicSection
                 v-else-if="activeSection === 'basic'"
                 :model="model"
-                :disabled="!editable"
-                :name-disabled="!editable || (isChangeVersion && !changePolicy.editableFieldKeys.includes(CONTRACT_NAME_DRAFT_KEY))"
-                :company-disabled="!editable || isChangeVersion"
+                :disabled="editorDisabled"
+                :name-disabled="editorDisabled || (isChangeVersion && !changePolicy.editableFieldKeys.includes(CONTRACT_NAME_DRAFT_KEY))"
+                :company-disabled="editorDisabled || isChangeVersion"
                 @update="applyPatch"
               />
               <ContractPartySection
                 v-else-if="activeSection === 'party'"
                 :model="model"
                 :workbench="workbench"
-                :disabled="!editable || isChangeVersion"
+                :disabled="editorDisabled || isChangeVersion"
                 @update="applyPatch"
                 @reload="reloadCurrent"
               />
@@ -448,13 +459,13 @@
                 <ContractTaxFactsSection
                   :model="model"
                   :workbench="workbench"
-                  :disabled="!editable || isChangeVersion"
+                  :disabled="editorDisabled || isChangeVersion"
                   @update="applyPatch"
                 />
                 <ContractPricingSection
                   :model="model"
                   :workbench="workbench"
-                  :disabled="!editable || isChangeVersion"
+                  :disabled="editorDisabled || isChangeVersion"
                   @update="applyPatch"
                 />
               </div>
@@ -462,39 +473,77 @@
                 v-else-if="activeSection === 'fields'"
                 :model="model"
                 :workbench="workbench"
-                :disabled="!editable || (isChangeVersion && !changePolicy.valid)"
+                :disabled="editorDisabled || (isChangeVersion && !changePolicy.valid)"
                 :editable-keys="isChangeVersion ? changePolicy.editableFieldKeys : undefined"
                 @update="applyPatch"
               />
               <ContractBillsSection
                 v-else-if="activeSection === 'bills'"
                 :workbench="billWorkbench"
-                :disabled="!editable"
+                :disabled="editorDisabled"
                 @reload="reloadCurrent"
               />
               <ContractPaymentTermsSection
                 v-else-if="activeSection === 'payment'"
                 :model="model"
-                :disabled="!editable || isChangeVersion"
+                :disabled="editorDisabled || isChangeVersion"
                 @update="applyPatch"
               />
               <ContractClausesSection
                 v-else-if="activeSection === 'clauses'"
                 :model="model"
                 :readiness="workbench?.readiness"
-                :disabled="!editable || (isChangeVersion && !changePolicy.valid)"
+                :disabled="editorDisabled || (isChangeVersion && !changePolicy.valid)"
                 :editable-keys="isChangeVersion ? changePolicy.editableClauseKeys : undefined"
                 @update="applyPatch"
               />
-              <ContractDocumentsSection
+              <div
                 v-else-if="activeSection === 'documents'"
-                :workbench="workbench"
-                :disabled="!editable"
-                :negotiation-refresh-token="negotiationRefreshToken"
-                @reload="reloadCurrent"
-                @negotiation-selection="selectedNegotiation = $event"
-                @negotiation-changed="onNegotiationChanged"
-              />
+                class="document-governance-flow"
+              >
+                <ContractDocumentsSection
+                  :workbench="workbench"
+                  :disabled="editorDisabled"
+                  :negotiation-refresh-token="negotiationRefreshToken"
+                  @reload="reloadCurrent"
+                  @negotiation-selection="selectedNegotiation = $event"
+                  @negotiation-changed="onNegotiationChanged"
+                />
+                <ContractAuthorizationSection
+                  v-if="governedWorkbench"
+                  :workbench="governedWorkbench"
+                  :disabled="editorDisabled"
+                  :prepare-mutation="prepareGovernanceMutation"
+                  :complete-mutation="completeGovernanceMutation"
+                />
+                <ContractFormalDocumentSection
+                  v-if="governedWorkbench"
+                  :workbench="governedWorkbench"
+                  :disabled="editorDisabled"
+                  :prepare-mutation="prepareGovernanceMutation"
+                  :complete-mutation="completeGovernanceMutation"
+                />
+                <section
+                  class="submission-section"
+                  aria-label="合同提交就绪"
+                >
+                  <div>
+                    <strong>提交就绪</strong>
+                    <span>提交前会先保存未保存修改，再重新检查当前修订。</span>
+                  </div>
+                  <t-select
+                    v-model="submissionNumberRuleId"
+                    :options="contractNumberRuleOptions"
+                    :disabled="editorDisabled"
+                    placeholder="选择合同编号规则"
+                  />
+                  <t-alert
+                    v-if="submissionMessage"
+                    :theme="submissionMessageTone"
+                    :message="submissionMessage"
+                  />
+                </section>
+              </div>
             </div>
           </section>
         </aside>
@@ -538,7 +587,7 @@
     <t-dialog
       :visible="migrationVisible"
       header="合同类型迁移预览"
-      :confirm-btn="{ content: '确认迁移', loading: migrationBusy }"
+      :confirm-btn="{ content: '确认迁移', loading: migrationBusy, disabled: writeLocked }"
       cancel-btn="取消"
       :close-on-overlay-click="false"
       @confirm="onConfirmMigration"
@@ -568,6 +617,16 @@
       @confirm="confirmCheckpointEviction"
     />
 
+    <SensitiveActionDialog
+      v-model="submissionConfirmVisible"
+      title="确认提交合同审批？"
+      description="系统将先保存草稿，检查双方授权、乙方签章完整 PDF 和审批人员，全部通过后才会冻结并提交。"
+      confirm-text="确认提交审批"
+      :loading="submissionBusy"
+      :error="submissionError"
+      @confirm="confirmSubmission"
+    />
+
     <!-- Ownership transfer --------------------------------------------------->
     <t-dialog
       v-model:visible="transferVisible"
@@ -579,6 +638,7 @@
         <t-select
           v-model="transferUserId"
           :options="transferUserOptions"
+          :disabled="writeLocked"
           placeholder="选择接收人"
         />
       </label>
@@ -595,13 +655,16 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   applyContractTypeChange,
+  checkContractSubmissionReadiness,
   listPublishedContractTemplates,
   previewContractTypeChange,
+  submitContractFromWorkbench,
   transferContractDraft,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
 import {
   fetchApprovalDelegationUserOptions,
+  fetchActiveContractNumberRules,
   fetchContractCreateProjects
 } from "../../api/core-flow-read.api";
 import {
@@ -631,10 +694,12 @@ import {
   type ContractScenarioRecommendation
 } from "./contract-scenario.state";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
+import ContractAuthorizationSection from "./workbench/ContractAuthorizationSection.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
 import ContractDocumentCanvas from "./workbench/ContractDocumentCanvas.vue";
 import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
+import ContractFormalDocumentSection from "./workbench/ContractFormalDocumentSection.vue";
 import ContractNegotiationCanvas from "./workbench/ContractNegotiationCanvas.vue";
 import ContractOverviewSection from "./workbench/ContractOverviewSection.vue";
 import ContractPartySection from "./workbench/ContractPartySection.vue";
@@ -657,6 +722,14 @@ const route = useRoute();
 const router = useRouter();
 const checkpointEvictionVisible = ref(false);
 const checkpointBusy = ref(false);
+const submissionBusy = ref(false);
+const submissionConfirmVisible = ref(false);
+const submissionError = ref("");
+const submissionMessage = ref("");
+const submissionMessageTone = ref<"success" | "error">("success");
+const submissionNumberRuleId = ref("");
+const contractNumberRules = ref<Array<{ id: string; name: string; pattern: string }>>([]);
+const governanceMutationLocked = ref(false);
 
 const draft = useContractDraft({
   replace: (to) => {
@@ -682,6 +755,7 @@ const {
 // model directly. The page owns the (non-prop) composable model and applies it,
 // then schedules autosave.
 function applyPatch(patch: Partial<ContractDraftModel>) {
+  if (writeLocked.value) return;
   Object.assign(model, patch);
   markDirty();
 }
@@ -773,6 +847,11 @@ const editable = computed(() => {
   const status = workbench.value?.version.status;
   return status ? EDITABLE_STATUSES.has(status) : false;
 });
+const writeLocked = computed(() => governanceMutationLocked.value || submissionBusy.value);
+const editorDisabled = computed(() => !editable.value || writeLocked.value);
+const governedWorkbench = computed(() =>
+  workbench.value?.governance ? workbench.value : null
+);
 const changePolicy = computed(() => contractChangePolicyView(workbench.value));
 const isChangeVersion = computed(() => changePolicy.value.isChange);
 const changeMeta = computed(() => normalizeWorkbenchChange(workbench.value));
@@ -851,6 +930,7 @@ const nextActionText = computed(() => {
 });
 
 function onNegotiationChanged() {
+  if (writeLocked.value) return;
   negotiationRefreshToken.value += 1;
   void reloadCurrent();
 }
@@ -860,6 +940,12 @@ function onNegotiationChanged() {
 const canTransfer = computed(() => Boolean(workbench.value));
 const transferUserOptions = computed(() =>
   transferUsers.value.map((user) => ({ label: user.name, value: user.id }))
+);
+const contractNumberRuleOptions = computed(() =>
+  contractNumberRules.value.map((rule) => ({
+    label: `${rule.name}（${rule.pattern}）`,
+    value: rule.id
+  }))
 );
 
 const autosaveLabel = computed(() => {
@@ -1224,7 +1310,7 @@ function firstTemplateVersionId(templates: PublishedContractTemplateReadModel[])
 // closing the dialog restores the displayed value).
 async function onExistingTypeChange(value: string) {
   const wb = workbench.value;
-  if (!wb || value === wb.contract.contractTypeKey) {
+  if (writeLocked.value || !wb || value === wb.contract.contractTypeKey) {
     return;
   }
 
@@ -1279,7 +1365,7 @@ function onCancelMigration() {
 
 async function onConfirmMigration() {
   const wb = workbench.value;
-  if (!wb || !migrationTargetTemplateVersionId.value) {
+  if (writeLocked.value || !wb || !migrationTargetTemplateVersionId.value) {
     return;
   }
 
@@ -1316,7 +1402,89 @@ async function onCreateDraft() {
 }
 
 async function onSave() {
-  await saveNow();
+  if (writeLocked.value) return;
+  const saved = await saveNow();
+  if (!saved) {
+    errorMessage.value = "合同草稿未保存成功，已保留当前内容，请重试。";
+  }
+}
+
+async function prepareGovernanceMutation() {
+  const id = contractId.value;
+  if (!id || governanceMutationLocked.value) return null;
+  governanceMutationLocked.value = true;
+  const saved = await saveNow();
+  if (!saved) {
+    submissionMessageTone.value = "error";
+    submissionMessage.value = "草稿保存失败，已保留当前内容，本次文件操作未执行。";
+    governanceMutationLocked.value = false;
+    return null;
+  }
+  try {
+    await loadExpectedWorkbench(id);
+    return workbench.value;
+  } catch (error) {
+    governanceMutationLocked.value = false;
+    throw error;
+  }
+}
+
+async function completeGovernanceMutation(reload: boolean) {
+  try {
+    if (reload && contractId.value) await loadExpectedWorkbench(contractId.value);
+  } finally {
+    governanceMutationLocked.value = false;
+  }
+}
+
+function requestSubmission() {
+  submissionError.value = "";
+  submissionMessage.value = "";
+  if (!submissionNumberRuleId.value) {
+    submissionMessageTone.value = "error";
+    submissionMessage.value = "请先在“文档”页签的提交就绪区选择合同编号规则。";
+    activeSection.value = "documents";
+    return;
+  }
+  submissionConfirmVisible.value = true;
+}
+
+async function confirmSubmission() {
+  if (submissionBusy.value || governanceMutationLocked.value || !submissionNumberRuleId.value) return;
+  submissionBusy.value = true;
+  submissionError.value = "";
+  submissionMessage.value = "";
+  try {
+    const current = await prepareGovernanceMutation();
+    if (!current) throw new Error("草稿保存失败，本次未提交审批。");
+    const readiness = await checkContractSubmissionReadiness(current.version.id) as {
+      ready?: boolean;
+      blocking?: unknown[];
+      blockingMessages?: string[];
+    };
+    await loadExpectedWorkbench(contractId.value);
+    const blocking = structuredMessages(readiness.blocking) ?? stringMessages(readiness.blockingMessages);
+    if (!readiness.ready || blocking.length) {
+      activeSection.value = "documents";
+      throw new Error(blocking[0] ?? "合同尚未满足提交条件，请按就绪检查补齐资料。");
+    }
+    const latest = workbench.value;
+    if (!latest) throw new Error("当前合同版本读取失败，本次未提交。");
+    await submitContractFromWorkbench(latest.version.id, {
+      numberRuleId: submissionNumberRuleId.value
+    });
+    submissionConfirmVisible.value = false;
+    submissionMessageTone.value = "success";
+    submissionMessage.value = "合同已提交审批。";
+    await router.push(`/contracts/${latest.contract.id}`);
+  } catch (error) {
+    submissionError.value = error instanceof Error
+      ? error.message
+      : "合同提交失败，已保留当前草稿，请按提示处理后重试。";
+  } finally {
+    submissionBusy.value = false;
+    governanceMutationLocked.value = false;
+  }
 }
 
 async function reloadCurrent() {
@@ -1326,6 +1494,7 @@ async function reloadCurrent() {
 }
 
 async function onCreateCheckpoint() {
+  if (writeLocked.value) return;
   if ((workbench.value?.checkpoints.length ?? 0) >= 5) {
     checkpointEvictionVisible.value = true;
     return;
@@ -1334,6 +1503,7 @@ async function onCreateCheckpoint() {
 }
 
 async function confirmCheckpointEviction() {
+  if (writeLocked.value) return;
   checkpointBusy.value = true;
   errorMessage.value = "";
   try {
@@ -1347,6 +1517,7 @@ async function confirmCheckpointEviction() {
 }
 
 async function onRestoreCheckpoint(checkpointId: string) {
+  if (writeLocked.value) return;
   await restoreCheckpoint(checkpointId);
 }
 
@@ -1361,7 +1532,7 @@ async function onLoadServer() {
 async function onConfirmTransfer() {
   const target = transferUserId.value.trim();
   const id = contractId.value;
-  if (!target || !id) {
+  if (writeLocked.value || !target || !id) {
     return;
   }
   try {
@@ -1413,6 +1584,14 @@ onMounted(() => {
     })
     .catch(() => {
       transferUsers.value = [];
+    });
+  void fetchActiveContractNumberRules()
+    .then((rules) => {
+      contractNumberRules.value = rules;
+      submissionNumberRuleId.value ||= rules[0]?.id ?? "";
+    })
+    .catch(() => {
+      contractNumberRules.value = [];
     });
 });
 
@@ -1490,6 +1669,27 @@ function initializeDraftFromQuery() {
   width: 100%;
   min-width: 0;
   color: var(--jg-text-strong);
+}
+
+.document-governance-flow,
+.submission-section,
+.submission-section > div {
+  display: grid;
+  gap: var(--jg-space-md);
+}
+
+.submission-section {
+  padding-top: var(--jg-space-lg);
+  border-top: var(--jg-border-width-base) solid var(--jg-border);
+}
+
+.submission-section > div {
+  gap: var(--jg-space-xs);
+}
+
+.submission-section span {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
 }
 
 /* Draft-creation panel ------------------------------------------------------*/

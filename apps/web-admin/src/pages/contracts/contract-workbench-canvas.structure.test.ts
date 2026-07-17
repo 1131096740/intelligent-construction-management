@@ -18,6 +18,18 @@ const billEditorSource = fs.readFileSync(
   path.resolve(__dirname, "workbench/ContractBillEditor.vue"),
   "utf8"
 );
+const authorizationSource = fs.readFileSync(
+  path.resolve(__dirname, "workbench/ContractAuthorizationSection.vue"),
+  "utf8"
+);
+const formalSource = fs.readFileSync(
+  path.resolve(__dirname, "workbench/ContractFormalDocumentSection.vue"),
+  "utf8"
+);
+const draftSource = fs.readFileSync(
+  path.resolve(__dirname, "workbench/use-contract-draft.ts"),
+  "utf8"
+);
 
 describe("contract workbench document canvas structure", () => {
   it("uses a central document canvas and one TDesign business sidebar", () => {
@@ -71,5 +83,35 @@ describe("contract workbench document canvas structure", () => {
     expect(billEditorSource).toContain("createUnsavedBillRow");
     expect(billEditorSource).toContain("isUnsavedBillRow(row)");
     expect(billEditorSource).toContain("已新增空白行，请填写后保存");
+  });
+
+  it("keeps signing facts in the document flow and uses only TDesign upload", () => {
+    expect(pageSource).toContain("ContractAuthorizationSection");
+    expect(pageSource).toContain("ContractFormalDocumentSection");
+    expect(pageSource).toMatch(/ContractDocumentsSection[\s\S]*ContractAuthorizationSection[\s\S]*ContractFormalDocumentSection/u);
+    expect(formalSource).toContain("<t-upload");
+    expect(formalSource).toContain(':request-method="uploadApprovalPdf"');
+    expect(formalSource).not.toContain('type="file"');
+    expect(authorizationSource).toContain("<t-upload");
+    expect(authorizationSource).toContain("uploadPrivateFile");
+    expect(authorizationSource).toContain("尚未选择");
+  });
+
+  it("owns the only draft submission entry and navigates legacy detail submission to workbench", () => {
+    const detailSource = fs.readFileSync(path.resolve(__dirname, "ContractDetailPage.vue"), "utf8");
+    expect(pageSource).toContain("提交审批");
+    expect(pageSource).toContain("submitContractFromWorkbench");
+    expect(detailSource).toContain("前往合同工作台提交");
+    expect(detailSource).not.toContain("submitContractApprovalAction");
+  });
+
+  it("serializes draft saves and locks every write surface during governed mutations", () => {
+    expect(pageSource).toContain("const writeLocked = computed");
+    expect(pageSource).toContain("const editorDisabled = computed");
+    expect(pageSource.match(/:disabled="editorDisabled/g)?.length ?? 0).toBeGreaterThanOrEqual(10);
+    expect(pageSource).toContain("if (writeLocked.value) return;");
+    expect(draftSource).toContain("let activeSave: Promise<boolean> | null = null");
+    expect(draftSource).toContain("editGeneration === savingGeneration");
+    expect(draftSource).toContain("while (dirtyRef.value || activeSave)");
   });
 });

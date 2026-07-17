@@ -265,6 +265,19 @@ export interface ContractWorkbenchReadModel {
       pageCount: number;
       status: string;
     }>;
+    authorizationReuseCandidates: Array<{
+      authorizationId: string;
+      sourceContractVersionId: string;
+      sourceVersionNo: number;
+      sourceVersionStatus: string;
+      side: string;
+      grantorName: string;
+      agentName: string;
+      scopeSummary: string;
+      contentSha256: string;
+      pageCount: number;
+      fileStatus: "active";
+    }>;
     formalFiles: Array<{
       id: string;
       purpose: string;

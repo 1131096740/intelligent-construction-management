@@ -12,12 +12,16 @@ import {
   createBusinessParty,
   createContractNumberRule,
   createDraftCheckpoint,
+  checkContractSubmissionReadiness,
   createLayoutTemplate,
   createStandardClause,
   createWorkbenchDraft,
   deleteBillRow,
   downloadBillExcelTemplate,
   fetchContractWorkbench,
+  setContractAuthorization,
+  submitContractFromWorkbench,
+  uploadContractFormalApprovalFile,
   getBusinessParty,
   getContractTemplate,
   getLayoutTemplate,
@@ -128,6 +132,40 @@ describe("contract workbench API client", () => {
     await fetchContractWorkbench("contract-1");
 
     expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract-1");
+  });
+
+  it("connects the governed signing facts and unique workbench submission routes", async () => {
+    mockApiFetch.mockImplementation(() => makeOkJson({ ready: true }));
+
+    await setContractAuthorization("version-1", {
+      side: "first_party",
+      expectedRevision: 3,
+      required: false
+    });
+    await uploadContractFormalApprovalFile("version-1", {
+      fileId: "file-1",
+      sourceRevision: 3,
+      counterpartySigned: true,
+      counterpartyStamped: true,
+      crossPageSealCompleted: true,
+      documentOrderConfirmed: true,
+      authorizationsBeforeSignaturePageConfirmed: true
+    });
+    await checkContractSubmissionReadiness("version-1");
+    await submitContractFromWorkbench("version-1", { numberRuleId: "rule-1" });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/contracts/version-1/authorizations", expect.objectContaining({
+      method: "POST"
+    }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/contracts/version-1/formal-files/approval", expect.objectContaining({
+      method: "POST"
+    }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(3, "/contracts/version-1/readiness", expect.objectContaining({
+      method: "POST"
+    }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(4, "/contracts/version-1/approval-submission", expect.objectContaining({
+      method: "POST"
+    }));
   });
 
   it("maps backend project-role errors before the workbench page displays them", async () => {

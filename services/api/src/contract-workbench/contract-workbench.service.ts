@@ -211,6 +211,9 @@ export class ContractWorkbenchService {
           orderBy: { createdAt: "desc" }
         })
       : [];
+    const authorizationReuseCandidates = version.contractGovernanceVersion === 1
+      ? await this.loadAuthorizationReuseCandidates(version.contractId, version.id)
+      : [];
     const paymentStages = paymentTerms
       ? await this.prisma.paymentTermsStage.findMany({
           where: { paymentTermsVersionId: paymentTerms.id },
@@ -287,6 +290,7 @@ export class ContractWorkbenchService {
             version: 1,
             authorizationLinks,
             authorizations,
+            authorizationReuseCandidates,
             formalFiles
           }
         : null,
@@ -2198,6 +2202,85 @@ export class ContractWorkbenchService {
 
   private toReadModel<T>(value: T): T {
     return this.convertReadValue(value) as T;
+  }
+
+  private async loadAuthorizationReuseCandidates(contractId: string, currentVersionId: string) {
+    const sourceVersions = await this.prisma.contractVersion.findMany({
+      where: {
+        contractId,
+        id: { not: currentVersionId },
+        status: { in: ["effective", "superseded"] }
+      },
+      select: { id: true, versionNo: true, status: true },
+      orderBy: { versionNo: "desc" }
+    });
+    if (!sourceVersions.length) return [];
+
+    const sourceById = new Map(sourceVersions.map((version) => [version.id, version]));
+    const links = await this.prisma.contractVersionAuthorizationLink.findMany({
+      where: {
+        contractVersionId: { in: sourceVersions.map((version) => version.id) },
+        required: true,
+        authorizationId: { not: null }
+      },
+      select: {
+        contractVersionId: true,
+        side: true,
+        authorizationId: true
+      }
+    });
+    const authorizationIds = links
+      .map((link) => link.authorizationId)
+      .filter((id): id is string => Boolean(id));
+    if (!authorizationIds.length) return [];
+
+    const authorizations = await this.prisma.contractAuthorization.findMany({
+      where: { id: { in: authorizationIds }, status: "active" }
+    });
+    const files = await this.prisma.fileObject.findMany({
+      where: {
+        id: { in: authorizations.map((authorization) => authorization.fileId) },
+        storageStatus: "active"
+      },
+      select: { id: true, storageStatus: true, contentSha256: true }
+    });
+    const fileById = new Map(files.map((file) => [file.id, file]));
+    const authorizationById = new Map(authorizations.map((authorization) => [authorization.id, authorization]));
+
+    return links.flatMap((link) => {
+      const source = sourceById.get(link.contractVersionId);
+      const authorization = link.authorizationId
+        ? authorizationById.get(link.authorizationId)
+        : undefined;
+      const file = authorization ? fileById.get(authorization.fileId) : undefined;
+      const scope = authorization?.scopeSummary ?? "";
+      if (
+        !source ||
+        !authorization ||
+        authorization.originContractVersionId !== source.id ||
+        authorization.side !== link.side ||
+        !["first_party", "counterparty"].includes(link.side) ||
+        !file ||
+        file.storageStatus !== "active" ||
+        !/^[a-f0-9]{64}$/u.test(authorization.contentSha256) ||
+        file.contentSha256 !== authorization.contentSha256 ||
+        authorization.pageCount < 1 ||
+        !["签署", "履行", "变更", "补充协议"].every((keyword) => scope.includes(keyword))
+      ) return [];
+      return [{
+        authorizationId: authorization.id,
+        sourceContractVersionId: source.id,
+        sourceVersionNo: source.versionNo,
+        sourceVersionStatus: source.status,
+        side: authorization.side,
+        grantorName: authorization.grantorName,
+        agentName: authorization.agentName,
+        scopeSummary: authorization.scopeSummary,
+        contentSha256: authorization.contentSha256,
+        pageCount: authorization.pageCount,
+        fileStatus: "active" as const
+      }];
+    });
   }
 
   private readinessFromSnapshot(snapshot: unknown) {
