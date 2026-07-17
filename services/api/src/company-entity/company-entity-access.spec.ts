@@ -12,11 +12,13 @@ import {
 type AccessFixture = {
   assignmentIds?: string[];
   roleKeys?: string[];
+  projectRoleKeys?: string[];
 };
 
 function buildClient({
   assignmentIds = ["position-1"],
-  roleKeys = []
+  roleKeys = [],
+  projectRoleKeys = []
 }: AccessFixture = {}) {
   return {
     userPosition: {
@@ -30,6 +32,11 @@ function buildClient({
           id,
           key: roleKeys[index]
         }))
+      )
+    },
+    projectMember: {
+      findMany: jest.fn().mockResolvedValue(
+        projectRoleKeys.map((positionKey) => ({ positionKey }))
       )
     }
   };
@@ -73,6 +80,59 @@ describe("CompanyEntityAccess", () => {
     }
   );
 
+  it.each(COMPANY_ENTITY_READER_ROLES)(
+    "allows company-level reader role %s to select an active subject",
+    async (roleKey) => {
+      const prisma = buildClient({ roleKeys: [roleKey] });
+      const access = new CompanyEntityAccess(prisma as never);
+
+      await expect(access.assertCanSelect("reader-1")).resolves.toBe(roleKey);
+      expect(prisma.projectMember.findMany).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["contract_staff", "contract_director"])(
+    "allows project role %s to select a subject through contract.create policy",
+    async (roleKey) => {
+      const prisma = buildClient({
+        assignmentIds: [],
+        projectRoleKeys: [roleKey]
+      });
+      const access = new CompanyEntityAccess(prisma as never);
+
+      await expect(access.assertCanSelect("project-contract-user")).resolves.toBe(
+        roleKey
+      );
+      expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+        where: { userId: "project-contract-user" },
+        select: { positionKey: true }
+      });
+    }
+  );
+
+  it.each(["project_manager", "employee", "super_admin"])(
+    "rejects unrelated project role %s from selecting a subject",
+    async (roleKey) => {
+      const access = new CompanyEntityAccess(
+        buildClient({ assignmentIds: [], projectRoleKeys: [roleKey] }) as never
+      );
+
+      await expect(access.assertCanSelect("project-user")).rejects.toThrow(
+        "选择我方公司主体"
+      );
+    }
+  );
+
+  it("rejects a global super_admin from selecting a subject", async () => {
+    const access = new CompanyEntityAccess(
+      buildClient({ roleKeys: ["super_admin"] }) as never
+    );
+
+    await expect(access.assertCanSelect("global-super-admin")).rejects.toThrow(
+      "选择我方公司主体"
+    );
+  });
+
   it("rejects a project-scoped role with the same key", async () => {
     const prisma = buildClient({ assignmentIds: [], roleKeys: ["contract_staff"] });
     const access = new CompanyEntityAccess(prisma as never);
@@ -112,6 +172,9 @@ describe("CompanyEntityAccess", () => {
     );
     await expect(access.assertCanRead("no-role-user")).rejects.toThrow(
       "当前账号没有公司级全局岗位，不能查看我方公司主体管理信息"
+    );
+    await expect(access.assertCanSelect("no-role-user")).rejects.toThrow(
+      "选择我方公司主体"
     );
   });
 

@@ -22,8 +22,8 @@ export class CompanyEntityController {
   constructor(private readonly companyEntities: CompanyEntityService) {}
 
   @Get()
-  listActive() {
-    return this.companyEntities.listActive();
+  listActive(@CurrentUser() user: AuthenticatedUser) {
+    return this.companyEntities.listActive(user.id);
   }
 
   @Get("management")

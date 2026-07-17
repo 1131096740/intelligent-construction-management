@@ -83,9 +83,10 @@ export class CompanyEntityService {
     private readonly audit: AuditService
   ) {}
 
-  listActive() {
+  async listActive(actorUserId: string) {
+    await this.access.assertCanSelect(actorUserId);
     return this.prisma.companyEntity.findMany({
-      where: { isActive: true },
+      where: { isActive: true, dataStatus: "complete" },
       select: COMPANY_ENTITY_SELECT,
       orderBy: { createdAt: "asc" }
     });
@@ -268,6 +269,11 @@ export class CompanyEntityService {
       return await this.prisma.$transaction(async (tx) => {
         const actorRoleKey = await this.access.assertCanMaintain(actorUserId, tx);
         const current = await this.lockAndLoad(tx, companyEntityId);
+        if (rawIsActive && current.dataStatus === "legacy_incomplete") {
+          throw new BadRequestException(
+            "我方公司主体资料尚未完善，请先补全统一社会信用代码和主体资料后再启用"
+          );
+        }
         if (current.isActive === rawIsActive) {
           return { entity: current, unchanged: true };
         }

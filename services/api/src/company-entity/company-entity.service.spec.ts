@@ -96,7 +96,8 @@ function buildHarness() {
   };
   const access = {
     assertCanMaintain: jest.fn().mockResolvedValue("contract_staff"),
-    assertCanRead: jest.fn().mockResolvedValue("finance_staff")
+    assertCanRead: jest.fn().mockResolvedValue("finance_staff"),
+    assertCanSelect: jest.fn().mockResolvedValue("contract_staff")
   };
   const audit = {
     record: jest.fn().mockResolvedValue({ id: "audit-1" })
@@ -107,12 +108,15 @@ function buildHarness() {
 }
 
 describe("CompanyEntityService reads", () => {
-  it("keeps the public active list as an array and includes dataStatus", async () => {
-    const { service, prisma } = buildHarness();
+  it("keeps the candidate response as an array after authorization", async () => {
+    const { service, prisma, access } = buildHarness();
 
-    await expect(service.listActive()).resolves.toEqual([entityFixture()]);
+    await expect(service.listActive("contract-user")).resolves.toEqual([
+      entityFixture()
+    ]);
+    expect(access.assertCanSelect).toHaveBeenCalledWith("contract-user");
     expect(prisma.companyEntity.findMany).toHaveBeenCalledWith({
-      where: { isActive: true },
+      where: { isActive: true, dataStatus: "complete" },
       select: {
         id: true,
         name: true,
@@ -125,6 +129,18 @@ describe("CompanyEntityService reads", () => {
       },
       orderBy: { createdAt: "asc" }
     });
+  });
+
+  it("does not query candidate data when selection authorization fails", async () => {
+    const { service, prisma, access } = buildHarness();
+    access.assertCanSelect.mockRejectedValue(
+      new ForbiddenException("当前账号没有选择我方公司主体所需的岗位权限")
+    );
+
+    await expect(service.listActive("employee-user")).rejects.toBeInstanceOf(
+      ForbiddenException
+    );
+    expect(prisma.companyEntity.findMany).not.toHaveBeenCalled();
   });
 
   it("searches current and historical facts with an inactive management filter", async () => {
@@ -640,6 +656,42 @@ describe("CompanyEntityService status", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
+  it("blocks enabling an incomplete subject before writing history or audit", async () => {
+    const { service, tx, audit } = buildHarness();
+    tx.companyEntity.findUnique.mockResolvedValue(
+      entityFixture({ isActive: false, dataStatus: "legacy_incomplete" })
+    );
+
+    await expect(
+      service.updateStatus("entity-1", "contract-user", { isActive: true })
+    ).rejects.toMatchObject({
+      status: 400,
+      message:
+        "我方公司主体资料尚未完善，请先补全统一社会信用代码和主体资料后再启用"
+    });
+    expect(tx.companyEntity.update).not.toHaveBeenCalled();
+    expect(tx.companyEntityVersion.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("still allows an incomplete active subject to be disabled", async () => {
+    const { service, tx, audit } = buildHarness();
+    tx.companyEntity.findUnique.mockResolvedValue(
+      entityFixture({ isActive: true, dataStatus: "legacy_incomplete" })
+    );
+
+    await service.updateStatus("entity-1", "contract-user", {
+      isActive: false
+    });
+
+    expect(tx.companyEntity.update).toHaveBeenCalledWith({
+      where: { id: "entity-1" },
+      data: { isActive: false, currentVersionNo: 2 }
+    });
+    expect(tx.companyEntityVersion.create).toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalled();
+  });
+
   it("rejects a non-boolean status with a Chinese 400", async () => {
     const { service, prisma } = buildHarness();
 
@@ -928,14 +980,14 @@ describe("CompanyEntityController", () => {
       registeredAddress: "昆明市"
     };
 
-    await controller.listActive();
+    await controller.listActive(user);
     await controller.listForManagement(user, { status: "all" });
     await controller.history("entity-1", user);
     await controller.create(facts, user);
     await controller.update("entity-1", facts, user);
     await controller.updateStatus("entity-1", { isActive: false }, user);
 
-    expect(service.listActive).toHaveBeenCalledWith();
+    expect(service.listActive).toHaveBeenCalledWith("contract-user");
     expect(service.listForManagement).toHaveBeenCalledWith("contract-user", {
       status: "all"
     });
