@@ -904,6 +904,10 @@ model ContractFormalFile {
   uploadedByUserId  String
   supersedesId      String?
   invalidatedAt     DateTime?
+  invalidationReason String?
+  declarationSnapshot Json
+  declaredByUserId String
+  declaredAt        DateTime
   createdAt         DateTime  @default(now())
   @@index([contractVersionId, purpose, status])
 }
@@ -916,6 +920,11 @@ model ContractAuthorization {
   scopeSummary      String
   fileId            String
   contentSha256     String
+  pageCount         Int
+  status            String
+  supersedesId      String?
+  invalidatedAt     DateTime?
+  invalidationReason String?
   uploadedByUserId  String
   createdAt         DateTime @default(now())
 }
@@ -947,7 +956,7 @@ model ContractSealTask {
 
 保留 `ContractArchiveFile` 作为旧历史兼容，不迁移猜测旧文件用途。
 
-迁移为四个新模型补齐到 `ContractVersion`、`FileObject`、`User`、授权记录、复用来源版本和 self-supersedes 的外键（删除策略以保留业务证据为先）；`purpose/status/side/seal task status` 使用 CHECK；`pageCount > 0`、`sourceRevision >= 0`、SHA-256 为 64 位十六进制；`ContractSealTask(status, handlerUserId)` 建索引；使用 partial unique index 保证每个合同版本、每种 purpose 最多一个 active 正式文件。授权关联保持每版本每 side 唯一，数据库约束与服务事务共同防止失配。
+迁移为四个新模型补齐到 `ContractVersion`、`FileObject`、`User`、授权记录、复用来源版本和 self-supersedes 的外键（删除策略以保留业务证据为先）；`purpose/status/side/seal task status` 使用 CHECK；正式文件和授权文件都保存 `pageCount > 0`、64 位十六进制 SHA-256、active/invalidated/superseded 状态、失效原因和替代关系；正式文件另保存不可变 `declarationSnapshot`、声明人和声明时间，不能只把签章/骑缝章/顺序声明留在前端。`sourceRevision >= 0`；`ContractSealTask(status, handlerUserId)` 建索引；使用 partial unique index 保证每个合同版本、每种 purpose 最多一个 active 正式文件。授权关联保持每版本每 side 唯一，数据库约束与服务事务共同防止失配。
 
 - [ ] **Step 4: 只读检查 PDF**
 
@@ -968,24 +977,31 @@ git commit -m "feat: 增加合同签署与授权证据结构"
 
 ### Task 10: 合同审批前正式 PDF、双方授权和就绪门禁
 
+> **执行校正（2026-07-17 文件与授权审计）**：授权页属于正式审批 PDF 的组成部分，因此顺序固定为“先明确双方授权并关联有效授权文件 → 再上传完整合并审批 PDF”。授权语义变化必须递增 `draftRevision` 并使旧正式 PDF/readiness 失效；正式文件和授权服务的读取/写入/提交门禁必须接收同一个事务 `tx` 与已锁定版本，禁止各自开事务造成 TOCTOU。
+
 **Files:**
 - Create: `services/api/src/contract/contract-formal-file.service.ts`
 - Create: `services/api/src/contract/contract-formal-file.service.spec.ts`
 - Create: `services/api/src/contract/contract-authorization.service.ts`
 - Create: `services/api/src/contract/contract-authorization.service.spec.ts`
+- Create: `services/api/src/contract/dto/contract-formal-file.dto.ts`
+- Create: `services/api/src/contract/dto/contract-authorization.dto.ts`
 - Modify: `services/api/src/contract/contract.module.ts`
 - Modify: `services/api/src/contract/contract.controller.ts`
 - Modify: `services/api/src/contract/contract.controller.spec.ts`
 - Modify: `services/api/src/contract-workbench/contract-readiness.service.ts`
 - Modify: `services/api/src/contract-workbench/contract-readiness.service.spec.ts`
+- Modify: `services/api/src/contract-workbench/contract-workbench.service.ts`
+- Modify: `services/api/src/contract-workbench/contract-workbench.service.spec.ts`
 - Modify: `services/api/src/contract/contract.service.ts`
 - Modify: `services/api/src/contract/contract.service.spec.ts`
+- Modify: `packages/shared-domain/src/contract-workbench.ts`
 
 - [ ] **Step 1: 写四种授权组合和修订一致性失败测试**
 
 ```ts
 await expect(readiness.check(tx, version, contract, true)).resolves.toMatchObject({
-  blocking: expect.arrayContaining([expect.objectContaining({ code: "counterparty_signed_pdf_missing" })])
+  blocking: expect.arrayContaining([expect.objectContaining({ key: "document.counterparty_signed_pdf_missing" })])
 });
 await expect(files.assertReadyForSubmission(version)).rejects.toThrow("正式审批文件已过期");
 expect(await authorizations.ready(versionId)).toEqual({ companyRequired: false, counterpartyRequired: false, ready: true });
@@ -1013,28 +1029,32 @@ await formalFiles.uploadApprovalVersion(versionId, actorUserId, {
 
 服务验证私有文件归属、PDF、原始 SHA、页数和最新 `draftRevision`，并要求合同员声明完整文件顺序为“合同正文 → 全部附件和清单 → 所需授权委托书 → 最终签署页”。替换时把旧记录标记 superseded；草稿后续变化无需逐处删除文件，提交时以 `sourceRevision` 硬阻断。上传、替换、失效和门禁阻断均写审计；系统不使用 OCR 猜测签字或印章真伪。
 
+业务关联服务复用现有 `/files`，但必须读取原始 buffer 后额外验证：`storageStatus=active`、文件由当前经办人上传、声明 MIME 为 PDF 且真实字节可由 `pdf-lib` 解析、记录大小等于 buffer 长度且未超限、已有 `contentSha256` 为合法 64 位并与原字节重算一致、页数大于 0；扩展名伪装、错误 MIME、破损/加密/零页、SHA 缺失或不符、非本人上传、失效文件都拒绝。检查只读原 buffer，不调用 `PDFDocument.save()` 重写原件。声明快照、声明人和时间写 M55。
+
 - [ ] **Step 4: 实现授权选择与复用**
 
-我方和乙方各保存一条 link；`required=false` 时 authorization 必须为空，`required=true` 时必须关联新上传或可复用授权。复用校验同一合同、代理人相同且范围摘要明确包含签署/履行/变更及补充协议。
+我方和乙方各保存一条明确 link；link 不存在表示“尚未选择”，绝不能解释为 `required=false`。写接口接收 `expectedRevision`，锁版本并校验经办人/可编辑状态；语义实际变化时原子递增 revision、清空 readiness，使旧正式 PDF 自动过期，相同请求重试幂等且不重复递增。`required=false` 时 authorization 必须为空，`required=true` 时必须关联新上传或可复用授权。复用只新增 link，不复制文件/授权记录；校验同一合同、side 一致、代理人相同、来源版本确有该 link、文件仍 active/SHA 可读，且范围摘要明确覆盖签署、履行、变更及补充协议。
 
 - [ ] **Step 5: 合并到提交事务**
 
-`submitApproval()` 在改变状态和创建实例前依次验证主体快照、正式文件、授权和审批人员。任何失败保持草稿及已填内容。
+`submitApproval()` 在改变状态和创建实例前依次验证主体快照、正式文件、授权和审批人员。`formalFiles.assertReadyForSubmission(tx, lockedVersion)` 与 `authorizations.assertReady(tx, lockedVersion)` 必须使用提交事务的同一 `tx`；文件/授权写入也锁同一版本或使用 revision/status CAS，覆盖并发上传、替换、授权修改、双击提交和网络重试。任何失败保持草稿及已填内容。若门禁阻断需要审计，不得在随后抛错回滚的同一事务中假记录；使用 tagged denial 让审计事务提交后再在外层抛出脱敏业务错误，或在回滚后单独记录并测试确实持久。
 
 - [ ] **Step 6: 运行定向测试**
 
-Run: `pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-formal-file.service.spec.ts src/contract/contract-authorization.service.spec.ts src/contract-workbench/contract-readiness.service.spec.ts src/contract/contract.service.spec.ts src/file/file.service.spec.ts`
+Run: `pnpm --filter @jiangkong/shared-domain test && pnpm --filter @jiangkong/api test -- --runInBand src/contract/contract-formal-file.service.spec.ts src/contract/contract-authorization.service.spec.ts src/contract/contract.controller.spec.ts src/contract-workbench/contract-readiness.service.spec.ts src/contract-workbench/contract-workbench.service.spec.ts src/contract/contract.service.spec.ts src/file/file.service.spec.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
 - [ ] **Step 7: 提交**
 
 ```bash
-git add services/api/src/contract services/api/src/contract-workbench
+git add packages/shared-domain/src/contract-workbench.ts services/api/src/contract services/api/src/contract-workbench
 git commit -m "feat: 增加合同签前文件与授权门禁"
 ```
 
 ### Task 11: 合同工作台正式文件和授权 UI
+
+> **执行校正（2026-07-17 交互审计）**：工作台先完成双方授权选择，再上传包含授权页的完整审批 PDF。当前提交入口仍在合同详情，Task 11 将编号规则、保存完成确认、readiness 刷新和“提交审批”迁入工作台，并移除详情页重复主提交入口；提交前必须等待 `saveNow()` 成功。上传采用“先 `/files` 原字节、再业务关联 fileId”的显式两步，关联失败可复用同一 fileId 重试，不强迫重新上传。
 
 **Files:**
 - Create: `apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue`
@@ -1043,6 +1063,9 @@ git commit -m "feat: 增加合同签前文件与授权门禁"
 - Modify: `apps/web-admin/src/api/contract-workbench.api.test.ts`
 - Modify: `apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue`
 - Modify: `apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue`
+- Modify: `apps/web-admin/src/pages/contracts/ContractDetailPage.vue`
+- Modify: `apps/web-admin/src/api/core-flow-read.api.ts`
+- Modify: `apps/web-admin/src/api/core-flow-read.api.test.ts`
 - Modify: `apps/web-admin/src/pages/contracts/contract-workbench-canvas.structure.test.ts`
 - Modify: `apps/web-admin/e2e/contract-workbench-canvas.e2e.ts`
 
@@ -1061,20 +1084,22 @@ Run: `pnpm --filter @jiangkong/web-admin test -- src/api/contract-workbench.api.
 
 Expected: FAIL。
 
-- [ ] **Step 3: 实现两块域组件**
+- [ ] **Step 3: 实现读模型、两块域组件和唯一提交闭环**
 
-顺序固定为“合同文档预览 → 乙方签章正式 PDF → 双方授权书 → 提交就绪”。页面只保留“提交审批”为主操作，生成/下载/上传为次级；上传失败不清空主体、税务、清单和授权选择。
+顺序固定为“合同文档预览 → 双方授权选择/授权文件 → 乙方签章完整审批 PDF → 提交就绪”。共享工作台读模型返回两侧授权选择、关联文件、正式文件、sourceRevision/声明和 readiness；缺任一 side link 显示“尚未选择”，不伪装为“不需要”。页面只保留“提交审批”为主操作，生成/下载/上传为次级；编号规则与提交确认迁入工作台，详情页不保留并列提交主动作。上传或关联失败不清空主体、税务、清单和授权选择。
+
+TDesign Upload 使用自定义 request，禁止默认上传到未知地址；同一动作只调用一次 `/files`，成功后用返回 fileId 调业务关联路由。`/files` 失败保持所有本地输入；关联失败保留 fileId 和文件列表并提供重试；双击上传/提交被 loading guard 阻断；409/revision 冲突提示刷新但保留本地表单。点击提交先 `await saveNow()`，再刷新 readiness，最后提交冻结事实。
 
 - [ ] **Step 4: 运行 Web 定向测试和 UI 检查**
 
-Run: `pnpm --filter @jiangkong/web-admin test -- src/api/contract-workbench.api.test.ts src/pages/contracts/contract-workbench-canvas.structure.test.ts src/pages/contracts/workbench/use-contract-draft.test.ts && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui`
+Run: `pnpm --filter @jiangkong/web-admin test -- src/api/contract-workbench.api.test.ts src/api/core-flow-read.api.test.ts src/pages/contracts/contract-workbench-canvas.structure.test.ts src/pages/contracts/workbench/use-contract-draft.test.ts && pnpm --filter @jiangkong/web-admin typecheck && pnpm --filter @jiangkong/web-admin typecheck:e2e && pnpm --filter @jiangkong/web-admin lint && pnpm --filter @jiangkong/web-admin check:ui && pnpm --filter @jiangkong/web-admin build && CI=true pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/contract-workbench-canvas.e2e.ts`
 
-Expected: PASS；不扩大原生文件控件 allowlist。
+Expected: PASS；不扩大原生文件控件 allowlist；浏览器覆盖授权四组合、清空/重选、文件上传两步、关联失败复用、双提交和提交前保存。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add apps/web-admin/src/api/contract-workbench.api* apps/web-admin/src/pages/contracts apps/web-admin/e2e/contract-workbench-canvas.e2e.ts
+git add apps/web-admin/src/api/contract-workbench.api* apps/web-admin/src/api/core-flow-read.api* apps/web-admin/src/pages/contracts apps/web-admin/e2e/contract-workbench-canvas.e2e.ts
 git commit -m "feat: 完善合同签前文件工作台"
 ```
 
