@@ -42,6 +42,12 @@ describe("web admin routes", () => {
     expect(changePasswordRoute?.meta?.passwordChange).toBe(true);
   });
 
+  it("registers the final receipt detail as a real route", () => {
+    const route = childRoute("零星采购收货/:procurementId");
+    expect(route?.component).toBeDefined();
+    expect(route?.meta?.activeNavigationPath).toBe("/收货确认工作台");
+  });
+
   it("derives document titles from route metadata or the Chinese path", () => {
     expect(buildRouteDocumentTitle({ path: "/项目经营", meta: { title: "项目经营" } })).toBe("项目经营 - 建工智管");
     expect(buildRouteDocumentTitle({ path: "/付款管理/FK-2026-012", meta: {} })).toBe("FK-2026-012 - 建工智管");

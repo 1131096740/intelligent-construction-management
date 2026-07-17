@@ -10,6 +10,9 @@ const {
   SpotProcurementBalanceService
 } = require("../dist/spot-procurement/spot-procurement-balance.service");
 const {
+  SpotProcurementClosureService
+} = require("../dist/spot-procurement/spot-procurement-closure.service");
+const {
   InvoiceLedgerService
 } = require("../dist/invoice-ledger/invoice-ledger.service");
 const {
@@ -235,6 +238,7 @@ function fileAccessFor(prisma) {
 function servicesFor(prisma) {
   const audit = new AuditService();
   const balances = new SpotProcurementBalanceService(prisma, audit);
+  const closure = new SpotProcurementClosureService(audit);
   const pilot = new SpotProcurementPilotService();
   const payment = new SpotProcurementPaymentService(
     prisma,
@@ -251,7 +255,8 @@ function servicesFor(prisma) {
     fileAccessFor(prisma),
     {
       tryRefreshLatestForBusiness: async () => undefined
-    }
+    },
+    closure
   );
   const receipt = new SpotProcurementReceiptService(
     prisma,
@@ -262,13 +267,15 @@ function servicesFor(prisma) {
     {},
     {
       tryRefreshLatest: async () => undefined
-    }
+    },
+    closure
   );
   const invoices = new InvoiceLedgerService(
     prisma,
     audit,
     fileAccessFor(prisma),
-    pilot
+    pilot,
+    closure
   );
   return { balances, payment, receipt, invoices };
 }
@@ -669,6 +676,22 @@ async function createTicketReadyProcurement(input) {
       reviewedByNameSnapshot: "并发验收物资主管"
     }
   });
+  if (input.preventClosure) {
+    await clientA.spotProcurementVersion.create({
+      data: {
+        id: `${input.procurementId}-pending-v2`,
+        procurementId: input.procurementId,
+        versionNo: 2,
+        status: "draft",
+        reason: "并发冲销测试期间阻止自动办结",
+        supplierKey: `${input.procurementId}-supplier`,
+        supplierNameSnapshot: `${input.procurementId} 供应商`,
+        handlerUserId: HANDLER_USER_ID,
+        totalAmountCents,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+  }
   return {
     procurementId: input.procurementId,
     versionId,
@@ -2805,7 +2828,9 @@ async function verifyReceiptCrossColumnFileCompetition() {
       new SpotProcurementPilotService(),
       fileService,
       watermark,
-      {}
+      {},
+      { tryRefreshLatest: async () => undefined },
+      new SpotProcurementClosureService(audit)
     );
   };
   const serviceA = serviceFor(clientA);
@@ -3433,7 +3458,8 @@ async function verifyInvoiceLedgerConcurrency(
     code: "LXCG-TICKET-REVIEW-REVERSAL",
     lines: [
       { invoiceMode: "no_invoice", actualCostCents: 5_000n }
-    ]
+    ],
+    preventClosure: true
   });
   await createTicketFile("ticket-review-reversal-proof");
   const reversePending =

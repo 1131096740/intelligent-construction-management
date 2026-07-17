@@ -512,7 +512,7 @@
                   @change="syncExpenseSubtype"
                 >
                   <option
-                    v-for="option in expenseTypeOptions"
+                    v-for="option in visibleExpenseTypeOptions"
                     :key="option.value"
                     :value="option.value"
                   >
@@ -882,6 +882,7 @@ import {
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
 import type { ContractBusinessOptionReadModel, RoleKey } from "@jiangkong/shared-domain";
+import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
 import { useAuthStore } from "../../auth/auth.store";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import {
@@ -1063,6 +1064,12 @@ const projectExpenseSummaryItems = computed(() => {
 });
 
 const currentExpenseSubtypeOptions = computed(() => subtypeOptionsFor(expenseForm.value.expenseType));
+const spotProcurementEnabled = ref(false);
+const visibleExpenseTypeOptions = computed(() =>
+  spotProcurementEnabled.value
+    ? expenseTypeOptions.filter((option) => option.value !== "spot_purchase")
+    : expenseTypeOptions
+);
 
 const proxyContractSelectOptions = computed(() => toContractSelectOptions(proxyContractOptions.value, "payment"));
 const selectedProxyContract = computed(() =>
@@ -1254,6 +1261,7 @@ async function loadOverview() {
   const selectedExpenseId = selectedExpenseRow.value?.id ?? "";
   overview.value = null;
   projectExpenses.value = null;
+  spotProcurementEnabled.value = false;
   receiptMessage.value = "";
   proxyMessage.value = "";
   expenseMessage.value = "";
@@ -1268,15 +1276,23 @@ async function loadOverview() {
   loadingOverview.value = true;
   message.value = "";
   try {
-    const [nextOverview, nextExpenses, nextProxyContracts] = await Promise.all([
+    const [nextOverview, nextExpenses, nextProxyContracts, spotCapability] = await Promise.all([
       fetchProjectOperatingOverview(projectId),
       canUseFundsOperations.value ? fetchProjectExpenseRequests(projectId) : Promise.resolve(null),
-      canUseFundsOperations.value ? fetchPaymentContractOptions(projectId) : Promise.resolve([])
+      canUseFundsOperations.value ? fetchPaymentContractOptions(projectId) : Promise.resolve([]),
+      fetchSpotProcurementCapabilities(projectId).catch(() => ({ enabled: false }))
     ]);
     if (selectedProjectId.value === projectId) {
       overview.value = nextOverview;
       projectExpenses.value = nextExpenses;
       proxyContractOptions.value = nextProxyContracts;
+      spotProcurementEnabled.value = spotCapability.enabled;
+      if (
+        spotCapability.enabled &&
+        expenseForm.value.expenseType === "spot_purchase"
+      ) {
+        expenseForm.value = createProjectExpenseForm("sporadic_payment");
+      }
       selectedExpenseRow.value = selectedExpenseId
         ? nextExpenses?.rows.find((row) => row.id === selectedExpenseId) ?? null
         : null;

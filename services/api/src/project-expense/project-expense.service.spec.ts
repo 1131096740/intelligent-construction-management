@@ -351,7 +351,8 @@ describe("ProjectExpenseService", () => {
     };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    await expect(service.list("project-1", "manager-1")).resolves.toEqual({
+    const legacyResult = await service.list("project-1", "manager-1");
+    expect(legacyResult).toEqual({
       rows: [
         expect.objectContaining({
           id: "expense-1",
@@ -380,6 +381,9 @@ describe("ProjectExpenseService", () => {
         totalPaidCents: "10000"
       }
     });
+    expect(legacyResult.rows[0]).not.toHaveProperty("receiptBatches");
+    expect(legacyResult.rows[0]).not.toHaveProperty("invoiceCoverage");
+    expect(legacyResult.rows[0]).not.toHaveProperty("supplierBalance");
     expect(prisma.projectExpenseRequest.findMany).toHaveBeenCalledWith({
       where: { projectId: "project-1" },
       orderBy: [{ createdAt: "desc" }, { code: "asc" }],

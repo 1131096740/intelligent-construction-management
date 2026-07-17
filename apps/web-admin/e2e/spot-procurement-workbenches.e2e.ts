@@ -6,6 +6,27 @@ const unavailable = {
   status: "not_available",
   label: "代码阶段 B 完成后开放"
 };
+const ticketCoverage = {
+  available: true,
+  status: "partially_covered",
+  label: "尚差 70000 分",
+  actualCostCents: "120000",
+  normalInvoiceCents: "50000",
+  confirmedNoInvoiceCents: "0",
+  confirmedExceptionCents: "0",
+  effectiveCoveredCents: "50000",
+  remainingCents: "70000",
+  pendingCount: 0,
+  inconsistent: false
+};
+const ticketLedger = {
+  available: true,
+  currentCoordinates: {},
+  invoices: [],
+  allocations: [],
+  noInvoiceConfirmations: [],
+  invoiceExceptions: []
+};
 const project = { id: "project-1", code: "XM-001", name: "一号项目" };
 const handler = { id: "handler-1", name: "物资员甲" };
 const applicant = { id: "applicant-1", name: "申请人甲" };
@@ -113,7 +134,8 @@ function procurementListRow() {
       visibilityRestricted: false
     },
     receipt: unavailable,
-    invoiceCoverage: unavailable,
+    invoiceCoverage: ticketCoverage,
+    invoiceLedger: ticketLedger,
     status: "approved_in_progress",
     statusLabel: "采购已批，办理中",
     approval,
@@ -199,7 +221,8 @@ function procurementDetail() {
       visibilityRestricted: false
     },
     receipt: unavailable,
-    invoiceCoverage: unavailable,
+    invoiceCoverage: ticketCoverage,
+    invoiceLedger: ticketLedger,
     discrepancy: unavailable,
     applicationPdf: {
       available: true,
@@ -293,7 +316,8 @@ function paymentDetail() {
     },
     executions: [],
     evidenceFiles: [],
-    invoiceCoverage: unavailable,
+    invoiceCoverage: ticketCoverage,
+    invoiceLedger: ticketLedger,
     receipt: unavailable,
     paymentPdf: {
       available: true,
@@ -307,7 +331,7 @@ function paymentDetail() {
   };
 }
 
-test("renders the independent spot procurement workbenches and honest receipt placeholder", async ({
+test("renders the independent spot procurement, payment and receipt workbenches", async ({
   page
 }) => {
   await mockLogin(page);
@@ -374,10 +398,6 @@ test("renders the independent spot procurement workbenches and honest receipt pl
   await expect(
     page.getByRole("heading", { name: "收货确认工作台" })
   ).toBeVisible();
-  await expect(page.getByText("代码阶段 B 完成后开放")).toBeVisible();
-  await expect(
-    page.getByText("不会采集定位或展示虚假收货结果", {
-      exact: false
-    })
-  ).toBeVisible();
+  await expect(page.getByText("LXCG-E2E-001", { exact: true })).toBeVisible();
+  await expect(page.getByText("收货草稿", { exact: true })).toBeVisible();
 });
