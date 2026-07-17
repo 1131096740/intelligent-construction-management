@@ -5,6 +5,7 @@ import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { FileModule } from "../file/file.module";
 import { InvoiceLedgerModule } from "../invoice-ledger/invoice-ledger.module";
+import { ReceiptWatermarkService } from "./receipt-watermark.service";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
 import { SpotProcurementAccessModule } from "./spot-procurement-access.module";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
@@ -29,6 +30,7 @@ import { SpotProcurementController } from "./spot-procurement.controller";
     SpotProcurementPaymentController
   ],
   providers: [
+    ReceiptWatermarkService,
     SpotProcurementApplicationService,
     SpotProcurementBalanceService,
     SpotProcurementPaymentService,
