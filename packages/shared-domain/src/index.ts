@@ -13,6 +13,12 @@ export * from "./money";
 export * from "./core-flow-read-model";
 export * from "./permissions";
 export * from "./contract-workbench";
+export {
+  COMPANY_ENTITY_DATA_STATUSES,
+  COMPANY_ENTITY_MAINTAINER_ROLES,
+  COMPANY_ENTITY_READER_ROLES
+} from "./company-entity";
+export type { CompanyEntityDataStatus } from "./company-entity";
 export const CONTRACT_INVOICE_TYPES = contractTaxFacts.CONTRACT_INVOICE_TYPES;
 export const CONTRACT_TAX_FACT_SOURCES = contractTaxFacts.CONTRACT_TAX_FACT_SOURCES;
 export const CONTRACT_TAX_FACT_STATUSES = contractTaxFacts.CONTRACT_TAX_FACT_STATUSES;
