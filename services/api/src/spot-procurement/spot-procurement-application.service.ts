@@ -918,6 +918,13 @@ export class SpotProcurementApplicationService {
           where: { procurementId: procurement.id },
           select: { id: true, status: true }
         });
+        const reversibleDiscrepancyId =
+          await this.requireReversibleActiveDiscrepancy(
+            tx,
+            procurement.id,
+            "当前采购已形成收货差异事实，不能切换采购版本",
+            "当前采购差异已形成退款或供应商余额不可逆事实，不能切换采购版本"
+          );
         const realExecution =
           await tx.spotProcurementPaymentExecution.findFirst({
             where: {
@@ -998,6 +1005,17 @@ export class SpotProcurementApplicationService {
           );
         }
         const now = new Date();
+        if (reversibleDiscrepancyId) {
+          await this.invalidateReversibleDiscrepancy(
+            tx,
+            procurement.id,
+            reversibleDiscrepancyId,
+            actorUserId,
+            `采购版本变更：${changeReason}`,
+            "version_change",
+            now
+          );
+        }
         const draftPaymentIds = payments
           .filter((payment) => payment.status === "draft")
           .map((payment) => payment.id);
@@ -1109,6 +1127,13 @@ export class SpotProcurementApplicationService {
           tx,
           procurement.id
         );
+        const reversibleDiscrepancyId =
+          await this.requireReversibleActiveDiscrepancy(
+            tx,
+            procurement.id,
+            "当前采购已形成收货差异事实，不能直接撤销",
+            "当前采购差异已形成退款或供应商余额不可逆事实，不能直接撤销"
+          );
         const actorRoles = await this.loadActorRoleKeys(
           tx,
           actorUserId,
@@ -1142,6 +1167,17 @@ export class SpotProcurementApplicationService {
             )
           : null;
         const now = new Date();
+        if (reversibleDiscrepancyId) {
+          await this.invalidateReversibleDiscrepancy(
+            tx,
+            procurement.id,
+            reversibleDiscrepancyId,
+            actorUserId,
+            `采购撤销：${reason}`,
+            "procurement_void",
+            now
+          );
+        }
         const draftPaymentIds = payments
           .filter((payment) => payment.status === "draft")
           .map((payment) => payment.id);
@@ -2135,6 +2171,97 @@ export class SpotProcurementApplicationService {
       ORDER BY "id"
       FOR UPDATE
     `);
+  }
+
+  private async requireReversibleActiveDiscrepancy(
+    tx: Prisma.TransactionClient,
+    procurementId: string,
+    unresolvedMessage: string,
+    irreversibleMessage: string
+  ) {
+    const discrepancy =
+      await tx.spotProcurementDiscrepancy.findFirst({
+        where: {
+          procurementId,
+          invalidatedAt: null
+        },
+        select: {
+          id: true,
+          status: true,
+          resolutionType: true,
+          supplierBalanceEntryId: true
+        }
+      });
+    if (!discrepancy) return null;
+    if (discrepancy.status !== "resolved") {
+      throw new ConflictException(unresolvedMessage);
+    }
+    const [refund, irreversibleBalanceEntry] =
+      await Promise.all([
+        tx.spotProcurementRefund.findFirst({
+          where: { procurementId },
+          select: { id: true }
+        }),
+        tx.supplierBalanceEntry.findFirst({
+          where: {
+            procurementId,
+            entryType: {
+              in: ["credit_from_discrepancy", "execute"]
+            }
+          },
+          select: { id: true, entryType: true }
+        })
+      ]);
+    if (
+      discrepancy.resolutionType !== null ||
+      discrepancy.supplierBalanceEntryId !== null ||
+      refund ||
+      irreversibleBalanceEntry
+    ) {
+      throw new ConflictException(irreversibleMessage);
+    }
+    return discrepancy.id;
+  }
+
+  private async invalidateReversibleDiscrepancy(
+    tx: Prisma.TransactionClient,
+    procurementId: string,
+    discrepancyId: string,
+    actorUserId: string,
+    reason: string,
+    source: "version_change" | "procurement_void",
+    now: Date
+  ) {
+    const invalidated =
+      await tx.spotProcurementDiscrepancy.updateMany({
+        where: {
+          id: discrepancyId,
+          status: "resolved",
+          invalidatedAt: null
+        },
+        data: {
+          status: "invalidated",
+          invalidatedAt: now,
+          invalidatedByUserId: actorUserId,
+          invalidationReason: reason
+        }
+      });
+    if (invalidated.count !== 1) {
+      throw new ConflictException(
+        "收货差异状态已变化，请刷新后重试"
+      );
+    }
+    await this.audit.record(tx, {
+      actorUserId,
+      action: "spot_procurement.discrepancy.invalidate",
+      businessType: "spot_procurement_discrepancy",
+      businessId: discrepancyId,
+      metadata: {
+        procurementId,
+        source,
+        reason
+      }
+    });
   }
 
   private async requireLockedApprovalInstance(

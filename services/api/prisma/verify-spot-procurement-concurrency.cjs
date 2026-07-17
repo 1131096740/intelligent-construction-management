@@ -1,6 +1,11 @@
 const { createHash } = require("node:crypto");
+const { ConflictException } = require("@nestjs/common");
 const { Prisma, PrismaClient } = require("@prisma/client");
 const { AuditService } = require("../dist/audit/audit.service");
+const {
+  acquireFileBusinessBindingTransactionLock,
+  hasNonReceiptBusinessFileBinding
+} = require("../dist/file/file-business-binding");
 const {
   SpotProcurementBalanceService
 } = require("../dist/spot-procurement/spot-procurement-balance.service");
@@ -96,7 +101,11 @@ function assertOneWinner(results, label, options = {}) {
   assert(
     fulfilled.length === 1 && rejected.length === 1,
     `${label} 必须恰好一笔成功、一笔失败，实际 ${results
-      .map((result) => result.status)
+      .map((result) =>
+        result.status === "fulfilled"
+          ? result.status
+          : `${result.status}:${errorText(result.reason)}`
+      )
       .join("/")}`
   );
   const loser = rejected[0].reason;
@@ -178,7 +187,43 @@ function fileAccessFor(prisma) {
     assertCanDownloadFileById: (fileId, actorUserId) =>
       assertFile(prisma, fileId, actorUserId),
     assertCanDownloadFile: (tx, fileId, actorUserId) =>
-      assertFile(tx, fileId, actorUserId)
+      assertFile(tx, fileId, actorUserId),
+    assertFileHasNoBusinessBinding: async (tx, fileId) => {
+      await acquireFileBusinessBindingTransactionLock(tx);
+      const rows = await tx.$queryRaw(
+        Prisma.sql`
+          SELECT "id", "storageStatus"
+          FROM "FileObject"
+          WHERE "id" = ${fileId}
+          FOR UPDATE
+        `
+      );
+      if (
+        rows.length !== 1 ||
+        rows[0].storageStatus !== "active"
+      ) {
+        throw new Error("并发验收付款凭证不存在或已失效");
+      }
+      const [hasNonReceiptBinding, receiptPhoto] =
+        await Promise.all([
+          hasNonReceiptBusinessFileBinding(tx, [fileId]),
+          tx.spotProcurementReceiptPhoto.findFirst({
+            where: {
+              OR: [
+                { originalFileId: fileId },
+                { watermarkedFileId: fileId }
+              ]
+            },
+            select: { id: true }
+          })
+        ]);
+      if (hasNonReceiptBinding || receiptPhoto) {
+        throw new ConflictException(
+          "该文件已绑定其他业务记录，不能重复使用"
+        );
+      }
+      return rows[0];
+    }
   };
 }
 
@@ -1315,6 +1360,314 @@ async function verifyExecutionVoucherUniqueness(
   );
 }
 
+function isExclusiveFileBindingConflict(error) {
+  return (
+    error?.code === "P2002" ||
+    (error?.code === "P2010" &&
+      String(error?.meta?.code) === "23505") ||
+    (typeof error?.getStatus === "function" &&
+      error.getStatus() === 409)
+  );
+}
+
+async function createLegacyOwnerContractBinding(
+  tx,
+  { id, fileId, suffix }
+) {
+  return tx.projectOwnerContract.create({
+    data: {
+      id,
+      projectId: EXECUTION_PROJECT_ID,
+      ownerName: `独占文件竞态业主 ${suffix}`,
+      contractName: `独占文件竞态主合同 ${suffix}`,
+      contractCode: `OWNER-EXCLUSIVE-FILE-${suffix}`,
+      signedAt: new Date("2026-07-17T00:00:00.000Z"),
+      amountCents: 10_000n,
+      taxRateBps: 900,
+      pricingMethod: "fixed_total",
+      paymentTermsSummary: "并发验收",
+      retentionSummary: "并发验收",
+      fileId,
+      recordedByUserId: FINANCE_USER_ID
+    }
+  });
+}
+
+async function createExclusiveExecutionBinding(
+  tx,
+  { id, paymentId, fileId, suffix }
+) {
+  await fileAccessFor(clientA).assertFileHasNoBusinessBinding(
+    tx,
+    fileId
+  );
+  return tx.spotProcurementPaymentExecution.create({
+    data: {
+      id,
+      paymentId,
+      amountCents: 1n,
+      paidAt: new Date("2026-07-17T00:00:00.000Z"),
+      paymentMethod: "bank_transfer",
+      executedByUserId: FINANCE_USER_ID,
+      voucherFileId: fileId,
+      idempotencyKey: `exclusive-file-binding-${suffix}`
+    }
+  });
+}
+
+async function runHeldFileBindingRace({
+  firstWrite,
+  secondWrite,
+  blockedQueryNeedle,
+  label
+}) {
+  const acquired = deferred();
+  const release = deferred();
+  const firstPromise = clientA.$transaction(
+    async (tx) => {
+      try {
+        const result = await firstWrite(tx);
+        acquired.resolve();
+        await release.promise;
+        return result;
+      } catch (error) {
+        acquired.reject(error);
+        throw error;
+      }
+    },
+    { timeout: 15_000, maxWait: 10_000 }
+  );
+  await acquired.promise;
+  // PrismaPromise is lazy until it is awaited/then'ed. Assimilate it through
+  // a native Promise so the second statement really starts before observing
+  // pg_stat_activity.
+  const secondPromise = Promise.resolve().then(() => secondWrite());
+  try {
+    await waitForBlockedQueries(
+      clientB,
+      blockedQueryNeedle,
+      1
+    );
+  } finally {
+    release.resolve();
+  }
+  const results = await Promise.allSettled([
+    firstPromise,
+    secondPromise
+  ]);
+  assert(
+    results[0].status === "fulfilled" &&
+      results[1].status === "rejected" &&
+      isExclusiveFileBindingConflict(results[1].reason),
+    `${label} 必须第一笔成功、第二笔以文件绑定冲突失败，实际 ${results
+      .map((result) =>
+        result.status === "fulfilled"
+          ? result.status
+          : `${result.status}:${errorText(result.reason)}`
+      )
+      .join("/")}`
+  );
+}
+
+async function createExclusiveRacePayment(suffix) {
+  const procurementId = `spot-exclusive-file-${suffix}`;
+  return createExecutionReadyPayment({
+    procurementId,
+    versionId: `${procurementId}-v1`,
+    procurementCode: `LXCG-EXCLUSIVE-FILE-${suffix}`,
+    paymentId: `${procurementId}-payment`,
+    paymentCode: `LXCG-EXCLUSIVE-FILE-${suffix}-P001`,
+    supplierKey: `spot-exclusive-file-supplier-${suffix}`,
+    supplierName: `独占文件并发供应商 ${suffix}`,
+    settlementAmountCents: 2_000n
+  });
+}
+
+async function verifyExclusiveFileBindingAcrossLegacyEntries() {
+  const oldFirstFileId = "spot-exclusive-file-old-first";
+  await createExecutionVoucher(oldFirstFileId);
+  const oldFirstPayment =
+    await createExclusiveRacePayment("OLD-FIRST");
+  await runHeldFileBindingRace({
+    firstWrite: (tx) =>
+      createLegacyOwnerContractBinding(tx, {
+        id: "spot-exclusive-owner-old-first",
+        fileId: oldFirstFileId,
+        suffix: "OLD-FIRST"
+      }),
+    secondWrite: () =>
+      clientB.$transaction((tx) =>
+        createExclusiveExecutionBinding(tx, {
+          id: "spot-exclusive-execution-old-first",
+          paymentId: oldFirstPayment.id,
+          fileId: oldFirstFileId,
+          suffix: "old-first"
+        })
+      ),
+    blockedQueryNeedle: "pg_advisory_xact_lock",
+    label: "旧业务入口先写时的独占文件竞态"
+  });
+
+  const exclusiveFirstFileId =
+    "spot-exclusive-file-exclusive-first";
+  await createExecutionVoucher(exclusiveFirstFileId);
+  const exclusiveFirstPayment =
+    await createExclusiveRacePayment("EXCLUSIVE-FIRST");
+  await runHeldFileBindingRace({
+    firstWrite: (tx) =>
+      createExclusiveExecutionBinding(tx, {
+        id: "spot-exclusive-execution-exclusive-first",
+        paymentId: exclusiveFirstPayment.id,
+        fileId: exclusiveFirstFileId,
+        suffix: "exclusive-first"
+      }),
+    secondWrite: () =>
+      clientB.$transaction((tx) =>
+        createLegacyOwnerContractBinding(tx, {
+          id: "spot-exclusive-owner-exclusive-first",
+          fileId: exclusiveFirstFileId,
+          suffix: "EXCLUSIVE-FIRST"
+        })
+      ),
+    blockedQueryNeedle: "ProjectOwnerContract",
+    label: "独占业务入口先写时的旧文件绑定竞态"
+  });
+
+  const legalSharedFileId = "spot-legal-pdf-archive-file";
+  await createExecutionVoucher(legalSharedFileId);
+  await clientA.$transaction(async (tx) => {
+    await tx.pdfDocument.create({
+      data: {
+        id: "spot-legal-pdf-document",
+        businessType: "spot_guard_verification",
+        businessId: "spot-legal-pdf-business",
+        fileId: legalSharedFileId,
+        templateKey: "spot_guard_verification_v1"
+      }
+    });
+    await tx.archiveRecord.create({
+      data: {
+        id: "spot-legal-archive-record",
+        businessType: "spot_guard_verification",
+        businessId: "spot-legal-pdf-business",
+        fileId: legalSharedFileId,
+        departmentScope: "finance"
+      }
+    });
+  });
+  assert(
+    (await clientA.pdfDocument.count({
+      where: { fileId: legalSharedFileId }
+    })) === 1 &&
+      (await clientA.archiveRecord.count({
+        where: { fileId: legalSharedFileId }
+      })) === 1,
+    "非独占 PDF 与归档记录必须继续允许同业务合法双写"
+  );
+
+  await clientA.projectOwnerContract.update({
+    where: { id: "spot-exclusive-owner-old-first" },
+    data: {
+      status: "effective",
+      confirmedByUserId: FINANCE_USER_ID,
+      confirmedAt: new Date()
+    }
+  });
+  await expectRejectedFileBinding(
+    clientA.projectOwnerContract.update({
+      where: { id: "spot-exclusive-owner-old-first" },
+      data: { fileId: exclusiveFirstFileId }
+    }),
+    "旧业务文件列 UPDATE 指向独占文件"
+  );
+
+  console.log(
+    "ok exclusive file binding guard: both race orders, legal dual binding, status update and file-column update"
+  );
+}
+
+async function expectRejectedFileBinding(promise, label) {
+  try {
+    await promise;
+  } catch (error) {
+    assert(
+      isExclusiveFileBindingConflict(error),
+      `${label} 必须以文件绑定冲突失败，实际 ${errorText(error)}`
+    );
+    return;
+  }
+  throw new Error(`${label} 不应成功`);
+}
+
+async function verifyExclusiveFileBindingAgainstReplacementChain() {
+  const replacementFirstFileId =
+    "spot-exclusive-replacement-old-target";
+  const replacementFirstNewFileId =
+    "spot-exclusive-replacement-new-file";
+  await Promise.all([
+    createExecutionVoucher(replacementFirstFileId),
+    createExecutionVoucher(replacementFirstNewFileId)
+  ]);
+  const replacementFirstPayment =
+    await createExclusiveRacePayment("REPLACEMENT-FIRST");
+  await runHeldFileBindingRace({
+    firstWrite: (tx) =>
+      tx.fileObject.update({
+        where: { id: replacementFirstNewFileId },
+        data: {
+          supersedesFileObjectId: replacementFirstFileId
+        }
+      }),
+    secondWrite: () =>
+      clientB.$transaction((tx) =>
+        createExclusiveExecutionBinding(tx, {
+          id: "spot-exclusive-execution-replacement-first",
+          paymentId: replacementFirstPayment.id,
+          fileId: replacementFirstFileId,
+          suffix: "replacement-first"
+        })
+      ),
+    blockedQueryNeedle: "pg_advisory_xact_lock",
+    label: "替换链先写时的独占文件竞态"
+  });
+
+  const exclusiveFirstFileId =
+    "spot-exclusive-replacement-exclusive-target";
+  const exclusiveFirstNewFileId =
+    "spot-exclusive-replacement-exclusive-new";
+  await Promise.all([
+    createExecutionVoucher(exclusiveFirstFileId),
+    createExecutionVoucher(exclusiveFirstNewFileId)
+  ]);
+  const exclusiveFirstPayment =
+    await createExclusiveRacePayment(
+      "REPLACEMENT-EXCLUSIVE-FIRST"
+    );
+  await runHeldFileBindingRace({
+    firstWrite: (tx) =>
+      createExclusiveExecutionBinding(tx, {
+        id: "spot-exclusive-execution-replacement-exclusive",
+        paymentId: exclusiveFirstPayment.id,
+        fileId: exclusiveFirstFileId,
+        suffix: "replacement-exclusive-first"
+      }),
+    secondWrite: () =>
+      clientB.$executeRaw(
+        Prisma.sql`
+          UPDATE "FileObject"
+          SET "supersedesFileObjectId" = ${exclusiveFirstFileId}
+          WHERE "id" = ${exclusiveFirstNewFileId}
+        `
+      ),
+    blockedQueryNeedle: "supersedesFileObjectId",
+    label: "独占文件先写时的替换链竞态"
+  });
+
+  console.log(
+    "ok exclusive file replacement guard: both race orders leave one binding fact"
+  );
+}
+
 async function verifyExecutionProjectSerialization(
   servicesA,
   servicesB
@@ -2335,6 +2688,8 @@ async function main() {
     servicesA,
     servicesB
   );
+  await verifyExclusiveFileBindingAcrossLegacyEntries();
+  await verifyExclusiveFileBindingAgainstReplacementChain();
   await verifyExecutionProjectSerialization(
     servicesA,
     servicesB

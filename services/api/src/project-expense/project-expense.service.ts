@@ -21,6 +21,7 @@ import { detailAction } from "../core-flow/detail-actions";
 import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
+  findProjectSpotProcurementRefundAmounts,
   formatMoneyCentsAsYuan,
   mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
@@ -1317,6 +1318,7 @@ export class ProjectExpenseService {
 
     const [
       receipts,
+      supplierRefundAmountCents,
       paymentRequests,
       expenseRequests,
       spotProcurementPayments,
@@ -1326,6 +1328,7 @@ export class ProjectExpenseService {
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
       }),
+      findProjectSpotProcurementRefundAmounts(tx, projectId),
       tx.paymentRequest.findMany({
         where: { projectId, status: { in: [...CASH_POOL_STATUSES] } },
         select: {
@@ -1365,6 +1368,7 @@ export class ProjectExpenseService {
 
     const cashPool = calculateProjectCashPoolBigInt({
       receiptAmountCents: receipts.map((receipt) => receipt.amountCents),
+      supplierRefundAmountCents,
       paymentRequests,
       expenseRequests,
       spotProcurementPayments: spotProcurementPayments.map(

@@ -275,6 +275,12 @@ describe("ProjectExpenseService", () => {
       projectExpenseRequest: {
         findMany: jest.fn().mockResolvedValue(expenseRequests)
       },
+      spotProcurement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      spotProcurementRefund: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       spotProcurementPayment: {
         findMany: jest.fn().mockResolvedValue(spotProcurementPayments)
       },

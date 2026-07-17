@@ -10,21 +10,26 @@ import {
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { CreateProcurementDiscrepancyDto } from "./dto/create-procurement-discrepancy.dto";
 import { CreateSpotProcurementDto } from "./dto/create-spot-procurement.dto";
 import { CreateSpotProcurementVersionDto } from "./dto/create-spot-procurement-version.dto";
+import { ExecuteSupplierBalanceDto } from "./dto/execute-supplier-balance.dto";
+import { RecordProcurementRefundDto } from "./dto/record-procurement-refund.dto";
 import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
 import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { SpotProcurementReadService } from "./spot-procurement-read.service";
+import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
 
 @Controller("spot-procurements")
 export class SpotProcurementController {
   constructor(
     private readonly applications: SpotProcurementApplicationService,
     private readonly payments: SpotProcurementPaymentService,
-    private readonly reads: SpotProcurementReadService
+    private readonly reads: SpotProcurementReadService,
+    private readonly settlements: SpotProcurementSettlementService
   ) {}
 
   @Get("capabilities")
@@ -133,6 +138,48 @@ export class SpotProcurementController {
       procurementId,
       user.id,
       body.reason
+    );
+  }
+
+  @Post(":procurementId/discrepancy")
+  @RequireProjectRole("spot_procurement.discrepancy.create")
+  createOrConfirmDiscrepancy(
+    @Param("procurementId") procurementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CreateProcurementDiscrepancyDto
+  ) {
+    return this.settlements.createOrConfirmDiscrepancy(
+      procurementId,
+      user.id,
+      body
+    );
+  }
+
+  @Post(":procurementId/refunds")
+  @RequireProjectRole("spot_procurement.refund.record")
+  recordRefund(
+    @Param("procurementId") procurementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProcurementRefundDto
+  ) {
+    return this.settlements.recordRefund(
+      procurementId,
+      user.id,
+      body
+    );
+  }
+
+  @Post(":procurementId/supplier-balance-credit")
+  @RequireProjectRole("spot_procurement.balance.execute")
+  creditSupplierBalance(
+    @Param("procurementId") procurementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ExecuteSupplierBalanceDto
+  ) {
+    return this.settlements.creditSupplierBalance(
+      procurementId,
+      user.id,
+      body
     );
   }
 }

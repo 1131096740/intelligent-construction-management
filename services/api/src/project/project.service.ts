@@ -13,6 +13,7 @@ import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import {
   dbMoneyToBigInt,
+  findProjectSpotProcurementRefundAmounts,
   formatMoneyCentsAsYuan,
   moneyCentsToApi,
   outstandingMoneyRequestCentsBigInt,
@@ -394,6 +395,7 @@ export class ProjectService {
       payments,
       financeRecords,
       projectReceipts,
+      supplierRefundAmountCents,
       projectProxyPayments,
       projectUpstreamSettlements,
       projectFinancingQuotas,
@@ -426,6 +428,10 @@ export class ProjectService {
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
       }),
+      findProjectSpotProcurementRefundAmounts(
+        this.prisma,
+        projectId
+      ),
       this.prisma.projectProxyPayment.findMany({
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
@@ -521,6 +527,10 @@ export class ProjectService {
       projectReceipts.map((receipt) => receipt.amountCents),
       "项目实收金额"
     );
+    const supplierRefundsCents = sumDbMoneyToBigInt(
+      supplierRefundAmountCents,
+      "供应商退款到账金额"
+    );
     const proxyPaymentCents = sumDbMoneyToBigInt(
       projectProxyPayments.map((payment) => payment.amountCents),
       "项目代付金额"
@@ -573,7 +583,8 @@ export class ProjectService {
         0n
       );
     const availableFundsCents =
-      actualReceiptsCents -
+      actualReceiptsCents +
+      supplierRefundsCents -
       actualPaidCents -
       approvalPendingOccupancyCents -
       approvedPendingPaymentCents +
@@ -587,6 +598,8 @@ export class ProjectService {
       project,
       cash: {
         actualReceiptsCents: projectMoneyToApi(actualReceiptsCents),
+        supplierRefundsCents:
+          projectMoneyToApi(supplierRefundsCents),
         availableFundsCents: projectMoneyToApi(availableFundsCents),
         actualPaidCents: projectMoneyToApi(actualPaidCents),
         approvalPendingOccupancyCents: projectMoneyToApi(approvalPendingOccupancyCents),

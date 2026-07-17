@@ -138,11 +138,13 @@ export function outstandingMoneyRequestCentsBigInt(
 
 export function calculateProjectCashPoolBigInt(input: {
   receiptAmountCents: readonly bigint[];
+  supplierRefundAmountCents?: readonly bigint[];
   paymentRequests: readonly MoneyRequestValue[];
   expenseRequests: readonly MoneyRequestValue[];
   spotProcurementPayments?: readonly MoneyRequestValue[];
 }): {
   actualReceiptsCents: bigint;
+  supplierRefundsCents: bigint;
   actualPaidCents: bigint;
   occupiedCents: bigint;
   availableCents: bigint;
@@ -152,7 +154,14 @@ export function calculateProjectCashPoolBigInt(input: {
     ...input.expenseRequests,
     ...(input.spotProcurementPayments ?? [])
   ];
-  const actualReceiptsCents = sumDbMoneyToBigInt(input.receiptAmountCents, "项目实收金额");
+  const actualReceiptsCents = sumDbMoneyToBigInt(
+    input.receiptAmountCents,
+    "项目实收金额"
+  );
+  const supplierRefundsCents = sumDbMoneyToBigInt(
+    input.supplierRefundAmountCents ?? [],
+    "供应商退款到账金额"
+  );
   const actualPaidCents = sumDbMoneyToBigInt(
     requests.map((request) => request.paidAmountCents),
     "项目实付金额"
@@ -163,10 +172,40 @@ export function calculateProjectCashPoolBigInt(input: {
   );
   return {
     actualReceiptsCents,
+    supplierRefundsCents,
     actualPaidCents,
     occupiedCents,
-    availableCents: actualReceiptsCents - actualPaidCents - occupiedCents
+    availableCents:
+      actualReceiptsCents +
+      supplierRefundsCents -
+      actualPaidCents -
+      occupiedCents
   };
+}
+
+export async function findProjectSpotProcurementRefundAmounts(
+  tx: Pick<
+    Prisma.TransactionClient,
+    "spotProcurement" | "spotProcurementRefund"
+  >,
+  projectId: string
+): Promise<bigint[]> {
+  const procurements = await tx.spotProcurement.findMany({
+    where: { projectId },
+    select: { id: true }
+  });
+  if (!procurements.length) {
+    return [];
+  }
+  const refunds = await tx.spotProcurementRefund.findMany({
+    where: {
+      procurementId: {
+        in: procurements.map((procurement) => procurement.id)
+      }
+    },
+    select: { amountCents: true }
+  });
+  return refunds.map((refund) => refund.amountCents);
 }
 
 export function parseMoneyCents(value: string, fieldName: string): bigint {

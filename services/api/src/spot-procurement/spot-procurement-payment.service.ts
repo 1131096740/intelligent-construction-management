@@ -21,6 +21,7 @@ import { FileService } from "../file/file.service";
 import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
+  findProjectSpotProcurementRefundAmounts,
   outstandingMoneyRequestCentsBigInt,
   SPOT_PROCUREMENT_CASH_POOL_STATUSES,
   spotProcurementPaymentToMoneyRequestValue
@@ -34,6 +35,7 @@ import {
   type UpdateSpotProcurementPaymentDraftDto
 } from "./dto/update-spot-procurement-payment-draft.dto";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
+import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
@@ -332,6 +334,20 @@ export class SpotProcurementPaymentService {
             payment
           );
         }
+        const pendingDiscrepancy =
+          await tx.spotProcurementDiscrepancy.findFirst({
+            where: {
+              procurementId: version.procurementId,
+              status: "pending_resolution",
+              invalidatedAt: null
+            },
+            select: { id: true }
+          });
+        if (pendingDiscrepancy) {
+          throw new ConflictException(
+            "收货差异正在等待物资主管确认，暂不能登记实际付款"
+          );
+        }
 
         if (
           !["approved_pending_payment", "partially_paid"].includes(
@@ -424,6 +440,10 @@ export class SpotProcurementPaymentService {
             "该付款凭证已绑定其他有效实际付款记录"
           );
         }
+        await this.files.assertFileHasNoBusinessBinding(
+          tx,
+          voucherFileId
+        );
 
         const cashPoolBefore =
           await this.calculateLockedProjectCashPool(
@@ -449,10 +469,10 @@ export class SpotProcurementPaymentService {
         const newPaidAmountCents =
           payment.paidAmountCents + amountCents;
         const newStatus =
-          newPaidAmountCents ===
-          effectiveCompanyPaymentAmountCents
-            ? "paid"
-            : "partially_paid";
+          deriveSpotProcurementPaymentExecutionStatus({
+            ...payment,
+            paidAmountCents: newPaidAmountCents
+          });
         const execution =
           await tx.spotProcurementPaymentExecution.create({
             data: {
@@ -616,7 +636,9 @@ export class SpotProcurementPaymentService {
           version.id,
           PLANNED_PAYMENT_STATUSES
         );
-        const remaining = version.totalAmountCents - occupied;
+        const capacityLimit =
+          await this.paymentCapacityLimit(tx, version);
+        const remaining = capacityLimit - occupied;
         if (remaining <= 0n) {
           throw new ConflictException("当前采购已没有可新建的付款申请金额");
         }
@@ -712,6 +734,16 @@ export class SpotProcurementPaymentService {
           suggestion,
           false
         );
+        const capacityLimit =
+          await this.paymentCapacityLimit(tx, version);
+        if (
+          prepared.settlementAmountCents >
+          capacityLimit
+        ) {
+          throw new ConflictException(
+            "收货差异确认后付款申请金额不能超过本次采购实际成本"
+          );
+        }
         const systemAdjustedBalance =
           Boolean(payment.balanceOverrideReason) &&
           paymentFacts.settlementAmountCents ===
@@ -812,12 +844,16 @@ export class SpotProcurementPaymentService {
           payments.filter((row) => row.id !== payment.id),
           version.id
         );
+        const capacityLimit =
+          await this.paymentCapacityLimit(tx, version);
         if (
           occupied + prepared.settlementAmountCents >
-          version.totalAmountCents
+          capacityLimit
         ) {
           throw new ConflictException(
-            "有效付款申请累计结算金额不能超过当前采购批准金额"
+            capacityLimit === version.totalAmountCents
+              ? "有效付款申请累计结算金额不能超过当前采购批准金额"
+              : "收货差异确认后有效付款申请累计不能超过本次采购实际成本"
           );
         }
         const reservation = await this.balances.reserve(tx, {
@@ -1954,6 +1990,7 @@ export class SpotProcurementPaymentService {
   ) {
     const [
       receipts,
+      supplierRefundAmountCents,
       paymentRequests,
       expenseRequests,
       spotProcurementPayments
@@ -1962,6 +1999,7 @@ export class SpotProcurementPaymentService {
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
       }),
+      findProjectSpotProcurementRefundAmounts(tx, projectId),
       tx.paymentRequest.findMany({
         where: {
           projectId,
@@ -2006,6 +2044,7 @@ export class SpotProcurementPaymentService {
       receiptAmountCents: receipts.map(
         (receipt) => receipt.amountCents
       ),
+      supplierRefundAmountCents,
       paymentRequests,
       expenseRequests,
       spotProcurementPayments: spotProcurementPayments.map(
@@ -2189,9 +2228,44 @@ export class SpotProcurementPaymentService {
           statuses.has(payment.status)
       )
       .reduce(
-        (total, payment) => total + payment.settlementAmountCents,
+        (total, payment) =>
+          total +
+          nonnegative(
+            payment.settlementAmountCents -
+              payment.canceledAmountCents
+          ),
         0n
       );
+  }
+
+  private async paymentCapacityLimit(
+    tx: Prisma.TransactionClient,
+    version: Pick<
+      VersionLockRow,
+      "id" | "procurementId" | "totalAmountCents"
+    >
+  ) {
+    const discrepancy =
+      await tx.spotProcurementDiscrepancy.findFirst({
+        where: {
+          procurementId: version.procurementId,
+          invalidatedAt: null
+        },
+        select: {
+          procurementVersionId: true,
+          status: true,
+          actualCostCentsSnapshot: true
+        }
+      });
+    if (!discrepancy || discrepancy.status === "pending_resolution") {
+      return version.totalAmountCents;
+    }
+    if (discrepancy.procurementVersionId !== version.id) {
+      throw new ConflictException(
+        "当前收货差异与采购版本不一致，请刷新后重试"
+      );
+    }
+    return discrepancy.actualCostCentsSnapshot;
   }
 
   private async createDraftFromFacts(
@@ -2687,6 +2761,7 @@ function requiredExecutionText(
 
 function cashPoolAuditFacts(cashPool: {
   actualReceiptsCents: bigint;
+  supplierRefundsCents: bigint;
   actualPaidCents: bigint;
   occupiedCents: bigint;
   availableCents: bigint;
@@ -2694,6 +2769,8 @@ function cashPoolAuditFacts(cashPool: {
   return {
     actualReceiptsCents:
       cashPool.actualReceiptsCents.toString(),
+    supplierRefundsCents:
+      cashPool.supplierRefundsCents.toString(),
     actualPaidCents: cashPool.actualPaidCents.toString(),
     occupiedCents: cashPool.occupiedCents.toString(),
     availableCents: cashPool.availableCents.toString()
@@ -2703,6 +2780,7 @@ function cashPoolAuditFacts(cashPool: {
 function cashPoolWithReplacedSpotPayment(
   cashPool: {
     actualReceiptsCents: bigint;
+    supplierRefundsCents: bigint;
     actualPaidCents: bigint;
     occupiedCents: bigint;
     availableCents: bigint;
@@ -2724,10 +2802,12 @@ function cashPoolWithReplacedSpotPayment(
     outstandingMoneyRequestCentsBigInt(afterRequest);
   return {
     actualReceiptsCents: cashPool.actualReceiptsCents,
+    supplierRefundsCents: cashPool.supplierRefundsCents,
     actualPaidCents,
     occupiedCents,
     availableCents:
-      cashPool.actualReceiptsCents -
+      cashPool.actualReceiptsCents +
+      cashPool.supplierRefundsCents -
       actualPaidCents -
       occupiedCents
   };
@@ -2742,6 +2822,10 @@ function auditBankAccountFacts(value: string | null) {
   };
 }
 
+function nonnegative(value: bigint) {
+  return value > 0n ? value : 0n;
+}
+
 function prismaErrorCode(error: unknown) {
   if (!error || typeof error !== "object") return undefined;
   const code = (error as { code?: unknown }).code;
@@ -2749,10 +2833,17 @@ function prismaErrorCode(error: unknown) {
     const meta = (error as { meta?: unknown }).meta;
     if (meta && typeof meta === "object") {
       const postgresCode = (meta as { code?: unknown }).code;
-      if (String(postgresCode) === "40001") {
+      if (
+        ["40001", "40P01"].includes(
+          String(postgresCode)
+        )
+      ) {
         return "P2034";
       }
     }
+  }
+  if (code === "40P01") {
+    return "P2034";
   }
   return typeof code === "string" ? code : undefined;
 }

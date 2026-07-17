@@ -220,6 +220,7 @@ describe("internal bigint money compatibility", () => {
       })
     ).toEqual({
       actualReceiptsCents: 9_007_199_254_741_000n,
+      supplierRefundsCents: 0n,
       actualPaidCents: 4n,
       occupiedCents: 19n,
       availableCents: 9_007_199_254_740_977n
@@ -282,9 +283,28 @@ describe("internal bigint money compatibility", () => {
       })
     ).toEqual({
       actualReceiptsCents: 20_000n,
+      supplierRefundsCents: 0n,
       actualPaidCents: 5_000n,
       occupiedCents: 10_000n,
       availableCents: 5_000n
+    });
+  });
+
+  it("restores available project cash from supplier refunds without relabeling them as project receipts", () => {
+    expect(
+      calculateProjectCashPoolBigInt({
+        receiptAmountCents: [20_000n],
+        supplierRefundAmountCents: [1_500n, 500n],
+        paymentRequests: [],
+        expenseRequests: [],
+        spotProcurementPayments: []
+      })
+    ).toEqual({
+      actualReceiptsCents: 20_000n,
+      supplierRefundsCents: 2_000n,
+      actualPaidCents: 0n,
+      occupiedCents: 0n,
+      availableCents: 22_000n
     });
   });
 });

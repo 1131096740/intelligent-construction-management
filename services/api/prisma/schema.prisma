@@ -665,19 +665,20 @@ model SupplierBalanceAccount {
 }
 
 model SupplierBalanceReservation {
-  id               String    @id @default(uuid())
-  accountId        String
-  paymentId        String
-  amountCents      BigInt
-  status           String    @default("reserved")
-  reservedByUserId String
-  releasedAt       DateTime?
-  releasedByUserId String?
-  releaseReason    String?
-  executedAt       DateTime?
-  executedByUserId String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  accountId           String
+  paymentId           String
+  amountCents         BigInt
+  releasedAmountCents BigInt    @default(0)
+  status              String    @default("reserved")
+  reservedByUserId    String
+  releasedAt          DateTime?
+  releasedByUserId    String?
+  releaseReason       String?
+  executedAt          DateTime?
+  executedByUserId    String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@unique([paymentId])
   @@index([accountId, status])

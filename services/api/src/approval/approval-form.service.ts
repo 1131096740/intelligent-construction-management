@@ -42,6 +42,9 @@ type ApprovalFormClient = Pick<
   | "spotProcurementLine"
   | "spotProcurementPayment"
   | "spotProcurementPaymentExecution"
+  | "spotProcurementDiscrepancy"
+  | "spotProcurementRefund"
+  | "supplierBalanceEntry"
   | "fileObject"
   | "auditLog"
 >;
@@ -53,6 +56,46 @@ interface ApprovalFormSnapshotToken {
   businessUpdatedAt: string;
   activeExecutionFingerprint: string | null;
 }
+
+type SpotPaymentSettlementDiscrepancy = {
+  id: string;
+  procurementId: string;
+  procurementVersionId: string;
+  status: string;
+  actualCostCentsSnapshot: bigint;
+  shortageAmountCents: bigint;
+  canceledUnexecutedAmountCents: bigint;
+  overpaidAmountCents: bigint;
+  resolutionType: string | null;
+  supplierBalanceEntryId: string | null;
+  updatedAt: Date;
+};
+
+type SpotPaymentSettlementRefund = {
+  id: string;
+  discrepancyId: string;
+  procurementId: string;
+  amountCents: bigint;
+  receivedAt: Date;
+  refundMethod: string;
+  voucherFileId: string;
+};
+
+type SpotPaymentSettlementBalanceEntry = {
+  id: string;
+  procurementId: string | null;
+  entryType: string;
+  availableDeltaCents: bigint;
+  reservedDeltaCents: bigint;
+};
+
+type SpotPaymentSettlementFacts = {
+  discrepancy: SpotPaymentSettlementDiscrepancy | null;
+  refund: SpotPaymentSettlementRefund | null;
+  supplierBalanceEntry:
+    | SpotPaymentSettlementBalanceEntry
+    | null;
+};
 
 // 审批路线节点（与各业务 service 的 frozenNodes 形态一致：name/mode/roleKeys）
 interface FrozenNode {
@@ -88,6 +131,7 @@ const ACTION_LABELS: Record<string, string> = {
   reject_previous: "退回上一节点",
   return_to_applicant: "退回申请人",
   withdraw: "撤回",
+  void: "作废",
   transfer: "转交",
   delegate: "委托",
   remind: "催办",
@@ -237,6 +281,69 @@ function spotPaymentBusinessStatusLabel(value?: string | null): string {
   if (value === "voided") return "已作废";
   if (value === "invalidated") return "已失效";
   return "状态未读取";
+}
+
+function spotDiscrepancyStatusLabel(value: string): string {
+  if (value === "pending_resolution") return "待物资主管确认";
+  if (value === "awaiting_refund") return "待退款到账";
+  if (value === "awaiting_supplier_balance")
+    return "待转入供应商余额";
+  if (value === "resolved") return "已解决";
+  return "差异状态未读取";
+}
+
+function spotDiscrepancyResolutionLabel(
+  value: string | null
+): string {
+  if (value === "full_refund") return "整笔退款";
+  if (value === "full_supplier_balance")
+    return "整笔转供应商余额";
+  return "无需处理真实多付";
+}
+
+function spotPaymentSnapshotFingerprint(
+  executions: Array<{ id: string; amountCents: bigint }>,
+  facts: SpotPaymentSettlementFacts
+): string {
+  const executionPart = executions
+    .map(
+      (execution) =>
+        `${execution.id}:${dbMoneyToBigInt(
+          execution.amountCents,
+          "零星采购实际付款"
+        ).toString()}`
+    )
+    .join(",");
+  const discrepancy = facts.discrepancy;
+  const discrepancyPart = discrepancy
+    ? [
+        discrepancy.id,
+        discrepancy.updatedAt.toISOString(),
+        discrepancy.status,
+        discrepancy.actualCostCentsSnapshot.toString(),
+        discrepancy.shortageAmountCents.toString(),
+        discrepancy.canceledUnexecutedAmountCents.toString(),
+        discrepancy.overpaidAmountCents.toString(),
+        discrepancy.resolutionType ?? "-",
+        discrepancy.supplierBalanceEntryId ?? "-"
+      ].join(":")
+    : "-";
+  const refundPart = facts.refund
+    ? [
+        facts.refund.id,
+        facts.refund.amountCents.toString(),
+        facts.refund.receivedAt.toISOString(),
+        facts.refund.refundMethod,
+        facts.refund.voucherFileId
+      ].join(":")
+    : "-";
+  const balancePart = facts.supplierBalanceEntry
+    ? [
+        facts.supplierBalanceEntry.id,
+        facts.supplierBalanceEntry.availableDeltaCents.toString()
+      ].join(":")
+    : "-";
+  return `e=${executionPart || "-"}|d=${discrepancyPart}|r=${refundPart}|b=${balancePart}`;
 }
 
 function spotPaymentExecutionFactLabel(
@@ -885,26 +992,49 @@ export class ApprovalFormService {
               updatedAt: business?.updatedAt ?? null,
               executionFingerprint: null
             }))
-        : Promise.all([
-            client.spotProcurementPayment.findUnique({
+        : client.spotProcurementPayment
+            .findUnique({
               where: { id: businessId },
-              select: { updatedAt: true }
-            }),
-            client.spotProcurementPaymentExecution.findMany({
-              where: { paymentId: businessId, voidedAt: null },
-              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-              select: { id: true, amountCents: true }
+              select: {
+                procurementId: true,
+                procurementVersionId: true,
+                updatedAt: true
+              }
             })
-          ]).then(([business, executions]) => ({
-            updatedAt: business?.updatedAt ?? null,
-            executionFingerprint: `${executions.length}:${executions.at(-1)?.id ?? "-"}:${executions
-              .reduce(
-                (total, execution) =>
-                  total + dbMoneyToBigInt(execution.amountCents, "零星采购实际付款"),
-                0n
-              )
-              .toString()}`
-          }))
+            .then(async (business) => {
+              if (!business) {
+                return {
+                  updatedAt: null,
+                  executionFingerprint: null
+                };
+              }
+              const [executions, settlementFacts] =
+                await Promise.all([
+                  client.spotProcurementPaymentExecution.findMany({
+                    where: {
+                      paymentId: businessId,
+                      voidedAt: null
+                    },
+                    orderBy: [
+                      { createdAt: "asc" },
+                      { id: "asc" }
+                    ],
+                    select: { id: true, amountCents: true }
+                  }),
+                  this.loadSpotPaymentSettlementFacts(
+                    client,
+                    business
+                  )
+                ]);
+              return {
+                updatedAt: business.updatedAt,
+                executionFingerprint:
+                  spotPaymentSnapshotFingerprint(
+                    executions,
+                    settlementFacts
+                  )
+              };
+            })
     ]);
     if (!businessSnapshot.updatedAt) {
       throw new Error("审批单对应业务不存在");
@@ -1384,6 +1514,129 @@ export class ApprovalFormService {
   }
 
   // 业务信息栏：按业务类型取关键字段（金额/对方/事由等）。查不到的字段直接略过。
+  private async loadSpotPaymentSettlementFacts(
+    prisma: ApprovalFormClient,
+    payment: {
+      procurementId: string;
+      procurementVersionId: string;
+    }
+  ): Promise<SpotPaymentSettlementFacts> {
+    const discrepancy =
+      await prisma.spotProcurementDiscrepancy.findFirst({
+        where: {
+          procurementId: payment.procurementId,
+          procurementVersionId:
+            payment.procurementVersionId,
+          invalidatedAt: null
+        },
+        select: {
+          id: true,
+          procurementId: true,
+          procurementVersionId: true,
+          status: true,
+          actualCostCentsSnapshot: true,
+          shortageAmountCents: true,
+          canceledUnexecutedAmountCents: true,
+          overpaidAmountCents: true,
+          resolutionType: true,
+          supplierBalanceEntryId: true,
+          updatedAt: true
+        }
+      });
+    if (!discrepancy) {
+      return {
+        discrepancy: null,
+        refund: null,
+        supplierBalanceEntry: null
+      };
+    }
+    const [refund, supplierBalanceEntry] =
+      await Promise.all([
+        prisma.spotProcurementRefund.findUnique({
+          where: { discrepancyId: discrepancy.id },
+          select: {
+            id: true,
+            discrepancyId: true,
+            procurementId: true,
+            amountCents: true,
+            receivedAt: true,
+            refundMethod: true,
+            voucherFileId: true
+          }
+        }),
+        discrepancy.supplierBalanceEntryId
+          ? prisma.supplierBalanceEntry.findUnique({
+              where: {
+                id: discrepancy.supplierBalanceEntryId
+              },
+              select: {
+                id: true,
+                procurementId: true,
+                entryType: true,
+                availableDeltaCents: true,
+                reservedDeltaCents: true
+              }
+            })
+          : Promise.resolve(null)
+      ]);
+    if (
+      refund &&
+      (refund.discrepancyId !== discrepancy.id ||
+        refund.procurementId !== payment.procurementId ||
+        refund.amountCents !==
+          discrepancy.overpaidAmountCents ||
+        discrepancy.status !== "resolved" ||
+        discrepancy.resolutionType !== "full_refund")
+    ) {
+      throw new Error(
+        "零星采购退款与差异结算事实不一致"
+      );
+    }
+    if (
+      discrepancy.status === "resolved" &&
+      discrepancy.resolutionType === "full_refund" &&
+      !refund
+    ) {
+      throw new Error(
+        "零星采购退款结算缺少到账事实"
+      );
+    }
+    if (
+      supplierBalanceEntry &&
+      (supplierBalanceEntry.id !==
+        discrepancy.supplierBalanceEntryId ||
+        supplierBalanceEntry.procurementId !==
+          payment.procurementId ||
+        supplierBalanceEntry.entryType !==
+          "credit_from_discrepancy" ||
+        supplierBalanceEntry.availableDeltaCents !==
+          discrepancy.overpaidAmountCents ||
+        supplierBalanceEntry.reservedDeltaCents !== 0n ||
+        discrepancy.status !== "resolved" ||
+        discrepancy.resolutionType !==
+          "full_supplier_balance")
+    ) {
+      throw new Error(
+        "零星采购供应商余额转入分录与差异事实不一致"
+      );
+    }
+    if (
+      discrepancy.status === "resolved" &&
+      discrepancy.resolutionType ===
+        "full_supplier_balance" &&
+      !supplierBalanceEntry
+    ) {
+      throw new Error(
+        "零星采购差异结算缺少供应商余额转入分录"
+      );
+    }
+    return {
+      discrepancy,
+      refund,
+      supplierBalanceEntry
+    };
+  }
+
   private async resolveBusinessSummary(
     prisma: ApprovalFormClient,
     businessType: string,
@@ -1442,13 +1695,19 @@ export class ApprovalFormService {
         where: { id: businessId }
       });
       if (!payment) return [];
-      const [procurement, project, executions] = await Promise.all([
+      const [
+        procurement,
+        project,
+        executions,
+        settlementFacts
+      ] = await Promise.all([
         prisma.spotProcurement.findUnique({ where: { id: payment.procurementId } }),
         prisma.project.findUnique({ where: { id: payment.projectId } }),
         prisma.spotProcurementPaymentExecution.findMany({
           where: { paymentId: payment.id, voidedAt: null },
           orderBy: [{ paidAt: "asc" }, { id: "asc" }]
-        })
+        }),
+        this.loadSpotPaymentSettlementFacts(prisma, payment)
       ]);
       const actualPaidCents = executions.reduce(
         (total, execution) => total + dbMoneyToBigInt(execution.amountCents, "零星采购实际付款"),
@@ -1470,6 +1729,18 @@ export class ApprovalFormService {
         },
         { label: "公司付款申请", value: formatYuan(payment.companyPaymentAmountCents) },
         { label: "未执行取消额度", value: formatYuan(payment.canceledAmountCents ?? 0n) },
+        {
+          label: "取消公司付款额度",
+          value: formatYuan(
+            payment.canceledCompanyPaymentAmountCents ?? 0n
+          )
+        },
+        {
+          label: "取消余额抵扣额度",
+          value: formatYuan(
+            payment.canceledSupplierBalanceAmountCents ?? 0n
+          )
+        },
         { label: "累计实际付款", value: formatYuan(actualPaidCents) },
         {
           label: "付款申请状态",
@@ -1480,6 +1751,56 @@ export class ApprovalFormService {
           value: spotPaymentExecutionFactLabel(actualPaidCents, companyPayableCents)
         }
       ];
+      const discrepancy = settlementFacts.discrepancy;
+      rows.push(
+        {
+          label: "本次采购实际成本",
+          value: discrepancy
+            ? formatYuan(
+                discrepancy.actualCostCentsSnapshot
+              )
+            : "尚未形成收货差异结算"
+        },
+        {
+          label: "少货差额",
+          value: discrepancy
+            ? formatYuan(discrepancy.shortageAmountCents)
+            : "0.00 元"
+        },
+        {
+          label: "差异处置",
+          value: discrepancy
+            ? `${spotDiscrepancyStatusLabel(
+                discrepancy.status
+              )}；${spotDiscrepancyResolutionLabel(
+                discrepancy.resolutionType
+              )}`
+            : "未形成差异"
+        },
+        {
+          label: "已确认到账退款",
+          value: settlementFacts.refund
+            ? `${formatYuan(
+                settlementFacts.refund.amountCents
+              )}；${formatDate(
+                settlementFacts.refund.receivedAt
+              )}；${paymentMethodLabel(
+                settlementFacts.refund.refundMethod
+              )}；凭证 ${
+                settlementFacts.refund.voucherFileId
+              }`
+            : "0.00 元"
+        },
+        {
+          label: "已转入供应商余额",
+          value: settlementFacts.supplierBalanceEntry
+            ? formatYuan(
+                settlementFacts.supplierBalanceEntry
+                  .availableDeltaCents
+              )
+            : "0.00 元"
+        }
+      );
       executions.forEach((execution, index) => {
         rows.push({
           label: `实际付款明细 ${index + 1}`,

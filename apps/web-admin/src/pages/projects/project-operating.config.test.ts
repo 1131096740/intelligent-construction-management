@@ -53,6 +53,7 @@ describe("project-operating proxy payment helpers", () => {
         settlementAmountCents: "6000000",
         payableAmountCents: "4000000",
         actualReceiptsCents: "5000000",
+        supplierRefundsCents: "100000",
         actualPaidCents: "2000000",
         approvedPendingPaymentCents: "1000000",
         availableFundsCents: "3000000",
@@ -66,6 +67,7 @@ describe("project-operating proxy payment helpers", () => {
         settlementAmountCents: "8000000",
         payableAmountCents: "5000000",
         actualReceiptsCents: null,
+        supplierRefundsCents: null,
         actualPaidCents: "3000000",
         approvedPendingPaymentCents: "2000000",
         availableFundsCents: null,
@@ -80,6 +82,7 @@ describe("project-operating proxy payment helpers", () => {
       settlementAmountCents: "14000000",
       payableAmountCents: "9000000",
       actualReceiptsCents: "5000000",
+      supplierRefundsCents: "100000",
       actualPaidCents: "5000000",
       approvedPendingPaymentCents: "3000000",
       availableFundsCents: "3000000",
@@ -134,6 +137,7 @@ function projectOverview(overrides: {
   settlementAmountCents: string;
   payableAmountCents: string;
   actualReceiptsCents: string | null;
+  supplierRefundsCents: string | null;
   actualPaidCents: string;
   approvedPendingPaymentCents: string;
   availableFundsCents: string | null;
@@ -147,6 +151,7 @@ function projectOverview(overrides: {
     },
     cash: {
       actualReceiptsCents: overrides.actualReceiptsCents,
+      supplierRefundsCents: overrides.supplierRefundsCents,
       availableFundsCents: overrides.availableFundsCents,
       actualPaidCents: overrides.actualPaidCents,
       approvalPendingOccupancyCents: "0",

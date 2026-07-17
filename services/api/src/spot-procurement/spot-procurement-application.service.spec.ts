@@ -187,6 +187,16 @@ function transactionDelegate() {
     spotProcurementPaymentExecution: {
       findFirst: jest.fn().mockResolvedValue(null)
     },
+    spotProcurementDiscrepancy: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 })
+    },
+    spotProcurementRefund: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    supplierBalanceEntry: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
     spotProcurementReceipt: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({
@@ -2029,6 +2039,12 @@ describe("SpotProcurementApplicationService", () => {
       ])
       .mockResolvedValueOnce([{ ...versionLock, status: "approved" }]);
     role(tx, "material_staff");
+    tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+      id: "discrepancy-1",
+      status: "resolved",
+      resolutionType: null,
+      supplierBalanceEntryId: null
+    });
     tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({
       id: "execution-1"
     });
@@ -2039,8 +2055,174 @@ describe("SpotProcurementApplicationService", () => {
         changeReason: "现场规格发生变化"
       })
     ).rejects.toBeInstanceOf(ConflictException);
+    expect(
+      tx.spotProcurementDiscrepancy.updateMany
+    ).not.toHaveBeenCalled();
     expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
   });
+
+  it("blocks a version switch while an active receipt discrepancy exists", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          approvedAmountCents: 4100n
+        }
+      ])
+      .mockResolvedValueOnce([
+        { ...versionLock, status: "approved" }
+      ]);
+    role(tx, "material_staff");
+    tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+      id: "discrepancy-1",
+      status: "pending_resolution",
+      resolutionType: null,
+      supplierBalanceEntryId: null
+    });
+
+    await expect(
+      service.createVersion("procurement-1", "material-1", {
+        ...draftInput,
+        changeReason: "现场规格发生变化"
+      })
+    ).rejects.toThrow(
+      "当前采购已形成收货差异事实，不能切换采购版本"
+    );
+    expect(
+      tx.spotProcurementVersion.create
+    ).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a resolved reversible discrepancy in the same transaction before creating a new version", async () => {
+    const { service, tx, audit } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          approvedAmountCents: 4100n
+        }
+      ])
+      .mockResolvedValueOnce([
+        { ...versionLock, status: "approved" }
+      ]);
+    role(tx, "material_staff");
+    tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+      id: "discrepancy-1",
+      status: "resolved",
+      resolutionType: null,
+      supplierBalanceEntryId: null
+    });
+    tx.spotProcurementVersion.create.mockResolvedValue({
+      ...versionLock,
+      id: "version-2",
+      versionNo: 2,
+      status: "draft",
+      changeReason: "调整单价"
+    });
+
+    await service.createVersion(
+      "procurement-1",
+      "material-1",
+      {
+        ...draftInput,
+        lines: [{ ...invoiceLine, unitPrice: "4" }],
+        changeReason: "调整单价"
+      }
+    );
+
+    expect(
+      tx.spotProcurementDiscrepancy.updateMany
+    ).toHaveBeenCalledWith({
+      where: {
+        id: "discrepancy-1",
+        status: "resolved",
+        invalidatedAt: null
+      },
+      data: {
+        status: "invalidated",
+        invalidatedAt: expect.any(Date),
+        invalidatedByUserId: "material-1",
+        invalidationReason: "采购版本变更：调整单价"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: "material-1",
+        action: "spot_procurement.discrepancy.invalidate",
+        businessId: "discrepancy-1",
+        metadata: expect.objectContaining({
+          procurementId: "procurement-1",
+          source: "version_change",
+          reason: "采购版本变更：调整单价"
+        })
+      })
+    );
+  });
+
+  it.each(["refund", "supplier_balance_credit"])(
+    "blocks a version switch when a resolved discrepancy has irreversible %s facts",
+    async (fact) => {
+      const { service, tx } = harness();
+      tx.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            ...rootLock,
+            status: "approved_in_progress",
+            approvedAmountCents: 4100n
+          }
+        ])
+        .mockResolvedValueOnce([
+          { ...versionLock, status: "approved" }
+        ]);
+      role(tx, "material_staff");
+      tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+        id: "discrepancy-1",
+        status: "resolved",
+        resolutionType:
+          fact === "refund"
+            ? "full_refund"
+            : "full_supplier_balance",
+        supplierBalanceEntryId:
+          fact === "supplier_balance_credit"
+            ? "balance-entry-1"
+            : null
+      });
+      if (fact === "refund") {
+        tx.spotProcurementRefund.findFirst.mockResolvedValue({
+          id: "refund-1"
+        });
+      } else {
+        tx.supplierBalanceEntry.findFirst.mockResolvedValue({
+          id: "balance-entry-1",
+          entryType: "credit_from_discrepancy"
+        });
+      }
+
+      await expect(
+        service.createVersion(
+          "procurement-1",
+          "material-1",
+          {
+            ...draftInput,
+            lines: [{ ...invoiceLine, unitPrice: "4" }],
+            changeReason: "不应覆盖不可逆事实"
+          }
+        )
+      ).rejects.toThrow(
+        "当前采购差异已形成退款或供应商余额不可逆事实，不能切换采购版本"
+      );
+      expect(
+        tx.spotProcurementDiscrepancy.updateMany
+      ).not.toHaveBeenCalled();
+      expect(
+        tx.spotProcurementVersion.create
+      ).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejects an active handler creating a version for an inactive root applicant before invalidating facts", async () => {
     const { service, tx } = harness();
@@ -2762,6 +2944,138 @@ describe("SpotProcurementApplicationService", () => {
     expect(result.status).toBe("voided");
   });
 
+  it("blocks voiding while an active receipt discrepancy exists", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          approvedAmountCents: 4100n
+        }
+      ])
+      .mockResolvedValueOnce([
+        { ...versionLock, status: "approved" }
+      ])
+      .mockResolvedValueOnce([]);
+    tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+      id: "discrepancy-1",
+      status: "pending_resolution",
+      resolutionType: null,
+      supplierBalanceEntryId: null
+    });
+
+    await expect(
+      service.voidProcurement(
+        "procurement-1",
+        "manager-1",
+        "业务终止"
+      )
+    ).rejects.toThrow(
+      "当前采购已形成收货差异事实，不能直接撤销"
+    );
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a resolved reversible discrepancy in the same transaction before voiding", async () => {
+    const { service, tx, audit } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          approvedAmountCents: 4100n
+        }
+      ])
+      .mockResolvedValueOnce([
+        { ...versionLock, status: "approved" }
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    role(tx, "project_manager");
+    tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+      id: "discrepancy-1",
+      status: "resolved",
+      resolutionType: null,
+      supplierBalanceEntryId: null
+    });
+
+    await service.voidProcurement(
+      "procurement-1",
+      "manager-1",
+      "业务终止"
+    );
+
+    expect(
+      tx.spotProcurementDiscrepancy.updateMany
+    ).toHaveBeenCalledWith({
+      where: {
+        id: "discrepancy-1",
+        status: "resolved",
+        invalidatedAt: null
+      },
+      data: {
+        status: "invalidated",
+        invalidatedAt: expect.any(Date),
+        invalidatedByUserId: "manager-1",
+        invalidationReason: "采购撤销：业务终止"
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: "manager-1",
+        action: "spot_procurement.discrepancy.invalidate",
+        businessId: "discrepancy-1",
+        metadata: expect.objectContaining({
+          procurementId: "procurement-1",
+          source: "procurement_void",
+          reason: "采购撤销：业务终止"
+        })
+      })
+    );
+  });
+
+  it("blocks voiding when a resolved discrepancy has an irreversible supplier balance execution", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...rootLock,
+          status: "approved_in_progress",
+          approvedAmountCents: 4100n
+        }
+      ])
+      .mockResolvedValueOnce([
+        { ...versionLock, status: "approved" }
+      ])
+      .mockResolvedValueOnce([]);
+    tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+      id: "discrepancy-1",
+      status: "resolved",
+      resolutionType: null,
+      supplierBalanceEntryId: null
+    });
+    tx.supplierBalanceEntry.findFirst.mockResolvedValue({
+      id: "balance-execution-entry-1",
+      entryType: "execute"
+    });
+
+    await expect(
+      service.voidProcurement(
+        "procurement-1",
+        "manager-1",
+        "不应覆盖余额执行事实"
+      )
+    ).rejects.toThrow(
+      "当前采购差异已形成退款或供应商余额不可逆事实，不能直接撤销"
+    );
+    expect(
+      tx.spotProcurementDiscrepancy.updateMany
+    ).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+  });
+
   it("locks the current version before all procurement payments in stable order when voiding", async () => {
     const { service, tx } = harness();
     tx.$queryRaw
@@ -2839,6 +3153,12 @@ describe("SpotProcurementApplicationService", () => {
         ]);
       role(tx, "project_manager");
       if (paymentFact === "execution") {
+        tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+          id: "discrepancy-1",
+          status: "resolved",
+          resolutionType: null,
+          supplierBalanceEntryId: null
+        });
         tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue({
           id: "execution-1"
         });
@@ -2851,6 +3171,9 @@ describe("SpotProcurementApplicationService", () => {
           "不应覆盖付款事实"
         )
       ).rejects.toBeInstanceOf(ConflictException);
+      expect(
+        tx.spotProcurementDiscrepancy.updateMany
+      ).not.toHaveBeenCalled();
       expect(tx.spotProcurement.update).not.toHaveBeenCalled();
     }
   });

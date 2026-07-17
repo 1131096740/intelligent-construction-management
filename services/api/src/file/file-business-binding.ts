@@ -1,5 +1,11 @@
 import { Prisma } from "@prisma/client";
 
+// 与数据库触发器共用同一事务级锁。文件正式绑定频率低，先用单一锁保证
+// 所有旧入口、收货照片、实付凭证、退款凭证和替换链之间不存在双提交窗口。
+// 若未来吞吐量需要优化，可在保持全入口一致的前提下改为按 fileId 排序取锁。
+const FILE_BUSINESS_BINDING_LOCK_NAMESPACE = 190_731;
+const FILE_BUSINESS_BINDING_LOCK_KEY = 13;
+
 export const NON_RECEIPT_FILE_BINDINGS = [
   { table: "User", columns: ["signatureFileId"] },
   {
@@ -86,6 +92,24 @@ export const NON_RECEIPT_FILE_BINDINGS = [
   }
 ] as const;
 
+export interface NonReceiptFileBindingExclusion {
+  table: string;
+  column: string;
+}
+
+export async function acquireFileBusinessBindingTransactionLock(
+  tx: Prisma.TransactionClient
+): Promise<void> {
+  await tx.$queryRaw(
+    Prisma.sql`
+      SELECT pg_advisory_xact_lock(
+        ${FILE_BUSINESS_BINDING_LOCK_NAMESPACE}::int,
+        ${FILE_BUSINESS_BINDING_LOCK_KEY}::int
+      )::text AS "lockResult"
+    `
+  );
+}
+
 function sqlIdentifier(value: string): Prisma.Sql {
   if (!/^[A-Za-z][A-Za-z0-9]*$/u.test(value)) {
     throw new Error("静态文件绑定标识不合法");
@@ -95,23 +119,40 @@ function sqlIdentifier(value: string): Prisma.Sql {
 
 export async function hasNonReceiptBusinessFileBinding(
   tx: Prisma.TransactionClient,
-  fileIds: string[]
+  fileIds: string[],
+  excludedBindings: readonly NonReceiptFileBindingExclusion[] = []
 ): Promise<boolean> {
   const uniqueIds = [...new Set(fileIds)].sort();
   if (!uniqueIds.length) return false;
+  const registeredBindings = new Set(
+    NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
+      columns.map((column) => `${table}.${column}`)
+    )
+  );
+  const excludedBindingKeys = new Set(
+    excludedBindings.map(({ table, column }) => {
+      const bindingKey = `${table}.${column}`;
+      if (!registeredBindings.has(bindingKey)) {
+        throw new Error("文件绑定排除项未在中心注册表登记");
+      }
+      return bindingKey;
+    })
+  );
   const candidates = Prisma.join(
     uniqueIds.map((fileId) => Prisma.sql`(${fileId})`)
   );
   const bindingQueries = NON_RECEIPT_FILE_BINDINGS.flatMap(
     ({ table, columns }) =>
-      columns.map((column) => {
-        const field = sqlIdentifier(column);
-        return Prisma.sql`
-          SELECT x.${field} AS "fileId"
-          FROM ${sqlIdentifier(table)} x
-          JOIN candidates c ON c."id" = x.${field}
-        `;
-      })
+      columns
+        .filter((column) => !excludedBindingKeys.has(`${table}.${column}`))
+        .map((column) => {
+          const field = sqlIdentifier(column);
+          return Prisma.sql`
+            SELECT x.${field} AS "fileId"
+            FROM ${sqlIdentifier(table)} x
+            JOIN candidates c ON c."id" = x.${field}
+          `;
+        })
   );
   const rows = await tx.$queryRaw<Array<{ fileId: string }>>(
     Prisma.sql`

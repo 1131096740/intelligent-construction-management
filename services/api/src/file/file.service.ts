@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -15,7 +16,10 @@ import { basename, extname, isAbsolute, join, parse, relative, resolve, sep } fr
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { SpotProcurementAccessService } from "../spot-procurement/spot-procurement-access.service";
-import { hasNonReceiptBusinessFileBinding } from "./file-business-binding";
+import {
+  acquireFileBusinessBindingTransactionLock,
+  hasNonReceiptBusinessFileBinding
+} from "./file-business-binding";
 
 export interface UploadPrivateFileInput {
   originalName: string;
@@ -56,6 +60,15 @@ type LockedGeneratedFileRow = Pick<
   FileObject,
   "id" | "uploadedByUserId" | "storageStatus"
 >;
+type LockedUnboundFileRow = Pick<
+  FileObject,
+  "id" | "uploadedByUserId" | "storageStatus"
+>;
+
+const FILE_ALREADY_BOUND_MESSAGE = "该文件已绑定其他业务记录，不能重复使用";
+const REFUND_VOUCHER_BINDING = [
+  { table: "SpotProcurementRefund", column: "voucherFileId" }
+] as const;
 
 const ARCHIVE_FILE_DOWNLOAD_ROLES: readonly RoleKey[] = [
   "contract_staff",
@@ -693,6 +706,7 @@ export class FileService {
       throw new BadRequestException("新旧文件不能为同一文件");
     }
 
+    await acquireFileBusinessBindingTransactionLock(tx);
     const initialFileIds = [input.newFileId, input.oldFileId].sort();
     const initialFiles = await tx.$queryRaw<LockedFileReplacementRow[]>(Prisma.sql`
       SELECT "id", "uploadedByUserId", "storageStatus", "supersedesFileObjectId"
@@ -933,6 +947,7 @@ export class FileService {
     if (!fileId.trim() || !actorUserId.trim()) return false;
 
     return this.prisma.$transaction(async (tx) => {
+      await acquireFileBusinessBindingTransactionLock(tx);
       const rows = await tx.$queryRaw<LockedGeneratedFileRow[]>(Prisma.sql`
         SELECT "id", "uploadedByUserId", "storageStatus"
         FROM "FileObject"
@@ -983,6 +998,50 @@ export class FileService {
       });
       return true;
     });
+  }
+
+  // 业务绑定前必须在同一事务内调用：文件行锁使“检查+写入绑定”串行化。
+  async assertFileHasNoBusinessBinding(
+    tx: Prisma.TransactionClient,
+    fileId: string
+  ): Promise<LockedUnboundFileRow> {
+    const normalizedFileId = fileId.trim();
+    if (!normalizedFileId) {
+      throw new BadRequestException("请选择需要绑定的文件");
+    }
+
+    await acquireFileBusinessBindingTransactionLock(tx);
+    const rows = await tx.$queryRaw<LockedUnboundFileRow[]>(Prisma.sql`
+      SELECT "id", "uploadedByUserId", "storageStatus"
+      FROM "FileObject"
+      WHERE "id" = ${normalizedFileId}
+      FOR UPDATE
+    `);
+    const file = rows[0];
+    if (!file) {
+      throw new BadRequestException("文件不存在或已被移除");
+    }
+    if (file.storageStatus !== "active") {
+      throw new BadRequestException("文件当前不可用");
+    }
+
+    const [receiptPhotoBinding, hasOtherBinding] = await Promise.all([
+      tx.spotProcurementReceiptPhoto.findFirst({
+        where: {
+          OR: [
+            { originalFileId: normalizedFileId },
+            { watermarkedFileId: normalizedFileId }
+          ]
+        },
+        select: { id: true }
+      }),
+      hasNonReceiptBusinessFileBinding(tx, [normalizedFileId])
+    ]);
+    if (receiptPhotoBinding || hasOtherBinding) {
+      throw new ConflictException(FILE_ALREADY_BOUND_MESSAGE);
+    }
+
+    return file;
   }
 
   // 供其它模块（如审批单下载）按 fileId 复用下载权限校验。
@@ -1049,8 +1108,8 @@ export class FileService {
       tx
     );
     if (spotDecision === "allowed") {
-      const receiptBinding =
-        await tx.spotProcurementReceiptPhoto.findFirst({
+      const [receiptBinding, refundBindings] = await Promise.all([
+        tx.spotProcurementReceiptPhoto.findFirst({
           where: {
             OR: [
               { originalFileId: file.id },
@@ -1058,10 +1117,28 @@ export class FileService {
             ]
           },
           select: { id: true }
-        });
+        }),
+        tx.spotProcurementRefund.findMany({
+          where: { voucherFileId: file.id },
+          select: { id: true },
+          take: 2
+        })
+      ]);
       if (
         receiptBinding &&
         (await hasNonReceiptBusinessFileBinding(tx, [file.id]))
+      ) {
+        throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
+      }
+      if (
+        refundBindings.length > 1 ||
+        (refundBindings.length === 1 &&
+          (receiptBinding ||
+            (await hasNonReceiptBusinessFileBinding(
+              tx,
+              [file.id],
+              REFUND_VOUCHER_BINDING
+            ))))
       ) {
         throw new Error("资料文件存在跨业务绑定冲突，暂不能下载");
       }

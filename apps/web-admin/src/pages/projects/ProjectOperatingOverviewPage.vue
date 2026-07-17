@@ -147,6 +147,7 @@
                     <th>生效结算额</th>
                     <th>结算可付额</th>
                     <th>实际收款</th>
+                    <th>供应商退款</th>
                     <th>已实付</th>
                     <th>已批待付</th>
                     <th>可用资金</th>
@@ -164,6 +165,7 @@
                     <td>{{ formatCents(row.settlementAmountCents) }}</td>
                     <td>{{ formatCents(row.payableAmountCents) }}</td>
                     <td>{{ formatCents(row.actualReceiptsCents) }}</td>
+                    <td>{{ formatCents(row.supplierRefundsCents) }}</td>
                     <td>{{ formatCents(row.actualPaidCents) }}</td>
                     <td>{{ formatCents(row.approvedPendingPaymentCents) }}</td>
                     <td>{{ formatCents(row.availableFundsCents) }}</td>
@@ -1091,6 +1093,7 @@ const cashItems = computed(() => {
   const cash = overview.value?.cash;
   return [
     { label: "实际收款", value: formatCents(cash?.actualReceiptsCents ?? null) },
+    { label: "供应商退款", value: formatCents(cash?.supplierRefundsCents ?? null) },
     { label: "可用资金", value: formatCents(cash?.availableFundsCents ?? null) },
     { label: "已实付", value: formatCents(cash?.actualPaidCents ?? "0") },
     { label: "审批中预占", value: formatCents(cash?.approvalPendingOccupancyCents ?? "0") },
@@ -1119,6 +1122,7 @@ const executiveSummaryItems = computed(() => {
     { label: "生效结算额", value: formatCents(summary?.settlementAmountCents ?? "0") },
     { label: "结算可付额", value: formatCents(summary?.payableAmountCents ?? "0") },
     { label: "实际收款", value: formatCents(summary?.actualReceiptsCents ?? null) },
+    { label: "供应商退款", value: formatCents(summary?.supplierRefundsCents ?? null) },
     { label: "已实付", value: formatCents(summary?.actualPaidCents ?? "0") },
     { label: "已批待付", value: formatCents(summary?.approvedPendingPaymentCents ?? "0") },
     { label: "可用资金", value: formatCents(summary?.availableFundsCents ?? null) },

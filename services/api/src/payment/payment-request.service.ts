@@ -17,6 +17,7 @@ import { FileService } from "../file/file.service";
 import {
   calculateProjectCashPoolBigInt,
   dbMoneyToBigInt,
+  findProjectSpotProcurementRefundAmounts,
   formatMoneyCentsAsYuan,
   mapBigIntMoneyFieldsToApi,
   moneyCentsToApi,
@@ -1169,6 +1170,7 @@ export class PaymentRequestService {
     }).projectExpenseFinancingQuotaUsage;
     const [
       projectReceipts,
+      supplierRefundAmountCents,
       projectPayments,
       projectExpenseRequests,
       spotProcurementPayments,
@@ -1178,6 +1180,7 @@ export class PaymentRequestService {
         where: { projectId, voidedAt: null },
         select: { amountCents: true }
       }),
+      findProjectSpotProcurementRefundAmounts(tx, projectId),
       tx.paymentRequest.findMany({
         where: {
           projectId,
@@ -1230,6 +1233,7 @@ export class PaymentRequestService {
 
     const cashPool = calculateProjectCashPoolBigInt({
       receiptAmountCents: projectReceipts.map((receipt) => receipt.amountCents),
+      supplierRefundAmountCents,
       paymentRequests: projectPayments,
       expenseRequests: projectExpenseRequests,
       spotProcurementPayments: spotProcurementPayments.map(

@@ -209,6 +209,7 @@ describe("SpotProcurementReceiptService workflow", () => {
     latestReview?: Record<string, unknown> | null;
     firstSubmittedAt?: Date | null;
     lockedAt?: Date | null;
+    activeDiscrepancy?: boolean;
   }) {
     const receiptStatus = options?.receiptStatus ?? "draft";
     const revisionSubmittedAt =
@@ -387,6 +388,9 @@ describe("SpotProcurementReceiptService workflow", () => {
       const text = (
         query as { strings?: readonly string[] }
       ).strings?.join("?") ?? String(query);
+      if (text.includes("pg_advisory_xact_lock")) {
+        return [{ pg_advisory_xact_lock: null }];
+      }
       if (
         text.includes("receipt_non_receipt_file_binding")
       ) {
@@ -545,6 +549,13 @@ describe("SpotProcurementReceiptService workflow", () => {
               "2026-07-17T09:00:00.000Z"
             )
           })
+        )
+      },
+      spotProcurementDiscrepancy: {
+        findFirst: jest.fn().mockResolvedValue(
+          options?.activeDiscrepancy
+            ? { id: "discrepancy-1" }
+            : null
         )
       },
       position: {
@@ -1842,6 +1853,54 @@ describe("SpotProcurementReceiptService workflow", () => {
         reviewId: "review-revoked"
       }
     );
+  });
+
+  it("rejects review revocation after an active discrepancy fact exists", async () => {
+    const submittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const approvedReview = {
+      id: "review-approved",
+      receiptId: "receipt-1",
+      receiptRevisionNo: 1,
+      procurementId: "procurement-1",
+      procurementVersionId: "version-1",
+      sequenceNo: 1,
+      decision: "approved",
+      comment: "一致",
+      reviewedByUserId: "material-director-1",
+      reviewedByNameSnapshot: "张三",
+      submissionDelegationId: null,
+      targetReviewId: null,
+      createdAt: new Date("2026-07-17T09:00:00.000Z")
+    };
+    const harness = createHarness({
+      receiptStatus: "reviewed",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true,
+      latestReview: approvedReview,
+      activeDiscrepancy: true
+    });
+
+    await expect(
+      harness.service.revokeReview(
+        "procurement-1",
+        "material-director-1",
+        {
+          targetReviewId: "review-approved",
+          reason: "重新核对",
+          confirmReviewRevocation: true
+        }
+      )
+    ).rejects.toThrow(
+      "当前收货复核已形成差异结算事实，不能撤销"
+    );
+    expect(
+      harness.tx.spotProcurementReceiptReview.create
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.tx.spotProcurementReceiptRevision.create
+    ).not.toHaveBeenCalled();
   });
 
   it.each(["reviewed", "locked"] as const)(

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { NON_RECEIPT_FILE_BINDINGS } from "../file/file-business-binding";
 
 type PrismaModelExpectation = {
   fields: string[];
@@ -234,6 +235,7 @@ const EXPECTED_PRISMA_MODELS: Record<string, PrismaModelExpectation> = {
       "accountId String",
       "paymentId String",
       "amountCents BigInt",
+      "releasedAmountCents BigInt @default(0)",
       'status String @default("reserved")',
       "reservedByUserId String",
       "releasedAt DateTime?",
@@ -596,6 +598,24 @@ describe("spot procurement core schema", () => {
     "prisma/migrations/20260716190000_spot_procurement_core/migration.sql"
   );
   const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
+  const reservationLifecycleMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260717130000_supplier_balance_reservation_lifecycle/migration.sql"
+  );
+  const reservationLifecycleMigration = existsSync(
+    reservationLifecycleMigrationPath
+  )
+    ? readFileSync(reservationLifecycleMigrationPath, "utf8")
+    : "";
+  const exclusiveFileBindingMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260717140000_exclusive_file_business_binding_guard/migration.sql"
+  );
+  const exclusiveFileBindingMigration = existsSync(
+    exclusiveFileBindingMigrationPath
+  )
+    ? readFileSync(exclusiveFileBindingMigrationPath, "utf8")
+    : "";
 
   const modelBody = (name: string) =>
     schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
@@ -756,7 +776,7 @@ describe("spot procurement core schema", () => {
     );
   });
 
-  it("creates exactly ten tables whose SQL columns match Prisma metadata", () => {
+  it("creates exactly ten core tables whose SQL columns match the schema at that migration", () => {
     const createdTables = Array.from(
       migration.matchAll(/CREATE\s+TABLE\s+"([^"]+)"/gi),
       (match) => match[1]
@@ -764,8 +784,138 @@ describe("spot procurement core schema", () => {
     expect(createdTables).toEqual(Object.keys(EXPECTED_PRISMA_MODELS).sort());
 
     for (const [table, expected] of Object.entries(EXPECTED_PRISMA_MODELS)) {
-      expect(sqlColumns(table)).toEqual(expectedSqlColumns(expected.fields));
+      const fieldsAtCoreMigration =
+        table === "SupplierBalanceReservation"
+          ? expected.fields.filter(
+              (field) => !field.startsWith("releasedAmountCents ")
+            )
+          : expected.fields;
+      expect(sqlColumns(table)).toEqual(
+        expectedSqlColumns(fieldsAtCoreMigration)
+      );
     }
+  });
+
+  it("adds the released reservation amount and freezes the balance lifecycle contract", () => {
+    const normalized = normalizeSql(reservationLifecycleMigration);
+    expect(normalized).toContain(
+      normalizeSql(
+        `ALTER TABLE "SupplierBalanceReservation"
+          ADD COLUMN "releasedAmountCents" BIGINT NOT NULL DEFAULT 0;`
+      )
+    );
+    expect(normalized).toContain(
+      normalizeSql(
+        `UPDATE "SupplierBalanceReservation"
+          SET "releasedAmountCents" = "amountCents"
+          WHERE "status" = 'released';`
+      )
+    );
+    expect(normalized).toContain(
+      'CONSTRAINT"SupplierBalanceReservation_released_amount_range_check"'
+    );
+    expect(normalized).toContain(
+      '"releasedAmountCents">=0AND"releasedAmountCents"<="amountCents"'
+    );
+    expect(normalized).toContain(
+      'CONSTRAINT"SupplierBalanceReservation_status_check"CHECK("status"IN(\'reserved\',\'released\',\'executed\'))'
+    );
+    expect(normalized).toContain(
+      'CONSTRAINT"SupplierBalanceReservation_lifecycle_check"'
+    );
+    expect(normalized).toContain(
+      'CONSTRAINT"SupplierBalanceEntry_entry_type_check"'
+    );
+    expect(normalized).toContain(
+      'DROPCONSTRAINT"SpotProcurementDiscrepancy_resolution_type_check"'
+    );
+    expect(normalized).toContain(
+      '"resolutionType"=\'full_refund\'AND"status"IN(\'pending_resolution\',\'awaiting_refund\',\'resolved\',\'invalidated\')'
+    );
+    expect(normalized).toContain(
+      '"resolutionType"=\'full_supplier_balance\'AND"status"IN(\'pending_resolution\',\'awaiting_supplier_balance\',\'resolved\',\'invalidated\')'
+    );
+    for (const entryType of [
+      "reserve",
+      "release",
+      "partial_release",
+      "credit_from_discrepancy",
+      "execute"
+    ]) {
+      expect(normalized).toContain(`'${entryType}'`);
+    }
+  });
+
+  it("keeps the database file-binding guard aligned with the central registry", () => {
+    const exclusiveBindings = new Set([
+      "SpotProcurementPaymentExecution.voucherFileId",
+      "SpotProcurementRefund.voucherFileId",
+      "SpotProcurementReceiptPhoto.originalFileId",
+      "SpotProcurementReceiptPhoto.watermarkedFileId"
+    ]);
+    const expectedBindings = [
+      ...NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) =>
+        columns.map((column) => ({
+          table,
+          column,
+          exclusive: exclusiveBindings.has(`${table}.${column}`)
+        }))
+      ),
+      {
+        table: "SpotProcurementReceiptPhoto",
+        column: "originalFileId",
+        exclusive: true
+      },
+      {
+        table: "SpotProcurementReceiptPhoto",
+        column: "watermarkedFileId",
+        exclusive: true
+      }
+    ].sort((left, right) =>
+      `${left.table}.${left.column}`.localeCompare(
+        `${right.table}.${right.column}`
+      )
+    );
+    const actualBindings = Array.from(
+      exclusiveFileBindingMigration.matchAll(
+        /\('([^']+)', '([^']+)', (TRUE|FALSE)\)/g
+      ),
+      (match) => ({
+        table: match[1],
+        column: match[2],
+        exclusive: match[3] === "TRUE"
+      })
+    ).sort((left, right) =>
+      `${left.table}.${left.column}`.localeCompare(
+        `${right.table}.${right.column}`
+      )
+    );
+
+    expect(actualBindings).toEqual(expectedBindings);
+    expect(normalizeSql(exclusiveFileBindingMigration)).toMatch(
+      /^BEGIN;[\s\S]*COMMIT;$/u
+    );
+    expect(exclusiveFileBindingMigration).toContain(
+      "LOCK TABLE %I IN SHARE ROW EXCLUSIVE MODE"
+    );
+    expect(exclusiveFileBindingMigration).toContain(
+      "pg_advisory_xact_lock(190731, 13)"
+    );
+    expect(exclusiveFileBindingMigration).toContain(
+      "BEFORE INSERT OR UPDATE OF"
+    );
+    expect(exclusiveFileBindingMigration).toContain(
+      "jg_enforce_file_replacement_exclusive_binding"
+    );
+    expect(exclusiveFileBindingMigration).toContain(
+      'UPDATE OF "supersedesFileObjectId" ON "FileObject"'
+    );
+    expect(exclusiveFileBindingMigration).toContain(
+      "IF binding_count > 1 THEN"
+    );
+    expect(exclusiveFileBindingMigration).toContain(
+      "exclusive_file_business_binding_guard"
+    );
   });
 
   it("allows ALTER only for the new root table and forbids legacy mutations", () => {

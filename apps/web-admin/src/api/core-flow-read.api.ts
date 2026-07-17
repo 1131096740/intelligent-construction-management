@@ -766,6 +766,7 @@ export interface ProjectOperatingOverviewReadModel {
   project: ProjectOptionReadModel;
   cash: {
     actualReceiptsCents: string | null;
+    supplierRefundsCents: string | null;
     availableFundsCents: string | null;
     actualPaidCents: string;
     approvalPendingOccupancyCents: string;

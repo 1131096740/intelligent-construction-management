@@ -216,6 +216,43 @@ describe("ApprovalFormService", () => {
     expect(audit.record).toHaveBeenCalled();
   });
 
+  it("renders a payment void action with a Chinese approval label", async () => {
+    const prisma = buildPrisma({
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            actorUserId: "user-chair",
+            action: "void",
+            comment: "重复申请，予以作废",
+            createdAt: new Date("2026-07-17T08:30:00.000Z")
+          }
+        ])
+      }
+    });
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
+    };
+    const service = new ApprovalFormService(
+      prisma as never,
+      files as never,
+      { record: jest.fn() } as never
+    );
+    const renderPdf = jest.fn().mockResolvedValue(Buffer.from("%PDF-test"));
+    (service as unknown as { renderPdf: typeof renderPdf }).renderPdf = renderPdf;
+
+    await service.generateForInstance("inst-1", "user-chair");
+
+    expect(renderPdf).toHaveBeenCalledWith(
+      expect.objectContaining({
+        logs: [
+          expect.objectContaining({
+            action: "作废"
+          })
+        ]
+      })
+    );
+  });
+
   it("is idempotent: returns the existing form without re-uploading", async () => {
     const prisma = buildPrisma({
       pdfDocument: {
@@ -614,6 +651,15 @@ describe("ApprovalFormService", () => {
             voucherFileId: "voucher-1"
           }
         ])
+      },
+      spotProcurementDiscrepancy: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      spotProcurementRefund: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      supplierBalanceEntry: {
+        findUnique: jest.fn().mockResolvedValue(null)
       }
     };
     const service = new ApprovalFormService(prisma as never);
@@ -667,6 +713,223 @@ describe("ApprovalFormService", () => {
         { label: "累计实际付款", value: "5.00 元" },
         { label: "付款申请状态", value: "部分已付款" },
         { label: "公司实际付款事实", value: "部分已付" }
+      ])
+    );
+  });
+
+  it("付款审批单展示退款结算且退款不改写公司实际付款事实", async () => {
+    const prisma = {
+      spotProcurementPayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "payment-refund-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          projectId: "project-1",
+          code: "LXCG-001-P001",
+          status: "partially_paid",
+          settlementAmountCents: 1000n,
+          supplierBalanceAmountCents: 0n,
+          companyPaymentAmountCents: 1000n,
+          executedSupplierBalanceAmountCents: 0n,
+          canceledAmountCents: 0n,
+          canceledCompanyPaymentAmountCents: 0n,
+          canceledSupplierBalanceAmountCents: 0n,
+          payeeNameSnapshot: "利民建材店"
+        })
+      },
+      spotProcurement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "procurement-1",
+          code: "LXCG-001",
+          supplierNameSnapshot: "利民建材店"
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          name: "一号项目"
+        })
+      },
+      spotProcurementPaymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "execution-1",
+            amountCents: 900n,
+            paidAt: new Date("2026-07-17T08:00:00.000Z"),
+            paymentMethod: "bank_transfer",
+            voucherFileId: "payment-voucher-1"
+          }
+        ])
+      },
+      spotProcurementDiscrepancy: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "discrepancy-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          status: "resolved",
+          actualCostCentsSnapshot: 800n,
+          shortageAmountCents: 200n,
+          canceledUnexecutedAmountCents: 0n,
+          overpaidAmountCents: 100n,
+          resolutionType: "full_refund",
+          supplierBalanceEntryId: null,
+          updatedAt: new Date("2026-07-17T09:00:00.000Z")
+        })
+      },
+      spotProcurementRefund: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "refund-1",
+          discrepancyId: "discrepancy-1",
+          procurementId: "procurement-1",
+          amountCents: 100n,
+          receivedAt: new Date("2026-07-17T10:00:00.000Z"),
+          refundMethod: "bank_transfer",
+          voucherFileId: "refund-voucher-1"
+        })
+      },
+      supplierBalanceEntry: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const service = new ApprovalFormService(
+      prisma as never
+    ) as unknown as {
+      resolveBusinessSummary(
+        client: unknown,
+        businessType: string,
+        businessId: string,
+        context: {
+          applicantName: string;
+          companyName: string;
+        }
+      ): Promise<Array<{ label: string; value: string }>>;
+    };
+
+    const rows = await service.resolveBusinessSummary(
+      prisma,
+      "spot_procurement_payment",
+      "payment-refund-1",
+      { applicantName: "经办人", companyName: "" }
+    );
+
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { label: "累计实际付款", value: "9.00 元" },
+        { label: "公司实际付款事实", value: "部分已付" },
+        { label: "本次采购实际成本", value: "8.00 元" },
+        { label: "少货差额", value: "2.00 元" },
+        {
+          label: "差异处置",
+          value: "已解决；整笔退款"
+        },
+        {
+          label: "已确认到账退款",
+          value: expect.stringContaining("1.00 元")
+        }
+      ])
+    );
+  });
+
+  it("付款审批单展示整笔转入供应商余额事实", async () => {
+    const prisma = {
+      spotProcurementPayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "payment-balance-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          projectId: "project-1",
+          code: "LXCG-001-P001",
+          status: "paid",
+          settlementAmountCents: 1000n,
+          supplierBalanceAmountCents: 0n,
+          companyPaymentAmountCents: 1000n,
+          executedSupplierBalanceAmountCents: 0n,
+          canceledAmountCents: 0n,
+          canceledCompanyPaymentAmountCents: 0n,
+          canceledSupplierBalanceAmountCents: 0n,
+          payeeNameSnapshot: "利民建材店"
+        })
+      },
+      spotProcurement: {
+        findUnique: jest.fn().mockResolvedValue({
+          code: "LXCG-001",
+          supplierNameSnapshot: "利民建材店"
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          name: "一号项目"
+        })
+      },
+      spotProcurementPaymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "execution-1",
+            amountCents: 1000n,
+            paidAt: new Date("2026-07-17T08:00:00.000Z"),
+            paymentMethod: "bank_transfer",
+            voucherFileId: "payment-voucher-1"
+          }
+        ])
+      },
+      spotProcurementDiscrepancy: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "discrepancy-1",
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          status: "resolved",
+          actualCostCentsSnapshot: 800n,
+          shortageAmountCents: 200n,
+          canceledUnexecutedAmountCents: 0n,
+          overpaidAmountCents: 200n,
+          resolutionType: "full_supplier_balance",
+          supplierBalanceEntryId: "balance-entry-1",
+          updatedAt: new Date("2026-07-17T09:00:00.000Z")
+        })
+      },
+      spotProcurementRefund: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      supplierBalanceEntry: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "balance-entry-1",
+          procurementId: "procurement-1",
+          entryType: "credit_from_discrepancy",
+          availableDeltaCents: 200n,
+          reservedDeltaCents: 0n
+        })
+      }
+    };
+    const service = new ApprovalFormService(
+      prisma as never
+    ) as unknown as {
+      resolveBusinessSummary(
+        client: unknown,
+        businessType: string,
+        businessId: string,
+        context: {
+          applicantName: string;
+          companyName: string;
+        }
+      ): Promise<Array<{ label: string; value: string }>>;
+    };
+
+    const rows = await service.resolveBusinessSummary(
+      prisma,
+      "spot_procurement_payment",
+      "payment-balance-1",
+      { applicantName: "经办人", companyName: "" }
+    );
+
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        {
+          label: "差异处置",
+          value: "已解决；整笔转供应商余额"
+        },
+        {
+          label: "已转入供应商余额",
+          value: "2.00 元"
+        }
       ])
     );
   });
@@ -753,6 +1016,7 @@ describe("ApprovalFormService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "payment-1",
           procurementId: "procurement-1",
+          procurementVersionId: "version-1",
           projectId: "project-1",
           code: "LXCG-001-P001",
           settlementAmountCents: 1000n,
@@ -773,7 +1037,16 @@ describe("ApprovalFormService", () => {
         })
       },
       project: { findUnique: jest.fn().mockResolvedValue({ name: "一号项目" }) },
-      spotProcurementPaymentExecution: executions
+      spotProcurementPaymentExecution: executions,
+      spotProcurementDiscrepancy: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      spotProcurementRefund: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      supplierBalanceEntry: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      }
     };
     const service = new ApprovalFormService(prisma as never) as unknown as {
       resolveBusinessSummary(
@@ -824,6 +1097,7 @@ describe("ApprovalFormService", () => {
           findUnique: jest.fn().mockResolvedValue({
             id: "payment-status-1",
             procurementId: "procurement-1",
+            procurementVersionId: "version-1",
             projectId: "project-1",
             code: "LXCG-STATUS-P001",
             status,
@@ -858,6 +1132,15 @@ describe("ApprovalFormService", () => {
                 ]
               : []
           )
+        },
+        spotProcurementDiscrepancy: {
+          findFirst: jest.fn().mockResolvedValue(null)
+        },
+        spotProcurementRefund: {
+          findUnique: jest.fn().mockResolvedValue(null)
+        },
+        supplierBalanceEntry: {
+          findUnique: jest.fn().mockResolvedValue(null)
         }
       };
       const service = new ApprovalFormService(prisma as never) as unknown as {
@@ -1016,8 +1299,17 @@ describe("ApprovalFormService", () => {
     const sourceTx = {
       approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
       approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
-      spotProcurementPayment: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      spotProcurementPayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          updatedAt
+        })
+      },
       spotProcurementPaymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementDiscrepancy: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
       pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
       auditLog: { findFirst: jest.fn() }
     };
@@ -1025,9 +1317,18 @@ describe("ApprovalFormService", () => {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "payment-1" }]),
       approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) },
       approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "log-1" }) },
-      spotProcurementPayment: { findUnique: jest.fn().mockResolvedValue({ updatedAt }) },
+      spotProcurementPayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          updatedAt
+        })
+      },
       spotProcurementPaymentExecution: {
         findMany: jest.fn().mockResolvedValue([{ id: "execution-new", amountCents: 500n }])
+      },
+      spotProcurementDiscrepancy: {
+        findFirst: jest.fn().mockResolvedValue(null)
       },
       pdfDocument: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
       auditLog: { findFirst: jest.fn() }
@@ -1102,6 +1403,125 @@ describe("ApprovalFormService", () => {
           cleanupStatus: "quarantined"
         })
       })
+    );
+  });
+
+  it("差异与退款事实变化会改变付款审批单快照", async () => {
+    const updatedAt = new Date(
+      "2026-07-17T08:00:00.000Z"
+    );
+    const instance = {
+      id: "approval-payment-1",
+      updatedAt
+    };
+    const discrepancyBase = {
+      id: "discrepancy-1",
+      procurementId: "procurement-1",
+      procurementVersionId: "version-1",
+      actualCostCentsSnapshot: 800n,
+      shortageAmountCents: 200n,
+      canceledUnexecutedAmountCents: 0n,
+      overpaidAmountCents: 100n,
+      resolutionType: "full_refund",
+      supplierBalanceEntryId: null
+    };
+    const buildClient = (
+      discrepancy: object,
+      refund: object | null
+    ) => ({
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "log-1"
+        })
+      },
+      spotProcurementPayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          procurementId: "procurement-1",
+          procurementVersionId: "version-1",
+          updatedAt
+        })
+      },
+      spotProcurementPaymentExecution: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "execution-1", amountCents: 900n }
+        ])
+      },
+      spotProcurementDiscrepancy: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(discrepancy)
+      },
+      spotProcurementRefund: {
+        findUnique: jest.fn().mockResolvedValue(refund)
+      },
+      supplierBalanceEntry: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      }
+    });
+    const beforeClient = buildClient(
+      {
+        ...discrepancyBase,
+        status: "awaiting_refund",
+        updatedAt: new Date(
+          "2026-07-17T08:30:00.000Z"
+        )
+      },
+      null
+    );
+    const afterClient = buildClient(
+      {
+        ...discrepancyBase,
+        status: "resolved",
+        updatedAt: new Date(
+          "2026-07-17T09:30:00.000Z"
+        )
+      },
+      {
+        id: "refund-1",
+        discrepancyId: "discrepancy-1",
+        procurementId: "procurement-1",
+        amountCents: 100n,
+        receivedAt: new Date(
+          "2026-07-17T09:00:00.000Z"
+        ),
+        refundMethod: "bank_transfer",
+        voucherFileId: "refund-voucher-1"
+      }
+    );
+    const service = new ApprovalFormService(
+      {} as never
+    ) as unknown as {
+      loadSnapshotToken(
+        client: unknown,
+        approvalInstance: {
+          id: string;
+          updatedAt: Date;
+        },
+        businessType: string,
+        businessId: string
+      ): Promise<{
+        activeExecutionFingerprint: string | null;
+      }>;
+    };
+
+    const before = await service.loadSnapshotToken(
+      beforeClient,
+      instance,
+      "spot_procurement_payment",
+      "payment-1"
+    );
+    const after = await service.loadSnapshotToken(
+      afterClient,
+      instance,
+      "spot_procurement_payment",
+      "payment-1"
+    );
+
+    expect(before.activeExecutionFingerprint).not.toBe(
+      after.activeExecutionFingerprint
+    );
+    expect(after.activeExecutionFingerprint).toContain(
+      "refund-1"
     );
   });
 

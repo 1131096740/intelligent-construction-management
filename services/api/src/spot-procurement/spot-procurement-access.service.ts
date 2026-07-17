@@ -643,6 +643,7 @@ export class SpotProcurementAccessService {
       attachmentBindings,
       directPaymentBindings,
       voucherBindings,
+      refundBindings,
       directPdfBindings,
       receiptPhotoBindings
     ] =
@@ -668,6 +669,16 @@ export class SpotProcurementAccessService {
         client.spotProcurementPaymentExecution.findMany({
           where: { voucherFileId: fileId },
           select: { paymentId: true, executedByUserId: true, voidedAt: true }
+        }),
+        client.spotProcurementRefund.findMany({
+          where: { voucherFileId: fileId },
+          select: {
+            id: true,
+            discrepancyId: true,
+            procurementId: true,
+            recordedByUserId: true
+          },
+          take: 2
         }),
         client.pdfDocument.findMany({
           where: {
@@ -727,6 +738,7 @@ export class SpotProcurementAccessService {
       attachmentBindings.length > 0 ||
       directPaymentBindings.length > 0 ||
       voucherBindings.length > 0 ||
+      refundBindings.length > 0 ||
       pdfBindings.length > 0 ||
       receiptPhotoBindings.length > 0;
     if (!bound) return "not_spot";
@@ -755,7 +767,8 @@ export class SpotProcurementAccessService {
     const hasNonPdfBusinessBinding =
       attachmentBindings.length > 0 ||
       directPaymentBindings.length > 0 ||
-      voucherBindings.length > 0;
+      voucherBindings.length > 0 ||
+      refundBindings.length > 0;
     if (
       receiptPhotoIds.size > 1 ||
       (receiptPhotoIds.size > 0 &&
@@ -777,6 +790,43 @@ export class SpotProcurementAccessService {
         actorUserId,
         receiptPdfBindings[0]
       );
+    }
+
+    if (refundBindings.length > 0) {
+      if (
+        refundBindings.length !== 1 ||
+        attachmentBindings.length > 0 ||
+        directPaymentBindings.length > 0 ||
+        voucherBindings.length > 0 ||
+        pdfBindings.length > 0 ||
+        receiptPhotoBindings.length > 0
+      ) {
+        return "denied";
+      }
+
+      const refund = refundBindings[0];
+      const discrepancies = await client.spotProcurementDiscrepancy.findMany({
+        where: { id: { in: [refund.discrepancyId] } },
+        select: { id: true, procurementId: true }
+      });
+      if (
+        discrepancies.length !== 1 ||
+        discrepancies[0].procurementId !== refund.procurementId
+      ) {
+        return "denied";
+      }
+      if (refund.recordedByUserId === actorUserId) {
+        return "allowed";
+      }
+
+      const accessibleProcurementIds = await this.accessibleProcurementIds(
+        [refund.procurementId],
+        actorUserId,
+        client
+      );
+      return accessibleProcurementIds.has(refund.procurementId)
+        ? "allowed"
+        : "denied";
     }
 
     const formalPdfBusinessKeys = new Set(

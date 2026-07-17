@@ -97,6 +97,15 @@ function transactionDelegate() {
       update: jest.fn(),
       updateMany: jest.fn()
     },
+    spotProcurementDiscrepancy: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    spotProcurement: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
+    spotProcurementRefund: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
     spotProcurementPaymentExecution: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
@@ -222,6 +231,11 @@ function harness() {
   };
   const files = {
     assertCanDownloadFileById: jest.fn().mockResolvedValue(undefined),
+    assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({
+      id: "file-voucher",
+      uploadedByUserId: "finance-1",
+      storageStatus: "active"
+    }),
     assertCanDownloadFile: jest.fn().mockResolvedValue({
       id: "file-voucher",
       storageStatus: "active"
@@ -477,6 +491,12 @@ describe("SpotProcurementPaymentController", () => {
         RequestMethod.POST,
         ":paymentId/executions",
         "spot_procurement.payment.execute"
+      ],
+      [
+        "executeSupplierBalance",
+        RequestMethod.POST,
+        ":paymentId/balance-execution",
+        "spot_procurement.balance.execute"
       ]
     ] as const;
 
@@ -751,6 +771,49 @@ describe("SpotProcurementPaymentService", () => {
       data: expect.objectContaining({
         settlementAmountCents: 10_000n,
         companyPaymentAmountCents: 10_000n
+      })
+    });
+  });
+
+  it("uses the confirmed actual cost as the remaining payment capacity after a shortage", async () => {
+    const { service, tx, balance } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approved_pending_payment",
+          settlementAmountCents: 6_000n,
+          companyPaymentAmountCents: 6_000n
+        }
+      ]);
+    tx.spotProcurementDiscrepancy.findFirst.mockResolvedValue({
+      procurementVersionId: "version-1",
+      status: "resolved",
+      actualCostCentsSnapshot: 8_000n
+    });
+    role(tx, "material_staff");
+    balance.suggestionWithClient.mockResolvedValue({
+      availableBalanceAmountCents: "0",
+      suggestedBalanceAmountCents: "0"
+    });
+    tx.spotProcurementPayment.create.mockResolvedValue({
+      ...draftPayment,
+      id: "payment-2",
+      code: "LXCG-001-V1-P002",
+      settlementAmountCents: 2_000n,
+      companyPaymentAmountCents: 2_000n
+    });
+
+    await service.createNextDraft(
+      "procurement-1",
+      "material-1"
+    );
+
+    expect(tx.spotProcurementPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        settlementAmountCents: 2_000n,
+        companyPaymentAmountCents: 2_000n
       })
     });
   });
@@ -3007,12 +3070,14 @@ describe("SpotProcurementPaymentService", () => {
     );
     expect(auditInput.metadata?.projectCashBefore).toEqual({
       actualReceiptsCents: "10000",
+      supplierRefundsCents: "0",
       actualPaidCents: "0",
       occupiedCents: "10000",
       availableCents: "0"
     });
     expect(auditInput.metadata?.projectCashAfter).toEqual({
       actualReceiptsCents: "10000",
+      supplierRefundsCents: "0",
       actualPaidCents: "4000",
       occupiedCents: "6000",
       availableCents: "0"
@@ -3029,7 +3094,7 @@ describe("SpotProcurementPaymentService", () => {
     );
   });
 
-  it("converts the current payment's own outstanding occupation into paid cash and marks company payment fully paid", async () => {
+  it("converts the current payment's own outstanding occupation into paid cash and keeps a company-only payment at paid", async () => {
     const current = executionHarness();
     current.tx.spotProcurementPaymentExecution.create.mockResolvedValue({
       id: "execution-full",
@@ -3057,7 +3122,6 @@ describe("SpotProcurementPaymentService", () => {
     );
 
     expect(result.payment.status).toBe("paid");
-    expect(result.payment.status).not.toBe("settled");
     expect(
       current.tx.spotProcurementPayment.updateMany
     ).toHaveBeenCalledWith(
@@ -3065,6 +3129,52 @@ describe("SpotProcurementPaymentService", () => {
         data: {
           paidAmountCents: 10_000n,
           status: "paid"
+        }
+      })
+    );
+  });
+
+  it("settles when company payment is recorded after the approved supplier balance was already executed", async () => {
+    const current = executionHarness({
+      payment: approvedExecutionPayment({
+        settlementAmountCents: 10_000n,
+        supplierBalanceAmountCents: 4_000n,
+        companyPaymentAmountCents: 6_000n,
+        executedSupplierBalanceAmountCents: 4_000n
+      })
+    });
+    current.tx.spotProcurementPaymentExecution.create.mockResolvedValue({
+      id: "execution-after-balance",
+      paymentId: "payment-1",
+      amountCents: 6_000n,
+      paidAt: new Date(),
+      paymentMethod: "bank_transfer",
+      executedByUserId: "finance-1",
+      voucherFileId: "file-voucher",
+      idempotencyKey: "execution-after-balance",
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      createdAt: new Date()
+    });
+
+    const result = await current.service.recordExecution(
+      "payment-1",
+      "finance-1",
+      validExecutionInput({
+        amountCents: "6000",
+        idempotencyKey: "execution-after-balance"
+      })
+    );
+
+    expect(result.payment.status).toBe("settled");
+    expect(
+      current.tx.spotProcurementPayment.updateMany
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          paidAmountCents: 6_000n,
+          status: "settled"
         }
       })
     );
@@ -3644,41 +3754,47 @@ describe("SpotProcurementPaymentService", () => {
     }
   );
 
-  it("normalizes raw PostgreSQL serialization failure P2010/40001 to the same concurrency conflict", async () => {
-    const { service, prisma } = harness();
-    prisma.$transaction.mockRejectedValueOnce({
-      code: "P2010",
-      meta: {
-        code: "40001",
-        message:
-          "could not serialize access due to concurrent update"
-      }
-    });
+  it.each(["40001", "40P01"])(
+    "normalizes raw PostgreSQL P2010/%s to the same concurrency conflict",
+    async (postgresCode) => {
+      const { service, prisma } = harness();
+      prisma.$transaction.mockRejectedValueOnce({
+        code: "P2010",
+        meta: {
+          code: postgresCode,
+          message: "concurrent transaction conflict"
+        }
+      });
 
-    await expect(
-      service.submit("payment-1", "material-1")
-    ).rejects.toThrow("付款或供应商余额已变化，请刷新后重试");
-  });
+      await expect(
+        service.submit("payment-1", "material-1")
+      ).rejects.toThrow(
+        "付款或供应商余额已变化，请刷新后重试"
+      );
+    }
+  );
 
-  it("normalizes actual-payment P2010/40001 to the fixed execution concurrency conflict", async () => {
-    const current = executionHarness();
-    current.prisma.$transaction.mockRejectedValueOnce({
-      code: "P2010",
-      meta: {
-        code: "40001",
-        message:
-          "could not serialize access due to concurrent update"
-      }
-    });
+  it.each(["40001", "40P01"])(
+    "normalizes actual-payment P2010/%s to the fixed execution concurrency conflict",
+    async (postgresCode) => {
+      const current = executionHarness();
+      current.prisma.$transaction.mockRejectedValueOnce({
+        code: "P2010",
+        meta: {
+          code: postgresCode,
+          message: "concurrent transaction conflict"
+        }
+      });
 
-    await expect(
-      current.service.recordExecution(
-        "payment-1",
-        "finance-1",
-        validExecutionInput()
-      )
-    ).rejects.toThrow(
-      "实际付款并发冲突，请刷新后重试"
-    );
-  });
+      await expect(
+        current.service.recordExecution(
+          "payment-1",
+          "finance-1",
+          validExecutionInput()
+        )
+      ).rejects.toThrow(
+        "实际付款并发冲突，请刷新后重试"
+      );
+    }
+  );
 });

@@ -16,6 +16,7 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { hasNonReceiptBusinessFileBinding } from "../file/file-business-binding";
 import { FileService } from "../file/file.service";
+import { acquireFileBusinessBindingTransactionLock } from "../file/file-business-binding";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import { collapseUnicodeWhitespace } from "../validation/unicode-whitespace";
 import type {
@@ -1645,6 +1646,19 @@ export class SpotProcurementReceiptService {
             "只能撤销当前有效且坐标一致的收货复核"
           );
         }
+        const activeDiscrepancy =
+          await tx.spotProcurementDiscrepancy.findFirst({
+            where: {
+              receiptId: context.receipt.id,
+              invalidatedAt: null
+            },
+            select: { id: true }
+          });
+        if (activeDiscrepancy) {
+          throw new ConflictException(
+            "当前收货复核已形成差异结算事实，不能撤销"
+          );
+        }
 
         const procurementLines = await this.lockProcurementLines(
           tx,
@@ -2744,6 +2758,7 @@ export class SpotProcurementReceiptService {
   ): Promise<FileLockRow[]> {
     const uniqueIds = [...new Set(fileIds)].sort();
     if (!uniqueIds.length) return [];
+    await acquireFileBusinessBindingTransactionLock(tx);
     return tx.$queryRaw<FileLockRow[]>(Prisma.sql`
       SELECT
         "id",

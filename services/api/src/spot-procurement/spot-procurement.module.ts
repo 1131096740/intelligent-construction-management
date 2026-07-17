@@ -16,6 +16,7 @@ import { SpotProcurementReadService } from "./spot-procurement-read.service";
 import { SpotProcurementReceiptController } from "./spot-procurement-receipt.controller";
 import { SpotProcurementReceiptPdfService } from "./spot-procurement-receipt-pdf.service";
 import { SpotProcurementReceiptService } from "./spot-procurement-receipt.service";
+import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
 import { SpotProcurementController } from "./spot-procurement.controller";
 
 @Module({
@@ -41,7 +42,8 @@ import { SpotProcurementController } from "./spot-procurement.controller";
     SpotProcurementPilotService,
     SpotProcurementReadService,
     SpotProcurementReceiptPdfService,
-    SpotProcurementReceiptService
+    SpotProcurementReceiptService,
+    SpotProcurementSettlementService
   ],
   exports: [
     SpotProcurementApplicationService,
@@ -50,7 +52,8 @@ import { SpotProcurementController } from "./spot-procurement.controller";
     SpotProcurementPilotService,
     SpotProcurementReadService,
     SpotProcurementReceiptPdfService,
-    SpotProcurementReceiptService
+    SpotProcurementReceiptService,
+    SpotProcurementSettlementService
   ]
 })
 export class SpotProcurementModule {}

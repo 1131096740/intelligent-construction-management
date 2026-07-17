@@ -57,6 +57,17 @@ type AccessFixture = {
     voucherFileId: string;
     voidedAt: Date | null;
   }>;
+  discrepancies?: Array<{
+    id: string;
+    procurementId: string;
+  }>;
+  refunds?: Array<{
+    id: string;
+    discrepancyId: string;
+    procurementId: string;
+    recordedByUserId: string;
+    voucherFileId: string;
+  }>;
   balanceReservations?: Array<{
     paymentId: string;
     reservedByUserId?: string;
@@ -272,6 +283,26 @@ function buildPrisma(fixture: AccessFixture = {}) {
               if (where.voidedAt === null && row.voidedAt !== null) return false;
               return true;
             })
+          )
+      )
+    },
+    spotProcurementDiscrepancy: {
+      findMany: jest.fn(
+        ({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(
+            (fixture.discrepancies ?? []).filter((row) =>
+              where.id.in.includes(row.id)
+            )
+          )
+      )
+    },
+    spotProcurementRefund: {
+      findMany: jest.fn(
+        ({ where }: { where: { voucherFileId: string } }) =>
+          Promise.resolve(
+            (fixture.refunds ?? []).filter(
+              (row) => row.voucherFileId === where.voucherFileId
+            )
           )
       )
     },
@@ -500,6 +531,113 @@ describe("SpotProcurementAccessService", () => {
       "not_spot"
     );
   });
+
+  it.each([
+    ["finance-recorder", "allowed"],
+    ["applicant-1", "allowed"],
+    ["handler-1", "allowed"],
+    ["unrelated-user", "denied"]
+  ] as const)(
+    "applies procurement ACL and direct participation to a refund voucher for %s",
+    async (actorUserId, expected) => {
+      const fixture: AccessFixture = {
+        procurements: [
+          {
+            id: "procurement-1",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        discrepancies: [
+          { id: "discrepancy-1", procurementId: "procurement-1" }
+        ],
+        refunds: [
+          {
+            id: "refund-1",
+            discrepancyId: "discrepancy-1",
+            procurementId: "procurement-1",
+            recordedByUserId: "finance-recorder",
+            voucherFileId: "refund-voucher"
+          }
+        ]
+      };
+
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(fixture) as never)
+          .resolveFileDownloadAccess("refund-voucher", actorUserId)
+      ).resolves.toBe(expected);
+    }
+  );
+
+  it("fails closed when a refund does not belong to its discrepancy procurement", async () => {
+    const fixture: AccessFixture = {
+      discrepancies: [
+        { id: "discrepancy-1", procurementId: "procurement-other" }
+      ],
+      refunds: [
+        {
+          id: "refund-1",
+          discrepancyId: "discrepancy-1",
+          procurementId: "procurement-1",
+          recordedByUserId: "finance-recorder",
+          voucherFileId: "refund-voucher"
+        }
+      ]
+    };
+
+    await expect(
+      new SpotProcurementAccessService(buildPrisma(fixture) as never)
+        .resolveFileDownloadAccess("refund-voucher", "finance-recorder")
+    ).resolves.toBe("denied");
+  });
+
+  it.each(["multiple_refunds", "payment_voucher"])(
+    "fails closed when a refund voucher has %s bindings",
+    async (mixedBinding) => {
+      const fixture: AccessFixture = {
+        discrepancies: [
+          { id: "discrepancy-1", procurementId: "procurement-1" },
+          { id: "discrepancy-2", procurementId: "procurement-1" }
+        ],
+        refunds: [
+          {
+            id: "refund-1",
+            discrepancyId: "discrepancy-1",
+            procurementId: "procurement-1",
+            recordedByUserId: "finance-recorder",
+            voucherFileId: "mixed-refund-voucher"
+          }
+        ]
+      };
+      if (mixedBinding === "multiple_refunds") {
+        fixture.refunds!.push({
+          id: "refund-2",
+          discrepancyId: "discrepancy-2",
+          procurementId: "procurement-1",
+          recordedByUserId: "finance-recorder",
+          voucherFileId: "mixed-refund-voucher"
+        });
+      } else {
+        fixture.executions = [
+          {
+            paymentId: "payment-1",
+            executedByUserId: "finance-recorder",
+            voucherFileId: "mixed-refund-voucher",
+            voidedAt: null
+          }
+        ];
+      }
+
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(fixture) as never)
+          .resolveFileDownloadAccess(
+            "mixed-refund-voucher",
+            "finance-recorder"
+          )
+      ).resolves.toBe("denied");
+    }
+  );
 
   it("resolves real procurement, payment, and receipt resources and fails closed when missing", async () => {
     const prisma = buildPrisma({
