@@ -68,6 +68,7 @@ test("keeps the active navigation inside the sidebar and strengthens group headi
     "合同",
     "结算",
     "付款",
+    "零星采购",
     "资料与治理"
   ]);
   await expect(page.getByText("结算工作台", { exact: true })).toBeVisible();

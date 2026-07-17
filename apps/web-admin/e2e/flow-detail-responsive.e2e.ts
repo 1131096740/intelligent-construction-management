@@ -22,6 +22,7 @@ const projectOverview = {
   project: { id: "project-responsive", code: "XM-001", name: "科技园项目", isActive: true },
   cash: {
     actualReceiptsCents: "32000000",
+    supplierRefundsCents: "0",
     availableFundsCents: "18000000",
     actualPaidCents: "9000000",
     approvalPendingOccupancyCents: "1000000",
@@ -98,6 +99,17 @@ async function mockSession(page: Page) {
   await page.route("**/api/projects/project-responsive/operating-funds-overview", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify(projectOverview)
+  }));
+  await page.route("**/api/spot-procurements/capabilities?projectId=project-responsive", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      projectId: "project-responsive",
+      enabled: false,
+      canCreate: false,
+      canExecutePayment: false,
+      unavailableReason: "当前项目未启用零星采购试点",
+      handlerOptions: []
+    })
   }));
   await page.route("**/api/projects/project-responsive/expense-requests", (route) => route.fulfill({
     contentType: "application/json",
