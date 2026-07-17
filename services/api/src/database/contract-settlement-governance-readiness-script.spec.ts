@@ -2,24 +2,276 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts = require("typescript");
 
-const CHECK_NAMES = [
-  "migration52",
-  "companyEntities",
-  "duplicateCreditCodes",
-  "activeContracts",
-  "activeSettlements"
-];
-const PRISMA_MUTATION_METHODS = new Set([
-  "create",
-  "createMany",
-  "update",
-  "updateMany",
-  "delete",
-  "deleteMany",
-  "upsert"
+const EXPECTED_CHECKS = {
+  migration52: `SELECT count(*) FROM "_prisma_migrations" WHERE migration_name = '20260716160000_contract_tax_facts_and_settlement_drafts' AND finished_at IS NOT NULL AND rolled_back_at IS NULL`,
+  companyEntities: `SELECT "id", "name", "unifiedSocialCreditCode", "isActive" FROM "CompanyEntity" ORDER BY "createdAt"`,
+  duplicateCreditCodes: `SELECT upper(trim("unifiedSocialCreditCode")) code, count(*) FROM "CompanyEntity" WHERE "unifiedSocialCreditCode" IS NOT NULL GROUP BY 1 HAVING count(*) > 1`,
+  activeContracts: `SELECT "status", count(*) FROM "ContractVersion" WHERE "status" IN ('in_approval','approved_pending_seal','in_seal','seal_approved_pending_archive','pending_archive_confirm','approval_pending','approved','sealed_pending_archive') GROUP BY "status"`,
+  activeSettlements: `SELECT "status", count(*) FROM "Settlement" WHERE "status" IN ('in_approval','approval_pending','approved_pending_archive','archive_pending','pending_archive_confirm') GROUP BY "status"`
+};
+const MUTATION_METHODS = new Set([
+  "create", "createMany", "update", "updateMany", "delete", "deleteMany", "upsert"
 ]);
+const PROTECTED_NAMES = new Set(["checks", "name", "query"]);
 const SQL_WRITE_PATTERN =
   /\b(INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE|MERGE|COPY|CALL|DO|GRANT|REVOKE)\b/i;
+const EXPECTED_TX_CALLS = [
+  'tx.$executeRawUnsafe("SET TRANSACTION READ ONLY")',
+  'tx.$executeRawUnsafe("SET default_transaction_read_only = on")',
+  "tx.$queryRawUnsafe(query)"
+];
+
+function invariant(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+
+function collect<T extends ts.Node>(
+  root: ts.Node,
+  predicate: (node: ts.Node) => node is T
+) {
+  const nodes: T[] = [];
+  const visit = (node: ts.Node) => {
+    if (predicate(node)) nodes.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return nodes;
+}
+
+function rootIdentifier(expression: ts.Expression) {
+  let current = expression;
+  while (
+    ts.isPropertyAccessExpression(current) ||
+    ts.isElementAccessExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return ts.isIdentifier(current) ? current.text : undefined;
+}
+
+function methodName(call: ts.CallExpression) {
+  return ts.isPropertyAccessExpression(call.expression)
+    ? call.expression.name.text
+    : undefined;
+}
+
+function callSignature(call: ts.CallExpression) {
+  const argumentsText = call.arguments.map((argument) => {
+    if (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) {
+      return JSON.stringify(argument.text);
+    }
+    return ts.isIdentifier(argument) ? argument.text : "<dynamic>";
+  });
+  return `${rootIdentifier(call.expression)}.${methodName(call)}(${argumentsText.join(",")})`;
+}
+
+function assertExactChecks(sourceFile: ts.SourceFile) {
+  const declarations = collect(
+    sourceFile,
+    (node): node is ts.VariableDeclaration =>
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "checks"
+  );
+  invariant(declarations.length === 1, "checks must have one declaration");
+  const declaration = declarations[0];
+  invariant(
+    ts.isVariableDeclarationList(declaration.parent) &&
+      declaration.parent.declarations.length === 1 &&
+      (declaration.parent.flags & ts.NodeFlags.Const) !== 0,
+    "checks must be declared with const"
+  );
+  invariant(
+    declaration.initializer && ts.isObjectLiteralExpression(declaration.initializer),
+    "checks must be a fixed object literal"
+  );
+  const actual = declaration.initializer.properties.map((property) => {
+    invariant(
+      ts.isPropertyAssignment(property) &&
+        ts.isIdentifier(property.name) &&
+        (ts.isStringLiteral(property.initializer) ||
+          ts.isNoSubstitutionTemplateLiteral(property.initializer)),
+      "each check must be a fixed string literal"
+    );
+    return [property.name.text, property.initializer.text];
+  });
+  invariant(
+    JSON.stringify(actual) === JSON.stringify(Object.entries(EXPECTED_CHECKS)),
+    "checks SQL allowlist changed"
+  );
+}
+
+function targetsProtectedName(node: ts.Node): boolean {
+  if (ts.isIdentifier(node)) return PROTECTED_NAMES.has(node.text);
+  if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+    const root = rootIdentifier(node);
+    return Boolean(root && PROTECTED_NAMES.has(root));
+  }
+  let found = false;
+  ts.forEachChild(node, (child) => {
+    if (targetsProtectedName(child)) found = true;
+  });
+  return found;
+}
+
+function assertNoProtectedWrites(sourceFile: ts.SourceFile) {
+  let violation = false;
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      targetsProtectedName(node.left)
+    ) {
+      violation = true;
+    }
+    if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      (node.operator === ts.SyntaxKind.PlusPlusToken ||
+        node.operator === ts.SyntaxKind.MinusMinusToken) &&
+      targetsProtectedName(node.operand)
+    ) {
+      violation = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  invariant(!violation, "protected checks iterator binding is reassigned");
+}
+
+function assertChecksIterator(sourceFile: ts.SourceFile, queryCall: ts.CallExpression) {
+  let loop: ts.Node | undefined = queryCall.parent;
+  while (loop && !ts.isForOfStatement(loop)) loop = loop.parent;
+  invariant(loop && ts.isVariableDeclarationList(loop.initializer), "missing checks loop");
+  invariant(
+    (loop.initializer.flags & ts.NodeFlags.Const) !== 0 &&
+      loop.initializer.declarations.length === 1 &&
+      loop.initializer.declarations[0].name.getText(sourceFile) === "[name, query]",
+    "checks query loop must use const [name, query]"
+  );
+  invariant(
+    loop.expression.getText(sourceFile) === "Object.entries(checks)",
+    "checks loop must use Object.entries(checks)"
+  );
+}
+
+function assertSafeScript(candidateSource: string) {
+  const sourceFile = ts.createSourceFile(
+    "inspect-contract-settlement-governance-readiness.cjs",
+    candidateSource,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.JS
+  );
+  const calls = collect(sourceFile, ts.isCallExpression).sort(
+    (left, right) => left.getStart(sourceFile) - right.getStart(sourceFile)
+  );
+  assertExactChecks(sourceFile);
+  assertNoProtectedWrites(sourceFile);
+  invariant(!SQL_WRITE_PATTERN.test(candidateSource), "SQL write keyword is forbidden");
+
+  const transactions = calls.filter(
+    (call) => methodName(call) === "$transaction" && rootIdentifier(call.expression) === "prisma"
+  );
+  invariant(transactions.length === 1, "script must use one Prisma transaction");
+  const callback = transactions[0].arguments[0];
+  invariant(
+    callback && ts.isArrowFunction(callback) && ts.isBlock(callback.body),
+    "transaction must use a block callback"
+  );
+  invariant(
+    callback.parameters.length === 1 &&
+      ts.isIdentifier(callback.parameters[0].name) &&
+      callback.parameters[0].name.text === "tx",
+    "transaction callback must bind tx"
+  );
+
+  const txCalls = collect(callback.body, ts.isCallExpression)
+    .filter((call) => rootIdentifier(call.expression) === "tx")
+    .sort((left, right) => left.getStart(sourceFile) - right.getStart(sourceFile));
+  invariant(
+    txCalls.every(
+      (call) =>
+        ts.isPropertyAccessExpression(call.expression) &&
+        ts.isIdentifier(call.expression.expression) &&
+        call.expression.expression.text === "tx"
+    ) &&
+      JSON.stringify(txCalls.map(callSignature)) === JSON.stringify(EXPECTED_TX_CALLS),
+    "transaction tx call allowlist changed"
+  );
+
+  const executeCalls = calls.filter((call) => methodName(call) === "$executeRawUnsafe");
+  const queryCalls = calls.filter((call) => methodName(call) === "$queryRawUnsafe");
+  invariant(
+    executeCalls.length === 2 && executeCalls.every((call) => txCalls.includes(call)),
+    "execute raw allowlist changed"
+  );
+  invariant(
+    queryCalls.length === 1 && queryCalls[0] === txCalls[2],
+    "query raw allowlist changed"
+  );
+  invariant(
+    (candidateSource.match(/\.\$executeRawUnsafe\b/gu) ?? []).length === 2 &&
+      (candidateSource.match(/\.\$queryRawUnsafe\b/gu) ?? []).length === 1 &&
+      !/\.\$(executeRaw|queryRaw)(?!Unsafe)\b/u.test(candidateSource),
+    "raw API reference allowlist changed"
+  );
+  assertChecksIterator(sourceFile, queryCalls[0]);
+  invariant(
+    !calls.some((call) => {
+      const name = methodName(call);
+      return Boolean(name && MUTATION_METHODS.has(name));
+    }),
+    "Prisma mutation method is forbidden"
+  );
+}
+
+function replaceOnce(source: string, target: string, replacement: string) {
+  const index = source.indexOf(target);
+  invariant(index >= 0, `mutation target not found: ${target}`);
+  return `${source.slice(0, index)}${replacement}${source.slice(index + target.length)}`;
+}
+
+function statusValues(sql: string) {
+  const inClause = sql.match(/\bIN\s*\(([^)]*)\)/iu)?.[1];
+  invariant(inClause, "active status query must contain a fixed IN clause");
+  return Array.from(inClause.matchAll(/'([^']+)'/gu), (match) => match[1]);
+}
+
+const MUTATIONS: Array<[string, string, string, RegExp]> = [
+  ["an unrelated SELECT", EXPECTED_CHECKS.companyEntities, 'SELECT * FROM "User"', /checks SQL/u],
+  [
+    "an extra tx ORM read",
+    "const report = {};",
+    "const report = {};\n      report.users = await tx.user.findMany();",
+    /tx call/u
+  ],
+  [
+    "checks property reassignment",
+    "async function inspect()",
+    "checks.companyEntities = checks.migration52;\n\nasync function inspect()",
+    /binding is reassigned/u
+  ],
+  ["a mutable checks declaration", "const checks = {", "let checks = {", /declared with const/u],
+  [
+    "a mutable query loop binding",
+    "for (const [name, query] of Object.entries(checks)) {",
+    "for (let [name, query] of Object.entries(checks)) {\n        query = checks.migration52;",
+    /binding is reassigned|loop must use const/u
+  ],
+  [
+    "a dynamic raw query argument",
+    "tx.$queryRawUnsafe(query)",
+    "tx.$queryRawUnsafe(process.env.EXTRA_QUERY + query)",
+    /tx call/u
+  ],
+  [
+    "an iterator postfix update",
+    "report[name] = await tx.$queryRawUnsafe(query);",
+    "report[name] = await tx.$queryRawUnsafe(query);\n        query++;",
+    /binding is reassigned/u
+  ]
+];
 
 describe("contract settlement governance readiness inspection script", () => {
   const scriptPath = resolve(
@@ -27,196 +279,23 @@ describe("contract settlement governance readiness inspection script", () => {
     "../../scripts/inspect-contract-settlement-governance-readiness.cjs"
   );
   const source = readFileSync(scriptPath, "utf8");
-  const sourceFile = ts.createSourceFile(
-    scriptPath,
-    source,
-    ts.ScriptTarget.ES2022,
-    true,
-    ts.ScriptKind.JS
-  );
 
-  function collectCalls(root: ts.Node) {
-    const calls: ts.CallExpression[] = [];
-    const visit = (node: ts.Node) => {
-      if (ts.isCallExpression(node)) calls.push(node);
-      ts.forEachChild(node, visit);
-    };
-    visit(root);
-    return calls.sort((left, right) => left.getStart(sourceFile) - right.getStart(sourceFile));
-  }
-
-  function methodName(call: ts.CallExpression) {
-    return ts.isPropertyAccessExpression(call.expression)
-      ? call.expression.name.text
-      : undefined;
-  }
-
-  function rootIdentifier(call: ts.CallExpression) {
-    let expression: ts.Expression = call.expression;
-    while (
-      ts.isPropertyAccessExpression(expression) ||
-      ts.isElementAccessExpression(expression)
-    ) {
-      expression = expression.expression;
-    }
-    return ts.isIdentifier(expression) ? expression.text : undefined;
-  }
-
-  function singleStringArgument(call: ts.CallExpression) {
-    if (call.arguments.length !== 1) return undefined;
-    const argument = call.arguments[0];
-    return ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)
-      ? argument.text
-      : undefined;
-  }
-
-  function extractChecks() {
-    let checksObject: ts.ObjectLiteralExpression | undefined;
-    const visit = (node: ts.Node) => {
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.name.text === "checks" &&
-        node.initializer &&
-        ts.isObjectLiteralExpression(node.initializer)
-      ) {
-        checksObject = node.initializer;
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(sourceFile);
-    if (!checksObject) throw new Error("checks must be a fixed object literal");
-
-    return checksObject.properties.map((property) => {
-      if (
-        !ts.isPropertyAssignment(property) ||
-        !ts.isIdentifier(property.name) ||
-        (!ts.isStringLiteral(property.initializer) &&
-          !ts.isNoSubstitutionTemplateLiteral(property.initializer))
-      ) {
-        throw new Error("each check must be a fixed string literal");
-      }
-      return { name: property.name.text, sql: property.initializer.text };
-    });
-  }
-
-  function extractStatusValues(sql: string) {
-    const inClause = sql.match(/\bIN\s*\(([^)]*)\)/iu)?.[1];
-    if (!inClause) throw new Error("active status query must contain a fixed IN clause");
-    return Array.from(inClause.matchAll(/'([^']+)'/gu), (match) => match[1]);
-  }
-
-  function transactionBody() {
-    const transactionCalls = collectCalls(sourceFile).filter(
-      (call) => methodName(call) === "$transaction" && rootIdentifier(call) === "prisma"
-    );
-    if (transactionCalls.length !== 1) {
-      throw new Error("script must use one Prisma transaction");
-    }
-    const callback = transactionCalls[0].arguments[0];
-    if (!callback || !ts.isArrowFunction(callback) || !ts.isBlock(callback.body)) {
-      throw new Error("transaction must use a block callback");
-    }
-    return callback.body;
-  }
-
-  const calls = collectCalls(sourceFile);
-
-  it("keeps exactly the five fixed SELECT checks", () => {
-    const checks = extractChecks();
-    expect(checks.map((check) => check.name)).toEqual(CHECK_NAMES);
-    for (const check of checks) {
-      expect(check.sql).toMatch(/^SELECT\b/iu);
-    }
-    expect(checks[0].sql).toContain(
-      "20260716160000_contract_tax_facts_and_settlement_drafts"
-    );
-    expect(source).not.toMatch(SQL_WRITE_PATTERN);
+  it("matches the complete read-only script allowlist", () => {
+    expect(() => assertSafeScript(source)).not.toThrow();
   });
 
-  it("covers the complete active contract status set", () => {
-    const checks = new Map(extractChecks().map((check) => [check.name, check.sql]));
-    expect(extractStatusValues(checks.get("activeContracts") ?? "")).toEqual([
-      "in_approval",
-      "approved_pending_seal",
-      "in_seal",
-      "seal_approved_pending_archive",
-      "pending_archive_confirm",
-      "approval_pending",
-      "approved",
-      "sealed_pending_archive"
+  it("keeps the complete active status sets readable", () => {
+    expect(statusValues(EXPECTED_CHECKS.activeContracts)).toEqual([
+      "in_approval", "approved_pending_seal", "in_seal", "seal_approved_pending_archive",
+      "pending_archive_confirm", "approval_pending", "approved", "sealed_pending_archive"
     ]);
-  });
-
-  it("covers the complete active settlement status set", () => {
-    const checks = new Map(extractChecks().map((check) => [check.name, check.sql]));
-    expect(extractStatusValues(checks.get("activeSettlements") ?? "")).toEqual([
-      "in_approval",
-      "approval_pending",
-      "approved_pending_archive",
-      "archive_pending",
+    expect(statusValues(EXPECTED_CHECKS.activeSettlements)).toEqual([
+      "in_approval", "approval_pending", "approved_pending_archive", "archive_pending",
       "pending_archive_confirm"
     ]);
   });
 
-  it("starts the transaction read-only before every other tx database call", () => {
-    const txCalls = collectCalls(transactionBody()).filter(
-      (call) => rootIdentifier(call) === "tx"
-    );
-    expect(methodName(txCalls[0])).toBe("$executeRawUnsafe");
-    expect(singleStringArgument(txCalls[0])).toBe("SET TRANSACTION READ ONLY");
-
-    const firstQueryIndex = txCalls.findIndex(
-      (call) => methodName(call) === "$queryRawUnsafe"
-    );
-    expect(firstQueryIndex).toBeGreaterThan(0);
-  });
-
-  it("allows only fixed raw calls and forbids Prisma mutation methods", () => {
-    const executeCalls = calls.filter(
-      (call) => methodName(call) === "$executeRawUnsafe"
-    );
-    expect(
-      executeCalls.map((call) => ({
-        receiver: rootIdentifier(call),
-        command: singleStringArgument(call)
-      }))
-    ).toEqual([
-      { receiver: "tx", command: "SET TRANSACTION READ ONLY" },
-      { receiver: "tx", command: "SET default_transaction_read_only = on" }
-    ]);
-    expect(source.match(/\.\$executeRawUnsafe\b/gu) ?? []).toHaveLength(2);
-
-    const queryCalls = calls.filter((call) => methodName(call) === "$queryRawUnsafe");
-    expect(queryCalls).toHaveLength(1);
-    expect(source.match(/\.\$queryRawUnsafe\b/gu) ?? []).toHaveLength(1);
-    expect(source).not.toMatch(/\.\$(executeRaw|queryRaw)(?!Unsafe)\b/u);
-    expect(rootIdentifier(queryCalls[0])).toBe("tx");
-    expect(queryCalls[0].arguments).toHaveLength(1);
-    expect(ts.isIdentifier(queryCalls[0].arguments[0])).toBe(true);
-    expect(queryCalls[0].arguments[0].getText(sourceFile)).toBe("query");
-
-    let parent = queryCalls[0].parent;
-    while (parent && !ts.isForOfStatement(parent)) parent = parent.parent;
-    if (!parent || !ts.isVariableDeclarationList(parent.initializer)) {
-      throw new Error("query must come from the checks iterator");
-    }
-    const declaration = parent.initializer.declarations[0];
-    expect(declaration.name.getText(sourceFile)).toBe("[name, query]");
-    expect(parent.expression.getText(sourceFile)).toBe("Object.entries(checks)");
-
-    const rawArgumentSource = [...executeCalls, ...queryCalls]
-      .flatMap((call) => [...call.arguments])
-      .map((argument) => argument.getText(sourceFile))
-      .join("\n");
-    expect(rawArgumentSource).not.toMatch(
-      /process\.(env|argv)|\+|\$\{|\.concat\s*\(/u
-    );
-
-    expect(
-      calls
-        .map((call) => methodName(call))
-        .filter((name): name is string => Boolean(name && PRISMA_MUTATION_METHODS.has(name)))
-    ).toEqual([]);
+  it.each(MUTATIONS)("rejects %s", (_name, target, replacement, error) => {
+    expect(() => assertSafeScript(replaceOnce(source, target, replacement))).toThrow(error);
   });
 });
