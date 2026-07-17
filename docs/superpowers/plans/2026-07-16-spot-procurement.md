@@ -1,6 +1,6 @@
 # 建工智管零星采购实施计划
 
-> 2026-07-18 状态提示：本计划已按旧零星采购规则执行并形成生产运行代码，但真实入口现已关闭。本计划不能继续作为重构执行依据；待用户确认 `docs/superpowers/specs/2026-07-18-spot-procurement-real-form-redesign.md` 后另写变更实施计划。
+> 2026-07-18 状态提示：本计划已按旧零星采购规则执行并形成生产运行代码，但真实入口现已关闭。本计划不能继续作为重构执行依据；用户已确认新版设计，后续唯一执行计划为 `docs/superpowers/plans/2026-07-18-spot-procurement-real-form-redesign.md`。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
