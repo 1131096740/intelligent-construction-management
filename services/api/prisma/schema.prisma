@@ -720,6 +720,339 @@ model VatRateOption {
   @@index([enabled, sortOrder])
 }
 
+model SpotProcurementReceipt {
+  id                     String    @id @default(uuid())
+  projectId              String
+  procurementId          String    @unique
+  procurementVersionId   String
+  status                 String    @default("draft")
+  currentRevisionNo      Int       @default(1)
+  handlerUserId          String
+  note                   String?
+  actualCostCents        BigInt    @default(0)
+  firstSubmittedAt       DateTime?
+  submittedAt            DateTime?
+  submittedByUserId      String?
+  submissionDelegationId String?
+  lockedAt               DateTime?
+  createdByUserId        String
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([id, procurementId])
+  @@index([projectId, status])
+  @@index([procurementVersionId, status])
+  @@index([handlerUserId, status])
+  @@index([submissionDelegationId])
+}
+
+model SpotProcurementReceiptRevision {
+  id                     String    @id @default(uuid())
+  receiptId              String
+  revisionNo             Int
+  procurementId          String
+  procurementVersionId   String
+  handlerUserId          String
+  note                   String?
+  actualCostCents        BigInt    @default(0)
+  submittedAt            DateTime?
+  submittedByUserId      String?
+  submissionDelegationId String?
+  createdByUserId        String
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([receiptId, revisionNo])
+  @@unique([receiptId, revisionNo, procurementId, procurementVersionId])
+  @@index([procurementId, procurementVersionId])
+  @@index([handlerUserId])
+  @@index([submittedByUserId])
+  @@index([submissionDelegationId])
+}
+
+model SpotProcurementReceiptLine {
+  id                       String   @id @default(uuid())
+  receiptId                String
+  receiptRevisionNo        Int
+  procurementId            String
+  procurementVersionId     String
+  procurementLineId        String
+  approvedQuantitySnapshot Decimal  @db.Decimal(24, 6)
+  qualifiedQuantity        Decimal  @db.Decimal(24, 6)
+  unqualifiedQuantity      Decimal  @db.Decimal(24, 6)
+  unqualifiedReason        String?
+  freeGiftQuantity         Decimal  @db.Decimal(24, 6)
+  replenishmentPending     Boolean  @default(false)
+  discrepancyNote          String?
+  actualCostCents          BigInt
+  createdByUserId          String
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([receiptId, receiptRevisionNo, procurementId, procurementVersionId, procurementLineId])
+  @@index([procurementId, procurementVersionId])
+  @@index([procurementVersionId, procurementLineId])
+  @@index([receiptId, receiptRevisionNo])
+}
+
+model SpotProcurementReceiptPhoto {
+  id                      String    @id @default(uuid())
+  receiptId               String
+  receiptRevisionNo       Int
+  originalFileId          String    @unique
+  watermarkedFileId       String    @unique
+  originalSha256          String
+  watermarkedSha256       String
+  source                  String
+  category                String
+  serverRecordedAt        DateTime  @default(now())
+  note                    String?
+  uploadedByUserId        String
+  lockedAtFirstSubmission Boolean   @default(false)
+  lockedAt                DateTime?
+  appendReason            String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([receiptId, category, createdAt])
+  @@index([uploadedByUserId, createdAt])
+}
+
+model SpotProcurementReceiptDelegation {
+  id               String    @id @default(uuid())
+  receiptId        String
+  delegatorUserId  String
+  delegateUserId   String
+  scope            String    @default("receipt_confirmation")
+  delegatedAt      DateTime  @default(now())
+  revokedAt        DateTime?
+  revokedByUserId  String?
+  revocationReason String?
+  createdAt        DateTime  @default(now())
+
+  @@unique([receiptId, id])
+  @@index([receiptId, revokedAt])
+  @@index([delegateUserId, revokedAt])
+}
+
+model SpotProcurementReceiptReview {
+  id                     String   @id @default(uuid())
+  receiptId              String
+  receiptRevisionNo      Int
+  procurementId          String
+  procurementVersionId   String
+  sequenceNo             Int
+  decision               String
+  comment                String?
+  reviewedByUserId       String
+  submissionDelegationId String?
+  targetReviewId         String?
+  createdAt              DateTime @default(now())
+
+  @@unique([receiptId, sequenceNo])
+  @@unique([receiptId, receiptRevisionNo, procurementId, procurementVersionId, id])
+  @@unique([targetReviewId])
+  @@index([procurementId, procurementVersionId])
+  @@index([procurementVersionId])
+  @@index([reviewedByUserId, createdAt])
+  @@index([submissionDelegationId])
+}
+
+model SpotProcurementDiscrepancy {
+  id                                     String    @id @default(uuid())
+  projectId                              String
+  procurementId                          String
+  procurementVersionId                   String
+  receiptId                              String
+  receiptRevisionNo                      Int
+  receiptReviewId                        String
+  status                                 String    @default("pending_resolution")
+  approvedAmountCentsSnapshot            BigInt
+  actualCostCentsSnapshot                BigInt
+  shortageAmountCents                    BigInt
+  canceledUnexecutedAmountCents          BigInt    @default(0)
+  paidAmountCentsSnapshot                BigInt
+  supplierBalanceUsedAmountCentsSnapshot BigInt
+  overpaidAmountCents                    BigInt
+  resolutionType                         String?
+  supplierBalanceEntryId                 String?   @unique
+  note                                   String?
+  createdByUserId                        String
+  resolvedAt                             DateTime?
+  resolvedByUserId                       String?
+  invalidatedAt                          DateTime?
+  invalidatedByUserId                    String?
+  invalidationReason                     String?
+  createdAt                              DateTime  @default(now())
+  updatedAt                              DateTime  @updatedAt
+
+  @@unique([procurementId, id])
+  @@index([projectId, status])
+  @@index([receiptId, status])
+  @@index([procurementId, status])
+  @@index([procurementVersionId])
+  @@index([receiptReviewId])
+}
+
+model SpotProcurementRefund {
+  id               String   @id @default(uuid())
+  discrepancyId    String   @unique
+  procurementId    String
+  amountCents      BigInt
+  receivedAt       DateTime
+  refundMethod     String
+  voucherFileId    String   @unique
+  recordedByUserId String
+  idempotencyKey   String   @unique
+  createdAt        DateTime @default(now())
+
+  @@index([procurementId, receivedAt])
+  @@index([recordedByUserId, createdAt])
+}
+
+model InvoiceRecord {
+  id                     String    @id @default(uuid())
+  projectId              String
+  identityKey            String    @unique
+  invoiceType            String
+  invoiceCode            String?
+  invoiceNumber          String?
+  externalIdentifier     String?
+  issueDate              DateTime  @db.Date
+  sellerName             String
+  buyerName              String
+  totalAmountCents       BigInt
+  allocatableAmountCents BigInt
+  allocatedAmountCents   BigInt    @default(0)
+  status                 String    @default("active")
+  fileId                 String    @unique
+  uploadedByUserId       String
+  sourceBusinessType     String
+  sourceBusinessId       String
+  sourceProcurementId    String?
+  invalidatedAt          DateTime?
+  invalidatedByUserId    String?
+  invalidationReason     String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([projectId, id])
+  @@index([projectId, status])
+  @@index([sourceBusinessType, sourceBusinessId])
+  @@index([sourceProcurementId, status])
+}
+
+model InvoiceLine {
+  id                      String   @id @default(uuid())
+  projectId               String
+  invoiceRecordId         String
+  lineNo                  Int
+  description             String?
+  vatRateOptionId         String
+  vatRateValueSnapshot    Decimal  @db.Decimal(9, 6)
+  vatRateLabelSnapshot    String
+  taxInclusiveAmountCents BigInt
+  allocatedAmountCents    BigInt   @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([invoiceRecordId, lineNo])
+  @@unique([projectId, id])
+  @@index([projectId, invoiceRecordId])
+  @@index([vatRateOptionId])
+}
+
+model InvoiceAllocation {
+  id                   String    @id @default(uuid())
+  projectId            String
+  invoiceLineId        String
+  receiptId            String
+  receiptRevisionNo    Int
+  procurementId        String
+  procurementVersionId String
+  procurementLineId    String
+  paymentId            String?
+  amountCents          BigInt
+  createdByUserId      String
+  invalidatedAt        DateTime?
+  invalidatedByUserId  String?
+  invalidationReason   String?
+  createdAt            DateTime  @default(now())
+
+  @@index([invoiceLineId, invalidatedAt])
+  @@index([procurementLineId, invalidatedAt])
+  @@index([paymentId, invalidatedAt])
+  @@index([receiptId, receiptRevisionNo])
+  @@index([projectId, procurementId])
+}
+
+model NoInvoiceConfirmation {
+  id                   String    @id @default(uuid())
+  projectId            String
+  receiptId            String
+  receiptRevisionNo    Int
+  procurementId        String
+  procurementVersionId String
+  procurementLineId    String
+  paymentId            String?
+  amountCents          BigInt
+  reason               String
+  proofFileId          String
+  status               String    @default("pending_review")
+  submittedByUserId    String
+  submittedAt          DateTime  @default(now())
+  reviewedByUserId     String?
+  reviewedAt           DateTime?
+  reviewComment        String?
+  reversedAt           DateTime?
+  reversedByUserId     String?
+  reversalReason       String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([procurementLineId, status])
+  @@index([receiptId, receiptRevisionNo])
+  @@index([paymentId])
+  @@index([proofFileId])
+}
+
+model InvoiceExceptionConfirmation {
+  id                           String    @id @default(uuid())
+  projectId                    String
+  receiptId                    String
+  receiptRevisionNo            Int
+  procurementId                String
+  procurementVersionId         String
+  procurementLineId            String
+  paymentId                    String?
+  invoiceLineId                String?
+  expectedInvoiceType          String
+  expectedVatRateOptionId      String
+  expectedVatRateValueSnapshot Decimal   @db.Decimal(9, 6)
+  expectedVatRateLabelSnapshot String
+  expectedUnitPriceSnapshot    Decimal   @db.Decimal(24, 6)
+  amountCents                  BigInt
+  reason                       String
+  proofFileId                  String
+  status                       String    @default("pending_review")
+  submittedByUserId            String
+  submittedAt                  DateTime  @default(now())
+  reviewedByUserId             String?
+  reviewedAt                   DateTime?
+  reviewComment                String?
+  reversedAt                   DateTime?
+  reversedByUserId             String?
+  reversalReason               String?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  @@index([procurementLineId, status])
+  @@index([receiptId, receiptRevisionNo])
+  @@index([paymentId])
+  @@index([invoiceLineId])
+  @@index([proofFileId])
+}
+
 model FinanceRecord {
   id                      String   @id @default(uuid())
   projectId               String

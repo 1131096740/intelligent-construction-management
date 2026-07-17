@@ -188,7 +188,10 @@ function servicesFor(prisma) {
         }
       }
     },
-    fileAccessFor(prisma)
+    fileAccessFor(prisma),
+    {
+      tryRefreshLatestForBusiness: async () => undefined
+    }
   );
   return { balances, payment };
 }
