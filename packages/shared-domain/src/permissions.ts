@@ -73,6 +73,9 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "contract.submit": ["contract_staff", "contract_director"],
   "contract.approve": [
     "budget_director",
+    "material_director",
+    "comprehensive_director",
+    "engineering_director",
     "project_manager",
     "finance_director",
     "contract_director",

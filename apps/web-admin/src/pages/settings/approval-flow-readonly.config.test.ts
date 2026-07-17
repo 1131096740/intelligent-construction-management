@@ -4,7 +4,11 @@ import { approvalFlowRules, modeLabel, roleNames } from "./approval-flow-readonl
 describe("approval flow readonly configuration", () => {
   it("lists core contract, settlement, and payment approval flows", () => {
     expect(approvalFlowRules.map((rule) => rule.id)).toEqual([
-      "contract",
+      "contract_material_purchase",
+      "contract_equipment_rental",
+      "contract_labor_subcontract",
+      "contract_professional_subcontract",
+      "contract_generic_contract",
       "contract_change_major",
       "settlement_material_mechanical",
       "settlement_labor_professional",
@@ -13,17 +17,53 @@ describe("approval flow readonly configuration", () => {
   });
 
   it("keeps chairman and general manager as OR-sign nodes for contract and payment", () => {
-    const contractFinal = approvalFlowRules.find((rule) => rule.id === "contract")?.nodes.at(-1);
+    const contractRules = approvalFlowRules.filter((rule) => rule.id.startsWith("contract_") && rule.businessType === "新合同");
     const paymentFinal = approvalFlowRules.find((rule) => rule.id === "payment")?.nodes.at(-1);
 
-    expect(contractFinal).toMatchObject({
-      mode: "any",
-      roleKeys: ["chairman", "general_manager"]
-    });
+    expect(contractRules).toHaveLength(5);
+    for (const rule of contractRules) {
+      expect(rule.nodes.at(-1)).toMatchObject({
+        mode: "any",
+        roleKeys: ["chairman", "general_manager"]
+      });
+    }
     expect(paymentFinal).toMatchObject({
       mode: "any",
       roleKeys: ["chairman", "general_manager"]
     });
+  });
+
+  it("shows the five confirmed new-contract routes without mixing their specialist nodes", () => {
+    const routes = Object.fromEntries(
+      approvalFlowRules
+        .filter((rule) => rule.businessType === "新合同")
+        .map((rule) => [rule.id, rule.nodes.map((node) => node.roleKeys)])
+    );
+
+    expect(routes).toEqual({
+      contract_material_purchase: [
+        ["contract_director"], ["material_director"], ["project_manager"],
+        ["finance_director"], ["chairman", "general_manager"]
+      ],
+      contract_equipment_rental: [
+        ["contract_director"], ["material_director"], ["project_manager"],
+        ["finance_director"], ["chairman", "general_manager"]
+      ],
+      contract_labor_subcontract: [
+        ["contract_director"], ["engineering_director"], ["project_manager"],
+        ["finance_director"], ["chairman", "general_manager"]
+      ],
+      contract_professional_subcontract: [
+        ["contract_director"], ["engineering_director"], ["project_manager"],
+        ["finance_director"], ["chairman", "general_manager"]
+      ],
+      contract_generic_contract: [
+        ["contract_director"], ["comprehensive_director"], ["project_manager"],
+        ["finance_director"], ["chairman", "general_manager"]
+      ]
+    });
+    expect(JSON.stringify(routes.contract_generic_contract)).toContain("comprehensive_director");
+    expect(JSON.stringify(Object.values(routes).slice(0, 4))).not.toContain("comprehensive_director");
   });
 
   it("keeps settlement approval away from chairman and general manager", () => {

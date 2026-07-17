@@ -63,6 +63,20 @@ describe("final approval OR-sign", () => {
     expect(canPerform("contract.approve", ["contract_director"])).toBe(true);
   });
 
+  it("allows every frozen new-contract route role through the coarse approval gate only", () => {
+    for (const role of [
+      "material_director",
+      "comprehensive_director",
+      "engineering_director"
+    ] as const) {
+      expect(canPerform("contract.approve", [role])).toBe(true);
+      expect(canPerform("contract.create", [role])).toBe(false);
+      expect(canPerform("contract.submit", [role])).toBe(false);
+      expect(canPerform("contract.archive.upload", [role])).toBe(false);
+      expect(canPerform("contract.tax_fact.confirm", [role])).toBe(false);
+    }
+  });
+
   it("allows payment approval route roles before service-level node checks", () => {
     for (const role of [
       "comprehensive_director",
@@ -293,6 +307,9 @@ describe("missingRolesFor", () => {
   it("lists the accepted roles when the user lacks permission", () => {
     expect(missingRolesFor("contract.approve", ["employee"])).toEqual([
       "budget_director",
+      "material_director",
+      "comprehensive_director",
+      "engineering_director",
       "project_manager",
       "finance_director",
       "contract_director",

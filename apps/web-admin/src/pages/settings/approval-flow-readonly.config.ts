@@ -41,17 +41,94 @@ export const roleLabels: Record<RoleKey, string> = {
 
 export const approvalFlowRules: ApprovalFlowRule[] = [
   {
-    id: "contract",
-    title: "合同审批",
-    businessType: "合同",
+    id: "contract_material_purchase",
+    title: "新合同审批（材料采购）",
+    businessType: "新合同",
     status: "readonly",
     nodes: [
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
+      { name: "物资主管", mode: "any", roleKeys: ["material_director"] },
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
       { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
     ],
     guardrails: [
+      "合同部主管本人发起时跳过合同部主管节点",
+      "物资主管、项目经理及其他审批人按提交时的人员快照处理",
       "合同审批通过后进入用章与归档链路",
-      "归档确认前合同版本不生效，付款条款不能作为结算付款依据",
       "董事长/总经理为或签节点，任一角色通过即可进入下一阶段"
+    ]
+  },
+  {
+    id: "contract_equipment_rental",
+    title: "新合同审批（机械租赁）",
+    businessType: "新合同",
+    status: "readonly",
+    nodes: [
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
+      { name: "物资主管", mode: "any", roleKeys: ["material_director"] },
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
+      { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+    ],
+    guardrails: [
+      "合同部主管本人发起时跳过合同部主管节点",
+      "所有机械类合同统一由物资主管审批",
+      "审批人按提交时的人员快照处理，董事长/总经理为或签终审"
+    ]
+  },
+  {
+    id: "contract_labor_subcontract",
+    title: "新合同审批（劳务分包）",
+    businessType: "新合同",
+    status: "readonly",
+    nodes: [
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
+      { name: "所属项目项目总工", mode: "any", roleKeys: ["engineering_director"] },
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
+      { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+    ],
+    guardrails: [
+      "合同部主管本人发起时跳过合同部主管节点",
+      "项目总工只从合同所属项目的启用成员中唯一确定",
+      "审批人按提交时的人员快照处理，董事长/总经理为或签终审"
+    ]
+  },
+  {
+    id: "contract_professional_subcontract",
+    title: "新合同审批（专业分包）",
+    businessType: "新合同",
+    status: "readonly",
+    nodes: [
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
+      { name: "所属项目项目总工", mode: "any", roleKeys: ["engineering_director"] },
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
+      { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+    ],
+    guardrails: [
+      "合同部主管本人发起时跳过合同部主管节点",
+      "项目总工只从合同所属项目的启用成员中唯一确定",
+      "审批人按提交时的人员快照处理，董事长/总经理为或签终审"
+    ]
+  },
+  {
+    id: "contract_generic_contract",
+    title: "新合同审批（通用合同）",
+    businessType: "新合同",
+    status: "readonly",
+    nodes: [
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
+      { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"] },
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
+      { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+    ],
+    guardrails: [
+      "合同部主管本人发起时跳过合同部主管节点",
+      "只有通用合同经过综合部主管审批",
+      "审批人按提交时的人员快照处理，董事长/总经理为或签终审"
     ]
   },
   {

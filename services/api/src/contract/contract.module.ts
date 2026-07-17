@@ -11,6 +11,7 @@ import {
 import { ContractReadService } from "./contract-read.service";
 import { ContractService } from "./contract.service";
 import { ContractStatusService } from "./contract-status.service";
+import { ContractApprovalRouteService } from "./contract-approval-route.service";
 
 @Module({
   imports: [
@@ -21,7 +22,12 @@ import { ContractStatusService } from "./contract-status.service";
     FileModule
   ],
   controllers: [ContractController, ContractNumberRuleController],
-  providers: [ContractService, ContractStatusService, ContractReadService],
+  providers: [
+    ContractService,
+    ContractStatusService,
+    ContractReadService,
+    ContractApprovalRouteService
+  ],
   exports: [ContractService, ContractStatusService, ContractReadService]
 })
 export class ContractModule {}

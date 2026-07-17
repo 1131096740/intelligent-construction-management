@@ -39,6 +39,10 @@ import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
 import { evaluateContractChangeApproval } from "./contract-change-approval";
 import { assertContractChangeContentAllowed } from "./contract-change-policy";
+import {
+  ContractApprovalRouteService,
+  type FrozenNewContractApprovalNode
+} from "./contract-approval-route.service";
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -116,7 +120,9 @@ export class ContractService {
     @Optional()
     private readonly readiness?: ContractReadinessService,
     @Optional()
-    private readonly numbering?: ContractNumberingService
+    private readonly numbering?: ContractNumberingService,
+    @Optional()
+    private readonly approvalRoutes?: ContractApprovalRouteService
   ) {}
 
   async createDraft(input: CreateContractDraftDto, actorUserId: string) {
@@ -1008,6 +1014,16 @@ export class ContractService {
   ) {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const contractLocks = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT c."id"
+          FROM "Contract" c
+          INNER JOIN "ContractVersion" cv ON cv."contractId" = c."id"
+          WHERE cv."id" = ${contractVersionId}
+          FOR UPDATE OF c
+        `);
+        if (contractLocks.length !== 1) {
+          throw new Error("未找到要提交审批的合同版本，请刷新合同后重试");
+        }
         const [version] = await tx.$queryRaw<
           Array<NonNullable<Awaited<ReturnType<typeof tx.contractVersion.findUnique>>>>
         >(Prisma.sql`
@@ -1017,6 +1033,9 @@ export class ContractService {
           FOR UPDATE
         `);
         if (!version) throw new Error("未找到要提交审批的合同版本，请刷新合同后重试");
+        if (version.status !== "draft") {
+          throw new BadRequestException("当前合同版本不在草稿状态，不能重复提交审批");
+        }
 
         const contract = await tx.contract.findUnique({
           where: { id: version.contractId }
@@ -1027,6 +1046,15 @@ export class ContractService {
           throw new Error("只有合同经办人可以提交该合同审批");
         }
         await this.assertChangeAmountProjection(tx, version);
+        const projectLocks = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
+          SELECT "id", "isActive"
+          FROM "Project"
+          WHERE "id" = ${contract.projectId}
+          FOR UPDATE
+        `);
+        if (projectLocks.length !== 1 || projectLocks[0]?.isActive !== true) {
+          throw new BadRequestException("合同所属项目不存在或已停用，不能提交审批");
+        }
 
         const input = contract.ownerUserId ? this.parseSubmissionInput(rawInput) : null;
         let formalCode = contract.code;
@@ -1046,16 +1074,9 @@ export class ContractService {
           readinessSnapshot = readiness as unknown as Prisma.JsonValue;
         }
 
-        await this.assertOwnerContractQuota(tx, contract.projectId, contract.id, version.amountCents);
+        await this.assertOwnerContractQuota(tx, contract.projectId, contract.id, version);
 
         if (input) {
-          formalCode = await this.numbering!.allocate(
-            tx,
-            input.numberRuleId,
-            contract,
-            actorUserId,
-            input
-          );
           const submissionSnapshot = await this.readiness!.freeze(tx, version);
           templateSnapshot = {
             ...(version.templateSnapshot as Prisma.JsonObject),
@@ -1068,6 +1089,23 @@ export class ContractService {
           version.changeType === "supplement"
           ? null
           : await this.lockCompanyEntityForSubmission(tx, version, contract);
+
+        const frozenNodes = await this.approvalNodesForSubmission(
+          tx,
+          version,
+          contract,
+          actorUserId
+        );
+
+        if (input) {
+          formalCode = await this.numbering!.allocate(
+            tx,
+            input.numberRuleId,
+            contract,
+            actorUserId,
+            input
+          );
+        }
 
         const submitted = await tx.contractVersion.updateMany({
           where: {
@@ -1114,7 +1152,7 @@ export class ContractService {
             businessId: version.id,
             status: "in_progress",
             currentNodeIndex: 0,
-            frozenNodes: this.approvalNodesForVersion(version) as unknown as Prisma.InputJsonValue,
+            frozenNodes: frozenNodes as unknown as Prisma.InputJsonValue,
             applicantUserId: actorUserId
           }
         });
@@ -1150,7 +1188,7 @@ export class ContractService {
           templateSnapshot,
           formalCode
         };
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (
         error &&
@@ -1160,6 +1198,20 @@ export class ContractService {
       ) {
         throw new BadRequestException("正式合同编号已存在，请刷新后重新提交或选择其他编号");
       }
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        (error.code === "P2034" ||
+          (error.code === "P2010" &&
+            "meta" in error &&
+            error.meta !== null &&
+            typeof error.meta === "object" &&
+            "code" in error.meta &&
+            error.meta.code === "40001"))
+      ) {
+        throw new BadRequestException("合同审批资料正在被更新，请稍后刷新并重新提交");
+      }
       throw error;
     }
   }
@@ -1168,19 +1220,19 @@ export class ContractService {
     tx: Prisma.TransactionClient,
     projectId: string,
     currentContractId: string,
-    amountCents: bigint
+    version: {
+      amountCents: bigint;
+      pricingNature: string;
+      amountLimitType: string;
+    }
   ) {
-    const requestedAmountCents = dbMoneyToBigInt(amountCents, "合同金额");
+    const requestedAmountCents = dbMoneyToBigInt(version.amountCents, "合同金额");
+    if (version.pricingNature === "framework" && version.amountLimitType === "unlimited") {
+      return;
+    }
     if (requestedAmountCents <= 0n) {
       throw new BadRequestException("合同金额必须大于 0，不能提交零金额或负数合同审批");
     }
-
-    await tx.$queryRaw(Prisma.sql`
-      SELECT "id"
-      FROM "Project"
-      WHERE "id" = ${projectId}
-      FOR UPDATE
-    `);
 
     const ownerContracts = await tx.projectOwnerContract.findMany({
       where: { projectId, status: "effective", voidedAt: null },
@@ -1667,6 +1719,34 @@ export class ContractService {
       ? ENHANCED_CONTRACT_CHANGE_APPROVAL_NODES
       : CONTRACT_APPROVAL_NODES;
     return nodes.map((node) => ({ ...node }));
+  }
+
+  private async approvalNodesForSubmission(
+    tx: Prisma.TransactionClient,
+    version: Parameters<ContractService["approvalNodesForVersion"]>[0],
+    contract: {
+      id: string;
+      projectId: string;
+      contractTypeKey: string | null;
+      ownerUserId: string | null;
+    },
+    actorUserId: string
+  ): Promise<ContractApprovalNode[] | FrozenNewContractApprovalNode[]> {
+    if (!contract.ownerUserId || version.changeType !== "original") {
+      return this.approvalNodesForVersion(version);
+    }
+    if (!this.approvalRoutes) {
+      throw new Error("新合同审批路线服务暂不可用，请稍后重试或联系管理员");
+    }
+    return this.approvalRoutes.freezeNewContractRoute(
+      tx,
+      {
+        id: contract.id,
+        projectId: contract.projectId,
+        contractTypeKey: contract.contractTypeKey
+      },
+      actorUserId
+    );
   }
 
   // 申请人撤回进行中的合同审批：版本退回 draft 以便修改后重新提交（同一版本，不新建版本）。

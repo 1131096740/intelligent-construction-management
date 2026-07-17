@@ -1,4 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
+import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { PrismaService } from "../database/prisma.service";
 import { ContractService } from "./contract.service";
 
@@ -14,6 +17,105 @@ describe("ContractService", () => {
     audit.record.mockReset();
     auth.confirmPassword.mockReset();
     auth.confirmPassword.mockResolvedValue({ ok: true });
+  });
+
+  it.each([
+    { code: "P2034" },
+    { code: "P2010", meta: { code: "40001" } }
+  ])("maps a concurrent contract-route freeze conflict to a stable retry message", async (details) => {
+    const prisma = {
+      $transaction: jest.fn().mockRejectedValue(
+        Object.assign(new Error("serialization conflict"), details)
+      )
+    };
+    const service = new ContractService(prisma as never, audit as never);
+
+    await expect(service.submitApproval("version-1", "contract-staff-1"))
+      .rejects.toThrow("合同审批资料正在被更新，请稍后刷新并重新提交");
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: "Serializable" }
+    );
+  });
+
+  it("does not recalculate a route for an existing in-progress contract", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          contractId: "contract-1",
+          status: "in_approval",
+          changeType: "original"
+        }]),
+      contract: { findUnique: jest.fn() }
+    };
+    const routes = { freezeNewContractRoute: jest.fn() };
+    const service = new ContractService(
+      {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      routes as never
+    );
+
+    await expect(service.submitApproval("version-1", "staff-1"))
+      .rejects.toThrow("当前合同版本不在草稿状态，不能重复提交审批");
+    expect(routes.freezeNewContractRoute).not.toHaveBeenCalled();
+    expect(tx.contract.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before numbering or writes when the locked project is inactive", async () => {
+    const version = {
+      id: "version-1",
+      contractId: "contract-1",
+      status: "draft",
+      changeType: "original"
+    };
+    const tx = {
+      $queryRaw: submitQueryLocks(version, { projectActive: false }),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          ownerUserId: "staff-1",
+          voidedAt: null
+        }),
+        updateMany: jest.fn()
+      },
+      contractVersion: { updateMany: jest.fn() },
+      approvalInstance: { create: jest.fn() }
+    };
+    const numbering = { allocate: jest.fn() };
+    const routes = { freezeNewContractRoute: jest.fn() };
+    const service = new ContractService(
+      {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+      } as never,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      numbering as never,
+      routes as never
+    );
+
+    await expect(service.submitApproval("version-1", "staff-1", { numberRuleId: "rule-1" }))
+      .rejects.toThrow("合同所属项目不存在或已停用，不能提交审批");
+    expect(numbering.allocate).not.toHaveBeenCalled();
+    expect(routes.freezeNewContractRoute).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   function installDraftLocks<T extends Record<string, unknown>>(
@@ -51,6 +153,24 @@ describe("ContractService", () => {
       return [];
     });
     return delegates as T & { $queryRaw: jest.Mock };
+  }
+
+  function submitQueryLocks(
+    version: Record<string, unknown>,
+    options: { projectActive?: boolean } = {}
+  ): jest.Mock {
+    return jest.fn(async (query: { strings?: string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes('FROM "Contract" c')) {
+        return [{ id: String(version["contractId"] ?? "contract-1") }];
+      }
+      if (sql.includes('FROM "ContractVersion"')) return [version];
+      if (sql.includes('FROM "Project"')) {
+        return [{ id: "project-1", isActive: options.projectActive ?? true }];
+      }
+      if (sql.includes('FROM "CompanyEntity"')) return [{ id: "entity-1" }];
+      return [];
+    });
   }
 
   it("rejects an invalid fixed payment amount as HTTP 400 before opening a transaction", async () => {
@@ -794,9 +914,12 @@ describe("ContractService", () => {
     const version = {
       id: "contract-version-1",
       contractId: "contract-1",
+      changeType: "original",
       status: "draft",
       draftRevision: 4,
       amountCents: BigInt(5000000),
+      pricingNature: "fixed_total",
+      amountLimitType: "capped",
       readinessSnapshot: null,
       templateSnapshot: { fieldSchema: [] },
       clauseSnapshot: [],
@@ -812,7 +935,7 @@ describe("ContractService", () => {
       }
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([version]),
+      $queryRaw: submitQueryLocks(version),
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -879,6 +1002,44 @@ describe("ContractService", () => {
     const numbering = {
       allocate: jest.fn().mockResolvedValue("HT-JGXM-2026-材料-001")
     };
+    const frozenRoute = [
+      {
+        name: "合同部主管",
+        mode: "any",
+        roleKeys: ["contract_director"],
+        candidateUserIds: ["director-1"],
+        candidateUserIdsByRole: { contract_director: ["director-1"] }
+      },
+      {
+        name: "物资主管",
+        mode: "any",
+        roleKeys: ["material_director"],
+        candidateUserIds: ["material-1"],
+        candidateUserIdsByRole: { material_director: ["material-1"] }
+      },
+      {
+        name: "项目经理",
+        mode: "any",
+        roleKeys: ["project_manager"],
+        candidateUserIds: ["manager-1"],
+        candidateUserIdsByRole: { project_manager: ["manager-1"] }
+      },
+      {
+        name: "财务主管",
+        mode: "any",
+        roleKeys: ["finance_director"],
+        candidateUserIds: ["finance-1"],
+        candidateUserIdsByRole: { finance_director: ["finance-1"] }
+      },
+      {
+        name: "董事长/总经理",
+        mode: "any",
+        roleKeys: ["chairman", "general_manager"],
+        candidateUserIds: ["chairman-1"],
+        candidateUserIdsByRole: { chairman: ["chairman-1"], general_manager: [] }
+      }
+    ];
+    const routes = { freezeNewContractRoute: jest.fn().mockResolvedValue(frozenRoute) };
     const service = new ContractService(
       prisma,
       audit as never,
@@ -887,7 +1048,8 @@ describe("ContractService", () => {
       undefined,
       undefined,
       readiness as never,
-      numbering as never
+      numbering as never,
+      routes as never
     );
 
     const result = await service.submitApproval(
@@ -897,6 +1059,16 @@ describe("ContractService", () => {
     );
 
     expect(result.status).toBe("in_approval");
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: "Serializable" }
+    );
+    const lockSql = tx.$queryRaw.mock.calls.map(([query]) => query.strings?.join(" ") ?? "");
+    expect(lockSql[0]).toContain('FOR UPDATE OF c');
+    expect(lockSql[1]).toContain('FROM "ContractVersion"');
+    expect(lockSql[2]).toContain('FROM "Project"');
+    expect(lockSql.findIndex((sql) => sql.includes('FROM "CompanyEntity"')))
+      .toBeGreaterThan(2);
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
       where: {
         id: "contract-version-1",
@@ -941,16 +1113,19 @@ describe("ContractService", () => {
         businessId: "contract-version-1",
         status: "in_progress",
         currentNodeIndex: 0,
-        frozenNodes: [
-          {
-            name: "董事长/总经理",
-            mode: "any",
-            roleKeys: ["chairman", "general_manager"]
-          }
-        ],
+        frozenNodes: frozenRoute,
         applicantUserId: "user-contract-staff"
       })
     });
+    expect(routes.freezeNewContractRoute).toHaveBeenCalledWith(
+      tx,
+      {
+        id: "contract-1",
+        projectId: "project-1",
+        contractTypeKey: "material_purchase"
+      },
+      "user-contract-staff"
+    );
     expect(tx.projectOwnerContract.findMany).toHaveBeenCalledWith({
       where: { projectId: "project-1", status: "effective", voidedAt: null },
       select: { amountCents: true }
@@ -1056,6 +1231,114 @@ describe("ContractService", () => {
       { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
       { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
     ]);
+  });
+
+  it("uses new routes only for owned original drafts and refreezes on every resubmission", async () => {
+    const routes = {
+      freezeNewContractRoute: jest.fn().mockResolvedValue([{
+        name: "物资主管",
+        mode: "any",
+        roleKeys: ["material_director"],
+        candidateUserIds: ["material-1"],
+        candidateUserIdsByRole: { material_director: ["material-1"] }
+      }])
+    };
+    const service = new ContractService(
+      {} as PrismaService,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      routes as never
+    );
+    const subject = service as unknown as {
+      approvalNodesForSubmission: (
+        tx: object,
+        version: Record<string, unknown>,
+        contract: Record<string, unknown>,
+        actorUserId: string
+      ) => Promise<Array<{ roleKeys: string[] }>>;
+    };
+    const baseVersion = {
+      amountLimitType: "capped",
+      changeAmountCents: null,
+      originalBaseAmountCents: null,
+      cumulativeIncreaseCents: 0n,
+      cumulativeDecreaseCents: 0n
+    };
+    const baseContract = {
+      id: "contract-1",
+      projectId: "project-1",
+      contractTypeKey: "material_purchase"
+    };
+
+    await expect(subject.approvalNodesForSubmission(
+      {},
+      { ...baseVersion, changeType: "original" },
+      { ...baseContract, ownerUserId: null },
+      "historical-handler"
+    )).resolves.toEqual([{
+      name: "董事长/总经理",
+      mode: "any",
+      roleKeys: ["chairman", "general_manager"]
+    }]);
+    for (const changeType of ["change", "supplement"]) {
+      await subject.approvalNodesForSubmission(
+        {},
+        { ...baseVersion, changeType },
+        { ...baseContract, ownerUserId: "staff-1" },
+        "staff-1"
+      );
+    }
+    expect(routes.freezeNewContractRoute).not.toHaveBeenCalled();
+
+    await subject.approvalNodesForSubmission(
+      {},
+      { ...baseVersion, changeType: "original" },
+      { ...baseContract, ownerUserId: "staff-1" },
+      "staff-1"
+    );
+    await subject.approvalNodesForSubmission(
+      {},
+      { ...baseVersion, changeType: "original" },
+      { ...baseContract, ownerUserId: "staff-1" },
+      "staff-1"
+    );
+    expect(routes.freezeNewContractRoute).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed when an owned original draft has no route provider", async () => {
+    const service = new ContractService({} as PrismaService, audit as never);
+    const subject = service as unknown as {
+      approvalNodesForSubmission: (
+        tx: object,
+        version: Record<string, unknown>,
+        contract: Record<string, unknown>,
+        actorUserId: string
+      ) => Promise<unknown>;
+    };
+
+    await expect(subject.approvalNodesForSubmission(
+      {},
+      {
+        changeType: "original",
+        amountLimitType: "capped",
+        changeAmountCents: null,
+        originalBaseAmountCents: null,
+        cumulativeIncreaseCents: 0n,
+        cumulativeDecreaseCents: 0n
+      },
+      {
+        id: "contract-1",
+        projectId: "project-1",
+        contractTypeKey: "material_purchase",
+        ownerUserId: "staff-1"
+      },
+      "staff-1"
+    )).rejects.toThrow("新合同审批路线服务暂不可用");
   });
 
   it("creates a governed supplement from complete frozen company facts without legacy party_a", async () => {
@@ -1232,7 +1515,7 @@ describe("ContractService", () => {
       }
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([version]),
+      $queryRaw: submitQueryLocks(version),
       projectOwnerContract: {
         findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(10000000) }])
       },
@@ -1312,7 +1595,7 @@ describe("ContractService", () => {
       clauseSnapshot: []
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([version]),
+      $queryRaw: submitQueryLocks(version),
       projectOwnerContract: { findMany: jest.fn() },
       contractVersion: {
         findMany: jest.fn(),
@@ -1364,6 +1647,413 @@ describe("ContractService", () => {
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
   });
 
+  it("submits a zero-amount unlimited framework only after real readiness checks pass", async () => {
+    const version = {
+      id: "contract-version-framework",
+      contractId: "contract-framework",
+      changeType: "original",
+      status: "draft",
+      draftRevision: 1,
+      amountCents: 0n,
+      pricingNature: "framework",
+      amountLimitType: "unlimited",
+      amountSource: "bill_sum",
+      amountAdjustmentReason: null,
+      invoiceType: "vat_special",
+      taxMode: "single_rate",
+      defaultTaxRatePercent: new Prisma.Decimal("13"),
+      taxFactStatus: "draft",
+      taxFactSource: "contract_document",
+      taxFactRevision: 2,
+      taxFactsFrozenAt: null,
+      layoutTemplateVersionId: "layout-1",
+      readinessSnapshot: null,
+      templateSnapshot: {
+        fieldSchema: [],
+        billSchema: [{
+          key: "main_bill",
+          name: "劳务范围清单",
+          amountRole: "included",
+          pricingMode: "tax_inclusive",
+          quantityScale: 2,
+          unitPriceScale: 2,
+          required: true,
+          columns: [{ key: "item_name", label: "工作内容", type: "text", required: true }]
+        }],
+        clauseSchema: [{
+          key: "payment",
+          title: "付款条款",
+          numberingMode: "automatic",
+          required: true,
+          content: {}
+        }],
+        attachmentSchema: [],
+        validationSchema: [{
+          key: "payment_basis",
+          level: "block",
+          targetClauseKey: "payment",
+          requiredPhrases: ["结算", "付款"],
+          message: "付款条款缺少结算付款依据"
+        }]
+      },
+      clauseSnapshot: [{
+        key: "payment",
+        title: "付款条款",
+        numberingMode: "automatic",
+        required: true,
+        content: { text: "按实际发生量结算后付款" }
+      }],
+      draftData: {
+        companyEntitySelection: {
+          id: "entity-1",
+          versionId: "entity-version-1",
+          versionNo: 1,
+          name: "我方公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: null
+        }
+      }
+    };
+    const tx = {
+      $queryRaw: submitQueryLocks(version),
+      contractVersion: {
+        findUnique: jest.fn().mockImplementation(async () => version),
+        findMany: jest.fn(),
+        updateMany: jest.fn().mockImplementation(async ({ data }: {
+          data: Record<string, unknown>;
+        }) => {
+          if (data["pricingNature"] !== undefined) {
+            Object.assign(version, {
+              draftData: data["draftData"],
+              clauseSnapshot: data["clauseSnapshot"],
+              pricingNature: data["pricingNature"],
+              amountSource: data["amountSource"],
+              amountCents: data["amountCents"],
+              amountAdjustmentReason: data["amountAdjustmentReason"],
+              invoiceType: data["invoiceType"],
+              taxMode: data["taxMode"],
+              defaultTaxRatePercent: data["defaultTaxRatePercent"],
+              taxFactStatus: data["taxFactStatus"],
+              taxFactSource: data["taxFactSource"],
+              taxFactRevision: version.taxFactRevision + 1,
+              taxFactsFrozenAt: data["taxFactsFrozenAt"],
+              layoutTemplateVersionId: data["layoutTemplateVersionId"],
+              draftRevision: version.draftRevision + 1
+            });
+          }
+          return { count: 1 };
+        })
+      },
+      projectOwnerContract: { findMany: jest.fn() },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-framework",
+          ownerUserId: "staff-1",
+          voidedAt: null,
+          code: null,
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          companyEntityId: "entity-1"
+        }),
+        findMany: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 1
+        })
+      },
+      companyEntityVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-version-1",
+          name: "我方公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: null
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "bill-1",
+          billKey: "main_bill",
+          amountRole: "included",
+          taxInclusiveAmountCents: 0n
+        }])
+      },
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([{
+          contractBillId: "bill-1",
+          itemName: "零星劳务",
+          unit: "项",
+          quantity: null,
+          unitPrice: new Prisma.Decimal("1000"),
+          taxRate: new Prisma.Decimal("13"),
+          taxRateSource: "version_default",
+          pricingFactStatus: "confirmed",
+          taxInclusiveAmountCents: null,
+          taxExclusiveAmountCents: null,
+          taxAmountCents: null,
+          customData: { item_name: "零星劳务" }
+        }])
+      },
+      contractPartySnapshot: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "party-a", roleKey: "party_a" },
+          { id: "party-b", roleKey: "party_b" }
+        ])
+      },
+      contractLayoutTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "layout-1",
+          layoutTemplateId: "layout-template-1",
+          status: "published"
+        })
+      },
+      contractLayoutTemplate: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "layout-template-1",
+          contractTypeKey: "material_purchase"
+        })
+      },
+      contractGeneratedDocument: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue([{
+          id: "document-1",
+          purpose: "internal_review",
+          status: "success",
+          sourceRevision: 2,
+          layoutTemplateVersionId: "layout-1"
+        }])
+      },
+      contractNegotiationRound: { findMany: jest.fn().mockResolvedValue([]) },
+      contractOfflineRevision: { findMany: jest.fn().mockResolvedValue([]) },
+      contractDocumentComparison: { findMany: jest.fn().mockResolvedValue([]) },
+      contractDocumentDifference: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }),
+        update: jest.fn().mockResolvedValue({ id: "terms-1" })
+      },
+      paymentTermsStage: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      approvalInstance: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const readiness = new ContractReadinessService();
+    const numbering = { allocate: jest.fn().mockResolvedValue("HT-FRAMEWORK-001") };
+    const frozenRoute = [{
+      name: "董事长/总经理",
+      mode: "any",
+      roleKeys: ["chairman", "general_manager"],
+      candidateUserIds: ["chairman-1"],
+      candidateUserIdsByRole: { chairman: ["chairman-1"], general_manager: [] }
+    }];
+    const routes = { freezeNewContractRoute: jest.fn().mockResolvedValue(frozenRoute) };
+    const workbench = new ContractWorkbenchService(
+      prisma as never,
+      audit as never,
+      readiness
+    );
+    const service = new ContractService(
+      prisma as never,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      readiness as never,
+      numbering as never,
+      routes as never
+    );
+
+    await workbench.saveDraft("contract-version-framework", "staff-1", {
+      expectedRevision: 1,
+      draftData: {},
+      clauses: version.clauseSnapshot,
+      pricingNature: "framework",
+      amountSource: "bill_sum",
+      taxFacts: {
+        invoiceType: "vat_special",
+        taxMode: "single_rate",
+        defaultTaxRatePercent: "13",
+        source: "contract_document"
+      },
+      layoutTemplateVersionId: "layout-1",
+      paymentTermsOriginalText: "按实际发生量结算后付款",
+      paymentStages: [{
+        name: "进度款",
+        basis: "current_settlement",
+        ratioBps: 10000,
+        triggerEvent: "结算归档确认生效",
+        dueDays: 0,
+        requiresInvoice: true,
+        allowsInstallments: true,
+        originalText: "按实际发生量结算后付款"
+      }]
+    });
+    expect(version).toMatchObject({
+      pricingNature: "framework",
+      amountLimitType: "unlimited",
+      amountSource: "bill_sum",
+      amountCents: 0n,
+      draftRevision: 2,
+      invoiceType: "vat_special",
+      defaultTaxRatePercent: new Prisma.Decimal("13")
+    });
+    expect(tx.paymentTermsVersion.update).toHaveBeenCalled();
+    expect(tx.paymentTermsStage.createMany).toHaveBeenCalled();
+
+    const invalidReadiness = await readiness.check(
+      {
+        ...tx,
+        contractBillRow: {
+          findMany: jest.fn().mockResolvedValue([{
+            contractBillId: "bill-1",
+            itemName: "",
+            unit: "项",
+            quantity: null,
+            unitPrice: null,
+            taxRate: null,
+            taxRateSource: "version_default",
+            pricingFactStatus: "draft",
+            taxInclusiveAmountCents: null,
+            taxExclusiveAmountCents: null,
+            taxAmountCents: null,
+            customData: {}
+          }])
+        }
+      } as never,
+      { ...version, defaultTaxRatePercent: null, clauseSnapshot: [] } as never,
+      { contractTypeKey: "material_purchase" },
+      true
+    );
+    expect(invalidReadiness.blocking.map((item) => item.key)).toEqual(
+      expect.arrayContaining([
+        "clause.payment",
+        "payment_basis",
+        "bill.main_bill.row.0.item_name",
+        "bill.main_bill.row.0.unit_price",
+        "bill.main_bill.row.0.pricing_fact",
+        "tax.default_rate"
+      ])
+    );
+
+    const savedReadiness = await readiness.check(
+      tx as never,
+      version as never,
+      { contractTypeKey: "material_purchase" },
+      true
+    );
+    expect(savedReadiness.blocking).toEqual([]);
+
+    await expect(service.submitApproval(
+      "contract-version-framework",
+      "staff-1",
+      { numberRuleId: "rule-1" }
+    )).resolves.toMatchObject({ status: "in_approval", amountCents: "0" });
+    expect(tx.projectOwnerContract.findMany).not.toHaveBeenCalled();
+    expect(tx.contract.findMany).not.toHaveBeenCalled();
+    expect(routes.freezeNewContractRoute).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ id: "contract-framework", projectId: "project-1" }),
+      "staff-1"
+    );
+    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ frozenNodes: frozenRoute })
+    });
+  });
+
+  it("keeps numbering, status, instance and audit unwritten when route freezing fails", async () => {
+    const version = {
+      id: "version-route-failure",
+      contractId: "contract-1",
+      changeType: "original",
+      status: "draft",
+      draftRevision: 1,
+      amountCents: 0n,
+      pricingNature: "framework",
+      amountLimitType: "unlimited",
+      readinessSnapshot: null,
+      templateSnapshot: {},
+      clauseSnapshot: [],
+      draftData: { companyEntitySelection: { id: "entity-1", versionNo: 1 } }
+    };
+    const tx = {
+      $queryRaw: submitQueryLocks(version),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          ownerUserId: "staff-1",
+          companyEntityId: "entity-1",
+          code: null,
+          voidedAt: null
+        }),
+        updateMany: jest.fn()
+      },
+      contractVersion: { updateMany: jest.fn() },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 1
+        })
+      },
+      companyEntityVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-version-1",
+          name: "我方公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: null
+        })
+      },
+      approvalInstance: { create: jest.fn() }
+    };
+    const readiness = {
+      check: jest.fn().mockResolvedValue({ blocking: [], warnings: [], checkedRevision: 1 }),
+      freeze: jest.fn().mockResolvedValue({ draftRevision: 1 })
+    };
+    const numbering = { allocate: jest.fn() };
+    const routes = {
+      freezeNewContractRoute: jest.fn().mockRejectedValue(
+        new BadRequestException("物资主管没有可审批本合同的人员，请先完善岗位配置")
+      )
+    };
+    const service = new ContractService(
+      { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) } as never,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      readiness as never,
+      numbering as never,
+      routes as never
+    );
+
+    await expect(service.submitApproval(
+      "version-route-failure",
+      "staff-1",
+      { numberRuleId: "rule-1" }
+    )).rejects.toThrow("物资主管没有可审批本合同的人员");
+    expect(numbering.allocate).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("continues approval submission when effective owner contract quota is enough", async () => {
     const version = {
       id: "contract-version-1",
@@ -1386,7 +2076,7 @@ describe("ContractService", () => {
       }
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([version]),
+      $queryRaw: submitQueryLocks(version),
       projectOwnerContract: {
         findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(20000000) }])
       },
@@ -1489,7 +2179,7 @@ describe("ContractService", () => {
       clauseSnapshot: []
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([version]),
+      $queryRaw: submitQueryLocks(version),
       projectOwnerContract: {
         findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(10000000) }])
       },
@@ -1590,7 +2280,7 @@ describe("ContractService", () => {
       clauseSnapshot: []
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([version]),
+      $queryRaw: submitQueryLocks(version),
       projectOwnerContract: {
         findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(10000000) }])
       },
@@ -1684,7 +2374,7 @@ describe("ContractService", () => {
       clauseSnapshot: []
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([version]),
+      $queryRaw: submitQueryLocks(version),
       projectOwnerContract: {
         findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(10000000) }])
       },
@@ -1779,7 +2469,7 @@ describe("ContractService", () => {
       clauseSnapshot: []
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([version]),
+      $queryRaw: submitQueryLocks(version),
       contractVersion: {
         updateMany: jest.fn()
       },
@@ -1840,14 +2530,13 @@ describe("ContractService", () => {
   });
 
   it("requires a numbering rule for an owned workbench contract", async () => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "draft"
+    };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          id: "contract-version-1",
-          contractId: "contract-1",
-          status: "draft"
-        }
-      ]),
+      $queryRaw: submitQueryLocks(version),
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1882,14 +2571,13 @@ describe("ContractService", () => {
       "只有合同经办人可以提交该合同审批"
     ]
   ])("rejects %s contract approval submission", async (_case, contract, message) => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "draft"
+    };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          id: "contract-version-1",
-          contractId: "contract-1",
-          status: "draft"
-        }
-      ]),
+      $queryRaw: submitQueryLocks(version),
       contractVersion: {
         updateMany: jest.fn()
       },
@@ -1913,19 +2601,18 @@ describe("ContractService", () => {
   });
 
   it("rejects a submit status CAS conflict without creating approval", async () => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 1,
+      amountCents: BigInt(5000000),
+      readinessSnapshot: null,
+      templateSnapshot: {},
+      clauseSnapshot: []
+    };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          id: "contract-version-1",
-          contractId: "contract-1",
-          status: "draft",
-          draftRevision: 1,
-          amountCents: BigInt(5000000),
-          readinessSnapshot: null,
-          templateSnapshot: {},
-          clauseSnapshot: []
-        }
-      ]),
+      $queryRaw: submitQueryLocks(version),
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
@@ -1962,19 +2649,18 @@ describe("ContractService", () => {
   });
 
   it("rejects a submit parent CAS conflict without creating approval", async () => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 1,
+      amountCents: BigInt(5000000),
+      readinessSnapshot: null,
+      templateSnapshot: {},
+      clauseSnapshot: []
+    };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          id: "contract-version-1",
-          contractId: "contract-1",
-          status: "draft",
-          draftRevision: 1,
-          amountCents: BigInt(5000000),
-          readinessSnapshot: null,
-          templateSnapshot: {},
-          clauseSnapshot: []
-        }
-      ]),
+      $queryRaw: submitQueryLocks(version),
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
