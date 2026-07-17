@@ -1759,20 +1759,6 @@ export async function downloadSettlementLatestApprovalPdf(
   saveBlob(blob, fileName);
 }
 
-export interface CompanyEntityReadModel {
-  id: string;
-  name: string;
-  unifiedSocialCreditCode: string | null;
-}
-
-export function fetchCompanyEntities() {
-  return readJson<CompanyEntityReadModel[]>("/company-entities");
-}
-
-export function createCompanyEntity(body: { name: string; unifiedSocialCreditCode?: string }) {
-  return postJson<CompanyEntityReadModel>("/company-entities", body);
-}
-
 // 个人签名图：预上传后审批单渲染时复用。
 export function uploadSignature(file: Blob, fileName: string) {
   const form = new FormData();

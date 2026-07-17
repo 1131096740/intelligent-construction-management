@@ -13,6 +13,7 @@ import {
   fundsOverviewRoleKeys,
   historicalTakeoverRoleKeys,
   organizationAdminRoleKeys,
+  companyEntityReaderRoleKeys,
   settlementTemplateAdminRoleKeys,
   settlementMaintenanceRoleKeys,
   visibleAdminNavigationGroups,
@@ -109,6 +110,7 @@ describe("web admin routes", () => {
       "资料库",
       "审批中心",
       "审计日志",
+      "我方公司主体",
       "合同模板库",
       "结算模板库",
       "合作单位档案",
@@ -190,6 +192,7 @@ describe("web admin routes", () => {
       { label: "资料库", path: "/资料库" },
       { label: "委托台账", path: "/委托台账" },
       { label: "审计日志", path: "/审计日志" },
+      { label: "我方公司主体", path: "/我方公司主体" },
       { label: "组织权限", path: "/组织权限" },
       { label: "系统配置", path: "/系统配置" }
     ]);
@@ -433,6 +436,43 @@ describe("web admin routes", () => {
       path: "/首页"
     });
     expect(resolveRouteAccess(routeAccessInput, { isAuthenticated: true, roleKeys: [] })).toEqual({ path: "/首页" });
+  });
+
+  it("exposes the company entity ledger only to approved company-global readers", () => {
+    const route = childRoute("我方公司主体");
+    const input = { meta: route?.meta ?? {}, fullPath: "/我方公司主体" };
+
+    expect(String(route?.component)).toContain("CompanyEntityListPage.vue");
+    expect(route?.meta).toMatchObject({
+      title: "我方公司主体",
+      requiredGlobalRoleKeys: companyEntityReaderRoleKeys
+    });
+    for (const role of companyEntityReaderRoleKeys) {
+      expect(visibleAdminNavigationItems([role], [role]).map((item) => item.path)).toContain(
+        "/我方公司主体"
+      );
+      expect(resolveRouteAccess(input, {
+        isAuthenticated: true,
+        roleKeys: [role],
+        globalRoleKeys: [role]
+      })).toBe(true);
+    }
+    expect(visibleAdminNavigationItems(["contract_staff"], []).map((item) => item.path)).not.toContain(
+      "/我方公司主体"
+    );
+    expect(visibleAdminNavigationItems(["super_admin"], ["super_admin"]).map((item) => item.path)).not.toContain(
+      "/我方公司主体"
+    );
+    expect(resolveRouteAccess(input, {
+      isAuthenticated: true,
+      roleKeys: ["contract_staff"],
+      globalRoleKeys: []
+    })).toEqual({ path: "/首页" });
+    expect(resolveRouteAccess(input, {
+      isAuthenticated: true,
+      roleKeys: ["super_admin"],
+      globalRoleKeys: ["super_admin"]
+    })).toEqual({ path: "/首页" });
   });
 
   it("exposes settlement-template governance only to global contract directors or super admins", () => {

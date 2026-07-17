@@ -150,6 +150,7 @@ const responsiveGovernedFiles = new Map([
   ["src/pages/audit/AuditLogPage.vue", "ledger"],
   ["src/pages/business-parties/BusinessPartyEditorPage.vue", "flow"],
   ["src/pages/business-parties/BusinessPartyListPage.vue", "ledger"],
+  ["src/pages/company-entities/CompanyEntityListPage.vue", "ledger"],
   ["src/pages/delegations/DelegationListPage.vue", "ledger"],
   ["src/pages/organization/OrganizationManagementPage.vue", "workspace"],
   ["src/pages/projects/ProjectExpenseApprovalDetailPage.vue", "detail"],

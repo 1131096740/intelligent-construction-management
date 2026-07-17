@@ -1,6 +1,7 @@
 import type { RouteRecordRaw } from "vue-router";
 import {
   ACTION_REQUIRED_ROLES,
+  COMPANY_ENTITY_READER_ROLES,
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
   type RoleKey
 } from "@jiangkong/shared-domain";
@@ -21,6 +22,7 @@ export const fundsOverviewRoleKeys = [
 
 export const historicalTakeoverRoleKeys =
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS;
+export const companyEntityReaderRoleKeys = COMPANY_ENTITY_READER_ROLES;
 export const contractMaintenanceRoleKeys =
   ACTION_REQUIRED_ROLES["contract.create"];
 export const settlementMaintenanceRoleKeys =
@@ -122,6 +124,11 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
       { label: "资料库", path: "/资料库" },
       { label: "委托台账", path: "/委托台账" },
       { label: "审计日志", path: "/审计日志" },
+      {
+        label: "我方公司主体",
+        path: "/我方公司主体",
+        requiredGlobalRoleKeys: companyEntityReaderRoleKeys
+      },
       {
         label: "组织权限",
         path: "/组织权限",
@@ -346,6 +353,14 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "审计日志",
         component: () => import("../pages/audit/AuditLogPage.vue")
+      },
+      {
+        path: "我方公司主体",
+        component: () => import("../pages/company-entities/CompanyEntityListPage.vue"),
+        meta: {
+          requiredGlobalRoleKeys: companyEntityReaderRoleKeys,
+          title: "我方公司主体"
+        }
       },
       {
         path: "组织权限",
