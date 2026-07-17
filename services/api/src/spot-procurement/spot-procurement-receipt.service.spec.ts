@@ -692,6 +692,9 @@ describe("SpotProcurementReceiptService workflow", () => {
         templateKey: "spot_procurement_receipt_v1"
       })
     };
+    const closure = {
+      recalculateAndClose: jest.fn().mockResolvedValue({ closed: false })
+    };
     const service = new SpotProcurementReceiptService(
       prisma as never,
       new AuditService(),
@@ -699,7 +702,8 @@ describe("SpotProcurementReceiptService workflow", () => {
       files as never,
       watermark as never,
       access as never,
-      receiptPdfs as never
+      receiptPdfs as never,
+      closure as never
     );
 
     return {

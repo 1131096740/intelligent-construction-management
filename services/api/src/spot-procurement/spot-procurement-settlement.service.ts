@@ -24,6 +24,7 @@ import {
   type RecordProcurementRefundDto
 } from "./dto/record-procurement-refund.dto";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
+import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
 import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
@@ -174,7 +175,8 @@ export class SpotProcurementSettlementService {
     private readonly balances: SpotProcurementBalanceService,
     private readonly auth: AuthService,
     private readonly files: FileService,
-    private readonly approvalForms: ApprovalFormService
+    private readonly approvalForms: ApprovalFormService,
+    private readonly closure: SpotProcurementClosureService
   ) {}
 
   async createOrConfirmDiscrepancy(
@@ -497,6 +499,12 @@ export class SpotProcurementSettlementService {
             settlement
           }
         });
+        await this.closure.recalculateAndClose(
+          tx,
+          context.procurement.id,
+          "discrepancy.confirm",
+          actorUserId
+        );
         return {
           discrepancy: discrepancyReadModel(confirmed),
           settlement,
@@ -725,6 +733,12 @@ export class SpotProcurementSettlementService {
             settlement: refundResult.settlement
           }
         });
+        await this.closure.recalculateAndClose(
+          tx,
+          context.procurement.id,
+          "refund.record",
+          actorUserId
+        );
         return refundResult;
       });
       await this.refreshPaymentForms(
@@ -950,6 +964,12 @@ export class SpotProcurementSettlementService {
             settlement: creditResult.settlement
           }
         });
+        await this.closure.recalculateAndClose(
+          tx,
+          context.procurement.id,
+          "supplier_balance.credit",
+          actorUserId
+        );
         return creditResult;
       })
     );
@@ -1168,6 +1188,12 @@ export class SpotProcurementSettlementService {
             statusAfter
           }
         });
+        await this.closure.recalculateAndClose(
+          tx,
+          version.procurementId,
+          "supplier_balance.execute",
+          actorUserId
+        );
         return this.balanceExecutionResult(
           { ...paymentAfter, status: statusAfter },
           executed.amountCents,

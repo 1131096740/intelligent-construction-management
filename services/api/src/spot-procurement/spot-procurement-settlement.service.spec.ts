@@ -519,6 +519,9 @@ function createHarness(options?: {
       .fn()
       .mockResolvedValue(undefined)
   };
+  const closure = {
+    recalculateAndClose: jest.fn().mockResolvedValue({ closed: false })
+  };
   const service = new SpotProcurementSettlementService(
     prisma as never,
     audit as never,
@@ -526,7 +529,8 @@ function createHarness(options?: {
     balances as never,
     auth as never,
     files as never,
-    approvalForms as never
+    approvalForms as never,
+    closure as never
   );
 
   return {

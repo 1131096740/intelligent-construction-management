@@ -23,6 +23,7 @@ import {
   isUnicodeBlank
 } from "../validation/unicode-whitespace";
 import { SpotProcurementPilotService } from "../spot-procurement/spot-procurement-pilot.service";
+import { SpotProcurementClosureService } from "../spot-procurement/spot-procurement-closure.service";
 import type { CreateInvoiceExceptionConfirmationDto } from "./dto/create-invoice-exception-confirmation.dto";
 import type { CreateNoInvoiceConfirmationDto } from "./dto/create-no-invoice-confirmation.dto";
 import type {
@@ -231,7 +232,8 @@ export class InvoiceLedgerService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly files: FileService,
-    private readonly pilot: SpotProcurementPilotService
+    private readonly pilot: SpotProcurementPilotService,
+    private readonly closure: SpotProcurementClosureService
   ) {}
 
   async createProcurementInvoice(
@@ -487,6 +489,12 @@ export class InvoiceLedgerService {
             orderBy: [{ lineNo: "asc" }, { id: "asc" }]
           })
         };
+        await this.closure.recalculateAndClose(
+          tx,
+          procurementId,
+          "invoice.allocate",
+          actorUserId
+        );
         return {
           invoice: this.invoiceReadModel(refreshed),
           allocations: allocations.map((allocation) => ({
@@ -625,6 +633,12 @@ export class InvoiceLedgerService {
             explicitConfirmation: true
           }
         });
+        await this.closure.recalculateAndClose(
+          tx,
+          context.procurement.id,
+          "invoice.allocation.reverse",
+          actorUserId
+        );
         return {
           allocationId: allocation.id,
           status: "reversed",
@@ -1908,6 +1922,12 @@ export class InvoiceLedgerService {
               operation === "reverse" ? true : undefined
           }
         });
+        await this.closure.recalculateAndClose(
+          tx,
+          procurementId,
+          `ticket.${kind}.${operation}`,
+          actorUserId
+        );
         return {
           confirmationId: confirmation.id,
           status:

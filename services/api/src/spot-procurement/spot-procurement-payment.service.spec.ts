@@ -244,6 +244,9 @@ function harness() {
   const approvalForms = {
     tryRefreshLatestForBusiness: jest.fn().mockResolvedValue(undefined)
   };
+  const closure = {
+    recalculateAndClose: jest.fn().mockResolvedValue({ closed: false })
+  };
   const service = Reflect.construct(SpotProcurementPaymentService, [
     prisma,
     audit,
@@ -251,7 +254,8 @@ function harness() {
     balance,
     auth,
     files,
-    approvalForms
+    approvalForms,
+    closure
   ]) as SpotProcurementPaymentService;
   return {
     service,

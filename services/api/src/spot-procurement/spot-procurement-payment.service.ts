@@ -35,6 +35,7 @@ import {
   type UpdateSpotProcurementPaymentDraftDto
 } from "./dto/update-spot-procurement-payment-draft.dto";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
+import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
 import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
@@ -212,7 +213,8 @@ export class SpotProcurementPaymentService {
     private readonly balances: SpotProcurementBalanceService,
     private readonly auth: AuthService,
     private readonly files: FileService,
-    private readonly approvalForms: ApprovalFormService
+    private readonly approvalForms: ApprovalFormService,
+    private readonly closure: SpotProcurementClosureService
   ) {}
 
   async recordExecution(
@@ -546,6 +548,12 @@ export class SpotProcurementPaymentService {
               cashPoolAuditFacts(cashPoolAfter)
           }
         });
+        await this.closure.recalculateAndClose(
+          tx,
+          version.procurementId,
+          "payment.execution.record",
+          actorUserId
+        );
         return this.executionReadModel(
           execution,
           paymentAfter

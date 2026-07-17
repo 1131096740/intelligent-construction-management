@@ -733,11 +733,15 @@ function createHarness(options?: {
     )
   };
   const pilot = { assertEnabled: jest.fn() };
+  const closure = {
+    recalculateAndClose: jest.fn().mockResolvedValue({ closed: false })
+  };
   const service = new InvoiceLedgerService(
     prisma as never,
     audit as never,
     files as never,
-    pilot as never
+    pilot as never,
+    closure as never
   );
 
   return {

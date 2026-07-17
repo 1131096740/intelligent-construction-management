@@ -9,6 +9,7 @@ import { ReceiptWatermarkService } from "./receipt-watermark.service";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
 import { SpotProcurementAccessModule } from "./spot-procurement-access.module";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
+import { SpotProcurementClosureModule } from "./spot-procurement-closure.module";
 import { SpotProcurementPaymentController } from "./spot-procurement-payment.controller";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
@@ -27,6 +28,7 @@ import { SpotProcurementController } from "./spot-procurement.controller";
     AuthModule,
     FileModule,
     InvoiceLedgerModule,
+    SpotProcurementClosureModule,
     SpotProcurementAccessModule
   ],
   controllers: [

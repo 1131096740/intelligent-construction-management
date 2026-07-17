@@ -34,6 +34,7 @@ import {
   type ReviewReceiptDto
 } from "./dto/review-receipt.dto";
 import type { RevokeReceiptReviewDto } from "./dto/revoke-receipt-review.dto";
+import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
 import {
   isSpotProcurementReceiptQuantity,
   type UpdateReceiptDraftDto,
@@ -295,7 +296,8 @@ export class SpotProcurementReceiptService {
     private readonly files: FileService,
     private readonly watermark: ReceiptWatermarkService,
     private readonly access: SpotProcurementAccessService,
-    private readonly receiptPdfs: SpotProcurementReceiptPdfService
+    private readonly receiptPdfs: SpotProcurementReceiptPdfService,
+    private readonly closure: SpotProcurementClosureService
   ) {}
 
   async getReceipt(procurementId: string, actorUserId: string) {
@@ -1556,6 +1558,12 @@ export class SpotProcurementReceiptService {
               context.receipt.submissionDelegationId
           }
         });
+        await this.closure.recalculateAndClose(
+          tx,
+          procurementId,
+          `receipt.review.${input.decision}`,
+          actorUserId
+        );
         return {
           receiptId: context.receipt.id,
           procurementId,
@@ -1748,6 +1756,12 @@ export class SpotProcurementReceiptService {
             explicitConfirmation: true
           }
         });
+        await this.closure.recalculateAndClose(
+          tx,
+          procurementId,
+          "receipt.review.revoked",
+          actorUserId
+        );
         return {
           receiptId: context.receipt.id,
           procurementId,
