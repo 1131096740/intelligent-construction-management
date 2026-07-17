@@ -4,9 +4,6 @@ const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const {
-  withGuaranteedCleanup
-} = require("../dist/database/money-bigint-live-verification");
-const {
   createCommandRuntime,
   createRunnerCleanup,
   runInterruption
@@ -131,6 +128,9 @@ function createSpotProcurementRunnerCleanup({
 }
 
 async function main() {
+  const {
+    withGuaranteedCleanup
+  } = require("../dist/database/money-bigint-live-verification");
   const databasePort = await freePort();
   const suffix = `${Date.now()}-${process.pid}`;
   const containerName = `jiangkong-spot-concurrency-${suffix}`;
