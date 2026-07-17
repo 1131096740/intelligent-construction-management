@@ -166,6 +166,9 @@ describe("FileService", () => {
       spotProcurementRefund: {
         findMany: jest.fn().mockResolvedValue([])
       },
+      spotProcurementPaymentInvoice: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
       noInvoiceConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
       invoiceExceptionConfirmation: {
@@ -208,6 +211,9 @@ describe("FileService", () => {
         findFirst: jest.fn().mockResolvedValue({ id: "photo-1" })
       },
       spotProcurementRefund: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      spotProcurementPaymentInvoice: {
         findMany: jest.fn().mockResolvedValue([])
       },
       invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
@@ -256,6 +262,9 @@ describe("FileService", () => {
       spotProcurementRefund: {
         findMany: jest.fn().mockResolvedValue([{ id: "refund-1" }])
       },
+      spotProcurementPaymentInvoice: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
       noInvoiceConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
       invoiceExceptionConfirmation: {
@@ -297,6 +306,9 @@ describe("FileService", () => {
       },
       spotProcurementRefund: {
         findMany: jest.fn().mockResolvedValue([{ id: "refund-1" }])
+      },
+      spotProcurementPaymentInvoice: {
+        findMany: jest.fn().mockResolvedValue([])
       },
       invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
       noInvoiceConfirmation: { findMany: jest.fn().mockResolvedValue([]) },
@@ -351,6 +363,9 @@ describe("FileService", () => {
           findFirst: jest.fn().mockResolvedValue(null)
         },
         spotProcurementRefund: {
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        spotProcurementPaymentInvoice: {
           findMany: jest.fn().mockResolvedValue([])
         },
         invoiceRecord: {
@@ -411,6 +426,9 @@ describe("FileService", () => {
           findFirst: jest.fn().mockResolvedValue(null)
         },
         spotProcurementRefund: {
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        spotProcurementPaymentInvoice: {
           findMany: jest.fn().mockResolvedValue([])
         },
         invoiceRecord: {

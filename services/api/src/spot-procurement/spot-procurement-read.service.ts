@@ -36,6 +36,7 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
 import { InvoiceLedgerService } from "../invoice-ledger/invoice-ledger.service";
 import { SpotProcurementAccessService } from "./spot-procurement-access.service";
+import { SpotProcurementInvoiceService } from "./spot-procurement-invoice.service";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
@@ -151,7 +152,8 @@ export class SpotProcurementReadService {
     private readonly projectVisibility: ProjectVisibilityService,
     private readonly access: SpotProcurementAccessService,
     private readonly pilot: SpotProcurementPilotService,
-    private readonly invoiceLedger?: InvoiceLedgerService
+    private readonly invoiceLedger?: InvoiceLedgerService,
+    private readonly paymentInvoices?: SpotProcurementInvoiceService
   ) {}
 
   async capabilities(actorUserId: string, projectId: string) {
@@ -702,15 +704,22 @@ export class SpotProcurementReadService {
         payment.paidAmountCents === actualPaidAmountCents,
       voucherFactConsistent: voucher.status !== "anomaly"
     });
-    const invoiceCoverageByPaymentId = this.invoiceLedger
-      ? await this.invoiceLedger.coverageForPaymentIds([payment.id])
-      : new Map();
+    const usesRealPaymentForm = Boolean(payment.paymentType);
+    const invoiceCoverageByPaymentId =
+      !usesRealPaymentForm && this.invoiceLedger
+        ? await this.invoiceLedger.coverageForPaymentIds([payment.id])
+        : new Map();
     const invoiceCoverage =
       invoiceCoverageByPaymentId.get(payment.id) ??
       invoiceCoverageUnavailable();
-    const invoiceLedgerDetail = this.invoiceLedger
-      ? await this.invoiceLedger.detailForPayment(payment.id)
-      : invoiceLedgerDetailUnavailable();
+    const invoiceLedgerDetail =
+      !usesRealPaymentForm && this.invoiceLedger
+        ? await this.invoiceLedger.detailForPayment(payment.id)
+        : invoiceLedgerDetailUnavailable();
+    const paymentInvoice =
+      usesRealPaymentForm && this.paymentInvoices
+        ? await this.paymentInvoices.summary(payment.id)
+        : null;
 
     return {
       payment: {
@@ -845,6 +854,7 @@ export class SpotProcurementReadService {
       ),
       invoiceCoverage,
       invoiceLedger: invoiceLedgerDetail,
+      paymentInvoice,
       receipt: futureUnavailable(),
       paymentPdf: {
         available: approval?.status === "approved",
@@ -859,7 +869,9 @@ export class SpotProcurementReadService {
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: [
         ...disabledActionReasons(availableActions),
-        "发票覆盖、无票确认和采购自动办结将在代码阶段 B 开放"
+        usesRealPaymentForm
+          ? "历史结构化票据、无票确认和采购自动办结将在代码阶段 B 开放"
+          : "发票覆盖、无票确认和采购自动办结将在代码阶段 B 开放"
       ]
     };
   }

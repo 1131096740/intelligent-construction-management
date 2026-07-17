@@ -28,6 +28,7 @@ type LineSeed = {
 type PaymentSeed = {
   id: string;
   settledCents: bigint;
+  paymentType?: string | null;
   invalidatedAt?: Date | null;
 };
 
@@ -320,6 +321,7 @@ function createHarness(options?: {
     projectId: procurement.projectId,
     procurementId: procurement.id,
     procurementVersionId: version.id,
+    paymentType: payment.paymentType ?? null,
     invalidatedAt: payment.invalidatedAt ?? null
   }));
   const paymentExecutions = paymentSeeds
@@ -762,6 +764,31 @@ function createHarness(options?: {
 }
 
 describe("InvoiceLedgerService invoice facts and allocations", () => {
+  it("rejects structured invoice writes for the real payment form before any file or allocation write", async () => {
+    const harness = createHarness({
+      payments: [
+        {
+          id: "payment-1",
+          settledCents: 6_000n,
+          paymentType: "company_direct"
+        }
+      ]
+    });
+
+    await expect(
+      harness.service.createProcurementInvoice(
+        "procurement-1",
+        ACTORS.handler,
+        createInvoiceInput()
+      )
+    ).rejects.toThrow(
+      "零星采购真实表单不支持结构化票据、无票确认或票据异常，请改为追加付款级发票附件"
+    );
+    expect(harness.invoiceRecords).toHaveLength(0);
+    expect(harness.allocations).toHaveLength(0);
+    expect(harness.files.assertFileHasNoBusinessBinding).not.toHaveBeenCalled();
+  });
+
   it.each([
     [
       "unsupported type",

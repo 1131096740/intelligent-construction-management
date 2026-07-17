@@ -507,6 +507,48 @@ describe("SpotProcurementReadService", () => {
     });
   });
 
+  it("keeps real-form payment invoices separate from the retired structured invoice ledger", async () => {
+    const fixture = buildFixture();
+    fixture.prisma.spotProcurementPayment.findUnique.mockResolvedValue(
+      paymentRow({
+        paymentType: "company_direct",
+        factsFrozenAt: now
+      })
+    );
+    const invoiceLedger = {
+      coverageForPaymentIds: jest.fn(),
+      detailForPayment: jest.fn()
+    };
+    const paymentInvoices = {
+      summary: jest.fn().mockResolvedValue({
+        status: "uploaded",
+        statusLabel: "已上传发票",
+        activeCount: 1,
+        invoices: [{ id: "spot-invoice-1", fileId: "invoice-file-1" }]
+      })
+    };
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never,
+      invoiceLedger as never,
+      paymentInvoices as never
+    );
+
+    const result = await service.getPayment("payment-1", "finance-1");
+
+    expect(result.paymentInvoice).toEqual({
+      status: "uploaded",
+      statusLabel: "已上传发票",
+      activeCount: 1,
+      invoices: [{ id: "spot-invoice-1", fileId: "invoice-file-1" }]
+    });
+    expect(invoiceLedger.coverageForPaymentIds).not.toHaveBeenCalled();
+    expect(invoiceLedger.detailForPayment).not.toHaveBeenCalled();
+    expect(result.invoiceLedger).toMatchObject({ available: false });
+  });
+
   it("offers a real revision action for an owner after rejection without exposing false draft editing", async () => {
     const fixture = buildFixture();
     const rejectedProcurement = procurementRow({ status: "draft" });

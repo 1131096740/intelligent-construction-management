@@ -62,7 +62,7 @@ type LockedGeneratedFileRow = Pick<
 >;
 type LockedUnboundFileRow = Pick<
   FileObject,
-  "id" | "uploadedByUserId" | "storageStatus"
+  "id" | "mimeType" | "uploadedByUserId" | "storageStatus"
 >;
 
 const FILE_ALREADY_BOUND_MESSAGE = "该文件已绑定其他业务记录，不能重复使用";
@@ -71,6 +71,9 @@ const REFUND_VOUCHER_BINDING = [
 ] as const;
 const INVOICE_RECORD_FILE_BINDING = [
   { table: "InvoiceRecord", column: "fileId" }
+] as const;
+const SPOT_PAYMENT_INVOICE_FILE_BINDING = [
+  { table: "SpotProcurementPaymentInvoice", column: "fileId" }
 ] as const;
 const NO_INVOICE_PROOF_BINDING = [
   { table: "NoInvoiceConfirmation", column: "proofFileId" }
@@ -1120,6 +1123,7 @@ export class FileService {
       const [
         receiptBinding,
         refundBindings,
+        spotPaymentInvoiceBindings,
         invoiceRecordBindings,
         noInvoiceBindings,
         invoiceExceptionBindings
@@ -1135,6 +1139,11 @@ export class FileService {
         }),
         tx.spotProcurementRefund.findMany({
           where: { voucherFileId: file.id },
+          select: { id: true },
+          take: 2
+        }),
+        tx.spotProcurementPaymentInvoice.findMany({
+          where: { fileId: file.id },
           select: { id: true },
           take: 2
         }),
@@ -1155,6 +1164,9 @@ export class FileService {
         })
       ]);
       const evidenceBindingExclusions = [
+        ...spotPaymentInvoiceBindings.map(
+          () => SPOT_PAYMENT_INVOICE_FILE_BINDING
+        ),
         ...invoiceRecordBindings.map(() => INVOICE_RECORD_FILE_BINDING),
         ...noInvoiceBindings.map(() => NO_INVOICE_PROOF_BINDING),
         ...invoiceExceptionBindings.map(

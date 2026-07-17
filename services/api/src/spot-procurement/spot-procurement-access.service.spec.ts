@@ -20,6 +20,12 @@ type AccessFixture = {
     supportingAttachmentFileId?: string | null;
     merchantPaymentProofFileId?: string | null;
   }>;
+  paymentInvoices?: Array<{
+    paymentId: string;
+    fileId: string;
+    uploadedByUserId: string;
+    invalidatedByUserId?: string | null;
+  }>;
   receipts?: Array<{
     id: string;
     projectId: string;
@@ -230,6 +236,15 @@ function buildPrisma(fixture: AccessFixture = {}) {
             )
           );
         }
+      )
+    },
+    spotProcurementPaymentInvoice: {
+      findMany: jest.fn(({ where }: { where: { fileId: string } }) =>
+        Promise.resolve(
+          (fixture.paymentInvoices ?? []).filter(
+            (row) => row.fileId === where.fileId
+          )
+        )
       )
     },
     spotProcurementReceipt: {
@@ -1597,6 +1612,19 @@ describe("SpotProcurementAccessService", () => {
     [
       "merchant payment proof",
       { payments: [{ merchantPaymentProofFileId: "file-1" }] },
+      "handler-1"
+    ],
+    [
+      "payment invoice attachment",
+      {
+        paymentInvoices: [
+          {
+            paymentId: "payment-1",
+            fileId: "file-1",
+            uploadedByUserId: "handler-1"
+          }
+        ]
+      },
       "handler-1"
     ],
     [

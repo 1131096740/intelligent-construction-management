@@ -19,6 +19,8 @@ import { SpotProcurementReceiptPdfService } from "./spot-procurement-receipt-pdf
 import { SpotProcurementReceiptService } from "./spot-procurement-receipt.service";
 import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
 import { SpotProcurementController } from "./spot-procurement.controller";
+import { SpotProcurementInvoiceController } from "./spot-procurement-invoice.controller";
+import { SpotProcurementInvoiceService } from "./spot-procurement-invoice.service";
 
 @Module({
   imports: [
@@ -33,12 +35,14 @@ import { SpotProcurementController } from "./spot-procurement.controller";
   ],
   controllers: [
     SpotProcurementController,
+    SpotProcurementInvoiceController,
     SpotProcurementPaymentController,
     SpotProcurementReceiptController
   ],
   providers: [
     ReceiptWatermarkService,
     SpotProcurementApplicationService,
+    SpotProcurementInvoiceService,
     SpotProcurementBalanceService,
     SpotProcurementPaymentService,
     SpotProcurementPilotService,
@@ -49,6 +53,7 @@ import { SpotProcurementController } from "./spot-procurement.controller";
   ],
   exports: [
     SpotProcurementApplicationService,
+    SpotProcurementInvoiceService,
     SpotProcurementBalanceService,
     SpotProcurementPaymentService,
     SpotProcurementPilotService,

@@ -68,6 +68,7 @@ export class ArchiveService {
       ...archiveRecords.map((row) => row.fileId),
       ...spotArchives.pdfDocuments.map((row) => row.fileId),
       ...spotArchives.paymentExecutions.map((row) => row.voucherFileId),
+      ...spotArchives.paymentInvoices.map((row) => row.fileId),
       ...spotArchives.invoiceRecords.map((row) => row.fileId),
       ...spotArchives.noInvoiceConfirmations.map((row) => row.proofFileId),
       ...spotArchives.invoiceExceptionConfirmations.map(
@@ -79,6 +80,7 @@ export class ArchiveService {
       ...settlementArchives.flatMap((row) => [row.uploadedByUserId, row.confirmedByUserId]),
       ...paymentVouchers.map((row) => row.executedByUserId),
       ...spotArchives.paymentExecutions.map((row) => row.executedByUserId),
+      ...spotArchives.paymentInvoices.map((row) => row.uploadedByUserId),
       ...spotArchives.invoiceRecords.map((row) => row.uploadedByUserId),
       ...spotArchives.noInvoiceConfirmations.flatMap((row) => [
         row.submittedByUserId,
@@ -354,6 +356,32 @@ export class ArchiveService {
           }
         ];
       }),
+      ...spotArchives.paymentInvoices.flatMap((row) => {
+        const payment = spotPaymentById.get(row.paymentId);
+        if (!payment) return [];
+        return [
+          {
+            projectId: payment.projectId,
+            id: `spot-payment-invoice-${row.id}`,
+            documentNo: row.id,
+            fileId: row.fileId,
+            fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
+            documentType: "零星材料付款发票",
+            businessRef: payment.code,
+            project: this.projectName(projectById, payment.projectId),
+            fileSource: this.fileName(fileById, row.fileId),
+            archiveStatus: "已上传",
+            statusTone: "success" as ArchiveTone,
+            uploadDepartment: "经办/财务",
+            confirmedBy:
+              userById.get(row.uploadedByUserId)?.name ?? "上传人未读取",
+            lastAction: this.date(row.createdAt),
+            canDownload: true,
+            disabledReason: null,
+            createdAt: row.createdAt
+          }
+        ];
+      }),
       ...spotArchives.invoiceRecords.flatMap((row) => {
         const procurement = row.sourceProcurementId
           ? spotProcurementById.get(row.sourceProcurementId)
@@ -479,6 +507,7 @@ export class ArchiveService {
         receipts: [],
         pdfDocuments: [],
         paymentExecutions: [],
+        paymentInvoices: [],
         invoiceRecords: [],
         noInvoiceConfirmations: [],
         invoiceExceptionConfirmations: []
@@ -491,6 +520,7 @@ export class ArchiveService {
     const [
       pdfCandidates,
       executionCandidates,
+      paymentInvoiceCandidates,
       invoiceCandidates,
       noInvoiceCandidates,
       invoiceExceptionCandidates
@@ -521,6 +551,18 @@ export class ArchiveService {
         where: { voidedAt: null },
         orderBy: { createdAt: "desc" },
         take: candidateTake
+      }),
+      this.prisma.spotProcurementPaymentInvoice.findMany({
+        where: { status: "active" },
+        orderBy: { createdAt: "desc" },
+        take: candidateTake,
+        select: {
+          id: true,
+          paymentId: true,
+          fileId: true,
+          uploadedByUserId: true,
+          createdAt: true
+        }
       }),
       this.prisma.invoiceRecord.findMany({
         where: {
@@ -645,7 +687,8 @@ export class ArchiveService {
         ...pdfCandidates
           .filter((row) => row.businessType === "spot_procurement_payment")
           .map((row) => row.businessId),
-        ...executionCandidates.map((row) => row.paymentId)
+        ...executionCandidates.map((row) => row.paymentId),
+        ...paymentInvoiceCandidates.map((row) => row.paymentId)
       ])
     ];
     const receiptIds = [
@@ -748,6 +791,14 @@ export class ArchiveService {
     );
     const visibleVersionIds = visibleVersions.map((row) => row.id);
     const visiblePaymentIds = payments.map((row) => row.id);
+    const paymentById = new Map(payments.map((row) => [row.id, row]));
+    const paymentInvoices = paymentInvoiceCandidates.filter((row) => {
+      const payment = paymentById.get(row.paymentId);
+      const procurement = payment
+        ? procurementById.get(payment.procurementId)
+        : undefined;
+      return Boolean(payment && procurement && procurement.projectId === payment.projectId);
+    });
     const approvedInstances = visibleVersionIds.length || visiblePaymentIds.length
       ? await this.prisma.approvalInstance.findMany({
           where: {
@@ -889,6 +940,7 @@ export class ArchiveService {
       receipts,
       pdfDocuments: currentPdfDocuments,
       paymentExecutions,
+      paymentInvoices: paymentInvoices.slice(0, take),
       invoiceRecords: invoiceRecords.slice(0, take),
       noInvoiceConfirmations: noInvoiceConfirmations.slice(0, take),
       invoiceExceptionConfirmations:

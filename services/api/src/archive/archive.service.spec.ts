@@ -10,6 +10,9 @@ function emptySpotArchivePrisma() {
       findMany: jest.fn().mockResolvedValue([])
     },
     spotProcurementPaymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurementPaymentInvoice: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
     invoiceRecord: { findMany: jest.fn().mockResolvedValue([]) },
     invoiceLine: { findMany: jest.fn().mockResolvedValue([]) },
     invoiceAllocation: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1237,5 +1240,91 @@ describe("ArchiveService", () => {
     expect(result.rows.map((row) => row.fileId)).not.toContain(
       "file-invoice-without-allocation"
     );
+  });
+
+  it("lists a lightweight active payment invoice as a spot-payment archive fact", async () => {
+    const prisma = {
+      ...emptySpotArchivePrisma(),
+      contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+      archiveRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementPaymentInvoice: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "payment-invoice-1",
+            paymentId: "spot-payment-1",
+            fileId: "file-payment-invoice-1",
+            uploadedByUserId: "handler-1",
+            createdAt: new Date("2026-07-18T04:00:00.000Z")
+          }
+        ])
+      },
+      spotProcurementPayment: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "spot-payment-1",
+            projectId: "project-visible",
+            procurementId: "spot-procurement-1",
+            code: "LXFK-2026-001",
+            status: "approved_pending_payment"
+          }
+        ])
+      },
+      spotProcurement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "spot-procurement-1",
+            projectId: "project-visible",
+            code: "LXCG-2026-001",
+            supplierNameSnapshot: null
+          }
+        ])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-payment-invoice-1",
+            originalName: "商家发票.pdf",
+            sizeBytes: 1024
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "handler-1", name: "采购经办人" }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "project-visible", name: "试点项目" }
+        ])
+      }
+    };
+    const service = new ArchiveService(prisma as never);
+
+    const result = await service.listRecent(20, ["project-visible"]);
+
+    expect(prisma.spotProcurementPaymentInvoice.findMany).toHaveBeenCalledWith({
+      where: { status: "active" },
+      orderBy: { createdAt: "desc" },
+      take: 80,
+      select: {
+        id: true,
+        paymentId: true,
+        fileId: true,
+        uploadedByUserId: true,
+        createdAt: true
+      }
+    });
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        documentType: "零星材料付款发票",
+        businessRef: "LXFK-2026-001",
+        fileId: "file-payment-invoice-1",
+        archiveStatus: "已上传",
+        confirmedBy: "采购经办人"
+      })
+    ]);
   });
 });

@@ -119,6 +119,7 @@ type PaymentLockRow = {
   projectId: string;
   procurementId: string;
   procurementVersionId: string;
+  paymentType: string | null;
   invalidatedAt: Date | null;
 };
 
@@ -248,6 +249,7 @@ export class InvoiceLedgerService {
       this.runSerializable(async (tx) => {
         const context = await this.lockCurrentContext(tx, procurementId);
         this.pilot.assertEnabled(context.procurement.projectId);
+        this.assertLegacyInvoiceLedgerMutationAllowed(context);
         await this.requireInvoiceManager(
           tx,
           actorUserId,
@@ -540,6 +542,7 @@ export class InvoiceLedgerService {
           pointer.procurementId
         );
         this.pilot.assertEnabled(context.procurement.projectId);
+        this.assertLegacyInvoiceLedgerMutationAllowed(context);
         await this.requireFinanceDirector(
           tx,
           actorUserId,
@@ -665,6 +668,7 @@ export class InvoiceLedgerService {
       this.runSerializable(async (tx) => {
         const context = await this.lockCurrentContext(tx, procurementId);
         this.pilot.assertEnabled(context.procurement.projectId);
+        this.assertLegacyInvoiceLedgerMutationAllowed(context);
         await this.requireConfirmationSubmitter(
           tx,
           context,
@@ -795,6 +799,7 @@ export class InvoiceLedgerService {
       this.runSerializable(async (tx) => {
         const context = await this.lockCurrentContext(tx, procurementId);
         this.pilot.assertEnabled(context.procurement.projectId);
+        this.assertLegacyInvoiceLedgerMutationAllowed(context);
         await this.requireConfirmationSubmitter(
           tx,
           context,
@@ -1746,6 +1751,7 @@ export class InvoiceLedgerService {
       this.runSerializable(async (tx) => {
         const context = await this.lockCurrentContext(tx, procurementId);
         this.pilot.assertEnabled(context.procurement.projectId);
+        this.assertLegacyInvoiceLedgerMutationAllowed(context);
         await this.requireFinanceDirector(
           tx,
           actorUserId,
@@ -2151,6 +2157,7 @@ export class InvoiceLedgerService {
           "projectId",
           "procurementId",
           "procurementVersionId",
+          "paymentType",
           "invalidatedAt"
         FROM "SpotProcurementPayment"
         WHERE "procurementId" = ${procurement.id}
@@ -2225,6 +2232,14 @@ export class InvoiceLedgerService {
         ...settledByPaymentId.values()
       ])
     };
+  }
+
+  private assertLegacyInvoiceLedgerMutationAllowed(context: LockedContext) {
+    if (context.payments.some((payment) => payment.paymentType !== null)) {
+      throw new ConflictException(
+        "零星采购真实表单不支持结构化票据、无票确认或票据异常，请改为追加付款级发票附件"
+      );
+    }
   }
 
   private prepareInvoiceHeader(
