@@ -30,6 +30,19 @@ describe("settlement bigint calculations", () => {
 });
 
 describe("SettlementService", () => {
+  const settlementCapacityLineage = [{
+    id: "contract-version-1",
+    baseVersionId: null,
+    changeType: "original",
+    changeDirection: null,
+    changeAmountCents: null,
+    cumulativeIncreaseCents: 0n,
+    amountCents: 9_223_372_036_854_775_807n,
+    pricingNature: "fixed_total",
+    amountLimitType: "capped",
+    status: "effective",
+    effectiveAt: new Date("2026-01-01T00:00:00.000Z")
+  }];
   const service = new SettlementService();
   const audit = {
     record: jest.fn()
@@ -123,7 +136,11 @@ describe("SettlementService", () => {
 
   function settlementQuotaTables() {
     return {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+      $queryRaw: jest.fn().mockImplementation(async (query: { strings: string[] }) =>
+        query.strings.join("?").includes('FROM "Settlement"')
+          ? []
+          : [{ id: "project-1" }]
+      ),
       projectUpstreamSettlement: {
         findMany: jest.fn().mockResolvedValue([{ approvedAmountCents: BigInt(20000000) }])
       },
@@ -225,6 +242,7 @@ describe("SettlementService", () => {
   it("creates/submits settlement when a historical contract change baseline is missing", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -243,7 +261,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -321,6 +340,110 @@ describe("SettlementService", () => {
     });
   });
 
+  it("rolls back an over-cap submission and persists a tagged denial audit afterward", async () => {
+    const capacityVersion = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      status: "effective",
+      amountCents: 1_000n,
+      pricingNature: "fixed_total",
+      amountLimitType: "capped",
+      invoiceType: "vat_special",
+      defaultTaxRatePercent: new Decimal("13"),
+      taxFactStatus: "frozen",
+      taxFactRevision: 1
+    };
+    const lineage = [{
+      ...capacityVersion,
+      versionNo: 1,
+      baseVersionId: null,
+      changeType: "original",
+      changeDirection: null,
+      changeAmountCents: null,
+      cumulativeIncreaseCents: 0n,
+      effectiveAt: new Date("2026-01-01")
+    }];
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(capacityVersion),
+        findFirst: jest.fn().mockResolvedValue(capacityVersion),
+        findMany: jest.fn().mockResolvedValue(lineage)
+      },
+      contract: { findUnique: jest.fn().mockResolvedValue({
+        id: "contract-1",
+        projectId: "project-1",
+        contractTypeKey: "material_purchase"
+      }) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
+      settlement: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      },
+      approvalInstance: { create: jest.fn() },
+      projectSettlementExceptionQuotaUsage: { createMany: jest.fn() },
+      $queryRaw: jest.fn().mockImplementation(async (query: { strings: string[] }) =>
+        query.strings.join("?").includes('FROM "Settlement"')
+          ? [{ id: "settlement-old", amountCents: 900n }]
+          : [{ id: "locked" }]
+      )
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(settlementService.create({
+      contractVersionId: "contract-version-1",
+      code: "JS-CAP-OVER",
+      periodLabel: "2026-07",
+      amountCents: "101"
+    }, "contract-staff-1")).rejects.toThrow("请先完成合同变更");
+
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.projectSettlementExceptionQuotaUsage.createMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "settlement.contract_capacity.denied",
+      businessType: "contract",
+      businessId: "contract-1",
+      metadata: expect.objectContaining({
+        tag: "settlement_contract_capacity_denied",
+        requestedAmountCents: "101",
+        requiresNewContract: false
+      })
+    }));
+  });
+
+  it("rejects a generic contract before settlement, quota, or approval writes", async () => {
+    const version = { id: "contract-version-1", contractId: "contract-1", status: "effective" };
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(version),
+        findFirst: jest.fn().mockResolvedValue(version)
+      },
+      contract: { findUnique: jest.fn().mockResolvedValue({
+        id: "contract-1",
+        projectId: "project-1",
+        contractTypeKey: "generic_contract"
+      }) },
+      settlement: { create: jest.fn() },
+      projectSettlementExceptionQuotaUsage: { createMany: jest.fn() },
+      approvalInstance: { create: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }])
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(settlementService.create({
+      contractVersionId: "contract-version-1",
+      code: "JS-GENERIC",
+      periodLabel: "2026-07",
+      amountCents: "1"
+    }, "contract-staff-1")).rejects.toThrow("通用合同直接按冻结付款条款申请付款，不办理结算");
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.projectSettlementExceptionQuotaUsage.createMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+  });
+
   it("writes no settlement when the selected template is incompatible", async () => {
     const tx = {
       contractVersion: {
@@ -395,6 +518,7 @@ describe("SettlementService", () => {
   it("rejects settlement creation when the linked contract is missing", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -438,6 +562,7 @@ describe("SettlementService", () => {
   it("rejects settlement creation when effective payment terms are missing", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -447,7 +572,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -478,6 +604,7 @@ describe("SettlementService", () => {
   it("blocks approval submission when the effective contract invoice type is still missing", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -486,6 +613,13 @@ describe("SettlementService", () => {
           defaultTaxRatePercent: new Decimal("13"),
           taxFactStatus: "confirmed",
           taxFactRevision: 1
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       settlement: {
@@ -534,6 +668,7 @@ describe("SettlementService", () => {
   it("accepts frozen new-contract tax facts as ready for settlement submission", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -583,6 +718,7 @@ describe("SettlementService", () => {
   it("rejects zero amount settlement creation with a Chinese business reason", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -592,7 +728,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -625,6 +762,7 @@ describe("SettlementService", () => {
   it("stores settlement lines and refuses to trust a mismatched frontend total", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -659,7 +797,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -768,6 +907,7 @@ describe("SettlementService", () => {
   it("rejects negative contract bill row settlement lines", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -797,7 +937,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -912,6 +1053,7 @@ describe("SettlementService", () => {
   it("rejects duplicate active settlement for the same contract version and period", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -921,7 +1063,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -966,6 +1109,7 @@ describe("SettlementService", () => {
   it("allows a new settlement period when previous same-period settlements are inactive", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -975,7 +1119,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1017,10 +1162,11 @@ describe("SettlementService", () => {
         status: {
           in: [
             "draft",
-            "in_approval",
-            "approval_pending",
-            "approved_pending_archive",
-            "pending_archive_confirm",
+              "in_approval",
+              "approval_pending",
+              "approved_pending_archive",
+              "archive_pending",
+              "pending_archive_confirm",
             "effective",
             "partially_paid",
             "paid"
@@ -1041,6 +1187,7 @@ describe("SettlementService", () => {
   it("maps database duplicate settlement period guard to Chinese business error", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1050,7 +1197,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1098,6 +1246,7 @@ describe("SettlementService", () => {
   it("rejects duplicate settlement when the period label only differs by spaces", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1119,7 +1268,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1161,6 +1311,7 @@ describe("SettlementService", () => {
   it("rejects contract bill row settlement lines when cumulative settled amount exceeds the bill row amount", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1190,7 +1341,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1257,6 +1409,7 @@ describe("SettlementService", () => {
             "in_approval",
             "approval_pending",
             "approved_pending_archive",
+            "archive_pending",
             "pending_archive_confirm",
             "effective",
             "partially_paid",
@@ -1273,6 +1426,7 @@ describe("SettlementService", () => {
   it("rechecks contract bill row occupancy after locking the project and before every write", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1302,7 +1456,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1391,6 +1546,7 @@ describe("SettlementService", () => {
   it("fails closed without writes when the settlement project row cannot be locked", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1400,7 +1556,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "missing-project"
+          projectId: "missing-project",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1442,6 +1599,7 @@ describe("SettlementService", () => {
   it("rejects duplicate contract bill row lines when their current total exceeds the bill row amount", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1471,7 +1629,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1529,6 +1688,7 @@ describe("SettlementService", () => {
   it("rejects settlement creation when payment terms have no current settlement stage", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1538,7 +1698,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1575,6 +1736,7 @@ describe("SettlementService", () => {
   it("rejects settlement lines when their total differs from the backend settlement amount", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1584,7 +1746,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1632,6 +1795,7 @@ describe("SettlementService", () => {
   it("stores a final settlement as the current-period delta while snapshotting the final cumulative amount", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1641,7 +1805,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1707,6 +1872,7 @@ describe("SettlementService", () => {
   it("rejects a final settlement when the final cumulative amount is not greater than previous effective settlements", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1716,7 +1882,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1753,6 +1920,7 @@ describe("SettlementService", () => {
   it("blocks settlement creation when upstream approved quota is insufficient", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1762,7 +1930,8 @@ describe("SettlementService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -1780,7 +1949,11 @@ describe("SettlementService", () => {
       approvalInstance: {
         create: jest.fn()
       },
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+      $queryRaw: jest.fn().mockImplementation(async (query: { strings: string[] }) =>
+        query.strings.join("?").includes('FROM "Settlement"')
+          ? []
+          : [{ id: "project-1" }]
+      ),
       projectUpstreamSettlement: {
         findMany: jest.fn().mockResolvedValue([{ approvedAmountCents: BigInt(10000000) }])
       },
@@ -1817,6 +1990,7 @@ describe("SettlementService", () => {
   it("occupies approved settlement exception quota when upstream approved quota is insufficient", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1845,7 +2019,11 @@ describe("SettlementService", () => {
       approvalInstance: {
         create: jest.fn()
       },
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+      $queryRaw: jest.fn().mockImplementation(async (query: { strings: string[] }) =>
+        query.strings.join("?").includes('FROM "Settlement"')
+          ? []
+          : [{ id: "project-1" }]
+      ),
       projectUpstreamSettlement: {
         findMany: jest.fn().mockResolvedValue([{ approvedAmountCents: BigInt(10000000) }])
       },
@@ -1904,6 +2082,7 @@ describe("SettlementService", () => {
   it("freezes material settlement approval route when settlement is created by an applicant", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -1976,6 +2155,7 @@ describe("SettlementService", () => {
   it("generates the initial formal approval PDF after a settlement is submitted for approval", async () => {
     const createTx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -2149,6 +2329,7 @@ describe("SettlementService", () => {
   it("freezes labor/professional settlement approval route from contract type", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -2213,9 +2394,10 @@ describe("SettlementService", () => {
     });
   });
 
-  it("falls back to contract wording for legacy settlement approval routing", async () => {
+  it("uses the labor route only for an explicit labor contract type", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -2226,7 +2408,7 @@ describe("SettlementService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
           projectId: "project-1",
-          contractTypeKey: null,
+          contractTypeKey: "labor_subcontract",
           name: "劳务分包合同",
           counterparty: "劳务单位"
         })
@@ -2280,6 +2462,7 @@ describe("SettlementService", () => {
   it("rejects create settlement from a non-effective contract version", async () => {
     const tx = {
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
@@ -4550,6 +4733,7 @@ describe("SettlementService", () => {
         })
       },
       contractVersion: {
+        findMany: jest.fn().mockResolvedValue(settlementCapacityLineage),
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           invoiceType: "vat_general",

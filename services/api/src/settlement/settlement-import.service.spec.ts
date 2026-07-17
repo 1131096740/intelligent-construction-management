@@ -91,6 +91,30 @@ async function importWorkbook(rows: unknown[][]): Promise<Buffer> {
 }
 
 describe("SettlementImportService", () => {
+  it("creates no preview record when the contract type is not settleable", async () => {
+    const tx = { settlementImport: { create: jest.fn() } };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const files = { getFileBuffer: jest.fn() };
+    const workbench = {
+      sourceLines: jest.fn().mockRejectedValue(
+        new Error("通用合同直接按冻结付款条款申请付款，不办理结算")
+      )
+    };
+    const service = new SettlementImportService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      files as never,
+      workbench as never,
+      { previewLines: jest.fn() } as never
+    );
+
+    await expect(service.previewImport("version-generic", "user-1", { fileId: "file-1" }))
+      .rejects.toThrow("通用合同直接按冻结付款条款申请付款");
+    expect(files.getFileBuffer).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.settlementImport.create).not.toHaveBeenCalled();
+  });
+
   it("previews only explicitly selected rows and writes no settlement facts", async () => {
     const buffer = await importWorkbook([
       ["A-1", "自动计价行", "是", "2", "", "", "本期完成", "row-1"],

@@ -61,6 +61,7 @@ const settlementStatusLabels = {
   approval_rejected: "审批驳回",
   withdrawn: "已撤回",
   approved_pending_archive: "已批待归档",
+  archive_pending: "待归档确认",
   pending_archive_confirm: "待归档确认",
   effective: "已生效",
   partially_paid: "部分付款",

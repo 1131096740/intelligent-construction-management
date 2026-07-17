@@ -7,6 +7,7 @@ import {
   contractInvoiceTypeLabel,
   contractTaxModeLabel,
   ContractVersionStatus,
+  SETTLEMENT_OCCUPANCY_STATUSES,
   SettlementStatus,
   type ContractInvoiceType,
   type ContractTaxMode,
@@ -70,6 +71,13 @@ import {
 } from "./settlement-line-calculator";
 import { SettlementTemplateService } from "./settlement-template.service";
 import { lockContractAndAssertCurrentEffective } from "../contract/contract-current-version-lock";
+import {
+  assertContractSettlementCapacity,
+  assertSettlementContractType,
+  historicalPositiveIncreaseCents,
+  isUnlimitedFrameworkContract,
+  SettlementContractCapacityDenial
+} from "./contract-settlement-capacity";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -115,19 +123,12 @@ const LABOR_PROFESSIONAL_SETTLEMENT_NODES: SettlementApprovalNode[] = [
   { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
   { name: "财务总监", mode: "any", roleKeys: ["finance_director"] }
 ];
-const SETTLEMENT_QUOTA_OCCUPANCY_STATUSES = [
-  "approval_pending",
-  "approved_pending_archive",
-  "pending_archive_confirm",
-  "effective",
-  "partially_paid",
-  "paid"
-] as const;
 const SETTLEMENT_ACTIVE_PERIOD_STATUSES = [
   "draft",
   "in_approval",
   "approval_pending",
   "approved_pending_archive",
+  "archive_pending",
   "pending_archive_confirm",
   "effective",
   "partially_paid",
@@ -399,6 +400,9 @@ export class SettlementService {
     }
     return this.prisma.$transaction(async (tx) => {
       const version = await lockContractAndAssertCurrentEffective(tx, contractVersionId);
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      if (!contract) throw new BadRequestException("未找到结算关联合同，请刷新合同台账后重试");
+      assertSettlementContractType(contract.contractTypeKey);
       const preview = await this.previewSettlementLines(
         tx,
         version,
@@ -410,7 +414,7 @@ export class SettlementService {
             null,
             preview.lines as NormalizedSettlementLine[]
           );
-      if (!preview.submissionBlockers.length) {
+      if (!preview.submissionBlockers.length && !isUnlimitedFrameworkContract(version)) {
         await this.assertContractBillRowSettlementLimits(
           tx,
           preview.lines as NormalizedSettlementLine[]
@@ -1001,12 +1005,16 @@ export class SettlementService {
     }
 
     const prepared = this.prepareSubmission(input);
-    const settlement = await this.prisma.$transaction(
-      (tx) => this.submitInTransaction(tx, prepared, applicantUserId),
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
-      }
-    ).catch((error: unknown) => this.rethrowSubmissionError(error));
+    let settlement: Settlement;
+    try {
+      settlement = await this.prisma.$transaction(
+        (tx) => this.submitInTransaction(tx, prepared, applicantUserId),
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+      );
+    } catch (error) {
+      await this.persistContractCapacityDenial(error, applicantUserId);
+      this.rethrowSubmissionError(error);
+    }
 
     return this.finalizeSubmission(settlement, applicantUserId);
   }
@@ -1051,6 +1059,11 @@ export class SettlementService {
         tx
       );
     }
+    const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+    if (!contract) {
+      throw new Error("未找到结算关联合同，请刷新合同台账后重试");
+    }
+    assertSettlementContractType(contract.contractTypeKey);
     const periodLabel = this.requiredText(input.periodLabel, "结算期间");
     await this.assertNoDuplicateActiveSettlementPeriod(tx, version.id, periodLabel);
     await this.assertTaxFactsReadyForSubmission(tx, version, input.settlementLines);
@@ -1060,20 +1073,13 @@ export class SettlementService {
       input.settlementLines
     );
 
-    const [contract, terms] = await Promise.all([
-      tx.contract.findUnique({ where: { id: version.contractId } }),
-      tx.paymentTermsVersion.findFirst({
+    const terms = await tx.paymentTermsVersion.findFirst({
         where: {
           contractVersionId: version.id,
           status: "effective"
         },
         orderBy: { versionNo: "desc" }
-      })
-    ]);
-
-    if (!contract) {
-      throw new Error("未找到结算关联合同，请刷新合同台账后重试");
-    }
+      });
 
     if (!terms) {
       throw new Error(
@@ -1100,7 +1106,48 @@ export class SettlementService {
     if (settlementAmountCents <= 0n) {
       throw new BadRequestException("结算金额必须大于 0，不能创建零金额或负数结算。");
     }
-    await this.assertContractBillRowSettlementLimits(tx, settlementLines);
+    const unlimitedFramework = isUnlimitedFrameworkContract(version);
+    if (!unlimitedFramework) {
+      await this.assertContractBillRowSettlementLimits(tx, settlementLines);
+    }
+
+    const occupiedContractAmountCents = await this.lockOccupiedContractSettlementAmount(
+      tx,
+      version.contractId
+    );
+    const lineage = await tx.contractVersion.findMany({
+      where: { contractId: version.contractId },
+      select: {
+        id: true,
+        baseVersionId: true,
+        changeType: true,
+        changeDirection: true,
+        changeAmountCents: true,
+        cumulativeIncreaseCents: true,
+        amountCents: true,
+        pricingNature: true,
+        amountLimitType: true,
+        status: true,
+        effectiveAt: true
+      },
+      orderBy: [{ versionNo: "asc" }, { id: "asc" }]
+    });
+    const capacityVersion = lineage.find((item) => item.id === version.id);
+    if (!capacityVersion) {
+      throw new BadRequestException("当前合同版本不在合同版本谱系中，暂不能核验结算金额上限");
+    }
+    assertContractSettlementCapacity(
+      {
+        contractId: version.contractId,
+        contractVersionId: version.id,
+        contractAmountCents: dbMoneyToBigInt(capacityVersion.amountCents, "合同金额"),
+        historicalPositiveIncreaseCents: historicalPositiveIncreaseCents(lineage),
+        pricingNature: capacityVersion.pricingNature,
+        amountLimitType: capacityVersion.amountLimitType
+      },
+      occupiedContractAmountCents,
+      settlementAmountCents
+    );
 
     const exceptionQuotaAllocations = await this.reserveSettlementQuota(
       tx,
@@ -1108,7 +1155,9 @@ export class SettlementService {
       version.contractId,
       settlementAmountCents
     );
-    await this.assertContractBillRowSettlementLimits(tx, settlementLines);
+    if (!unlimitedFramework) {
+      await this.assertContractBillRowSettlementLimits(tx, settlementLines);
+    }
 
     const currentSettlementStage = await tx.paymentTermsStage.findFirst({
       where: {
@@ -1148,6 +1197,23 @@ export class SettlementService {
       }
     });
     await this.createSettlementLines(tx, settlement.id, settlementLines);
+
+    if (applicantUserId) {
+      await this.audit.record(tx, {
+        actorUserId: applicantUserId,
+        action: "settlement.contract_capacity.occupy",
+        businessType: "settlement",
+        businessId: settlement.id,
+        metadata: {
+          contractId: version.contractId,
+          contractVersionId: version.id,
+          occupiedBeforeCents: occupiedContractAmountCents.toString(),
+          requestedAmountCents: settlementAmountCents.toString(),
+          contractAmountCents: unlimitedFramework ? null : capacityVersion.amountCents.toString(),
+          unlimitedFramework
+        }
+      });
+    }
 
     if (exceptionQuotaAllocations.length) {
       await tx.projectSettlementExceptionQuotaUsage.createMany({
@@ -1208,6 +1274,41 @@ export class SettlementService {
       throw new BadRequestException("结算编号已存在，请更换编号后重新提交。");
     }
     throw error;
+  }
+
+  async persistContractCapacityDenial(error: unknown, actorUserId?: string): Promise<void> {
+    if (!(error instanceof SettlementContractCapacityDenial) || !actorUserId || !this.prisma) return;
+    const { facts } = error;
+    await this.prisma.$transaction((tx) => this.audit.record(tx, {
+      actorUserId,
+      action: "settlement.contract_capacity.denied",
+      businessType: "contract",
+      businessId: facts.contractId,
+      metadata: {
+        tag: error.tag,
+        contractVersionId: facts.contractVersionId,
+        contractAmountCents: facts.contractAmountCents.toString(),
+        occupiedAmountCents: facts.occupiedAmountCents.toString(),
+        requestedAmountCents: facts.requestedAmountCents.toString(),
+        totalAfterSubmissionCents: facts.totalAfterSubmissionCents.toString(),
+        requiresNewContract: facts.historicalPositiveIncreaseCents > 0n
+      }
+    }));
+  }
+
+  private async lockOccupiedContractSettlementAmount(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ): Promise<bigint> {
+    const rows = await tx.$queryRaw<Array<{ id: string; amountCents: bigint }>>(Prisma.sql`
+      SELECT "id", "amountCents"
+      FROM "Settlement"
+      WHERE "contractId" = ${contractId}
+        AND "status" IN (${Prisma.join([...SETTLEMENT_OCCUPANCY_STATUSES])})
+      ORDER BY "id" ASC
+      FOR UPDATE
+    `);
+    return sumBigInt(rows.map((row) => dbMoneyToBigInt(row.amountCents, "既有结算占额")));
   }
 
   async finalizeSubmission(settlement: Settlement, applicantUserId?: string) {
@@ -1278,7 +1379,7 @@ export class SettlementService {
       tx.settlement.findMany({
         where: {
           projectId,
-          status: { in: [...SETTLEMENT_QUOTA_OCCUPANCY_STATUSES] }
+          status: { in: [...SETTLEMENT_OCCUPANCY_STATUSES] }
         },
         select: { amountCents: true }
       }),

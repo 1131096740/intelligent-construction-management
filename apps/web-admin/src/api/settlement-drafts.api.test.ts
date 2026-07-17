@@ -96,4 +96,23 @@ describe("settlement drafts API", () => {
       submitSettlementDraftRecord("project-1", "draft-1", 2)
     ).rejects.toThrow("合同税务事实尚未确认");
   });
+
+  it("preserves the backend submission blocker on a readable historical draft", async () => {
+    mockApiFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "draft-legacy",
+          revision: 2,
+          submissionBlockingReason: "通用合同直接按冻结付款条款申请付款，不办理结算"
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+
+    const draft = await fetchSettlementDraftRecord("project-1", "draft-legacy");
+
+    expect(draft.submissionBlockingReason).toBe(
+      "通用合同直接按冻结付款条款申请付款，不办理结算"
+    );
+  });
 });

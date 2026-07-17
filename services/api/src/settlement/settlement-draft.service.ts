@@ -12,6 +12,10 @@ import {
 import { PrismaService } from "../database/prisma.service";
 import { parseMoneyCentsInput } from "../money/decimal-money";
 import type { SaveSettlementDraftDto } from "./dto/settlement-draft.dto";
+import {
+  assertSettlementContractType,
+  settlementContractTypeBlockReason
+} from "./contract-settlement-capacity";
 
 @Injectable()
 export class SettlementDraftService {
@@ -52,7 +56,15 @@ export class SettlementDraftService {
       where: { projectId, ownerUserId: actorUserId },
       orderBy: { updatedAt: "desc" }
     });
-    return drafts.map((draft) => this.readModel(draft));
+    const contracts = drafts.length ? await this.prisma.contract.findMany({
+      where: { id: { in: [...new Set(drafts.map((draft) => draft.contractId))] } },
+      select: { id: true, contractTypeKey: true }
+    }) : [];
+    const typeByContract = new Map(contracts.map((contract) => [contract.id, contract.contractTypeKey]));
+    return drafts.map((draft) => this.readModel(
+      draft,
+      settlementContractTypeBlockReason(typeByContract.get(draft.contractId))
+    ));
   }
 
   async get(projectId: string, draftId: string, actorUserId: string) {
@@ -60,7 +72,11 @@ export class SettlementDraftService {
       where: { id: draftId }
     });
     this.assertOwnedDraft(draft, projectId, actorUserId);
-    return this.readModel(draft!);
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: draft!.contractId },
+      select: { contractTypeKey: true }
+    });
+    return this.readModel(draft!, settlementContractTypeBlockReason(contract?.contractTypeKey));
   }
 
   async update(
@@ -83,6 +99,11 @@ export class SettlementDraftService {
       if (draft!.revision !== input.expectedRevision) {
         throw new BadRequestException("结算草稿已被更新，请刷新后继续编辑");
       }
+      const originalContract = await tx.contract.findUnique({
+        where: { id: draft!.contractId },
+        select: { contractTypeKey: true }
+      });
+      assertSettlementContractType(originalContract?.contractTypeKey);
       const context = await this.contractContext(
         tx,
         projectId,
@@ -146,6 +167,7 @@ export class SettlementDraftService {
     if (!contract) {
       throw new NotFoundException("未找到结算关联合同，请刷新合同台账后重试");
     }
+    assertSettlementContractType(contract.contractTypeKey);
     if (contract.projectId !== projectId) {
       throw new BadRequestException("合同版本不属于当前项目，不能保存到该项目的结算草稿");
     }
@@ -193,11 +215,17 @@ export class SettlementDraftService {
     return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
   }
 
-  private readModel<T>(draft: T): T {
-    return JSON.parse(
+  private readModel<T>(
+    draft: T,
+    submissionBlockingReason: string | null = null
+  ): T & { submissionBlockingReason: string | null } {
+    return {
+      ...(JSON.parse(
       JSON.stringify(draft, (_key, value: unknown) =>
         typeof value === "bigint" ? value.toString() : value
       )
-    ) as T;
+      ) as T),
+      submissionBlockingReason
+    };
   }
 }

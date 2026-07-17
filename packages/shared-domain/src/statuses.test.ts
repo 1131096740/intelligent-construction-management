@@ -4,6 +4,7 @@ import {
   canCreatePaymentFromSettlementStatus,
   canCreateSettlementFromContractStatus,
   PAYMENT_REQUEST_STATUSES,
+  SETTLEMENT_OCCUPANCY_STATUSES,
   SETTLEMENT_STATUSES
 } from "./statuses";
 
@@ -32,5 +33,21 @@ describe("domain statuses", () => {
     expect(canCreatePaymentFromSettlementStatus("withdrawn")).toBe(false);
     expect(canCreatePaymentFromSettlementStatus("approved_pending_archive")).toBe(false);
     expect(canCreatePaymentFromSettlementStatus("pending_archive_confirm")).toBe(false);
+  });
+
+  it("keeps every legacy in-flight and archived settlement status capacity-occupying", () => {
+    expect(SETTLEMENT_OCCUPANCY_STATUSES).toEqual([
+      "in_approval",
+      "approval_pending",
+      "approved_pending_archive",
+      "archive_pending",
+      "pending_archive_confirm",
+      "effective",
+      "partially_paid",
+      "paid"
+    ]);
+    expect(SETTLEMENT_OCCUPANCY_STATUSES).not.toContain("draft");
+    expect(SETTLEMENT_OCCUPANCY_STATUSES).not.toContain("approval_rejected");
+    expect(SETTLEMENT_OCCUPANCY_STATUSES).not.toContain("withdrawn");
   });
 });

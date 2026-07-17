@@ -57,6 +57,7 @@
         placeholder="请选择项目"
         :options="projectOptions"
         :loading="loadingProjects"
+        :disabled="Boolean(draftSubmissionBlockingReason)"
         @change="loadContracts"
       />
       <t-select
@@ -65,21 +66,25 @@
         placeholder="请选择已生效合同"
         :options="contractOptions"
         :loading="loadingContracts"
+        :disabled="Boolean(draftSubmissionBlockingReason)"
         @change="loadSourceLines"
       />
       <t-input
         v-model="form.code"
         label="结算编号"
         placeholder="JS-2026-019"
+        :readonly="Boolean(draftSubmissionBlockingReason)"
       />
       <t-input
         v-model="form.periodLabel"
         label="结算期间"
         placeholder="2026-07"
+        :readonly="Boolean(draftSubmissionBlockingReason)"
       />
     </section>
 
     <SettlementTemplateRecommendationPanel
+      v-if="!draftSubmissionBlockingReason"
       :state="templateSelection"
       @select="selectSettlementTemplate"
     />
@@ -92,6 +97,41 @@
     />
 
     <section
+      v-if="draftSubmissionBlockingReason"
+      class="blocked-draft-panel"
+      aria-label="不可继续办理的结算草稿"
+    >
+      <t-alert
+        theme="warning"
+        title="该草稿仅可查看"
+        :message="`${draftSubmissionBlockingReason}。已填写内容已保留，本页不会改写原草稿；请返回结算台账处理其他业务。`"
+      />
+      <div class="blocked-draft-heading">
+        <div>
+          <strong>原草稿明细</strong>
+          <span>以下内容来自已保存草稿，不进行前端重算或后台预览。</span>
+        </div>
+        <t-tag
+          theme="warning"
+          variant="light"
+        >
+          只读
+        </t-tag>
+      </div>
+      <div class="jg-table-region jg-table-region--standard">
+        <t-table
+          row-key="key"
+          size="small"
+          :columns="blockedDraftColumns"
+          :data="blockedDraftRows"
+          :horizontal-scroll-affixed-bottom="true"
+          empty="该草稿没有已保存明细"
+        />
+      </div>
+    </section>
+
+    <section
+      v-if="!draftSubmissionBlockingReason"
       class="import-panel"
       aria-label="结算 Excel 导入"
     >
@@ -211,6 +251,7 @@
     </section>
 
     <section
+      v-if="!draftSubmissionBlockingReason"
       class="workbench-toolbar"
       aria-label="结算清单工具栏"
     >
@@ -265,18 +306,18 @@
     </section>
 
     <div
-      v-if="sourceLoading"
+      v-if="!draftSubmissionBlockingReason && sourceLoading"
       class="workbench-state"
     >
       正在加载有效合同清单……
     </div>
     <t-empty
-      v-else-if="selectedContractVersionId && sourceRows.length === 0"
+      v-else-if="!draftSubmissionBlockingReason && selectedContractVersionId && sourceRows.length === 0"
       description="该有效合同暂无结构化清单，可新增有原因的人工调整行。"
       class="workbench-state"
     />
     <div
-      v-else
+      v-else-if="!draftSubmissionBlockingReason"
       class="table-shell jg-table-region jg-table-region--workspace-wide"
     >
       <t-table
@@ -394,7 +435,7 @@
     </div>
 
     <section
-      v-if="adjustments.length"
+      v-if="!draftSubmissionBlockingReason && adjustments.length"
       class="adjustment-section jg-table-region jg-table-region--standard"
     >
       <div class="section-title">
@@ -453,7 +494,10 @@
       </t-table>
     </section>
 
-    <footer class="workbench-footer">
+    <footer
+      v-if="!draftSubmissionBlockingReason"
+      class="workbench-footer"
+    >
       <div class="footer-metric">
         <span>本期明细</span>
         <strong>{{ selectedRowIds.length + adjustments.length }}</strong>
@@ -625,6 +669,16 @@ interface ImportErrorRow extends SettlementImportErrorReadModel {
   key: string;
 }
 
+interface BlockedDraftRow {
+  key: string;
+  lineType: string;
+  name: string;
+  quantity: string;
+  amount: string;
+  reason: string;
+  remark: string;
+}
+
 const router = useRouter();
 const route = useRoute();
 const form = reactive({
@@ -706,15 +760,52 @@ const importErrorColumns: PrimaryTableCol<ImportErrorRow>[] = [
   { colKey: "column", title: "字段", width: 180 },
   { colKey: "message", title: "错误原因", minWidth: 360 }
 ];
+const blockedDraftColumns: PrimaryTableCol<BlockedDraftRow>[] = [
+  { colKey: "lineType", title: "明细类型", width: 120 },
+  { colKey: "name", title: "已保存项目", minWidth: 240 },
+  { colKey: "quantity", title: "数量", width: 120, align: "right" },
+  { colKey: "amount", title: "金额", width: 140, align: "right" },
+  { colKey: "reason", title: "原因", minWidth: 180 },
+  { colKey: "remark", title: "备注", minWidth: 180 }
+];
 
 const projectOptions = computed(() =>
   projects.value.map((project) => ({ label: `${project.code} · ${project.name}`, value: project.id }))
 );
-const contractOptions = computed(() =>
-  toContractSelectOptions(contracts.value, "settlement").map((option) => ({
+const draftSubmissionBlockingReason = computed(
+  () => activeDraft.value?.submissionBlockingReason?.trim() ?? ""
+);
+const contractOptions = computed(() => {
+  const options = toContractSelectOptions(contracts.value, "settlement").map((option) => ({
     label: option.label,
     value: option.value,
     disabled: option.disabled
+  }));
+  const blockedDraft = activeDraft.value;
+  if (
+    draftSubmissionBlockingReason.value &&
+    blockedDraft &&
+    !options.some((option) => option.value === blockedDraft.contractVersionId)
+  ) {
+    options.unshift({
+      label: "已保存的历史合同（当前不可用于结算）",
+      value: blockedDraft.contractVersionId,
+      disabled: true
+    });
+  }
+  return options;
+});
+const blockedDraftRows = computed<BlockedDraftRow[]>(() =>
+  (activeDraft.value?.lines ?? []).map((line, index) => ({
+    key: `${line.sourceType}-${line.contractBillRowId ?? line.name ?? index}-${index}`,
+    lineType: line.sourceType === "contract_bill_row" ? "合同清单行" : "人工调整",
+    name:
+      line.name?.trim() ||
+      (line.contractBillRowId ? `合同清单行 ${line.contractBillRowId}` : `第 ${index + 1} 条明细`),
+    quantity: line.quantity?.trim() || "—",
+    amount: formatBlockedDraftAmount(line.amountCents),
+    reason: line.reason?.trim() || "—",
+    remark: line.remark?.trim() || "—"
   }))
 );
 const selectedContract = computed(() => findContractOption(contracts.value, form.contractOptionValue));
@@ -811,6 +902,7 @@ const importStatusTheme = computed<"success" | "danger" | "warning">(() => {
   return "warning";
 });
 const importApplyDisabledReason = computed(() => {
+  if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
   if (templateBlockedReason.value) return templateBlockedReason.value;
   if (!importPreview.value) return "请先选择 XLSX 文件并完成预检。";
   if (importPreview.value.errors.length) return "预检存在错误，不能应用。";
@@ -825,6 +917,7 @@ const importErrorRows = computed<ImportErrorRow[]>(() =>
   }))
 );
 const createDisabledReason = computed(() => {
+  if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
   if (templateBlockedReason.value) return templateBlockedReason.value;
   if (validationErrors.value[0]) return validationErrors.value[0];
   if (!previewIsCurrent.value || !preview.value) return "请先完成后台核算。";
@@ -842,6 +935,7 @@ const createDisabledReason = computed(() => {
   return "";
 });
 const saveDisabledReason = computed(() => {
+  if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
   if (!form.projectId) return "请选择项目。";
   if (!selectedContractVersionId.value) return "请选择已生效合同。";
   if (templateBlockedReason.value) return templateBlockedReason.value;
@@ -955,17 +1049,28 @@ function formatUnitPrice(row: SettlementSourceLineReadModel): string {
   return `${row.unitPrice} 元（${row.pricingMode === "tax_inclusive" ? "含税" : "不含税"}）`;
 }
 
+function formatBlockedDraftAmount(value: string | undefined): string {
+  if (!value) return "—";
+  try {
+    return `¥${centsTextToYuanText(value)}`;
+  } catch {
+    return "已保存金额格式异常";
+  }
+}
+
 function isNegativeQuantity(value: string | null) {
   return Boolean(value?.startsWith("-"));
 }
 
 async function downloadImportTemplate() {
+  if (draftSubmissionBlockingReason.value) return;
   const contractVersionId = selectedContractVersionId.value;
   if (!contractVersionId) return;
   await runImportDownload("template", () => downloadSettlementImportTemplate(contractVersionId));
 }
 
 async function selectImportFile(files: UploadFile[], context: UploadChangeContext) {
+  if (draftSubmissionBlockingReason.value) return;
   if (context.trigger !== "add") return;
   const file = context.file?.raw ?? files.at(-1)?.raw;
   if (!file) return;
@@ -1024,6 +1129,7 @@ async function selectImportFile(files: UploadFile[], context: UploadChangeContex
 }
 
 async function confirmApplyImport() {
+  if (draftSubmissionBlockingReason.value) return;
   const currentImport = importPreview.value;
   const contractVersionId = selectedContractVersionId.value;
   const projectId = form.projectId;
@@ -1205,17 +1311,24 @@ function invalidatePreview() {
 function schedulePreview() {
   if (previewTimer) clearTimeout(previewTimer);
   previewTimer = setTimeout(() => {
-    if (!validationErrors.value.length) void requestCanonicalPreview();
+    if (!draftSubmissionBlockingReason.value && !validationErrors.value.length) {
+      void requestCanonicalPreview();
+    }
   }, 250);
 }
 
 async function requestCanonicalPreview() {
   if (
+    draftSubmissionBlockingReason.value ||
     templateBlockedReason.value ||
     validationErrors.value.length ||
     !selectedContractVersionId.value
   ) {
-    pageMessage.value = templateBlockedReason.value || validationErrors.value[0] || "请选择有效合同。";
+    pageMessage.value =
+      draftSubmissionBlockingReason.value ||
+      templateBlockedReason.value ||
+      validationErrors.value[0] ||
+      "请选择有效合同。";
     pageMessageTone.value = "warning";
     return;
   }
@@ -1307,6 +1420,7 @@ async function loadContracts() {
 
 async function loadSourceLines() {
   resetSourceState();
+  if (draftSubmissionBlockingReason.value) return;
   const contractVersionId = selectedContractVersionId.value;
   const projectId = form.projectId;
   const requestId = ++sourceRequestId;
@@ -1532,15 +1646,26 @@ async function findRequestedDraft(draftId: string) {
 }
 
 async function restoreDraft(draft: SettlementDraftReadModel) {
+  activeDraft.value = draft;
   form.projectId = draft.projectId;
   await loadContracts();
   const contract = contracts.value.find(
     (item) => item.contractVersionId === draft.contractVersionId
   );
-  if (!contract) {
+  if (!contract && !draftSubmissionBlockingReason.value) {
     throw new Error("草稿关联合同当前不可用于结算，请核对合同状态。");
   }
-  form.contractOptionValue = contract.contractVersionId ?? contract.contractId;
+  form.contractOptionValue = contract
+    ? contract.contractVersionId ?? contract.contractId
+    : draft.contractVersionId;
+  form.code = draft.code;
+  form.periodLabel = draft.periodLabel;
+  if (draftSubmissionBlockingReason.value) {
+    baselineDraftSnapshot.value = workbenchSnapshot();
+    pageMessage.value = "";
+    pageMessageTone.value = "warning";
+    return;
+  }
   await loadSourceLines();
   if (
     draft.settlementTemplateVersionId &&
@@ -1554,12 +1679,9 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
     }
     selectSettlementTemplate(choice.templateVersionId);
   }
-  form.code = draft.code;
-  form.periodLabel = draft.periodLabel;
   const restored = restoreSettlementDraftLines(sourceRows.value, draft.lines);
   drafts.value = restored.drafts;
   adjustments.value = restored.adjustments;
-  activeDraft.value = draft;
   invalidatePreview();
   baselineDraftSnapshot.value = workbenchSnapshot();
   pageMessage.value = "已恢复结算草稿；保存草稿不会发起审批，提交前仍需通过后台核算。";
@@ -1665,6 +1787,29 @@ onBeforeUnmount(() => {
 
 .page-message {
   margin-top: var(--jg-space-md);
+}
+
+.blocked-draft-panel {
+  display: grid;
+  gap: var(--jg-space-md);
+  margin-top: var(--jg-space-lg);
+}
+
+.blocked-draft-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--jg-space-md);
+}
+
+.blocked-draft-heading > div {
+  display: grid;
+  gap: var(--jg-space-xs);
+}
+
+.blocked-draft-heading span {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
 }
 
 .import-panel {

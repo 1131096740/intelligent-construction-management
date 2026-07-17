@@ -22,6 +22,7 @@ export const SETTLEMENT_STATUSES = [
   "approval_rejected",
   "withdrawn",
   "approved_pending_archive",
+  "archive_pending",
   "pending_archive_confirm",
   "effective",
   "partially_paid",
@@ -30,6 +31,17 @@ export const SETTLEMENT_STATUSES = [
 ] as const;
 
 export type SettlementStatus = (typeof SETTLEMENT_STATUSES)[number];
+
+export const SETTLEMENT_OCCUPANCY_STATUSES = [
+  "in_approval",
+  "approval_pending",
+  "approved_pending_archive",
+  "archive_pending",
+  "pending_archive_confirm",
+  "effective",
+  "partially_paid",
+  "paid"
+] as const satisfies readonly SettlementStatus[];
 
 export const PAYMENT_ELIGIBLE_SETTLEMENT_STATUSES = [
   "effective",

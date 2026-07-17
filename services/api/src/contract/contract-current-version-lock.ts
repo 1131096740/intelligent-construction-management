@@ -9,8 +9,11 @@ export async function lockContractAndAssertCurrentEffective(
   const target = await tx.contractVersion.findUnique({ where: { id: contractVersionId } });
   if (!target) throw new BadRequestException("未找到可结算的合同版本，请刷新合同后重试");
   if (lockForMutation && typeof (tx as { $queryRaw?: unknown }).$queryRaw === "function") {
-    await tx.$queryRaw(Prisma.sql`
+    await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id" FROM "Contract" WHERE "id" = ${target.contractId} FOR UPDATE
+    `);
+    await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE
     `);
   }
   if (target.status !== "effective") {

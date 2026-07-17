@@ -81,4 +81,23 @@ describe("settlement creation workbench structure", () => {
     expect(page).not.toContain("{{ importPreview.importId }}");
     expect(page).not.toContain(":href=");
   });
+
+  it("renders backend-blocked historical drafts as preserved read-only input", () => {
+    expect(page).toContain("draftSubmissionBlockingReason");
+    expect(page).toContain('title="该草稿仅可查看"');
+    expect(page).toContain("原草稿明细");
+    expect(page).toContain(":data=\"blockedDraftRows\"");
+    expect(page).toContain('v-if="!draftSubmissionBlockingReason"');
+    expect(page).toContain(":disabled=\"Boolean(draftSubmissionBlockingReason)\"");
+    expect(page).toContain(":readonly=\"Boolean(draftSubmissionBlockingReason)\"");
+    expect(page).toContain("if (draftSubmissionBlockingReason.value) return;");
+    expect(page).toContain("activeDraft.value?.submissionBlockingReason");
+    expect(page).toMatch(
+      /activeDraft\.value = draft;[\s\S]*if \(draftSubmissionBlockingReason\.value\) \{[\s\S]*return;[\s\S]*await loadSourceLines\(\);/
+    );
+    expect(page).toMatch(
+      /async function loadSourceLines\(\) \{[\s\S]*if \(draftSubmissionBlockingReason\.value\) return;/
+    );
+    expect(page).not.toMatch(/contractTypeKey\s*===/);
+  });
 });

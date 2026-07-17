@@ -17,7 +17,8 @@ describe("SettlementDraftService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
-          projectId: "project-1"
+          projectId: "project-1",
+          contractTypeKey: "material_purchase"
         })
       },
       paymentTermsVersion: {
@@ -51,6 +52,7 @@ describe("SettlementDraftService", () => {
     };
     const prisma = {
       settlementDraft: tx.settlementDraft,
+      contract: tx.contract,
       $transaction: jest.fn(async (callback) => callback(tx))
     };
     return { tx, service: new SettlementDraftService(prisma as never) };
@@ -92,6 +94,47 @@ describe("SettlementDraftService", () => {
       service.create("forged-project", "owner-1", draftInput)
     ).rejects.toThrow("合同版本不属于当前项目");
     expect(tx.settlementDraft.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["generic_contract", null, "unknown"])(
+    "creates no draft for a non-settleable contract type: %p",
+    async (contractTypeKey) => {
+      const { tx, service } = context({
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-1",
+            projectId: "project-1",
+            contractTypeKey
+          })
+        }
+      });
+
+      await expect(service.create("project-1", "owner-1", draftInput)).rejects.toThrow(
+        contractTypeKey === "generic_contract"
+          ? "通用合同直接按冻结付款条款申请付款"
+          : "合同类型未明确或不支持结算"
+      );
+      expect(tx.settlementDraft.create).not.toHaveBeenCalled();
+    }
+  );
+
+  it("keeps an existing invalid-type draft readable with a blocking reason", async () => {
+    const draft = {
+      id: "draft-legacy",
+      projectId: "project-1",
+      contractId: "contract-1",
+      ownerUserId: "owner-1",
+      status: "draft"
+    };
+    const { service } = context({
+      settlementDraft: { findUnique: jest.fn().mockResolvedValue(draft) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "generic_contract" }) }
+    });
+
+    await expect(service.get("project-1", "draft-legacy", "owner-1")).resolves.toMatchObject({
+      id: "draft-legacy",
+      submissionBlockingReason: "通用合同直接按冻结付款条款申请付款，不办理结算"
+    });
   });
 
   it("only returns a draft to its owner", async () => {
@@ -152,6 +195,38 @@ describe("SettlementDraftService", () => {
       ...draftInput,
       expectedRevision: 3
     })).rejects.toThrow("已提交");
+    expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps an existing non-settleable draft read-only even when the update targets an eligible contract", async () => {
+    const findUnique = jest.fn()
+      .mockResolvedValueOnce({
+        id: "draft-legacy",
+        projectId: "project-1",
+        contractId: "generic-contract",
+        ownerUserId: "owner-1",
+        revision: 3,
+        status: "draft"
+      });
+    const contractFindUnique = jest.fn()
+      .mockResolvedValueOnce({ contractTypeKey: "generic_contract" });
+    const { tx, service } = context({
+      settlementDraft: {
+        findUnique,
+        updateMany: jest.fn()
+      },
+      contract: { findUnique: contractFindUnique }
+    });
+
+    await expect(service.update("project-1", "draft-legacy", "owner-1", {
+      ...draftInput,
+      expectedRevision: 3
+    })).rejects.toThrow("通用合同直接按冻结付款条款申请付款");
+
+    expect(contractFindUnique).toHaveBeenCalledWith({
+      where: { id: "generic-contract" },
+      select: { contractTypeKey: true }
+    });
     expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
   });
 });

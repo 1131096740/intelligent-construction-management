@@ -15,6 +15,7 @@ import {
   settlementSubmissionBlocker
 } from "./settlement-line-calculator";
 import { lockContractAndAssertCurrentEffective } from "../contract/contract-current-version-lock";
+import { assertSettlementContractType } from "./contract-settlement-capacity";
 
 interface SourceLineOccupancy {
   amountCents: bigint;
@@ -43,7 +44,7 @@ export class SettlementWorkbenchService {
     const [contract, unorderedBills] = await Promise.all([
       client.contract.findUnique({
         where: { id: version.contractId },
-        select: { id: true, projectId: true }
+        select: { id: true, projectId: true, contractTypeKey: true }
       }),
       client.contractBill.findMany({
         where: { contractVersionId: version.id },
@@ -60,6 +61,7 @@ export class SettlementWorkbenchService {
     if (!contract) {
       throw new NotFoundException("未找到结算关联合同，请刷新合同台账后重试");
     }
+    assertSettlementContractType(contract.contractTypeKey);
 
     const bills = [...unorderedBills].sort(
       (left, right) =>

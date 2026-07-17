@@ -32,6 +32,7 @@ export interface SettlementDraftReadModel {
   submittedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  submissionBlockingReason: string | null;
 }
 
 export interface SubmittedSettlementReadModel {

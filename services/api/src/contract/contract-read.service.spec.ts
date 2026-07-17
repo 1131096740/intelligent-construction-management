@@ -49,6 +49,7 @@ describe("ContractReadService", () => {
     const governedContext = {
       actorUserId: "handler-1",
       ownerUserId: "handler-1",
+      contractTypeKey: "material_purchase",
       governed: true,
       sealTask: { handlerUserId: "handler-1" },
       activeFinal: null,
@@ -312,6 +313,7 @@ describe("ContractReadService", () => {
           {
             id: "contract-historical",
             projectId: "project-1",
+            contractTypeKey: "material_purchase",
             source: "historical_takeover",
             code: "HT-LS-001",
             temporaryCode: null,
@@ -323,6 +325,7 @@ describe("ContractReadService", () => {
           {
             id: "contract-draft",
             projectId: "project-1",
+            contractTypeKey: "material_purchase",
             source: "system",
             code: "HT-DRAFT-001",
             temporaryCode: null,
@@ -462,6 +465,7 @@ describe("ContractReadService", () => {
           {
             id: "contract-historical",
             projectId: "project-1",
+            contractTypeKey: "material_purchase",
             source: "historical_takeover",
             code: "HT-LS-002",
             temporaryCode: null,
@@ -505,6 +509,72 @@ describe("ContractReadService", () => {
     expect(option.canCreateSettlement).toBe(true);
     expect(option.canCreatePayment).toBe(false);
     expect(option.paymentUnavailableReason).toBe("历史余额尚未确认，不能发起付款");
+  });
+
+  it("blocks settlement but preserves contract payment eligibility for a generic contract", async () => {
+    const prisma = {
+      contract: { findMany: jest.fn().mockResolvedValue([{
+        id: "contract-generic",
+        projectId: "project-1",
+        source: "system",
+        code: "HT-TY-001",
+        temporaryCode: null,
+        name: "通用服务合同",
+        counterparty: "服务单位",
+        contractTypeKey: "generic_contract",
+        voidedAt: null,
+        updatedAt: new Date("2026-07-18")
+      }]) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([{
+        id: "version-generic",
+        contractId: "contract-generic",
+        versionNo: 1,
+        status: "effective",
+        amountCents: 100_000n
+      }]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const [option] = await service.listCreateOptions("project-1");
+    expect(option).toMatchObject({
+      canCreateSettlement: false,
+      settlementUnavailableReason: "通用合同直接按冻结付款条款申请付款，不办理结算",
+      canCreatePayment: true,
+      paymentUnavailableReason: null
+    });
+    expect((service as unknown as {
+      settlementBlockMessage(status: string, type: string): string;
+    }).settlementBlockMessage("effective", "generic_contract")).toBe(
+      "通用合同直接按冻结付款条款申请付款，不办理结算"
+    );
+    const actions = (service as unknown as {
+      contractActions(
+        status: string,
+        roleKeys: string[],
+        approvalAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
+        archiveFiles: unknown[],
+        context: Record<string, unknown>
+      ): Array<{ key: string }>;
+    }).contractActions(
+      "effective",
+      ["contract_staff"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
+      [],
+      {
+        ownerUserId: "contract-staff-1",
+        contractTypeKey: "generic_contract",
+        governed: false,
+        sealTask: null,
+        activeFinal: null,
+        approvalFormAvailable: false,
+        approvalParticipant: false,
+        canUploadGovernedFinal: false
+      }
+    );
+    expect(actions).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "create_settlement" })
+    ]));
   });
 
   it("displays temporaryCode when contract has no formal code and tolerates empty payment stages", async () => {

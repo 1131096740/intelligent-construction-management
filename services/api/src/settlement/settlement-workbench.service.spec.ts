@@ -5,6 +5,7 @@ const ACTIVE_STATUSES = [
   "in_approval",
   "approval_pending",
   "approved_pending_archive",
+  "archive_pending",
   "pending_archive_confirm",
   "effective",
   "partially_paid",
@@ -25,7 +26,11 @@ function buildPrisma() {
       })
     },
     contract: {
-      findUnique: jest.fn().mockResolvedValue({ id: "contract-1", projectId: "project-1" })
+      findUnique: jest.fn().mockResolvedValue({
+        id: "contract-1",
+        projectId: "project-1",
+        contractTypeKey: "material_purchase"
+      })
     },
     contractBill: {
       findMany: jest.fn().mockResolvedValue([
@@ -122,6 +127,25 @@ function buildPrisma() {
 }
 
 describe("SettlementWorkbenchService", () => {
+  it.each(["generic_contract", null, "unknown"])(
+    "fails before reading bills for a non-settleable contract type: %p",
+    async (contractTypeKey) => {
+      const prisma = buildPrisma();
+      prisma.contract.findUnique.mockResolvedValue({
+        id: "contract-1",
+        projectId: "project-1",
+        contractTypeKey
+      });
+      const service = new SettlementWorkbenchService(prisma as never);
+
+      await expect(service.sourceLines("version-1")).rejects.toThrow(
+        contractTypeKey === "generic_contract" ? "通用合同直接按冻结付款条款申请付款" : "合同类型未明确或不支持结算"
+      );
+      expect(prisma.contractBillRow.findMany).not.toHaveBeenCalled();
+      expect(prisma.settlement.findMany).not.toHaveBeenCalled();
+    }
+  );
+
   it("returns one effective version source snapshot with stable rows and exact decimal/money text", async () => {
     const prisma = buildPrisma();
     const service = new SettlementWorkbenchService(prisma as never);

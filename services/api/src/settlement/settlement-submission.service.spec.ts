@@ -4,6 +4,7 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { SettlementSubmissionService } from "./settlement-submission.service";
+import { SettlementContractCapacityDenial } from "./contract-settlement-capacity";
 
 describe("SettlementSubmissionService", () => {
   it("keeps the legacy create entrypoint on the single submission service", async () => {
@@ -180,6 +181,33 @@ describe("SettlementSubmissionService", () => {
       service.submitDraft("project-1", "draft-1", "owner-1", 3)
     ).rejects.toBe(taxError);
 
+    expect(tx.settlementDraft.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.settlementDraft.updateMany).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ data: expect.objectContaining({ status: "submitted" }) })
+    );
+  });
+
+  it("persists a capacity denial only after the draft submission transaction rejects", async () => {
+    const denial = new SettlementContractCapacityDenial("请先完成合同变更", {
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      contractAmountCents: 1_000n,
+      historicalPositiveIncreaseCents: 0n,
+      pricingNature: "fixed_total",
+      amountLimitType: "capped",
+      occupiedAmountCents: 900n,
+      requestedAmountCents: 101n,
+      totalAfterSubmissionCents: 1_001n
+    });
+    const persistContractCapacityDenial = jest.fn().mockResolvedValue(undefined);
+    const { tx, service } = context({}, {
+      submitInTransaction: jest.fn().mockRejectedValue(denial),
+      persistContractCapacityDenial
+    });
+
+    await expect(service.submitDraft("project-1", "draft-1", "owner-1", 3)).rejects.toBe(denial);
+    expect(persistContractCapacityDenial).toHaveBeenCalledWith(denial, "owner-1");
     expect(tx.settlementDraft.updateMany).toHaveBeenCalledTimes(1);
     expect(tx.settlementDraft.updateMany).not.toHaveBeenCalledWith(
       expect.anything(),

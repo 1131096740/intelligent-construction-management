@@ -41,6 +41,7 @@ import {
 } from "../payment/contract-takeover-balance";
 import type { HistoricalContractPaymentBalance } from "../payment/settlement-payment-capacity";
 import { contractChangeVersionsReadModel } from "./contract-change-read-model";
+import { settlementContractTypeBlockReason } from "../settlement/contract-settlement-capacity";
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
@@ -455,6 +456,7 @@ export class ContractReadService {
         effectiveVersion?.id ?? null,
         takeover
       );
+      const settlementTypeBlockReason = settlementContractTypeBlockReason(contract.contractTypeKey);
 
       return {
         contractId: contract.id,
@@ -475,8 +477,10 @@ export class ContractReadService {
         takeoverStatus: takeover?.takeoverStatus ?? null,
         takeoverStatusLabel: takeover ? this.takeoverStatusLabel(takeover.takeoverStatus) : null,
         historicalBalanceConfirmedAt: takeover?.historicalBalanceConfirmedAt?.toISOString() ?? null,
-        canCreateSettlement: Boolean(effectiveVersion),
-        settlementUnavailableReason: effectiveVersion ? null : "合同尚未生效，不能发起结算",
+        canCreateSettlement: Boolean(effectiveVersion) && !settlementTypeBlockReason,
+        settlementUnavailableReason: effectiveVersion
+          ? settlementTypeBlockReason
+          : "合同尚未生效，不能发起结算",
         canCreatePayment: !paymentUnavailableReason,
         paymentUnavailableReason,
         settlements: (settlementsByContractId.get(contract.id) ?? []).map((settlement) => {
@@ -650,6 +654,7 @@ export class ContractReadService {
       {
         actorUserId,
         ownerUserId: contract.ownerUserId,
+        contractTypeKey: contract.contractTypeKey,
         governed: version.contractGovernanceVersion === 1,
         sealTask: signingFacts.sealTask,
         activeFinal: signingFacts.formalFiles.find((item) =>
@@ -714,7 +719,7 @@ export class ContractReadService {
         advanceDeductionRatioBps: stage.advanceDeductionRatioBps,
         advanceDeductionStartRatioBps: stage.advanceDeductionStartRatioBps
       })),
-      settlementBlockMessage: this.settlementBlockMessage(version.status),
+      settlementBlockMessage: this.settlementBlockMessage(version.status, contract.contractTypeKey),
       settlementPayment: this.settlementPayment(
         version.amountCents,
         settlements,
@@ -1234,6 +1239,7 @@ export class ContractReadService {
     context?: {
       actorUserId?: string;
       ownerUserId: string | null;
+      contractTypeKey?: string | null;
       governed: boolean;
       sealTask: ContractDetailReadModel["sealTask"];
       activeFinal: NonNullable<ContractDetailReadModel["formalFiles"]>[number] | null;
@@ -1413,15 +1419,18 @@ export class ContractReadService {
     }
 
     if (status === "effective") {
+      const settlementTypeBlockReason = settlementContractTypeBlockReason(
+        context?.contractTypeKey
+      );
       return [
-        detailAction({
+        ...(!settlementTypeBlockReason ? [detailAction({
           key: "create_settlement",
           label: "发起结算",
           kind: "primary",
           roleKeys,
           requiredAction: "settlement.create",
           enabled: true
-        }),
+        })] : []),
         detailAction({
           key: "download_archive",
           label: "下载合同归档件",
@@ -1645,8 +1654,10 @@ export class ContractReadService {
     ];
   }
 
-  private settlementBlockMessage(status: string): string {
+  private settlementBlockMessage(status: string, contractTypeKey?: string | null): string {
     if (status === "effective") {
+      const typeBlockReason = settlementContractTypeBlockReason(contractTypeKey);
+      if (typeBlockReason) return typeBlockReason;
       return "合同版本已生效，可基于当前合同版本创建结算；付款条款版本将随结算一并绑定。";
     }
 

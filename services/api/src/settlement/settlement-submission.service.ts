@@ -91,6 +91,7 @@ export class SettlementSubmissionService {
         { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
       );
     } catch (error) {
+      await this.settlements.persistContractCapacityDenial?.(error, applicantUserId);
       this.settlements.rethrowSubmissionError(error);
     }
 

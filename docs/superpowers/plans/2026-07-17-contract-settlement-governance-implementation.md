@@ -1371,7 +1371,7 @@ git commit -m "feat: 统一合同变更与增项硬门禁"
 - Modify: `services/api/src/contract/contract-read.service.ts`
 - Modify: `services/api/src/contract/contract-read.service.spec.ts`
 
-- [ ] **Step 1: 写顺序、状态和通用合同失败测试**
+- [x] **Step 1: 写顺序、状态和通用合同失败测试**
 
 ```ts
 await expect(service.submitInTransaction(tx, prepared, applicant)).rejects.toThrow("通用合同不办理结算");
@@ -1384,7 +1384,7 @@ await expect(overAlreadyIncreasedVersion).rejects.toThrow("必须新签合同");
 expect(reserveExceptionQuota).not.toHaveBeenCalled();
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `pnpm --filter @jiangkong/api test -- --runInBand src/settlement/contract-settlement-capacity.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement-draft.service.spec.ts`
 
@@ -1392,7 +1392,7 @@ Expected: FAIL。
 
 同时先写：通用/空/未知合同类型在 draft create/update、direct submit、draft submit、lines preview/导入均失败且零写入；四类明确可结算合同放行。既有非法类型草稿允许只读查看但明确 blocking reason，不允许修改/提交。框架无限额合同即使预计数量非空且实际累计超过预计数量/预计行金额也可继续，但范围外清单、冻结单价或税率漂移仍拒绝。
 
-- [ ] **Step 3: 在唯一提交共享点加事务门禁**
+- [x] **Step 3: 在唯一提交共享点加事务门禁**
 
 在 `SettlementService.submitInTransaction()` 中使用固定锁顺序：先只读定位 contractId，再 `Contract → 当前有效 ContractVersion → 按 id 稳定排序的相关占额 Settlement → Project/项目例外额度`。修正 `contract-current-version-lock.ts`，不能普通读版本后只锁合同；双连接隔离库测试证明两个各自不超限但合计超限的并发提交只能一个成功且无死锁。先计算合同上限，再调用既有 `reserveSettlementQuota()`；项目例外额度即使足够也不能突破合同 cap，拒绝后 Settlement/usage/ApprovalInstance 都为零。
 
@@ -1402,22 +1402,24 @@ shared-domain 状态、项目额度、清单行占额和合同总额统一兼容
 
 成功占额始终写合同额度占用审计，不只在使用项目例外额度时记录。阻断在业务事务内抛 typed denial，确保草稿 revision 抢占、Settlement、usage、ApprovalInstance 全部回滚；外层捕获后用独立事务持久化脱敏审计，再抛固定业务错误。直接提交和草稿提交都重新查询证明业务零写入、草稿 revision/status 不变且审计存在，禁止“正常提交拒绝事务”误保存 revision。
 
-- [ ] **Step 4: 读模型禁止通用合同作为结算选项**
+- [x] **Step 4: 读模型禁止通用合同作为结算选项**
 
 `canCreateSettlement=false`，原因“通用合同直接按冻结付款条款申请付款，不办理结算”。付款选项保持。`contractTypeKey` 为空或未知同样 fail closed；只有材料、机械、劳务、专业分包四类进入结算候选。合同详情的 `availableActions/primaryAction/settlementBlockMessage` 使用相同规则：通用显示按冻结付款条款申请付款，空/未知不显示伪结算入口。
 
-- [ ] **Step 5: 运行定向测试**
+- [x] **Step 5: 运行定向测试**
 
 Run: `pnpm --filter @jiangkong/shared-domain test -- src/statuses.test.ts && pnpm --filter @jiangkong/api test -- --runInBand src/settlement/contract-settlement-capacity.spec.ts src/settlement/settlement-line-occupancy.spec.ts src/settlement/settlement.service.spec.ts src/settlement/settlement-submission.service.spec.ts src/settlement/settlement-draft.service.spec.ts src/contract/contract-current-version-lock.spec.ts src/contract/contract-read.service.spec.ts src/database/settlement-contract-cap-concurrency.spec.ts && pnpm --filter @jiangkong/shared-domain typecheck && pnpm --filter @jiangkong/api typecheck && pnpm --filter @jiangkong/api lint && pnpm --filter @jiangkong/api check:business-errors`
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add packages/shared-domain/src/statuses* services/api/src/settlement services/api/src/contract/contract-current-version-lock* services/api/src/contract/contract-read.service* services/api/src/database/settlement-contract-cap-concurrency.spec.ts
 git commit -m "feat: 增加合同结算金额硬上限"
 ```
+
+> Task 15 已于 2026-07-18 完成实现并通过规格/质量双复审。真实 PostgreSQL 验收使用本机临时 `postgres:16-alpine`、随机隔离 schema 和两个独立 PrismaClient，显式设置 `RUN_SETTLEMENT_CONTRACT_CAP_CONCURRENCY=1` 后 1/1 通过：两个 600 分提交在合同上限 1000 分下仅一笔成功；直接提交和草稿提交超额后的 Settlement、项目例外额度、审批实例、草稿 revision/status 与独立拒绝审计均经数据库重新查询确认。临时容器和 schema 已清理，未连接或修改生产。
 
 ### Task 16: M56 结算参与人和签章证据结构
 
