@@ -178,7 +178,7 @@ function assertLocalRuntime() {
 }
 
 async function assertRealFormSchemaPrerequisites(prisma) {
-  const [indexes, nullableColumns, triggers] = await Promise.all([
+  const [indexes, nullableColumns, triggers, discrepancyConstraints] = await Promise.all([
     prisma.$queryRaw(
       Prisma.sql`
         SELECT indexname
@@ -221,6 +221,18 @@ async function assertRealFormSchemaPrerequisites(prisma) {
             'jg_efb_spot_payment_invoice'
           )
       `
+    ),
+    prisma.$queryRaw(
+      Prisma.sql`
+        SELECT conname, pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint
+        WHERE conrelid = '"SpotProcurementDiscrepancy"'::regclass
+          AND conname IN (
+            'SpotProcurementDiscrepancy_status_check',
+            'SpotProcurementDiscrepancy_resolution_type_check',
+            'SpotProcurementDiscrepancy_status_resolution_check'
+          )
+      `
     )
   ]);
   assert(
@@ -251,6 +263,14 @@ async function assertRealFormSchemaPrerequisites(prisma) {
   assert(
     triggers.length === 3,
     "零星采购并发验收缺少付款依据、实付凭证或付款发票独占文件触发器"
+  );
+  const constraints = discrepancyConstraints
+    .map((constraint) => String(constraint.definition))
+    .join("\n");
+  assert(
+    constraints.includes("awaiting_replenishment") &&
+      constraints.includes("'replenishment'"),
+    "零星采购并发验收缺少补货差异状态或补货处置数据库约束"
   );
 }
 
@@ -3851,7 +3871,7 @@ async function main() {
   await verifyInvoiceLedgerConcurrency(servicesA, servicesB);
   await verifyRawP2034Sentinel();
   console.log(
-    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、余额、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、收货根/修订、最终收货提交、复核/撤销单胜、PDF 唯一当前指针、收货文件跨列竞争、票据覆盖账本与 P2034"
+    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、历史余额隔离、补货或退款差异约束、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、收货根/修订、最终收货提交、复核/撤销单胜、PDF 唯一当前指针、收货文件跨列竞争、票据覆盖账本与 P2034"
   );
 }
 

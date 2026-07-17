@@ -8,6 +8,7 @@ import { AuditService } from "../audit/audit.service";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
 export interface SpotProcurementClosureSnapshot {
+  isRealForm: boolean;
   approved: boolean;
   receiptReviewed: boolean;
   receiptIssuesResolved: boolean;
@@ -47,7 +48,7 @@ type ProcurementLockRow = {
   projectId: string;
   currentVersionId: string | null;
   status: string;
-  approvedAmountCents: bigint;
+  approvedAmountCents: bigint | null;
   actualCostCents: bigint | null;
 };
 
@@ -69,6 +70,7 @@ export class SpotProcurementClosureService {
       blockers.push("funds_not_settled");
     }
     if (
+      !snapshot.isRealForm &&
       snapshot.invoiceCoveredCents + snapshot.noInvoiceCoveredCents !==
       snapshot.actualCostCents
     ) {
@@ -80,20 +82,20 @@ export class SpotProcurementClosureService {
     if (snapshot.pendingCompanyPaymentCount > 0) {
       blockers.push("company_payment_pending");
     }
-    if (snapshot.pendingBalanceReservationCount > 0) {
+    if (!snapshot.isRealForm && snapshot.pendingBalanceReservationCount > 0) {
       blockers.push("balance_reservation_pending");
     }
     if (snapshot.pendingRefundCount > 0) blockers.push("refund_pending");
-    if (snapshot.pendingBalanceTransferCount > 0) {
+    if (!snapshot.isRealForm && snapshot.pendingBalanceTransferCount > 0) {
       blockers.push("balance_transfer_pending");
     }
-    if (snapshot.pendingBalanceExecutionCount > 0) {
+    if (!snapshot.isRealForm && snapshot.pendingBalanceExecutionCount > 0) {
       blockers.push("balance_execution_pending");
     }
-    if (snapshot.duplicateTicketCoverageCount > 0) {
+    if (!snapshot.isRealForm && snapshot.duplicateTicketCoverageCount > 0) {
       blockers.push("duplicate_ticket_coverage");
     }
-    if (snapshot.pendingInvoiceIssueCount > 0) {
+    if (!snapshot.isRealForm && snapshot.pendingInvoiceIssueCount > 0) {
       blockers.push("invoice_issue_pending");
     }
     if (snapshot.pendingVersionChangeCount > 0) {
@@ -194,6 +196,8 @@ export class SpotProcurementClosureService {
             id: true,
             procurementVersionId: true,
             status: true,
+            paymentType: true,
+            approvalAmountCents: true,
             companyPaymentAmountCents: true,
             supplierBalanceAmountCents: true,
             paidAmountCents: true,
@@ -206,6 +210,14 @@ export class SpotProcurementClosureService {
       : [];
     const payments = allPayments.filter(
       (payment) => payment.procurementVersionId === version?.id
+    );
+    const isRealForm = payments.some(
+      (payment) => payment.paymentType !== null
+    );
+    const realFormApprovedAmountCents = sum(
+      payments
+        .filter((payment) => payment.paymentType !== null)
+        .map((payment) => payment.approvalAmountCents)
     );
     const paymentIds = payments.map((payment) => payment.id);
     const [
@@ -328,13 +340,16 @@ export class SpotProcurementClosureService {
     const hasResolvedShortage = currentDiscrepancies.some(
       (row) => row.status === "resolved"
     );
+    const approvedAmountCents = isRealForm
+      ? realFormApprovedAmountCents
+      : procurement.approvedAmountCents;
     const receiptIssuesResolved =
       receiptLines.every((line) => !line.replenishmentPending) &&
       receiptLineActualCostCents === actualCostCents &&
       procurement.actualCostCents === actualCostCents &&
       discrepancies.length === currentDiscrepancies.length &&
       currentDiscrepancies.every((row) => row.status === "resolved") &&
-      (actualCostCents === procurement.approvedAmountCents || hasResolvedShortage);
+      (actualCostCents === approvedAmountCents || hasResolvedShortage);
     const companyPaidCents = sum(
       payments.map((payment) => payment.paidAmountCents)
     );
@@ -346,11 +361,14 @@ export class SpotProcurementClosureService {
       balanceCredits.map((entry) => entry.availableDeltaCents)
     );
     const snapshot: SpotProcurementClosureSnapshot = {
+      isRealForm,
       approved:
         procurement.status === "approved_in_progress" &&
         version?.procurementId === procurementId &&
         version.status === "approved" &&
-        version.totalAmountCents === procurement.approvedAmountCents,
+        (isRealForm
+          ? realFormApprovedAmountCents > 0n
+          : version.totalAmountCents === procurement.approvedAmountCents),
       receiptReviewed:
         Boolean(receipt?.submittedAt) &&
         receipt?.status === "reviewed" &&
@@ -361,10 +379,12 @@ export class SpotProcurementClosureService {
       receiptIssuesResolved,
       actualCostCents,
       fundsSettledCents:
-        companyPaidCents +
-        executedBalanceCents -
-        refundedCents -
-        transferredBalanceCents,
+        isRealForm
+          ? companyPaidCents - refundedCents
+          : companyPaidCents +
+            executedBalanceCents -
+            refundedCents -
+            transferredBalanceCents,
       invoiceCoveredCents:
         sum(currentAllocations.map((row) => row.amountCents)) +
         sum(

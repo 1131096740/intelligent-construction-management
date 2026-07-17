@@ -2,7 +2,9 @@ import { IsIn, IsOptional, MaxLength } from "class-validator";
 import { IsOptionalNonBlankText } from "../../validation/static-field-validation";
 
 export const PROCUREMENT_DISCREPANCY_RESOLUTION_TYPES = [
+  "replenishment",
   "full_refund",
+  // 仅为历史单据兼容保留；真实表单路径会在服务端固定拒绝。
   "full_supplier_balance"
 ] as const;
 

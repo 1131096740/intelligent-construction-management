@@ -35,6 +35,11 @@ type TestDiscrepancy = {
   paidAmountCentsSnapshot: bigint;
   supplierBalanceUsedAmountCentsSnapshot: bigint;
   overpaidAmountCents: bigint;
+  unexecutedAmountClosedCents: bigint;
+  refundExpectedAmountCents: bigint;
+  replenishedAt: Date | null;
+  replenishedByUserId: string | null;
+  replenishmentNote: string | null;
   resolutionType: string | null;
   supplierBalanceEntryId: string | null;
   note: string | null;
@@ -72,6 +77,8 @@ function paymentRow(
     procurementId: "procurement-1",
     procurementVersionId: "version-1",
     status: "approved_pending_payment",
+    paymentType: null,
+    approvalAmountCents: 0n,
     settlementAmountCents: 10_000n,
     supplierBalanceAmountCents: 0n,
     companyPaymentAmountCents: 10_000n,
@@ -105,6 +112,11 @@ function discrepancyRow(
     paidAmountCentsSnapshot: 0n,
     supplierBalanceUsedAmountCentsSnapshot: 0n,
     overpaidAmountCents: 0n,
+    unexecutedAmountClosedCents: 0n,
+    refundExpectedAmountCents: 0n,
+    replenishedAt: null,
+    replenishedByUserId: null,
+    replenishmentNote: null,
     resolutionType: null,
     supplierBalanceEntryId: null,
     note: null,
@@ -145,6 +157,7 @@ function createHarness(options?: {
   discrepancy?: TestDiscrepancy | null;
   refund?: TestRefund | null;
   procurementStatus?: string;
+  realForm?: boolean;
   supplierBalanceEntry?: Record<string, unknown> | null;
   supplierBalanceReservation?: Record<string, unknown> | null;
 }) {
@@ -163,7 +176,7 @@ function createHarness(options?: {
     handlerUserId: ACTORS.handler,
     currentVersionId: "version-1",
     status: options?.procurementStatus ?? "approved_in_progress",
-    approvedAmountCents: 10_000n,
+    approvedAmountCents: options?.realForm ? null : 10_000n,
     actualCostCents
   };
   const version = {
@@ -174,7 +187,7 @@ function createHarness(options?: {
     supplierPartyId: "party-1",
     supplierKey: "party:party-1",
     supplierNameSnapshot: "供应商甲",
-    totalAmountCents: 10_000n
+    totalAmountCents: options?.realForm ? null : 10_000n
   };
   const receipt = {
     id: "receipt-1",
@@ -668,6 +681,7 @@ describe("calculateFinancialFacts", () => {
     );
 
     expect(result).toEqual({
+      isRealForm: false,
       approvedAmountCents: 10_000n,
       approvedPaymentCoverageAmountCents: 10_000n,
       actualCostCents: 8_000n,
@@ -701,6 +715,29 @@ describe("calculateFinancialFacts", () => {
       overpaidAmountCents: 0n,
       canceledUnexecutedAmountCents: 0n,
       remainingPayableAmountCents: 4_000n
+    });
+  });
+
+  it("uses the approved A5 amount when the A4 application intentionally has no amount", () => {
+    const result = calculateFinancialFacts(
+      [
+        paymentRow({
+          paymentType: "company_direct",
+          approvalAmountCents: 10_000n,
+          settlementAmountCents: 0n,
+          companyPaymentAmountCents: 10_000n,
+          paidAmountCents: 9_000n
+        })
+      ],
+      8_000n,
+      null
+    );
+
+    expect(result).toMatchObject({
+      isRealForm: true,
+      approvedAmountCents: 10_000n,
+      shortageAmountCents: 2_000n,
+      overpaidAmountCents: 1_000n
     });
   });
 });
@@ -759,6 +796,61 @@ describe("SpotProcurementSettlementService discrepancy workflow", () => {
           "spot_procurement.discrepancy.create"
       )
     ).toHaveLength(1);
+  });
+
+  it("allows only replenishment or refund for an amount-free A4 real-form shortage", async () => {
+    const harness = createHarness({
+      realForm: true,
+      actualCostCents: 8_000n,
+      payments: [
+        paymentRow({
+          paymentType: "company_direct",
+          approvalAmountCents: 10_000n,
+          settlementAmountCents: 0n,
+          companyPaymentAmountCents: 10_000n,
+          paidAmountCents: 9_000n
+        })
+      ]
+    });
+
+    await expect(
+      harness.service.createOrConfirmDiscrepancy(
+        "procurement-1",
+        ACTORS.handler,
+        {
+          operation: "initiate",
+          resolutionType: "full_supplier_balance"
+        }
+      )
+    ).rejects.toEqual(
+      new BadRequestException(
+        "零星采购真实表单少货多付只允许商户补货或整笔退款"
+      )
+    );
+
+    const initiated = await harness.service.createOrConfirmDiscrepancy(
+      "procurement-1",
+      ACTORS.handler,
+      {
+        operation: "initiate",
+        resolutionType: "replenishment"
+      }
+    );
+    const confirmed = await harness.service.createOrConfirmDiscrepancy(
+      "procurement-1",
+      ACTORS.materialDirector,
+      { operation: "confirm" }
+    );
+
+    expect(initiated.discrepancy).toMatchObject({
+      approvedAmountCents: "10000",
+      resolutionType: "replenishment"
+    });
+    expect(confirmed.discrepancy).toMatchObject({
+      status: "awaiting_replenishment",
+      resolutionType: "replenishment"
+    });
+    expect(harness.balances.releaseForShortage).not.toHaveBeenCalled();
   });
 
   it("cancels no approved capacity when partial payment coverage is already below actual cost", async () => {
@@ -1001,6 +1093,59 @@ describe("SpotProcurementSettlementService refund workflow", () => {
 });
 
 describe("SpotProcurementSettlementService supplier balance workflow", () => {
+  it("rejects both historical supplier-balance write routes for a real-form payment and records the attempt", async () => {
+    const realPayment = paymentRow({
+      paymentType: "company_direct",
+      approvalAmountCents: 10_000n,
+      settlementAmountCents: 0n,
+      companyPaymentAmountCents: 10_000n,
+      paidAmountCents: 9_000n
+    });
+    const harness = createHarness({
+      realForm: true,
+      actualCostCents: 8_000n,
+      payments: [realPayment],
+      discrepancy: discrepancyRow({
+        status: "awaiting_replenishment",
+        paidAmountCentsSnapshot: 9_000n,
+        overpaidAmountCents: 1_000n,
+        resolutionType: "replenishment"
+      })
+    });
+
+    await expect(
+      harness.service.creditSupplierBalance(
+        "procurement-1",
+        ACTORS.financeDirector,
+        { confirmationPassword: "password" }
+      )
+    ).rejects.toEqual(
+      new ConflictException(
+        "零星采购真实表单已取消转商户余额，只允许商户补货或登记退款"
+      )
+    );
+    await expect(
+      harness.service.executeSupplierBalance(
+        "payment-1",
+        ACTORS.financeDirector,
+        { confirmationPassword: "password" }
+      )
+    ).rejects.toEqual(
+      new ConflictException(
+        "零星采购真实表单已取消转商户余额，只允许商户补货或登记退款"
+      )
+    );
+    expect(harness.balances.creditFromDiscrepancy).not.toHaveBeenCalled();
+    expect(harness.balances.executeReservation).not.toHaveBeenCalled();
+    expect(
+      harness.audit.record.mock.calls.filter(
+        ([, input]) =>
+          input.action ===
+          "spot_procurement.balance.legacy_path.rejected"
+      )
+    ).toHaveLength(2);
+  });
+
   it("credits an overpayment once and returns the same terminal fact on replay", async () => {
     const harness = createHarness({
       actualCostCents: 8_000n,

@@ -1,6 +1,7 @@
 import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
 
 const completeSnapshot = () => ({
+  isRealForm: false,
   approved: true,
   receiptReviewed: true,
   receiptIssuesResolved: true,
@@ -53,6 +54,23 @@ describe("SpotProcurementClosureService", () => {
     ).toEqual({ canClose: true, blockers: [] });
   });
 
+  it("does not let invoices or historic supplier-balance facts block a real-form closure", () => {
+    const snapshot = completeSnapshot();
+    snapshot.isRealForm = true;
+    snapshot.invoiceCoveredCents = 0n;
+    snapshot.noInvoiceCoveredCents = 0n;
+    snapshot.pendingBalanceReservationCount = 1;
+    snapshot.pendingBalanceTransferCount = 1;
+    snapshot.pendingBalanceExecutionCount = 1;
+    snapshot.duplicateTicketCoverageCount = 1;
+    snapshot.pendingInvoiceIssueCount = 1;
+
+    expect(SpotProcurementClosureService.evaluate(snapshot)).toEqual({
+      canClose: true,
+      blockers: []
+    });
+  });
+
   it("closes the procurement and locks its receipt in the same transaction", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
@@ -61,7 +79,7 @@ describe("SpotProcurementClosureService", () => {
           projectId: "project-1",
           currentVersionId: "version-1",
           status: "approved_in_progress",
-          approvedAmountCents: 10_000n,
+          approvedAmountCents: null,
           actualCostCents: 10_000n
         }
       ]),
@@ -70,7 +88,7 @@ describe("SpotProcurementClosureService", () => {
           id: "version-1",
           procurementId: "procurement-1",
           status: "approved",
-          totalAmountCents: 10_000n
+          totalAmountCents: null
         }),
         count: jest.fn().mockResolvedValue(0)
       },
@@ -107,6 +125,8 @@ describe("SpotProcurementClosureService", () => {
             id: "payment-1",
             procurementVersionId: "version-1",
             status: "paid",
+            paymentType: "company_direct",
+            approvalAmountCents: 10_000n,
             companyPaymentAmountCents: 10_000n,
             supplierBalanceAmountCents: 0n,
             paidAmountCents: 10_000n,

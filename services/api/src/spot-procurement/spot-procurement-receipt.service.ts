@@ -1548,11 +1548,34 @@ export class SpotProcurementReceiptService {
 
         let currentRevisionNo =
           context.receipt.currentRevisionNo;
+        let replenishmentResolvedDiscrepancyCount = 0;
         if (input.decision === "approved") {
           await tx.spotProcurementReceipt.update({
             where: { id: context.receipt.id },
             data: { status: "reviewed" }
           });
+          const replenishmentResolved =
+            await tx.spotProcurementDiscrepancy.updateMany({
+              where: {
+                receiptId: context.receipt.id,
+                status: "awaiting_replenishment",
+                resolutionType: "replenishment",
+                invalidatedAt: null
+              },
+              data: {
+                status: "invalidated",
+                replenishedAt: new Date(),
+                replenishedByUserId: actorUserId,
+                replenishmentNote:
+                  comment ?? "商户补货后收货修订复核通过",
+                invalidatedAt: new Date(),
+                invalidatedByUserId: actorUserId,
+                invalidationReason:
+                  "商户补货后收货修订复核通过"
+              }
+            });
+          replenishmentResolvedDiscrepancyCount =
+            replenishmentResolved.count;
         } else {
           currentRevisionNo =
             await this.advanceReceiptCorrectionRevision(
@@ -1578,6 +1601,7 @@ export class SpotProcurementReceiptService {
             reviewId: review.id,
             sequenceNo: review.sequenceNo,
             decision: input.decision,
+            replenishmentResolvedDiscrepancyCount,
             submissionDelegationId:
               context.receipt.submissionDelegationId
           }
@@ -1684,9 +1708,20 @@ export class SpotProcurementReceiptService {
               receiptId: context.receipt.id,
               invalidatedAt: null
             },
-            select: { id: true }
+            select: {
+              id: true,
+              status: true,
+              resolutionType: true
+            }
           });
-        if (activeDiscrepancy) {
+        if (
+          activeDiscrepancy &&
+          !(
+            activeDiscrepancy.status ===
+              "awaiting_replenishment" &&
+            activeDiscrepancy.resolutionType === "replenishment"
+          )
+        ) {
           throw new ConflictException(
             "当前收货复核已形成差异结算事实，不能撤销"
           );

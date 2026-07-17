@@ -57,7 +57,7 @@ type ProcurementLockRow = {
   handlerUserId: string;
   currentVersionId: string | null;
   status: string;
-  approvedAmountCents: bigint;
+  approvedAmountCents: bigint | null;
   actualCostCents: bigint | null;
 };
 
@@ -67,9 +67,9 @@ type VersionLockRow = {
   status: string;
   handlerUserId: string;
   supplierPartyId: string | null;
-  supplierKey: string;
-  supplierNameSnapshot: string;
-  totalAmountCents: bigint;
+  supplierKey: string | null;
+  supplierNameSnapshot: string | null;
+  totalAmountCents: bigint | null;
 };
 
 type ReceiptLockRow = {
@@ -134,6 +134,8 @@ export type SettlementPaymentLockRow = {
   procurementId: string;
   procurementVersionId: string;
   status: string;
+  paymentType: string | null;
+  approvalAmountCents: bigint;
   settlementAmountCents: bigint;
   supplierBalanceAmountCents: bigint;
   companyPaymentAmountCents: bigint;
@@ -244,7 +246,8 @@ export class SpotProcurementSettlementService {
           }
           this.assertResolutionChoice(
             input.resolutionType,
-            financial.overpaidAmountCents
+            financial.overpaidAmountCents,
+            financial.isRealForm
           );
           const created =
             await tx.spotProcurementDiscrepancy.create({
@@ -258,7 +261,7 @@ export class SpotProcurementSettlementService {
                 receiptReviewId: context.review.id,
                 status: "pending_resolution",
                 approvedAmountCentsSnapshot:
-                  context.version.totalAmountCents,
+                  financial.approvedAmountCents,
                 actualCostCentsSnapshot:
                   context.actualCostCents,
                 shortageAmountCents:
@@ -298,7 +301,7 @@ export class SpotProcurementSettlementService {
                 context.receipt.currentRevisionNo,
               receiptReviewId: context.review.id,
               approvedAmountCents:
-                context.version.totalAmountCents.toString(),
+                financial.approvedAmountCents.toString(),
               actualCostCents:
                 context.actualCostCents.toString(),
               shortageAmountCents:
@@ -436,7 +439,9 @@ export class SpotProcurementSettlementService {
             ? "resolved"
             : discrepancy.resolutionType === "full_refund"
               ? "awaiting_refund"
-              : "awaiting_supplier_balance";
+              : financial.isRealForm
+                ? "awaiting_replenishment"
+                : "awaiting_supplier_balance";
         const updated =
           await tx.spotProcurementDiscrepancy.updateMany({
             where: {
@@ -446,6 +451,15 @@ export class SpotProcurementSettlementService {
             data: {
               status,
               canceledUnexecutedAmountCents,
+              unexecutedAmountClosedCents:
+                financial.isRealForm
+                  ? canceledUnexecutedAmountCents
+                  : 0n,
+              refundExpectedAmountCents:
+                financial.isRealForm &&
+                discrepancy.resolutionType === "full_refund"
+                  ? financial.overpaidAmountCents
+                  : 0n,
               resolvedAt:
                 status === "resolved" ? now : null,
               resolvedByUserId:
@@ -838,6 +852,15 @@ export class SpotProcurementSettlementService {
           context.version.totalAmountCents
         );
         this.assertFinancialFacts(financial);
+        if (financial.isRealForm) {
+          await this.recordLegacyBalancePathRejected(
+            tx,
+            actorUserId,
+            context.procurement,
+            currentPayments,
+            "credit"
+          );
+        }
         this.assertDiscrepancySnapshot(
           discrepancy,
           context,
@@ -1019,6 +1042,23 @@ export class SpotProcurementSettlementService {
           actorUserId,
           version.projectId
         );
+        if (payment.paymentType) {
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "spot_procurement.balance.legacy_path.rejected",
+            businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+            businessId: payment.id,
+            metadata: {
+              projectId: version.projectId,
+              procurementId: version.procurementId,
+              paymentId: payment.id,
+              operation: "execute"
+            }
+          });
+          throw new ConflictException(
+            "零星采购真实表单已取消转商户余额，只允许商户补货或登记退款"
+          );
+        }
         if (
           payment.procurementVersionId !== version.id ||
           payment.invalidatedAt
@@ -1397,7 +1437,8 @@ export class SpotProcurementSettlementService {
       actualCostCents !== receipt.actualCostCents ||
       actualCostCents !== revision.actualCostCents ||
       procurement.actualCostCents !== actualCostCents ||
-      actualCostCents > version.totalAmountCents
+      (version.totalAmountCents !== null &&
+        actualCostCents > version.totalAmountCents)
     ) {
       throw new ConflictException(
         "当前收货实际成本汇总不一致，请联系管理员核对"
@@ -1474,6 +1515,8 @@ export class SpotProcurementSettlementService {
           "procurementId",
           "procurementVersionId",
           "status",
+          "paymentType",
+          "approvalAmountCents",
           "settlementAmountCents",
           "supplierBalanceAmountCents",
           "companyPaymentAmountCents",
@@ -1747,29 +1790,52 @@ export class SpotProcurementSettlementService {
         }
       });
     }
-    if (remaining !== 0n) {
-      throw new ConflictException(
-        "未执行额度取消计算不完整，请联系财务核对"
-      );
-    }
+    // 已实际支付的部分不能被改写为“已取消额度”；其与实际应付的差额
+    // 由后续补货或退款闭环处理。
     return cancelTotal;
   }
 
   private assertResolutionChoice(
     resolutionType:
+      | "replenishment"
       | "full_refund"
       | "full_supplier_balance"
       | undefined,
-    overpaidAmountCents: bigint
+    overpaidAmountCents: bigint,
+    isRealForm: boolean
   ) {
     if (overpaidAmountCents > 0n && !resolutionType) {
       throw new BadRequestException(
-        "存在真实多付时必须选择整笔退款或整笔转供应商余额"
+        isRealForm
+          ? "存在真实多付时必须选择商户补货或整笔退款"
+          : "存在真实多付时必须选择整笔退款或整笔转供应商余额"
       );
     }
     if (overpaidAmountCents === 0n && resolutionType) {
       throw new BadRequestException(
         "当前不存在真实多付，不能选择退款或转供应商余额"
+      );
+    }
+    if (
+      overpaidAmountCents > 0n &&
+      isRealForm &&
+      !["replenishment", "full_refund"].includes(
+        resolutionType ?? ""
+      )
+    ) {
+      throw new BadRequestException(
+        "零星采购真实表单少货多付只允许商户补货或整笔退款"
+      );
+    }
+    if (
+      overpaidAmountCents > 0n &&
+      !isRealForm &&
+      !["full_refund", "full_supplier_balance"].includes(
+        resolutionType ?? ""
+      )
+    ) {
+      throw new BadRequestException(
+        "历史零星采购多付处理方式不正确"
       );
     }
   }
@@ -1800,7 +1866,7 @@ export class SpotProcurementSettlementService {
   ) {
     if (
       discrepancy.approvedAmountCentsSnapshot !==
-        context.version.totalAmountCents ||
+        financial.approvedAmountCents ||
       discrepancy.actualCostCentsSnapshot !==
         context.actualCostCents ||
       discrepancy.shortageAmountCents !==
@@ -1831,6 +1897,38 @@ export class SpotProcurementSettlementService {
         "付款覆盖、取消额度或执行金额超出采购账本范围，请联系财务核对"
       );
     }
+    if (
+      financial.isRealForm &&
+      financial.executedSupplierBalanceAmountCents !== 0n
+    ) {
+      throw new ConflictException(
+        "零星采购真实表单不得使用商户余额抵扣"
+      );
+    }
+  }
+
+  private async recordLegacyBalancePathRejected(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    procurement: ProcurementLockRow,
+    payments: SettlementPaymentLockRow[],
+    operation: "credit" | "execute"
+  ) {
+    await this.audit.record(tx, {
+      actorUserId,
+      action: "spot_procurement.balance.legacy_path.rejected",
+      businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.application,
+      businessId: procurement.id,
+      metadata: {
+        projectId: procurement.projectId,
+        procurementId: procurement.id,
+        paymentIds: payments.map((payment) => payment.id),
+        operation
+      }
+    });
+    throw new ConflictException(
+      "零星采购真实表单已取消转商户余额，只允许商户补货或登记退款"
+    );
   }
 
   private async requireCurrentHandler(
@@ -2418,19 +2516,56 @@ export class SpotProcurementSettlementService {
 export function calculateFinancialFacts(
   payments: SettlementPaymentLockRow[],
   actualCostCents: bigint,
-  purchaseApprovedAmountCents: bigint
+  purchaseApprovedAmountCents: bigint | null
 ) {
   const activePayments = payments.filter(
     (payment) =>
       ACTIVE_PAYMENT_STATUSES.has(payment.status) &&
       !payment.invalidatedAt
   );
+  const isRealForm = activePayments.some(
+    (payment) => payment.paymentType !== null
+  );
+  if (
+    isRealForm &&
+    activePayments.some((payment) => payment.paymentType === null)
+  ) {
+    throw new ConflictException(
+      "当前采购混入新旧付款事实，不能计算收货结算"
+    );
+  }
+  if (
+    isRealForm &&
+    activePayments.some(
+      (payment) =>
+        payment.supplierBalanceAmountCents !== 0n ||
+        payment.executedSupplierBalanceAmountCents !== 0n ||
+        payment.canceledSupplierBalanceAmountCents !== 0n
+    )
+  ) {
+    throw new ConflictException(
+      "零星采购真实表单不得保留或使用商户余额"
+    );
+  }
+  if (!isRealForm && purchaseApprovedAmountCents === null) {
+    throw new ConflictException(
+      "历史采购缺少批准金额，不能计算收货结算"
+    );
+  }
+  const approvedAmountCents: bigint = isRealForm
+    ? activePayments.reduce(
+        (total, payment) => total + payment.approvalAmountCents,
+        0n
+      )
+    : purchaseApprovedAmountCents!;
   const approvedPaymentCoverageAmountCents =
     activePayments.reduce(
     (total, payment) =>
       total +
       nonnegative(
-        payment.settlementAmountCents -
+        (isRealForm
+          ? payment.approvalAmountCents
+          : payment.settlementAmountCents) -
           payment.canceledAmountCents
       ),
     0n
@@ -2456,11 +2591,12 @@ export function calculateFinancialFacts(
     companyPaidAmountCents +
     executedSupplierBalanceAmountCents;
   return {
-    approvedAmountCents: purchaseApprovedAmountCents,
+    isRealForm,
+    approvedAmountCents,
     approvedPaymentCoverageAmountCents,
     actualCostCents,
     shortageAmountCents: nonnegative(
-      purchaseApprovedAmountCents - actualCostCents
+      approvedAmountCents - actualCostCents
     ),
     companyPaidAmountCents,
     executedSupplierBalanceAmountCents,

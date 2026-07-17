@@ -241,7 +241,9 @@ describe("SpotProcurementReceiptService workflow", () => {
     latestReview?: Record<string, unknown> | null;
     firstSubmittedAt?: Date | null;
     lockedAt?: Date | null;
-    activeDiscrepancy?: boolean;
+    activeDiscrepancy?:
+      | boolean
+      | { status: string; resolutionType: string };
     activeTicketFact?:
       | "allocation"
       | "no_invoice"
@@ -619,10 +621,17 @@ describe("SpotProcurementReceiptService workflow", () => {
       },
       spotProcurementDiscrepancy: {
         findFirst: jest.fn().mockResolvedValue(
-          options?.activeDiscrepancy
-            ? { id: "discrepancy-1" }
-            : null
-        )
+          options?.activeDiscrepancy === true
+            ? {
+                id: "discrepancy-1",
+                status: "awaiting_refund",
+                resolutionType: "full_refund"
+              }
+            : options?.activeDiscrepancy
+              ? { id: "discrepancy-1", ...options.activeDiscrepancy }
+              : null
+        ),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 })
       },
       invoiceAllocation: {
         findFirst: jest.fn().mockResolvedValue(
@@ -1806,6 +1815,22 @@ describe("SpotProcurementReceiptService workflow", () => {
       data: { status: "reviewed" }
     });
     expect(
+      harness.tx.spotProcurementDiscrepancy.updateMany
+    ).toHaveBeenCalledWith({
+      where: {
+        receiptId: "receipt-1",
+        status: "awaiting_replenishment",
+        resolutionType: "replenishment",
+        invalidatedAt: null
+      },
+      data: expect.objectContaining({
+        status: "invalidated",
+        replenishedByUserId: "material-director-1",
+        invalidatedByUserId: "material-director-1",
+        invalidationReason: "商户补货后收货修订复核通过"
+      })
+    });
+    expect(
       harness.tx.spotProcurementReceiptRevision.create
     ).not.toHaveBeenCalled();
     expect(
@@ -2043,6 +2068,46 @@ describe("SpotProcurementReceiptService workflow", () => {
     expect(
       harness.tx.spotProcurementReceiptRevision.create
     ).not.toHaveBeenCalled();
+  });
+
+  it("allows revocation only for a pending replenishment discrepancy", async () => {
+    const approvedReview = {
+      id: "review-approved",
+      receiptId: "receipt-1",
+      receiptRevisionNo: 1,
+      procurementId: "procurement-1",
+      procurementVersionId: "version-1",
+      sequenceNo: 1,
+      decision: "approved",
+      comment: "少货",
+      reviewedByUserId: "material-director-1",
+      reviewedByNameSnapshot: "张三",
+      submissionDelegationId: null,
+      targetReviewId: null,
+      createdAt: new Date("2026-07-17T09:00:00.000Z")
+    };
+    const harness = createHarness({
+      receiptStatus: "reviewed",
+      revisionSubmittedAt: new Date("2026-07-17T08:30:00.000Z"),
+      materialDirector: true,
+      latestReview: approvedReview,
+      activeDiscrepancy: {
+        status: "awaiting_replenishment",
+        resolutionType: "replenishment"
+      }
+    });
+
+    await expect(
+      harness.service.revokeReview(
+        "procurement-1",
+        "material-director-1",
+        {
+          targetReviewId: "review-approved",
+          reason: "商户已补货，需要补拍并复核",
+          confirmReviewRevocation: true
+        }
+      )
+    ).resolves.toMatchObject({ status: "review_revoked" });
   });
 
   it.each([
