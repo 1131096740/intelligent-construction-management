@@ -179,6 +179,7 @@ model ContractVersion {
   taxFactEvidenceFileId                  String?
   taxFactRevision                        Int       @default(0)
   taxFactsFrozenAt                       DateTime?
+  contractGovernanceVersion              Int?
   companyEntityIdSnapshot                String?
   companyEntityVersionId                 String?
   companyEntityNameSnapshot              String?
@@ -366,6 +367,86 @@ model ContractArchiveFile {
   confirmedAt       DateTime?
   status            String
   createdAt         DateTime  @default(now())
+}
+
+model ContractFormalFile {
+  id                   String    @id @default(uuid())
+  contractVersionId    String
+  purpose              String
+  fileId               String
+  contentSha256        String
+  pageCount            Int
+  sourceRevision       Int
+  status               String
+  uploadedByUserId     String
+  supersedesId         String?
+  invalidatedAt        DateTime?
+  invalidationReason   String?
+  declarationSnapshot  Json
+  declaredByUserId     String
+  declaredAt           DateTime
+  confirmedByUserId    String?
+  confirmedAt          DateTime?
+  confirmationSnapshot Json?
+  createdAt            DateTime  @default(now())
+
+  @@index([contractVersionId, purpose, status])
+  @@index([fileId])
+  @@index([supersedesId])
+}
+
+model ContractAuthorization {
+  id                      String    @id @default(uuid())
+  originContractVersionId String
+  side                    String
+  grantorName             String
+  agentName               String
+  scopeSummary            String
+  fileId                  String
+  contentSha256           String
+  pageCount               Int
+  status                  String
+  supersedesId            String?
+  invalidatedAt           DateTime?
+  invalidationReason      String?
+  uploadedByUserId        String
+  createdAt               DateTime  @default(now())
+
+  @@index([originContractVersionId, side, status])
+  @@index([fileId])
+  @@index([supersedesId])
+}
+
+model ContractVersionAuthorizationLink {
+  id                          String   @id @default(uuid())
+  contractVersionId           String
+  side                        String
+  required                    Boolean
+  authorizationId             String?
+  reusedFromContractVersionId String?
+  createdAt                   DateTime @default(now())
+
+  @@unique([contractVersionId, side])
+  @@index([authorizationId])
+  @@index([reusedFromContractVersionId])
+}
+
+model ContractSealTask {
+  id                 String    @id @default(uuid())
+  contractVersionId  String    @unique
+  handlerUserId      String
+  status             String
+  approvedByUserId   String?
+  approvedAt         DateTime?
+  completedByUserId  String?
+  completedAt        DateTime?
+  cancelledByUserId  String?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status, handlerUserId])
 }
 
 model SettlementDraft {
@@ -928,12 +1009,13 @@ model ArchiveRecord {
 }
 
 model PdfDocument {
-  id           String   @id @default(uuid())
-  businessType String
-  businessId   String
-  fileId       String
-  templateKey  String
-  createdAt    DateTime @default(now())
+  id                 String   @id @default(uuid())
+  businessType       String
+  businessId         String
+  fileId             String
+  templateKey        String
+  approvalInstanceId String?  @unique
+  createdAt          DateTime @default(now())
 }
 
 model AuditLog {
