@@ -19,7 +19,7 @@
       @action="load"
     />
     <div
-      v-else
+      v-else-if="historyItems.length > 0"
       class="history-list"
     >
       <article
@@ -36,7 +36,7 @@
             {{ item.isActive ? "启用" : "停用" }}
           </t-tag>
         </header>
-        <p>{{ item.roleLabel }} · 操作人身份已留痕</p>
+        <p>{{ item.actorName }} · {{ item.roleLabel }}</p>
         <dl>
           <template
             v-for="change in item.changes"
@@ -52,6 +52,12 @@
         >本版本为历史起点</span>
       </article>
     </div>
+    <BusinessFeedback
+      v-else
+      state="info"
+      title="暂无历史版本"
+      description="当前主体尚未形成可展示的历史记录。"
+    />
   </t-drawer>
 </template>
 
@@ -65,7 +71,8 @@ import BusinessFeedback from "../../../components/BusinessFeedback.vue";
 import {
   companyEntityActionLabel,
   companyEntityFieldChanges,
-  companyEntityRoleLabel
+  companyEntityRoleLabel,
+  createCompanyEntityRequestGate
 } from "../company-entity.config";
 
 const props = defineProps<{ modelValue: boolean; entityId: string | null }>();
@@ -77,11 +84,13 @@ const visible = computed({
 const versions = ref<CompanyEntityVersionModel[]>([]);
 const loading = ref(false);
 const errorMessage = ref("");
+const requestGate = createCompanyEntityRequestGate();
 
 const historyItems = computed(() => versions.value.map((version, index) => ({
   id: version.id,
   versionNo: version.versionNo,
   actionLabel: companyEntityActionLabel(version.action),
+  actorName: version.actorName,
   roleLabel: companyEntityRoleLabel(version.actorRoleKey),
   createdAtLabel: formatDateTime(version.createdAt),
   isActive: version.isActive,
@@ -89,20 +98,34 @@ const historyItems = computed(() => versions.value.map((version, index) => ({
 })));
 
 watch(() => [props.modelValue, props.entityId] as const, ([isVisible]) => {
-  if (isVisible) void load();
+  if (isVisible) {
+    void load();
+    return;
+  }
+  requestGate.invalidate();
+  versions.value = [];
+  errorMessage.value = "";
+  loading.value = false;
 });
 
 async function load() {
-  if (!props.entityId) return;
+  const entityId = props.entityId;
+  if (!entityId || !props.modelValue) return;
+  const token = requestGate.begin(entityId);
   loading.value = true;
   errorMessage.value = "";
+  versions.value = [];
   try {
-    const result = await fetchCompanyEntityHistory(props.entityId);
+    const result = await fetchCompanyEntityHistory(entityId);
+    if (!requestGate.isCurrent(token, props.modelValue ? props.entityId ?? "" : "")) return;
     versions.value = [...result.versions].sort((a, b) => b.versionNo - a.versionNo);
   } catch (error) {
+    if (!requestGate.isCurrent(token, props.modelValue ? props.entityId ?? "" : "")) return;
     errorMessage.value = error instanceof Error ? error.message : "加载主体历史失败";
   } finally {
-    loading.value = false;
+    if (requestGate.isCurrent(token, props.modelValue ? props.entityId ?? "" : "")) {
+      loading.value = false;
+    }
   }
 }
 

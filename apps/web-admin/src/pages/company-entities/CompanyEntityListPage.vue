@@ -87,26 +87,32 @@
         </template>
         <template #operation="{ row }">
           <t-space size="small">
-            <t-link
+            <t-button
               v-if="capabilities.canMaintain"
+              variant="text"
+              size="small"
               theme="primary"
               @click="openEdit(row)"
             >
               修改
-            </t-link>
-            <t-link
+            </t-button>
+            <t-button
+              variant="text"
+              size="small"
               theme="primary"
               @click="openHistory(row)"
             >
               查看历史
-            </t-link>
-            <t-link
+            </t-button>
+            <t-button
               v-if="capabilities.canMaintain"
+              variant="text"
+              size="small"
               :theme="row.isActive ? 'danger' : 'primary'"
               @click="openStatus(row)"
             >
               {{ row.isActive ? "停用" : "启用" }}
-            </t-link>
+            </t-button>
           </t-space>
         </template>
       </t-table>
@@ -137,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useAuthStore } from "../../auth/auth.store";
 import {
   fetchCompanyEntityManagement,
@@ -152,7 +158,8 @@ import CompanyEntityFormDrawer from "./components/CompanyEntityFormDrawer.vue";
 import CompanyEntityHistoryDrawer from "./components/CompanyEntityHistoryDrawer.vue";
 import {
   companyEntityCapabilities,
-  companyEntityDataStatusLabel
+  companyEntityDataStatusLabel,
+  createCompanyEntityRequestGate
 } from "./company-entity.config";
 
 const auth = useAuthStore();
@@ -188,6 +195,7 @@ const statusDialogVisible = ref(false);
 const statusTarget = ref<CompanyEntityModel | null>(null);
 const statusSaving = ref(false);
 const statusError = ref("");
+const requestGate = createCompanyEntityRequestGate();
 
 const feedbackMessage = computed(() => errorMessage.value || noticeMessage.value);
 const feedbackState = computed<"error" | "success" | "info">(() => {
@@ -203,18 +211,30 @@ const statusDescription = computed(() => statusTarget.value?.isActive
   : `启用后，“${statusTarget.value?.name ?? "该主体"}”将可用于新建合同。`);
 
 async function load() {
+  const snapshot = listRequestSnapshot();
+  const token = requestGate.begin(snapshot);
   loading.value = true;
   errorMessage.value = "";
   try {
-    rows.value = await fetchCompanyEntityManagement({
+    const result = await fetchCompanyEntityManagement({
       keyword: filters.keyword.trim() || undefined,
       status: filters.status
     });
+    if (!requestGate.isCurrent(token, listRequestSnapshot())) return;
+    rows.value = result;
   } catch (error) {
+    if (!requestGate.isCurrent(token, listRequestSnapshot())) return;
+    rows.value = [];
     errorMessage.value = error instanceof Error ? error.message : "加载我方公司主体失败";
   } finally {
-    loading.value = false;
+    if (requestGate.isCurrent(token, listRequestSnapshot())) {
+      loading.value = false;
+    }
   }
+}
+
+function listRequestSnapshot() {
+  return `${filters.status}\u0000${filters.keyword.trim()}`;
 }
 
 function openCreate() {
@@ -270,6 +290,13 @@ function formatDateTime(value: string) {
 }
 
 onMounted(load);
+watch(
+  () => [filters.keyword, filters.status],
+  () => {
+    requestGate.invalidate();
+    loading.value = false;
+  }
+);
 </script>
 
 <style scoped>

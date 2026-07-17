@@ -91,3 +91,38 @@ export function companyEntityFieldChanges(
     .filter((field) => field.current !== field.previous)
     .map((field) => ({ label: field.label, before: field.previous, after: field.current }));
 }
+
+export interface CompanyEntityRequestToken {
+  sequence: number;
+  snapshot: string;
+}
+
+export function createCompanyEntityRequestGate() {
+  let sequence = 0;
+  return {
+    begin(snapshot: string): CompanyEntityRequestToken {
+      sequence += 1;
+      return { sequence, snapshot };
+    },
+    isCurrent(token: CompanyEntityRequestToken, snapshot: string) {
+      return token.sequence === sequence && token.snapshot === snapshot;
+    },
+    invalidate() {
+      sequence += 1;
+    }
+  };
+}
+
+export function createCompanyEntitySubmitGuard() {
+  let active = false;
+  return {
+    tryStart() {
+      if (active) return false;
+      active = true;
+      return true;
+    },
+    finish() {
+      active = false;
+    }
+  };
+}

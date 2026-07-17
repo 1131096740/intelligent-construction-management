@@ -83,6 +83,11 @@ function buildHarness() {
     $queryRaw: jest.fn().mockResolvedValue([{ id: "entity-1" }])
   };
   const prisma = {
+    user: {
+      findMany: jest.fn().mockResolvedValue([
+        { id: "contract-user", name: "合同员张三" }
+      ])
+    },
     companyEntity: {
       findMany: jest.fn().mockResolvedValue([entityFixture()]),
       findUnique: jest.fn().mockResolvedValue(entityFixture())
@@ -211,11 +216,31 @@ describe("CompanyEntityService reads", () => {
     ];
     prisma.companyEntityVersion.findMany.mockResolvedValue(versions);
 
-    await expect(service.history("entity-1", "chairman-user")).resolves.toEqual({
+    const result = await service.history("entity-1", "chairman-user");
+
+    expect(result).toEqual({
       entity: entityFixture(),
-      versions
+      versions: versions.map((version) => ({
+        id: version.id,
+        companyEntityId: version.companyEntityId,
+        versionNo: version.versionNo,
+        name: version.name,
+        unifiedSocialCreditCode: version.unifiedSocialCreditCode,
+        registeredAddress: version.registeredAddress,
+        isActive: version.isActive,
+        action: version.action,
+        actorRoleKey: version.actorRoleKey,
+        createdAt: version.createdAt,
+        actorName: "合同员张三"
+      }))
     });
+    expect(result.versions.every((version) => !("actorUserId" in version))).toBe(true);
     expect(access.assertCanRead).toHaveBeenCalledWith("chairman-user");
+    expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["contract-user"] } },
+      select: { id: true, name: true }
+    });
     expect(prisma.companyEntityVersion.findMany).toHaveBeenCalledWith({
       where: { companyEntityId: "entity-1" },
       select: {
@@ -232,6 +257,31 @@ describe("CompanyEntityService reads", () => {
         createdAt: true
       },
       orderBy: { versionNo: "desc" }
+    });
+  });
+
+  it("uses a safe Chinese actor fallback and one batch lookup for missing users", async () => {
+    const { service, prisma } = buildHarness();
+    prisma.companyEntityVersion.findMany.mockResolvedValue([
+      versionFixture({ id: "version-3", versionNo: 3, actorUserId: "missing-user" }),
+      versionFixture({ id: "version-2", versionNo: 2, actorUserId: "contract-user" }),
+      versionFixture({ id: "version-1", versionNo: 1, actorUserId: null })
+    ]);
+    prisma.user.findMany.mockResolvedValue([
+      { id: "contract-user", name: "合同员张三" }
+    ]);
+
+    const result = await service.history("entity-1", "finance-user");
+
+    expect(result.versions.map((version) => version.actorName)).toEqual([
+      "操作人信息已留痕",
+      "合同员张三",
+      "操作人信息已留痕"
+    ]);
+    expect(prisma.user.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["missing-user", "contract-user"] } },
+      select: { id: true, name: true }
     });
   });
 

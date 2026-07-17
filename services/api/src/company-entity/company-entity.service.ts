@@ -49,6 +49,7 @@ const CONCURRENT_CHANGE_MESSAGE =
   "我方公司主体资料已发生变化，请刷新列表后重试";
 const COMPANY_ENTITY_NOT_FOUND_MESSAGE =
   "未找到我方公司主体，请刷新列表后重试";
+const COMPANY_ENTITY_ACTOR_FALLBACK = "操作人信息已留痕";
 
 type NormalizedCompanyEntityFacts = {
   name: string;
@@ -151,7 +152,31 @@ export class CompanyEntityService {
       select: COMPANY_ENTITY_VERSION_SELECT,
       orderBy: { versionNo: "desc" }
     });
-    return { entity, versions };
+    const actorUserIds = [
+      ...new Set(
+        versions
+          .map((version) => version.actorUserId)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      )
+    ];
+    const actors = actorUserIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: actorUserIds } },
+          select: { id: true, name: true }
+        })
+      : [];
+    const actorNames = new Map(
+      actors.map((actor) => [actor.id, actor.name.trim() || COMPANY_ENTITY_ACTOR_FALLBACK])
+    );
+    return {
+      entity,
+      versions: versions.map(({ actorUserId, ...version }) => ({
+        ...version,
+        actorName: actorUserId
+          ? actorNames.get(actorUserId) ?? COMPANY_ENTITY_ACTOR_FALLBACK
+          : COMPANY_ENTITY_ACTOR_FALLBACK
+      }))
+    };
   }
 
   async create(actorUserId: string, input: CreateCompanyEntityDto) {

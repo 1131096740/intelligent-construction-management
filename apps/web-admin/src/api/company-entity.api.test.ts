@@ -64,13 +64,34 @@ describe("company entity management API", () => {
     } as const;
     mockApiFetch
       .mockResolvedValueOnce(Response.json([entity]))
-      .mockResolvedValueOnce(Response.json({ entity, versions: [] }))
+      .mockResolvedValueOnce(Response.json({
+        entity,
+        versions: [{
+          id: "version-1",
+          companyEntityId: entity.id,
+          versionNo: 1,
+          name: entity.name,
+          unifiedSocialCreditCode: entity.unifiedSocialCreditCode,
+          registeredAddress: entity.registeredAddress,
+          isActive: true,
+          action: "create",
+          actorName: "合同员张三",
+          actorRoleKey: "contract_staff",
+          createdAt: entity.createdAt
+        }]
+      }))
       .mockResolvedValueOnce(Response.json({ entity, warning: "存在同名主体" }))
       .mockResolvedValueOnce(Response.json({ entity, warning: null }))
       .mockResolvedValueOnce(Response.json({ entity, unchanged: true }));
 
     await expect(fetchCompanyEntityManagement()).resolves.toEqual([entity]);
-    await expect(fetchCompanyEntityHistory(entity.id)).resolves.toEqual({ entity, versions: [] });
+    await expect(fetchCompanyEntityHistory(entity.id)).resolves.toEqual({
+      entity,
+      versions: [expect.objectContaining({
+        actorName: "合同员张三",
+        actorRoleKey: "contract_staff"
+      })]
+    });
     await expect(createCompanyEntity({
       name: entity.name,
       unifiedSocialCreditCode: entity.unifiedSocialCreditCode,

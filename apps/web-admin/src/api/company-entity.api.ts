@@ -22,7 +22,7 @@ export interface CompanyEntityVersionModel {
   registeredAddress: string | null;
   isActive: boolean;
   action: string;
-  actorUserId: string | null;
+  actorName: string;
   actorRoleKey: RoleKey | null;
   createdAt: string;
 }

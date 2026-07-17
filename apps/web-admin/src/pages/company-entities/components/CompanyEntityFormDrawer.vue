@@ -73,6 +73,7 @@ import {
   type CompanyEntityModel
 } from "../../../api/company-entity.api";
 import BusinessFeedback from "../../../components/BusinessFeedback.vue";
+import { createCompanyEntitySubmitGuard } from "../company-entity.config";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -91,6 +92,7 @@ const form = reactive({ name: "", unifiedSocialCreditCode: "", registeredAddress
 const saving = ref(false);
 const message = ref("");
 const messageState = ref<"error" | "info">("error");
+const submitGuard = createCompanyEntitySubmitGuard();
 
 watch(
   () => [props.modelValue, props.entity] as const,
@@ -105,11 +107,14 @@ watch(
 );
 
 async function save() {
+  if (saving.value) return;
+  if (!submitGuard.tryStart()) return;
   const name = form.name.trim();
   const unifiedSocialCreditCode = form.unifiedSocialCreditCode.trim().toUpperCase();
   if (!name || !unifiedSocialCreditCode) {
     messageState.value = "error";
     message.value = "请填写公司全称和统一社会信用代码。";
+    submitGuard.finish();
     return;
   }
 
@@ -131,6 +136,7 @@ async function save() {
     message.value = error instanceof Error ? error.message : "保存我方公司主体失败";
   } finally {
     saving.value = false;
+    submitGuard.finish();
   }
 }
 </script>

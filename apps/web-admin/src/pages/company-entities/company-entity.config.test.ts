@@ -6,7 +6,9 @@ import {
   companyEntityDataStatusLabel,
   companyEntityFieldChanges,
   companyEntityRoleLabel,
-  companyEntityWritableFields
+  companyEntityWritableFields,
+  createCompanyEntityRequestGate,
+  createCompanyEntitySubmitGuard
 } from "./company-entity.config";
 
 const pageSource = readFileSync(new URL("./CompanyEntityListPage.vue", import.meta.url), "utf8");
@@ -72,9 +74,39 @@ describe("company entity ledger configuration", () => {
     expect(pageSource).toContain("修改");
     expect(pageSource).toContain("查看历史");
     expect(pageSource).toContain("停用");
-    expect(historySource).toContain("操作人身份已留痕");
+    expect(pageSource).not.toContain("<t-link");
+    expect(historySource).toContain("item.actorName");
+    expect(historySource).toContain('title="暂无历史版本"');
     expect(historySource).not.toContain("actorUserId");
     expect(`${pageSource}${historySource}`).not.toMatch(/导出|exportCompany|回滚|删除/);
+  });
+
+  it("discards stale or invalidated request tokens across query and entity changes", () => {
+    const gate = createCompanyEntityRequestGate();
+    const first = gate.begin("inactive:旧查询");
+    const second = gate.begin("active:新查询");
+    const applied: string[] = [];
+
+    if (gate.isCurrent(second, "active:新查询")) applied.push("新结果");
+    if (gate.isCurrent(first, "inactive:旧查询")) applied.push("旧结果");
+
+    expect(applied).toEqual(["新结果"]);
+    expect(gate.isCurrent(first, "inactive:旧查询")).toBe(false);
+    expect(gate.isCurrent(second, "active:新查询")).toBe(true);
+    expect(gate.isCurrent(second, "inactive:界面已变更")).toBe(false);
+
+    gate.invalidate();
+    expect(gate.isCurrent(second, "active:新查询")).toBe(false);
+  });
+
+  it("allows only one submit until the active write releases its guard", () => {
+    const guard = createCompanyEntitySubmitGuard();
+
+    expect(guard.tryStart()).toBe(true);
+    expect(guard.tryStart()).toBe(false);
+    guard.finish();
+    expect(guard.tryStart()).toBe(true);
+    expect(formSource).toMatch(/async function save\(\) \{\n  if \(saving\.value\) return;/);
   });
 
   it("removes the obsolete settings entry while preserving account and signature settings", () => {
