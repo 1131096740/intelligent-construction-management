@@ -14,6 +14,9 @@ const {
   SpotProcurementReceiptService
 } = require("../dist/spot-procurement/spot-procurement-receipt.service");
 const {
+  SpotProcurementReceiptPdfService
+} = require("../dist/spot-procurement/spot-procurement-receipt-pdf.service");
+const {
   calculateProjectCashPoolBigInt,
   spotProcurementPaymentToMoneyRequestValue
 } = require("../dist/money/decimal-money");
@@ -23,6 +26,8 @@ const PROJECT_ID = "concurrency-project";
 const EXECUTION_PROJECT_ID = "concurrency-execution-project";
 const CASH_SHORT_PROJECT_ID = "concurrency-cash-short-project";
 const HANDLER_USER_ID = "concurrency-material-staff";
+const MATERIAL_DIRECTOR_USER_ID =
+  "concurrency-material-director";
 const FINANCE_USER_ID = "concurrency-finance-staff";
 const SUPPORT_FILE_ID = "spot-procurement-concurrency-support";
 const ACTIVE_PAYMENT_STATUSES = new Set([
@@ -204,7 +209,10 @@ function servicesFor(prisma) {
     pilot,
     {},
     {},
-    {}
+    {},
+    {
+      tryRefreshLatest: async () => undefined
+    }
   );
   return { balances, payment, receipt };
 }
@@ -242,6 +250,21 @@ async function seedVerificationFacts() {
       projectId: PROJECT_ID,
       userId: HANDLER_USER_ID,
       positionKey: "material_staff"
+    }
+  });
+  await clientA.user.create({
+    data: {
+      id: MATERIAL_DIRECTOR_USER_ID,
+      name: "并发验收物资主管",
+      isActive: true,
+      mustChangePassword: false
+    }
+  });
+  await clientA.projectMember.create({
+    data: {
+      projectId: PROJECT_ID,
+      userId: MATERIAL_DIRECTOR_USER_ID,
+      positionKey: "material_director"
     }
   });
   await clientA.user.create({
@@ -1532,7 +1555,10 @@ async function verifyRawP2034Sentinel() {
   );
 }
 
-async function verifyReceiptRootAndSubmission(services) {
+async function verifyReceiptRootSubmissionAndReview(
+  servicesA,
+  servicesB
+) {
   const procurementId = "spot-receipt-live";
   const versionId = `${procurementId}-v1`;
   const lineIds = [
@@ -1634,7 +1660,7 @@ async function verifyReceiptRootAndSubmission(services) {
     return root;
   });
 
-  const draft = await services.receipt.updateDraft(
+  const draft = await servicesA.receipt.updateDraft(
     procurementId,
     HANDLER_USER_ID,
     {
@@ -1712,7 +1738,7 @@ async function verifyReceiptRootAndSubmission(services) {
     }
   });
 
-  const submitted = await services.receipt.submit(
+  const submitted = await servicesA.receipt.submit(
     procurementId,
     HANDLER_USER_ID
   );
@@ -1763,8 +1789,251 @@ async function verifyReceiptRootAndSubmission(services) {
       photos[0].lockedAt instanceof Date,
     "首次提交必须锁定当前收货修订的全部照片"
   );
+
+  const reviewResults = await Promise.allSettled([
+    servicesA.receipt.review(
+      procurementId,
+      MATERIAL_DIRECTOR_USER_ID,
+      {
+        decision: "approved",
+        comment: "真实 PostgreSQL 并发复核通过"
+      }
+    ),
+    servicesB.receipt.review(
+      procurementId,
+      MATERIAL_DIRECTOR_USER_ID,
+      {
+        decision: "approved",
+        comment: "真实 PostgreSQL 并发复核通过"
+      }
+    )
+  ]);
+  assertOneWinner(reviewResults, "同一收货修订并发复核");
+  const approvedReview =
+    await clientA.spotProcurementReceiptReview.findFirstOrThrow({
+      where: {
+        receiptId: receipt.id,
+        decision: "approved"
+      }
+    });
+  const reviewedRoot =
+    await clientA.spotProcurementReceipt.findUniqueOrThrow({
+      where: { id: receipt.id }
+    });
+  assert(
+    reviewedRoot.status === "reviewed" &&
+      reviewedRoot.currentRevisionNo === 1 &&
+      approvedReview.sequenceNo === 1,
+    "并发复核后必须只保留一条有效复核并保持原修订"
+  );
+
+  const revokeResults = await Promise.allSettled([
+    servicesA.receipt.revokeReview(
+      procurementId,
+      MATERIAL_DIRECTOR_USER_ID,
+      {
+        targetReviewId: approvedReview.id,
+        reason: "真实 PostgreSQL 并发撤销复核",
+        confirmReviewRevocation: true
+      }
+    ),
+    servicesB.receipt.revokeReview(
+      procurementId,
+      MATERIAL_DIRECTOR_USER_ID,
+      {
+        targetReviewId: approvedReview.id,
+        reason: "真实 PostgreSQL 并发撤销复核",
+        confirmReviewRevocation: true
+      }
+    )
+  ]);
+  assertOneWinner(revokeResults, "同一有效复核并发撤销");
+  const [revokedRoot, persistedReviews, revisionTwoLines] =
+    await Promise.all([
+      clientA.spotProcurementReceipt.findUniqueOrThrow({
+        where: { id: receipt.id }
+      }),
+      clientA.spotProcurementReceiptReview.findMany({
+        where: { receiptId: receipt.id },
+        orderBy: { sequenceNo: "asc" }
+      }),
+      clientA.spotProcurementReceiptLine.findMany({
+        where: {
+          receiptId: receipt.id,
+          receiptRevisionNo: 2
+        }
+      })
+    ]);
+  assert(
+    revokedRoot.status === "review_revoked" &&
+      revokedRoot.currentRevisionNo === 2 &&
+      persistedReviews.length === 2 &&
+      persistedReviews[1].decision === "revoked" &&
+      persistedReviews[1].targetReviewId === approvedReview.id &&
+      revisionTwoLines.length === 2,
+    "撤销复核必须保留旧修订和复核历史，并推进唯一可编辑新修订"
+  );
   console.log(
-    "ok spot receipt lifecycle: deferred root/revision, exact costs, material photo and submit tuple"
+    "ok spot receipt lifecycle: deferred root/revision, exact costs, submit tuple, one review winner and one revoke winner"
+  );
+  return receipt.id;
+}
+
+async function verifyReceiptPdfLatestPointerConcurrency(
+  receiptId
+) {
+  const snapshotTime = new Date(
+    "2026-07-17T10:00:00.000Z"
+  );
+  const snapshot = {
+    token: {
+      receiptId,
+      receiptUpdatedAt: snapshotTime.toISOString(),
+      currentRevisionNo: 2,
+      receiptStatus: "review_revoked",
+      sourceRevisionNo: 1,
+      sourceRevisionUpdatedAt: snapshotTime.toISOString(),
+      reviewId: "concurrency-revoked-review",
+      latestReviewId: "concurrency-revoked-review",
+      factFingerprint: "c".repeat(64)
+    },
+    renderInput: {
+      procurementCode: "LXCG-RECEIPT-LIVE",
+      receiptRevisionNo: 1
+    },
+    photoFacts: []
+  };
+  const sequence = { value: 0 };
+  const fileServiceFor = (prisma) => ({
+    getFileBuffer: async () => {
+      throw new Error("PDF 指针并发验收不应读取照片");
+    },
+    uploadPrivateFile: async (input) => {
+      sequence.value += 1;
+      const id = `spot-receipt-pdf-race-${sequence.value}`;
+      return prisma.fileObject.create({
+        data: {
+          id,
+          bucket: "local-private",
+          objectKey: `spot-receipt-pdf-race/${id}.pdf`,
+          originalName: input.originalName,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          uploadedByUserId: input.uploadedByUserId,
+          contentSha256: createHash("sha256")
+            .update(input.buffer)
+            .digest("hex"),
+          storageStatus: "active"
+        }
+      });
+    },
+    linkFileReplacement: async (
+      tx,
+      { newFileId, oldFileId }
+    ) =>
+      tx.fileObject.update({
+        where: { id: newFileId },
+        data: { supersedesFileObjectId: oldFileId }
+      })
+  });
+  const serviceA = new SpotProcurementReceiptPdfService(
+    clientA,
+    fileServiceFor(clientA),
+    new AuditService()
+  );
+  const serviceB = new SpotProcurementReceiptPdfService(
+    clientB,
+    fileServiceFor(clientB),
+    new AuditService()
+  );
+  const phaseABarrier = createBarrier(2);
+  for (const service of [serviceA, serviceB]) {
+    service.loadSourceSnapshot = async () => snapshot;
+    service.loadWatermarkedEvidence = async () => [];
+    service.renderPdf = async () =>
+      Buffer.from("%PDF-1.7 receipt pointer race");
+    const findCurrent =
+      service.findCurrentPdfForSnapshot.bind(service);
+    let findCount = 0;
+    service.findCurrentPdfForSnapshot = async (...args) => {
+      const current = await findCurrent(...args);
+      findCount += 1;
+      if (findCount === 1) {
+        await phaseABarrier();
+      }
+      return current;
+    };
+  }
+
+  const results = await Promise.allSettled([
+    serviceA.refreshLatest(
+      receiptId,
+      MATERIAL_DIRECTOR_USER_ID,
+      "receipt.review.revoked",
+      {
+        sourceRevisionNo: 1,
+        reviewId: "concurrency-revoked-review"
+      }
+    ),
+    serviceB.refreshLatest(
+      receiptId,
+      MATERIAL_DIRECTOR_USER_ID,
+      "receipt.review.revoked",
+      {
+        sourceRevisionNo: 1,
+        reviewId: "concurrency-revoked-review"
+      }
+    )
+  ]);
+  assert(
+    results.every((result) => result.status === "fulfilled"),
+    `收货 PDF 并发刷新应幂等成功，实际 ${results
+      .map((result) => result.status)
+      .join("/")}`
+  );
+  const [documents, generatedFiles, refreshAuditCount] =
+    await Promise.all([
+      clientA.pdfDocument.findMany({
+        where: {
+          businessType: "spot_procurement_receipt",
+          businessId: receiptId,
+          templateKey: "spot_procurement_receipt_v1"
+        }
+      }),
+      clientA.fileObject.findMany({
+        where: {
+          objectKey: {
+            startsWith: "spot-receipt-pdf-race/"
+          }
+        }
+      }),
+      clientA.auditLog.count({
+        where: {
+          action: "spot_procurement.receipt.pdf.refresh",
+          businessType: "spot_procurement_receipt",
+          businessId: receiptId
+        }
+      })
+    ]);
+  assert(
+    documents.length === 1 &&
+      generatedFiles.length === 2 &&
+      generatedFiles.filter(
+        (file) => file.storageStatus === "active"
+      ).length === 1 &&
+      generatedFiles.filter(
+        (file) => file.storageStatus === "quarantined"
+      ).length === 1 &&
+      generatedFiles.some(
+        (file) =>
+          file.id === documents[0].fileId &&
+          file.storageStatus === "active"
+      ) &&
+      refreshAuditCount === 1,
+    "并发刷新必须只留下一个当前 PDF 指针，并隔离未关联派生文件"
+  );
+  console.log(
+    "ok spot receipt PDF concurrency: one current pointer, one refresh audit and orphan quarantine"
   );
 }
 
@@ -2071,11 +2340,18 @@ async function main() {
     servicesB
   );
   await verifyExecutionCashShortageZeroWrite(servicesA);
-  await verifyReceiptRootAndSubmission(servicesA);
+  const reviewedReceiptId =
+    await verifyReceiptRootSubmissionAndReview(
+      servicesA,
+      servicesB
+    );
+  await verifyReceiptPdfLatestPointerConcurrency(
+    reviewedReceiptId
+  );
   await verifyReceiptCrossColumnFileCompetition();
   await verifyRawP2034Sentinel();
   console.log(
-    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、余额、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、收货根/修订、最终收货提交、收货文件跨列竞争、P2034"
+    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、余额、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、收货根/修订、最终收货提交、复核/撤销单胜、PDF 唯一当前指针、收货文件跨列竞争、P2034"
   );
 }
 

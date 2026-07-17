@@ -2,6 +2,8 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { AttachReceiptPhotoDto } from "./dto/attach-receipt-photo.dto";
+import { ReviewReceiptDto } from "./dto/review-receipt.dto";
+import { RevokeReceiptReviewDto } from "./dto/revoke-receipt-review.dto";
 import { UpdateReceiptDraftDto } from "./dto/update-receipt-draft.dto";
 import {
   SpotProcurementReceiptService,
@@ -137,6 +139,51 @@ describe("SpotProcurementReceiptService domain rules", () => {
       )
     ).resolves.toBeInstanceOf(UpdateReceiptDraftDto);
   });
+
+  it("keeps receipt review DTOs limited to conclusions and explicit revocation confirmation", async () => {
+    const pipe = createApiValidationPipe();
+
+    await expect(
+      pipe.transform(
+        {
+          decision: "approved",
+          qualifiedQuantity: "999"
+        },
+        {
+          type: "body",
+          metatype: ReviewReceiptDto,
+          data: ""
+        }
+      )
+    ).rejects.toMatchObject({
+      response: {
+        errors: expect.arrayContaining([
+          "qualifiedQuantity 不是允许提交的字段"
+        ])
+      }
+    });
+
+    await expect(
+      pipe.transform(
+        {
+          targetReviewId: "review-approved",
+          reason: "数量需要重新核对",
+          confirmReviewRevocation: false
+        },
+        {
+          type: "body",
+          metatype: RevokeReceiptReviewDto,
+          data: ""
+        }
+      )
+    ).rejects.toMatchObject({
+      response: {
+        errors: expect.arrayContaining([
+          "请明确确认撤销本次收货复核"
+        ])
+      }
+    });
+  });
 });
 
 describe("SpotProcurementReceiptService workflow", () => {
@@ -158,6 +205,10 @@ describe("SpotProcurementReceiptService workflow", () => {
     occupiedPhoto?: boolean;
     versionHandlerUserId?: string;
     nonReceiptBusinessBinding?: boolean;
+    materialDirector?: boolean;
+    latestReview?: Record<string, unknown> | null;
+    firstSubmittedAt?: Date | null;
+    lockedAt?: Date | null;
   }) {
     const receiptStatus = options?.receiptStatus ?? "draft";
     const revisionSubmittedAt =
@@ -170,7 +221,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       handlerUserId: "handler-1",
       currentVersionId: "version-1",
       status: "approved_in_progress",
-      actualCostCents: null
+      actualCostCents: revisionSubmittedAt ? 1667n : null
     };
     const version = {
       id: "version-1",
@@ -190,14 +241,15 @@ describe("SpotProcurementReceiptService workflow", () => {
       currentRevisionNo: 1,
       handlerUserId: "handler-1",
       note: null,
-      actualCostCents: 0n,
-      firstSubmittedAt: null,
+      actualCostCents: revisionSubmittedAt ? 1667n : 0n,
+      firstSubmittedAt:
+        options?.firstSubmittedAt ?? revisionSubmittedAt,
       submittedAt: revisionSubmittedAt,
       submittedByUserId: revisionSubmittedAt
         ? "handler-1"
         : null,
       submissionDelegationId: null,
-      lockedAt: null
+      lockedAt: options?.lockedAt ?? null
     };
     const revision = {
       id: "revision-1",
@@ -207,7 +259,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       procurementVersionId: "version-1",
       handlerUserId: "handler-1",
       note: null,
-      actualCostCents: 0n,
+      actualCostCents: revisionSubmittedAt ? 1667n : 0n,
       submittedAt: revisionSubmittedAt,
       submittedByUserId: revisionSubmittedAt
         ? "handler-1"
@@ -351,6 +403,13 @@ describe("SpotProcurementReceiptService workflow", () => {
         return [revision];
       }
       if (
+        text.includes('FROM "SpotProcurementReceiptReview"')
+      ) {
+        return options?.latestReview
+          ? [options.latestReview]
+          : [];
+      }
+      if (
         text.includes('FROM "SpotProcurementReceiptDelegation"')
       ) {
         return delegation ? [delegation] : [];
@@ -389,7 +448,11 @@ describe("SpotProcurementReceiptService workflow", () => {
     const tx = {
       $queryRaw: jest.fn().mockImplementation(sqlRows),
       auditLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: "audit-1" })
+      },
+      pdfDocument: {
+        findMany: jest.fn().mockResolvedValue([])
       },
       user: {
         findUnique: jest.fn().mockImplementation(
@@ -418,10 +481,26 @@ describe("SpotProcurementReceiptService workflow", () => {
           options?.delegateInProject === false
             ? null
             : { id: "assignment-1" }
+        ),
+        findMany: jest.fn().mockImplementation(
+          ({ where }: { where: { projectId: string | null } }) =>
+            Promise.resolve(
+              options?.materialDirector
+                ? [
+                    {
+                      positionId:
+                        where.projectId === null
+                          ? "position-material-global"
+                          : "position-material-project"
+                    }
+                  ]
+                : []
+            )
         )
       },
       projectMember: {
-        findFirst: jest.fn().mockResolvedValue(null)
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
       },
       projectRosterMember: {
         findFirst: jest.fn().mockResolvedValue(null)
@@ -444,7 +523,44 @@ describe("SpotProcurementReceiptService workflow", () => {
       },
       spotProcurementReceiptRevision: {
         findUnique: jest.fn().mockResolvedValue(revision),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ revisionNo: 1 }]),
+        create: jest.fn().mockResolvedValue({}),
         update: jest.fn().mockResolvedValue({})
+      },
+      spotProcurementReceiptReview: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue(
+            options?.latestReview
+              ? [options.latestReview]
+              : []
+          ),
+        create: jest.fn().mockImplementation(({ data }) =>
+          Promise.resolve({
+            id: `review-${data.decision}`,
+            ...data,
+            createdAt: new Date(
+              "2026-07-17T09:00:00.000Z"
+            )
+          })
+        )
+      },
+      position: {
+        findMany: jest.fn().mockImplementation(
+          ({
+            where
+          }: {
+            where: { id: { in: string[] } };
+          }) =>
+            Promise.resolve(
+              where.id.in.map((id) => ({
+                id,
+                key: "material_director"
+              }))
+            )
+        )
       },
       spotProcurementReceipt: {
         findUnique: jest.fn().mockResolvedValue(receipt),
@@ -532,13 +648,22 @@ describe("SpotProcurementReceiptService workflow", () => {
         .fn()
         .mockResolvedValue("allowed")
     };
+    const receiptPdfs = {
+      tryRefreshLatest: jest.fn().mockResolvedValue(undefined),
+      refreshLatest: jest.fn().mockResolvedValue({
+        id: "receipt-pdf-1",
+        fileId: "receipt-pdf-file-1",
+        templateKey: "spot_procurement_receipt_v1"
+      })
+    };
     const service = new SpotProcurementReceiptService(
       prisma as never,
       new AuditService(),
       pilot as never,
       files as never,
       watermark as never,
-      access as never
+      access as never,
+      receiptPdfs as never
     );
 
     return {
@@ -548,6 +673,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       access,
       files,
       watermark,
+      receiptPdfs,
       procurementLines,
       receipt,
       revision
@@ -574,6 +700,26 @@ describe("SpotProcurementReceiptService workflow", () => {
         replenishmentPending: false
       }
     ]
+  };
+
+  const lockedMaterialPhoto = {
+    id: "photo-1",
+    receiptId: "receipt-1",
+    receiptRevisionNo: 1,
+    originalFileId: "original-1",
+    watermarkedFileId: "watermarked-1",
+    originalSha256: originalSha,
+    watermarkedSha256: watermarkedSha,
+    source: "album",
+    category: "material_scene",
+    serverRecordedAt: new Date(
+      "2026-07-17T08:00:00.000Z"
+    ),
+    note: "免烧砖",
+    uploadedByUserId: "handler-1",
+    lockedAtFirstSubmission: true,
+    lockedAt: new Date("2026-07-17T08:30:00.000Z"),
+    appendReason: null
   };
 
   it("reads receipt authorization and detail from one repeatable-read snapshot", async () => {
@@ -617,6 +763,87 @@ describe("SpotProcurementReceiptService workflow", () => {
       harness.tx.spotProcurementReceipt.findUnique
     ).toHaveBeenCalled();
     expect(harness.tx.user.findMany).toHaveBeenCalled();
+  });
+
+  it("exposes only the current formally reviewed PDF pointer in the receipt snapshot", async () => {
+    const submittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const approvedReview = {
+      id: "review-approved",
+      receiptId: "receipt-1",
+      receiptRevisionNo: 1,
+      procurementId: "procurement-1",
+      procurementVersionId: "version-1",
+      sequenceNo: 1,
+      decision: "approved",
+      comment: "数量和照片一致",
+      reviewedByUserId: "material-director-1",
+      reviewedByNameSnapshot: "复核时姓名",
+      submissionDelegationId: null,
+      targetReviewId: null,
+      createdAt: new Date("2026-07-17T09:00:00.000Z")
+    };
+    const buildHarness = (receiptStatus: string) => {
+      const harness = createHarness({
+        receiptStatus: "reviewed",
+        revisionSubmittedAt: submittedAt,
+        latestReview: approvedReview
+      });
+      harness.tx.pdfDocument.findMany.mockResolvedValue([
+        {
+          id: "receipt-pdf-document",
+          fileId: "receipt-pdf-file",
+          templateKey: "spot_procurement_receipt_v1",
+          createdAt: new Date(
+            "2026-07-17T09:05:00.000Z"
+          )
+        }
+      ]);
+      harness.tx.auditLog.findFirst.mockResolvedValue({
+        metadata: {
+          pdfDocumentId: "receipt-pdf-document",
+          newFileId: "receipt-pdf-file",
+          templateKey: "spot_procurement_receipt_v1",
+          sourceSnapshotToken: {
+            receiptId: "receipt-1",
+            receiptStatus,
+            currentRevisionNo: 1,
+            sourceRevisionNo: 1,
+            reviewId: "review-approved",
+            latestReviewId: "review-approved"
+          }
+        }
+      });
+      return harness;
+    };
+
+    await expect(
+      buildHarness("reviewed").service.getReceipt(
+        "procurement-1",
+        "handler-1"
+      )
+    ).resolves.toMatchObject({
+      latestPdf: {
+        documentId: "receipt-pdf-document",
+        fileId: "receipt-pdf-file",
+        templateKey: "spot_procurement_receipt_v1"
+      },
+      reviews: [
+        {
+          reviewedBy: {
+            id: "material-director-1",
+            name: "复核时姓名"
+          }
+        }
+      ]
+    });
+    await expect(
+      buildHarness("submitted").service.getReceipt(
+        "procurement-1",
+        "handler-1"
+      )
+    ).resolves.toMatchObject({ latestPdf: null });
   });
 
   it("fails closed when the current procurement version handler differs from the receipt", async () => {
@@ -834,6 +1061,32 @@ describe("SpotProcurementReceiptService workflow", () => {
     });
   });
 
+  it("rejects photos above the per-procurement evidence limit before file processing", async () => {
+    const harness = createHarness({
+      photos: Array.from({ length: 20 }, (_, index) => ({
+        id: `photo-${index + 1}`
+      }))
+    });
+
+    await expect(
+      harness.service.attachPhoto(
+        "procurement-1",
+        "handler-1",
+        {
+          originalFileId: "original-1",
+          source: "album",
+          category: "material_scene"
+        }
+      )
+    ).rejects.toThrow(
+      "每笔零星采购最多上传 20 张收货照片"
+    );
+    expect(
+      harness.files.getOwnedVerifiedFileBuffer
+    ).not.toHaveBeenCalled();
+    expect(harness.watermark.generate).not.toHaveBeenCalled();
+  });
+
   it("quarantines both generated files when final photo binding loses a race", async () => {
     const harness = createHarness({ occupiedPhoto: true });
 
@@ -989,6 +1242,14 @@ describe("SpotProcurementReceiptService workflow", () => {
         lockedAt: expect.any(Date)
       })
     });
+    expect(
+      supplement.receiptPdfs.tryRefreshLatest
+    ).toHaveBeenCalledWith(
+      "receipt-1",
+      "handler-1",
+      "receipt.photo.supplement",
+      { sourceRevisionNo: 1 }
+    );
   });
 
   it("deletes only an unsubmitted draft photo and quarantines both generated files", async () => {
@@ -1199,13 +1460,22 @@ describe("SpotProcurementReceiptService workflow", () => {
       harness.tx.spotProcurementReceiptPhoto.updateMany
     ).toHaveBeenCalledWith({
       where: {
-        receiptId: "receipt-1",
-        receiptRevisionNo: 1
+        id: { in: ["photo-1"] },
+        lockedAt: null,
+        lockedAtFirstSubmission: false
       },
       data: expect.objectContaining({
         lockedAtFirstSubmission: true
       })
     });
+    expect(
+      harness.receiptPdfs.tryRefreshLatest
+    ).toHaveBeenCalledWith(
+      "receipt-1",
+      "delegate-1",
+      "receipt.submit",
+      { sourceRevisionNo: 1 }
+    );
   });
 
   it("keeps the receipt in draft while any line is pending replenishment", async () => {
@@ -1258,5 +1528,513 @@ describe("SpotProcurementReceiptService workflow", () => {
     expect(
       harness.tx.spotProcurementReceipt.update
     ).not.toHaveBeenCalled();
+  });
+
+  it("allows only an active material director to review a submitted receipt", async () => {
+    const submittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const harness = createHarness({
+      receiptStatus: "submitted",
+      revisionSubmittedAt: submittedAt,
+      photos: [lockedMaterialPhoto]
+    });
+
+    await expect(
+      harness.service.review(
+        "procurement-1",
+        "project-manager-1",
+        { decision: "approved" }
+      )
+    ).rejects.toThrow(
+      "只有本项目物资主管可以复核收货"
+    );
+    expect(
+      harness.tx.spotProcurementReceiptReview.create
+    ).not.toHaveBeenCalled();
+  });
+
+  it("does not let an approved review from an older procurement version block the current submitted revision", async () => {
+    const submittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const harness = createHarness({
+      receiptStatus: "submitted",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true,
+      photos: [lockedMaterialPhoto],
+      latestReview: {
+        id: "review-old-version",
+        receiptId: "receipt-1",
+        receiptRevisionNo: 1,
+        procurementId: "procurement-1",
+        procurementVersionId: "version-old",
+        sequenceNo: 3,
+        decision: "approved",
+        comment: null,
+        reviewedByUserId: "material-director-1",
+        reviewedByNameSnapshot: "物资主管旧姓名",
+        submissionDelegationId: null,
+        targetReviewId: null,
+        createdAt: new Date(
+          "2026-07-16T09:00:00.000Z"
+        )
+      }
+    });
+
+    await expect(
+      harness.service.review(
+        "procurement-1",
+        "material-director-1",
+        { decision: "approved" }
+      )
+    ).resolves.toMatchObject({
+      sequenceNo: 4,
+      status: "reviewed"
+    });
+    expect(
+      harness.tx.spotProcurementReceiptReview.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        procurementVersionId: "version-1",
+        sequenceNo: 4,
+        decision: "approved"
+      })
+    });
+  });
+
+  it("approves a complete submitted receipt without letting the reviewer rewrite receipt facts", async () => {
+    const submittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const harness = createHarness({
+      receiptStatus: "submitted",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true,
+      photos: [lockedMaterialPhoto]
+    });
+
+    await expect(
+      harness.service.review(
+        "procurement-1",
+        "material-director-1",
+        {
+          decision: "approved",
+          comment: "数量和照片一致"
+        }
+      )
+    ).resolves.toMatchObject({
+      reviewId: "review-approved",
+      decision: "approved",
+      status: "reviewed",
+      reviewedReceiptRevisionNo: 1,
+      currentReceiptRevisionNo: 1
+    });
+    expect(
+      harness.tx.spotProcurementReceiptReview.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        receiptId: "receipt-1",
+        receiptRevisionNo: 1,
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        sequenceNo: 1,
+        decision: "approved",
+        comment: "数量和照片一致",
+        reviewedByUserId: "material-director-1",
+        reviewedByNameSnapshot: "张三",
+        targetReviewId: null
+      })
+    });
+    expect(
+      harness.tx.spotProcurementReceipt.update
+    ).toHaveBeenCalledWith({
+      where: { id: "receipt-1" },
+      data: { status: "reviewed" }
+    });
+    expect(
+      harness.tx.spotProcurementReceiptRevision.create
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.tx.spotProcurementReceiptLine.deleteMany
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.receiptPdfs.tryRefreshLatest
+    ).toHaveBeenCalledWith(
+      "receipt-1",
+      "material-director-1",
+      "receipt.review.approved",
+      {
+        sourceRevisionNo: 1,
+        reviewId: "review-approved"
+      }
+    );
+  });
+
+  it("requires a return reason and advances to a copied editable revision", async () => {
+    const submittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const missingReason = createHarness({
+      receiptStatus: "submitted",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true,
+      photos: [lockedMaterialPhoto]
+    });
+    expect(() =>
+      missingReason.service.review(
+        "procurement-1",
+        "material-director-1",
+        { decision: "returned" }
+      )
+    ).toThrow(
+      "退回收货确认必须填写原因"
+    );
+
+    const harness = createHarness({
+      receiptStatus: "submitted",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true,
+      photos: [lockedMaterialPhoto]
+    });
+    await expect(
+      harness.service.review(
+        "procurement-1",
+        "material-director-1",
+        {
+          decision: "returned",
+          comment: "请复核破损砖数量"
+        }
+      )
+    ).resolves.toMatchObject({
+      decision: "returned",
+      status: "returned",
+      reviewedReceiptRevisionNo: 1,
+      currentReceiptRevisionNo: 2
+    });
+    expect(
+      harness.tx.spotProcurementReceiptRevision.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        receiptId: "receipt-1",
+        revisionNo: 2,
+        procurementVersionId: "version-1",
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null
+      })
+    });
+    expect(
+      harness.tx.spotProcurementReceiptLine.createMany
+    ).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          receiptRevisionNo: 2,
+          procurementLineId: "line-1",
+          qualifiedQuantity: new Prisma.Decimal("2"),
+          actualCostCents: 667n
+        }),
+        expect.objectContaining({
+          receiptRevisionNo: 2,
+          procurementLineId: "line-2",
+          actualCostCents: 1000n
+        })
+      ])
+    });
+    expect(
+      harness.tx.spotProcurementReceipt.update
+    ).toHaveBeenCalledWith({
+      where: { id: "receipt-1" },
+      data: expect.objectContaining({
+        status: "returned",
+        currentRevisionNo: 2,
+        submittedAt: null,
+        submittedByUserId: null
+      })
+    });
+    expect(
+      harness.tx.spotProcurementReceiptPhoto.updateMany
+    ).not.toHaveBeenCalled();
+    expect(
+      harness.receiptPdfs.tryRefreshLatest
+    ).toHaveBeenCalledWith(
+      "receipt-1",
+      "material-director-1",
+      "receipt.review.returned",
+      {
+        sourceRevisionNo: 1,
+        reviewId: "review-returned"
+      }
+    );
+  });
+
+  it("revokes only the current approved review with an explicit confirmation and preserves the reviewed revision", async () => {
+    const submittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const approvedReview = {
+      id: "review-approved",
+      receiptId: "receipt-1",
+      receiptRevisionNo: 1,
+      procurementId: "procurement-1",
+      procurementVersionId: "version-1",
+      sequenceNo: 1,
+      decision: "approved",
+      comment: "一致",
+      reviewedByUserId: "material-director-1",
+      reviewedByNameSnapshot: "张三",
+      submissionDelegationId: null,
+      targetReviewId: null,
+      createdAt: new Date("2026-07-17T09:00:00.000Z")
+    };
+    const harness = createHarness({
+      receiptStatus: "reviewed",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true,
+      latestReview: approvedReview,
+      photos: [lockedMaterialPhoto]
+    });
+
+    await expect(
+      harness.service.revokeReview(
+        "procurement-1",
+        "material-director-1",
+        {
+          targetReviewId: "review-approved",
+          reason: "发现送货数量需要重新核对",
+          confirmReviewRevocation: true
+        }
+      )
+    ).resolves.toMatchObject({
+      decision: "revoked",
+      targetReviewId: "review-approved",
+      status: "review_revoked",
+      revokedReceiptRevisionNo: 1,
+      currentReceiptRevisionNo: 2
+    });
+    expect(
+      harness.tx.spotProcurementReceiptReview.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        receiptRevisionNo: 1,
+        sequenceNo: 2,
+        decision: "revoked",
+        targetReviewId: "review-approved",
+        comment: "发现送货数量需要重新核对"
+      })
+    });
+    expect(
+      harness.tx.spotProcurementReceiptRevision.create
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        revisionNo: 2,
+        submittedAt: null
+      })
+    });
+    expect(
+      harness.receiptPdfs.tryRefreshLatest
+    ).toHaveBeenCalledWith(
+      "receipt-1",
+      "material-director-1",
+      "receipt.review.revoked",
+      {
+        sourceRevisionNo: 1,
+        reviewId: "review-revoked"
+      }
+    );
+  });
+
+  it.each(["reviewed", "locked"] as const)(
+    "lets the project material director explicitly retry the current formal receipt PDF from %s",
+    async (receiptStatus) => {
+      const submittedAt = new Date(
+        "2026-07-17T08:30:00.000Z"
+      );
+      const approvedReview = {
+        id: "review-approved",
+        receiptId: "receipt-1",
+        receiptRevisionNo: 1,
+        procurementId: "procurement-1",
+        procurementVersionId: "version-1",
+        sequenceNo: 1,
+        decision: "approved",
+        comment: "一致",
+        reviewedByUserId: "material-director-1",
+        reviewedByNameSnapshot: "张三",
+        submissionDelegationId: null,
+        targetReviewId: null,
+        createdAt: new Date(
+          "2026-07-17T09:00:00.000Z"
+        )
+      };
+      const harness = createHarness({
+        receiptStatus,
+        revisionSubmittedAt: submittedAt,
+        materialDirector: true,
+        latestReview: approvedReview,
+        lockedAt:
+          receiptStatus === "locked"
+            ? new Date(
+                "2026-07-17T10:00:00.000Z"
+              )
+            : null
+      });
+
+      await expect(
+        harness.service.retryFormalPdf(
+          "procurement-1",
+          "material-director-1"
+        )
+      ).resolves.toEqual({
+        receiptId: "receipt-1",
+        documentId: "receipt-pdf-1",
+        fileId: "receipt-pdf-file-1",
+        templateKey: "spot_procurement_receipt_v1"
+      });
+      expect(
+        harness.receiptPdfs.refreshLatest
+      ).toHaveBeenCalledWith(
+        "receipt-1",
+        "material-director-1",
+        "receipt.pdf.manual_retry",
+        {
+          sourceRevisionNo: 1,
+          reviewId: "review-approved"
+        }
+      );
+    }
+  );
+
+  it("rejects a formal receipt PDF retry before review and never starts PDF generation", async () => {
+    const submittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const harness = createHarness({
+      receiptStatus: "submitted",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true
+    });
+
+    await expect(
+      harness.service.retryFormalPdf(
+        "procurement-1",
+        "material-director-1"
+      )
+    ).rejects.toThrow(
+      "只有复核通过或已办结锁定的收货确认可以重试生成正式 PDF"
+    );
+    expect(
+      harness.receiptPdfs.refreshLatest
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects revocation of a stale review and requires explicit confirmation before any write", async () => {
+    const submittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const approvedReview = {
+      id: "review-current",
+      receiptId: "receipt-1",
+      receiptRevisionNo: 1,
+      procurementId: "procurement-1",
+      procurementVersionId: "version-1",
+      sequenceNo: 3,
+      decision: "approved",
+      comment: null,
+      reviewedByUserId: "material-director-1",
+      reviewedByNameSnapshot: "张三",
+      submissionDelegationId: null,
+      targetReviewId: null,
+      createdAt: new Date("2026-07-17T09:00:00.000Z")
+    };
+    const unconfirmed = createHarness({
+      receiptStatus: "reviewed",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true,
+      latestReview: approvedReview
+    });
+    expect(() =>
+      unconfirmed.service.revokeReview(
+        "procurement-1",
+        "material-director-1",
+        {
+          targetReviewId: "review-current",
+          reason: "重新核对",
+          confirmReviewRevocation: false
+        }
+      )
+    ).toThrow(
+      "请明确确认撤销本次收货复核"
+    );
+    expect(
+      unconfirmed.prisma.$transaction
+    ).not.toHaveBeenCalled();
+
+    const stale = createHarness({
+      receiptStatus: "reviewed",
+      revisionSubmittedAt: submittedAt,
+      materialDirector: true,
+      latestReview: approvedReview
+    });
+    await expect(
+      stale.service.revokeReview(
+        "procurement-1",
+        "material-director-1",
+        {
+          targetReviewId: "review-old",
+          reason: "重新核对",
+          confirmReviewRevocation: true
+        }
+      )
+    ).rejects.toThrow(
+      "只能撤销当前有效且坐标一致的收货复核"
+    );
+    expect(
+      stale.tx.spotProcurementReceiptReview.create
+    ).not.toHaveBeenCalled();
+  });
+
+  it("inherits only locked photos from the same procurement version without relabeling supplements on resubmission", async () => {
+    const firstSubmittedAt = new Date(
+      "2026-07-17T08:30:00.000Z"
+    );
+    const inheritedSupplement = {
+      ...lockedMaterialPhoto,
+      lockedAtFirstSubmission: false,
+      appendReason: "退回后补充卸货照片"
+    };
+    const harness = createHarness({
+      receiptStatus: "returned",
+      revisionSubmittedAt: null,
+      firstSubmittedAt,
+      photos: [inheritedSupplement]
+    });
+
+    await expect(
+      harness.service.submit(
+        "procurement-1",
+        "handler-1"
+      )
+    ).resolves.toMatchObject({
+      status: "submitted",
+      actualCostCents: "1667"
+    });
+    expect(
+      harness.tx.spotProcurementReceiptPhoto.updateMany
+    ).not.toHaveBeenCalled();
+    const photoLockQuery = harness.tx.$queryRaw.mock.calls
+      .map(([query]) =>
+        (
+          query as { strings?: readonly string[] }
+        ).strings?.join("?")
+      )
+      .find((query) =>
+        query?.includes(
+          'FROM "SpotProcurementReceiptPhoto" photo'
+        )
+      );
+    expect(photoLockQuery).toContain(
+      'revision."procurementVersionId"'
+    );
   });
 });

@@ -845,6 +845,7 @@ model SpotProcurementReceiptReview {
   decision               String
   comment                String?
   reviewedByUserId       String
+  reviewedByNameSnapshot String
   submissionDelegationId String?
   targetReviewId         String?
   createdAt              DateTime @default(now())

@@ -5,9 +5,14 @@ function emptySpotArchivePrisma() {
     spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
     spotProcurementVersion: { findMany: jest.fn().mockResolvedValue([]) },
     spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurementReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurementReceiptReview: {
+      findMany: jest.fn().mockResolvedValue([])
+    },
     spotProcurementPaymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
     pdfDocument: { findMany: jest.fn().mockResolvedValue([]) },
-    approvalInstance: { findMany: jest.fn().mockResolvedValue([]) }
+    approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
+    auditLog: { findMany: jest.fn().mockResolvedValue([]) }
   };
 }
 
@@ -779,10 +784,21 @@ describe("ArchiveService", () => {
     expect(prisma.pdfDocument.findMany).toHaveBeenCalledWith(
       {
         where: {
-          templateKey: "approval_form",
-          businessType: {
-            in: ["spot_procurement_version", "spot_procurement_payment"]
-          }
+          OR: [
+            {
+              templateKey: "approval_form",
+              businessType: {
+                in: [
+                  "spot_procurement_version",
+                  "spot_procurement_payment"
+                ]
+              }
+            },
+            {
+              templateKey: "spot_procurement_receipt_v1",
+              businessType: "spot_procurement_receipt"
+            }
+          ]
         },
         orderBy: { createdAt: "desc" },
         take: 80
@@ -821,6 +837,192 @@ describe("ArchiveService", () => {
     expect(result.rows.every((row) => row.canDownload)).toBe(true);
     expect(result.rows.map((row) => row.fileId)).not.toEqual(
       expect.arrayContaining(["file-spot-version-pending", "file-spot-payment-pending"])
+    );
+  });
+
+  it("lists only the current formally reviewed receipt PDF and hides returned or revoked receipt pointers", async () => {
+    const prisma = {
+      ...emptySpotArchivePrisma(),
+      contractArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlementArchiveFile: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      archiveRecord: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectExpenseRequest: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      pdfDocument: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "pdf-receipt-reviewed",
+            businessType: "spot_procurement_receipt",
+            businessId: "receipt-reviewed",
+            fileId: "file-receipt-reviewed",
+            templateKey: "spot_procurement_receipt_v1",
+            createdAt: new Date(
+              "2026-07-17T10:00:00.000Z"
+            )
+          },
+          {
+            id: "pdf-receipt-revoked",
+            businessType: "spot_procurement_receipt",
+            businessId: "receipt-revoked",
+            fileId: "file-receipt-revoked",
+            templateKey: "spot_procurement_receipt_v1",
+            createdAt: new Date(
+              "2026-07-17T09:00:00.000Z"
+            )
+          }
+        ])
+      },
+      spotProcurementReceipt: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "receipt-reviewed",
+            projectId: "project-visible",
+            procurementId: "procurement-reviewed",
+            status: "reviewed",
+            currentRevisionNo: 1
+          },
+          {
+            id: "receipt-revoked",
+            projectId: "project-visible",
+            procurementId: "procurement-revoked",
+            status: "review_revoked",
+            currentRevisionNo: 2
+          }
+        ])
+      },
+      spotProcurementReceiptReview: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "review-approved",
+            receiptId: "receipt-reviewed",
+            receiptRevisionNo: 1,
+            decision: "approved"
+          },
+          {
+            id: "review-revoked",
+            receiptId: "receipt-revoked",
+            receiptRevisionNo: 1,
+            decision: "revoked"
+          }
+        ])
+      },
+      auditLog: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            businessId: "receipt-reviewed",
+            metadata: {
+              pdfDocumentId: "pdf-receipt-reviewed",
+              newFileId: "file-receipt-reviewed",
+              templateKey: "spot_procurement_receipt_v1",
+              sourceSnapshotToken: {
+                receiptId: "receipt-reviewed",
+                receiptStatus: "reviewed",
+                currentRevisionNo: 1,
+                sourceRevisionNo: 1,
+                reviewId: "review-approved",
+                latestReviewId: "review-approved"
+              }
+            }
+          }
+        ])
+      },
+      spotProcurement: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "procurement-reviewed",
+            projectId: "project-visible",
+            code: "LXCG-RECEIPT-001",
+            supplierNameSnapshot: "甲材料店"
+          },
+          {
+            id: "procurement-revoked",
+            projectId: "project-visible",
+            code: "LXCG-RECEIPT-002",
+            supplierNameSnapshot: "乙材料店"
+          }
+        ])
+      },
+      spotProcurementPaymentExecution: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-receipt-reviewed",
+            originalName: "项目零星材料收货确认单.pdf",
+            sizeBytes: 8192
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "project-visible",
+            name: "可见项目"
+          }
+        ])
+      }
+    };
+    const service = new ArchiveService(prisma as never);
+
+    const result = await service.listRecent(20, [
+      "project-visible"
+    ]);
+
+    expect(
+      prisma.spotProcurementReceipt.findMany
+    ).toHaveBeenCalledWith({
+      where: {
+        id: {
+          in: ["receipt-reviewed", "receipt-revoked"]
+        },
+        projectId: { in: ["project-visible"] }
+      },
+      select: {
+        id: true,
+        projectId: true,
+        procurementId: true,
+        status: true,
+        currentRevisionNo: true
+      }
+    });
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        documentType: "项目零星材料收货确认单",
+        businessRef: "LXCG-RECEIPT-001",
+        project: "可见项目",
+        fileId: "file-receipt-reviewed",
+        archiveStatus: "收货复核已通过",
+        canDownload: true
+      })
+    ]);
+    expect(result.rows.map((row) => row.fileId)).not.toContain(
+      "file-receipt-revoked"
     );
   });
 });

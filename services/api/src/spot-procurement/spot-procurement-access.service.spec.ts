@@ -25,6 +25,15 @@ type AccessFixture = {
     projectId: string;
     procurementId: string;
     handlerUserId: string;
+    status?: string;
+    currentRevisionNo?: number;
+  }>;
+  receiptReviews?: Array<{
+    id: string;
+    receiptId: string;
+    sequenceNo: number;
+    receiptRevisionNo?: number;
+    decision?: string;
   }>;
   receiptPhotos?: Array<{
     receiptId: string;
@@ -59,10 +68,18 @@ type AccessFixture = {
     actorUserId: string;
   }>;
   pdfDocuments?: Array<{
+    id?: string;
     fileId: string;
     businessType: string;
     businessId: string;
     templateKey: string;
+  }>;
+  auditLogs?: Array<{
+    id: string;
+    action: string;
+    businessType: string;
+    businessId: string;
+    metadata: unknown;
   }>;
   fileObjects?: Array<{
     id: string;
@@ -172,12 +189,33 @@ function buildPrisma(fixture: AccessFixture = {}) {
     },
     spotProcurementReceipt: {
       findUnique: jest.fn(({ where }: { where: { id: string } }) =>
-        Promise.resolve(fixture.receipts?.find((row) => row.id === where.id) ?? null)
+        Promise.resolve(
+          (() => {
+            const row = fixture.receipts?.find((item) => item.id === where.id);
+            return row ? { currentRevisionNo: 1, ...row } : null;
+          })()
+        )
       ),
       findMany: jest.fn(
         ({ where }: { where: { id: { in: string[] } } }) =>
           Promise.resolve(
-            (fixture.receipts ?? []).filter((row) => where.id.in.includes(row.id))
+            (fixture.receipts ?? [])
+              .filter((row) => where.id.in.includes(row.id))
+              .map((row) => ({ currentRevisionNo: 1, ...row }))
+          )
+      )
+    },
+    spotProcurementReceiptReview: {
+      findMany: jest.fn(
+        ({ where }: { where: { receiptId: string } }) =>
+          Promise.resolve(
+            (fixture.receiptReviews ?? [])
+              .filter((row) => row.receiptId === where.receiptId)
+              .sort((left, right) =>
+                left.sequenceNo === right.sequenceNo
+                  ? left.id.localeCompare(right.id)
+                  : left.sequenceNo - right.sequenceNo
+              )
           )
       )
     },
@@ -262,14 +300,54 @@ function buildPrisma(fixture: AccessFixture = {}) {
         ({
           where
         }: {
-          where: { fileId: string | { in: string[] } };
+          where: {
+            fileId?: string | { in: string[] };
+            businessType?: string | { in: string[] };
+            businessId?: string;
+            templateKey?: string;
+          };
         }) => {
-          const fileIds =
-            typeof where.fileId === "string" ? [where.fileId] : where.fileId.in;
+          const fileIds = where.fileId
+            ? typeof where.fileId === "string"
+              ? [where.fileId]
+              : where.fileId.in
+            : null;
           return Promise.resolve(
-            (fixture.pdfDocuments ?? []).filter((row) => fileIds.includes(row.fileId))
+            (fixture.pdfDocuments ?? []).filter(
+              (row) =>
+                (!fileIds || fileIds.includes(row.fileId)) &&
+                (!where.businessType ||
+                  (typeof where.businessType === "string"
+                    ? row.businessType === where.businessType
+                    : where.businessType.in.includes(row.businessType))) &&
+                (!where.businessId || row.businessId === where.businessId) &&
+                (!where.templateKey || row.templateKey === where.templateKey)
+            ).map((row, index) => ({ ...row, id: row.id ?? `pdf-${index + 1}` }))
           );
         }
+      )
+    },
+    auditLog: {
+      findFirst: jest.fn(
+        ({
+          where
+        }: {
+          where: {
+            action: string;
+            businessType: string;
+            businessId: string;
+          };
+        }) =>
+          Promise.resolve(
+            [...(fixture.auditLogs ?? [])]
+              .reverse()
+              .find(
+                (row) =>
+                  row.action === where.action &&
+                  row.businessType === where.businessType &&
+                  row.businessId === where.businessId
+              ) ?? null
+          )
       )
     },
     fileObject: {
@@ -360,6 +438,57 @@ function buildPrisma(fixture: AccessFixture = {}) {
         Promise.resolve(positions.filter((position) => where.id.in.includes(position.id)))
       )
     }
+  };
+}
+
+function receiptPdfRefreshFacts(input: {
+  receiptId?: string;
+  status: string;
+  currentRevisionNo?: number;
+  reviewId?: string;
+  pdfDocumentId?: string;
+  fileId?: string;
+  tokenOverrides?: Record<string, unknown>;
+  auditOverrides?: Record<string, unknown>;
+}): Pick<AccessFixture, "receiptReviews" | "auditLogs"> {
+  const receiptId = input.receiptId ?? "receipt-1";
+  const currentRevisionNo = input.currentRevisionNo ?? 1;
+  const reviewId = input.reviewId ?? "review-1";
+  const pdfDocumentId = input.pdfDocumentId ?? "receipt-pdf-document";
+  const fileId = input.fileId ?? "receipt-pdf";
+  return {
+    receiptReviews: [
+      {
+        id: reviewId,
+        receiptId,
+        sequenceNo: 1,
+        receiptRevisionNo: currentRevisionNo,
+        decision: "approved"
+      }
+    ],
+    auditLogs: [
+      {
+        id: "receipt-pdf-refresh-audit",
+        action: "spot_procurement.receipt.pdf.refresh",
+        businessType: "spot_procurement_receipt",
+        businessId: receiptId,
+        metadata: {
+          pdfDocumentId,
+          newFileId: fileId,
+          templateKey: "spot_procurement_receipt_v1",
+          sourceSnapshotToken: {
+            receiptId,
+            receiptStatus: input.status,
+            currentRevisionNo,
+            sourceRevisionNo: currentRevisionNo,
+            reviewId,
+            latestReviewId: reviewId,
+            ...input.tokenOverrides
+          },
+          ...input.auditOverrides
+        }
+      }
+    ]
   };
 }
 
@@ -1615,5 +1744,593 @@ describe("SpotProcurementAccessService", () => {
         }) as never
       ).resolveFileDownloadAccess("file-old", "applicant-1")
     ).resolves.toBe("allowed");
+  });
+
+  it.each(["reviewed", "locked"])(
+    "allows a %s receipt PDF business download through the receipt ACL",
+    async (status) => {
+      const service = new SpotProcurementAccessService(buildPrisma({
+        procurements: [
+          {
+            id: "procurement-1",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        receipts: [
+          {
+            id: "receipt-1",
+            projectId: "project-1",
+            procurementId: "procurement-1",
+            handlerUserId: "handler-1",
+            status,
+            currentRevisionNo: 1
+          }
+        ],
+        pdfDocuments: [
+          {
+            id: "receipt-pdf-document",
+            fileId: "receipt-pdf",
+            businessType: "spot_procurement_receipt",
+            businessId: "receipt-1",
+            templateKey: "spot_procurement_receipt_v1"
+          }
+        ],
+        ...receiptPdfRefreshFacts({ status })
+      }) as never);
+
+      await expect(
+        service.resolveBusinessDownloadAccess(
+          "spot_procurement_receipt",
+          "receipt-1",
+          "applicant-1"
+        )
+      ).resolves.toBe("allowed");
+    }
+  );
+
+  it("keeps the last reviewed PDF formal after automatic closure locks the receipt", async () => {
+    const service = new SpotProcurementAccessService(buildPrisma({
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      receipts: [
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          handlerUserId: "handler-1",
+          status: "locked",
+          currentRevisionNo: 1
+        }
+      ],
+      pdfDocuments: [
+        {
+          id: "receipt-pdf-document",
+          fileId: "receipt-pdf",
+          businessType: "spot_procurement_receipt",
+          businessId: "receipt-1",
+          templateKey: "spot_procurement_receipt_v1"
+        }
+      ],
+      ...receiptPdfRefreshFacts({
+        status: "reviewed"
+      })
+    }) as never);
+
+    await expect(
+      service.resolveBusinessDownloadAccess(
+        "spot_procurement_receipt",
+        "receipt-1",
+        "applicant-1"
+      )
+    ).resolves.toBe("allowed");
+  });
+
+  it.each(["submitted", "returned", "review_revoked"])(
+    "denies a %s receipt PDF business download even to the applicant",
+    async (status) => {
+      const service = new SpotProcurementAccessService(buildPrisma({
+        procurements: [
+          {
+            id: "procurement-1",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        receipts: [
+          {
+            id: "receipt-1",
+            projectId: "project-1",
+            procurementId: "procurement-1",
+            handlerUserId: "handler-1",
+            status,
+            currentRevisionNo: 1
+          }
+        ],
+        pdfDocuments: [
+          {
+            id: "receipt-pdf-document",
+            fileId: "receipt-pdf",
+            businessType: "spot_procurement_receipt",
+            businessId: "receipt-1",
+            templateKey: "spot_procurement_receipt_v1"
+          }
+        ],
+        ...receiptPdfRefreshFacts({ status })
+      }) as never);
+
+      await expect(
+        service.resolveBusinessDownloadAccess(
+          "spot_procurement_receipt",
+          "receipt-1",
+          "applicant-1"
+        )
+      ).resolves.toBe("denied");
+    }
+  );
+
+  it.each(["file-current", "file-ancestor"])(
+    "keeps a reviewed receipt PDF at %s inside the current receipt ACL",
+    async (fileId) => {
+      const base: AccessFixture = {
+        procurements: [
+          {
+            id: "procurement-1",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        receipts: [
+          {
+            id: "receipt-1",
+            projectId: "project-1",
+            procurementId: "procurement-1",
+            handlerUserId: "handler-1",
+            status: "reviewed",
+            currentRevisionNo: 1
+          }
+        ],
+        fileObjects: [
+          { id: "file-current", supersedesFileObjectId: "file-ancestor" }
+        ],
+        pdfDocuments: [
+          {
+            id: "receipt-pdf-document",
+            fileId: "file-current",
+            businessType: "spot_procurement_receipt",
+            businessId: "receipt-1",
+            templateKey: "spot_procurement_receipt_v1"
+          }
+        ],
+        ...receiptPdfRefreshFacts({ status: "reviewed", fileId: "file-current" })
+      };
+
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(base) as never)
+          .resolveFileDownloadAccess(fileId, "applicant-1")
+      ).resolves.toBe("allowed");
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(base) as never)
+          .resolveFileDownloadAccess(fileId, "unrelated-user")
+      ).resolves.toBe("denied");
+    }
+  );
+
+  it.each(["submitted", "returned", "review_revoked"])(
+    "denies a %s receipt PDF file even to the applicant",
+    async (status) => {
+      const fixture: AccessFixture = {
+        procurements: [
+          {
+            id: "procurement-1",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        receipts: [
+          {
+            id: "receipt-1",
+            projectId: "project-1",
+            procurementId: "procurement-1",
+            handlerUserId: "handler-1",
+            status,
+            currentRevisionNo: 1
+          }
+        ],
+        pdfDocuments: [
+          {
+            id: "receipt-pdf-document",
+            fileId: "receipt-pdf",
+            businessType: "spot_procurement_receipt",
+            businessId: "receipt-1",
+            templateKey: "spot_procurement_receipt_v1"
+          }
+        ],
+        ...receiptPdfRefreshFacts({ status })
+      };
+
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(fixture) as never)
+          .resolveFileDownloadAccess("receipt-pdf", "applicant-1")
+      ).resolves.toBe("denied");
+    }
+  );
+
+  it.each([
+    ["stale receipt status", { tokenOverrides: { receiptStatus: "submitted" } }],
+    ["stale revision", { tokenOverrides: { currentRevisionNo: 1 } }],
+    ["stale latest review", { tokenOverrides: { latestReviewId: "review-1" } }],
+    ["stale file pointer", { auditOverrides: { newFileId: "previous-file" } }]
+  ] as const)(
+    "denies a reviewed receipt PDF backed by a %s refresh audit",
+    async (_caseName, refreshOverrides) => {
+      const fixture: AccessFixture = {
+        procurements: [
+          {
+            id: "procurement-1",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        receipts: [
+          {
+            id: "receipt-1",
+            projectId: "project-1",
+            procurementId: "procurement-1",
+            handlerUserId: "handler-1",
+            status: "reviewed",
+            currentRevisionNo: 2
+          }
+        ],
+        pdfDocuments: [
+          {
+            id: "receipt-pdf-document",
+            fileId: "receipt-pdf",
+            businessType: "spot_procurement_receipt",
+            businessId: "receipt-1",
+            templateKey: "spot_procurement_receipt_v1"
+          }
+        ],
+        ...receiptPdfRefreshFacts({
+          status: "reviewed",
+          currentRevisionNo: 2,
+          reviewId: "review-2",
+          ...refreshOverrides
+        })
+      };
+
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(fixture) as never)
+          .resolveFileDownloadAccess("receipt-pdf", "applicant-1")
+      ).resolves.toBe("denied");
+    }
+  );
+
+  it.each([
+    ["returned", 2],
+    ["revoked", 2],
+    ["approved", 1]
+  ] as const)(
+    "denies a reviewed receipt PDF when the latest review is %s on revision %s",
+    async (decision, receiptRevisionNo) => {
+      const refreshFacts = receiptPdfRefreshFacts({
+        status: "reviewed",
+        currentRevisionNo: 2,
+        reviewId: "review-2"
+      });
+      const fixture: AccessFixture = {
+        procurements: [
+          {
+            id: "procurement-1",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        receipts: [
+          {
+            id: "receipt-1",
+            projectId: "project-1",
+            procurementId: "procurement-1",
+            handlerUserId: "handler-1",
+            status: "reviewed",
+            currentRevisionNo: 2
+          }
+        ],
+        pdfDocuments: [
+          {
+            id: "receipt-pdf-document",
+            fileId: "receipt-pdf",
+            businessType: "spot_procurement_receipt",
+            businessId: "receipt-1",
+            templateKey: "spot_procurement_receipt_v1"
+          }
+        ],
+        ...refreshFacts,
+        receiptReviews: [
+          {
+            id: "review-2",
+            receiptId: "receipt-1",
+            sequenceNo: 2,
+            receiptRevisionNo,
+            decision
+          }
+        ]
+      };
+
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(fixture) as never)
+          .resolveFileDownloadAccess(
+            "receipt-pdf",
+            "applicant-1"
+          )
+      ).resolves.toBe("denied");
+    }
+  );
+
+  it("denies a reviewed receipt PDF without a successful refresh audit", async () => {
+    const fixture: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      receipts: [
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          handlerUserId: "handler-1",
+          status: "reviewed",
+          currentRevisionNo: 1
+        }
+      ],
+      receiptReviews: [{ id: "review-1", receiptId: "receipt-1", sequenceNo: 1 }],
+      pdfDocuments: [
+        {
+          id: "receipt-pdf-document",
+          fileId: "receipt-pdf",
+          businessType: "spot_procurement_receipt",
+          businessId: "receipt-1",
+          templateKey: "spot_procurement_receipt_v1"
+        }
+      ]
+    };
+
+    await expect(
+      new SpotProcurementAccessService(buildPrisma(fixture) as never)
+        .resolveFileDownloadAccess("receipt-pdf", "applicant-1")
+    ).resolves.toBe("denied");
+  });
+
+  it("fails closed when a receipt PdfDocument uses the wrong template", async () => {
+    const fixture: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      receipts: [
+        {
+          id: "receipt-1",
+          projectId: "project-1",
+          procurementId: "procurement-1",
+          handlerUserId: "handler-1",
+          status: "reviewed"
+        }
+      ],
+      pdfDocuments: [
+        {
+          fileId: "receipt-pdf",
+          businessType: "spot_procurement_receipt",
+          businessId: "receipt-1",
+          templateKey: "approval_form"
+        }
+      ]
+    };
+
+    await expect(
+      new SpotProcurementAccessService(buildPrisma(fixture) as never)
+        .resolveFileDownloadAccess("receipt-pdf", "applicant-1")
+    ).resolves.toBe("denied");
+  });
+
+  it.each(["application", "payment", "second_receipt", "receipt_photo"])(
+    "fails closed when one receipt PDF file is also bound to %s",
+    async (mixedBinding) => {
+      const fixture: AccessFixture = {
+        procurements: [
+          {
+            id: "procurement-1",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-1"
+          },
+          {
+            id: "procurement-2",
+            projectId: "project-1",
+            applicantUserId: "applicant-1",
+            handlerUserId: "handler-2"
+          }
+        ],
+        versions: [
+          {
+            id: "version-1",
+            procurementId: "procurement-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        payments: [
+          {
+            id: "payment-1",
+            procurementId: "procurement-1",
+            projectId: "project-1",
+            handlerUserId: "handler-1"
+          }
+        ],
+        receipts: [
+          {
+            id: "receipt-1",
+            projectId: "project-1",
+            procurementId: "procurement-1",
+            handlerUserId: "handler-1",
+            status: "reviewed"
+          },
+          {
+            id: "receipt-2",
+            projectId: "project-1",
+            procurementId: "procurement-2",
+            handlerUserId: "handler-2",
+            status: "reviewed"
+          }
+        ],
+        pdfDocuments: [
+          {
+            fileId: "mixed-file",
+            businessType: "spot_procurement_receipt",
+            businessId: "receipt-1",
+            templateKey: "spot_procurement_receipt_v1"
+          }
+        ],
+        approvals: []
+      };
+      if (mixedBinding === "application") {
+        fixture.pdfDocuments!.push({
+          fileId: "mixed-file",
+          businessType: "spot_procurement_version",
+          businessId: "version-1",
+          templateKey: "approval_form"
+        });
+        fixture.approvals!.push({
+          id: "approval-1",
+          businessType: "spot_procurement_version",
+          businessId: "version-1",
+          status: "approved",
+          currentNodeIndex: 0,
+          frozenNodes: [],
+          applicantUserId: "applicant-1"
+        });
+      } else if (mixedBinding === "payment") {
+        fixture.pdfDocuments!.push({
+          fileId: "mixed-file",
+          businessType: "spot_procurement_payment",
+          businessId: "payment-1",
+          templateKey: "approval_form"
+        });
+        fixture.approvals!.push({
+          id: "approval-1",
+          businessType: "spot_procurement_payment",
+          businessId: "payment-1",
+          status: "approved",
+          currentNodeIndex: 0,
+          frozenNodes: [],
+          applicantUserId: "applicant-1"
+        });
+      } else if (mixedBinding === "second_receipt") {
+        fixture.pdfDocuments!.push({
+          fileId: "mixed-file",
+          businessType: "spot_procurement_receipt",
+          businessId: "receipt-2",
+          templateKey: "spot_procurement_receipt_v1"
+        });
+      } else {
+        fixture.receiptPhotos = [
+          {
+            receiptId: "receipt-1",
+            originalFileId: "mixed-file",
+            watermarkedFileId: "watermarked-file"
+          }
+        ];
+      }
+
+      await expect(
+        new SpotProcurementAccessService(buildPrisma(fixture) as never)
+          .resolveFileDownloadAccess("mixed-file", "applicant-1")
+      ).resolves.toBe("denied");
+    }
+  );
+
+  it("fails closed when one approval PDF file is bound to both application and payment", async () => {
+    const fixture: AccessFixture = {
+      procurements: [
+        {
+          id: "procurement-1",
+          projectId: "project-1",
+          applicantUserId: "applicant-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      versions: [
+        {
+          id: "version-1",
+          procurementId: "procurement-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      payments: [
+        {
+          id: "payment-1",
+          procurementId: "procurement-1",
+          projectId: "project-1",
+          handlerUserId: "handler-1"
+        }
+      ],
+      pdfDocuments: [
+        {
+          fileId: "mixed-file",
+          businessType: "spot_procurement_version",
+          businessId: "version-1",
+          templateKey: "approval_form"
+        },
+        {
+          fileId: "mixed-file",
+          businessType: "spot_procurement_payment",
+          businessId: "payment-1",
+          templateKey: "approval_form"
+        }
+      ],
+      approvals: [
+        {
+          id: "approval-1",
+          businessType: "spot_procurement_version",
+          businessId: "version-1",
+          status: "approved",
+          currentNodeIndex: 0,
+          frozenNodes: [],
+          applicantUserId: "applicant-1"
+        },
+        {
+          id: "approval-2",
+          businessType: "spot_procurement_payment",
+          businessId: "payment-1",
+          status: "approved",
+          currentNodeIndex: 0,
+          frozenNodes: [],
+          applicantUserId: "applicant-1"
+        }
+      ]
+    };
+
+    await expect(
+      new SpotProcurementAccessService(buildPrisma(fixture) as never)
+        .resolveFileDownloadAccess("mixed-file", "applicant-1")
+    ).resolves.toBe("denied");
   });
 });

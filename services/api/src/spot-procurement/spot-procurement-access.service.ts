@@ -5,7 +5,14 @@ import {
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
-import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
+import {
+  SPOT_PROCUREMENT_BUSINESS_TYPES,
+  SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY
+} from "./spot-procurement.constants";
+import {
+  isCurrentFormalReceiptPdfFact,
+  RECEIPT_PDF_REFRESH_ACTION
+} from "./spot-procurement-receipt-pdf-facts";
 
 export type SpotProcurementFileAccessDecision =
   | "not_spot"
@@ -36,7 +43,6 @@ const REVIEW_ACTIONS = [
   "reject_previous",
   "return_to_applicant"
 ] as const;
-
 const RESOURCE_FORBIDDEN_MESSAGE = "零星采购资源不存在或当前账号无权访问";
 
 function currentNodeRoleKeys(frozenNodes: Prisma.JsonValue, currentNodeIndex: number) {
@@ -591,6 +597,30 @@ export class SpotProcurementAccessService {
       versionIds.add(businessId);
     } else if (businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.payment) {
       paymentIds.add(businessId);
+    } else if (businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.receipt) {
+      const bindings = await client.pdfDocument.findMany({
+        where: {
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+          businessId,
+          templateKey:
+            SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY
+        },
+        select: {
+          id: true,
+          fileId: true,
+          businessType: true,
+          businessId: true,
+          templateKey: true
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 2
+      });
+      if (bindings.length !== 1) return "denied";
+      return this.resolveFormalReceiptPdfAccess(
+        client,
+        actorUserId,
+        bindings[0]
+      );
     } else {
       return "denied";
     }
@@ -645,11 +675,18 @@ export class SpotProcurementAccessService {
             businessType: {
               in: [
                 SPOT_PROCUREMENT_BUSINESS_TYPES.application,
-                SPOT_PROCUREMENT_BUSINESS_TYPES.payment
+                SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+                SPOT_PROCUREMENT_BUSINESS_TYPES.receipt
               ]
             }
           },
-          select: { businessType: true, businessId: true, templateKey: true }
+          select: {
+            id: true,
+            fileId: true,
+            businessType: true,
+            businessId: true,
+            templateKey: true
+          }
         }),
         client.spotProcurementReceiptPhoto.findMany({
           where: {
@@ -658,26 +695,33 @@ export class SpotProcurementAccessService {
           select: { receiptId: true }
         })
       ]);
-    const replacementChain = directPdfBindings.length
-      ? { descendantFileIds: [] as string[], overflow: false }
-      : await this.findReplacementDescendantFileIds(client, fileId);
+    const replacementChain = await this.findReplacementDescendantFileIds(
+      client,
+      fileId
+    );
     if (replacementChain.overflow) return "denied";
-    const pdfBindings = directPdfBindings.length
-      ? directPdfBindings
-      : replacementChain.descendantFileIds.length
-        ? await client.pdfDocument.findMany({
-            where: {
-              fileId: { in: replacementChain.descendantFileIds },
-              businessType: {
-                in: [
-                  SPOT_PROCUREMENT_BUSINESS_TYPES.application,
-                  SPOT_PROCUREMENT_BUSINESS_TYPES.payment
-                ]
-              }
-            },
-            select: { businessType: true, businessId: true, templateKey: true }
-          })
-        : [];
+    const replacementPdfBindings = replacementChain.descendantFileIds.length
+      ? await client.pdfDocument.findMany({
+          where: {
+            fileId: { in: replacementChain.descendantFileIds },
+            businessType: {
+              in: [
+                SPOT_PROCUREMENT_BUSINESS_TYPES.application,
+                SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+                SPOT_PROCUREMENT_BUSINESS_TYPES.receipt
+              ]
+            }
+          },
+          select: {
+            id: true,
+            fileId: true,
+            businessType: true,
+            businessId: true,
+            templateKey: true
+          }
+        })
+      : [];
+    const pdfBindings = [...directPdfBindings, ...replacementPdfBindings];
 
     const bound =
       attachmentBindings.length > 0 ||
@@ -687,54 +731,172 @@ export class SpotProcurementAccessService {
       receiptPhotoBindings.length > 0;
     if (!bound) return "not_spot";
 
-    const receiptIds = new Set(
+    const receiptPhotoIds = new Set(
       receiptPhotoBindings.map((binding) => binding.receiptId)
     );
-    const hasNonReceiptBinding =
-      attachmentBindings.length > 0 ||
-      directPaymentBindings.length > 0 ||
-      voucherBindings.length > 0 ||
-      pdfBindings.length > 0;
+    const receiptPdfBindings = pdfBindings.filter(
+      (binding) =>
+        binding.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.receipt
+    );
+    const approvalPdfBindings = pdfBindings.filter(
+      (binding) =>
+        binding.businessType !== SPOT_PROCUREMENT_BUSINESS_TYPES.receipt
+    );
     if (
-      receiptIds.size > 1 ||
-      (receiptIds.size > 0 && hasNonReceiptBinding)
+      receiptPdfBindings.some(
+        (binding) =>
+          binding.templateKey !==
+          SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY
+      )
     ) {
       return "denied";
     }
-    if (receiptIds.size) {
+
+    const hasNonPdfBusinessBinding =
+      attachmentBindings.length > 0 ||
+      directPaymentBindings.length > 0 ||
+      voucherBindings.length > 0;
+    if (
+      receiptPhotoIds.size > 1 ||
+      (receiptPhotoIds.size > 0 &&
+        (hasNonPdfBusinessBinding || pdfBindings.length > 0))
+    ) {
+      return "denied";
+    }
+
+    if (receiptPdfBindings.length > 0) {
+      if (
+        receiptPdfBindings.length !== 1 ||
+        approvalPdfBindings.length > 0 ||
+        hasNonPdfBusinessBinding
+      ) {
+        return "denied";
+      }
+      return this.resolveFormalReceiptPdfAccess(
+        client,
+        actorUserId,
+        receiptPdfBindings[0]
+      );
+    }
+
+    const formalPdfBusinessKeys = new Set(
+      approvalPdfBindings.map(
+        (binding) => `${binding.businessType}:${binding.businessId}`
+      )
+    );
+    if (formalPdfBusinessKeys.size > 1) return "denied";
+
+    if (receiptPhotoIds.size) {
       const accessibleReceiptIds = await this.accessibleReceiptIds(
-        [...receiptIds],
+        [...receiptPhotoIds],
         actorUserId,
         client
       );
-      if ([...receiptIds].some((receiptId) => accessibleReceiptIds.has(receiptId))) {
-        return "allowed";
-      }
+      return [...receiptPhotoIds].every((receiptId) =>
+        accessibleReceiptIds.has(receiptId)
+      )
+        ? "allowed"
+        : "denied";
     }
 
-    if (!hasNonReceiptBinding) return "denied";
+    if (!hasNonPdfBusinessBinding && !approvalPdfBindings.length) {
+      return "denied";
+    }
 
     const versionIds = new Set(attachmentBindings.map((binding) => binding.versionId));
     const paymentIds = new Set([
       ...directPaymentBindings.map((binding) => binding.id),
       ...voucherBindings.map((binding) => binding.paymentId)
     ]);
-    for (const pdf of pdfBindings) {
+    for (const pdf of approvalPdfBindings) {
       if (pdf.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.application) {
         versionIds.add(pdf.businessId);
       } else if (pdf.businessType === SPOT_PROCUREMENT_BUSINESS_TYPES.payment) {
         paymentIds.add(pdf.businessId);
       }
     }
+    if (versionIds.size > 0 && paymentIds.size > 0) return "denied";
 
     return this.resolveBoundBusinessAccess(
       client,
       actorUserId,
       versionIds,
       paymentIds,
-      new Set(pdfBindings.map((pdf) => `${pdf.businessType}:${pdf.businessId}`)),
+      formalPdfBusinessKeys,
       new Set(voucherBindings.map((binding) => binding.executedByUserId))
     );
+  }
+
+  private async resolveFormalReceiptPdfAccess(
+    client: AccessClient,
+    actorUserId: string,
+    binding: {
+      id: string;
+      fileId: string;
+      businessType: string;
+      businessId: string;
+      templateKey: string;
+    }
+  ): Promise<SpotProcurementBusinessAccessDecision> {
+    if (
+      binding.businessType !== SPOT_PROCUREMENT_BUSINESS_TYPES.receipt ||
+      binding.templateKey !==
+        SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY
+    ) {
+      return "denied";
+    }
+
+    const receipt = await client.spotProcurementReceipt.findUnique({
+      where: { id: binding.businessId },
+      select: { id: true, status: true, currentRevisionNo: true }
+    });
+    if (
+      !receipt ||
+      !Number.isSafeInteger(receipt.currentRevisionNo) ||
+      receipt.currentRevisionNo <= 0
+    ) {
+      return "denied";
+    }
+
+    const [reviews, latestRefresh] = await Promise.all([
+      client.spotProcurementReceiptReview.findMany({
+        where: { receiptId: receipt.id },
+        select: {
+          id: true,
+          receiptRevisionNo: true,
+          decision: true
+        },
+        orderBy: [{ sequenceNo: "asc" }, { id: "asc" }]
+      }),
+      client.auditLog.findFirst({
+        where: {
+          action: RECEIPT_PDF_REFRESH_ACTION,
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+          businessId: receipt.id
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { metadata: true }
+      })
+    ]);
+    const latestReview = reviews.at(-1);
+    if (
+      !latestReview ||
+      !isCurrentFormalReceiptPdfFact({
+        binding,
+        receipt,
+        latestReview,
+        refreshMetadata: latestRefresh?.metadata
+      })
+    ) {
+      return "denied";
+    }
+
+    const accessibleReceiptIds = await this.accessibleReceiptIds(
+      [receipt.id],
+      actorUserId,
+      client
+    );
+    return accessibleReceiptIds.has(receipt.id) ? "allowed" : "denied";
   }
 
   private async resolveBoundBusinessAccess(

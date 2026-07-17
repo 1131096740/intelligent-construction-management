@@ -14,6 +14,7 @@ import { SpotProcurementPaymentService } from "./spot-procurement-payment.servic
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SpotProcurementReadService } from "./spot-procurement-read.service";
 import { SpotProcurementReceiptController } from "./spot-procurement-receipt.controller";
+import { SpotProcurementReceiptPdfService } from "./spot-procurement-receipt-pdf.service";
 import { SpotProcurementReceiptService } from "./spot-procurement-receipt.service";
 import { SpotProcurementController } from "./spot-procurement.controller";
 
@@ -39,6 +40,7 @@ import { SpotProcurementController } from "./spot-procurement.controller";
     SpotProcurementPaymentService,
     SpotProcurementPilotService,
     SpotProcurementReadService,
+    SpotProcurementReceiptPdfService,
     SpotProcurementReceiptService
   ],
   exports: [
@@ -47,6 +49,7 @@ import { SpotProcurementController } from "./spot-procurement.controller";
     SpotProcurementPaymentService,
     SpotProcurementPilotService,
     SpotProcurementReadService,
+    SpotProcurementReceiptPdfService,
     SpotProcurementReceiptService
   ]
 })

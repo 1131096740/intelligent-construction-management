@@ -171,6 +171,7 @@ const EXPECTED_MODELS: Record<(typeof REQUIRED_MODELS)[number], ModelExpectation
       "decision String",
       "comment String?",
       "reviewedByUserId String",
+      "reviewedByNameSnapshot String",
       "submissionDelegationId String?",
       "targetReviewId String?",
       "createdAt DateTime @default(now())"
@@ -403,6 +404,15 @@ describe("spot procurement receipt and invoice schema", () => {
     "prisma/migrations/20260716200000_spot_procurement_receipt_invoice/migration.sql"
   );
   const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
+  const reviewerSnapshotMigrationPath = join(
+    process.cwd(),
+    "prisma/migrations/20260717111000_spot_receipt_reviewer_name_snapshot/migration.sql"
+  );
+  const reviewerSnapshotMigration = existsSync(
+    reviewerSnapshotMigrationPath
+  )
+    ? readFileSync(reviewerSnapshotMigrationPath, "utf8")
+    : "";
 
   const modelBody = (name: string) =>
     schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
@@ -531,8 +541,37 @@ describe("spot procurement receipt and invoice schema", () => {
   });
 
   it.each(REQUIRED_MODELS)("keeps migration columns aligned for %s", (modelName) => {
+    const baseFields =
+      modelName === "SpotProcurementReceiptReview"
+        ? EXPECTED_MODELS[modelName].fields.filter(
+            (field) =>
+              !field.startsWith(
+                "reviewedByNameSnapshot "
+              )
+          )
+        : EXPECTED_MODELS[modelName].fields;
     expect(sqlColumns(modelName)).toEqual(
-      EXPECTED_MODELS[modelName].fields.map(prismaFieldToSqlColumn)
+      baseFields.map(prismaFieldToSqlColumn)
+    );
+  });
+
+  it("adds and freezes the receipt reviewer name through a forward-only migration", () => {
+    const sql = normalizeSql(reviewerSnapshotMigration);
+
+    expect(sql).toContain(
+      'ALTERTABLE"SpotProcurementReceiptReview"ADDCOLUMN"reviewedByNameSnapshot"TEXT'
+    );
+    expect(sql).toContain(
+      'UPDATE"SpotProcurementReceiptReview"reviewSET"reviewedByNameSnapshot"=BTRIM("User"."name")FROM"User"WHERE"User"."id"=review."reviewedByUserId"'
+    );
+    expect(sql).toContain(
+      'ALTERTABLE"SpotProcurementReceiptReview"ALTERCOLUMN"reviewedByNameSnapshot"SETNOTNULL'
+    );
+    expect(sql).toContain(
+      '"reviewedByNameSnapshot"ISNULLOR"reviewedByNameSnapshot"=\'\''
+    );
+    expect(reviewerSnapshotMigration).not.toMatch(
+      /\b(?:DROP|TRUNCATE|DELETE)\b/i
     );
   });
 

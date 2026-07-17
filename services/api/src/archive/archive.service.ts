@@ -1,5 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
+import { SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY } from "../spot-procurement/spot-procurement.constants";
+import {
+  isCurrentFormalReceiptPdfFact,
+  RECEIPT_PDF_REFRESH_ACTION
+} from "../spot-procurement/spot-procurement-receipt-pdf-facts";
 
 type ArchiveTone = "default" | "primary" | "warning" | "success";
 
@@ -108,6 +113,9 @@ export class ArchiveService {
       spotArchives.procurements.map((row) => [row.id, row])
     );
     const spotPaymentById = new Map(spotArchives.payments.map((row) => [row.id, row]));
+    const spotReceiptById = new Map(
+      spotArchives.receipts.map((row) => [row.id, row])
+    );
 
     const rows = [
       ...contractArchives.map((row) => {
@@ -224,6 +232,37 @@ export class ArchiveService {
         };
       }),
       ...spotArchives.pdfDocuments.flatMap((row) => {
+        if (row.businessType === "spot_procurement_receipt") {
+          const receipt = spotReceiptById.get(row.businessId);
+          const procurement = receipt
+            ? spotProcurementById.get(receipt.procurementId)
+            : undefined;
+          if (!receipt || !procurement) return [];
+          return [
+            {
+              projectId: receipt.projectId,
+              id: `spot-pdf-${row.id}`,
+              documentNo: row.id,
+              fileId: row.fileId,
+              fileSizeBytes: fileById.get(row.fileId)?.sizeBytes ?? 0,
+              documentType: "项目零星材料收货确认单",
+              businessRef: procurement.code,
+              project: this.projectName(projectById, receipt.projectId),
+              fileSource: this.fileName(fileById, row.fileId),
+              archiveStatus:
+                receipt.status === "locked"
+                  ? "采购已办结"
+                  : "收货复核已通过",
+              statusTone: "success" as ArchiveTone,
+              uploadDepartment: "物资部",
+              confirmedBy: "-",
+              lastAction: this.date(row.createdAt),
+              canDownload: true,
+              disabledReason: null,
+              createdAt: row.createdAt
+            }
+          ];
+        }
         if (row.businessType === "spot_procurement_version") {
           const version = spotVersionById.get(row.businessId);
           const procurement = version
@@ -341,6 +380,7 @@ export class ArchiveService {
         procurements: [],
         versions: [],
         payments: [],
+        receipts: [],
         pdfDocuments: [],
         paymentExecutions: []
       };
@@ -352,10 +392,22 @@ export class ArchiveService {
     const [pdfCandidates, executionCandidates] = await Promise.all([
       this.prisma.pdfDocument.findMany({
         where: {
-          templateKey: "approval_form",
-          businessType: {
-            in: ["spot_procurement_version", "spot_procurement_payment"]
-          }
+          OR: [
+            {
+              templateKey: "approval_form",
+              businessType: {
+                in: [
+                  "spot_procurement_version",
+                  "spot_procurement_payment"
+                ]
+              }
+            },
+            {
+              templateKey:
+                SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY,
+              businessType: "spot_procurement_receipt"
+            }
+          ]
         },
         orderBy: { createdAt: "desc" },
         take: candidateTake
@@ -381,7 +433,18 @@ export class ArchiveService {
         ...executionCandidates.map((row) => row.paymentId)
       ])
     ];
-    const [versions, payments] = await Promise.all([
+    const receiptIds = [
+      ...new Set(
+        pdfCandidates
+          .filter(
+            (row) =>
+              row.businessType ===
+              "spot_procurement_receipt"
+          )
+          .map((row) => row.businessId)
+      )
+    ];
+    const [versions, payments, receipts] = await Promise.all([
       versionIds.length
         ? this.prisma.spotProcurementVersion.findMany({
             where: { id: { in: versionIds } },
@@ -404,12 +467,30 @@ export class ArchiveService {
               status: true
             }
           })
+        : Promise.resolve([]),
+      receiptIds.length
+        ? this.prisma.spotProcurementReceipt.findMany({
+            where: {
+              id: { in: receiptIds },
+              ...(visibleProjectIds
+                ? { projectId: { in: visibleProjectIds } }
+                : {})
+            },
+            select: {
+              id: true,
+              projectId: true,
+              procurementId: true,
+              status: true,
+              currentRevisionNo: true
+            }
+          })
         : Promise.resolve([])
     ]);
     const procurementIds = [
       ...new Set([
         ...versions.map((row) => row.procurementId),
-        ...payments.map((row) => row.procurementId)
+        ...payments.map((row) => row.procurementId),
+        ...receipts.map((row) => row.procurementId)
       ])
     ];
     const procurements = procurementIds.length
@@ -465,10 +546,89 @@ export class ArchiveService {
     );
     const approvedVersionIdSet = new Set(approvedVersionIds);
     const approvedPaymentIdSet = new Set(approvedPaymentIds);
+    const receiptById = new Map(
+      receipts.map((row) => [row.id, row])
+    );
+    const visibleReceiptIds = receipts.map((row) => row.id);
+    const [latestReceiptReviews, latestReceiptRefreshes] =
+      visibleReceiptIds.length
+        ? await Promise.all([
+            this.prisma.spotProcurementReceiptReview.findMany({
+              where: {
+                receiptId: { in: visibleReceiptIds }
+              },
+              distinct: ["receiptId"],
+              orderBy: [
+                { receiptId: "asc" },
+                { sequenceNo: "desc" },
+                { id: "desc" }
+              ],
+              select: {
+                id: true,
+                receiptId: true,
+                receiptRevisionNo: true,
+                decision: true
+              }
+            }),
+            this.prisma.auditLog.findMany({
+              where: {
+                action: RECEIPT_PDF_REFRESH_ACTION,
+                businessType: "spot_procurement_receipt",
+                businessId: { in: visibleReceiptIds }
+              },
+              distinct: ["businessId"],
+              orderBy: [
+                { businessId: "asc" },
+                { createdAt: "desc" },
+                { id: "desc" }
+              ],
+              select: {
+                businessId: true,
+                metadata: true
+              }
+            })
+          ])
+        : [[], []];
+    const latestReceiptReviewById = new Map(
+      latestReceiptReviews.map((row) => [
+        row.receiptId,
+        row
+      ])
+    );
+    const latestReceiptRefreshById = new Map(
+      latestReceiptRefreshes.flatMap((row) =>
+        row.businessId ? [[row.businessId, row]] : []
+      )
+    );
     const seenPdfBusinesses = new Set<string>();
     const currentPdfDocuments = pdfCandidates.filter((row) => {
       const key = `${row.businessType}:${row.businessId}`;
-      if (row.templateKey !== "approval_form" || !approvedBusinessKeys.has(key)) return false;
+      if (
+        row.businessType === "spot_procurement_receipt"
+      ) {
+        const receipt = receiptById.get(row.businessId);
+        if (
+          row.templateKey !==
+            SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY ||
+          !receipt ||
+          !isCurrentFormalReceiptPdfFact({
+            binding: row,
+            receipt,
+            latestReview:
+              latestReceiptReviewById.get(row.businessId),
+            refreshMetadata:
+              latestReceiptRefreshById.get(row.businessId)
+                ?.metadata
+          })
+        ) {
+          return false;
+        }
+      } else if (
+        row.templateKey !== "approval_form" ||
+        !approvedBusinessKeys.has(key)
+      ) {
+        return false;
+      }
       if (
         row.businessType === "spot_procurement_version" &&
         !approvedVersionIdSet.has(row.businessId)
@@ -493,6 +653,7 @@ export class ArchiveService {
       procurements,
       versions: visibleVersions,
       payments,
+      receipts,
       pdfDocuments: currentPdfDocuments,
       paymentExecutions
     };

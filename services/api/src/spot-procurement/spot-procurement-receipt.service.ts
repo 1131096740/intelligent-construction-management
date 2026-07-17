@@ -8,6 +8,10 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import {
+  resolveEffectiveRoleKeys,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { hasNonReceiptBusinessFileBinding } from "../file/file-business-binding";
@@ -25,6 +29,11 @@ import {
 } from "./dto/attach-receipt-photo.dto";
 import type { CreateReceiptDelegationDto } from "./dto/create-receipt-delegation.dto";
 import {
+  RECEIPT_REVIEW_DECISIONS,
+  type ReviewReceiptDto
+} from "./dto/review-receipt.dto";
+import type { RevokeReceiptReviewDto } from "./dto/revoke-receipt-review.dto";
+import {
   isSpotProcurementReceiptQuantity,
   type UpdateReceiptDraftDto,
   type UpdateReceiptDraftLineDto
@@ -35,7 +44,16 @@ import {
 } from "./receipt-watermark.service";
 import { SpotProcurementAccessService } from "./spot-procurement-access.service";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
-import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
+import {
+  isCurrentFormalReceiptPdfFact,
+  RECEIPT_PDF_REFRESH_ACTION
+} from "./spot-procurement-receipt-pdf-facts";
+import { SpotProcurementReceiptPdfService } from "./spot-procurement-receipt-pdf.service";
+import {
+  SPOT_PROCUREMENT_BUSINESS_TYPES,
+  SPOT_PROCUREMENT_RECEIPT_MAX_PHOTO_COUNT,
+  SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY
+} from "./spot-procurement.constants";
 
 const RECEIPT_EDITABLE_STATUSES = new Set([
   "draft",
@@ -161,6 +179,21 @@ type ReceiptPhotoLockRow = {
   appendReason: string | null;
 };
 
+type ReceiptReviewLockRow = {
+  id: string;
+  receiptId: string;
+  receiptRevisionNo: number;
+  procurementId: string;
+  procurementVersionId: string;
+  sequenceNo: number;
+  decision: string;
+  comment: string | null;
+  reviewedByUserId: string;
+  submissionDelegationId: string | null;
+  targetReviewId: string | null;
+  createdAt: Date;
+};
+
 type FileLockRow = {
   id: string;
   mimeType: string;
@@ -194,6 +227,7 @@ type PhotoSnapshot = {
   revisionNo: number;
   procurementVersionId: string;
   revisionSubmittedAt: number | null;
+  firstSubmittedAt: number | null;
   projectLabel: string;
   procurementCode: string;
   uploaderName: string;
@@ -259,7 +293,8 @@ export class SpotProcurementReceiptService {
     private readonly pilot: SpotProcurementPilotService,
     private readonly files: FileService,
     private readonly watermark: ReceiptWatermarkService,
-    private readonly access: SpotProcurementAccessService
+    private readonly access: SpotProcurementAccessService,
+    private readonly receiptPdfs: SpotProcurementReceiptPdfService
   ) {}
 
   async getReceipt(procurementId: string, actorUserId: string) {
@@ -307,8 +342,11 @@ export class SpotProcurementReceiptService {
           revision,
           procurementLines,
           receiptLines,
-          photos,
-          delegation
+          delegation,
+          versionRevisions,
+          reviews,
+          pdfDocuments,
+          latestPdfRefresh
         ] = await Promise.all([
           tx.spotProcurement.findUnique({
           where: { id: procurementId },
@@ -347,19 +385,62 @@ export class SpotProcurementReceiptService {
               receiptRevisionNo: receipt.currentRevisionNo
             }
           }),
-          tx.spotProcurementReceiptPhoto.findMany({
-            where: {
-              receiptId: receipt.id,
-              receiptRevisionNo: receipt.currentRevisionNo
-            },
-            orderBy: [
-              { serverRecordedAt: "asc" },
-              { id: "asc" }
-            ]
-          }),
           tx.spotProcurementReceiptDelegation.findFirst({
             where: { receiptId: receipt.id, revokedAt: null },
             orderBy: { delegatedAt: "desc" }
+          }),
+          tx.spotProcurementReceiptRevision.findMany({
+            where: {
+              receiptId: receipt.id,
+              procurementId,
+              procurementVersionId:
+                receipt.procurementVersionId,
+              revisionNo: { lte: receipt.currentRevisionNo }
+            },
+            select: { revisionNo: true },
+            orderBy: { revisionNo: "asc" }
+          }),
+          tx.spotProcurementReceiptReview.findMany({
+            where: {
+              receiptId: receipt.id,
+              procurementId,
+              procurementVersionId:
+                receipt.procurementVersionId
+            },
+            orderBy: { sequenceNo: "asc" }
+          }),
+          tx.pdfDocument.findMany({
+            where: {
+              businessType:
+                SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+              businessId: receipt.id,
+              templateKey:
+                SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY
+            },
+            select: {
+              id: true,
+              fileId: true,
+              templateKey: true,
+              createdAt: true
+            },
+            orderBy: [
+              { createdAt: "desc" },
+              { id: "desc" }
+            ],
+            take: 2
+          }),
+          tx.auditLog.findFirst({
+            where: {
+              action: RECEIPT_PDF_REFRESH_ACTION,
+              businessType:
+                SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+              businessId: receipt.id
+            },
+            orderBy: [
+              { createdAt: "desc" },
+              { id: "desc" }
+            ],
+            select: { metadata: true }
           })
         ]);
         if (!procurement || !version || !revision) {
@@ -381,6 +462,31 @@ export class SpotProcurementReceiptService {
             "零星采购收货当前版本坐标不一致，请刷新后重试"
           );
         }
+        const versionRevisionNos = versionRevisions.map(
+          (item) => item.revisionNo
+        );
+        if (
+          !versionRevisionNos.includes(
+            receipt.currentRevisionNo
+          )
+        ) {
+          throw new ConflictException(
+            "零星采购收货版本修订链不完整，请刷新后重试"
+          );
+        }
+        const photos =
+          await tx.spotProcurementReceiptPhoto.findMany({
+            where: {
+              receiptId: receipt.id,
+              receiptRevisionNo: {
+                in: versionRevisionNos
+              }
+            },
+            orderBy: [
+              { serverRecordedAt: "asc" },
+              { id: "asc" }
+            ]
+          });
 
         const userIds = [
           receipt.handlerUserId,
@@ -402,6 +508,17 @@ export class SpotProcurementReceiptService {
             line
           ])
         );
+        const latestReview = reviews.at(-1);
+        const currentFormalPdf =
+          pdfDocuments.length === 1 &&
+          isCurrentFormalReceiptPdfFact({
+            binding: pdfDocuments[0],
+            receipt,
+            latestReview,
+            refreshMetadata: latestPdfRefresh?.metadata
+          })
+            ? pdfDocuments[0]
+            : null;
 
         return {
           receipt: {
@@ -445,6 +562,15 @@ export class SpotProcurementReceiptService {
                 delegatedAt: delegation.delegatedAt.toISOString()
               }
             : null,
+          latestPdf: currentFormalPdf
+            ? {
+                documentId: currentFormalPdf.id,
+                fileId: currentFormalPdf.fileId,
+                templateKey: currentFormalPdf.templateKey,
+                createdAt:
+                  currentFormalPdf.createdAt.toISOString()
+              }
+            : null,
           lines: procurementLines.map((line) => {
             const received =
               receiptLineByProcurementLineId.get(line.id);
@@ -484,6 +610,21 @@ export class SpotProcurementReceiptService {
             serverRecordedAt:
               photo.serverRecordedAt.toISOString(),
             locked: photo.lockedAt !== null
+          })),
+          reviews: reviews.map((review) => ({
+            id: review.id,
+            sequenceNo: review.sequenceNo,
+            receiptRevisionNo: review.receiptRevisionNo,
+            decision: review.decision,
+            comment: review.comment,
+            reviewedBy: {
+              id: review.reviewedByUserId,
+              name: review.reviewedByNameSnapshot
+            },
+            submissionDelegationId:
+              review.submissionDelegationId,
+            targetReviewId: review.targetReviewId,
+            createdAt: review.createdAt.toISOString()
           }))
         };
       },
@@ -789,8 +930,9 @@ export class SpotProcurementReceiptService {
       );
     }
 
+    let attachedPhoto: ReturnType<typeof photoReadModel>;
     try {
-      return await this.runWrite(() =>
+      attachedPhoto = await this.runWrite(() =>
         this.runSerializable(async (tx) => {
           const context = await this.requireLockedContext(
             tx,
@@ -800,8 +942,11 @@ export class SpotProcurementReceiptService {
           this.assertReceiptBusinessOpen(context);
           this.assertPhotoAppendable(context);
           this.assertPhotoSnapshotCurrent(context, snapshot);
+          this.assertReceiptPhotoCount(
+            await this.lockReceiptPhotos(tx, context)
+          );
 
-          const appendReason = context.revision.submittedAt
+          const appendReason = context.receipt.firstSubmittedAt
             ? requiredLimitedText(
                 input.appendReason,
                 "首次提交后补充照片必须填写原因",
@@ -889,7 +1034,7 @@ export class SpotProcurementReceiptService {
           }
 
           const lockedImmediately =
-            context.revision.submittedAt !== null;
+            context.receipt.firstSubmittedAt !== null;
           const photo =
             await tx.spotProcurementReceiptPhoto.create({
               data: {
@@ -944,6 +1089,18 @@ export class SpotProcurementReceiptService {
       );
       throw error;
     }
+    if (attachedPhoto.appendReason) {
+      await this.receiptPdfs.tryRefreshLatest(
+        attachedPhoto.receiptId,
+        actorUserId,
+        "receipt.photo.supplement",
+        {
+          sourceRevisionNo:
+            attachedPhoto.receiptRevisionNo
+        }
+      );
+    }
+    return attachedPhoto;
   }
 
   deleteDraftPhoto(
@@ -1107,8 +1264,8 @@ export class SpotProcurementReceiptService {
   }
 
   submit(procurementId: string, actorUserId: string) {
-    return this.runWrite(() =>
-      this.runSerializable(async (tx) => {
+    return this.runWrite(async () => {
+      const result = await this.runSerializable(async (tx) => {
         const context = await this.requireLockedContext(
           tx,
           procurementId
@@ -1167,17 +1324,31 @@ export class SpotProcurementReceiptService {
             data: { actualCostCents: line.actualCostCents }
           });
         }
-        await tx.spotProcurementReceiptPhoto.updateMany({
-          where: {
-            receiptId: context.receipt.id,
-            receiptRevisionNo:
-              context.receipt.currentRevisionNo
-          },
-          data: {
-            lockedAtFirstSubmission: true,
-            lockedAt: submittedAt
+        const firstSubmissionPhotoIds = photos
+          .filter((photo) => photo.lockedAt === null)
+          .map((photo) => photo.id);
+        if (firstSubmissionPhotoIds.length) {
+          const lockedPhotos =
+            await tx.spotProcurementReceiptPhoto.updateMany({
+              where: {
+                id: { in: firstSubmissionPhotoIds },
+                lockedAt: null,
+                lockedAtFirstSubmission: false
+              },
+              data: {
+                lockedAtFirstSubmission: true,
+                lockedAt: submittedAt
+              }
+            });
+          if (
+            lockedPhotos.count !==
+            firstSubmissionPhotoIds.length
+          ) {
+            throw new ConflictException(
+              "收货照片锁定状态已变化，请刷新后重试"
+            );
           }
-        });
+        }
         await tx.spotProcurementReceiptRevision.update({
           where: {
             receiptId_revisionNo: {
@@ -1238,8 +1409,412 @@ export class SpotProcurementReceiptService {
           actualCostCents: totalActualCostCents.toString(),
           submittedAt: submittedAt.toISOString()
         };
-      })
+      });
+      await this.receiptPdfs.tryRefreshLatest(
+        result.receiptId,
+        actorUserId,
+        "receipt.submit",
+        { sourceRevisionNo: result.currentRevisionNo }
+      );
+      return result;
+    });
+  }
+
+  review(
+    procurementId: string,
+    actorUserId: string,
+    input: ReviewReceiptDto
+  ) {
+    if (
+      !RECEIPT_REVIEW_DECISIONS.includes(input.decision)
+    ) {
+      throw new BadRequestException("收货复核结论不正确");
+    }
+    const comment = normalizeOptionalText(
+      input.comment,
+      "收货复核意见",
+      500
     );
+    if (input.decision === "returned" && !comment) {
+      throw new BadRequestException(
+        "退回收货确认必须填写原因"
+      );
+    }
+
+    return this.runWrite(async () => {
+      const result = await this.runSerializable(async (tx) => {
+        const context = await this.requireLockedContext(
+          tx,
+          procurementId
+        );
+        const reviewer = await this.requireMaterialDirector(
+          tx,
+          actorUserId,
+          context.receipt.projectId
+        );
+        this.assertReceiptBusinessOpen(context);
+        this.assertReceiptSubmissionCoordinates(
+          context,
+          "submitted",
+          "当前收货确认不是待物资主管复核的完整提交"
+        );
+
+        const procurementLines = await this.lockProcurementLines(
+          tx,
+          context.version.id
+        );
+        const storedLines = await this.lockReceiptLines(
+          tx,
+          context
+        );
+        const receiptLines = this.validateStoredReceiptLines(
+          procurementLines,
+          storedLines
+        );
+        const photos = await this.lockReceiptPhotos(
+          tx,
+          context
+        );
+        const latestReview =
+          await this.lockLatestReceiptReview(
+            tx,
+            context.receipt.id
+          );
+        await this.assertReceiptReviewFacts(
+          context,
+          receiptLines,
+          photos,
+          tx
+        );
+
+        if (
+          latestReview?.decision === "approved" &&
+          latestReview.receiptRevisionNo ===
+            context.receipt.currentRevisionNo &&
+          latestReview.procurementId ===
+            context.procurement.id &&
+          latestReview.procurementVersionId ===
+            context.version.id
+        ) {
+          throw new ConflictException(
+            "当前收货确认已有有效复核，不能重复复核"
+          );
+        }
+        const review =
+          await tx.spotProcurementReceiptReview.create({
+            data: {
+              receiptId: context.receipt.id,
+              receiptRevisionNo:
+                context.receipt.currentRevisionNo,
+              procurementId: context.procurement.id,
+              procurementVersionId: context.version.id,
+              sequenceNo: (latestReview?.sequenceNo ?? 0) + 1,
+              decision: input.decision,
+              comment,
+              reviewedByUserId: actorUserId,
+              reviewedByNameSnapshot: reviewer.name,
+              submissionDelegationId:
+                context.receipt.submissionDelegationId,
+              targetReviewId: null
+            }
+          });
+
+        let currentRevisionNo =
+          context.receipt.currentRevisionNo;
+        if (input.decision === "approved") {
+          await tx.spotProcurementReceipt.update({
+            where: { id: context.receipt.id },
+            data: { status: "reviewed" }
+          });
+        } else {
+          currentRevisionNo =
+            await this.advanceReceiptCorrectionRevision(
+              tx,
+              context,
+              receiptLines,
+              actorUserId,
+              "returned"
+            );
+        }
+        await this.audit.record(tx, {
+          actorUserId,
+          action: `spot_procurement.receipt.review.${input.decision}`,
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+          businessId: context.receipt.id,
+          metadata: {
+            projectId: context.receipt.projectId,
+            procurementId,
+            procurementVersionId: context.version.id,
+            reviewedReceiptRevisionNo:
+              context.receipt.currentRevisionNo,
+            currentReceiptRevisionNo: currentRevisionNo,
+            reviewId: review.id,
+            sequenceNo: review.sequenceNo,
+            decision: input.decision,
+            submissionDelegationId:
+              context.receipt.submissionDelegationId
+          }
+        });
+        return {
+          receiptId: context.receipt.id,
+          procurementId,
+          procurementVersionId: context.version.id,
+          reviewId: review.id,
+          sequenceNo: review.sequenceNo,
+          decision: input.decision,
+          comment,
+          reviewedByUserId: actorUserId,
+          reviewedReceiptRevisionNo:
+            context.receipt.currentRevisionNo,
+          currentReceiptRevisionNo: currentRevisionNo,
+          status:
+            input.decision === "approved"
+              ? "reviewed"
+              : "returned",
+          reviewedAt: review.createdAt.toISOString()
+        };
+      });
+      await this.receiptPdfs.tryRefreshLatest(
+        result.receiptId,
+        actorUserId,
+        `receipt.review.${result.decision}`,
+        {
+          sourceRevisionNo:
+            result.reviewedReceiptRevisionNo,
+          reviewId: result.reviewId
+        }
+      );
+      return result;
+    });
+  }
+
+  revokeReview(
+    procurementId: string,
+    actorUserId: string,
+    input: RevokeReceiptReviewDto
+  ) {
+    const targetReviewId = requiredId(
+      input.targetReviewId,
+      "请选择需要撤销的收货复核"
+    );
+    const reason = requiredLimitedText(
+      input.reason,
+      "撤销收货复核必须填写原因",
+      500,
+      "撤销收货复核原因"
+    );
+    if (input.confirmReviewRevocation !== true) {
+      throw new BadRequestException(
+        "请明确确认撤销本次收货复核"
+      );
+    }
+
+    return this.runWrite(async () => {
+      const result = await this.runSerializable(async (tx) => {
+        const context = await this.requireLockedContext(
+          tx,
+          procurementId
+        );
+        const reviewer = await this.requireMaterialDirector(
+          tx,
+          actorUserId,
+          context.receipt.projectId
+        );
+        this.assertReceiptBusinessOpen(context);
+        this.assertReceiptSubmissionCoordinates(
+          context,
+          "reviewed",
+          "当前收货确认没有可撤销的有效复核"
+        );
+
+        const latestReview =
+          await this.lockLatestReceiptReview(
+            tx,
+            context.receipt.id
+          );
+        if (
+          !latestReview ||
+          latestReview.id !== targetReviewId ||
+          latestReview.decision !== "approved" ||
+          latestReview.receiptRevisionNo !==
+            context.receipt.currentRevisionNo ||
+          latestReview.procurementId !== context.procurement.id ||
+          latestReview.procurementVersionId !== context.version.id
+        ) {
+          throw new ConflictException(
+            "只能撤销当前有效且坐标一致的收货复核"
+          );
+        }
+
+        const procurementLines = await this.lockProcurementLines(
+          tx,
+          context.version.id
+        );
+        const receiptLines = this.validateStoredReceiptLines(
+          procurementLines,
+          await this.lockReceiptLines(tx, context)
+        );
+        const review =
+          await tx.spotProcurementReceiptReview.create({
+            data: {
+              receiptId: context.receipt.id,
+              receiptRevisionNo:
+                context.receipt.currentRevisionNo,
+              procurementId: context.procurement.id,
+              procurementVersionId: context.version.id,
+              sequenceNo: latestReview.sequenceNo + 1,
+              decision: "revoked",
+              comment: reason,
+              reviewedByUserId: actorUserId,
+              reviewedByNameSnapshot: reviewer.name,
+              submissionDelegationId:
+                context.receipt.submissionDelegationId,
+              targetReviewId: latestReview.id
+            }
+          });
+        const currentRevisionNo =
+          await this.advanceReceiptCorrectionRevision(
+            tx,
+            context,
+            receiptLines,
+            actorUserId,
+            "review_revoked"
+          );
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "spot_procurement.receipt.review.revoked",
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+          businessId: context.receipt.id,
+          metadata: {
+            projectId: context.receipt.projectId,
+            procurementId,
+            procurementVersionId: context.version.id,
+            revokedReceiptRevisionNo:
+              context.receipt.currentRevisionNo,
+            currentReceiptRevisionNo: currentRevisionNo,
+            reviewId: review.id,
+            targetReviewId: latestReview.id,
+            sequenceNo: review.sequenceNo,
+            explicitConfirmation: true
+          }
+        });
+        return {
+          receiptId: context.receipt.id,
+          procurementId,
+          procurementVersionId: context.version.id,
+          reviewId: review.id,
+          targetReviewId: latestReview.id,
+          sequenceNo: review.sequenceNo,
+          decision: "revoked",
+          reason,
+          reviewedByUserId: actorUserId,
+          revokedReceiptRevisionNo:
+            context.receipt.currentRevisionNo,
+          currentReceiptRevisionNo: currentRevisionNo,
+          status: "review_revoked",
+          reviewedAt: review.createdAt.toISOString()
+        };
+      });
+      await this.receiptPdfs.tryRefreshLatest(
+        result.receiptId,
+        actorUserId,
+        "receipt.review.revoked",
+        {
+          sourceRevisionNo:
+            result.revokedReceiptRevisionNo,
+          reviewId: result.reviewId
+        }
+      );
+      return result;
+    });
+  }
+
+  retryFormalPdf(
+    procurementId: string,
+    actorUserId: string
+  ) {
+    return this.runWrite(async () => {
+      const target = await this.runSerializable(async (tx) => {
+        const context = await this.requireLockedContext(
+          tx,
+          procurementId
+        );
+        await this.requireMaterialDirector(
+          tx,
+          actorUserId,
+          context.receipt.projectId
+        );
+        this.pilot.assertEnabled(context.receipt.projectId);
+        if (
+          context.receipt.status !== "reviewed" &&
+          context.receipt.status !== "locked"
+        ) {
+          throw new ConflictException(
+            "只有复核通过或已办结锁定的收货确认可以重试生成正式 PDF"
+          );
+        }
+        if (
+          context.receipt.procurementVersionId !==
+            context.version.id ||
+          context.revision.procurementVersionId !==
+            context.version.id
+        ) {
+          throw new ConflictException(
+            "收货单与当前采购版本不一致，请刷新后重试"
+          );
+        }
+        this.assertReceiptSubmissionCoordinates(
+          context,
+          context.receipt.status,
+          "当前收货确认缺少完整的已提交事实"
+        );
+
+        const latestReview =
+          await this.lockLatestReceiptReview(
+            tx,
+            context.receipt.id
+          );
+        if (
+          !latestReview ||
+          latestReview.decision !== "approved" ||
+          latestReview.receiptRevisionNo !==
+            context.receipt.currentRevisionNo ||
+          latestReview.procurementId !== context.procurement.id ||
+          latestReview.procurementVersionId !== context.version.id
+        ) {
+          throw new ConflictException(
+            "当前收货确认缺少坐标一致的有效复核，不能生成正式 PDF"
+          );
+        }
+        return {
+          receiptId: context.receipt.id,
+          sourceRevisionNo:
+            context.receipt.currentRevisionNo,
+          reviewId: latestReview.id
+        };
+      });
+
+      const document = await this.receiptPdfs.refreshLatest(
+        target.receiptId,
+        actorUserId,
+        "receipt.pdf.manual_retry",
+        {
+          sourceRevisionNo: target.sourceRevisionNo,
+          reviewId: target.reviewId
+        }
+      );
+      if (!document) {
+        throw new InternalServerErrorException(
+          "正式收货 PDF 生成结果缺失，请稍后重试"
+        );
+      }
+      return {
+        receiptId: target.receiptId,
+        documentId: document.id,
+        fileId: document.fileId,
+        templateKey: document.templateKey
+      };
+    });
   }
 
   private async photoSnapshot(
@@ -1257,13 +1832,16 @@ export class SpotProcurementReceiptService {
         await this.requireReceiptActor(tx, context, actorUserId);
         this.assertReceiptBusinessOpen(context);
         this.assertPhotoAppendable(context);
+        this.assertReceiptPhotoCount(
+          await this.lockReceiptPhotos(tx, context)
+        );
 
         const note = normalizeOptionalText(
           noteInput,
           "收货照片备注",
           300
         );
-        const appendReason = context.revision.submittedAt
+        const appendReason = context.receipt.firstSubmittedAt
           ? requiredLimitedText(
               appendReasonInput,
               "首次提交后补充照片必须填写原因",
@@ -1293,6 +1871,8 @@ export class SpotProcurementReceiptService {
           procurementVersionId: context.version.id,
           revisionSubmittedAt:
             context.revision.submittedAt?.getTime() ?? null,
+          firstSubmittedAt:
+            context.receipt.firstSubmittedAt?.getTime() ?? null,
           projectLabel: `${project.name}（${project.code}）`,
           procurementCode: context.procurement.code,
           uploaderName: uploader.name,
@@ -1557,7 +2137,9 @@ export class SpotProcurementReceiptService {
       context.receipt.currentRevisionNo !== snapshot.revisionNo ||
       context.version.id !== snapshot.procurementVersionId ||
       (context.revision.submittedAt?.getTime() ?? null) !==
-        snapshot.revisionSubmittedAt
+        snapshot.revisionSubmittedAt ||
+      (context.receipt.firstSubmittedAt?.getTime() ?? null) !==
+        snapshot.firstSubmittedAt
     ) {
       throw new ConflictException(
         "收货单在生成水印期间已变化，请刷新后重试"
@@ -1622,6 +2204,257 @@ export class SpotProcurementReceiptService {
         "当前收货状态不能补充照片"
       );
     }
+  }
+
+  private assertReceiptPhotoCount(
+    photos: ReceiptPhotoLockRow[]
+  ): void {
+    if (
+      photos.length >=
+      SPOT_PROCUREMENT_RECEIPT_MAX_PHOTO_COUNT
+    ) {
+      throw new ConflictException(
+        `每笔零星采购最多上传 ${SPOT_PROCUREMENT_RECEIPT_MAX_PHOTO_COUNT} 张收货照片`
+      );
+    }
+  }
+
+  private assertReceiptSubmissionCoordinates(
+    context: LockedReceiptContext,
+    expectedStatus: "submitted" | "reviewed" | "locked",
+    message: string
+  ) {
+    if (
+      context.receipt.status !== expectedStatus ||
+      !context.receipt.firstSubmittedAt ||
+      !context.receipt.submittedAt ||
+      !context.receipt.submittedByUserId ||
+      !context.revision.submittedAt ||
+      !context.revision.submittedByUserId ||
+      context.receipt.submittedAt.getTime() !==
+        context.revision.submittedAt.getTime() ||
+      context.receipt.submittedByUserId !==
+        context.revision.submittedByUserId ||
+      context.receipt.submissionDelegationId !==
+        context.revision.submissionDelegationId
+    ) {
+      throw new ConflictException(message);
+    }
+  }
+
+  private async assertReceiptReviewFacts(
+    context: LockedReceiptContext,
+    receiptLines: Array<
+      ReceiptLineLockRow & { actualCostCents: bigint }
+    >,
+    photos: ReceiptPhotoLockRow[],
+    tx: Prisma.TransactionClient
+  ) {
+    if (
+      photos.length >
+      SPOT_PROCUREMENT_RECEIPT_MAX_PHOTO_COUNT
+    ) {
+      throw new ConflictException("收货照片数量超过系统上限");
+    }
+    if (
+      receiptLines.some((line) => line.replenishmentPending)
+    ) {
+      throw new ConflictException(
+        "仍有供应商承诺补货的明细，暂不能复核"
+      );
+    }
+    const actualCostCents = sumActualCost(receiptLines);
+    if (
+      actualCostCents !== context.receipt.actualCostCents ||
+      actualCostCents !== context.revision.actualCostCents ||
+      context.procurement.actualCostCents !== actualCostCents
+    ) {
+      throw new ConflictException(
+        "收货实际成本事实不一致，请刷新后重试"
+      );
+    }
+    if (
+      !photos.some(
+        (photo) => photo.category === "material_scene"
+      ) ||
+      photos.some((photo) => photo.lockedAt === null)
+    ) {
+      throw new ConflictException(
+        "收货照片证据不完整或尚未锁定"
+      );
+    }
+    const fileRows = await this.lockFiles(
+      tx,
+      photos.flatMap((photo) => [
+        photo.originalFileId,
+        photo.watermarkedFileId
+      ])
+    );
+    this.assertStoredPhotoFiles(photos, fileRows);
+  }
+
+  private async advanceReceiptCorrectionRevision(
+    tx: Prisma.TransactionClient,
+    context: LockedReceiptContext,
+    receiptLines: Array<
+      ReceiptLineLockRow & { actualCostCents: bigint }
+    >,
+    actorUserId: string,
+    status: "returned" | "review_revoked"
+  ): Promise<number> {
+    const nextRevisionNo =
+      context.receipt.currentRevisionNo + 1;
+    await tx.spotProcurementReceiptRevision.create({
+      data: {
+        receiptId: context.receipt.id,
+        revisionNo: nextRevisionNo,
+        procurementId: context.procurement.id,
+        procurementVersionId: context.version.id,
+        handlerUserId: context.receipt.handlerUserId,
+        note: context.revision.note,
+        actualCostCents: context.revision.actualCostCents,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        createdByUserId: actorUserId
+      }
+    });
+    await tx.spotProcurementReceiptLine.createMany({
+      data: receiptLines.map((line) => ({
+        receiptId: context.receipt.id,
+        receiptRevisionNo: nextRevisionNo,
+        procurementId: context.procurement.id,
+        procurementVersionId: context.version.id,
+        procurementLineId: line.procurementLineId,
+        approvedQuantitySnapshot:
+          line.approvedQuantitySnapshot,
+        qualifiedQuantity: line.qualifiedQuantity,
+        unqualifiedQuantity: line.unqualifiedQuantity,
+        unqualifiedReason: line.unqualifiedReason,
+        freeGiftQuantity: line.freeGiftQuantity,
+        replenishmentPending: line.replenishmentPending,
+        discrepancyNote: line.discrepancyNote,
+        actualCostCents: line.actualCostCents,
+        createdByUserId: actorUserId
+      }))
+    });
+    await tx.spotProcurementReceipt.update({
+      where: { id: context.receipt.id },
+      data: {
+        status,
+        currentRevisionNo: nextRevisionNo,
+        submittedAt: null,
+        submittedByUserId: null,
+        submissionDelegationId: null,
+        lockedAt: null
+      }
+    });
+    return nextRevisionNo;
+  }
+
+  private async lockLatestReceiptReview(
+    tx: Prisma.TransactionClient,
+    receiptId: string
+  ): Promise<ReceiptReviewLockRow | null> {
+    const rows = await tx.$queryRaw<
+      ReceiptReviewLockRow[]
+    >(Prisma.sql`
+      SELECT
+        "id",
+        "receiptId",
+        "receiptRevisionNo",
+        "procurementId",
+        "procurementVersionId",
+        "sequenceNo",
+        "decision",
+        "comment",
+        "reviewedByUserId",
+        "submissionDelegationId",
+        "targetReviewId",
+        "createdAt"
+      FROM "SpotProcurementReceiptReview"
+      WHERE "receiptId" = ${receiptId}
+      ORDER BY "sequenceNo" DESC
+      LIMIT 1
+      FOR UPDATE
+    `);
+    return rows[0] ?? null;
+  }
+
+  private async requireMaterialDirector(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ) {
+    const reviewer = await this.requireActiveUser(
+      tx,
+      actorUserId,
+      "当前物资主管不存在或已停用"
+    );
+    const [
+      globalAssignments,
+      projectAssignments,
+      memberships
+    ] = await Promise.all([
+      tx.userPosition.findMany({
+        where: { userId: actorUserId, projectId: null },
+        select: { positionId: true }
+      }),
+      tx.userPosition.findMany({
+        where: { userId: actorUserId, projectId },
+        select: { positionId: true }
+      }),
+      tx.projectMember.findMany({
+        where: { userId: actorUserId, projectId },
+        select: { positionKey: true }
+      })
+    ]);
+    const positionIds = [
+      ...new Set(
+        [...globalAssignments, ...projectAssignments].map(
+          (assignment) => assignment.positionId
+        )
+      )
+    ];
+    const positions = positionIds.length
+      ? await tx.position.findMany({
+          where: { id: { in: positionIds } },
+          select: { id: true, key: true }
+        })
+      : [];
+    const globalPositionIds = new Set(
+      globalAssignments.map(
+        (assignment) => assignment.positionId
+      )
+    );
+    const projectPositionIds = new Set(
+      projectAssignments.map(
+        (assignment) => assignment.positionId
+      )
+    );
+    const effectiveRoles = resolveEffectiveRoleKeys(
+      positions
+        .filter((position) =>
+          globalPositionIds.has(position.id)
+        )
+        .map((position) => position.key as RoleKey),
+      [
+        ...positions
+          .filter((position) =>
+            projectPositionIds.has(position.id)
+          )
+          .map((position) => position.key as RoleKey),
+        ...memberships.map(
+          (membership) => membership.positionKey as RoleKey
+        )
+      ]
+    );
+    if (!effectiveRoles.includes("material_director")) {
+      throw new ForbiddenException(
+        "只有本项目物资主管可以复核收货"
+      );
+    }
+    return reviewer;
   }
 
   private async requireReceiptActor(
@@ -1698,11 +2531,12 @@ export class SpotProcurementReceiptService {
   ) {
     const user = await tx.user.findUnique({
       where: { id: userId },
-      select: { id: true, isActive: true }
+      select: { id: true, name: true, isActive: true }
     });
     if (!user?.isActive) {
       throw new ForbiddenException(message);
     }
+    return user;
   }
 
   private async requireLockedContext(
@@ -1877,26 +2711,30 @@ export class SpotProcurementReceiptService {
   ) {
     return tx.$queryRaw<ReceiptPhotoLockRow[]>(Prisma.sql`
       SELECT
-        "id",
-        "receiptId",
-        "receiptRevisionNo",
-        "originalFileId",
-        "watermarkedFileId",
-        "originalSha256",
-        "watermarkedSha256",
-        "source",
-        "category",
-        "serverRecordedAt",
-        "note",
-        "uploadedByUserId",
-        "lockedAtFirstSubmission",
-        "lockedAt",
-        "appendReason"
-      FROM "SpotProcurementReceiptPhoto"
-      WHERE "receiptId" = ${context.receipt.id}
-        AND "receiptRevisionNo" = ${context.receipt.currentRevisionNo}
-      ORDER BY "id"
-      FOR UPDATE
+        photo."id",
+        photo."receiptId",
+        photo."receiptRevisionNo",
+        photo."originalFileId",
+        photo."watermarkedFileId",
+        photo."originalSha256",
+        photo."watermarkedSha256",
+        photo."source",
+        photo."category",
+        photo."serverRecordedAt",
+        photo."note",
+        photo."uploadedByUserId",
+        photo."lockedAtFirstSubmission",
+        photo."lockedAt",
+        photo."appendReason"
+      FROM "SpotProcurementReceiptPhoto" photo
+      INNER JOIN "SpotProcurementReceiptRevision" revision
+        ON revision."receiptId" = photo."receiptId"
+        AND revision."revisionNo" = photo."receiptRevisionNo"
+      WHERE photo."receiptId" = ${context.receipt.id}
+        AND revision."procurementId" = ${context.procurement.id}
+        AND revision."procurementVersionId" = ${context.version.id}
+      ORDER BY photo."id"
+      FOR UPDATE OF photo
     `);
   }
 

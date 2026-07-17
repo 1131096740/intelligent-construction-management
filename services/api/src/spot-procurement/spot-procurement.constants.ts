@@ -4,6 +4,11 @@ export const SPOT_PROCUREMENT_BUSINESS_TYPES = {
   receipt: "spot_procurement_receipt"
 } as const;
 
+export const SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY =
+  "spot_procurement_receipt_v1";
+
+export const SPOT_PROCUREMENT_RECEIPT_MAX_PHOTO_COUNT = 20;
+
 export type SpotProcurementBusinessType =
   (typeof SPOT_PROCUREMENT_BUSINESS_TYPES)[keyof typeof SPOT_PROCUREMENT_BUSINESS_TYPES];
 
