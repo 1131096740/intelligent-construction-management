@@ -737,7 +737,7 @@ interface FrozenApprovalNode {
 }
 ```
 
-M54 四列全部可空，无默认值、无历史回填、无 destructive DML。旧 role-only 节点与既有在途实例维持原资格，不补候选人；只有显式存在 `candidateUserIds` 或 `selectedUserId` 的新节点启用人员冻结。迁移验证必须覆盖 M53→M54 顺序、事务边界、nullable、无默认值/回填，并包含删列、加默认值和注入回填 SQL 的变异测试。
+M54 四列全部可空，无默认值、无历史回填、无 destructive DML。旧 role-only 节点与既有在途实例维持原资格，不补候选人；显式存在 `candidateUserIdsByRole`、`candidateUserIds` 或 `selectedUserId` 任一字段的新节点均启用人员冻结。迁移验证必须覆盖 M53→M54 顺序、事务边界、nullable、无默认值/回填，并包含删列、加默认值和注入回填 SQL 的变异测试。
 
 - [ ] **Step 4: 统一候选人、指派和常驻委托的审批身份解析**
 
@@ -792,7 +792,7 @@ git commit -m "feat: 冻结审批人员与签名事实"
 
 ### Task 8: 五类新合同审批路线和人员冻结
 
-> **执行校正（2026-07-17 代码审计）**：Task 8 依赖 Task 7 已完成“冻结人员不因调岗失权”的读、待办、HTTP Guard 和真实 review 闭环。这里只为尚未提交或重新提交的原合同生成新路线；既有在途实例不重算，合同变更继续使用现有路线直到后续 Task 12。项目岗位候选只认规范 `ProjectMember`，不把 legacy project-scoped `UserPosition` 混入新冻结事实；发现仅有遗留来源时提示先治理组织权限。
+> **执行校正（2026-07-17 代码审计）**：Task 8 依赖 Task 7 已完成“冻结人员不因调岗失权”的读、待办、HTTP Guard 和真实 review 闭环。这里只为尚未提交或重新提交的原合同生成新路线；既有在途实例不重算，合同变更继续使用现有路线直到后续 Task 14。项目岗位候选只认规范 `ProjectMember`，不把 legacy project-scoped `UserPosition` 混入新冻结事实；发现仅有遗留来源时提示先治理组织权限。
 
 **Files:**
 - Create: `services/api/src/contract/contract-approval-route.service.ts`
@@ -808,16 +808,16 @@ git commit -m "feat: 冻结审批人员与签名事实"
 - [ ] **Step 1: 写五类路线和主管发起失败测试**
 
 ```ts
-expect(await routes.freezeNewContractRoute(materialContract, "staff-1")).toMatchObject([
+expect(await routes.freezeNewContractRoute(tx, lockedMaterialContract, "staff-1")).toMatchObject([
   { roleKeys: ["contract_director"] },
   { roleKeys: ["material_director"] },
   { roleKeys: ["project_manager"] },
   { roleKeys: ["finance_director"] },
   { roleKeys: ["chairman", "general_manager"] }
 ]);
-expect((await routes.freezeNewContractRoute(genericContract, "director-1"))[0].roleKeys)
+expect((await routes.freezeNewContractRoute(tx, lockedGenericContract, "director-1"))[0].roleKeys)
   .toEqual(["comprehensive_director"]);
-await expect(routes.freezeNewContractRoute(laborContract, "staff-1"))
+await expect(routes.freezeNewContractRoute(tx, lockedLaborContract, "staff-1"))
   .rejects.toThrow("所属项目的项目总工配置缺失或冲突");
 ```
 
@@ -827,7 +827,7 @@ Run: `pnpm --filter @jiangkong/shared-domain test -- src/permissions.test.ts && 
 
 Expected: FAIL。
 
-失败测试必须覆盖五类完整路线、合同部成员发起保留首节点、只有公司级合同主管发起才跳过、项目隔离、启用用户、未知/空合同类型 fail closed、项目总工 exactly one、其他单角色节点至少一名候选、领导或签节点至少一名候选、`candidateUserIdsByRole` 实际写入 ApprovalInstance。不得把“申请人兼任后续岗位”自动排除；除合同主管首节点特例外，沿用现有自审二次确认规则。
+失败测试必须覆盖五类完整路线、合同部成员发起保留首节点、只有公司级合同主管发起才跳过、项目隔离、启用用户、未知/空合同类型 fail closed、项目总工 exactly one、其他单角色节点至少一名非申请人候选、领导或签节点至少一名非申请人候选、`candidateUserIdsByRole` 实际写入 ApprovalInstance。批准规格明确禁止申请人利用兼任岗位审批自己发起的新合同，因此所有后续节点都排除申请人；排除后为空即阻断，不使用领导自审例外绕过本流程。
 
 - [ ] **Step 3: 实现分类路线定义**
 
@@ -841,7 +841,7 @@ const NEW_CONTRACT_ROUTE: Record<ContractTypeKey, RouteNodeDefinition[]> = {
 };
 ```
 
-路线解析在 `submitApproval()` 同一事务中进行，并锁定 Contract 后读取类型、项目和组织候选。公司级节点从 `UserPosition(projectId=null)` 加 `Position.key` 和启用用户解析；项目经理与项目总工仅从合同所属项目的 `ProjectMember` 解析。项目总工必须恰好一名启用候选，缺失或多人冲突均阻断；其他单角色节点允许冻结全部启用候选但至少一人，董事长/总经理或签只要求两种岗位合计至少一人。主管发起时仅当申请人持有公司级 `contract_director` 才删除首节点。未知或空 `contractTypeKey` 必须 fail closed。所有节点写 `candidateUserIdsByRole` 与稳定排序的并集，后续 review 不重查现任岗位。
+路线解析接口固定为 `freezeNewContractRoute(tx, lockedContract, applicantUserId)`：`ContractService.submitApproval()` 在自己的事务内先锁 Contract，再把同一 `tx` 与锁定行传入；路线服务不得用注入的全局 Prisma 客户端旁路事务。测试断言候选查询全部走传入 tx。公司级节点从 `UserPosition(projectId=null)` 加 `Position.key` 和启用用户解析；项目经理与项目总工仅从合同所属项目的 `ProjectMember` 解析。所有节点先排除申请人：项目总工随后必须恰好一名启用候选，缺失或多人冲突均阻断；其他单角色节点允许冻结全部剩余启用候选但至少一人，董事长/总经理或签只要求两种岗位剩余候选合计至少一人。主管发起时仅当申请人持有公司级 `contract_director` 才删除首节点。未知或空 `contractTypeKey` 必须 fail closed。所有节点写 `candidateUserIdsByRole` 与稳定排序的并集，后续 review 不重查现任岗位。
 
 - [ ] **Step 4: 补粗粒度入口岗位但不扩大其他写权限**
 
